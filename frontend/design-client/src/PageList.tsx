@@ -7,6 +7,7 @@ import { commitPendingEdits } from './pending-edits'
 import { modalKeyDown } from './modal-keyboard'
 import { userPages } from './fig-document'
 import { requestAgentTarget } from './design-ai/target-event'
+import { clampAnchoredMenu } from './anchored-menu'
 import './design-ai/design-agent.css'
 
 export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: string) => void }) {
@@ -15,8 +16,6 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
   const state = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [open, setOpen] = useState(true)
   const [hoverPage, setHoverPage] = useState<string | null>(null)
-  const [agentFor, setAgentFor] = useState<{ id: string; name: string; x: number; y: number } | null>(null)
-  const [agentPrompt, setAgentPrompt] = useState('')
   const [search, setSearch] = useState('')
   const [menu, setMenu] = useState<{ id: string; session: number; document: string; x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -44,7 +43,7 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
     <div className="pages-heading">
       <button type="button" className="pages-current" aria-expanded={open} aria-controls={listId} aria-label={open ? text.collapsePages : text.expandPages}
         onClick={() => setOpen(value => !value)}>
-        <ChevronDown size={14} /><span>{current?.name || text.pages}</span>
+        <ChevronDown size={14} /><span title={current?.name || text.pages}>{current?.name || text.pages}</span>
       </button>
       <button title={text.addPage} aria-label={text.addPage} onClick={() => { if (canMutatePages() && commitPendingEdits(editor) && canMutatePages()) { setSearch(''); editor.addPage() } }}><Plus size={15} /></button>
     </div>
@@ -70,31 +69,25 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
             editor.reorderPage(payload.id, after ? editor.state.doc.pages[at + 1]?.id : page.id)
           }}>
           <button className={state.page === page.id ? 'page active' : 'page'} onClick={() => editor.switchPage(page.id)} onDoubleClick={() => onRename(page.id)}>
-            <span className="page-name">{page.name}</span>{state.page === page.id && <span className="page-dot" />}
+            <span className="page-name" title={page.name}>{page.name}</span>{state.page === page.id && <span className="page-dot" />}
           </button>
           {hoverPage === page.id && <button type="button" className="page-ai" aria-label={`用 AI 修改 ${page.name}`} onMouseDown={event => event.stopPropagation()} onClick={event => {
             event.stopPropagation()
-            const box = event.currentTarget.getBoundingClientRect()
-            setAgentPrompt(''); setAgentFor({ id: page.id, name: page.name, x: Math.max(8, box.left), y: Math.min(box.bottom + 6, window.innerHeight - 180) })
+            if (!canMutatePages() || !commitPendingEdits(editor)) return
+            editor.switchPage(page.id)
+            requestAgentTarget({ pageId: page.id, prompt: `细节调整：修改「${page.name}」`, send: false })
           }}>AI</button>}
           <button className="page-options" aria-label={`${text.pageActions}：${page.name}`} onClick={event => {
             if (!commitPendingEdits(editor)) return
             const box = event.currentTarget.getBoundingClientRect()
-            setMenu({ id: page.id, session: editor.sessionGeneration, document: state.doc.id, x: Math.max(8, Math.min(box.x, window.innerWidth - 188)), y: Math.min(box.bottom, window.innerHeight - 190) })
+            const next = clampAnchoredMenu(box, { width: 180, height: 180 }, { prefer: 'below' })
+            setMenu({ id: page.id, session: editor.sessionGeneration, document: state.doc.id, x: next.left, y: next.top })
           }}><MoreHorizontal size={14} /></button>
         </div>
       })}
       {!userPages(state.doc).some(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())) && <p className="muted">{text.noMatchingPages}</p>}
     </nav>
     </div>
-    {agentFor && createPortal(<form className="page-ai-pop" role="dialog" aria-label={`定向修改 ${agentFor.name}`} style={{ left: agentFor.x, top: agentFor.y }}
-      onSubmit={event => { event.preventDefault(); const prompt = agentPrompt.trim() || `细节调整：修改「${agentFor.name}」`; editor.switchPage(agentFor.id); requestAgentTarget({ pageId: agentFor.id, prompt }); setAgentFor(null) }}>
-      <strong>修改「{agentFor.name}」</strong>
-      <p>主对话默认改这一页，也可以在句子里点名其他页面。</p>
-      <textarea aria-label="定向修改" rows={3} value={agentPrompt} onChange={event => setAgentPrompt(event.target.value)} placeholder="例如：把标题改成秋日特惠" />
-      <button type="submit">定向修改</button>
-      <button type="button" onClick={() => setAgentFor(null)}>取消</button>
-    </form>, document.body)}
     {menu && createPortal(<div ref={menuRef} className="page-menu" role="menu" aria-label={text.pageActions} tabIndex={-1}
       style={{ position: 'fixed', left: menu.x, top: menu.y }} onKeyDown={event => modalKeyDown(event, () => setMenu(null))}>
       <button role="menuitem" onClick={() => action(onRename)}>{text.renamePage}</button>

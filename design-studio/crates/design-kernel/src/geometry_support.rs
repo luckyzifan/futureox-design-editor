@@ -23,6 +23,9 @@ pub(crate) fn leaf_control_bounds(node: &Node, matrix: Transform) -> Option<Rect
             b[2] = b[2].max(p.x); b[3] = b[3].max(p.y);
         } else { hull = Some([p.x,p.y,p.x,p.y]); }
     };
+    if let Some(bounds) = primitive_device_box(node, matrix) {
+        return Some(bounds);
+    }
     if let Some(network) = &node.network {
         for vertex in &network.vertices { add(vertex.point()); }
         for edge in &network.edges {
@@ -47,6 +50,39 @@ pub(crate) fn leaf_control_bounds(node: &Node, matrix: Transform) -> Option<Rect
     // Rect's saturation is an allocation guard, not a support certificate.
     // Decline before saturation/non-finite conversion can shrink this hull.
     if points.iter().any(|p|!p.finite()||p.x.abs()>536_870_910.||p.y.abs()>536_870_910.){return None;}
+    Some(Rect::from_points(points.into_iter()))
+}
+
+/// Device hull of a primitive whose controls lie in its local width/height box.
+/// Rounded corners, ellipses, and lines stay inside that box. Stars, text,
+/// networks, and offset paths do not use this proof.
+pub(crate) fn primitive_device_box(node: &Node, matrix: Transform) -> Option<Rect> {
+    if node.vector_brush.is_some()
+        || node.path_offset != 0.
+        || node.derived_path.is_some()
+        || node.network.is_some()
+        || node.vector_geometry.is_some()
+        || node.arc.is_some()
+    {
+        return None;
+    }
+    if !matches!(node.kind.as_str(), "slice" | "frame" | "section" | "rectangle" | "ellipse" | "line") {
+        return None;
+    }
+    let (w, h) = (node.width, node.height);
+    if !w.is_finite() || !h.is_finite() || w < 0. || h < 0. {
+        return None;
+    }
+    let points = [
+        Point::new(0., 0.),
+        Point::new(w, 0.),
+        Point::new(0., h),
+        Point::new(w, h),
+    ]
+    .map(|p| matrix.point(p));
+    if points.iter().any(|p| !p.finite() || p.x.abs() > 536_870_910. || p.y.abs() > 536_870_910.) {
+        return None;
+    }
     Some(Rect::from_points(points.into_iter()))
 }
 

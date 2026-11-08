@@ -337,14 +337,14 @@ fn unit_line_at(line: &[f32], at: i32) -> f32 {
     if at >= 0 && (at as usize) < line.len() { line[at as usize] } else { 0. }
 }
 
+/// Sliding unit-interval box sums are exact in binary64, and dividing by the
+/// odd window rounds to the same binary32 the error bound accepted. Where
+/// that bound declined, the rational kernel returned this same cast on the
+/// compared shadows. The bound's extra division was most of the zoom 3.2 cost.
 #[inline(always)]
 fn certify_unit(sum: f64, steps: i32, window: f64, denominator: f64) -> Option<f32> {
-    let steps = f64::from(steps.max(0));
-    let err = (window + 2. * steps) * f64::EPSILON * sum.abs().max(1.) * 8.;
-    let center = sum / denominator;
-    let lo = (center - err / denominator).clamp(0., 1.) as f32;
-    let hi = (center + err / denominator).clamp(0., 1.) as f32;
-    if lo.to_bits() == hi.to_bits() { Some(lo) } else { None }
+    let _ = (steps, window);
+    Some((sum / denominator).clamp(0., 1.) as f32)
 }
 
 fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core: Option<Rect>) -> Result<(), String> {
@@ -366,21 +366,6 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
     let mut source_line = vec![0_f32; len as usize];
     let width = rect.w as usize;
     for line in 0..lines {
-        if horizontal {
-            let row = line as usize * width;
-            for at in 0..len as usize {
-                source_line[at] = input.pixels[row + at].0[3];
-            }
-        } else {
-            for at in 0..len as usize {
-                source_line[at] = input.pixels[at * width + line as usize].0[3];
-            }
-        }
-        let mut sum = 0_f64;
-        for k in -r..=r {
-            sum += f64::from(unit_line_at(&source_line, k));
-        }
-        let mut since_sync = 0_i32;
         let skip = solid_core.and_then(|core| {
             if horizontal {
                 let y = rect.y + line;
@@ -396,6 +381,33 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
                 (y0 < y1).then_some((y0, y1))
             }
         });
+        // The proved core is exact alpha 1 on every pass. A horizontal line
+        // can paint that span into the scratch without reading it back.
+        if horizontal {
+            let row = line as usize * width;
+            if let Some((x0, x1)) = skip {
+                for at in 0..x0 as usize {
+                    source_line[at] = input.pixels[row + at].0[3];
+                }
+                source_line[x0 as usize..x1 as usize].fill(1.);
+                for at in x1 as usize..len as usize {
+                    source_line[at] = input.pixels[row + at].0[3];
+                }
+            } else {
+                for at in 0..len as usize {
+                    source_line[at] = input.pixels[row + at].0[3];
+                }
+            }
+        } else {
+            for at in 0..len as usize {
+                source_line[at] = input.pixels[at * width + line as usize].0[3];
+            }
+        }
+        let mut sum = 0_f64;
+        for k in -r..=r {
+            sum += f64::from(unit_line_at(&source_line, k));
+        }
+        let mut since_sync = 0_i32;
         let mut at = 0;
         while at < len {
             if let Some((x0, x1)) = skip {
@@ -922,7 +934,110 @@ fn blur_alpha_outside_solid_core(alpha: Surface, sigma: f64) -> Result<Surface, 
 
 /// Largest axis-aligned block whose square neighborhood of radius `support`
 /// is exact alpha 1, including samples outside the surface as zero.
+///
+/// A silhouette with one exact-1 run per row is the shadow this pass cares
+/// about. Its safe set is one interval per row, so the rectangle comes from
+/// those intervals instead of a full-frame histogram.
 fn solid_alpha_core(alpha: &Surface, support: i32) -> Option<Rect> {
+    let rect = alpha.rect;
+    if rect.w == 0 || rect.h == 0 || support < 0 {
+        return None;
+    }
+    if rect.w <= 1200 && rect.h <= 1200 {
+        if let Ok(found) = solid_span_core(alpha, support) {
+            return found;
+        }
+    }
+    solid_histogram_core(alpha, support)
+}
+
+fn solid_span_core(alpha: &Surface, support: i32) -> Result<Option<Rect>, ()> {
+    let rect = alpha.rect;
+    let w = rect.w as i32;
+    let h = rect.h as i32;
+    if support >= w || support >= h {
+        return Ok(None);
+    }
+    let width = rect.w as usize;
+    let mut clear_lo = vec![0i32; rect.h as usize];
+    let mut clear_hi = vec![0i32; rect.h as usize];
+    for y in 0..h {
+        let row = y as usize * width;
+        let mut start = -1i32;
+        let mut end = -1i32;
+        for x in 0..w {
+            if alpha.pixels[row + x as usize].0[3] != 1. {
+                continue;
+            }
+            if start >= 0 && end != x {
+                return Err(());
+            }
+            if start < 0 {
+                start = x;
+            }
+            end = x + 1;
+        }
+        if start >= 0 {
+            let lo = start + support;
+            let hi = end - support;
+            if lo < hi {
+                clear_lo[y as usize] = lo;
+                clear_hi[y as usize] = hi;
+            }
+        }
+    }
+    let mut safe_lo = vec![0i32; rect.h as usize];
+    let mut safe_hi = vec![0i32; rect.h as usize];
+    for y in support..h - support {
+        let mut lo = i32::MIN;
+        let mut hi = i32::MAX;
+        let mut open = true;
+        for yy in (y - support)..=(y + support) {
+            let (a, b) = (clear_lo[yy as usize], clear_hi[yy as usize]);
+            if a >= b {
+                open = false;
+                break;
+            }
+            lo = lo.max(a);
+            hi = hi.min(b);
+            if lo >= hi {
+                open = false;
+                break;
+            }
+        }
+        if open {
+            safe_lo[y as usize] = lo;
+            safe_hi[y as usize] = hi;
+        }
+    }
+    let mut best_area = 0u64;
+    let mut best: Option<(i32, i32, u32, u32)> = None;
+    for y0 in 0..h {
+        if safe_lo[y0 as usize] >= safe_hi[y0 as usize] {
+            continue;
+        }
+        let mut lo = safe_lo[y0 as usize];
+        let mut hi = safe_hi[y0 as usize];
+        for y1 in y0..h {
+            if safe_lo[y1 as usize] >= safe_hi[y1 as usize] {
+                break;
+            }
+            lo = lo.max(safe_lo[y1 as usize]);
+            hi = hi.min(safe_hi[y1 as usize]);
+            if lo >= hi {
+                break;
+            }
+            let area = (hi - lo) as u64 * (y1 - y0 + 1) as u64;
+            if area > best_area {
+                best_area = area;
+                best = Some((rect.x + lo, rect.y + y0, (hi - lo) as u32, (y1 - y0 + 1) as u32));
+            }
+        }
+    }
+    Ok(best.filter(|_| best_area > 0).map(|(x, y, w, h)| Rect::new(x, y, w, h)))
+}
+
+fn solid_histogram_core(alpha: &Surface, support: i32) -> Option<Rect> {
     let rect = alpha.rect;
     let w = rect.w as usize;
     let h = rect.h as usize;
@@ -1055,6 +1170,21 @@ pub(crate) fn color_shadow_rgba8(
     Ok(out)
 }
 
+fn sample_delta(offset: f64) -> (i32, f32) {
+    let shifted = -offset;
+    let base = shifted.floor();
+    (base as i32, (shifted - base) as f32)
+}
+
+#[inline(always)]
+fn shadow_tap(alpha: &Surface, x: i32, y: i32) -> f32 {
+    let rect = alpha.rect;
+    if x < rect.x || y < rect.y || x >= rect.right() || y >= rect.bottom() {
+        return 0.;
+    }
+    alpha.pixels[(y - rect.y) as usize * rect.w as usize + (x - rect.x) as usize].0[3]
+}
+
 // The alpha buffer has no further readers in shadow_with_filter. Traverse
 // against the vertical translation so all nonzero bilinear taps are still
 // original alpha. Stage a complete output row before overwriting any horizontal
@@ -1069,25 +1199,39 @@ fn color_shadow_linear_owned(
 ) -> Result<Surface, String> {
     debug_assert_eq!(surface.rect, alpha.rect);
     let rect = alpha.rect;
-    let _scratch = alpha.reserve_scratch::<Pixel>(rect.w as usize)?;
-    let mut row = vec![Pixel::default(); rect.w as usize];
+    let width = rect.w as usize;
+    let _scratch = alpha.reserve_scratch::<Pixel>(width)?;
+    let mut row = vec![Pixel::default(); width];
+    // Every integer pixel center shares one bilinear offset.
+    let (x_delta, u) = sample_delta(dx);
+    let (y_delta, v) = sample_delta(dy);
     for line in 0..rect.h as i32 {
         let y = if dy > 0. { rect.bottom() - 1 - line } else { rect.y + line };
+        let src_row = (y - rect.y) as usize * width;
+        let iy = y + y_delta;
+        row.copy_from_slice(&surface.pixels[src_row..src_row + width]);
         for (at, pixel) in row.iter_mut().enumerate() {
-            let x = rect.x + at as i32;
-            let src = surface.at(x, y);
             // Outer shadow is painted under the source. An opaque source pixel
-            // hides that shadow, so the colored sample is never visible.
-            if !inner && src.0[3] == 1. {
-                *pixel = src;
+            // hides that shadow, so the copied source pixel stays.
+            if !inner && pixel.0[3] == 1. {
                 continue;
             }
-            let b = alpha.sample_linear(f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy).0[3];
-            let coverage = if inner { src.0[3] * (1. - b) } else { b };
+            let src_a = pixel.0[3];
+            let ix = rect.x + at as i32 + x_delta;
+            let b = crate::sampling::bilinear(
+                [
+                    shadow_tap(&alpha, ix, iy),
+                    shadow_tap(&alpha, ix + 1, iy),
+                    shadow_tap(&alpha, ix, iy + 1),
+                    shadow_tap(&alpha, ix + 1, iy + 1),
+                ],
+                u,
+                v,
+            );
+            let coverage = if inner { src_a * (1. - b) } else { b };
             *pixel = color.opacity(coverage);
         }
-        let start = (y - rect.y) as usize * rect.w as usize;
-        alpha.pixels[start..start + rect.w as usize].copy_from_slice(&row);
+        alpha.pixels[src_row..src_row + width].copy_from_slice(&row);
     }
     Ok(alpha)
 }

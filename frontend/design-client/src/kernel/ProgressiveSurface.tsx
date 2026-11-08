@@ -22,7 +22,8 @@ import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRaster
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
-import { tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
+import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
+import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
@@ -2407,6 +2408,7 @@ export function ProgressiveSurfaceImpl(
   // compositor transform, instead of every resident canvas's layout rectangle.
   const placementView = displayed?.view || view
   const cameraTransform = frameTransform(requestedView, placementView)
+  const previewCameraOk = previewCameraScaleWithinLimit(placementView.zoom, requestedView.zoom)
   const presentation = visual ? {
     view: cameraPreview ? requestedView : visual.view,
     document: visual.document, pageId: visual.pageId, epoch: visual.epoch,
@@ -2537,13 +2539,13 @@ export function ProgressiveSurfaceImpl(
           left: 0,
           top: 0,
           transformOrigin: '0 0',
-          transform: singleCanvas ? undefined : `translate(${cameraTransform.x}px,${cameraTransform.y}px) scale(${cameraTransform.scale})`,
+          transform: singleCanvas || !previewCameraOk ? undefined : `translate(${cameraTransform.x}px,${cameraTransform.y}px) scale(${cameraTransform.scale})`,
           // Upload/acknowledge tiles while hidden. The first visible canvas
           // must have a complete acknowledged viewport, including on a page
           // change. Later camera previews keep the previous complete frame.
           // A real accepted preview stays visible while tile categories/plan
           // generations change. Readiness counters cannot hide its backbuffer.
-          visibility: props.visible === false || !hasAcceptedBacking && !displayed && cachedPreviewCount === 0 && !previewReplacement ? 'hidden' : 'visible',
+          visibility: props.visible === false || !previewCameraOk || !hasAcceptedBacking && !displayed && cachedPreviewCount === 0 && !previewReplacement ? 'hidden' : 'visible',
           pointerEvents: 'none',
         }}
       >
@@ -2727,7 +2729,7 @@ export function ProgressiveSurfaceImpl(
       {!props.paused && <div
         className={`kernel-status ${failure ? 'error' : ''}`}
         role="status"
-        title={failure || '画布高清显示'}
+        title={failure ? canvasStatusLabel(failure) : '画布高清显示'}
         style={{
           position: 'absolute',
           right: 14,
@@ -2738,7 +2740,7 @@ export function ProgressiveSurfaceImpl(
           zIndex: 4,
         }}
       >
-        {failure ||
+        {failure ? canvasStatusLabel(failure) :
           `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${props.interaction?.active ? '编辑预览' : complete ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
 
       </div>}
