@@ -437,6 +437,10 @@ export type ComponentProperty = {
   name: string
   kind: 'text' | 'boolean' | 'instance-swap'
   targetKey: string
+  /** Other layers that receive the same property value. */
+  alsoTargets?: string[]
+  /** Kept from the file even though no layer reference was present. */
+  unbound?: boolean
   defaultValue: string | boolean
 }
 export type ComponentInstance = {

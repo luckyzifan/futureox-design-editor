@@ -4,7 +4,7 @@
 
 | 家族 | 文件 | 许可 | 来源 |
 | --- | --- | --- | --- |
-| Poppins | `poppins/Poppins-{Regular,Medium,SemiBold,Bold}.ttf` | OFL-1.1 | 已在仓库；作者 Indian Type Foundry / Jonny Pinhorn |
+| Poppins | `poppins/Poppins-{Regular,Medium,SemiBold,Bold}.ttf` 和对应的 Italic | OFL-1.1 | https://github.com/google/fonts/tree/main/ofl/poppins 。作者 Indian Type Foundry / Jonny Pinhorn。斜体包括 Italic、Medium Italic、SemiBold Italic、Bold Italic。 |
 | Inter | `inter/Inter-{Regular,Medium,SemiBold,Bold}.ttf` | OFL-1.1 | https://github.com/rsms/inter/releases/tag/v4.1 的 `extras/ttf`。斜体未打包，导入时改用同字重的正体并写明。 |
 | ABeeZee | `abeezee/ABeeZee-Regular.ttf` | OFL-1.1 | https://github.com/google/fonts/tree/main/ofl/abeezee |
 | DejaVu Sans | `dejavu/DejaVuSans.ttf` | Bitstream Vera + DejaVu 变更，见 `dejavu/COPYRIGHT.txt` | 发行版 `fonts-dejavu-core` 的同一文件 |

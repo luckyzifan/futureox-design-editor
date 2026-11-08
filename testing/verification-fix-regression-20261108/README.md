@@ -1,5 +1,7 @@
 # 云端复测：高倍缩放和 Fig 导入（2026-11-08）
 
+这一轮之后的深测在 `testing/verification-leftover-deep-20261108/README.md`。下面保留当时测到的数字。
+
 同一台云端 Linux，开发 WASM `d352c6da4decf7f06e5a47c90c26a6c4ff9fa0c6d219d3a72e3d24a6774a4c8b`。视口仍是 640×480，`render_rgba`。没有 Electron、GPU 或上屏延迟。没有像素对比。
 
 修之前的数字来自 `testing/verification-canvas-perf-cloud-20261107/README.md`。

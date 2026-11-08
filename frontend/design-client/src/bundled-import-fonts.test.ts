@@ -29,4 +29,13 @@ test('Inter, ABeeZee, and Poppins import names attach the bundled files', async 
   expect(doc.fonts?.[abeezee.textStyle.fontId!].family).toContain('ABeeZee')
   expect(matched.missing).not.toContain('ABeeZee Regular')
   expect(doc.fonts?.[text.textStyle.fontId!].family).toContain('Inter')
+  const italic = node('text', 0, 60, 80, 24)
+  italic.text = 'It'
+  italic.textStyle = defaultTextStyle()
+  doc.nodes[italic.id] = italic
+  doc.designSystem.fontSources[italic.id] = { style: 'Poppins BoldItalic' }
+  const again = await matchBundledImportFonts(doc)
+  expect(again.missing).not.toContain('Poppins BoldItalic')
+  expect(again.substitutions.some(item => item.from === 'Poppins BoldItalic')).toBe(false)
+  expect(doc.fonts?.[italic.textStyle.fontId!].postscript).toBe('Poppins-BoldItalic')
 })
