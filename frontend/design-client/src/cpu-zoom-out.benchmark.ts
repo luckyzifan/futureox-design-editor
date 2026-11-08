@@ -7,6 +7,7 @@ import { zoomAt } from './canvas-camera'
 import init, { VectorEngine } from './generated/design-kernel/design_kernel'
 import { renderCpuFrame } from './kernel/cpu-frame'
 import { blank, defaultTextStyle, demo } from './model'
+import { benchFonts } from './cpu-bench-fonts'
 
 const uuid = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`
 function fixture() {
@@ -29,7 +30,8 @@ function fixture() {
 test.skipIf(process.env.CPU_ZOOM_OUT_BENCH !== '1')('3000+ node CPU zoom-out after the zoom-in ladder', async () => {
   const wasmBytes = readFileSync(process.env.CPU_ZOOM_PAN_WASM || 'public/kernel/design_kernel_bg.wasm')
   const wasm = await init({ module_or_path: wasmBytes })
-  const fonts = ['public/fonts/NotoSansSC.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf'].map(path => ({ path, bytes: readFileSync(path) }))
+  const face = benchFonts()
+  const fonts = [{ path: 'public/fonts/NotoSansSC.ttf', bytes: readFileSync('public/fonts/NotoSansSC.ttf') }, face.sans, face.serif]
   const resources = JSON.stringify({ sans: { family: 'DejaVu Sans', data: fonts[1].bytes.toString('base64') }, serif: { family: 'DejaVu Serif', data: fonts[2].bytes.toString('base64') } })
   const d = fixture(); d.fonts = JSON.parse(resources); const engine = new VectorEngine()
   try {
