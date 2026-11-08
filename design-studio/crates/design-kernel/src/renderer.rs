@@ -2972,7 +2972,7 @@ impl Painter<'_> {
             for sample in 0..4 {
                 self.sample = Some(sample);
                 for paint in &n.fills {
-                    self.paint(n, paint, m, &fill.plane(sample), &mut targets[sample], |_, _| 1.)?;
+                    self.paint(n, paint, m, &fill.plane(sample), &mut targets[sample], true, |_, _| 1.)?;
                 }
             }
             self.paint_siblings(n.render_children(), targets, Some(&fill), geometric, None)?;
@@ -3126,7 +3126,7 @@ impl Painter<'_> {
         for sample in 0..4 {
             self.sample = Some(sample);
             for paint in &n.fills {
-                self.paint(n, paint, m, &fill.plane(sample), &mut layers[sample], |_, _| 1.)?;
+                self.paint(n, paint, m, &fill.plane(sample), &mut layers[sample], true, |_, _| 1.)?;
             }
         }
         if let Some(mask_id) = mask_id {
@@ -3179,6 +3179,7 @@ impl Painter<'_> {
             for sample in 0..4 {
                 self.sample = Some(sample);
                 self.paint(n, &stroke.paint, m, &masks.plane(sample), &mut layers[sample],
+                    !matches!(stroke.align.as_str(), "inside" | "outside"),
                     |x, y| match stroke.align.as_str() {
                         "inside" => fill.at(sample, x, y),
                         "outside" => 1. - fill.at(sample, x, y),
@@ -3281,14 +3282,15 @@ impl Painter<'_> {
         m: Transform,
         mask: &impl Coverage,
         layer: &mut Surface,
+        unit_extra: bool,
         extra: impl Fn(i32, i32) -> f32,
     ) -> Result<(), String> {
         let basis = layer.rect.intersect(mask.rect());
-        self.paint_region(n, p, m, mask, layer, basis, extra)
+        self.paint_region(n, p, m, mask, layer, basis, unit_extra, extra)
     }
     fn paint_region(
         &mut self, n: &Node, p: &Paint, m: Transform, mask: &impl Coverage,
-        layer: &mut Surface, basis: Rect, extra: impl Fn(i32, i32) -> f32,
+        layer: &mut Surface, basis: Rect, unit_extra: bool, extra: impl Fn(i32, i32) -> f32,
     ) -> Result<(), String> {
         if !p.visible {
             return Ok(());
@@ -3329,6 +3331,20 @@ impl Painter<'_> {
         } else {
             None
         };
+        // Analytic coverage is 0 or 1 on the four binary sample planes. An opaque
+        // solid replaces the destination wherever coverage is 1, which is the
+        // same result as source-over. Only large regions take the run fill:
+        // short runs spend the scan on edges and were slower on the Fig zoom-2 frames.
+        if !self.compatible
+            && unit_extra
+            && blend_mode == crate::blend::BlendMode::Normal
+            && u64::from(r.w) * u64::from(r.h) >= 160 * 120
+        {
+            if let Some(src) = solid.filter(|pixel| pixel.0[3] == 1.) {
+                self.fill_opaque_solid(mask, layer, r, src);
+                return Ok(());
+            }
+        }
         let quantized_solid = if self.compatible && self.sample.is_some() {
             sampler.solid_rgba8()
         } else {
@@ -3421,6 +3437,39 @@ impl Painter<'_> {
             }
         }
         Ok(())
+    }
+    fn fill_opaque_solid(&mut self, mask: &impl Coverage, layer: &mut Surface, r: Rect, src: Pixel) {
+        for y in r.y..r.bottom() {
+            let mut x = r.x;
+            let right = r.right();
+            while x < right {
+                let coverage = mask.at(x, y);
+                if coverage <= 0. {
+                    x += 1;
+                    continue;
+                }
+                if coverage == 1. {
+                    let start = x;
+                    x += 1;
+                    while x < right && mask.at(x, y) == 1. {
+                        x += 1;
+                    }
+                    let i0 = layer.rect.index(start, y).expect("opaque solid run");
+                    let count = (x - start) as usize;
+                    layer.pixels[i0..i0 + count].fill(src);
+                    self.stats.shaded_pixels += count;
+                } else {
+                    let i = layer.rect.index(x, y).expect("opaque solid edge");
+                    layer.pixels[i] = crate::blend::over_mode(
+                        layer.pixels[i],
+                        src.opacity(coverage),
+                        crate::blend::BlendMode::Normal,
+                    );
+                    self.stats.shaded_pixels += 1;
+                    x += 1;
+                }
+            }
+        }
     }
     fn resolve_effect_planes(&mut self, planes: &[Arc<Surface>; 4]) -> Result<Surface, String> {
         let mut resolved = self.allocate(planes[0].rect)?;
@@ -3856,9 +3905,9 @@ impl Painter<'_> {
         }
         for paint in &n.fills {
             if bounded {
-                self.paint_region(n, paint, m, &fill, &mut layer, basis.intersect(prepared.fill_program_bounds), |_, _| 1.)?;
+                self.paint_region(n, paint, m, &fill, &mut layer, basis.intersect(prepared.fill_program_bounds), true, |_, _| 1.)?;
             } else {
-                self.paint(n, paint, m, &fill, &mut layer, |_, _| 1.)?;
+                self.paint(n, paint, m, &fill, &mut layer, true, |_, _| 1.)?;
             }
         }
         let mask_id = self.doc.mask_child(n).map(|m| &m.id);
@@ -3917,7 +3966,7 @@ impl Painter<'_> {
             let mask = self.rasterize(&prepared.strokes[i], r, false)?;
             let paint_basis = if bounded { basis.intersect(prepared.stroke_program_bounds[i]) }
                 else { layer.rect.intersect(mask.rect) };
-            self.paint_region(n, &s.paint, m, &mask, &mut layer, paint_basis, |x, y| {
+            self.paint_region(n, &s.paint, m, &mask, &mut layer, paint_basis, !matches!(s.align.as_str(), "inside" | "outside"), |x, y| {
                 match s.align.as_str() {
                     "inside" => fill.at(x, y),
                     "outside" => 1. - fill.at(x, y),
