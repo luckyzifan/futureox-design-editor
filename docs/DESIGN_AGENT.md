@@ -26,9 +26,11 @@ cd ../frontend/design-desktop
 | --- | --- |
 | API | 任意 OpenAI Chat Completions 兼容地址和密钥 |
 | Token plan | 同样的 HTTP，凭证是订阅 token |
-| CC Switch | [farion1231/cc-switch](https://github.com/farion1231/cc-switch) 的本机路由，默认 `http://127.0.0.1:15721/v1`。数据库在 `~/.cc-switch/cc-switch.db`，可用 `CCSWITCH_DB` 改位置 |
+| CC Switch | 读 [farion1231/cc-switch](https://github.com/farion1231/cc-switch) `b184a88c99428571d718d10d1a1403e9502cd28b`（MIT）里的供应商行、当前/故障转移顺序和凭证形状。数据库默认 `~/.cc-switch/cc-switch.db`，可用 `CCSWITCH_DB` 改位置。选中一条 API 或 Token plan 后，本进程直接请求那条上游，不依赖 CC Switch 桌面代理正在运行。 |
 
-没有密钥时，对话仍由本机助手按技能直接改画布。配了 `GROK_ASSISTANT_BASE_URL` 和 `GROK_ASSISTANT_API_KEY` 时，优先用这条 Grok 兼容接口。不要把密钥写进仓库。
+没有密钥时，对话仍由本机助手按技能直接改画布。配了 `GROK_ASSISTANT_BASE_URL` 和 `GROK_ASSISTANT_API_KEY` 时，启动后优先用这条 Grok 兼容接口，然后再是设置里保存的 API、Token plan 和 CC Switch。不要把密钥写进仓库。
+
+CC Switch 的改编只包括供应商配置、路由顺序和 Token plan / API 凭证解析，写在 `design-studio/crates/design-agent/src/ccswitch.rs`。许可证原文要求保留版权声明，文件头里有 MIT 与 Copyright (c) 2025 Jason Young。没有带入 Tauri 界面、本地代理进程、熔断器或 OAuth 注入。复杂的 Codex TOML 只认当前 `model_provider` 段里的 `base_url`。选中的供应商失败且该应用打开了故障转移时，按队列继续试下一条。密钥只留在 CC Switch 数据库里，设置列表和接口响应不返回它。
 
 其他可选变量：`GROK_ASSISTANT_MODEL`、`DESIGN_AGENT_API_BASE_URL`、`DESIGN_AGENT_API_KEY`、`DESIGN_AGENT_API_MODEL`、`DESIGN_AGENT_TOKEN_PLAN_URL`、`DESIGN_AGENT_TOKEN_PLAN_TOKEN`、`DESIGN_AGENT_TOKEN_PLAN_MODEL`、`CCSWITCH_PROXY_URL`、`CCSWITCH_PROXY_TOKEN`、`CCSWITCH_MODEL`、`DESIGN_AGENT_BIND`。
 

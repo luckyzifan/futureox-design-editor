@@ -3,6 +3,7 @@
 //! commits the returned operation batch.
 
 mod assistant;
+mod ccswitch;
 mod compact;
 mod items;
 mod operations;
@@ -21,7 +22,8 @@ use tokio::sync::RwLock;
 
 pub use items::TurnItem;
 pub use operations::{DesignContext, Operation};
-pub use providers::{CcSwitchSnapshot, Provider, ProviderKind, ProviderView, Wire};
+pub use ccswitch::SwitchSnapshot as CcSwitchSnapshot;
+pub use providers::{Provider, ProviderKind, ProviderView, Wire};
 pub use skills::SkillId;
 
 use providers::ProviderSet;
@@ -182,7 +184,8 @@ async fn upsert_provider(State(core): State<AgentCore>, Json(provider): Json<Pro
 
 async fn activate_provider(State(core): State<AgentCore>, Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
     let id = body.get("id").and_then(Value::as_str).unwrap_or("");
-    core.inner.providers.write().await.activate(id).map_err(ApiError)?;
+    let profile = body.get("profile_id").and_then(Value::as_str).unwrap_or("");
+    core.inner.providers.write().await.activate_with_profile(id, profile).map_err(ApiError)?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -193,7 +196,7 @@ async fn remove_provider(State(core): State<AgentCore>, Json(body): Json<Value>)
 }
 
 async fn ccswitch_handler() -> Json<CcSwitchSnapshot> {
-    Json(providers::read_ccswitch(&providers::ccswitch_db_path()).await)
+    Json(ccswitch::load_catalog(&ccswitch::default_db()).snapshot())
 }
 
 struct ApiError(String);
@@ -218,7 +221,7 @@ mod session_tests {
     use std::sync::{Arc, Mutex};
 
     fn provider(kind: ProviderKind, wire: Wire, base: String) -> Provider {
-        Provider { id: "remote".into(), name: "remote".into(), kind, base_url: base, secret: "secret".into(), model: "m".into(), wire }
+        Provider { id: "remote".into(), name: "remote".into(), kind, base_url: base, secret: "secret".into(), model: "m".into(), wire, profile_id: String::new() }
     }
 
     async fn serve_script(wire: Wire, bodies: Arc<Mutex<Vec<Value>>>) -> String {

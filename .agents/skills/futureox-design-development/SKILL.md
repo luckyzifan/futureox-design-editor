@@ -15,6 +15,8 @@
 
 2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩出密度播种之后，快慢缩放仍会大块留白。原因是目标格子未齐就不发布，且密度跳变会取消补洞瓦片；总览只进 CSS 图集。现改为视口并集盖住才换帧，粗层垫在锐层下，在途瓦片按是否还在画洞决定去留。预算、落定精确瓦片和物理 DPR 预览不变。不是 33/100ms 或完整 G2/G5。
 
+2026-11-08 CC Switch：从 farion1231/cc-switch `b184a88`（MIT）接入供应商行、当前/故障转移顺序和 Token plan / API 凭证。设计助手直接请求选中的上游，不依赖它的桌面代理。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md) 和 [记录](../../../testing/verification-ccswitch-integration-20261108/README.md)。
+
 2026-11-07 设计助手：桌面版用 Tokio `futureox-design-agent` 跑对话、一键出图和细节调整，经 MCP `batch.apply` 写入现有编辑器。设置里可保存 API、Token plan 和 CC Switch。页面悬停才出现定向修改。Fig/Sketch 只做结构差距，不改光栅。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md)。
 
 2026-11-06 [滚轮缩小卡住分析与缩出密度播种](../../../testing/verification-zoom-out-density-20261106/README.md)：反向缩小就绪 9.4s（11-04 实测）、拓扑冷视口 35s 为既有开放项；机制=瓦片平方爆炸+高倍效果设备像素代价+**缩入/缩出不对称**（滚轮快道只对 zoomingIn 开放，且 SourceQualityLadder 反应式降档要先付一次失败全量光栅）+总览串行解码；另滚轮不开交互事务，指针手势自适应密度 flag 从未覆盖滚轮通道。修复：`outwardInteractionScale`（同一 8M 阶梯除数，缩出方向免 flag）+ `SourceQualityLadder.seed`（种在阶梯密度、original 为升级上界）+ NativeSourceSurface 连续缩出时逐 tick 播种；指针通道/落定精确瓦片/预算常量不变。4 测试文件 36/36、tsc 干净；真机收益按 11-03 固定回放复测待做；B（缩出预取）/C（总览金字塔）列后续。

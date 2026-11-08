@@ -37,6 +37,19 @@ pub async fn run_turn(
     prior: &[TurnItem],
     cancel: &AtomicBool,
 ) -> Result<TurnOutcome, String> {
+    run_turn_db(http, provider, message, earlier, ctx, prior, cancel, &crate::ccswitch::default_db()).await
+}
+
+pub async fn run_turn_db(
+    http: &reqwest::Client,
+    provider: &Provider,
+    message: &str,
+    earlier: &str,
+    ctx: &DesignContext,
+    prior: &[TurnItem],
+    cancel: &AtomicBool,
+    switch_db: &std::path::Path,
+) -> Result<TurnOutcome, String> {
     if message.trim().is_empty() || message.chars().count() > 4000 {
         return Err("message must be 1–4000 characters".into());
     }
@@ -47,21 +60,45 @@ pub async fn run_turn(
     let mut assistant_name = assistant_label(provider);
     let mut target = ctx.target_page_id.clone().unwrap_or_else(|| ctx.current_page_id.clone());
     let mut summary = String::new();
+    let mut active = provider.clone();
+    let mut primed = None;
+    if provider.kind == ProviderKind::CcSwitch {
+        let mut connected = false;
+        for candidate in crate::ccswitch::candidate_providers(provider, switch_db) {
+            if cancel.load(Ordering::Relaxed) { return Err("cancelled".into()); }
+            match sample(http, &candidate, message, earlier, &items, &skills, ctx).await {
+                Ok(turn) => {
+                    assistant_name = format!("ccswitch:{}:{}", assistant_label(&candidate), candidate.name);
+                    active = candidate;
+                    primed = Some(turn);
+                    connected = true;
+                    break;
+                }
+                Err(_) => continue,
+            }
+        }
+        if !connected {
+            assistant_name = format!("{assistant_name}-fallback-local");
+            primed = Some(local_turn(message, earlier, &items, &skills, ctx));
+            active.kind = ProviderKind::Local;
+        }
+    }
     for _step in 0..4 {
         if cancel.load(Ordering::Relaxed) {
             return Err("cancelled".into());
         }
-        let sampled = sample(http, provider, message, earlier, &items, &skills, ctx).await;
+        let sampled = if let Some(turn) = primed.take() { Ok(turn) } else { sample(http, &active, message, earlier, &items, &skills, ctx).await };
         let (turn, used_local) = match sampled {
-            Ok(turn) => (turn, provider.kind == ProviderKind::Local),
+            Ok(turn) => (turn, active.kind == ProviderKind::Local),
             Err(error) => {
                 assistant_name = format!("{assistant_name}-fallback-local");
                 let _ = error;
+                active.kind = ProviderKind::Local;
                 (local_turn(message, earlier, &items, &skills, ctx), true)
             }
         };
-        if !used_local && provider.kind != ProviderKind::Local {
-            assistant_name = assistant_label(provider);
+        if !used_local && active.kind != ProviderKind::Local && !assistant_name.starts_with("ccswitch:") {
+            assistant_name = assistant_label(&active);
         }
         if let Some(plan) = turn.plan {
             items.push(TurnItem::Plan { id: item_id(), text: plan });
@@ -232,6 +269,7 @@ mod tests {
             secret: String::new(),
             model: "grok-local".into(),
             wire: Wire::OpenaiChat,
+            profile_id: String::new(),
         }
     }
 
@@ -289,6 +327,7 @@ mod tests {
             secret: "api-key".into(),
             model: "m".into(),
             wire: Wire::OpenaiChat,
+            profile_id: String::new(),
         };
         let plan = Provider {
             id: "plan".into(),
@@ -298,6 +337,7 @@ mod tests {
             secret: "plan-token".into(),
             model: "m".into(),
             wire: Wire::OpenaiChat,
+            profile_id: String::new(),
         };
         let empty = DesignContext::default();
         let cancel_a = AtomicBool::new(false);
@@ -313,5 +353,47 @@ mod tests {
         assert_eq!(right.assistant, "token-plan");
         assert!(right.summary.contains("plan-token"));
         assert!(hits.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[tokio::test]
+    async fn a_ccswitch_profile_sends_the_design_turn_to_the_selected_token_plan_then_fails_over() {
+        let plan_hits = Arc::new(AtomicUsize::new(0));
+        let plan_auth = plan_hits.clone();
+        let plan = axum::Router::new().route("/v1/chat/completions", axum::routing::post(move |headers: axum::http::HeaderMap| {
+            let plan_auth = plan_auth.clone();
+            async move {
+                plan_auth.fetch_add(1, Ordering::SeqCst);
+                let auth = headers.get(axum::http::header::AUTHORIZATION).and_then(|value| value.to_str().ok()).unwrap_or("").to_string();
+                axum::Json(json!({ "choices": [{ "message": { "role": "assistant", "content": format!("plan:{auth}"), "tool_calls": [] } }] }))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, plan).await.unwrap() });
+        let dir = std::env::temp_dir().join(format!("ccswitch-turn-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("cc-switch.db");
+        let sql = format!(
+            r#"CREATE TABLE providers (
+                id TEXT NOT NULL, app_type TEXT NOT NULL, name TEXT NOT NULL, settings_config TEXT NOT NULL,
+                meta TEXT NOT NULL DEFAULT '{{}}', is_current INTEGER NOT NULL DEFAULT 0,
+                in_failover_queue INTEGER NOT NULL DEFAULT 0, sort_index INTEGER, PRIMARY KEY (id, app_type));
+            INSERT INTO providers VALUES ('dead','codex','Dead API','{{"base_url":"http://127.0.0.1:1/v1","api_key":"dead-key","model":"dead"}}','{{}}',1,1,1);
+            INSERT INTO providers VALUES ('plan','codex','Shop plan','{{"base_url":"http://{address}/v1","api_key":"plan-secret","model":"plan-model"}}','{{"usageScript":{{"templateType":"token_plan"}}}}',0,1,2);
+            CREATE TABLE proxy_config (app_type TEXT PRIMARY KEY, listen_address TEXT, listen_port INTEGER, enabled INTEGER, auto_failover_enabled INTEGER);
+            INSERT INTO proxy_config VALUES ('codex','127.0.0.1',15721,1,1);"#
+        );
+        assert!(std::process::Command::new("sqlite3").arg(&db).arg(sql).status().unwrap().success());
+        let switch = Provider {
+            id: "ccswitch".into(), name: "CC Switch".into(), kind: ProviderKind::CcSwitch,
+            base_url: "http://127.0.0.1:15721/v1".into(), secret: String::new(), model: "gpt-5.4".into(),
+            wire: Wire::OpenaiChat, profile_id: "codex:dead".into(),
+        };
+        let outcome = run_turn_db(&reqwest::Client::new(), &switch, "评价一下这一页", "", &DesignContext::default(), &[], &AtomicBool::new(false), &db).await.unwrap();
+        assert!(outcome.assistant.contains("token-plan"), "{}", outcome.assistant);
+        assert!(outcome.summary.contains("plan:Bearer plan-secret"), "{}", outcome.summary);
+        assert!(!outcome.summary.contains("dead-key"));
+        assert_eq!(plan_hits.load(Ordering::SeqCst), 1);
+        std::fs::remove_dir_all(dir).ok();
     }
 }

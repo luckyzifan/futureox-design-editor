@@ -3,9 +3,6 @@
 //! (https://github.com/farion1231/cc-switch) is read from `~/.cc-switch/cc-switch.db`
 //! and its local router, default `http://127.0.0.1:15721`.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -35,6 +32,9 @@ pub struct Provider {
     pub secret: String,
     pub model: String,
     pub wire: Wire,
+    /// `app_type:provider_id` inside a CC Switch database. Empty for API and token-plan rows saved here.
+    #[serde(default)]
+    pub profile_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,6 +64,7 @@ impl ProviderSet {
             secret: String::new(),
             model: "grok-local".into(),
             wire: Wire::OpenaiChat,
+            profile_id: String::new(),
         }];
         if let Some(provider) = env_provider(
             "grok",
@@ -106,8 +107,9 @@ impl ProviderSet {
             secret: std::env::var("CCSWITCH_PROXY_TOKEN").unwrap_or_default(),
             model: std::env::var("CCSWITCH_MODEL").unwrap_or_else(|_| "gpt-5.4".into()),
             wire: Wire::OpenaiChat,
+            profile_id: String::new(),
         });
-        let active = if items.iter().any(|item| item.id == "grok") { "grok" } else { "local" };
+        let active = startup_active(&items).to_string();
         Self { items, active: active.into() }
     }
 
@@ -152,12 +154,24 @@ impl ProviderSet {
     }
 
     pub fn activate(&mut self, id: &str) -> Result<(), String> {
-        if self.items.iter().any(|item| item.id == id) {
-            self.active = id.to_string();
-            Ok(())
-        } else {
-            Err(format!("unknown provider {id}"))
+        self.activate_with_profile(id, "")
+    }
+
+    pub fn activate_with_profile(&mut self, id: &str, profile_id: &str) -> Result<(), String> {
+        let Some(item) = self.items.iter_mut().find(|item| item.id == id) else {
+            return Err(format!("unknown provider {id}"));
+        };
+        if !profile_id.is_empty() {
+            if item.kind != ProviderKind::CcSwitch {
+                return Err("a CC Switch profile can only be selected on the CC Switch connection".into());
+            }
+            if !profile_id.contains(':') || profile_id.len() > 160 {
+                return Err("CC Switch profile id must look like app:provider".into());
+            }
+            item.profile_id = profile_id.to_string();
         }
+        self.active = id.to_string();
+        Ok(())
     }
 
     pub fn remove(&mut self, id: &str) -> Result<(), String> {
@@ -190,7 +204,12 @@ fn env_provider(id: &str, name: &str, kind: ProviderKind, url_key: &str, secret_
         secret,
         model: std::env::var(model_key).unwrap_or_else(|_| default_model.into()),
         wire: Wire::OpenaiChat,
+        profile_id: String::new(),
     })
+}
+
+pub(crate) fn startup_active(items: &[Provider]) -> &'static str {
+    if items.iter().any(|item| item.id == "grok") { "grok" } else { "local" }
 }
 
 pub fn validate(provider: &Provider) -> Result<(), String> {
@@ -225,112 +244,6 @@ pub fn anthropic_url(base: &str) -> String {
     if base.ends_with("/v1") { format!("{base}/messages") } else { format!("{base}/v1/messages") }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct CcSwitchSnapshot {
-    pub database: String,
-    pub present: bool,
-    pub proxy: Option<String>,
-    pub providers: Vec<CcSwitchProvider>,
-    pub detail: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct CcSwitchProvider {
-    pub id: String,
-    pub app_type: String,
-    pub name: String,
-    pub current: bool,
-}
-
-pub fn ccswitch_db_path() -> PathBuf {
-    if let Ok(path) = std::env::var("CCSWITCH_DB") {
-        return PathBuf::from(path);
-    }
-    directories_home().join(".cc-switch").join("cc-switch.db")
-}
-
-fn directories_home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
-}
-
-pub async fn read_ccswitch(db: &Path) -> CcSwitchSnapshot {
-    let db = db.to_path_buf();
-    let path = db.display().to_string();
-    let joined = tokio::join!(probe_listen(&db), read_db(db.clone()));
-    let (proxy, providers) = joined;
-    let present = providers.is_ok();
-    let (providers, detail) = match providers {
-        Ok(items) => (items, proxy.clone().unwrap_or_else(|| "proxy config unread".into())),
-        Err(error) => (Vec::new(), error),
-    };
-    CcSwitchSnapshot { database: path, present, proxy: proxy.filter(|value| value.starts_with("http")), providers, detail }
-}
-
-async fn probe_listen(db: &Path) -> Option<String> {
-    let db = db.to_path_buf();
-    tokio::task::spawn_blocking(move || proxy_from_db(&db))
-        .await
-        .ok()
-        .flatten()
-}
-
-async fn read_db(db: PathBuf) -> Result<Vec<CcSwitchProvider>, String> {
-    tokio::task::spawn_blocking(move || providers_from_db(&db))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-fn providers_from_db(db: &Path) -> Result<Vec<CcSwitchProvider>, String> {
-    if !db.exists() {
-        return Err(format!("CC Switch database is not at {}", db.display()));
-    }
-    let rows = sqlite_json(db, "SELECT id, app_type, name, is_current FROM providers ORDER BY app_type, name LIMIT 80")?;
-    let mut providers = Vec::new();
-    for row in rows {
-        providers.push(CcSwitchProvider {
-            id: row.get("id").and_then(Value::as_str).unwrap_or_default().to_string(),
-            app_type: row.get("app_type").and_then(Value::as_str).unwrap_or_default().to_string(),
-            name: row.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
-            current: row.get("is_current").and_then(Value::as_i64).unwrap_or(0) == 1
-                || row.get("is_current").and_then(Value::as_bool).unwrap_or(false),
-        });
-    }
-    Ok(providers)
-}
-
-fn proxy_from_db(db: &Path) -> Option<String> {
-    if !db.exists() {
-        return None;
-    }
-    let rows = sqlite_json(
-        db,
-        "SELECT listen_address, listen_port, enabled, proxy_enabled FROM proxy_config WHERE enabled = 1 OR proxy_enabled = 1 LIMIT 1",
-    )
-    .ok()?;
-    let row = rows.first()?;
-    let address = row.get("listen_address").and_then(Value::as_str).unwrap_or("127.0.0.1");
-    let port = row.get("listen_port").and_then(Value::as_i64).unwrap_or(15721);
-    Some(format!("http://{address}:{port}/v1"))
-}
-
-fn sqlite_json(db: &Path, sql: &str) -> Result<Vec<Value>, String> {
-    let output = Command::new("sqlite3")
-        .arg("-json")
-        .arg(db)
-        .arg(sql)
-        .output()
-        .map_err(|error| format!("sqlite3: {error}"))?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    let text = text.trim();
-    if text.is_empty() {
-        return Ok(Vec::new());
-    }
-    serde_json::from_str(text).map_err(|error| error.to_string())
-}
-
 pub fn tool_schema() -> Value {
     json!([
         { "type": "function", "function": { "name": "design_agent_read", "description": "Read page names and text already on the target page.", "parameters": { "type": "object", "properties": {}, "additionalProperties": false } } },
@@ -358,6 +271,7 @@ mod tests {
             secret: "super-secret-token".into(),
             model: "plan-model".into(),
             wire: Wire::OpenaiChat,
+            profile_id: String::new(),
         })
         .unwrap();
         let json = serde_json::to_string(&set.views()).unwrap();
@@ -365,6 +279,9 @@ mod tests {
         assert!(json.contains("\"has_secret\":true"));
         assert_eq!(chat_url("http://127.0.0.1:15721/v1"), "http://127.0.0.1:15721/v1/chat/completions");
         assert_eq!(chat_url("https://api.example.test"), "https://api.example.test/v1/chat/completions");
+        assert_eq!(startup_active(&set.items), "local");
+        set.items.insert(1, Provider { id: "grok".into(), name: "Grok".into(), kind: ProviderKind::Api, base_url: "https://grok.example/v1".into(), secret: "g".into(), model: "grok-4".into(), wire: Wire::OpenaiChat, profile_id: String::new() });
+        assert_eq!(startup_active(&set.items), "grok");
     }
 
     #[test]
@@ -376,14 +293,14 @@ mod tests {
 INSERT INTO providers VALUES ('grok-plan','codex','Grok plan','{"api_key":"do-not-leak"}',1);
 CREATE TABLE proxy_config (app_type TEXT PRIMARY KEY, listen_address TEXT NOT NULL, listen_port INTEGER NOT NULL, enabled INTEGER NOT NULL, proxy_enabled INTEGER NOT NULL);
 INSERT INTO proxy_config VALUES ('codex','127.0.0.1',15721,1,1);"#;
-        let status = Command::new("sqlite3").arg(&db).arg(sql).status().unwrap();
+        let status = std::process::Command::new("sqlite3").arg(&db).arg(sql).status().unwrap();
         assert!(status.success());
-        let providers = providers_from_db(&db).unwrap();
-        assert_eq!(providers[0].name, "Grok plan");
-        assert!(providers[0].current);
-        let dumped = format!("{providers:?}");
+        let snapshot = crate::ccswitch::load_catalog(&db).snapshot();
+        assert_eq!(snapshot.providers[0].name, "Grok plan");
+        assert!(snapshot.providers[0].current);
+        let dumped = serde_json::to_string(&snapshot).unwrap();
         assert!(!dumped.contains("do-not-leak"));
-        assert_eq!(proxy_from_db(&db).as_deref(), Some("http://127.0.0.1:15721/v1"));
+        assert_eq!(snapshot.proxy.as_deref(), Some("http://127.0.0.1:15721/v1"));
         fs::remove_dir_all(dir).ok();
     }
 }

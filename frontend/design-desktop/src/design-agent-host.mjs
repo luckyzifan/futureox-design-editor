@@ -102,7 +102,23 @@ export function createDesignAgentHost({ bin, port = 3927, storePath, fetchImpl =
       } catch (error) { return fail(error) }
     },
     async activate(value) {
-      try { await request('POST', '/v1/providers/activate', value); return { status: 'ok' } }
+      try {
+        await request('POST', '/v1/providers/activate', value)
+        const file = store()
+        if (file && value?.id) {
+          await mkdir(path.dirname(file), { recursive: true })
+          const raw = await readFile(file, 'utf8').catch(() => '')
+          const saved = raw ? JSON.parse(raw) : { providers: [], active: value.id }
+          const providers = Array.isArray(saved.providers) ? saved.providers : []
+          if (value.profile_id) {
+            const row = providers.find(item => item.id === value.id)
+            if (row) row.profile_id = value.profile_id
+            else providers.push({ id: value.id, name: 'CC Switch', kind: 'ccswitch', base_url: 'http://127.0.0.1:15721/v1', model: '', secret: '', wire: 'openai_chat', profile_id: value.profile_id })
+          }
+          await writeFile(file, JSON.stringify({ providers, active: value.id }))
+        }
+        return { status: 'ok' }
+      }
       catch (error) { return fail(error) }
     },
     async remove(value) {
