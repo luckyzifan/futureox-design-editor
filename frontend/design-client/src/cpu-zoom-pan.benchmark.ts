@@ -9,6 +9,7 @@ import { zoomAt, wheelCamera } from './canvas-camera'
 import { renderCpuFrame } from './kernel/cpu-frame'
 import { RenderMailbox } from './kernel/render-mailbox'
 import { presentationMatches } from './kernel/presentation'
+import { benchFonts } from './cpu-bench-fonts'
 const hash = (b: Uint8Array | string) => createHash('sha256').update(b).digest('hex')
 const stats = (samplesMs: number[]) => ({ samplesMs, p95Ms: [...samplesMs].sort((a,b)=>a-b)[Math.ceil(samplesMs.length*.95)-1], maxMs: Math.max(...samplesMs) })
 const uuid = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12,'0')}`
@@ -32,7 +33,8 @@ test.skipIf(process.env.CPU_ZOOM_PAN_BENCH !== '1')('real 3000+ node CPU zoom/pa
   const out = process.env.CPU_ZOOM_PAN_REPORT || '../../evidence/phase/cpu-zoom-pan/results.json'
   const wasmStart = performance.now(), wasmBytes = readFileSync(process.env.CPU_ZOOM_PAN_WASM || 'public/kernel/design_kernel_bg.wasm'), wasm = await init({module_or_path: wasmBytes})
   const wasmInitMs = performance.now()-wasmStart
-  const fonts = ['public/fonts/NotoSansSC.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf'].map(path=>({path,bytes:readFileSync(path)}))
+  const face = benchFonts()
+  const fonts = [{ path: 'public/fonts/NotoSansSC.ttf', bytes: readFileSync('public/fonts/NotoSansSC.ttf') }, face.sans, face.serif]
   const resources = JSON.stringify({sans:{family:'DejaVu Sans',data:fonts[1].bytes.toString('base64')},serif:{family:'DejaVu Serif',data:fonts[2].bytes.toString('base64')}})
   const d = fixture(); d.fonts = JSON.parse(resources); const json = JSON.stringify(d), engine = new VectorEngine()
   const memory = () => ({ ...process.memoryUsage(), wasmBytes: wasm.memory.buffer.byteLength })

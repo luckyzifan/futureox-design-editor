@@ -7,6 +7,7 @@ import { zoomAt, wheelCamera } from './canvas-camera'
 import { importFig } from './import-fig'
 import init, { VectorEngine } from './generated/design-kernel/design_kernel'
 import { renderCpuFrame } from './kernel/cpu-frame'
+import { benchFonts } from './cpu-bench-fonts'
 
 const file = process.env.CPU_FIG_OPEN_FILE || '/cursor/stores/bot/compare-fixtures/01有料素材.fig'
 
@@ -19,7 +20,7 @@ test.skipIf(process.env.CPU_FIG_OPEN_BENCH !== '1')('imported Fig CPU open, zoom
   const wasmStart = performance.now()
   const wasm = await init({ module_or_path: wasmBytes })
   const wasmInitMs = performance.now() - wasmStart
-  const fonts = ['public/fonts/NotoSansSC.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].map(path => readFileSync(path))
+  const fonts = [readFileSync('public/fonts/NotoSansSC.ttf'), benchFonts().sans.bytes]
   const doc = imported.document
   const engine = new VectorEngine()
   const samples: { label: string; zoom: number; renderMs: number }[] = []

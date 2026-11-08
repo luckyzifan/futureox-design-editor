@@ -1854,7 +1854,7 @@ impl Engine {
                     } else {
                         let mut result = painter.allocate(viewport)?;
                         result.pixels.fill(background);
-                        result.composite(&plane, "normal", 1., |_,_| 1.);
+                        result.composite_unmasked(&plane, "normal", 1.);
                         output.push(result);
                     }
                 }
@@ -3706,10 +3706,10 @@ impl Painter<'_> {
                     let mut output = self.allocate(source.rect)?;
                     if inner {
                         output.pixels.clone_from_slice(&source.pixels);
-                        output.composite(&shadow, "normal", 1., |_, _| 1.);
+                        output.composite_unmasked(&shadow, "normal", 1.);
                     } else {
                         output.pixels.clone_from_slice(&shadow.pixels);
-                        output.composite(source, "normal", 1., |_, _| 1.);
+                        output.composite_unmasked(source, "normal", 1.);
                     }
                     if self.compatible {
                         output.quantize_rgba8();
@@ -3863,6 +3863,8 @@ impl Painter<'_> {
             target.composite_rgba8(&layer, n.opacity as f32, |x, y| {
                 clip.map_or(1., |m| m.at(x, y))
             });
+        } else if clip.is_none() {
+            target.composite_unmasked(&layer, n.composite_blend(), n.opacity as f32);
         } else {
             target.composite(&layer, n.composite_blend(), n.opacity as f32, |x, y| {
                 clip.map_or(1., |m| m.at(x, y))
@@ -4122,9 +4124,9 @@ impl Painter<'_> {
                     if fx.kind == "shadow" {
                         let original = layer;
                         layer = shadow;
-                        layer.composite(&original, "normal", 1., |_, _| 1.);
+                        layer.composite_unmasked(&original, "normal", 1.);
                     } else {
-                        layer.composite(&shadow, "normal", 1., |_, _| 1.);
+                        layer.composite_unmasked(&shadow, "normal", 1.);
                     }
                 }
                 "blur" => {

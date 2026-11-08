@@ -445,23 +445,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             />{tr("智能吸附")}</label>
         </section>
         <section className="empty-inspector">
-          <div className="selection-illustration">⌘</div>
-          <h3>{tr("为想法留一点空间")}</h3>
-          <p>{tr("选中图层，探索它的颜色、形状与质感。")}</p>
-          <dl>
-            <dt>{tr("选择 / 平移")}</dt>
-            <dd>V / H</dd>
-            <dt>{tr("矩形 / 椭圆")}</dt>
-            <dd>R / O</dd>
-            <dt>{tr("画板 / 钢笔")}</dt>
-            <dd>F / P</dd>
-            <dt>{tr("编组")}</dt>
-            <dd>⌘ G</dd>
-            <dt>{tr("深层选择")}</dt>
-            <dd>{tr("⌘ 点击")}</dd>
-            <dt>{tr("适合画布")}</dt>
-            <dd>⇧ 1</dd>
-          </dl>
+          <p>{tr("选中图层后，在这里编辑颜色、形状与约束。")}</p>
         </section>
         <div className="local-badge">{tr("独立工作空间 · 本地优先")}</div>
       </aside>

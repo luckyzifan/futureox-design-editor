@@ -2,9 +2,10 @@ import { useSyncExternalStore } from 'react'
 import { interfaceText } from './interface-messages'
 
 export type InterfaceLocale = 'zh-CN' | 'en'
-export type InterfacePreferences = Readonly<{ leftWidth: number; rightWidth: number; leftOpen: boolean; rightOpen: boolean; reducedMotion: boolean; rememberViewport: boolean; locale: InterfaceLocale }>
+export type UiMode = 'figma' | 'sketch'
+export type InterfacePreferences = Readonly<{ leftWidth: number; rightWidth: number; leftOpen: boolean; rightOpen: boolean; reducedMotion: boolean; rememberViewport: boolean; locale: InterfaceLocale; uiMode: UiMode }>
 export const INTERFACE_PREFERENCE_KEY = 'forma.interface-preferences.v1'
-export const DEFAULT_INTERFACE_PREFERENCES: InterfacePreferences = Object.freeze({ leftWidth: 248, rightWidth: 280, leftOpen: true, rightOpen: true, reducedMotion: false, rememberViewport: false, locale: 'zh-CN' })
+export const DEFAULT_INTERFACE_PREFERENCES: InterfacePreferences = Object.freeze({ leftWidth: 248, rightWidth: 280, leftOpen: true, rightOpen: true, reducedMotion: false, rememberViewport: false, locale: 'zh-CN', uiMode: 'figma' })
 export function panelWidth(value: number, side: 'left' | 'right') { return Math.round(Math.min(480, Math.max(side === 'left' ? 208 : 260, value))) }
 export function createInterfacePreference(storage: () => Pick<Storage, 'getItem' | 'setItem'> | undefined) {
   let snapshot = DEFAULT_INTERFACE_PREFERENCES, initialized = false, persisted = true
@@ -16,6 +17,7 @@ export function createInterfacePreference(storage: () => Pick<Storage, 'getItem'
       leftWidth: typeof value.leftWidth === 'number' && Number.isFinite(value.leftWidth) ? panelWidth(value.leftWidth, 'left') : 248,
       rightWidth: typeof value.rightWidth === 'number' && Number.isFinite(value.rightWidth) ? panelWidth(value.rightWidth, 'right') : 280,
       locale: value.locale === 'en' ? 'en' : 'zh-CN',
+      uiMode: value.uiMode === 'sketch' ? 'sketch' : 'figma',
     })
   }
   const read = () => { initialized = true; try { const target = storage(); snapshot = sanitize(JSON.parse(target?.getItem(INTERFACE_PREFERENCE_KEY) || '{}')); persisted = !!target } catch { persisted = false } }

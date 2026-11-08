@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '../engine'
 import type { DesktopBridge } from '../desktop'
-import { modalKeyDown } from '../modal-keyboard'
 import { applyAgentOperations } from './apply-operations'
 import { requestTurn, snapshotContext, type AgentTurn } from './agent-client'
 import { compareUserFile, sketchRoundTripGaps, type DesignGap } from './format-gap'
@@ -47,7 +46,7 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   const scroller = useRef<HTMLDivElement>(null)
   const pageName = editor.state.doc.pages.find(page => page.id === target)?.name || '当前页'
 
-  const send = async (message: string) => {
+  const send = async (message: string, pageId = target) => {
     const text = message.trim()
     if (!text || busy) return
     setBusy(true); setError(''); setInput('')
@@ -56,7 +55,7 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
         session_id: session.current,
         message: text,
         history: history.current,
-        context: snapshotContext(editor, target),
+        context: snapshotContext(editor, pageId),
       })
       history.current = [...history.current, text].slice(-12)
       setAssistant(turn.assistant)
@@ -71,11 +70,21 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
     } finally { setBusy(false) }
   }
 
+  const appliedTarget = useRef<AgentTargetDetail | null>(null)
   useEffect(() => {
-    if (sentInitial.current || !initial?.prompt) return
-    sentInitial.current = true
-    void send(initial.prompt)
-  }, [])
+    if (!initial?.pageId || appliedTarget.current === initial) return
+    appliedTarget.current = initial
+    setTarget(initial.pageId)
+    if (!initial.prompt) return
+    if (initial.send === false) setInput(initial.prompt)
+    else void send(initial.prompt, initial.pageId)
+  }, [initial])
+  const freshConversation = () => {
+    session.current = `page-${crypto.randomUUID()}`
+    history.current = []
+    sentInitial.current = false
+    setRows([]); setInput(''); setAssistant(''); setError(''); setGaps([]); setGapLabel('')
+  }
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight }) }, [rows, busy])
 
   const compare = async () => {
@@ -96,10 +105,13 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Sketch 导出失败') }
   }
 
-  return <div className="modal-backdrop"><section className="remote-modal design-agent-panel" role="dialog" aria-modal="true" aria-label="设计助手"
-    onKeyDown={event => modalKeyDown(event, onClose)}>
-    <h2>设计助手<button type="button" onClick={onClose}>关闭</button></h2>
-    <p>默认改「{pageName}」。点名其他页面时，助手会改那一页。技能按这段对话自动选择。</p>
+  return <aside className="design-agent-panel" aria-label="设计助手">
+    <header className="design-agent-header">
+      <h2>设计助手</h2>
+      <button type="button" onClick={freshConversation}>新对话</button>
+      <button type="button" aria-pressed="true" onClick={onClose}>切换</button>
+    </header>
+    <p className="design-agent-target">默认改「{pageName}」。点名其他页面时，助手会改那一页。</p>
     {assistant && <p role="status">模型：{assistant}</p>}
     <div className="design-agent-log" ref={scroller} aria-live="polite">
       {rows.length === 0 && <p className="design-agent-empty">用一键出图生成一整页，或悬停页面列表里的 AI 做定向修改。</p>}
@@ -108,18 +120,8 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
         <p>{row.text}</p>
       </article>)}
     </div>
-    <div className="design-ai-actions">
-      <button type="button" disabled={busy} onClick={() => void send(input.trim() || '一键出图：做一个可编辑的产品落地页，标题、副标题和三个卖点')}>一键出图</button>
-      <button type="button" disabled={busy} onClick={() => void send(input.trim() || '细节调整：把这一页的标题对比加强，圆角 20')}>细节调整</button>
-    </div>
-    <label>对话<textarea aria-label="设计对话" rows={3} value={input} disabled={busy} maxLength={4000}
-      onChange={event => setInput(event.target.value)} placeholder="例如：做一个咖啡品牌落地页，标题秋日特惠，卖点：产地、烘焙、门店" /></label>
-    <div className="design-ai-actions">
-      <button type="button" className="primary" disabled={busy || !input.trim()} onClick={() => void send(input)}>发送</button>
-      {busy && <span role="status">正在执行…</span>}
-    </div>
-    <div className="design-agent-compare">
-      <strong>导入导出与 Fig / Sketch 差距</strong>
+    <details className="design-agent-compare">
+      <summary>导入导出与 Fig / Sketch 差距</summary>
       <label className="design-agent-file">选择文件<input ref={file} aria-label="选择 Fig 或 Sketch" type="file" accept=".fig,.sketch" disabled={busy}
         onChange={event => { chosen.current = event.target.files?.[0] || null }} /></label>
       <div className="design-ai-actions">
@@ -130,7 +132,19 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
       </div>
       {gapLabel && <p role="status">{gapLabel}{gaps.length ? ` · ${gaps.length} 处差距` : ' · 没有列出差距'}</p>}
       {!!gaps.length && <ul>{gaps.map(gap => <li key={`${gap.code}-${gap.detail}`}>{gap.detail}</li>)}</ul>}
-    </div>
-    {error && <p role="alert">{error}</p>}
-  </section></div>
+    </details>
+    <form className="design-agent-composer" onSubmit={event => { event.preventDefault(); void send(input) }}>
+      <div className="design-ai-actions">
+        <button type="button" disabled={busy} onClick={() => void send(input.trim() || '一键出图：做一个可编辑的产品落地页，标题、副标题和三个卖点')}>一键出图</button>
+        <button type="button" disabled={busy} onClick={() => void send(input.trim() || '细节调整：把这一页的标题对比加强，圆角 20')}>细节调整</button>
+      </div>
+      <label>对话<textarea aria-label="设计对话" rows={3} value={input} disabled={busy} maxLength={4000}
+        onChange={event => setInput(event.target.value)} placeholder="例如：做一个咖啡品牌落地页，标题秋日特惠，卖点：产地、烘焙、门店" /></label>
+      <div className="design-ai-actions">
+        <button type="submit" className="primary" disabled={busy || !input.trim()}>发送</button>
+        {busy && <span role="status">正在执行…</span>}
+      </div>
+      {error && <p role="alert">{error}</p>}
+    </form>
+  </aside>
 }

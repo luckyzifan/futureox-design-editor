@@ -15,7 +15,7 @@ test('the page AI control appears on hover and targets that page', async () => {
   const host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
-  const seen: Array<{ pageId?: string; prompt?: string }> = []
+  const seen: Array<{ pageId?: string; prompt?: string; send?: boolean }> = []
   const onTarget = (event: Event) => seen.push((event as CustomEvent).detail)
   window.addEventListener(AGENT_TARGET_EVENT, onTarget)
   await act(async () => { root!.render(<PageList editor={editor} onRename={() => {}} />) })
@@ -25,14 +25,10 @@ test('the page AI control appears on hover and targets that page', async () => {
   const button = document.querySelector<HTMLButtonElement>('.page-ai')
   expect(button).not.toBeNull()
   await act(async () => { button!.click() })
-  const dialog = document.querySelector<HTMLFormElement>('[aria-label^="定向修改"]')
-  expect(dialog).not.toBeNull()
-  const field = dialog!.querySelector('textarea')!
-  const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
-  await act(async () => { setValue.call(field, '把标题改成秋日特惠'); field.dispatchEvent(new Event('input', { bubbles: true })) })
-  await act(async () => { dialog!.requestSubmit() })
-  expect(seen[0]?.prompt).toContain('秋日特惠')
+  expect(document.querySelector('.page-ai-pop')).toBeNull()
   expect(seen[0]?.pageId).toBe(editor.state.page)
+  expect(seen[0]?.prompt).toContain('细节调整')
+  expect(seen[0]?.send).toBe(false)
   window.removeEventListener(AGENT_TARGET_EVENT, onTarget)
   editor.dispose()
 })

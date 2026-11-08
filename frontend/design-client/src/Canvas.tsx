@@ -356,12 +356,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
+  const [size, setSize] = useState({ width: 1000, height: 800 })
   const displayView = referenceOverlayCamera({
     cpu: presented?.computeBackend === 'cpu',
     live: state.view,
     presented: presented?.view ?? null,
     scopeMatches: presentationScopeMatches,
     editPreview: editPreviewVisible && !gpuPreviewAvailable,
+    viewport: size,
   })
   const displayViewRef = useRef(displayView)
   displayViewRef.current = displayView
@@ -443,7 +445,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const colorPick=useCanvasColorPicker(editor,host)
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  const [size, setSize] = useState({ width: 1000, height: 800 })
   // A saved preview may cover the untouched bootstrap document before restore,
   // but an edit, navigation or replacement immediately ends that exception.
   const startupOwner = useRef({ document: state.doc, pageId: state.page, session: editor.sessionGeneration })
