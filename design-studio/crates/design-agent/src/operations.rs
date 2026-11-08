@@ -29,6 +29,9 @@ pub struct NodeRef {
     pub text: Option<String>,
     #[serde(default)]
     pub fill: Option<String>,
+    /// Visible solid stroke color, when the page snapshot has one.
+    #[serde(default)]
+    pub stroke: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -484,6 +487,7 @@ mod tests {
                 height: 40.0,
                 text: Some("旧标题".into()),
                 fill: None,
+                stroke: None,
             }],
             selection: Vec::new(),
         };
