@@ -1,5 +1,11 @@
 # 文档索引
 
+## 开始与参与
+
+- [项目介绍与快速开始](../README.md) · [English introduction](../README.en.md)。
+- [贡献指南 · Contributing](../CONTRIBUTING.md)：开发环境、PR 流程、验证与文档要求。
+- [项目路线图 · Roadmap](ROADMAP.md)：当前阶段、优先事项与参与入口。
+
 ## 1. 架构与工程边界
 
 - [架构分层与调用链](architecture/README.zh-CN.md)：客户端、协议适配、Rust 领域层和执行后端。
