@@ -86,6 +86,7 @@ export class InteractionRenderer {
   private readonly interactionOwner = ++nextInteractionOwner
   private generation = 0
   private captureAbort = new AbortController()
+  private poseCaptureAbort?: AbortController
   private nextGeneration() {
     // A shared worker may serve other interaction owners. Retire only requests
     // issued by this obsolete capture, not the entire interaction channel.
@@ -211,6 +212,36 @@ export class InteractionRenderer {
     // the UI even though none of those intermediate documents can be rendered.
     this.livePending=()=>{const candidate=interactionPatchedDocument(document,patches);this.inputs.set(candidate,input);return candidate}
     this.livePendingOrder=this.sourceOrder;this.liveRequested=undefined
+  }
+  private poseMatches(document: DesignDocument, next: DesignDocument) {
+    const ids = this.resident?.plan.ids
+    if (!ids?.length) return false
+    return ids.every(id => {
+      const left = document.nodes[id]?.transform, right = next.nodes[id]?.transform
+      return !!left && !!right && left.length === right.length && left.every((value, index) => Object.is(value, right[index]))
+    })
+  }
+  /** The released pose is already on screen. Another whole-viewport capture
+   * would convert, transfer and redraw the same image. */
+  private shownPose(document: DesignDocument) {
+    const shown = this.resident?.displayedTransforms, ids = this.resident?.plan.ids
+    if (!shown || !ids?.length) return false
+    return ids.every(id => {
+      const next = document.nodes[id]?.transform, prev = shown[id]
+      return !!next && !!prev && next.length === prev.length && next.every((value, index) => Object.is(value, prev[index]))
+    })
+  }
+  /** Drop an in-flight affine redraw that is no longer the pose we need.
+   * Completed pixels stay up; the capture's own completion fence still runs. */
+  private yieldStaleAffineCapture(next: DesignDocument) {
+    const resident = this.resident
+    if (!resident?.affine || !resident.tiles.length || !this.liveRunning || !this.poseCaptureAbort || this.poseCaptureAbort.signal.aborted) return false
+    const running = this.liveRequested
+    if (!running || this.poseMatches(running, next)) return false
+    this.livePending = next
+    this.livePendingOrder = this.sourceOrder
+    this.poseCaptureAbort.abort()
+    return true
   }
   private inlineDisabled = false
   private recoverySerial = 0
@@ -495,6 +526,13 @@ export class InteractionRenderer {
         this.endedDocument = document
         if(r.live&&r.tiles[0]?.gpuTile){this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile);this.inlineDisabled=true}
         if (r.live) {
+          // The last accepted sample is already the released pose. Do not
+          // convert and upload the image again before canvas repair.
+          if (r.affine && this.shownPose(document) && !this.liveRunning && !this.livePending) { this.changed(); return }
+          // A stale in-flight angle must not finish before the pose the user
+          // actually released. Keep the current picture and render that pose.
+          if (r.affine && r.active && this.yieldStaleAffineCapture(document)) { this.changed(); return }
+          if (r.affine && r.active && this.liveRunning && this.liveRequested && this.poseMatches(this.liveRequested, document)) { this.changed(); return }
           if (r.active) this.renderLive(document)
           else { this.livePending = undefined; this.nextGeneration(); this.releaseClient() }
         }
@@ -1284,7 +1322,13 @@ export class InteractionRenderer {
     if (this.liveRunning) return
     this.liveRunning = true
     const token = this.generation, resident = this.resident!, captureViewport = this.viewportRevision
-    const signal = this.sharedClient ? this.captureAbort.signal : undefined
+    const poseCapture = new AbortController()
+    const parentAbort = this.captureAbort.signal
+    const abortPose = () => poseCapture.abort()
+    if (parentAbort.aborted) poseCapture.abort()
+    else parentAbort.addEventListener('abort', abortPose, { once: true })
+    this.poseCaptureAbort = poseCapture
+    const signal = this.sharedClient ? poseCapture.signal : undefined
     const current = () => !this.disposed && token === this.generation && this.resident === resident && captureViewport === this.viewportRevision
     let captureSerial = this.recoverySerial, captureHadScope = !!this.recoveryScope
     let captureCause:FailedCaptureCause|undefined, causePhase=0, causeAttempt=0, causeBranch=0
@@ -1641,6 +1685,8 @@ export class InteractionRenderer {
         }
       }
       finally {
+        parentAbort.removeEventListener('abort', abortPose)
+        if (this.poseCaptureAbort === poseCapture) this.poseCaptureAbort = undefined
         this.liveRunning = false
         if(this.liveCapture?.generation===token)this.liveCapture=undefined
         if (this.idleWarmCapture?.generation === token && this.idleWarmCapture.resident === resident)

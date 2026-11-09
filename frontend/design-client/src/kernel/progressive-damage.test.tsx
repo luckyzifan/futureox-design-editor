@@ -2262,6 +2262,25 @@ test.each(['document', 'page', 'session', 'paused'] as const)('late running zoom
 })
 
 
+test('a large pan after zoom-out yields the capture that misses the new viewport', async () => {
+  const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
+  const zoomed = { ...options, view: { x: 0, y: 0, zoom: 2 } }
+  h.render(zoomed)
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  const running = worker.calls[before]
+  const held = surfaceParts(h.render(zoomed)).compositor.props.items.filter((item: any) => item.active)
+  expect(held.length).toBeGreaterThan(0)
+  const panned = { ...zoomed, view: { x: -700, y: 0, zoom: 2 } }
+  h.render(panned)
+  await settleRejected()
+  expect(running.signal?.aborted).toBe(true)
+  expect(surfaceParts(h.render(panned)).compositor.props.items.length).toBeGreaterThan(0)
+  running.resolve()
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
+  const next = worker.calls.slice(before + 1).find((call: any) => call.options.livePreview && call.options.view?.x === -700)
+  expect(next).toBeTruthy()
+})
+
 test('zoom-out continuity targets the latest requested viewport, not only its sampled camera', async () => {
   const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
   const next = { ...options, view: { x: 0, y: 0, zoom: 2 }, requestedView: { x: -25.25, y: 10.125, zoom: 1 } }

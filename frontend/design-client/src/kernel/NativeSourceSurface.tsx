@@ -4,7 +4,7 @@ import {useLayoutEffect,useMemo,useRef} from 'react'
 import {SourceOverviewHandoff,type OverviewMaterial} from './source-overview-handoff'
 import {sourceOverviewWindow} from './source-overview-window'
 import {desktopBridge,type SourceCanvasSnapshot} from '../desktop'
-import {navigationOverview,nearOverviewTiles,overviewWarmBatch,panStripOverview,viewportExtendsPastPage} from './navigation-overview'
+import {coarsePanCoverNeeded,navigationOverview,nearOverviewTiles,overviewWarmBatch,panStripOverview,viewportExtendsPastPage} from './navigation-overview'
 import {NAVIGATION_BACKING_BYTES} from './navigation-backing'
 import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
@@ -23,7 +23,7 @@ import { outwardInteractionScale } from './interaction-adaptive-density'
 import {useDevicePixelRatio} from './presentation'
 import type {ResidentAcknowledgement} from './resident-presentation'
 import type {ResidentFrame} from './gpu/resident-presenter'
-import type {RasterTile} from './tile-cache'
+import {tilesCoverBounds, type RasterTile} from './tile-cache'
 import {createRenderDiagnostics,PREFIX} from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
 
@@ -136,7 +136,7 @@ export function NativeSourceSurface(props:Props){
     let moving=false,serial=0,submission=0,acknowledged=0,tick=0,lastStatus='',lastStatusAt=-Infinity
     let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false,panned=false
     let coldBudget=1
-    let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive
+    let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive,translationFollow=false
     let cpuView:CanvasCamera|undefined
     const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
     let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
@@ -506,9 +506,18 @@ export function NativeSourceSurface(props:Props){
           // another whole-page coarse image. A real pan still needs that image.
           const firstNative=!renderExecutionPolicy.cpuOnly&&!source.materialKeys&&source.openingMaterial===undefined&&
             source.revision===0&&!backing&&!moving&&!continuousZoom&&!!p.underlay?.current?.(p.view,p.width,p.height,'any')
+          const panWorld={x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom}
+          const panResidents=[...cache.values()].filter(tile=>(tile.gpuTile!=null||!!tile.bytes?.byteLength)&&tileIntersectsView(tile,p.view,p))
+          const residentsCover=panResidents.length>0&&tilesCoverBounds(panResidents,panWorld)
           // The artboard lattice does not cover pasteboard. One coarse page
           // tile does, and a quarter-viewport pan stays inside the same tile.
-          const wantStrip=!firstNative&&!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(renderExecutionPolicy.cpuOnly||translated||(!moving&&!continuousZoom))
+          // A large pan after zoom-out is the same hole even when the page
+          // still contains the viewport: take the strip before the old refine.
+          const wantStrip=coarsePanCoverNeeded({
+            firstNative,hasStrip:!!stripTile,stripCached:!!stripTile&&cache.has(stripTile.key),
+            pasteboard,cpuOnly:renderExecutionPolicy.cpuOnly,translated,moving,continuousZoom,
+            translationFollow,residentsCover,
+          })
           if(firstNative&&optional){schedulePaint();break}
           if(!wantStrip&&!optional&&outwardCover()){schedulePaint();break}
           if(!wantStrip&&optional && source.materialKeys && moving)break
@@ -831,6 +840,7 @@ export function NativeSourceSurface(props:Props){
       let zoomChanged=false
       if(currentView.zoom!==lastZoom){
         zoomChanged=true
+        translationFollow=false
         const now=performance.now(),inward=latest.current.view.zoom>lastZoom
         wheelInterval=now-lastZoomAt
         const wheel=latest.current.wheelView, view=latest.current.view
@@ -838,6 +848,7 @@ export function NativeSourceSurface(props:Props){
           inward===zoomingIn && now-lastZoomAt<180
         zoomingIn=inward;lastZoom=latest.current.view.zoom;lastZoomAt=now
       }else if(panHeld || currentView.x!==priorView.x || currentView.y!==priorView.y){
+        if(cache.size)translationFollow=true
         // A pan during the zoom gesture has to keep the outward ladder. Clearing
         // it made the margin a full-density miss and a gray gap.
         if(performance.now()-lastZoomAt>=180){continuousZoom=false;zoomingIn=false}
@@ -882,6 +893,18 @@ export function NativeSourceSurface(props:Props){
         }
       }
       updateWorkDemand()
+      if(translationFollow&&cache.size&&!zoomingIn){
+        const p=latest.current
+        const strip=panStripOverview(source.bounds,p.view,p)
+        const stripKey=strip?.tiles[0]?.key
+        const world={x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom}
+        const residents=[...cache.values()].filter(tile=>(tile.gpuTile!=null||!!tile.bytes?.byteLength)&&tileIntersectsView(tile,p.view,p))
+        // Only a tile that misses the newest viewport is stale. A neighbour
+        // that still paints the pan stays in the batch; cancelling it is what
+        // left a finished edge with no replacement.
+        if(stripKey&&!cache.has(stripKey)&&!(residents.length>0&&tilesCoverBounds(residents,world)))
+          workQueue.demand(false,tile=>tile.key===stripKey||tileIntersectsView(tile,p.view,p))
+      }
       idleTimer=moving&&!panHeld?setTimeout(()=>{
         if(!alive||failed||suspended)return
         moving=false

@@ -65,6 +65,26 @@ export function panStripBounds(view: CanvasCamera, size: { width: number; height
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
 }
 
+/** One coarse page tile before a finer refine. Pasteboard keeps its quiet
+ *  admission. A same-zoom pan that has left the resident pictures asks for
+ *  the strip even while the previous zoom gesture is still marked continuous. */
+export function coarsePanCoverNeeded(options: {
+  firstNative: boolean
+  hasStrip: boolean
+  stripCached: boolean
+  pasteboard: boolean
+  cpuOnly: boolean
+  translated: boolean
+  moving: boolean
+  continuousZoom: boolean
+  translationFollow: boolean
+  residentsCover: boolean
+}) {
+  if (options.firstNative || !options.hasStrip || options.stripCached) return false
+  const quietPasteboard = options.pasteboard && (options.cpuOnly || options.translated || (!options.moving && !options.continuousZoom))
+  return quietPasteboard || (options.translationFollow && !options.residentsCover)
+}
+
 /** Page-level coarse tile for the pasteboard around a zoomed-out artboard.
  *  nodes is forced to 0 so a large file stays one tile, not a regional grid. */
 export function panStripOverview(page: Bounds, view: CanvasCamera, size: { width: number; height: number }) {
