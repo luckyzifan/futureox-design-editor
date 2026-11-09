@@ -59,9 +59,10 @@ export function readDenseSourceGrid(uri:string,field:Float32Array,b:Rect,iw:numb
  return out
 }
 
-// Straight RGBA8 packing for a virtual four-tap field. The managed renderer
-// does not upload this buffer: its shader does not sample it as a byte image.
-// Production sampling stays on the linear f32 grid.
+// Straight RGBA8 of the same 2× tap grid as the linear fetch. Valid field
+// texels become byteImageAddress records: xy is the bilinear sample point in
+// this byte texture, z=1 is the shader validity flag. Invalid cells stay at
+// z=0 so the byte branch writes zero instead of a border texel.
 export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw:number,ih:number){
  const width=b.w*2,height=b.h*2,out=new Uint8Array(width*height*4)
  const bandRows=Math.max(1,Math.floor(8192/b.w))
@@ -72,11 +73,29 @@ export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw
    if(x===-2)continue
    if(!Number.isInteger(x)||!Number.isInteger(v)||x<0||v<0||x>=iw||v>=ih)throw Error('Invalid source image cell')
    data[2+i*2]=x;data[3+i*2]=v
-   field[off]=2*(i%b.w);field[off+1]=2*(y+Math.floor(i/b.w))
+   const fx=field[off+2],fy=field[off+3]
+   field[off]=2*(i%b.w)+(Number.isFinite(fx)?fx:0)
+   field[off+1]=2*(y+Math.floor(i/b.w))+(Number.isFinite(fy)?fy:0)
+   field[off+2]=1
+   field[off+3]=0
   }
   const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&pairs=1',false);xhr.responseType='arraybuffer';xhr.send(data)
   if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==b.w*h*16)throw Error('无法读取旋转图片的原始采样区域')
   out.set(new Uint8Array(xhr.response),y*2*width*4)
  }
  return out
+}
+/** vector.wgsl `at` + `smpBytesIndex` for a byte texture whose rect origin is
+ *  (0,0). `round(unorm*255)` is the stored byte. The paint path divides by 255. */
+export function sampleHostedByteImage(bytes:Uint8Array,width:number,height:number,x:number,y:number):[number,number,number,number]{
+ const at=(px:number,py:number)=>{
+  const ix=Math.floor(px),iy=Math.floor(py)
+  if(ix<0||iy<0||ix>=width||iy>=height)return [0,0,0,0]
+  const i=(iy*width+ix)*4
+  return [bytes[i],bytes[i+1],bytes[i+2],bytes[i+3]]
+ }
+ const kx=x-Math.floor(x),ky=y-Math.floor(y),bx=Math.floor(x),by=Math.floor(y)
+ const mix=(a:number[],b:number[],t:number)=>a.map((v,i)=>v+(b[i]-v)*t)
+ const top=mix(at(bx,by),at(bx+1,by),kx),bottom=mix(at(bx,by+1),at(bx+1,by+1),kx)
+ return mix(top,bottom,ky).map(v=>v/255) as [number,number,number,number]
 }
