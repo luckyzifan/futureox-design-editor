@@ -1,7 +1,8 @@
 // Per-client acceptance for a packaged Futureox MCP stdio config.
 // Missing clients are missing_environment. A tools/list from the packaged GUI
 // harness is not a client pass. Tokens must not appear in the report or errors.
-import { spawnSync } from 'node:child_process'
+import { accessSync, constants, statSync } from 'node:fs'
+import path from 'node:path'
 
 export const EXTERNAL_CLIENTS = [
   { id: 'claude-code', title: 'Claude Code', commands: ['claude'] },
@@ -19,15 +20,30 @@ export function redact(value, secrets = []) {
   return text
 }
 
-export function commandPath(command, env = process.env) {
-  const child = spawnSync('command', ['-v', command], {
-    encoding: 'utf8',
-    env,
-    shell: true,
+export function commandPath(command, env = process.env, { platform = process.platform, isExecutable } = {}) {
+  const windows = platform === 'win32'
+  const paths = windows ? path.win32 : path.posix
+  const value = name => windows
+    ? Object.entries(env).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]
+    : env[name]
+  const search = value('PATH') || ''
+  if (!search) return null
+  const extensions = windows && !paths.extname(command)
+    ? (value('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+    : ['']
+  const executable = isExecutable || (file => {
+    try {
+      accessSync(file, windows ? constants.F_OK : constants.X_OK)
+      return statSync(file).isFile()
+    } catch { return false }
   })
-  if (child.status !== 0) return null
-  const found = child.stdout.trim().split('\n').at(-1)
-  return found || null
+  for (const directory of search.split(windows ? ';' : ':')) {
+    for (const extension of extensions) {
+      const candidate = paths.join(directory || '.', command + extension)
+      if (executable(candidate)) return candidate
+    }
+  }
+  return null
 }
 
 export function probeExternalClients({ env = process.env, lookup = commandPath } = {}) {
@@ -64,7 +80,11 @@ export function probeExternalClients({ env = process.env, lookup = commandPath }
 
 export async function verifyExternalClients(config, _tempDir, options = {}) {
   const token = config?.env?.FUTUREOX_DESIGN_BRIDGE_TOKEN
-  const clients = probeExternalClients(options)
+  let clients
+  try { clients = probeExternalClients(options) }
+  catch (error) {
+    throw new Error(redact(error instanceof Error ? error.message : String(error), [token]))
+  }
   if (options.packagedGuiToolsList === true) {
     // Recorded so a caller cannot confuse the GUI harness with client acceptance.
   }
