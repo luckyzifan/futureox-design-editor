@@ -2,6 +2,7 @@ import {compactSourceAxes,readSourceGrid,readDenseSourceGrid,readDenseSourceGrid
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
+import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
@@ -776,6 +777,7 @@ export class GpuRenderer {
   private opaquePrefixActive=false
   private denseAtlas?:Surface
   private sourceTileOcclusion=false
+  private sourceSolidLayers=false
   private opaquePrefixEnabled=import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX==='1'
   private uniformColorSurfaces=import.meta.env.VITE_DESIGN_UNIFORM_COLOR_SURFACES==='1'
   private sequentialGaussian=import.meta.env.VITE_DESIGN_SEQUENTIAL_GAUSSIAN==='1'
@@ -3429,6 +3431,36 @@ export class GpuRenderer {
     this.release(...targets)
     return outputs
   }
+  private async drawSourceSolidLayers(ids:string[],start:number,targets:Surface[],samples:number[],clip?:Surface[]) {
+    if(!this.sourceSolidLayers||!this.optimized||this.interactionCapturing||!this.driver.sourceLayersReady||!this.driver.sourceProgramOffset||
+      targets.some(t=>!!t.logicalBounds)||clip&&(clip.length!==targets.length||clip.some(c=>!c.texture.binaryCoverage)))return
+    const layers:SourceLayerProgram[]=[]
+    let words=0,end=start,bounds:Rect|undefined
+    for(;end<ids.length&&layers.length<10;end++){
+      const node=this.scene.nodes[ids[end]]
+      if(!node)break
+      const layer=sourceSolidLayer(node,path=>this.driver.sourceProgramOffset!(path),
+        key=>[...this.color(key),this.alpha(key)],SOURCE_LAYER_FLOATS-words)
+      if(!layer)break
+      layers.push(layer);words+=layer.data[0].length
+      const r=node.rect
+      if(!bounds)bounds={...r}
+      else{const x=Math.min(bounds.x,r.x),y=Math.min(bounds.y,r.y)
+        bounds=rect(x,y,Math.max(bounds.x+bounds.w,r.x+r.w)-x,Math.max(bounds.y+bounds.h,r.y+r.h)-y)}
+    }
+    if(!layers.length)return
+    this.fastWork.add('sourceLayerNodes',layers.length);this.fastWork.add('sourceLayerBatches')
+    for(let i=0;i<targets.length;i++){
+      const mask=clip?.[i]
+      targets[i]=await this.composeSourceProgram(SOURCE_LAYER_MODE,targets[i],mask?[mask]:[],bounds,u=>{
+          u[17]=layers.length;u[18]=Number(!!mask)
+          if(mask)u.set([mask.rect.x,mask.rect.y,mask.rect.w,mask.rect.h],8)
+          let at=20
+          for(const layer of layers){u.set(layer.data[samples[i]],at);at+=layer.data[samples[i]].length}
+        })
+    }
+    return {targets,end}
+  }
   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
     if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
       ids=sourcePainterOrder(this.scene,ids,target.rect)
@@ -3438,6 +3470,10 @@ export class GpuRenderer {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const children = skip ? ids.filter((id) => id !== skip) : ids
     for (let i = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0; i < children.length; ) {
+      if(this.sourceSolidLayers&&this.sampleIndex!==undefined){
+        const batch=await this.drawSourceSolidLayers(children,i,[target],[this.sampleIndex],clip?[clip]:undefined)
+        if(batch){target=batch.targets[0];i=batch.end;continue}
+      }
       let end = i
       // Coverage is independent of paint and backdrop. Prepare a consecutive
       // leaf run first so one target render pass can preserve every paint order.
@@ -4170,6 +4206,10 @@ export class GpuRenderer {
       this.activeNode = id
       const n = this.scene.nodes[id]
       if (!n || n.opacity <= 0 || this.outsidePoseDemand(n.rect)) continue
+      if(this.sourceSolidLayers&&!prefix&&!compactSource&&!opticalPrefix&&targets.length===4){
+        const batch=await this.drawSourceSolidLayers(ids,at,targets,[0,1,2,3],clip)
+        if(batch){targets=batch.targets;at=batch.end-1;continue}
+      }
       // Only this finite-solid leaf lane understands compact writable bounds.
       // Backdrop capture, cached copies, child isolation and all other paints
       // retain their established full-domain inputs.
@@ -7533,6 +7573,7 @@ export class GpuRenderer {
     this.activeRuntimeConfiguration = undefined
     this.skippedPainterVisits=0
     const managedDisplay=present&&!readback&&this.driver.name==='webgpu'&&!!this.driver.managed&&!this.driver.hdr&&!this.driver.displayMath
+    this.sourceSolidLayers=sourceSolidLayerDisplay(scene,this.driver,present&&!readback)
     this.sourceTileOcclusion=managedDisplay && scene.sourceDetailTile===true && import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX!=='0' &&
       !!scene.output && scene.coherentSamples===true && scene.colorManagement?.documentSpace==='srgb' &&
       !scene.resolve && !scene.presentation && !scene.interactionRetained && !scene.softwareRaster

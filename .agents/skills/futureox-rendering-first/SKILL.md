@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-09 [拓扑 GPU 批绘与成熟度](../../../docs/TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)：普通原生源 SDR WebGPU 的低物理采样倍率瓦片默认合并已证明不透明的纯色填充/描边，保持四相、顺序、二值裁剪与原预算；`VITE_DESIGN_SOURCE_SOLID_LAYERS=0` 回退。完整拓扑约 113.9→100.5 秒，正常构建复核 101.8 秒，原生画布及三份高倍输出像素一致。superset 原生投影复用减少重建却无稳定端到端收益，已完整撤回，不得保留或宣称 91.7 秒为最终性能。拓扑是主基准，117/FIG/test 防回退；当前为开发者 Alpha，完整 G2/G5 与 33/100ms 未关闭。
+
 2026-11-09 [缩放清晰度方案选择](../../../docs/ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)：普通桌面 SDR WebGPU 默认渐进替换已完成的原密度区域，保留同源连续预览，整屏回执仍需全部完成；`VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR=0` 回退。117 首个原密度区域呈现 ACK 约 10.5→0.8 秒，整屏约 8.5 秒；模板二首区域仍约 5.6 秒。原密度/相位、版本、设备、取消边界与最终像素保持，native-visible-tiles 等其他实验不推广。不代表运动始终清晰或完整 G2/G5。[整个应用开源/商业分发评估](../../../docs/OPEN_SOURCE_COMMERCIAL_READINESS_20261109.zh-CN.md)仍有项目许可、素材/代码来源与实际发布包授权缺口，不能从渲染通过推导可发布。
 
 2026-11-09 [GPU 启动与缩放调度](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地 GPU 优先、CPU 兜底。已有同源预览时，完整源先完成原密度瓦片，粗页预取在首个原生回执后继续；高倍停止输入后仅撤销未完成的可选滤镜预览，保留冷启动、已交付图像和原任务完结/迟到释放边界。组合版完整拓扑两次约 110–115 秒，旧版约 172 秒；117 的 3200% 约 25.7→10.5 秒。原生画布及可见内容像素一致，预算、效果、密度和 GPU 数学不变。集合替换仅改善 1.9%，已撤回。不是 33/100ms 或完整 G2/G5。
