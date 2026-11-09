@@ -220,6 +220,33 @@ fn rejected_apply_preserves_revision_history_index_source_and_recoverable_journa
 }
 
 #[test]
+fn autosave_recovery_interrupted_journal_next_is_not_saved() {
+    let f = Fixture::new();
+    let slot = f.sessions.current.lock().unwrap();
+    let s = slot.as_ref().unwrap();
+    let journal = fs::read(s.directory.join("journal.json")).unwrap();
+    let source_bytes = fs::read(&f.source).unwrap();
+    let source_hash = s.source_hash.clone();
+    let revision = s.revision;
+    let directory = s.directory.clone();
+    fs::write(directory.join("journal.next"), b"{\"truncated\":").unwrap();
+    drop(slot);
+    let recovered = recover(
+        &f.root.join("cache"),
+        &f.root.join("not-a-session"),
+        &source_hash,
+        capacity::source_limit(&f.root).unwrap(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(recovered.revision, revision);
+    assert_eq!(fs::read(directory.join("journal.json")).unwrap(), journal);
+    assert_eq!(fs::read(directory.join("journal.next")).unwrap(), b"{\"truncated\":");
+    assert_eq!(fs::read(&f.source).unwrap(), source_bytes);
+}
+
+#[test]
 fn prepublication_io_failure_still_preserves_the_previous_journal() {
     let f = Fixture::new();
     let slot = f.sessions.current.lock().unwrap();

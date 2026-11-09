@@ -1,3 +1,6 @@
+2026-11-09 [安装包 MCP 客户端验收](../../../docs/MCP_PACKAGED_CLIENT_ACCEPTANCE.zh-CN.md)：云端只探测 Claude Code、Codex、Kimi 和 DeepSeek Harness 是否在 PATH 上，不把 `tools/list` 或开发目录写成安装包通过，报告不写 token。五个客户端在本环境都是缺环境。不是 33/100ms 或完整 G2/G5。
+
+2026-11-09 [自动保存失败恢复验收](../../../testing/verification-autosave-recovery-20261109/README.md)：云端用注入的存储满、未提交事务、中断的 `journal.next`、失败的 v5→v6 迁移和只读工作副本核对最后一致版本仍可重开，导入字节不变，失败不报已保存。正式 release 安装包上的异常退出未跑。不是已确认的数据丢失，也不是 33/100ms 或完整 G2/G5。
 
 2026-11-09 [许可覆盖与素材清单](../../../docs/LICENSE_COVERAGE.md)：根目录 MIT 与 5 个 workspace crate、3 个前端包的元数据可核对；`vendor/moxcms` 与 `vendor/flo_curves` 保留各自许可证。`public/fidelity` 与夹具图像逐文件标成 withhold，不把邻近 LICENSE 或项目 MIT 套到素材上。不是 33/100ms 或完整 G2/G5。
 
