@@ -1817,6 +1817,12 @@ mod wasm {
                 .map_err(|e| JsValue::from_str(&e))?;
             serde_json::to_string(&damage).map_err(|e| JsValue::from_str(&format!("{e}")))
         }
+        pub fn interaction_pose_damage(&self, json: &str) -> Result<String, JsValue> {
+            if json.len() > 65536 { return Err(JsValue::from_str("Interaction transforms exceed budget")); }
+            let transforms = serde_json::from_str(json).map_err(|e| JsValue::from_str(&format!("Invalid transforms: {e}")))?;
+            let damage = self.inner.interaction_pose_damage(&transforms).map_err(|e| JsValue::from_str(&e))?;
+            serde_json::to_string(&damage).map_err(|e| JsValue::from_str(&e.to_string()))
+        }
         pub fn apply_interaction_transforms(&mut self, json: &str) -> Result<bool, JsValue> {
             if json.len() > 65536 { return Err(JsValue::from_str("Interaction transforms exceed budget")); }
             let transforms = serde_json::from_str(json).map_err(|e| JsValue::from_str(&format!("Invalid transforms: {e}")))?;

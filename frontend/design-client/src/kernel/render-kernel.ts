@@ -134,7 +134,7 @@ export class RenderKernel {
     return result as T
     } catch (error) {
       const stage = method === 'load_document' || method === 'load_source_snapshot' || method === 'initialize' ? 2 : method === 'derive_document_v1' ? 3 :
-        method === 'apply_document_patch_with_damage' || method === 'apply_interaction_transforms' ? 4 :
+        method === 'apply_document_patch_with_damage' || method === 'apply_interaction_transforms' || method === 'interaction_pose_damage' ? 4 :
         method === 'compile_gpu_packet' ? 5 :
         ['render_linear','render_png','render_color_png','render_region_png','render_cpu_frame'].includes(method) ? 7 : 0
       throw markRenderFailure(error, { failureStage: stage })
@@ -222,6 +222,10 @@ export class RenderKernel {
     const current=()=>revision===this.revision&&!this.pendingMutations&&settings===this.settings
     if(!current())throw Error('STALE_PREPARED_PACKET')
     return new PreparedPacket({lane:this.lane,revision,options,settings},scene,current,signal)
+  }
+  async interaction_pose_damage(value: string) {
+    if (this.lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')
+    return await this.call<string>('interaction_pose_damage', [value])
   }
   async apply_interaction_transforms(value: string) {
     if (this.lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')

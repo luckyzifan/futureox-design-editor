@@ -6,6 +6,8 @@
 
 2026-11-09 [release 清单与 Linux FFmpeg 来源](../../../docs/FFMPEG_LINUX_PROVENANCE.md)：云端核对随包 FFmpeg 与 ffmpeg-static b6.1.1 的字节、banner 和 build id，并记录 johnvansickle release-source 索引没有这份 7.0.2 对应源码。正式安装包的打开到导出流程保持 not_run。不是已确认的运行故障，也不是 33/100ms 或完整 G2/G5。
 
+2026-11-09 [旋转局部损伤、需求读盘与完成态纹理回收](../../../frontend/design-client/src/kernel/interaction-pose-damage.ts)：叶子旋转在证明闭合时只标旧/新支撑，背景读取仍全量；大需求一次核对索引并在 64 MiB 内复用节点，单例源批次复用已转换窗口。完整拓扑秒表和 82 万次 draw 未在本环境重测。不是 33/100ms 或完整 G2/G5。
+
 2026-11-09 [资源账本、缩放调度与帧交接](../../../frontend/design-client/src/kernel/gpu/resource-ledger.ts)：资源持有/退休/释放、缩放精修选择和两套 Surface 的预览/清晰交接各自收成一个模块。预算、实验默认值和画质不变。不是 33/100ms 或完整 G2/G5。
 
 2026-11-09 [GPU 启动与缩放调度](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地 GPU 优先、CPU 兜底。已有同源预览时，完整源先完成原密度瓦片，粗页预取在首个原生回执后继续；高倍停止输入后仅撤销未完成的可选滤镜预览，保留冷启动、已交付图像和原任务完结/迟到释放边界。组合版完整拓扑两次约 110–115 秒，旧版约 172 秒；117 的 3200% 约 25.7→10.5 秒。原生画布及可见内容像素一致，预算、效果、密度和 GPU 数学不变。集合替换仅改善 1.9%，已撤回。不是 33/100ms 或完整 G2/G5。

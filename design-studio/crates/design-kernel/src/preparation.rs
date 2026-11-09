@@ -202,6 +202,12 @@ impl Preparation {
                 value = json!(serde_json::to_string(&engine.apply_document_patch_with_damage(&patch)?).map_err(|e|e.to_string())?);
                 lane.reusable = true;
             }
+            "interaction_pose_damage" => {
+                if index != 1 || string(0)?.len() > 65536 { return Err("Invalid interaction transforms".into()); }
+                let transforms = serde_json::from_str(string(0)?).map_err(|e| format!("Invalid transforms: {e}"))?;
+                let damage = engine.interaction_pose_damage(&transforms)?;
+                value = json!(serde_json::to_string(&damage).map_err(|e| e.to_string())?);
+            }
             "apply_interaction_transforms" => {
                 if index != 1 || string(0)?.len() > 65536 { return Err("Invalid interaction transforms".into()); }
                 lane.source = None; lane.reusable = false;

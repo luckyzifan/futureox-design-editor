@@ -713,11 +713,14 @@ pub struct ReadStats {
     pub node_reads: u64,
     pub node_bytes: u64,
     pub key_reads: u64,
+    pub index_proofs: u64,
+    pub node_cache_hits: u64,
 }
 impl ReadStats {
     pub(crate) fn since(self,before:Self)->Self {Self{metadata_reads:self.metadata_reads.saturating_sub(before.metadata_reads),
         metadata_bytes:self.metadata_bytes.saturating_sub(before.metadata_bytes),index_bytes_verified:self.index_bytes_verified.saturating_sub(before.index_bytes_verified),
-        node_reads:self.node_reads.saturating_sub(before.node_reads),node_bytes:self.node_bytes.saturating_sub(before.node_bytes),key_reads:self.key_reads.saturating_sub(before.key_reads)}}
+        node_reads:self.node_reads.saturating_sub(before.node_reads),node_bytes:self.node_bytes.saturating_sub(before.node_bytes),key_reads:self.key_reads.saturating_sub(before.key_reads),
+        index_proofs:self.index_proofs.saturating_sub(before.index_proofs),node_cache_hits:self.node_cache_hits.saturating_sub(before.node_cache_hits)}}
 }
 pub struct Reader {
     file: File,
@@ -739,6 +742,9 @@ pub struct Reader {
     images: SharedImages,
     geometries:SharedGeometry,
     record_scratch: Vec<u8>,
+    verified_index: Option<HashMap<String, Row>>,
+    node_cache: HashMap<String, Node>,
+    node_cache_bytes: u64,
     node_decoder: Decoder,
     archive_format: bool,
     envelope: Option<archive_envelope::Envelope>,
@@ -819,6 +825,9 @@ impl Reader {
             images:HashMap::new(),
             geometries:HashMap::new(),
             record_scratch: Vec::new(),
+            verified_index: None,
+            node_cache: HashMap::new(),
+            node_cache_bytes: 0,
             node_decoder: Decoder::configured()?,
             archive_format,
             envelope: envelope.clone(),
@@ -852,6 +861,9 @@ impl Reader {
         #[cfg(feature="mapped-source-snapshot")]
         {self.directory=None;self.render_metadata=None;}
         self.clear_payload_cache();
+        self.verified_index=None;
+        self.node_cache.clear();
+        self.node_cache_bytes=0;
     }
     #[cfg(feature="mapped-source-snapshot")]
     pub(crate) fn render_metadata(&mut self,cancel:&AtomicBool)->io::Result<&Document> {
@@ -870,10 +882,86 @@ impl Reader {
     pub(crate) fn clear_payload_cache(&mut self) {self.images.clear();self.geometries.clear();}
     pub(crate) fn read_demand(&mut self,ids:Vec<String>,cancel:&AtomicBool)->io::Result<BTreeMap<String,Node>> {
         self.clear_payload_cache();
-        let result=(||{let mut nodes=BTreeMap::new();for id in ids {
-            check(cancel)?;let node=self.read_node(&id,cancel)?.ok_or_else(||invalid("Missing demanded source record"))?;nodes.insert(id,node);
-        }Ok(nodes)})();
+        let result=(||{
+            let mut nodes=BTreeMap::new();
+            let mut pending=Vec::new();
+            for id in ids {
+                check(cancel)?;
+                if let Some(node)=self.node_cache.get(&id).cloned() {
+                    self.stats.node_cache_hits+=1;
+                    nodes.insert(id,node);
+                } else { pending.push(id); }
+            }
+            #[cfg(feature="mapped-source-snapshot")]
+            let indexed=self.directory.is_some();
+            #[cfg(not(feature="mapped-source-snapshot"))]
+            let indexed=false;
+            if !indexed && pending.len()>=32 && (pending.len() as u64).saturating_mul(2)>=self.nodes {
+                self.ensure_verified_index(cancel)?;
+            }
+            for id in pending {
+                let row=self.find_row(&id,cancel)?.ok_or_else(||invalid("Missing demanded source record"))?;
+                let node=self.node(&id,row,cancel)?;
+                self.remember_node(&id,&node,row.value_bytes);
+                nodes.insert(id,node);
+            }
+            Ok(nodes)
+        })();
         self.clear_payload_cache();result
+    }
+    /// One authenticated index walk for a large demand. Later reads of the
+    /// same open generation reuse the rows and, within 64 MiB, the decoded
+    /// nodes. Payload hashes still bind each record; a directory release drops
+    /// both caches. This is not a projection superset.
+    fn ensure_verified_index(&mut self,cancel:&AtomicBool)->io::Result<()> {
+        if self.verified_index.is_some() { return Ok(()); }
+        let mut index=BufReader::new(RangeReader{file:&self.file,position:self.index_offset,end:self.tree_offset});
+        let mut merkle=MerkleFold::new();
+        let mut rows=Vec::new();
+        rows.try_reserve_exact(usize::try_from(self.nodes).unwrap_or(0)).map_err(io::Error::other)?;
+        for _ in 0..self.nodes {
+            check(cancel)?;
+            let mut bytes=[0;96];
+            index.read_exact(&mut bytes)?;
+            merkle.push(sha(&bytes));
+            rows.push(Row::decode(bytes));
+        }
+        for _ in self.nodes..self.leaf_base { check(cancel)?; merkle.push([0;32]); }
+        if merkle.root()!=Some(self.index_root) { return Err(invalid("Scene store index changed")); }
+        self.stats.index_proofs+=1;
+        self.stats.index_bytes_verified=sum(self.stats.index_bytes_verified,self.nodes*ROW_BYTES)?;
+        let mut map=HashMap::new();
+        let mut end=self.metadata_end;
+        let mut previous=None;
+        for row in rows {
+            check(cancel)?;
+            if row.key_offset!=end || row.key_bytes==0 || row.value_bytes==0 || sum(row.key_offset,row.key_bytes)?!=row.value_offset {
+                return Err(invalid("Noncontiguous scene records"));
+            }
+            end=sum(row.value_offset,row.value_bytes)?;
+            if end>self.index_offset { return Err(invalid("Scene node overlaps index")); }
+            let size=usize::try_from(row.key_bytes).map_err(|_|invalid("Scene key cannot be addressed"))?;
+            let mut key=Vec::new();
+            key.try_reserve_exact(size).map_err(io::Error::other)?;
+            key.resize(size,0);
+            self.file.seek(SeekFrom::Start(row.key_offset))?;
+            self.file.read_exact(&mut key)?;
+            if sha(&key)!=row.key_hash { return Err(invalid("Scene node key changed")); }
+            let key=String::from_utf8(key).map_err(io::Error::other)?;
+            if previous.as_ref().is_some_and(|old: &String| old>=&key) { return Err(invalid("Scene index order changed")); }
+            previous=Some(key.clone());
+            self.stats.key_reads+=1;
+            map.insert(key,row);
+        }
+        if end!=self.index_offset { return Err(invalid("Scene store index changed")); }
+        self.verified_index=Some(map);
+        Ok(())
+    }
+    fn remember_node(&mut self,id:&str,node:&Node,bytes:u64) {
+        const LIMIT:u64=64*1024*1024;
+        if bytes==0 || self.node_cache.contains_key(id) || self.node_cache_bytes.saturating_add(bytes)>LIMIT { return; }
+        self.node_cache_bytes+=bytes;
+        self.node_cache.insert(id.to_owned(),node.clone());
     }
     /// Metadata is independently lazy: an ID lookup never reads all page,
     /// font or foreign-format metadata. This header is not a renderable model.
@@ -929,6 +1017,7 @@ impl Reader {
         if digest != self.index_root {
             return Err(invalid("Scene store index changed"));
         }
+        self.stats.index_proofs += 1;
         let row = Row::decode(bytes);
         if row.key_offset < self.metadata_end
             || row.key_bytes == 0
@@ -994,6 +1083,7 @@ impl Reader {
     fn find_row(&mut self,id:&str,cancel:&AtomicBool)->io::Result<Option<Row>> {
         #[cfg(feature="mapped-source-snapshot")]
         if let Some(directory)=&self.directory {check(cancel)?;return Ok(directory.row(id));}
+        if let Some(index)=&self.verified_index { check(cancel)?; return Ok(index.get(id).copied()); }
         let (mut lo, mut hi) = (0, self.nodes);
         while lo < hi {
             let mid = lo + (hi - lo) / 2;

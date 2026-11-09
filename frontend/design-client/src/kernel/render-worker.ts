@@ -1,3 +1,4 @@
+import { settledPoseDamage } from './interaction-pose-damage'
 import { choosePreparedTile } from './zoom-refinement-policy'
 import { equalValue } from '../document-patch'
 import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regional-gaussian-display'
@@ -1191,8 +1192,13 @@ self.onmessage = (e) => {
         const transforms = channel === 'interaction' && retainInteraction && interactionNative &&
           laneState.synchronizedInteractionDocument && interactionPatchTransforms(laneState.synchronizedInteractionDocument, patch, interactionSelection || [])
         const priorPixelOwner=kernel.contentIdentity
+        let localPose: Parameters<typeof settledPoseDamage>[0]
+        if (transforms) {
+          try { localPose = JSON.parse(await kernel.interaction_pose_damage(JSON.stringify(transforms))) }
+          catch { localPose = undefined }
+        }
         const nativePose = !!transforms && await kernel.apply_interaction_transforms(JSON.stringify(transforms))
-        const damage = nativePose ? { full: true, bounds: null, reason: 'native-interaction-pose' } : defer ? { full: true, bounds: null, reason: 'transient-translation' } :
+        const damage = nativePose ? settledPoseDamage(localPose) : defer ? { full: true, bounds: null, reason: 'transient-translation' } :
           JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch, canGuard ? request.patchBaseReceipt : undefined).catch(error => {
             if (canGuard) laneState.interactionDocument = priorAuthoredDocument
             throw error

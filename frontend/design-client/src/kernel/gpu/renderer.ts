@@ -1101,6 +1101,40 @@ export class GpuRenderer {
     this.lastUsed.set(texture,age)
     ;(this.free as SurfacePool<Texture>).touched?.(texture,age)
   }
+  /** Completed free-pool duplicates are physical residency, not a future read.
+   * In-flight epochs and an unknown completion stay. Two survivors per size
+   * remain so the next identical allocation can reuse them. */
+  private reapCompletedFreeTextures() {
+    const completed = this.driver.completedResourceEpoch
+    if (!Number.isSafeInteger(completed) || completed! < 0) return
+    for (const [key, list] of [...this.free]) {
+      const inflight: Texture[] = []
+      const ready: Texture[] = []
+      for (const texture of list) {
+        if (this.admissionPins.has(texture)) { inflight.push(texture); continue }
+        const epoch = this.poolReleaseEpoch.get(texture)
+        if (epoch === undefined || epoch > completed!) inflight.push(texture)
+        else ready.push(texture)
+      }
+      ready.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
+      const keep = ready.slice(Math.max(0, ready.length - 2))
+      const drop = new Set(ready.filter(texture => !keep.includes(texture)))
+      if (!drop.size) continue
+      const retained = list.filter(texture => !drop.has(texture))
+      for (const texture of drop) {
+        this.used.delete(texture)
+        this.lastUsed.delete(texture)
+        this.ledger.clearPoolEpoch(texture)
+        this.driver.destroy(texture)
+        ;(this.free as SurfacePool<Texture>).removed?.(texture)
+        this.bytes -= texture.bytes
+      }
+      if (retained.length) {
+        if ((this.free as SurfacePool<Texture>).setOwned) (this.free as SurfacePool<Texture>).setOwned(key, retained)
+        else this.free.set(key, retained)
+      } else this.free.delete(key)
+    }
+  }
   /** Remove one texture from its free list and destroy it. Only call this for
    * textures whose GPU commands provably completed. */
   private destroyFree(texture: Texture) {
@@ -7701,6 +7735,7 @@ export class GpuRenderer {
       .filter((r):r is Rect=>!!r).map(r=>`${r.w}:${r.h}`)):undefined
     // Reclaim sizes no longer used after a resize/zoom. The previous frame has
     // completed; destroying textures while its command buffer is pending is unsafe.
+    this.reapCompletedFreeTextures()
     for (const [key, list] of this.free) {
       let largeKept=0
       const retained = list.filter((t) => {
