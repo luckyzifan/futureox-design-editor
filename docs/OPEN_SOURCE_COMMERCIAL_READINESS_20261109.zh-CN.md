@@ -22,11 +22,11 @@
 
 | 优先级 | 检查结果 | 完成条件 |
 | --- | --- | --- |
-| P0 源码授权 | 没有顶层项目 LICENSE；5 个 workspace crate 的 license 元数据均为空。GitHub 连接器确认 origin 当前仍为 private。 | 确认自有代码及贡献者授权范围，再为自有部分选择许可证、补元数据和第三方例外说明。公开可见不自动授予使用/修改/分发许可，见 [GitHub 官方说明](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)。 |
+| P0 源码授权 | 项目已采用 [MIT License](../LICENSE)，版权为 Copyright (c) 2026 Cookieboty and contributors；5 个 workspace crate 和 3 个前端包已补充 MIT 元数据。 | 项目许可选择与元数据已完成；自有代码及贡献者授权范围、第三方来源仍按实际证据复核。 |
 | P0 来源待核代码 | GPU 描边、前缀和与内存计量模块的实现来源仍待核对。 | 核对原始来源、适用许可、修改历史和运行时可达性；以实际来源与授权证据关闭该项。 |
 | P0 源码素材 | `public/fidelity/` 有 349 个跟踪文件；`testing/fixtures/` 下另有 139 个被跟踪的二进制/图像文件。既有来源清单仍列出部分参考图与 FIG 文档的许可待核。 | 逐文件归属/许可记录；未核准素材保留私有，公开测试改用可分发的合成夹具。这些数字是检查范围，不是认定全部无授权。生产包排除 fidelity 不代表 Git 源码/历史可以公开。 |
 | P0 历史披露范围 | 当前历史可能包含已从产品输出排除的素材和旧证据，本轮没有完成拟公开历史的逐项复核。 | 明确公开历史范围，核对设计文件、日志、个人路径/凭据及第三方材料；可准备独立的清理后源码快照，不直接改私有仓库可见性或重写现有历史。 |
-| P0 随包依赖 | 本次 locked/offline Cargo metadata 列出 357 个包，5 个未填许可证的是本仓库 crate。Electron/Chromium、JS、Rust、native 和 vendor 尚无按目标平台闭合的最终包清单。 | 对实际 release 包生成组件、版本、hash、许可与 notice 清单；区分开发依赖与真正分发依赖。旧清单里的 337 为历史计数，不是当前完整清单。MPL 等许可表达式应按实际分发文件履行义务，不能仅凭名称认定不可商用。 |
+| P0 随包依赖 | 此前 locked/offline Cargo metadata 列出 357 个包；本仓库 5 个 crate 的许可元数据已补齐为 MIT。Electron/Chromium、JS、Rust、native 和 vendor 尚无按目标平台闭合的最终包清单。 | 对实际 release 包生成组件、版本、hash、许可与 notice 清单；区分开发依赖与真正分发依赖。旧清单里的 337 为历史计数，不是当前完整清单。MPL 等许可表达式应按实际分发文件履行义务，不能仅凭名称认定不可商用。 |
 | P0/P1 字体与来源映射 | Noto/Poppins、Lucide、MIT/Apache/BSD 等已有保留 notice；Kiwi npm 包缺少原始 LICENSE，已补上游文本，但精确源码版本映射未闭环。 | 保留已有授权文本和 hash；核对每一实际随包组件及修改声明，补 Kiwi 的精确来源映射。 |
 | P0 二进制 FFmpeg | Linux x64 vendor 是 `7.0.2-static`，含 `--enable-gpl --enable-version3 --enable-static --enable-libx264`；由 Rust 启动独立进程。macOS/Windows 当前目录仅有说明。 | 保留该组件的 GPL 文本，并为实际发布的构建闭合完整对应源码、外部库、修改/构建脚本及取得方式；仅有上游版本号和下载链接不足以在此认定完成。见 [FFmpeg 该版本许可](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.0.2/LICENSE.md)和 [GPLv3 对应源码条款](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.0.2/COPYING.GPLv3)。 |
 
@@ -36,10 +36,10 @@ GPL 允许收费；独立程序的集合也不会仅因同包就自动使其他�
 
 ## 建议的整个应用开源路线
 
-对已经确认拥有授权的应用代码，建议采用 **Apache-2.0**，与开放整个应用、允许社区商业使用及收费服务的方向相符；其授予范围包含版权和特定贡献专利，并要求随分发保留许可证、修改说明及适用的 notice。第三方代码、字体、图标和独立工具继续使用各自条款，不能被顶层许可证覆盖。[Apache-2.0 正文](https://www.apache.org/licenses/LICENSE-2.0)。这是当前推荐，未在授权范围未闭环时直接应用 LICENSE。
+项目所有者已选择 **MIT License**，完整文本见根目录 [LICENSE](../LICENSE)，版权为 Copyright (c) 2026 Cookieboty and contributors。第三方代码、字体、图标和独立工具继续使用各自条款，具体记录见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
 1. 先形成可公开源码清单：保留完整应用功能，参考素材换为可分发夹具，逐项处理来源待核实现和贡献权属。
-2. 在权属明确后落实项目 LICENSE、crate/package 元数据、第三方 notices 和可复现的依赖/构建说明；单独处理源码公开历史与 FFmpeg 分发范围。
+2. 项目 LICENSE 与 crate/package 元数据已补齐；继续核对自有代码和贡献者授权范围，完善第三方 notices 和可复现的依赖/构建说明，单独处理源码公开历史与 FFmpeg 分发范围。
 3. 发布 `0.1.x Alpha` 时明确 macOS arm64 实测范围、已测文件类型、字体/导入差异、大源等待时间和未验平台。源码 Alpha 可以早于完整性能目标，不能用模糊的“全部支持”替代限制说明。
 4. 商业试点前冻结正式 release 构建，验证打包后文件打开/编辑/撤销/自动保存/重开/导出、异常退出恢复及升级，并限定支持场景和设备。商业正式分发前再完成目标平台安装、授权清单、关键安全边界与性能/兼容矩阵。
 

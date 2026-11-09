@@ -58,3 +58,11 @@ bun run test
 - [第三方声明](THIRD_PARTY_NOTICES.md)：随源码或产物保留的依赖、字体与授权文本。
 
 `target/`、`node_modules/`、`dist/`、`release/` 等构建输出不入库。历史交付说明集中在 [docs/rendering/history](docs/rendering/history/README.md)，其测试结果按对应版本与环境解释。
+
+## 许可证
+
+本项目自有代码采用 [MIT License](LICENSE)。
+
+Copyright (c) 2026 Cookieboty and contributors
+
+第三方依赖、字体、素材和工具遵循各自的许可证，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
