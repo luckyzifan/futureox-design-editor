@@ -5,7 +5,6 @@
 use crate::sketch::{Document, Error, Layer, Owner, Result, Session};
 use crate::{
     boolean::Operation,
-    color::ColorSettings,
     facet::sample_node,
     font::{TextRun, TextStyle},
     math::{Point, Transform},
@@ -776,7 +775,9 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         }],
         nodes: p.nodes.into(),
         fonts: BTreeMap::new(),
-        color_management: Some(ColorSettings::default()),
+        // Encoded sRGB paints. Linear management would not match Sketch's
+        // document-space composite (see colorSpace 1 import).
+        color_management: None,
         raster_profile: Some(crate::fidelity::RasterProfile::Figma),
         design_system: None,
         prototype: None,

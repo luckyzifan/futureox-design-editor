@@ -336,7 +336,14 @@ fn transparent_gradient_stops_render_translucent_pixels_and_export_source_alpha(
         &[("p", page("p", vec![rectangle]))],
     );
     let report = interop::import_sketch_report(&bytes).unwrap();
-    assert_eq!(report.document.color_management.is_some(), color_space == 1);
+    assert!(report.document.color_management.is_none());
+    let exported_doc: Value = serde_json::from_slice(
+        interop::read_zip_public(&interop::export_sketch(&report.document).unwrap()).unwrap()
+            .get("document.json")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(exported_doc["colorSpace"], color_space);
     let paint = &report.document.nodes["fade"].fills[0];
     assert_eq!(paint.kind, "linear");
     assert!(paint.stops[0].color.ends_with("/ 0)"));

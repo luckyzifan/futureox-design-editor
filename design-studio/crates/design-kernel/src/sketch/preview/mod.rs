@@ -570,8 +570,10 @@ pub fn compile_preview(session: &Session, request: &PreviewRequest) -> Result<Pr
         software_raster: false,
         output: None,
         root_input_box: None,
-        float_compositing: true,
-        color_management: Some(ColorSettings::default()),
+        // Paints are already encoded sRGB. Linear compositing disagrees with
+        // Sketch's document-space blend of the same bytes.
+        float_compositing: false,
+        color_management: None,
         colors: BTreeMap::new(),
         backdrop_samples: false,
         coherent_samples: false,
