@@ -1,0 +1,35 @@
+name: 功能建议 / Feature request
+description: 分享你希望改善的设计工作流 / Suggest an improvement to a design workflow.
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎分享想法！请先查看路线图和现有讨论。
+        Ideas are welcome. Please check the roadmap and existing discussions first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题 / Problem to solve
+      description: 说明使用场景、当前限制，以及它对设计工作的影响。
+      placeholder: Describe your workflow, its current limitation, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的工作流 / Proposed workflow
+      description: 从输入、操作到最终结果，描述你希望怎样使用它。
+      placeholder: What would you do, and what result would you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 已尝试的方法 / Alternatives considered
+      description: 可选；当前的替代流程、参考或草图 / Optional; current workarounds, references, or sketches.
+  - type: textarea
+    id: contribution
+    attributes:
+      label: 补充信息 / Additional context
+      description: 可选；是否愿意协助设计、开发、文档或验证 / Optional; how you might help with design, code, docs, or testing.
