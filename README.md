@@ -1,6 +1,16 @@
 # Futureox Design
 
-本地优先的 2D 设计编辑器，包含 Rust 内核、共享网页客户端、Electron 桌面应用和本地 MCP 适配器。
+[简体中文](README.md) | [English](README.en.md)
+
+**开源、本地优先的 2D 设计编辑器，受 Figma 和 Sketch 启发。**
+
+**An open-source, local-first 2D design editor inspired by Figma and Sketch.**
+
+Futureox Design 希望为界面设计、矢量编辑和设计文件处理提供一个开放、可扩展的工作空间，让设计师和开发者一起参与构建自己的设计工具。
+
+Futureox Design aims to provide an open, extensible workspace for interface design, vector editing, and working with design files, built together by designers and developers.
+
+项目包含 Rust 内核、网页与桌面共享的客户端、Electron 桌面应用和本地 MCP 适配器，围绕统一的画布、文档模型和编辑流程持续演进。欢迎提出想法、反馈问题、提交修改，一起让 Futureox Design 变得更好。
 
 ## 项目层级
 
@@ -58,6 +68,20 @@ bun run test
 - [第三方声明](THIRD_PARTY_NOTICES.md)：随源码或产物保留的依赖、字体与授权文本。
 
 `target/`、`node_modules/`、`dist/`、`release/` 等构建输出不入库。历史交付说明集中在 [docs/rendering/history](docs/rendering/history/README.md)，其测试结果按对应版本与环境解释。
+
+## 参与贡献
+
+欢迎大家参与 Futureox Design。功能开发、问题修复、性能优化、界面设计、文档翻译和测试反馈，都是有价值的贡献。
+
+- **反馈问题或提出建议**：通过 [Issues](https://github.com/luckyzifan/futureoxDesgin/issues) 描述使用场景、复现步骤和预期行为。
+- **提交修改**：欢迎通过 [Pull Requests](https://github.com/luckyzifan/futureoxDesgin/pulls) 分享改进；较大的功能或架构调整可以先开 Issue 讨论。
+- **开始开发**：参考上方开发命令、[架构分层](docs/architecture/README.zh-CN.md)和[贡献与测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md)，在 PR 中说明修改内容及相关验证结果。
+
+## 致谢
+
+感谢每一位提出建议、报告问题、提交修改、完善文档和参与测试的朋友。无论是一处文字修正，还是一次功能或性能改进，你的贡献都在帮助 Futureox Design 成长。
+
+感谢[所有贡献者](https://github.com/luckyzifan/futureoxDesgin/graphs/contributors)，也感谢项目所依赖的开源社区。相关依赖和授权信息见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 ## 许可证
 
