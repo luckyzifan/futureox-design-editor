@@ -1,33 +1,6 @@
-//! The tiled renderer — CPU rasterisation orchestration with GPU-compositor
-//! consumption, mirroring Sketch's `MSTiledRenderer`.
-//!
-//! The `MSTiledRenderer` contract this module reproduces:
-//!
-//! * `updateWithInstruction:synchronously:hasUserFocus:` — the only entry
-//!   point; [`TiledRenderer::update_with_instruction`] with the frame's
-//!   `RenderOptions`, a [`RenderInstruction`] and optional edit damage.
-//! * `updateContentIfPossibleWithInstruction:tileLevel:completionSemaphore:`
-//!   — when the rendered instruction compares equal, nothing rasterises
-//!   ([`crate::render_instruction`]).
-//! * `_doParallelRasterisationOfScene:inRects:…tiles:` — visible, missing or
-//!   dirty tiles rasterise in parallel on isolated per-worker rasterizers,
-//!   gated by the `rasterizeConcurrently` / `singleThreadedContentRendering`
-//!   feature flags. Tile bytes
-//!   are identical to sequential rasterisation because each tile is a pure
-//!   function of the prepared scene and the tile rectangle.
-//! * `waitForContentRenderSemaphore:status:synchronous:frameStartTime:
-//!   hasUserFocus:` — [`TiledRenderer::wait_for_content_render_semaphore`]
-//!   decides between presenting the freshly composited level and upscaling
-//!   the previous level; `forceSyncFirstFrame` forces the first frame.
-//! * `invalidateCachesForInstruction:` /
-//!   `removeAllTilesAndClearDirtyRegions` — cache and residency lifecycle.
-//!
-//! What deliberately stays out of the kernel: pixel presentation. The host
-//! composites committed tile surfaces as textured quads (the
-//! `MSMetalRenderer` role — four composition pipelines, no content
-//! rasterisation in shaders) and calls [`TiledRenderer::note_composited`]
-//! when a frame has been drawn, advancing the telemetry frame counter
-//! independently of rasterisation spans.
+//! Tiled rendering: plan visible addresses, rasterize invalid tiles, then
+//! compose completed levels. Surface pools, cache ownership and telemetry stay
+//! with the renderer; host code supplies scheduling and frame deadlines.
 
 use crate::raster_surface::RasterSurfacePool;
 use crate::render_instruction::{render_trait, RenderInstruction, WorldRect};
@@ -40,19 +13,9 @@ use std::collections::HashMap;
 /// Freshly rasterised tiles: address plus premultiplied RGBA8 bytes.
 type RasterisedTiles = Vec<([i32; 2], Vec<u8>)>;
 
-/// Fixed capabilities mirroring the remaining Sketch feature flags —
-/// `coreTextRendering` and `gpuOverlay`. This kernel always shapes text on
-/// the CPU
-/// (rustybuzz/ttf-parser paths) and renders no overlay content itself, so
-/// both are constants, not knobs: the host owns overlay drawing exactly as
-/// Sketch's `MSOverlayRenderer` sits beside the tiled content renderer.
 pub const CORE_TEXT_RENDERING: bool = true;
 pub const GPU_OVERLAY: bool = false;
 
-/// The mutable rasterisation flags, named after the dump's feature flags.
-/// Defaults mirror single-threaded hosts: concurrent rasterisation off until
-/// a native caller opts in (`rasterize_concurrently`), no forced degradation
-/// (`single_threaded_content_rendering`), platform-capped worker count.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RenderFeatureFlags {
     /// `rasterizeConcurrently` — tile rasterisation may run on worker
@@ -89,8 +52,6 @@ pub struct TileRequest {
     pub pixel_count: u64,
 }
 
-/// Outcome of an update, the `UpdateF6Status` Swift enum returned by
-/// `updateContentIfPossibleWithInstruction:…`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UpdateStatus {
@@ -115,8 +76,6 @@ fn effective_scale(instruction: &RenderInstruction) -> f64 {
 pub enum PresentDecision {
     /// Composite the freshly rendered tiles of the current level.
     PresentComposited,
-    /// Upscale the previous level's resident tiles while the new level fills
-    /// (zoom transitions — `previousLevel` in the dump).
     PresentPreviousLevel,
 }
 
@@ -346,11 +305,6 @@ pub trait TileRasterSource: TileRasterizer {
     fn spawn_worker(&self) -> Option<Box<dyn TileRasterizer + Send>>;
 }
 
-/// `MSCacheManager` (dump lines 953–967): a rendering cache plus a
-/// zoom-independent cache with the zoom level it is shared at. Here the
-/// zoom-independent store keeps fully covered level snapshots alive across
-/// level eviction, keyed by (address, content revision) and valid only at
-/// `zoom_level_for_shared_cache` — the scale the entries were captured at.
 pub struct CacheManager {
     zoom_independent: HashMap<([i32; 2], u64), Arc<Vec<u8>>>,
     zoom_level_for_shared_cache: Option<f64>,
@@ -455,8 +409,6 @@ impl CacheManager {
     }
 }
 
-/// Level index on the disassembled ladder: bucket scales 0.1 / 0.25 / 0.5 /
-/// 1 / 2 / 4 … (`tileLevel(scale:)`, see [`exact_bucket_scale`]).
 pub fn level_index_for_scale(scale: f64) -> usize {
     if !scale.is_finite() || scale <= 0.1 {
         return 0;
@@ -950,15 +902,6 @@ impl TiledRenderer {
         Ok(())
     }
 
-    /// `waitForContentRenderSemaphore:status:synchronous:frameStartTime:
-    /// hasUserFocus:` — the compositor's present decision for `pending`,
-    /// the instruction the *next* frame wants. Content already rendered
-    /// presents immediately; missing content presents the previous level's
-    /// tiles upscaled — unless the caller asked for synchronous completion,
-    /// the user is focused on interaction, or this is the first frame
-    /// (`forceSyncFirstFrame`), in which case the update must complete now.
-    /// The kernel has no clock-driven deadline; `frameStartTime` in the dump
-    /// feeds Sketch's frame pacing and stays the host's concern.
     pub fn wait_for_content_render_semaphore(
         &self,
         pending: &RenderInstruction,
@@ -1007,9 +950,6 @@ impl TiledRenderer {
             .sum()
     }
 
-    /// Bytes of every resident tile surface across levels — the tile pool of
-    /// the engine compositing ledger (Figma's `%d MB Rendered Tile VRAM`
-    /// counterpart: pool sums, `>>20` for MB, f32 ratio against the total).
     pub fn resident_bytes(&self) -> usize {
         self.levels
             .iter()

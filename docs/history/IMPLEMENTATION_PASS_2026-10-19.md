@@ -7,7 +7,7 @@ The three root implementation status/plan/summary documents were retired on 2026
 - [Local feature matrix](../LOCAL_DESIGN_FEATURE_MATRIX.zh-CN.md): feature availability and remaining gaps.
 - [Release acceptance](../LOCAL_RELEASE_ACCEPTANCE.zh-CN.md): evidence categories and delivery gates.
 - [Release notes](../RELEASE_2026-10-19.zh-CN.md): delivered scope and explicitly unverified behavior.
-- [Render repair notes](../../RENDER_REPAIR_NOTES.zh-CN.md): corrections to the original implementation claims.
+- [Render repair notes](../rendering/history/RENDER_REPAIR_NOTES.zh-CN.md): corrections to the original implementation claims.
 - [Testing entry points](../../testing/README.md): current test execution instructions.
 - [Desktop build and packaging](../../frontend/design-desktop/README.md): replaces the obsolete manual copy-to-Electron instructions.
 

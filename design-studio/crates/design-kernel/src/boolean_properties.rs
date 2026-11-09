@@ -1,8 +1,5 @@
-//! Property tests for boolean geometry: algebraic laws any correct
-//! implementation must satisfy, independent of a reference engine.
-//!
-//! For polygonal inputs the operations are exact, so the laws below hold
-//! without tolerances beyond float summation error in areas.
+//! Algebraic and geometric properties for Boolean path operations.
+
 use crate::boolean::{Operation, boolean};
 use crate::math::Point;
 use crate::path::{Contour, area};

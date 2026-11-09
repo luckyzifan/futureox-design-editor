@@ -1,21 +1,3 @@
-//! CPU-tiled frame host — the native consumer of the kernel's Sketch-parity
-//! tiled renderer (`Engine::update_tiled_frame`).
-//!
-//! Sketch's architecture (`MSTiledRenderer`): content
-//! rasterises on the CPU into world-anchored tiles per zoom bucket, the GPU
-//! only composites. This host is the native entry for that pipeline: it
-//! drives the kernel renderer with the frame's `RenderOptions` plus patch
-//! damage, assembles the viewport from tile residency, and reports counters
-//! that keep rasterisation count and frame count separate (the
-//! `MSRenderingTelemetry` axes).
-//!
-//! Assembly is byte-identical to `Engine::render` when the camera zoom sits
-//! exactly on a bucket scale (the canvas snaps zooms to buckets; 100% and
-//! integer device ratios always snap) — including managed documents, whose
-//! tiles render through the linear pipeline and the document settings (the
-//! same pixels a full render produces). Off-bucket zooms resample the bucket
-//! residency in premultiplied space inside the kernel (the drawTiles tier);
-//! pixel previews take the documented full-frame fallback.
 
 use crate::device::RenderedFrame;
 use futureox_design_kernel::tiled_renderer::UpdateStatus;

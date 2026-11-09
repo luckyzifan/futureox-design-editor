@@ -1,10 +1,3 @@
-//! Figma Design-panel rotation.
-//!
-//! Mac Figma's right-hand angle is clockwise-positive on a Y-down canvas:
-//! dragging the corner handle clockwise increases the number, and dragging
-//! counterclockwise decreases it. The range is −180°…180°. Shift snaps the
-//! absolute angle to 15° steps. The object follows the pointer one-to-one;
-//! the reported degrees are that same clockwise angle, not a second convention.
 
 /// Wrap into (−180, 180]. Exactly 180° lands on −180°, matching a full half-turn.
 pub fn normalize_degrees(degrees: f64) -> f64 {

@@ -77,7 +77,6 @@ fn fifteen_fields_round_trip_in_camel_case() {
     assert_eq!(action.transition_reset_interactive_components, Some(false));
     assert_eq!(action.transition_duration_var.as_deref(), Some("var-num"));
     assert_eq!(action.transition_easing_var.as_deref(), Some("var-str"));
-    // every field serializes under its recovered Figma name (camelCase)
     let out = serde_json::to_value(&action).unwrap();
     for key in [
         "targetVariable",
@@ -106,8 +105,6 @@ fn fifteen_fields_round_trip_in_camel_case() {
 
 #[test]
 fn figma_id_casing_aliases_deserialize() {
-    // Figma's kiwi names use trailing "ID"; ours serialize as "Id" — both
-    // spellings must load.
     let action: Action = serde_json::from_value(json!({
         "kind": "navigate", "target": "o",
         "targetVariableModeID": "m1",
@@ -185,7 +182,6 @@ fn variable_references_must_resolve() {
         json!({"kind": "navigate", "target": "o", "transitionDurationVar": "var-num"})
     ))
     .is_ok());
-    // easing variables have no kind gate (Figma's EASING kind is unmodeled)
     assert!(prototype::validate(&doc(
         12,
         json!({"kind": "navigate", "target": "o", "transitionEasingVar": "var-num"})

@@ -1,33 +1,3 @@
-//! Pattern (tiled) image fills, following Figma's pattern-fill semantics.
-//!
-//! Uniform vocabulary (kept honest by tests):
-//! `patternTexSizePixels / patternBoundsOffsetPixels / tileSizePixels /
-//! fillSizePixels / offsetPixels / patternTileType`. The fragment chain
-//! starts from the **paint-transformed local coordinate**
-//! (`_coord2 = (paintTransform * vec3(position2, 1)).xy`), exactly where
-//! this port composes `Paint.transform` before tiling; the math is quoted
-//! line by line below.
-//!
-//! Uniform semantics (pattern-fill family, 4 shaders in the family):
-//! `patternTileType` 0 = regular grid, 1 = horizontal stagger
-//! (alternate rows shifted half a tile along x), 2 = vertical stagger
-//! (alternate columns shifted half a tile along y); `offsetPixels` /
-//! `patternBoundsOffsetPixels` are two opposite-sign pre-repeat translations;
-//! `tileSizePixels` rescales the sampled texture window inside one cell
-//! (`uv = fract(g) * texSize/tile`, clamped to `(texSize-0.5)/tile` — the
-//! half-texel seam guard).
-//!
-//! Contract with the kernel sampler: `size` is the authored cell period in
-//! node-local pixels per axis (the shader produces a per-axis period
-//! `patternTexSizePixels/fillSizePixels` in `_coord2` units — that ratio is
-//! what our `size` absorbs); `offset` carries `offsetPixels` with
-//! `patternBoundsOffsetPixels` folded in (both are pre-fract translations,
-//! the same degree of freedom with opposite signs). `size: 0` on an axis
-//! means "the image's native extent" (pitch = `patternTexSizePixels`, i.e.
-//! one texture per tile at 1:1). `tileSizePixels` is taken equal to
-//! `patternTexSizePixels` (identity zoom: `i = 1`), so the half-texel clamp
-//! `j` is exactly the sampler's existing `[0.5, n-0.5]` bilinear edge — see
-//! the report for the one uniform we do not yet author.
 use crate::math::Point;
 use serde::{Deserialize, Serialize};
 

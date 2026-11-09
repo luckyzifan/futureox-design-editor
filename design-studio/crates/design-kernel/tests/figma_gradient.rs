@@ -223,9 +223,6 @@ pub(crate) fn controls() -> Vec<Control> {
     cases
 }
 
-/// Test harness for the separately recovered export accumulator. Binary64
-/// implements its independently specified f32 FMA/normalization boundaries;
-/// no production renderer, GPU backend, or Figma pixels construct the result.
 pub(crate) fn render_control(case: &Control) -> Vec<u8> {
     let gradients: Vec<_> = (0..if case.strip { 33 } else { 1 })
         .map(|i| {

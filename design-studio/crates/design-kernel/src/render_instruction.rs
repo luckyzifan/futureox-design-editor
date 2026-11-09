@@ -1,30 +1,11 @@
-//! Render instruction: the value object that decides whether the tiled
-//! renderer does any work at all.
-//!
-//! Sketch's `MSRenderInstruction` carries the layer ancestry, rendering
-//! parameters, colour
-//! space and overlay state, and answers `isEqualToRenderInstruction:` /
-//! `traitsDifferingWithInstruction:`. `MSTiledRenderer` keeps the last
-//! rendered and composited instructions and skips rasterisation while they
-//! compare equal. This module is that object: a plain, comparable description
-//! of everything that can change canvas pixels, plus a trait mask so callers
-//! can see *what* differed and choose a cheap repair (pan) over a full
-//! repaint.
-//!
-//! The instruction is deliberately coarse: it identifies content by a
-//! monotonically increasing `content_revision` owned by the engine (bumped on
-//! every document install — load, patch or animation sample), not by hashing
-//! node trees. Equality is exact-field comparison, the same contract as
-//! Sketch's value-object `isEqual:`.
+//! Frame requests: page and camera geometry, content revision, raster options
+//! and color-space identity determine which rendered tiles remain reusable.
 
 /// World-space rectangle `[x, y, width, height]` in page units — the same
 /// domain [`crate::dirty_region`] emits and [`crate::tile_stack::raster_addresses`]
 /// accepts.
 pub type WorldRect = [f64; 4];
 
-/// Trait bits reported by [`RenderInstruction::traits_differing`], mirroring
-/// the bitmask `traitsDifferingWithInstruction:` returns in the dump. A bit is
-/// set only when that trait actually differs between the two instructions.
 pub mod render_trait {
     /// Camera viewport moved (pan): existing tiles stay valid, only newly
     /// exposed tiles rasterise.
@@ -37,8 +18,7 @@ pub mod render_trait {
     pub const OPTIONS: u64 = 1 << 3;
     /// The document colour space changed: every level resets.
     pub const COLOR_SPACE: u64 = 1 << 4;
-    /// Overlay state changed (reserved; the kernel itself renders no overlay,
-    /// same as Sketch keeps overlay traits out of content rasterisation).
+    /// Overlay state changed; reserved separately from content rasterization.
     pub const OVERLAY: u64 = 1 << 5;
 }
 
@@ -64,21 +44,14 @@ impl ColorSpaceId {
     }
 }
 
-/// Everything the tiled renderer needs to decide and rasterise one frame:
-/// Sketch's `MSRenderingParameters` (pageRect, zoomLevel, backingScale,
-/// pixelSize, options) plus the identity inputs (`layerAncestry` → content
-/// revision, `colorSpace`, overlay options).
 #[derive(Clone, Debug)]
 pub struct RenderInstruction {
     /// Page whose content is rendered.
     pub page_id: String,
-    /// Visible world rectangle (`pageRect` in the dump's parameters struct).
     pub viewport: WorldRect,
     /// Live camera zoom. Content rasterises at `level_scale`; display
     /// resamples committed pixels down to this zoom.
     pub zoom: f64,
-    /// Fixed raster scale of the owning mip level — `exact_bucket_scale(zoom)`
-    /// (the disassembled `tileLevel(scale:)` ladder 0.1/0.25/0.5/1/2/4…).
     pub level_scale: f64,
     /// Backing-store scale factor (Retina), applied on top of `level_scale`.
     pub backing_scale: f64,

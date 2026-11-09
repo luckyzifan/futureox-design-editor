@@ -1,7 +1,3 @@
-//! E3 image-adjust chain: identity invariance, per-axis direction, a numeric
-//! cross-check against a straight-line transcription of Figma's image-adjust
-//! shader (≤ 1/255 per channel), serde defaults, document validation and the
-//! CPU sampler hook (GLSL and WGSL forms, `imageColorAdjustPaint`).
 use base64::Engine as _;
 use futureox_design_kernel::image_adjust::ImageAdjust;
 use futureox_design_kernel::math::{Point, Rect, Transform};

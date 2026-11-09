@@ -1,5 +1,4 @@
-/** A product quality boundary, not a recovered Figma constant. Navigation
- * speed and memory pressure alone never authorize reduced normal-zoom pixels. */
+/** Sampling reduction is limited to explicit low-zoom navigation previews. */
 export const LOW_ZOOM_SAMPLING_LIMIT = 0.25
 export type RenderQualityPurpose = 'preview' | 'settle' | 'export'
 export type RenderQualityRequest = {

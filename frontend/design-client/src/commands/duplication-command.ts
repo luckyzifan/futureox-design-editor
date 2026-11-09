@@ -34,8 +34,6 @@ export function supportedRepeatDelta(current: Matrix, reference: Matrix): Matrix
   let delta: Matrix
   try { delta = multiply(current, inverse(reference)) } catch { return null }
   const [a, b, c, d] = delta, epsilon = 1e-8
-  // Officially documented repeat translation/rotation only. Scale, reflection
-  // and skew invalidate the seed rather than inventing Figma's private rules.
   return finite(delta) && Math.abs(a * a + b * b - 1) < epsilon && Math.abs(c * c + d * d - 1) < epsilon &&
     Math.abs(a * c + b * d) < epsilon && Math.abs(a * d - b * c - 1) < epsilon ? delta : null
 }

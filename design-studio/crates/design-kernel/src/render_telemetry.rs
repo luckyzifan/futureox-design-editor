@@ -1,19 +1,5 @@
-//! Rendering telemetry — the counter that proves render count is not frame
-//! count.
-//!
-//! Sketch's `MSRenderingTelemetry` keeps `rasterisationStatistics` with
-//! `beginRasterisation
-//! WithPixelCount:` / `endRasterisation` pairs, a parallel overlay stack, and
-//! reports `rasterisationDuration:pixelCount:frameCount:overlayDuration:
-//! overlayCount:` — five numbers in which rasterisation events and frames are
-//! deliberately independent axes. This module is that contract: the tiled
-//! renderer opens a rasterisation span per actual tile repaint (never per
-//! presented frame), a frame counter advances on every composition, and the
-//! ring buffer bounds memory exactly like `maxStatistics`.
-//!
-//! Wall-clock durations are optional: `std::time::Instant` does not exist on
-//! the wasm target, so counts are always recorded and timing only where a
-//! monotonic clock exists. Tests rely on counts alone.
+//! Rendering diagnostics for frame work, cache activity and resource usage.
+//! Counters describe the observed stage; completion and presentation are separate.
 
 /// One completed rasterisation span: how many device pixels were repainted
 /// and, when a clock exists, how long the span took.
@@ -23,8 +9,6 @@ pub struct RasterStatistic {
     pub duration_ms: Option<f64>,
 }
 
-/// One completed overlay rasterisation span (item count, not pixels —
-/// overlays are vector items in the dump's model).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OverlayStatistic {
     pub item_count: u64,
@@ -225,31 +209,7 @@ impl RenderingTelemetry {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Figma engine memory telemetry axes: `_totalGpuMemory`,
-// `_texturesMemory`, `_vertexBuffersMemory`, `_renderBuffersMemory`,
-// `_uniformBuffersMemory`.
-//
-// The binding between these five axes and the four ledger counters is not
-// publicly documented (the axis slots are i32). The mapping below is by
-// resource role and is recorded as an inference, with our four buckets
-// (`memory::GpuMemoryCategory`) as the source of truth:
-//
-// | Figma axis              | our bucket        | role                          |
-// |-------------------------|-------------------|-------------------------------|
-// | texturesMemory          | Texture           | texture bytes                 |
-// | vertexBuffersMemory     | FixedArray        | countxcountx4 arrays          |
-// | uniformBuffersMemory    | Buffer            | lazy GPU buffers              |
-// | renderBuffersMemory     | Blob              | CPU-copied blobs              |
-// | totalGpuMemory          | sum of all four   | renderer GPU total            |
-//
-// Units: we report bytes (u64). Figma's axis slots are i32 and its display
-// strings use `>> 20` MB conversions, so the slots plausibly hold MB —
-// unverified in the evidence; hosts convert as needed.
-// ---------------------------------------------------------------------------
 
-/// Figma's five GPU memory telemetry axes, derived from the kernel's
-/// four-bucket GPU memory ledger.
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FigmaGpuMemoryAxes {
@@ -370,7 +330,7 @@ mod tests {
         assert_eq!(
             axes.total_gpu_memory,
             (1 << 20) + 4096 + 512 + 256,
-            "total axis is the four-bucket sum (Figma #46443)"
+            "total axis is the sum of all four memory categories"
         );
         // Peaks never leak into the gauge axes: they report live values.
         ledger.free(GpuMemoryCategory::Texture, 1 << 20);

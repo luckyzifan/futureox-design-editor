@@ -486,8 +486,6 @@ impl GlassParameters {
     pub fn bevel_size(&self) -> f64 {
         self.bevel_size.unwrap_or(1.)
     }
-    /// Figma's authored dispersion is scaled in the render-parameter getter.
-    /// Keep the saved/UI value intact and round both shader input stages.
     pub fn chromatic_aberration(&self) -> f32 {
         (self.dispersion as f32) * 0.2_f32
     }
@@ -497,8 +495,6 @@ impl GlassParameters {
 pub struct TextureParameters {
     pub noise_size: [f64; 2],
     pub clip_to_shape: bool,
-    /// Default/reference field is the recovered GRAIN shader numeric program.
-    /// Gabor and SVG Perlin are explicit optional authored materials.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub noise: Option<String>,
 }

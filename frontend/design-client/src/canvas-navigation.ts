@@ -38,7 +38,6 @@ function rowSort(a: Bounds, b: Bounds): number {
   return 0
 }
 
-/** Top-level frames and sections in Figma's canvas reading order. */
 export function orderedFrames(doc: DesignDocument, pageId: string): { id: string; bounds: Bounds }[] {
   return scene(doc, pageId)
     .filter(entry => entry.depth === 0 && doc.nodes[entry.id]?.visible && (doc.nodes[entry.id].kind === 'frame' || doc.nodes[entry.id].kind === 'section'))

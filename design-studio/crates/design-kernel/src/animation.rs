@@ -14,9 +14,6 @@ use std::collections::HashSet;
 pub enum Easing {
     #[default]
     Linear,
-    /// A named preset from Figma's 21-function easing library
-    /// (Penner equations: sine/quad/cubic/quart/quint/expo/circ
-    /// × in/out/inOut).
     Named { name: String },
     Hold,
     Cubic {
@@ -66,8 +63,6 @@ impl Easing {
             Err("Invalid animation easing".into())
         }
     }
-    /// Figma's 21 named easing presets: standard Penner equations, each
-    /// in/out/inOut.
     pub fn named_curve(curve: &str, t: f64) -> Option<f64> {
         let result = match curve {
             "ease-in-sine" => 1. - (t * std::f64::consts::PI / 2.).cos(),

@@ -1,14 +1,6 @@
-//! Inferred auto-layout: deriving stack parameters from a static frame's
-//! child geometry, replicating the thresholds decoded from the reference
-//! engine's layout-inference solver (`wasm-function_41951`).
-//!
-//! Decoded constants (WAT provenance in comments):
-//! - 200.0 / 80.0  initial spacing-class thresholds (@600/@608)
-//! - 400.0        narrow-container single-column cutoff (@787)
-//! - 1000.0       large-container padding-cap switch (@1512)
-//! - 180.0 / 80.0 padding caps for large / small containers (@1512-1515)
-//! - 125.0 / 500.0 banner width / height headroom over the row minimum
-//!   (@14258/@14221: child > min + headroom ⇒ banner child)
+//! Infer stack direction, spacing and padding from child geometry.
+//! Container thresholds bound padding; oversized children stay outside the flow.
+
 use crate::scene::{Document, Node};
 use serde::{Deserialize, Serialize};
 
@@ -37,15 +29,10 @@ pub struct InferredLayout {
     /// uniformly spaced (no stack inferred).
     pub gap: Option<f64>,
     pub padding: [f64; 4],
-    /// Children whose width exceeds the row minimum by the banner headroom;
-    /// the reference engine treats these as full-bleed sections and keeps
-    /// them out of the inferred flow.
     pub banner_children: Vec<String>,
     pub flow_order: Vec<String>,
 }
 
-/// Padding cap scales with container size: large containers may infer up to
-/// `PAD_CAP_LARGE`, small ones up to `PAD_CAP_SMALL` (@1512 `select`).
 pub fn padding_cap(container_extent: f64) -> f64 {
     if container_extent > LARGE_CONTAINER {
         PAD_CAP_LARGE
@@ -90,8 +77,6 @@ pub fn infer(doc: &Document, frame_id: &str) -> InferredLayout {
     // Children are measured in the parent's local basis, including after Scale.
     let (fw, fh) = (frame.width, frame.height);
 
-    // Banner children: extent beyond the row minimum by the decoded
-    // headroom (width 125 / height 500) leave the inferred flow (@14258).
     let min_w = boxes.iter().map(|b| b.2).fold(f64::INFINITY, f64::min);
     let min_h = boxes.iter().map(|b| b.3).fold(f64::INFINITY, f64::min);
     let mut flow: Vec<usize> = Vec::new();
@@ -137,7 +122,7 @@ pub fn infer(doc: &Document, frame_id: &str) -> InferredLayout {
                 return None; // overlapping along this axis
             }
             if gap > LOOSE_SPACING {
-                return None; // @600: too loose to infer a stack
+                return None; // Too loose to infer a stack.
             }
             gaps.push(gap);
         }
@@ -181,8 +166,6 @@ pub fn infer(doc: &Document, frame_id: &str) -> InferredLayout {
         InferredDirection::None => None,
     };
 
-    // Padding from the flow bounds, clamped through the decoded size-scaled
-    // cap (@1512): padding = min(observed, cap).
     let cap = padding_cap(if out.direction == InferredDirection::Vertical {
         fw
     } else {

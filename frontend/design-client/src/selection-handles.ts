@@ -64,13 +64,6 @@ export function formatAngleDegrees(degrees: number): string {
   return (Object.is(wrapped, -0) ? 0 : Math.round(wrapped * 100) / 100).toFixed(2)
 }
 
-/**
- * Pointer arc around `center`. `initialDegrees` is the object's clockwise
- * angle at pointer-down (`atan2(m10, m00)`). Positive results are clockwise,
- * matching Mac Figma's design panel. The matrix is that same arc, so the
- * object follows the hand. Shift snaps the absolute angle to 15°.
- * Kernel twin: `figma_rotation::rotation_drag`.
- */
 export function selectionRotation(center: Point, start: Point, end: Point, initialDegrees: number, snap: boolean): { matrix: Matrix; degrees: number } {
   const raw = normalizeDegrees((Math.atan2(end.y - center.y, end.x - center.x) - Math.atan2(start.y - center.y, start.x - center.x)) * 180 / Math.PI)
   const absolute = initialDegrees + raw

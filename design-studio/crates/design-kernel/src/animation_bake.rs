@@ -1,3 +1,6 @@
+//! Animation bake sessions: validate inputs, cache versioned clip data and
+//! return owned handles for playback sampling.
+
 //! Smart Animate bake track: in-flight mutual exclusion and the baked-plan
 //! result cache.
 //!
@@ -30,7 +33,6 @@ use crate::animation_plan::PlanTree;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-/// Figma's structured bake-error constructor arguments: `#899(2, 'bake', …)`.
 const BAKE_CONFLICT_KIND: u32 = 2;
 const BAKE_CONFLICT_TAG: &str = "bake";
 /// The engine's exact conflict message
@@ -90,17 +92,12 @@ struct RegistryState {
     next_token: u64,
 }
 
-/// The structured conflict error: the engine returns an error *value* built
-/// by `#899` (kind / tag / source file / line / message) instead of
-/// throwing, and we keep that shape — plus both frame pairs, because our
-/// kernel reports carry the data needed to act on the conflict.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BakeConflict {
     /// The engine's error kind for bake conflicts (`2`).
     pub kind: u32,
     /// The engine's error tag (`"bake"`).
     pub tag: &'static str,
-    /// Source file of the conflict detection (ours, not Figma's).
     pub source_file: &'static str,
     /// Source line of the conflict detection.
     pub line: u32,
@@ -200,8 +197,6 @@ impl SaBakeRegistry {
         )
     }
 
-    /// Register a bake over explicit frame references (the 4-way endpoint
-    /// comparison core, `#25970` @`147735a-14773b5`).
     pub fn begin_bake_for(
         &self,
         start: SaFrameRef,
@@ -351,9 +346,6 @@ impl SaPlanCache {
         }
     }
 
-    /// Look up a baked plan for the frame pair, validating the version
-    /// triple the way `#25962` does: triple equality is a hit; a mismatch
-    /// *invalidates the slot* (it is dropped, not served) and counts a miss.
     pub fn lookup(&self, key: &SaPlanCacheKey, version: SaVersionTriple) -> Option<Arc<PlanTree>> {
         let mut state = lock(&self.state);
         state.stats.lookups += 1;
@@ -404,10 +396,6 @@ impl SaPlanCache {
         self.len() == 0
     }
 
-    /// Drop every slot and reset the counters. Our bulk-invalidation
-    /// counterpart; the engine instead lazily clears its interning table on
-    /// an epoch byte (`#7913`), a mechanism we do not port (recorded as
-    /// unaligned — who resets the epoch was not identified).
     pub fn clear(&self) {
         let mut state = lock(&self.state);
         state.slots.clear();

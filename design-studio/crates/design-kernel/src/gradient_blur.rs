@@ -1,17 +1,6 @@
-//! Gradient-modulated blur, decoded from the reference engine's two shader
-//! tiers (extracted source semantics):
-//!
-//! ```glsl
-//! t = clamp(dot(px - start, end - start) / dot(end - start, end - start), 0, 1)
-//! b = (endCount - startCount) * t + startCount        // local blur strength
-//! if (b < 1) { out = sharp }
-//! else {
-//!   q = (b-1)*(b-1) + 2*(b-1)
-//!   tier A: w_blur = b*b            w_sharp = (2q)^2
-//!   tier B: w_blur = b*b            w_sharp = q^2      // sharper falloff
-//!   out = (w_blur * blurred + w_sharp * sharp) / (w_blur + w_sharp)
-//! }
-//! ```
+//! Gradient blur: project a point onto an anchor segment, interpolate strength,
+//! then blend sharp and blurred samples using the selected weight curve.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,13 +42,8 @@ impl GradientBlur {
         self.start_count + (self.end_count - self.start_count) * t
     }
 
-    /// Blend weights at strength `b`: `(w_blur, w_sharp)`.
-    /// Below strength 1 the sharp layer passes through untouched.  Above
-    /// it the blur weight follows the steep quadratic curve (the shader's
-    /// `(2q)^2` / `q^2` tiers) so strength drives blur; the extracted
-    /// shader's texture-slot binding carries no call-site evidence, so the
-    /// direction here matches our pipeline (blurred layer grows with
-    /// strength), documented as an interpretation.
+    /// Return blurred and sharp weights. Strength below one preserves the
+    /// sharp sample; higher strengths follow the selected quadratic blend curve.
     pub fn weights(&self, b: f64) -> (f64, f64) {
         if b < 1. {
             return (0., 1.);

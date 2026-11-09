@@ -1,7 +1,5 @@
 import type { Point } from './model'
 
-/** Snap a point onto the nearest `step` ray from `origin`, keeping its distance.
- * Figma's pen uses 45° while Shift is held. */
 export function constrainAngle(origin: Point, point: Point, step = Math.PI / 4): Point {
   const dx = point.x - origin.x, dy = point.y - origin.y
   const length = Math.hypot(dx, dy)

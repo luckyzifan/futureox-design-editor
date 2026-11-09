@@ -10,13 +10,6 @@ export function planTilesAligned(bounds: {x:number;y:number;width:number;height:
   return addresses.map(([x,y])=>({key:`${zoom}:${phase.x}:${phase.y}:${x}:${y}`,x:x*TILE_SIDE-1,y:y*TILE_SIDE-1,width:TILE_SIDE+2,height:TILE_SIDE+2,gutter:1,zoom,phaseX:phase.x,phaseY:phase.y})).sort((a,b)=>Math.hypot(a.x+half-cx,a.y+half-cy)-Math.hypot(b.x+half-cx,b.y+half-cy))
 }
 
-/** Default prefetch rim: one ring of tiles around the viewport set. Figma's
- * viewer populates a rim by expanding its bounds by one viewport HEIGHT on
- * every side before prioritizing (`e = rw.new3(viewport); e.expandedBy1(
- * viewport.height())` in drawOnScreenTiles, viewer-tile-scheduler.js); this
- * product expresses the rim in whole tile rings on the same world grid, so a
- * pan reveals prefetched tiles deterministically. 0 disables the rim and
- * keeps the pre-rim planner output byte-for-byte. */
 export const DEFAULT_TILE_PREFETCH_RINGS = 1
 /** Upper clamp for the host override: the plan limit (<= 256 tiles) already
  * bounds how much of a wider rim can ever be scheduled; the clamp only keeps
@@ -36,13 +29,6 @@ export type TilePrefetchRimPlan = {
   cacheLimitSkipped: number
 }
 
-/** Viewport plan plus a prefetch rim of outer tile rings. Rim addresses are
- * the neighbours of the viewport set on the SAME phase-shifted world grid the
- * Rust planner produced, so ring geometry is exact (no second Rust call, no
- * float-boundary drift); only the viewport set is ever Rust-addressed. The
- * rim never trims the viewport: when the plan limit is exhausted, the
- * farthest rings are skipped and reported as cache-limit skips (the analog of
- * Figma's `offscreenHitCacheLimit_` SKIPPED tiles). */
 export function planTilesWithPrefetchRim(
   bounds: { x: number; y: number; width: number; height: number },
   zoom: number,
@@ -91,8 +77,6 @@ export function planTilesWithPrefetchRim(
         },
       })
     }
-  // Nearest ring first; within a ring, stable row order (y, then x) — the
-  // order Figma's row-major population produces for equal-distance ties.
   ranked.sort((a, b) => a.ring - b.ring || a.tile.y - b.tile.y || a.tile.x - b.tile.x)
   const allowance = Math.max(0, limit - viewport.length)
   const kept = ranked.slice(0, allowance)

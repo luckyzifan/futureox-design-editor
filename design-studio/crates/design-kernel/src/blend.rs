@@ -104,11 +104,6 @@ impl Pixel {
     pub(crate) fn over_rgba8_mode(self, source: Self, opacity: f32, mode: BlendMode) -> Self {
         let dst = self.0.map(|v| (v * 255.).round_ties_even() as u32);
         let src = source.0.map(|v| (v * 255.).round_ties_even() as u32);
-        // UNORM16 opacity and byte color keep all composite arithmetic exact
-        // in u32 on both GPUs. For premultiplied channels src[c] <= src[3],
-        // numerator <= 255 * 255 * 65535 = 4_261_413_375 (no overflow).
-        // This is our deterministic numeric model, not a claim about Figma's
-        // private implementation. Reference PNGs verify its visible behavior.
         let weight = (opacity.clamp(0., 1.) * 65535.).round_ties_even() as u32;
         const DENOMINATOR: u32 = 255 * 65535;
         Self(std::array::from_fn(|c| {

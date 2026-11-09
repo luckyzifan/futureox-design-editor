@@ -21,10 +21,6 @@ pub(crate) fn layer_blur_active(
     if radius <= 0. {
         return false;
     }
-    // The interactive tier degrades managed documents exactly as measured on
-    // Figma's interactive canvas (figma-blur-threshold-2026-10-08.json):
-    // sub-half-pixel layer blurs skip. Full math stays the default for
-    // exports and desktop hosts.
     (managed && !interactive_effects)
         || profile == RasterProfile::Analytic
         || radius >= if profile.is_export() { 1. } else { 0.5 }
@@ -34,11 +30,6 @@ pub(crate) fn layer_blur_active(
 // The document's unrelated paints/effects must never choose a different
 // quantization graph for existing pixels.
 pub(crate) fn coherent_samples(doc: &crate::scene::Document, options: &RenderOptions) -> bool {
-    // The interactive tier degrades managed documents to single-plane
-    // sampling: Figma's interactive canvas is the measured single-sampled
-    // byte domain, and correlated sample planes hold four full layer sets —
-    // the allocation that tips large managed documents over the compositing
-    // budget. Exports and desktop full-math frames keep correlated sampling.
     options.raster_profile != RasterProfile::Analytic
         && !(doc.color_management.is_some() && options.interactive_effects)
 }

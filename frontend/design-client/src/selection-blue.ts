@@ -1,6 +1,3 @@
-/** Mac desktop Figma selection blue from gaps5 (about #4597F7, ~1pt).
- * The workspace accent stays #3459d4. This blue is only the canvas box,
- * hover outline, corner rims, selected frame titles, and the size pill. */
 export const SELECTION_BLUE = '#4597f7'
 /** Hover uses the same blue as the selection stroke. It has no handles and no size pill. */
 export const HOVER_BLUE = SELECTION_BLUE

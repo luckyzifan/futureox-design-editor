@@ -60,8 +60,6 @@ export type ImageAdjust = {
   highlights: number
   shadows: number
   color: number
-  /** Lab-L midpoint split (value·100). Figma's uploaded default is not
-   * observable; 0.5 (L=50) is our documented assumption. */
   highlightShadowThreshold?: number
 }
 export const defaultImageAdjust = (): ImageAdjust => ({
@@ -76,10 +74,6 @@ export const defaultImageAdjust = (): ImageAdjust => ({
 })
 export const isIdentityImageAdjust = (a: ImageAdjust): boolean =>
   !a.exposure && !a.contrast && !a.temperature && !a.tint && !a.highlights && !a.shadows && !a.color
-/** Pattern tiling on image paints, Figma's pattern-fill shader pair
- * (fragment + vertex): `patternTileType`
- * 0 = regular grid, 1 = horizontal stagger (rows shifted half a tile along
- * x), 2 = vertical stagger (columns shifted half a tile along y). */
 export type PatternTileMode = 'none' | 'grid' | 'stagger_horizontal' | 'stagger_vertical'
 export type PatternTile = {
   mode: PatternTileMode
