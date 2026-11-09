@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 项目文档 / Documentation
+    url: https://github.com/luckyzifan/futureoxDesgin/blob/main/docs/README.md
+    about: 查找架构、功能与测试说明 / Browse architecture, features, and testing guides.
+  - name: 参与贡献 / Contributing
+    url: https://github.com/luckyzifan/futureoxDesgin/blob/main/CONTRIBUTING.md
+    about: 了解开发环境和 PR 流程 / Set up development and prepare a pull request.
