@@ -12,6 +12,7 @@ function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,st
 const NULL_STYLE = new Set(['4294967295:4294967295', '0:0'])
 const STROKE_INPUTS = ['strokeWeight','strokeAlign','strokeCap','strokeJoin','dashPattern','borderStrokeWeightsIndependent','borderTopWeight','borderRightWeight','borderBottomWeight','borderLeftWeight']
 const LAYOUT_KEYS = ['stackMode','stackSpacing','stackCounterSpacing','stackHorizontalPadding','stackVerticalPadding','stackPaddingRight','stackPaddingBottom','stackPadding','stackWrap','stackPrimaryAlignItems','stackCounterAlignItems','stackPrimarySizing','stackCounterSizing','stackPositioning','stackChildPrimaryGrow','stackChildAlignSelf','minSize','maxSize','horizontalConstraint','verticalConstraint']
+const FONT_KEYS = ['fontVariantCommonLigatures','fontVariantContextualLigatures','fontVariantDiscretionaryLigatures','fontVariantHistoricalLigatures','fontVariantOrdinal','fontVariantSlashedZero','fontVariantNumericFigure','fontVariantNumericSpacing','fontVariantNumericFraction','fontVariantCaps','fontVariantPosition','toggledOnOTFeatures','toggledOffOTFeatures','fontVariations']
 const BINDING_FIELDS: Record<string, string> = {
   WIDTH: 'width', HEIGHT: 'height', OPACITY: 'opacity', VISIBLE: 'visible', TEXT_DATA: 'text',
   FONT_SIZE: 'fontSize', STACK_SPACING: 'layout.gap', STACK_COUNTER_SPACING: 'layout.lineGap',
@@ -94,11 +95,13 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       const sourceKey = [...ids].find(([, id]) => id === targetId)?.[0]
       const source = sourceKey ? records.get(sourceKey) : undefined
       const fields:Record<string,unknown>={}
-      const skip = new Set(['guidPath','overrideKey','styleID','guid','phase','parentIndex','type','cornerRadius','cornerSmoothing','size','textData','effects','pluginData','derivedTextData','variableConsumptionMap','parameterConsumptionMap','variableModeBySetMap','stackReverseZIndex','styleIdForGrid',...STROKE_INPUTS,...LAYOUT_KEYS,...Object.keys(STYLE_FIELDS),'textAlignHorizontal','textAlignVertical','textAutoResize','lineHeight','letterSpacing','paragraphSpacing','paragraphIndent','textCase','fontName','textDecoration','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius','rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius'])
+      const skip = new Set(['guidPath','overrideKey','styleID','guid','phase','parentIndex','type','cornerRadius','cornerSmoothing','size','textData','effects','pluginData','derivedTextData','variableConsumptionMap','parameterConsumptionMap','variableModeBySetMap','stackReverseZIndex','styleIdForGrid',...STROKE_INPUTS,...LAYOUT_KEYS,...Object.keys(STYLE_FIELDS),...FONT_KEYS,'textAlignHorizontal','textAlignVertical','textAutoResize','lineHeight','letterSpacing','paragraphSpacing','paragraphIndent','textCase','fontName','textDecoration','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius','rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius'])
       for(const [key,value] of Object.entries(override)) {
         if(Array.isArray(override.strokePaints) && STROKE_INPUTS.includes(key)) continue
         if(skip.has(key)) continue
         if(['name','visible','opacity','fontSize'].includes(key)) fields[key]=value
+        else if(key==='proportionsConstrained' && typeof value==='boolean') fields.constrainProportions=value
+        else if(key==='proportionsConstrained') warnings?.add('FIG 实例覆盖 proportionsConstrained 暂不能执行，其余覆盖已保留')
         else if(key==='textData') fields.text=(value as any)?.characters??''
         else if(key==='fillPaints') fields.fills=(value as any[]).map(toPaint)
         else if(key==='strokePaints') fields.strokes=strokesOf(override)
@@ -208,7 +211,103 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
     else if(override.textAutoResize === 'HEIGHT' || override.textAutoResize === 'NONE' || override.textAutoResize === 'TRUNCATE') { style.wrap = true; changed = true }
     else warnings?.add('FIG 实例覆盖 textAutoResize 暂不能执行，其余覆盖已保留')
   }
+  if(applyOpenType(style, override, warnings)) changed = true
   if(changed) fields.textStyle = style
+}
+
+function setFeature(features: string[], tag: string, enabled: boolean) {
+  const disabled = `-${tag}`
+  const next = features.filter(feature => feature !== tag && feature !== disabled)
+  next.push(enabled ? tag : disabled)
+  features.splice(0, features.length, ...next)
+}
+
+function clearFeatures(features: string[], tags: string[]) {
+  const next = features.filter(feature => !tags.some(tag => feature === tag || feature === `-${tag}`))
+  features.splice(0, features.length, ...next)
+}
+
+function chooseFeature(features: string[], tags: string[], selected?: string) {
+  clearFeatures(features, tags)
+  if(selected) setFeature(features, selected, true)
+}
+
+function applyOpenType(style: ReturnType<typeof defaultTextStyle>, override: any, warnings?: { add(message: string): unknown }) {
+  const features = [...(style.features ?? [])]
+  const variations = [...(style.variations ?? [])]
+  let changed = false
+  const flag = (key: string, tags: string[]) => {
+    if(override[key] === undefined) return
+    if(typeof override[key] !== 'boolean') { warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`); return }
+    for(const tag of tags) setFeature(features, tag, override[key])
+    changed = true
+  }
+  flag('fontVariantCommonLigatures', ['liga', 'clig'])
+  flag('fontVariantContextualLigatures', ['calt'])
+  flag('fontVariantDiscretionaryLigatures', ['dlig'])
+  flag('fontVariantHistoricalLigatures', ['hlig'])
+  flag('fontVariantOrdinal', ['ordn'])
+  flag('fontVariantSlashedZero', ['zero'])
+  const choice = (key: string, tags: string[], selected: Record<string, string | undefined>) => {
+    if(override[key] === undefined) return
+    if(!Object.hasOwn(selected, override[key])) { warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`); return }
+    chooseFeature(features, tags, selected[override[key]])
+    changed = true
+  }
+  choice('fontVariantNumericFigure', ['lnum', 'onum'], { NORMAL: undefined, LINING: 'lnum', OLDSTYLE: 'onum' })
+  choice('fontVariantNumericSpacing', ['pnum', 'tnum'], { NORMAL: undefined, PROPORTIONAL: 'pnum', TABULAR: 'tnum' })
+  choice('fontVariantNumericFraction', ['frac', 'afrc'], { NORMAL: undefined, DIAGONAL: 'frac', STACKED: 'afrc' })
+  if(override.fontVariantCaps !== undefined) {
+    const caps = ['smcp', 'c2sc', 'pcap', 'c2pc', 'unic', 'titl']
+    const selected: Record<string, string[]> = {
+      NORMAL: [], SMALL: ['smcp'], ALL_SMALL: ['smcp', 'c2sc'], PETITE: ['pcap'], ALL_PETITE: ['pcap', 'c2pc'], UNICASE: ['unic'], TITLING: ['titl'],
+    }
+    const tags = selected[override.fontVariantCaps]
+    if(!tags) warnings?.add('FIG 实例覆盖 fontVariantCaps 暂不能执行，其余覆盖已保留')
+    else { clearFeatures(features, caps); for(const tag of tags) setFeature(features, tag, true); changed = true }
+  }
+  choice('fontVariantPosition', ['subs', 'sups'], { NORMAL: undefined, SUB: 'subs', SUPER: 'sups' })
+  for(const [key, enabled] of [['toggledOnOTFeatures', true], ['toggledOffOTFeatures', false]] as const) {
+    if(override[key] === undefined) continue
+    if(!Array.isArray(override[key])) { warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`); continue }
+    for(const tag of override[key]) {
+      const name = typeof tag === 'string' ? tag.toLowerCase() : ''
+      if(name.length === 4 && /^[a-z0-9]+$/.test(name)) { setFeature(features, name, enabled); changed = true }
+      else warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
+    }
+  }
+  if(override.fontVariations !== undefined) {
+    if(!Array.isArray(override.fontVariations)) warnings?.add('FIG 实例覆盖 fontVariations 暂不能执行，其余覆盖已保留')
+    else for(const variation of override.fontVariations) {
+      const value = variation?.value
+      const tag = typeof variation?.axisTag === 'number'
+        ? String.fromCharCode((variation.axisTag >>> 24) & 255, (variation.axisTag >>> 16) & 255, (variation.axisTag >>> 8) & 255, variation.axisTag & 255)
+        : variation?.axisName
+      if(typeof value !== 'number' || !Number.isFinite(value) || typeof tag !== 'string' || !/^[A-Za-z0-9]{4}$/.test(tag)) {
+        warnings?.add('FIG 实例覆盖 fontVariations 暂不能执行，其余覆盖已保留')
+        continue
+      }
+      if(tag.toLowerCase() === 'wght') {
+        if(value >= 1 && value <= 1000) { style.weight = value; changed = true }
+        else warnings?.add('FIG 实例覆盖 fontVariations 暂不能执行，其余覆盖已保留')
+        continue
+      }
+      if(Math.abs(value) > 10000) { warnings?.add('FIG 实例覆盖 fontVariations 暂不能执行，其余覆盖已保留'); continue }
+      const index = variations.findIndex(axis => axis.tag === tag)
+      if(index >= 0) variations.splice(index, 1)
+      variations.push({ tag, value })
+      changed = true
+    }
+  }
+  if(features.length > 16 || variations.length > 16) {
+    for(const key of FONT_KEYS) if(override[key] !== undefined) warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
+    return false
+  }
+  if(changed) {
+    style.features = features
+    style.variations = variations
+  }
+  return changed
 }
 
 function distance(record: any, field: string, fallback = 0) {
@@ -217,40 +316,78 @@ function distance(record: any, field: string, fallback = 0) {
   return value
 }
 
-function applyLayout(fields: Record<string, unknown>, override: any, target: any, source: any, _records: Map<string, any>, warnings?: { add(message: string): unknown }) {
+function applyLayout(fields: Record<string, unknown>, override: any, target: any, source: any, records: Map<string, any>, warnings?: { add(message: string): unknown }) {
   if(override.stackReverseZIndex === true) warnings?.add('FIG 实例覆盖 stackReverseZIndex 暂不能执行，其余覆盖已保留')
-  if(!LAYOUT_KEYS.some(key => override[key] !== undefined) || !target || !source) return
-  const record = { ...source, ...Object.fromEntries(LAYOUT_KEYS.filter(key => override[key] !== undefined).map(key => [key, override[key]])) }
+  const present = LAYOUT_KEYS.filter(key => override[key] !== undefined)
+  if(!present.length) return
+  if(!target || !source) {
+    for(const key of present) warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
+    return
+  }
+  const record = { ...source, ...Object.fromEntries(present.map(key => [key, override[key]])) }
   const mode = record.stackMode === 'HORIZONTAL' ? 'horizontal' : record.stackMode === 'VERTICAL' ? 'vertical' : record.stackMode === 'NONE' || record.stackMode === undefined ? 'none' : undefined
-  if(!mode) { warnings?.add('FIG 实例覆盖自动布局字段暂不能执行，其余覆盖已保留'); return }
+  if(!mode) { for(const key of present) warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`); return }
   if(mode !== 'none') {
-    if(!['frame','group','section'].includes(target.kind)) { warnings?.add('FIG 实例覆盖自动布局字段暂不能执行，其余覆盖已保留'); return }
+    if(!['frame','group','section'].includes(target.kind)) { for(const key of present) warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`); return }
     const horizontal = distance(record, 'stackHorizontalPadding')
     const vertical = distance(record, 'stackVerticalPadding')
     const gap = distance(record, 'stackSpacing')
     const right = distance(record, 'stackPaddingRight', horizontal)
     const bottom = distance(record, 'stackPaddingBottom', vertical)
     if([horizontal, vertical, gap, right, bottom].some(value => value === undefined)) {
-      warnings?.add('FIG 实例覆盖自动布局字段暂不能执行，其余覆盖已保留')
+      for(const key of present) warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
       return
     }
+    const justify = { MIN: 'start', CENTER: 'unsafe-center', MAX: 'unsafe-end', SPACE_BETWEEN: 'space-between', SPACE_EVENLY: 'space-evenly', SPACE_AROUND: 'space-around' } as Record<string, string>
+    const counterAlign = { MIN: 'start', CENTER: 'unsafe-center', MAX: 'unsafe-end' } as Record<string, string>
     const layout = {
       ...defaultLayout(),
       ...(target.layout ?? {}),
       mode,
       gap,
+      lineGap: distance(record, 'stackCounterSpacing', gap ?? 0) ?? gap,
       padding: [vertical, right, bottom, horizontal],
+      wrap: record.stackWrap === 'WRAP',
+      justify: justify[record.stackPrimaryAlignItems] ?? 'start',
+      align: counterAlign[record.stackCounterAlignItems] ?? 'start',
     }
+    if(record.stackPrimaryAlignItems !== undefined && !justify[record.stackPrimaryAlignItems]) warnings?.add('FIG 实例覆盖 stackPrimaryAlignItems 暂不能执行，其余覆盖已保留')
+    if(record.stackCounterAlignItems !== undefined && !counterAlign[record.stackCounterAlignItems]) warnings?.add('FIG 实例覆盖 stackCounterAlignItems 暂不能执行，其余覆盖已保留')
+    if(record.stackWrap !== undefined && record.stackWrap !== 'WRAP' && record.stackWrap !== 'NO_WRAP') warnings?.add('FIG 实例覆盖 stackWrap 暂不能执行，其余覆盖已保留')
     fields.layout = layout
     const sizing = { ...(target.sizing ?? defaultSizing()) }
-    const primary = record.stackPrimarySizing === 'FIXED' ? 'fixed' : 'hug'
-    const counter = record.stackCounterSizing === 'RESIZE_TO_FIT' || record.stackCounterSizing === 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE' ? 'hug' : 'fixed'
+    const primary = record.stackPrimarySizing === 'FIXED' ? 'fixed' : record.stackPrimarySizing === 'RESIZE_TO_FIT' || record.stackPrimarySizing === 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE' || record.stackPrimarySizing === undefined ? 'hug' : undefined
+    const counter = record.stackCounterSizing === 'RESIZE_TO_FIT' || record.stackCounterSizing === 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE' ? 'hug' : record.stackCounterSizing === 'FIXED' || record.stackCounterSizing === undefined ? 'fixed' : undefined
+    if(!primary || !counter) { warnings?.add('FIG 实例覆盖自动布局尺寸暂不能执行，其余覆盖已保留'); return }
     sizing.width = mode === 'horizontal' ? primary : counter
     sizing.height = mode === 'horizontal' ? counter : primary
     fields.sizing = sizing
   }
+  const parent = records.get(guid(source.parentIndex?.guid))
+  const parentMode = parent?.stackMode
+  const parentLayout = parentMode === 'HORIZONTAL' || parentMode === 'VERTICAL'
   const sizing = { ...((fields.sizing as object | undefined) ?? target.sizing ?? defaultSizing()) } as Record<string, unknown>
   let sized = fields.sizing !== undefined
+  if(parentLayout && record.stackPositioning !== undefined) {
+    if(record.stackPositioning === 'AUTO' || record.stackPositioning === 'ABSOLUTE') {
+      sizing.absolute = record.stackPositioning === 'ABSOLUTE'
+      sized = true
+    } else warnings?.add('FIG 实例覆盖 stackPositioning 暂不能执行，其余覆盖已保留')
+  }
+  if(parentLayout && sizing.absolute !== true) {
+    const grow = record.stackChildPrimaryGrow
+    const selfAlign = { MIN: 'start', CENTER: 'center', MAX: 'end', STRETCH: 'stretch' } as Record<string, string>
+    if(record.stackChildAlignSelf !== undefined && record.stackChildAlignSelf !== 'AUTO' && !selfAlign[record.stackChildAlignSelf]) {
+      warnings?.add('FIG 实例覆盖 stackChildAlignSelf 暂不能执行，其余覆盖已保留')
+    }
+    if(typeof grow === 'number' && grow !== 0 && grow !== 1) warnings?.add('FIG 实例覆盖 stackChildPrimaryGrow 暂不能执行，其余覆盖已保留')
+    else if(grow === 1 || selfAlign[record.stackChildAlignSelf]) {
+      if(grow === 1) sizing[parentMode === 'HORIZONTAL' ? 'width' : 'height'] = 'fill'
+      if(selfAlign[record.stackChildAlignSelf] === 'stretch') sizing[parentMode === 'HORIZONTAL' ? 'height' : 'width'] = 'fill'
+      if(selfAlign[record.stackChildAlignSelf]) sizing.alignSelf = selfAlign[record.stackChildAlignSelf]
+      sized = true
+    }
+  }
   for(const [field, prefix] of [['minSize', 'min'], ['maxSize', 'max']] as const) {
     const value = record[field]?.value
     if(!value) continue

@@ -90,5 +90,49 @@ test('executable instance overrides land in kernel fields and consumption maps a
   const kept = receipts.get(instance.id)?.figOverrideVariableConsumption ?? ''
   expect(kept).toContain('STROKE_WEIGHT')
   expect(kept).toContain('parameterConsumptionMap')
-  void bound
+})
+
+test('in-file auto-layout and font variants execute while missing targets stay reported', () => {
+  const doc = blank('布局')
+  const main = node('frame', 0, 0, 200, 160)
+  const frame = node('frame', 0, 0, 80, 40)
+  const child = node('rectangle', 0, 0, 20, 20)
+  const text = node('text', 0, 0, 40, 16)
+  text.text = 'Ag'
+  const instance = node('frame', 0, 180, 200, 160)
+  main.children = [frame.id, child.id, text.id]
+  doc.nodes = { [main.id]: main, [frame.id]: frame, [child.id]: child, [text.id]: text, [instance.id]: instance }
+  const records = new Map<string, any>([
+    ['sym', { type: 'SYMBOL', stackMode: 'VERTICAL', stackSpacing: 4, stackHorizontalPadding: 2, stackVerticalPadding: 2 }],
+    ['frame', { type: 'FRAME', parentIndex: { guid: 'sym' }, stackMode: 'HORIZONTAL', stackSpacing: 4, stackHorizontalPadding: 1, stackVerticalPadding: 1 }],
+    ['child', { type: 'RECTANGLE', parentIndex: { guid: 'sym' } }],
+    ['text', { type: 'TEXT', parentIndex: { guid: 'sym' }, textData: { characters: 'Ag' }, fontSize: 16 }],
+    ['inst', { type: 'INSTANCE', symbolData: { symbolID: 'sym', symbolOverrides: [
+      { guidPath: { guids: ['frame'] }, stackSpacing: 12, stackHorizontalPadding: 6, stackVerticalPadding: 3, stackPaddingRight: 9, stackPrimarySizing: 'FIXED', proportionsConstrained: true },
+      { guidPath: { guids: ['child'] }, stackChildAlignSelf: 'STRETCH', stackChildPrimaryGrow: 1 },
+      { guidPath: { guids: ['text'] }, fontVariantCommonLigatures: false, fontVariantCaps: 'SMALL', toggledOnOTFeatures: ['KERN'], textTracking: 120, variableConsumptionMap: { entries: [{ variableField: 'RECTANGLE_TOP_LEFT_CORNER_RADIUS', variableData: { value: { alias: { guid: { sessionID: 9, localID: 3 } } } } }] } },
+      { guidPath: { guids: ['44:1'] }, stackPaddingRight: 4, fontVariantCaps: 'SMALL', fontVariantNumericFraction: 'NOT_A_FRACTION' },
+    ] } }],
+  ])
+  const ids = new Map([['sym', main.id], ['frame', frame.id], ['child', child.id], ['text', text.id], ['inst', instance.id]])
+  const warnings = new Set<string>()
+  const receipts = new Map<string, Record<string, string>>()
+  importFigComponents(doc, records, ids, () => paint('#000000'), () => [], { add: (message) => warnings.add(message) }, receipts)
+  const frameFields = doc.nodes[instance.id].instance!.overrides[frame.id]
+  expect((frameFields.layout as { gap: number; padding: number[] }).gap).toBe(12)
+  expect((frameFields.layout as { padding: number[] }).padding).toEqual([3, 9, 3, 6])
+  expect(frameFields.constrainProportions).toBe(true)
+  const childFields = doc.nodes[instance.id].instance!.overrides[child.id]
+  expect(childFields.sizing).toEqual(expect.objectContaining({ width: 'fill', height: 'fill', alignSelf: 'stretch' }))
+  const textFields = doc.nodes[instance.id].instance!.overrides[text.id]
+  expect((textFields.textStyle as { features: string[] }).features).toEqual(expect.arrayContaining(['-liga', '-clig', 'smcp', 'kern']))
+  const missing = doc.nodes[instance.id].instance!.overrides['44:1']
+  expect(missing.layout).toBeUndefined()
+  expect((missing.textStyle as { features: string[] }).features).toEqual(['smcp'])
+  const messages = [...warnings]
+  expect(messages.some(message => message.includes('stackPaddingRight'))).toBe(true)
+  expect(messages.some(message => message.includes('fontVariantNumericFraction'))).toBe(true)
+  expect(messages.some(message => message.includes('textTracking'))).toBe(true)
+  expect(messages.some(message => message.includes('fontVariantCaps') || message.includes('stackSpacing') || message.includes('stackChildAlignSelf'))).toBe(false)
+  expect(receipts.get(instance.id)?.figOverrideVariableConsumption).toContain('RECTANGLE_TOP_LEFT_CORNER_RADIUS')
 })
