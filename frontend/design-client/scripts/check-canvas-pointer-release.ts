@@ -324,7 +324,10 @@ try {
     await p.getByTestId('resize-2').click();await unmodified(before);passed('No-motion handle click preserves exact document and undo stack')
   }
   {
-    const {doc,b}=make('Pointer release vector anchor');await fresh(doc);await row(b.id).click();await canvas.focus();await p.keyboard.press('Enter')
+    const {doc,b}=make('Pointer release vector anchor');await fresh(doc);await row(b.id).click()
+    // Enter edits text only. A selected ellipse enters point editing from 绘图工具 → 编辑矢量.
+    await p.locator('button[aria-label="绘图工具"]').click()
+    await p.getByRole('menuitem',{name:'编辑矢量',exact:true}).click()
     await expect(canvas).toHaveClass(/canvas-vector/)
     const before=await stored(),anchor=p.getByTestId('vector-anchor').first(),box=(await anchor.boundingBox())!,v=await camera()
     const start={x:box.x+box.width/2,y:box.y+box.height/2}
