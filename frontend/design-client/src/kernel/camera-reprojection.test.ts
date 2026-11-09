@@ -84,6 +84,36 @@ test('a lower-density navigation preview still follows horizontal and upward whe
  f.projection.dispose()
 })
 
+test('a late zoom-out bitmap preserves the displayed camera while wider coverage is cold',()=>{
+ const f=fixture(),bounds={x:0,y:0,width:400,height:400}
+ const backing={...f.backing,view:{x:0,y:0,zoom:2}},target={x:0,y:0,zoom:1}
+ f.projection.update(backing,backing.view,100,80,true,bounds)
+ f.projection.update(backing,target,100,80,true,bounds)
+ // The worker completes intermediate cameras after the user has already
+ // zoomed farther out. Those bitmaps cover the held view, not the target.
+ for(const zoom of [1.75,1.5,1.25]){
+  const late={...backing,view:{x:0,y:0,zoom}}
+  f.projection.update(late,target,100,80,true,bounds)
+  expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(backing.view)
+  expect(f.canvas.style.transform).toBe(`translate(0px, 0px) scale(${2/zoom})`)
+ }
+ f.projection.update({...backing,view:target},target,100,80,true,bounds)
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(target)
+ expect(f.canvas.style.transform).toBe('')
+ f.projection.dispose()
+})
+
+test('a late bitmap cannot hold a camera whose artwork it does not cover',()=>{
+ const f=fixture(),bounds={x:0,y:0,width:400,height:400}
+ const backing={...f.backing,view:{x:0,y:0,zoom:2}},target={x:0,y:0,zoom:1}
+ f.projection.update(backing,backing.view,100,80,true,bounds)
+ const late={...backing,view:{x:-100,y:0,zoom:1.5}}
+ f.projection.update(late,target,100,80,true,bounds)
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(late.view)
+ expect(f.canvas.style.transform).toBe('')
+ f.projection.dispose()
+})
+
 test('a late worker camera is reprojected to the current view, and exact arrival clears the projection',()=>{
  const f=fixture(),view={x:42,y:20,zoom:1}
  f.projection.update(f.backing,view,100,80,true)

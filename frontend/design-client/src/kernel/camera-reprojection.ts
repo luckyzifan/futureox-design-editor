@@ -24,6 +24,7 @@ export function consumePresentationBitmap(context:ImageBitmapRenderingContext,ca
 export class CameraReprojection {
   private key = ''
   private displayedBacking?: ResidentAcknowledgement
+  private displayedView?: CanvasCamera
   private gaps: HTMLDivElement[] = []
   private zoom?:number
   private size=''
@@ -58,7 +59,14 @@ export class CameraReprojection {
       // A large zoom-out is not this case: pinning the old camera there leaves
       // the high-zoom crop on screen after Actual Size or zoom-to-selection.
       if (this.displayedBacking === backing && sameSize) return {active:false,changed:false}
-      view = backing.view
+      // A late intermediate bitmap may cover the camera already on screen.
+      // Publishing its capture camera here would visibly step backwards on
+      // every ACK while the requested wider view is still waiting for pixels.
+      // Only retain the displayed pose when this bitmap/history fully covers
+      // it; mere intersection does not authorize introducing another gap.
+      view = sameSize && this.displayedView &&
+        this.history.coversPage(backing,{view:this.displayedView,width,height},bounds)
+        ? this.displayedView : backing.view
     }
     this.displayedBacking = backing
     const active = !!backing && allowed && (backing.view.x !== view.x || backing.view.y !== view.y ||
@@ -86,6 +94,7 @@ export class CameraReprojection {
     this.canvas.dataset.cameraReprojected = String(!!placed)
     this.canvas.dataset.previewUpscaleRejected = String(active && !scaleOk)
     this.canvas.dataset.projectedCamera = JSON.stringify(active ? view : backing?.view || view)
+    this.displayedView = allowed && backing ? {...view} : undefined
     this.gaps.forEach(gap => { gap.style.display = 'none' })
     if (placed && backing && !hasUnderlay) {
       const scale = view.zoom / backing.view.zoom
@@ -107,5 +116,5 @@ export class CameraReprojection {
     else this.history.hide()
     return { active: !!placed, changed }
   }
-  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
+  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.displayedView=undefined;this.displayedBacking=undefined;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
 }
