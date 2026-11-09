@@ -1,0 +1,412 @@
+{
+  "schema": 1,
+  "date": "2026-11-10",
+  "initial_main": "8f1f269d283a492268e925cc48dae474dc43b180",
+  "tested_integrated_main": "cd1d069bc0d5e347ac087acdc78a2e4b1062ac5b",
+  "environment": {
+    "os": "macOS arm64",
+    "rust": "1.99.1",
+    "wasm_bindgen": "0.2.130",
+    "node": "24.12.0",
+    "bun": "1.4.0",
+    "electron": "44.7.0",
+    "gpu_adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3"
+    },
+    "heavy_jobs": 1,
+    "build_and_test_concurrency_limit": 2
+  },
+  "pull_requests": {
+    "50": {
+      "status": "merged",
+      "original_head": "29ae94f56c31b2b44c8add80c82664fb0ee7992b",
+      "aligned_head": "b9c7689615667b7c58962ea6e2184d220fd9b7d7",
+      "main_commit": "44d1eaed5482b472983a8238fb5454228967a5fd",
+      "tree": "50f94e8d3775234eb7beb6b670a2b608f5f9e3f0",
+      "scope": "CPU/jsdom and Chromium real pixels with a delayed synthetic catalogue; no real large-file throughput claim"
+    },
+    "51": {
+      "status": "merged",
+      "original_head": "240cd7edb9e9dd187c9ad32821f56241ec098de4",
+      "aligned_head": "6ad56c0cc69a1e051f87d888ecedb04a4001fd3c",
+      "main_commit": "4152795ed3cca8966aae13e1a6161ebcefe4e41d",
+      "tree": "26e9ef919c1c537e2f0d5e5433a220b841962cf2",
+      "scope": "settle scheduling regression and 93 combined CPU/WASM/DOM tests; no measured GUI latency claim"
+    },
+    "48": {
+      "status": "superseded",
+      "original_head": "972eb15dacbaabc9888d54e17c99648c73168469"
+    },
+    "93": {
+      "status": "merged",
+      "original_head": "cd475fabc8ae464d11cbe5d512fae5d30c9f76f8",
+      "aligned_head": "deb5f3171d0bfd5f0e2546b0c4e9a3d91f2001d4",
+      "main_commit": "63ed940bcf2dc2d6a20f139c89169b5be3cf018d",
+      "tree": "9362165269b8978b51b1f88145f8589f1c67e48b"
+    },
+    "94": {
+      "status": "merged",
+      "original_head": "f46a80f3cd176ac39bd305d47681333542e2398f",
+      "aligned_head": "d15559301a1fdc64e15940d6602e629d76d50870",
+      "main_commit": "c8d7dfbc8fac7b38b5150b9302dc0a172d632a9e",
+      "tree": "6659aa7027a9f870e0d52b2a4d2e5161f691d567",
+      "scope": "Discovery and protocol/stdio/HTTP tests; no live external-client or packaged installer acceptance"
+    },
+    "96": {
+      "status": "merged",
+      "original_head": "8a20084b44db419e67c1075f905fc1ca8e2a09e3",
+      "aligned_head": "62e44026e97f6edfd23a0039388cc82e1d89c7c4",
+      "main_commit": "8777982546b4a44922304c55584c311340b265c5",
+      "tree": "0b60a970ba0c17941e1d3da1fdc6df90c6aee91b",
+      "scope": "Metadata/inventory only; original and vendor license files unchanged; no publication grant or runtime acceptance"
+    },
+    "97": {
+      "status": "merged",
+      "original_head": "413bc74eacfde53b18d21b8fb503d7a98416a789",
+      "aligned_head": "60880e138f1fb9e7fd64be74b81cfcbef545e821",
+      "main_commit": "cd1d069bc0d5e347ac087acdc78a2e4b1062ac5b",
+      "tree": "a8d087712930f12fd63cca727d055f03736f07c8",
+      "scope": "Primary upstream gzip/binary/notices verified; no Linux execution, source rebuild or real installer acceptance on this Mac"
+    },
+    "99": {
+      "status": "held_not_merged",
+      "original_head": "d08c110a541ed76002d86160bb88556fa0ec612b",
+      "aligned_head": "d7fe2efb2566408f8f16b854e18c5d5990f7d306",
+      "tree": "7d551875259ff739258f4be9b0cf38524079004d",
+      "scope": "Five regular real GPU desktop cases match 132226800 RGBA pixels; full source inverse gesture eventually matches pixels but fresh native readiness takes 11.302s vs 0.537s in one paired run. Cannot certify no regression."
+    }
+  },
+  "checks": [
+    {
+      "label": "pr48-original-v2",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.886,
+      "log_sha256": "4e3860bbdacd9ba9f121f93de65a73cbc9f7df2ccb17f5e0a5d9780ef997951d"
+    },
+    {
+      "label": "pr48-original",
+      "kind": "harness_setup_failure_superseded_by_v2",
+      "exit_code": 1,
+      "seconds": 0.506,
+      "log_sha256": "80195e0a8bc42ebee630ae7080697dbdb5e8a33eb3b0eb7c3cd73ce6929a53b5"
+    },
+    {
+      "label": "pr50-baseline",
+      "kind": "negative_control",
+      "exit_code": 1,
+      "seconds": 2.012,
+      "log_sha256": "4d06f676471597031a2fa69b5ae1225f0251f3277c433a37b43d6ae59e6ebc67"
+    },
+    {
+      "label": "pr50-candidate",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 2.625,
+      "log_sha256": "26ff1933ee87476094588edfcf59439f00d866d68b7d5b951d10a537c222234a"
+    },
+    {
+      "label": "pr50-typecheck",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 3.089,
+      "log_sha256": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92"
+    },
+    {
+      "label": "pr51-baseline",
+      "kind": "negative_control",
+      "exit_code": 1,
+      "seconds": 1.351,
+      "log_sha256": "4bc915286d9470ee5c401eeb62e135062e0f7c39ad21a91f62fdef17067f4358"
+    },
+    {
+      "label": "pr51-candidate",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 4.749,
+      "log_sha256": "050fc67e0e1a4e913b436a781ed698dcf27b64be2284053b9910e71f59683358"
+    },
+    {
+      "label": "pr51-typecheck",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 2.753,
+      "log_sha256": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92"
+    },
+    {
+      "label": "pr93-actual-acceptance",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 57.122,
+      "log_sha256": "b28910a523fbdb10ab30e9b3f6f2807af8de670a0dd8e3daef9a301d2ebcda73"
+    },
+    {
+      "label": "pr93-backend-regressions",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 74.208,
+      "log_sha256": "f3027672746401d9c80c164af8c2ee9612c694f3fb90a7d38d53c10d39f37963"
+    },
+    {
+      "label": "pr93-report-baseline",
+      "kind": "negative_control",
+      "exit_code": 1,
+      "seconds": 0.289,
+      "log_sha256": "8d4507596083c70cc6609d42f89b896e2c6c5d3ce7b4c96133d372c61d4e6333"
+    },
+    {
+      "label": "pr93-report-candidate",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.131,
+      "log_sha256": "400972d26bead990279e73845e3d969ea17f1bf06a220e45c9df1cb88536a97c"
+    },
+    {
+      "label": "pr94-actual-checklist",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.147,
+      "log_sha256": "1b2f9ef0e82fa09550f0f6b6e6951ce79cfd07c93301d29fa810746da7d62385"
+    },
+    {
+      "label": "pr94-candidate",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.156,
+      "log_sha256": "66463552a5a2283f0c5d4539850896608d7a1a2a185a8842554715ed878b3df0"
+    },
+    {
+      "label": "pr94-mcp-regressions",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.918,
+      "log_sha256": "c5b33647b9e0b4b1543e61ee2869facf2d03d10d227d9b981395dad6efb15275"
+    },
+    {
+      "label": "pr94-redaction-baseline",
+      "kind": "negative_control",
+      "exit_code": 1,
+      "seconds": 0.322,
+      "log_sha256": "30b46b097b09dee79fe48fed087a48c0d111dc196441a3fe71864e9bee2e676c"
+    },
+    {
+      "label": "pr96-inventory-recheck",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 1.144,
+      "log_sha256": "87d92df930fa79ad4a2b62cd43406c4d259914c94af3082463abb1bef59650ab"
+    },
+    {
+      "label": "pr96-inventory",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 1.024,
+      "log_sha256": "87d92df930fa79ad4a2b62cd43406c4d259914c94af3082463abb1bef59650ab"
+    },
+    {
+      "label": "pr96-license",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.264,
+      "log_sha256": "3c4a28804056b66000a4be06eaa3be3736ce70cba56138e16f69fd1a1778ce47"
+    },
+    {
+      "label": "pr96-original",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 1.398,
+      "log_sha256": "3e326267896e9630bffcb4a289320c6d44c8fd852dc64a8c904d50b7f23096cf"
+    },
+    {
+      "label": "pr97-candidate",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.573,
+      "log_sha256": "eee2937017ff9146a0261e7738a7e1cd0e5a29939968bd2b924f93aec18cd438"
+    },
+    {
+      "label": "pr97-component-inventory",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.137,
+      "log_sha256": "daded39a4c3a0259971666b95495e9e5cfedb63474f7ae3bdabc404e086ba0b6"
+    },
+    {
+      "label": "pr97-original",
+      "kind": "check",
+      "exit_code": 1,
+      "seconds": 0.645,
+      "log_sha256": "b610bdc17794ef1b7f19dd4a60ffdba42f0e1361908de9af276542dcee80bef6"
+    },
+    {
+      "label": "pr97-provenance",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.204,
+      "log_sha256": "31b65b91c435bcadabec754f1d2ed01664149750b07859a0eb73f8610ef664fc"
+    },
+    {
+      "label": "pr97-release-flow",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 0.083,
+      "log_sha256": "0b7bb4dcc568aedb2c5b66a554434cf7465739181880cf15575669eaed3b7df1"
+    },
+    {
+      "label": "pr99-baseline-build",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 297.809,
+      "log_sha256": "901dfd01c184845d8f38a9d66407b23bcaeb1102bca3ab263de7670a0c990d97"
+    },
+    {
+      "label": "pr99-candidate-build-fixed",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 126.604,
+      "log_sha256": "f3dea0f542d0abfc2734e07d24d7376a1673d65e803dbd4a13301de5be8570a8"
+    },
+    {
+      "label": "pr99-candidate-build",
+      "kind": "candidate_typecheck_failure_corrected",
+      "exit_code": 1,
+      "seconds": 172.844,
+      "log_sha256": "89941ac325a1cde5c318bdb57227b36d059d9aa5e437a368a1916528bc64f6e2"
+    },
+    {
+      "label": "pr99-candidate-lod",
+      "kind": "known_existing_failure",
+      "exit_code": 1,
+      "seconds": 1.849,
+      "log_sha256": "da60d66db61ba5eba92dd16310e27070ba485db14f96a2c4e730feb526f4a985"
+    },
+    {
+      "label": "pr99-combined-rendering",
+      "kind": "check",
+      "exit_code": 1,
+      "seconds": 23.873,
+      "log_sha256": "e3c87e97cf9674e823725c321475a1db510e803cb0567eb67228281ccf1581b3"
+    },
+    {
+      "label": "pr99-fixed-camera",
+      "kind": "check",
+      "exit_code": 0,
+      "seconds": 1.001,
+      "log_sha256": "e83e877ab28333ed926beda23e00df8ed594774ec3380d092cc57670c2e0a365"
+    },
+    {
+      "label": "pr99-main-budget-baseline",
+      "kind": "known_existing_failure",
+      "exit_code": 1,
+      "seconds": 1.778,
+      "log_sha256": "3d0de1c961f5772b6e31b5d344cf3cc9804e07e977b8596ff5a46377e5e6cdae"
+    },
+    {
+      "label": "pr99-main-camera-baseline",
+      "kind": "negative_control",
+      "exit_code": 1,
+      "seconds": 1.189,
+      "log_sha256": "1dd8d92552b46c68b2093663a29a6348bcb65115c386fefe0265f66028e53594"
+    },
+    {
+      "label": "pr99-main-lod-baseline",
+      "kind": "known_existing_failure",
+      "exit_code": 1,
+      "seconds": 1.899,
+      "log_sha256": "d6a56e38956dd979fee0fd49e6acfdcb1c608af12aeae7ed6e7fab741ee5ae07"
+    },
+    {
+      "label": "pr99-unfixed-camera",
+      "kind": "negative_control",
+      "exit_code": 1,
+      "seconds": 1.007,
+      "log_sha256": "4d72aee2e93559da420abae5cdb3ccd34b9ccbea7af8e35ad111fc8cdac0e38f"
+    },
+    {
+      "label": "final-main-rendering",
+      "kind": "integrated_main_regression",
+      "exit_code": 0,
+      "seconds": 4.762,
+      "log_sha256": "4fecc5d935e6be363887ffa97d17c7f7af5793870a2d7f0f911abd3ca5a61eeb"
+    },
+    {
+      "label": "final-main-tools",
+      "kind": "integrated_main_regression",
+      "exit_code": 0,
+      "seconds": 0.434,
+      "log_sha256": "fb2278b77da8a84aa9fcfe6dd288d2793cc3ed7787b0d314adf74ee7480698d3"
+    }
+  ],
+  "gui": {
+    "regular_cases": [
+      "117",
+      "topology-template2",
+      "topology-main03",
+      "FIG",
+      "test-sketch"
+    ],
+    "paired_steps_completed": true,
+    "regular_sampled_rgba_pixels_equal": 132226800,
+    "originals_unchanged": true,
+    "page_script_errors": 0,
+    "full_source_gate": {
+      "status": "not_accepted",
+      "paired_observations": 1,
+      "baseline_inverse_step_ms": 537.295416,
+      "candidate_inverse_step_ms": 11302.163583,
+      "eventual_ready_rgba_pixels_equal": 2980736,
+      "includes_input_chain": true,
+      "is_p95_or_scanout_measurement": false
+    }
+  },
+  "ci_baseline": {
+    "run_url": "https://github.com/luckyzifan/futureoxDesgin/actions/runs/42654934947",
+    "status": "failed_before_test_execution",
+    "missing_tracked_input": "testing/font-fixtures-requirements.txt",
+    "counted_as_pass": false
+  },
+  "known_existing_failures": [
+    "resident-budget-failure.integration.test.tsx: localized status-source assertion",
+    "resident-budget-failure.integration.test.tsx: explicit bitmap transport cleanup assertion",
+    "lod-presentation.test.tsx: pending exact camera coarse preview placement"
+  ],
+  "not_run": [
+    "Windows/Linux real GUI and GPU acceptance",
+    "signed installer acceptance",
+    "complete G2/G5 matrix",
+    "33/100ms or physical scanout acceptance",
+    "3 optional parsed-117 descriptor-presenter cases"
+  ],
+  "privacy": "Private inputs, output documents, screenshots, runtime profiles and original GUI logs remain local.",
+  "build_artifacts": {
+    "baseline-99": {
+      "profile": "desktop-dev",
+      "platform": "darwin",
+      "arch": "arm64",
+      "source_files": 2678,
+      "artifacts": {
+        "../design-client/public/kernel/design_kernel_bg.wasm": "d1594e76a598b0086746473d75594d9002e25452d04ba0c5dd0c5c04c944fd8d",
+        "dist/sidecar/futureox-design-desktop-backend": "c9e7796f60c9f5a43697670f8a18475f1b576b44babd484be6d9d8688bbcf1bd",
+        "dist/bin/design-render": "a864b983ce3fe4c4a64afb39e3e23214ae7778a2915729b942a618bb64e302c3",
+        "dist/bin/design-prepare": "29b5316dccbe10935012e56b324022996742fbb6f160f084346a023a97af80c4"
+      }
+    },
+    "candidate": {
+      "profile": "desktop-dev",
+      "platform": "darwin",
+      "arch": "arm64",
+      "source_files": 2678,
+      "artifacts": {
+        "../design-client/public/kernel/design_kernel_bg.wasm": "b6140125559a8370356b5f50b70c7269cfbe38d13323cd6b10a3c1880b290d1a",
+        "dist/sidecar/futureox-design-desktop-backend": "c9617c7d3a04c7dcdb742c289c68b9c27ddc584fb89ae4d2a9a585ce0900ecb8",
+        "dist/bin/design-render": "991f625607f7ba16953e668654566951c130a9be0dbbd1255aea7d172e052c17",
+        "dist/bin/design-prepare": "065610e3840d74b3ff4ab789ed492223aea5bb1a0a9253604959fb08aa79cf63"
+      }
+    }
+  },
+  "integrated_main_final_checks": {
+    "rendering_tests_passed": 93,
+    "node_tools_tests_passed": 22
+  }
+}

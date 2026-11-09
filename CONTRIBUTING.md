@@ -17,7 +17,7 @@
 
 ## 准备开发环境
 
-按[首页快速开始](README.md#快速开始)启动共享客户端。Rust 版本以 [rust-toolchain.toml](rust-toolchain.toml) 为准；WASM 绑定工具固定为 `wasm-bindgen-cli 0.2.128`。
+按[首页快速开始](README.md#快速开始)启动共享客户端。Rust 版本以 [rust-toolchain.toml](rust-toolchain.toml) 为准；WASM 绑定工具固定为 `wasm-bindgen-cli 0.2.130`。
 
 各前端包分别安装依赖，保留各自的锁文件。桌面开发步骤见 [Electron 开发指南](frontend/design-desktop/README.md#develop-and-test)。
 
@@ -45,15 +45,12 @@
 选择能实际命中改动路径的检查。纯文档修改核对内容、链接和展示即可；行为修复应给出同一输入下的「旧版失败、新版通过」。
 
 ```bash
-# 仓库根目录：查看统一测试入口
-node testing/verify-local.mjs --list
-
 # 相机交接的定向 CPU / jsdom 回归示例
 cd frontend/design-client
 bun run test --config camera-handoff.vitest.config.ts
 ```
 
-Rust 修改后，重建本次源码的 WASM／受影响原生程序再引用前端结果。完整测试的依赖、生成夹具、字体与产物要求见 [testing/README.md](testing/README.md)；细则见[贡献与测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md)。
+Rust 修改后，重建本次源码的 WASM／受影响原生程序再引用前端结果。完整测试的依赖、生成夹具、字体与产物要求见[贡献与测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md)。当前统一运行器和 CI 仍有未纳入版本控制的依赖文件缺口，实际状态见[本轮复核报告](docs/PR_REVIEW_20261110.zh-CN.md)。
 
 在 PR 中分别列出通过、失败、跳过和未运行的检查及原因。CPU／jsdom 的结果只证明对应路径；GPU、真实桌面窗口、文件保存重开与性能结论需要各自的证据。CI 页面见 [Actions](https://github.com/luckyzifan/futureoxDesgin/actions/workflows/local-design-cpu.yml)。
 
@@ -70,11 +67,11 @@ Thank you for helping build Futureox Design. Code, design feedback, reproduction
 
 Start with the [open issues](https://github.com/luckyzifan/futureoxDesgin/issues), [roadmap](docs/ROADMAP.md#english), and [current issue index](https://github.com/luckyzifan/futureoxDesgin/issues/91). Describe your approach before a substantial feature or architecture change. A clear reproduction or an original minimal fixture is a useful contribution on its own.
 
-Follow the [quick start](README.en.md#quick-start). Use the pinned Rust toolchain and `wasm-bindgen-cli 0.2.128`; install each frontend package from its own lockfile. See the [desktop guide](frontend/design-desktop/README.md#develop-and-test) for Electron.
+Follow the [quick start](README.en.md#quick-start). Use the pinned Rust toolchain and `wasm-bindgen-cli 0.2.130`; install each frontend package from its own lockfile. See the [desktop guide](frontend/design-desktop/README.md#develop-and-test) for Electron.
 
 Fork the repository, branch from current `main`, and keep each PR focused on one problem. Explain the resulting behavior, related issue, exact checks, and limits of verification. Use `Refs #number` for partial fixes. Preserve contributor attribution when merging.
 
-For documentation, check facts, links, and rendering. For behavior changes, demonstrate the regression on the baseline and the fix on the candidate with the same input. Rebuild WASM/native artifacts after Rust changes. The commands above show test discovery and one focused CPU/jsdom suite; the [test runner guide](testing/README.md) lists full-suite prerequisites. Report passes, failures, skips, and checks not run separately. CPU results do not establish GPU, desktop, persistence, or performance acceptance.
+For documentation, check facts, links, and rendering. For behavior changes, demonstrate the regression on the baseline and the fix on the candidate with the same input. Rebuild WASM/native artifacts after Rust changes. The command above runs one focused CPU/jsdom suite without generated WASM. See the [testing requirements](docs/TESTING_CONTRIBUTIONS.zh-CN.md) and [review report](docs/PR_REVIEW_20261110.zh-CN.md) for full-suite prerequisites and the current missing CI inputs. Report passes, failures, skips, and checks not run separately. CPU results do not establish GPU, desktop, persistence, or performance acceptance.
 
 Read the [architecture guide](docs/architecture/README.zh-CN.md), [development contract](docs/DEVELOPMENT_CONTRACT_V1.md), and the relevant rendering or MCP contract before changing those boundaries. Keep temporary outputs and personal configuration out of commits. Use original, redistributable fixtures with documented provenance.
 

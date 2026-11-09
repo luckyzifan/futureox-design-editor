@@ -24,7 +24,7 @@ menu entries are no longer displayed.
 ## Develop and test
 
 Prerequisites: the repository's Rust toolchain and `wasm32-unknown-unknown` target,
-`wasm-bindgen-cli` **0.2.128**, Bun **1.4.0+**, Node **24+**, and supported OS display libraries.
+`wasm-bindgen-cli` **0.2.130**, Bun **1.4.0+**, Node **24+**, and supported OS display libraries.
 Electron is pinned to **44.7.0** and the official packager to **20.3.0**.
 
 Each package owns its lockfile; there is no workspace-level install. From `frontend/`:

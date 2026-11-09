@@ -42,7 +42,9 @@
 
 ## 6. 验证、来源与历史
 
-- [测试贡献指南](TESTING_CONTRIBUTIONS.zh-CN.md)与[统一测试入口](../testing/README.md)。
+- [本轮 8 个 PR 的复核与合并记录](PR_REVIEW_20261110.zh-CN.md)：逐项结果、未合并门槛和已知失败。
+
+- [测试贡献指南](TESTING_CONTRIBUTIONS.zh-CN.md)；CI 和全量运行入口的当前缺口见[本轮复核](PR_REVIEW_20261110.zh-CN.md)。
 - [第三方声明](../THIRD_PARTY_NOTICES.md)、[素材来源](UI_ASSET_PROVENANCE.md)与[分发评估](OPEN_SOURCE_COMMERCIAL_READINESS_20261109.zh-CN.md)。
 - [品牌说明](BRANDING.md)与[历史开发记录](history/IMPLEMENTATION_PASS_2026-10-19.md)。
 - [本轮目录与源码整理验证](history/STRUCTURE_CLEANUP_2026-11-09.md)。

@@ -54,7 +54,7 @@ git clone https://github.com/luckyzifan/futureoxDesgin.git
 cd futureoxDesgin
 
 rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.128 --locked
+cargo install wasm-bindgen-cli --version 0.2.130 --locked
 
 cd frontend/design-client
 bun install --frozen-lockfile
@@ -67,7 +67,7 @@ Open the local address printed by Vite, normally `http://127.0.0.1:1430`. `bun r
 | --- | --- |
 | Run the Electron desktop app | [Desktop development and builds](frontend/design-desktop/README.md#develop-and-test) |
 | Connect a local MCP client | [MCP adapter](frontend/design-mcp/README.md) |
-| Select and run relevant checks | [Contributing](CONTRIBUTING.md#english) and the [test runner](testing/README.md) |
+| Select and run relevant checks | [Contributing](CONTRIBUTING.md#english) and the [testing requirements (Chinese)](docs/TESTING_CONTRIBUTIONS.zh-CN.md) |
 | Understand web and desktop differences | [Web support boundaries](docs/WEB_SUPPORT_BOUNDARIES_2026-10-24.md) |
 
 ## Project structure

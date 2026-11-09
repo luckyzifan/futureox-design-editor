@@ -54,7 +54,7 @@ git clone https://github.com/luckyzifan/futureoxDesgin.git
 cd futureoxDesgin
 
 rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.128 --locked
+cargo install wasm-bindgen-cli --version 0.2.130 --locked
 
 cd frontend/design-client
 bun install --frozen-lockfile
@@ -67,7 +67,7 @@ bun run dev
 | --- | --- |
 | 启动 Electron 桌面应用 | [桌面开发与构建](frontend/design-desktop/README.md#develop-and-test) |
 | 配置本地 MCP 客户端 | [MCP 适配器](frontend/design-mcp/README.md) |
-| 选择并运行相关检查 | [贡献指南](CONTRIBUTING.md#验证你的修改)与[统一测试入口](testing/README.md) |
+| 选择并运行相关检查 | [贡献指南](CONTRIBUTING.md#验证你的修改)与[测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md) |
 | 理解网页与桌面的差异 | [Web 支持边界](docs/WEB_SUPPORT_BOUNDARIES_2026-10-24.md) |
 
 ## 项目结构
