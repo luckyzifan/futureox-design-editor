@@ -131,7 +131,8 @@ fn component_corner_override_imports_and_unknown_override_fields_are_reported() 
     let doc = fig::document_from_canvas(&input, BTreeMap::new(), vec![]).unwrap();
     doc.validate().unwrap();
     let fields = &doc.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-4"];
-    assert_eq!(fields["cornerRadius"], json!(8.));
+    // Rectangle rounding is Node.radii. cornerRadius is only the polygon/star fillet.
+    assert!(fields.get("cornerRadius").is_none(), "{fields:?}");
     assert_eq!(fields["width"], json!(20.));
     assert_eq!(fields["height"], json!(10.));
     assert_eq!(fields["radii"], json!([1., 2., 3., 4.]));
