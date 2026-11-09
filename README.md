@@ -1,53 +1,60 @@
-# futureoxDesgin
+# Futureox Design
 
-Futureox 设计内核（Design Kernel）独立仓库：高性能 2D 设计编辑器渲染内核及配套前端。
+本地优先的 2D 设计编辑器，包含 Rust 内核、共享网页客户端、Electron 桌面应用和本地 MCP 适配器。
 
-## 目录结构
+## 项目层级
 
-- `design-studio/` — Rust 内核 workspace
-  - `crates/design-kernel` — 核心内核：图模型、几何、渲染、Sketch 文件解析
-  - `crates/design-gpu` — GPU 抽象与着色器
-  - `crates/design-server` — 服务端
-  - `crates/design-desktop-backend` — 桌面本地后端
-  - `scripts/` — 构建与测试向量生成脚本
-- `frontend/design-client/` — 网页版设计客户端（React + TypeScript + Vite，WebGPU/WebGL2）
-- `frontend/design-desktop/` — Electron 桌面壳
-- `testing/fixtures/design/` — 内核测试向量与夹具
-- `vendor/moxcms` — design-studio 的颜色管理路径依赖
-
-## 说明
-
-- 本仓库包含项目源码、测试夹具和经过补丁修改的第三方依赖（如 `vendor/moxcms`）；公开发布前请核对许可证、素材来源和再分发条件。
-- Rust 构建产物（`target/`）、前端依赖（`node_modules/`）与打包输出（`dist/`、`release/`）不入库。
-- 前端 `design-client` 的内核构建脚本通过 `../../design-studio` 相对路径引用 Rust workspace，目录结构需保持不变。
-
-## 构建与测试
-
-```bash
-# Rust 内核（含测试）
-cd design-studio && cargo test --workspace
-
-# 前端（安装依赖后）
-cd frontend/design-client && bun install && bun run test
+```text
+design-kernel/
+├── frontend/
+│   ├── design-client/          # 共享界面、编辑入口、WASM 与浏览器渲染适配
+│   ├── design-desktop/         # Electron 宿主、原生桥接与打包
+│   └── design-mcp/             # 本地 MCP 协议适配
+├── design-studio/
+│   ├── crates/
+│   │   ├── design-kernel/      # 文档、几何、布局、历史、格式与 CPU 渲染
+│   │   ├── design-gpu/         # 原生 GPU 设备、资源与渲染执行
+│   │   ├── design-desktop-backend/ # 文件、SQLite、恢复与源文档会话
+│   │   ├── design-server/      # 服务端接口
+│   │   └── design-agent/       # Agent 服务适配
+│   └── scripts/                # 内核构建、检查与测试向量生成
+├── docs/
+│   ├── README.md               # 按主题组织的文档入口
+│   ├── architecture/           # 分层职责与调用链
+│   ├── rendering/history/      # 历史渲染交付说明
+│   ├── features/               # 功能契约
+│   └── history/                # 历史开发记录
+├── testing/                    # 回归测试、夹具与验证工具
+├── evidence/                   # 已纳入版本管理的验证证据
+├── vendor/                     # 带原始许可证的本地依赖
+└── .agents/skills/              # 项目工程规范
 ```
 
-## 2026-10-19 渲染修复交付
+界面与自动化进入同一个编辑事务；桌面宿主提供本地能力，Rust/WASM/native 承载领域校验、布局与渲染语义。详细职责和调用顺序见[架构分层](docs/architecture/README.zh-CN.md)。
 
-请先阅读 `RENDER_REPAIR_NOTES.zh-CN.md` 和 `testing/TEST_COVERAGE_GAPS.zh-CN.md`。本次交付为基于 d9a9038a 的增量源码文件 ZIP；包内文件已整合修改，需配合基准仓库使用，非预编译 Electron 安装包。
+## 开发与验证
 
-- 保真优先：不通过自动缩图、有损重新编码、提高 mip 等级或跳过可见内容来隐藏资源不足。预算不足明确报错。
-- 可执行测试结果与未执行项以交付记录为准；新增测试不等于已经通过真实 GPU 像素验证。
-- `test-high-zoom.sh --help` / `test-new-features.sh --help` 提供针对性测试入口。
-- 未替项目选择开源许可证，也未上传或发布修改。
+Rust 工具链由 [rust-toolchain.toml](rust-toolchain.toml) 固定。前端使用 Bun；Rust/WASM 修改后，先重新构建实际加载的内核。
 
-## 2026-10-19 渲染增量验证
+```bash
+# 在仓库根目录运行 Rust 测试
+cargo test --locked --manifest-path design-studio/Cargo.toml --workspace
 
-第二轮路径与边界见 [渲染路径说明](RENDER_PATH_PHASE2.zh-CN.md)，算法资料见 [参考来源](RENDER_ALGORITHM_REFERENCES.zh-CN.md)，原生 CPU/WASM 验证见 [准备与几何检查](testing/NATIVE_PREPARATION_CHECKS.zh-CN.md)。产品 GPU 默认路径保持；云端 CPU 测试不等于实际 GPU 帧率或像素验收。
+# 进入共享客户端，安装依赖并构建内核
+cd frontend/design-client
+bun install
+bun run build:kernel
+bun run typecheck
+bun run test
+```
 
-第三轮 GPU 表面与调度增量见 [内存专项说明](RENDER_MEMORY_PHASE3.zh-CN.md)。本轮包含 Rust 内核修改，需重建 WASM 与桌面本地准备程序；测试记录见 testing/verification-phase3。
+桌面构建与运行见 [design-desktop](frontend/design-desktop/README.md)，自动化接入见 [MCP 操作指南](docs/MCP_OPERATION_GUIDE_V1.md)。客户端构建脚本通过 `../../design-studio` 引用 Rust workspace，需保持这两个目录的相对位置。
 
-## 当前功能与验收文档
+## 文档与测试素材
 
-- [本地功能矩阵](docs/LOCAL_DESIGN_FEATURE_MATRIX.zh-CN.md)与[本地发布验收](docs/LOCAL_RELEASE_ACCEPTANCE.zh-CN.md)
-- [本地能力增量说明](docs/RELEASE_2026-10-19.zh-CN.md)与[统一测试入口](testing/README.md)
-- 旧版根目录 implementation 计划、总结和完成清单已退役；[历史测试摘录与待复核事项](docs/history/IMPLEMENTATION_PASS_2026-10-19.md)保留必要背景，不作为当前完成声明。
+- [文档索引](docs/README.md)：架构、渲染、存储、自动化和功能契约。
+- [开发契约](docs/DEVELOPMENT_CONTRACT_V1.md)与[渲染验收规范](docs/RENDERING_FIRST_ENGINEERING_CONTRACT.zh-CN.md)：实现边界和验证要求。
+- [测试入口](testing/README.md)：测试命令、回归夹具与验证范围；截图、格式样本和校准夹具用于回归测试。
+- [第三方声明](THIRD_PARTY_NOTICES.md)：随源码或产物保留的依赖、字体与授权文本。
+
+`target/`、`node_modules/`、`dist/`、`release/` 等构建输出不入库。历史交付说明集中在 [docs/rendering/history](docs/rendering/history/README.md)，其测试结果按对应版本与环境解释。

@@ -426,9 +426,6 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     for (const [key, fontId] of systemFontAliases) if (key.startsWith(prefix)) return fontId
     return resolveFamilyDoc(family)
   }
-  /** Catalog face matching mirrors Figma's family+style request: exact family
-   * (case-insensitive), then the named style, then the weight, then the
-   * nearest non-italic weight. Italic faces never match. */
   function matchSystemFont(faces: readonly PluginSystemFontFace[], family: string, style: string): PluginSystemFontFace | null {
     if (/italic/i.test(style)) return null
     const wanted = family.trim().toLowerCase()

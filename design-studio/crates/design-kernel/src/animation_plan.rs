@@ -156,22 +156,6 @@ impl PlanTree {
         }
     }
 
-    /// The bake-track entry point (the engine's `bakeSmartAnimateTransition`
-    /// minimal loop): register the frame pair in the in-flight registry,
-    /// then serve the plan from the result cache, building and caching it on
-    /// a miss. The returned guard keeps the pair in flight until dropped —
-    /// the `cleanupBakedSmartAnimateTransition` counterpart.
-    ///
-    /// Ordering follows the engine (`#25970` scans the in-flight set before
-    /// any construction): a warm cache never bypasses mutual exclusion, so a
-    /// second bake of overlapping frames fails with a structured
-    /// [`BakeConflict`](crate::animation_bake::BakeConflict) even when the
-    /// plan is already cached.
-    ///
-    /// `revision` is the document revision of the snapshots (the editing
-    /// layer's monotonic counter); it stands in for the engine's per-frame
-    /// generation counter, both as the in-flight reference generation and as
-    /// the cache's version triple.
     pub fn bake(
         old_doc: &Document,
         new_doc: &Document,

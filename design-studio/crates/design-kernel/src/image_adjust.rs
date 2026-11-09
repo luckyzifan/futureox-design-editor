@@ -1,20 +1,3 @@
-//! Image paint adjustments (exposure/contrast/temperature/tint/highlights/
-//! shadows/color), a line-by-line port of Figma's image-adjust math
-//! (kept in sync by tests).
-//!
-//! Pipeline: `srgb→linear → highlight/shadow delta → Lab(temp,tint,contrast)
-//! → exposure(+delta) → saturation → linear→srgb`, identical in the GLSL and
-//! WGSL forms (`imageColorAdjustPaint`). The GLSL side runs `precision
-//! highp`, so f32 here is the numeric contract (no precision-tier
-//! tolerance).
-//!
-//! Adjustments operate on straight (unpremultiplied) RGB in [0,1]. SDR
-//! documents store image texels as sRGB bytes, exactly the shader's texture
-//! domain, so [`ImageAdjust::apply_srgb`] is Figma's pipeline verbatim.
-//! Color-managed documents keep texels in the linear working space; there the
-//! two gamma bookends cancel against the storage encoding, so
-//! [`ImageAdjust::apply_linear`] runs the linear core on the stored values —
-//! the same displayed-color result for the same source pixel.
 use serde::{Deserialize, Serialize};
 
 /// Rec. 709 luminance weights, GLSL `const vec3 a=vec3(0.2126,0.7152,0.0722)`.

@@ -11,12 +11,6 @@ import { remapDesignDependencies } from './design-system'
 import type { ShortcutProfile } from './shortcut-profiles'
 
 const MAX_BYTES = 32 * 1024 * 1024, MAX_TARGETS = 64
-/** Build the entire operation without touching an Editor, its history, clipboard,
- * transaction. Kernel preflight temporarily installs source/merged fonts, then
- * restores destination fonts even on rejection. Caller publishes once after stale checks.
- * Figma's documented x/y is interpreted using this editor's parent-local Inspector
- * bounds. Sketch documents per-target copies, but not an alignment anchor: the
- * same top-left contract is an explicit local adaptation, not verified parity. */
 export function planPasteOverSelection(before: DesignDocument, pageId: string, selection: readonly string[], serialized: string, profile: ShortcutProfile) {
   try { return buildPlan(before, pageId, selection, serialized, profile) }
   finally { activateDocumentFonts(before) }

@@ -212,12 +212,6 @@ pub struct RejectionInfo {
     pub requested_bytes: usize,
     pub live_bytes: usize,
 }
-/// Four-bucket GPU memory ledger export (Figma `CorePerfInfo`'s four i64
-/// counters, `FullscreenPerfInfo::getRendererMemoryBreakdown` wasm #46442 /
-/// `getRendererGpuMemory` #46443): live bytes per bucket, per-bucket peaks,
-/// the four-bucket total high-water mark, the `needs_free` pressure flag
-/// (wasm #39291), and pressure events. Diagnostic only — admission stays
-/// with the allocating side's own caps; the ledger only records facts.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuMemoryBreakdown {
@@ -235,9 +229,6 @@ pub struct GpuMemoryBreakdown {
     pub needs_free: bool,
     pub free_events: u32,
     pub rejections: u32,
-    /// Figma's five memory telemetry axes,
-    /// derived from our four buckets; mapping recorded in
-    /// `render_telemetry::FigmaGpuMemoryAxes`.
     #[serde(flatten)]
     pub figma_axes: crate::render_telemetry::FigmaGpuMemoryAxes,
 }
@@ -363,10 +354,6 @@ pub struct Engine {
     /// host installs into the allocating device (`NativeGpu`) so the export
     /// reports real allocation-side facts, never estimates.
     gpu_memory: crate::memory::GpuMemoryLedger,
-    /// Linear-tile residency for the interactive tier (Figma's tile reuse):
-    /// world-anchored 512² f32 tiles at the zoom bucket, keyed by content
-    /// revision, reused across frames so pans and repeats re-raster nothing.
-    /// The exact `render_linear` path never touches this cache.
     linear_tiles: std::collections::HashMap<(usize, [i32; 2]), (u64, std::sync::Arc<Vec<Pixel>>)>,
     linear_tiles_order: Vec<(usize, [i32; 2])>,
     linear_tiles_options: Option<(
@@ -999,12 +986,6 @@ impl Engine {
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
-    /// The compositing ledger in Figma's shape: two pools —
-    /// scene-compositing peak and tile residency —
-    /// summed, `>> 20` for MB, f32 tile ratio, plus OOM-style pressure
-    /// events from budget rejections. Diagnostic only; admission stays the
-    /// reserve/Drop contract.
-    /// Test seam: resident linear-tile count of the interactive tier cache.
     pub fn linear_tile_cache_len(&self) -> usize {
         self.linear_tiles.len()
     }
@@ -2357,12 +2338,6 @@ impl Engine {
         })
     }
 
-    /// One Sketch-parity canvas frame: derive the instruction from
-    /// `options`, run the tiled renderer (instruction-equality skip, dirty
-    /// tiles only, restamp outside damage) and hand back the tiles the
-    /// compositor must (re)draw plus the concatenated bytes. Equal frames
-    /// return an empty tile list — nothing rasterised, exactly like an
-    /// unchanged `MSRenderInstruction`.
     pub fn update_tiled_frame(
         &mut self,
         options: &RenderOptions,

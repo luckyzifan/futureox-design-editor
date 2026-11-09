@@ -1,4 +1,3 @@
-/** Bounds for one user-loaded plugin. These are host limits, not Figma's. */
 export const PLUGIN_LIMITS = {
   mainBytes: 2 * 1024 * 1024,
   uiBytes: 512 * 1024,

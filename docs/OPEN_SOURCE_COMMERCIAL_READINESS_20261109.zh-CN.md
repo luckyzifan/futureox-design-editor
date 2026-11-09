@@ -23,7 +23,7 @@
 | 优先级 | 检查结果 | 完成条件 |
 | --- | --- | --- |
 | P0 源码授权 | 没有顶层项目 LICENSE；5 个 workspace crate 的 license 元数据均为空。GitHub 连接器确认 origin 当前仍为 private。 | 确认自有代码及贡献者授权范围，再为自有部分选择许可证、补元数据和第三方例外说明。公开可见不自动授予使用/修改/分发许可，见 [GitHub 官方说明](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)。 |
-| P0 来源待核代码 | `frontend/design-client/src/kernel/gpu/stroke-compute.ts` 明写“移植自 Figma GpuStrokeBatcher”；prefix-sum shader 与 Rust memory 模块保留参考来源说明。 | 核对原始来源、可用许可、真实改写历史和运行时可达性；无授权依据的实现需独立重写或从公开范围排除。注释不能单独证明侵权，也不能证明获准。删除来源注释、改名或测试通过都不能关闭此项。 |
+| P0 来源待核代码 | GPU 描边、前缀和与内存计量模块的实现来源仍待核对。 | 核对原始来源、适用许可、修改历史和运行时可达性；以实际来源与授权证据关闭该项。 |
 | P0 源码素材 | `public/fidelity/` 有 349 个跟踪文件；`testing/fixtures/` 下另有 139 个被跟踪的二进制/图像文件。既有来源清单仍列出部分参考图与 FIG 文档的许可待核。 | 逐文件归属/许可记录；未核准素材保留私有，公开测试改用可分发的合成夹具。这些数字是检查范围，不是认定全部无授权。生产包排除 fidelity 不代表 Git 源码/历史可以公开。 |
 | P0 历史披露范围 | 当前历史可能包含已从产品输出排除的素材和旧证据，本轮没有完成拟公开历史的逐项复核。 | 明确公开历史范围，核对设计文件、日志、个人路径/凭据及第三方材料；可准备独立的清理后源码快照，不直接改私有仓库可见性或重写现有历史。 |
 | P0 随包依赖 | 本次 locked/offline Cargo metadata 列出 357 个包，5 个未填许可证的是本仓库 crate。Electron/Chromium、JS、Rust、native 和 vendor 尚无按目标平台闭合的最终包清单。 | 对实际 release 包生成组件、版本、hash、许可与 notice 清单；区分开发依赖与真正分发依赖。旧清单里的 337 为历史计数，不是当前完整清单。MPL 等许可表达式应按实际分发文件履行义务，不能仅凭名称认定不可商用。 |

@@ -39,13 +39,9 @@ or changed by these modifications.
 
 ## Unresolved source and binary release gates
 
-- `frontend/design-client/src/kernel/gpu/stroke-compute.ts` explicitly states
-  derivation from Figma GpuStrokeBatcher. This statement is not a license; provenance,
-  original source, permissions and implementation history require investigation.
-- `frontend/design-client/src/kernel/gpu/parallel-prefix-sum.wgsl.ts` and
-  `design-studio/crates/design-kernel/src/memory.rs` retain reference/derivation
-  context. A comparison/reference comment alone does not establish infringement,
-  but removing the comment would not establish independent authorship either.
+- Implementation-origin review remains open for the GPU stroke, prefix-sum
+  and memory-accounting modules. Keep applicable attribution and resolve the
+  original source, permissions and modification history before publication.
 - Renamed shader filenames/symbols retain existing bytes and attribution. Descriptive
   naming does not clear copyright or provenance issues.
 - Rust Cargo.lock has 337 packages at review. Complete target-specific runtime,
