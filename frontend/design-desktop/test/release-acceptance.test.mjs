@@ -7,10 +7,10 @@ import { ffmpegProvenance } from '../scripts/ffmpeg-provenance.mjs'
 import { DESKTOP_FLOW, buildDesktopFlowReport, inspectReleasePackage } from '../scripts/release-desktop-flow.mjs'
 import { buildComponentInventory } from '../scripts/release-component-inventory.mjs'
 
-test('vendored linux ffmpeg matches its recorded banner and is not claimed rebuilt', () => {
+test('vendored linux ffmpeg metadata matches and banner execution is platform-specific', () => {
   const report = ffmpegProvenance()
   assert.deepEqual(report.problems, [])
-  assert.equal(report.bannerChecked, true)
+  assert.equal(report.bannerChecked, process.platform === 'linux' && process.arch === 'x64')
   assert.equal(report.correspondingSourceInRepo, false)
   assert.equal(report.rebuiltFromSource, false)
   assert.equal(report.releaseSourceIndexContainsThisBuild, false)

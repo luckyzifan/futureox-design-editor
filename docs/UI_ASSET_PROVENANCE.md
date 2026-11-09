@@ -2,7 +2,11 @@
 
 Reviewed 2026-10-20. This is an engineering inventory, not a legal clearance or
 promise of zero copyright/trademark risk. Noncommercial use does not automatically
-permit copying. No project license has been selected by this review.
+permit copying. No project license was selected by this 2026-10-20 review.
+On 2026-11-09 the repository root has an MIT `LICENSE`; that later choice does
+not reach backward into this review and does not relicense the materials below.
+See [LICENSE_COVERAGE.md](LICENSE_COVERAGE.md) and
+[PUBLICATION_ASSET_INVENTORY.md](PUBLICATION_ASSET_INVENTORY.md).
 
 ## Evidence-backed inventory
 
@@ -13,7 +17,7 @@ permit copying. No project license has been selected by this review.
 | Lucide icons | UI imports `lucide-react`; installed package LICENSE | Conditional on full ISC plus Feather-derived MIT attribution. Exact text retained under `public/licenses/`. |
 | React and other JS runtime code | Installed package license texts and `public/licenses/inventory.json` | Notices preserved; scope is listed packages, not a complete application SBOM. |
 | moxcms | `vendor/moxcms/Cargo.toml`, LICENSE.md, LICENSE-APACHE.md | BSD-3-Clause OR Apache-2.0. Both original texts retained. |
-| Synthetic image I/O fixtures | `testing/fixtures/design/io/provenance.json`, generate.py; color_assets.rs | Local synthetic pixels, with ICC generation traced to moxcms. |
+| Synthetic image I/O fixtures | `testing/fixtures/design/io/provenance.json`, generate.py; color_assets.rs | Cited by this 2026-10-20 review. That provenance file is not in the 2026-11-09 checkout; the publication scan records it as missing instead of inventing a replacement grant. |
 | Figma-rendered calibration references | `frontend/design-client/public/fidelity/` provenance records, including browser-2026-10-07 and mcp-2026-10-06 | 298 PNGs / 349 total files at review. Created calibration node/export evidence exists; complete ownership/redistribution rights not established by acquisition records alone. |
 | Native calibration document | `testing/fixtures/design/figma-materials-native-2026-10-08.fig` and companion JSON | Source publication gate pending ownership/permission review. |
 

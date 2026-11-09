@@ -43,3 +43,14 @@ false.
 node frontend/design-desktop/scripts/ffmpeg-provenance.mjs
 node --test frontend/design-desktop/test/ffmpeg-bundle.test.mjs frontend/design-desktop/test/release-acceptance.test.mjs
 ```
+
+## 本机合并复核（2026-11-10）
+
+在 `877798254` 基线上，以 macOS arm64 / Node 24.12.0 复核。原候选有一项测试无条件要求 Linux 二进制已执行，在 macOS 上失败；现按检查器已有的平台边界断言，Linux x64 仍要求执行检查，其他平台不能把元数据检查写成已执行 Linux 程序。
+
+- FFmpeg bundle、encode、release acceptance 与 preparation package：11 项通过，无跳过。
+- 从同一上游 b6.1.1 release 重新取得 gzip、README 与许可证。gzip SHA-256 为 `bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa`；解压后 79,826,272 字节，SHA-256 与仓库二进制同为 `e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99`。README 和 COPYING 均与上游资产逐字节一致。
+- 三个验收／清单 CLI 均退出 0；provenance 的 `problems` 为空，`bannerChecked=false`。安装包流程的 12 步仍全部 `not_run`，10 条 notice 与已有库存哈希匹配。
+- 上游 `UPSTREAM-README.txt` 的原始行末空白按已核对的哈希原样保留；代码差异格式检查仅排除这份上游原文。
+
+本机没有执行 Linux 二进制、重新编译对应源码或完成正式安装包验收。上述旧版来源索引记录不表示已在本日重新检查该索引。
