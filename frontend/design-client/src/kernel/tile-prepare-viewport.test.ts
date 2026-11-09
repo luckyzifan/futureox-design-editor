@@ -1,6 +1,7 @@
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { tilePrepareViewport, tileBatchPrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import type { RasterTile } from './tile-cache'
+afterEach(()=>vi.unstubAllEnvs())
 test('bounded chunks keep the whole plan guard with the exact camera phase', () => {
   const tiles = [0, 512, 1024].map(x => ({ key: String(x), x, y: -1, width: 514, height: 514, zoom: 2 }) as RasterTile)
   const view = { x: -3.25, y: 5.75 }, guard = tilePrepareViewport(tiles, view)!
@@ -10,13 +11,20 @@ test('bounded chunks keep the whole plan guard with the exact camera phase', () 
   expect(() => tilePrepareViewport(tiles, view, { ...guard, w: Infinity })).toThrow()
 })
 
-test('large minified display work prepares the actual crop without changing its sampling address',()=>{
+test('large minified display prepares the actual crop unless the union is explicitly requested',()=>{
  const tile={key:'phase',x:511,y:-513,width:514,height:514,zoom:.125,phaseX:.375,phaseY:.125} as RasterTile
  const view={x:-3.25,y:5.75},shared={x:-1028,y:-1020,w:4096,h:4096}
  expect(localDisplayPrepareScope(9403,.125,true)).toBe(true)
+ expect(localDisplayPrepareScope(20082,.125,true)).toBe(true)
+ expect(localDisplayPrepareScope(124447,.125,true)).toBe(true)
  expect(localDisplayPrepareScope(9403,2,true)).toBe(false)
  expect(localDisplayPrepareScope(2999,.125,true)).toBe(false)
  expect(localDisplayPrepareScope(9403,.125,false)).toBe(false)
+ vi.stubEnv('VITE_DESIGN_LOCAL_PREPARE_SCOPE','1')
+ expect(localDisplayPrepareScope(9403,32,true)).toBe(true)
+ expect(localDisplayPrepareScope(2999,.125,true)).toBe(false)
+ vi.stubEnv('VITE_DESIGN_LOCAL_PREPARE_SCOPE','0')
+ expect(localDisplayPrepareScope(124447,.125,true)).toBe(false)
  expect(tileLocalPrepareViewport(tile,view,shared,true)).toEqual({x:507,y:-508,w:514,h:514})
  expect(tileLocalPrepareViewport(tile,view,shared,false)).toBe(shared)
  expect(tileLocalPrepareViewport(tile,view,undefined,true)).toBeUndefined()

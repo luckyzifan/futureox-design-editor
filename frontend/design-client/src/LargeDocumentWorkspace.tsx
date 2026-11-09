@@ -7,7 +7,7 @@ import { Editor } from './engine'
 import { blank, type DesignDocument, type Point } from './model'
 import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
-import {includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
+import {deferOverlappingMaterialScope,includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged, subscribePendingEdits } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
@@ -355,10 +355,11 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         // Publishing a replacement revokes the displayed snapshot. A single
         // sampled neighbour on a reversing gesture must not discard all of
         // its native tiles. Recheck the actual camera before asking the host.
-        const held=current?.materialKeys
-        if(viewport && focusedMaterial===undefined && current && !current.viewportSubset && held && held.length>=6 &&
-            nativePresentedToken.current===current.token && wanted.some(key=>held.includes(key)) &&
-            wanted.filter(key=>!held.includes(key)).length<=2 && host){
+        const held=current && !current.viewportSubset && nativePresentedToken.current===current.token ? current.materialKeys : undefined
+        if(current && host && deferOverlappingMaterialScope({
+          viewportDriven:!!viewport && focusedMaterial===undefined,
+          held, wanted,
+        })){
           const now=performance.now(),last=reviewedScope.current
           if(last?.token!==current.token || now-last.at>=2*SOURCE_DETAIL_SAMPLE_MS){
             reviewedScope.current={token:current.token,at:now}

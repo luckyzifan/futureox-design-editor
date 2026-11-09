@@ -225,6 +225,10 @@ test('detail snapshot capability includes the requested material set and cannot 
  await assert.rejects(()=>host.canvasSnapshot({...request,materialKeys:['1:3','1:3']}),/Duplicate/)
  const full=await host.canvasSnapshot(request)
  assert.equal(full.roots,10);assert.notEqual(full.token,detail.token);assert.throws(()=>grant.assertCurrent(),/Stale/);assert.equal(calls,2)
+ const returned=await host.canvasSnapshot({...request,materialKeys:['1:3']})
+ assert.equal(returned.token,detail.token);assert.equal(calls,2)
+ assert.equal(host.resolveCanvasSnapshot(detail.token,9).descriptor.path,grant.descriptor.path)
+ assert.throws(()=>host.resolveCanvasSnapshot(full.token,9),/Stale/)
 })
 
 test('opening preview cannot return pixels for a different source owner or accept renderer paths', async()=>{

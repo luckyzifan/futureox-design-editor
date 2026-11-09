@@ -5,6 +5,22 @@ export function includesMaterials(active:readonly string[]|undefined, wanted:rea
   return !!active && wanted.every(key=>active.includes(key))
 }
 
+/** A viewport-driven scope that still overlaps a large presented set must not
+ * publish immediately. Publishing replaces the host token and drops the tiles
+ * already drawn for this revision. One later sample publishes a scope the
+ * camera actually stayed on; a return to keys already on screen never starts
+ * that publication. Disjoint regions and explicit page choices do not wait. */
+export function deferOverlappingMaterialScope(input:{
+  viewportDriven:boolean
+  held:readonly string[]|undefined
+  wanted:readonly string[]
+}) {
+  if(!input.viewportDriven||!input.held||input.held.length<6||!input.wanted.length)return false
+  if(includesMaterials(input.held,input.wanted))return false
+  const held=new Set(input.held)
+  return input.wanted.some(key=>held.has(key))
+}
+
 /** Replace a costly pending conversion when a zoom now needs a small subset. */
 export function smallerMaterialRequest(items:readonly SourceCanvasItem[],pending:readonly string[],next:readonly string[]) {
   if(!next.length||pending.length<6||next.length*3>pending.length||!includesMaterials(pending,next))return false

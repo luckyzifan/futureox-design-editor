@@ -17,6 +17,12 @@ export function isScenePathBudget(error: unknown) {
   return failure.failureCategory === 3 && failure.failureCode === 131
 }
 
+/** A wide prepare window is optional. Either aggregate admission failure can
+ * retry the same crop without that window; per-path and device failures cannot. */
+export function prepareWindowRetriable(error: unknown) {
+  return isScenePathBudget(error) || isAnalyticProgramBudget(error)
+}
+
 /** Remember allocation failures only within one unchanged rendering contract.
  * Reusing a smaller exact region changes scheduling, never density or math.
  * A difficult region may conservatively split an easier neighbour as well. */
