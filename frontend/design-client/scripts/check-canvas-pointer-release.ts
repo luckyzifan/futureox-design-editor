@@ -14,15 +14,23 @@ import { blank, node, uid, defaultLayout, paint, type DesignDocument } from '../
 
 const project = fileURLToPath(new URL('..', import.meta.url))
 const output = process.env.DESIGN_TEST_OUTPUT || await mkdtemp(join(tmpdir(), 'forma-canvas-release-'))
-const snapshot = join(output, 'client')
+// Keep the repo's relative layout. vite.config.ts imports ../design-desktop/scripts,
+// that module imports ../../design-client/scripts, the editor imports
+// ../../design-mcp and ../../../../design-studio shaders. A folder named `client`
+// resolves none of those.
+const frontend = join(output, 'frontend')
+const snapshot = join(frontend, 'design-client')
 await mkdir(snapshot, { recursive: true })
-for (const name of ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'tsconfig.json'])
+for (const name of ['src', 'public', 'plugins', 'index.html', 'vite.config.ts', 'package.json', 'tsconfig.json', 'scripts'])
   await cp(join(project, name), join(snapshot, name), { recursive: true })
 if (process.env.DESIGN_CANVAS_SOURCE) await cp(process.env.DESIGN_CANVAS_SOURCE, join(snapshot, 'src/Canvas.tsx'))
 await symlink(join(project, 'node_modules'), join(snapshot, 'node_modules'), 'dir')
 // The desktop bridge now shares versioned Sketch contracts with the web UI.
 // Freeze those actual source dependencies alongside the isolated client.
-await cp(join(project,'../design-desktop/src'),join(output,'design-desktop/src'),{recursive:true})
+await cp(join(project,'../design-desktop/src'),join(frontend,'design-desktop/src'),{recursive:true})
+await cp(join(project,'../design-desktop/scripts'),join(frontend,'design-desktop/scripts'),{recursive:true})
+await cp(join(project,'../design-mcp/src'),join(frontend,'design-mcp/src'),{recursive:true})
+await symlink(join(project,'../../design-studio'),join(output,'design-studio'),'dir')
 const sourceHashes: Record<string, string> = {}
 for (const name of ['Canvas.tsx', 'engine.ts', 'Layers.tsx', 'App.tsx', 'modal-keyboard.ts', 'canvas-pointer-intent.ts', 'selection-hierarchy.ts', 'selection-handles.ts', 'canvas-view.ts', 'styles.css'])
   sourceHashes[name] = createHash('sha256').update(await readFile(join(snapshot, 'src', name))).digest('hex')
@@ -55,7 +63,8 @@ try {
   p.on('pageerror', error => errors.push(String(error)))
   await p.goto(base)
   await p.context().grantPermissions(['clipboard-read','clipboard-write'],{origin:base})
-  await expect(p.locator('.save-status')).toHaveText('已保存到本机', { timeout: 30_000 })
+  // The web editor now reports the workspace copy. "已保存到本机" is no longer rendered.
+  await expect(p.locator('.save-status')).toHaveText('已自动保存到工作副本', { timeout: 30_000 })
   const record = () => p.evaluate(async () => { const { localOpen } = await import('/src/local-store.ts'); return (await localOpen())! })
   const stored = async () => (await record()).document as DesignDocument
   const settle = async () => {
@@ -184,7 +193,10 @@ try {
     await p.keyboard.down('Alt');await releaseOnly(guidePoint,{x:guidePoint.x,y:guidePoint.y+30});await p.keyboard.up('Alt')
     await expect.poll(async()=>(await stored()).pages[0].guides?.length).toBe(2)
     await p.keyboard.press('Delete');await expect.poll(async()=>(await stored()).pages[0].guides?.length).toBe(1)
-    await p.reload();await settle();expect((await stored()).pages[0].guides).toEqual([first])
+    await p.reload()
+    const resume=p.getByRole('button',{name:/继续编辑/})
+    if(await resume.count())await resume.click()
+    await settle();expect((await stored()).pages[0].guides).toEqual([first])
     if(!await p.getByTestId('horizontal-ruler').count())await key('Shift+r')
     await expect(p.getByTestId('ruler-guide')).toHaveCount(1);await screenshot('10-persistent-ruler-guide')
     passed('Ruler drag persists schema-11 page guides; click is a no-op, Option duplicates, Delete removes, reload preserves authored position')
