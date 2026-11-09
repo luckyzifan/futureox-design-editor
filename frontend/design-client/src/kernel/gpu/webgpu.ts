@@ -1,6 +1,7 @@
 import {DENSE_PAINT_MODE,densePaintWgsl} from './dense-paint-shader'
 import {sourceLayerWgsl,sourceImageLayerWgsl} from './source-layer-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE} from './source-layer'
+import {sourceSolidLayerDisplay} from './source-solid-layers'
 import {gaussianPrefixWorthwhile,gaussianPrefixDemand} from './gaussian-selection'
 import {straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
 import {exactArithmeticIdentities} from './exact-arithmetic-identities'
@@ -1264,7 +1265,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       !this.hdr && !this.displayMath && !scene.softwareRaster && scene.sourceDetailTile===true && scene.colorManagement?.documentSpace==='srgb'
     if (this.gestureSoftEffects||this.sourceSoftEffects) { modes.add(74); modes.add(75) }
     if(displayOnly && this.canvasBlurRequested && scene.sourceDetailTile && hasSourceFilters)modes.add(74)
-    if(displayOnly&&scene.sourceDetailTile)await this.prepareSourceLayers()
+    if(displayOnly&&scene.sourceDetailTile||sourceSolidLayerDisplay(scene,this,displayOnly))await this.prepareSourceLayers()
     if (displayOnly && scene.densePaint) {
       await this.prepareDensePaint()
       if (Object.keys(scene.densePaint.sources ?? {}).length >= 8) await this.prepareDensePairs()

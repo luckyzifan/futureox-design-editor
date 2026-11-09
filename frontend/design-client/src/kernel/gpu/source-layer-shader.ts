@@ -56,6 +56,7 @@ fn soft(tex:texture_2d<f32>,p:vec2<f32>,r:vec4<f32>)->f32{
  let p=vec2<i32>(floor(pos.xy))+vec2<i32>(params.values[0].xy);let phase=u32(params.values[5].x);
  let r=params.values[1];var back=vec4<f32>(0.);
  if(inside(p,r)){back=textureLoad(dst,min(p-vec2<i32>(r.xy),vec2<i32>(textureDimensions(dst))-1),0);}
+ if(params.values[4].z>0.&&alphaAt(soft1,p,params.values[2])==0.){return back;}
  nodeBase=5u;
  for(var layer=0u;layer<u32(params.values[4].y);layer++){
  let end=u32(word(5u).w);
