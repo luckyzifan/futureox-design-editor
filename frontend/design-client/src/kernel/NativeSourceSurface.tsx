@@ -134,7 +134,7 @@ export function NativeSourceSurface(props:Props){
     const demandKey=()=>[poseKey(),moving,quality.scale].join('/')
     let suspended=document.visibilityState==='hidden'
     let moving=false,serial=0,submission=0,acknowledged=0,tick=0,lastStatus='',lastStatusAt=-Infinity
-    let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false
+    let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false,panned=false
     let coldBudget=1
     let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive
     let cpuView:CanvasCamera|undefined
@@ -553,7 +553,8 @@ export function NativeSourceSurface(props:Props){
           // A settled overview can stream its visible cohort in one request.
           // The worker still prepares just one tile ahead of its GPU raster.
           const limit=overviewMode&&!optional&&!moving&&raster.scale<=1?8:SOURCE_PIPELINE_TILES
-          const batch=holeFirst.slice(0,wantStrip||source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
+          const coverMotion=moving&&!zoomingIn&&(continuousZoom||panned)
+          const batch=holeFirst.slice(0,wantStrip||coverMotion||(source.materialKeys && moving && zoomingIn && continuousZoom && backing)?1:limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,limit)
           const overviewBatch=!!(!wantStrip&&(coldTile||warmBase?.length))
@@ -841,6 +842,7 @@ export function NativeSourceSurface(props:Props){
         // it made the margin a full-density miss and a gray gap.
         if(performance.now()-lastZoomAt>=180){continuousZoom=false;zoomingIn=false}
       }
+      panned=currentView.x!==priorView.x||currentView.y!==priorView.y
       priorView=currentView
       // Estimate the physical viewport once, in world units. Zoom must not
       // multiply an already screen-sized viewport a second time.
@@ -898,7 +900,7 @@ export function NativeSourceSurface(props:Props){
             backingCoversSettledSource(backing,native.p,density.current)
           workQueue.demand(false,tile=>!(coveredDetail && tile.prefetch!==true && tile.zoom*4<=native.raster.scale) &&
             (native.keys.has(tile.key)||!missing&&tile.prefetch===true&&native.prefetchKeys.has(tile.key)||
-            retainInFlightTile(tile,native.p.view,native.p,cache.values(),native.keys,native.prefetchKeys,zoomingIn&&continuousZoom,native.raster.scale)))
+            retainInFlightTile(tile,native.p.view,native.p,cache.values(),native.keys,native.prefetchKeys,zoomingIn&&continuousZoom,native.raster.scale,true)))
           schedulePaint();void run()
         }catch(error){fail(error)}
       },continuousZoom&&lastInputAt-lastZoomAt<180?Math.min(SOURCE_WHEEL_QUIET_MS,Math.max(56,wheelInterval*2+8)):SOURCE_QUIET_MS):undefined
