@@ -90,6 +90,36 @@ test('large SQLite responses expose documentJson without a caller-side parse', a
   }
 })
 
+test('a real codec worker frame reaches sidecar admission and the backend unchanged', async () => {
+  const codec = createWorkspaceSqliteCodec()
+  const child = new EventEmitter()
+  Object.assign(child, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() })
+  child.kill = () => { queueMicrotask(() => { child.emit('exit', 0, null); child.emit('close', 0, null) }); return true }
+  let received, input = ''
+  child.stdin.on('data', bytes => {
+    input += bytes.toString('utf8')
+    if (!input.endsWith('\n')) return
+    received = JSON.parse(input)
+    input = ''
+    queueMicrotask(() => child.stdout.write(JSON.stringify({ id: received.id, result: { revision: 1 } }) + '\n'))
+  })
+  const sidecar = new Sidecar('/trusted/backend', '/trusted/recovery', { spawnProcess: () => child, timeoutMs: 5000 })
+  try {
+    const source = document(1000)
+    const encoded = await codec.encodeRequest('save-1', 'workspace.commit', {
+      documentJson: JSON.stringify(source), expectedRevision: null, mutationId: 'save-once',
+    })
+    assert.deepEqual(await sidecar.requestFrame('workspace.commit', 'save-1', encoded.frame, encoded.wireBytes), { revision: 1 })
+    assert.deepEqual(received.params.document, source)
+    assert.equal(received.params.mutationId, 'save-once')
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(sidecar.pendingBytes, 0)
+  } finally {
+    await sidecar.stop()
+    await codec.close()
+  }
+})
+
 test('workspace document framing reduces caller event-loop lag', async () => {
   const codec = createWorkspaceSqliteCodec()
   const documentJson = JSON.stringify(document(12000))

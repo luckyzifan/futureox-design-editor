@@ -7,7 +7,7 @@ export async function recoverFailedTileRenderer(error:unknown, renderer:FailedRe
   invalidate:()=>void, hasResidentDisplay:boolean):Promise<boolean> {
   const message=String(error)
   const lost=renderer?.driver.lost||/device lost|GPU device|has been lost|设备已丢失/i.test(message)
-  const allocation=/^(?:Error: )?GPU 表面内存预算超限(?:$|\s|\()/.test(message)
+  const allocation=/^(?:Error: )?(?:GPU 表面内存预算超限|GPU surface budget exceeded)(?:$|\s|\()/.test(message)
   if(hasResidentDisplay&&renderer?.driver.abortFrameAndReleaseFilterScratch&&!lost&&allocation){
     try {await renderer.driver.abortFrameAndReleaseFilterScratch();return true}
     catch(abortError){invalidate();renderer.dispose();throw new Error('Resident GPU frame recovery failed',{cause:abortError})}
@@ -27,7 +27,7 @@ export function retireFailedTileRenderer(
 ) {
   const message = String(error)
   const deviceLost = renderer?.driver.lost || /device lost|GPU device|has been lost|设备已丢失/i.test(message)
-  const allocation = /^(?:Error: )?GPU 表面内存预算超限(?:$|\s|\()/.test(message)
+  const allocation = /^(?:Error: )?(?:GPU 表面内存预算超限|GPU surface budget exceeded)(?:$|\s|\()/.test(message)
   if (deviceLost || !allocation) invalidate()
   renderer?.dispose()
 }

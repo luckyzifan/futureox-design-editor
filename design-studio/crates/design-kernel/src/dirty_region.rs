@@ -2548,8 +2548,9 @@ mod parent_map_reuse_tests {
         let fonts=Fonts::new();let camera=Transform([2.,0.,0.,2.,0.125,0.375]);
         let sparse=page_paint_rects(&d,"p",&fonts,camera).unwrap();assert_eq!(sparse.len(),2);
         let matrix=camera.concat(d.nodes["stage"].transform);
-        assert_eq!(sparse[0],subtree_bounds_from(&d,"a",matrix,Some(&fonts),true).unwrap());
-        assert_eq!(sparse[1],subtree_bounds_from(&d,"b",matrix,Some(&fonts),true).unwrap());
+        let outward=|bounds:[f64;4]|[bounds[0].floor(),bounds[1].floor(),bounds[2].ceil(),bounds[3].ceil()];
+        assert_eq!(sparse[0],outward(subtree_bounds_from(&d,"a",matrix,Some(&fonts),true).unwrap()));
+        assert_eq!(sparse[1],outward(subtree_bounds_from(&d,"b",matrix,Some(&fonts),true).unwrap()));
         assert!(page_background_can_sample(&d,"p",camera,[0.,0.],crate::math::Rect::new(500,500,64,64)));
         // A white rectangle is paint even on a white page: it may occlude a
         // preceding object. Only an empty container's selection box disappears.

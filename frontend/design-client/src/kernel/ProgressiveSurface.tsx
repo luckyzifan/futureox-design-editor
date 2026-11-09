@@ -1058,6 +1058,16 @@ export function ProgressiveSurfaceImpl(
       !props.pixelPreview && !reusableFrame && !retainedEditViewport && startupPreviewAttempt.current !== contract &&
       ![...tileRef.current.values()].some(tile => tile.document === doc && tile.revision === contract.revision &&
         ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height }))
+    // After high-zoom input stops, an unfinished optional filtered capture
+    // would serialize ahead of the native tile plan, then be drawn again.
+    // Keep cold-start/acknowledged pixels and the original completion fence.
+    if (!needsStartupPreview && !nativeNavigation && residentDisplay && filteredContent &&
+        renderExecutionPolicy.desktopFullMath && renderExecutionPolicy.desktopDisplay && backend === 'webgpu' &&
+        !navigationZoom.active && !cameraMoving && !props.panGestureActive && !props.interaction?.active &&
+        !hdrCompositing && !props.pixelPreview && !props.animation && requestedView.zoom >= 8) {
+      const flight = coverageFlight.current
+      if (flight?.contract === contract && flight.generation === generation) flight.cancelForNative()
+    }
     const render = (...args: Parameters<KernelClient['render']>) => mailbox.run(current, () => c.render(...args))
     const receive = (tile: TileResult & { viewportCache?: ViewportPreviewCacheEntry; nativeNavigationDevice?: string; previewSource?: PaintedTile['previewSource'] }) => {
       if (!sameContent()) {

@@ -1,4 +1,5 @@
 import { equalValue } from '../document-patch'
+import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regional-gaussian-display'
 import {MATERIAL_BAND} from './source-display-band'
 import { ResidentPoseReuse, terminalPoseDisposition } from './resident-pose-reuse'
 import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
@@ -1551,13 +1552,11 @@ self.onmessage = (e) => {
             let preparationWaitMs = 0, overlappedPreparations = 0
             const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
               (channel !== 'canvas' || fillGeneration === tileFillGeneration)
-            const canStreamGaussian = !renderOptions.gpuGaussianRegions && backend === 'webgpu' && channel === 'canvas' &&
-              (canvasDisplayFilters || sourcePreviewTile) && color?.documentSpace === 'srgb' &&
-              !request.readback && !request.png && !request.referenceGpu && !exportFormat && !renderOptions.exportRegion &&
-              renderOptions.rasterProfile === 'figmaSubpixel' && !renderOptions.pixelPreview && !renderOptions.animation &&
-              !executionPolicy.hdrCompositing && (renderIntent === 'preview' || renderIntent === 'canvas') &&
-              import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO !== '0' && import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX !== '0' &&
-              import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS !== '0'
+            const canStreamGaussian = regionalGaussianDisplay({backend,channel,profile:renderOptions.rasterProfile,colorSpace:color?.documentSpace,
+              displayOnly:!request.readback&&!request.png&&!request.referenceGpu&&!exportFormat&&(renderIntent==='preview'||renderIntent==='canvas'),
+              regional:renderOptions.gpuGaussianRegions,hdr:executionPolicy.hdrCompositing,pixelPreview:renderOptions.pixelPreview,
+              animation:renderOptions.animation,exportRegion:renderOptions.exportRegion},
+              {auto:import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO,prefix:import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX,regions:import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS})
             const slot = (tile: RasterTile) => namespace + '/' + coordinateSlot([
               tile.x, tile.y, tile.width, tile.height, tile.zoom, tile.phaseX ?? 0, tile.phaseY ?? 0,
               ...(cameraDependent ? [renderOptions.view.x, renderOptions.view.y, tile.zoom] : [])])
@@ -1578,14 +1577,14 @@ self.onmessage = (e) => {
                 if(windowKey && fullDensityGaussianWindow===windowKey){
                   try { return await inBands() }
                   catch(error){
-                    if(!current() || String(error).replace(/^Error: /,'') !== 'GPU surface budget exceeded')throw error
+                    if(!current() || !regionalGaussianAllocationFailure(error))throw error
                     fullDensityGaussianWindow=''
                     return ordinary()
                   }
                 }
                 try { return await ordinary() }
                 catch (error) {
-                  if(!current() || !canStreamGaussian || String(error).replace(/^Error: /,'') !== 'GPU surface budget exceeded')throw error
+                  if(!current() || !canStreamGaussian || !regionalGaussianAllocationFailure(error))throw error
                   const packet=await inBands()
                   if(windowKey && current())fullDensityGaussianWindow=windowKey
                   return packet
@@ -2440,6 +2439,7 @@ async function renderTiledPreview(
   sourceDetailTile=false,
   sourceImageDisplay=false,
 ) {
+  const regionChannel=activeLane
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
     if (isCurrent && !isCurrent()) throw new Error('PREVIEW_CANCELLED')
@@ -2620,10 +2620,22 @@ async function renderTiledPreview(
         const prepared = tile.x === 0 && tile.y === 0 &&
           tile.width === crop?.width && tile.height === crop?.height ? preparedScene : undefined
         preparedScene = undefined
-        const compileRegion = () => compilePacket(kernel, JSON.stringify({ ...options, width: tile.width, height: tile.height,
+        const compileRegion = async () => {
+          const regionOptions = { ...options, width: tile.width, height: tile.height,
           view: options.view, gpuViewport: { x: (crop?.x || 0) + tile.x,
             y: (crop?.y || 0) + tile.y, w: tile.width, h: tile.height },
-          ...(prepareViewport ? { prepareViewport } : {}) }))
+          ...(prepareViewport ? { prepareViewport } : {}) }
+          try { return await compilePacket(kernel,JSON.stringify(regionOptions)) }
+          catch(error){
+            const allowed=regionalGaussianDisplay({backend,channel:regionChannel,profile:options.rasterProfile,colorSpace:color?.documentSpace,
+              displayOnly:presentOnly&&!managedOutput,regional:options.gpuGaussianRegions,hdr:executionPolicy?.hdrCompositing,
+              pixelPreview:options.pixelPreview,animation:options.animation,exportRegion:options.exportRegion},
+              {auto:import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO,prefix:import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX,regions:import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS})
+            if(!allowed||!regionalGaussianAllocationFailure(error))throw error
+            checkCurrent()
+            return compilePacket(kernel,JSON.stringify({...regionOptions,gpuGaussianRegions:true,gpuGaussianReduction:0}))
+          }
+        }
         let scene = prepared
         if (!scene) {
           let packet: ScenePacket

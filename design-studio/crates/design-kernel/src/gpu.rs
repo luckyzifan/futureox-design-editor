@@ -478,7 +478,7 @@ fn gaussian_region_plan(n:&Node,matrix:Transform,output:Rect)->Option<GaussianRe
 fn gaussian_region_plan_above(n:&Node,matrix:Transform,output:Rect,minimum:f64)->Option<GaussianRegion>{
     if !n.render_children().is_empty()||n.clip||n.mask||n.blend!="normal"||n.passes_backdrop()||
         n.strokes.iter().any(|s|s.visible&&s.width>0.)||
-        n.fills.len()!=1||!n.fills[0].visible||n.fills[0].kind!="solid"||n.fills[0].blend!="normal"||
+        n.fills.len()!=1||!n.fills[0].visible||!matches!(n.fills[0].kind.as_str(),"solid"|"image")||n.fills[0].blend!="normal"||
         n.effects.iter().filter(|e|e.visible).count()!=1||output.empty()||output.w>1024||output.h>1024{return None}
     let effect=n.effects.iter().find(|e|e.visible)?;
     if effect.kind!="gaussian-blur"||effect.gradient_blur.is_some(){return None}
@@ -498,7 +498,7 @@ fn gaussian_region_plan_above(n:&Node,matrix:Transform,output:Rect,minimum:f64)-
 // may use the reduced effect grid; thin/concave/multi-contour/HDR sources decline.
 fn reduced_gaussian_source(n:&Node,matrix:Transform,plan:&GaussianRegion,path:&crate::path::Path,factor:u32)
     -> Option<(GaussianRegion,Arc<Vec<crate::path::Contour>>)> {
-    if !matches!(factor,2|4|8)||n.kind=="text" {return None}
+    if !matches!(factor,2|4|8)||n.kind=="text"||n.fills.first()?.kind!="solid" {return None}
     let color=n.fills.first()?.color.as_bytes();
     if !matches!(color.len(),4|5|7|9)||color[0]!=b'#'||!color[1..].iter().all(u8::is_ascii_hexdigit){return None}
     let f=f64::from(factor);let mut reduced_matrix=matrix;
@@ -923,7 +923,7 @@ fn constant_gaussian(n:&Node,p:&crate::geometry_snapshot::Prepared,region:Rect)-
     // two-pixel guard) must contain no path boundary, including holes.
     let plan=gaussian_region_plan(n,p.matrix,region)?;
     let fill=&n.fills[0];
-    if fill.opacity!=1.||fill.color.len()!=7||!fill.color.starts_with('#'){return None}
+    if fill.kind!="solid"||fill.opacity!=1.||fill.color.len()!=7||!fill.color.starts_with('#'){return None}
     constant_fill_coverage(n,p,plan.source)
 }
 
@@ -3718,6 +3718,35 @@ mod page_predicate_cache_tests {
         assert_eq!(e.compile_gpu_request(&r.to_string()).unwrap().nodes["ellipse"].gaussian_region.as_ref().unwrap().factor,None);
         let n=&d.nodes["ellipse"];let matrix=Transform([64.,0.,0.,64.,0.,0.]);let plan=gaussian_region_plan(n,matrix,Rect::new(0,0,32,32)).unwrap();
         let mut thin=n.clone();thin.width=1.;let paths=thin.paths().unwrap();assert!(reduced_gaussian_source(&thin,matrix,&plan,&paths.0,4).is_none());
+    }
+    #[test] fn wide_image_gaussian_preserves_source_support_and_never_uses_a_reduced_image_grid(){
+        use base64::Engine as _;
+        let mut png=Vec::new();
+        {
+            let mut encoder=png::Encoder::new(&mut png,2,2);
+            encoder.set_color(png::ColorType::Rgba);encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header().unwrap().write_image_data(&[255,0,0,255,0,255,0,127,0,0,255,63,255,255,255,0]).unwrap();
+        }
+        let uri=format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(png));
+        let mut d=document();
+        let n=d.nodes.get_mut("ellipse").unwrap();
+        n.fills[0].kind="image".into();n.fills[0].image=Some(uri.into());
+        n.transform=Transform([-1.,0.,0.,1.,477.1432495117188,0.]);
+        let original=serde_json::to_string(&d).unwrap();
+        let mut e=Engine::new();e.load_document(&original).unwrap();
+        let mut r=json!({"pageId":"p","width":514,"height":514,"view":{"x":-15000.,"y":-2000.,"zoom":64.},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":514,"h":514}});
+        assert!(e.compile_gpu_request(&r.to_string()).is_err());
+        r["gpuGaussianRegions"]=json!(true);r["gpuGaussianReduction"]=json!(8);
+        let scene=e.compile_gpu_request(&r.to_string()).unwrap();
+        let node=&scene.nodes["ellipse"];let plan=node.gaussian_region.as_ref().unwrap();
+        assert_eq!(plan.factor,None);assert_eq!(node.fills[0].kind,"image");
+        assert_eq!(plan.radii,crate::effects::gaussian_box_radii_region(d.nodes["ellipse"].effects[0].radius*64.).unwrap());
+        assert!(scene.extent.pixels()<1_000_000);assert!(plan.source.pixels()>16_777_216);
+        r["view"]["y"]=json!(-8000.);
+        let interior=e.compile_gpu_request(&r.to_string()).unwrap();
+        assert!(interior.nodes["ellipse"].gaussian_region.is_some(),"constant geometry cannot prove constant image colour");
+        assert_eq!(interior.nodes["ellipse"].effects[0].kind,"gaussian-blur");
+        assert_eq!(serde_json::to_string(e.authored_document().unwrap()).unwrap(),original);
     }
     #[test] fn dependent_and_oversized_streams_do_not_inherit_new_admission(){
         let d=document();let n=&d.nodes["ellipse"];let m=Transform([64.,0.,0.,64.,0.,0.]);let output=Rect::new(0,0,514,514);
