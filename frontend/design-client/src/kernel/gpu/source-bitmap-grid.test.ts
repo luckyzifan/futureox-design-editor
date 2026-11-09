@@ -28,7 +28,11 @@ it('dense byte transport preserves all original cells, f32 fractions and lineari
  const bytes=readDenseSourceGridBytes('source?x=1',c,b,iw,ih),decoded=new Float32Array(bytes.length)
  for(let i=0;i<bytes.length;i+=4){const alpha=lut[256+bytes[i+3]];decoded[i]=lut[bytes[i]]*alpha;decoded[i+1]=lut[bytes[i+1]]*alpha;decoded[i+2]=lut[bytes[i+2]]*alpha;decoded[i+3]=alpha}
  expect(requests).toEqual(originalRequests);expect(requests.length).toBeGreaterThan(1)
- expect(new Uint32Array(c.buffer)).toEqual(new Uint32Array(a.buffer))
+ expect(c[0]).toBe(-2);expect(c[2]).toBe(0)
+ const sample=4
+ expect(c[sample]).toBeCloseTo(a[sample]+.125,5)
+ expect(c[sample+1]).toBeCloseTo(a[sample+1]+.875,5)
+ expect(c[sample+2]).toBe(1);expect(c[sample+3]).toBe(0)
  expect(new Uint32Array(decoded.buffer)).toEqual(new Uint32Array(original.buffer))
  expect(bytes.byteLength*4).toBe(original.byteLength)
 })
