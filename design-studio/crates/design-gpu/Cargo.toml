@@ -3,6 +3,7 @@ name = "futureox-design-gpu"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [features]
 default = []
