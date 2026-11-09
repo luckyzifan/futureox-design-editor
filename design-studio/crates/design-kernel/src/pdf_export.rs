@@ -1459,8 +1459,6 @@ mod tests {
         }
     }
 
-    /// The content stream is the first stream object in the file and is pure
-    /// ASCII, so lossy decoding cannot shift the extracted region.
     fn content_stream(pdf: &[u8]) -> String {
         let text = String::from_utf8_lossy(pdf);
         let start = text.find("stream\n").expect("stream") + "stream\n".len();

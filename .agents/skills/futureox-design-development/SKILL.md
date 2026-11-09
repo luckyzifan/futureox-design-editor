@@ -1,5 +1,9 @@
 
-2026-11-07 [落定让出唯一光栅 owner](../../../testing/verification-settle-handoff-20261107/README.md)：松手后已覆盖的邻近密度不再占住精确相位；补洞的那张留下。不是 33/100ms 或完整 G2/G5。
+2026-11-09 [GPU 启动与缩放调度](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地 GPU 优先、CPU 兜底。已有同源预览时，完整源先完成原密度瓦片，粗页预取在首个原生回执后继续；高倍停止输入后仅撤销未完成的可选滤镜预览，保留冷启动、已交付图像和原任务完结/迟到释放边界。组合版完整拓扑两次约 110–115 秒，旧版约 172 秒；117 的 3200% 约 25.7→10.5 秒。原生画布及可见内容像素一致，预算、效果、密度和 GPU 数学不变。集合替换仅改善 1.9%，已撤回。不是 33/100ms 或完整 G2/G5。
+
+2026-11-09 [最新 main 的 Electron 回归修复](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地保持 WebGPU 优先，CPU 只兜底。保留 PR56/57 的覆盖场、位图保留、原生 JSON 与重绑定/恢复。单素材原生回执只开放当前 catalogue key 的已认可区域；opening 缩略图旧 key 不能跨重绑定授予整页覆盖。高倍 SDR 图片 Gaussian 按原密度、四相和六遍分条，预算与导出/HDR 入口不放宽。真实 GPU 的 test/FIG/拓扑/117 回放通过；完整拓扑本轮约 177.1 秒，仍慢，不关闭 33/100ms 或完整 G2/G5。
+
+2026-11-08 [源文件清晰与 Figma/Sketch 外壳](../../../testing/verification-source-clarity-layout-20261108/README.md)：原生设计内容可以是 JSON 字符串、已解析对象或 UTF-8 字节；英文 `Error:` 包装不再盖住中文原因。宿主文档仍开着时，丢掉的源状态会重新绑定，精修可以再打开清晰画面。Sketch 的 F 标记单独占一列，素材名和页面检查器按桌面结构分开。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源停手后先排一张页级粗覆盖，第一次缩出不用从零等。不是 33/100ms 或完整 G2/G5。
 
@@ -16,6 +20,10 @@
 2026-11-07 [缩放中平移的灰条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移不再清掉缩出密度，新露出的世界若已被更粗瓦片盖住就提交该覆盖栈；晚到的同倍率帧仍收下。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩出密度播种之后，快慢缩放仍会大块留白。原因是目标格子未齐就不发布，且密度跳变会取消补洞瓦片；总览只进 CSS 图集。现改为视口并集盖住才换帧，粗层垫在锐层下，在途瓦片按是否还在画洞决定去留。预算、落定精确瓦片和物理 DPR 预览不变。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 CC Switch：只接入切换上游。一条供应商是地址、密钥，以及 API 或 Token plan。设计助手打到选中的那一条。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md) 和 [记录](../../../testing/verification-ccswitch-integration-20261108/README.md)。
+
+2026-11-07 设计助手：桌面版用 Tokio `futureox-design-agent` 跑对话、一键出图和细节调整，经 MCP `batch.apply` 写入现有编辑器。设置里可保存 API、Token plan 和 CC Switch。页面悬停才出现定向修改。Fig/Sketch 只做结构差距，不改光栅。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md)。
 
 2026-11-06 [滚轮缩小卡住分析与缩出密度播种](../../../testing/verification-zoom-out-density-20261106/README.md)：反向缩小就绪 9.4s（11-04 实测）、拓扑冷视口 35s 为既有开放项；机制=瓦片平方爆炸+高倍效果设备像素代价+**缩入/缩出不对称**（滚轮快道只对 zoomingIn 开放，且 SourceQualityLadder 反应式降档要先付一次失败全量光栅）+总览串行解码；另滚轮不开交互事务，指针手势自适应密度 flag 从未覆盖滚轮通道。修复：`outwardInteractionScale`（同一 8M 阶梯除数，缩出方向免 flag）+ `SourceQualityLadder.seed`（种在阶梯密度、original 为升级上界）+ NativeSourceSurface 连续缩出时逐 tick 播种；指针通道/落定精确瓦片/预算常量不变。4 测试文件 36/36、tsc 干净；真机收益按 11-03 固定回放复测待做；B（缩出预取）/C（总览金字塔）列后续。
 
@@ -101,6 +109,7 @@ description: Develop, review, or test this Futureox Design local-first editor, i
 
 2026-10-30 的稀疏画布、源准备与实时像素修复见[本轮验证](../../../testing/verification-sparse-canvas-20261030/README.md)。实时捕获必须高于实际页面质量层级，不能用固定 layer 4：原精确 layer 5 曾遮挡已生成的新像素，渲染回执变快并未消除蓝框先动。必须保留真实截图负/正对照。FXSCENE4 共享完整图片/几何并保留原始 f64 位；两 CPU 转换槽按源序合并，单 GPU owner 不变。空白复用需完整源、同 owner/颜色/密度的实际 GPU texel 证明，白色 authored paint 仍保留。四采样子树/静态前缀与高斯分条均使用原预算；新实验准入与开关不整体放开。有界捕获扩展只保留 owner-valid 输出边界，最多一原生百万像素，不授予像素复用或完整性。截图会阻塞 IPC 回执，像素回放与无截图计时分开；冷启动、100 ms 精修、可见 P95、任意嵌套/HDR 覆盖及完整 G5 尚未关闭。
 
+2026-11-09 [缩放清晰度方案选择](../../../docs/ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)：普通桌面 SDR WebGPU 默认渐进替换已完成的原密度区域，保留同源连续预览，整屏回执仍需全部完成；`VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR=0` 回退。117 首个原密度区域呈现 ACK 约 10.5→0.8 秒，整屏约 8.5 秒；模板二首区域仍约 5.6 秒。原密度/相位、版本、设备、取消边界与最终像素保持，native-visible-tiles 等其他实验不推广。不代表运动始终清晰或完整 G2/G5。[整个应用开源/商业分发评估](../../../docs/OPEN_SOURCE_COMMERCIAL_READINESS_20261109.zh-CN.md)仍有项目许可、素材/代码来源与实际发布包授权缺口，不能从渲染通过推导可发布。
 
 2026-10-29/30 的响应修复与真实长测见[本轮记录](../../../testing/verification-responsive-editor-20261029/README.md)。保留 parsed Sketch 导入的计数额度、最多两个 CPU 转换任务、原绘制顺序与单 GPU raster owner。嵌套保留仅扩展空的独立 pass-through 祖先；图片专用解码器只在同源证明及相同颜色/mip 政策下共享，变化时分离，不共享 CPU 全文档引擎。根拖动停滞/跳框已有实际截图对照；6912 次长平移属于 v3，最终解码器增量及三文件编辑回归分别记录。冷启动、3200% 模板二错误、约一秒提交精修、33/100ms、全部嵌套效果与完整 G5 仍未关闭，不得称全部方案完成。
 

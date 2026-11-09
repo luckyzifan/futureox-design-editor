@@ -4,6 +4,7 @@ import type { DesktopSession } from './desktop-session'
 import { createDocumentHistory, type HistoryEntry } from './document-history'
 import { diffDocuments, changeLabels, type DocumentChange } from './document-diff'
 import { scene } from './geometry'
+import { userPages } from './fig-document'
 import { KernelSurface } from './kernel/Surface'
 
 /**
@@ -277,7 +278,7 @@ function RevisionPreview({
             只读预览 · 版本 {revision} · {document.name}
           </strong>
           {document.pages.length > 1 &&
-            document.pages.map((p) => (
+            userPages(document).map((p) => (
               <button
                 key={p.id}
                 type="button"

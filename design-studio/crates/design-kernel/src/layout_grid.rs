@@ -1,19 +1,6 @@
-//! Layout-grid section rendering, decoded from the reference engine's
-//! grid shaders (GLSL variants extracted verbatim-semantics):
-//!
-//! ```glsl
-//! a = floor(distance / stride);
-//! b = a * stride + 0.5;             // section centre
-//! c = b - stride;                   // previous centre
-//! lit = [floor(c), floor(c+rounded)+unrounded)   ∪
-//!       [floor(b), floor(b+rounded)+unrounded)   ∪
-//!       [floor(b+stride), floor(b+stride+rounded)+unrounded)
-//! overall = 0 <= distance < cutoff + unrounded
-//! ```
-//!
-//! Sections split into an integral (`rounded`) and fractional
-//! (`unrounded`) part so non-integer row/column sizes highlight their
-//! sub-pixel remainder correctly.
+//! Layout-grid display: pack track sizes into per-axis metrics, then evaluate
+//! the highlighted intervals while retaining fractional track remainders.
+
 use serde::{Deserialize, Serialize};
 
 /// Per-axis packed grid metrics (the vec4 attribute payload).

@@ -17,11 +17,13 @@ import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
 import { SourceDocumentStatus } from './SourceDocumentStatus'
+import { SourcePageInspector } from './SourcePageInspector'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
 import { PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
 import { interfaceText, interfacePreference, useInterfacePreferences } from './interface-preference'
+import { applyInterfaceLayout, interfaceLayoutFromShortcut } from './interface-layout'
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
@@ -30,6 +32,11 @@ import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { NativeAutomationDialog } from './AutomationPanelLauncher'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
+import { DesignAgentDock } from './design-ai/DesignAgentDock'
+import { getAgentDock, subscribeAgentDock } from './design-ai/design-agent-dock'
+import { AnchoredMenu } from './anchored-menu'
+import { UiModeSwitch } from './UiModeSwitch'
+import { canvasStatusLabel } from './canvas-status-label'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
 import { createAutomationSettingsAdapter } from './automation/settings-adapter'
@@ -58,7 +65,7 @@ import { ActivityBanner, EmptyCanvas } from './ActivityBanner'
 import { activityKind, activityLabel, activityText } from './activity-chrome'
 import { toolGlyph, type GlyphIcon } from './chrome-icons'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { flushSync } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import {
   Settings as SettingsIcon,
   ChevronDown,
@@ -145,7 +152,8 @@ const utilityToolItems: { id: Tool; label: string; icon: GlyphIcon }[] = [
   { id: 'comments', label: '评论', icon: toolGlyph.comments },
 ]
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
-  const { locale } = useInterfacePreferences()
+  const { locale, uiMode } = useInterfacePreferences()
+  const agentDockOpen = useSyncExternalStore(subscribeAgentDock, () => getAgentDock().open, () => false)
   const toolbarText = canvasText[locale]
   const menuText = fileMenuText[locale]
   const shortcutProfile = useShortcutProfile()
@@ -747,6 +755,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (command) void dispatchEditorCommand(editor, command)
       }
     }
+    const layout = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target)) return
+      const mode = interfaceLayoutFromShortcut(e)
+      if (!mode) return
+      e.preventDefault()
+      applyInterfaceLayout(mode)
+    }
     const shortcut = (e: KeyboardEvent) => {
       if (largeDocument || source) return
       const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
@@ -767,6 +782,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         e.preventDefault(); command('new')
       }
     }
+    window.addEventListener('keydown', layout)
     window.addEventListener('keydown', shortcut)
     const offCommand = desktop?.onCommand(command)
     const offLaunch = desktop?.plugins?.onLaunch?.(({ grant }) => {
@@ -794,7 +810,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           editor.notify(`关闭请求失败，设计已保留：${detail}`, { key: 'closeFailedDocumentRetained', error: detail })
         })
     })
-    return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
+    return () => { window.removeEventListener('keydown', layout); window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
   }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source])
   function resumeEditor() {
     if (!ready) return
@@ -886,7 +902,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       style={adaptivePanels.style}
       data-host={desktop ? 'electron' : 'web'}
       data-density={adaptivePanels.density}
-      className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
+      data-ui-mode={uiMode}
+      className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) && !agentDockOpen ? '' : agentDockOpen ? '' : 'chrome-hide-inspector'} ${agentDockOpen ? 'design-agent-open' : ''} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktop ? String(ready) : undefined}
       data-editor-ready={String(ready)}
@@ -1034,6 +1051,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {!source&&!desktopSession&&<button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
             <FolderOpen size={16} />{panelText.localFiles}
           </button>}
+          <UiModeSwitch />
           <label className="locale-switch" data-locale-switch>
             <span className="sr-only">{panelText.language}</span>
             <select aria-label={panelText.language} value={locale} onChange={event => interfacePreference.set({ locale: event.target.value === 'en' ? 'en' : 'zh-CN' })}>
@@ -1041,6 +1059,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               <option value="en">English</option>
             </select>
           </label>
+          <DesignAgentLauncher editor={editor} desktop={desktop} disabled={!ready || switching || s.busy} onImport={(file, mode) => void importDesignFile(file, mode)} />
           <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
             disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
           <button
@@ -1062,10 +1081,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
       </header>
       {desktopSession?.supportsWorkspace && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
-      {menu && (
+      {menu && createPortal(
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
-          <div className="file-menu">
+          <AnchoredMenu anchor={fileMenuTrigger.current} className="file-menu" prefer="below">
             <button type="button" onClick={enterHome}><FolderOpen size={15} />{menuText.localHome}</button>
             <button type="button" onClick={openSettings}><SettingsIcon size={15} />{panelText.settingsTitle}</button>
             <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
@@ -1189,8 +1208,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 {format === 'png' ? ' @2x' : ''}
               </button>
             ))}
-          </div>
-        </>
+          </AnchoredMenu>
+        </>,
+        document.body,
       )}
       <input
         ref={file}
@@ -1366,9 +1386,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </div><div ref={setZoomHost} className="properties-zoom" />
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
-            {source?.nativeCanvas?<section className="source-overview-info"><h3>完整画板</h3><p>{source.nativeCanvas.snapshot.roots} 个素材 · {source.nativeCanvas.snapshot.nodes.toLocaleString()} 个节点</p><p>拖动或滚动浏览，双击素材进入细节编辑。</p></section>:['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} /></PendingEditContext.Provider>
+            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} /></PendingEditContext.Provider>
               : <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />}
           </div>
+          <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />
         </div>
       </main>
       <BatchRenameDialog editor={editor} />
@@ -1447,7 +1468,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       <footer>
         <span>
           {s.busy ? <span className="spinner" /> : <span className="footer-dot" />}
-          {operationStatusText(s.message, s.messagePresentation, locale)}
+          {canvasStatusLabel(operationStatusText(s.message, s.messagePresentation, locale))}
         </span>
         <div>
           {s.selection.length ? `${s.selection.length} 个图层已选择` : '空格拖动画布 · H 平移 · V 选择'}

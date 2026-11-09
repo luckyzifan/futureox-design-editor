@@ -63,8 +63,12 @@ export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|u
               lastDisplay?.openingMaterial===selected ? lastDisplay : undefined
           const displayChanged=display?.token!==lastDisplay?.token
           lastDisplay=display
-          if(items.length===reply.total && (displayChanged || reply.items.length || reply.images.length || reply.detail || evicted || reply.finished!==finished || !reply.total))
-            setValue({generation,view:{owner,bounds:reply.bounds,items,pages,materialDisplay:display,images:new Map(images),finished:reply.finished,cacheHit:reply.cacheHit,rendered:reply.rendered}})
+          // The first decoded boards can paint before the rest of a 100MB+
+          // catalogue has been copied. Indices still match the catalogue, so
+          // an image only appears once its placement row has arrived.
+          const prefixReady=items.length>0&&[...images.keys()].some(index=>index<items.length)
+          if((items.length===reply.total||prefixReady) && (displayChanged || reply.items.length || reply.images.length || reply.detail || evicted || reply.finished!==finished || !reply.total))
+            setValue({generation,view:{owner,bounds:reply.bounds,items:[...items],pages,materialDisplay:display,images:new Map(images),finished:reply.finished&&items.length===reply.total,cacheHit:reply.cacheHit,rendered:reply.rendered}})
           finished=reply.finished
           if(reply.finished&&!reply.indexing&&!reply.moreDetails&&!reply.detailPending&&!reply.detail&&items.length===reply.total){
             delay=undefined
@@ -125,9 +129,9 @@ const Thumbnail=memo(function Thumbnail({item,index,src,loaded}:{item:SourceCanv
   return <image data-opening-material={index} data-opening-page={item.pageId} x={b.x} y={b.y} width={b.width} height={b.height}
     preserveAspectRatio="none" href={src} onLoad={e=>{if(e.currentTarget.getAttribute('href')===src)loaded.set(index,src)}}/>
 })
-export function SourceOpeningSurface({source,view,width,height,pageId,focused,onDetail,onViewport,coverage}:{
+export function SourceOpeningSurface({source,view,width,height,pageId,focused,onDetail,onViewport,coverage,nativeRegions=[]}:{
   source:OpeningView;view:CanvasCamera;width:number;height:number;pageId?:string;focused?:number
-  onDetail?:(roots:number[])=>void;onViewport?:(box:SourceCanvasBox,density:number)=>void;coverage?:SourceThumbnailCoverage
+  onDetail?:(roots:number[])=>void;onViewport?:(box:SourceCanvasBox,density:number)=>void;coverage?:SourceThumbnailCoverage;nativeRegions?:readonly SourceCanvasBox[]
 }) {
   const rows=useMemo(()=>source.items.map((item,index)=>({item,index})).filter(r=>!pageId||r.item.pageId===pageId),[source.items,pageId])
   const loaded=useMemo(()=>new Map<number,string>(),[source.owner.documentId,source.owner.sessionEpoch])
@@ -197,9 +201,11 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
   // strip never shows this field.
   const aboveNative=width>0&&height>0&&cover<width*height*0.8
   const patternId=useMemo(()=>`pasteboard-${source.owner.documentId}-${source.owner.sessionEpoch}`,[source.owner.documentId,source.owner.sessionEpoch])
+  const maskId=patternId+'-native'
   return <svg className="source-opening-surface" aria-label="源文件素材预览" data-material-count={source.items.length}
     data-rendered-materials={source.images.size} data-source-owner={source.owner.documentId}
     data-source-coverage-extend={panned?'pan':undefined}
+    data-native-regions={nativeRegions.length}
     width={width} height={height} style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:aboveNative?3:0}}>
     <defs>
       <pattern id={patternId} width="8" height="8" patternUnits="userSpaceOnUse">
@@ -207,18 +213,26 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
         <rect width="4" height="4" fill={PASTEBOARD_COVERAGE[1]}/>
         <rect x="4" y="4" width="4" height="4" fill={PASTEBOARD_COVERAGE[1]}/>
       </pattern>
+      {aboveNative&&nativeRegions.length>0&&<mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width={width} height={height} style={{maskType:'luminance'}}>
+        <rect width={width} height={height} fill="white"/>
+        <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
+          {nativeRegions.map((box,i)=><rect key={i} x={box.x} y={box.y} width={box.width} height={box.height} fill="black"/>)}
+        </g>
+      </mask>}
     </defs>
+    <g mask={aboveNative&&nativeRegions.length>0?`url(#${maskId})`:undefined}>
     <rect width={width} height={height} fill={`url(#${patternId})`}/>
     <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
       {images}
+    </g>
     </g>
   </svg>
 }
 
 // The full source lays out independent roots with spacing. Exclude adjacent
 // pages from a page-specific view while retaining the gutter around each root.
-export function sourcePageClip(boxes:readonly SourceCanvasBox[]|undefined,view:CanvasCamera,width:number,height:number) {
-  if(!boxes?.length||!(width>0)||!(height>0))return undefined
+export function sourcePageClip(boxes:readonly SourceCanvasBox[]|undefined,view:CanvasCamera,width:number,height:number,scopeOnly=false) {
+  if(!boxes?.length||!(width>0)||!(height>0))return scopeOnly?'inset(100%)':undefined
   const rects:string[]=[]
   let unionL=Infinity,unionT=Infinity,unionR=-Infinity,unionB=-Infinity
   for(const b of boxes){
@@ -231,8 +245,9 @@ export function sourcePageClip(boxes:readonly SourceCanvasBox[]|undefined,view:C
   // A zoomed-out artboard is a small island. Clipping the native surface to
   // it leaves the pasteboard as the workspace gray, so a pan exposes a solid
   // #f5f5f5 strip no matter what the coarse tile painted.
-  if(!(unionR>unionL)||!(unionB>unionT)||(unionR-unionL)*(unionB-unionT)<width*height*0.8)return undefined
-  if(unionL===0&&unionT===0&&unionR===width&&unionB===height)return undefined
+  if(!(unionR>unionL)||!(unionB>unionT))return scopeOnly?'inset(100%)':undefined
+  if(!scopeOnly&&(unionR-unionL)*(unionB-unionT)<width*height*0.8)return undefined
+  if(unionL===0&&unionT===0&&unionR===width&&unionB===height&&(!scopeOnly||boxes.length===1))return undefined
   if(boxes.length===1)return `inset(${unionT}px ${width-unionR}px ${height-unionB}px ${unionL}px)`
   return rects.length?`path("${rects.join(' ')}")`:undefined
 }

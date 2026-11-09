@@ -84,7 +84,7 @@ impl Fixture {
     ) {
         let node = self.doc.nodes["n"].clone();
         self.painter(layer.rect, compatible, sample)
-            .paint(&node, paint, Transform::default(), mask, layer, |x, y| {
+            .paint(&node, paint, Transform::default(), mask, layer, false, |x, y| {
                 extra[mask.rect.index(x, y).unwrap()]
             })
             .unwrap();
@@ -380,6 +380,7 @@ fn consecutive_paints_recompute_color_opacity_and_paint_properties() {
             Transform::default(),
             &mask,
             &mut actual,
+            extra == 1.,
             |_, _| extra,
         )
         .unwrap();
@@ -390,6 +391,7 @@ fn consecutive_paints_recompute_color_opacity_and_paint_properties() {
                 Transform::default(),
                 &mask,
                 &mut expected,
+                false,
                 |_, _| extra,
             )
             .unwrap();
@@ -440,7 +442,7 @@ fn sampler_validation_precedes_pixels_stats_and_coverage_evaluation() {
             let before = layer.try_clone().unwrap();
             let error = fixture
                 .painter(rect, true, Some(0))
-                .paint(&node, paint, *matrix, &mask, &mut layer, |_, _| {
+                .paint(&node, paint, *matrix, &mask, &mut layer, false, |_, _| {
                     panic!("coverage evaluated before sampler validation")
                 })
                 .unwrap_err();
@@ -474,6 +476,7 @@ fn sampler_validation_precedes_pixels_stats_and_coverage_evaluation() {
                 matrix,
                 &mask,
                 &mut layer,
+                false,
                 |_, _| {
                     called.set(true);
                     1.

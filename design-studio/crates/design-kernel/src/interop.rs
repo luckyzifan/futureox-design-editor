@@ -1164,6 +1164,7 @@ impl<'a> Importer<'a> {
                                 crate::pattern_fill::ALIGN_START.into(),
                                 crate::pattern_fill::ALIGN_START.into(),
                             ],
+                            ..crate::pattern_fill::PatternTile::native()
                         })
                     }
                     // 1 (Fill) is the kernel image-paint default (cover)
@@ -4397,8 +4398,6 @@ fn constraint_axis_bits(anchor: crate::layout::Anchor, lossy: &mut Vec<String>) 
     }
 }
 
-/// FlexJustify (sketchformat/layer_common.py, disassembled):
-/// START=0 CENTER=1 END=2 SPACE_BETWEEN=3 SPACE_AROUND=4 SPACE_EVENLY=5.
 fn flex_justify(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
     use crate::layout::Align;
     match align {

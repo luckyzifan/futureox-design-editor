@@ -5,7 +5,7 @@ import { createInputDiagnostics, InputFamily, InputPhase } from './input-diagnos
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Pipette } from 'lucide-react'
 import { DraftInput } from './DraftInput'
-import { validColor } from './color'
+import { displayColorHex, validColor } from './color'
 import { PendingEditContext } from './pending-edit-context'
 import { commitPendingEdits } from './pending-edits'
 import { requestCanvasColor } from './canvas-color-picker'
@@ -88,7 +88,7 @@ function LegacyColorInput({
       if (controller.current === owner) controller.current = null
     }
   }
-  const simple = /^#[0-9a-f]{6}$/i.test(value)
+  const shown = displayColorHex(value)
   return (
     <span
       className="color-input"
@@ -106,8 +106,11 @@ function LegacyColorInput({
         }
       }}
     >
-      {simple ? (
-        <input aria-label={label} type="color" value={value} onFocus={() => diagnostic.event(InputPhase.focus)} onBlur={() => diagnostic.event(InputPhase.blur)} onChange={(e) => applyColor(e.target.value)} />
+      {shown ? (
+        <>
+          <input aria-label={label} type="color" value={shown.toLowerCase()} onFocus={() => diagnostic.event(InputPhase.focus)} onBlur={() => diagnostic.event(InputPhase.blur)} onChange={(e) => applyColor(e.target.value)} />
+          <span className="color-readout">{shown}</span>
+        </>
       ) : (
         <DraftInput diagnosticFamily={InputFamily.color}
           aria-label={label}

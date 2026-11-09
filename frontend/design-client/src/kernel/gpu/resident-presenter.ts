@@ -239,10 +239,10 @@ export class ResidentPresenter {
     this.samplePipeline=pipeline('rgba16float',0,undefined,true)
     this.sampleBlendPipeline=pipeline('rgba16float',0,blend,true)
     this.sampleResolvePipeline=pipeline(format,2,undefined,true)
-    // The recovered Figma viewer atlas uses LINEAR_MIN_NEAREST_MAG_CLAMP.
-    // Do not add bilinear blur to enlarged cached pixels while native detail
-    // catches up. Antialiasing remains in the raster; this cannot invent detail.
-    this.sampler = device.createSampler({ minFilter: 'linear', magFilter: 'nearest' })
+    // Enlarged cached pixels are a temporary hold, not a certified frame.
+    // Linear magnification keeps that hold soft. It does not invent detail;
+    // a 1:1 sample still reads the texel under its center.
+    this.sampler = device.createSampler({ minFilter: 'linear', magFilter: 'linear' })
     this.uniforms = device.createBuffer({
       size: 4096 * 256,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,

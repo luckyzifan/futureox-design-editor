@@ -72,8 +72,6 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
       fn(d.prototype!.interactions[n.id][index])
       validatePrototype(d, d.prototype)
       if (Object.values(d.prototype!.interactions).some(events => events.some(e => hasLogic(e.actions)))) d.schemaVersion = Math.max(d.schemaVersion, 15) as DesignDocument['schemaVersion']
-      // Easing curves, overlay placements and recovered action-schema
-      // extras are schema-12 facets.
       if (
         Object.values(d.prototype?.interactions || {}).some((events) =>
           events.some((e) =>

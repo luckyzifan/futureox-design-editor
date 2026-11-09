@@ -137,9 +137,6 @@ fn displacement(
         let d = crate::texture_noise::gabor::displacement([q.x, q.y], t.noise_size, amount / 2.)?;
         (d[0], d[1])
     } else {
-        // The recovered GRAIN shader subtracts the node centre before the
-        // three-octave lattice field. Use the same numeric program as capture
-        // replay; never substitute the unrelated SVG turbulence generator.
         let q = [q.x as f32 - center[0] as f32, q.y as f32 - center[1] as f32];
         let d = crate::texture_noise::displacement(
             q,
@@ -265,8 +262,6 @@ impl GlassMaterial {
         ]
     }
 }
-/// A deterministic bevel/refraction model. Figma's parameters are independent;
-/// a physical model alone is not evidence of matching its proprietary pixels.
 pub(crate) fn glass_pixel(
     input: &Surface,
     point: [i32; 2],
@@ -300,10 +295,6 @@ pub(crate) fn glass_pixel(
         rays.iter().map(|p| p.0[3]).fold(0_f32, f32::max),
     ]);
     let dot = nx * m.direction[0] + ny * m.direction[1];
-    // Empirical SDR lighting model, calibrated independently of refraction.
-    // A thin rim follows device scale, while the signed bevel tint follows
-    // authored depth. Figma reference PNGs remain the acceptance oracle;
-    // this is not an identification of Figma's private shader or a BSDF.
     let tint = (((dot * m.light) * edge) * edge) * 0.125;
     if tint < 0. {
         p = crate::blend::over(p, Pixel::rgba(0., 0., 0., -tint), "normal");

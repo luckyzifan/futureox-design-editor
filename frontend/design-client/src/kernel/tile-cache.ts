@@ -61,9 +61,6 @@ export function budgetTileLimit(residentBudgetBytes: number, floatCompositing: b
 export function tileLevel(zoom: number) {
   return Math.max(1 / 512, Math.min(128, 2 ** (Math.ceil(Math.log2(zoom) * 4) / 4)))
 }
-/** Calculate dynamic density with Figma's on-demand downsampling strategy.
- * Only reduces density when tile budget is exceeded (not pre-bucketed).
- * Returns arbitrary float values (0.73, 1.42) for smooth zoom transitions. */
 export function calculateDynamicDensity(
   requestedDensity: number,
   viewport: { width: number; height: number },
@@ -79,7 +76,6 @@ export function calculateDynamicDensity(
 
   if (required <= maxTiles) return requestedDensity  // Budget sufficient
 
-  // Figma's 4x downsampling strategy (log4 = log2 / 2)
   const ratio = required / maxTiles
   const log4Factor = Math.ceil(Math.log2(ratio) / 2)
   let density = requestedDensity / (2 ** log4Factor)
@@ -92,15 +88,6 @@ export function calculateDynamicDensity(
   return density
 }
 
-/** Mirror of the kernel's `tile_stack::lod_bucket_scale` (the threshold table
- * disassembled from Sketch's `MSTiledRenderer.tileLevel(scale:)`): 0.1 / 0.25
- * / 0.5 / 1 / 2 with halving below 0.1, always returning a representative
- * scale <= the input so callers upscale only. Kept pure here because the
- * component reads it during render, before the wasm module initializes; the
- * wasm-parity test freezes the mirror against the export.
- *
- * NOTE: Deprecated in favor of calculateDynamicDensity for main rendering path.
- * Retained for backward compatibility with existing tests. */
 export function lodBucketScale(scale: number): number {
   if (!Number.isFinite(scale) || scale <= 0) return scale
   if (scale > 2) return scale
@@ -111,13 +98,6 @@ export function lodBucketScale(scale: number): number {
   while (bucket > scale) bucket *= 0.5
   return bucket
 }
-/** Mirror of the kernel's `tile_stack::exact_bucket_scale`: the exact layer
- * renders at the fixed mipmap ladder the disassembled `tileLevel(scale:)`
- * selects (levels pinned at 0.1/0.25/0.5/1/2, level [5] stepping in powers of
- * two above 2), so a zoom inside one bucket never re-rasterizes — the live
- * camera resamples committed pixels through CSS placement, which is Sketch's
- * `drawTiles` behaviour. Always returns a representative scale >= the input
- * (over-render stays below 2x, 2.5x only inside the first rung). */
 export function exactBucketScale(scale: number): number {
   if (!Number.isFinite(scale) || scale <= 0) return scale
   if (scale <= 0.1) return 0.1

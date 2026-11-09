@@ -1,5 +1,6 @@
-import type { CanvasCamera } from '../canvas-camera'
+import type { CanvasCamera, CanvasSize } from '../canvas-camera'
 import { frameCovers, frameTransform } from './presentation'
+import { previewCameraScaleWithinLimit, previewPlacementIntersects } from './tile-preview'
 
 export type ShownReferenceFrame = { view: CanvasCamera; width: number; height: number }
 
@@ -83,7 +84,18 @@ export function referenceOverlayCamera(input: {
   presented: CanvasCamera | null
   scopeMatches: boolean
   editPreview: boolean
+  /** A bitmap held past the preview ratio is CSS-reprojected into the live
+   * camera, so the blue box uses that same live camera and stays on the
+   * picture. A 2400% pasteboard frame must not keep drawing its grid after
+   * Center Selection has moved onto the group. */
+  viewport?: CanvasSize
 }): CanvasCamera {
   if (input.cpu || input.editPreview || !input.scopeMatches || !input.presented) return input.live
+  if (input.viewport && input.viewport.width > 0 && input.viewport.height > 0) {
+    if (!previewCameraScaleWithinLimit(input.presented.zoom, input.live.zoom)) return input.live
+    const placed = frameTransform(input.live, input.presented)
+    if (!previewPlacementIntersects(placed, input.viewport.width, input.viewport.height, input.viewport.width, input.viewport.height))
+      return input.live
+  }
   return input.presented
 }

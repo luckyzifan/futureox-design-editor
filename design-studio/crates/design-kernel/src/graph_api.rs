@@ -39,9 +39,6 @@ impl std::fmt::Display for Error {
 
 const HISTORY_LIMIT: usize = 128;
 
-/// Rejection message for scopeless edits under strict mode, mirroring the
-/// reference engine's `EditScopeWebBindings_onMissingEditScope` bell
-/// ("No edit scope is active").
 pub const NO_EDIT_SCOPE_ACTIVE: &str = "no edit scope is active";
 
 #[derive(Clone)]
@@ -77,9 +74,6 @@ pub struct GraphApi {
     undo: Vec<GraphSnapshot>,
     redo: Vec<GraphSnapshot>,
     revision: u64,
-    /// Opt-in guard mirroring the reference engine's mandatory edit scopes:
-    /// when set, commits without a declared scope are rejected. Off by
-    /// default because the TS frontend owns its own commit path today.
     scope_strict: bool,
     /// Ambient edit-scope session (openEditScope/closeEditScope analogue).
     /// Commits while a scope is open attach the innermost scope.
@@ -159,11 +153,6 @@ impl GraphApi {
 
     // -- edit scopes ----------------------------------------------------------
 
-    /// Resolve the scope a commit runs under. An explicit scope wins (it is
-    /// the innermost declaration), then the ambient session's innermost open
-    /// scope, then the default user scope — unless strict mode rejects the
-    /// scopeless submission outright, mirroring the reference engine's
-    /// mandatory edit scopes.
     fn scope_for_commit(&self, explicit: Option<EditScope>) -> Result<EditScope, Error> {
         if let Some(scope) = explicit {
             return Ok(scope);
@@ -197,8 +186,6 @@ impl GraphApi {
         token
     }
 
-    /// Close the innermost open scope; scopes close in LIFO order like the
-    /// reference engine's nested edit scopes.
     pub fn close_edit_scope(&mut self, token: u32) -> Result<(), Error> {
         match self.scope_stack.last() {
             Some((_, top)) if *top == token => {

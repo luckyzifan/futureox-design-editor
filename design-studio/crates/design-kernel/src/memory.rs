@@ -12,8 +12,6 @@ pub(crate) struct Usage {
     pub live_surface_pixels: usize,
     pub peak_surface_pixels: usize,
     pub allocated_surface_pixels: usize,
-    /// Budget rejections — Figma's `clearErrorsAndCheckForOOM` counterpart:
-    /// pressure stays observable after the failed render returns.
     pub rejections: u32,
     pub last_rejection_requested_bytes: usize,
     pub last_rejection_live_bytes: usize,
@@ -90,43 +88,13 @@ impl Drop for Allocation {
     }
 }
 
-// ---------------------------------------------------------------------------
-// GPU memory ledger — Figma's four `CorePerfInfo` i64 counters.
-//
-// Figma's shape: every backend resource constructor does a read-modify-write
-// `+bytes` on exactly one global counter, every destructor `-bytes`, plus a
-// separate high-water mark kept with `max(old, sum)` at the texture creation
-// sites. The four counters sum to the renderer's GPU memory total
-// (`FullscreenPerfInfo::getRendererGpuMemory`) and the same
-// sum drives the CanvasView memory-pressure decision (`needs_free` /
-// `FREE_CACHED_DATA`).
-//
-// Our resource model is not isomorphic to Figma's two backends; the bucket
-// mapping is recorded per category below. Deviation: Figma's
-// counters are process-global i64s mutated non-atomically; ours is one
-// shared mutex-guarded ledger (clone = same state) with saturating frees.
-// ---------------------------------------------------------------------------
 
-/// One of Figma's four renderer-memory buckets, mapped to our resources.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Resource categories in the shared GPU memory ledger.
 pub enum GpuMemoryCategory {
-    /// Figma counter 5246784 (textureMemStats bytes): swapchain/render
-    /// textures, size = format bytes x width x height. Ours: every wgpu
-    /// `Texture` this process creates (vector layer targets, the blank 1x1
-    /// sentinel, device-resident decoded images).
     Texture,
-    /// Figma counter 5246792 (rendererMemStats category 1): lazily created
-    /// GPU buffer objects sized by a byte field. Ours: the frame uniform
-    /// arena (the only wgpu `Buffer` without element-count semantics).
     Buffer,
-    /// Figma counter 5246800 (category 3): fixed arrays of 4-byte elements,
-    /// counted as count x count x 4 (vertex/index-shaped). Ours: the f32
-    /// analytic-segment storage buffer and the f32 ordered-instance storage
-    /// buffer (bytes = element count x 4).
     FixedArray,
-    /// Figma counter 5246808 (category 4): data blobs that keep an explicit
-    /// CPU copy (constructor mallocs it). Ours: padded GPU readback buffers
-    /// whose mapped range becomes a CPU `Vec` (COPY_DST | MAP_READ).
     Blob,
 }
 
@@ -149,15 +117,11 @@ pub struct GpuMemoryUsage {
     /// Times the `needs_free` decision hook ran the cached-data reclaim
     /// path (Figma `FREE_CACHED_DATA` events).
     pub free_events: u32,
-    /// Over-limit admission refusals — the observable counterpart of
-    /// Figma's "would delta more bytes exceed the limit" query
-    /// (wasm #45702/#45914) and of `Usage::rejections` on the CPU budget.
     pub rejections: u32,
     pub last_rejection_requested_bytes: u64,
 }
 
 impl GpuMemoryUsage {
-    /// The four-bucket sum — Figma's renderer GPU memory total.
     pub fn total_bytes(&self) -> u64 {
         self.texture_bytes
             .saturating_add(self.buffer_bytes)
@@ -220,9 +184,7 @@ impl GpuMemoryLedger {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Constructor hook: `+bytes` on one bucket, then refresh that bucket's
-    /// peak and the four-bucket high-water mark (Figma texture-site peak
-    /// maintenance, applied uniformly to every bucket here).
+    /// Account an allocation and update category and total peaks.
     pub fn alloc(&self, category: GpuMemoryCategory, bytes: u64) {
         let mut state = self.lock();
         let live = state.live_mut(category).saturating_add(bytes);
@@ -233,25 +195,20 @@ impl GpuMemoryLedger {
         state.peak_total_bytes = state.peak_total_bytes.max(total);
     }
 
-    /// Destructor hook: `-bytes` on one bucket. Figma's i64 subtraction can
-    /// go negative on a bookkeeping bug; ours saturates at zero so one
-    /// stray free cannot corrupt later accounting (deviation, recorded).
+    /// Release accounted bytes, saturating at zero.
     pub fn free(&self, category: GpuMemoryCategory, bytes: u64) {
         let mut state = self.lock();
         let live = state.live_mut(category);
         *live = live.saturating_sub(bytes);
     }
 
-    /// Figma's pre-allocation query (wasm #45702/#45914):
-    /// `(current sum + delta) > limit` — checked before the resource exists.
+    /// Check live usage plus an allocation before creating the resource.
     pub fn would_exceed(&self, delta_bytes: u64) -> bool {
         self.lock().total_bytes().saturating_add(delta_bytes) > self.limit_bytes
     }
 
-    /// The memory-pressure decision hook (Figma `needs_free`, wasm #39291,
-    /// consumed at the CanvasView layer). Pressure is live occupancy; the
-    /// historical peak remains telemetry and must not trigger perpetual GC
-    /// after a completed reclamation. Admission rejections stay observable.
+    /// Reclaim when current usage reaches the limit; historical peaks do not
+    /// keep memory pressure active after reclamation.
     pub fn needs_free(&self) -> bool {
         self.lock().total_bytes() >= self.limit_bytes
     }

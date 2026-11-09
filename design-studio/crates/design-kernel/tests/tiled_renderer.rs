@@ -1,7 +1,3 @@
-//! Integration tests for the Sketch-parity tiled renderer
-//! (`MSTiledRenderer` architecture): instruction-equality skipping, pan and
-//! damage reuse, parallel-vs-sequential byte identity, mip-level switching
-//! and the rasterisation/frame telemetry axes.
 
 use futureox_design_kernel::render_instruction::{
     ColorSpaceId, InstructionOptions, RenderInstruction,

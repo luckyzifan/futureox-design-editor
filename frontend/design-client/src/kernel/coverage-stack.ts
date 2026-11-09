@@ -1,6 +1,6 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
-import { tileIntersectsView } from './tile-preview'
+import { MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit, tileIntersectsView } from './tile-preview'
 
 /** World rectangle of a tile's owned core that actually intersects the viewport.
  *  Gutters are not content. Undefined when the core misses the view. */
@@ -38,15 +38,22 @@ function bringsSamplingDetail(tile: RasterTile, view: CanvasCamera, size: { widt
 }
 
 /** Coarsest residents that still paint a hole in `shown`. Drawn underneath the
- *  sharper set: a zoom scale change must not hide a wider LOD that is already
- *  in memory. One wide overview beats a stack of fragments that cover less. */
+ *  sharper set. A bitmap more than 2× away is not a certified frame, but a
+ *  finer one is still the picture when nothing closer paints that viewport.
+ *  A coarse thumbnail is not stretched up to fill a zoom-in. One wide overview
+ *  beats a stack of fragments that cover less. The previous picture stays up
+ *  until this stack covers. */
 export function selectCoverageUnderlay<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
   size: { width: number; height: number }, shown: readonly RasterTile[], limit = 24): T[] {
   if (!Number.isSafeInteger(limit) || limit < 1) return []
   const shownSet = new Set(shown)
-  const pool = candidates.filter(tile => !shownSet.has(tile) && tileIntersectsView(tile, view, size))
-    .sort((a, b) => a.zoom - b.zoom || a.x - b.x || a.y - b.y)
-    .slice(0, 64)
+  const order = (a: T, b: T) => a.zoom - b.zoom || a.x - b.x || a.y - b.y
+  const visible = candidates.filter(tile => !shownSet.has(tile) && tileIntersectsView(tile, view, size))
+  // Near tiles claim their pixels first. A finer bitmap then fills only the
+  // hole they left, which is the low-zoom fit with no retained predecessor.
+  const near = visible.filter(tile => previewCameraScaleWithinLimit(tile.zoom, view.zoom)).sort(order)
+  const finer = visible.filter(tile => tile.zoom > view.zoom * MAX_PREVIEW_SCALE_RATIO).sort(order)
+  const pool = [...near, ...finer].slice(0, 64)
   const chosen: T[] = []
   for (const tile of pool) {
     if (chosen.length >= limit) break

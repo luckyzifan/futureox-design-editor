@@ -1,8 +1,3 @@
-//! E4 pattern-fill chain: identity invariance, grid periodicity, the seam
-//! half-texel guard, negative-coordinate wrapping, stagger parity, a numeric
-//! cross-check against a straight-line transcription of Figma's pattern-fill
-//! shader (fragment chain plus the vertex shader that fixes `_coord2`'s
-//! paint space), serde defaults and document validation.
 use base64::Engine as _;
 use futureox_design_kernel::math::{Point, Rect, Transform};
 use futureox_design_kernel::paint::{Images, Sampler};
@@ -71,6 +66,7 @@ fn tile(mode: &str, size: [f64; 2], offset: [f64; 2]) -> PatternTile {
             pattern_fill::ALIGN_START.into(),
             pattern_fill::ALIGN_START.into(),
         ],
+        ..PatternTile::native()
     }
 }
 

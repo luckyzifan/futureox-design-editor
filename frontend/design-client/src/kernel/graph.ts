@@ -52,7 +52,6 @@ export type Op =
   | { type: 'reorderChild'; parent: string; from: number; to: number }
   | { type: 'clearFacet'; id: string; kind: string }
 
-/** Edit provenance classes, mirroring the reference editor's edit scope kinds. */
 export type EditSource = 'system' | 'user' | 'plugin' | 'onboarding' | 'autosave' | 'ai'
 
 /** Edit-scope transaction options carried by one op batch. `ignoreUndoRedo`

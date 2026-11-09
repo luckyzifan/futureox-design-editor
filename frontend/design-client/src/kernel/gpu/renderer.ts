@@ -2,6 +2,7 @@ import {compactSourceAxes,readSourceGrid,readDenseSourceGrid,readDenseSourceGrid
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
+import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
@@ -78,7 +79,7 @@ import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
 import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
 import { CoefficientByteCache } from './coefficient-byte-cache'
-import { ReverseIndexMap } from './reverse-index-map'
+import { ReverseIndexMap, ReverseIndexSetMap } from './reverse-index-map'
 import { solidRgba8 } from './rgba8'
 import { batchableSolid, solidInstances, MAX_SOLID_INSTANCES } from './solid-batch'
 import { displayFilterWeights } from './display-filter'
@@ -776,6 +777,7 @@ export class GpuRenderer {
   private opaquePrefixActive=false
   private denseAtlas?:Surface
   private sourceTileOcclusion=false
+  private sourceSolidLayers=false
   private opaquePrefixEnabled=import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX==='1'
   private uniformColorSurfaces=import.meta.env.VITE_DESIGN_UNIFORM_COLOR_SURFACES==='1'
   private sequentialGaussian=import.meta.env.VITE_DESIGN_SEQUENTIAL_GAUSSIAN==='1'
@@ -866,7 +868,7 @@ export class GpuRenderer {
   private masks = new ReverseIndexMap<string, Surface, Texture>(surface => [surface.texture])
   // Conservative per-frame use history, not a lifetime refcount. A mask ever
   // used by another node cannot be retired by a leaf in the current frame.
-  private maskOwners = new ReverseIndexMap<Texture, Set<string>, string>(owners => owners)
+  private maskOwners = new ReverseIndexSetMap<Texture, string>()
   private blurKernels = new Map<string, Surface>()
   private certifiedKernels = new Map<string, Surface>()
   private kernelCache = new ImmutableKernelCache(4 * 1024 * 1024, 64, texture => this.forgetUpload(texture))
@@ -887,14 +889,19 @@ export class GpuRenderer {
   // Row strips share one immutable, certified support field per sample.
   // Samples that cannot separate keep their original dense strip fallback.
   private filterImageFields?: { rect: Rect; fields: Map<string, Surface | null>; pinned: Set<Texture> }
-  private imageGrids = new Map<GpuPaint, Map<number, Surface>>()
+  private imageGrids = new ReverseIndexMap<GpuPaint, Map<number, Surface>, Texture>(grids => [...grids.values()].map(surface => surface.texture))
+  private setImageGrid(paint: GpuPaint, sample: number, surface: Surface) {
+    const grids = this.imageGrids.get(paint) || new Map<number, Surface>()
+    grids.set(sample, surface)
+    this.imageGrids.set(paint, grids)
+  }
   private imageLevels = new WeakMap<GpuNode, WeakMap<GpuPaint, {width:number;height:number;level:number}>>()
   private readonly gradientFieldProofs = new WeakMap<Texture,{resource:Texture['resource'];maximumStop:number}>()
   private gradientPhaseRequest=false
   private readonly gradientPhaseResources=new WeakMap<Texture,{resource:Texture['resource'];width:number;height:number;axis?:[number,number]}>()
   private readonly gradientPhaseDeclined=new Set<string>()
-  private gradientLookups = new Map<GpuPaint, Surface>()
-  private textureLookups = new Map<string, Surface>()
+  private gradientLookups = new ReverseIndexMap<GpuPaint, Surface, Texture>(surface => [surface.texture])
+  private textureLookups = new ReverseIndexMap<string, Surface, Texture>(surface => [surface.texture])
   private textureMath: Surface | undefined
   private replayParameters: Texture | undefined
   // Monotonic use counter: every pool hand-out, pool return, parameter upload
@@ -1474,10 +1481,8 @@ export class GpuRenderer {
     })
   }
   private trackMask(surface: Surface): Surface {
-    const owners = this.maskOwners.get(surface.texture) || new Set<string>()
     // Empty activeNode is deliberately an unknown owner and blocks retirement.
-    owners.add(this.activeNode)
-    this.maskOwners.set(surface.texture, owners)
+    this.maskOwners.add(surface.texture, this.activeNode)
     return surface
   }
   /** Call only after every read of this leaf's fill masks has been encoded.
@@ -2703,11 +2708,7 @@ export class GpuRenderer {
       retainField && import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0')
     if (separated !== undefined) this.imageAxes.set(surface.texture,separated)
     if (this.driver.managed && this.imageAxes.get(surface.texture)) this.imageAxisFields++
-    if (!grids) {
-      grids = new Map()
-      this.imageGrids.set(p, grids)
-    }
-    grids.set(sample, surface)
+    this.setImageGrid(p, sample, surface)
     return surface
   }
   private gradientAxisGrid(n:GpuNode,p:GpuPaint):Surface|undefined {
@@ -2722,7 +2723,7 @@ export class GpuRenderer {
         const field=this.materialField(['source-radial',values,p.stops.length],rect(0,0,2,1),()=>new Float32Array(values),this.driver.uploadParameters)
         this.gradientFieldProofs.set(field.texture,{resource:field.texture.resource,maximumStop:p.stops.length-1})
         const surface:Surface={texture:field.texture,rect:n.rect,radialParameterPlane:true}
-        let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(this.sampleIndex,surface)
+        this.setImageGrid(p,this.sampleIndex,surface)
         return surface
       }
     }
@@ -2737,9 +2738,7 @@ export class GpuRenderer {
           this.alpha(stop.color)>=0&&this.alpha(stop.color)<=1)){
       const corners=this.linearGradientCorners(n,p,sample)??this.sourceGradientPlane(n,p,sample)
       if(corners){
-        let grids=this.imageGrids.get(p)
-        if(!grids){grids=new Map();this.imageGrids.set(p,grids)}
-        grids.set(sample,corners)
+        this.setImageGrid(p,sample,corners)
         return corners
       }
     }
@@ -2754,7 +2753,7 @@ export class GpuRenderer {
     if(cached){
       this.fieldHits++;this.busy.add(cached);this.used.add(cached);this.touch(cached)
       const surface={texture:cached,rect:rect(n.rect.x,n.rect.y,cached.width,cached.height)}
-      let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(sample,surface)
+      this.setImageGrid(p,sample,surface)
       return surface
     }
     const started=performance.now()
@@ -2765,7 +2764,7 @@ export class GpuRenderer {
     if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<1||h<1||values.length!==w*h*4)throw Error('Invalid compact gradient field')
     const surface=this.materialField(inputs,rect(n.rect.x,n.rect.y,w,h),()=>values,
       (this.driver.uploadParameters||this.driver.uploadLinear),undefined,values.byteLength,cacheKey)
-    let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(sample,surface)
+    this.setImageGrid(p,sample,surface)
     return surface
   }
   private gradientAxisPhases(n:GpuNode,p:GpuPaint,sample:number):Surface|undefined|false{
@@ -2797,9 +2796,8 @@ export class GpuRenderer {
     const proof=this.gradientPhaseResources.get(texture)
     if(!proof?.axis||proof.resource!==texture.resource)throw Error('Gradient phase axis resource changed')
     this.busy.add(texture);this.used.add(texture);this.touch(texture)
-    const surface={texture,rect:n.rect};let grids=this.imageGrids.get(p)
-    if(!grids){grids=new Map();this.imageGrids.set(p,grids)}
-    for(let phase=0;phase<4;phase++)grids.set(phase,surface)
+    const surface={texture,rect:n.rect}
+    for(let phase=0;phase<4;phase++)this.setImageGrid(p,phase,surface)
     return surface
   }
   private configureGradientPhase(u:Float32Array,field:Surface){
@@ -2831,8 +2829,7 @@ export class GpuRenderer {
       const proof=this.gradientPhaseResources.get(texture)
       if(!proof||proof.resource!==texture.resource||proof.width!==n.rect.w||proof.height!==n.rect.h)throw Error('Gradient phase resource changed')
       this.busy.add(texture);this.used.add(texture);this.touch(texture)
-      let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}
-      for(let sample=0;sample<4;sample++)grids.set(sample,{texture,rect:n.rect})
+      for(let sample=0;sample<4;sample++)this.setImageGrid(p,sample,{texture,rect:n.rect})
     }
     const cached=this.optimized&&this.materialFields.get(key,noGeometryWords)
     if(cached){this.fieldHits++;bind(cached);return}
@@ -2953,11 +2950,7 @@ export class GpuRenderer {
         return gradient_sampling_grid(JSON.stringify(source.rect),new Float64Array(source.matrix),new Float64Array(n.size),JSON.stringify(parameters),sample)
       },
       (this.driver.uploadParameters||this.driver.uploadLinear),undefined,n.rect.w*n.rect.h*16,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0')
-    if (!grids) {
-      grids = new Map()
-      this.imageGrids.set(p, grids)
-    }
-    grids.set(sample, surface)
+    this.setImageGrid(p,sample,surface)
     return surface
   }
   private figmaGradientLookup(paint: GpuPaint): Surface {
@@ -3036,8 +3029,7 @@ export class GpuRenderer {
     if(cached){
       this.fieldHits++;this.busy.add(cached);this.used.add(cached);this.touch(cached)
       const surface={texture:cached,rect:n.rect}
-      let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}
-      grids.set(sample,surface)
+      this.setImageGrid(p,sample,surface)
       return this.paint(n,p,mask,undefined,true,surface)
     }
     const visible=this.drawRegion(n.rect)
@@ -3064,7 +3056,7 @@ export class GpuRenderer {
     this.checkFrameCurrent()
     if(!this.driver.uploadLinear)throw Error('后端不支持精确渐变参数字段')
     const surface=this.materialField(inputs,n.rect,()=>values,(this.driver.uploadParameters||this.driver.uploadLinear),undefined,bytes,key)
-    let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(sample,surface)
+    this.setImageGrid(p,sample,surface)
     return this.paint(n,p,mask,undefined,true)
   }
   private async paintSourceGradientBands(n:GpuNode,p:GpuPaint,mask:Surface):Promise<Surface>{
@@ -3439,6 +3431,36 @@ export class GpuRenderer {
     this.release(...targets)
     return outputs
   }
+  private async drawSourceSolidLayers(ids:string[],start:number,targets:Surface[],samples:number[],clip?:Surface[]) {
+    if(!this.sourceSolidLayers||!this.optimized||this.interactionCapturing||!this.driver.sourceLayersReady||!this.driver.sourceProgramOffset||
+      targets.some(t=>!!t.logicalBounds)||clip&&(clip.length!==targets.length||clip.some(c=>!c.texture.binaryCoverage)))return
+    const layers:SourceLayerProgram[]=[]
+    let words=0,end=start,bounds:Rect|undefined
+    for(;end<ids.length&&layers.length<10;end++){
+      const node=this.scene.nodes[ids[end]]
+      if(!node)break
+      const layer=sourceSolidLayer(node,path=>this.driver.sourceProgramOffset!(path),
+        key=>[...this.color(key),this.alpha(key)],SOURCE_LAYER_FLOATS-words)
+      if(!layer)break
+      layers.push(layer);words+=layer.data[0].length
+      const r=node.rect
+      if(!bounds)bounds={...r}
+      else{const x=Math.min(bounds.x,r.x),y=Math.min(bounds.y,r.y)
+        bounds=rect(x,y,Math.max(bounds.x+bounds.w,r.x+r.w)-x,Math.max(bounds.y+bounds.h,r.y+r.h)-y)}
+    }
+    if(!layers.length)return
+    this.fastWork.add('sourceLayerNodes',layers.length);this.fastWork.add('sourceLayerBatches')
+    for(let i=0;i<targets.length;i++){
+      const mask=clip?.[i]
+      targets[i]=await this.composeSourceProgram(SOURCE_LAYER_MODE,targets[i],mask?[mask]:[],bounds,u=>{
+          u[17]=layers.length;u[18]=Number(!!mask)
+          if(mask)u.set([mask.rect.x,mask.rect.y,mask.rect.w,mask.rect.h],8)
+          let at=20
+          for(const layer of layers){u.set(layer.data[samples[i]],at);at+=layer.data[samples[i]].length}
+        })
+    }
+    return {targets,end}
+  }
   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
     if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
       ids=sourcePainterOrder(this.scene,ids,target.rect)
@@ -3448,6 +3470,10 @@ export class GpuRenderer {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const children = skip ? ids.filter((id) => id !== skip) : ids
     for (let i = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0; i < children.length; ) {
+      if(this.sourceSolidLayers&&this.sampleIndex!==undefined){
+        const batch=await this.drawSourceSolidLayers(children,i,[target],[this.sampleIndex],clip?[clip]:undefined)
+        if(batch){target=batch.targets[0];i=batch.end;continue}
+      }
       let end = i
       // Coverage is independent of paint and backdrop. Prepare a consecutive
       // leaf run first so one target render pass can preserve every paint order.
@@ -3643,14 +3669,14 @@ export class GpuRenderer {
    * destroyed texture. Only call after a completed checkpoint. */
   private forgetCoordinateTexture(texture: Texture) {
     this.coordinateMaps.delete(texture)
-    for (const [paint, grids] of this.imageGrids) {
+    for (const paint of [...this.imageGrids.keysFor(texture)]) {
+      const grids = this.imageGrids.get(paint)!
       for (const [sample, surface] of grids) if (surface.texture === texture) grids.delete(sample)
       if (!grids.size) this.imageGrids.delete(paint)
+      else this.imageGrids.set(paint, grids)
     }
-    for (const [paint, surface] of this.gradientLookups)
-      if (surface.texture === texture) this.gradientLookups.delete(paint)
-    for (const [key, surface] of this.textureLookups)
-      if (surface.texture === texture) this.textureLookups.delete(key)
+    for (const paint of this.gradientLookups.keysFor(texture)) this.gradientLookups.delete(paint)
+    for (const key of this.textureLookups.keysFor(texture)) this.textureLookups.delete(key)
     if (this.textureMath?.texture === texture) this.textureMath = undefined
     if (this.replayParameters === texture) this.replayParameters = undefined
     this.forgetUpload(texture)
@@ -4180,6 +4206,10 @@ export class GpuRenderer {
       this.activeNode = id
       const n = this.scene.nodes[id]
       if (!n || n.opacity <= 0 || this.outsidePoseDemand(n.rect)) continue
+      if(this.sourceSolidLayers&&!prefix&&!compactSource&&!opticalPrefix&&targets.length===4){
+        const batch=await this.drawSourceSolidLayers(ids,at,targets,[0,1,2,3],clip)
+        if(batch){targets=batch.targets;at=batch.end-1;continue}
+      }
       // Only this finite-solid leaf lane understands compact writable bounds.
       // Backdrop capture, cached copies, child isolation and all other paints
       // retain their established full-domain inputs.
@@ -5707,7 +5737,8 @@ export class GpuRenderer {
     const plan=n.gaussianRegion,regions=plan&&gaussianRegionRects(plan)
     const header=n.fill.area&&new Float32Array(this.curveBits.buffer,this.curveBits.byteOffset+n.fill.area.first*16,1)[0]
     if(!plan||!regions||plan.factor!==undefined&&!this.driver.supportsGaussianReduction?.()||!this.driver.supportsGaussianRegions?.()||!this.driver.copyRegion||!n.fill.area||!this.scene.coherentSamples||![3,4].includes(header!)||
-        n.children.length||n.strokes.length||n.mask||n.clip||n.passthrough||n.fills.length!==1||n.fills[0].kind!=='solid'||
+        n.children.length||n.strokes.length||n.mask||n.clip||n.passthrough||n.fills.length!==1||!['solid','image'].includes(n.fills[0].kind)||
+        n.fills[0].kind==='image'&&plan.factor!==undefined||
         n.effects.filter(e=>e.visible).length!==1||!n.effects.some(e=>e.visible&&e.kind==='gaussian-blur'))
       throw Error('GPU surface budget exceeded (unsupported regional Gaussian source)')
     const kernels=plan.radii.map(r=>this.filterKernel('rational-region-box',r,()=>rational_region_box_kernel_rgba(r)))
@@ -5718,14 +5749,18 @@ export class GpuRenderer {
       for(let y=source.y;y<source.y+source.h;y+=64){
         await this.yieldEncoding();this.checkFrameCurrent()
         const band={x:source.x,y,w:source.w,h:Math.min(64,source.y+source.h-y)},output={x:regions[1].x,y,w:regions[1].w,h:band.h}
+        // Image coordinate fields are keyed by paint identity and sample.
+        // Each band owns its own fields; sharing the first band's paint would
+        // incorrectly bind that band's coordinates to later source rows.
+        const paint=n.fills[0].kind==='image'?{...n.fills[0]}:n.fills[0]
         let resolved:Surface|undefined,mask:Surface|undefined,layer:Surface|undefined,filtered:Surface|undefined
         try{
           for(let sample=0;sample<4;sample++){
             await this.reclaimForSurface(band,3);this.checkFrameCurrent();this.sampleIndex=sample
             mask=this.acquire(band,true);this.driver.mask(n.fill,mask.texture,sample,band)
             layer=this.empty(band)
-            const paintNode={...n,rect:band,gaussianRegion:undefined,effects:[]}
-            const painted=await this.paintOver(paintNode,n.fills[0],mask,layer,undefined,true)
+            const paintNode={...n,rect:band,fills:[paint],gaussianRegion:undefined,effects:[]}
+            const painted=await this.paintOver(paintNode,paint,mask,layer,undefined,true)
             layer=painted
             const next=this.run(48,band,resolved?[layer,resolved]:[layer],u=>{u[17]=sample})
             this.release(mask,layer,resolved);mask=layer=undefined;resolved=next
@@ -5733,7 +5768,7 @@ export class GpuRenderer {
           await this.reclaimForSurface(output)
           filtered=this.run(22,output,[resolved!,kernels[0]],u=>u.set([plan.radii[0],0,0,2],36))
           this.driver.copyRegion(current.texture,filtered.texture,{x:0,y:0,w:output.w,h:output.h},[0,y-regions[1].y])
-        }finally{this.release(mask,layer,resolved,filtered)}
+        }finally{this.release(mask,layer,resolved,filtered);if(paint!==n.fills[0])this.imageGrids.delete(paint)}
       }
       for(let pass=1;pass<6;pass++){
         await this.yieldEncoding();await this.reclaimForSurface(regions[pass+1]);this.checkFrameCurrent()
@@ -7538,6 +7573,7 @@ export class GpuRenderer {
     this.activeRuntimeConfiguration = undefined
     this.skippedPainterVisits=0
     const managedDisplay=present&&!readback&&this.driver.name==='webgpu'&&!!this.driver.managed&&!this.driver.hdr&&!this.driver.displayMath
+    this.sourceSolidLayers=sourceSolidLayerDisplay(scene,this.driver,present&&!readback)
     this.sourceTileOcclusion=managedDisplay && scene.sourceDetailTile===true && import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX!=='0' &&
       !!scene.output && scene.coherentSamples===true && scene.colorManagement?.documentSpace==='srgb' &&
       !scene.resolve && !scene.presentation && !scene.interactionRetained && !scene.softwareRaster

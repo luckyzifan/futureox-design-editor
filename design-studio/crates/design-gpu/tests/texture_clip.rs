@@ -10,9 +10,6 @@ fn shader() -> String {
     let fixed = initial.find("fn fixedLinear").unwrap();
     let scaled = initial.find("fn scaledPositive64").unwrap();
     format!(
-        // The extracted material block also carries softwareRasterByte, which
-        // reads the compositor uniform accessor. No tested helper reaches it;
-        // the stub exists only so the module compiles standalone.
         "const BYTE_SURFACE:bool=false;\nfn u(i:u32)->vec4<f32>{{return vec4<f32>(0);}}\n{}{}\n{}\n{}\n{}",
         &initial[..fixed],
         &initial[scaled..],

@@ -13,7 +13,8 @@ import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,ret
 import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
-import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
+import {nativeSourceBadgeText} from './native-source-status'
+import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {sourceTileRetirement,rememberSourceTier} from './source-tile-retirement'
@@ -26,9 +27,9 @@ import type {RasterTile} from './tile-cache'
 import {createRenderDiagnostics,PREFIX} from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
 
-export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'limited'|'error';done:number;total:number;error?:string}
+export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'limited'|'error';done:number;total:number;error?:string;sharp?:boolean;view?:CanvasCamera}
 type Props={hover?:import('../source-hover-detail').SourceHoverHub;overviewBoxes?:readonly OverviewMaterial[];contentFrames?:readonly {x:number;y:number;width:number;height:number}[];hidden?:boolean;parked?:boolean;panGestureActive?:boolean;underlay?:import('../source-opening-preview').SourceThumbnailCoverage;clipPath?:string;source?:SourceCanvasSnapshot;warm?:boolean;wheelView?:CanvasCamera;view:CanvasCamera;width:number;height:number;
-  onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean)=>void}
+  onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean,regions?:readonly OverviewMaterial[])=>void}
 type Placement=RasterTile & {gpuTile:number}
 type Tile=TileResult&{serial:number;used:number;lastSubmission:number;placement?:Placement}
 // One raster owner plus at most one speculative preparation in the existing
@@ -95,6 +96,11 @@ export function NativeSourceSurface(props:Props){
       if (startupPreview && !backing) {
         // The host PNG occupies the ordinary display canvas until its first
         // worker bitmap. Only real GPU acknowledgements can mark it ready.
+        // A large zoom still shows that picture until the worker frame exists;
+        // it is not certified past the preview ratio.
+        element.style.visibility=''
+        element.style.imageRendering='auto'
+        element.dataset.previewUpscaleRejected=String(!previewCameraScaleWithinLimit(startupPreview.scale,p.view.zoom))
         const zoom=p.view.zoom/startupPreview.scale
         element.style.width=element.width*zoom+'px'
         element.style.height=element.height*zoom+'px'
@@ -146,7 +152,14 @@ export function NativeSourceSurface(props:Props){
     if(hover){hover.pick=pick;hover.refresh?.()}
     const emit=(status:NativeSourceStatus)=>{
       if(!alive)return
-      const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}`,now=performance.now()
+      const requested=latest.current.view.zoom*(backing?.dpr||density.current||1)
+      const farTiles=backingTiles.some(tile=>!previewCameraScaleWithinLimit(tile.zoom,requested))
+      const holed=!!backing?.preview||(backing?.previewGaps?.length??0)>0
+      const live=latest.current.view,shown=renderExecutionPolicy.cpuOnly?cpuView:backing?.view
+      const atCamera=!!shown&&shown.x===live.x&&shown.y===live.y&&shown.zoom===live.zoom
+      const nativeDensity=renderExecutionPolicy.cpuOnly||backingTiles.length>0&&backingTiles.every(tile=>tile.zoom>=live.zoom*density.current*.999999)
+      const sharp=status.phase==='ready'&&atCamera&&nativeDensity&&!holed&&!farTiles&&element.dataset.previewUpscaleRejected!=='true'
+      const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}/${Number(farTiles)}/${Number(holed)}/${Number(sharp)}/${live.x}/${live.y}/${live.zoom}`,now=performance.now()
       // A single visible decoded board is enough to keep routine status quiet.
       // Reprojection and final receipts separately require full coverage.
       const p=latest.current
@@ -156,13 +169,18 @@ export function NativeSourceSurface(props:Props){
       if(status.phase==='refining'&&lastStatus.startsWith('refining/')&&now-lastStatusAt<120)return
       lastStatus=signature;lastStatusAt=now
       const cpu=renderExecutionPolicy.cpuOnly
-      badge.textContent=status.phase==='ready'?(source.openingMaterial!==undefined?'素材清晰 · 源文件仍在索引':cpu?'CPU · 已显示':'WebGPU · 清晰'):status.phase==='limited'?'当前倍率为预览精度':status.phase==='error'?'画板绘制未完成':status.phase==='loading'?'正在准备完整画板…':`正在绘制 ${status.done} / ${status.total}`
+      badge.textContent=nativeSourceBadgeText(status,{
+        cpu, openingMaterial:source.openingMaterial!==undefined,
+        previewRejected:element.dataset.previewUpscaleRejected==='true'||farTiles,
+        holdingFrame:element.dataset.cameraReprojected==='true'||!!backing,
+        holed:!!backing?.preview||(backing?.previewGaps?.length??0)>0,
+      })
       badge.title=status.error??'当前视口完成全部瓦片与采样密度校验后显示清晰'
       diagnostics.record('viewport-state',{state:status.phase==='loading'?0:status.phase==='refining'?1:status.phase==='ready'?2:3,
         previewTiles:status.done,count:status.total,zoom:latest.current.view.zoom,dpr:density.current,
         width:latest.current.width,height:latest.current.height,sceneReady:initialized?1:0,finalComplete:status.phase==='ready'?1:0})
       if(status.phase==='ready'||status.phase==='error')diagnostics.flush()
-      latest.current.onStatus?.(status)
+      latest.current.onStatus?.({...status,sharp,view:{...live}})
       if(status.phase==='ready')hover?.refresh?.()
     }
     const fail=(error:unknown)=>{
@@ -322,7 +340,7 @@ export function NativeSourceSurface(props:Props){
         cpuView={...p.view}
         // CPU never receives a GPU acknowledgement, so the opening thumbnail
         // stayed on top and the pasteboard remained the workspace gray.
-        latest.current.onPresented?.({view:{...p.view},width:p.width,height:p.height,dpr,interaction:false,ids:[]},true)
+        latest.current.onPresented?.({view:{...p.view},width:p.width,height:p.height,dpr,interaction:false,ids:[],preview:!complete},complete,complete?p.overviewBoxes:undefined)
       }
       emit(complete?{phase:'ready',done,total:tiles.length}:{phase:'refining',done,total:tiles.length})
       if (!moving && !complete && done<tiles.length && tiles.every(tile=>cache.has(tile.key)) && repairDemand!==demandKey()) {
@@ -483,9 +501,15 @@ export function NativeSourceSurface(props:Props){
           const stripTile=strip?.tiles[0]
           const pasteboard=!!stripTile&&viewportExtendsPastPage(source.bounds,p.view,p)
           const translated=!!backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y)
+          // The same-source opening surface already paints the pasteboard.
+          // Finish the first native view before spending its raster owner on
+          // another whole-page coarse image. A real pan still needs that image.
+          const firstNative=!renderExecutionPolicy.cpuOnly&&!source.materialKeys&&source.openingMaterial===undefined&&
+            source.revision===0&&!backing&&!moving&&!continuousZoom&&!!p.underlay?.current?.(p.view,p.width,p.height,'any')
           // The artboard lattice does not cover pasteboard. One coarse page
           // tile does, and a quarter-viewport pan stays inside the same tile.
-          const wantStrip=!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(renderExecutionPolicy.cpuOnly||translated||(!moving&&!continuousZoom))
+          const wantStrip=!firstNative&&!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(renderExecutionPolicy.cpuOnly||translated||(!moving&&!continuousZoom))
+          if(firstNative&&optional){schedulePaint();break}
           if(!wantStrip&&!optional&&outwardCover()){schedulePaint();break}
           if(!wantStrip&&optional && source.materialKeys && moving)break
           if(!wantStrip&&optional&&moving&&prefetchReady!==demandKey()){schedulePaint();break}
@@ -508,7 +532,7 @@ export function NativeSourceSurface(props:Props){
           // After the first visible pixels, one coarse page tile is built while
           // the user is still. The first zoom-out then already has coverage.
           // Material files used to stop here and never build that page.
-          const coldTile=!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
+          const coldTile=!firstNative&&!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
             ?overviewWarmBatch(overview.tiles,p.view,p.width,p.height,tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key))[0]
             :undefined
           const warmBase = !coldTile && optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
@@ -674,7 +698,7 @@ export function NativeSourceSurface(props:Props){
         if(terminal&&!source.viewportSubset)handoff.clear()
         completeBacking=terminal&&!source.viewportSubset?actual:undefined
         partialMaterials=regional?planned:undefined
-        element.style.clipPath=partialMaterials?sourcePageClip(partialMaterials,actual.view,actual.width,actual.height)??'':''
+        element.style.clipPath=partialMaterials?sourcePageClip(partialMaterials,actual.view,actual.width,actual.height,true)??'':''
         consumePresentationBitmap(bitmapContext,element,bitmap);bitmapApplied=true
         shownMaterials=partialMaterials??latest.current.overviewBoxes
         if(!regional)projection.history.capture(element,actual,source.bounds)
@@ -718,7 +742,7 @@ export function NativeSourceSurface(props:Props){
       // An in-flight wheel ACK may cover the newer camera after reprojection.
       // It has no authority to acknowledge that newer camera's terminal state.
       if(regional&&current){
-        hover?.refresh?.();latest.current.onPresented?.(actual,false)
+        hover?.refresh?.();latest.current.onPresented?.(actual,false,partialMaterials)
         return
       }
       if(!current||!allIds)return
@@ -739,7 +763,11 @@ export function NativeSourceSurface(props:Props){
       const hasRequestedDensity=visibleTiles.some(t=>t.zoom===expected.scale)
       element.dataset.sourceRenderScale=String(Math.max(0,...visibleTiles.map(t=>t.zoom)))
       element.dataset.sourceVisibleDemandScale=hasRequestedDensity?String(expected.scale):''
-      if(complete){
+        if(complete && !previewCameraScaleWithinLimit(actual.view.zoom, p.view.zoom)){
+          const total=plan().tiles.length
+          const arrived=plan().tiles.filter(tile=>cache.has(tile.key)).length
+          emit({phase:'refining',done:arrived,total})
+        }else if(complete){
         if(source.materialKeys){
           const scale=actual.view.zoom*actual.dpr
           const keys=new Set(shownTiles.map(t=>t.key))
@@ -759,7 +787,7 @@ export function NativeSourceSurface(props:Props){
           hasRequestedDensity&&
           planner.presentedDetail(expected.scale)){schedulePaint();void run()}
       if(terminal&&!complete)hover?.refresh?.()
-      latest.current.onPresented?.(actual,complete)
+      latest.current.onPresented?.(actual,complete,shownMaterials)
       if(expected.demand===demandKey()&&quality.scale!==undefined){
         if(quality.presented(plan().raster.scale)){schedulePaint();void run()}
         else if(quality.limited){const total=plan().tiles.length;emit({phase:'limited',done:total,total,error:quality.reason})}
@@ -800,7 +828,9 @@ export function NativeSourceSurface(props:Props){
         // coarse residents never got composited into it.
         if(zoomChanged)quality.reset()
       }
+      let zoomChanged=false
       if(currentView.zoom!==lastZoom){
+        zoomChanged=true
         const now=performance.now(),inward=latest.current.view.zoom>lastZoom
         wheelInterval=now-lastZoomAt
         const wheel=latest.current.wheelView, view=latest.current.view
@@ -825,6 +855,14 @@ export function NativeSourceSurface(props:Props){
       moving=!releasedPan;clearTimeout(idleTimer)
       cpuRepairs.clear();clearTimeout(repairTimer)
       project()
+      if(zoomChanged&&initialized){
+        const native=plan(true)
+        const arrived=native.tiles.filter(tile=>cache.has(tile.key)).length
+        const rejected=element.dataset.previewUpscaleRejected==='true'
+        emit(!rejected&&native.tiles.length>0&&arrived===native.tiles.length
+          ?{phase:'ready',done:arrived,total:arrived}
+          :{phase:'refining',done:arrived,total:native.tiles.length})
+      }
       try{
       // Motion headroom is optional work. An already complete exact native
       // demand may present immediately, without waiting for a quiet timer or

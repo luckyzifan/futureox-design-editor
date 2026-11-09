@@ -34,7 +34,7 @@ import { applyFigFacet, assertFigStructure, figNodeKind, figNote, importFigProto
 import { defaultColorSettings } from './color'
 import { figImageAdjust } from './import-fig-image'
 import { importFigComponents } from './import-fig-components'
-import { applyFigDocumentSemantics, figGuides, includeFigRecord, storeFigVariables } from './import-fig-document'
+import { applyFigDocumentSemantics, figGuides, importFigVariableNodes, includeFigRecord, storeFigVariables } from './import-fig-document'
 import { inverse } from './commands/affine'
 
 const MAX = 64 * 1024 * 1024
@@ -187,12 +187,17 @@ const bytesData = (bytes: Uint8Array) => {
     binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
   return btoa(binary)
 }
-function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown},record:any): Pick<DesignNode,'network'|'vectorGeometry'> {
+function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown},record:any): Pick<DesignNode,'network'|'vectorGeometry'> & { strokeCap?: string; strokeJoin?: string } {
   const rounded=record.cornerRadius>0||record.vectorData?.styleOverrideTable!==undefined
-  const decoded=JSON.parse(rounded?decode_fig_rounded_network_json(bytes,sx,sy,record.cornerRadius??0,record.cornerSmoothing??0,JSON.stringify(record.vectorData?.styleOverrideTable??null)):decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[];cornersApplied?:boolean}
+  const decoded=JSON.parse(rounded?decode_fig_rounded_network_json(bytes,sx,sy,record.cornerRadius??0,record.cornerSmoothing??0,JSON.stringify(record.vectorData?.styleOverrideTable??null)):decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[];cornersApplied?:boolean;strokeCap?:string;strokeJoin?:string}
   if(rounded&&!decoded.cornersApplied)warnings.add('FIG 矢量圆角包含尚不支持的轮廓、平滑或样式覆盖；源样式需要核对')
   if(decoded.vertexStyles.some(id=>id!==0)||decoded.regionStyles.some(id=>id!==0))warnings.add('FIG 矢量包含独立顶点或区域样式；几何与区域引用已保留，样式覆盖需要核对')
-  return {...(decoded.network?{network:decoded.network}:{}),...(decoded.vectorGeometry?{vectorGeometry:decoded.vectorGeometry}:{})}
+  return {
+    ...(decoded.network?{network:decoded.network}:{}),
+    ...(decoded.vectorGeometry?{vectorGeometry:decoded.vectorGeometry}:{}),
+    ...(decoded.strokeCap?{strokeCap:decoded.strokeCap as string}:{}),
+    ...(decoded.strokeJoin?{strokeJoin:decoded.strokeJoin as string}:{}),
+  }
 }
 
 /** The field names and enum values here come from the embedded native FIG schema,
@@ -496,14 +501,26 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if (p.imageScaleMode !== undefined && !['STRETCH','FIT','FILL','TILE'].includes(p.imageScaleMode))
         throw new Error(`FIG 图片缩放 ${p.imageScaleMode} 暂不支持`)
       if (p.imageScaleMode === 'TILE') {
-        if ((p.spacing ?? 0)!==0 || (p.patternSpacing?.x ?? 0)!==0 || (p.patternSpacing?.y ?? 0)!==0 ||
-          (p.scale ?? 1)!==1 || (p.rotation ?? 0)!==0 ||
-          !['START',undefined].includes(p.horizontalAlignment) || !['START',undefined].includes(p.verticalAlignment))
-          throw new Error('FIG 平铺的间距、缩放、旋转或对齐尚不能无损导入；原文件未修改')
         const modes={RECTANGULAR:'grid',HORIZONTAL_HEXAGONAL:'stagger_horizontal',VERTICAL_HEXAGONAL:'stagger_vertical'} as const
         const mode=p.patternTileType ?? 'RECTANGULAR'
         if(!(mode in modes))throw new Error(`FIG 平铺模式 ${mode} 暂不支持`)
-        result.tile={mode:modes[mode as keyof typeof modes],size:[0,0],offset:[0,0],alignment:['start','start']}
+        const align = (value: unknown) => value === 'CENTER' ? 'center' as const : value === 'END' ? 'end' as const : 'start' as const
+        const scale = p.scale ?? 1
+        const rotation = p.rotation ?? 0
+        const spacingX = p.patternSpacing?.x ?? (typeof p.spacing === 'number' ? p.spacing : 0)
+        const spacingY = p.patternSpacing?.y ?? (typeof p.spacing === 'number' ? p.spacing : 0)
+        if (![scale, rotation, spacingX, spacingY].every(value => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e7)
+          || scale <= 0 || spacingX < 0 || spacingY < 0)
+          throw new Error('FIG 平铺参数无效；原文件未修改')
+        result.tile={
+          mode:modes[mode as keyof typeof modes],
+          size:[0,0],
+          offset:[0,0],
+          alignment:[align(p.horizontalAlignment), align(p.verticalAlignment)],
+          ...(scale !== 1 ? { scale } : {}),
+          ...(rotation !== 0 ? { rotation } : {}),
+          ...(spacingX !== 0 || spacingY !== 0 ? { spacing: [spacingX, spacingY] as [number, number] } : {}),
+        }
       }
 
       result.fit =
@@ -630,7 +647,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     const width = r.size?.x ?? 100, height = r.size?.y ?? 100
     if (![width, height].every((v) => Number.isFinite(v) && v >= 0 && v <= 1e7))
       throw new Error('FIG 图层尺寸无效；原文件未修改')
-    const zeroLine = kind === 'line' && (width === 0 || height === 0) && (width > 0 || height > 0)
+    const hairline = (kind === 'line' || kind === 'vector') && Math.max(width, height) > 0 && Math.min(width, height) < 0.01
+    const zeroLine = hairline
     if (!zeroLine && (width < 0.01 || height < 0.01))
       throw new Error('FIG 图层尺寸暂不能无损表达；原文件未修改')
     const n = node(zeroLine ? 'vector' : kind, 0, 0, Math.max(0.01, width), Math.max(0.01, height))
@@ -683,8 +701,23 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     }
     if (r.vectorData?.vectorNetworkBlob !== undefined) {
       const normalized=r.vectorData.normalizedSize
-      const sx=normalized?.x===undefined?1:n.width/normalized.x,sy=normalized?.y===undefined?1:n.height/normalized.y
-      Object.assign(n,vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings,r))
+      const axis=(nodeSize:number,source:number|undefined)=>{
+        if(source===undefined)return 1
+        const value=nodeSize/source
+        return Number.isFinite(value)&&value>0?value:1
+      }
+      const sx=axis(n.width,normalized?.x),sy=axis(n.height,normalized?.y)
+      try{
+        const piece=vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings,r)
+        if(piece.strokeCap||piece.strokeJoin){
+          const cap=piece.strokeCap?figStrokeCap(piece.strokeCap,warnings):undefined
+          const join=piece.strokeJoin?figStrokeJoin(piece.strokeJoin):undefined
+          n.strokes=n.strokes.map(item=>({...item,...(cap?{cap:cap.cap,...(cap.endMarker?{endMarker:cap.endMarker}:{})}:{}),...(join?{join}:{})}))
+        }
+        const {strokeCap: _strokeCap, strokeJoin: _strokeJoin, ...geometry}=piece
+        Object.assign(n,geometry)
+      }
+      catch(error){warnings.add(`FIG 矢量 ${n.name||n.id} 的网络几何未能解码，已保留包围盒：${error instanceof Error?error.message:error}`)}
     }
     if(r.type==='VECTOR'&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
       const paths=r.fillGeometry.map((entry:any)=>({rule:entry.windingRule==='ODD'||entry.windingRule==='EVENODD'?'evenodd':'nonzero',commands:JSON.parse(decode_fig_fill_commands_json(getBlob(entry.commandsBlob))) as import('./model').CurveCommand[]}))
@@ -739,9 +772,6 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     importLayout(n, r, records.get(guid(r.parentIndex?.guid)), reverseZ)
     doc.nodes[n.id] = n
   }
-  // Figma's fractional positions are lexicographic identifiers. Locale collation
-  // changes punctuation ordering (for example '-' before '!') and rearranges
-  // children, which changes stacking as well as auto-layout placement.
   const ordered = [...records].sort((a, b) => {
     const left = String(a[1].parentIndex?.position || ''),
       right = String(b[1].parentIndex?.position || '')
@@ -766,7 +796,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     receipts.set(id, bindings)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
-  importFigComponents(doc, records, ids, toPaint)
+  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings)
   // The shared model's direct mask owns its whole container. Native FIG masks
   // only following siblings. Explicit identity groups keep all original node
   // IDs, local coordinates, order and component override keys intact.
@@ -790,13 +820,17 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   importFigPrototype(records, ids, doc, receipts)
   parkFigReceipts(doc, receipts)
   applyFigDocumentSemantics(doc, records, ids, guid, { toPaint, effectsOf, strokesOf, fallbackName: name }, warnings)
+  importFigVariableNodes(doc, records)
   storeFigVariables(doc, data)
-  if (
-    [...records.values()].some(
-      (r) => r.prototypeInteractions || r.componentPropDefs || r.boundVariables,
-    )
-  )
-    warnings.add('原型、变量与部分组件属性尚需手动核对')
+  const unhandledProps = new Set<string>()
+  for (const record of records.values()) {
+    for (const def of record.componentPropDefs || []) {
+      if (def?.isDeleted || def?.type === 'VARIANT' || def?.type === 'BOOL' || def?.type === 'TEXT' || def?.type === 'INSTANCE_SWAP') continue
+      unhandledProps.add(String(def?.type || 'unknown'))
+    }
+  }
+  if (unhandledProps.size)
+    warnings.add(`FIG 组件属性 ${[...unhandledProps].join(', ')} 尚不能执行；变体、布尔、文本和实例交换已导入`)
   if ([...records.values()].some((r) => r.prototypeInteractions))
     warnings.add('原型交互已保留为来源数据，尚不能直接播放')
   doc.schemaVersion = Object.values(doc.nodes).some((n) =>

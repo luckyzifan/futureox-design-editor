@@ -54,8 +54,6 @@ pub struct Action {
     /// passthrough only — `set-variable` still reads `target`/`value`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_variable: Option<String>,
-    /// `targetVariableModeID`: mode the bound variable resolves in. Accepts
-    /// Figma's `ID` casing on input. Schema passthrough only.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -126,7 +124,6 @@ pub struct Action {
     pub transition_easing_var: Option<String>,
 }
 impl Action {
-    /// True when any of the 15 recovered Figma action-schema fields is set.
     pub fn has_schema_extras(&self) -> bool {
         self.target_variable.is_some()
             || self.target_variable_mode_id.is_some()
@@ -186,8 +183,6 @@ pub fn valid_easing(curve: &str) -> bool {
     matches!(
         curve,
         "linear" | "ease-in" | "ease-out" | "ease-in-out" | "spring"
-            // Figma's 21 named easing presets (7 families × in/out/inOut
-            // variants).
             | "ease-in-sine" | "ease-out-sine" | "ease-in-out-sine"
             | "ease-in-quad" | "ease-out-quad" | "ease-in-out-quad"
             | "ease-in-cubic" | "ease-out-cubic" | "ease-in-out-cubic"
@@ -227,10 +222,6 @@ pub fn valid_media_action(action: &str) -> bool {
 fn resolved_variable<'a>(doc: &'a Document, id: &str) -> Option<&'a crate::design_system::Variable> {
     doc.design_system.as_ref()?.variables.get(id)
 }
-/// Shape-validate the 15 recovered Figma action-schema fields. These rules
-/// gate admission only; nothing downstream consumes the fields yet (schema
-/// passthrough, semantics unimplemented). Conservative choices are noted
-/// inline where Figma semantics are not certain.
 fn validate_schema_extras(doc: &Document, a: &Action) -> Result<(), String> {
     if !a.has_schema_extras() {
         return Ok(());
@@ -284,8 +275,6 @@ fn validate_schema_extras(doc: &Document, a: &Action) -> Result<(), String> {
         return Err("Unknown prototype variable mode".into());
     }
     if let Some(data) = &a.target_variable_data {
-        // Figma's VariableData alias is {id, modeId}; unknown keys are
-        // tolerated so newer payloads still load.
         let str_field =
             |k: &str| data.get(k).map_or(true, |v| v.as_str().is_some_and(|s| !s.is_empty()));
         if !data.is_object() || !str_field("id") || !str_field("modeId") {
@@ -298,8 +287,6 @@ fn validate_schema_extras(doc: &Document, a: &Action) -> Result<(), String> {
         return Err("Invalid prototype media action".into());
     }
     for t in [a.media_skip_by_amount, a.media_skip_to_time].into_iter().flatten() {
-        // Seconds within any plausible media asset; the 0..=1e6 bound is a
-        // conservative admission bound, not a recovered Figma limit.
         if !t.is_finite() || !(0. ..=1e6).contains(&t) {
             return Err("Invalid prototype media time".into());
         }

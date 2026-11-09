@@ -6,12 +6,16 @@ import { useInterfaceText } from './interface-preference'
 import { commitPendingEdits } from './pending-edits'
 import { modalKeyDown } from './modal-keyboard'
 import { userPages } from './fig-document'
+import { requestAgentTarget } from './design-ai/target-event'
+import { clampAnchoredMenu } from './anchored-menu'
+import './design-ai/design-agent.css'
 
 export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: string) => void }) {
   const text = useInterfaceText()
   const listId = useId()
   const state = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [open, setOpen] = useState(true)
+  const [hoverPage, setHoverPage] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [menu, setMenu] = useState<{ id: string; session: number; document: string; x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -39,7 +43,7 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
     <div className="pages-heading">
       <button type="button" className="pages-current" aria-expanded={open} aria-controls={listId} aria-label={open ? text.collapsePages : text.expandPages}
         onClick={() => setOpen(value => !value)}>
-        <ChevronDown size={14} /><span>{current?.name || text.pages}</span>
+        <ChevronDown size={14} /><span title={current?.name || text.pages}>{current?.name || text.pages}</span>
       </button>
       <button title={text.addPage} aria-label={text.addPage} onClick={() => { if (canMutatePages() && commitPendingEdits(editor) && canMutatePages()) { setSearch(''); editor.addPage() } }}><Plus size={15} /></button>
     </div>
@@ -49,6 +53,7 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
     <nav className="pages" aria-label={text.pageList}>
       {userPages(state.doc).filter(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(page => {
         return <div className="page-row" key={page.id} draggable
+          onMouseOver={() => setHoverPage(page.id)} onMouseLeave={() => setHoverPage(current => current === page.id ? null : current)}
           onDragStart={event => {
             if (!canMutatePages() || !commitPendingEdits(editor) || !canMutatePages()) { event.preventDefault(); return }
             dragging.current = { id: page.id, session: editor.sessionGeneration, document: editor.state.doc.id }
@@ -64,12 +69,19 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
             editor.reorderPage(payload.id, after ? editor.state.doc.pages[at + 1]?.id : page.id)
           }}>
           <button className={state.page === page.id ? 'page active' : 'page'} onClick={() => editor.switchPage(page.id)} onDoubleClick={() => onRename(page.id)}>
-            <span className="page-name">{page.name}</span>{state.page === page.id && <span className="page-dot" />}
+            <span className="page-name" title={page.name}>{page.name}</span>{state.page === page.id && <span className="page-dot" />}
           </button>
+          {hoverPage === page.id && <button type="button" className="page-ai" aria-label={`用 AI 修改 ${page.name}`} onMouseDown={event => event.stopPropagation()} onClick={event => {
+            event.stopPropagation()
+            if (!canMutatePages() || !commitPendingEdits(editor)) return
+            editor.switchPage(page.id)
+            requestAgentTarget({ pageId: page.id, prompt: `细节调整：修改「${page.name}」`, send: false })
+          }}>AI</button>}
           <button className="page-options" aria-label={`${text.pageActions}：${page.name}`} onClick={event => {
             if (!commitPendingEdits(editor)) return
             const box = event.currentTarget.getBoundingClientRect()
-            setMenu({ id: page.id, session: editor.sessionGeneration, document: state.doc.id, x: Math.max(8, Math.min(box.x, window.innerWidth - 188)), y: Math.min(box.bottom, window.innerHeight - 190) })
+            const next = clampAnchoredMenu(box, { width: 180, height: 180 }, { prefer: 'below' })
+            setMenu({ id: page.id, session: editor.sessionGeneration, document: state.doc.id, x: next.left, y: next.top })
           }}><MoreHorizontal size={14} /></button>
         </div>
       })}

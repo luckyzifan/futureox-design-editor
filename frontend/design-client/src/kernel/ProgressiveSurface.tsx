@@ -8,7 +8,7 @@ import { initializeKernelModule } from './module'
 import { shouldUseExactCpuFallback } from './cpu-fallback'
 import { renderFailureFields } from './render-failure-telemetry'
 import { isRecoverablePreviewBudget } from './preview-budget-recovery'
-import { allowsResidentSdr, usesDesktopDisplay } from './render-policy'
+import { allowsResidentSdr, usesDesktopDisplay, usesProgressiveNativeRepair } from './render-policy'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SurfaceProps, PresentedFrame } from './Surface'
 import { KernelClient, renderExecutionPolicy, type TileDamage, type TileResult } from './client'
@@ -22,7 +22,8 @@ import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRaster
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
-import { tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
+import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
+import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
@@ -595,6 +596,9 @@ export function ProgressiveSurfaceImpl(
     residentDisplay && !sharpNavigation && !gestureHeadroom && !nativeNavigation &&
     !hdrCompositing && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview &&
     usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile, pixelPreview: props.pixelPreview })
+  const progressiveNativeRepair = usesProgressiveNativeRepair(renderExecutionPolicy, backend,
+    import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR,
+    !nativeNavigation && !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles)
   const latestNativeNavigation = useRef(nativeNavigation)
   latestNativeNavigation.current = nativeNavigation
   const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
@@ -1026,7 +1030,7 @@ export function ProgressiveSurfaceImpl(
     // At quiet, a same-owner coarse image already supplies continuity. Spend
     // the next turn on exact detail, not a second intermediate-resolution copy.
     // This does not authorize skipping the sharper moving-camera preview.
-    const hasRepairBacking = () => import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR==='1'&&
+    const hasRepairBacking = () => progressiveNativeRepair&&
       residentDisplay&&!navigationZoom.active&&syncedDoc.current===doc&&
       navigationHasCoverage(validCoverage(),requestedView,width,height)
     // A large reversal can leave a costly zoom-in capture occupying the sole
@@ -1057,6 +1061,16 @@ export function ProgressiveSurfaceImpl(
       !props.pixelPreview && !reusableFrame && !retainedEditViewport && startupPreviewAttempt.current !== contract &&
       ![...tileRef.current.values()].some(tile => tile.document === doc && tile.revision === contract.revision &&
         ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height }))
+    // After high-zoom input stops, an unfinished optional filtered capture
+    // would serialize ahead of the native tile plan, then be drawn again.
+    // Keep cold-start/acknowledged pixels and the original completion fence.
+    if (!needsStartupPreview && !nativeNavigation && residentDisplay && filteredContent &&
+        renderExecutionPolicy.desktopFullMath && renderExecutionPolicy.desktopDisplay && backend === 'webgpu' &&
+        !navigationZoom.active && !cameraMoving && !props.panGestureActive && !props.interaction?.active &&
+        !hdrCompositing && !props.pixelPreview && !props.animation && requestedView.zoom >= 8) {
+      const flight = coverageFlight.current
+      if (flight?.contract === contract && flight.generation === generation) flight.cancelForNative()
+    }
     const render = (...args: Parameters<KernelClient['render']>) => mailbox.run(current, () => c.render(...args))
     const receive = (tile: TileResult & { viewportCache?: ViewportPreviewCacheEntry; nativeNavigationDevice?: string; previewSource?: PaintedTile['previewSource'] }) => {
       if (!sameContent()) {
@@ -2237,6 +2251,7 @@ export function ProgressiveSurfaceImpl(
     motionPreview,
     nativeNavigation,
     nativeVisibleTiles,
+    progressiveNativeRepair,
     sharpNavigation,
     zooming,
     cameraMoving,
@@ -2318,7 +2333,7 @@ export function ProgressiveSurfaceImpl(
   const canRefine = !displayed || reusableFrame || fullPlanReady
   const startupPreview = !displayed && visible.some(tile => tile.viewportPreview &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key))
-  const partialDetail=import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR==='1'&&residentDisplay&&reusableFrame&&currentPlan&&
+  const partialDetail=progressiveNativeRepair&&residentDisplay&&reusableFrame&&currentPlan&&
     !hdrCompositing&&!cameraDependent&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&!props.interaction?.active&&syncedDoc.current===doc
   const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile &&
     (fullPlanReady||partialDetail&&tile.document===doc&&tile.revision===contract.revision&&
@@ -2407,6 +2422,7 @@ export function ProgressiveSurfaceImpl(
   // compositor transform, instead of every resident canvas's layout rectangle.
   const placementView = displayed?.view || view
   const cameraTransform = frameTransform(requestedView, placementView)
+  const previewCameraOk = previewCameraScaleWithinLimit(placementView.zoom, requestedView.zoom)
   const presentation = visual ? {
     view: cameraPreview ? requestedView : visual.view,
     document: visual.document, pageId: visual.pageId, epoch: visual.epoch,
@@ -2423,6 +2439,7 @@ export function ProgressiveSurfaceImpl(
     setAcceptedBacking(old => old?.identity === identity && old.client === owner ? old : { identity, client:owner })
   }
   const hasAcceptedBacking = singleCanvas && acceptedBacking?.identity === identity && acceptedBacking.client === rasterClient
+  const retainedFrame = !!displayed || hasAcceptedBacking || cachedPreviewCount > 0 || !!previewReplacement
   useLayoutEffect(() => {
     // Offscreen GPU submission is asynchronous. Only its reply can publish
     // the camera; synchronous CSS/WebGL placement keeps this immediate path.
@@ -2537,13 +2554,14 @@ export function ProgressiveSurfaceImpl(
           left: 0,
           top: 0,
           transformOrigin: '0 0',
-          transform: singleCanvas ? undefined : `translate(${cameraTransform.x}px,${cameraTransform.y}px) scale(${cameraTransform.scale})`,
+          transform: singleCanvas || !(previewCameraOk || retainedFrame) ? undefined : `translate(${cameraTransform.x}px,${cameraTransform.y}px) scale(${cameraTransform.scale})`,
           // Upload/acknowledge tiles while hidden. The first visible canvas
           // must have a complete acknowledged viewport, including on a page
-          // change. Later camera previews keep the previous complete frame.
-          // A real accepted preview stays visible while tile categories/plan
-          // generations change. Readiness counters cannot hide its backbuffer.
-          visibility: props.visible === false || !hasAcceptedBacking && !displayed && cachedPreviewCount === 0 && !previewReplacement ? 'hidden' : 'visible',
+          // change. Later camera previews keep the previous complete frame,
+          // including a jump past the preview scale limit. Hiding that bitmap
+          // before a closer frame covers is the blank pasteboard. Readiness
+          // counters cannot hide its backbuffer.
+          visibility: props.visible === false || !retainedFrame ? 'hidden' : 'visible',
           pointerEvents: 'none',
         }}
       >
@@ -2727,7 +2745,7 @@ export function ProgressiveSurfaceImpl(
       {!props.paused && <div
         className={`kernel-status ${failure ? 'error' : ''}`}
         role="status"
-        title={failure || '画布高清显示'}
+        title={failure ? canvasStatusLabel(failure) : '画布高清显示'}
         style={{
           position: 'absolute',
           right: 14,
@@ -2738,8 +2756,8 @@ export function ProgressiveSurfaceImpl(
           zIndex: 4,
         }}
       >
-        {failure ||
-          `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${props.interaction?.active ? '编辑预览' : complete ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
+        {failure ? canvasStatusLabel(failure) :
+          `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${props.interaction?.active ? '编辑预览' : complete && previewCameraOk ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
 
       </div>}
     </>

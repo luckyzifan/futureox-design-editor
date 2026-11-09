@@ -27,4 +27,26 @@ export class ReverseIndexMap<K, V, I> extends Map<K, V> {
   override delete(key: K) { this.unindex(key); return super.delete(key) }
   override clear() { super.clear(); this.reverse.clear(); this.indexed.clear() }
   keysFor(index: I): ReadonlySet<K> { return this.reverse.get(index) || this.empty }
+  protected appendIndex(key: K, index: I) {
+    const indices = this.indexed.get(key)
+    if (!indices || indices.has(index)) return
+    indices.add(index)
+    const keys = this.reverse.get(index) || new Set<K>()
+    keys.add(key); this.reverse.set(index, keys)
+  }
+}
+
+/** Mutable owner histories only grow between delete/clear boundaries. Adding
+ * one owner must not rebuild the history of every earlier mask consumer. */
+export class ReverseIndexSetMap<K, I> extends ReverseIndexMap<K, Set<I>, I> {
+  constructor() { super(value => value) }
+  add(key: K, index: I): this {
+    let values = this.get(key)
+    if (!values) { values = new Set<I>(); this.set(key, values) }
+    if (!values.has(index)) {
+      values.add(index)
+      this.appendIndex(key, index)
+    }
+    return this
+  }
 }

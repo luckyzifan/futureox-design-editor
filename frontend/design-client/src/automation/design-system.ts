@@ -307,11 +307,19 @@ export function validateDesignSystemDocument(d: DesignDocument): void {
       for (const [axis, value] of Object.entries(variants)) { key(axis, 'variant axis', 128); key(value, 'variant value', 128) }
       for (const [id, property] of Object.entries(n.component.properties)) {
         key(id); key(property.name, 'property name', 128)
-        const target = d.nodes[keys.get(property.targetKey) || ''], binding = `${property.targetKey}:${property.kind}`
-        if (!target || property.targetKey === '$root' || names.has(property.name) || targets.has(binding)) throw new Error('Invalid or duplicate component property target')
-        names.add(property.name); targets.add(binding)
-        if ((property.kind === 'text' && target.kind !== 'text') || (property.kind === 'instance-swap' && !target.instance)) throw new Error('Component property does not match target layer')
+        if (names.has(property.name)) throw new Error('Invalid or duplicate component property target')
+        names.add(property.name)
         propertyValue(d, property, property.defaultValue)
+        if (property.unbound) {
+          if (property.alsoTargets?.length || property.targetKey === '$root') throw new Error('Invalid or duplicate component property target')
+          continue
+        }
+        for (const targetKey of [property.targetKey, ...(property.alsoTargets || [])]) {
+          const target = d.nodes[keys.get(targetKey) || ''], binding = `${targetKey}:${property.kind}`
+          if (!target || targetKey === '$root' || targets.has(binding)) throw new Error('Invalid or duplicate component property target')
+          targets.add(binding)
+          if ((property.kind === 'text' && target.kind !== 'text') || (property.kind === 'instance-swap' && !target.instance)) throw new Error('Component property does not match target layer')
+        }
         if (property.kind === 'instance-swap') refs.add(String(property.defaultValue))
       }
       for (const id of keys.values()) Components.instanceReferences(d, d.nodes[id]).forEach(ref => refs.add(ref))

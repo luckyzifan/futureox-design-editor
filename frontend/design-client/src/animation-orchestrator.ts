@@ -1,22 +1,6 @@
-/**
- * JIT-style playback orchestration for the animation preview.
- *
- * This module is the *orchestration layer* alignment only — gate ladder,
- * playback state machine, dt clamp, per-frame dirty invalidation and the
- * kernel bake contract. The kernel-level JIT track-group system (clone
- * carriers named `-JitAnimationClone-From/To`, `setupJitAnimationNode`'s
- * track-group construction) is a recorded follow-up and is
- * deliberately NOT pretended here.
- *
- * Behavioral spec:
- * - gate ladder + telemetry enums for fallback reasons
- * - activation: wasm returns `{timelineDefId, durationUs}`;
- *   `jitSourceCloneMode` `clone_free|clone_backed`
- * - playback manager `computePlaybackTimeUs`
- *   (SCRUB/SETTLING math, wall-clock clamp)
- * - legacy tracker `advanceToNextFrame` clamps dt to 1/30s
- * - eased progress, transition end COMMIT/ABORT, per-frame `dirtyNode`
- */
+/** Animation preview: eligibility, kernel bake handles, then playback state.
+ * Wall-clock playback uses absolute elapsed time; accumulated frame steps are
+ * capped at 1/30 second. Scrubbing settles to a committed or aborted state. */
 import type { AnimationClip } from './animation'
 import type { DesignDocument } from './model'
 import { createAnimationBakeSession, kernelBakeRevision } from './kernel/bake-session'
@@ -25,13 +9,6 @@ import { createAnimationBakeSession, kernelBakeRevision } from './kernel/bake-se
 // 1. Gate ladder
 // ---------------------------------------------------------------------------
 
-/**
- * Figma's fallback-reason culture (telemetry fallback fields):
- * `outcome: completed|aborted|fallback` plus
- * `fallbackReason: jit_disabled|legacy_required|missing_source|
- *  missing_prototype_lib|materialization_failed`.
- * The names are kept verbatim so reports line up rung by rung.
- */
 export type PlaybackFallbackReason =
   | 'jit_disabled'
   | 'legacy_required'
@@ -47,41 +24,12 @@ export const PLAYBACK_FALLBACK_REASONS: readonly PlaybackFallbackReason[] = [
   'materialization_failed',
 ]
 
-/**
- * Figma JIT gate flags that our runtime cannot yet evaluate honestly. They
- * are recorded as named placeholders so every rung of `u_` stays visible;
- * TODO(kernel): the JIT track-group system is the follow-up that gives these
- * flags real semantics.
- * - `metronome` — animation runtime prerequisite; our live equivalent is
- *   kernel-module readiness, checked through the bake source instead.
- * - `eclipse`, `mix_jit_default_enabled`, `mix_jit_overlays`,
- *   `mix_jit_min_animate`, `mix_jit_keyframeless_transitions` — release-gate
- *   mix semantics that only matter once both tracks exist.
- * - `has3dTransform` — our scene model has no 3D transform content yet.
- * The ladder below consults ONLY the three real bits (disable_jit switch,
- * has-motion-clip detection, transition-overrides override); these constants
- * are documentation, never read as behavior.
- */
-export const PLAYBACK_PLACEHOLDER_FLAGS = {
-  metronome: true,
-  eclipse: false,
-  mix_jit_default_enabled: false,
-  mix_jit_overlays: false,
-  mix_jit_min_animate: false,
-  mix_jit_keyframeless_transitions: false,
-  has3dTransform: false,
-} as const
-
 export type PlaybackGateInput = {
   clipId: string
   pageId: string
-  /**
-   * `transitionOverridesEnabled` equivalent: a per-request
-   * override that keeps the JIT track even when the default-on gate would
-   * fall back to legacy. Real bit #3.
-   */
+  /** Allow kernel playback for a clip with no changing keyframes. */
   transitionOverridesEnabled?: boolean
-  /** `disable_jit` equivalent: hard kill switch. Real bit #1. */
+  /** Force playback through the accumulated-frame path. */
   disableJit?: boolean
 }
 
@@ -92,7 +40,7 @@ export type PlaybackGateResult = {
 }
 
 export type PlaybackGateDeps = {
-  /** Kernel module readiness — the `metronome`/`missing_prototype_lib` seam. */
+  /** Whether the kernel is ready to create bake handles. */
   isKernelReady?: () => boolean
   bakeSource?: AnimationBakeSource
 }
@@ -100,21 +48,20 @@ export type PlaybackGateDeps = {
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
 const clamp01 = (v: number) => (Number.isFinite(v) ? clamp(v, 0, 1) : 0)
 
-/** Content probe for the `hasMotionClip` rung: real detection, not a flag. */
+/** A clip has motion when a track contains at least two keyframes. */
 export function clipHasMotion(clip: AnimationClip): boolean {
   return clip.tracks.some((t) => t.keyframes.length >= 2)
 }
 
 /**
  * The eligibility gate, rung by rung:
- * 1. action resolves a playable clip on this page (`ug` action predicate) —
+ * 1. action resolves a playable clip on this page —
  *    failure is `missing_source`;
- * 2. `disable_jit` → `jit_disabled`;
+ * 2. `disableJit` → `jit_disabled`;
  * 3. prototype-lib present (kernel bake source available) — otherwise
  *    `missing_prototype_lib`;
- * 4. content gate: `eclipse || hasMotionClip || has3dTransform` (eclipse and
- *    has3dTransform are placeholders), plus the `transitionOverridesEnabled`
- *    override from `uT` — otherwise `legacy_required`;
+ * 4. changing keyframes or `transitionOverridesEnabled` — otherwise
+ *    `legacy_required`;
  * 5. materialization (bake) — failure is `materialization_failed`.
  * A fallback still plays: the legacy track drives the same state machine,
  * only the per-frame advance source differs.
@@ -132,11 +79,7 @@ export function resolvePlaybackTrack(
   const bakeSource = deps.bakeSource ?? createKernelClipBakeSource(deps.isKernelReady ?? (() => false))
   if (!bakeSource.available())
     return { implementation: 'legacy', outcome: 'fallback', fallbackReason: 'missing_prototype_lib' }
-  const jitEligible =
-    PLAYBACK_PLACEHOLDER_FLAGS.eclipse ||
-    clipHasMotion(clip) ||
-    PLAYBACK_PLACEHOLDER_FLAGS.has3dTransform ||
-    !!input.transitionOverridesEnabled
+  const jitEligible = clipHasMotion(clip) || !!input.transitionOverridesEnabled
   if (!jitEligible)
     return { implementation: 'legacy', outcome: 'fallback', fallbackReason: 'legacy_required' }
   const handle = bakeSource.bake(doc, input.clipId, input.pageId)
@@ -325,14 +268,6 @@ export type PlaybackTick = {
   emitted: boolean
 }
 
-/**
- * Figma's legacy (baked) tracker clamps each frame's dt to 1/30s
- * (`advanceToNextFrame`: `t = Math.min(t, 1/30)`) so a dropped
- * frame cannot lunge the transition. The wall-clock/external path computes
- * absolute elapsed time instead of accumulating deltas, so it stays
- * unclamped (a hitch lands on the correct absolute time, clamped only to
- * [0, duration] the way `computePlaybackTimeUs` does).
- */
 export const LEGACY_DT_CLAMP_SECONDS = 1 / 30
 
 export type AnimationPlaybackOptions = {
@@ -365,21 +300,6 @@ const defaultNow = () =>
 
 const isActiveState = (s: PlaybackState) => s === 'PLAYING' || s === 'SCRUB' || s === 'SETTLING'
 
-/**
- * Transition-scoped playback machine: `IDLE→PLAYING→{COMMITTED|ABORTED}`
- * with `SCRUB`/`SETTLING` as the external-drag states
- * (`hq` manager @1196586). Two advance sources:
- * - `tick(elapsedMs)` — wall-clock/external path (absolute, unclamped dt);
- * - `advance(dtSeconds)` — legacy path (dt clamped to 1/30s).
- * SCRUB is entered by `beginScrub()`; `releaseScrub(commitOnFinish)` starts
- * SETTLING with `settleDurationUs = max(1, |target - progress| *
- * durationUs)` (`settleCurrentSmartAnimateDrag` @1202663); a finished settle
- * commits to the destination (progress 1) or reverts to the source
- * (progress 0 — the abort side of `getSmartAnimateDragCompletionNode`).
- * Natural end for `repeat: 'once'` is COMMIT, Figma's default end action
- * (`transitionEnded() → COMMIT`, @1774836); `commit()`/`abort()` are the
- * explicit two-state API.
- */
 export class AnimationPlayback {
   private stateValue: PlaybackState = 'IDLE'
   private elapsedMs = 0
@@ -437,12 +357,6 @@ export class AnimationPlayback {
     return true
   }
 
-  /**
-   * Wall-clock / external-control advance (the JIT track's time source,
-   * `computePlaybackTimeUs` @1202663). Takes absolute elapsed time — our
-   * callers supply a rate-scaled clock value, which preserves the no-dt
-   * property: absolute time cannot accumulate a hitch.
-   */
   tick(elapsedMs: number): PlaybackTick {
     if (this.stateValue === 'SETTLING') return this.advanceSettling()
     if (this.stateValue !== 'PLAYING') return this.terminalTick()
@@ -461,7 +375,6 @@ export class AnimationPlayback {
     return this.frameFromElapsed()
   }
 
-  /** External seek (`seekCurrentAnimation` @1196586): pins the time. */
   seek(timeMs: number): PlaybackTick {
     if (this.stateValue === 'SETTLING') return this.advanceSettling()
     if (this.stateValue !== 'PLAYING') return this.terminalTick()
@@ -479,7 +392,6 @@ export class AnimationPlayback {
     return true
   }
 
-  /** Drag position update; ratio clamps to [0,1] (@1196586). */
   setScrubProgress(ratio: number): PlaybackTick {
     if (this.stateValue !== 'SCRUB') return this.terminalTick()
     this.scrubProgress = clamp01(ratio)
@@ -487,12 +399,6 @@ export class AnimationPlayback {
     return this.emit('SCRUB', this.scrubProgress, timeMs, null)
   }
 
-  /**
-   * SCRUB → SETTLING. `commitOnFinish` picks the settle target (1 = commit
-   * to destination, 0 = revert to source); the settle duration follows the
-   * Figma formula `max(1, |target - progress| * durationUs)`
-   * (`settleCurrentSmartAnimateDrag` @1202663).
-   */
   releaseScrub(commitOnFinish: boolean): boolean {
     if (this.stateValue !== 'SCRUB') return false
     const current = clamp01(this.scrubProgress)
@@ -510,10 +416,6 @@ export class AnimationPlayback {
     return true
   }
 
-  /**
-   * Explicit COMMIT: land on the end frame (`commitStateChange` @1774836).
-   * Emits the final sample so consumers see the destination pose.
-   */
   commit(): boolean {
     if (!isActiveState(this.stateValue)) return false
     this.settle = null
@@ -523,11 +425,6 @@ export class AnimationPlayback {
     return true
   }
 
-  /**
-   * Explicit ABORT (`abortStateChange` @1774836). Emits no final sample —
-   * reverting to the source pose is consumer-side policy; sample-based
-   * rendering has no document mutation to roll back.
-   */
   abort(): boolean {
     if (!isActiveState(this.stateValue)) return false
     this.settle = null
@@ -539,11 +436,6 @@ export class AnimationPlayback {
     return true
   }
 
-  /**
-   * `easedTransitionProgress` @1774571: raw when there is no easing function
-   * or playback is externally controlled (SCRUB/SETTLING/pinned seek);
-   * otherwise `easingFunction.get(rawProgress)`.
-   */
   easedTransitionProgress(): number {
     const raw = this.progress
     if (!this.options.easingGet || this.isExternallyControlled()) return raw

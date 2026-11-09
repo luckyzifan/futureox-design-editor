@@ -50,6 +50,13 @@ export class LargeDocumentHost {
     return !!owner && active.window===this.window() && !active.window.isDestroyed() && active.status.format==='sketch' &&
       name===(active.status.bitmapScope??owner.documentId+'-'+owner.sessionEpoch)
   }
+  async status(value) {
+    if (value !== undefined) throw Error('Unexpected large document status arguments')
+    const active = this.#active
+    if (!active || active.window !== this.window() || active.window.isDestroyed()) return { status: 'cancelled' }
+    active.status = admitLargeStatus(await this.request('large.status', { owner: active.status.owner, expectedRevision: active.status.revision }), active.status.owner)
+    return { status: 'ok', ...active.status }
+  }
   async open(value, selectedPath) { return this.#exclusive(async () => {
     if (value !== undefined) throw Error('Unexpected large document open arguments')
     if (this.#active) {

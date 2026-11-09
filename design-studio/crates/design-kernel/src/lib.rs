@@ -1778,13 +1778,6 @@ mod wasm {
             serde_json::to_string(&self.inner.compositing_ledger())
                 .unwrap_or_else(|_| "{}".into())
         }
-        /// Four-bucket GPU memory ledger (Figma `CorePerfInfo` counters,
-        /// `getRendererMemoryBreakdown` shape): texture/buffer/fixed-array/
-        /// blob live bytes + per-bucket and total peaks + `needs_free`
-        /// pressure flag + five telemetry axes. The kernel itself allocates
-        /// no GPU memory; on wasm this reads zeros until a host installs a
-        /// fed ledger (native `Engine::gpu_memory_ledger` handle) — no
-        /// estimates are made.
         pub fn gpu_memory_breakdown(&self) -> String {
             serde_json::to_string(&self.inner.gpu_memory_breakdown())
                 .unwrap_or_else(|_| "{}".into())
@@ -2488,9 +2481,6 @@ mod wasm {
         }
     }
 
-    /// Inferred-autolayout over a serialized document: returns the stack
-    /// parameters the reference engine's inference solver would derive
-    /// for the frame (direction/gap/padding/banner children).
     #[wasm_bindgen]
     pub fn inferred_layout_json(document_json: &str, frame_id: &str) -> Result<String, JsValue> {
         let doc: scene::Document =
@@ -2736,9 +2726,6 @@ mod wasm {
             animation_bake::SaBakeContext::new();
     }
 
-    /// The engine's structured `#899` error shape: a JS `Error` carrying the
-    /// conflict's kind/tag/message plus both frame pairs, so hosts can act on
-    /// the conflict instead of parsing a message string.
     fn bake_conflict_error(conflict: animation_bake::BakeConflict) -> JsValue {
         let error = js_sys::Error::new(conflict.message);
         let set = |key: &str, value: JsValue| {

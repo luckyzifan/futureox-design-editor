@@ -1,13 +1,3 @@
-//! Interactive editing latency gate: patch apply plus one whole-viewport
-//! re-render, the editor's current worst case. This guards against
-//! order-of-magnitude regressions before dirty-region rendering lands; the
-//! editor product target of P99 <= 16 ms requires the planned tile cache.
-//!
-//! Release baselines recorded on 2026-10-09 (Apple Silicon host, see
-//! testing/review/design-kernel-exact-2026-10-08/editing-latency-2026-10-09.json):
-//! 200 nodes @1280x800 median 15.7 ms / p99 16.3 ms; 500 @1920x1080 36.5/49.6;
-//! 1500 @1920x1080 42.6/54.3. The debug bounds below are deliberately loose
-//! (host-timing variance); a failure means a structural regression, not noise.
 use futureox_design_kernel::{Engine, editing::DocumentPatch, scene::Node};
 use std::{collections::BTreeMap, time::Instant};
 

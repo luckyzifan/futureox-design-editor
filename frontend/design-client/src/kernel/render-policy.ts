@@ -37,6 +37,16 @@ export function usesDesktopDisplay(policy: RenderPolicy, request: DisplayRenderR
 export function allowsResidentSdr(policy: RenderPolicy, backend: RenderBackend = 'auto'): boolean {
   return !policy.cpuOnly && !policy.hdrCompositing && (backend === 'auto' || backend === 'webgpu')
 }
+/** Completed native regions replace their same-owner backing immediately.
+ * Raster math and final readiness stay unchanged; other navigation modes
+ * retain their explicit admission and an explicit zero restores the old path. */
+export function usesProgressiveNativeRepair(policy: RenderPolicy, backend: RenderBackend,
+  flag: unknown, ordinaryNavigation = true): boolean {
+  if (flag === '0') return false
+  if (flag === '1') return true
+  return ordinaryNavigation && policy.desktopFullMath && policy.desktopDisplay &&
+    allowsResidentSdr(policy, backend) && backend === 'webgpu'
+}
 /** Input windows are in the current device lattice. HQ resolve and pixel
  * preview use another output lattice and retain their ordinary exact graph. */
 export function allowsInteractionWindow(requested:boolean,scene:{resolve?:unknown;presentation?:unknown}) {

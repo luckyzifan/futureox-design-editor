@@ -56,6 +56,14 @@ contextBridge.exposeInMainWorld(
       run: value => invoke('design-ai-run', value),
       cancel: value => invoke('design-ai-cancel', value),
     }),
+    designAgent: Object.freeze({
+      status: () => invoke('design-agent-status'),
+      turn: value => invoke('design-agent-turn', value),
+      upsert: value => invoke('design-agent-upsert', value),
+      activate: value => invoke('design-agent-activate', value),
+      remove: value => invoke('design-agent-remove', value),
+      cancel: value => invoke('design-agent-cancel', value),
+    }),
     ...(documentMemoryBytes === undefined ? {} : { documentCapacity: Object.freeze({ memoryBytes: documentMemoryBytes }) }),
     renderDiagnostics: process.argv.includes('--core-render-diagnostics'),
     renderDiagnosticsDetail: process.argv.includes('--core-render-diagnostics-detail'),
@@ -175,6 +183,7 @@ contextBridge.exposeInMainWorld(
     openDocument: () => invoke('open'),
     inspectSketch: () => invoke('sketch-inspect'),
     largeDocument: Object.freeze({
+      status: () => invoke('large-document-status'),
       open: () => invoke('large-document-open'),
       // webUtils validates a real browser File. Renderer-constructed Files have
       // no native path; arbitrary path strings are never accepted by this API.

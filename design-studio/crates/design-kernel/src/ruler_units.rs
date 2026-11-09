@@ -1,16 +1,8 @@
-//! Ruler/inspector unit conversion at the reference's 96 dpi anchor
-//! (INTERACTION-DETAILS-2026-10-26 §4, func[2411] @0x7cc88).
-//!
-//! The recovered per-unit expressions convert a physical-unit value into
-//! CSS/device pixels: pt `×96/72` (case 4), pica `×96/6` (case 5), mm
-//! `×96/25.4` (case 7), inch `×96` (case 8); cm rides the mm path ×10
-//! (case 0's ÷100 and case 6's `×96/2.5` targets were not named in the
-//! recovery and are deliberately not modeled). The same function serves
-//! rulers, the properties panel and size inputs (28 callers).
+//! Ruler and inspector unit conversion at 96 CSS pixels per inch.
+//! Points, picas, millimeters, centimeters and inches share this conversion path.
 
 /// Device pixels per inch — the anchor of every factor below.
 pub const PX_PER_INCH: f64 = 96.;
-/// 1 pt = 1/72 inch (`0x1.2p+6` ÷ 72 at disasm case 4).
 pub const PX_PER_PT: f64 = 96. / 72.;
 /// 1 pica = 1/6 inch (case 5, `0x1.8p+2`).
 pub const PX_PER_PICA: f64 = 96. / 6.;
@@ -19,7 +11,7 @@ pub const PX_PER_MM: f64 = 96. / 25.4;
 /// 1 cm = 10 mm via the same path (`96 / 2.54`).
 pub const PX_PER_CM: f64 = 96. / 2.54;
 
-/// Ruler/display units supported by the recovered conversion table.
+/// Units accepted by ruler and property inputs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RulerUnit {
     Pixels,
@@ -43,7 +35,6 @@ impl RulerUnit {
         }
     }
 
-    /// Physical-unit value → pixels (the direction func[2411] computes).
     pub fn to_px(self, value: f64) -> f64 {
         value * self.px_per_unit()
     }
@@ -59,7 +50,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn factors_match_the_recovered_constants() {
+    fn factors_match_css_unit_definitions() {
         assert_eq!(PX_PER_PT, 96. / 72.);
         assert_eq!(PX_PER_PICA, 16.);
         assert!((PX_PER_MM - 96. / 25.4).abs() < 1e-12);

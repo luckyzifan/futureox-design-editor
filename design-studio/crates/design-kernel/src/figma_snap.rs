@@ -1,70 +1,24 @@
-//! Figma snap scoring core, recovered from the fullscreen engine
-//! (SNAP-SCORING-2026-10-26: f20000 candidate window query, f32510 gap
-//! targets, f32509 implied frame margins, f28420 dot grid, f31923 vector
-//! vertex snapping).
-//!
-//! Selection rule (f20000 @0x118435b): **nearest-wins inside the caller's
-//! window radius `r` — no layered weights**. The initial best score is `r`
-//! itself (or unbounded `inf` when the container flag bit0 is set), the
-//! window is the binary-searched range `[x−r, x+r]` over a coordinate-sorted
-//! target array, and replacement uses strict `<`, so an equal-distance tie
-//! keeps the earlier candidate in sorted order (the smaller coordinate).
-//! The radius is supplied by the caller per query — the engine never
-//! hard-codes a pixel threshold in the scorer.
-//!
-//! Constants carry their disassembly provenance; semantics marked
-//! `[推断]` in the source document are marked `inferred` here and never
-//! presented as verified behavior.
+//! Axis snapping: stable nearest-target selection, gap targets and grid helpers.
+//! The caller supplies the query radius; equal-distance targets keep sorted order.
 
-/// A candidate coordinate ≈ −1 (±1e-6) means "this axis does not
-/// participate"; the scorer short-circuits it (f20000 @0x11844f1/0x118450d).
 pub const AXIS_SENTINEL: f64 = -1.;
 /// Tolerance for the axis-sentinel test above.
 pub const AXIS_SENTINEL_EPSILON: f64 = 1e-6;
-/// Gap target position factor: `(edge_a + edge_b) × 0.5` — the gap target
-/// sits on the midline between two adjacent object edges
-/// (f32510 @0x1fa3dee).
 pub const GAP_MIDPOINT_FACTOR: f64 = 0.5;
-/// Equidistant-gap matching key: widths quantized to milli-pixels,
-/// `trunc(width × 1000)` as f32 (f32510 @0x1fa3e1e-0x1fa3e2a). Only gaps
-/// with the same key snap to each other.
 pub const GAP_MILLIPIXEL_SCALE: f32 = 1000.;
-/// Degenerate-gap gate: `gap_start + 1e-6 > threshold` must hold before the
-/// gap enters the table (f32510 @0x1fa4344-0x1fa4351). Gate comparison is
-/// verified; its interaction intent is inferred.
 pub const GAP_DEGENERATE_EPSILON: f64 = 1e-6;
-/// Implied frame-margin promotion factor: a padding-line target is
-/// generated for a side only when the content offset exceeds
-/// `padding[side] × 0.15` (f32509 @0x1f9f8cc-0x1f9f8d6). Comparison
-/// verified, promotion intent inferred.
 pub const MARGIN_PROMOTION_FACTOR: f64 = 0.15;
-/// Dot-grid reject radius: a grid point is dropped (bit11 cleared) when
-/// `sqrt(dx²+dy²) > 5.0 × scale` (f28420 @0x1aab85e-0x1aab87a). `scale` is
-/// inferred to be the view scale, giving a 5 px screen-equivalent radius.
 pub const DOT_GRID_REJECT_RADIUS: f64 = 5.;
-/// Pixel rounding bias applied before quantization,
-/// `floor(w0 + w1 + 0.055)` (f28420 @0x1aaba58-0x1aaba62) — keeps values
-/// like 7.9999999 from quantizing down to 7.
 pub const DOT_GRID_ROUNDING_BIAS: f64 = 0.055;
-/// Default grid step passed through the grid parameter getter
-/// (f28420 @0x1aa8d3e).
 pub const GRID_DEFAULT_STEP: f32 = 10.;
-/// Secondary grid step from the same getter (f28420 @0x1aa8d43).
 pub const GRID_SECONDARY_STEP: f32 = 5.;
-/// Spatial-hash bucket bounding-box outward pad, 25.0
-/// (f28420 @0x1aa9660/0x1aa9674).
 pub const SPATIAL_BUCKET_PAD: f64 = 25.;
-/// Vector-segment intersection parameter bounds: t is accepted only in
-/// `[1e-6, 0.999999]`, symmetrically excluding both endpoints
-/// (f31923 @0x1ed2de3-0x1ed2e01).
 pub const VERTEX_T_MIN: f64 = 1e-6;
 /// Upper t bound. The recovered slice cites the f64 literal
 /// `0x1.ffffde7210be9p-1` and equates it with `1 − 1e-6` = 0.999999
 /// (the literal decodes to ≈0.9999997 — the document rounds); the semantic
 /// bound is "symmetrically exclude both endpoints by 1e-6".
 pub const VERTEX_T_MAX: f64 = 0.999_999;
-/// Vector vertex ids live in the low 26 bits of their 32-bit slot:
-/// `(packed << 6) >> 6` (f31923 @0x1ed3124-0x1ed312d).
 pub const VERTEX_ID_BITS: u32 = 26;
 
 /// Where a snap target came from. The scorer treats all kinds identically
@@ -101,18 +55,10 @@ pub struct SnapHit {
     pub delta: f64,
 }
 
-/// Whether a candidate coordinate participates on its axis: ≈−1 within
-/// 1e-6 is the "no target on this axis" sentinel (f20000 @0x11844f1).
 pub fn axis_participates(coordinate: f64) -> bool {
     (coordinate - AXIS_SENTINEL).abs() >= AXIS_SENTINEL_EPSILON
 }
 
-/// Nearest-wins window query over targets sorted stably by coordinate
-/// (f20000 §2.2). The scan starts at the first coordinate ≥ `x − r`
-/// (lower_bound) and stops at the first coordinate > `x + r`; a candidate
-/// replaces the incumbent only on strictly smaller distance, so an
-/// equal-distance tie keeps the smaller coordinate. Non-finite `r` or a
-/// non-positive radius fails closed (no hit).
 pub fn nearest_in_window(sorted: &[SnapTarget], x: f64, r: f64) -> Option<SnapHit> {
     if !r.is_finite() || r <= 0. {
         return None;
@@ -139,68 +85,42 @@ pub fn nearest_in_window(sorted: &[SnapTarget], x: f64, r: f64) -> Option<SnapHi
     best
 }
 
-/// Gap target position: the midline between two adjacent edges,
-/// `(a + b) × 0.5` (f32510 @0x1fa3dee).
 pub fn gap_target(edge_a: f64, edge_b: f64) -> f64 {
     (edge_a + edge_b) * GAP_MIDPOINT_FACTOR
 }
 
-/// Milli-pixel width key used to match equal-width gaps
-/// (`trunc(width × 1000)` as f32; f32510 @0x1fa3e1e).
 pub fn gap_width_key(width: f64) -> i64 {
     ((width as f32) * GAP_MILLIPIXEL_SCALE) as i64
 }
 
-/// Degenerate-gap gate: the recovered comparison is
-/// `gap_start + 1e-6 > threshold` (f32510 @0x1fa4344). The comparison is
-/// verified; what the threshold means at the call site is inferred, so
-/// callers gate their own gap generation on this predicate.
 pub fn gap_passes_gate(gap_start: f64, threshold: f64) -> bool {
     gap_start + GAP_DEGENERATE_EPSILON > threshold
 }
 
-/// Whether a frame padding line is promoted as a margin target for one
-/// side: the content offset must exceed `padding × 0.15`
-/// (f32509 @0x1f9f8cc). Padding comes from the frame's per-side f32 array.
 pub fn margin_target_promoted(content_offset: f64, padding: f32) -> bool {
     content_offset > f64::from(padding) * MARGIN_PROMOTION_FACTOR
 }
 
-/// Dot-grid reject test: `sqrt(dx²+dy²) > 5.0 × scale` drops the point
-/// (f28420 @0x1aab85e). Returns `true` when the point must be rejected.
 pub fn dot_grid_point_rejected(dx: f64, dy: f64, scale: f64) -> bool {
     dx.hypot(dy) > DOT_GRID_REJECT_RADIUS * scale
 }
 
-/// Biased integer quantization `floor(w0 + w1 + 0.055)`
-/// (f28420 @0x1aaba58): the bias keeps float dust below a pixel from
-/// quantizing to the previous integer.
 pub fn quantize_biased(w0: f64, w1: f64) -> f64 {
     (w0 + w1 + DOT_GRID_ROUNDING_BIAS).floor()
 }
 
-/// Default (step, secondary step) pair from the grid parameter getter
-/// (f28420 @0x1aa8d3e/0x1aa8d43).
 pub fn default_grid_steps() -> (f32, f32) {
     (GRID_DEFAULT_STEP, GRID_SECONDARY_STEP)
 }
 
-/// Whether a segment-intersection parameter t is accepted:
-/// `[1e-6, 0.999999]`, symmetrically excluding both endpoints
-/// (f31923 @0x1ed2de3).
 pub fn vertex_t_in_range(t: f64) -> bool {
     (VERTEX_T_MIN..=VERTEX_T_MAX).contains(&t)
 }
 
-/// Effective vector vertex id: the low 26 bits of the packed 32-bit slot
-/// (`(v << 6) >> 6`; f31923 @0x1ed3124).
 pub fn vertex_id(packed: u32) -> u32 {
     (packed << (32 - VERTEX_ID_BITS)) >> (32 - VERTEX_ID_BITS)
 }
 
-/// Per-axis target set with the scorer's sorted-array invariant. Insertion
-/// keeps duplicate coordinates in insertion order (stable), matching the
-/// reference's tie behavior.
 #[derive(Debug, Default)]
 pub struct SnapAxis {
     targets: Vec<SnapTarget>,

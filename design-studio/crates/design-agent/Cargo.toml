@@ -1,0 +1,18 @@
+[package]
+name = "futureox-design-agent"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Tokio agent core for Futureox page generation, detail edits, and provider routing"
+
+[dependencies]
+axum.workspace = true
+tokio = { workspace = true, features = ["time", "io-util", "process"] }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["time", "io-util", "macros", "rt-multi-thread", "process"] }

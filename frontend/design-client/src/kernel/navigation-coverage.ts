@@ -61,6 +61,9 @@ export type NavigationCoverageFlight<T> = {
   contract: object; generation: number; tile?: T; done: Promise<void>; finish: () => void
   /** Intent revocation only, not worker completion or payload release. */
   readonly cancellationRequested: boolean
+  /** Yield an undelivered optional capture to settled native work. Its owner
+   * still controls the completion fence and any late payload retirement. */
+  cancelForNative(): boolean
   /** Revoke only an unfinished, narrower old navigation capture after quiet.
    * Its original run still owns done and late-payload retirement. */
   cancelObsoleteZoomOut(view: CanvasCamera, width: number, height: number, minimumRatio?: number): boolean
@@ -70,9 +73,18 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
   const done = new Promise<void>(resolve => { finish = resolve })
   let cancellationRequested = false
   let pending = capture ? { ...capture, bounds: { ...capture.bounds } } : undefined
-  return { contract, generation, done,
+  const cancelPending = () => {
+    const source = pending
+    if (!source) return false
+    pending = undefined
+    cancellationRequested = true
+    source.cancel()
+    return true
+  }
+  const flight: NavigationCoverageFlight<T> = { contract, generation, done,
     get cancellationRequested() { return cancellationRequested },
     finish: () => { pending = undefined; finish() },
+    cancelForNative: () => flight.tile === undefined && cancelPending(),
     cancelObsoleteZoomOut: (view, width, height, minimumRatio = 1) => {
       const source = pending
       if (!source || !Number.isFinite(view.zoom) || view.zoom <= 0 || !(view.zoom < source.zoom) ||
@@ -85,10 +97,8 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
           bounds.y + bounds.height >= target.y + target.height) return false
       // Abort is per-request and idempotent. Do not resolve done early or
       // clear/release acknowledged pixels; cancellation may await a GPU boundary.
-      pending = undefined
-      cancellationRequested = true
-      source.cancel()
-      return true
+      return cancelPending()
     },
   }
+  return flight
 }
