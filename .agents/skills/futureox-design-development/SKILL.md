@@ -2,6 +2,8 @@
 
 2026-11-09 [自动保存失败恢复验收](../../../testing/verification-autosave-recovery-20261109/README.md)：云端用注入的存储满、未提交事务、中断的 `journal.next`、失败的 v5→v6 迁移和只读工作副本核对最后一致版本仍可重开，导入字节不变，失败不报已保存。正式 release 安装包上的异常退出未跑。不是已确认的数据丢失，也不是 33/100ms 或完整 G2/G5。
 
+2026-11-09 [许可覆盖与素材清单](../../../docs/LICENSE_COVERAGE.md)：根目录 MIT 与 5 个 workspace crate、3 个前端包的元数据可核对；`vendor/moxcms` 与 `vendor/flo_curves` 保留各自许可证。`public/fidelity` 与夹具图像逐文件标成 withhold，不把邻近 LICENSE 或项目 MIT 套到素材上。不是 33/100ms 或完整 G2/G5。
+
 2026-11-09 [GPU 启动与缩放调度](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地 GPU 优先、CPU 兜底。已有同源预览时，完整源先完成原密度瓦片，粗页预取在首个原生回执后继续；高倍停止输入后仅撤销未完成的可选滤镜预览，保留冷启动、已交付图像和原任务完结/迟到释放边界。组合版完整拓扑两次约 110–115 秒，旧版约 172 秒；117 的 3200% 约 25.7→10.5 秒。原生画布及可见内容像素一致，预算、效果、密度和 GPU 数学不变。集合替换仅改善 1.9%，已撤回。不是 33/100ms 或完整 G2/G5。
 
 2026-11-09 [最新 main 的 Electron 回归修复](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地保持 WebGPU 优先，CPU 只兜底。保留 PR56/57 的覆盖场、位图保留、原生 JSON 与重绑定/恢复。单素材原生回执只开放当前 catalogue key 的已认可区域；opening 缩略图旧 key 不能跨重绑定授予整页覆盖。高倍 SDR 图片 Gaussian 按原密度、四相和六遍分条，预算与导出/HDR 入口不放宽。真实 GPU 的 test/FIG/拓扑/117 回放通过；完整拓扑本轮约 177.1 秒，仍慢，不关闭 33/100ms 或完整 G2/G5。
