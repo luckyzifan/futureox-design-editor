@@ -1,18 +1,28 @@
 This linux-x64 `ffmpeg` executable is a GPL build of FFmpeg 7.0.2-static.
-Its configuration includes `--enable-gpl --enable-version3 --enable-static
---enable-libx264 --enable-libvpx`.
+Its `ffmpeg -version` banner and SHA-256 are recorded in `source.json`.
+The banner configuration is longer than the earlier subset
+`--enable-gpl --enable-version3 --enable-static --enable-libx264 --enable-libvpx`.
+It still includes those flags, plus the other libraries named by the banner.
 
-Upstream build: https://johnvansickle.com/ffmpeg/
-Obtained as the ffmpeg-static release asset b6.1.1:
+On 2026-11-09 the file matched the uncompressed bytes of
 https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz
+(gzip SHA-256 bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa).
+`UPSTREAM-README.txt` is the `linux-x64.README` asset from that same release.
+It names build `ffmpeg-7.0.2-amd64-static.tar.xz` and lists library versions,
+including libx264 and libvpx. That readme is not a source archive.
+
+https://johnvansickle.com/ffmpeg/release-source/ was fetched the same day.
+Its index did not contain an FFmpeg 7.0.2 tarball or those library versions.
+Corresponding source is not in this repository, and this binary was not rebuilt
+here. `correspondingSourceInRepo` and `rebuiltFromSource` stay false in
+`source.json`.
+
+`COPYING.GPLv3` matches the b6.1.1 `linux-x64.LICENSE` asset.
+`COPYING.LGPLv2.1` is kept beside it. The executable is distributed under
+GPL-3.0-or-later because the build uses `--enable-gpl` and `--enable-version3`.
 
 Futureox Design ships it as a separate program at `Resources/bin/ffmpeg`
 (Electron extraResource from `dist/bin`). The desktop host resolves that path
 and the Rust sidecar spawns it with a fixed argument list. It is not linked
-into the Electron or Rust binaries.
-
-License texts for this build are `COPYING.GPLv3` and `COPYING.LGPLv2.1` in
-this directory (FFmpeg tag n7.0.2). Because the build uses `--enable-gpl` and
-`--enable-version3`, the executable is distributed under GPL-3.0-or-later.
-Source for the build is published by the upstream static build and by the
-FFmpeg project tag n7.0.2.
+into the Electron or Rust binaries. Spawning this program does not decide the
+license of the rest of the application.
