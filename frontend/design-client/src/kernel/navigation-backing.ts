@@ -68,7 +68,11 @@ function missingOnPage(frame: ResidentAcknowledgement, target: CameraWindow, bou
 export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | undefined, next: ResidentAcknowledgement,
   allowed: boolean, zooming = false, target?: CameraWindow, history?: CameraWindow) {
   if (!allowed || !backing || backing.preview || backing.interaction || next.interaction) return false
-  if (!previewCameraScaleWithinLimit(backing.view.zoom, next.view.zoom)) return false
+  // A fit or zoom-out past 2× still owns the last complete picture. A preview
+  // or a frame with gaps is not the closer replacement, so it must not punch
+  // rectangles through that picture. A gap-free settled frame may replace it.
+  if (!previewCameraScaleWithinLimit(backing.view.zoom, next.view.zoom))
+    return !!next.preview || (next.previewGaps?.length ?? 0) > 0
   if (!target) return !!next.preview || zooming && next.view.zoom > backing.view.zoom
   const old = intersect(screen(target), project(backing, target))
   if (!old) return false
