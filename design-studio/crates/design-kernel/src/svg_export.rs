@@ -1,26 +1,7 @@
-//! Document-level SVG writer following the reference exporter's recovered
-//! conventions (TS-BEHAVIORS-AND-EXPORT-2026-10-26 / CANVAS-OPERATIONS
-//! round 20: FGSvgExport #11958 → nine shape writers inlined in #30649).
-//!
-//! Recovered conventions implemented here:
-//! - **All coordinates use C `%g` six-significant-digit formatting**
-//!   ([`g6`]), trailing zeros trimmed — the reference emits no raw f64s.
-//! - **Element ids follow `<kind>%d_<dataName>`** (`rect0_Card`), numbered
-//!   per document in depth-first order, with the layer name sanitized to
-//!   id-safe characters.
-//! - **Attribute order**: id, opacity, fill-rule, geometry, fill/stroke
-//!   presentation, `transform` last.
-//! - **`fill-rule` is emitted per element** (`evenodd` chosen by the
-//!   node's rule; the reference picks it per subpath — our model keeps one
-//!   rule per node, which is the documented divergence).
-//! - **Text is absolutely positioned and no `text-anchor` is written**,
-//!   matching the reference writer.
-//!
-//! Honest divergences (v1): image paints emit no fill (the reference embeds
-//! raster data); `angular`/`diamond` gradients degrade (angular → mid-stop
-//! solid, diamond → radial); effects/masks and per-run text layout are not
-//! emitted. This writer produces vector structure, not pixel parity with
-//! the reference's raster output.
+//! Document SVG export: traverse layers, write geometry and paint attributes,
+//! then format coordinates to six significant digits. Text is positioned absolutely.
+//! Image paints, effects, masks and per-run text layout are not emitted; angular
+//! gradients use a mid-stop solid and diamond gradients use a radial projection.
 
 use crate::{
     bounds,

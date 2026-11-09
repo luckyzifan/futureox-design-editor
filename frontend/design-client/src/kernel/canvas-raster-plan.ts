@@ -73,10 +73,6 @@ export function gestureViewportCapture(view: CanvasCamera, dpr: number, width: n
   return { camera: { x: -x, y: -y, zoom: scale }, tile: { x, y, w, h, zoom: scale } }
 }
 
-/** Live zoom admits useful sharp pixels immediately at the next half-octave
- * density. Nearby inputs reuse that work instead of cancelling it every frame.
- * This is a host scheduling policy, not a recovered Figma constant; settled
- * frames still use their exact native scale. Never raise the display limit. */
 export function motionRasterScale(view: CanvasCamera, dpr: number, width: number, height: number) {
   const requested = view.zoom * dpr, scale = 2 ** (Math.ceil(Math.log2(requested) * 2) / 2)
   if (scale > 128) return requested

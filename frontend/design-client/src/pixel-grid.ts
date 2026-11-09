@@ -1,16 +1,4 @@
-/** Pixel-grid geometry for the canvas overlay — the Figma ⌘' grid.
- *
- * Figma's pixel grid appears automatically once the camera reaches 400%
- * (four screen pixels per canvas pixel) and is drawn by the presentation
- * layer, never rasterised into content tiles — a grid baked into
- * bucket-rasterised tiles would blur under the in-bucket display resample.
- * The path produced here lives in world coordinates inside the overlay
- * SVG's camera transform (`css = world * zoom − view`), one hairline per
- * world integer, so it stays aligned at any zoom while the rendered frame
- * catches up.
- */
 
-/** Figma's documented appearance threshold: 400% zoom. */
 export const PIXEL_GRID_MIN_ZOOM = 4
 
 /** Segment caps: the grid never emits more path data than this, so huge

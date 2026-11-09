@@ -1,6 +1,4 @@
-// WebGPU 并行前缀和计算 - 用于描边计算管线
-// Figma GpuStrokeBatcher 关键组件：countsPrefixSum
-
+/** Parallel prefix sums for allocating stroke geometry offsets. */
 export const parallelPrefixSumWGSL = /* wgsl */`
 // Blelloch 扫描算法（Work-Efficient）
 // 时间复杂度：O(n)，工作复杂度：O(n)

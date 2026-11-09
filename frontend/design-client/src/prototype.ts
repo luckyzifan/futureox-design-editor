@@ -83,8 +83,6 @@ export type PrototypeAction = {
   /** `transitionEasingVar`: variable supplying the easing curve. */
   transitionEasingVar?: string
 }
-/** True when any of the 15 recovered schema fields is set; mirrors the
- * kernel's Action::has_schema_extras (which gates schema version 12). */
 export function hasSchemaExtras(a: PrototypeAction): boolean {
   return !!(
     a.targetVariable ||

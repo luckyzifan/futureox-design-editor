@@ -1,39 +1,5 @@
 import type { RasterTile } from './tile-cache'
 
-/** Viewport-distance tile fill scheduling with a per-frame budget.
- *
- * Policy layer only: it reorders and paces tile rasterization requests; it
- * never changes tile geometry, LOD buckets or cache residency. The behaviour
- * mirrors Figma's viewer JS tile scheduler policy:
- *
- * - Priority: `getPrioritizedListOfTilesToPopulate` sorts tiles by canvas-space
- *   distance to the viewport (nearest first) and the draw loop processes
- *   on-screen tiles before off-screen prefetch tiles.
- * - Frame budget: 16 ms / 2 tile rasterizations /
- *   250 render-target switches per frame. On-screen tiles run with
- *   `permitWorkAfterBudgetExceeded()` (exempt, except safe mode); off-screen
- *   prefetch is forced through `permitsMoreWork()` and stops with a
- *   `brokeRenderAt` reason (`offscreenHitBudget_`, `offscreenHitCacheLimit_`,
- *   `completedScreenTiles_`).
- *
- * Differences against Figma are recorded inline:
- * - Distance uses content bounds (gutters are not owned pixels), converted
- *   to canvas space. Every viewport-intersecting tile has distance zero.
- *   Visible ties use viewport-center distance, preserving the planner's
- *   center-out intent instead of resetting every visible batch to row order.
- * - Our rasterization is async in the render worker, so the budget gates
- *   request submission per animation frame, not in-frame synchronous GPU work.
- *   The tile-count budget is the effective limiter; the time budget bounds the
- *   scheduling window of one frame tick.
- * - TODO(Figma parity, not implemented): 384 MiB tile-cache target
- *   (`_F.DEFAULT_TARGET_MEMORY_USAGE_IN_MB`) — our display residency keeps its
- *   own viewport-derived byte budget (displayTileBudget); generation-stamped
- *   LRU with `makeLeastRecent` devaluation (m4/m5) — our ExactTileCache is a
- *   plain byte-bounded LRU; adaptive devicePixelPerCanvasPixel with 2-frame
- *   debounce (mP) — our tiles are Sketch-style fixed LOD buckets, intentionally
- *   unchanged; the 250 RT-switch budget is recorded as
- *   TILE_FRAME_RENDER_TARGET_SWITCH_BUDGET but not enforced because the worker
- *   path exposes no per-frame render-target switch counter. */
 
 /** Figma viewer `m2.defaultTimeBudgetInSeconds = .016`. */
 export const DEFAULT_TILE_FRAME_TIME_BUDGET_MS = 16
@@ -46,20 +12,11 @@ export const TILE_FRAME_RENDER_TARGET_SWITCH_BUDGET = 250
 
 export type ViewportRect = { x: number; y: number; width: number; height: number }
 
-/** Figma `brokeRenderAt` interruption reasons. `offscreenHitCacheLimit_` is
- * emitted for prefetch-rim tiles the planner dropped at plan time because the
- * resident-cache-derived plan limit had no room after the viewport tiles (our
- * analog of Figma's SKIPPED `ensureTileIsPopulated` result — a permanent
- * per-plan skip, not a per-frame retry); `tileOutsideViewport_` is not needed
- * because the queues are partitioned up front instead of breaking mid-list. */
 export type TileBudgetCutoffReason =
   | 'offscreenHitBudget_'
   | 'offscreenHitCacheLimit_'
   | 'completedScreenTiles_'
 
-/** Figma Se.canvasSpaceDistanceToViewport: tile.bounds().distanceTo(viewport).
- * Our grid is already world-aligned (the reference's transform scale is 1).
- * Strip the one-pixel transport gutters and the sampling phase first. */
 export function tileViewportDistance(tile: RasterTile, viewport: ViewportRect): number {
   const scale = tile.zoom
   const left = (tile.x + 1 - (tile.phaseX || 0)) / scale
@@ -129,12 +86,6 @@ const wallClock =
     ? () => performance.now()
     : () => Date.now()
 
-/** Per-frame budget, the analog of Figma viewer's `m2` FrameBudget. On-screen
- * work runs under `permitWorkAfterBudgetExceeded()` and ignores the budget;
- * off-screen work is forced through `permitsMoreWork()`. Tile rasterizations
- * are always recorded (Figma's `recordTileWasRendered`), so on-screen tiles
- * spend the frame's budget first and prefetch only runs with the remainder of
- * later frames. */
 export class TileFrameBudget {
   readonly timeBudgetMs: number
   readonly tileRenderBudget: number
@@ -228,13 +179,6 @@ export type TileFillSchedulerConfig = {
   onCutoff?: (reason: TileBudgetCutoffReason, counters: TileFillCounters) => void
 }
 
-/** Two-phase tile fill driver mirroring Figma's draw loop:
- * 1. on-screen tiles are submitted in full, exempt from the frame budget
- *    (Figma's `drawOnScreenTiles` + `permitWorkAfterBudgetExceeded`);
- * 2. off-screen tiles are submitted while `permitsMoreWork()` holds; budget
- *    exhaustion defers the remainder to the next frame (never drops a tile —
- *    `drawOffScreenTiles` records `offscreenHitBudget_` and resumes later).
- * The first tick runs synchronously so first paint never waits a frame. */
 export class TileFillScheduler {
   readonly counters: TileFillCounters = {
     frames: 0,
@@ -283,12 +227,6 @@ export class TileFillScheduler {
     this.settle?.()
   }
 
-  /** Accounts prefetch-rim tiles the planner dropped because the plan limit
-   * (the resident-cache-derived tile allowance) was exhausted by the viewport
-   * set. Figma's draw loop emits `offscreenHitCacheLimit_` when
-   * `ensureTileIsPopulated` returns SKIPPED mid-frame (atlas at capacity); our
-   * cache arm is the plan-time allowance, so one event per fill records the
-   * whole skipped band. No-op on a cancelled scheduler. */
   recordOffscreenCacheLimitSkips(count: number) {
     if (this.cancelled || !Number.isSafeInteger(count) || count <= 0) return
     this.counters.cutoffs.offscreenHitCacheLimit++
@@ -329,10 +267,6 @@ export class TileFillScheduler {
           return
         }
       }
-      // Phase 2 — off-screen (prefetch) tiles: budget enforced. One
-      // rasterization per pass: each submit awaits real work (the worker
-      // round-trip), so Figma's time budget is meaningfully re-checked between
-      // rasterizations, not only between multi-tile batches.
       while (!this.cancelled && this.offScreen.length && this.budget.permitsMoreWork()) {
         const next = this.offScreen.shift()
         if (!next) break

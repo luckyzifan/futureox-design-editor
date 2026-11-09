@@ -86,8 +86,6 @@ impl Default for Layout {
     fn default() -> Self {
         Self {
             mode: Flow::None,
-            // Measured from the reference editor's Shift+A defaults:
-            // gap 8, padding 16 on every side.
             gap: 8.,
             line_gap: 8.,
             padding: [16.; 4],
@@ -299,10 +297,6 @@ fn limits(n: &Node, axis: usize) -> (f64, f64) {
         )
     }
 }
-/// Space-between overflow compresses through a negative gap instead of
-/// overflowing the container, clamped so no child inverts past its smallest
-/// sibling (the `spaceBetweenNegativeGapClamp` behaviour observed in the
-/// reference engine's stacking solver).
 const SPACE_BETWEEN_NEGATIVE_GAP_CLAMP: bool = true;
 
 fn distribution(align: Align, free: f64, count: usize, gap: f64, min_extent: f64) -> (f64, f64) {
@@ -370,14 +364,6 @@ fn fill_sizes(
     }
     sizes
 }
-/// Stack-layout invariants checked after every stack solve — the local
-/// counterpart of the reference engine's 'ENFORCE_STACK_LAYOUT_INVARIANTS'
-/// assertion registry (#2241 in LAYOUT-INTERNALS.md). The reference
-/// registers ~20 named assertions whose full list was not recovered; only
-/// the invariants that hold by this engine's own semantics are enforced
-/// here (child order stability across a solve, finite non-negative
-/// container and child geometry). The unrecovered remainder is deliberately
-/// left unimplemented, not guessed at.
 fn enforce_stack_layout_invariants(
     doc: &Document,
     frame: &str,
@@ -477,9 +463,6 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         })
         .fold(0., f64::max);
     if mode(&sizing, axis) == SizeMode::Hug {
-        // Hug results clamp through the container's own sizing limits: the
-        // frame grows to its minimum (`containerMinSizeGrowth`) and caps at
-        // its maximum, matching the reference engine's stacking solver.
         let (lo, hi) = limits(&doc.nodes[id], axis);
         let extent = (intrinsic_main + pad_start[axis] + pad_end[axis]).clamp(lo, hi);
         let p = doc.nodes.get_mut(id).unwrap();
@@ -743,10 +726,6 @@ fn anchor(position: f64, size: f64, old: f64, new: f64, mode: Anchor) -> (f64, f
         Anchor::Center => (position + (new - old) / 2., size),
         Anchor::End => (position + new - old, size),
         Anchor::Stretch => (position, (size + new - old).max(0.01)),
-        // Scale maps through the reference solver's proportional form
-        // `value · (dst/src)` (constraint_projection::proportional_map,
-        // #28420 disasm 1ab3331-1ab336c); a degenerate non-positive source
-        // extent keeps the input instead of dividing by zero.
         Anchor::Scale => (
             constraint_projection::proportional_map(position, old, new),
             constraint_projection::proportional_map(size, old, new).max(0.01),
@@ -775,16 +754,6 @@ fn constrain(doc: &mut Document, parent: &str) {
         let flow_item = flow && !n.sizing_value().absolute;
         if let Some(mut c) = n.constraints.clone() {
             if !flow_item {
-                // Constraint application dispatches through the opcode
-                // surface shared with the reference engine's 38-way
-                // constraint type table (constraint_projection). Our
-                // Constraints model only produces known opcodes; a reserved
-                // reference opcode — reachable only through
-                // `ConstraintOpcode::from_figma_field` — keeps position and
-                // size untouched rather than guessing at its semantics.
-                // Constraint deltas apply in this parent's local axis frame,
-                // so rotated children stay correct without re-projection
-                // (rotation reaches the transform chain at render time).
                 let horizontal = ConstraintOpcode::from_anchor(0, c.horizontal);
                 let vertical = ConstraintOpcode::from_anchor(1, c.vertical);
                 let (x, nw) = match horizontal.anchor_mode() {
@@ -1264,12 +1233,6 @@ mod wrap_tests {
         assert!((y2 - y0 - 50. - 33.).abs() < 1e-9, "y2 {y2} y0 {y0}");
     }
 
-    /// The greedy break compares `used + gap + natural > capacity + 1e-7`.
-    /// Overflow below the epsilon stays on the line; above it wraps. This
-    /// is this engine's wrap "candidate position" search (#9396): every
-    /// child always finds a candidate slot — continuation of the current
-    /// line, or a fresh line — so the reference's 'Could not find a valid
-    /// candidate position for wrap' failure branch is unreachable here.
     #[test]
     fn wrap_break_epsilon_boundary() {
         let mut stays = wrap_doc(100., 0., 0., true, Align::Start);
@@ -1580,8 +1543,6 @@ mod measured_truth_tests {
     use crate::facet::sample_node;
     use std::collections::BTreeMap;
 
-    /// Truth captured from the reference editor (2026-10-11, desktop):
-    /// Shift+A autolayout defaults are gap 8 and padding 16 on every side.
     #[test]
     fn shift_a_defaults_match_reference() {
         let l = Layout::default();

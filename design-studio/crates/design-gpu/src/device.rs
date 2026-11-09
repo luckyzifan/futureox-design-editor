@@ -77,10 +77,6 @@ pub struct NativeGpu {
     image_texture_bytes: std::cell::Cell<u64>,
     image_generation: std::cell::Cell<u64>,
     image_domain: Option<ImageDomain>,
-    /// Four-bucket GPU memory ledger (Figma `CorePerfInfo` counters): fed
-    /// at this device's resource construction/destruction points; hosts
-    /// share the handle with the kernel `Engine` export. Clones share one
-    /// state.
     ledger: GpuMemoryLedger,
 }
 
@@ -546,7 +542,6 @@ pub(crate) struct Frame<'a> {
     blank: Surface,
     replay_parameters: Option<usize>,
     persistent_ids: HashMap<String, usize>,
-    /// Shared GPU memory ledger (Figma CorePerfInfo four counters).
     ledger: GpuMemoryLedger,
     /// Texture bytes this frame allocated through `acquire_impl` (blank
     /// sentinel included). Persistent images are excluded: their bytes are
@@ -658,11 +653,6 @@ impl<'a> Frame<'a> {
         // the frame budget through the seeded total. Eviction happens here,
         // between composes, so no in-frame handle can dangle.
         {
-            // Memory-pressure decision hook (Figma `needs_free`/FREE_CACHED_DATA,
-            // wasm #39291): when the four-bucket live allocation total is over the
-            // ledger limit, the existing persistent-image LRU reclaim path
-            // also runs — no second eviction system. A free event is counted
-            // only when cached data was actually dropped.
             let pressure = frame.ledger.needs_free();
             let mut freed_under_pressure = false;
             let mut persistent = gpu.image_textures.borrow_mut();
@@ -835,9 +825,6 @@ impl<'a> Frame<'a> {
         }
         let required = rect.w as u64 * rect.h as u64 * if floating { 16 } else { 4 };
         if self.bytes + required > MAX_SURFACES {
-            // Over-budget admission refusal stays observable in the ledger
-            // (Figma's #45702/#45914 "would delta exceed the limit" query
-            // counterpart); admission itself remains this existing cap.
             self.ledger.note_rejection(required);
             return Err("GPU surface budget exceeds 256 MiB".into());
         }

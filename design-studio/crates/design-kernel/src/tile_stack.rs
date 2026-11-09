@@ -247,20 +247,8 @@ impl TileStack {
     }
 }
 
-/// Progressive-display LOD bucket, mirroring the threshold table disassembled
-/// from Sketch's `MSTiledRenderer.tileLevel(scale:)` (thresholds 0.1 / 0.25 /
-/// 0.5 / 1 / 2; the first is a `__const` double, the rest `fmov` immediates).
-/// Returns the bucket's representative scale — always `<= scale` so a caller
-/// may display-coarsen by upscaling only: above 2× the exact view is already
-/// cheap and returns `scale` unchanged, and below 0.1× the bucket keeps
-/// halving from 0.1 so extreme zoom-outs still coarsen. This complements
-/// `level_for_zoom` (power-of-two tile addressing) and never replaces it.
-/// The exact layer's mipmap ladder: levels pinned at 0.1/0.25/0.5/1/2 with
-/// `[5]` stepping in powers of two above 2 (the disassembled `tileLevel(scale:)`
-/// table selects the level; content renders at the level's fixed scale).
-/// Always returns a representative scale >= the input, so the display
-/// resamples committed pixels (down to the live camera) instead of
-/// re-rasterizing a zoom inside one bucket.
+/// Fixed raster scale at or above the requested zoom. The live camera
+/// resamples these committed pixels until the next scale bucket is needed.
 pub fn exact_bucket_scale(scale: f64) -> f64 {
     if !scale.is_finite() || scale <= 0. {
         return scale;
@@ -275,6 +263,8 @@ pub fn exact_bucket_scale(scale: f64) -> f64 {
     bucket
 }
 
+/// Preview scale at or below the requested zoom. Scales up to 2 use
+/// 0.1 / 0.25 / 0.5 / 1 buckets; smaller requests keep halving from 0.1.
 pub fn lod_bucket_scale(scale: f64) -> f64 {
     if !scale.is_finite() || scale <= 0. {
         return scale;
@@ -535,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn lod_bucket_scale_follows_the_disassembled_threshold_table() {
+    fn lod_bucket_scale_follows_the_threshold_table() {
         assert_eq!(lod_bucket_scale(4.), 4.);
         assert_eq!(lod_bucket_scale(2.), 1.);
         assert_eq!(lod_bucket_scale(1.5), 1.);

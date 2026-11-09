@@ -99,9 +99,6 @@ pub fn rectangle(width: f64, height: f64, radii: [f64; 4], smoothing: f64) -> Pa
         if r == 0. {
             continue;
         }
-        // Figma's zero-smoothing rectangle remains circular. A browser PNG
-        // comparison proves that flattening that case to cubics changes pixels;
-        // do not substitute the flattened approximation for the exact arc.
         if smoothing == 0. {
             let center = match index {
                 0 => Point::new(r, r),

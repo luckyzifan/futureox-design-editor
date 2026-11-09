@@ -59,9 +59,6 @@ pub enum Op {
     },
 }
 
-/// Provenance of an edit batch, mirroring the reference editor's edit scope
-/// kinds (module 942813: `SYSTEM/USER/PLUGIN/ONBOARDING/AUTOSAVE/AI`).
-/// Undo grouping and audit queries read it; it never grants authorization.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum EditSource {

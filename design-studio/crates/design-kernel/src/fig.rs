@@ -708,11 +708,6 @@ fn style_weight(fig_style: &str) -> Option<f32> {
     })
 }
 
-/// `Number { value, units }` → a line-height multiplier.
-/// PIXELS is absolute. PERCENT and RAW are multipliers of the font size
-/// (100% and RAW 1.0 are one em, not the font's intrinsic auto line gap).
-/// Figma's UI Auto value is omitted or stored as that intrinsic ratio;
-/// an omitted line height stays the editor default.
 fn line_height_multiplier(number: &Value, font_size: f64) -> Option<f64> {
     let value = number.get("value").and_then(Value::as_f64)?;
     match str_of(number, "units") {
@@ -1147,12 +1142,6 @@ impl FigImporter {
                 "edges":[{"id":"0","from":"0","to":"1"}],"fillRule":"nonzero"
             })).expect("static line network"));
         }
-        // figma's relative transform maps the node's local (untransformed)
-        // box into the parent; the kernel transform has identical semantics,
-        // so the matrix — including flips and rotation — passes through
-        // verbatim. The old AABB + re-rotation decomposition discarded flips
-        // (a horizontal flip became a 180° rotation) and double-rotated
-        // already-rotated boxes.
         if let Some(m) = change.get("transform") {
             node.transform = Transform([
                 f64_of(Some(m), "m00"),

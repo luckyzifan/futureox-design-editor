@@ -772,9 +772,6 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     importLayout(n, r, records.get(guid(r.parentIndex?.guid)), reverseZ)
     doc.nodes[n.id] = n
   }
-  // Figma's fractional positions are lexicographic identifiers. Locale collation
-  // changes punctuation ordering (for example '-' before '!') and rearranges
-  // children, which changes stacking as well as auto-layout placement.
   const ordered = [...records].sort((a, b) => {
     const left = String(a[1].parentIndex?.position || ''),
       right = String(b[1].parentIndex?.position || '')
