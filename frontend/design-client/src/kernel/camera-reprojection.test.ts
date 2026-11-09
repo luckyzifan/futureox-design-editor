@@ -10,6 +10,14 @@ function fixture(){
  const backing={presentationId:'accepted',view:{x:10,y:20,zoom:1},width:100,height:80,dpr:2,interaction:false,ids:[1]}
  return{host,canvas,projection,backing}
 }
+test('a low-zoom fit does not replace a complete image with a gapped preview', () => {
+  const {backing} = fixture()
+  const fitted = {...backing, view:{x:0,y:0,zoom:0.15}, preview:true, previewGaps:[{x:10,y:10,width:40,height:30}]}
+  expect(keepCompleteCameraBacking(backing, fitted, true)).toBe(true)
+  expect(keepCompleteCameraBacking(backing, {...fitted, preview:false, previewGaps:undefined}, true)).toBe(false)
+  expect(keepCompleteCameraBacking(undefined, fitted, true)).toBe(false)
+})
+
 test('partial white tile deliveries cannot replace a complete reprojectable image',()=>{
  const {backing}=fixture(),next={...backing,preview:true,view:{x:42,y:20,zoom:2}}
  expect(keepCompleteCameraBacking(backing,next,true)).toBe(true)
