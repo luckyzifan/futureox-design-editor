@@ -22,6 +22,7 @@ import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRaster
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
+import { acceptNativeSample } from './frame-handoff'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
@@ -2336,8 +2337,11 @@ export function ProgressiveSurfaceImpl(
   const partialDetail=progressiveNativeRepair&&residentDisplay&&reusableFrame&&currentPlan&&
     !hdrCompositing&&!cameraDependent&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&!props.interaction?.active&&syncedDoc.current===doc
   const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile &&
-    (fullPlanReady||partialDetail&&tile.document===doc&&tile.revision===contract.revision&&
-      tile.zoom>=detailLevel&&tileHasNativePhase(tile,requestedView,dpr)&&
+    (fullPlanReady||partialDetail&&acceptNativeSample({
+      sameRevision: tile.document===doc&&tile.revision===contract.revision,
+      nativeDensity: tile.zoom>=detailLevel,
+      nativePhase: tileHasNativePhase(tile,requestedView,dpr),
+    })&&
       !!tile.gpuTile&&previewDevice.current.client===rasterClient&&!!previewDevice.current.key&&
       (!tile.residentDevice||tile.residentDevice.client===rasterClient&&tile.residentDevice.key===previewDevice.current.key))&&
     !!plan?.ids.has(tile.key) && ready.current.has(tile.key) &&
@@ -2597,8 +2601,8 @@ export function ProgressiveSurfaceImpl(
           terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,
             qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}
           overlay={props.overlay}
-          sourceDocument={doc} contentRevision={contract.revision} translationItems={visible.filter(tile=>syncedDoc.current===doc&&tile.revision===contract.revision&&ready.current.has(tile.key)&&
-            tile.zoom===detailLevel&&tileHasNativePhase(tile,requestedView,dpr)&&
+          sourceDocument={doc} contentRevision={contract.revision} translationItems={visible.filter(tile=>syncedDoc.current===doc&&ready.current.has(tile.key)&&
+            acceptNativeSample({sameRevision:tile.revision===contract.revision,nativeDensity:tile.zoom===detailLevel,nativePhase:tileHasNativePhase(tile,requestedView,dpr)})&&
             (!fullPlanReady||props.interaction?.active||!plan||plan.ids.has(tile.key)))
             .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
           interaction={navigationZoom.active ? undefined : props.interaction?{...props.interaction,navigating:cameraMoving}:undefined} pageId={pageId} rasterProfile={rasterProfile} backend={backend}

@@ -14,6 +14,7 @@ import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,select
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
+import {frameHandoff} from './frame-handoff'
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
@@ -158,7 +159,11 @@ export function NativeSourceSurface(props:Props){
       const live=latest.current.view,shown=renderExecutionPolicy.cpuOnly?cpuView:backing?.view
       const atCamera=!!shown&&shown.x===live.x&&shown.y===live.y&&shown.zoom===live.zoom
       const nativeDensity=renderExecutionPolicy.cpuOnly||backingTiles.length>0&&backingTiles.every(tile=>tile.zoom>=live.zoom*density.current*.999999)
-      const sharp=status.phase==='ready'&&atCamera&&nativeDensity&&!holed&&!farTiles&&element.dataset.previewUpscaleRejected!=='true'
+      const sharp=frameHandoff({
+        sameRevision:true,sameCamera:atCamera,nativeDensity,
+        nativePhase:!farTiles&&element.dataset.previewUpscaleRejected!=='true',
+        viewportCovered:status.phase==='ready'&&!holed,regional:false,
+      })==='screen-ready'
       const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}/${Number(farTiles)}/${Number(holed)}/${Number(sharp)}/${live.x}/${live.y}/${live.zoom}`,now=performance.now()
       // A single visible decoded board is enough to keep routine status quiet.
       // Reprojection and final receipts separately require full coverage.
