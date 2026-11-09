@@ -3,7 +3,45 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
-2026-11-07 [大目录先画第一张](../../../testing/verification-large-sketch-open-20261107/README.md)：打开预览在目录传完前就能画已解码、且下标落在已到达条目前缀里的第一张图。`finished` 仍等条目和图片都齐。不改预算。100–240MB 整份导入仍开放。不是 33/100ms 或完整 G2/G5。
+2026-11-09 [拓扑 GPU 批绘与成熟度](../../../docs/TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)：普通原生源 SDR WebGPU 的低物理采样倍率瓦片默认合并已证明不透明的纯色填充/描边，保持四相、顺序、二值裁剪与原预算；`VITE_DESIGN_SOURCE_SOLID_LAYERS=0` 回退。完整拓扑约 113.9→100.5 秒，正常构建复核 101.8 秒，原生画布及三份高倍输出像素一致。superset 原生投影复用减少重建却无稳定端到端收益，已完整撤回，不得保留或宣称 91.7 秒为最终性能。拓扑是主基准，117/FIG/test 防回退；当前为开发者 Alpha，完整 G2/G5 与 33/100ms 未关闭。
+
+2026-11-09 [缩放清晰度方案选择](../../../docs/ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)：普通桌面 SDR WebGPU 默认渐进替换已完成的原密度区域，保留同源连续预览，整屏回执仍需全部完成；`VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR=0` 回退。117 首个原密度区域呈现 ACK 约 10.5→0.8 秒，整屏约 8.5 秒；模板二首区域仍约 5.6 秒。原密度/相位、版本、设备、取消边界与最终像素保持，native-visible-tiles 等其他实验不推广。不代表运动始终清晰或完整 G2/G5。[整个应用开源/商业分发评估](../../../docs/OPEN_SOURCE_COMMERCIAL_READINESS_20261109.zh-CN.md)仍有项目许可、素材/代码来源与实际发布包授权缺口，不能从渲染通过推导可发布。
+
+2026-11-09 [GPU 启动与缩放调度](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地 GPU 优先、CPU 兜底。已有同源预览时，完整源先完成原密度瓦片，粗页预取在首个原生回执后继续；高倍停止输入后仅撤销未完成的可选滤镜预览，保留冷启动、已交付图像和原任务完结/迟到释放边界。组合版完整拓扑两次约 110–115 秒，旧版约 172 秒；117 的 3200% 约 25.7→10.5 秒。原生画布及可见内容像素一致，预算、效果、密度和 GPU 数学不变。集合替换仅改善 1.9%，已撤回。不是 33/100ms 或完整 G2/G5。
+
+2026-11-09 [最新 main 的 Electron 回归修复](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地保持 WebGPU 优先，CPU 只兜底。保留 PR56/57 的覆盖场、位图保留、原生 JSON 与重绑定/恢复。单素材原生回执只开放当前 catalogue key 的已认可区域；opening 缩略图旧 key 不能跨重绑定授予整页覆盖。高倍 SDR 图片 Gaussian 按原密度、四相和六遍分条，预算与导出/HDR 入口不放宽。真实 GPU 的 test/FIG/拓扑/117 回放通过；完整拓扑本轮约 177.1 秒，仍慢，不关闭 33/100ms 或完整 G2/G5。
+
+2026-11-08 [外阴影着色只插值 alpha](../../../testing/verification-render-shadow-color-20261108/README.md)：和原来的双线性同一条公式，只算 alpha。34 帧像素哈希没变。云端同一条阶梯上 zoom 3.2 从 622.258 ms 到 555.251 ms，zoom 0.8 从 558.769 ms 到 541.471 ms。zoom 6.4 是 191.854 ms，zoom 32 是 195.769 ms。新 WASM `8ae67279280e1f9d1f39f2dc9f8a4e8797c88cca9824063bbf1cff9e02a1125e`。字节高斯的 GPU 滑动和没有在这台机器上出像素。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [高倍缩放不再把低分辨率预览留在画面上](../../../testing/verification-high-zoom-preview-20261108/README.md)：超过 2 倍的旧位图、整页图集和覆盖底层不再显示。居中所选使用世界盒子。嵌套的 664×707 组在 zoom 24 居中后，zoom 1、24、32 的中心像素是卡片填充，不是画板网格。内核没改，WASM 仍是 `e544c39626befb1d875f0219f7d7f574c665947175c01598790bb7d84c7edec1`，zoom 3.2 仍是 626.522 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [离屏裁剪画板不再准备子树](../../../testing/verification-render-frame-cull-20261108/README.md)：zoom 3.2 的准备里曲线展平只有 5 ms。够不着守卫的裁剪画板不再建子树。zoom 3.2 从 843.736 ms 降到 626.522 ms，zoom 0.8 从 780.249 ms 降到 564.702 ms。zoom 6.4 是 194.914 ms。素材 zoom 2 是 84.354 ms 和 76.543 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [展平微优化没有留下](../../../testing/verification-render-flatten-inline-20261108/README.md)：固定数组堆和 `inline(always)` 的点运算都没有让孤立 zoom 3.2 低于玻璃边缘基线的 557.421–564.007 ms。哈希没变。正式最慢帧仍是 zoom 3.2 的 843.736 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [玻璃边缘色散落在同一取样点时只读一次](../../../testing/verification-render-glass-edge-20261108/README.md)：边框几何仍逐像素计算。色散两端和中心取样二进制位相同时，边像素只读一次背景，原来的加权和还在。zoom 0.8 从 901.767 ms 降到 780.249 ms。zoom 3.2 是 843.736 ms。zoom 6.4 是 406.724 ms。素材 zoom 2 是 72.602 ms 和 76.618 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [满覆盖合成直接盖上不透明行](../../../testing/verification-render-unmasked-composite-20261108/README.md)：蒙版恒为 1 时不再逐像素调用蒙版函数，Normal 且完全不透明的一段直接复制。zoom 3.2 从 1037.807 ms 降到 838.310 ms，zoom 0.8 从 938.417 ms 降到 901.767 ms。zoom 6.4 是 390.355 ms。zoom 32 平移最大从 543.596 ms 降到 395.677 ms。素材 zoom 2 同一次 WASM 上是 110.019、92.891、79.577 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [单通道阴影模糊不再走通用盒循环](../../../testing/verification-render-unit-alpha-20261108/README.md)：阴影 alpha 用单独的滑动和，舍入式和有理核回退不变。zoom 3.2 从 1150.370 ms 降到 1037.807 ms，zoom 0.8 从 993.806 ms 降到 938.417 ms。zoom 6.4 是 510.383 ms。zoom 2 的素材帧是 80.532 ms，同一次导入比上一轮慢 360.416 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [盒模糊的舍入检查提到像素循环外面](../../../testing/verification-render-blur-hoist-20261108/README.md)：同一次盒半径只做一次舍入区间检查，扫描行按下标读取。zoom 3.2 从 1234.440 ms 降到 1150.370 ms，zoom 0.8 从 1030.585 ms 降到 993.806 ms。zoom 6.4 是 526.612 ms。zoom 2 的素材帧是 75.235 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [外阴影的实色内部不再做盒卷积](../../../testing/verification-render-shadow-core-20261108/README.md)：zoom 3.2 的探针里玻璃是 0 ms，外阴影模糊是 359 ms。方形邻域全是 1 的矩形直接写成 1。最慢帧从 1294.959 ms 降到 1234.440 ms，zoom 0.8 从 1078.573 ms 降到 1030.585 ms。zoom 6.4 是 515.155 ms。zoom 2 的素材帧是 73.973 ms。条带复制再模糊的做法更慢，没有留下。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [玻璃只着色覆盖得到的像素](../../../testing/verification-render-glass-shade-20261108/README.md)：zoom 0.8 的探针里玻璃着色是 447 ms，分析覆盖光栅是 18 ms。覆盖为 0 的像素不再做色散取样，内部在偏移相同时只读一次背景。效果开启的 zoom 0.8 从 1734.559 ms 降到 1078.573 ms。最慢帧现在是 zoom 3.2 的 1294.959 ms。zoom 6.4 是 510.957 ms。zoom 2 的素材帧是 76.525 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [覆盖跨度里整像素一次加上 1/8](../../../testing/verification-render-coverage-span-20261108/README.md)：分析剖面的 `area()` 对完全盖住的像素直接加 0.125，边像素仍用原来的区间公式。效果关掉的放大最慢从 541.837 ms 降到 310.057 ms。效果开启的 zoom 6.4 从 938.307 ms 降到 508.878 ms，zoom 0.8 从 1939.159 ms 降到 1734.559 ms。zoom 2 的素材帧是 75.979 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [视口在阴影够不到的内部时不再模糊](../../../testing/verification-render-shadow-inset-20261108/README.md)：外阴影的影响距离是高斯支撑加偏移。视口完全落在填充内部、超过这个距离时不再分配光晕层，也不再跑模糊。效果开启的 zoom 6.4 从 2184.554 ms 降到 938.307 ms，zoom 32 平移最大从 1911.337 ms 降到 747.094 ms。阴影边缘仍在画面里的 zoom 0.8 仍是 1939.159 ms。效果关掉的放大最慢是 541.837 ms，和实色行的 535.402 ms 差 6.435 ms；孤立帧像素哈希没变。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [不透明处不再采样外阴影](../../../testing/verification-render-shadow-cover-20261108/README.md)：`render_rgba` 的分析剖面是单张表面，不是四张采样面。外阴影盖在不透明像素下面时不再做双线性取样。效果开启的 zoom 6.4 从 3374.923 ms 降到 2184.554 ms。效果关掉的放大最慢这次是 590.710 ms，没有比实色行填充那次的 535.402 ms 更快。常量 0/1 模糊窗口测过，帧时间没有下降，没有留下。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [大块不透明实色按行填充](../../../testing/verification-render-solid-span-20261108/README.md)：分析剖面里，面积至少 160×120 的不透明实色不再逐像素做 source-over。效果关掉的放大最慢从 637.388 ms 降到 535.402 ms，仍高于 100 ms。效果开启的 zoom 6.4 这次是 3374.923 ms，没有比当场基线 3248.950 ms 更快。整块覆盖的另一次尝试没有留下。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [空窗模糊不再走整段有理核](../../../testing/verification-leftover-deep-20261108/README.md)：精确为零的模糊窗口直接写成 0。效果关掉的高倍帧和 `01有料素材.fig` 首帧有下降，效果开启的 zoom 6.4 仍是 3445.129 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [高倍缩放的合成内存和宽模糊](../../../testing/verification-fix-regression-20261108/README.md)：效果开启时 zoom 32 不再因合成内存超限失败，平移能跑完。宽模糊不再对每个像素重算整段核。内页阴影不在视口里时不再按全分辨率扩缓冲。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源在首屏有像素且用户停手时先排一张 `navigationOverview` 瓦片，第一次缩出不必等现场光栅。素材文件不再在空闲时直接停掉。不改预算。不是 33/100ms 或完整 G2/G5。
 

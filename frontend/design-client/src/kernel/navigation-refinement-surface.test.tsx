@@ -104,11 +104,11 @@ test('idle interaction readiness updates do not restart the unchanged viewport p
  }finally{await act(async()=>f.root.unmount());enqueue.mockRestore()}
 })
 
-test('continuous DPR2 navigation gives one real native tile a turn without increasing preview density', async () => {
+test('continuous DPR2 navigation gives one real native tile a bounded turn', async () => {
   const f = await fixture()
   try {
-    expect(state.pending[0].options.width).toBe(855)
-    expect(state.pending[0].options.view.zoom).toBe(32)
+    expect(state.pending[0].options.width).toBe(855 * 2)
+    expect(state.pending[0].options.view.zoom).toBe(32 * 2)
     await f.complete(0)
     await vi.waitFor(() => expect(state.pending.some(job => job.options.tileViewport?.length === 1)).toBe(true))
     const native = state.pending.find(job => job.options.tileViewport?.length)
@@ -147,7 +147,7 @@ test('latest pan wins queued refinement while one in-flight native tile survives
     await f.complete(2)
     await vi.waitFor(() => expect(state.pending).toHaveLength(4))
     expect(state.pending[3].options.livePreview).toBe(true)
-    expect(state.pending[3].options.view.x).toBe(4290)
+    expect(state.pending[3].options.view.x).toBe(4290 * 2)
     expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
   } finally { await act(async () => f.root.unmount()) }
 })
@@ -224,7 +224,7 @@ test('crossing below 1 revokes queued native work and crossing back admits one l
     await f.complete(1)
     await vi.waitFor(() => expect(state.pending).toHaveLength(3))
     expect(state.pending[2].options.livePreview).toBe(true)
-    expect(state.pending[2].options.view.zoom).toBe(.99)
+    expect(state.pending[2].options.view.zoom).toBe(.99 * 2)
     expect(state.pending.every(job => !job.options.tileViewport)).toBe(true)
     state.sequence++; await f.render({ view: { x: 30, y: 0, zoom: 1 } })
     await f.complete(2)
@@ -265,7 +265,7 @@ test('rejected 3200% capture retargets native work to latest reverse zoom, not t
     await act(async () => state.pending[0].reject(await compileBudget()))
     await vi.waitFor(() => expect(state.pending).toHaveLength(2))
     expect(state.pending[1].options.livePreview).toBe(true)
-    expect(state.pending[1].options.view.zoom).toBe(1)
+    expect(state.pending[1].options.view.zoom).toBe(1 * 2)
     state.sequence++; await f.render({ view: { x: -100, y: -200, zoom: 5 } })
     await act(async () => state.pending[1].reject(await compileBudget()))
     await vi.waitFor(() => expect(state.pending).toHaveLength(3))
@@ -280,7 +280,7 @@ test('rejected 3200% capture retargets native work to latest reverse zoom, not t
     await f.complete(2)
     await vi.waitFor(() => expect(state.pending).toHaveLength(4))
     expect(state.pending[3].options.livePreview).toBe(true)
-    expect(state.pending[3].options.view.zoom).toBe(1)
+    expect(state.pending[3].options.view.zoom).toBe(1 * 2)
   } finally { await act(async () => f.root.unmount()) }
 })
 

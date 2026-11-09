@@ -57,6 +57,8 @@ pub struct NativeGpu {
     over: wgpu::RenderPipeline,
     solid: wgpu::RenderPipeline,
     solid_over: wgpu::RenderPipeline,
+    slide_layout: wgpu::BindGroupLayout,
+    slide_box: wgpu::ComputePipeline,
     errors: Arc<Mutex<Vec<String>>>,
     description: AdapterDescription,
     /// Persistent CPU-side asset decoder so repeated compositions reuse
@@ -75,10 +77,6 @@ pub struct NativeGpu {
     image_texture_bytes: std::cell::Cell<u64>,
     image_generation: std::cell::Cell<u64>,
     image_domain: Option<ImageDomain>,
-    /// Four-bucket GPU memory ledger (Figma `CorePerfInfo` counters): fed
-    /// at this device's resource construction/destruction points; hosts
-    /// share the handle with the kernel `Engine` export. Clones share one
-    /// state.
     ledger: GpuMemoryLedger,
 }
 
@@ -280,6 +278,48 @@ impl NativeGpu {
         let byte_motion = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false, Some(61.));
         let byte_zoom = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false, Some(62.));
         let byte_area = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, true, None);
+        let slide_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Integer sliding box blur"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../../design-kernel/shaders/slide-blur.wgsl").into()),
+        });
+        let slide_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Sliding box"),
+            entries: &[
+                buffer_entry(0, wgpu::BufferBindingType::Uniform, 1024, wgpu::ShaderStages::COMPUTE),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let slide_box = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Sliding box"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Sliding box"),
+                bind_group_layouts: &[Some(&slide_layout)],
+                immediate_size: 0,
+            })),
+            module: &slide_module,
+            entry_point: Some("slideBox"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
         if let Some(error) = scope.pop().await {
             return Err(format!("Native vector pipeline: {error}"));
         }
@@ -297,6 +337,8 @@ impl NativeGpu {
             byte_area,
             solid,
             solid_over,
+            slide_layout,
+            slide_box,
             errors,
             description: AdapterDescription {
                 name: info.name,
@@ -500,7 +542,6 @@ pub(crate) struct Frame<'a> {
     blank: Surface,
     replay_parameters: Option<usize>,
     persistent_ids: HashMap<String, usize>,
-    /// Shared GPU memory ledger (Figma CorePerfInfo four counters).
     ledger: GpuMemoryLedger,
     /// Texture bytes this frame allocated through `acquire_impl` (blank
     /// sentinel included). Persistent images are excluded: their bytes are
@@ -612,11 +653,6 @@ impl<'a> Frame<'a> {
         // the frame budget through the seeded total. Eviction happens here,
         // between composes, so no in-frame handle can dangle.
         {
-            // Memory-pressure decision hook (Figma `needs_free`/FREE_CACHED_DATA,
-            // wasm #39291): when the four-bucket live allocation total is over the
-            // ledger limit, the existing persistent-image LRU reclaim path
-            // also runs — no second eviction system. A free event is counted
-            // only when cached data was actually dropped.
             let pressure = frame.ledger.needs_free();
             let mut freed_under_pressure = false;
             let mut persistent = gpu.image_textures.borrow_mut();
@@ -789,9 +825,6 @@ impl<'a> Frame<'a> {
         }
         let required = rect.w as u64 * rect.h as u64 * if floating { 16 } else { 4 };
         if self.bytes + required > MAX_SURFACES {
-            // Over-budget admission refusal stays observable in the ledger
-            // (Figma's #45702/#45914 "would delta exceed the limit" query
-            // counterpart); admission itself remains this existing cap.
             self.ledger.note_rejection(required);
             return Err("GPU surface budget exceeds 256 MiB".into());
         }
@@ -813,7 +846,8 @@ impl<'a> Frame<'a> {
             usage: wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST,
+                | wgpu::TextureUsages::COPY_DST
+                | if floating { wgpu::TextureUsages::empty() } else { wgpu::TextureUsages::STORAGE_BINDING },
             view_formats: &[],
         });
         let view = texture.create_view(&Default::default());
@@ -1211,6 +1245,58 @@ impl<'a> Frame<'a> {
         u[16] = mode;
         configure(&mut u);
         self.draw(out, u, inputs, false, None)?;
+        Ok(out)
+    }
+    pub(crate) fn byte_targets(&self) -> bool { !self.floating }
+    /// Byte uniform box with a per-scanline sliding sum. Same rounding as shader mode 22
+    /// when the fourth blur uniform is above 1.5. Float and tent paths stay on that fragment loop.
+    pub fn slide_uniform_box(&mut self, input: Surface, output_rect: Rect, radius: f32, axis: f32, clamp_edges: bool) -> Result<Surface, String> {
+        if self.floating || self.textures[input.id].floating || radius < 1. {
+            return Err("Sliding box is the byte uniform path".into());
+        }
+        let out = self.acquire(output_rect)?;
+        self.commands += 1;
+        if self.commands > MAX_COMMANDS {
+            self.release(&[out]);
+            return Err("GPU command work budget exceeded".into());
+        }
+        if self.uniforms.len() + 1024 > UNIFORM_BYTES as usize {
+            self.submit();
+        }
+        let mut u = parameters(output_rect, &[input]);
+        u[16] = 22.;
+        u[36] = radius;
+        u[37] = axis;
+        u[38] = f32::from(clamp_edges);
+        u[39] = 2.;
+        let offset = self.uniforms.len() as u64;
+        self.uniforms.extend(floats(&u));
+        let bind = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Sliding box"),
+            layout: &self.gpu.slide_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &self.uniform,
+                        offset,
+                        size: NonZeroU64::new(1024),
+                    }),
+                },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&self.textures[input.id].view) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&self.textures[out.id].view) },
+            ],
+        });
+        let lines = if axis < 0.5 { output_rect.h } else { output_rect.w };
+        let mut pass = self.encoder.as_mut().unwrap().begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Sliding box"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&self.gpu.slide_box);
+        pass.set_bind_group(0, &bind, &[]);
+        pass.dispatch_workgroups(lines.div_ceil(64), 1, 1);
+        drop(pass);
+        self.draw_calls += 1;
         Ok(out)
     }
     fn read_surface_bytes(

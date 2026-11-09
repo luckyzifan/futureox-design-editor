@@ -1,6 +1,3 @@
-//! The interactive tier's linear-tile residency (Figma's tile reuse):
-//! snapped integer cameras stitch byte-identically to the exact
-//! `render_linear`; identical repeats re-raster nothing.
 
 use futureox_design_kernel::{Engine, RenderOptions, View};
 

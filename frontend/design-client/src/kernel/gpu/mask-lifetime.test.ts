@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { GpuRenderer, type Surface } from './renderer'
 import { CoverageCache } from './coverage-cache'
+import type { ReverseIndexSetMap } from './reverse-index-map'
 import { rect, type Driver, type GpuNode, type PathMesh, type Rect, type Texture } from './types'
 
 type Lifetime = {
@@ -8,7 +9,7 @@ type Lifetime = {
   frameBudget:number
   activeNode: string
   masks: Map<string, Surface>
-  maskOwners: Map<Texture, Set<string>>
+  maskOwners: ReverseIndexSetMap<Texture, string>
   sharedMasks: Map<string, { bits: Uint32Array; texture: Texture }[]>
   coverage: CoverageCache
   busy: Set<Texture>
@@ -102,6 +103,23 @@ test('low-pressure frames retain exact coverage reuse', () => {
   state.retireLeafMasks(node, [mask], undefined, [])
   expect(state.mask(path).texture).toBe(mask.texture)
   expect(state.coverage.has(mask.texture)).toBe(true)
+  expect(state.busy.has(mask.texture)).toBe(true)
+})
+
+test('a shared mask adds thousands of consumers without rescanning its owner history', () => {
+  const { lifetime: state, path, node } = fixture(), mask = state.mask(path)
+  const owners = state.maskOwners.get(mask.texture)!
+  const scan = vi.spyOn(owners, Symbol.iterator).mockImplementation(() => { throw Error('Shared mask owner history rescanned') })
+  try {
+    for (let i = 0; i < 5000; i++) {
+      state.activeNode = `consumer-${i}`
+      expect(state.mask(path).texture).toBe(mask.texture)
+    }
+    expect(owners.size).toBe(5001)
+    expect(state.maskOwners.keysFor('consumer-4999').has(mask.texture)).toBe(true)
+    expect(scan).not.toHaveBeenCalled()
+  } finally { scan.mockRestore() }
+  state.retireLeafMasks(node, [mask], undefined, [])
   expect(state.busy.has(mask.texture)).toBe(true)
 })
 

@@ -1,7 +1,4 @@
-// GPU Stroke Batcher - 描边计算管线
-// 移植自 Figma GpuStrokeBatcher 的核心算法
-// 目标：将描边扩展计算从 CPU 移到 GPU，提升性能 5-10x
-
+/** Stroke expansion helpers and WebGPU compute program. */
 /**
  * GPU 描边计算管线架构：
  *

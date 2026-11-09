@@ -104,11 +104,6 @@ impl Pixel {
     pub(crate) fn over_rgba8_mode(self, source: Self, opacity: f32, mode: BlendMode) -> Self {
         let dst = self.0.map(|v| (v * 255.).round_ties_even() as u32);
         let src = source.0.map(|v| (v * 255.).round_ties_even() as u32);
-        // UNORM16 opacity and byte color keep all composite arithmetic exact
-        // in u32 on both GPUs. For premultiplied channels src[c] <= src[3],
-        // numerator <= 255 * 255 * 65535 = 4_261_413_375 (no overflow).
-        // This is our deterministic numeric model, not a claim about Figma's
-        // private implementation. Reference PNGs verify its visible behavior.
         let weight = (opacity.clamp(0., 1.) * 65535.).round_ties_even() as u32;
         const DENOMINATOR: u32 = 255 * 65535;
         Self(std::array::from_fn(|c| {
@@ -477,6 +472,52 @@ impl Surface {
             let src=source.rect.index(r.x,y).expect("intersection");
             for (x,(dst,src)) in (r.x..r.right()).zip(self.pixels[dst..dst+r.w as usize].iter_mut().zip(&source.pixels[src..src+r.w as usize])) {
                 let s=src.opacity(opacity*mask(x,y));*dst=over_mode(*dst,s,mode);
+            }
+        }
+    }
+    /// Source-over of a layer whose mask is identically one. Same `over_mode`
+    /// formula as `composite`. A Normal, fully opaque source run is the source
+    /// pixel, so those spans are copied.
+    pub fn composite_unmasked(&mut self, source: &Self, mode: &str, opacity: f32) {
+        let r = self.rect.intersect(source.rect);
+        if r.empty() {
+            return;
+        }
+        let mode = BlendMode::from_name(mode);
+        let width = r.w as usize;
+        if mode == BlendMode::Normal && opacity == 1. {
+            for y in r.y..r.bottom() {
+                let dst = self.rect.index(r.x, y).expect("intersection");
+                let src = source.rect.index(r.x, y).expect("intersection");
+                let dst_row = &mut self.pixels[dst..dst + width];
+                let src_row = &source.pixels[src..src + width];
+                let mut x = 0;
+                while x < width {
+                    if src_row[x].0[3] == 1. {
+                        let start = x;
+                        x += 1;
+                        while x < width && src_row[x].0[3] == 1. {
+                            x += 1;
+                        }
+                        dst_row[start..x].copy_from_slice(&src_row[start..x]);
+                    } else if src_row[x].0[3] <= 0. {
+                        x += 1;
+                    } else {
+                        dst_row[x] = over_mode(dst_row[x], src_row[x], BlendMode::Normal);
+                        x += 1;
+                    }
+                }
+            }
+            return;
+        }
+        for y in r.y..r.bottom() {
+            let dst = self.rect.index(r.x, y).expect("intersection");
+            let src = source.rect.index(r.x, y).expect("intersection");
+            for (dst, src) in self.pixels[dst..dst + width]
+                .iter_mut()
+                .zip(&source.pixels[src..src + width])
+            {
+                *dst = over_mode(*dst, src.opacity(opacity), mode);
             }
         }
     }

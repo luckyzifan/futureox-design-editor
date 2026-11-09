@@ -3,13 +3,11 @@ import type { InterfaceLocale } from './interface-preference'
  * A mapping proves dispatch only;
  * behavior, persistence and fidelity require the per-tool desktop tests. */
 export type ToolCommand = {
-  /** set-tool-* command id from the reference editor. */
   id: string
   label: string
   category: 'core' | 'shape' | 'vector' | 'whiteboard' | 'figjam' | 'utility' | 'ai'
   /** Editor Tool this command activates; absent when unimplemented. */
   tool?: string
-  /** Physical-key shortcut when the reference editor binds one. */
   shortcut?: string
 }
 

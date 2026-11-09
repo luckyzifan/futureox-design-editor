@@ -10,6 +10,14 @@ function fixture(){
  const backing={presentationId:'accepted',view:{x:10,y:20,zoom:1},width:100,height:80,dpr:2,interaction:false,ids:[1]}
  return{host,canvas,projection,backing}
 }
+test('a low-zoom fit does not replace a complete image with a gapped preview', () => {
+  const {backing} = fixture()
+  const fitted = {...backing, view:{x:0,y:0,zoom:0.15}, preview:true, previewGaps:[{x:10,y:10,width:40,height:30}]}
+  expect(keepCompleteCameraBacking(backing, fitted, true)).toBe(true)
+  expect(keepCompleteCameraBacking(backing, {...fitted, preview:false, previewGaps:undefined}, true)).toBe(false)
+  expect(keepCompleteCameraBacking(undefined, fitted, true)).toBe(false)
+})
+
 test('partial white tile deliveries cannot replace a complete reprojectable image',()=>{
  const {backing}=fixture(),next={...backing,preview:true,view:{x:42,y:20,zoom:2}}
  expect(keepCompleteCameraBacking(backing,next,true)).toBe(true)
@@ -73,6 +81,36 @@ test('a lower-density navigation preview still follows horizontal and upward whe
  f.projection.update(backing,target,100,80,true)
  expect(f.canvas.style.transform).toBe('translate(-32px, 32px) scale(1)')
  expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(target)
+ f.projection.dispose()
+})
+
+test('a late zoom-out bitmap preserves the displayed camera while wider coverage is cold',()=>{
+ const f=fixture(),bounds={x:0,y:0,width:400,height:400}
+ const backing={...f.backing,view:{x:0,y:0,zoom:2}},target={x:0,y:0,zoom:1}
+ f.projection.update(backing,backing.view,100,80,true,bounds)
+ f.projection.update(backing,target,100,80,true,bounds)
+ // The worker completes intermediate cameras after the user has already
+ // zoomed farther out. Those bitmaps cover the held view, not the target.
+ for(const zoom of [1.75,1.5,1.25]){
+  const late={...backing,view:{x:0,y:0,zoom}}
+  f.projection.update(late,target,100,80,true,bounds)
+  expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(backing.view)
+  expect(f.canvas.style.transform).toBe(`translate(0px, 0px) scale(${2/zoom})`)
+ }
+ f.projection.update({...backing,view:target},target,100,80,true,bounds)
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(target)
+ expect(f.canvas.style.transform).toBe('')
+ f.projection.dispose()
+})
+
+test('a late bitmap cannot hold a camera whose artwork it does not cover',()=>{
+ const f=fixture(),bounds={x:0,y:0,width:400,height:400}
+ const backing={...f.backing,view:{x:0,y:0,zoom:2}},target={x:0,y:0,zoom:1}
+ f.projection.update(backing,backing.view,100,80,true,bounds)
+ const late={...backing,view:{x:-100,y:0,zoom:1.5}}
+ f.projection.update(late,target,100,80,true,bounds)
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(late.view)
+ expect(f.canvas.style.transform).toBe('')
  f.projection.dispose()
 })
 

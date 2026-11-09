@@ -19,6 +19,11 @@ export default defineConfig(async ({ command }) => {
           target: process.env.DESIGN_BACKEND_URL || 'http://127.0.0.1:9430',
           changeOrigin: true,
         },
+        '/api/agent': {
+          target: process.env.DESIGN_AGENT_URL || 'http://127.0.0.1:3927',
+          changeOrigin: true,
+          rewrite: path => path.replace(/^\/api\/agent/, ''),
+        },
       },
     },
     build: { sourcemap: true },

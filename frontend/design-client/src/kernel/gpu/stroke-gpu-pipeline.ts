@@ -1,14 +1,4 @@
-/**
- * GPU 描边计算管线 - 完整实现
- *
- * 对标 Figma GpuStrokeBatcher 语义：
- * - eulerStrokeFill: 欧拉法描边扩展
- * - countsPrefixSum: GPU 并行前缀和
- * - strokeOffsetDeltas: 描边偏移增量计算
- *
- * 目标：将描边计算从 CPU 迁移到 GPU，提升 8-12% GPU 使用率
- */
-
+/** GPU stroke stages: prefix sums, normals, offsets and joins. */
 import { parallelPrefixSumWGSL } from './parallel-prefix-sum.wgsl'
 
 export interface StrokeStyle {

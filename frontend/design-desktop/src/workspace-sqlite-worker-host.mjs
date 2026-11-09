@@ -1,12 +1,13 @@
 import { Worker } from 'node:worker_threads'
 import { randomUUID } from 'node:crypto'
+import { documentChildEnvironment } from './document-capacity.mjs'
 
 // Below this, JSON work is cheaper than a thread hop and stays on the caller.
 export const SQLITE_OFFTHREAD_BYTES = 32 * 1024
 
 class WorkspaceSqliteWorker {
   constructor() {
-    this.worker = new Worker(new URL('./workspace-sqlite-worker.mjs', import.meta.url))
+    this.worker = new Worker(new URL('./workspace-sqlite-worker.mjs', import.meta.url), { env: documentChildEnvironment(process.env) })
     this.pending = new Map()
     this.closed = false
     this.worker.on('message', (message) => {
@@ -15,7 +16,15 @@ class WorkspaceSqliteWorker {
       clearTimeout(pending.timer)
       this.pending.delete(message.id)
       if (message.error) pending.reject(new Error(message.error))
-      else pending.resolve(message)
+      else if (pending.op === 'encode-request') {
+        // Worker structured clone turns a transferred Buffer into Uint8Array.
+        // Restore its zero-copy Node view before the sidecar's frame admission.
+        if (!(message.frame instanceof Uint8Array)) pending.reject(new Error('Invalid SQLite request frame'))
+        else {
+          message.frame = Buffer.from(message.frame.buffer, message.frame.byteOffset, message.frame.byteLength)
+          pending.resolve(message)
+        }
+      } else pending.resolve(message)
     })
     this.worker.on('error', (error) => this.fail(error))
   }
@@ -38,7 +47,7 @@ class WorkspaceSqliteWorker {
         this.pending.delete(id)
         reject(Object.assign(new Error('SQLite payload worker timed out'), { code: 'BACKEND_TIMEOUT' }))
       }, 60_000)
-      this.pending.set(id, { resolve, reject, timer })
+      this.pending.set(id, { resolve, reject, timer, op })
       try { this.worker.postMessage({ id, op, ...fields }, transfer) }
       catch (error) {
         clearTimeout(timer)

@@ -68,12 +68,11 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
     [height, setHeight] = useState(500)
   const list = useRef<HTMLDivElement>(null)
   const renaming = s.renamingLayer, setRenaming = (id: string | null) => editor.set({ renamingLayer: id })
-  const [panelWidth, setPanelWidth] = useState(240)
   const [context, setContext] = useState<{ x: number; y: number; id: string } | null>(null)
   const [focused, setFocused] = useState<string | null>(null)
   const [drop, setDrop] = useState<{ id: string | null; position: LayerDropPosition } | null>(null)
   const reveal = useRef<string | null>(null)
-  const selectionAnchor = useRef<string | null>(null), resizeStart = useRef<{ x: number; width: number } | null>(null)
+  const selectionAnchor = useRef<string | null>(null)
   const dragged = useRef<{ session: number; page: string; document: string; ids: string[] } | null>(null)
   const pointerDrag = useRef<{ pointer: number; target: HTMLElement; x: number; y: number; id: string; moved: boolean; plan?: {parent:string;before?:string} } | null>(null)
   const suppressClick = useRef(false), clickReset = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -225,15 +224,15 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
     return layerDropPlan(editor.state.doc, editor.state.page, payload.ids, id, position, editor.parentMap())
   }
   return (
-    <aside className="layers-panel" style={{ width: panelWidth }} aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
+    <aside className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
       <div className="workspace-title">
         <span className="workspace-icon">F</span>
         <div>
           <b>{text.localWorkspace}</b>
-          <small>{s.doc.name}</small>
+          <small title={s.doc.name}>{s.doc.name}</small>
         </div>
       </div>
-      {showPages&&<><PageList editor={editor} onRename={renameIntendedPage} />
+      {showPages&&<div className="layers-pages"><PageList editor={editor} onRename={renameIntendedPage} />
       <div className="pages-actions">
         <button
           title={text.deletePageTitle}
@@ -247,9 +246,9 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
           <Trash2 size={12} />
           {text.deletePage}
         </button>
-      </div></>}
+      </div></div>}
       <div className="layer-heading">
-        <div role="tablist" aria-label={text.sidebarContent} style={{ display: 'contents' }}>
+        <div role="tablist" aria-label={text.sidebarContent} className="layer-tabs">
           {(['layers', 'assets'] as const).map((name, index) => <button key={name} type="button"
             id={`${tabId}-${name}-tab`} role="tab" aria-selected={tab === name} aria-pressed={tab === name}
             aria-controls={`${tabId}-${name}-panel`} tabIndex={tab === name ? 0 : -1}
@@ -267,15 +266,13 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
           for (const id of s.selection) for (let parent = parents.get(id); parent && s.doc.nodes[parent]; parent = parents.get(parent)) keep.add(parent)
           setCollapsed(old => new Set([...old, ...Object.values(s.doc.nodes).filter(n => n.children.length && !keep.has(n.id)).map(n => n.id)]))
         }}><ChevronDown size={13} /></button>
-        <span>{rows.length}</span>
+        <span title={String(rows.length)}>{rows.length}</span>
       </div>
-      <div id={`${tabId}-assets-panel`} role="tabpanel" aria-labelledby={`${tabId}-assets-tab`}
-        style={{ display: tab === 'assets' ? 'contents' : 'none' }}>
+      <div id={`${tabId}-assets-panel`} role="tabpanel" className="layers-tabpanel" hidden={tab !== 'assets'} aria-labelledby={`${tabId}-assets-tab`}>
         {tab === 'assets' && <AssetsPanel editor={editor} />}
       </div>
-      <div id={`${tabId}-layers-panel`} role="tabpanel" aria-labelledby={`${tabId}-layers-tab`}
-        style={{ display: tab === 'layers' ? 'contents' : 'none' }}>
-      <label className="layer-search" style={{ display: tab === 'assets' ? 'none' : undefined }}>
+      <div id={`${tabId}-layers-panel`} role="tabpanel" className="layers-tabpanel" hidden={tab !== 'layers'} aria-labelledby={`${tabId}-layers-tab`}>
+      <label className="layer-search">
         <Search size={13} />
         <input
           aria-label={text.searchLayers}
@@ -291,7 +288,6 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
       <div
         className="layer-list"
         role="tree" aria-label={text.layerTree} aria-multiselectable="true"
-        style={{ display: tab === 'assets' ? 'none' : undefined }}
         ref={list}
         onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
         onDragOver={(event) => {
@@ -450,7 +446,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   <DraftInput key={`${editor.sessionGeneration}:${id}`} editor={editor} aria-label={text.renameLayer} autoFocus value={n.name}
                     normalize={(value) => value.trim()} validate={(value) => !!value}
                     onCommit={(value) => { editor.update([id], { name: value }, '重命名图层'); setRenaming(null) }} />
-                </span> : <span className="layer-name" onDoubleClick={(event) => { event.stopPropagation(); if (commitPendingEdits(editor)) setRenaming(id) }}>
+                </span> : <span className="layer-name" title={n.name} onDoubleClick={(event) => { event.stopPropagation(); if (commitPendingEdits(editor)) setRenaming(id) }}>
                   {n.mask ? '◐ ' : ''}
                   {n.name}
                 </span>}
@@ -492,13 +488,6 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
           {text.duplicateLayers}
         </button>
       </div>
-      <div className="panel-resizer" role="separator" aria-label={text.resizeLayers} aria-orientation="vertical"
-        aria-valuemin={200} aria-valuemax={360} aria-valuenow={panelWidth} tabIndex={0}
-        onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); event.stopPropagation(); setPanelWidth((width) => Math.max(200, Math.min(360, width + (event.key === 'ArrowRight' ? 10 : -10)))) } }}
-        onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); resizeStart.current = { x: event.clientX, width: panelWidth }; event.currentTarget.setPointerCapture(event.pointerId) }}
-        onPointerMove={(event) => { if (resizeStart.current) setPanelWidth(Math.max(200, Math.min(360, resizeStart.current.width + event.clientX - resizeStart.current.x))) }}
-        onPointerUp={(event) => { resizeStart.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
-        onPointerCancel={() => { resizeStart.current = null }} onLostPointerCapture={() => { resizeStart.current = null }} />
       {context && s.doc.nodes[context.id] && <CanvasContextMenu editor={editor} x={context.x} y={context.y}
         worldPoint={{ x: editor.selectionBounds().x, y: editor.selectionBounds().y }} candidates={[{ id: context.id, name: s.doc.nodes[context.id].name, locked: s.doc.nodes[context.id].locked }]} onClose={() => setContext(null)} />}
     </aside>

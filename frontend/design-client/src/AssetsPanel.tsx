@@ -37,7 +37,7 @@ export function AssetsPanel({ editor }: { editor: Editor }) {
           }}
           onClick={() => editor.insertComponent(n.id)}
         >
-          <strong>◇ {n.name}</strong>
+          <strong title={n.name}>◇ {n.name}</strong>
           <small>
             {family(doc, n.id)?.name || '本地组件'}
             {Object.keys(n.component!.variants).length

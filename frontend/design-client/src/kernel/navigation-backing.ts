@@ -1,4 +1,5 @@
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
+import { previewCameraScaleWithinLimit } from './tile-preview'
 import type { CanvasCamera } from '../canvas-camera'
 import type { ResidentAcknowledgement } from './resident-presentation'
 
@@ -67,6 +68,11 @@ function missingOnPage(frame: ResidentAcknowledgement, target: CameraWindow, bou
 export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | undefined, next: ResidentAcknowledgement,
   allowed: boolean, zooming = false, target?: CameraWindow, history?: CameraWindow) {
   if (!allowed || !backing || backing.preview || backing.interaction || next.interaction) return false
+  // A fit or zoom-out past 2× still owns the last complete picture. A preview
+  // or a frame with gaps is not the closer replacement, so it must not punch
+  // rectangles through that picture. A gap-free settled frame may replace it.
+  if (!previewCameraScaleWithinLimit(backing.view.zoom, next.view.zoom))
+    return !!next.preview || (next.previewGaps?.length ?? 0) > 0
   if (!target) return !!next.preview || zooming && next.view.zoom > backing.view.zoom
   const old = intersect(screen(target), project(backing, target))
   if (!old) return false
@@ -323,6 +329,8 @@ export class NavigationBacking {
   show(backing: ResidentAcknowledgement, target: CameraWindow) {
     if (!this.frame || !this.clip || !this.surface) return
     const rect = project(this.frame, target)
+    // A far atlas is blurry, not a reason to leave the hole blank. Camera
+    // reprojection hides this layer once a closer covering image exists.
     const holes = missing(backing, target)
     const covered = this.coverage(target)
     const repairs = holes?.flatMap(hole => covered.flatMap(region => intersect(region,hole) ?? []))

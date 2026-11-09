@@ -708,11 +708,6 @@ fn style_weight(fig_style: &str) -> Option<f32> {
     })
 }
 
-/// `Number { value, units }` → a line-height multiplier.
-/// PIXELS is absolute. PERCENT and RAW are multipliers of the font size
-/// (100% and RAW 1.0 are one em, not the font's intrinsic auto line gap).
-/// Figma's UI Auto value is omitted or stored as that intrinsic ratio;
-/// an omitted line height stays the editor default.
 fn line_height_multiplier(number: &Value, font_size: f64) -> Option<f64> {
     let value = number.get("value").and_then(Value::as_f64)?;
     match str_of(number, "units") {
@@ -1147,12 +1142,6 @@ impl FigImporter {
                 "edges":[{"id":"0","from":"0","to":"1"}],"fillRule":"nonzero"
             })).expect("static line network"));
         }
-        // figma's relative transform maps the node's local (untransformed)
-        // box into the parent; the kernel transform has identical semantics,
-        // so the matrix — including flips and rotation — passes through
-        // verbatim. The old AABB + re-rotation decomposition discarded flips
-        // (a horizontal flip became a 180° rotation) and double-rotated
-        // already-rotated boxes.
         if let Some(m) = change.get("transform") {
             node.transform = Transform([
                 f64_of(Some(m), "m00"),
@@ -1627,6 +1616,23 @@ impl FigImporter {
             }
             node.network = decoded.network.map(Into::into);
             node.vector_geometry = decoded.vector_geometry;
+            if let Some(name) = decoded.stroke_cap.as_deref() {
+                let cap = Self::stroke_cap(Some(name));
+                for stroke in &mut node.strokes {
+                    stroke.cap = cap.0.into();
+                    stroke.end_marker = cap.1;
+                }
+            }
+            if let Some(name) = decoded.stroke_join.as_deref() {
+                let join = match name {
+                    "ROUND" => "round",
+                    "BEVEL" => "bevel",
+                    _ => "miter",
+                };
+                for stroke in &mut node.strokes {
+                    stroke.join = join.into();
+                }
+            }
         }
         if fig_type == "VECTOR"
             && let Some(entries) = change
@@ -2617,6 +2623,7 @@ pub fn document_from_canvas(
         doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
         version=version.max(4);
     }
+    document::import_variables(&mut doc, &records);
     document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
     document::raise_schema(&doc, &mut version);
     doc.schema_version = version;
@@ -4833,7 +4840,10 @@ mod tests {
             let mut changes=canvas_only();let mut symbol=base_change("SYMBOL",1,2);
             symbol["componentPropDefs"]=json!([{"id":guid(1,8),"name":"Shown","type":"BOOL","initialValue":{"boolValue":true}}]);
             changes.push(symbol);
-            assert!(doc_with(changes).unwrap_err().to_string().contains("componentPropRef"));
+            let doc=doc_with(changes).unwrap();
+            let property=&node_of(&doc,1,2).component.as_ref().unwrap().properties["fig-1-8"];
+            assert_eq!(property.name,"Shown");assert_eq!(property.default_value,json!(true));
+            assert!(property.unbound,"an unbound definition is preserved without inventing a target");
         }
 
         #[test]

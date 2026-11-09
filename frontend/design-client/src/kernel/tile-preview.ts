@@ -5,6 +5,51 @@ import type { RasterTile } from './tile-cache'
 
 export const CAMERA_REFINE_IDLE_MS = 120
 
+/** A displayed bitmap may be resampled by at most this factor before it counts
+ * as a certified frame of the requested camera. A larger jump stays on screen,
+ * CSS-reprojected, until a closer image covers the viewport. */
+export const MAX_PREVIEW_SCALE_RATIO = 2
+
+export function previewUpscaleWithinLimit(sourceZoom: number, viewZoom: number) {
+  if (!(sourceZoom > 0) || !(viewZoom > 0) || !Number.isFinite(sourceZoom) || !Number.isFinite(viewZoom)) return false
+  return viewZoom / sourceZoom <= MAX_PREVIEW_SCALE_RATIO
+}
+
+/** CSS camera reprojection in either direction. Downscaling a 25600% crop
+ * onto a 100% viewport is the same class of stale picture as stretching a
+ * page thumbnail up to the card. */
+export function previewCameraScaleWithinLimit(sourceZoom: number, viewZoom: number) {
+  if (!previewUpscaleWithinLimit(sourceZoom, viewZoom)) return false
+  return sourceZoom / viewZoom <= MAX_PREVIEW_SCALE_RATIO
+}
+
+/** The last complete bitmap stays visible past the preview ratio until a closer
+ * image covers the viewport. Failing the ratio still refuses to certify it. */
+export function showRetainedPreview(input: {
+  sourceZoom: number
+  viewZoom: number
+  intersects: boolean
+  replacementCovers: boolean
+}) {
+  if (!input.intersects) return false
+  if (input.replacementCovers && !previewCameraScaleWithinLimit(input.sourceZoom, input.viewZoom)) return false
+  return true
+}
+
+export function previewPlacementIntersects(
+  placed: { x: number; y: number; scale: number },
+  sourceWidth: number,
+  sourceHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+) {
+  if (![placed.x, placed.y, placed.scale, sourceWidth, sourceHeight, viewportWidth, viewportHeight].every(Number.isFinite)) return false
+  if (!(placed.scale > 0) || !(sourceWidth > 0) || !(sourceHeight > 0) || !(viewportWidth > 0) || !(viewportHeight > 0)) return false
+  const right = placed.x + sourceWidth * placed.scale
+  const bottom = placed.y + sourceHeight * placed.scale
+  return placed.x < viewportWidth && placed.y < viewportHeight && right > 0 && bottom > 0
+}
+
 export type TilePreviewContract = ExactPresentation & {
   computeBackend: BackendPreference
   managed: boolean

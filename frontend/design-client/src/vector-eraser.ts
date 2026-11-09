@@ -14,7 +14,6 @@ import {
 import { uid, type DesignDocument, type DesignNode, type Network, type Point } from './model'
 import { booleanContours } from './vector'
 
-/** Screen-constant brush. Figma's eraser weight is independent of stroke width. */
 export const ERASER_SCREEN_PX = 12
 
 const ERASABLE = new Set<DesignNode['kind']>(['line', 'vector', 'rectangle', 'ellipse', 'polygon', 'star'])

@@ -83,6 +83,8 @@ export type SourceOpeningResult = {phase:'pending'|'unavailable'} | {
   offset:number;items:SourceCanvasItem[];nextOffset:number;cursor:number;moreImages:boolean;images:{index:number;png:string}[];finished:boolean
 }
 export interface LargeDocumentBridge {
+  /** Read the host document when the renderer binding was dropped. Absent on older preloads. */
+  status?():Promise<DesktopResult<LargeDocumentStatus>>
   progress():Promise<DesktopResult<{phase:string;processedBytes:number;totalBytes:number}>>
   cancel():Promise<DesktopResult<{requested:number;running:boolean;cancelled:boolean}>>
   open():Promise<DesktopResult<LargeDocumentStatus>>
@@ -141,6 +143,14 @@ export interface VideoEncodeBridge {
   encode(request: { format: 'mp4' | 'webm'; fps: number; frames: Uint8Array[] }): Promise<VideoEncodeResult>
 }
 export interface DesktopBridge {
+  readonly designAgent?: {
+    status(): Promise<DesktopResult<{ providers: Array<{ id: string; name: string; kind: string; model: string; base_url: string; active: boolean; has_secret: boolean }>;     ccswitch?: { present?: boolean; detail?: string; providers?: Array<{ id: string; name: string; app_type: string; current: boolean; kind?: string; model?: string; has_secret?: boolean }> } }>>
+    turn(body: unknown): Promise<DesktopResult<{ turn: unknown }>>
+    upsert(body: unknown): Promise<DesktopResult>
+    activate(body: { id: string; profile_id?: string }): Promise<DesktopResult>
+    remove(body: { id: string }): Promise<DesktopResult>
+    cancel(body: { sessionId: string }): Promise<DesktopResult>
+  }
   readonly designAi?: import('./design-ai/types').DesignAiBridge
   readonly renderDiagnostics?:boolean
   readonly renderDiagnosticsDetail?:boolean

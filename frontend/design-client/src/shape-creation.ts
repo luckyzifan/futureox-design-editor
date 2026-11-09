@@ -21,8 +21,6 @@ export type ShapeCreationResult = {
   click: boolean
 }
 export const SHAPE_CLICK_DISTANCE = 3
-/** A bare click matches Figma's shape and frame tools: 100×100.
- * Device frames stay on the preset command. Dragging still uses the pointer span. */
 export const CLICK_DEFAULT_SIZE = 100
 
 /** Repeatable creation tools stay armed after a successful drag, matching the

@@ -32,9 +32,6 @@ export function transformOverlay(overlay: CanvasOverlay, matrices: ReadonlyMap<s
     }) }
 }
 
-/** Filled quad for a solid stroke. Axis-aligned edges cover one row or
- * column of CSS pixels. A centered 1px stroke on a pixel boundary covers
- * two half-alpha pixels and never lands on solid #4597F7. */
 export function crispStrokeQuad(a: Point, b: Point, stroke: number): [Point, Point, Point, Point] | null {
   const dx = b.x - a.x, dy = b.y - a.y
   const length = Math.hypot(dx, dy)

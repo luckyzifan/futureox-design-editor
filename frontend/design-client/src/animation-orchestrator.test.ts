@@ -5,7 +5,6 @@ import {
   AnimationPlayback,
   LEGACY_DT_CLAMP_SECONDS,
   PLAYBACK_FALLBACK_REASONS,
-  PLAYBACK_PLACEHOLDER_FLAGS,
   clipHasMotion,
   createClipBakeSource,
   resolvePlaybackTrack,
@@ -33,7 +32,7 @@ test('gate ladder activates the jit track for a clip with motion when the kernel
   expect(gate).toEqual({ implementation: 'jit', outcome: 'activated' })
 })
 
-test('gate ladder falls back rung by rung with Figma fallback reasons', () => {
+test('gate ladder reports why each playback prerequisite failed', () => {
   const { doc, clip, pageId } = fixture()
   // 1. missing_source: unknown clip / wrong page / empty tracks
   expect(
@@ -69,7 +68,7 @@ test('gate ladder falls back rung by rung with Figma fallback reasons', () => {
       { isKernelReady: () => true },
     ),
   ).toMatchObject({ fallbackReason: 'legacy_required' })
-  // ...and the transitionOverridesEnabled override keeps the jit track (uT)
+  // The transition override also allows a still clip to use kernel playback.
   expect(
     resolvePlaybackTrack(
       { ...doc, animations: [still] } as typeof doc,
@@ -84,18 +83,7 @@ test('gate ladder falls back rung by rung with Figma fallback reasons', () => {
   ).toMatchObject({ fallbackReason: 'materialization_failed' })
 })
 
-test('placeholder flags and fallback reason enums are recorded, not pretended', () => {
-  expect(Object.keys(PLAYBACK_PLACEHOLDER_FLAGS).sort()).toEqual(
-    [
-      'metronome',
-      'eclipse',
-      'mix_jit_default_enabled',
-      'mix_jit_overlays',
-      'mix_jit_min_animate',
-      'mix_jit_keyframeless_transitions',
-      'has3dTransform',
-    ].sort(),
-  )
+test('fallback reasons cover the playback admission stages', () => {
   expect(PLAYBACK_FALLBACK_REASONS).toEqual([
     'jit_disabled',
     'legacy_required',

@@ -1,6 +1,8 @@
 import {SourceMaterialHover} from './SourceMaterialHover'
 import {SourceOverviewImage} from './source-overview-image'
 import {SourceOpeningSurface,sourcePageClip,type OpeningView} from './source-opening-preview'
+import {acceptedSourceNativeRegions,visibleSourceNativeRegions,type SourceNativeCoverage} from './source-native-coverage'
+import {MATERIAL_MARGIN} from './kernel/source-overview-window'
 import {renderExecutionPolicy} from './kernel/client'
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
@@ -294,6 +296,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const chromeCopy = canvasText[locale]
   const retainedMove = useRef<RetainedMoveControl|null>(null)
   const thumbnailCoverage=useRef<((view:CanvasCamera,width:number,height:number)=>boolean)|undefined>(undefined)
+  const [sourceNativeCoverage,setSourceNativeCoverage]=useState<SourceNativeCoverage>()
   const overviewAnchor=useRef<Point|undefined>(undefined)
   const sourceWheel = useRef<{token:string; view:CanvasCamera} | undefined>(undefined)
   const gpuMove = useRef<GpuMoveControl | null>(null)
@@ -356,12 +359,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
+  const [size, setSize] = useState({ width: 1000, height: 800 })
   const displayView = referenceOverlayCamera({
     cpu: presented?.computeBackend === 'cpu',
     live: state.view,
     presented: presented?.view ?? null,
     scopeMatches: presentationScopeMatches,
     editPreview: editPreviewVisible && !gpuPreviewAvailable,
+    viewport: size,
   })
   const displayViewRef = useRef(displayView)
   displayViewRef.current = displayView
@@ -443,7 +448,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const colorPick=useCanvasColorPicker(editor,host)
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  const [size, setSize] = useState({ width: 1000, height: 800 })
   // A saved preview may cover the untouched bootstrap document before restore,
   // but an edit, navigation or replacement immediately ends that exception.
   const startupOwner = useRef({ document: state.doc, pageId: state.page, session: editor.sessionGeneration })
@@ -2812,10 +2816,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
         return false
       }}/>
-      {openingSource&&<SourceOpeningSurface coverage={thumbnailCoverage} pageId={openingPage} focused={focusedMaterial} onDetail={onSourceDetail} onViewport={(box,density)=>onSourceViewport?.(box,overviewAnchor.current,density)} source={openingSource} view={state.view} width={size.width} height={size.height}/>}
+      {openingSource&&<SourceOpeningSurface coverage={thumbnailCoverage} nativeRegions={visibleSourceNativeRegions(sourceNativeCoverage,nativeSource,state.view,!!hideNative&&!renderExecutionPolicy.cpuOnly)} pageId={openingPage} focused={focusedMaterial} onDetail={onSourceDetail} onViewport={(box,density)=>onSourceViewport?.(box,overviewAnchor.current,density)} source={openingSource} view={state.view} width={size.width} height={size.height}/>}
       {openingSource&&focusedMaterial===undefined&&nativeSource?.materialKeys&&sourcePageBoxes&&
         <SourceOverviewImage source={nativeSource} materials={sourcePageBoxes} view={state.view} width={size.width} height={size.height}/>}
-      {nativeSource||openingSource||prepareSourceDisplay?<NativeSourceSurface hover={pickSourceMaterial?sourceHover:undefined} overviewBoxes={openingSource&&focusedMaterial===undefined&&nativeSource?.materialKeys?sourcePageBoxes:undefined} contentFrames={openingSource?.items?.map(item=>item.placed)} panGestureActive={panning} parked={parkNative} underlay={openingSource&&nativeSource?.revision===0&&openingSource.owner.documentId===nativeSource.owner.documentId&&openingSource.owner.sessionEpoch===nativeSource.owner.sessionEpoch?thumbnailCoverage:undefined} wheelView={sourceWheel.current?.token===nativeSource?.token?sourceWheel.current?.view:undefined} warm={!!openingSource||prepareSourceDisplay} hidden={hideNative&&!renderExecutionPolicy.cpuOnly} clipPath={sourcePageClip(sourcePageBoxes,state.view,size.width,size.height)} source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus} onPresented={(frame,complete)=>{if(complete||nativeSource?.materialKeys&&frame.ids.length&&(!frame.preview||frame.previewGaps))onSourcePresented?.(frame.view)}}/>:<KernelSurface
+      {nativeSource||openingSource||prepareSourceDisplay?<NativeSourceSurface hover={pickSourceMaterial?sourceHover:undefined} overviewBoxes={openingSource&&focusedMaterial===undefined&&nativeSource?.materialKeys?sourcePageBoxes:undefined} contentFrames={openingSource?.items?.map(item=>item.placed)} panGestureActive={panning} parked={parkNative} underlay={openingSource&&nativeSource?.revision===0&&openingSource.owner.documentId===nativeSource.owner.documentId&&openingSource.owner.sessionEpoch===nativeSource.owner.sessionEpoch?thumbnailCoverage:undefined} wheelView={sourceWheel.current?.token===nativeSource?.token?sourceWheel.current?.view:undefined} warm={!!openingSource||prepareSourceDisplay} hidden={hideNative&&!renderExecutionPolicy.cpuOnly} clipPath={sourcePageClip(sourcePageBoxes,state.view,size.width,size.height)} source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus} onPresented={(frame,complete,regions)=>{
+        if(nativeSource&&(complete||regions?.length)){
+          const accepted=acceptedSourceNativeRegions(nativeSource,regions,openingSource?.items??[],openingPage,sourcePageBoxes)
+          setSourceNativeCoverage({source:nativeSource,frame,regions:accepted.map(b=>({x:b.x-MATERIAL_MARGIN,y:b.y-MATERIAL_MARGIN,width:b.width+2*MATERIAL_MARGIN,height:b.height+2*MATERIAL_MARGIN}))})
+        }
+        if(complete||nativeSource?.materialKeys&&frame.ids.length&&(!frame.preview||frame.previewGaps))onSourcePresented?.(frame.view)
+      }}/>:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
         overlay={overlay}

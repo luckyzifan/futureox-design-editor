@@ -2,9 +2,6 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { FrameDebouncedValue } from './frame-debounced-value'
 import type { CanvasCamera } from '../canvas-camera'
 
-/** Figma's two stable frame rule chooses when to leave the transient display
- * tier. Unlike density admission, this signal does not periodically settle
- * during a still-changing gesture. */
 function useActivity(value: number | string, identity: string) {
   const state = useRef(new FrameDebouncedValue<number | string>(2)),
     owner = useRef(identity)

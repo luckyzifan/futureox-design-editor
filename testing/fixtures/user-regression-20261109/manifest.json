@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "addedOn": "2026-11-09",
+  "purpose": "Original Sketch and FIG inputs used for local rendering, editing and import/export regressions.",
+  "source": "Existing local Downloads files; inclusion in this repository explicitly requested by the user.",
+  "storage": "Git LFS; files are byte-for-byte copies of the original inputs.",
+  "licenseNote": "Existing third-party rights remain unchanged; inclusion does not grant a new redistribution license.",
+  "files": [
+    {
+      "file": "test.sketch",
+      "format": "sketch",
+      "bytes": 239179555,
+      "sha256": "f47440b04c194753a0cd04730ff896feb77ba03209d5453702e732bd04687f60"
+    },
+    {
+      "file": "117.sketch",
+      "format": "sketch",
+      "bytes": 5013257,
+      "sha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70"
+    },
+    {
+      "file": "拓扑素材.sketch",
+      "format": "sketch",
+      "bytes": 118272240,
+      "sha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12"
+    },
+    {
+      "file": "topology-verified-20261027.sketch",
+      "format": "sketch",
+      "bytes": 119392711,
+      "sha256": "498098eb5e390e7088245c267a01896b1b832ad61098faddb1fba35f5ac8da86"
+    },
+    {
+      "file": "01有料素材.fig",
+      "format": "fig",
+      "bytes": 387579,
+      "sha256": "90eb4dc4d09b67cbcc7afa790bb373c28560f97e2111e8adfcfa269bc2afb82c"
+    },
+    {
+      "file": "01有料素材 (Copy).fig",
+      "format": "fig",
+      "bytes": 649304,
+      "sha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46"
+    },
+    {
+      "file": "01有料素材 (Copy) (1).fig",
+      "format": "fig",
+      "bytes": 661892,
+      "sha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ name = "futureox-design-server"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [dependencies]
 futureox-design-kernel = { path = "../design-kernel" }

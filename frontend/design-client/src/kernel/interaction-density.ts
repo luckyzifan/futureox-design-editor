@@ -1,6 +1,5 @@
-/** Keep Figma's settle-then-refine behavior without starving refinement during
- * a continuous gesture. The age and scale guards are our host policy, not
- * constants recovered from Figma's viewer. */
+/** Publish requested density after stable frames or a bounded wait.
+ * Large scale changes publish immediately so refinement is not starved. */
 export class InteractionDensity {
   value: number
   private target: number

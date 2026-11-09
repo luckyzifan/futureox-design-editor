@@ -1,7 +1,8 @@
 # Third-party notices and release status
 
-This inventory preserves third-party terms; it does not select a project license,
-relicense third-party work, or certify the complete distribution for release.
+Futureox Design's original code is licensed under the MIT License; see
+[LICENSE](LICENSE). This inventory preserves third-party terms; it does not
+relicense third-party work or certify the complete distribution for release.
 
 Full license texts are shipped in `frontend/design-client/public/licenses/`, copied
 to production renderer `licenses/` by the build. `inventory.json` records installed
@@ -41,10 +42,10 @@ package source revision remains a release-verification task.
 
 ## Release gates
 
-The repository has no selected top-level project license. Rust's 337 lockfile
-packages and Electron/runtime transitive notices require a separate complete
-binary-distribution inventory. Installed development packages are not necessarily
-shipped runtime code. This document does not clear that remaining work.
+Rust dependency packages and Electron/runtime transitive notices require a
+separate complete binary-distribution inventory. Installed development packages
+are not necessarily shipped runtime code. This document does not clear that
+remaining work.
 
 Reference fixtures are excluded from production assets, but remain in the source
 repository and tests. Source publication still requires their ownership/permission
@@ -88,10 +89,9 @@ macOS and Windows paths are documented stubs and do not ship a binary yet.
 Upstream build: https://johnvansickle.com/ffmpeg/ . Obtained from the
 ffmpeg-static b6.1.1 linux-x64 asset.
 
-## RustCrypto ARM SHA-2 acceleration
+## RustCrypto SHA-2
 
-Native ARM builds enable the existing `sha2` 0.10.9 `asm` feature, including
-`sha2-asm` 0.6.4 (MIT). The digest format and runtime portable fallback remain
-unchanged. Its full license is retained in `public/licenses/sha2-asm-MIT.txt`.
-Copyright (c) 2020 RustCrypto Developers; copyright (c) 2017 Project Nayuki,
-Artyom Pavlov. Upstream: https://github.com/RustCrypto/asm-hashes .
+The kernel uses the workspace `sha2` 0.11.1 dependency. The current lockfile
+does not include `sha2-asm` 0.6.4, and native ARM builds no longer request its
+old `asm` feature. The digest format remains unchanged. See `Cargo.lock` for
+the resolved native and transitive dependency versions.

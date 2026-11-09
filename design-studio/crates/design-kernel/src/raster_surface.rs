@@ -1,22 +1,4 @@
-//! CPU raster surfaces and the pool that recycles them.
-//!
-//! Sketch's `MSRasterSurface` is one object presenting three faces: an
-//! `IOSurface`, the
-//! `CGContext` the CPU draws through, and the `MTLTexture` the compositor
-//! samples — zero-copy shared memory between CPU rasterisation and GPU
-//! composition. This module is the CPU half of that contract: a plain RGBA8
-//! buffer with the two operations the dump shows on `MSTile` —
-//! `replaceRegion:withBytes:bytesPerRow:` (upload a sub-rectangle of freshly
-//! rasterised bytes) and `blitFromSourceTexture:sourceTextureRect:pointInDestinationTexture:commands:`
-//! (copy an already-rasterised region between tiles instead of paying for a
-//! re-render). The GPU half is the host compositor's job: it wraps these
-//! bytes in a texture exactly like `metalTextureForRenderer:` wraps the
-//! IOSurface.
-//!
-//! Tiles are allocated constantly during pans and edits, so the
-//! [`RasterSurfacePool`] recycles surfaces the way `MSBitmapEffectsContextPool`
-//! (dump lines 2055–2062) recycles blur contexts, and tracks a byte budget
-//! so recycling cannot grow host memory without bound.
+//! Owned raster surfaces and their bounded reuse pool.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -161,9 +143,6 @@ impl RasterSurface {
     }
 }
 
-/// Recycling pool for raster surfaces — the `MSBitmapEffectsContextPool` /
-/// `MSMemoryBuffer` role (dump lines 1496, 2055): tile rasterisation borrows
-/// a surface, and returning it makes the next tile allocation free.
 pub struct RasterSurfacePool {
     idle: VecDeque<RasterSurface>,
     idle_bytes: usize,

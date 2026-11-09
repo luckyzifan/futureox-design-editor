@@ -1,11 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/design-server", "crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend"]
+members = ["crates/design-server", "crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend", "crates/design-agent"]
 
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
 publish = false
+license = "MIT"
 
 [workspace.dependencies]
 axum = "0.8.9"

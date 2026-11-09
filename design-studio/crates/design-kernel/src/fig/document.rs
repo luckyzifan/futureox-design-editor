@@ -18,6 +18,10 @@ pub(super) fn include_in_scene(record: &Value, records: &BTreeMap<String, Value>
     if kind == "CANVAS" {
         return true;
     }
+    // Variable definitions live in the design system, not the layer tree.
+    if matches!(kind, "VARIABLE" | "VARIABLE_SET") {
+        return false;
+    }
     if bool_of(record, "internalOnly").unwrap_or(false) {
         return false;
     }
@@ -432,6 +436,180 @@ fn authored_document_name(name: &str) -> Option<String> {
     } else {
         Some(name.to_string())
     }
+}
+
+/// Variable sets are not layers. Their modes and values become design-system
+/// collections. A value shape this kernel cannot execute is kept as a string
+/// so the file still opens.
+pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Value>) {
+    use crate::design_system::{Collection, Variable};
+    let mut mode_names: BTreeMap<String, String> = BTreeMap::new();
+    let mut collections: BTreeMap<String, Collection> = BTreeMap::new();
+    for (id, record) in records {
+        if str_of(record, "type") != Some("VARIABLE_SET") {
+            continue;
+        }
+        let collection_id = str_of(record, "key").unwrap_or(id).to_string();
+        let mut modes = Vec::new();
+        if let Some(list) = record.get("variableSetModes").and_then(Value::as_array) {
+            for mode in list {
+                let name = str_of(mode, "name").filter(|n| !n.is_empty()).unwrap_or("Mode");
+                if let Some(mode_id) = mode.get("id") {
+                    mode_names.insert(guid_string(mode_id), name.to_string());
+                }
+                if !modes.iter().any(|existing: &String| existing == name) {
+                    modes.push(name.to_string());
+                }
+            }
+        }
+        if modes.is_empty() {
+            modes.push("Default".into());
+        }
+        if modes.len() > 32 {
+            continue;
+        }
+        collections.insert(
+            collection_id,
+            Collection {
+                name: str_of(record, "name").unwrap_or("Variables").to_string(),
+                default_mode: modes[0].clone(),
+                modes,
+            },
+        );
+    }
+    let mut variables: BTreeMap<String, Variable> = BTreeMap::new();
+    for (id, record) in records {
+        if str_of(record, "type") != Some("VARIABLE") {
+            continue;
+        }
+        let from_guid = record.get("variableSetID").map(guid_string);
+        let collection = record
+            .get("variableSetID")
+            .and_then(|value| value.get("assetRef"))
+            .and_then(|value| str_of(value, "key"))
+            .filter(|key| !key.is_empty())
+            .map(str::to_string)
+            .or_else(|| from_guid.filter(|value| !value.is_empty() && value != "0:0"))
+            .unwrap_or_else(|| id.clone());
+        if !collections.contains_key(&collection) {
+            collections.insert(
+                collection.clone(),
+                Collection {
+                    name: collection.clone(),
+                    modes: vec!["Default".into()],
+                    default_mode: "Default".into(),
+                },
+            );
+        }
+        let kind = match str_of(record, "variableResolvedType").unwrap_or("") {
+            "COLOR" => "color",
+            "FLOAT" | "NUMBER" => "number",
+            "BOOLEAN" => "boolean",
+            "STRING" => "string",
+            _ => "string",
+        };
+        let mut values = BTreeMap::new();
+        if let Some(entries) = record
+            .get("variableDataValues")
+            .and_then(|value| value.get("entries"))
+            .and_then(Value::as_array)
+        {
+            for entry in entries {
+                let mode = entry
+                    .get("modeID")
+                    .map(guid_string)
+                    .and_then(|id| mode_names.get(&id).cloned())
+                    .unwrap_or_else(|| "Default".into());
+                if let Some(value) = variable_value(entry.get("variableData").unwrap_or(&Value::Null), kind)
+                {
+                    values.insert(mode, value);
+                }
+            }
+        }
+        let Some(collection_modes) = collections.get(&collection).map(|c| c.modes.clone()) else {
+            continue;
+        };
+        if collection_modes.len() > 32 {
+            continue;
+        }
+        if values.is_empty() {
+            let fallback = match kind {
+                "boolean" => Value::Bool(false),
+                "number" => Value::from(0.),
+                "color" => Value::String("#000000".into()),
+                _ => Value::String(String::new()),
+            };
+            values.insert(collection_modes[0].clone(), fallback);
+        }
+        let fallback = values.values().next().cloned().unwrap_or(Value::Null);
+        for mode in &collection_modes {
+            values.entry(mode.clone()).or_insert_with(|| fallback.clone());
+        }
+        values.retain(|mode, _| collection_modes.iter().any(|name| name == mode));
+        variables.insert(
+            id.clone(),
+            Variable {
+                name: str_of(record, "name").unwrap_or("Variable").to_string(),
+                collection,
+                kind: kind.into(),
+                values,
+            },
+        );
+    }
+    if collections.is_empty() && variables.is_empty() {
+        return;
+    }
+    let system = doc.design_system.get_or_insert_with(Default::default);
+    system.collections.extend(collections);
+    system.variables.extend(variables);
+    for (id, collection) in &system.collections {
+        system
+            .active_modes
+            .entry(id.clone())
+            .or_insert_with(|| collection.default_mode.clone());
+    }
+}
+
+fn variable_value(data: &Value, kind: &str) -> Option<Value> {
+    let value = data.get("value")?;
+    if let Some(alias) = value.get("alias").or_else(|| value.get("variableAlias")) {
+        let id = guid_string(alias);
+        if !id.is_empty() && id != "0:0" {
+            return Some(serde_json::json!({ "alias": id }));
+        }
+    }
+    match kind {
+        "color" => value.get("colorValue").and_then(color_value),
+        "number" => value
+            .get("floatValue")
+            .or_else(|| value.get("numberValue"))
+            .filter(|v| v.is_number())
+            .cloned(),
+        "boolean" => value.get("boolValue").filter(|v| v.is_boolean()).cloned(),
+        _ => value
+            .get("textValue")
+            .and_then(|v| v.get("characters"))
+            .or_else(|| value.get("stringValue"))
+            .filter(|v| v.is_string())
+            .cloned()
+            .or_else(|| Some(Value::String(value.to_string()))),
+    }
+}
+
+fn color_value(color: &Value) -> Option<Value> {
+    let channel = |key: &str| color.get(key).and_then(Value::as_f64);
+    let (r, g, b) = (channel("r")?, channel("g")?, channel("b")?);
+    let a = channel("a").unwrap_or(1.);
+    if [r, g, b, a].iter().any(|v| !v.is_finite() || !(0. ..=1.).contains(v)) {
+        return None;
+    }
+    let byte = |v: f64| (v * 255.).round() as u8;
+    let text = if (a - 1.).abs() < 1e-6 {
+        format!("#{:02x}{:02x}{:02x}", byte(r), byte(g), byte(b))
+    } else {
+        format!("color(srgb {r} {g} {b} / {a})")
+    };
+    Some(Value::String(text))
 }
 
 pub(super) fn write_receipt(

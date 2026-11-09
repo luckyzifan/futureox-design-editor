@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import {
   allowsColorPresentation,
   allowsResidentSdr,
+  usesProgressiveNativeRepair,
   allowsInteractionWindow,
   createRenderPolicy,
   effectiveBackend,
@@ -19,6 +20,19 @@ import {
   canvasSamplingProfile,
   usesDesktopDisplay,
 } from './render-policy.ts'
+
+test('desktop native repair preserves unsupported transports and other navigation admission', () => {
+  const desktop = hostRenderPolicy(true, false, false, false, false, true)
+  assert.equal(usesProgressiveNativeRepair(desktop, 'webgpu', undefined), true)
+  assert.equal(usesProgressiveNativeRepair(desktop, 'webgpu', '0'), false)
+  assert.equal(usesProgressiveNativeRepair(desktop, 'webgpu', undefined, false), false)
+  assert.equal(usesProgressiveNativeRepair(desktop, 'webgpu', '1', false), true)
+  for (const backend of ['cpu', 'webgl2', 'auto'] as const)
+    assert.equal(usesProgressiveNativeRepair(desktop, backend, undefined), false)
+  for (const policy of [hostRenderPolicy(false, false), hostRenderPolicy(true, true),
+      hostRenderPolicy(true, false, true), hostRenderPolicy(true, false, false, false, false, false)])
+    assert.equal(usesProgressiveNativeRepair(policy, 'webgpu', undefined), false)
+})
 
 test('exact desktop arithmetic is independent of same-device SDR presentation', () => {
   const desktop = hostRenderPolicy(true, false)
@@ -222,14 +236,17 @@ test('presentation source has one guarded lazy presenter construction and closes
   assert.match(source, /colorSpace: 'srgb'/)
 })
 
-test('worker source pins policy before commands and only loads drivers in the candidate loop', () => {
+test('worker source pins policy before guarded display prewarm and raster candidates', () => {
   // Read only the worker text; its imports and WASM are never executed.
   const source = readFileSync(new URL('./render-worker.ts', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /import\s+\{[^}]*createGpu[^}]*\}\s+from/)
   assert.ok(source.indexOf('pinRenderPolicy(executionPolicy, request.executionPolicy)') <
     source.indexOf("request.command === 'lose-device'"))
-  assert.ok(source.indexOf('for (const backend of candidates)') <
-    source.indexOf("await import('./gpu/factory')"))
+  const prewarm = source.slice(source.indexOf("if(request.command==='prepare-source-display')"),
+    source.indexOf("request.command === 'park-gpu'"))
+  assert.match(prewarm, /backend==='webgpu'&&!executionPolicy.cpuOnly&&!executionPolicy.hdrCompositing/)
+  const candidates = source.indexOf('for (const backend of candidates)')
+  assert.ok(source.indexOf("await import('./gpu/factory')", candidates) > candidates)
   assert.match(source, /rasterCandidates\(executionPolicy, preference, request.png\)/)
   assert.match(source, /linearBuffer: displayLinear\?\.buffer/)
 })

@@ -431,6 +431,15 @@ pub fn field_region_with_raster(
     crate::sampling::parameter_grid(rect, |x, y| Ok(geometry.at(x, y, glass)))
 }
 
+fn edge_factors_share_center(offset: [f32; 2], params: [f32; 4], dispersion: f32) -> bool {
+    let span = if dispersion < 0.001 { 0. } else { dispersion };
+    (0..2).all(|i| {
+        let at = |factor: f32| offset[i] + params[i] * factor;
+        let center = at(1.);
+        at(1. - span).to_bits() == center.to_bits() && at(1. + span).to_bits() == center.to_bits()
+    })
+}
+
 fn shade(
     params: [f32; 4],
     dispersion: f32,
@@ -530,9 +539,23 @@ pub(crate) fn render_region_with_raster(
     let geometry = Geometry::with_raster(basis, shape, matrix, glass, sample, software)?;
     let mut result = backdrop.new_like(output)?;
     let dispersion = glass.chromatic_aberration();
+    // The certified interior displacement is constant. When every dispersion
+    // factor produces that same sample offset, one backdrop read replaces the
+    // 24-tap gather and the original weighted sum still runs on that pixel.
+    let certified = field_interior(basis, output, shape, matrix, glass, sample, software)?;
+    let reuse_interior = certified.as_ref().is_some_and(|field| {
+        let params = field.value;
+        let span = if dispersion < 0.001 { 0. } else { dispersion };
+        (0..2).all(|i| {
+            let at = |factor: f32| geometry.offset[i] + params[i] * factor;
+            let center = at(1.);
+            at(1. - span).to_bits() == center.to_bits() && at(1. + span).to_bits() == center.to_bits()
+        })
+    });
     for y in output.y..output.bottom() {
         for x in output.x..output.right() {
-            let params = geometry.at(x, y, glass);
+            let inside = reuse_interior && certified.as_ref().is_some_and(|field| field.interior.index(x, y).is_some());
+            let params = if inside { certified.as_ref().expect("certified interior").value } else { geometry.at(x, y, glass) };
             let ray = |factor: f32| {
                 let delta: [f32; 2] =
                     std::array::from_fn(|i| geometry.offset[i] + params[i] * factor);
@@ -559,7 +582,19 @@ pub(crate) fn render_region_with_raster(
                     weights[1],
                 ))
             };
-            let pixel = shade(params, dispersion, false, ray);
+            let pixel = if inside {
+                let once = ray(1.);
+                shade(params, dispersion, false, |_| once)
+            } else if edge_factors_share_center(geometry.offset, params, dispersion) {
+                // Same certificate as the interior: the extreme dispersion
+                // factors land on the center sample's bits, so one backdrop
+                // read feeds the original weighted sum. The border geometry
+                // is still evaluated per pixel.
+                let once = ray(1.);
+                shade(params, dispersion, false, |_| once)
+            } else {
+                shade(params, dispersion, false, ray)
+            };
             result.pixels[output.index(x, y).expect("glass output")] = if linear {
                 pixel
             } else {
