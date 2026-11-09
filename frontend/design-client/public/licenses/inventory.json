@@ -80,14 +80,6 @@
       "file": "flo_curves-Apache-2.0.txt",
       "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
       "source": "vendor/flo_curves/LICENSE; local patch in vendor/flo_curves/PATCHES.md"
-    },
-    {
-      "package": "sha2-asm",
-      "version": "0.6.4",
-      "license": "MIT",
-      "file": "sha2-asm-MIT.txt",
-      "sha256": "85010e75aef5bdcd10b9ce39e8865dfab508f620f9ddb6ca6e54833fe97f36fa",
-      "source": "https://crates.io/crates/sha2-asm/0.6.4"
     }
   ],
   "referenceImplementations": [

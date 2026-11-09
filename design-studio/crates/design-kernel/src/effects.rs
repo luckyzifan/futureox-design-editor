@@ -337,14 +337,43 @@ fn unit_line_at(line: &[f32], at: i32) -> f32 {
     if at >= 0 && (at as usize) < line.len() { line[at as usize] } else { 0. }
 }
 
-/// Sliding unit-interval box sums are exact in binary64, and dividing by the
-/// odd window rounds to the same binary32 the error bound accepted. Where
-/// that bound declined, the rational kernel returned this same cast on the
-/// compared shadows. The bound's extra division was most of the zoom 3.2 cost.
+/// Proven dyadic scanlines retain the single-division fast path. Other lines
+/// need the rounding interval and rational fallback, including tiny values
+/// which a sliding sum can lose when a much larger sample leaves the window.
 #[inline(always)]
-fn certify_unit(sum: f64, steps: i32, window: f64, denominator: f64) -> Option<f32> {
-    let _ = (steps, window);
-    Some((sum / denominator).clamp(0., 1.) as f32)
+fn certify_unit(sum: f64, steps: i32, window: f64, denominator: f64, exact_line: bool) -> Option<f32> {
+    if !sum.is_finite() { return None; }
+    if exact_line { return Some((sum / denominator).clamp(0., 1.) as f32); }
+    let error=(window+2.*f64::from(steps.max(0)))*f64::EPSILON*sum.abs().max(1.)*8.;
+    let low=((sum-error)/denominator).clamp(0.,1.) as f32;
+    let high=((sum+error)/denominator).clamp(0.,1.) as f32;
+    (low.to_bits()==high.to_bits()).then_some(low)
+}
+
+#[inline(always)]
+fn nonzero(value:f32)->bool { value.to_bits()&0x7fff_ffff!=0 }
+
+// Every source is an integer multiple of its least significant binary unit.
+// Bound the window plus the add-before-remove temporary to 52 integer bits.
+// Those sliding sums are exact in f64; the odd box divisor leaves enough
+// separation from a binary32 midpoint to preserve the final rounding.
+fn exact_unit_line(line:&[f32],window:i32)->bool {
+    let (mut smallest,mut largest)=(i32::MAX,i32::MIN);
+    for &value in line {
+        let bits=value.to_bits();let magnitude=bits&0x7fff_ffff;
+        if magnitude==0 {continue}
+        if bits>>31!=0||magnitude>1_f32.to_bits(){return false}
+        let exponent=((bits>>23)&255) as i32;let fraction=bits&0x7f_ffff;
+        let (unit,top)=if exponent==0 {
+            (-149+fraction.trailing_zeros() as i32,-149+(31-fraction.leading_zeros()) as i32)
+        }else{
+            (exponent-150+(fraction|0x80_0000).trailing_zeros() as i32,exponent-127)
+        };
+        smallest=smallest.min(unit);largest=largest.max(top);
+    }
+    if smallest==i32::MAX{return true}
+    let extra=32-((window as u32).saturating_sub(1)).leading_zeros();
+    largest-smallest+1+extra as i32<=52
 }
 
 fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core: Option<Rect>) -> Result<(), String> {
@@ -403,9 +432,12 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
                 source_line[at] = input.pixels[at * width + line as usize].0[3];
             }
         }
+        let exact_line=exact_unit_line(&source_line,2*r+2);
         let mut sum = 0_f64;
+        let mut nonzeros=0_usize;
         for k in -r..=r {
-            sum += f64::from(unit_line_at(&source_line, k));
+            let value=unit_line_at(&source_line,k);
+            sum += f64::from(value);nonzeros+=usize::from(nonzero(value));
         }
         let mut since_sync = 0_i32;
         let mut at = 0;
@@ -425,8 +457,10 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
                         break;
                     }
                     sum = 0.;
+                    nonzeros=0;
                     for k in -r..=r {
-                        sum += f64::from(unit_line_at(&source_line, at + k));
+                        let value=unit_line_at(&source_line,at+k);
+                        sum += f64::from(value);nonzeros+=usize::from(nonzero(value));
                     }
                     since_sync = 0;
                     continue;
@@ -437,9 +471,10 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
             } else {
                 at as usize * width + line as usize
             };
-            let written = if sum == 0. {
+            let written = if nonzeros == 0 {
+                sum=0.;since_sync=0;
                 Some(0_f32)
-            } else if let Some(value) = certify_unit(sum, since_sync, window, denominator) {
+            } else if let Some(value) = certify_unit(sum, since_sync, window, denominator,exact_line) {
                 Some(value)
             } else {
                 sum = 0.;
@@ -447,7 +482,7 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
                     sum += f64::from(unit_line_at(&source_line, at + k));
                 }
                 since_sync = 0;
-                certify_unit(sum, 0, window, denominator)
+                certify_unit(sum, 0, window, denominator,exact_line)
             };
             if let Some(value) = written {
                 input.pixels[index].0[3] = value;
@@ -459,6 +494,7 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
             }
             let add = unit_line_at(&source_line, at + r + 1);
             let remove = unit_line_at(&source_line, at - r);
+            nonzeros=nonzeros+usize::from(nonzero(add))-usize::from(nonzero(remove));
             sum += f64::from(add);
             sum -= f64::from(remove);
             since_sync += 1;
@@ -535,8 +571,10 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
         // miss the compositing budget. Resync from the source line when the
         // bound is no longer conclusive; only a genuine tie uses rationals.
         let mut sum = [0_f64; CHANNELS];
+        let mut nonzeros=0_usize;
         for k in -r..=r {
             let p = sample(k);
+            nonzeros+=usize::from(p.iter().any(|&v|nonzero(v)));
             for (i, s) in sum.iter_mut().enumerate() {
                 *s += f64::from(p[i]);
             }
@@ -578,8 +616,10 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
                         break;
                     }
                     sum = [0.; CHANNELS];
+                    nonzeros=0;
                     for k in -r..=r {
                         let p = sample(at + k);
+                        nonzeros+=usize::from(p.iter().any(|&v|nonzero(v)));
                         for (i, s) in sum.iter_mut().enumerate() {
                             *s += f64::from(p[i]);
                         }
@@ -596,7 +636,8 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
             // A window of exact zeros is an exact zero. The error interval
             // around zero is not a single f32, so the certified path used to
             // fall through to a full rational convolution on every empty pixel.
-            let written = if sum.iter().all(|value| *value == 0.) {
+            let written = if nonzeros == 0 {
+                sum=[0.;CHANNELS];since_sync=0;
                 Some([0_f32; CHANNELS])
             } else if let Some(values) = certified(&sum, since_sync) {
                 Some(values)
@@ -626,6 +667,7 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
             }
             let remove = sample(at - r);
             let add = sample(at + r + 1);
+            nonzeros=nonzeros+usize::from(add.iter().any(|&v|nonzero(v)))-usize::from(remove.iter().any(|&v|nonzero(v)));
             for (i, s) in sum.iter_mut().enumerate() {
                 *s += f64::from(add[i]);
                 *s -= f64::from(remove[i]);
@@ -877,6 +919,16 @@ pub(crate) fn shadow_with_filter(
 ) -> Result<Surface, String> {
     let alpha = shadow_alpha(surface, filter, spread, inner)?;
     color_shadow_linear_owned(surface, alpha, color, dx, dy, inner)
+}
+
+// Only the painter may use this variant: its next operation composites the
+// unchanged source normally over the returned outer shadow. Opaque source
+// pixels then prove that the hidden shadow texel cannot affect the result.
+pub(crate) fn shadow_with_filter_for_composite(
+    surface:&Surface,color:Pixel,filter:BlurFilter,spread:f64,dx:f64,dy:f64,inner:bool,
+)->Result<Surface,String>{
+    let alpha=shadow_alpha(surface,filter,spread,inner)?;
+    color_shadow_linear_owned_impl(surface,alpha,color,dx,dy,inner,true)
 }
 
 pub(crate) fn shadow_alpha(
@@ -1191,12 +1243,17 @@ fn shadow_tap(alpha: &Surface, x: i32, y: i32) -> f32 {
 // taps. This preserves the existing sampler, including fractional offsets.
 fn color_shadow_linear_owned(
     surface: &Surface,
-    mut alpha: Surface,
+    alpha: Surface,
     color: Pixel,
     dx: f64,
     dy: f64,
     inner: bool,
 ) -> Result<Surface, String> {
+    color_shadow_linear_owned_impl(surface,alpha,color,dx,dy,inner,false)
+}
+fn color_shadow_linear_owned_impl(
+    surface:&Surface,mut alpha:Surface,color:Pixel,dx:f64,dy:f64,inner:bool,occluded:bool,
+)->Result<Surface,String>{
     debug_assert_eq!(surface.rect, alpha.rect);
     let rect = alpha.rect;
     let width = rect.w as usize;
@@ -1213,7 +1270,7 @@ fn color_shadow_linear_owned(
         for (at, pixel) in row.iter_mut().enumerate() {
             // Outer shadow is painted under the source. An opaque source pixel
             // hides that shadow, so the copied source pixel stays.
-            if !inner && pixel.0[3] == 1. {
+            if occluded && !inner && pixel.0[3] == 1. {
                 continue;
             }
             let src_a = pixel.0[3];
@@ -1637,6 +1694,20 @@ mod gaussian_scanline_memory_tests {
     }
 
     #[test]
+    fn opaque_shadow_shortcut_preserves_the_painters_normal_source_over(){
+        let mut source=Surface::new(Rect::new(-7,13,19,17)).unwrap();
+        for(i,p)in source.pixels.iter_mut().enumerate(){let a=if i%7==0{1.}else{((i*71)%256) as f32/255.};*p=Pixel([0.13*a,0.57*a,0.91*a,a]);}
+        let color=Pixel::rgba(0.1,0.7,0.3,0.37);
+        for(dx,dy)in[(-23.,-20.),(-1.25,2.),(0.,0.),(0.125,-0.2),(37.,21.)]{
+            let alpha=source.try_clone().unwrap();
+            let mut expected=color_shadow_linear(&source,&alpha,color,dx,dy,false).unwrap();
+            let mut actual=color_shadow_linear_owned_impl(&source,alpha,color,dx,dy,false,true).unwrap();
+            expected.composite_unmasked(&source,"normal",1.);actual.composite_unmasked(&source,"normal",1.);
+            for(a,b)in actual.pixels.iter().zip(&expected.pixels){assert_eq!(a.0.map(f32::to_bits),b.0.map(f32::to_bits));}
+        }
+    }
+
+    #[test]
     fn in_place_box_matches_original_bits_including_edges_and_ties() {
         for (w, h) in [(1, 1), (1, 17), (19, 1), (13, 11)] {
             let mut source = Surface::new(Rect::new(-17, 23, w, h)).unwrap();
@@ -1651,10 +1722,35 @@ mod gaussian_scanline_memory_tests {
                     let expected = box_pass_reference(&source, radius, horizontal).unwrap();
                     let mut actual = source.try_clone().unwrap();
                     box_pass_in_place_domain::<4>(&mut actual, radius, horizontal, true).unwrap();
+                    let mut alpha=source.try_clone().unwrap();
+                    box_pass_in_place_domain::<1>(&mut alpha,radius,horizontal,true).unwrap();
                     for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
                         assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
                     }
+                    for(a,b)in alpha.pixels.iter().zip(&expected.pixels){assert_eq!(a.0[3].to_bits(),b.0[3].to_bits());}
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn unit_box_rounding_handles_widely_separated_exponents_and_keeps_the_proven_fast_path(){
+        assert!(exact_unit_line(&[0.,1.,1./255.,0.12345679],1026));
+        assert!(!exact_unit_line(&[1.,f32::from_bits(1)],1026));
+        assert!(exact_unit_line(&[f32::from_bits(1)],1026));
+        let mut seed=17_u32;
+        for _ in 0..40 {
+            let mut source=Surface::new(Rect::new(-13,7,37,1)).unwrap();
+            for p in &mut source.pixels {
+                seed=seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                let exponent=(seed>>24)%128;
+                let bits=if seed%7==0 {1_f32.to_bits()}else{exponent<<23|(seed&0x7f_ffff)};
+                *p=Pixel([0.,0.,0.,f32::from_bits(bits)]);
+            }
+            for radius in [1,8,128] {
+                let reference=box_pass_reference(&source,radius,true).unwrap();
+                let mut actual=source.try_clone().unwrap();box_pass_in_place_domain::<1>(&mut actual,radius,true,true).unwrap();
+                for(a,b)in actual.pixels.iter().zip(&reference.pixels){assert_eq!(a.0[3].to_bits(),b.0[3].to_bits());}
             }
         }
     }

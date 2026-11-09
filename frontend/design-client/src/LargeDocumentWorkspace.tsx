@@ -707,7 +707,18 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         viewportDemand.current&&wanted.some(key=>keys.includes(key)):includesMaterials(keys,wanted))
       if(matches&&Math.abs(view.x-v.x)<0.5&&Math.abs(view.y-v.y)<0.5&&Math.abs(view.zoom-v.zoom)<0.0005)setShowOpening(false)
     },
-    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(status.phase==='ready'||status.phase==='refining')setShowOpening(false);if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=pickMaterial(point);if(item)openMaterial(item)}}:earlyDisplay?{
+    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{
+      // Quality follows every current-camera receipt, including after this
+      // snapshot's first ready frame. Only onSourcePresented releases preview.
+      setNativeRenderStatus(status)
+      if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('')}
+      if(status.phase==='error')nativeRenderError.current=true
+      if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return
+      if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token
+      if(status.phase==='error')setError(status.error??'画板绘制未完成')
+      else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`)
+      else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)
+    },openPoint:point=>{if(busyRef.current)return;const item=pickMaterial(point);if(item)openMaterial(item)}}:earlyDisplay?{
       snapshot:earlyDisplay,
       onStatus:status=>{if(status.phase==='error'){setFailedOpeningToken(earlyDisplay.token);setShowOpening(true)}},
       openPoint:openPreviewPoint,

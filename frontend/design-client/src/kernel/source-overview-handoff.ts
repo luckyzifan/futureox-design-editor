@@ -35,7 +35,7 @@ export class SourceOverviewHandoff {
     }
     const keys=new Set(materials.map(b=>b.materialKey))
     const shared=old.materials.filter(b=>b.materialKey&&keys.has(b.materialKey))
-    old.clip.style.clipPath=sourcePageClip(shared,view,width,height)??''
+    old.clip.style.clipPath=sourcePageClip(shared,view,width,height,true)??''
     // On a rapid A -> B -> A the old complete A bitmap is often still here.
     // Let it show through the loading container once the immutable material
     // scope and device footprint match. It never issues a new ready receipt.

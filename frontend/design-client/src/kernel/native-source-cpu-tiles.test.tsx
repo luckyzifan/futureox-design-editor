@@ -4,7 +4,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 
-const calls = vi.hoisted(() => ({ requests: 0, attached: 0, presented: 0, frames: 0, keys: [] as string[] }))
+const calls = vi.hoisted(() => ({ requests: 0, attached: 0, presented: 0, frames: 0, keys: [] as string[],defer:false,pending:[] as (()=>void)[] }))
 vi.mock('./client', () => ({
   backendPreference: () => 'cpu',
   renderExecutionPolicy: { desktopFullMath: true, desktopDisplay: true, cpuOnly: true, hdrCompositing: false },
@@ -15,7 +15,7 @@ vi.mock('./client', () => ({
       const tile = options.tileViewport?.[0]
       if (tile) calls.keys.push(tile.key)
       if (!tile) return Promise.resolve({ bytes: new Uint8Array() })
-      progress?.({
+      const deliver=()=>progress?.({
         ...tile,
         bytes: new Uint8Array(tile.width * tile.height * 4),
         bitmap: { close() {} },
@@ -24,6 +24,8 @@ vi.mock('./client', () => ({
         milliseconds: 1,
         cached: false,
       })
+      if(calls.defer)return new Promise(resolve=>calls.pending.push(()=>{deliver();resolve({bytes:new Uint8Array()})}))
+      deliver()
       return Promise.resolve({ bytes: new Uint8Array() })
     }
     attachPresentation() { calls.attached++ }
@@ -33,13 +35,13 @@ vi.mock('./client', () => ({
   },
 }))
 vi.mock('./presentation', () => ({ useDevicePixelRatio: () => 1 }))
-vi.mock('./tile-plan-aligned', () => ({
-  planTilesWithPrefetchRim: (_bounds: unknown, zoom: number) => ({
-    viewport: [{ key: `tile:${zoom}`, x: 0, y: 0, width: 514, height: 514, zoom, gutter: 1 }],
-    rim: [],
-    cacheLimitSkipped: 0,
-  }),
-}))
+vi.mock('./tile-plan-aligned', () => {
+  const planTilesAligned = (_bounds: unknown, zoom: number) =>
+    [{ key: `tile:${zoom}`, x: 0, y: 0, width: 514, height: 514, zoom, gutter: 1 }]
+  return { planTilesAligned, planTilesWithPrefetchRim: (bounds: unknown, zoom: number) => ({
+    viewport: planTilesAligned(bounds, zoom), rim: [], cacheLimitSkipped: 0,
+  }) }
+})
 
 import { NativeSourceSurface, type NativeSourceStatus } from './NativeSourceSurface'
 import type { SourceCanvasSnapshot } from '../desktop'
@@ -67,23 +69,32 @@ test('cpu-only source overview draws bitmap tiles without a gpu texture or a ful
     bounds: { x: 0, y: 0, width: 24000, height: 16000 }, warnings: [], rasterProfile: 'analytic', colorManaged: false,
   }
   const statuses: NativeSourceStatus[] = []
+  const receipts:{preview?:boolean;complete:boolean;regions:unknown}[]=[]
   try {
     calls.requests = 0
     calls.attached = 0
     calls.presented = 0
     calls.keys = []
-    await act(async () => root.render(<NativeSourceSurface source={source} view={{ x: 12, y: 8, zoom: 0.05 }} width={800} height={600} onStatus={status => statuses.push(status)} />))
+    calls.defer=true
+    await act(async () => root.render(<NativeSourceSurface source={source} view={{ x: 12, y: 8, zoom: 0.05 }} width={800} height={600} onStatus={status => statuses.push(status)} onPresented={(frame,complete,regions)=>receipts.push({preview:frame.preview,complete,regions})} />))
+    // The pasteboard can be painted before a delayed CPU worker returns any
+    // content. That receipt cannot punch holes through other source previews.
+    await act(async()=>{await vi.waitFor(()=>expect(receipts.some(frame=>frame.preview&&!frame.complete)).toBe(true))})
+    expect(receipts.every(frame=>!frame.complete&&frame.regions===undefined)).toBe(true)
+    await act(async()=>{calls.defer=false;for(const deliver of calls.pending.splice(0))deliver()})
     // Motion coverage remains a preview until the quiet camera requests its native lattice.
-    await act(async () => { await vi.waitFor(() => expect(statuses.at(-1)?.phase).toBe('ready')) })
+    await act(async () => { await vi.waitFor(() => expect(statuses.at(-1)?.phase, JSON.stringify(statuses)).toBe('ready')) })
     expect(drawImage).toHaveBeenCalled()
     expect(contexts).not.toContain('bitmaprenderer')
     expect(calls.attached).toBe(0)
     expect(calls.presented).toBe(0)
     expect(calls.requests).toBeGreaterThanOrEqual(2)
     expect(statuses.some(status => status.phase === 'error')).toBe(false)
-    expect(statuses.at(-1)).toMatchObject({ phase: 'ready', done: 1, total: 1 })
+    expect(statuses.at(-1)).toMatchObject({ phase: 'ready', done: 1, total: 1, sharp: true, view: { x: 12, y: 8, zoom: 0.05 } })
+    expect(receipts.some(frame=>frame.complete&&!frame.preview)).toBe(true)
     expect(dom.window.document.querySelector('.kernel-status')?.textContent).toBe('CPU · 已显示')
   } finally {
+    calls.defer=false;calls.pending=[]
     await act(async () => root.unmount())
     dom.window.close()
     vi.unstubAllGlobals()

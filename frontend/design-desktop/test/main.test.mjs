@@ -283,6 +283,11 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     'const here = path.dirname(fileURLToPath(import.meta.url))',
     `const here = ${JSON.stringify(path.dirname(fileURLToPath(src)))}`,
   )
+  // The data-URL harness needs absolute imports for every actual host module,
+  // including newly added adapters that do not need a test double.
+  source = source.replace(/from (['"])(\.\/[^'"]+)\1/g, (_match, _quote, relative) =>
+    `from ${JSON.stringify(new URL(`../src/${relative.slice(2)}`, import.meta.url).href)}`)
+  source = source.replaceAll('fileURLToPath(import.meta.url)', JSON.stringify(fileURLToPath(src)))
   source =
     'const setTimeout = (callback) => { globalThis[' +
     JSON.stringify(key) +
@@ -414,13 +419,20 @@ test('accepted active capability survives many cancelled renderer-open replaceme
       assert.equal((await state.invoke('open')).status, 'ok')
     }
     assert.equal(
+      (await state.invoke('recovery-write', { handle: current.handle, documentJson: '{}' })).status,
+      'ok',
+    )
+    assert.equal(state.requests.findLast(request => request.method === 'recovery.write').params.sourcePath, '/tmp/active.fd')
+    // Imported source grants remain usable, but exporting must choose an independent copy.
+    state.save.push({ canceled: false, filePath: '/tmp/active-copy.fd' })
+    assert.equal(
       (await state.invoke('save', { handle: current.handle, documentJson: '{"name":"active"}' }))
         .status,
       'ok',
     )
     assert.equal(
       state.requests.find((request) => request.method === 'save').params.path,
-      '/tmp/active.fd',
+      '/tmp/active-copy.fd',
     )
     assert.equal(
       (await state.invoke('recovery-write', { handle: current.handle, documentJson: '{}' })).status,
@@ -791,10 +803,14 @@ test('accepted catalog document keeps its root grant through sixteen later folde
       state.open.push({ canceled: false, filePaths: [next] })
       assert.equal((await state.invoke('catalog-select')).status, 'ok')
     }
+    assert.equal((await state.invoke('recovery-write', { handle: opened.handle, documentJson: '{}' })).status, 'ok')
+    assert.equal(state.requests.findLast(request => request.method === 'recovery.write').params.sourcePath, path.join(activePath, 'drawing.fd'))
+    state.save.push({ canceled: false, filePath: path.join(activePath, 'drawing-copy.fd') })
     const saved = await state.invoke('save', { handle: opened.handle, documentJson: '{}' })
     assert.equal(saved.status, 'ok')
-    assert.equal(state.requests.at(-1).params.path, path.join(activePath, 'drawing.fd'))
-    assert.equal(state.requests.at(-1).params.directoryId, 'directory-1')
+    assert.equal(state.requests.at(-1).params.path, path.join(activePath, 'drawing-copy.fd'))
+    assert.equal(state.requests.at(-1).params.directoryId, undefined)
+    assert.ok(state.requests.filter(request => request.method === 'save').every(request => request.params.path !== path.join(activePath, 'drawing.fd')))
   } finally { await state.dispose() }
 })
 
@@ -1355,15 +1371,16 @@ for (const platform of ['darwin', 'win32', 'linux']) {
         const chinese = locale === 'zh-CN'
         const file = state.menu.find(item => item.label === (chinese ? '文件' : 'File'))
         const edit = state.menu.find(item => item.label === (chinese ? '编辑' : 'Edit'))
-        const save = file.submenu.find(item => item.label === (chinese ? '保存' : 'Save'))
+        const save = file.submenu.find(item => item.label === (chinese ? '导出副本…' : 'Export copy…'))
         const paste = edit.submenu.find(item => item.label === (chinese ? '粘贴到所选图层上方' : 'Paste Over Selection'))
         const settings = edit.submenu.find(item => item.label === (chinese ? '设置…' : 'Settings…'))
-        assert.equal(save.accelerator, 'CmdOrCtrl+S')
+        assert.equal(file.submenu.find(item => item.label === (chinese ? '编辑会自动保存' : 'Edits are saved automatically')).enabled, false)
+        assert.equal(save.accelerator, 'CmdOrCtrl+Shift+S')
         assert.equal(paste.accelerator, 'CmdOrCtrl+Shift+V')
         assert.equal(settings.accelerator, 'CmdOrCtrl+,')
         assert.equal(file.submenu.find(item => item.role === 'close').role, 'close')
         state.sent = []; save.click(); paste.click(); settings.click()
-        assert.deepEqual(state.sent, ['save', 'paste-over-selection', 'settings'].map(command => ['design-desktop:command', command]))
+        assert.deepEqual(state.sent, ['saveAs', 'paste-over-selection', 'settings'].map(command => ['design-desktop:command', command]))
         assert.equal(state.pageZoom, 1)
       }
       assert.equal(state.requests.length, beforeRequests, 'Locale and menu dispatch do not create sidecar document mutations')
@@ -1478,7 +1495,7 @@ test('startup enables declared plugins in the menu without exposing filesystem p
     const english = state.menu.find(item => item.label === 'Plugins')
     assert.equal(english.submenu[0].label, 'Open plugin host…')
     assert.equal(english.submenu[2].label, 'Save')
-    const fileSave = state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Save')
-    assert.equal(fileSave.accelerator, 'CmdOrCtrl+S')
+    const fileSave = state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Export copy…')
+    assert.equal(fileSave.accelerator, 'CmdOrCtrl+Shift+S')
   } finally { await state.dispose() }
 })
