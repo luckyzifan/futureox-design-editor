@@ -89,6 +89,7 @@ pub(crate) fn save_guarded(
         || Ok(()),
         sync_directory,
         authorize,
+        |file, payload| file.write_all(payload),
     )?;
     Ok(SavedDocument {
         hash: hash(&bytes),
@@ -311,7 +312,15 @@ pub(crate) fn atomic_write(
     expected: Option<&str>,
     limit: usize,
 ) -> Result<Option<String>> {
-    atomic_write_with_hooks(path, bytes, expected, limit, || Ok(()), sync_directory)
+    atomic_write_with_hooks(
+        path,
+        bytes,
+        expected,
+        limit,
+        || Ok(()),
+        sync_directory,
+        |file, payload| file.write_all(payload),
+    )
 }
 
 fn atomic_write_with_hooks(
@@ -321,6 +330,7 @@ fn atomic_write_with_hooks(
     limit: usize,
     before_commit: impl FnOnce() -> Result<()>,
     sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+    write_payload: impl FnOnce(&mut File, &[u8]) -> std::io::Result<()>,
 ) -> Result<Option<String>> {
     atomic_write_guarded(
         path,
@@ -330,6 +340,7 @@ fn atomic_write_with_hooks(
         before_commit,
         sync_directory,
         || Ok(()),
+        write_payload,
     )
 }
 
@@ -341,6 +352,7 @@ fn atomic_write_guarded(
     before_commit: impl FnOnce() -> Result<()>,
     sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
     authorize: impl Fn() -> Result<()>,
+    write_payload: impl FnOnce(&mut File, &[u8]) -> std::io::Result<()>,
 ) -> Result<Option<String>> {
     authorize()?;
     check_expected(path, expected, limit)?;
@@ -359,7 +371,7 @@ fn atomic_write_guarded(
         .ok_or_else(|| BackendError::new("INVALID_PATH", "Missing parent directory"))?;
     let temporary_path = parent.join(format!(".fd-write-{}.tmp", crate::unique_id()));
     let (mut file, temporary) = create_temporary(temporary_path)?;
-    file.write_all(bytes)
+    write_payload(&mut file, bytes)
         .map_err(|e| BackendError::io("Cannot write temporary file; original retained", e))?;
     if let Some(metadata) = previous {
         file.set_permissions(metadata.permissions()).map_err(|e| {
@@ -419,6 +431,7 @@ mod tests {
                 ))
             },
             sync_directory,
+            |file, payload| file.write_all(payload),
         );
         assert_eq!(result.unwrap_err().code, "IO_ERROR");
         assert_eq!(fs::read(&path).unwrap(), b"original");
@@ -442,6 +455,7 @@ mod tests {
                 Ok(())
             },
             sync_directory,
+            |file, payload| file.write_all(payload),
         );
         assert_eq!(result.unwrap_err().code, "CONFLICT");
         assert_eq!(fs::read(&path).unwrap(), b"external");
@@ -462,12 +476,44 @@ mod tests {
             100,
             || Ok(()),
             |_| Err(std::io::Error::other("injected directory sync failure")),
+            |file, payload| file.write_all(payload),
         );
         assert!(result.unwrap().unwrap().contains("File saved"));
         assert_eq!(
             file_hash(&path, 100).unwrap().as_deref(),
             Some(hash(b"replacement").as_str())
         );
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn autosave_recovery_storage_full_preserves_original_and_is_not_saved() {
+        let root = std::env::temp_dir().join(format!("forma-nospace-test-{}", crate::unique_id()));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("original.fd");
+        fs::write(&path, b"original").unwrap();
+        let result = atomic_write_with_hooks(
+            &path,
+            b"replacement-that-must-not-land",
+            Some(&hash(b"original")),
+            100,
+            || Ok(()),
+            sync_directory,
+            |file, bytes| {
+                let prefix = bytes.len().min(4);
+                file.write_all(&bytes[..prefix])?;
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::StorageFull,
+                    "no space left on device",
+                ))
+            },
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error.code, "IO_ERROR");
+        assert!(error.message.contains("original retained"));
+        assert!(!error.message.contains("File saved"));
+        assert_eq!(fs::read(&path).unwrap(), b"original");
         assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
         fs::remove_dir_all(root).unwrap();
     }
