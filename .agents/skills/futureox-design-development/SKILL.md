@@ -109,6 +109,7 @@ description: Develop, review, or test this Futureox Design local-first editor, i
 
 2026-10-30 的稀疏画布、源准备与实时像素修复见[本轮验证](../../../testing/verification-sparse-canvas-20261030/README.md)。实时捕获必须高于实际页面质量层级，不能用固定 layer 4：原精确 layer 5 曾遮挡已生成的新像素，渲染回执变快并未消除蓝框先动。必须保留真实截图负/正对照。FXSCENE4 共享完整图片/几何并保留原始 f64 位；两 CPU 转换槽按源序合并，单 GPU owner 不变。空白复用需完整源、同 owner/颜色/密度的实际 GPU texel 证明，白色 authored paint 仍保留。四采样子树/静态前缀与高斯分条均使用原预算；新实验准入与开关不整体放开。有界捕获扩展只保留 owner-valid 输出边界，最多一原生百万像素，不授予像素复用或完整性。截图会阻塞 IPC 回执，像素回放与无截图计时分开；冷启动、100 ms 精修、可见 P95、任意嵌套/HDR 覆盖及完整 G5 尚未关闭。
 
+2026-11-09 [缩放清晰度方案选择](../../../docs/ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)：普通桌面 SDR WebGPU 默认渐进替换已完成的原密度区域，保留同源连续预览，整屏回执仍需全部完成；`VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR=0` 回退。117 首个原密度区域呈现 ACK 约 10.5→0.8 秒，整屏约 8.5 秒；模板二首区域仍约 5.6 秒。原密度/相位、版本、设备、取消边界与最终像素保持，native-visible-tiles 等其他实验不推广。不代表运动始终清晰或完整 G2/G5。[整个应用开源/商业分发评估](../../../docs/OPEN_SOURCE_COMMERCIAL_READINESS_20261109.zh-CN.md)仍有项目许可、素材/代码来源与实际发布包授权缺口，不能从渲染通过推导可发布。
 
 2026-10-29/30 的响应修复与真实长测见[本轮记录](../../../testing/verification-responsive-editor-20261029/README.md)。保留 parsed Sketch 导入的计数额度、最多两个 CPU 转换任务、原绘制顺序与单 GPU raster owner。嵌套保留仅扩展空的独立 pass-through 祖先；图片专用解码器只在同源证明及相同颜色/mip 政策下共享，变化时分离，不共享 CPU 全文档引擎。根拖动停滞/跳框已有实际截图对照；6912 次长平移属于 v3，最终解码器增量及三文件编辑回归分别记录。冷启动、3200% 模板二错误、约一秒提交精修、33/100ms、全部嵌套效果与完整 G5 仍未关闭，不得称全部方案完成。
 

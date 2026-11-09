@@ -2499,7 +2499,7 @@ test.each(['0','1'])('cold resident preview repairs by replacement while exact t
   expect(parts.wrapper.props['data-detail-ready']).toBe('false')
 })
 
-test.each(['0','1'])('quiet native repair does not redraw a covering coarse frame first (candidate=%s)',async flag=>{
+test.each(['0','1',undefined])('quiet native repair does not redraw a covering coarse frame first (mode=%s)',async flag=>{
   nativeNavigationHost();vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0');vi.stubEnv('VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR',flag)
   worker.dynamicPlan=true
   const first={x:0,y:0,zoom:2},size={width:512,height:256}
@@ -2513,7 +2513,7 @@ test.each(['0','1'])('quiet native repair does not redraw a covering coarse fram
   const next={...options,view:{...first,zoom:8}}
   h.render(next);await vi.waitFor(()=>expect(worker.calls.length).toBeGreaterThan(before))
   const request=worker.calls[before]
-  if(flag==='1'){
+  if(flag!=='0'){
     expect(request.options.renderIntent).toBe('canvas');expect(request.options.tileViewport.length).toBeGreaterThan(0)
     expect(request.options.tileViewport.every((tile:RasterTile)=>tile.zoom===16)).toBe(true)
   }else expect(request.options.livePreview).toBe(true)
