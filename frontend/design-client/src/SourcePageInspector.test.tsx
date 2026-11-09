@@ -33,6 +33,18 @@ test('a source overview inspector is a page, canvas and picture sheet', async ()
   expect(text).toContain('低分辨率预览')
   expect(text).toContain('2')
   expect(text).not.toContain('选中图层后，在这里编辑颜色、形状与约束。')
+  const status = { phase: 'ready' as const, done: 1, total: 1, sharp: true, view: { ...editor.effectiveView() } }
+  const current = { ...source, hideNative: false, nativeCanvas: { status } } as unknown as SourceWorkspace
+  const draw = (next: SourceWorkspace) => act(async () => { root!.render(<SourcePageInspector source={next} editor={editor!} />) })
+  await draw(current)
+  expect(document.querySelector('.source-picture-state')?.getAttribute('data-sharp')).toBe('true')
+  for (const changed of [{ ...status, phase: 'refining' }, { ...status, sharp: false }, { ...status, view: { ...status.view, zoom: status.view.zoom * 2 } }]) {
+    await draw({ ...current, nativeCanvas: { status: changed } } as unknown as SourceWorkspace)
+    expect(document.querySelector('.source-picture-state')?.getAttribute('data-sharp')).toBe('false')
+  }
+  await draw(current)
+  await act(async () => { editor!.set({ view: { ...status.view, x: status.view.x + 20 } }) })
+  expect(document.querySelector('.source-picture-state')?.getAttribute('data-sharp')).toBe('false')
   await act(async () => { root!.unmount() })
   root = undefined
   dom.window.close()

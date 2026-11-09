@@ -4104,7 +4104,7 @@ impl Painter<'_> {
                             inner,
                         )?
                     } else {
-                        effects::shadow_with_filter(
+                        effects::shadow_with_filter_for_composite(
                             &layer,
                             crate::color::pixel(
                                 self.doc.color_management,

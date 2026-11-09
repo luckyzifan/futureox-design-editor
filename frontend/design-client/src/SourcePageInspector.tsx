@@ -8,13 +8,16 @@ import { usePropertyText } from './property-interface-messages'
 export function SourcePageInspector({ source, editor }: { source: SourceWorkspace; editor: Editor }) {
   const { tr } = usePropertyText()
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
-  const zoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom)
+  const view = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView())
+  const zoom = view.zoom
   const page = s.doc.pages.find(item => item.id === s.page)
   const pages = source.openingPreview?.pages
   const current = source.openingPage ? pages?.find(item => item[0] === source.openingPage) : undefined
   const pageName = current?.[1] || (source.openingPage ? source.openingPage : tr('全部页面'))
   const materialCount = source.openingPreview?.items.length ?? source.nativeCanvas?.snapshot.roots
-  const sharp = !!source.nativeCanvas && !source.hideNative
+  const status=source.nativeCanvas?.status,shown=status?.view
+  const sharp = !source.hideNative&&status?.phase==='ready'&&status.sharp===true&&
+    !!shown&&shown.x===view.x&&shown.y===view.y&&shown.zoom===view.zoom
   const background = page ? displayColorHex(page.background) || page.background : ''
   return <aside className="inspector source-page-inspector">
     <div className="panel-tabs"><b>{tr('设计')}</b><span>{tr('属性')}</span></div>

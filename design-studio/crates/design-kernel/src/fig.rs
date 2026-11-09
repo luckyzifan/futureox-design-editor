@@ -4851,7 +4851,10 @@ mod tests {
             let mut changes=canvas_only();let mut symbol=base_change("SYMBOL",1,2);
             symbol["componentPropDefs"]=json!([{"id":guid(1,8),"name":"Shown","type":"BOOL","initialValue":{"boolValue":true}}]);
             changes.push(symbol);
-            assert!(doc_with(changes).unwrap_err().to_string().contains("componentPropRef"));
+            let doc=doc_with(changes).unwrap();
+            let property=&node_of(&doc,1,2).component.as_ref().unwrap().properties["fig-1-8"];
+            assert_eq!(property.name,"Shown");assert_eq!(property.default_value,json!(true));
+            assert!(property.unbound,"an unbound definition is preserved without inventing a target");
         }
 
         #[test]

@@ -4,6 +4,23 @@ import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
 
+test('quiet native work revokes only an undelivered optional capture, retaining its physical fence',async()=>{
+  let cancelled=0,done=false
+  const capture={zoom:32,bounds:{x:0,y:0,width:1024,height:512},cancel:()=>cancelled++}
+  const flight=navigationCoverageFlight<object>({},1,capture)
+  void flight.done.then(()=>{done=true})
+  expect(flight.cancelForNative()).toBe(true)
+  expect(cancelled).toBe(1);expect(flight.cancellationRequested).toBe(true)
+  expect(flight.cancelForNative()).toBe(false)
+  await Promise.resolve();expect(done).toBe(false)
+  flight.finish();await flight.done;expect(done).toBe(true)
+  const delivered=navigationCoverageFlight<object>({},1,capture)
+  delivered.tile={};expect(delivered.cancelForNative()).toBe(false)
+  delivered.finish();expect(delivered.cancelForNative()).toBe(false)
+  expect(navigationCoverageFlight({},1).cancelForNative()).toBe(false)
+  expect(cancelled).toBe(1)
+})
+
 test('large reversal revokes only the optional narrow capture and retains its physical completion fence',async()=>{
   let cancelled=0,done=false
   const flight=navigationCoverageFlight({},1,{zoom:8,bounds:{x:0,y:0,width:128,height:64},cancel:()=>cancelled++})

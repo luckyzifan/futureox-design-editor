@@ -541,15 +541,17 @@ fn small_analytic_frame_matches_exact_surfaces() {
 #[test]
 fn oversized_analytic_blur_keeps_fill_when_the_frame_cannot_fit() {
     let mut engine = Engine::new();
-    // radius 800 at 1x is a 2402px gaussian outset. The exact frame reports
+    // The analytic blur uses sigma=radius/2: radius 800 at 2x has a 2402px
+    // Gaussian outset. Keep the case beyond the existing exact-frame guard.
+    // The exact frame reports
     // the halo/budget error. Degraded tiles keep the fill and the page color.
     engine.load_document(&json!({"schemaVersion":5,"id":"d","name":"Budget topology",
         "pages":[{"id":"p","name":"p","background":"#ffffff","children":["a"]}],
-        "nodes":{"a":{"id":"a","kind":"rectangle","transform":[1,0,0,1,40,40],"width":48,"height":48,
+        "nodes":{"a":{"id":"a","kind":"rectangle","transform":[1,0,0,1,20,20],"width":48,"height":48,
             "fills":[{"kind":"solid","color":"#cc2244"}],
             "effects":[{"kind":"blur","radius":800,"color":"#000000"}]}}
     }).to_string()).unwrap();
-    let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":256,"height":256,"transparent":false,"rasterProfile":"analytic","view":{"zoom":1,"x":0,"y":0}})).unwrap();
+    let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":256,"height":256,"transparent":false,"rasterProfile":"analytic","view":{"zoom":2,"x":0,"y":0}})).unwrap();
     let exact = engine.render_surfaces_regions(&options, false, Rect::new(0, 0, 256, 256), 0, Budget::new(COMPOSITING_BYTES), true);
     let error = match exact {
         Err(error) => error,

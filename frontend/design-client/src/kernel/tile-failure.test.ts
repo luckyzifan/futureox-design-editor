@@ -39,11 +39,11 @@ test('budget fault injection before renderer creation preserves the current name
   retireFailedTileRenderer(new Error('GPU 表面内存预算超限 (explicit first-attempt test injection)'), undefined, invalidate)
   expect(invalidate).not.toHaveBeenCalled()
 })
-test('resident allocation recovery waits for frame retirement without destroying displayed textures',async()=>{
+test.each(['GPU 表面内存预算超限','GPU surface budget exceeded'])('resident allocation recovery (%s) waits without destroying displayed textures',async(message)=>{
   let complete!:()=>void
   const abortFrameAndReleaseFilterScratch=vi.fn(()=>new Promise<void>(resolve=>{complete=resolve}))
   const dispose=vi.fn(),invalidate=vi.fn(),renderer={driver:{lost:false,abortFrameAndReleaseFilterScratch},dispose}
-  const recovered=recoverFailedTileRenderer(Error('GPU 表面内存预算超限'),renderer,invalidate,true)
+  const recovered=recoverFailedTileRenderer(Error(message),renderer,invalidate,true)
   expect(dispose).not.toHaveBeenCalled();expect(invalidate).not.toHaveBeenCalled()
   complete();expect(await recovered).toBe(true)
   expect(abortFrameAndReleaseFilterScratch).toHaveBeenCalledOnce()
