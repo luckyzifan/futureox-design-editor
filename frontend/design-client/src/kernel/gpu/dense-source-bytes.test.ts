@@ -18,14 +18,23 @@ function fixture(){
  const p:any={kind:'image',image:'design-app://app/source-image/owned-1/'+ 'a'.repeat(64)+'-512x512.png?samples=1',color:'#000000',fit:'cover'}
  return{r,driver,n,p}
 }
-test('native dense source charges transfer rows and uses the existing retirement owners',()=>{
+test('managed WebGPU ignores the dense-bytes flag and keeps float sampling',()=>{
  const f=fixture();const result=f.r.sourceBitmapGrid(f.n,f.p)
- expect(f.driver.uploadStraightSrgb8).toHaveBeenCalledOnce();expect(f.driver.uploadLinear).not.toHaveBeenCalled()
- const [pixels,w,h]=f.driver.uploadStraightSrgb8.mock.calls[0]
- expect(pixels).toBeInstanceOf(Uint8Array);expect([w,h]).toEqual([256,32])
- expect(result.image.rect).toEqual({x:0,y:0,w:256,h:32});expect(result.image.texture.height).toBe(34)
- expect(f.r.bytes).toBe(256*34*4+128*16*16)
- expect(f.r.coordinateMaps.has(result.image.texture)).toBe(true)
+ expect(f.driver.managed).toBe(true)
+ expect(f.driver.uploadStraightSrgb8).not.toHaveBeenCalled()
+ expect(f.driver.uploadLinear).toHaveBeenCalledOnce()
+ const [pixels,w,h]=f.driver.uploadLinear.mock.calls[0]
+ expect(pixels).toBeInstanceOf(Float32Array);expect([w,h]).toEqual([256,32])
+ expect(result.image.rect).toEqual({x:0,y:0,w:256,h:32});expect(result.image.texture.height).toBe(32)
+ expect(f.r.bytes).toBe(result.image.texture.bytes+result.field.texture.bytes)
+ f.r.scene.coherentSamples=true
+ f.r.sampleIndex=0
+ f.p.stops=[]
+ f.p.opacity=1
+ f.p.angle=0
+ const u=new Float32Array(256)
+ f.r.configurePaint(u,f.n,f.p)
+ expect(u[187]).toBe(0)
  f.r.dispose();expect(f.driver.dispose).toHaveBeenCalledOnce();expect(f.r.coordinateMaps.size).toBe(0)
  expect(f.driver.destroy).toHaveBeenCalledWith(result.field.texture);expect(f.r.bytes).toBe(0)
 })

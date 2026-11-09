@@ -59,9 +59,9 @@ export function readDenseSourceGrid(uri:string,field:Float32Array,b:Rect,iw:numb
  return out
 }
 
-// The native source already returns straight RGBA8. Preserve those bytes in
-// the virtual four-tap texture; the existing private GPU transfer table can
-// reconstruct the same premultiplied f32 values before exact interpolation.
+// Straight RGBA8 packing for a virtual four-tap field. The managed renderer
+// does not upload this buffer: its shader does not sample it as a byte image.
+// Production sampling stays on the linear f32 grid.
 export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw:number,ih:number){
  const width=b.w*2,height=b.h*2,out=new Uint8Array(width*height*4)
  const bandRows=Math.max(1,Math.floor(8192/b.w))
