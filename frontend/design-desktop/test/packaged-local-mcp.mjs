@@ -94,14 +94,30 @@ try {
   const uri = shot.content.find(x => x.type === 'resource_link').uri
   await invoke('design_history_undo', {}, await fence())
   assert.deepEqual((await invoke('design_node_get', { id })).structuredContent.result.node.transform.slice(4), [0,0])
+  let externalClients = null
   if (process.argv.includes('--clients')) {
     const { verifyExternalClients } = await import('./runtime/external-mcp-clients.mjs')
-    await verifyExternalClients(config, temp)
+    externalClients = await verifyExternalClients(config, temp, {
+      packagedExecutable: executablePath,
+      packagedGuiToolsList: true,
+    })
   }
   await invoke('design_history_undo', {}, await fence())
   await dialog.getByRole('button', { name: /^(停用|Turn off)$/ }).click()
   await expect.poll(async () => (await client.rpc('resources/read', { uri })).error?.code).toBe(-32000)
-  console.log(JSON.stringify({ packagedGui: true, readTools: rtools.length, fullGrantTools: tools.length, nativeMenu: true, htmlCss: true, sameBatchXY: true, png: true, undo: true, revoked: true }))
+  console.log(JSON.stringify({
+    packagedGui: true,
+    externalClientAcceptance: false,
+    externalClients: externalClients?.clients.map(client => ({ id: client.id, status: client.status })) ?? 'not_requested',
+    readTools: rtools.length,
+    fullGrantTools: tools.length,
+    nativeMenu: true,
+    htmlCss: true,
+    sameBatchXY: true,
+    png: true,
+    undo: true,
+    revoked: true,
+  }))
 } finally {
   await Promise.allSettled(clients.map(c => c.close()))
   try { await app?.close() } finally { await rm(temp, { recursive: true, force: true }) }
