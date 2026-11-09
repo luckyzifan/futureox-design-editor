@@ -97,6 +97,20 @@ const TEXT_KEYS: &[&str] = &[
     "textCase",
     "fontName",
     "textDecoration",
+    "fontVariantCommonLigatures",
+    "fontVariantContextualLigatures",
+    "fontVariantDiscretionaryLigatures",
+    "fontVariantHistoricalLigatures",
+    "fontVariantOrdinal",
+    "fontVariantSlashedZero",
+    "fontVariantNumericFigure",
+    "fontVariantNumericSpacing",
+    "fontVariantNumericFraction",
+    "fontVariantCaps",
+    "fontVariantPosition",
+    "toggledOnOTFeatures",
+    "toggledOffOTFeatures",
+    "fontVariations",
 ];
 const CORNER_KEYS: &[(&str, usize)] = &[
     ("rectangleTopLeftCornerRadius", 0),
@@ -635,6 +649,297 @@ fn apply_layout(
     }
 }
 
+fn set_feature(features: &mut Vec<String>, tag: &str, enabled: bool) {
+    let disabled = format!("-{tag}");
+    features.retain(|feature| feature != tag && feature != &disabled);
+    features.push(if enabled { tag.into() } else { disabled });
+}
+
+fn clear_features(features: &mut Vec<String>, tags: &[&str]) {
+    features.retain(|feature| {
+        !tags
+            .iter()
+            .any(|tag| feature == *tag || feature == &format!("-{tag}"))
+    });
+}
+
+fn set_choice(features: &mut Vec<String>, tags: &[&str], selected: Option<&str>) {
+    clear_features(features, tags);
+    if let Some(tag) = selected {
+        set_feature(features, tag, true);
+    }
+}
+
+fn axis_tag(variation: &Value) -> Option<String> {
+    variation
+        .get("axisTag")
+        .and_then(Value::as_u64)
+        .map(|bits| String::from_utf8_lossy(&(bits as u32).to_be_bytes()).into_owned())
+        .or_else(|| {
+            variation
+                .get("axisName")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .filter(|tag| tag.len() == 4 && tag.chars().all(|c| c.is_ascii_alphanumeric()))
+}
+
+fn apply_open_type(
+    style: &mut crate::font::TextStyle,
+    ov: &Value,
+    unsupported: &mut BTreeSet<String>,
+) -> bool {
+    let mut changed = false;
+    let flag = |features: &mut Vec<String>,
+                key: &str,
+                tags: &[&str],
+                unsupported: &mut BTreeSet<String>| {
+        let Some(value) = ov.get(key) else { return };
+        match value.as_bool() {
+            Some(enabled) => {
+                for tag in tags {
+                    set_feature(features, tag, enabled);
+                }
+            }
+            None => {
+                unsupported.insert(key.into());
+            }
+        }
+    };
+    flag(
+        &mut style.features,
+        "fontVariantCommonLigatures",
+        &["liga", "clig"],
+        unsupported,
+    );
+    flag(
+        &mut style.features,
+        "fontVariantContextualLigatures",
+        &["calt"],
+        unsupported,
+    );
+    flag(
+        &mut style.features,
+        "fontVariantDiscretionaryLigatures",
+        &["dlig"],
+        unsupported,
+    );
+    flag(
+        &mut style.features,
+        "fontVariantHistoricalLigatures",
+        &["hlig"],
+        unsupported,
+    );
+    flag(
+        &mut style.features,
+        "fontVariantOrdinal",
+        &["ordn"],
+        unsupported,
+    );
+    flag(
+        &mut style.features,
+        "fontVariantSlashedZero",
+        &["zero"],
+        unsupported,
+    );
+    if ov
+        .get("fontVariantCommonLigatures")
+        .and_then(Value::as_bool)
+        .is_some()
+        || ov
+            .get("fontVariantContextualLigatures")
+            .and_then(Value::as_bool)
+            .is_some()
+        || ov
+            .get("fontVariantDiscretionaryLigatures")
+            .and_then(Value::as_bool)
+            .is_some()
+        || ov
+            .get("fontVariantHistoricalLigatures")
+            .and_then(Value::as_bool)
+            .is_some()
+        || ov
+            .get("fontVariantOrdinal")
+            .and_then(Value::as_bool)
+            .is_some()
+        || ov
+            .get("fontVariantSlashedZero")
+            .and_then(Value::as_bool)
+            .is_some()
+    {
+        changed = true;
+    }
+    if let Some(value) = ov.get("fontVariantNumericFigure") {
+        match value.as_str() {
+            Some("NORMAL") => set_choice(&mut style.features, &["lnum", "onum"], None),
+            Some("LINING") => set_choice(&mut style.features, &["lnum", "onum"], Some("lnum")),
+            Some("OLDSTYLE") => set_choice(&mut style.features, &["lnum", "onum"], Some("onum")),
+            _ => {
+                unsupported.insert("fontVariantNumericFigure".into());
+            }
+        }
+        if value
+            .as_str()
+            .is_some_and(|name| matches!(name, "NORMAL" | "LINING" | "OLDSTYLE"))
+        {
+            changed = true;
+        }
+    }
+    if let Some(value) = ov.get("fontVariantNumericSpacing") {
+        match value.as_str() {
+            Some("NORMAL") => set_choice(&mut style.features, &["pnum", "tnum"], None),
+            Some("PROPORTIONAL") => {
+                set_choice(&mut style.features, &["pnum", "tnum"], Some("pnum"))
+            }
+            Some("TABULAR") => set_choice(&mut style.features, &["pnum", "tnum"], Some("tnum")),
+            _ => {
+                unsupported.insert("fontVariantNumericSpacing".into());
+            }
+        }
+        if value
+            .as_str()
+            .is_some_and(|name| matches!(name, "NORMAL" | "PROPORTIONAL" | "TABULAR"))
+        {
+            changed = true;
+        }
+    }
+    if let Some(value) = ov.get("fontVariantNumericFraction") {
+        match value.as_str() {
+            Some("NORMAL") => set_choice(&mut style.features, &["frac", "afrc"], None),
+            Some("DIAGONAL") => set_choice(&mut style.features, &["frac", "afrc"], Some("frac")),
+            Some("STACKED") => set_choice(&mut style.features, &["frac", "afrc"], Some("afrc")),
+            _ => {
+                unsupported.insert("fontVariantNumericFraction".into());
+            }
+        }
+        if value
+            .as_str()
+            .is_some_and(|name| matches!(name, "NORMAL" | "DIAGONAL" | "STACKED"))
+        {
+            changed = true;
+        }
+    }
+    if let Some(value) = ov.get("fontVariantCaps") {
+        let caps = ["smcp", "c2sc", "pcap", "c2pc", "unic", "titl"];
+        match value.as_str() {
+            Some("NORMAL") => clear_features(&mut style.features, &caps),
+            Some("SMALL") => {
+                clear_features(&mut style.features, &caps);
+                set_feature(&mut style.features, "smcp", true);
+            }
+            Some("ALL_SMALL") => {
+                clear_features(&mut style.features, &caps);
+                set_feature(&mut style.features, "smcp", true);
+                set_feature(&mut style.features, "c2sc", true);
+            }
+            Some("PETITE") => {
+                clear_features(&mut style.features, &caps);
+                set_feature(&mut style.features, "pcap", true);
+            }
+            Some("ALL_PETITE") => {
+                clear_features(&mut style.features, &caps);
+                set_feature(&mut style.features, "pcap", true);
+                set_feature(&mut style.features, "c2pc", true);
+            }
+            Some("UNICASE") => {
+                clear_features(&mut style.features, &caps);
+                set_feature(&mut style.features, "unic", true);
+            }
+            Some("TITLING") => {
+                clear_features(&mut style.features, &caps);
+                set_feature(&mut style.features, "titl", true);
+            }
+            _ => {
+                unsupported.insert("fontVariantCaps".into());
+            }
+        }
+        if value.as_str().is_some_and(|name| {
+            matches!(
+                name,
+                "NORMAL" | "SMALL" | "ALL_SMALL" | "PETITE" | "ALL_PETITE" | "UNICASE" | "TITLING"
+            )
+        }) {
+            changed = true;
+        }
+    }
+    if let Some(value) = ov.get("fontVariantPosition") {
+        match value.as_str() {
+            Some("NORMAL") => clear_features(&mut style.features, &["subs", "sups"]),
+            Some("SUB") => set_choice(&mut style.features, &["subs", "sups"], Some("subs")),
+            Some("SUPER") => set_choice(&mut style.features, &["subs", "sups"], Some("sups")),
+            _ => {
+                unsupported.insert("fontVariantPosition".into());
+            }
+        }
+        if value
+            .as_str()
+            .is_some_and(|name| matches!(name, "NORMAL" | "SUB" | "SUPER"))
+        {
+            changed = true;
+        }
+    }
+    for (key, enabled) in [
+        ("toggledOnOTFeatures", true),
+        ("toggledOffOTFeatures", false),
+    ] {
+        let Some(tags) = ov.get(key) else { continue };
+        let Some(tags) = tags.as_array() else {
+            unsupported.insert(key.into());
+            continue;
+        };
+        let mut applied = false;
+        for tag in tags {
+            let Some(tag) = tag.as_str() else {
+                unsupported.insert(key.into());
+                continue;
+            };
+            let tag = tag.to_ascii_lowercase();
+            if tag.len() == 4 && tag.chars().all(|c| c.is_ascii_alphanumeric()) {
+                set_feature(&mut style.features, &tag, enabled);
+                applied = true;
+            } else {
+                unsupported.insert(key.into());
+            }
+        }
+        changed |= applied;
+    }
+    if let Some(variations) = ov.get("fontVariations") {
+        let Some(variations) = variations.as_array() else {
+            unsupported.insert("fontVariations".into());
+            return changed;
+        };
+        for variation in variations {
+            let Some(value) = variation.get("value").and_then(Value::as_f64) else {
+                unsupported.insert("fontVariations".into());
+                continue;
+            };
+            let Some(tag) = axis_tag(variation) else {
+                unsupported.insert("fontVariations".into());
+                continue;
+            };
+            if tag.eq_ignore_ascii_case("wght") {
+                if (1. ..=1000.).contains(&value) {
+                    style.weight = value as f32;
+                    changed = true;
+                } else {
+                    unsupported.insert("fontVariations".into());
+                }
+                continue;
+            }
+            if value.is_finite() && value.abs() <= 10_000. {
+                style.variations.retain(|axis| axis.tag != tag);
+                style
+                    .variations
+                    .push(crate::font::TextVariation { tag, value });
+                changed = true;
+            } else {
+                unsupported.insert("fontVariations".into());
+            }
+        }
+    }
+    changed
+}
+
 fn apply_text(
     fields: &mut BTreeMap<String, Value>,
     ov: &Value,
@@ -695,6 +1000,7 @@ fn apply_text(
         .and_then(|node| node.text_style.clone())
         .map(|style| *style)
         .unwrap_or_default();
+    let initial = style.clone();
     let mut changed = false;
     if ov.get("textAlignHorizontal").is_some() {
         match str_of(ov, "textAlignHorizontal") {
@@ -859,14 +1165,26 @@ fn apply_text(
             unsupported.insert(format!("textDecoration={decoration}"));
         }
     }
-    if changed {
-        if style.validate().is_ok() {
-            if let Ok(value) = serde_json::to_value(style) {
-                fields.insert("textStyle".into(), value);
+    let before_features = style.clone();
+    if apply_open_type(&mut style, ov, unsupported) {
+        changed = true;
+    }
+    if changed && style != before_features && style.validate().is_err() {
+        style.features = before_features.features;
+        style.variations = before_features.variations;
+        style.weight = before_features.weight;
+        for key in &TEXT_KEYS[10..] {
+            if ov.get(*key).is_some() {
+                unsupported.insert((*key).into());
             }
-        } else {
-            unsupported.insert("textStyle".into());
         }
+    }
+    if changed && style != initial && style.validate().is_ok() {
+        if let Ok(value) = serde_json::to_value(style) {
+            fields.insert("textStyle".into(), value);
+        }
+    } else if changed && style.validate().is_err() {
+        unsupported.insert("textStyle".into());
     }
 }
 
@@ -1106,6 +1424,7 @@ pub(super) fn schema_floor(doc: &Document) -> u32 {
                 .and_then(Value::as_f64)
                 .is_some_and(|value| value != 0.)
                 || fields.get("arc").is_some()
+                || fields.get("constrainProportions") == Some(&Value::Bool(true))
             {
                 version = version.max(7);
             }
@@ -1544,6 +1863,14 @@ pub(super) fn import(
                     "pluginData" | "derivedTextData" => {
                         unsupported.insert(key.clone());
                     }
+                    "proportionsConstrained" => match value.as_bool() {
+                        Some(constrained) => {
+                            fields.insert("constrainProportions".into(), json!(constrained));
+                        }
+                        None => {
+                            unsupported.insert("proportionsConstrained".into());
+                        }
+                    },
                     other => {
                         unsupported.insert(other.to_string());
                     }
