@@ -8,7 +8,7 @@ import { initializeKernelModule } from './module'
 import { shouldUseExactCpuFallback } from './cpu-fallback'
 import { renderFailureFields } from './render-failure-telemetry'
 import { isRecoverablePreviewBudget } from './preview-budget-recovery'
-import { allowsResidentSdr, usesDesktopDisplay } from './render-policy'
+import { allowsResidentSdr, usesDesktopDisplay, usesProgressiveNativeRepair } from './render-policy'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SurfaceProps, PresentedFrame } from './Surface'
 import { KernelClient, renderExecutionPolicy, type TileDamage, type TileResult } from './client'
@@ -596,6 +596,9 @@ export function ProgressiveSurfaceImpl(
     residentDisplay && !sharpNavigation && !gestureHeadroom && !nativeNavigation &&
     !hdrCompositing && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview &&
     usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile, pixelPreview: props.pixelPreview })
+  const progressiveNativeRepair = usesProgressiveNativeRepair(renderExecutionPolicy, backend,
+    import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR,
+    !nativeNavigation && !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles)
   const latestNativeNavigation = useRef(nativeNavigation)
   latestNativeNavigation.current = nativeNavigation
   const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
@@ -1027,7 +1030,7 @@ export function ProgressiveSurfaceImpl(
     // At quiet, a same-owner coarse image already supplies continuity. Spend
     // the next turn on exact detail, not a second intermediate-resolution copy.
     // This does not authorize skipping the sharper moving-camera preview.
-    const hasRepairBacking = () => import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR==='1'&&
+    const hasRepairBacking = () => progressiveNativeRepair&&
       residentDisplay&&!navigationZoom.active&&syncedDoc.current===doc&&
       navigationHasCoverage(validCoverage(),requestedView,width,height)
     // A large reversal can leave a costly zoom-in capture occupying the sole
@@ -2248,6 +2251,7 @@ export function ProgressiveSurfaceImpl(
     motionPreview,
     nativeNavigation,
     nativeVisibleTiles,
+    progressiveNativeRepair,
     sharpNavigation,
     zooming,
     cameraMoving,
@@ -2329,7 +2333,7 @@ export function ProgressiveSurfaceImpl(
   const canRefine = !displayed || reusableFrame || fullPlanReady
   const startupPreview = !displayed && visible.some(tile => tile.viewportPreview &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key))
-  const partialDetail=import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR==='1'&&residentDisplay&&reusableFrame&&currentPlan&&
+  const partialDetail=progressiveNativeRepair&&residentDisplay&&reusableFrame&&currentPlan&&
     !hdrCompositing&&!cameraDependent&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&!props.interaction?.active&&syncedDoc.current===doc
   const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile &&
     (fullPlanReady||partialDetail&&tile.document===doc&&tile.revision===contract.revision&&
