@@ -80,14 +80,22 @@ importer in that revision; Sketch continues through this project's own codec.
 ## Bundled FFmpeg
 
 The desktop package can include a separate linux-x64 `ffmpeg` executable under
-`frontend/design-desktop/vendor/ffmpeg/linux-x64/`. It is FFmpeg 7.0.2-static
-configured with `--enable-gpl --enable-version3` (GPL-3.0-or-later), including
-libx264 and libvpx. The binary is spawned by the Rust sidecar; it is not linked
-into Electron or the design kernel. License text and provenance are
-`linux-x64/LICENSE.txt`, `COPYING.GPLv3`, `COPYING.LGPLv2.1`, and `source.json`.
-macOS and Windows paths are documented stubs and do not ship a binary yet.
-Upstream build: https://johnvansickle.com/ffmpeg/ . Obtained from the
-ffmpeg-static b6.1.1 linux-x64 asset.
+`frontend/design-desktop/vendor/ffmpeg/linux-x64/`. It is FFmpeg 7.0.2-static,
+GPL-3.0-or-later. The full `ffmpeg -version` configuration, SHA-256
+`e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99`, and build id
+`edfa98c6c76982e3c1e0bf47fa06c97212951b21` are in `linux-x64/source.json`.
+On 2026-11-09 those bytes matched the uncompressed ffmpeg-static b6.1.1
+`ffmpeg-linux-x64.gz` asset. `UPSTREAM-README.txt` is that release's
+`linux-x64.README` and names `ffmpeg-7.0.2-amd64-static.tar.xz` plus library
+versions. The johnvansickle `release-source` index fetched the same day did not
+contain this build's sources. Corresponding source is not in the repository,
+and the binary was not rebuilt here.
+
+The binary is spawned by the Rust sidecar; it is not linked into Electron or
+the design kernel. That spawn does not decide the license of the rest of the
+application. License text is `linux-x64/LICENSE.txt`, `COPYING.GPLv3`, and
+`COPYING.LGPLv2.1`. macOS and Windows paths are documented stubs and do not
+ship a binary yet.
 
 ## RustCrypto SHA-2
 

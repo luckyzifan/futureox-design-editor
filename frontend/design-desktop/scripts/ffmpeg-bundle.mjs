@@ -21,6 +21,15 @@ const LICENSE_COPIES = [
   ['COPYING.GPLv3', 'ffmpeg-COPYING.GPLv3'],
   ['COPYING.LGPLv2.1', 'ffmpeg-COPYING.LGPLv2.1'],
   ['source.json', 'ffmpeg-source.json'],
+  ['UPSTREAM-README.txt', 'ffmpeg-UPSTREAM-README.txt'],
+]
+
+const LINUX_NOTICES = [
+  'ffmpeg-LICENSE.txt',
+  'ffmpeg-COPYING.GPLv3',
+  'ffmpeg-COPYING.LGPLv2.1',
+  'ffmpeg-source.json',
+  'ffmpeg-UPSTREAM-README.txt',
 ]
 
 export async function installBundledFfmpeg({
@@ -77,10 +86,12 @@ export async function assertPackagedFfmpeg({
     throw new Error('bundled ffmpeg must be an ELF executable')
   }
   if (required) {
-    const license = await read(path.join(resourcesBin, 'ffmpeg-LICENSE.txt'))
-    const builtLicense = await read(path.join(distBin, 'ffmpeg-LICENSE.txt'))
-    if (!license.length || Buffer.compare(license, builtLicense) !== 0) {
-      throw new Error('resources/bin/ffmpeg-LICENSE.txt must match the build output')
+    for (const name of LINUX_NOTICES) {
+      const packagedNotice = await read(path.join(resourcesBin, name))
+      const builtNotice = await read(path.join(distBin, name))
+      if (!packagedNotice.length || Buffer.compare(packagedNotice, builtNotice) !== 0) {
+        throw new Error(`resources/bin/${name} must match the build output`)
+      }
     }
   }
   return { present: true, bytes: packaged }

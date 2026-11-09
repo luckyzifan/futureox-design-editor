@@ -22,11 +22,13 @@ test('install copies a vendored binary and linux x64 is required', async () => {
     await writeFile(path.join(desktop, 'vendor/ffmpeg/linux-x64/ffmpeg'), 'elf-bytes')
     await chmod(path.join(desktop, 'vendor/ffmpeg/linux-x64/ffmpeg'), 0o755)
     await writeFile(path.join(desktop, 'vendor/ffmpeg/linux-x64/LICENSE.txt'), 'gpl notice')
+    await writeFile(path.join(desktop, 'vendor/ffmpeg/linux-x64/UPSTREAM-README.txt'), 'upstream readme')
     const installed = await installBundledFfmpeg({ desktop, output, platform: 'linux', arch: 'x64' })
     assert.equal(installed.installed, true)
     assert.equal(await readFile(installed.dest, 'utf8'), 'elf-bytes')
     assert.equal((await stat(installed.dest)).mode & 0o111, 0o111)
     assert.equal(await readFile(path.join(output, 'bin/ffmpeg-LICENSE.txt'), 'utf8'), 'gpl notice')
+    assert.equal(await readFile(path.join(output, 'bin/ffmpeg-UPSTREAM-README.txt'), 'utf8'), 'upstream readme')
     const missing = path.join(root, 'empty-desktop')
     await mkdir(missing, { recursive: true })
     await assert.rejects(
@@ -56,8 +58,10 @@ test('package verification requires the linux binary and license to match dist',
     const elf = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from('ffmpeg')])
     await writeFile(path.join(resourcesBin, 'ffmpeg'), elf)
     await writeFile(path.join(distBin, 'ffmpeg'), elf)
-    await writeFile(path.join(resourcesBin, 'ffmpeg-LICENSE.txt'), 'notice')
-    await writeFile(path.join(distBin, 'ffmpeg-LICENSE.txt'), 'notice')
+    for (const name of ['ffmpeg-LICENSE.txt', 'ffmpeg-COPYING.GPLv3', 'ffmpeg-COPYING.LGPLv2.1', 'ffmpeg-source.json', 'ffmpeg-UPSTREAM-README.txt']) {
+      await writeFile(path.join(resourcesBin, name), `notice:${name}`)
+      await writeFile(path.join(distBin, name), `notice:${name}`)
+    }
     const ok = await assertPackagedFfmpeg({ platform: 'linux', arch: 'x64', resourcesBin, distBin })
     assert.equal(ok.present, true)
     await writeFile(path.join(resourcesBin, 'ffmpeg'), Buffer.concat([elf, Buffer.from('x')]))
