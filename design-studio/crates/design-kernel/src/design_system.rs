@@ -158,11 +158,19 @@ fn value_in(system: &DesignSystem, id: &str, modes: &impl ModeSelection) -> Resu
     }
     walk(system, id, modes, &mut BTreeSet::new())
 }
+pub(crate) fn binding_kind(path: &str) -> Option<&'static str> {
+    if valid_property(path) {
+        Some(expected(path))
+    } else {
+        None
+    }
+}
+
 pub fn valid_property(path: &str) -> bool {
     matches!(path,"width"|"height"|"opacity"|"visible"|"text"|"fontSize"|"layout.gap"|"layout.lineGap"|"textStyle.weight"|"textStyle.lineHeight"|"textStyle.letterSpacing") ||
     path.strip_prefix("fills.").is_some_and(|v| { let mut p=v.split('.'); matches!((p.next(),p.next(),p.next()),(Some(i),Some("color"|"opacity"),None) if i.parse::<usize>().is_ok_and(|i|i<16)) })
 }
-fn expected(path: &str) -> &str {
+fn expected(path: &str) -> &'static str {
     if path.ends_with("color") {
         "color"
     } else if path == "text" {

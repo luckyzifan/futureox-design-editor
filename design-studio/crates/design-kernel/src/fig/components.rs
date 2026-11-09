@@ -22,7 +22,7 @@ fn descendants(doc: &Document, root: &str) -> Result<Vec<String>, Error> {
     }
     Ok(out)
 }
-pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, importer: &FigImporter) -> Result<(),Error> {
+pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, importer: &FigImporter, notes: &mut Vec<String>) -> Result<(),Error> {
     // Keys are definition GUIDs throughout. Human-facing names are labels only.
     for (id, record) in records.iter().filter(|(_,r)|str_of(r,"type")==Some("SYMBOL")) {
         if !doc.nodes.contains_key(id) {continue;}
@@ -68,6 +68,8 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
         }
         doc.nodes.get_mut(id).unwrap().component=Some((Component {properties,..Default::default()}).into());
     }
+    let mut unsupported_overrides=BTreeSet::new();
+    let mut override_variables=Vec::new();
     for (id,record) in records.iter().filter(|(_,r)|str_of(r,"type")==Some("INSTANCE")) {
         if !doc.nodes.contains_key(id) {continue;}
         let Some(sd)=record.get("symbolData") else {continue;};
@@ -76,9 +78,9 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
             .ok_or_else(||Error::Unsupported(format!("instance {id} has no embedded main component {component_id}")))?;
         let mut property_values=BTreeMap::new();
         for assignment in record.get("componentPropAssignments").or_else(||sd.get("componentPropAssignments")).and_then(Value::as_array).into_iter().flatten() {
-            let key=assignment.get("defID").map(guid_string).ok_or_else(||Error::Malformed("property assignment defID missing".into()))?;
-            let property=component.properties.get(&key).ok_or_else(||Error::Unsupported(format!("unknown component property assignment {key}")))?;
-            let value=property_value(&property.kind,&assignment["value"]).ok_or_else(||Error::Unsupported(format!("component property assignment {key} requires a literal value")))?;
+            let Some(key)=assignment.get("defID").map(guid_string) else {return Err(Error::Malformed("property assignment defID missing".into()));};
+            let Some(property)=component.properties.get(&key) else {unsupported_overrides.insert(format!("property assignment {key}"));continue;};
+            let Some(value)=property_value(&property.kind,&assignment["value"]) else {unsupported_overrides.insert(format!("property assignment {key}"));continue;};
             property_values.insert(key,value);
         }
         let mut overrides=BTreeMap::new();
@@ -121,12 +123,49 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
                         }
                     },
                     "symbolID"=>{fields.insert("swapComponent".into(),Value::String(guid_string(value)));},
-                    other=>return Err(Error::Unsupported(format!("component override {other}"))),
+                    "cornerRadius"=>{
+                        if let Some(radius)=value.as_f64().filter(|v|v.is_finite()&&*v>=0.&&*v<=1e7) {fields.insert("cornerRadius".into(),json!(radius));}
+                        else {unsupported_overrides.insert("cornerRadius".into());}
+                    },
+                    "size"=>{
+                        let axis=|key:&str| value.get(key).and_then(Value::as_f64).filter(|v|v.is_finite()&&*v>0.&&*v<=1e7);
+                        if let Some(width)=axis("x") {fields.insert("width".into(),json!(width));}
+                        else if value.get("x").is_some() {unsupported_overrides.insert("size.x".into());}
+                        if let Some(height)=axis("y") {fields.insert("height".into(),json!(height));}
+                        else if value.get("y").is_some() {unsupported_overrides.insert("size.y".into());}
+                    },
+                    "rectangleTopLeftCornerRadius"|"rectangleTopRightCornerRadius"|"rectangleBottomRightCornerRadius"|"rectangleBottomLeftCornerRadius"=>{},
+                    "variableConsumptionMap"=>{override_variables.push((id.clone(),path.clone(),value.clone()));},
+                    other=>{unsupported_overrides.insert(other.to_string());},
                 }
             }
+            let corner=|key:&str| ov.get(key).and_then(Value::as_f64).filter(|v|v.is_finite()&&*v>=0.&&*v<=1e7);
+            let corners=[corner("rectangleTopLeftCornerRadius"),corner("rectangleTopRightCornerRadius"),corner("rectangleBottomRightCornerRadius"),corner("rectangleBottomLeftCornerRadius")];
+            if corners.iter().all(Option::is_some) {fields.insert("radii".into(),json!(corners.map(|value|value.unwrap_or(0.))));}
+            else if corners.iter().any(Option::is_some) {unsupported_overrides.insert("rectangleCornerRadii".into());}
             overrides.insert(path,fields);
         }
         doc.nodes.get_mut(id).unwrap().instance=Some((Instance {component_id,overrides,property_values,slot_contents:Default::default()}).into());
+        if !override_variables.is_empty() {
+            let system=doc.design_system.get_or_insert_with(Default::default);
+            let metadata=system.sketch_containers.entry("nodeMetadata".into()).or_insert_with(||json!({}));
+            if let Some(object)=metadata.as_object_mut() {
+                for (instance_id,override_path,map) in override_variables.drain(..) {
+                    let entry=object.entry(instance_id).or_insert_with(||json!({"format":"fig","bindings":{}}));
+                    let Some(entry)=entry.as_object_mut() else {continue;};
+                    let list=entry.entry("overrideVariableConsumption").or_insert_with(||json!([]));
+                    if let Some(list)=list.as_array_mut() {list.push(json!({"path":override_path,"map":map}));}
+                }
+            }
+        }
+    }
+    if !unsupported_overrides.is_empty() {
+        let mut names:Vec<_>=unsupported_overrides.into_iter().collect();
+        names.sort();
+        let extra=names.len().saturating_sub(24);
+        let shown=names.into_iter().take(24).collect::<Vec<_>>().join(", ");
+        let suffix=if extra>0 {format!(" and {extra} more")} else {String::new()};
+        notes.push(format!("FIG component overrides without an executable field were left unchanged: {shown}{suffix}"));
     }
     Ok(())
 }
