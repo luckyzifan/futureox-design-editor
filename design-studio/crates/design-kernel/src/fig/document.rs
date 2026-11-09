@@ -342,6 +342,30 @@ pub(super) fn import_styles(
                 "variable bindings retained as source metadata, not executable",
             );
         }
+        if record
+            .get("variableConsumptionMap")
+            .and_then(|map| map.get("entries"))
+            .and_then(Value::as_array)
+            .is_some_and(|entries| !entries.is_empty())
+        {
+            node.bindings.insert(
+                "figVariableConsumption".into(),
+                serde_json::to_string(&record["variableConsumptionMap"])
+                    .unwrap_or_else(|_| "{}".into()),
+            );
+        }
+        if record
+            .get("variableModeBySetMap")
+            .and_then(|map| map.get("entries"))
+            .and_then(Value::as_array)
+            .is_some_and(|entries| !entries.is_empty())
+        {
+            node.bindings.insert(
+                "figVariableModes".into(),
+                serde_json::to_string(&record["variableModeBySetMap"])
+                    .unwrap_or_else(|_| "{}".into()),
+            );
+        }
         if let Some(key) = str_of(record, "componentKey").filter(|key| !key.is_empty()) {
             node.bindings.insert("figComponentKey".into(), key.into());
         }
@@ -439,9 +463,13 @@ fn authored_document_name(name: &str) -> Option<String> {
 }
 
 /// Variable sets are not layers. Their modes and values become design-system
-/// collections. A value shape this kernel cannot execute is kept as a string
-/// so the file still opens.
-pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Value>) {
+/// collections. Aliases point at a local variable by publish key or guid.
+/// An alias this file cannot resolve keeps the mode fallback and is reported.
+pub(super) fn import_variables(
+    doc: &mut Document,
+    records: &BTreeMap<String, Value>,
+    notes: &mut Vec<String>,
+) {
     use crate::design_system::{Collection, Variable};
     let mut mode_names: BTreeMap<String, String> = BTreeMap::new();
     let mut collections: BTreeMap<String, Collection> = BTreeMap::new();
@@ -453,7 +481,9 @@ pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Va
         let mut modes = Vec::new();
         if let Some(list) = record.get("variableSetModes").and_then(Value::as_array) {
             for mode in list {
-                let name = str_of(mode, "name").filter(|n| !n.is_empty()).unwrap_or("Mode");
+                let name = str_of(mode, "name")
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or("Mode");
                 if let Some(mode_id) = mode.get("id") {
                     mode_names.insert(guid_string(mode_id), name.to_string());
                 }
@@ -477,7 +507,8 @@ pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Va
             },
         );
     }
-    let mut variables: BTreeMap<String, Variable> = BTreeMap::new();
+    let mut drafts: Vec<VariableDraft> = Vec::new();
+    let mut key_to_id: BTreeMap<String, String> = BTreeMap::new();
     for (id, record) in records {
         if str_of(record, "type") != Some("VARIABLE") {
             continue;
@@ -489,7 +520,9 @@ pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Va
             .and_then(|value| str_of(value, "key"))
             .filter(|key| !key.is_empty())
             .map(str::to_string)
-            .or_else(|| from_guid.filter(|value| !value.is_empty() && value != "0:0"))
+            .or_else(|| {
+                from_guid.filter(|value| !value.is_empty() && value != "fig-0-0" && value != "0:0")
+            })
             .unwrap_or_else(|| id.clone());
         if !collections.contains_key(&collection) {
             collections.insert(
@@ -508,8 +541,28 @@ pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Va
             "STRING" => "string",
             _ => "string",
         };
+        if let Some(key) = str_of(record, "key").filter(|key| !key.is_empty()) {
+            key_to_id.insert(key.to_string(), id.clone());
+        }
+        drafts.push(VariableDraft {
+            id: id.clone(),
+            name: str_of(record, "name").unwrap_or("Variable").to_string(),
+            collection,
+            kind: kind.into(),
+            record,
+        });
+    }
+    let ids: BTreeSet<String> = drafts.iter().map(|draft| draft.id.clone()).collect();
+    let kinds: BTreeMap<String, String> = drafts
+        .iter()
+        .map(|draft| (draft.id.clone(), draft.kind.clone()))
+        .collect();
+    let mut unresolved_aliases = 0usize;
+    let mut variables: BTreeMap<String, Variable> = BTreeMap::new();
+    for draft in &drafts {
         let mut values = BTreeMap::new();
-        if let Some(entries) = record
+        if let Some(entries) = draft
+            .record
             .get("variableDataValues")
             .and_then(|value| value.get("entries"))
             .and_then(Value::as_array)
@@ -520,43 +573,66 @@ pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Va
                     .map(guid_string)
                     .and_then(|id| mode_names.get(&id).cloned())
                     .unwrap_or_else(|| "Default".into());
-                if let Some(value) = variable_value(entry.get("variableData").unwrap_or(&Value::Null), kind)
-                {
+                let data = entry.get("variableData").unwrap_or(&Value::Null);
+                if data.get("value").is_some_and(|value| {
+                    value.get("alias").is_some() || value.get("variableAlias").is_some()
+                }) {
+                    if let Some(target) = data
+                        .get("value")
+                        .and_then(|value| alias_id(value, &key_to_id, &ids))
+                        .filter(|target| kinds.get(target).is_some_and(|kind| kind == &draft.kind))
+                    {
+                        values.insert(mode, serde_json::json!({ "alias": target }));
+                    } else {
+                        unresolved_aliases += 1;
+                    }
+                    continue;
+                }
+                if let Some(value) = variable_value(data, &draft.kind) {
                     values.insert(mode, value);
                 }
             }
         }
-        let Some(collection_modes) = collections.get(&collection).map(|c| c.modes.clone()) else {
+        let Some(collection_modes) = collections.get(&draft.collection).map(|c| c.modes.clone())
+        else {
             continue;
         };
         if collection_modes.len() > 32 {
             continue;
         }
         if values.is_empty() {
-            let fallback = match kind {
-                "boolean" => Value::Bool(false),
-                "number" => Value::from(0.),
-                "color" => Value::String("#000000".into()),
-                _ => Value::String(String::new()),
-            };
-            values.insert(collection_modes[0].clone(), fallback);
+            values.insert(collection_modes[0].clone(), variable_fallback(&draft.kind));
         }
         let fallback = values.values().next().cloned().unwrap_or(Value::Null);
         for mode in &collection_modes {
-            values.entry(mode.clone()).or_insert_with(|| fallback.clone());
+            values
+                .entry(mode.clone())
+                .or_insert_with(|| fallback.clone());
         }
         values.retain(|mode, _| collection_modes.iter().any(|name| name == mode));
         variables.insert(
-            id.clone(),
+            draft.id.clone(),
             Variable {
-                name: str_of(record, "name").unwrap_or("Variable").to_string(),
-                collection,
-                kind: kind.into(),
+                name: draft.name.clone(),
+                collection: draft.collection.clone(),
+                kind: draft.kind.clone(),
                 values,
             },
         );
     }
-    if collections.is_empty() && variables.is_empty() {
+    if unresolved_aliases > 0 {
+        notes.push(format!(
+            "{unresolved_aliases} variable aliases had no local target of the same type and kept the mode fallback"
+        ));
+    }
+    let has_consumption = records.values().any(|record| {
+        record
+            .get("variableConsumptionMap")
+            .and_then(|map| map.get("entries"))
+            .and_then(Value::as_array)
+            .is_some_and(|entries| !entries.is_empty())
+    });
+    if collections.is_empty() && variables.is_empty() && !has_consumption {
         return;
     }
     let system = doc.design_system.get_or_insert_with(Default::default);
@@ -568,16 +644,129 @@ pub(super) fn import_variables(doc: &mut Document, records: &BTreeMap<String, Va
             .entry(id.clone())
             .or_insert_with(|| collection.default_mode.clone());
     }
+    bind_consumed_variables(doc, records, &key_to_id, &ids, notes);
+}
+
+struct VariableDraft<'a> {
+    id: String,
+    name: String,
+    collection: String,
+    kind: String,
+    record: &'a Value,
+}
+
+fn variable_fallback(kind: &str) -> Value {
+    match kind {
+        "boolean" => Value::Bool(false),
+        "number" => Value::from(0.),
+        "color" => Value::String("#000000".into()),
+        _ => Value::String(String::new()),
+    }
+}
+
+fn alias_id(
+    value: &Value,
+    key_to_id: &BTreeMap<String, String>,
+    ids: &BTreeSet<String>,
+) -> Option<String> {
+    let alias = value.get("alias").or_else(|| value.get("variableAlias"))?;
+    if let Some(key) = alias
+        .get("assetRef")
+        .and_then(|reference| str_of(reference, "key"))
+        .filter(|key| !key.is_empty())
+    {
+        return key_to_id.get(key).cloned();
+    }
+    let id = guid_string(alias);
+    (id != "fig-0-0" && ids.contains(&id)).then_some(id)
+}
+
+fn executable_variable_field(field: &str) -> Option<&'static str> {
+    Some(match field {
+        "WIDTH" => "width",
+        "HEIGHT" => "height",
+        "OPACITY" => "opacity",
+        "VISIBLE" => "visible",
+        "TEXT_DATA" | "CHARACTERS" => "text",
+        "FONT_SIZE" => "fontSize",
+        "STACK_SPACING" | "ITEM_SPACING" => "layout.gap",
+        "LINE_HEIGHT" => "textStyle.lineHeight",
+        "LETTER_SPACING" => "textStyle.letterSpacing",
+        "FONT_WEIGHT" => "textStyle.weight",
+        "PARAGRAPH_SPACING" => "layout.lineGap",
+        _ => return None,
+    })
+}
+
+fn bind_consumed_variables(
+    doc: &mut Document,
+    records: &BTreeMap<String, Value>,
+    key_to_id: &BTreeMap<String, String>,
+    ids: &BTreeSet<String>,
+    notes: &mut Vec<String>,
+) {
+    let mut unsupported = false;
+    let mut updates = Vec::new();
+    for (id, record) in records {
+        if !doc.nodes.contains_key(id) {
+            continue;
+        }
+        let Some(entries) = record
+            .get("variableConsumptionMap")
+            .and_then(|map| map.get("entries"))
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
+        let mut seen = BTreeSet::new();
+        for entry in entries {
+            let field = str_of(entry, "variableField").unwrap_or("");
+            let Some(path) = executable_variable_field(field) else {
+                if !field.is_empty() {
+                    unsupported = true;
+                }
+                continue;
+            };
+            if !seen.insert(path) {
+                continue;
+            }
+            let Some(target) = entry
+                .get("variableData")
+                .and_then(|data| data.get("value"))
+                .and_then(|value| alias_id(value, key_to_id, ids))
+            else {
+                unsupported = true;
+                continue;
+            };
+            let kind_matches = doc
+                .design_system
+                .as_ref()
+                .and_then(|system| system.variables.get(&target))
+                .is_some_and(|variable| {
+                    crate::design_system::binding_kind(path) == Some(variable.kind.as_str())
+                });
+            if !kind_matches {
+                unsupported = true;
+                continue;
+            }
+            updates.push((id.clone(), path.to_string(), target));
+        }
+    }
+    for (id, path, target) in updates {
+        if let Some(node) = doc.nodes.get_mut(&id) {
+            node.bindings.insert(path, target);
+        }
+    }
+    if unsupported {
+        notes.push(
+            "FIG variable fields without an executable property are retained as figVariableConsumption"
+                .into(),
+        );
+    }
 }
 
 fn variable_value(data: &Value, kind: &str) -> Option<Value> {
     let value = data.get("value")?;
-    if let Some(alias) = value.get("alias").or_else(|| value.get("variableAlias")) {
-        let id = guid_string(alias);
-        if !id.is_empty() && id != "0:0" {
-            return Some(serde_json::json!({ "alias": id }));
-        }
-    }
     match kind {
         "color" => value.get("colorValue").and_then(color_value),
         "number" => value
@@ -600,7 +789,10 @@ fn color_value(color: &Value) -> Option<Value> {
     let channel = |key: &str| color.get(key).and_then(Value::as_f64);
     let (r, g, b) = (channel("r")?, channel("g")?, channel("b")?);
     let a = channel("a").unwrap_or(1.);
-    if [r, g, b, a].iter().any(|v| !v.is_finite() || !(0. ..=1.).contains(v)) {
+    if [r, g, b, a]
+        .iter()
+        .any(|v| !v.is_finite() || !(0. ..=1.).contains(v))
+    {
         return None;
     }
     let byte = |v: f64| (v * 255.).round() as u8;

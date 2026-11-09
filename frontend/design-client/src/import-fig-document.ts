@@ -210,8 +210,34 @@ function variableColor(color: any): string | undefined {
   return `color(srgb ${r} ${g} ${b} / ${a})`
 }
 
+const VARIABLE_FIELDS: Record<string, string> = {
+  WIDTH: 'width', HEIGHT: 'height', OPACITY: 'opacity', VISIBLE: 'visible',
+  TEXT_DATA: 'text', CHARACTERS: 'text', FONT_SIZE: 'fontSize',
+  STACK_SPACING: 'layout.gap', ITEM_SPACING: 'layout.gap',
+  LINE_HEIGHT: 'textStyle.lineHeight', LETTER_SPACING: 'textStyle.letterSpacing',
+  FONT_WEIGHT: 'textStyle.weight', PARAGRAPH_SPACING: 'layout.lineGap',
+}
+
+function variableKind(record: FigRecord) {
+  const resolved = String(record.variableResolvedType || '')
+  return resolved === 'COLOR' ? 'color' : resolved === 'BOOLEAN' ? 'boolean' : resolved === 'STRING' ? 'string' : 'number'
+}
+
+function aliasTarget(value: any, keyToId: Map<string, string>, known: Set<string>) {
+  const alias = value?.alias || value?.variableAlias
+  if (!alias || typeof alias !== 'object') return
+  const key = alias.assetRef?.key
+  if (typeof key === 'string' && keyToId.has(key)) return keyToId.get(key)
+  const id = guidText(alias)
+  return id && id !== '0:0' && known.has(id) ? id : undefined
+}
+
+function bindingKind(path: string) {
+  return path === 'text' ? 'string' : path === 'visible' ? 'boolean' : path.endsWith('color') ? 'color' : 'number'
+}
+
 /** VARIABLE_SET / VARIABLE records are design-system data, not layers. */
-export function importFigVariableNodes(doc: DesignDocument, records: Map<string, FigRecord>) {
+export function importFigVariableNodes(doc: DesignDocument, records: Map<string, FigRecord>, ids?: Map<string, string>) {
   const modeNames = new Map<string, string>()
   const systemDoc = system(doc)
   for (const [id, record] of records) {
@@ -229,27 +255,40 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
     systemDoc.collections[collectionId] = { name: record.name || 'Variables', modes, defaultMode: modes[0] }
     systemDoc.activeModes[collectionId] = modes[0]
   }
+  const keyToId = new Map<string, string>()
+  const drafts: Array<[string, FigRecord]> = []
   for (const [id, record] of records) {
     if (record.type !== 'VARIABLE') continue
+    if (typeof record.key === 'string' && record.key) keyToId.set(record.key, id)
+    drafts.push([id, record])
+  }
+  const known = new Set(drafts.map(([id]) => id))
+  let unresolvedAliases = 0
+  for (const [id, record] of drafts) {
     const collection = record.variableSetID?.assetRef?.key || guidText(record.variableSetID) || id
     if (!systemDoc.collections[collection]) {
       systemDoc.collections[collection] = { name: collection, modes: ['Default'], defaultMode: 'Default' }
       systemDoc.activeModes[collection] = 'Default'
     }
-    const resolved = String(record.variableResolvedType || '')
-    const kind = resolved === 'COLOR' ? 'color' : resolved === 'BOOLEAN' ? 'boolean' : resolved === 'STRING' ? 'string' : 'number'
+    const kind = variableKind(record)
     const values: Record<string, string | number | boolean | { alias: string }> = {}
     for (const entry of record.variableDataValues?.entries || []) {
       const mode = modeNames.get(guidText(entry?.modeID)) || 'Default'
       const data = entry?.variableData
-      const alias = guidText(data?.value?.alias || data?.value?.variableAlias)
-      if (alias && alias !== '0:0') { values[mode] = { alias }; continue }
+      const raw = data?.value
+      if (raw && (raw.alias || raw.variableAlias)) {
+        const target = aliasTarget(raw, keyToId, known)
+        const targetKind = target ? variableKind(records.get(target) || {}) : ''
+        if (target && targetKind === kind) values[mode] = { alias: target }
+        else unresolvedAliases += 1
+        continue
+      }
       if (kind === 'color') {
-        const color = variableColor(data?.value?.colorValue)
+        const color = variableColor(raw?.colorValue)
         if (color) values[mode] = color
-      } else if (kind === 'boolean' && typeof data?.value?.boolValue === 'boolean') values[mode] = data.value.boolValue
-      else if (kind === 'string' && typeof data?.value?.textValue?.characters === 'string') values[mode] = data.value.textValue.characters
-      else if (typeof data?.value?.floatValue === 'number' && Number.isFinite(data.value.floatValue)) values[mode] = data.value.floatValue
+      } else if (kind === 'boolean' && typeof raw?.boolValue === 'boolean') values[mode] = raw.boolValue
+      else if (kind === 'string' && typeof raw?.textValue?.characters === 'string') values[mode] = raw.textValue.characters
+      else if (typeof raw?.floatValue === 'number' && Number.isFinite(raw.floatValue)) values[mode] = raw.floatValue
     }
     const modes = systemDoc.collections[collection].modes
     if (modes.length > 32) continue
@@ -259,12 +298,52 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
     for (const key of Object.keys(values)) if (!modes.includes(key)) delete values[key]
     systemDoc.variables[id] = { name: String(record.name || 'Variable').slice(0, 512), collection, kind, values }
   }
-  const known = new Set(Object.keys(systemDoc.variables))
+  if (unresolvedAliases) {
+    const receipt = (systemDoc.sketchContainers?.figDocument ?? { source: 'figma' }) as FigRecord
+    const stored = Array.isArray(receipt.notes) ? receipt.notes : []
+    stored.push(`${unresolvedAliases} variable aliases had no local target of the same type and kept the mode fallback`)
+    receipt.notes = stored
+    systemDoc.sketchContainers ??= {}
+    systemDoc.sketchContainers.figDocument = receipt
+  }
+  let unsupportedField = false
+  if (ids) {
+    for (const [source, record] of records) {
+      const node = doc.nodes[ids.get(source) || '']
+      if (!node) continue
+      const seen = new Set<string>()
+      for (const entry of record.variableConsumptionMap?.entries || []) {
+        const path = VARIABLE_FIELDS[String(entry?.variableField || '')]
+        if (!path) {
+          if (entry?.variableField) unsupportedField = true
+          continue
+        }
+        if (seen.has(path)) continue
+        seen.add(path)
+        const target = aliasTarget(entry?.variableData?.value, keyToId, known)
+        const variable = target ? systemDoc.variables[target] : undefined
+        if (!variable || variable.kind !== bindingKind(path)) {
+          unsupportedField = true
+          continue
+        }
+        node.bindings = { ...node.bindings, [path]: target }
+      }
+    }
+  }
+  if (unsupportedField) {
+    const receipt = (systemDoc.sketchContainers?.figDocument ?? { source: 'figma' }) as FigRecord
+    const stored = Array.isArray(receipt.notes) ? receipt.notes : []
+    stored.push('FIG variable fields without an executable property are retained as figVariableConsumption')
+    receipt.notes = stored
+    systemDoc.sketchContainers ??= {}
+    systemDoc.sketchContainers.figDocument = receipt
+  }
+  const knownIds = new Set(Object.keys(systemDoc.variables))
   const linked = (value: unknown, field = ''): Array<[string, string]> => {
     if (!value || typeof value !== 'object') return []
     if ('sessionID' in value && 'localID' in value) {
       const id = guidText(value)
-      return field && known.has(id) ? [[field, id]] : []
+      return field && knownIds.has(id) ? [[field, id]] : []
     }
     return Object.entries(value).flatMap(([key, child]) => linked(child, field || key))
   }

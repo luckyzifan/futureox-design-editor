@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { canDeletePage, userPages } from './fig-document'
-import { applyFigDocumentSemantics } from './import-fig-document'
+import { applyFigDocumentSemantics, importFigVariableNodes } from './import-fig-document'
 import { blank, node, uid, validateDocument, type Paint } from './model'
 
 test('a hidden Figma page stays in the file and cannot be the last deleted page', () => {
@@ -69,4 +69,41 @@ test('Figma document name, shared styles, and component sets survive validation'
     source: 'figma', documentId: '1:1', colorProfile: 'SRGB',
   })
   expect(reopened.nodes[small.id].component?.variants).toEqual({ Size: 'Small' })
+})
+
+test('variable set aliases resolve by publish key and supported fields bind', () => {
+  const doc = blank('Tokens')
+  doc.schemaVersion = 4
+  const chip = node('rectangle', 0, 0, 40, 24)
+  doc.nodes = { [chip.id]: chip }
+  doc.pages[0].children = [chip.id]
+  const records = new Map<string, Record<string, unknown>>([
+    ['1:3', { type: 'VARIABLE_SET', name: 'Primitives', key: 'set-key', variableSetModes: [
+      { name: 'Light', id: { sessionID: 9, localID: 1 } },
+      { name: 'Dark', id: { sessionID: 9, localID: 2 } },
+    ] }],
+    ['1:4', { type: 'VARIABLE', name: 'Gap', key: 'gap-key', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'set-key' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 8 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 12 } } },
+      ] } }],
+    ['1:5', { type: 'VARIABLE', name: 'Gap alias', key: 'gap-alias', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'set-key' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { alias: { assetRef: { key: 'gap-key' } } } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { alias: { assetRef: { key: 'gap-key' } } } } },
+      ] } }],
+    ['1:6', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
+      { variableField: 'WIDTH', variableData: { value: { alias: { assetRef: { key: 'gap-key' } } } } },
+      { variableField: 'RECTANGLE_TOP_LEFT_CORNER_RADIUS', variableData: { value: { alias: { assetRef: { key: 'gap-key' } } } } },
+    ] } }],
+  ])
+  importFigVariableNodes(doc, records, new Map([['1:6', chip.id]]))
+  expect(doc.designSystem?.collections['set-key'].modes).toEqual(['Light', 'Dark'])
+  expect(doc.designSystem?.variables['1:5'].values.Light).toEqual({ alias: '1:4' })
+  expect(doc.designSystem?.variables['1:4'].values.Dark).toBe(12)
+  expect(chip.bindings?.width).toBe('1:4')
+  expect(chip.bindings?.figVariableConsumption).toBeUndefined()
+  const notes = doc.designSystem?.sketchContainers?.figDocument?.notes
+  expect(notes).toContain('FIG variable fields without an executable property are retained as figVariableConsumption')
+  validateDocument(doc)
 })
