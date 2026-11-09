@@ -422,7 +422,7 @@ fn validate_node(s: &DesignSystem, n: &Node) -> Result<(), String> {
         let style = s.styles.get(id).ok_or("Missing shared style")?;
         if !matches!(
             (field.as_str(), style.kind.as_str()),
-            ("fills", "paint") | ("textStyle", "text") | ("effects", "effect")
+            ("fills", "paint") | ("strokes", "paint") | ("textStyle", "text") | ("effects", "effect")
         ) {
             return Err("Shared style/property mismatch".into());
         }
@@ -462,10 +462,15 @@ pub(crate) fn resolve_node(
     let mut json = serde_json::to_value(&*n).map_err(|e| e.to_string())?;
     for (field, id) in &n.style_refs {
         if !overridden(field) {
-            json[field] = style_with_defaults(&s.styles[id])?;
+            let shared = &s.styles[id];
+            // Stroke styles are paint styles whose payload is `strokes`, not fills.
+            if field == "strokes" {
+                json["strokes"] = serde_json::to_value(&shared.strokes).map_err(|e| e.to_string())?;
+                continue;
+            }
+            json[field] = style_with_defaults(shared)?;
             // A paint style carrying borders/shadows (full Sketch layer
             // style) resolves them together with the fills it replaces.
-            let shared = &s.styles[id];
             if field == "fills" && shared.kind == "paint" {
                 if !shared.strokes.is_empty() && !overridden("strokes") {
                     json["strokes"] =
