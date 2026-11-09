@@ -1,7 +1,9 @@
 use futureox_design_kernel::interop;
 use serde_json::Value;
+#[cfg(futureox_has_sketch_official_files)]
 use std::{collections::BTreeMap, io::Write, path::Path};
 
+#[cfg(futureox_has_sketch_official_files)]
 fn official_archive(feature: &Path) -> Vec<u8> {
     let mut entries = BTreeMap::new();
     for name in ["meta.json", "document.json", "user.json"] {
@@ -19,6 +21,7 @@ fn official_archive(feature: &Path) -> Vec<u8> {
     zip.finish().unwrap().into_inner()
 }
 
+#[cfg(futureox_has_sketch_official_files)]
 fn collect_export_formats(value: &Value, output: &mut Vec<(String, Vec<Value>)>) {
     match value {
         Value::Object(object) => {
@@ -35,6 +38,7 @@ fn collect_export_formats(value: &Value, output: &mut Vec<(String, Vec<Value>)>)
     }
 }
 
+#[cfg(futureox_has_sketch_official_files)]
 fn assert_export_formats_preserved(input: &[u8], exported: &[u8]) {
     let input_files = interop::read_zip_public(input).unwrap();
     let exported_files = interop::read_zip_public(exported).unwrap();
@@ -59,6 +63,7 @@ fn assert_export_formats_preserved(input: &[u8], exported: &[u8]) {
     }
 }
 
+#[cfg(futureox_has_sketch_official_files)]
 #[test]
 fn official_reference_json_round_trips_through_the_production_codec() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../testing/fixtures/sketch-official/reference-files/files");
@@ -89,6 +94,11 @@ fn official_reference_json_round_trips_through_the_production_codec() {
     assert!(failures.is_empty(), "{} of {checked} official reference cases failed:\n{}", failures.len(), failures.join("\n"));
     assert_eq!(checked, 74);
 }
+
+#[cfg(not(futureox_has_sketch_official_files))]
+#[test]
+#[ignore = "testing/fixtures/sketch-official/reference-files/files is not in this checkout; not a Sketch official result"]
+fn official_reference_json_round_trips_through_the_production_codec() {}
 
 #[test]
 fn official_complete_archive_round_trips_through_the_production_codec() {
