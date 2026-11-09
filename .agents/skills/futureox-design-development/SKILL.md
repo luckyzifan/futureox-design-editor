@@ -1,4 +1,6 @@
 
+2026-11-09 [安装包 MCP 客户端验收](../../../docs/MCP_PACKAGED_CLIENT_ACCEPTANCE.zh-CN.md)：云端只探测 Claude Code、Codex、Kimi 和 DeepSeek Harness 是否在 PATH 上，不把 `tools/list` 或开发目录写成安装包通过，报告不写 token。五个客户端在本环境都是缺环境。不是 33/100ms 或完整 G2/G5。
+
 2026-11-09 [GPU 启动与缩放调度](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地 GPU 优先、CPU 兜底。已有同源预览时，完整源先完成原密度瓦片，粗页预取在首个原生回执后继续；高倍停止输入后仅撤销未完成的可选滤镜预览，保留冷启动、已交付图像和原任务完结/迟到释放边界。组合版完整拓扑两次约 110–115 秒，旧版约 172 秒；117 的 3200% 约 25.7→10.5 秒。原生画布及可见内容像素一致，预算、效果、密度和 GPU 数学不变。集合替换仅改善 1.9%，已撤回。不是 33/100ms 或完整 G2/G5。
 
 2026-11-09 [最新 main 的 Electron 回归修复](../../../docs/ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地保持 WebGPU 优先，CPU 只兜底。保留 PR56/57 的覆盖场、位图保留、原生 JSON 与重绑定/恢复。单素材原生回执只开放当前 catalogue key 的已认可区域；opening 缩略图旧 key 不能跨重绑定授予整页覆盖。高倍 SDR 图片 Gaussian 按原密度、四相和六遍分条，预算与导出/HDR 入口不放宽。真实 GPU 的 test/FIG/拓扑/117 回放通过；完整拓扑本轮约 177.1 秒，仍慢，不关闭 33/100ms 或完整 G2/G5。
