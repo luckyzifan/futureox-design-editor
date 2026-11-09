@@ -1624,8 +1624,8 @@ pub(super) fn import(
     if !unsupported.is_empty() {
         let mut names: Vec<_> = unsupported.into_iter().collect();
         names.sort();
-        let extra = names.len().saturating_sub(24);
-        let shown = names.into_iter().take(24).collect::<Vec<_>>().join(", ");
+        let extra = names.len().saturating_sub(96);
+        let shown = names.into_iter().take(96).collect::<Vec<_>>().join(", ");
         let suffix = if extra > 0 {
             format!(" and {extra} more")
         } else {
