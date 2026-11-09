@@ -1,18 +1,27 @@
 //! Cloud acceptance for autosave crash, storage failure, reopen and migration.
 //! These are simulated faults against the desktop backend. They do not exercise
 //! a signed release installer, and they are not a confirmed data-loss report.
-use futureox_design_desktop_backend::{workspace::WorkspaceStore, Backend};
+use futureox_design_desktop_backend::{Backend, workspace::WorkspaceStore};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{Connection, Executor, sqlite::SqliteConnection};
 use std::{
     fs,
-    os::unix::fs::PermissionsExt,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
 
 struct Fixture(PathBuf);
+
+struct RestorePermissions {
+    path: PathBuf,
+    permissions: fs::Permissions,
+}
+impl Drop for RestorePermissions {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.path, self.permissions.clone());
+    }
+}
 impl Fixture {
     fn new() -> Self {
         static N: AtomicU64 = AtomicU64::new(0);
@@ -67,7 +76,9 @@ async fn autosave_recovery_uncommitted_exit_reopens_last_commit() {
     let mut connection = f.connection().await;
     connection.execute("BEGIN IMMEDIATE").await.unwrap();
     connection
-        .execute("UPDATE documents SET head_revision=2 WHERE id='10000000-0000-0000-0000-000000000001'")
+        .execute(
+            "UPDATE documents SET head_revision=2 WHERE id='10000000-0000-0000-0000-000000000001'",
+        )
         .await
         .unwrap();
     drop(connection);
@@ -93,15 +104,9 @@ async fn autosave_recovery_conflict_is_not_reported_saved() {
         .await
         .unwrap();
     let mut edited = document("edited");
-    let saved = store
-        .commit(&edited, Some(1), "edit-2")
-        .await
-        .unwrap();
+    let saved = store.commit(&edited, Some(1), "edit-2").await.unwrap();
     edited["name"] = json!("rejected");
-    let error = store
-        .commit(&edited, Some(1), "stale-3")
-        .await
-        .unwrap_err();
+    let error = store.commit(&edited, Some(1), "stale-3").await.unwrap_err();
     assert_eq!(error.code, "WORKSPACE_CONFLICT");
     assert!(!error.message.contains("File saved"));
     assert!(!error.message.contains("saved"));
@@ -110,7 +115,10 @@ async fn autosave_recovery_conflict_is_not_reported_saved() {
     assert_eq!(current.document["name"], "edited");
     store.close().await;
     let reopened = WorkspaceStore::open(&f.db()).await.unwrap();
-    assert_eq!(reopened.read(ID, None).await.unwrap().document["name"], "edited");
+    assert_eq!(
+        reopened.read(ID, None).await.unwrap().document["name"],
+        "edited"
+    );
     reopened.close().await;
 }
 
@@ -131,7 +139,10 @@ async fn autosave_recovery_failed_upgrade_keeps_prior_schema_then_retries() {
     connection.execute("PRAGMA user_version=5").await.unwrap();
     connection.close().await.unwrap();
 
-    let error = WorkspaceStore::open(&f.db()).await.err().expect("blocked migration must fail");
+    let error = WorkspaceStore::open(&f.db())
+        .await
+        .err()
+        .expect("blocked migration must fail");
     assert_eq!(error.code, "WORKSPACE_ERROR");
     assert!(!error.message.contains("File saved"));
     let mut connection = f.connection().await;
@@ -149,10 +160,7 @@ async fn autosave_recovery_failed_upgrade_keeps_prior_schema_then_retries() {
             .unwrap(),
         1
     );
-    connection
-        .execute("DROP TABLE assets_v6")
-        .await
-        .unwrap();
+    connection.execute("DROP TABLE assets_v6").await.unwrap();
     connection.close().await.unwrap();
 
     let store = WorkspaceStore::open(&f.db()).await.unwrap();
@@ -185,15 +193,17 @@ fn autosave_recovery_readonly_and_leftover_temp_keep_import_and_recovery() {
     assert!(saved.warning.is_none());
     let mut edited = document("unsaved edit");
     backend
-        .recovery_write(
-            "session-1",
-            &edited,
-            import.to_str(),
-            Some(&import_hash),
-        )
+        .recovery_write("session-1", &edited, import.to_str(), Some(&import_hash))
         .unwrap();
     fs::write(f.0.join(".fd-write-crashed.tmp"), b"partial replacement").unwrap();
-    fs::set_permissions(&working, fs::Permissions::from_mode(0o444)).unwrap();
+    let original_permissions = fs::metadata(&working).unwrap().permissions();
+    let _restore_permissions = RestorePermissions {
+        path: working.clone(),
+        permissions: original_permissions.clone(),
+    };
+    let mut read_only = original_permissions;
+    read_only.set_readonly(true);
+    fs::set_permissions(&working, read_only).unwrap();
     edited["name"] = json!("must not replace");
     let error = backend
         .save(&working, &edited, Some(&saved.hash))
@@ -202,7 +212,10 @@ fn autosave_recovery_readonly_and_leftover_temp_keep_import_and_recovery() {
     assert!(!error.message.contains("File saved"));
     assert_eq!(fs::read(&import).unwrap(), import_bytes);
     assert_eq!(backend.open(&working).unwrap().document, original);
-    assert_eq!(fs::read(f.0.join(".fd-write-crashed.tmp")).unwrap(), b"partial replacement");
+    assert_eq!(
+        fs::read(f.0.join(".fd-write-crashed.tmp")).unwrap(),
+        b"partial replacement"
+    );
 
     let reopened = Backend::new(&f.0.join("recovery")).unwrap();
     let restored = reopened.recovery_read("session-1").unwrap();

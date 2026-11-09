@@ -32,3 +32,15 @@ node --test frontend/design-desktop/test/autosave-recovery-acceptance.test.mjs
 - `node --test frontend/design-desktop/test/autosave-recovery-acceptance.test.mjs`：2 通过。
 - `node frontend/design-desktop/scripts/accept-autosave-recovery.mjs`：退出码 0。五类模拟故障为 `passed`，安装包上的打开、导航、编辑、撤销、自动保存、关闭重开和原生导出为 `not_run`。
 
+## 本机合并复核（2026-11-10）
+
+整合基线为 `4152795ed3cca8966aae13e1a6161ebcefe4e41d`，环境为 macOS arm64、Rust 1.99.1、Node 24.12.0。Rust 测试由本次源码重新编译，构建与测试并发上限为 2。
+
+复核中修正两处原候选问题：测试不再无条件导入 Unix 专用权限 API，改用可跨平台编译的只读权限和清理守卫；报告必须观察到全部 6 个具名恢复测试实际执行为 `ok`，退出 0 但零测试、漏测或忽略测试的结果保持 `not_run`。
+
+- 同一个「零选中测试不能通过」反例在原 PR 报告上失败，修正后通过。
+- `node --test frontend/design-desktop/test/autosave-recovery-acceptance.test.mjs`：5 通过，无跳过。
+- `node frontend/design-desktop/scripts/accept-autosave-recovery.mjs`：6 个具名 Rust 测试均执行通过，`missingTests` 为空；安装包步骤仍全部 `not_run`。
+- `cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-desktop-backend -- --test-threads=2`：192 通过，0 失败，13 个既有显式本机大文件／性能用例被忽略，没有把这些用例计为通过。
+
+本机结果覆盖实际文件、SQLite、恢复与 stdio 后端回归；Windows/macOS 安装包、GUI 完整流程及断电故障没有在此执行。Windows 专属回归仅修正了源码中的不可移植接口，不声称 Windows 实机验收通过。

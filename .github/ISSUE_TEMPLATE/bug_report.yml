@@ -1,0 +1,53 @@
+name: 缺陷反馈 / Bug report
+description: 帮助我们复现并修复实际使用中的问题 / Report a reproducible problem.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请先搜索已有 Issues。最小复现和原创样例最有帮助。
+        Thank you! Search existing issues first, and use an original minimal example where possible.
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交 / Version or commit
+      placeholder: "例如 / e.g. main @ 70f72c2"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境 / Environment
+      description: 操作系统、网页或桌面版；渲染问题请补充 GPU、浏览器和显示缩放。
+      placeholder: "OS / Web or desktop / Browser or Electron / GPU / Display scale"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1. 打开什么文档 / Open a document…
+        2. 执行什么操作 / Perform an action…
+        3. 出现什么问题 / Observe the problem…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果 / Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果 / Actual behavior
+      description: 可以附截图或可公开分享的最小样例 / Screenshots or shareable minimal fixtures are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志 / Relevant logs
+      description: 可选；请移除令牌、个人路径和私人设计内容 / Optional; remove tokens, personal paths, and private design content.
+      render: shell

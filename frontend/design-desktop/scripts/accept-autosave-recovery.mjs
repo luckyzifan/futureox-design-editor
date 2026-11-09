@@ -9,6 +9,15 @@ const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
 const studio = path.join(repo, 'design-studio')
 
+export const EXPECTED_RECOVERY_TESTS = [
+  'autosave_recovery_storage_full_preserves_original_and_is_not_saved',
+  'autosave_recovery_interrupted_journal_next_is_not_saved',
+  'autosave_recovery_uncommitted_exit_reopens_last_commit',
+  'autosave_recovery_conflict_is_not_reported_saved',
+  'autosave_recovery_failed_upgrade_keeps_prior_schema_then_retries',
+  'autosave_recovery_readonly_and_leftover_temp_keep_import_and_recovery',
+]
+
 export const RELEASE_FLOW = [
   'install_release_package',
   'open_document',
@@ -22,36 +31,43 @@ export const RELEASE_FLOW = [
 ]
 
 export function buildReport({ cargo, releasePackagePresent = false, platform = process.platform, arch = process.arch }) {
-  const unitPassed = cargo?.status === 0
+  const passedTests = new Set(String(cargo?.stdout || '').split('\n').flatMap(line => {
+    const parts = line.trim().split(' ').filter(Boolean)
+    return parts[0] === 'test' && parts[2] === '...' && parts[3] === 'ok'
+      ? [parts[1].split('::').at(-1)] : []
+  }))
+  const missingTests = EXPECTED_RECOVERY_TESTS.filter(name => !passedTests.has(name))
+  const unitPassed = cargo?.status === 0 && missingTests.length === 0
+  const unitStatus = unitPassed ? 'passed' : cargo?.status === 0 ? 'not_run' : 'failed'
   const faults = [
     {
       id: 'exit_during_save',
       evidence: 'autosave_recovery_uncommitted_exit_reopens_last_commit and autosave_recovery_interrupted_journal_next_is_not_saved',
-      status: unitPassed ? 'passed' : 'failed',
+      status: unitStatus,
       scope: 'simulated_backend',
     },
     {
       id: 'storage_full_or_write_failure',
       evidence: 'autosave_recovery_storage_full_preserves_original_and_is_not_saved and autosave_recovery_readonly_and_leftover_temp_keep_import_and_recovery',
-      status: unitPassed ? 'passed' : 'failed',
+      status: unitStatus,
       scope: 'simulated_backend',
     },
     {
       id: 'reopen_last_consistent_version',
       evidence: 'recovery_read after a rejected save; workspace reopen after a dropped transaction',
-      status: unitPassed ? 'passed' : 'failed',
+      status: unitStatus,
       scope: 'simulated_backend',
     },
     {
       id: 'upgrade_migration',
       evidence: 'autosave_recovery_failed_upgrade_keeps_prior_schema_then_retries',
-      status: unitPassed ? 'passed' : 'failed',
+      status: unitStatus,
       scope: 'simulated_backend',
     },
     {
       id: 'original_import_unchanged',
       evidence: 'readonly save and recovery_write leave the import bytes unchanged',
-      status: unitPassed ? 'passed' : 'failed',
+      status: unitStatus,
       scope: 'simulated_backend',
     },
     ...RELEASE_FLOW.map(id => ({
@@ -74,6 +90,8 @@ export function buildReport({ cargo, releasePackagePresent = false, platform = p
     cargo: {
       status: cargo?.status ?? null,
       filter: 'autosave_recovery',
+      executedExpectedTests: EXPECTED_RECOVERY_TESTS.filter(name => passedTests.has(name)),
+      missingTests,
     },
     faults,
     releaseAcceptance: 'not_closed',
@@ -83,8 +101,8 @@ export function buildReport({ cargo, releasePackagePresent = false, platform = p
 function runCargo() {
   return spawnSync(
     'cargo',
-    ['test', '-p', 'futureox-design-desktop-backend', 'autosave_recovery', '--', '--test-threads=8'],
-    { cwd: studio, encoding: 'utf8' },
+    ['test', '--locked', '--color', 'never', '-p', 'futureox-design-desktop-backend', 'autosave_recovery', '--', '--test-threads=2', '--color', 'never'],
+    { cwd: studio, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024 },
   )
 }
 
