@@ -64,6 +64,7 @@ test('executable instance overrides land in kernel fields and consumption maps a
         borderTopWeight: 1,
         borderRightWeight: 4,
         pluginData: [{ key: 'k', value: 'v' }],
+        effects: [{ type: 'DROP_SHADOW' }],
         variableConsumptionMap: { entries: [
           { variableField: 'WIDTH', variableData: { value: { alias: { assetRef: { key: 'width-token' }, guid: { sessionID: 9, localID: 3 } } } } },
           { variableField: 'STROKE_WEIGHT', variableData: { value: { alias: { guid: { sessionID: 9, localID: 3 } } } } },
@@ -75,12 +76,13 @@ test('executable instance overrides land in kernel fields and consumption maps a
   const ids = new Map([['sym', main.id], ['shape', shape.id], ['inst', instance.id], ['9:3', 'var-width']])
   const warnings = new Set<string>()
   const receipts = new Map<string, Record<string, string>>()
-  importFigComponents(doc, records, ids, () => paint('#000000'), (record) => [{ ...stroke('#123456', record.strokeWeight ?? 1) }], { add: (message) => warnings.add(message) }, receipts)
+  importFigComponents(doc, records, ids, () => paint('#000000'), (record) => [{ ...stroke('#123456', record.strokeWeight ?? 1) }], { add: (message) => warnings.add(message) }, receipts, () => [{ id: 'e', kind: 'shadow', visible: true, radius: 4, x: 0, y: 0, spread: 0, color: '#000000', opacity: 1, amount: 0 }])
   const first = doc.nodes[instance.id].instance!.overrides[shape.id]
   expect(first.radii).toEqual([2, 8, 8, 8])
   expect(first.width).toBe(50)
   expect(first.height).toBe(30)
   expect(first.strokes).toEqual([expect.objectContaining({ width: 6, align: 'inside' })])
+  expect(first.effects).toEqual([expect.objectContaining({ kind: 'shadow', radius: 4 })])
   expect((first.bindings as Record<string, string>).width).toBe('9:3')
   expect([...warnings].some(message => message.includes('pluginData'))).toBe(true)
   expect([...warnings].some(message => message.includes('borderStrokeWeightsIndependent'))).toBe(true)
@@ -99,6 +101,7 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   const child = node('rectangle', 0, 0, 20, 20)
   const text = node('text', 0, 0, 40, 16)
   text.text = 'Ag'
+  text.fontSize = 16
   const instance = node('frame', 0, 180, 200, 160)
   main.children = [frame.id, child.id, text.id]
   doc.nodes = { [main.id]: main, [frame.id]: frame, [child.id]: child, [text.id]: text, [instance.id]: instance }
@@ -110,7 +113,7 @@ test('in-file auto-layout and font variants execute while missing targets stay r
     ['inst', { type: 'INSTANCE', symbolData: { symbolID: 'sym', symbolOverrides: [
       { guidPath: { guids: ['frame'] }, stackSpacing: 12, stackHorizontalPadding: 6, stackVerticalPadding: 3, stackPaddingRight: 9, stackPrimarySizing: 'FIXED', proportionsConstrained: true },
       { guidPath: { guids: ['child'] }, stackChildAlignSelf: 'STRETCH', stackChildPrimaryGrow: 1 },
-      { guidPath: { guids: ['text'] }, fontVariantCommonLigatures: false, fontVariantCaps: 'SMALL', toggledOnOTFeatures: ['KERN'], textTracking: 120, variableConsumptionMap: { entries: [{ variableField: 'RECTANGLE_TOP_LEFT_CORNER_RADIUS', variableData: { value: { alias: { guid: { sessionID: 9, localID: 3 } } } } }] } },
+      { guidPath: { guids: ['text'] }, fontVariantCommonLigatures: false, fontVariantCaps: 'SMALL', toggledOnOTFeatures: ['KERN'], textTracking: 120, lineHeight: { units: 'PIXELS', value: 24 }, fontName: { family: 'Inter', style: 'Bold' }, variableConsumptionMap: { entries: [{ variableField: 'RECTANGLE_TOP_LEFT_CORNER_RADIUS', variableData: { value: { alias: { guid: { sessionID: 9, localID: 3 } } } } }] } },
       { guidPath: { guids: ['44:1'] }, stackPaddingRight: 4, fontVariantCaps: 'SMALL', fontVariantNumericFraction: 'NOT_A_FRACTION' },
     ] } }],
   ])
@@ -125,7 +128,9 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   const childFields = doc.nodes[instance.id].instance!.overrides[child.id]
   expect(childFields.sizing).toEqual(expect.objectContaining({ width: 'fill', height: 'fill', alignSelf: 'stretch' }))
   const textFields = doc.nodes[instance.id].instance!.overrides[text.id]
-  expect((textFields.textStyle as { features: string[]; letterSpacing: number }).letterSpacing).toBe(120)
+  expect((textFields.textStyle as { features: string[]; letterSpacing: number; lineHeight: number; weight: number }).letterSpacing).toBe(120)
+  expect((textFields.textStyle as { lineHeight: number }).lineHeight).toBe(1.5)
+  expect((textFields.textStyle as { weight: number }).weight).toBe(700)
   expect((textFields.textStyle as { features: string[] }).features).toEqual(expect.arrayContaining(['-liga', '-clig', 'smcp', 'kern']))
   const missing = doc.nodes[instance.id].instance!.overrides['44:1']
   expect(missing.layout).toBeUndefined()
@@ -133,7 +138,8 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   const messages = [...warnings]
   expect(messages.some(message => message.includes('stackPaddingRight'))).toBe(true)
   expect(messages.some(message => message.includes('fontVariantNumericFraction'))).toBe(true)
-  expect(messages.some(message => message.includes('textTracking'))).toBe(false)
+  expect(messages.some(message => message.includes('textTracking') || message.includes('lineHeight'))).toBe(false)
+  expect(messages.some(message => message.includes('fontName.family=Inter'))).toBe(true)
   expect(messages.some(message => message.includes('fontVariantCaps') || message.includes('stackSpacing') || message.includes('stackChildAlignSelf'))).toBe(false)
   expect(receipts.get(instance.id)?.figOverrideVariableConsumption).toContain('RECTANGLE_TOP_LEFT_CORNER_RADIUS')
 })

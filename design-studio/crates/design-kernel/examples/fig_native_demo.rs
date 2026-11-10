@@ -55,6 +55,58 @@ fn main() {
             for (k, v) in by_kind {
                 println!("  {k}: {v}");
             }
+            if std::env::var_os("FIG_NOTES").is_some() || std::env::var_os("FIG_RESOLVE").is_some()
+            {
+                let mut layout = 0usize;
+                let mut effects = 0usize;
+                let mut sized = 0usize;
+                let mut radii = 0usize;
+                let mut line_height = 0usize;
+                for instance in doc.nodes.values().filter_map(|node| node.instance.as_ref()) {
+                    for fields in instance.overrides.values() {
+                        if fields.get("layout").is_some() {
+                            layout += 1;
+                        }
+                        if fields.get("effects").is_some() {
+                            effects += 1;
+                        }
+                        if fields.get("width").is_some() || fields.get("height").is_some() {
+                            sized += 1;
+                        }
+                        if fields.get("radii").is_some() || fields.get("cornerRadius").is_some() {
+                            radii += 1;
+                        }
+                        if fields
+                            .get("textStyle")
+                            .and_then(|style| style.get("lineHeight"))
+                            .is_some()
+                        {
+                            line_height += 1;
+                        }
+                    }
+                }
+                println!(
+                    "覆盖写入: layout {layout} | effects {effects} | size {sized} | radii {radii} | lineHeight {line_height}"
+                );
+                if let Some(notes) = doc
+                    .design_system
+                    .as_ref()
+                    .and_then(|system| system.sketch_containers.get("figDocument"))
+                    .and_then(|receipt| receipt.get("notes"))
+                {
+                    println!("notes: {notes}");
+                }
+            }
+            if std::env::var_os("FIG_RESOLVE").is_some() {
+                let mut resolved = doc.clone();
+                match futureox_design_kernel::design_system::resolve(&mut resolved) {
+                    Ok(()) => match resolved.validate() {
+                        Ok(()) => println!("resolve+validate: ok nodes {}", resolved.nodes.len()),
+                        Err(error) => println!("validate after resolve: {error}"),
+                    },
+                    Err(error) => println!("resolve: {error}"),
+                }
+            }
             if std::env::var("FIG_DUMP_NODES").is_ok() {
                 for n in doc.nodes.values().take(4) {
                     println!(

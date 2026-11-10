@@ -1,4 +1,4 @@
-import type { ComponentProperty, DesignDocument, Paint, Stroke } from './model'
+import type { ComponentProperty, DesignDocument, Effect, Paint, Stroke } from './model'
 import { defaultLayout, defaultSizing, defaultTextStyle } from './model'
 import type { FigReceipts } from './import-fig-nodes'
 const guid = (g: any): string => typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : ''
@@ -14,9 +14,9 @@ const STROKE_INPUTS = ['strokeWeight','strokeAlign','strokeCap','strokeJoin','da
 const LAYOUT_KEYS = ['stackMode','stackSpacing','stackCounterSpacing','stackHorizontalPadding','stackVerticalPadding','stackPaddingRight','stackPaddingBottom','stackPadding','stackWrap','stackPrimaryAlignItems','stackCounterAlignItems','stackPrimarySizing','stackCounterSizing','stackPositioning','stackChildPrimaryGrow','stackChildAlignSelf','minSize','maxSize','horizontalConstraint','verticalConstraint']
 const FONT_KEYS = ['fontVariantCommonLigatures','fontVariantContextualLigatures','fontVariantDiscretionaryLigatures','fontVariantHistoricalLigatures','fontVariantOrdinal','fontVariantSlashedZero','fontVariantNumericFigure','fontVariantNumericSpacing','fontVariantNumericFraction','fontVariantCaps','fontVariantPosition','toggledOnOTFeatures','toggledOffOTFeatures','fontVariations']
 const BINDING_FIELDS: Record<string, string> = {
-  WIDTH: 'width', HEIGHT: 'height', OPACITY: 'opacity', VISIBLE: 'visible', TEXT_DATA: 'text',
-  FONT_SIZE: 'fontSize', STACK_SPACING: 'layout.gap', STACK_COUNTER_SPACING: 'layout.lineGap',
-  LETTER_SPACING: 'textStyle.letterSpacing', LINE_HEIGHT: 'textStyle.lineHeight',
+  WIDTH: 'width', HEIGHT: 'height', OPACITY: 'opacity', VISIBLE: 'visible', TEXT_DATA: 'text', CHARACTERS: 'text',
+  FONT_SIZE: 'fontSize', FONT_WEIGHT: 'textStyle.weight', STACK_SPACING: 'layout.gap', ITEM_SPACING: 'layout.gap',
+  STACK_COUNTER_SPACING: 'layout.lineGap', LETTER_SPACING: 'textStyle.letterSpacing', LINE_HEIGHT: 'textStyle.lineHeight',
 }
 const STYLE_FIELDS: Record<string, { field: string; type: string }> = {
   styleIdForFill: { field: 'fills', type: 'FILL' },
@@ -76,7 +76,7 @@ function resolveOverridePath(addressesByComponent: Map<string, Map<string, strin
   return resolved
 }
 
-export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, strokesOf: (record:any)=>Stroke[], warnings?: { add(message: string): unknown }, receipts?: FigReceipts) {
+export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, strokesOf: (record:any)=>Stroke[], warnings?: { add(message: string): unknown }, receipts?: FigReceipts, effectsOf?: (record: any) => Effect[]) {
   for (const [sourceId, r] of records) {
     const n=doc.nodes[ids.get(sourceId)!]
     if (!n || r.type!=='SYMBOL') continue
@@ -189,6 +189,7 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       applyCorners(fields, override, target, warnings)
       applyExport(fields, override, warnings)
       applyText(fields, override, target, warnings)
+      applyEffects(fields, override, effectsOf, warnings)
       applyLayout(fields, override, target, source, records, warnings)
       applyStyles(fields, override, target, source, records, ids, warnings)
       if(Array.isArray(override.strokePaints)) fields.strokes = strokesOf(override)
@@ -265,6 +266,33 @@ function applyStrokeAttrs(fields: Record<string, unknown>, override: any, target
   }))
 }
 
+function metricSize(fields: Record<string, unknown>, target: { fontSize?: number } | undefined) {
+  const size = typeof fields.fontSize === 'number' ? fields.fontSize : target?.fontSize
+  return typeof size === 'number' && size >= 1 ? size : 16
+}
+
+function lineHeightMultiplier(value: any, size: number) {
+  if (!value || typeof value !== 'object' || typeof value.value !== 'number' || !Number.isFinite(value.value) || !(size >= 1)) return
+  if (value.units === 'PIXELS') return value.value / size
+  if (value.units === 'PERCENT') return value.value / 100
+  if (value.units === 'RAW') return value.value
+}
+
+function letterSpacingPixels(value: any, size: number) {
+  if (!value || typeof value !== 'object' || typeof value.value !== 'number' || !Number.isFinite(value.value)) return
+  if (value.units === 'PIXELS') return value.value
+  if (value.units === 'PERCENT' && size >= 1) return size * value.value / 100
+}
+
+function styleWeight(style: string) {
+  const name = style.toLowerCase().replace(/[\s_-]/g, '').replace(/italic$/, '')
+  const table: Record<string, number> = {
+    thin: 100, extralight: 200, ultralight: 200, light: 300, regular: 400, normal: 400, book: 400,
+    medium: 500, semibold: 600, demibold: 600, bold: 700, extrabold: 800, ultrabold: 800, heavy: 800, black: 900,
+  }
+  return table[name]
+}
+
 function applyText(fields: Record<string, unknown>, override: any, target: { text?: string; textStyle?: ReturnType<typeof defaultTextStyle>; fontSize?: number } | undefined, warnings?: { add(message: string): unknown }) {
   if(override.textData) {
     if(typeof override.textData.characters === 'string') fields.text = override.textData.characters
@@ -272,11 +300,48 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
   }
   const style = { ...(target?.textStyle ?? defaultTextStyle()) }
   let changed = false
-  if(override.letterSpacing === undefined && override.textTracking !== undefined) {
+  const size = metricSize(fields, target)
+  if(override.lineHeight !== undefined) {
+    const multiplier = lineHeightMultiplier(override.lineHeight, size)
+    if(multiplier !== undefined && multiplier >= 0.1 && multiplier <= 10) { style.lineHeight = multiplier; changed = true }
+    else warnings?.add('FIG 实例覆盖 lineHeight 暂不能执行，其余覆盖已保留')
+  }
+  if(override.letterSpacing !== undefined) {
+    const pixels = letterSpacingPixels(override.letterSpacing, size)
+    if(pixels !== undefined && Number.isFinite(pixels) && Math.abs(pixels) <= 1000) { style.letterSpacing = pixels; changed = true }
+    else warnings?.add('FIG 实例覆盖 letterSpacing 暂不能执行，其余覆盖已保留')
+  } else if(override.textTracking !== undefined) {
     if(typeof override.textTracking === 'number' && Number.isFinite(override.textTracking) && Math.abs(override.textTracking) <= 1000) {
       style.letterSpacing = override.textTracking
       changed = true
     } else warnings?.add('FIG 实例覆盖 textTracking 暂不能执行，其余覆盖已保留')
+  }
+  if(override.paragraphSpacing !== undefined) {
+    if(typeof override.paragraphSpacing === 'number' && Number.isFinite(override.paragraphSpacing) && override.paragraphSpacing >= 0 && override.paragraphSpacing <= 10000) {
+      style.paragraphSpacing = override.paragraphSpacing
+      changed = true
+    } else warnings?.add('FIG 实例覆盖 paragraphSpacing 暂不能执行，其余覆盖已保留')
+  }
+  if(override.paragraphIndent !== undefined) {
+    if(typeof override.paragraphIndent === 'number' && Number.isFinite(override.paragraphIndent) && Math.abs(override.paragraphIndent) <= 10000) {
+      style.paragraphIndent = override.paragraphIndent
+      changed = true
+    } else warnings?.add('FIG 实例覆盖 paragraphIndent 暂不能执行，其余覆盖已保留')
+  }
+  if(override.textCase !== undefined) {
+    const mapped: Record<string, 'original' | 'upper' | 'lower'> = { ORIGINAL: 'original', UPPER: 'upper', LOWER: 'lower' }
+    if(mapped[override.textCase]) { style.textCase = mapped[override.textCase]; changed = true }
+    else warnings?.add(`FIG 实例覆盖 textCase=${override.textCase} 暂不能执行，其余覆盖已保留`)
+  }
+  if(override.fontName) {
+    if(typeof override.fontName.style === 'string') {
+      const weight = styleWeight(override.fontName.style)
+      if(weight !== undefined) { style.weight = weight; changed = true }
+      else warnings?.add('FIG 实例覆盖 fontName.style 暂不能执行，其余覆盖已保留')
+    }
+    if(typeof override.fontName.family === 'string' && override.fontName.family) {
+      warnings?.add(`FIG 实例覆盖 fontName.family=${override.fontName.family} 暂不能执行，其余覆盖已保留`)
+    }
   }
   if(override.textAlignHorizontal !== undefined) {
     const align = { LEFT: 'start', CENTER: 'center', RIGHT: 'end', JUSTIFIED: 'justify' } as Record<string, string>
@@ -295,6 +360,19 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
   }
   if(applyOpenType(style, override, warnings)) changed = true
   if(changed) fields.textStyle = style
+}
+
+function applyEffects(fields: Record<string, unknown>, override: any, effectsOf: ((record: any) => Effect[]) | undefined, warnings?: { add(message: string): unknown }) {
+  if(override.effects === undefined) return
+  if(!Array.isArray(override.effects) || !effectsOf) {
+    warnings?.add('FIG 实例覆盖 effects 暂不能执行，其余覆盖已保留')
+    return
+  }
+  try {
+    fields.effects = effectsOf({ effects: override.effects })
+  } catch {
+    warnings?.add('FIG 实例覆盖 effects 暂不能执行，其余覆盖已保留')
+  }
 }
 
 function setFeature(features: string[], tag: string, enabled: boolean) {

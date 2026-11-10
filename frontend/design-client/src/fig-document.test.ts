@@ -108,3 +108,54 @@ test('variable set aliases resolve by publish key and supported fields bind', ()
   })
   validateDocument(doc)
 })
+
+test('fig opacity percentages are copied at import and ordinary numbers stay', () => {
+  const doc = blank('Opacity')
+  doc.schemaVersion = 6
+  const chip = node('rectangle', 0, 0, 40, 24)
+  const main = node('frame', 0, 40, 40, 24)
+  main.component = { variants: {}, properties: {} }
+  const instance = node('frame', 0, 80, 40, 24)
+  instance.instance = {
+    componentId: main.id,
+    overrides: { child: { bindings: { opacity: '1:4', width: '1:4' } } },
+    propertyValues: {},
+  }
+  doc.nodes = { [chip.id]: chip, [main.id]: main, [instance.id]: instance }
+  doc.pages[0].children = [chip.id, main.id, instance.id]
+  const records = new Map<string, Record<string, unknown>>([
+    ['1:3', { type: 'VARIABLE_SET', name: 'Theme', key: 'theme', variableSetModes: [
+      { name: 'Light', id: { sessionID: 9, localID: 1 } },
+      { name: 'Dark', id: { sessionID: 9, localID: 2 } },
+    ] }],
+    ['1:4', { type: 'VARIABLE', name: 'Disabled 50%', key: 'disabled', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'theme' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 50 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 20 } } },
+      ] } }],
+    ['1:5', { type: 'VARIABLE', name: 'Half', key: 'half', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'theme' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 0.25 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 0.25 } } },
+      ] } }],
+    ['chip', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
+      { variableField: 'WIDTH', variableData: { value: { alias: { assetRef: { key: 'disabled' } } } } },
+      { variableField: 'OPACITY', variableData: { value: { alias: { assetRef: { key: 'disabled' } } } } },
+    ] } }],
+    ['unit', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
+      { variableField: 'OPACITY', variableData: { value: { alias: { assetRef: { key: 'half' } } } } },
+    ] } }],
+  ])
+  importFigVariableNodes(doc, records, new Map([['chip', chip.id], ['unit', main.id]]))
+  expect(doc.designSystem?.variables['1:4'].values.Light).toBe(50)
+  expect(doc.designSystem?.variables['1:4'].values.Dark).toBe(20)
+  expect(doc.designSystem?.variables['1:4#fig-opacity'].values).toEqual({ Light: 0.5, Dark: 0.2 })
+  expect(doc.designSystem?.variables['1:5#fig-opacity']).toBeUndefined()
+  expect(chip.bindings?.width).toBe('1:4')
+  expect(chip.bindings?.opacity).toBe('1:4#fig-opacity')
+  expect(main.bindings?.opacity).toBe('1:5')
+  const override = instance.instance?.overrides.child.bindings as Record<string, string>
+  expect(override.opacity).toBe('1:4#fig-opacity')
+  expect(override.width).toBe('1:4')
+  validateDocument(doc)
+})

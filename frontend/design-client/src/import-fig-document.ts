@@ -354,6 +354,92 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
     try { parsed = JSON.parse(raw) } catch { continue }
     for (const [field, id] of linked(parsed)) node.bindings = { ...node.bindings, [field]: id }
   }
+  normalizeFigOpacityBindings(doc)
+}
+
+function opacityBindingPath(path: string) {
+  return path === 'opacity' || path.endsWith('.opacity')
+}
+
+function scaledFigOpacityVariable(
+  system: NonNullable<DesignDocument['designSystem']>,
+  id: string,
+  memo: Map<string, string>,
+  stack: Set<string>,
+): string {
+  const done = memo.get(id)
+  if (done) return done
+  if (stack.has(id)) return id
+  const source = system.variables[id]
+  if (!source || source.kind !== 'number') {
+    memo.set(id, id)
+    return id
+  }
+  stack.add(id)
+  const values: typeof source.values = {}
+  let scaled = false
+  for (const [mode, value] of Object.entries(source.values)) {
+    if (value && typeof value === 'object' && 'alias' in value) {
+      const next = scaledFigOpacityVariable(system, value.alias, memo, stack)
+      if (next !== value.alias) scaled = true
+      values[mode] = { alias: next }
+    } else if (typeof value === 'number' && Number.isFinite(value)) {
+      if (value > 1 && value <= 100) {
+        scaled = true
+        values[mode] = value / 100
+      } else values[mode] = value
+    } else {
+      stack.delete(id)
+      memo.set(id, id)
+      return id
+    }
+  }
+  stack.delete(id)
+  if (!scaled) {
+    memo.set(id, id)
+    return id
+  }
+  let nextId = `${id}#fig-opacity`
+  let generation = 2
+  while (system.variables[nextId]) {
+    nextId = `${id}#fig-opacity-${generation}`
+    generation += 1
+    if (generation > 8) {
+      memo.set(id, id)
+      return id
+    }
+  }
+  system.variables[nextId] = { name: source.name, collection: source.collection, kind: source.kind, values }
+  memo.set(id, nextId)
+  return nextId
+}
+
+/** FIG opacity numbers above 1 are percentages. Copy them onto a 0–1 variable
+ * and leave the source number alone so width bindings of the same token stay put. */
+export function normalizeFigOpacityBindings(doc: DesignDocument) {
+  const system = doc.designSystem
+  if (!system) return
+  const sites: Array<{ map: Record<string, string>; field: string }> = []
+  const take = (map: Record<string, string> | undefined) => {
+    if (!map) return
+    for (const field of Object.keys(map)) if (opacityBindingPath(field)) sites.push({ map, field })
+  }
+  for (const node of Object.values(doc.nodes)) {
+    take(node.bindings)
+    for (const fields of Object.values(node.instance?.overrides || {})) {
+      const bindings = fields.bindings
+      if (bindings && typeof bindings === 'object' && !Array.isArray(bindings)) take(bindings as Record<string, string>)
+    }
+  }
+  if (!sites.length) return
+  const memo = new Map<string, string>()
+  const stack = new Set<string>()
+  for (const site of sites) {
+    const current = site.map[site.field]
+    if (typeof current !== 'string') continue
+    const next = scaledFigOpacityVariable(system, current, memo, stack)
+    if (next !== current) site.map[site.field] = next
+  }
 }
 
 export function storeFigVariables(doc: DesignDocument, tree: FigRecord) {

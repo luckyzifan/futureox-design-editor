@@ -1,10 +1,10 @@
 //! Resolve native component GUIDs only after the complete template tree exists.
-use super::{bool_of, f64_of, guid_string, str_of, Error, FigImporter};
+use super::{Error, FigImporter, bool_of, f64_of, guid_string, str_of};
 use crate::components::{Component, Instance, Overrides, Property, PropertyKind};
 use crate::math::Transform;
 use crate::scene::{Document, Node, Stroke};
 use crate::stroke::Marker;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn property_value(kind: &PropertyKind, value: &Value) -> Option<Value> {
@@ -157,9 +157,10 @@ fn binding_path(field: &str) -> Option<&'static str> {
         "HEIGHT" => "height",
         "OPACITY" => "opacity",
         "VISIBLE" => "visible",
-        "TEXT_DATA" => "text",
+        "TEXT_DATA" | "CHARACTERS" => "text",
         "FONT_SIZE" => "fontSize",
-        "STACK_SPACING" => "layout.gap",
+        "FONT_WEIGHT" => "textStyle.weight",
+        "STACK_SPACING" | "ITEM_SPACING" => "layout.gap",
         "STACK_COUNTER_SPACING" => "layout.lineGap",
         "LETTER_SPACING" => "textStyle.letterSpacing",
         "LINE_HEIGHT" => "textStyle.lineHeight",
@@ -1705,7 +1706,7 @@ pub(super) fn import(
                 other => {
                     return Err(Error::Unsupported(format!(
                         "component property type {other:?}"
-                    )))
+                    )));
                 }
             };
             let key = def

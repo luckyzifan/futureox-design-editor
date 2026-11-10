@@ -8,7 +8,7 @@ use futureox_design_kernel::design_system::resolve;
 use futureox_design_kernel::editing::{DocumentEditor, DocumentPatch};
 use futureox_design_kernel::fig::document_from_canvas;
 use futureox_design_kernel::scene::{Document, Node};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 fn node<'a>(doc: &'a Document, session: u64, local: u64) -> &'a Node {
@@ -528,13 +528,15 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
                 .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == "fig-1-4")
         })
         .unwrap();
-    assert!(text_node
-        .text_style
-        .as_ref()
-        .unwrap()
-        .features
-        .iter()
-        .any(|feature| feature == "smcp"));
+    assert!(
+        text_node
+            .text_style
+            .as_ref()
+            .unwrap()
+            .features
+            .iter()
+            .any(|feature| feature == "smcp")
+    );
     resolved
         .validate()
         .expect("resolved in-file overrides stay valid");
@@ -714,12 +716,13 @@ fn override_keys_execute_layout_size_text_and_keep_missing_paths() {
     let nested = spec.overrides.get("fig-1-20/fig-1-31").unwrap();
     assert_eq!(nested["width"], json!(64.));
     assert_eq!(nested["height"], json!(28.));
-    assert!(spec
-        .overrides
-        .get("fig-9-9")
-        .unwrap()
-        .get("layout")
-        .is_none());
+    assert!(
+        spec.overrides
+            .get("fig-9-9")
+            .unwrap()
+            .get("layout")
+            .is_none()
+    );
     let notes = notes(&doc);
     assert!(notes.contains("stackPaddingRight"), "{notes}");
     assert!(notes.contains("pluginData"), "{notes}");
@@ -773,7 +776,7 @@ fn override_keys_execute_layout_size_text_and_keep_missing_paths() {
 }
 
 #[test]
-fn percent_opacity_variables_resolve_inside_the_unit_interval() {
+fn ordinary_opacity_bindings_are_not_treated_as_fig_percentages() {
     let mut doc: Document = serde_json::from_value(json!({
         "schemaVersion": 6,
         "id": "d",
@@ -788,15 +791,245 @@ fn percent_opacity_variables_resolve_inside_the_unit_interval() {
             "activeModes": {"theme": "Default"}
         },
         "nodes": {
-            "n": {"id": "n", "kind": "frame", "width": 40, "height": 20, "opacity": 0.5, "bindings": {"opacity": "percent"}},
+            "n": {
+                "id": "n",
+                "kind": "rectangle",
+                "width": 40,
+                "height": 20,
+                "opacity": 1,
+                "fills": [{"kind": "solid", "color": "#000000", "opacity": 1, "visible": true}],
+                "bindings": {"opacity": "percent", "width": "percent", "fills.0.opacity": "percent"}
+            },
             "unit": {"id": "unit", "kind": "frame", "width": 40, "height": 20, "opacity": 1, "bindings": {"opacity": "unit"}}
         }
     }))
     .unwrap();
     resolve(&mut doc).unwrap();
-    assert!((doc.nodes["n"].opacity - 0.5).abs() < 1e-9);
+    assert!(
+        (doc.nodes["n"].opacity - 50.).abs() < 1e-9,
+        "layer opacity {}",
+        doc.nodes["n"].opacity
+    );
+    assert!((doc.nodes["n"].fills[0].opacity - 50.).abs() < 1e-9);
+    assert!(
+        (doc.nodes["n"].width - 50.).abs() < 1e-9,
+        "width {}",
+        doc.nodes["n"].width
+    );
     assert!((doc.nodes["unit"].opacity - 0.25).abs() < 1e-9);
-    doc.validate().unwrap();
+    assert!(
+        (doc.design_system.as_ref().unwrap().variables["percent"].values["Default"]
+            .as_f64()
+            .unwrap()
+            - 50.)
+            .abs()
+            < 1e-9
+    );
+    assert!(doc.validate().is_err());
+}
+
+#[test]
+fn fig_percent_opacity_is_normalized_only_during_import() {
+    let g = |session: u64, local: u64| json!({"sessionID": session, "localID": local});
+    let mut shared = placed("RECTANGLE", 1, 8, (0, 1), "a");
+    shared["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "WIDTH", "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}},
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}}
+    ]});
+    let mut unit = placed("RECTANGLE", 1, 9, (0, 1), "b");
+    unit["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 6), "assetRef": {"key": "half"}}}}}
+    ]});
+    let mut via_alias = placed("RECTANGLE", 1, 10, (0, 1), "c");
+    via_alias["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 7), "assetRef": {"key": "disabled-alias"}}}}}
+    ]});
+    let mut text = placed("TEXT", 1, 11, (0, 1), "d");
+    text["textData"] = json!({"characters": "No"});
+    text["fontSize"] = json!(16.);
+    text["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "FONT_WEIGHT", "variableData": {"value": {"alias": {"guid": g(9, 8), "assetRef": {"key": "weight"}}}}},
+        {"variableField": "CHARACTERS", "variableData": {"value": {"alias": {"guid": g(9, 9), "assetRef": {"key": "label"}}}}}
+    ]});
+    let symbol = placed("SYMBOL", 1, 2, (0, 1), "e");
+    let child = placed("RECTANGLE", 1, 3, (1, 2), "f");
+    let mut label = placed("TEXT", 1, 12, (1, 2), "h");
+    label["textData"] = json!({"characters": "No"});
+    label["fontSize"] = json!(16.);
+    let mut instance = placed("INSTANCE", 1, 5, (0, 1), "g");
+    instance["symbolData"] = json!({
+        "symbolID": g(1, 2),
+        "symbolOverrides": [
+            {
+                "guidPath": {"guids": [g(1, 3)]},
+                "variableConsumptionMap": {"entries": [{
+                    "variableField": "OPACITY",
+                    "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}
+                }]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 12)]},
+                "lineHeight": {"units": "PIXELS", "value": 24.},
+                "letterSpacing": {"units": "PERCENT", "value": 10.},
+                "fontName": {"family": "Inter", "style": "Bold"},
+                "effects": [{
+                    "type": "DROP_SHADOW",
+                    "color": {"r": 0., "g": 0., "b": 0., "a": 0.5},
+                    "radius": 4.,
+                    "visible": true
+                }]
+            }
+        ]
+    });
+    let doc = document_from_canvas(
+        &json!({"nodeChanges": [
+            json!({"guid": g(0, 1), "type": "CANVAS", "name": "Page", "parentIndex": {"guid": g(0, 0), "position": ""}}),
+            json!({"guid": g(9, 1), "type": "VARIABLE_SET", "name": "Tokens", "key": "tokens", "variableSetModes": [
+                {"id": g(9, 2), "name": "Light"},
+                {"id": g(9, 5), "name": "Dark"}
+            ]}),
+            json!({
+                "guid": g(9, 4), "type": "VARIABLE", "name": "Disabled 50%", "key": "disabled",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 50.}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 20.}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 6), "type": "VARIABLE", "name": "Half", "key": "half",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 0.25}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 0.25}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 7), "type": "VARIABLE", "name": "Disabled alias", "key": "disabled-alias",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 8), "type": "VARIABLE", "name": "Weight", "key": "weight",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 700.}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 400.}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 9), "type": "VARIABLE", "name": "Label", "key": "label",
+                "variableResolvedType": "STRING", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"textValue": {"characters": "Hi"}}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"textValue": {"characters": "Yo"}}}}
+                ]}
+            }),
+            shared, unit, via_alias, text, symbol, child, label, instance
+        ]}),
+        BTreeMap::new(),
+        Vec::new(),
+    )
+    .expect("percent opacity must not reject the file");
+    let system = doc.design_system.as_ref().unwrap();
+    assert_eq!(system.variables["fig-9-4"].values["Light"], json!(50.));
+    assert_eq!(system.variables["fig-9-4"].values["Dark"], json!(20.));
+    assert_eq!(
+        system.variables["fig-9-4#fig-opacity"].values["Light"],
+        json!(0.5)
+    );
+    assert_eq!(
+        system.variables["fig-9-4#fig-opacity"].values["Dark"],
+        json!(0.2)
+    );
+    assert!(system.variables.get("fig-9-6#fig-opacity").is_none());
+    assert_eq!(
+        system.variables["fig-9-7#fig-opacity"].values["Light"]["alias"],
+        json!("fig-9-4#fig-opacity")
+    );
+    assert_eq!(
+        system.variables["fig-9-7"].values["Light"]["alias"],
+        json!("fig-9-4")
+    );
+    assert_eq!(doc.nodes["fig-1-8"].bindings["width"], "fig-9-4");
+    assert_eq!(
+        doc.nodes["fig-1-8"].bindings["opacity"],
+        "fig-9-4#fig-opacity"
+    );
+    assert_eq!(doc.nodes["fig-1-9"].bindings["opacity"], "fig-9-6");
+    assert_eq!(
+        doc.nodes["fig-1-10"].bindings["opacity"],
+        "fig-9-7#fig-opacity"
+    );
+    assert_eq!(
+        doc.nodes["fig-1-11"].bindings["textStyle.weight"],
+        "fig-9-8"
+    );
+    assert_eq!(doc.nodes["fig-1-11"].bindings["text"], "fig-9-9");
+    let override_bindings =
+        &doc.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-3"]["bindings"];
+    assert_eq!(override_bindings["opacity"], "fig-9-4#fig-opacity");
+    let text_fields = &doc.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-12"];
+    let text_style = &text_fields["textStyle"];
+    assert!((text_style["lineHeight"].as_f64().unwrap() - 1.5).abs() < 1e-9);
+    assert!((text_style["letterSpacing"].as_f64().unwrap() - 1.6).abs() < 1e-9);
+    assert!((text_style["weight"].as_f64().unwrap() - 700.).abs() < 1e-9);
+    assert_eq!(text_fields["effects"][0]["kind"], "shadow");
+    assert!(notes(&doc).contains("fontName.family=Inter"));
+    let mut resolved = doc.clone();
+    resolve(&mut resolved).unwrap();
+    assert!((resolved.nodes["fig-1-8"].width - 50.).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-8"].opacity - 0.5).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-9"].opacity - 0.25).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-10"].opacity - 0.5).abs() < 1e-9);
+    assert!(
+        (resolved.nodes["fig-1-11"]
+            .text_style
+            .as_ref()
+            .unwrap()
+            .weight
+            - 700.)
+            .abs()
+            < 1e-9
+    );
+    assert_eq!(resolved.nodes["fig-1-11"].text, "Hi");
+    let generated_child = resolved
+        .nodes
+        .values()
+        .find(|node| {
+            node.instance_origin
+                .as_ref()
+                .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == "fig-1-3")
+        })
+        .unwrap();
+    assert!((generated_child.opacity - 0.5).abs() < 1e-9);
+    let generated_text = resolved
+        .nodes
+        .values()
+        .find(|node| {
+            node.instance_origin
+                .as_ref()
+                .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == "fig-1-12")
+        })
+        .unwrap();
+    assert!((generated_text.text_style.as_ref().unwrap().line_height - 1.5).abs() < 1e-9);
+    assert!((generated_text.text_style.as_ref().unwrap().letter_spacing - 1.6).abs() < 1e-9);
+    assert_eq!(generated_text.effects[0].kind, "shadow");
+    resolved
+        .design_system
+        .as_mut()
+        .unwrap()
+        .active_modes
+        .insert("tokens".into(), "Dark".into());
+    resolve(&mut resolved).unwrap();
+    assert!((resolved.nodes["fig-1-8"].width - 20.).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-8"].opacity - 0.2).abs() < 1e-9);
+    resolved
+        .validate()
+        .expect("normalized fig opacity stays valid");
 }
 
 #[test]

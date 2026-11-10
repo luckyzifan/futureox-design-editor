@@ -1,6 +1,6 @@
 //! Authored variables/styles. Resolution is deterministic and never evaluates code.
 use crate::scene::{Document, Node};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -181,20 +181,6 @@ fn expected(path: &str) -> &'static str {
         "number"
     }
 }
-/// FIG opacity variables in this corpus are percentages (`50` means 50%).
-/// Layer and paint opacity in the kernel are 0–1. Values already in that
-/// interval stay unchanged, so a true `0.5` binding is not scaled again.
-fn bound_number(field: &str, value: Value) -> Value {
-    if field == "opacity" || field.ends_with(".opacity") {
-        if let Some(number) = value.as_f64() {
-            if number > 1. && number <= 100. {
-                return serde_json::json!(number / 100.);
-            }
-        }
-    }
-    value
-}
-
 pub fn set_path(root: &mut Value, path: &str, value: Value) -> Result<(), String> {
     let parts: Vec<_> = path.split('.').collect();
     let mut target = root;
@@ -515,11 +501,7 @@ pub(crate) fn resolve_node(
     }
     for (field, id) in &n.bindings {
         if !overridden(field.split('.').next().unwrap()) {
-            set_path(
-                &mut json,
-                field,
-                bound_number(field, value_in(s, id, modes)?),
-            )?;
+            set_path(&mut json, field, value_in(s, id, modes)?)?;
         }
     }
     let mut next = serde_json::from_value(json).map_err(|e| e.to_string())?;

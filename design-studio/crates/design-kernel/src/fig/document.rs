@@ -4,8 +4,8 @@
 //! Scene nodes stay the authority for paint. Style definitions are added
 //! beside them. An internal canvas is a real page so masters parented there
 //! remain reachable; other `internalOnly` records stay out of the scene.
-use super::{bool_of, guid_string, str_of, Error, FigImporter};
-use crate::design_system::SharedStyle;
+use super::{Error, FigImporter, bool_of, guid_string, str_of};
+use crate::design_system::{SharedStyle, Variable};
 use crate::scene::{Document, Node, RulerGuide};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -645,6 +645,162 @@ pub(super) fn import_variables(
             .or_insert_with(|| collection.default_mode.clone());
     }
     bind_consumed_variables(doc, records, &key_to_id, &ids, notes);
+    // FIG number variables used as opacity are percentages (`50` means 50%).
+    // Scale a copy at this boundary only. The source variable stays unchanged
+    // so a width binding of the same number is still 50, and ordinary
+    // documents never pass through this function.
+    normalize_imported_opacity(doc);
+}
+
+fn opacity_binding_path(path: &str) -> bool {
+    path == "opacity" || path.ends_with(".opacity")
+}
+
+/// Point opacity bindings at a 0–1 copy when a FIG number is a percentage.
+/// Alias chains are copied too, so a later mode switch still resolves.
+fn scaled_fig_opacity_variable(
+    system: &mut crate::design_system::DesignSystem,
+    id: &str,
+    memo: &mut BTreeMap<String, String>,
+    stack: &mut BTreeSet<String>,
+) -> String {
+    if let Some(done) = memo.get(id) {
+        return done.clone();
+    }
+    if !stack.insert(id.to_string()) {
+        return id.to_string();
+    }
+    let Some(source) = system.variables.get(id).cloned() else {
+        stack.remove(id);
+        memo.insert(id.to_string(), id.to_string());
+        return id.to_string();
+    };
+    if source.kind != "number" {
+        stack.remove(id);
+        memo.insert(id.to_string(), id.to_string());
+        return id.to_string();
+    }
+    let mut values = BTreeMap::new();
+    let mut scaled = false;
+    for (mode, value) in &source.values {
+        if let Some(alias) = value.get("alias").and_then(Value::as_str) {
+            let next = scaled_fig_opacity_variable(system, alias, memo, stack);
+            if next != alias {
+                scaled = true;
+            }
+            values.insert(mode.clone(), serde_json::json!({ "alias": next }));
+        } else if let Some(number) = value.as_f64().filter(|number| number.is_finite()) {
+            if number > 1. && number <= 100. {
+                scaled = true;
+                values.insert(mode.clone(), serde_json::json!(number / 100.));
+            } else {
+                values.insert(mode.clone(), serde_json::json!(number));
+            }
+        } else {
+            stack.remove(id);
+            memo.insert(id.to_string(), id.to_string());
+            return id.to_string();
+        }
+    }
+    stack.remove(id);
+    if !scaled {
+        memo.insert(id.to_string(), id.to_string());
+        return id.to_string();
+    }
+    let mut next_id = format!("{id}#fig-opacity");
+    let mut generation = 2u32;
+    while system.variables.contains_key(&next_id) {
+        next_id = format!("{id}#fig-opacity-{generation}");
+        generation += 1;
+        if generation > 8 {
+            memo.insert(id.to_string(), id.to_string());
+            return id.to_string();
+        }
+    }
+    system.variables.insert(
+        next_id.clone(),
+        Variable {
+            name: source.name,
+            collection: source.collection,
+            kind: source.kind,
+            values,
+        },
+    );
+    memo.insert(id.to_string(), next_id.clone());
+    next_id
+}
+
+fn normalize_imported_opacity(doc: &mut Document) {
+    let mut sites = Vec::new();
+    for (id, node) in &doc.nodes {
+        for (field, variable) in &node.bindings {
+            if opacity_binding_path(field) {
+                sites.push((id.clone(), None, field.clone(), variable.clone()));
+            }
+        }
+        let Some(instance) = &node.instance else {
+            continue;
+        };
+        for (path, fields) in &instance.overrides {
+            let Some(bindings) = fields.get("bindings").and_then(Value::as_object) else {
+                continue;
+            };
+            for (field, variable) in bindings {
+                let Some(variable) = variable.as_str() else {
+                    continue;
+                };
+                if opacity_binding_path(field) {
+                    sites.push((
+                        id.clone(),
+                        Some(path.clone()),
+                        field.clone(),
+                        variable.to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    if sites.is_empty() || doc.design_system.is_none() {
+        return;
+    }
+    let mut memo = BTreeMap::new();
+    let mut stack = BTreeSet::new();
+    let mut mapped = BTreeMap::new();
+    {
+        let system = doc.design_system.as_mut().unwrap();
+        let mut ids: Vec<String> = sites.iter().map(|site| site.3.clone()).collect();
+        ids.sort();
+        ids.dedup();
+        for id in ids {
+            let scaled = scaled_fig_opacity_variable(system, &id, &mut memo, &mut stack);
+            mapped.insert(id, scaled);
+        }
+    }
+    for (node_id, override_path, field, variable) in sites {
+        let Some(next) = mapped.get(&variable) else {
+            continue;
+        };
+        if next == &variable {
+            continue;
+        }
+        let Some(node) = doc.nodes.get_mut(&node_id) else {
+            continue;
+        };
+        if let Some(path) = override_path {
+            let Some(bindings) = node
+                .instance
+                .as_mut()
+                .and_then(|instance| instance.overrides.get_mut(&path))
+                .and_then(|fields| fields.get_mut("bindings"))
+                .and_then(Value::as_object_mut)
+            else {
+                continue;
+            };
+            bindings.insert(field, Value::String(next.clone()));
+        } else if let Some(slot) = node.bindings.get_mut(&field) {
+            *slot = next.clone();
+        }
+    }
 }
 
 struct VariableDraft<'a> {

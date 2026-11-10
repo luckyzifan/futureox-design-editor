@@ -812,7 +812,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     receipts.set(id, bindings)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
-  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts)
+  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts, effectsOf)
   // The shared model's direct mask owns its whole container. Native FIG masks
   // only following siblings. Explicit identity groups keep all original node
   // IDs, local coordinates, order and component override keys intact.
