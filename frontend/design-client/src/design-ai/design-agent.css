@@ -47,3 +47,4 @@
 @media (prefers-reduced-motion: reduce) {
   .agent-settings button { transition: none; }
 }
+.design-agent-failure { margin: 0; padding: 8px 10px; border: 1px solid var(--workspace-danger); border-radius: 8px; background: var(--workspace-field); }

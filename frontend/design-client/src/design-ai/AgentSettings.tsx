@@ -106,7 +106,7 @@ export function AgentSettings() {
 
   return <div className="agent-settings">
     <h3>模型连接</h3>
-    <p className="settings-help">可以在本机 Grok、已保存的 API、Token plan，以及 CC Switch 里的一条上游之间切换。选中哪一条，下一轮设计对话就打到哪一条。没有密钥时，对话用本机规则直接改页面。</p>
+    <p className="settings-help">可以在本机 Grok、已保存的 API、Token plan，以及 CC Switch 里的一条上游之间切换。选中哪一条，下一轮设计对话就打到哪一条。服务失败会保留画布并显示原因，需要时可选择本机规则模板。</p>
     <label>类型<select aria-label="连接类型" value={kind} onChange={event => setKind(event.target.value as typeof kind)}>
       <option value="api">API</option>
       <option value="token_plan">Token plan</option>

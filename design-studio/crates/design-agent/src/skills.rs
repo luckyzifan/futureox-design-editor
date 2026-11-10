@@ -37,7 +37,7 @@ impl SkillId {
                 "一键出图：在当前文档新建一页可编辑画板，而不是一张位图。结构对齐常见 Figma/Sketch 模板页：导航、标题、副标题、三个卖点、行动按钮、页脚。颜色用文档强调色 #3459d4，暖色需求改用暖棕。文字必须来自用户原话，不要另造品牌。坐标是父级文档单位，8 的倍数。一次 batch.apply。"
             }
             Self::DetailAdjust => {
-                "细节调整：默认只改对话指定的目标页（悬停或当前页）。用户点名了另一页的名称时，改那一页，并在回复里说明。用 text.set / style.set 改已有文字、填充和圆角，不重建整页，不改没提到的句子。"
+                "细节调整：默认只改对话指定的目标页（悬停或当前页）。用户点名了另一页的名称时，改那一页，并在回复里说明。改文字和圆角时带上请求时看到的原值，不重建整页。标题不在这次有限上下文里就说明被省略，不要改没提到的圆角。"
             }
             Self::Layout => {
                 "布局：只动目标页已有图层的位置，让标题、副标题和卖点保持左对齐和 8px 节奏。不新增页面。"
@@ -199,6 +199,7 @@ mod tests {
                 font_id: None,
             }],
             selection: vec!["frame".into()],
+            ..DesignContext::default()
         };
         let skills = route_skills("改一下", "", &ctx);
         assert!(skills.contains(&SkillId::DetailAdjust), "{skills:?}");

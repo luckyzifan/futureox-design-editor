@@ -7,7 +7,7 @@ import { SaveCoordinator } from '../local-store'
 import { blank } from '../model'
 import { importFig } from '../import-fig'
 import { import_sketch_json } from '../generated/design-kernel/design_kernel'
-import { applyAgentOperations } from './apply-operations'
+import { agentFence, applyAgentOperations } from './apply-operations'
 import { availableCompareFiles, missingCompareNames, readCompareFile } from './comparison-fixtures'
 import { compareOutlines, outlineDocument, sketchRoundTripGaps } from './format-gap'
 
@@ -51,7 +51,7 @@ test('a complete brief generates a real page, then a named page can be adjusted'
     nodes: [],
   })
   expect(created.skills).toContain('one-click-generate')
-  const applied = await applyAgentOperations(editor, created.operations, '一键出图', created.mutationId)
+  const applied = await applyAgentOperations(editor, created.operations, '一键出图', created.mutationId, agentFence(editor))
   expect(applied.ok, JSON.stringify(applied)).toBe(true)
   expect(editor.canUndo).toBe(true)
   editor.undo()
@@ -83,7 +83,7 @@ test('a complete brief generates a real page, then a named page can be adjusted'
     pages: editor.state.doc.pages.map(page => ({ id: page.id, name: page.name })),
     nodes: nodes.map(node => ({ id: node.id, page_id: target.id, parent_id: null, name: node.name, kind: node.kind, x: node.transform[4], y: node.transform[5], width: node.width, height: node.height, text: node.text })),
   })
-  const edited = await applyAgentOperations(editor, adjusted.operations, '细节调整', adjusted.mutationId)
+  const edited = await applyAgentOperations(editor, adjusted.operations, '细节调整', adjusted.mutationId, agentFence(editor))
   expect(edited.ok, JSON.stringify(edited)).toBe(true)
   expect(Object.values(editor.state.doc.nodes).some(node => node.text === '暖季菜单')).toBe(true)
 })
@@ -104,7 +104,7 @@ test('generated page is compared with a real Fig file and a real Sketch template
     current_page_id: editor.state.page, target_page_id: editor.state.page,
     pages: [{ id: editor.state.page, name: '页面 1' }], nodes: [],
   })
-  expect((await applyAgentOperations(editor, created.operations, '一键出图', created.mutationId)).ok).toBe(true)
+  expect((await applyAgentOperations(editor, created.operations, '一键出图', created.mutationId, agentFence(editor))).ok).toBe(true)
   const current = outlineDocument(editor.state.doc)
   expect(current.pages.some(page => page.texts.includes('秋日特惠'))).toBe(true)
 

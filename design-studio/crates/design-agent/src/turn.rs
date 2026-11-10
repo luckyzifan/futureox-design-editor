@@ -12,7 +12,7 @@ use std::sync::Arc;
 use serde_json::json;
 use tokio::task::JoinSet;
 
-use crate::assistant::{local_turn, remote_turn, ModelTurn, ToolCall};
+use crate::assistant::{local_turn, remote_turn, ModelTurn, ProviderFailure, ToolCall};
 use crate::items::{item_id, McpToolCallStatus, MessagePhase, TurnItem};
 use crate::operations::{expand_tool, DesignContext, Operation};
 use crate::providers::{Provider, ProviderKind};
@@ -26,6 +26,7 @@ pub struct TurnOutcome {
     pub target_page_id: String,
     pub assistant: String,
     pub summary: String,
+    pub failure: Option<ProviderFailure>,
 }
 
 pub async fn run_turn(
@@ -36,8 +37,9 @@ pub async fn run_turn(
     ctx: &DesignContext,
     prior: &[TurnItem],
     cancel: &AtomicBool,
+    use_local_rules: bool,
 ) -> Result<TurnOutcome, String> {
-    run_turn_db(http, provider, message, earlier, ctx, prior, cancel, &crate::ccswitch::default_db()).await
+    run_turn_db(http, provider, message, earlier, ctx, prior, cancel, &crate::ccswitch::default_db(), use_local_rules).await
 }
 
 pub async fn run_turn_db(
@@ -49,6 +51,7 @@ pub async fn run_turn_db(
     prior: &[TurnItem],
     cancel: &AtomicBool,
     switch_db: &std::path::Path,
+    use_local_rules: bool,
 ) -> Result<TurnOutcome, String> {
     if message.trim().is_empty() || message.chars().count() > 4000 {
         return Err("message must be 1–4000 characters".into());
@@ -57,13 +60,17 @@ pub async fn run_turn_db(
     let mut items = prior.to_vec();
     items.push(TurnItem::UserMessage { id: item_id(), text: message.to_string() });
     let mut operations = Vec::new();
-    let mut assistant_name = assistant_label(provider);
+    let mut assistant_name = if use_local_rules { "local-rules".to_string() } else { assistant_label(provider) };
     let mut target = ctx.target_page_id.clone().unwrap_or_else(|| ctx.current_page_id.clone());
     let mut summary = String::new();
     let mut active = provider.clone();
+    if use_local_rules {
+        active.kind = ProviderKind::Local;
+    }
     let mut primed = None;
-    if provider.kind == ProviderKind::CcSwitch {
+    if !use_local_rules && provider.kind == ProviderKind::CcSwitch {
         let mut connected = false;
+        let mut last_failure = None;
         for candidate in crate::ccswitch::candidate_providers(provider, switch_db) {
             if cancel.load(Ordering::Relaxed) { return Err("cancelled".into()); }
             match sample(http, &candidate, message, earlier, &items, &skills, ctx).await {
@@ -74,13 +81,11 @@ pub async fn run_turn_db(
                     connected = true;
                     break;
                 }
-                Err(_) => continue,
+                Err(error) => last_failure = Some(error),
             }
         }
         if !connected {
-            assistant_name = format!("{assistant_name}-fallback-local");
-            primed = Some(local_turn(message, earlier, &items, &skills, ctx));
-            active.kind = ProviderKind::Local;
+            return Ok(failure_outcome(items, skills, assistant_name, target, last_failure.unwrap_or_else(ProviderFailure::unreachable)));
         }
     }
     for _step in 0..4 {
@@ -88,18 +93,13 @@ pub async fn run_turn_db(
             return Err("cancelled".into());
         }
         let sampled = if let Some(turn) = primed.take() { Ok(turn) } else { sample(http, &active, message, earlier, &items, &skills, ctx).await };
-        let (turn, used_local) = match sampled {
-            Ok(turn) => (turn, active.kind == ProviderKind::Local),
-            Err(error) => {
-                assistant_name = format!("{assistant_name}-fallback-local");
-                let _ = error;
-                active.kind = ProviderKind::Local;
-                (local_turn(message, earlier, &items, &skills, ctx), true)
-            }
-        };
-        if !used_local && active.kind != ProviderKind::Local && !assistant_name.starts_with("ccswitch:") {
-            assistant_name = assistant_label(&active);
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".into());
         }
+        let turn = match sampled {
+            Ok(turn) => turn,
+            Err(failure) => return Ok(failure_outcome(items, skills, assistant_name, target, failure)),
+        };
         if let Some(plan) = turn.plan {
             items.push(TurnItem::Plan { id: item_id(), text: plan });
         }
@@ -124,10 +124,24 @@ pub async fn run_turn_db(
         items.extend(expanded_items);
         operations.extend(expanded_ops);
     }
-    Ok(TurnOutcome { items, operations, skills, target_page_id: target, assistant: assistant_name, summary })
+    Ok(TurnOutcome { items, operations, skills, target_page_id: target, assistant: assistant_name, summary, failure: None })
 }
 
-async fn sample(http: &reqwest::Client, provider: &Provider, message: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId], ctx: &DesignContext) -> Result<ModelTurn, String> {
+fn failure_outcome(mut items: Vec<TurnItem>, skills: Vec<SkillId>, assistant: String, target: String, failure: ProviderFailure) -> TurnOutcome {
+    let summary = failure.message.clone();
+    items.push(TurnItem::AgentMessage { id: item_id(), text: summary.clone(), phase: MessagePhase::Final });
+    TurnOutcome {
+        items,
+        operations: Vec::new(),
+        skills,
+        target_page_id: target,
+        assistant,
+        summary,
+        failure: Some(failure),
+    }
+}
+
+async fn sample(http: &reqwest::Client, provider: &Provider, message: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId], ctx: &DesignContext) -> Result<ModelTurn, ProviderFailure> {
     if provider.kind == ProviderKind::Local {
         return Ok(local_turn(message, earlier, items, skills, ctx));
     }
@@ -221,15 +235,18 @@ fn finish_call(call: &ToolCall, result: Result<crate::operations::ToolExpansion,
             )
         }
         Err(error) => (
-            vec![TurnItem::McpToolCall {
-                id: call.id.clone(),
-                server: "futureox-design".into(),
-                tool: call.name.clone(),
-                arguments: call.arguments.clone(),
-                status: McpToolCallStatus::Failed,
-                result: None,
-                error: Some(error.clone()),
-            }],
+            vec![
+                TurnItem::McpToolCall {
+                    id: call.id.clone(),
+                    server: "futureox-design".into(),
+                    tool: call.name.clone(),
+                    arguments: call.arguments.clone(),
+                    status: McpToolCallStatus::Failed,
+                    result: None,
+                    error: Some(error.clone()),
+                },
+                TurnItem::FunctionCallOutput { id: item_id(), call_id: call.id.clone(), name: call.name.clone(), output: error.clone() },
+            ],
             Vec::new(),
             None,
             error,
@@ -284,6 +301,7 @@ mod tests {
             &DesignContext::default(),
             &[],
             &AtomicBool::new(false),
+            false,
         )
         .await
         .unwrap();
@@ -343,8 +361,8 @@ mod tests {
         let cancel_a = AtomicBool::new(false);
         let cancel_b = AtomicBool::new(false);
         let (left, right) = tokio::join!(
-            run_turn(&http, &api, "评价一下这一页", "", &empty, &[], &cancel_a),
-            run_turn(&http, &plan, "评价一下这一页", "", &empty, &[], &cancel_b),
+            run_turn(&http, &api, "评价一下这一页", "", &empty, &[], &cancel_a, false),
+            run_turn(&http, &plan, "评价一下这一页", "", &empty, &[], &cancel_b, false),
         );
         let left = left.unwrap();
         assert_eq!(left.assistant, "api");
@@ -393,18 +411,86 @@ mod tests {
         };
         let http = reqwest::Client::new();
         let empty = DesignContext::default();
-        let api_turn = run_turn_db(&http, &switch, "评价一下这一页", "", &empty, &[], &AtomicBool::new(false), &db).await.unwrap();
+        let api_turn = run_turn_db(&http, &switch, "评价一下这一页", "", &empty, &[], &AtomicBool::new(false), &db, false).await.unwrap();
         assert!(api_turn.assistant.contains("api"), "{}", api_turn.assistant);
         assert!(api_turn.summary.contains("api:Bearer api-secret"), "{}", api_turn.summary);
         assert_eq!(api_hits.load(Ordering::SeqCst), 1);
         assert_eq!(plan_hits.load(Ordering::SeqCst), 0);
         switch.profile_id = "codex:plan".into();
-        let plan_turn = run_turn_db(&http, &switch, "评价一下这一页", "", &empty, &[], &AtomicBool::new(false), &db).await.unwrap();
+        let plan_turn = run_turn_db(&http, &switch, "评价一下这一页", "", &empty, &[], &AtomicBool::new(false), &db, false).await.unwrap();
         assert!(plan_turn.assistant.contains("token-plan"), "{}", plan_turn.assistant);
         assert!(plan_turn.summary.contains("plan:Bearer plan-secret"), "{}", plan_turn.summary);
         assert!(!plan_turn.summary.contains("api-secret"));
         assert_eq!(api_hits.load(Ordering::SeqCst), 1);
         assert_eq!(plan_hits.load(Ordering::SeqCst), 1);
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    fn api(base: String) -> Provider {
+        Provider {
+            id: "api".into(), name: "API".into(), kind: ProviderKind::Api, base_url: base,
+            secret: "k".into(), model: "m".into(), wire: Wire::OpenaiChat, profile_id: String::new(),
+        }
+    }
+
+    async fn status_server(status: axum::http::StatusCode, body: &'static str) -> String {
+        let app = axum::Router::new().route("/v1/chat/completions", axum::routing::post(move || async move { (status, body) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        format!("http://{address}/v1")
+    }
+
+    #[tokio::test]
+    async fn configured_provider_failures_do_not_generate_or_fall_back() {
+        let http = reqwest::Client::new();
+        let message = "一键出图：做一个页面，标题 NETWORK_SHOULD_FAIL";
+        for (status, code) in [(axum::http::StatusCode::SERVICE_UNAVAILABLE, "unavailable"), (axum::http::StatusCode::UNAUTHORIZED, "unauthorized"), (axum::http::StatusCode::TOO_MANY_REQUESTS, "rate_limited")] {
+            let base = status_server(status, "no").await;
+            let outcome = run_turn(&http, &api(base), message, "", &DesignContext::default(), &[], &AtomicBool::new(false), false).await.unwrap();
+            assert!(outcome.operations.is_empty(), "{status} {:?}", outcome.operations);
+            let failure = outcome.failure.expect("failure");
+            assert_eq!(failure.code, code);
+            assert_eq!(failure.status, Some(status.as_u16()));
+            assert!(outcome.summary.contains(&status.as_u16().to_string()), "{}", outcome.summary);
+            assert!(!outcome.assistant.contains("fallback"), "{}", outcome.assistant);
+            assert!(!outcome.summary.contains("已生成"), "{}", outcome.summary);
+        }
+        let invalid = status_server(axum::http::StatusCode::OK, "not-json").await;
+        let invalid_turn = run_turn(&http, &api(invalid), message, "", &DesignContext::default(), &[], &AtomicBool::new(false), false).await.unwrap();
+        assert!(invalid_turn.operations.is_empty());
+        assert_eq!(invalid_turn.failure.unwrap().code, "invalid_response");
+
+        let hits = Arc::new(AtomicUsize::new(0));
+        let seen = hits.clone();
+        let app = axum::Router::new().route("/v1/chat/completions", axum::routing::post(move || {
+            let seen = seen.clone();
+            async move {
+                seen.fetch_add(1, Ordering::SeqCst);
+                (axum::http::StatusCode::SERVICE_UNAVAILABLE, "busy")
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let explicit = run_turn(&http, &api(format!("http://{address}/v1")), message, "", &DesignContext::default(), &[], &AtomicBool::new(false), true).await.unwrap();
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+        assert_eq!(explicit.assistant, "local-rules");
+        assert!(explicit.failure.is_none());
+        assert!(explicit.operations.iter().any(|op| op.method == "page.create"));
+        assert!(explicit.summary.contains("NETWORK_SHOULD_FAIL") || explicit.operations.iter().any(|op| op.params.get("text").and_then(|value| value.as_str()) == Some("NETWORK_SHOULD_FAIL")));
+
+        let slow = axum::Router::new().route("/v1/chat/completions", axum::routing::post(|| async {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            axum::Json(json!({"choices":[{"message":{"role":"assistant","content":"late"}}]}))
+        }));
+        let slow_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let slow_address = slow_listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(slow_listener, slow).await.unwrap() });
+        let short = reqwest::Client::builder().timeout(std::time::Duration::from_millis(200)).build().unwrap();
+        let timed = run_turn(&short, &api(format!("http://{slow_address}/v1")), message, "", &DesignContext::default(), &[], &AtomicBool::new(false), false).await.unwrap();
+        assert!(timed.operations.is_empty());
+        assert_eq!(timed.failure.unwrap().code, "timeout");
+        assert!(timed.summary.contains("超时"));
     }
 }
