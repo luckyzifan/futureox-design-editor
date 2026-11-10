@@ -108,7 +108,7 @@ export function canvasSamplingScale(view: CanvasCamera, dpr: number, width: numb
   catch { return requested }
 }
 
-/** Figma viewer's devicePixelsPerCanvasPixel = zoom * devicePixelRatio.
+/** Raster density is zoom * devicePixelRatio.
  * Density changes are debounced by the surface, not rounded to a scale ladder.
  * Canonical world samples remain reusable during translation at that density.
  * Pixel preview and screen-anchored chrome retain native sampling. */

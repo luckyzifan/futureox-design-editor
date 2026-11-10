@@ -3,7 +3,7 @@ import { INTERACTION_ADAPTIVE_DENSITY_BUDGET, interactionAdaptiveDensityEnabled,
 
 const BUDGET = INTERACTION_ADAPTIVE_DENSITY_BUDGET
 
-describe('interaction adaptive gesture density (Figma viewer §2.4 stepping)', () => {
+describe('interaction adaptive gesture density', () => {
   afterEach(() => vi.unstubAllEnvs())
 
   test('flag off keeps full density even far above the budget', () => {

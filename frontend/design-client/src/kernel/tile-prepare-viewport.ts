@@ -28,10 +28,10 @@ export function tilePrepareViewport(tiles: readonly RasterTile[], view: { x: num
 
 /** A small density tile can contain thousands of world-space objects. Keep
  * the optional preparation window local for large minified display scenes.
- * A wider union is not a proven substitute: on a real FIG it changed a node's
- * compiled rect. This does not change the output crop, sample phase, halo or
- * admission limit. `VITE_DESIGN_LOCAL_PREPARE_SCOPE=0` keeps the batch union;
- * `1` forces the per-tile guard at every scale. */
+ * A wider retained window must not change the published tile: the kernel
+ * emits from this tile's own guard. Low-zoom display stays on that local
+ * window (`VITE_DESIGN_LOCAL_PREPARE_SCOPE` defaults on). This changes no
+ * output crop, sample phase, halo or admission limit. */
 export function localDisplayPrepareScope(nodes:number,scale:number,display:boolean) {
   return import.meta.env.VITE_DESIGN_LOCAL_PREPARE_SCOPE!=='0'&&display&&nodes>=3000&&Number.isFinite(scale)&&scale>0&&
     (scale<=.5||import.meta.env.VITE_DESIGN_LOCAL_PREPARE_SCOPE==='1')

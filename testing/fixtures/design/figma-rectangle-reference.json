@@ -1,0 +1,7 @@
+{
+  "scope": "External Figma observation, preserved separately from the internal single-resolve contract",
+  "provenance": "design-kernel/tests/fidelity.rs at 73bdf8bc; original six measured grayscale samples, unchanged",
+  "rectangle": { "x": 8.125, "y": 8.125, "width": 20.4, "height": 12.6 },
+  "samples": [[8, 8, 64], [9, 8, 32], [28, 8, 144], [28, 10, 128], [8, 20, 80], [9, 20, 64]],
+  "knownDifference": "At (28,8), a single RNE resolve of 9 uncovered samples out of 16 gives roundEven(255*9/16)=143, whereas the external observation is 144. Figma export fidelity is not implied by internal backend parity."
+}
