@@ -16,6 +16,7 @@ import { fitBounds, zoomAt, zoomStep } from './canvas-camera'
 import { jumpFrame, jumpPage, jumpToNode } from './canvas-navigation'
 import { togglePrototypeTab } from './prototype-chrome'
 import { allParents, apply, bounds, unionBounds, worldMatrix } from './geometry'
+import { interactivePath } from './selection-hierarchy'
 import {querySelection,type SelectionQuery} from './selection-queries'
 import { dimensionNudgeCommands, isDimensionNudgeCommand, nudgeSelectionDimensions, selectAllCanvasIds, type DimensionNudgeCommand } from './canvas-workflow-shortcuts'
 import { activateDocumentFonts } from './kernel/picking'
@@ -48,14 +49,16 @@ function nodeWorldBox(editor: Editor, id: string, parents = allParents(editor.st
 /** World bounds of the selection. Scene entries are the usual source. A box
  * that does not contain the node's world center is a local or stale box and
  * cannot be used to center a high-zoom camera: that is how a 664×707 group
- * nested in a distant frame stays off the pasteboard. */
+ * nested in a distant frame stays off the pasteboard.
+ * Empty, hidden, off-page and missing ids do not move the camera. Locked
+ * layers on the current page still do: lock is not visibility. */
 export function selectionCameraBox(editor: Editor): Bounds | undefined {
-  const ids = editor.state.selection.filter(id => editor.state.doc.nodes[id]?.visible)
+  const parents = allParents(editor.state.doc)
+  const ids = editor.state.selection.filter(id => interactivePath(editor.state.doc, editor.state.page, id, true, parents).length > 0)
   if (!ids.length) return
   const selected = new Set(ids)
   const entries = editor.entries().filter(entry => selected.has(entry.id))
   const sceneBox = entries.length ? unionBounds(entries.map(entry => entry.bounds)) : undefined
-  const parents = allParents(editor.state.doc)
   const directBoxes = ids.flatMap(id => {
     const box = nodeWorldBox(editor, id, parents)
     return box ? [box] : []
