@@ -4,6 +4,22 @@ import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
 
+test('a zoom-in capture more than the preview ratio behind the live camera yields, and a nearer one stays', () => {
+  let cancelled = 0
+  const flight = navigationCoverageFlight({}, 1, { zoom: 0.403, bounds: { x: 0, y: 0, width: 1000, height: 640 }, cancel: () => cancelled++ })
+  expect(flight.cancelStaleZoomIn({ x: 0, y: 0, zoom: 0.7 })).toBe(false)
+  expect(flight.cancelStaleZoomIn({ x: 0, y: 0, zoom: 0.806 })).toBe(false)
+  expect(cancelled).toBe(0)
+  expect(flight.cancelStaleZoomIn({ x: 0, y: 0, zoom: 3.942 })).toBe(true)
+  expect(cancelled).toBe(1)
+  expect(flight.cancelStaleZoomIn({ x: 0, y: 0, zoom: 3.942 })).toBe(false)
+  const delivered = navigationCoverageFlight({}, 1, { zoom: 0.403, bounds: { x: 0, y: 0, width: 10, height: 10 }, cancel: () => { throw Error('delivered capture cancelled') } })
+  delivered.tile = {}
+  expect(delivered.cancelStaleZoomIn({ x: 0, y: 0, zoom: 8 })).toBe(false)
+  expect(navigationCoverageFlight({}, 1).cancelStaleZoomIn({ x: 0, y: 0, zoom: 4 })).toBe(false)
+  expect(flight.cancelStaleZoomIn({ x: 0, y: 0, zoom: Number.NaN })).toBe(false)
+})
+
 test('quiet native work revokes only an undelivered optional capture, retaining its physical fence',async()=>{
   let cancelled=0,done=false
   const capture={zoom:32,bounds:{x:0,y:0,width:1024,height:512},cancel:()=>cancelled++}

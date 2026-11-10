@@ -163,6 +163,19 @@ test('new pan strips can publish without painting a white block over a known par
   expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next,backing)).toBe(false)
 })
 
+test('continuous zoom accepts a covering sharper frame and refuses a late coarser snap-back', () => {
+  const low = { presentationId: 'low', view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 80, dpr: 2, interaction: false, ids: [1] }
+  const high = { ...low, presentationId: 'high', view: { x: 0, y: 0, zoom: 2 } }
+  const live = { view: high.view, width: 100, height: 80 }
+  expect(keepCompleteCameraBacking(low, high, true, true, live)).toBe(false)
+  const missed = { ...high, view: { x: -400, y: -300, zoom: 2 } }
+  expect(keepCompleteCameraBacking(low, missed, true, true, live)).toBe(true)
+  expect(keepCompleteCameraBacking(high, low, true, true, live)).toBe(true)
+  const wide = { ...low, presentationId: 'wide', width: 200, height: 160 }
+  const wideLive = { view: wide.view, width: 200, height: 160 }
+  expect(keepCompleteCameraBacking(high, wide, true, true, wideLive)).toBe(false)
+})
+
 test('a 3200% crop cannot replace a covering low-zoom frame, and the covering frame can replace the crop',()=>{
  const wide={presentationId:'wide',view:{x:0,y:0,zoom:1},width:800,height:600,dpr:2,interaction:false,ids:[1]}
  const crop={...wide,presentationId:'crop',view:{x:-12000,y:-9000,zoom:32}}

@@ -5,9 +5,17 @@
 export function progressiveTileLayer(flags: {
   fine: boolean; cached: boolean; coarse: boolean; sameContent: boolean;
   refining: boolean; cameraDependent: boolean; nativeDensity?: boolean;nativePhase?:boolean;
+  /** Same-content sample already chosen as at least twice the retained picture. */
+  sharperThanPreview?: boolean
 }) {
-  if(!flags.cameraDependent&&flags.sameContent&&flags.nativeDensity&&flags.nativePhase)return flags.fine?5:4
-  if (flags.fine && flags.nativeDensity) return 3
-  if (flags.refining && !flags.cameraDependent && flags.sameContent) return 2
-  return flags.fine ? 3 : flags.cached ? 2 : flags.coarse ? 1 : 0
+  let layer: number
+  if(!flags.cameraDependent&&flags.sameContent&&flags.nativeDensity&&flags.nativePhase)layer = flags.fine?5:4
+  else if (flags.fine && flags.nativeDensity) layer = 3
+  else if (flags.refining && !flags.cameraDependent && flags.sameContent) layer = 2
+  else layer = flags.fine ? 3 : flags.cached ? 2 : flags.coarse ? 1 : 0
+  // Camera-dependent refinement leaves this sample at 0, under the stretched
+  // preview. Share the preview band so zoom order can paint it, without
+  // rising above current native phase.
+  if (flags.sharperThanPreview && layer < 2) return 2
+  return layer
 }
