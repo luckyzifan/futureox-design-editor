@@ -15,6 +15,7 @@ import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
 import {frameHandoff} from './frame-handoff'
+import {exactTilesBeforeOverview} from './zoom-refinement-policy'
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
@@ -537,12 +538,14 @@ export function NativeSourceSurface(props:Props){
           // After the first visible pixels, one coarse page tile is built while
           // the user is still. The first zoom-out then already has coverage.
           // Material files used to stop here and never build that page.
-          const coldTile=!firstNative&&!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
+          const coldTile=missing.length===0&&!firstNative&&!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
             ?overviewWarmBatch(overview.tiles,p.view,p.width,p.height,tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key))[0]
             :undefined
           const warmBase = !coldTile && optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
             tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
-          const candidates=wantStrip&&stripTile?[stripTile]:coldTile?[{...coldTile,prefetch:true as const}]:warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
+          const overviewBatch=coldTile?[{...coldTile,prefetch:true as const}]:warmBase?.length?warmBase.map(tile=>({...tile,prefetch:true as const})):[]
+          const ranked=exactTilesBeforeOverview(missing,overviewBatch)
+          const candidates=wantStrip&&stripTile?[stripTile]:ranked.length?ranked:
             optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
           if(coldTile&&!(wantStrip&&stripTile))coldBudget--
           if(!candidates.length)break

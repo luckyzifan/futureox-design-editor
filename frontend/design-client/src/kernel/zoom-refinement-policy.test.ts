@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { choosePreparedTile } from './zoom-refinement-policy'
+import { choosePreparedTile, exactTilesBeforeOverview } from './zoom-refinement-policy'
 
 const base = {
   aborted: false,
@@ -20,4 +20,10 @@ test('the same action chain keeps running, cancels, or covers one prepared gap',
   expect(choosePreparedTile({ ...base, fillCurrent: false, enforceFill: false })).toEqual({ action: 'continue' })
   expect(choosePreparedTile({ ...base, fillCurrent: false, allowGapFill: true, canFillGap: false })).toEqual({ action: 'cancel', reason: 'fill' })
   expect(choosePreparedTile({ ...base, fillCurrent: false, allowGapFill: true, canFillGap: true })).toEqual({ action: 'cover-gap' })
+})
+
+test('missing exact tiles stay ahead of a page overview', () => {
+  expect(exactTilesBeforeOverview(['a', 'b'], ['page'])).toEqual(['a', 'b'])
+  expect(exactTilesBeforeOverview([], ['page'])).toEqual(['page'])
+  expect(exactTilesBeforeOverview([], [])).toEqual([])
 })

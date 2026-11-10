@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-10 缩放调度：当前视口还有未缓存的精确瓦片时，页级总览不能占据这一批光栅候选。精确瓦片齐了才排总览。没有完整拓扑计时。不是 33/100ms 或完整 G2/G5。
+
 2026-11-09 [资源账本、缩放调度与帧交接](../../../frontend/design-client/src/kernel/gpu/resource-ledger.ts)：GPU 渲染器的别名、释放和池纪元归到资源账本，逻辑退休不等于物理释放；缩放瓦片的继续、取消和补洞只走一个选择函数，取消不改已呈现纹理的释放；两套 Surface 用同一帧交接判断屏幕就绪、局部清晰和预览。这是行为保持的模块抽取，不是渲染提速，也不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-09 [拓扑 GPU 批绘与成熟度](../../../docs/TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)：普通原生源 SDR WebGPU 的低物理采样倍率瓦片默认合并已证明不透明的纯色填充/描边，保持四相、顺序、二值裁剪与原预算；`VITE_DESIGN_SOURCE_SOLID_LAYERS=0` 回退。完整拓扑约 113.9→100.5 秒，正常构建复核 101.8 秒，原生画布及三份高倍输出像素一致。superset 原生投影复用减少重建却无稳定端到端收益，已完整撤回，不得保留或宣称 91.7 秒为最终性能。拓扑是主基准，117/FIG/test 防回退；当前为开发者 Alpha，完整 G2/G5 与 33/100ms 未关闭。
