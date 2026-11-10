@@ -109,6 +109,46 @@ test('reparent, node-set changes, parent resize, attached connectors and animati
   }
 })
 
+test('an unrelated connector or code block still allows an affine pose; an attached connector does not', () => {
+  const { document, moving, other } = fixture()
+  other.connector = { from: { point: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' }
+  other.board = { kind: 'code-block', language: 'rust' }
+  const patches = { [moving.id]: { transform: [0, 1, -1, 0, 10, 10] as DesignNode['transform'] } }
+  expect(new PoseTopology(document).permitsPose).toBe(true)
+  expect(new TranslationPreviewPlan(document, [moving.id]).acceptsAffine(patches)).toBe(true)
+  const attachedNode = { ...other, connector: { from: { point: { x: 0, y: 0 }, nodeId: moving.id, anchor: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' as const } }
+  const attached = { ...document, nodes: { ...document.nodes, [other.id]: attachedNode } }
+  expect(new TranslationPreviewPlan(attached, [moving.id]).acceptsAffine(patches)).toBe(false)
+})
+
+test('a connector aimed at a descendant of the rotated parent is outside the pose and translation proofs', () => {
+  const document = blank('descendant wire')
+  document.schemaVersion = 21
+  const board = node('frame', 0, 0, 200, 160)
+  const child = node('frame', 24, 18, 80, 60)
+  const leaf = node('rectangle', 6, 4, 12, 10)
+  const outside = node('rectangle', 280, 0, 20, 20)
+  child.children = [leaf.id]
+  board.children = [child.id]
+  const wire = node('vector', 0, 220, 80, 10)
+  const connect = (nodeId: string) => { wire.connector = { from: { point: { x: 0, y: 0 }, nodeId, anchor: { x: 0.5, y: 0.5 } }, to: { point: { x: 80, y: 0 } }, style: 'straight' } }
+  document.nodes = { [board.id]: board, [child.id]: child, [leaf.id]: leaf, [outside.id]: outside, [wire.id]: wire }
+  document.pages[0].children = [board.id, outside.id, wire.id]
+  const rotation = { [board.id]: { transform: [0, 1, -1, 0, 15, 4] as DesignNode['transform'] } }
+  const translated = { ...document, nodes: { ...document.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 40, 28] } } }
+  connect(outside.id)
+  expect(new PoseTopology(document).permitsPose).toBe(true)
+  expect(new TranslationPreviewPlan(document, [board.id], 'document-pose').acceptsAffine(rotation)).toBe(true)
+  expect(translationOnlyChanges(document, translated)).toEqual([board.id])
+  for (const nodeId of [child.id, leaf.id]) {
+    connect(nodeId)
+    const aimed = { ...document, nodes: { ...document.nodes, [wire.id]: { ...wire } } }
+    expect(new TranslationPreviewPlan(aimed, [board.id], 'document-pose').acceptsAffine(rotation)).toBe(false)
+    const moved = { ...aimed, nodes: { ...aimed.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 40, 28] } } }
+    expect(translationOnlyChanges(aimed, moved)).toBeNull()
+  }
+})
+
 test('a connector or code block on another node does not reject a placement-only edit', () => {
   const { document, moving, other, translated } = fixture()
   other.connector = { from: { point: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' }

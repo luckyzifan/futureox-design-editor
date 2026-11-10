@@ -1,5 +1,6 @@
 import type { DesignDocument, DesignNode } from '../model'
 import { produceDocumentDraft, shareDocument } from '../document-patch'
+import { connectorIntoSubtree } from '../page-edit-scope'
 import { kernelLayout, pickingGeometryEpoch } from './picking'
 
 /** One pointer transaction owns this topology. Dimensions still pass through
@@ -33,6 +34,9 @@ export class PreviewLayout {
     const ids = Object.keys(patches)
     if (!ids.length || ids.some(id => !this.roots.has(id) || this.blockedRoots.has(this.roots.get(id)!) ||
       Object.keys(patches[id]).some(key => !['transform','width','height'].includes(key)))) return
+    // The island dropped from this subset does not include a wire that lives
+    // outside it and names a descendant. That wire has to take the full route.
+    if (connectorIntoSubtree(this.base, ids)) return
     const roots = new Set(ids.map(id => this.roots.get(id)!)), nodes: DesignDocument['nodes'] = {}
     const key=JSON.stringify([...roots].sort())
     const include = (id: string) => {

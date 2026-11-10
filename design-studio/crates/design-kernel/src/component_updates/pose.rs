@@ -3,15 +3,22 @@
 //! fresh affine rasterization still consume the ordinary changed document.
 use crate::{editing::DocumentPatch, layout::{self,Flow,SizeMode}, scene::{Document,Node}};
 
-fn ordinary(n:&Node)->bool {
+fn dependency_free(n:&Node)->bool {
     n.component.is_none() && !n.component_set && n.component_key.is_none() && n.instance.is_none() &&
         n.instance_origin.is_none() && n.boolean_operation.is_none() && n.bindings.is_empty() &&
         n.style_refs.is_empty() && n.variable_modes.is_empty() && n.repeat.is_none() &&
         n.text_path.is_none() && n.connector.is_none() && n.board.is_none() &&
-        n.vector_brush.is_none() && n.path_offset==0. &&
+        n.vector_brush.is_none() && n.path_offset==0.
+}
+fn ordinary(n:&Node)->bool {
+    dependency_free(n) &&
         n.layout.as_ref().is_none_or(|l|l.mode==Flow::None) &&
         n.sizing.as_ref().is_none_or(|s|s.width==SizeMode::Fixed&&s.height==SizeMode::Fixed)
 }
+/// The moved node may keep children, effects, masks and its own flow. Those do
+/// not rewrite its transform when width and height stay put. Ancestors still
+/// use `ordinary`: an auto-layout parent would reflow this node.
+fn pose_subject(n:&Node)->bool { dependency_free(n) }
 fn transform_only(old:&Node,next:&Node)->Result<bool,String> {
     if old.derived_path.is_some() || next.derived_path.is_some() || old.repeat_origin.is_some() || next.repeat_origin.is_some() {
         return Ok(false);
@@ -26,23 +33,36 @@ fn transform_only(old:&Node,next:&Node)->Result<bool,String> {
     Ok(serde_json::to_vec(&candidate).map_err(|e|e.to_string())?==serde_json::to_vec(next).map_err(|e|e.to_string())?)
 }
 pub(super) fn eligible(doc:&Document,patch:&DocumentPatch)->Result<bool,String> {
-    // New schemas must explicitly extend this proof. Unknown/global edges and
-    // changing dimensions/topology retain the existing authoritative resolver.
+    // New schemas must explicitly extend this proof. Changing dimensions,
+    // topology, or a dependency that full resolution would rewrite still
+    // retains the authoritative resolver. An unrelated connector, text path,
+    // repeat, board, mask or slot does not.
     if doc.schema_version>21 || !patch.fields.is_empty() || patch.nodes.is_empty() || patch.nodes.len()>16 ||
         !doc.animations.is_empty() || doc.prototype.is_some() {return Ok(false)}
     for(id,next)in &patch.nodes {
         let (Some(old),Some(next))=(doc.nodes.get(id),next)else{return Ok(false)};
-        if !old.children.is_empty() || old.kind=="text" || !ordinary(next) || !transform_only(old,next)? {return Ok(false)}
+        if old.kind=="text" || !pose_subject(next) || !transform_only(old,next)? {return Ok(false)}
     }
-    if doc.nodes.values().any(|n|n.connector.is_some() || n.text_path.is_some() || n.repeat.is_some() ||
-        n.board.is_some() || n.mask_chain.is_some() || n.mask&&n.mask_type.as_deref()==Some("shape") ||
-        n.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())) {return Ok(false)}
+    let patched:std::collections::BTreeSet<&str>=patch.nodes.keys().map(String::as_str).collect();
     let parents=super::parents(doc);
+    // Patched ids are not the transformed subtree. A wire outside the frame can
+    // name a descendant and still has to follow the parent's world transform.
+    if super::connector_targets_transformed_subtree(doc,&patched,&parents){return Ok(false)}
+    for node in doc.nodes.values() {
+        // Highlighting rewrites text runs of a code block's children. A
+        // transform of some other node does not.
+        if node.board.as_ref().is_some_and(|board| board.kind=="code-block")
+            && node.children.iter().any(|id| patched.contains(id.as_str())) {return Ok(false)}
+    }
     let candidate=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).unwrap_or(&doc.nodes[id]);
     for id in patch.nodes.keys() {
-        for id in super::ancestors(id,&parents) {
+        for (index,id) in super::ancestors(id,&parents).into_iter().enumerate() {
             let node=candidate(&id);let parent=parents.get(&id).map(|p|candidate(p));
-            if !ordinary(node) || !layout::pose_constraint_fixed(node,parent,parent.is_none()) {return Ok(false)}
+            let fixed=layout::pose_constraint_fixed(node,parent,parent.is_none());
+            // Ancestors with flow would recompute this node's local transform.
+            // The moved node's own flow only places its children from its size.
+            let allowed=if index==0 {pose_subject(node)} else {ordinary(node)};
+            if !allowed || !fixed {return Ok(false)}
         }
     }
     Ok(true)
@@ -107,7 +127,13 @@ mod tests {
                 5=>doc.nodes.get_mut("board").unwrap().layout=Some(serde_json::from_value(json!({"mode":"horizontal"})).unwrap()),
                 6=>doc.nodes.get_mut("board").unwrap().sizing=Some(serde_json::from_value(json!({"width":"hug"})).unwrap()),
                 7=>doc.nodes.get_mut("board").unwrap().boolean_operation=Some(crate::boolean::Operation::Union),
-                8=>doc.nodes.get_mut("paint").unwrap().text_path=Some(serde_json::from_value(json!({"network":{"vertices":[],"edges":[],"fillRule":"nonzero"},"offset":0})).unwrap()),
+                // An unrelated text path is not a dependency of this transform.
+                8=>{
+                    doc.nodes.get_mut("paint").unwrap().kind="text".into();
+                    doc.nodes.get_mut("paint").unwrap().text_path=Some(serde_json::from_value(json!({"network":{"vertices":[{"id":"a","x":0,"y":0},{"id":"b","x":40,"y":0}],"edges":[{"id":"e","from":"a","to":"b"}]},"offset":0})).unwrap());
+                    assert!(eligible(&doc,&patch(n)).unwrap(),"unrelated text path");
+                    continue
+                }
                 _=>doc.schema_version=22,
             }
             assert!(!eligible(&doc,&patch(n)).unwrap(),"case {case}");
@@ -127,5 +153,87 @@ mod tests {
         let mut n=state.document.as_ref().unwrap().nodes["mask"].clone();n.transform.0[4]+=3.;
         let reply:serde_json::Value=serde_json::from_str(&state.patch_pose(&serde_json::to_string(&patch(n)).unwrap(),state.receipt,&fonts).unwrap()).unwrap();
         assert_ne!(reply["stats"]["pose"],true);
+    }
+    fn descendant_document(target:&str)->Document {
+        let mut nodes=json!({
+            "board":{"id":"board","kind":"frame","width":200,"height":160,"children":["child"]},
+            "child":{"id":"child","kind":"rectangle","width":40,"height":30,"transform":[1,0,0,1,24,18]},
+            "wire":{"id":"wire","kind":"vector","width":80,"height":10,"transform":[1,0,0,1,0,220],
+                "connector":{"from":{"point":{"x":0,"y":0},"nodeId":target,"anchor":{"x":0.5,"y":0.5}},
+                    "to":{"point":{"x":120,"y":260}},"style":"straight"}}
+        });
+        if target=="leaf" {
+            nodes["child"]["children"]=json!(["leaf"]);
+            nodes["leaf"]=json!({"id":"leaf","kind":"rectangle","width":12,"height":10,"transform":[1,0,0,1,6,4]});
+        }
+        serde_json::from_value(json!({"schemaVersion":21,"id":"descendant-wire","name":"descendant endpoint",
+            "pages":[{"id":"p","name":"page","children":["board","wire"],"background":"#ffffff"}],
+            "nodes":nodes})).unwrap()
+    }
+    fn prove_resolved_pose(doc:Document,id:&str) {
+        let fonts=Fonts::new();let mut state=State::default();
+        state.full(&serde_json::to_string(&doc).unwrap(),&fonts).unwrap();
+        let mut next=state.document.as_ref().unwrap().nodes[id].clone();
+        next.transform=Transform([0.,1.,-1.,0.,next.transform.0[4]+15.,next.transform.0[5]+4.]);
+        let mut oracle=state.document.as_ref().unwrap().clone();
+        oracle.nodes.insert(id.into(),next.clone());
+        resolve_full(&mut oracle,&fonts).unwrap();
+        let reply:serde_json::Value=serde_json::from_str(&state.patch_pose(&serde_json::to_string(&patch(next)).unwrap(),state.receipt,&fonts).unwrap()).unwrap();
+        assert_eq!(reply["stats"]["pose"],true,"{id}");
+        assert_eq!(reply["nodes"],json!({}),"{id}");
+        assert_eq!(serde_json::to_vec(state.document.as_ref().unwrap()).unwrap(),serde_json::to_vec(&oracle).unwrap(),"{id}");
+    }
+    #[test]
+    fn parent_pose_and_unrelated_edges_match_full_resolve_but_attached_connectors_decline() {
+        let mut doc=fixture();
+        doc.nodes.get_mut("mask").unwrap().effects=serde_json::from_value(json!([{"kind":"shadow","radius":8,"x":2,"y":3,"spread":0,"color":"#204060","opacity":0.85}])).unwrap();
+        let paint=doc.nodes.get_mut("paint").unwrap();
+        paint.mask=true;
+        paint.mask_type=Some("shape".into());
+        doc.nodes.get_mut("child").unwrap().repeat=serde_json::from_value(json!({"count":3,"translation":{"x":12,"y":0},"pivot":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}})).unwrap();
+        let wire:Node=serde_json::from_value(json!({"id":"wire","kind":"vector","width":40,"height":10,"connector":{"from":{"point":{"x":0,"y":0}},"to":{"point":{"x":40,"y":0}},"style":"straight"}})).unwrap();
+        doc.pages[0].children.push(wire.id.clone());
+        doc.nodes.insert(wire.id.clone(),wire);
+        prove_resolved_pose(doc.clone(),"mask");
+        prove_resolved_pose(doc.clone(),"board");
+        let mut flowed=doc.clone();
+        flowed.nodes.get_mut("board").unwrap().layout=Some(serde_json::from_value(json!({"mode":"horizontal"})).unwrap());
+        prove_resolved_pose(flowed,"board");
+        let mut attached=doc;
+        attached.nodes.get_mut("wire").unwrap().connector.as_mut().unwrap().from.node_id=Some("mask".into());
+        attached.nodes.get_mut("wire").unwrap().connector.as_mut().unwrap().from.anchor=Some(crate::math::Point::new(0.5,0.5));
+        let mut moved=attached.nodes["mask"].clone();
+        moved.transform.0[4]+=5.;
+        assert!(!eligible(&attached,&patch(moved)).unwrap());
+    }
+    /// The rejected #237 fast path checked connector endpoints against
+    /// `patch.nodes.keys()` only. Rotating `board` while `wire.from` names
+    /// `child` or `leaf` returned pose=true and nodes={} and left the wire.
+    #[test]
+    fn a_wire_aimed_at_a_descendant_follows_full_resolve_instead_of_the_pose_fast_path() {
+        for target in ["board","child","leaf"] {
+            let fonts=Fonts::new();let mut state=State::default();
+            state.full(&serde_json::to_string(&descendant_document(target)).unwrap(),&fonts).unwrap();
+            let mut next=state.document.as_ref().unwrap().nodes["board"].clone();
+            next.transform=Transform([0.,1.,-1.,0.,15.,4.]);
+            let edit=patch(next.clone());
+            assert!(edit.nodes.contains_key("board"),"{target}");
+            assert_eq!(edit.nodes.contains_key(target),target=="board","{target}");
+            assert_eq!(state.document.as_ref().unwrap().nodes["wire"].connector.as_ref().unwrap().from.node_id.as_deref(),Some(target),"{target}");
+            assert!(!eligible(state.document.as_ref().unwrap(),&edit).unwrap(),"{target}");
+            let before=serde_json::to_vec(state.document.as_ref().unwrap()).unwrap();
+            let wire_before=state.document.as_ref().unwrap().nodes["wire"].clone();
+            assert!(state.try_pose(&serde_json::to_string(&edit).unwrap(),state.receipt,&fonts).unwrap().is_none(),"{target}");
+            assert_eq!(serde_json::to_vec(state.document.as_ref().unwrap()).unwrap(),before,"{target}");
+            let mut oracle=state.document.as_ref().unwrap().clone();
+            oracle.nodes.insert("board".into(),next);
+            resolve_full(&mut oracle,&fonts).unwrap();
+            assert_ne!(oracle.nodes["wire"].transform,wire_before.transform,"{target}");
+            assert_ne!(oracle.nodes["wire"].network,wire_before.network,"{target}");
+            let reply:serde_json::Value=serde_json::from_str(&state.patch_pose(&serde_json::to_string(&edit).unwrap(),state.receipt,&fonts).unwrap()).unwrap();
+            assert_ne!(reply["stats"]["pose"],true,"{target}");
+            assert!(reply["nodes"].get("wire").is_some(),"{target}");
+            assert_eq!(serde_json::to_vec(state.document.as_ref().unwrap()).unwrap(),serde_json::to_vec(&oracle).unwrap(),"{target}");
+        }
     }
 }

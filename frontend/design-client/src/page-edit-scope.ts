@@ -10,7 +10,7 @@ export type PageEditScope = {
   layout: boolean
 }
 
-type EditIndex = { parents: Map<string, string>; externalRefs: Set<string>; pageChildren: readonly string[][] }
+type EditIndex = { parents: Map<string, string>; externalRefs: Set<string>; connectorTargets: Set<string>; pageChildren: readonly string[][] }
 const indexes = new WeakMap<DesignDocument, EditIndex>()
 
 function pageChildrenMatch(doc: DesignDocument, index: EditIndex) {
@@ -20,18 +20,21 @@ function pageChildrenMatch(doc: DesignDocument, index: EditIndex) {
 function buildIndex(doc: DesignDocument): EditIndex {
   const parents = new Map<string, string>()
   const externalRefs = new Set<string>()
+  const connectorTargets = new Set<string>()
   for (const page of doc.pages) for (const id of page.children) parents.set(id, page.id)
   for (const n of Object.values(doc.nodes)) {
     for (const child of n.children) parents.set(child, n.id)
-    if (n.connector?.from.nodeId) externalRefs.add(n.connector.from.nodeId)
-    if (n.connector?.to.nodeId) externalRefs.add(n.connector.to.nodeId)
+    for (const endpoint of [n.connector?.from.nodeId, n.connector?.to.nodeId]) if (endpoint) {
+      externalRefs.add(endpoint)
+      connectorTargets.add(endpoint)
+    }
     if (n.instance) {
       externalRefs.add(n.instance.componentId)
       for (const list of Object.values(n.instance.slotContents || {})) for (const id of list) externalRefs.add(id)
     }
     if (n.instanceOrigin) externalRefs.add(n.instanceOrigin.owner)
   }
-  return { parents, externalRefs, pageChildren: doc.pages.map(page => page.children) }
+  return { parents, externalRefs, connectorTargets, pageChildren: doc.pages.map(page => page.children) }
 }
 
 /** Immutable snapshots share one parent/reference index. Drafts are not cached. */
@@ -63,6 +66,23 @@ export function snapshotParents(doc: DesignDocument): ReadonlyMap<string, string
 export function snapshotTargets(doc: DesignDocument, ids: readonly string[]): boolean {
   const refs = editIndex(doc).externalRefs
   return ids.some(id => refs.has(id))
+}
+/** True when a connector endpoint is one of `ids` or a descendant of one.
+ * The patched id list misses a wire aimed at a child of a transformed parent. */
+export function connectorIntoSubtree(doc: DesignDocument, ids: readonly string[]): boolean {
+  const index = editIndex(doc)
+  if (!index.connectorTargets.size || !ids.length) return false
+  const patched = new Set(ids)
+  for (const target of index.connectorTargets) {
+    let at: string | undefined = target
+    const seen = new Set<string>()
+    while (at && !seen.has(at)) {
+      if (patched.has(at)) return true
+      seen.add(at)
+      at = index.parents.get(at)
+    }
+  }
+  return false
 }
 
 function crossNode(n: DesignNode | undefined): boolean {
