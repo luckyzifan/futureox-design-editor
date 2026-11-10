@@ -111,7 +111,8 @@ async function worker(desktopFullMath = false, withPreparation = false, desktopD
   const executionPolicy = createRenderPolicy(false, false, false, false, desktopFullMath, desktopDisplay)
   const send = (request: any) => scope.onmessage({ data: { executionPolicy, backend: 'auto', ...request } })
   const finish = async (id: number) => {
-    await vi.waitFor(() => expect(messages.some(value => value.id === id && (value.backend || value.error))).toBe(true))
+    // Asset reuse waits for worker completion; GUI acceptance measures latency.
+    await vi.waitFor(() => expect(messages.some(value => value.id === id && (value.backend || value.error))).toBe(true), { timeout: 10_000 })
     return messages.find(value => value.id === id && (value.backend || value.error))
   }
   return { send, finish, messages, kernel }
