@@ -23,7 +23,7 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;ticket.current++}},[])
  useLayoutEffect(()=>{
   const shell=root.current?.parentElement,previous=document.activeElement
-  const background=[...(shell?.querySelectorAll<HTMLElement>(':scope > header,:scope > main.editor-workspace,:scope > nav[aria-label="设计文档标签"],:scope > footer')||[])].map(element=>({element,inert:element.getAttribute('inert')}))
+  const background=[...(shell?.querySelectorAll<HTMLElement>(':scope > header,:scope > main.editor-workspace,:scope > nav[data-workspace-tabs],:scope > footer')||[])].map(element=>({element,inert:element.getAttribute('inert')}))
   background.forEach(({element})=>element.setAttribute('inert',''));search.current?.focus()
   return()=>{background.forEach(({element,inert})=>inert===null?element.removeAttribute('inert'):element.setAttribute('inert',inert));if(previous instanceof HTMLElement&&previous.isConnected&&!previous.closest('[inert]'))previous.focus({preventScroll:true})}
  },[])
