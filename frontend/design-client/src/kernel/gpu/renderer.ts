@@ -3585,6 +3585,43 @@ export class GpuRenderer {
     }
     return target
   }
+  /** Normal paints over a transparent leaf, then over the parent, are one
+   * source-over chain. Fills and centered strokes can paint the parent
+   * directly. Effects, masks, clips, partial layer opacity and non-normal
+   * blends still isolate: those results are not associative. */
+  private directStackedLeaf(n: GpuNode) {
+    if (!this.optimized || n.opacity !== 1 || n.blend !== 'normal' || n.passthrough || n.mask || n.maskId || n.clip || n.children.length) return false
+    if (n.effects.some(effect => effect.visible)) return false
+    const paintable = (paint: GpuPaint) => !paint.visible || (paint.blend === 'normal' && (this.driver.managed || !paint.figmaGradient))
+    if (!n.fills.every(paintable) || n.strokes.some(stroke => stroke.paint.visible && (stroke.align !== 'center' || !paintable(stroke.paint)))) return false
+    const fills = n.fills.filter(paint => paint.visible).length
+    const strokes = n.strokes.filter(stroke => stroke.paint.visible).length
+    // One fill and no stroke already has the clip-capable shortcut.
+    return strokes > 0 || fills > 1
+  }
+  private async paintStackedLeaf(n: GpuNode, target: Surface): Promise<Surface> {
+    let pendingSurfaceAdmission: Surface | Promise<Surface>
+    let fillMask: Surface | undefined
+    if (n.fills.some(paint => paint.visible)) {
+      fillMask = ((pendingSurfaceAdmission = this.nodeMask(n, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
+    }
+    for (const paint of n.fills) {
+      if (!paint.visible || !fillMask) continue
+      const admission = this.reclaimForPaintOver(n, paint, fillMask, target, undefined, true)
+      if (admission) await admission
+      const painted = this.paintOver(n, paint, fillMask, target, undefined, true, true)
+      target = painted instanceof Promise ? await painted : painted
+    }
+    for (const stroke of n.strokes) {
+      if (!stroke.paint.visible) continue
+      const strokeMask = ((pendingSurfaceAdmission = this.mask(stroke.path, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
+      const admission = this.reclaimForPaintOver(n, stroke.paint, strokeMask, target, undefined, true)
+      if (admission) await admission
+      const painted = this.paintOver(n, stroke.paint, strokeMask, target, undefined, true, true)
+      target = painted instanceof Promise ? await painted : painted
+    }
+    return target
+  }
   private async drawNode(id: string, target: Surface, clip?: Surface): Promise<Surface> {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const n = this.scene.nodes[id]
@@ -3621,6 +3658,10 @@ export class GpuRenderer {
       const mask = ((pendingSurfaceAdmission = this.nodeMask(n, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)), admission = this.reclaimForPaintOver(n, n.fills[0], mask, target, clip)
       if (admission) await admission
       return this.paintOver(n,n.fills[0],mask,target,clip,true)
+    }
+    if (this.directStackedLeaf(n) && !clip &&
+        (!this.scene.interactionRetained || n.rect.w * n.rect.h < 262144 || this.nativeChanging.has(id))) {
+      return this.paintStackedLeaf(n, target)
     }
     if (direct) {
       const p = direct.paint
@@ -4497,6 +4538,18 @@ export class GpuRenderer {
         // With no clip or isolation, this container never consumes coverage.
         // Recurse before allocating four unused, frame-pinned sample masks.
         targets = await this.drawBundle(n.children, targets, clip)
+        continue
+      }
+      // Fill then centered stroke is the same source-over chain as painting
+      // each one onto the parent. An ancestor clip, inside/outside stroke, or
+      // effect still needs the isolated leaf. No clip is applied per paint.
+      if (this.directStackedLeaf(n) && !clip) {
+        for (let i = 0; i < 4; i++) {
+          await this.reclaimScratch()
+          this.sampleIndex = i
+          targets[i] = await this.paintStackedLeaf(n, targets[i])
+          this.retireLeafMasks(n, undefined, clip, targets)
+        }
         continue
       }
       // A single normal paint in an otherwise empty isolated leaf first merges
