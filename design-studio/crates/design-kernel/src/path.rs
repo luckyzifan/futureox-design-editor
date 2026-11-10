@@ -28,12 +28,15 @@ pub struct Path {
 /// Immutable local fill/stroke paths. Text may use one shared outline for
 /// both; device preparation never mutates these owners.
 pub(crate) enum LocalPaths {
-    Owned((Path,Path)),
+    Owned((Path, Path)),
     Text(std::sync::Arc<Path>),
 }
 impl LocalPaths {
-    pub(crate) fn pair(&self)->(&Path,&Path) {
-        match self {Self::Owned((fill,stroke))=>(fill,stroke),Self::Text(path)=>(path,path)}
+    pub(crate) fn pair(&self) -> (&Path, &Path) {
+        match self {
+            Self::Owned((fill, stroke)) => (fill, stroke),
+            Self::Text(path) => (path, path),
+        }
     }
 }
 pub(crate) type SharedPaths = std::sync::Arc<LocalPaths>;
@@ -199,6 +202,29 @@ impl SmoothCorner {
         Ok(())
     }
 }
+/// Move a flattened smooth-rectangle cubic outward by `outset` device pixels.
+/// `Point::normal` is the left normal `(−dy, dx)`; the corner path is clockwise
+/// in y-down, so outward is the opposite normal.
+fn offset_smooth_cubic_outward(points: &mut [Point], outset: f64) {
+    if points.len() < 2 {
+        return;
+    }
+    let original = points.to_vec();
+    for (i, point) in points.iter_mut().enumerate() {
+        let prev = if i == 0 { original[0] } else { original[i - 1] };
+        let next = if i + 1 == original.len() {
+            original[i]
+        } else {
+            original[i + 1]
+        };
+        let normal = (next - prev).normal();
+        if normal == Point::default() {
+            continue;
+        }
+        *point = *point - normal * outset;
+    }
+}
+
 fn distance_to_segment(p: Point, a: Point, b: Point) -> f64 {
     let d = b - a;
     let t = ((p - a).dot(d) / d.dot(d).max(1e-30)).clamp(0., 1.);
@@ -220,14 +246,27 @@ fn cubic_flatness_band(tolerance: f64) -> (f64, f64) {
 }
 
 #[inline]
-fn cubic_controls_flat(a: Point, b: Point, c: Point, d: Point, tolerance: f64, band: (f64, f64)) -> bool {
+fn cubic_controls_flat(
+    a: Point,
+    b: Point,
+    c: Point,
+    d: Point,
+    tolerance: f64,
+    band: (f64, f64),
+) -> bool {
     let chord = d - a;
     let denominator = chord.dot(chord).max(1e-30);
     let distance = |p: Point| {
         let t = ((p - a).dot(chord) / denominator).clamp(0., 1.);
         let delta = p - a.lerp(d, t);
         let squared = delta.dot(delta);
-        if squared < band.0 { 0. } else if squared > band.1 { f64::INFINITY } else { delta.length() }
+        if squared < band.0 {
+            0.
+        } else if squared > band.1 {
+            f64::INFINITY
+        } else {
+            delta.length()
+        }
     };
     let first = distance(b);
     // Keep f64::max's handling of a single NaN in the ambiguous case.
@@ -515,7 +554,7 @@ impl Path {
         )
     }
     pub fn flatten(&self, m: Transform, tolerance: f64) -> Result<Vec<Contour>, String> {
-        self.flatten_impl(m, tolerance, None)
+        self.flatten_impl(m, tolerance, None, 0.)
     }
     /// Smooth-arc chord replacements outside `guard` preserve fill winding in
     /// the guard. Callers must include every effect's sampling halo. This output
@@ -526,6 +565,19 @@ impl Path {
         tolerance: f64,
         guard: crate::math::Rect,
     ) -> Result<Vec<Contour>, String> {
+        self.flatten_for_fill_outset(m, tolerance, guard, 0.)
+    }
+    /// Same fill flatten, then move smooth-rectangle cubic samples outward by
+    /// `sample_outset` device pixels. Zero keeps the exact cubic. Straight
+    /// edges and arcs are unchanged. A mirror (negative determinant) flips the
+    /// outward normal with the winding.
+    pub(crate) fn flatten_for_fill_outset(
+        &self,
+        m: Transform,
+        tolerance: f64,
+        guard: crate::math::Rect,
+        sample_outset: f64,
+    ) -> Result<Vec<Contour>, String> {
         self.flatten_impl(
             m,
             tolerance,
@@ -533,6 +585,7 @@ impl Path {
                 min: Point::new(f64::from(guard.x), f64::from(guard.y)),
                 max: Point::new(f64::from(guard.right()), f64::from(guard.bottom())),
             }),
+            sample_outset,
         )
     }
     /// Preserve full-polyline winding at `point` and boundary proximity within
@@ -553,6 +606,7 @@ impl Path {
                 min: point - radius,
                 max: point + radius,
             }),
+            0.,
         )
     }
     fn flatten_impl(
@@ -560,6 +614,7 @@ impl Path {
         m: Transform,
         tolerance: f64,
         clip: Option<FillGuard>,
+        sample_outset: f64,
     ) -> Result<Vec<Contour>, String> {
         if !tolerance.is_finite() || tolerance <= 0. || tolerance > 10. {
             return Err("Invalid flattening tolerance".into());
@@ -601,6 +656,14 @@ impl Path {
         let mut current = Contour::default();
         let mut pen = Point::default();
         let mut first = pen;
+        let mut cubic_join = false;
+        // Outward is recovered from the flattened chord direction, so a mirror
+        // that reverses winding reverses the normal with it.
+        let outset = if sample_outset.is_finite() && sample_outset > 0. {
+            sample_outset
+        } else {
+            0.
+        };
         for c in &self.commands {
             match *c {
                 Command::Move(p) => {
@@ -611,12 +674,15 @@ impl Path {
                     pen = m.point(p);
                     first = pen;
                     current.points.push(pen);
+                    cubic_join = false;
                 }
                 Command::Line(p) => {
                     pen = m.point(p);
                     current.points.push(pen);
+                    cubic_join = false;
                 }
                 Command::Quad(c, p) => {
+                    cubic_join = false;
                     let c = m.point(c);
                     let p = m.point(p);
                     flatten_cubic_guarded(
@@ -631,6 +697,7 @@ impl Path {
                     pen = p;
                 }
                 Command::Cubic(b, c, d) => {
+                    let start_index = current.points.len().saturating_sub(1);
                     let d = m.point(d);
                     flatten_cubic_guarded(
                         pen,
@@ -641,13 +708,29 @@ impl Path {
                         &mut current.points,
                         clip,
                     )?;
-                    pen = d;
+                    if outset != 0. && current.points.len() > start_index {
+                        let from = if cubic_join {
+                            start_index + 1
+                        } else {
+                            start_index
+                        };
+                        if from < current.points.len() {
+                            offset_smooth_cubic_outward(&mut current.points[from..], outset);
+                        }
+                    }
+                    pen = *current.points.last().unwrap_or(&d);
+                    if start_index == 0 && !cubic_join && !current.points.is_empty() {
+                        first = current.points[0];
+                    }
+                    cubic_join = true;
                 }
                 Command::SmoothCorner(corner) => {
+                    cubic_join = false;
                     corner.flatten(m, tolerance, &mut current.points, &mut smooth_budget, clip)?;
                     pen = *current.points.last().unwrap();
                 }
                 Command::Close => {
+                    cubic_join = false;
                     current.closed = true;
                     if current
                         .points
@@ -664,6 +747,7 @@ impl Path {
                     start,
                     sweep,
                 } => {
+                    cubic_join = false;
                     let device_radius = radius.x.abs().max(radius.y.abs()) * m.max_scale();
                     let step = if device_radius <= tolerance {
                         std::f64::consts::FRAC_PI_2
@@ -803,18 +887,27 @@ mod smooth_fill_tests {
     #[test]
     fn cubic_flatness_matches_original_at_rounding_boundaries_and_degenerate_chords() {
         let p = Point::new;
-        for scale in [1e-100, 1e-12, 1./64., 1., 1e12, 1e100] {
-            for (a,b,c,d) in [
-                (p(0.,0.),p(0.6,0.8),p(-0.8,0.6),p(0.,0.)),
-                (p(1.,0.),p(-2.,0.),p(3.,0.),p(2.,0.)),
-                (p(-1.,2.),p(1.,-1.),p(3.,2.),p(2.,3.)),
-                (p(1.,0.),p(f64::NAN,2.),p(2.,1.),p(3.,0.)),
+        for scale in [1e-100, 1e-12, 1. / 64., 1., 1e12, 1e100] {
+            for (a, b, c, d) in [
+                (p(0., 0.), p(0.6, 0.8), p(-0.8, 0.6), p(0., 0.)),
+                (p(1., 0.), p(-2., 0.), p(3., 0.), p(2., 0.)),
+                (p(-1., 2.), p(1., -1.), p(3., 2.), p(2., 3.)),
+                (p(1., 0.), p(f64::NAN, 2.), p(2., 1.), p(3., 0.)),
             ] {
-                let (a,b,c,d) = (a*scale,b*scale,c*scale,d*scale);
-                let actual = distance_to_segment(b,a,d).max(distance_to_segment(c,a,d));
-                for tolerance in [actual.next_down(), actual, actual.next_up(), actual*0.5, actual*2.] {
-                    assert_eq!(cubic_controls_flat(a,b,c,d,tolerance,cubic_flatness_band(tolerance)),
-                        actual<=tolerance, "scale={scale} tolerance={tolerance}");
+                let (a, b, c, d) = (a * scale, b * scale, c * scale, d * scale);
+                let actual = distance_to_segment(b, a, d).max(distance_to_segment(c, a, d));
+                for tolerance in [
+                    actual.next_down(),
+                    actual,
+                    actual.next_up(),
+                    actual * 0.5,
+                    actual * 2.,
+                ] {
+                    assert_eq!(
+                        cubic_controls_flat(a, b, c, d, tolerance, cubic_flatness_band(tolerance)),
+                        actual <= tolerance,
+                        "scale={scale} tolerance={tolerance}"
+                    );
                 }
             }
         }

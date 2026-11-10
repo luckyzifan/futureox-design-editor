@@ -224,15 +224,23 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         );
         return Ok(Rect::default());
     }
-    let fill = fill_path.flatten_for_fill(
-        matrix,
-        if compatible {
-            0.0001220703125
-        } else {
-            0.015625
-        },
-        guard,
-    )?;
+    let sample_outset = if compatible
+        && n.smoothing != 0.
+        && matches!(n.kind.as_str(), "rectangle" | "frame" | "section" | "slice")
+    {
+        crate::fidelity::SMOOTH_RECT_SAMPLE_OUTSET
+    } else {
+        0.
+    };
+    let fill = if sample_outset > 0. {
+        fill_path.flatten_for_fill_outset(matrix, 0.0001220703125, guard, sample_outset)?
+    } else {
+        fill_path.flatten_for_fill(
+            matrix,
+            if compatible { 0.0001220703125 } else { 0.015625 },
+            guard,
+        )?
+    };
     let mut bound = Rect::from_points(fill.iter().flat_map(|p| p.points.iter().copied()));
     let fill_program_bounds=bound.expand(1);
     let mut strokes = Vec::new();

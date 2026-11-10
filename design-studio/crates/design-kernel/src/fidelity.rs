@@ -8,6 +8,16 @@ pub const SAMPLE_OFFSETS: [(f64, f64); 4] = [
     (0.625, 0.875),
 ];
 
+/// Device-pixel outward outset applied only to smooth-rectangle fill cubics
+/// on the compatible sample grid. Chrome's 1× export of curves-2026-10-07
+/// covers samples that sit just outside the exact cubic (curve-7, curve-10
+/// and curve-12 become byte-exact; curve-1 drops from 8 pixels to 4). The
+/// nearest already-exact outside sample on those curves stays past ~4e-4, so
+/// 3e-4 does not flip them. Ellipses stay on the arc flattener and are not
+/// moved. This is a coverage correction, not a change to authored radii or
+/// smoothing, and not a comparison tolerance.
+pub(crate) const SMOOTH_RECT_SAMPLE_OUTSET: f64 = 3.0e-4;
+
 /// Layer-blur activation measured in actual Figma browser PNG exports at
 /// 1x/2x/4x (figma-blur-threshold-2026-10-08.json). The Figma profile renders
 /// at twice the final output density. This SDR observation does not change
