@@ -6,6 +6,9 @@ export default defineConfig({
   test: {
     include: [
       'src/kernel/camera-reprojection.test.ts',
+      'src/kernel/continuous-zoom-scale.test.ts',
+      'src/kernel/zoom-in-frame.test.ts',
+      'src/kernel/NativeSourceSurface.pipeline.test.tsx',
       'src/kernel/progressive-quality.test.ts',
       'src/kernel/navigation-zoom.test.ts',
       'src/kernel/navigation-coverage.test.ts',

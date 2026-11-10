@@ -354,6 +354,35 @@ test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async
  expect(state.frames.at(-1)?.items.some(item=>item.tile.gpuTile===901)).toBe(true)
 })
 
+test('continuous zoom-in from a settled view requests at least half the native density',async()=>{
+  const drawWheel=(zoom:number,wheel=false)=>act(async()=>{
+    root.render(<NativeSourceSurface source={source} view={{x:0,y:0,zoom}} wheelView={wheel?{x:0,y:0,zoom}:undefined} width={800} height={700} onStatus={value=>statuses.push(value)}/>)
+    await pause()
+  })
+  const finish=async()=>{
+    for(let guard=0;guard<8;guard++){
+      const job=[...state.jobs].reverse().find(item=>item.active)
+      if(!job)break
+      const base=6000+guard*20
+      await act(async()=>{
+        job.options.tileViewport!.forEach((_,index)=>deliver(job,index,base+index))
+        job.finish();await pause();paint()
+      })
+      if(statuses.at(-1)?.phase==='ready')return
+    }
+  }
+  // Settle at 100% first. Without that receipt the inward rung has no visible
+  // density and the next wheel would ask for the full native lattice.
+  await drawWheel(1);await finish()
+  expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{zoom:1}})
+  await drawWheel(16,true)
+  const motion=state.jobs.at(-1)
+  // Native demand is 16. The old floor was native/4 (4). Half native is 8.
+  expect(motion?.options.view.zoom).toBeGreaterThanOrEqual(8)
+  expect(motion?.options.view.zoom).toBeLessThan(16)
+  expect(statuses.at(-1)?.sharp).not.toBe(true)
+})
+
 test('a return pan after 3200% does not stay ready on the stale high-density tiles',async()=>{
  vi.stubGlobal('OffscreenCanvas',class {})
  vi.stubGlobal('ImageBitmapRenderingContext',class {})
