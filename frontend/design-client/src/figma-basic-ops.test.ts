@@ -1,29 +1,42 @@
 import { afterEach, expect, test } from 'vitest'
 import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
-import { deepSelectChord, doubleClickFollowUp, enterKeyEditsText } from './figma-basic-ops'
+import { canEnterOutlineEdit, deepSelectChord, doubleClickFollowUp, enterKeyEditsOutline, enterKeyEditsText } from './figma-basic-ops'
 import { Editor } from './engine'
 import { blank, node } from './model'
 
 const editors: Editor[] = []
 afterEach(() => editors.splice(0).forEach(editor => editor.dispose()))
 
-test('double-click edits text, drills containers, and only re-enters an already selected vector', () => {
+test('double-click edits text, drills containers, and enters an already selected outline', () => {
   const text = { id: 't', kind: 'text' }
   const frame = { id: 'f', kind: 'frame' }
   const rect = { id: 'r', kind: 'rectangle' }
+  const ellipse = { id: 'e', kind: 'ellipse' }
   const vector = { id: 'v', kind: 'vector', network: { vertices: [], edges: [] } }
   const instance = { id: 'i', kind: 'frame', instance: { componentId: 'c' } }
+  const locked = { id: 'l', kind: 'rectangle', locked: true }
   expect(doubleClickFollowUp({ id: 't', changed: true }, text, true)).toBe('edit-text')
   expect(doubleClickFollowUp({ id: 't', changed: false }, text, true)).toBe('edit-text')
   expect(doubleClickFollowUp({ id: 'f', changed: true }, frame, true)).toBe('select')
   expect(doubleClickFollowUp({ id: 'r', changed: true }, rect, true)).toBe('select')
-  expect(doubleClickFollowUp({ id: 'r', changed: false }, rect, true)).toBe('select')
+  expect(doubleClickFollowUp({ id: 'r', changed: false }, rect, true)).toBe('edit-vector')
+  expect(doubleClickFollowUp({ id: 'e', changed: false }, ellipse, true)).toBe('edit-vector')
   expect(doubleClickFollowUp({ id: 'v', changed: true }, vector, true)).toBe('select')
   expect(doubleClickFollowUp({ id: 'v', changed: false }, vector, true)).toBe('edit-vector')
   expect(doubleClickFollowUp({ id: 'i', changed: false }, instance, true)).toBe('instance')
   expect(doubleClickFollowUp({ id: 'i', changed: true }, instance, true)).toBe('select')
+  expect(doubleClickFollowUp({ id: 'l', changed: false }, locked, true)).toBe('select')
   expect(doubleClickFollowUp({ id: 't', changed: false }, text, false)).toBe('select')
   expect(doubleClickFollowUp(null, text, true)).toBe('select')
+  for (const kind of ['polygon', 'star', 'line'])
+    expect(doubleClickFollowUp({ id: kind, changed: false }, { id: kind, kind }, true)).toBe('edit-vector')
+  for (const kind of ['frame', 'section', 'group', 'slice', 'text'])
+    expect(canEnterOutlineEdit({ kind })).toBe(false)
+  expect(canEnterOutlineEdit({ kind: 'rectangle', instanceOrigin: { owner: 'i' } })).toBe(false)
+  expect(enterKeyEditsOutline(['r'], ['r'], rect)).toBe(true)
+  expect(enterKeyEditsOutline(['r', 'e'], ['r', 'e'], rect)).toBe(false)
+  expect(enterKeyEditsOutline(['l'], [], locked)).toBe(false)
+  expect(enterKeyEditsOutline(['v'], ['v'], vector)).toBe(true)
 })
 
 test('deep select is Command on Mac and Control elsewhere', () => {

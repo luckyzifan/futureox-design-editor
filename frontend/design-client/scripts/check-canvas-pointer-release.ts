@@ -324,10 +324,13 @@ try {
     await p.getByTestId('resize-2').click();await unmodified(before);passed('No-motion handle click preserves exact document and undo stack')
   }
   {
-    const {doc,b}=make('Pointer release vector anchor');await fresh(doc);await row(b.id).click()
-    // Enter edits text only. A selected ellipse enters point editing from 绘图工具 → 编辑矢量.
-    await p.locator('button[aria-label="绘图工具"]').click()
-    await p.getByRole('menuitem',{name:'编辑矢量',exact:true}).click()
+    const {doc,b}=make('Pointer release vector anchor');await fresh(doc);await row(b.id).click();await canvas.focus()
+    await p.keyboard.press('Enter')
+    await expect(p.getByTestId('vector-anchor')).toHaveCount(4)
+    const entered=await stored()
+    expect(entered.nodes[b.id].kind).toBe('ellipse')
+    expect(entered.nodes[b.id].network).toBeUndefined()
+    await expect(p.getByRole('button',{name:'撤销',exact:true})).toBeDisabled()
     await expect(canvas).toHaveClass(/canvas-vector/)
     const before=await stored(),anchor=p.getByTestId('vector-anchor').first(),box=(await anchor.boundingBox())!,v=await camera()
     const start={x:box.x+box.width/2,y:box.y+box.height/2}
@@ -335,7 +338,57 @@ try {
     await expect.poll(async()=>(await stored()).nodes[b.id].kind).toBe('vector')
     expect((await stored()).nodes[b.id].network?.vertices.length).toBeGreaterThan(0)
     await screenshot('06-release-vector-anchor');await undo(before)
-    passed('Ellipse anchor consumes release-only motion; one Undo restores original Arc geometry')
+    expect((await stored()).nodes[b.id].kind).toBe('ellipse')
+    expect((await stored()).nodes[b.id].network).toBeUndefined()
+    await p.keyboard.press('Escape')
+    await expect(p.getByTestId('vector-anchor')).toHaveCount(0)
+    await click(b.id,[],true)
+    await expect(p.getByTestId('vector-anchor')).toHaveCount(4)
+    expect((await stored()).nodes[b.id].kind).toBe('ellipse')
+    passed('Ellipse Enter and double-click show four anchors; one release drag undoes to the original arc')
+  }
+  {
+    const {doc,a}=make('Rectangle outline entry');await fresh(doc);await row(a.id).click();await canvas.focus()
+    const clean=await record()
+    await click(a.id,[],true)
+    await expect(p.getByTestId('vector-anchor')).toHaveCount(4)
+    expect((await stored()).nodes[a.id].kind).toBe('rectangle')
+    expect((await stored()).nodes[a.id].network).toBeUndefined()
+    await p.keyboard.press('Escape');await expect(p.getByTestId('vector-anchor')).toHaveCount(0)
+    await unmodified(clean)
+    await canvas.focus();await p.keyboard.press('Enter')
+    await expect(p.getByTestId('vector-anchor')).toHaveCount(4)
+    const before=await stored(),anchor=p.getByTestId('vector-anchor').first(),box=(await anchor.boundingBox())!,v=await camera()
+    const start={x:box.x+box.width/2,y:box.y+box.height/2}
+    await releaseOnly(start,{x:start.x+18*v.zoom,y:start.y})
+    await expect.poll(async()=>(await stored()).nodes[a.id].kind).toBe('vector')
+    expect((await stored()).nodes[a.id].network?.vertices).toHaveLength(4)
+    await undo(before)
+    expect((await stored()).nodes[a.id].kind).toBe('rectangle')
+    expect((await stored()).nodes[a.id].network).toBeUndefined()
+    passed('Rectangle double-click and Enter show four anchors; one release drag undoes to the original rectangle')
+  }
+  {
+    const doc=blank('Network enter outline'),path=node('vector',80,240,120,40)
+    path.network={vertices:[{id:'a',x:0,y:0},{id:'b',x:120,y:40}],edges:[{id:'e',from:'a',to:'b'}],fillRule:'nonzero'}
+    doc.nodes[path.id]=path;doc.pages[0].children=[path.id]
+    await fresh(doc);await row(path.id).click();await canvas.focus();const clean=await record()
+    await p.keyboard.press('Enter')
+    await expect(p.getByTestId('vector-anchor')).toHaveCount(2)
+    expect((await stored()).nodes[path.id].network?.vertices).toEqual(path.network.vertices)
+    await unmodified(clean)
+    const before=await stored(),anchor=p.getByTestId('vector-anchor').first(),box=(await anchor.boundingBox())!,v=await camera()
+    const start={x:box.x+box.width/2,y:box.y+box.height/2}
+    await releaseOnly(start,{x:start.x+14*v.zoom,y:start.y+6*v.zoom})
+    await expect.poll(async()=>(await stored()).nodes[path.id].network?.vertices[0]).not.toEqual(before.nodes[path.id].network!.vertices[0])
+    await undo(before)
+    expect((await stored()).nodes[path.id].network).toEqual(before.nodes[path.id].network)
+    await p.keyboard.press('Escape');await expect(p.getByTestId('vector-anchor')).toHaveCount(0)
+    const at=await worldPoint(path.transform[4],path.transform[5])
+    await p.mouse.dblclick(at.x,at.y)
+    await expect(p.getByTestId('vector-anchor')).toHaveCount(2)
+    expect((await stored()).nodes[path.id].network).toEqual(before.nodes[path.id].network)
+    passed('Network Enter and double-click show both anchors; one release drag undoes to the original vertices')
   }
   {
     const {doc}=make('Pointer release pen tangent');await fresh(doc);const before=await stored(),ids=new Set(Object.keys(before.nodes))
