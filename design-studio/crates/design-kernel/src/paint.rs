@@ -1175,6 +1175,10 @@ impl SampleImage {
 }
 pub struct Sampler {
     linear_sampling: bool,
+    /// Unmanaged images stay quantized encoded bytes. Analytic frames also set
+    /// `linear_sampling` so the float bilinear expression is used; that flag
+    /// does not decode those bytes.
+    encoded_texels: bool,
     image_coordinates: Option<ImageCoordinates>,
     kind: String,
     base: Pixel,
@@ -1302,6 +1306,7 @@ impl Sampler {
             gradient_coordinates,
             image_coordinates,
             linear_sampling: images.settings.is_some(),
+            encoded_texels: images.settings.is_none(),
             kind: p.kind.clone(),
             base: crate::color::pixel(images.settings, &p.color, 1.)?,
             byte_stops: stops
@@ -1325,6 +1330,103 @@ impl Sampler {
     ) -> Result<(), String> {
         self.linear_sampling |= floating;
         Ok(())
+    }
+    /// Coverage-weighted encoded average for an axis-aligned stretch sample
+    /// whose device pixel covers about two source texels on both axes.
+    ///
+    /// Centre bilinear and a 2×2 box agree when the scale is exactly 2. A
+    /// rounded half frame (an odd source such as 749 placed at half size) is
+    /// not that lattice: the centre tap and the pixel footprint then diverge.
+    /// Device zoom is the scale, so a CSS half view at DPR 2 stays a 1:1 copy.
+    /// Magnification and other minification ratios keep the historical tap.
+    /// Unmanaged texels are averaged as encoded bytes. Managed texels are
+    /// averaged in the linear values already stored for them. Image
+    /// adjustments stay on the historical tap.
+    fn half_scale_stretch(&self, image: &SampleImage, device: Point) -> Option<Pixel> {
+        let coords = self.image_coordinates.as_ref()?;
+        if self.adjust.is_some()
+            || coords.pattern.is_some()
+            || coords.fit != "stretch"
+            || coords.paint_inverse.is_some()
+        {
+            return None;
+        }
+        let m = coords.inverse.0;
+        if m[1] != 0. || m[2] != 0. {
+            return None;
+        }
+        let x0 = device.x.floor();
+        let y0 = device.y.floor();
+        if !x0.is_finite() || !y0.is_finite() || device.x == x0 || device.y == y0 {
+            return None;
+        }
+        let e00 = coords.linear_point(Point::new(x0, y0));
+        let e10 = coords.linear_point(Point::new(x0 + 1., y0));
+        let e01 = coords.linear_point(Point::new(x0, y0 + 1.));
+        let e11 = coords.linear_point(Point::new(x0 + 1., y0 + 1.));
+        if ![e00.x, e00.y, e10.x, e10.y, e01.x, e01.y, e11.x, e11.y]
+            .iter()
+            .all(|v| v.is_finite())
+            || (e01.x - e00.x).abs() > 1e-6
+            || (e11.x - e10.x).abs() > 1e-6
+            || (e10.y - e00.y).abs() > 1e-6
+            || (e11.y - e01.y).abs() > 1e-6
+        {
+            return None;
+        }
+        let sx = (e10.x - e00.x).abs();
+        let sy = (e01.y - e00.y).abs();
+        if !(1.5..2.5).contains(&sx) || !(1.5..2.5).contains(&sy) {
+            return None;
+        }
+        let (x_lo, x_hi) = if e00.x <= e10.x { (e00.x, e10.x) } else { (e10.x, e00.x) };
+        let (y_lo, y_hi) = if e00.y <= e01.y { (e00.y, e01.y) } else { (e01.y, e00.y) };
+        let [iw, ih] = image.size();
+        let y_start = y_lo.floor().max(0.) as i32;
+        let y_end = y_hi.ceil().min(f64::from(ih)) as i32;
+        let x_start = x_lo.floor().max(0.) as i32;
+        let x_end = x_hi.ceil().min(f64::from(iw)) as i32;
+        if y_end < y_start || x_end < x_start || y_end - y_start > 4 || x_end - x_start > 4 {
+            return None;
+        }
+        let mut sum = [0f64; 4];
+        let mut weight = 0f64;
+        for ty in y_start..y_end {
+            let yb = f64::from(ty);
+            let wy = y_hi.min(yb + 1.) - y_lo.max(yb);
+            if wy <= 0. {
+                continue;
+            }
+            for tx in x_start..x_end {
+                let xb = f64::from(tx);
+                let wx = x_hi.min(xb + 1.) - x_lo.max(xb);
+                if wx <= 0. {
+                    continue;
+                }
+                let w = wx * wy;
+                let texel = image.at(tx, ty);
+                for (channel, value) in sum.iter_mut().zip(texel.0) {
+                    let sample = if self.encoded_texels {
+                        f64::from((value * 255.).round_ties_even())
+                    } else {
+                        f64::from(value)
+                    };
+                    *channel += sample * w;
+                }
+                weight += w;
+            }
+        }
+        if weight <= 0. {
+            return Some(Pixel::default());
+        }
+        Some(Pixel(sum.map(|value| {
+            let averaged = value / weight;
+            if self.encoded_texels {
+                averaged.round().clamp(0., 255.) as f32 / 255.
+            } else {
+                averaged as f32
+            }
+        })))
     }
     pub fn at_rgba8(&self, device: Point) -> Pixel {
         let Some(image) = &self.image else {
@@ -1353,6 +1455,15 @@ impl Sampler {
             };
             return Pixel(value.map(|v| (v * self.opacity).round_ties_even() / 255.));
         };
+        if let Some(filtered) = self.half_scale_stretch(image, device) {
+            let opacity = if self.adjust.is_some() { 1. } else { self.opacity };
+            let sampled = Pixel(filtered.0.map(|v| ((v * 255.) * opacity).round_ties_even() / 255.));
+            if self.adjust.is_none() {
+                return sampled;
+            }
+            let adjusted = self.adjusted(sampled);
+            return Pixel(adjusted.0.map(|v| ((v * 255.) * self.opacity).round_ties_even() / 255.));
+        }
         let Some([x, y]) = self
             .image_coordinates
             .as_ref()
@@ -1375,6 +1486,11 @@ impl Sampler {
         Pixel(adjusted.0.map(|v| ((v * 255.) * self.opacity).round_ties_even() / 255.))
     }
     pub fn at(&self, device: Point) -> Pixel {
+        if let Some(image) = &self.image {
+            if let Some(filtered) = self.half_scale_stretch(image, device) {
+                return self.adjusted(filtered).opacity(self.opacity);
+            }
+        }
         let color = if let Some(image) = &self.image {
             match self.image_coordinates.as_ref().and_then(|c| c.at(device)) {
                 None => Pixel::default(),
