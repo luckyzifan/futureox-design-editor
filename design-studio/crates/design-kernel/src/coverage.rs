@@ -1,5 +1,12 @@
 use crate::path::Contour;
 
+/// Weight of one real outside sample mixed into the far edge of a clamped
+/// export background-blur lattice. Measured on the frozen 128² Chrome
+/// reference: 0 leaves max channel error 7, 0.10 brings it to 3, and 0.25
+/// pushes it back to 10. Interior ramps and the exact glass captures are
+/// unchanged at 0.10.
+pub const EXPORT_BACKDROP_EDGE_RING: f64 = 0.1;
+
 pub fn backdrop_box(bounds: Option<crate::bounds::Bounds>, limit: crate::math::Rect) -> [f64; 4] {
     let Some(bounds) = bounds else {
         return [

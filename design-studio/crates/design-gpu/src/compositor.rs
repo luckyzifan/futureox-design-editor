@@ -1740,15 +1740,21 @@ impl Compositor<'_, '_, '_> {
             if !omit_optics && let Some(fx) = futureox_design_kernel::scene::selected_backdrop(&n.effects) {
                 let cropped = fx.kind == "background-blur";
                 let b = n.backdrop_box;
+                let planes = if has_prior { &optical_prefix.as_ref().unwrap().1 } else { &targets };
+                let outside = b[0] + b[2] + 0.5;
+                let source = planes[0].rect;
+                let export_ring = cropped && self.scene.resolve.is_some() && !self.scene.float_compositing
+                    && source.index((outside - 0.5).floor() as i32, b[1].floor() as i32).is_some()
+                    && source.index((outside - 0.5).floor() as i32 + 1, b[1].floor() as i32).is_some();
                 let capture = if cropped {
-                    Rect::new(b[0] as i32, b[1] as i32, b[2] as u32, b[3] as u32)
+                    Rect::new(b[0] as i32, b[1] as i32, b[2] as u32 + u32::from(export_ring), b[3] as u32)
                 } else {
                     n.rect
                 };
                 // Fractional capture origins are shader coordinates, not texture
                 // dimensions. Preserve their phase exactly, as the browser does.
                 let mut background = self.frame.acquire(capture)?;
-                let inputs = if has_prior { &optical_prefix.as_ref().unwrap().1 } else { &targets };
+                let inputs = planes;
                 let mut u = parameters(capture, inputs);
                 u[16] = 26.;
                 if cropped {
@@ -1757,6 +1763,9 @@ impl Compositor<'_, '_, '_> {
                 }
                 if n.capture_replay.is_none() {
                     self.frame.draw(background, u, inputs, false, None)?;
+                }
+                if export_ring && n.capture_replay.is_none() {
+                    background = self.backdrop_edge_ring(background, b)?;
                 }
                 // The integer Rect cannot carry a fractional origin; compensate
                 // all subsequent pass parameters using the dedicated phase path.
@@ -2025,6 +2034,33 @@ impl Compositor<'_, '_, '_> {
         })?;
         self.frame.release(&[h]);
         Ok(v)
+    }
+    /// Same far-edge ring as the CPU export lattice: one extra column is
+    /// `(1-w)*edge + w*outside` before the clamped tent. Interior texels stay
+    /// on the fractional capture phase.
+    fn backdrop_edge_ring(&mut self, outside: Surface, bounds: [f64; 4]) -> Result<Surface, String> {
+        let capture = outside.rect;
+        let clamped = self.frame.acquire(capture)?;
+        let mut u = parameters(capture, &[outside]);
+        u[16] = 27.;
+        u[0] = bounds[0] as f32;
+        u[1] = bounds[1] as f32;
+        u[4] = bounds[0] as f32;
+        u[5] = bounds[1] as f32;
+        u[6] = (capture.w - 1) as f32;
+        self.frame.draw(clamped, u, &[outside], false, None)?;
+        let mixed = self.frame.acquire(capture)?;
+        let mut u = parameters(capture, &[outside, clamped]);
+        u[16] = 28.;
+        u[17] = 1.;
+        u[18] = futureox_design_kernel::coverage::EXPORT_BACKDROP_EDGE_RING as f32;
+        for origin in [0, 4, 8] {
+            u[origin] = bounds[0] as f32;
+            u[origin + 1] = bounds[1] as f32;
+        }
+        self.frame.draw(mixed, u, &[outside, clamped], false, None)?;
+        self.frame.release(&[outside, clamped]);
+        Ok(mixed)
     }
     fn backdrop_blur(
         &mut self,

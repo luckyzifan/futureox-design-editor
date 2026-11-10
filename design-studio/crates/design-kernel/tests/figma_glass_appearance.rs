@@ -1,15 +1,27 @@
-//! Issue 179. The frozen Chrome cases now carry the Figma glass readback
-//! (depth, refraction, dispersion, light) instead of the old amount/opacity
-//! stand-in, so export profiles use the calibrated capture. Ceilings are the
-//! measured gaps after that mapping and are below the 2026-11-10 main deltas.
+//! Issue 179. Glass frost and full glass on the figma export profile match the
+//! frozen Chrome PNGs exactly. Background blur keeps that profile's tent, and
+//! mixes one real outside column into the clamped far edge
+//! (`EXPORT_BACKDROP_EDGE_RING`). Measured on this Linux CPU build against
+//! `browser-2026-10-07` (checksums unchanged):
+//!
+//! | case | profile | main pixels / max | candidate pixels / max |
+//! | --- | --- | ---: | ---: |
+//! | backdrop-blur | figma | 3887 / 7 | 3802 / 3 |
+//! | backdrop-blur | figmaSoftware | 3974 / 7 | 3736 / 3 |
+//! | glass-frost-only | figma | 0 / 0 | 0 / 0 |
+//! | glass-full | figma | 0 / 0 | 0 / 0 |
+//!
+//! figmaSoftware glass stays on its separate byte-resolve tier. Analytic is
+//! not this acceptance profile. CPU bytes are not a GPU or GUI pass.
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 /// (case, profile, max different pixels, max channel). Inclusive ceilings.
+/// Backdrop ceilings are the candidate measurement above, stricter than main.
 const CEILINGS: &[(&str, &str, usize, u8)] = &[
-    ("backdrop-blur", "figma", 3887, 7),
-    ("backdrop-blur", "figmaSoftware", 3974, 7),
+    ("backdrop-blur", "figma", 3802, 3),
+    ("backdrop-blur", "figmaSoftware", 3736, 3),
     ("glass-frost-only", "figma", 0, 0),
     ("glass-frost-only", "figmaSoftware", 2536, 2),
     ("glass-full", "figma", 0, 0),
@@ -46,7 +58,12 @@ fn gap(actual: &[u8], expected: &[u8]) -> (usize, u8) {
     let mut pixels = 0usize;
     let mut max = 0u8;
     for (a, b) in actual.chunks_exact(4).zip(expected.chunks_exact(4)) {
-        let delta = a.iter().zip(b).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
+        let delta = a
+            .iter()
+            .zip(b)
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap_or(0);
         if delta != 0 {
             pixels += 1;
             max = max.max(delta);
@@ -91,14 +108,23 @@ fn glass_cases_bind_the_frozen_figma_readback() {
         let effect = &case["document"]["nodes"]["lens"]["effects"][0];
         assert_eq!(effect["kind"], "glass");
         assert_eq!(effect["radius"], source["radius"]);
-        for key in ["depth", "refraction", "dispersion", "lightAngle", "lightIntensity"] {
+        for key in [
+            "depth",
+            "refraction",
+            "dispersion",
+            "lightAngle",
+            "lightIntensity",
+        ] {
             assert_eq!(effect["glass"][key], source[key], "{id}.{key}");
         }
         assert_eq!(case["document"]["schemaVersion"], 5);
         assert_eq!(case["strictComparable"], true);
     }
     let backdrop = &case(&cases, "backdrop-blur")["document"]["nodes"]["lens"]["effects"][0];
-    assert_eq!((backdrop["kind"].as_str(), backdrop["radius"].as_f64()), (Some("background-blur"), Some(4.)));
+    assert_eq!(
+        (backdrop["kind"].as_str(), backdrop["radius"].as_f64()),
+        (Some("background-blur"), Some(4.))
+    );
 }
 
 #[test]
@@ -107,9 +133,16 @@ fn issue_179_appearance_stays_within_the_measured_ceilings() {
     for &(id, profile, pixels, max) in CEILINGS {
         let case = case(&cases, id);
         let (got_pixels, got_max) = gap(&render(case, profile), &reference(case));
+        eprintln!("issue179 {id}/{profile}: pixels {got_pixels} max {got_max}");
         assert!(
             got_pixels <= pixels && got_max <= max,
             "{id}/{profile}: pixels {got_pixels} ceiling {pixels}, max {got_max} ceiling {max}"
         );
+        if id == "backdrop-blur" {
+            assert!(
+                got_pixels < 3887 && got_max < 7,
+                "{id}/{profile} did not improve on main's 3887/7 gap: {got_pixels}/{got_max}"
+            );
+        }
     }
 }

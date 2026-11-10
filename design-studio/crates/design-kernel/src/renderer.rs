@@ -3244,21 +3244,51 @@ impl Painter<'_> {
             };
             let cropped = backgrounds.iter().all(|e| e.kind == "background-blur");
             let bounds = crate::coverage::backdrop_box(prepared.fill_bounds, self.extent);
-            let capture = if cropped {
-                Rect::new(0, 0, bounds[2] as u32, bounds[3] as u32)
-            } else {
-                r
-            };
             let origin = if cropped {
                 Point::new(bounds[0], bounds[1])
             } else {
                 Point::new(f64::from(r.x), f64::from(r.y))
+            };
+            // The clamped lattice stops half a pixel inside the shape. On a
+            // high-contrast far edge that repeats the rim instead of the next
+            // backdrop pixel and leaves a 7-code strip. Mix one real outside
+            // column in before the tent, and only when that sample actually
+            // lands inside the source.
+            let edge_ring = cropped && self.compatible && self.profile.is_export();
+            let source_rect = clean_backdrop.unwrap_or(targets)[0].rect;
+            let outside_x = origin.x + bounds[2] + 0.5;
+            let outside_readable = edge_ring
+                && source_rect.index((outside_x - 0.5).floor() as i32, origin.y.floor() as i32).is_some()
+                && source_rect.index((outside_x - 0.5).floor() as i32 + 1, origin.y.floor() as i32).is_some();
+            let capture = if cropped {
+                Rect::new(0, 0, (bounds[2] as u32).saturating_add(u32::from(outside_readable)), bounds[3] as u32)
+            } else {
+                r
             };
             let mut background = if replay.is_some() {
                 self.allocate(capture)?
             } else {
                 self.resolve_backdrop(capture, origin, clean_backdrop.unwrap_or(targets))?
             };
+            if outside_readable {
+                let rect = background.rect;
+                let factor = crate::coverage::EXPORT_BACKDROP_EDGE_RING;
+                let outside_column = rect.right() - 1;
+                let edge_column = outside_column - 1;
+                if edge_column >= rect.x {
+                    for y in rect.y..rect.bottom() {
+                        let edge = background.at(edge_column, y);
+                        let outside = background.at(outside_column, y);
+                        let mixed = Pixel(std::array::from_fn(|channel| {
+                            let value = f64::from(edge.0[channel]) * (1. - factor)
+                                + f64::from(outside.0[channel]) * factor;
+                            let byte = (value * 255.).round_ties_even().clamp(0., 255.);
+                            byte as f32 / 255.
+                        }));
+                        background.pixels[rect.index(outside_column, y).expect("edge ring")] = mixed;
+                    }
+                }
+            }
             let mut masks = Vec::with_capacity(4);
             for sample in 0..4 {
                 let mask = fill.plane(sample);
