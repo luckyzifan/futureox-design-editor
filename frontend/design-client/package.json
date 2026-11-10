@@ -35,6 +35,8 @@
     "test:io-import": "bun scripts/check-io-import.ts",
     "test:preview-contract": "bun scripts/check-preview-contract.ts",
     "test:toolbar-menu": "bun scripts/check-toolbar-menu.ts",
+    "test:sketch-toolbar-hits": "bun scripts/check-sketch-toolbar-hits.ts",
+    "test:sketch-toolbar-hits-electron": "bun scripts/check-sketch-toolbar-hits-electron.ts",
     "test:scale-tools": "bun scripts/check-scale-tools.ts",
     "test:property-layout": "bun scripts/check-property-layout.ts",
     "test:pending-input": "bun scripts/check-pending-input.ts",
