@@ -218,6 +218,9 @@ export type KernelOptions = {
   interactionWindow?: import('./gpu/types').Rect
   previewTileFallback?: boolean
   tileViewport?: RasterTile[]
+  /** Worker-only. Stripped before the kernel sees the request. One covering
+   * raster may replace the remaining visible tiles after the center tile. */
+  settledBlurCohort?: boolean
   /** Parallel original-index hints: holes, coarse coverage, sharp coverage. */
   tileFillPriorities?: import('./tile-cache').TileFillPriority[]
   /** Bounded native viewport capture on the same world sample lattice as tiles. */

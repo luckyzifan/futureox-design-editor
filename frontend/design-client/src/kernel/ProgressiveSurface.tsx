@@ -23,6 +23,7 @@ import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
 import { partialSharpSample } from './frame-handoff'
+import { recordDetailClock } from './detail-timing'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
@@ -443,7 +444,7 @@ export function ProgressiveSurfaceImpl(
   const revision = useRef(0),
     serial = useRef(0),
     navigation = useRef(0)
-  const navigationTiming = useRef<{ key: string; started: number; firstDetailMs?: number; completeMs?: number }>({ key: '', started: 0 })
+  const navigationTiming = useRef<{ key: string; started: number; firstDetailMs?: number; firstPresentMs?: number; completeMs?: number }>({ key: '', started: 0 })
   const rasterTrace = useRef<{ kind: string; scale: number; cameraFallback?: boolean; tiles?: number; total: number; compile: number; graph: number; finish: number; checkpoint: number }[]>([])
   /** Document whose patch the worker has most recently applied (confirmed by
    * a damage report or a clean render). Residents are trusted until then. */
@@ -511,8 +512,8 @@ export function ProgressiveSurfaceImpl(
       actual.view.zoom===plan.view.zoom && [...plan.ids].every(key=>actual.ids.has(tileRef.current.get(key)?.gpuTile || -1))
     if (!navigationZoom.active && !latestContext.current.paused && syncedDoc.current === doc && plan && plan.key === frameKey && plan.document === doc &&
         presented && plan.ids.size && [...plan.ids].every((key) => ready.current.has(key))) {
-      if (navigationTiming.current.key === plan.key && navigationTiming.current.completeMs === undefined)
-        navigationTiming.current.completeMs = performance.now() - navigationTiming.current.started
+      if (navigationTiming.current.key === plan.key)
+        recordDetailClock(navigationTiming.current, 'complete', performance.now())
       const residents = new Map([...plan.ids].flatMap((key) => {
         const tile = tileRef.current.get(key)
         return tile ? [[key, tile] as const] : []
@@ -1303,6 +1304,9 @@ export function ProgressiveSurfaceImpl(
               pixelPreview: props.pixelPreview || undefined,
               rasterProfile,
               tileViewport: ordered,
+              ...(prefetchOnly || ordered.length < 2 || zooming || cameraMoving || hdrCompositing || props.grid ||
+                props.checkerboard || props.pixelPreview || props.animation || props.interaction?.active ? {} :
+                { settledBlurCohort: true }),
               ...(prefetchOnly ? {} : { tileFillPriorities: ordered.map(tile => priorities.get(tile)!) }),
               tilePrepareViewport: import.meta.env.VITE_DESIGN_PREPARE_CACHE === '0' ? undefined :
                 nativeVisibleTiles ? tilePrepareViewport(ordered, renderCamera) :
@@ -2569,6 +2573,7 @@ export function ProgressiveSurfaceImpl(
         data-raster-trace={import.meta.env.DEV ? JSON.stringify(rasterTrace.current) : undefined}
         data-navigation-ms={navigationTiming.current.completeMs?.toFixed(2)}
         data-first-detail-ms={navigationTiming.current.firstDetailMs?.toFixed(2)}
+        data-first-present-ms={navigationTiming.current.firstPresentMs?.toFixed(2)}
         data-compile-ms={stats.compileMs.toFixed(2)}
         data-pipeline-wall-ms={stats.pipelineWallMs.toFixed(2)}
         data-preparation-wait-ms={stats.preparationWaitMs.toFixed(2)}
@@ -2743,6 +2748,16 @@ export function ProgressiveSurfaceImpl(
               // exact completion is never downgraded back to a preview.
               setDisplayed(previous => previous?.document === doc && previous.revision === contract.revision &&
                 !previous.preview ? previous : replacementFrame)
+            }
+            const presentedPlan = activePlan.current
+            if (presentedPlan && navigationTiming.current.key === presentedPlan.key && frame.ids?.length) {
+              const presentedIds = new Set(frame.ids)
+              const nativeHit = [...presentedPlan.ids].some(key => {
+                const tile = tileRef.current.get(key)
+                return !!tile && !tile.viewportPreview && !tile.prefetch && tile.zoom === presentedPlan.rasterScale &&
+                  tile.gpuTile !== undefined && presentedIds.has(tile.gpuTile)
+              })
+              if (nativeHit) recordDetailClock(navigationTiming.current, 'present', performance.now())
             }
             acknowledged.current={...frame,ids:new Set(frame.ids)};commitRef.current()
             if(source)props.onPresentation?.(source)

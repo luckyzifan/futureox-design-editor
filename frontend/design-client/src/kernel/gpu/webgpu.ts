@@ -277,6 +277,15 @@ export class WebGpuDriver implements Driver {
   acceptPresentation(token:number,accepted=true){this.presenter?.acceptPresentation(token,accepted)}
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
+  async slicePresented(sourceId: number, crops: readonly { x: number; y: number; w: number; h: number; rect: Rect }[]) {
+    const ids = this.presenter?.slice(sourceId, crops)
+    if (!ids) return
+    // The copy is ordered after the source render on this queue. Wait before
+    // the caller destroys the source texture.
+    await this.device.queue.onSubmittedWorkDone()
+    if (this.lost) throw Error('GPU 设备已丢失')
+    return ids
+  }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
   presentedContentToken(slot:number){return this.lost||this.disposed?undefined:this.presenter?.contentToken(slot)}
   tagExactTile(...args: Parameters<ResidentPresenter['tagExactTile']>) { this.presenter?.tagExactTile(...args) }
