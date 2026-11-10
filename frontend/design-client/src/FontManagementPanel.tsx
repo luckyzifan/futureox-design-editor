@@ -3,6 +3,7 @@ import { useMemo, useState, useSyncExternalStore } from 'react'
 import type { Editor } from './engine'
 import { SystemFontPicker } from './SystemFontPicker'
 import { applySelectionFont, documentFontChoices, replaceFontReferences, searchFontChoices, unmatchedEditableSourceFonts } from './font-management'
+import { abeezeeAbsentFaceDiagnosis } from './font-catalog'
 import { suggestDocumentFont, substituteMissingFonts, suggestionNote } from './font-substitution'
 
 /** Metadata-only panel: no eager font loading, glyph previews, or camera subscriptions. */
@@ -42,7 +43,10 @@ export function FontManagementPanel({ editor, ids, includeNative = true, detachS
       <small>{tr('下列原字体没有对应的字体文件。确认后才替换，不会下载或安装字体。本机若已安装同名字体，用「匹配文档原字体」。')}</small>
       {missing.map(item => {
         const note = suggestionNote(item.suggestion.kind, item.suggestion.scripts)
-        const label = note === 'exact' ? tr('与文档中的字体一致') : note === 'nearest' ? tr('同一家族里最接近的字重') : note === 'han-variant' ? tr('内置 Noto Sans SC。繁体、日文或韩文可能显示简体字形') : tr('没有同名字体。内置 Noto Sans SC 能显示文字，但字宽和字形会不同')
+        const absent = abeezeeAbsentFaceDiagnosis(item.name)
+        const label = absent
+          ? (locale === 'en' ? `ABeeZee does not include ${item.name}. Regular line breaks are not this request.` : absent)
+          : note === 'exact' ? tr('与文档中的字体一致') : note === 'nearest' ? tr('同一家族里最接近的字重') : note === 'han-variant' ? tr('内置 Noto Sans SC。繁体、日文或韩文可能显示简体字形') : tr('没有同名字体。内置 Noto Sans SC 能显示文字，但字宽和字形会不同')
         return <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <span>{item.name}<br /><small>{label}</small></span>
           <button type="button" onClick={() => confirmMissing([item])}>{tr('替换这一项')}</button>

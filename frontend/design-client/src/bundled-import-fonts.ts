@@ -1,5 +1,6 @@
 import type { DesignDocument } from './model'
 import { applyMatchedFonts, fontMatchKey, matchFont, unmatchedSourceFontRequests, unmatchedSourceFonts, type FontResource, type SourceFontRequest } from './font-matching'
+import { abeezeeAbsentFaceDiagnosis } from './font-catalog'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
 
 type ImportFace = {
@@ -86,10 +87,7 @@ function nearestBundled(name: string): Face | undefined {
 /** A requested ABeeZee face this package does not ship. Undefined for the
  * Regular face and for every other family. */
 export function abeezeeLineBreakDiagnostic(name: string) {
-  const compact = name.toLowerCase().replace(/[\s_-]/g, '')
-  if (!compact.startsWith('abeezee')) return
-  if (compact === 'abeezee' || compact === 'abeezeeregular' || compact === 'abeezeenormal' || compact === 'abeezeeroman') return
-  return `字体 ${name} 没有同名随包文件。ABeeZee 只随包 Regular，不能把 Regular 的换行当成这个请求的结果。文字已保留，显示用当前回退。`
+  return abeezeeAbsentFaceDiagnosis(name)
 }
 
 /** Exact bundled face, or a nearest face that is actually shipped. A digest
