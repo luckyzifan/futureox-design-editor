@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, effect, node, type DesignNode, type Matrix } from './model'
 import { apply, around, bounds, boxPoints, multiply, rotate } from './commands/affine'
+import { elementMatrix, followCamera, screenWarp } from './gesture-follow'
 import { rotationSnapshotCrop, rotationSnapshotOwnsPreview, rotationSnapshotPlan, type RotationSnapshotEntry } from './rotation-follow'
 
 function entry(node: DesignNode, parent: Matrix, ancestors: string[]): RotationSnapshotEntry {
@@ -105,4 +106,30 @@ test('an active rotation lift owns the preview until it is held for commit', () 
   expect(rotationSnapshotOwnsPreview('rotate', { holding: true })).toBe(false)
   expect(rotationSnapshotOwnsPreview('rotate', null)).toBe(false)
   expect(rotationSnapshotOwnsPreview('move', { holding: false })).toBe(false)
+})
+
+test('pointer samples rotate the visible image before release', () => {
+  const { doc, image, entries } = picture()
+  const plan = rotationSnapshotPlan(doc, doc.pages[0].id, image.id, entries)!
+  const view = { x: 0, y: 0, zoom: 1 }
+  const center = { x: plan.box.x + plan.box.width / 2, y: plan.box.y + plan.box.height / 2 }
+  const seen: Matrix[] = []
+  for (const degrees of [8, 24.06, -12]) {
+    const delta = around(center, rotate(degrees))
+    const crop = rotationSnapshotCrop(plan.box, plan.others, view, delta, 800, 600)
+    expect(crop).toBeTruthy()
+    const warp = screenWarp(view, delta)
+    expect(warp).not.toBeNull()
+    expect(seen.some(previous => previous.every((value, index) => value === warp![index]))).toBe(false)
+    seen.push(warp!)
+    const local = elementMatrix(warp!, { x: crop!.x, y: crop!.y })
+    const moved = apply(followCamera(view), apply(delta, { x: crop!.x, y: crop!.y }))
+    expect(crop!.x + local[4]).toBeCloseTo(moved.x, 6)
+    expect(crop!.y + local[5]).toBeCloseTo(moved.y, 6)
+    expect(Math.hypot(moved.x - crop!.x, moved.y - crop!.y)).toBeGreaterThan(1)
+    // Fingers are still down: the document stays unpublished and the old
+    // texture cannot hold the selection.
+    expect(rotationSnapshotOwnsPreview('rotate', { holding: false })).toBe(true)
+  }
+  expect(rotationSnapshotOwnsPreview('rotate', { holding: true })).toBe(false)
 })

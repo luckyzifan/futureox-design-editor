@@ -4,7 +4,7 @@ import { type FollowCamera } from './gesture-follow-frame'
 export { gestureHoleColor, visibleFollowBox, type FollowCamera } from './gesture-follow-frame'
 import { captureBoardFrame } from './retained-board-capture'
 import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
-import { formatAngleDegrees } from './selection-handles'
+import { formatAngleDegrees } from './angle-text'
 import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 
 /** Screen-pixel camera. World deltas become the same CSS pixels the snapshot uses. */

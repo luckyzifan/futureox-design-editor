@@ -1,5 +1,7 @@
 import type { Point, Matrix } from './model'
 import { around, rotate, pointInContours } from './geometry'
+import { formatAngleDegrees, normalizeDegrees } from './angle-text'
+export { formatAngleDegrees, normalizeDegrees } from './angle-text'
 
 /** At overview zoom the fixed-size handles can cover the whole object. Keep
  * its interior available for moving; the exterior still resizes/rotates. */
@@ -49,19 +51,6 @@ export function selectionHandles(corners: Point[], zoom: number) {
       edgeCursor: transformCursor('resize', Math.atan2(u.y,u.x) * 180 / Math.PI + 90),
     }
   })
-}
-
-/** Wrap into (−180, 180]. Exactly 180° lands on −180°. Same rule as the kernel. */
-export function normalizeDegrees(degrees: number): number {
-  if (!Number.isFinite(degrees)) return 0
-  const wrapped = ((degrees + 180) % 360 + 360) % 360 - 180
-  return Object.is(wrapped, -0) ? 0 : wrapped
-}
-
-/** Canvas and the right-hand angle field share this text. Two decimals, no float tail. */
-export function formatAngleDegrees(degrees: number): string {
-  const wrapped = normalizeDegrees(degrees)
-  return (Object.is(wrapped, -0) ? 0 : Math.round(wrapped * 100) / 100).toFixed(2)
 }
 
 export function selectionRotation(center: Point, start: Point, end: Point, initialDegrees: number, snap: boolean): { matrix: Matrix; degrees: number } {

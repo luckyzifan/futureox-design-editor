@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { blank, node } from './model'
-import { apply, around, rotate, translate } from './geometry'
+import { apply, around, rotate, translate } from './commands/affine'
 import { elementMatrix, followCamera, isolatedGestureCrop, gestureHoleColor, screenWarp, visibleFollowBox } from './gesture-follow'
 
 test('a world translation becomes the same screen translation at the crop origin', () => {
