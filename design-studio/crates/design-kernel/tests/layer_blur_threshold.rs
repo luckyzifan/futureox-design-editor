@@ -70,3 +70,43 @@ fn managed_blur_does_not_inherit_an_sdr_figma_observation() {
         );
     }
 }
+
+fn render_figma(document: serde_json::Value, width: u32, height: u32, zoom: f64) -> Vec<u8> {
+    let mut engine = Engine::new();
+    engine.load_document(&document.to_string()).unwrap();
+    let options = engine
+        .parse_options(json!({
+            "pageId": "p",
+            "width": width,
+            "height": height,
+            "view": {"x": 0, "y": 0, "zoom": zoom},
+            "rasterProfile": "figma"
+        }))
+        .unwrap();
+    engine.render(&options).unwrap()
+}
+
+#[test]
+fn figma_export_layer_blur_rounds_the_flat_halo_after_the_pair_average() {
+    // Frozen BlurQA-0p5. The previous byte-per-pass tent stored 212 in the
+    // flat column; the reference majority is 213, with 99 pixels off by at most 2.
+    let document = json!({
+        "schemaVersion": 4, "id": "BlurQA-0p5", "name": "BlurQA-0p5",
+        "pages": [{"id": "p", "name": "Page", "background": "#000000", "children": ["frame"]}],
+        "nodes": {
+            "frame": {"id": "frame", "kind": "frame", "width": 128, "height": 128, "clip": true,
+                "fills": [{"kind": "solid", "color": "#000000", "opacity": 1}], "children": ["a"]},
+            "a": {"id": "a", "kind": "rectangle", "width": 1, "height": 96,
+                "transform": [1, 0, 0, 1, 63, 16],
+                "fills": [{"kind": "solid", "color": "#ffffff", "opacity": 1}],
+                "effects": [{"kind": "blur", "radius": 0.5, "color": "#000000"}]}
+        }
+    });
+    let actual = render_figma(document, 128, 128, 1.);
+    // Frozen reference row y=64 is 21, 213, 21. The byte-per-pass tent was 21, 212, 21.
+    let row = 64 * 128;
+    assert_eq!(
+        &actual[(row + 62) * 4..(row + 65) * 4],
+        &[21, 21, 21, 255, 213, 213, 213, 255, 21, 21, 21, 255,]
+    );
+}

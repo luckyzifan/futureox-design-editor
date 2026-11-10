@@ -3436,7 +3436,7 @@ impl Painter<'_> {
         self.sample = None;
         let mut planes = layers.map(Arc::new);
         if !texture_passthrough && n.effects.iter().any(|e| e.visible) {
-            planes = self.apply_foreground_coverage(id, planes, &mut coverage)?;
+            planes = self.apply_foreground_coverage(id, planes, &mut coverage, targets)?;
         }
         let blend_mode=crate::blend::BlendMode::from_name(n.composite_blend());
         // An alpha/luminance mask is a coverage factor for later siblings, not a
@@ -3798,11 +3798,100 @@ impl Painter<'_> {
         }
         Ok(resolved)
     }
+    /// Even device block of `layer` that is fully inside `target`.
+    /// Export pixels are these 2×2 groups; a partial group is not an output pixel.
+    fn even_export_cover(layer: Rect, target: Rect) -> Rect {
+        if layer.empty() || target.empty() {
+            return Rect::default();
+        }
+        let layer = layer.intersect(target);
+        if layer.empty() {
+            return Rect::default();
+        }
+        let x0 = (layer.x & !1).max(target.x & !1);
+        let y0 = (layer.y & !1).max(target.y & !1);
+        let x1 = ((layer.right().saturating_add(1)) & !1).min(target.right() & !1);
+        let y1 = ((layer.bottom().saturating_add(1)) & !1).min(target.bottom() & !1);
+        if x1 <= x0 || y1 <= y0 {
+            return Rect::default();
+        }
+        Rect::new(x0, y0, (x1 - x0) as u32, (y1 - y0) as u32)
+    }
+    fn half_up_unit(value: f64) -> f32 {
+        // An exact half-code stored in f32 sits a few ulps under the tie
+        // (212.5 becomes 212.499995). Snap that residue, then round half-up.
+        let scaled = (value.clamp(0.0, 1.0) * 255.0).clamp(0.0, 255.0);
+        let base = scaled.floor();
+        let mut frac = scaled - base;
+        if (frac - 0.5).abs() < 1.0e-4 {
+            frac = 0.5;
+        }
+        let byte = (base + frac + 0.5).floor();
+        (byte as u32).min(255) as f32 / 255.0
+    }
+    /// Average the unquantized tent with the backdrop over each export pixel,
+    /// then store that one UNORM value in every device sample of the pair.
+    /// The existing four-plane resolver then reproduces the byte.
+    fn bake_figma_layer_blur(
+        &mut self,
+        blurred: &Surface,
+        target: &Surface,
+    ) -> Result<Surface, String> {
+        let cover = Self::even_export_cover(blurred.rect, target.rect);
+        let mut out = self.allocate(cover)?;
+        let mut y = cover.y;
+        while y + 1 < cover.bottom() {
+            let mut x = cover.x;
+            while x + 1 < cover.right() {
+                let mut src = [0.0_f64; 4];
+                let mut dst = [0.0_f64; 4];
+                for dy in 0..2 {
+                    for dx in 0..2 {
+                        let sample = blurred.at(x + dx, y + dy);
+                        let backdrop = target.at(x + dx, y + dy);
+                        for channel in 0..4 {
+                            src[channel] += f64::from(sample.0[channel]);
+                            dst[channel] += f64::from(backdrop.0[channel]);
+                        }
+                    }
+                }
+                for channel in 0..4 {
+                    src[channel] *= 0.25;
+                    dst[channel] *= 0.25;
+                }
+                let mixed = if src[3] <= 0.0 {
+                    dst
+                } else if dst[3] <= 0.0 {
+                    src
+                } else {
+                    let inverse = 1.0 - src[3];
+                    [
+                        src[0] + dst[0] * inverse,
+                        src[1] + dst[1] * inverse,
+                        src[2] + dst[2] * inverse,
+                        src[3] + dst[3] * inverse,
+                    ]
+                };
+                let pixel = Pixel(mixed.map(Self::half_up_unit));
+                for dy in 0..2 {
+                    for dx in 0..2 {
+                        if let Some(index) = out.rect.index(x + dx, y + dy) {
+                            out.pixels[index] = pixel;
+                        }
+                    }
+                }
+                x += 2;
+            }
+            y += 2;
+        }
+        Ok(out)
+    }
     fn apply_foreground_coverage(
         &mut self,
         id: &str,
         mut planes: [Arc<Surface>; 4],
         coverage: &mut Option<[Arc<Surface>; 4]>,
+        targets: &[Surface; 4],
     ) -> Result<[Arc<Surface>; 4], String> {
         let n = &self.doc.nodes[id];
         let m = self.prepared[id].matrix;
@@ -3810,11 +3899,12 @@ impl Painter<'_> {
         // Later drop shadows sample the content from before any shadow in this
         // chain. They stack underneath; they do not blur the previous shadow.
         let mut shadow_basis = planes.clone();
-        for fx in n
+        let foreground: Vec<_> = n
             .effects
             .iter()
             .filter(|e| e.visible && !matches!(e.kind.as_str(), "background-blur" | "glass"))
-        {
+            .collect();
+        for (index, fx) in foreground.iter().enumerate() {
             if (fx.kind == "blur"
                 && !crate::fidelity::layer_blur_active(
                     fx.blur_radius() * scale,
@@ -3858,6 +3948,33 @@ impl Painter<'_> {
                 shadow_basis = planes.clone();
                 if let Some(mask)=coverage {let value=Arc::new(filter(&self.resolve_effect_planes(mask)?)?);*mask=std::array::from_fn(|_|value.clone());}
             } else if fx.kind == "blur" {
+                // Quantizing each tent pass, then the export 2×2, rounds a flat
+                // halo the wrong way (radius 0.5 lands on 212 instead of 213).
+                // Keep both passes exact, average each even device pair with the
+                // backdrop, and round half-up once. Later effects still need the
+                // uncomposited layer, so this is only the final effect.
+                if self.compatible
+                    && self.profile == crate::fidelity::RasterProfile::Figma
+                    && fx.gradient_blur.is_none()
+                    && coverage.is_none()
+                    && index + 1 == foreground.len()
+                {
+                    let blurred = effects::tent_blur_linear_passes(
+                        &resolved,
+                        fx.blur_radius() * scale,
+                    )?;
+                    let mut baked = Vec::with_capacity(4);
+                    for target in targets {
+                        baked.push(Arc::new(self.bake_figma_layer_blur(&blurred, target)?));
+                    }
+                    if baked.iter().all(|surface| !surface.rect.empty()) {
+                        planes = baked
+                            .try_into()
+                            .map_err(|_| "Invalid blur planes".to_string())?;
+                        shadow_basis = planes.clone();
+                        continue;
+                    }
+                }
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
                 let compatible = self.compatible;
                 let filter = |source: &Surface| -> Result<Surface, String> {

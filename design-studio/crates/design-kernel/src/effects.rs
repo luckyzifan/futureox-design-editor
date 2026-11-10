@@ -116,6 +116,19 @@ pub fn portable_tent_blur_edge(
         false,
     )
 }
+/// Both separable passes stay in binary64 and are not rounded to RGBA8.
+/// Figma's export resolver averages a device 2×2 before the final UNORM step;
+/// rounding each pass first moves a flat halo by one code.
+pub(crate) fn tent_blur_linear_passes(surface: &Surface, radius: f64) -> Result<Surface, String> {
+    let radius = f64::from(radius as f32);
+    if !radius.is_finite() || radius > 512. {
+        return Err("Portable blur radius must be in (0, 512]".into());
+    }
+    if radius <= 0. {
+        return surface.try_clone();
+    }
+    tent_blur_impl(surface.try_clone()?, radius, false, false, true)
+}
 pub fn linear_tent_blur(
     surface: &Surface,
     radius: f64,
