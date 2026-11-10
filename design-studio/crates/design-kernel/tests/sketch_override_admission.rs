@@ -159,6 +159,60 @@ fn foreign_layer_style_is_addressed_by_remote_id_without_becoming_a_local_duplic
 }
 
 #[test]
+fn edited_foreign_layer_style_keeps_stroke_effect_and_instance_link_through_undo_and_reopen() {
+    let foreign = json!([{
+        "_class": "MSImmutableForeignLayerStyle",
+        "do_objectID": "FOREIGN-ENTRY",
+        "libraryID": "LIB-DOC",
+        "sourceLibraryName": "Kit",
+        "remoteStyleID": "REMOTE-STYLE",
+        "localSharedStyle": paint_style("LOCAL-STYLE")
+    }]);
+    let bytes = archive(document_with(vec![("foreignLayerStyles", foreign)]), styled_symbol("REMOTE-STYLE", json!("REMOTE-STYLE")));
+    let imported = interop::import_sketch_report(&bytes).unwrap().document;
+    let mut editor = futureox_design_kernel::editing::DocumentEditor::new(imported).unwrap();
+    let original = pixel_of(editor.document());
+    assert_eq!(original[0], 255, "foreign fill reaches the instance before the edit");
+    let mut system = editor.document().design_system.clone().unwrap();
+    system.styles.get_mut("LOCAL-STYLE").unwrap().value[0]["color"] = json!("#00ff00");
+    let patch = futureox_design_kernel::editing::DocumentPatch {
+        nodes: std::collections::BTreeMap::new(),
+        fields: std::collections::BTreeMap::from([("designSystem".into(), serde_json::to_value(system).unwrap())]),
+    };
+    editor.apply(editor.revision(), patch).unwrap();
+    let edited = pixel_of(editor.document());
+    assert_eq!(edited[1], 255, "editing the shared layer style changes the instance pixel");
+    assert_ne!(edited[0], original[0]);
+    editor.undo().unwrap();
+    assert_eq!(pixel_of(editor.document())[0], 255, "undo restores the foreign layer style");
+    editor.redo().unwrap();
+    let saved = interop::export_sketch(editor.document()).unwrap();
+    let files = interop::read_zip_public(&saved).unwrap();
+    let document: Value = serde_json::from_slice(&files["document.json"]).unwrap();
+    let color = &document["foreignLayerStyles"][0]["localSharedStyle"]["value"]["fills"][0]["color"];
+    assert_eq!(color["green"].as_f64().unwrap(), 1.0, "save writes the edited fill into the foreign style");
+    assert!(document["foreignLayerStyles"][0]["localSharedStyle"]["value"]["borders"].as_array().unwrap().iter().any(|border| border["isEnabled"] == true));
+    assert!(document["foreignLayerStyles"][0]["localSharedStyle"]["value"]["shadows"].as_array().unwrap().iter().any(|shadow| shadow["isEnabled"] == true));
+    let page: Value = serde_json::from_slice(files.iter().find(|(name, _)| name.starts_with("pages/")).unwrap().1).unwrap();
+    let instance = page["layers"].as_array().unwrap().iter().find(|layer| layer["name"] == "INSTANCE").unwrap();
+    let value = instance["overrideValues"].as_array().unwrap().iter().find(|value| value["overrideName"].as_str().unwrap().ends_with("_layerStyle")).unwrap();
+    assert_eq!(value["value"], "LOCAL-STYLE", "the instance keeps the shared style relationship");
+    let mut reopened = interop::import_sketch_report(&saved).unwrap().document;
+    futureox_design_kernel::components::resolve(&mut reopened).unwrap();
+    let shape = resolved_shape(&reopened);
+    assert_eq!(shape.fills[0].color, "#00ff00");
+    assert_eq!(shape.strokes.len(), 1);
+    assert!(shape.effects.iter().any(|effect| effect.kind == "shadow"));
+    assert_eq!(pixel(&reopened)[1], 255);
+}
+
+fn pixel_of(document: &futureox_design_kernel::scene::Document) -> [u8; 4] {
+    let mut resolved = document.clone();
+    futureox_design_kernel::components::resolve(&mut resolved).unwrap();
+    pixel(&resolved)
+}
+
+#[test]
 fn conflicting_foreign_remote_style_aliases_do_not_select_the_last_library_entry() {
     let mut blue = paint_style("LOCAL-B");
     blue["value"]["fills"][0]["color"]["red"] = json!(0.0);
