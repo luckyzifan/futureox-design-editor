@@ -22,6 +22,7 @@ import { minifiedPreviewRgba8, unorm8ToFloat32 } from './rgba8'
 import samplingShader from '../../../../../design-studio/crates/design-kernel/shaders/sampling.wgsl?raw'
 import { exactFilterWgsl, rationalStubWgsl } from './exact-filter'
 import { canvasBlurPassEligible, canvasBlurSceneEligible, canvasBlurGeometry } from './canvas-blur-filter'
+import { unmanagedByteGaussianBox } from './gaussian-region'
 import { canvasSpatialBlurWgsl } from './canvas-spatial-blur'
 import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
 import { managedBackgroundEntryPoint, managedBackgroundWgsl } from './managed-background'
@@ -1223,7 +1224,11 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       hasReducedGaussian ||= n.gaussianRegion?.factor !== undefined
       hasSoftEffects ||= n.effects.some(effect => effect.visible && effect.radius > 0)
       hasSourceFilters ||= !!n.sourceFilterField
-      if (n.gaussianRegion && !n.gaussianRegion.factor && scene.colorManagement?.documentSpace === 'srgb' &&
+      // Analytic sketches have no color-management block, but their display
+      // driver is still the float compositor. The regional prefix is the
+      // existing >512 box; uniform_box stays capped at 512.
+      if (n.gaussianRegion && !n.gaussianRegion.factor &&
+          (scene.colorManagement?.documentSpace === 'srgb' || scene.colorManagement == null) &&
           this.gaussianAutoEnabled && this.canvasBlurRequested && !this.hdr && !this.displayMath) {
         this.fullDensityRegionalGaussian = true
         this.gaussianPrefixRequested = true
@@ -2949,7 +2954,10 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
           inputs[0].resource as GPUTexture,inputs[1].resource as GPUTexture,this.blank.resource as GPUTexture,u)){
       this.noteDraw(22,this.boxPrefix!.lastPasses,target.width*target.height);this.canvasGaussianPrefixPasses++;return
     }
-    if(u[16]===22&&u[39]===2&&u[36]>512)throw Error('GPU surface budget exceeded (regional Gaussian prefix unavailable)')
+    // Managed float boxes above 512 stay on the prefix. A byte target may use
+    // the compositor's existing integer uniform box through the regional cap.
+    if(u[16]===22&&u[39]===2&&u[36]>512&&!unmanagedByteGaussianBox(this.managed,this.hdr,this.displayMath,channels,u[36],(target.resource as GPUTexture|undefined)?.format,target.scalarCoverage,target.binaryCoverage))
+      throw Error('GPU surface budget exceeded (regional Gaussian prefix unavailable)')
     const bind = this.bind(u, inputs)
     // With integer origins/sizes bounded by 2^20, pixel centres and every
     // subtraction/addition forming q/base are exactly representable binary32
