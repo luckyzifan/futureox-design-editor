@@ -2362,17 +2362,63 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-text: #1d1d1f;
   --workspace-muted: #6e6e73;
   grid-template-columns: 44px max-content minmax(0, 1fr) var(--workspace-inspector-width);
+  /* Row 2 can grow with a wrapped action bar. The canvas starts on the next
+     row, so that bar cannot sit on top of the toolbar. */
+  grid-template-rows: auto minmax(64px, max-content) minmax(0, 1fr) auto;
 }
 .editor-shell[data-ui-mode="sketch"] .workspace-rail { display: none; }
 .editor-shell[data-ui-mode="sketch"] .editor-header > .brand { grid-column: 1; grid-row: 2; width: 44px; height: 40px; padding: 6px 8px; justify-content: center; }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized,
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) 0; }
-.editor-shell[data-ui-mode="sketch"] .canvas-workspace { padding-top: 56px; }
+/* The canvas used to span the header row, and the toolbar was absolutely
+   positioned inside that row. The document action bar lives there too, so its
+   overflow and the desk/narrow overlay covered toolbar hit targets. */
+.editor-shell[data-ui-mode="sketch"] .canvas-workspace {
+  grid-row: 3;
+  flex-direction: column;
+  align-items: stretch;
+  padding-top: 0;
+}
 .editor-shell[data-ui-mode="sketch"] .floating-toolbar {
-  top: 8px; bottom: auto; left: 12px; right: 12px; transform: none; width: auto; max-width: none;
-  height: 40px; border-radius: 8px; justify-content: flex-start;
-  background: #f7f7f7; box-shadow: inset 0 0 0 1px #d5d5d5, 0 1px 2px #00000014;
+  position: relative;
+  top: auto; right: auto; bottom: auto; left: auto; transform: none;
+  order: -1;
+  flex: none;
+  align-self: stretch;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  min-height: 40px;
+  margin: 8px 12px 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+  row-gap: 4px;
+  overflow: visible;
+  border-radius: 8px;
+  background: #f7f7f7;
+  box-shadow: inset 0 0 0 1px #d5d5d5, 0 1px 2px #00000014;
+}
+.editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+.editor-shell[data-ui-mode="sketch"] .floating-toolbar .creation-tool-hint {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+@media (max-width: 1180px) {
+  .editor-shell[data-ui-mode="sketch"] .editor-header .header-right {
+    flex-wrap: wrap;
+    align-content: flex-start;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
 }
 .editor-shell[data-ui-mode="sketch"] .layers-pages { max-height: 46%; background: #ffffff; }
 .editor-shell[data-ui-mode="sketch"] .layer-heading { background: #ececec; }

@@ -18,13 +18,25 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
   useLayoutEffect(() => {
     const toolbar = host.current, canvas = toolbar?.closest('.canvas-workspace')
     if (!toolbar || !canvas) return
+    const shell = toolbar.closest('.editor-shell')
     const place = () => {
+      // This `left` value is the visual center and only matches a bottom toolbar
+      // shifted with translateX(-50%). Sketch keeps its own row under the
+      // document action bar; writing that center inline slides the row sideways
+      // until the action bar covers the buttons.
+      if (shell?.getAttribute('data-ui-mode') === 'sketch') {
+        toolbar.style.removeProperty('left')
+        return
+      }
       const box = canvas.getBoundingClientRect(), half = toolbar.getBoundingClientRect().width / 2
       toolbar.style.left = `${Math.max(half + 8, Math.min(window.innerWidth / 2 - box.left, box.width - half - 8))}px`
     }
     const observer = new ResizeObserver(place)
-    observer.observe(toolbar); observer.observe(canvas); window.addEventListener('resize', place); place()
-    return () => { observer.disconnect(); window.removeEventListener('resize', place) }
+    observer.observe(toolbar); observer.observe(canvas); window.addEventListener('resize', place)
+    const mode = shell && typeof MutationObserver === 'function' ? new MutationObserver(place) : undefined
+    mode?.observe(shell, { attributes: true, attributeFilter: ['data-ui-mode'] })
+    place()
+    return () => { observer.disconnect(); mode?.disconnect(); window.removeEventListener('resize', place) }
   }, [])
   const buttons = () => [...(host.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || [])]
   const show = (button: HTMLButtonElement, immediate: boolean) => {
