@@ -46,6 +46,7 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { progressiveTileLayer } from './progressive-quality'
 import { hasRetainedOverview, completeViewportBacking } from './overview-coverage'
 import { allowsReducedSampling } from './render-quality'
+import { leadingCoarseTiles } from './refine-cohort'
 import { sharpZoomScale, usesSharpZoom } from './gpu/sharp-zoom-policy'
 import { CoverageRetention } from './coverage-retention'
 import { visibleCompositeContributors, touchCompositeContributors, type CompositeCacheFrame, type CompositeCacheOwner } from './composite-cache-use'
@@ -2118,9 +2119,15 @@ export function ProgressiveSurfaceImpl(
               viewport,
             )
             const coarseMissing = coarseRank.onScreen
+            // Large pages and high zoom start exact tiles after one focal
+            // coarse tile. The exact cohort still paints the whole viewport.
+            const coarseFocus = leadingCoarseTiles(coarseMissing, {
+              nodes: Object.keys(doc.nodes).length, zoom: view.zoom,
+              centerX: viewport.x + viewport.width / 2, centerY: viewport.y + viewport.height / 2,
+            })
             if (coarseResident.length)
               setStats((s) => ({ ...s, coarseHits: s.coarseHits + coarseResident.length }))
-            if (coarseMissing.length && current())
+            if (coarseFocus.length && current())
               await render(
                 doc,
                 {
@@ -2134,8 +2141,8 @@ export function ProgressiveSurfaceImpl(
                   rasterProfile,
                   // The worker streams and checks cancellation after each
                   // tile. One batch shares preparation across the whole view.
-                  tileViewport: coarseMissing,
-                  tilePrepareViewport: tilePrepareViewport(coarseMissing, coarseCamera),
+                  tileViewport: coarseFocus,
+                  tilePrepareViewport: tilePrepareViewport(coarseFocus, coarseCamera),
                   renderIntent: 'preview',
                   ...(props.presentationEpoch === undefined ? {} : {
                     tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },

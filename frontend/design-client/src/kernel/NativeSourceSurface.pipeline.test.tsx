@@ -11,7 +11,7 @@ import type {ResidentFrame} from './gpu/resident-presenter'
 import type {RasterTile} from './tile-cache'
 
 type Job={options:KernelOptions;signal?:AbortSignal;receive:(tile:TileResult)=>void;finish:()=>void;active:boolean}
-const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)}))
+const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void),viewportTiles:4}))
 vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{desktopFullMath:true,desktopDisplay:true,cpuOnly:false,hdrCompositing:false},KernelClient:class{
  onPresentation?: (value:Record<string,unknown>)=>void
  renderSource(_source:unknown,options:KernelOptions,receive:(tile:TileResult)=>void,signal?:AbortSignal){
@@ -36,7 +36,10 @@ vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{
 vi.mock('./presentation',async importOriginal=>({...await importOriginal<typeof import('./presentation')>(),useDevicePixelRatio:()=>1}))
 vi.mock('./canvas-raster-plan',()=>({canvasRasterPlan:(view:{zoom:number},_dpr:number,_w:number,_h:number,options:any)=>{const scale=options.samplingScale??view.zoom;return {scale,phase:{x:0,y:0},camera:{...view,zoom:scale}}},canvasRasterPhaseMatches:()=>state.phaseExact,nativeTileMotionScale:(view:{zoom:number})=>view.zoom*state.motionMultiplier}))
 vi.mock('./tile-computation-key',()=>({periodicComputationCamera:(camera:unknown)=>camera,tileComputationDependsOnCamera:()=>false,tileComputationKey:(tile:RasterTile)=>tile.key}))
-vi.mock('./tile-plan-aligned',()=>({planTilesWithPrefetchRim:(_bounds:unknown,zoom:number)=>({viewport:[0,1,2,3].map(index=>({key:`${zoom}:${index}`,x:(index%2)*512,y:Math.floor(index/2)*512,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0})),rim:state.prefetchEnabled?[{key:`${zoom}:rim`,x:1024,y:0,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0,prefetch:true}]:[],cacheLimitSkipped:0})}))
+vi.mock('./tile-plan-aligned',async importOriginal=>{
+ const actual=await importOriginal<typeof import('./tile-plan-aligned')>()
+ return {...actual,planTilesWithPrefetchRim:(_bounds:unknown,zoom:number)=>({viewport:Array.from({length:state.viewportTiles},(_,index)=>({key:`${zoom}:${index}`,x:(index%2)*512,y:Math.floor(index/2)*512,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0})),rim:state.prefetchEnabled?[{key:`${zoom}:rim`,x:1024,y:0,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0,prefetch:true}]:[],cacheLimitSkipped:0})}
+})
 import {NativeSourceSurface,type NativeSourceStatus} from './NativeSourceSurface'
 
 let dom:JSDOM,root:Root,frames:Map<number,FrameRequestCallback>,sequence:number,statuses:NativeSourceStatus[]
@@ -52,7 +55,7 @@ beforeEach(()=>{
  vi.stubGlobal('requestAnimationFrame',(fn:FrameRequestCallback)=>{frames.set(++sequence,fn);return sequence})
  vi.stubGlobal('cancelAnimationFrame',(id:number)=>frames.delete(id))
  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'transferControlToOffscreen',{value:()=>({})})
- Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)})
+ Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void),viewportTiles:4})
  root=createRoot(document.getElementById('root')!)
 })
 afterEach(async()=>{await act(async()=>{root.unmount();await pause()});dom.window.close();vi.unstubAllGlobals();expect(state.active).toBe(0)})
@@ -351,5 +354,24 @@ test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async
   await render({x:210,y:300,zoom:0.08})
   await act(async()=>{paint();await pause()})
   expect(document.querySelector('.native-source-content')?.getAttribute('data-source-coverage-extend')).toBe('pan')
- expect(state.frames.at(-1)?.items.some(item=>item.tile.gpuTile===901)).toBe(true)
+  expect(state.frames.at(-1)?.items.some(item=>item.tile.gpuTile===901)).toBe(true)
+})
+
+test('a stopped full artboard submits its visible tiles in one settled cohort',async()=>{
+ state.viewportTiles=6
+ await draw({x:0,y:0,zoom:1},{...source,nodes:124447,roots:306})
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,40))})
+ for(let guard=0;guard<4 && !state.jobs.some(job=>job.options.sourceSettledCohort);guard++){
+  const job=state.jobs.find(item=>item.active&&!item.options.sourceSettledCohort)
+  if(!job)break
+  await act(async()=>{
+   job.options.tileViewport!.forEach((_,index)=>deliver(job,index,800+guard*10+index))
+   job.finish()
+   await new Promise(resolve=>setTimeout(resolve,40))
+  })
+ }
+ const cohort=state.jobs.find(job=>job.options.sourceSettledCohort)
+ expect(cohort?.options.tileViewport?.length).toBeGreaterThan(2)
+ expect(cohort?.options.tileViewport?.length).toBeLessThanOrEqual(8)
+ expect(cohort?.options.view.zoom).toBeLessThanOrEqual(1)
 })

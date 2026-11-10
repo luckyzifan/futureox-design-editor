@@ -180,6 +180,9 @@ export type KernelOptions = {
   /** Overwritten by the worker's strict host experiment policy. */
   gpuGaussianRegions?: boolean
   sourceMaterialOverview?:boolean
+  /** Stopped full-artboard cohort. The worker may admit the existing low-zoom
+   * dense paint path; motion and zoom above 1 stay on ordinary draws. */
+  sourceSettledCohort?:boolean
   gpuDensePaint?:boolean
   gpuSourceFilterFields?:boolean
   gpuPainterSupport?: boolean

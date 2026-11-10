@@ -71,6 +71,7 @@ import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresente
 import { interactionPatchTransforms, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
+import { sourceDensePaintRequested } from './refine-cohort'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
 import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
 import { paintDamageIntersects, viewportDamage, type PaintDamage } from './paint-damage'
@@ -923,14 +924,16 @@ self.onmessage = (e) => {
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, sourceSettledCohort, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
-      renderOptions.gpuDensePaint=import.meta.env.VITE_DESIGN_DENSE_PAINT!=='0' && sourceMaterialOverview===true && !!request.sourceSnapshot && channel==='canvas' &&
-        renderIntent==='preview' && !!tileOwner && renderOptions.view.zoom<=1 && backend==='webgpu' &&
-        renderOptions.rasterProfile==='figmaSubpixel'&&!executionPolicy.hdrCompositing&&!request.referenceGpu&&!request.png&&!request.readback&&
-        !exportFormat&&!renderOptions.exportRegion&&!renderOptions.pixelPreview&&!renderOptions.animation || undefined
+      renderOptions.gpuDensePaint=sourceDensePaintRequested({
+        enabled:import.meta.env.VITE_DESIGN_DENSE_PAINT!=='0',sourceSnapshot:!!request.sourceSnapshot,channel,renderIntent,tileOwner:!!tileOwner,
+        zoom:renderOptions.view.zoom,backend,rasterProfile:renderOptions.rasterProfile,hdr:executionPolicy.hdrCompositing,reference:!!request.referenceGpu,
+        png:!!request.png,readback:!!request.readback,exportFormat:!!exportFormat,exportRegion:!!renderOptions.exportRegion,pixelPreview:!!renderOptions.pixelPreview,
+        animation:!!renderOptions.animation,materialOverview:sourceMaterialOverview===true,settledCohort:sourceSettledCohort===true,
+      })||undefined
       const sourceFilterFields=import.meta.env.VITE_DESIGN_SOURCE_FILTER_LOD!=='0' && import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS!=='0' &&
         import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX!=='0' && !!request.sourceSnapshot &&
         channel==='canvas' && renderIntent==='preview' && !!tileOwner && renderOptions.view.zoom>=2 && !request.referenceGpu && !renderOptions.animation

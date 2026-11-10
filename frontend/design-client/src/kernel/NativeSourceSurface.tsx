@@ -12,6 +12,8 @@ import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
 import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
+import {sourceRasterBatchLimit} from './refine-cohort'
+import {prioritizeTileFill} from './tile-scheduler'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
 import {frameHandoff} from './frame-handoff'
@@ -34,8 +36,9 @@ type Props={hover?:import('../source-hover-detail').SourceHoverHub;overviewBoxes
   onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean,regions?:readonly OverviewMaterial[])=>void}
 type Placement=RasterTile & {gpuTile:number}
 type Tile=TileResult&{serial:number;used:number;lastSubmission:number;placement?:Placement}
-// One raster owner plus at most one speculative preparation in the existing
-// worker. A larger batch is unnecessary and would extend cancellation work.
+// Interactive motion keeps two tiles so a reversal aborts before the next
+// one. A stopped large viewport may submit eight; the worker still cancels
+// between tiles. That is the same cohort the settled overview already uses.
 const SOURCE_PIPELINE_TILES=2
 const SOURCE_QUIET_MS=32
 // Wheel events can arrive several display frames apart. Keep advancing the
@@ -140,7 +143,7 @@ export function NativeSourceSurface(props:Props){
     let coldBudget=1
     let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive,translationFollow=false
     let cpuView:CanvasCamera|undefined
-    const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
+    const workQueue=new SourceRenderWork<RasterTile>(8)
     let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
     const hover=latest.current.hover
     const pick:NonNullable<import('../source-hover-detail').SourceHoverHub['pick']>=(item,point,zoom,deep)=>{
@@ -571,11 +574,17 @@ export function NativeSourceSurface(props:Props){
           const holeFirst=!optional&&moving&&!zoomingIn
             ?prioritizeUncoveredTiles(ordered,[...cache.values()],{x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom})
             :ordered
-          // A settled overview can stream its visible cohort in one request.
-          // The worker still prepares just one tile ahead of its GPU raster.
-          const limit=overviewMode&&!optional&&!moving&&raster.scale<=1?8:SOURCE_PIPELINE_TILES
+          // A settled overview or full artboard streams its visible cohort in
+          // one request. Motion still submits a single tile. The worker
+          // prepares one tile ahead of its GPU raster and checks cancellation
+          // after each tile.
+          const cohortLimit=sourceRasterBatchLimit({overviewMode,optional,moving,rasterScale:raster.scale,nodes:source.nodes,pipelineTiles:SOURCE_PIPELINE_TILES})
           const coverMotion=moving&&!zoomingIn&&(continuousZoom||panned)
-          const batch=holeFirst.slice(0,wantStrip||coverMotion||(source.materialKeys && moving && zoomingIn && continuousZoom && backing)?1:limit)
+          const interactiveCap=wantStrip||coverMotion||(source.materialKeys && moving && zoomingIn && continuousZoom && backing)
+          const limit=interactiveCap?1:cohortLimit
+          const quietFull=!interactiveCap && !overviewMode && !optional && cohortLimit>SOURCE_PIPELINE_TILES
+          const focused=quietFull?(()=>{const ranked=prioritizeTileFill(holeFirst,panWorld);return [...ranked.onScreen,...ranked.offScreen]})():holeFirst
+          const batch=focused.slice(0,limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,limit)
           const overviewBatch=!!(!wantStrip&&(coldTile||warmBase?.length))
@@ -585,7 +594,7 @@ export function NativeSourceSurface(props:Props){
           try{
             await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*ratio),height:Math.ceil(p.height*ratio),
               view:camera,transparent:false,grid:false,rasterProfile:profile,
-              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(wantStrip||overviewBatch||optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
+              sourceMaterialOverview:overviewMode||undefined,sourceSettledCohort:quietFull&&!overviewBatch||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(wantStrip||overviewBatch||optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
               tileOwner:{documentId:source.owner.documentId,sessionEpoch:source.owner.sessionEpoch}},tile=>{
                 // Stage each accepted tile while the rest of its viewport is being drawn.
                 if(!alive||!workQueue.accepts(work,tile.key)){
