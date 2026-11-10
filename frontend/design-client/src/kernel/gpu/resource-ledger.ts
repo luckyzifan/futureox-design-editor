@@ -9,6 +9,9 @@ export type ReleaseStep = 'skip' | 'held' | 'pool'
 export class ResourceLedger<Texture extends object, Surface extends { texture: Texture }> {
   bytes = 0
   peak = 0
+  /** Bytes destroyed from the completed free pool. Peak stays the high-water
+   * mark; this counter is the part of that peak that was spare residency. */
+  completedFreeBytes = 0
   readonly aliases = new Map<Texture, number>()
   released = new WeakSet<Surface>()
   readonly poolEpochs = new WeakMap<Texture, number>()
@@ -20,6 +23,11 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
 
   discharge(bytes: number) {
     this.bytes -= bytes
+  }
+
+  noteCompletedFree(bytes: number) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return
+    this.completedFreeBytes += bytes
   }
 
   retain(texture: Texture) {

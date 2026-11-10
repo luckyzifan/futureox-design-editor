@@ -3,7 +3,11 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+<<<<<<< HEAD
 2026-11-10 安静粘贴板条在精确瓦片未齐时不进入这一批。手势仍在进行时这条也不单独打开。没有完整拓扑计时。不是 33/100ms 或完整 G2/G5。
+=======
+2026-11-10 完成态空闲纹理销毁时单独记下字节，峰值仍是高水位。这只归因多出来的已完成副本，不是整份拓扑的显存曲线，也不是 33/100ms 或完整 G2/G5。
+>>>>>>> f75d56a1 (fix(render): count completed free-pool bytes apart from the peak)
 
 2026-11-10 缩放调度：当前视口还有未缓存的精确瓦片时，页级总览不能占据这一批光栅候选。精确瓦片齐了才排总览。没有完整拓扑计时。不是 33/100ms 或完整 G2/G5。
 

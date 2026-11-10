@@ -1127,6 +1127,7 @@ export class GpuRenderer {
         this.ledger.clearPoolEpoch(texture)
         this.driver.destroy(texture)
         ;(this.free as SurfacePool<Texture>).removed?.(texture)
+        this.ledger.noteCompletedFree(texture.bytes)
         this.bytes -= texture.bytes
       }
       if (retained.length) {

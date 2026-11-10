@@ -13,6 +13,7 @@ test('completed free-pool duplicates are destroyed while an in-flight texture st
     poolReleaseEpoch: WeakMap<Texture, number>
     lastUsed: Map<Texture, number>
     used: Set<Texture>
+    ledger: { completedFreeBytes: number }
     reapCompletedFreeTextures(): void
   }
   const textures = [1, 2, 3, 4, 5].map(id => ({ id, width: 4, height: 4, bytes: 64, resource: {} }) as unknown as Texture)
@@ -28,4 +29,5 @@ test('completed free-pool duplicates are destroyed while an in-flight texture st
   expect(left.map(texture => (texture as unknown as { id: number }).id).sort()).toEqual([3, 4, 5])
   expect(destroyed.map(texture => (texture as unknown as { id: number }).id).sort()).toEqual([1, 2])
   expect(renderer.bytes).toBe(64 * 3)
+  expect(renderer.ledger.completedFreeBytes).toBe(128)
 })
