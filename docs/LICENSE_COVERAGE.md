@@ -29,7 +29,9 @@ Fonts, the Linux FFmpeg executable, fidelity references, and fixture images are
 outside this MIT metadata. Their notices stay in
 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and
 [PUBLICATION_ASSET_INVENTORY.md](PUBLICATION_ASSET_INVENTORY.md). This checklist
-does not apply the project license to them.
+does not apply the project license to them. The three synthetic I/O images
+named by [explicit-grants.json](publication/explicit-grants.json) are a
+separate publication record. This coverage script does not scan those images.
 
 Contributor assignments beyond the copyright line already present in `LICENSE`
 are not additionally evidenced here. Repository visibility is unchanged.

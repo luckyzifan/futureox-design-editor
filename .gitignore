@@ -7,8 +7,9 @@
 **/playwright-report/
 
 # Local verification dumps stay untracked. Tracked files under testing/ still
-# clone: fig-tools-public and the design oracles restored for kernel tests and
-# design-client tsc. Do not drop this rule to publish local dumps.
+# clone: fig-tools-public, the design oracles restored for kernel tests, and
+# the synthetic design/io generator, provenance, and images. Do not drop this
+# rule to publish local dumps.
 /testing/
 .zcode/
 .grok-bot-shots/

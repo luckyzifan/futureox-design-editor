@@ -32,6 +32,8 @@
 
 详细已存在的来源记录见 [UI_ASSET_PROVENANCE.md](UI_ASSET_PROVENANCE.md) 与 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。本轮保留全部 attribution；没有将来源待核代码/素材重新声明为自有。
 
+2026-11-10 的逐文件复核见 [PUBLICATION_ASSET_INVENTORY.md](PUBLICATION_ASSET_INVENTORY.md)。上表的 349 与 139 是 2026-11-09 的检查范围。当前检出是 349 个 fidelity 文件加 36 个夹具二进制；只有三份合成 I/O 图像进入拟公开集合，其余仍是 `withhold`。这次没有重写历史，也没有把 Figma 导出或用户回归文件改成可再分发。
+
 GPL 允许收费；独立程序的集合也不会仅因同包就自动使其他独立部分适用 GPL。是否属于独立集合仍须结合实际集成判断，FFmpeg 的调用方式不能单独当成整应用许可结论；上述源码与 notice 条件仍需履行。[GPLv3 第 4–6 节](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.0.2/COPYING.GPLv3)。
 
 ## 建议的整个应用开源路线
