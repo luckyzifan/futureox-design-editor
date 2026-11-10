@@ -30,7 +30,7 @@ export function choosePreparedTile(input: {
 
 /** Exact viewport tiles own the raster batch. A page overview is a candidate
  * only after that list is empty. This does not change tile pixels or budgets. */
-export function exactTilesBeforeOverview<T>(exactMissing: readonly T[], overview: readonly T[]): readonly T[] {
+export function exactTilesBeforeOverview<T>(exactMissing: readonly T[], overview: readonly T[]): T[] {
   return exactMissing.length ? [...exactMissing] : [...overview]
 }
 

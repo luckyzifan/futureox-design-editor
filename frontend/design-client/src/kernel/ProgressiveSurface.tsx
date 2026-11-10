@@ -16,7 +16,7 @@ import { paintDamageIntersects } from './paint-damage'
 import { recordRenderDiagnostic, renderDiagnosticError, renderDiagnostics } from './render-diagnostics'
 import type { BackendPreference } from './gpu/types'
 import type { ColorPresenter } from './color-presenter'
-import { TILE_SIDE, budgetTileLimit, displayTileBudget, tilesCoverBounds, type RasterTile } from './tile-cache'
+import { TILE_SIDE, budgetTileLimit, displayTileBudget, lodBucketScale, tilesCoverBounds, type RasterTile } from './tile-cache'
 import { planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
 import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale, nativeTileMotionScale, gestureRasterScale, gestureViewportCapture } from './canvas-raster-plan'
 import { pageHasFilteredContent } from './canvas-effect-sampling'
@@ -30,7 +30,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { navigationPreviewDensity } from './navigation-zoom'
-import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
+import { navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -1039,10 +1039,17 @@ export function ProgressiveSurfaceImpl(
     // accepted pixels, but revoke that optional job without waiting for quiet.
     // Cold views tolerate small reversals; a fourfold change makes the old
     // crop too narrow even before replacement coverage has arrived.
-    if (navigationZoom.active && zoomOutCoverage) {
+    {
       const flight = coverageFlight.current
-      if (flight?.contract === contract && flight.generation === generation)
-        flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
+      if (flight?.contract === contract && flight.generation === generation) {
+        if (navigationZoom.active && zoomOutCoverage)
+          flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
+        // Sampled navigation keeps its running capture: cancelling every pan
+        // starved the lane. A quiet zoom-out capture is different. Once a large
+        // pan leaves most of the newest viewport outside it, yield that job.
+        if (!navigationZoom.active)
+          flight.cancelMissedViewport(requestedView, width, height)
+      }
     }
     const pendingCoverage = () => {
       const flight = coverageFlight.current, tile = flight?.tile
@@ -1350,8 +1357,8 @@ export function ProgressiveSurfaceImpl(
         if (rimMissing.length) await submitChunk(rimMissing)
         return
       }
-      // Viewport-distance priority + per-frame budget (Figma viewer scheduler
-      // alignment, see tile-scheduler.ts): on-screen tiles submit in full,
+      // Viewport-distance priority + per-frame budget (see tile-scheduler.ts):
+      // on-screen tiles submit in full,
       // exempt from the budget; off-screen tiles defer frame by frame under
       // the 16 ms / 2-rasterization budget without ever dropping a request.
       // The fill set is viewport misses plus prefetch-rim misses — the rim is
@@ -1603,9 +1610,14 @@ export function ProgressiveSurfaceImpl(
         if (navigationZoom.active&&!nativePanRepair) {
           const sample = navigationZoom.sample
           if (!sample) return
-          const ratio = navigationPreviewDensity(dpr, width, height, nativeNavigation, sample.view.zoom), scale = sample.view.zoom * ratio
+          // The 160 ms sample can still describe the pre-pan camera. Once most
+          // of the live viewport is outside that sample, rasterize the live one.
+          const sampleFraction = sample.view.zoom === requestedView.zoom
+            ? viewportOverlapFraction(navigationCoverageBounds(sample.view, width, height), requestedView, width, height) : 1
+          const captureView = sampleFraction < 0.5 ? requestedView : sample.view
+          const ratio = navigationPreviewDensity(dpr, width, height, nativeNavigation, captureView.zoom), scale = captureView.zoom * ratio
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
-          const camera = { x: sample.view.x * ratio, y: sample.view.y * ratio, zoom: scale }
+          const camera = { x: captureView.x * ratio, y: captureView.y * ratio, zoom: scale }
           const identity = previewIdentity('navigation-preview', camera, w, h), cached = cachedPreview(identity)
           if (cached) {
             // Keep the real acknowledged payload; resubmit its presentation at
@@ -1614,7 +1626,7 @@ export function ProgressiveSurfaceImpl(
             previewAdmission.current = { contract, key: cached.key, active: true }
             desired.current = [cached.key]
             protectedKeys.current = new Set(desired.current)
-            activePlan.current = { key: frameKey, revision: contract.revision, document: doc, view: { ...sample.view },
+            activePlan.current = { key: frameKey, revision: contract.revision, document: doc, view: { ...captureView },
               dpr, width, height, rasterScale: scale, samplingDensity: ratio, samplingMode: 'native', pageId,
               epoch: props.presentationEpoch || 0, grid: false, pixelPreview: props.pixelPreview,
               rasterProfile: props.rasterProfile, managed: false, displayCapability, computeBackend: backend,
@@ -1667,7 +1679,7 @@ export function ProgressiveSurfaceImpl(
           // Keep low-density pixels visible while that bounded refresh runs.
           const retained = filteredContent && !nativeNavigation ? validCoverage() : []
           if (retained.length && tilesCoverBounds(retained, viewport,
-              navigationReadyDensity(sample.view.zoom,dpr,width,height))) {
+              navigationReadyDensity(captureView.zoom,dpr,width,height))) {
             // Only the optional continuity capture is superseded. A channel-
             // wide cancel also revokes the native tile currently filling this
             // same camera, repeatedly starving detail during continuous zoom.
@@ -1678,14 +1690,14 @@ export function ProgressiveSurfaceImpl(
           }
           // Continuous zoom and filtered pan keep bounded continuity captures;
           // native detail receives a separate single-tile fairness turn.
-          navigationIntent = JSON.stringify([sample.view.x, sample.view.y, sample.view.zoom, width, height, dpr, ratio, rasterProfile])
+          navigationIntent = JSON.stringify([captureView.x, captureView.y, captureView.zoom, width, height, dpr, ratio, rasterProfile])
           if (navigationBudgetLatch.blocked(contract, navigationIntent, displayRetry)) {
             // Refusing the optional full-frame capture must not consume the
             // sampled camera's independent bounded native-detail turn.
             void navigationRefinement.request()
             return
           }
-          navigationRequest = JSON.stringify([sample.sequence, width, height, dpr])
+          navigationRequest = JSON.stringify([sample.sequence, captureView.x, captureView.y, captureView.zoom, width, height, dpr])
           if (previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest) return
           const admission = { contract, key: navigationRequest, active: true }
           navigationAdmission = admission
@@ -1699,7 +1711,7 @@ export function ProgressiveSurfaceImpl(
           const requested = () => ownsScope() && latestNavigationZoom.current.active && latestNavigationZoom.current.sample?.sequence === sample.sequence &&
             previewAdmission.current === admission
           activePlan.current = {
-            key: frameKey, revision: contract.revision, document: doc, view: { ...sample.view }, dpr, width, height,
+            key: frameKey, revision: contract.revision, document: doc, view: { ...captureView }, dpr, width, height,
             rasterScale: scale, samplingDensity: ratio, samplingMode: 'native', pageId,
             epoch: props.presentationEpoch || 0, grid: false, pixelPreview: props.pixelPreview,
             rasterProfile: props.rasterProfile, managed: false, displayCapability, computeBackend: backend,
@@ -1722,7 +1734,7 @@ export function ProgressiveSurfaceImpl(
           const result = await mailbox.run(requested, async () => {
             const intent = navigationIntentOwner.begin(c, { sequence: sample.sequence }, options)!
             runningCoverage = navigationCoverageFlight<PaintedTile>(contract, generation, {
-              zoom: sample.view.zoom, bounds: { x: -camera.x / scale, y: -camera.y / scale,
+              zoom: captureView.zoom, bounds: { x: -camera.x / scale, y: -camera.y / scale,
                 width: w / scale, height: h / scale }, cancel: intent.cancel,
             })
             coverageFlight.current = runningCoverage
@@ -2026,12 +2038,17 @@ export function ProgressiveSurfaceImpl(
           }
           try {
             const result = await mailbox.run(stillRequested, () => {
-              runningCoverage = navigationCoverageFlight<PaintedTile>(contract, generation)
+              const controller = new AbortController()
+              runningCoverage = navigationCoverageFlight<PaintedTile>(contract, generation, {
+                zoom: target.zoom,
+                bounds: { x: -target.x / target.zoom, y: -target.y / target.zoom, width: width / target.zoom, height: height / target.zoom },
+                cancel: () => controller.abort(),
+              })
               coverageFlight.current = runningCoverage
               return c.render(doc, { pageId, width: w, height: h,
               view: { x: target.x * ratio, y: target.y * ratio, zoom: target.zoom * ratio },
               transparent: false, grid: false, rasterProfile, livePreview: true, renderIntent: 'preview',
-            }, false, backend, false)
+            }, false, backend, false, false, undefined, undefined, controller.signal)
             })
             if (!sameContent() || coverageGeneration.current !== generation) {
               result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return
@@ -2354,7 +2371,6 @@ export function ProgressiveSurfaceImpl(
     ready.current.has(tile.key) && tileIntersectsView(tile,requestedView,{width,height})) : []
   const coarseCohort = coarse.length && navigationHasCoverage(coarse, requestedView, width, height)
     ? new Set(coarse) : undefined
-  const coarseTile = (tile: PaintedTile) => !!coarseCohort?.has(tile)
   const previews = !fullPlanReady && !coarseCohort && canRefine ? visible.filter(tile =>
     !inactiveSet.has(tile) && (!plan?.ids.has(tile.key) || tile.viewportPreview) && tileRef.current.get(tile.key) === tile &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
@@ -2364,6 +2380,23 @@ export function ProgressiveSurfaceImpl(
   const cachedViewport = previews.find(tile => navigationHasCoverage([tile], requestedView, width, height)) ??
     (!displayed ? previews.find(tile => tile.viewportPreview) : undefined)
   const cachedPreviewTile = (tile: PaintedTile) => tile === cachedViewport
+  // A full coarse cohort still has to cover before it replaces a retained frame.
+  // Until that frame exists, an intersecting coarse tile follows the requested
+  // camera instead of dropping its placement. The bucket scale is the cached
+  // preview density; dynamic LOD can stay at the exact density while that
+  // exact frame is still pending.
+  const coarseBucket = lodBucketScale(detailLevel)
+  const coarsePreview = !coarseCohort && !displayed && !cachedViewport && !previewReplacement &&
+    !fullPlanReady && canRefine && !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles
+    ? visible.filter(tile => {
+        const bucket = tile.zoom === coarseBucket && coarseBucket < detailLevel
+        const scheduled = lodActive && tile.zoom === lodScale
+        return (bucket || scheduled) && !inactiveSet.has(tile) && tileRef.current.get(tile.key) === tile &&
+          tile.lod === true && tile.document === doc && tile.revision === contract.revision &&
+          ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height })
+      }) : []
+  const coarsePreviewSet = new Set(coarsePreview)
+  const coarseTile = (tile: PaintedTile) => !!coarseCohort?.has(tile) || coarsePreviewSet.has(tile)
   const baseTile = (tile: PaintedTile) => !fullPlanReady && !coarseCohort && !cachedViewport &&
     displayed?.residents.get(tile.key) === tile
   // The previous frame is one camera. Zoom-out and a pan during zoom expose

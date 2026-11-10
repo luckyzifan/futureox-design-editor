@@ -129,7 +129,7 @@ function variableKindForPath(path: string): Variable['kind'] {
   if (['width', 'height', 'opacity', 'fontSize', 'layout.gap', 'layout.lineGap', 'textStyle.weight', 'textStyle.lineHeight', 'textStyle.letterSpacing'].includes(path) || /^fills\.(?:[0-9]|1[0-5])\.opacity$/.test(path)) return 'number'
   throw new Error(`Unsupported variable binding path: ${path}`)
 }
-const styleFields = { fills: 'paint', textStyle: 'text', effects: 'effect' } as const
+const styleFields = { fills: 'paint', strokes: 'paint', textStyle: 'text', effects: 'effect' } as const
 function styleField(value: unknown): keyof typeof styleFields {
   const field = key(value, 'field')
   if (!Object.hasOwn(styleFields, field)) throw new Error(`Unsupported style field: ${field}`)

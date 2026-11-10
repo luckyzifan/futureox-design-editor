@@ -1,16 +1,3 @@
-/**
- * GPU 优化集成补丁
- *
- * 将三项核心优化集成到主渲染循环：
- * 1. 扩展实例化批渲染
- * 2. 描边 GPU 计算管线
- * 3. 玻璃效果 GPU 片元化
- *
- * 同时修复：
- * - 放大缩小时清晰度不动态（改用 Figma 的平滑密度）
- * - Electron 版内存限制移除
- */
-
 import type { GpuNode, GpuScene } from './types'
 import { organizeAdvancedBatches, type AdvancedBatchGroup } from './advanced-batching'
 import { StrokeGpuPipeline } from './stroke-gpu-pipeline'
@@ -22,10 +9,6 @@ export function isElectronEnvironment(): boolean {
   return typeof navigator !== 'undefined' && /Electron/.test(navigator.userAgent)
 }
 
-/**
- * 渲染器优化扩展
- * 注入到现有 GpuRenderer 的 renderAttempt 方法中
- */
 export class RendererOptimizations {
   private strokePipeline?: StrokeGpuPipeline
   private glassRenderer?: GlassEffectGpuRenderer
@@ -173,15 +156,6 @@ export class RendererOptimizations {
   }
 }
 
-/**
- * 平滑清晰度计算（替代半八度档位）
- *
- * 问题：motionRasterScale 使用半八度档位（2^(ceil(log2(requested) * 2) / 2)）
- * 导致清晰度阶梯式变化（0.5x → 0.71x → 1x → 1.41x → 2x）
- *
- * 解决：使用 Figma 的平滑密度计算（calculateDynamicDensity）
- * 返回任意浮点值（0.73x、1.42x），平滑过渡
- */
 export function smoothDensity(
   zoom: number,
   dpr: number,
@@ -192,14 +166,10 @@ export function smoothDensity(
 ): number {
   const requestedDensity = zoom * dpr
 
-  // 使用 Figma 的动态密度算法
   const viewport = {
     width: viewportWidth / zoom,
     height: viewportHeight / zoom,
   }
-
-  // calculateDynamicDensity 已经在 tile-cache.ts 中实现
-  // 这里简化版本：根据瓦片预算动态降采样
 
   const columns = Math.ceil(viewport.width * requestedDensity / tileSize)
   const rows = Math.ceil(viewport.height * requestedDensity / tileSize)
@@ -209,7 +179,6 @@ export function smoothDensity(
     return requestedDensity  // 预算充足，返回请求的密度
   }
 
-  // Figma 的 4x 降采样策略（log4 = log2 / 2）
   const ratio = required / maxTiles
   const log4Factor = Math.ceil(Math.log2(ratio) / 2)
   let density = requestedDensity / (2 ** log4Factor)
