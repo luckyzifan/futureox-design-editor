@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest'
-import {deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope} from './source-material-scope'
+import {acceptFinishedMaterialScope,deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope} from './source-material-scope'
 import type {SourceCanvasItem} from './desktop'
 const items=Array.from({length:40},(_,i)=>({key:'p:'+i,pageId:i===4?'other':'p',bytes:i===3?9*1024**2:100,
  placed:{x:i===2?3000:i*10,y:0,width:8,height:8}})) as SourceCanvasItem[]
@@ -21,6 +21,18 @@ test('an overlapping dense scope waits, and a covered or disjoint scope does not
  expect(deferOverlappingMaterialScope({viewportDriven:false,held,wanted:['a','z']})).toBe(false)
  expect(deferOverlappingMaterialScope({viewportDriven:true,held:held.slice(0,5),wanted:['a','z']})).toBe(false)
  expect(deferOverlappingMaterialScope({viewportDriven:true,held,wanted:[]})).toBe(false)
+})
+
+test('a stale overlapping publish does not replace a presented scope that already covers the return',()=>{
+ const finished=['a','b','c','d','e','f']
+ const presented=['a','b']
+ expect(acceptFinishedMaterialScope({generationCurrent:true,latestKeys:['a'],finishedKeys:finished,presentedKeys:presented})).toBe(true)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['a','b'],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['a','z'],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['c'],finishedKeys:finished,presentedKeys:presented})).toBe(true)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:[],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['a',undefined],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['c'],finishedKeys:finished})).toBe(true)
 })
 
 test('a published scope is recalled immediately and a different revision is not',()=>{

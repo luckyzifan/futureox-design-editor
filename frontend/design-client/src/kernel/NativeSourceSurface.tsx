@@ -508,7 +508,7 @@ export function NativeSourceSurface(props:Props){
           if(stripOverview?.tiles.some(base=>base.key===tile.key))return !zoomingIn
           if(overview?.tiles.some(base=>base.key===tile.key))return !moving
           if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
-          return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale)
+          return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale,false,planner.panReversed)
         })
       }
     }
@@ -724,6 +724,7 @@ export function NativeSourceSurface(props:Props){
           actual.dpr===sent?.dpr&&actual.width===sent?.width&&actual.height===sent?.height,
         matchesSubmission:!!sent&&actual.view.x===sent.view.x&&actual.view.y===sent.view.y&&
           actual.view.zoom===sent.view.zoom&&actual.dpr===sent.dpr&&actual.width===sent.width&&actual.height===sent.height,
+        cameras:backing&&sent?{displayed:backing.view,sent:sent.view,live:p.view}:undefined,
       })
       const planned=sent?.regions
       const accepted=planned&&current&&bitmap&&bitmapContext&&(!actual.preview||actual.previewGaps)&&

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { panPrefetch } from './pan-prefetch'
+import { nextPanHeading, panPrefetch } from './pan-prefetch'
 import type { RasterTile } from './tile-cache'
 const tiles: RasterTile[] = Array.from({ length: 9 }, (_, i) => {
   const x = i % 3 - 1, y = Math.floor(i / 3) - 1
@@ -15,6 +15,21 @@ test('diagonal pans include the exposed corner; a zoom or idle frame has no dire
   expect(panPrefetch(tiles, { ...view, x: -1, y: -1 }, view, box).map(t => t.key).sort()).toEqual(['-1/-1', '-1/0', '0/-1'])
   expect(panPrefetch(tiles, { ...view, zoom: 2 }, view, box)).toEqual([])
   expect(panPrefetch(tiles, view, view, box)).toEqual([])
+})
+
+test('a return pan keeps the reversed heading until the next reversal or a zoom reset', () => {
+  let heading = nextPanHeading(undefined, { x: -120, y: 0 }, false)
+  expect(heading.reversed).toBe(false)
+  heading = nextPanHeading(heading.travel, { x: -120, y: 0 }, heading.reversed)
+  expect(heading.reversed).toBe(false)
+  heading = nextPanHeading(heading.travel, { x: 160, y: 0 }, heading.reversed)
+  expect(heading.reversed).toBe(true)
+  heading = nextPanHeading(heading.travel, { x: 40, y: 0 }, heading.reversed)
+  expect(heading.reversed).toBe(true)
+  heading = nextPanHeading(heading.travel, { x: -80, y: 0 }, heading.reversed)
+  expect(heading.reversed).toBe(false)
+  expect(nextPanHeading(heading.travel, undefined, true)).toEqual({ travel: undefined, reversed: false })
+  expect(nextPanHeading({ x: -1, y: 0 }, { x: 0, y: 0 }, true)).toEqual({ travel: undefined, reversed: false })
 })
 
 test('prediction changes only offscreen work priority and obeys count and byte caps',()=>{

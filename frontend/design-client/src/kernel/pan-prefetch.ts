@@ -1,6 +1,16 @@
 import type { CanvasCamera } from '../canvas-camera'
 import type { RasterTile } from './tile-cache'
 
+/** Same-zoom pan heading. A step against the previous step flips `reversed`.
+ * Continuing that heading keeps the flag, so the whole return yields trailing
+ * refine work. Another reversal restores the forward heading. Zoom changes
+ * pass no step and clear both. Tile keys are not part of this state. */
+export function nextPanHeading(travel: { x: number; y: number } | undefined, step: { x: number; y: number } | undefined, reversed: boolean) {
+  if (!step || !(step.x || step.y)) return { travel: undefined, reversed: false }
+  const flipped = !!travel && travel.x * step.x + travel.y * step.y < 0
+  return { travel: { x: step.x, y: step.y }, reversed: flipped ? !reversed : reversed }
+}
+
 /** Warm the edge a pan is approaching while its pixels are still offscreen.
  * Keep a small bounded set; zoom changes and directionless frames do not guess. */
 export function panPrefetch(tiles: RasterTile[], previous: CanvasCamera | undefined, view: CanvasCamera,

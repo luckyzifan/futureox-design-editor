@@ -190,16 +190,29 @@ export function dominantUpscale(tiles: readonly RasterTile[], view: CanvasCamera
 
 /** A coverage frame may arrive after the pointer has already panned. Accept it
  *  when it is the frame we submitted, at the live zoom and pixel size, even
- *  if x/y have since moved. A zoom change is a different frame. */
+ *  if x/y have since moved. A zoom change is a different frame. A frame whose
+ *  camera is farther from the live camera than the picture already on screen
+ *  is a late rollback: keep that picture and let the latest camera converge. */
 export function acceptTranslatedCoverage(input: {
   outward: boolean; preview: boolean; idsMatch: boolean; tileCount: number; shownCount: number
   sentZoom: number; liveZoom: number; samePixels: boolean; matchesSubmission: boolean
+  cameras?: {
+    displayed: { x: number; y: number; zoom: number }
+    sent: { x: number; y: number; zoom: number }
+    live: { x: number; y: number; zoom: number }
+  }
 }) {
   // idsMatch is this submission's own tiles, not whichever frame is newest.
   // A later pan must not drop the bitmap that already paints the previous strip.
+  const sameZoom = input.cameras && input.cameras.displayed.zoom === input.cameras.live.zoom &&
+    input.cameras.sent.zoom === input.cameras.live.zoom
+  const distance = (camera: { x: number; y: number }) => Math.hypot(input.cameras!.live.x - camera.x, input.cameras!.live.y - camera.y)
+  const stepsBackward = !!sameZoom && [input.cameras!.displayed.x, input.cameras!.displayed.y, input.cameras!.sent.x,
+    input.cameras!.sent.y, input.cameras!.live.x, input.cameras!.live.y].every(Number.isFinite) &&
+    distance(input.cameras!.displayed) + 1e-6 < distance(input.cameras!.sent)
   return input.outward && !input.preview && input.idsMatch && input.tileCount > 0 &&
     input.tileCount === input.shownCount && input.sentZoom === input.liveZoom &&
-    input.samePixels && input.matchesSubmission
+    input.samePixels && input.matchesSubmission && !stepsBackward
 }
 
 /** Whether an in-flight tile still belongs to the current camera.
@@ -209,7 +222,7 @@ export function acceptTranslatedCoverage(input: {
  *  flight even when the new lattice is many times coarser. */
 export function retainInFlightTile(tile: RasterTile, view: CanvasCamera, size: { width: number; height: number },
   resident: Iterable<RasterTile>, wanted: ReadonlySet<string>, prefetch: ReadonlySet<string>,
-  continuousZoomIn: boolean, targetScale: number, settling = false) {
+  continuousZoomIn: boolean, targetScale: number, settling = false, yieldCoveredNeighbor = false) {
   if (tile.prefetch) return wanted.has(tile.key) || prefetch.has(tile.key)
   if (!tileIntersectsView(tile, view, size) || !(targetScale > 0) || !(tile.zoom > 0)) return false
   if (wanted.has(tile.key)) return true
@@ -220,9 +233,13 @@ export function retainInFlightTile(tile: RasterTile, view: CanvasCamera, size: {
   if ((tile.width > 514 || tile.height > 514) && continuousZoomIn && !hole) return false
   if (hole) return true
   // The gesture can keep a nearby density. Once it stops, a covered viewport
-  // must release the single raster owner for the exact phase.
+  // must release the single raster owner for the exact phase. A reversed pan
+  // is the same release while the pointer is still moving: a covered neighbour
+  // from the abandoned heading only delays the latest camera. A finer tile
+  // that still raises detail on this rect stays, and cached keys are untouched.
   if (settling) return false
   const relative = targetScale / tile.zoom
+  if (yieldCoveredNeighbor) return relative < 1 && relative >= 0.5 && bringsSamplingDetail(tile, view, size, painted)
   if (relative <= 2 && relative >= 0.5) return true
   return continuousZoomIn && relative > 2 && relative <= 8 && bringsSamplingDetail(tile, view, size, painted)
 }

@@ -6,6 +6,8 @@ export default defineConfig({
       'src/kernel/tile-prepare-viewport.test.ts',
       'src/source-material-scope.test.ts',
       'src/kernel/preview-tiles.test.ts',
+      'src/kernel/pan-prefetch.test.ts',
+      'src/kernel/refine-return.test.ts',
     ],
   },
 })

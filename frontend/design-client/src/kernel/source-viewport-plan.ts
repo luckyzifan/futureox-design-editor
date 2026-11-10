@@ -5,7 +5,7 @@ import {allowsReducedSampling} from './render-quality'
 import {tileLevel,tilesCoverBounds} from './tile-cache'
 import {planTilesWithPrefetchRim} from './tile-plan-aligned'
 import {tileComputationDependsOnCamera,tileComputationKey,periodicComputationCamera} from './tile-computation-key'
-import {panPrefetch} from './pan-prefetch'
+import {nextPanHeading,panPrefetch} from './pan-prefetch'
 import type {RasterTile} from './tile-cache'
 import {tileIntersectsView} from './tile-preview'
 import type {ResidentAcknowledgement} from './resident-presentation'
@@ -149,6 +149,10 @@ export class SourceViewportPlanner {
   private inwardRung=0
   private coverageRetry?:{view:CanvasCamera;ratio:number;width:number;height:number}
   private direction?:{previous:CanvasCamera;view:CanvasCamera}
+  /** Last same-zoom step. Scheduling only; the retained lattice does not move. */
+  private travel?:{x:number;y:number}
+  /** True while the latest pan heading is a reversal of the previous heading. */
+  panReversed=false
   private accepted?:{view:CanvasCamera;dpr:number;raster:ReturnType<typeof canvasRasterPlan>}
   private readonly bandGrids=new Map<string,MaterialBandGrid>()
   constructor(private readonly rasterProfile:string,private readonly colorManaged:boolean, private readonly material=false,private readonly overview=false){}
@@ -190,7 +194,10 @@ export class SourceViewportPlanner {
         const delta=view.zoom-this.previous.zoom
         this.zoomFocus={x:(this.previous.x-view.x)/delta,y:(this.previous.y-view.y)/delta}
       }
-      this.direction=this.previous.zoom===view.zoom?{previous:this.previous,view:{...view}}:undefined
+      const sameZoom=this.previous.zoom===view.zoom
+      this.direction=sameZoom?{previous:this.previous,view:{...view}}:undefined
+      const heading=nextPanHeading(this.travel,sameZoom?{x:view.x-this.previous.x,y:view.y-this.previous.y}:undefined,this.panReversed)
+      this.travel=heading.travel;this.panReversed=heading.reversed
     }
     this.previous={...view}
     const key=[view.x,view.y,view.zoom,dpr,width,height,Number(moving),Number(this.zoomingOut),ceiling??0,Number(continuousZoom),window?.x??0,window?.y??0,window?.width??width,window?.height??height]

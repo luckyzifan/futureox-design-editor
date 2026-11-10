@@ -11,6 +11,23 @@ function scopeSignature(keys: readonly string[]) {
   return [...keys].sort().join('\n')
 }
 
+/** A host snapshot that finishes after the camera has moved. The current
+ * generation may install it. A stale generation may install it only when it
+ * covers the latest keys and the picture already on screen does not: applying
+ * it would replace the token and drop tiles the return can still use. */
+export function acceptFinishedMaterialScope(input:{
+  generationCurrent:boolean
+  latestKeys:readonly (string|undefined)[]
+  finishedKeys:readonly string[]
+  presentedKeys?:readonly string[]
+}) {
+  if(input.generationCurrent)return true
+  const latest=input.latestKeys.filter((key):key is string=>!!key)
+  if(latest.length!==input.latestKeys.length||!includesMaterials(input.finishedKeys,latest))return false
+  if(input.presentedKeys&&includesMaterials(input.presentedKeys,latest))return false
+  return true
+}
+
 /** A scope already published for this revision can be recalled without the
  * overlap sample. Another revision, an empty list, or a different key set waits. */
 export function rememberedMaterialScope(input:{

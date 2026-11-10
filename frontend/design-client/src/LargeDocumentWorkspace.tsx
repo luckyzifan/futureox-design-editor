@@ -7,7 +7,7 @@ import { Editor } from './engine'
 import { blank, type DesignDocument, type Point } from './model'
 import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
-import {deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
+import {acceptFinishedMaterialScope,deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged, subscribePendingEdits } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
@@ -394,7 +394,12 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         // the viewport changed while native preparation was running.
         lastMaterialToken.current=frame.token
         const latestWanted=requestedIndices.current.map(i=>itemsForSnapshot.current[i]?.key)
-        if(demandGeneration.current!==generation && (!latestWanted.length||!includesMaterials(keys,latestWanted)))return
+        // A snapshot started for the previous region can finish after the
+        // pointer has returned. Installing it replaces the host token and
+        // drops tiles the current viewport already has. Keep that token.
+        const presented=nativeSnapshotRef.current
+        const presentedKeys=presented&&presented.token===lastMaterialToken.current&&!presented.viewportSubset?presented.materialKeys:undefined
+        if(!acceptFinishedMaterialScope({generationCurrent:demandGeneration.current===generation,latestKeys:latestWanted,finishedKeys:keys,presentedKeys}))return
         if(frame.materialKeys?.join(',')!==keys.join(',') || frame.roots!==keys.length)throw Error('素材精修范围不匹配')
         rememberPublishedScope(publishedScopes.current, frame.revision, keys)
         nativeSnapshotRef.current=frame;setNativeSnapshot(frame);setWarnings(frame.warnings)
