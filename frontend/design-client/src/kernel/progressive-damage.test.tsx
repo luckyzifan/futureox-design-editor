@@ -2301,6 +2301,42 @@ test('a large pan during an active shrink sample draws the live camera, not the 
     .some((item: any) => item.tile.gpuTile === 61)).toBe(false)
 })
 
+test('a long pan while the zoom sample still lags draws the live camera', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(false)
+  const sampled = { x: 0, y: 0, zoom: 2 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: sampled } }
+  h.render({ backend: 'webgl2', view: sampled })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+  const running = worker.calls[0]
+  expect(running.options.livePreview).toBe(true)
+  expect(running.options.view.zoom).toBe(2)
+  // The sample has not published the zoom-out. The old picture is still inside it.
+  const zoomed = { x: 256, y: 128, zoom: 1 }
+  h.render({ backend: 'webgl2', view: zoomed })
+  await settleRejected()
+  expect(running.signal.aborted).toBe(false)
+  expect(worker.calls).toHaveLength(1)
+  const panned = { x: -800, y: 40, zoom: 1 }
+  h.render({ backend: 'webgl2', view: panned })
+  await settleRejected()
+  expect(running.signal.aborted).toBe(true)
+  const close = vi.fn()
+  running.resolve({ bitmap: { close }, gpuTile: 61 })
+  await settleRejected()
+  expect(close).toHaveBeenCalledOnce()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
+  expect(worker.calls[1].signal.aborted).toBe(false)
+  expect(worker.calls[1].options.view).toMatchObject(panned)
+  worker.calls[1].resolve({ gpuTile: 62 })
+  await flushRasterWork()
+  const tile = surfaceParts(h.render({ backend: 'webgl2', view: panned })).compositor.props.items
+    .map((item: any) => item.tile).find((item: any) => item.gpuTile === 62)
+  expect(tile.previewSource.view).toEqual(panned)
+})
+
 test('a large pan after zoom-out yields the capture that misses the new viewport', async () => {
   const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
   const zoomed = { ...options, view: { x: 0, y: 0, zoom: 2 } }

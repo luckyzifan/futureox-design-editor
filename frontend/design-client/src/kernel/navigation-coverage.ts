@@ -15,19 +15,67 @@ export function navigationCoverageBounds(view: CanvasCamera, width: number, heig
   return { x: -view.x / view.zoom, y: -view.y / view.zoom, width: width / view.zoom, height: height / view.zoom }
 }
 
+function viewportIntersection(
+  bounds: Readonly<{ x: number; y: number; width: number; height: number }>,
+  view: CanvasCamera, width: number, height: number) {
+  if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !(width > 0) || !(height > 0)) return
+  const target = navigationCoverageBounds(view, width, height)
+  if (![bounds.x, bounds.y, bounds.width, bounds.height, target.x, target.y, target.width, target.height].every(Number.isFinite)) return
+  if (bounds.width <= 0 || bounds.height <= 0 || target.width <= 0 || target.height <= 0) return
+  const left = Math.max(target.x, bounds.x), top = Math.max(target.y, bounds.y)
+  const right = Math.min(target.x + target.width, bounds.x + bounds.width)
+  const bottom = Math.min(target.y + target.height, bounds.y + bounds.height)
+  const area = Math.max(0, right - left) * Math.max(0, bottom - top)
+  return { area, targetArea: target.width * target.height, sourceArea: bounds.width * bounds.height }
+}
+
 /** Share of the live viewport that still lies inside an in-flight capture.
  *  Invalid geometry is zero so a caller can refuse to treat it as coverage. */
 export function viewportOverlapFraction(
   bounds: Readonly<{ x: number; y: number; width: number; height: number }>,
   view: CanvasCamera, width: number, height: number) {
-  if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !(width > 0) || !(height > 0)) return 0
-  const target = navigationCoverageBounds(view, width, height)
-  if (![bounds.x, bounds.y, bounds.width, bounds.height, target.x, target.y, target.width, target.height].every(Number.isFinite)) return 0
-  if (bounds.width <= 0 || bounds.height <= 0 || target.width <= 0 || target.height <= 0) return 0
-  const left = Math.max(target.x, bounds.x), top = Math.max(target.y, bounds.y)
-  const right = Math.min(target.x + target.width, bounds.x + bounds.width)
-  const bottom = Math.min(target.y + target.height, bounds.y + bounds.height)
-  return Math.max(0, right - left) * Math.max(0, bottom - top) / (target.width * target.height)
+  const hit = viewportIntersection(bounds, view, width, height)
+  return hit ? hit.area / hit.targetArea : 0
+}
+
+/** Share of a capture that still lies inside the live viewport. A zoom-out
+ *  keeps the old picture on screen even though it fills little of the wider
+ *  view. A pan that carries that picture away returns a small fraction.
+ *  Invalid geometry is zero. */
+export function captureVisibleFraction(
+  bounds: Readonly<{ x: number; y: number; width: number; height: number }>,
+  view: CanvasCamera, width: number, height: number) {
+  const hit = viewportIntersection(bounds, view, width, height)
+  return hit ? hit.area / hit.sourceArea : 0
+}
+
+/** True when most of a capture has left the live viewport. Invalid input
+ *  stays false so a caller does not yield on a broken threshold. */
+export function captureMostlyOffscreen(
+  bounds: Readonly<{ x: number; y: number; width: number; height: number }>,
+  view: CanvasCamera, width: number, height: number, minimumFraction = 0.5) {
+  if (!Number.isFinite(minimumFraction) || minimumFraction <= 0 || minimumFraction > 1) return false
+  if (![bounds.x, bounds.y, bounds.width, bounds.height, view.x, view.y, view.zoom, width, height].every(Number.isFinite)) return false
+  if (bounds.width <= 0 || bounds.height <= 0 || view.zoom <= 0 || width <= 0 || height <= 0) return false
+  return captureVisibleFraction(bounds, view, width, height) < minimumFraction
+}
+
+/** Camera a continuity capture should rasterize. Same-zoom pans that leave
+ *  the sample use the live camera. A zoom-out whose sample is still an
+ *  earlier step does too, once that picture has left the live viewport.
+ *  A pure zoom-out keeps the sample so each wheel tick is not a new frame.
+ *  Zoom-in keeps the sample; closer detail is a separate decision. */
+export function liveNavigationCapture(
+  sample: CanvasCamera, requested: CanvasCamera, width: number, height: number, minimumFraction = 0.5): CanvasCamera {
+  if (![sample.x, sample.y, sample.zoom, requested.x, requested.y, requested.zoom, width, height, minimumFraction].every(Number.isFinite)) return sample
+  if (!(sample.zoom > 0) || !(requested.zoom > 0) || !(width > 0) || !(height > 0)) return sample
+  if (!(minimumFraction > 0) || minimumFraction > 1) return sample
+  const bounds = navigationCoverageBounds(sample, width, height)
+  if (sample.zoom === requested.zoom)
+    return viewportOverlapFraction(bounds, requested, width, height) < minimumFraction ? requested : sample
+  if (requested.zoom < sample.zoom && captureVisibleFraction(bounds, requested, width, height) < minimumFraction)
+    return requested
+  return sample
 }
 
 /** Geometric scheduling evidence only. Import/presenter readiness and live GPU
@@ -89,8 +137,9 @@ export type NavigationCoverageFlight<T> = {
   cancelStaleZoomIn(view: CanvasCamera, maximumRatio?: number): boolean
   /** Yield an undelivered capture once most of the newest viewport is outside
    * it. A delivered tile and a capture that still covers the view stay.
-   * sameZoomOnly leaves a zoom sample running; a same-zoom pan that misses
-   * still yields so the live camera can be drawn. */
+   * sameZoomOnly leaves a zoom sample running while its picture is still on
+   * screen. A same-zoom pan that misses, and a zoom-out whose sample has
+   * left the live viewport, still yield so the live camera can be drawn. */
   cancelMissedViewport(view: CanvasCamera, width: number, height: number, minimumFraction?: number, sameZoomOnly?: boolean): boolean
 }
 export function navigationCoverageFlight<T>(contract: object, generation: number, capture?: NavigationCoverageCapture): NavigationCoverageFlight<T> {
@@ -134,9 +183,14 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
     cancelMissedViewport: (view, width, height, minimumFraction = 0.5, sameZoomOnly = false) => {
       const source = pending
       if (!source || flight.tile !== undefined) return false
-      if (sameZoomOnly && source.zoom !== view.zoom) return false
       if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !(width > 0) || !(height > 0)) return false
       if (!Number.isFinite(minimumFraction) || minimumFraction <= 0 || minimumFraction > 1) return false
+      // A pure zoom-out still contains the sample. Yield only once that
+      // picture has left the live viewport, including while its zoom lags.
+      if (sameZoomOnly && source.zoom !== view.zoom) {
+        if (!(view.zoom < source.zoom) || captureVisibleFraction(source.bounds, view, width, height) >= minimumFraction) return false
+        return cancelPending()
+      }
       if (viewportOverlapFraction(source.bounds, view, width, height) >= minimumFraction) return false
       return cancelPending()
     },

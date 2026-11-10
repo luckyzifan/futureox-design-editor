@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction } from './navigation-coverage'
+import { captureMostlyOffscreen, captureVisibleFraction, liveNavigationCapture, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction } from './navigation-coverage'
 import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
@@ -68,17 +68,33 @@ test('a large pan yields an undelivered capture that misses the newest viewport'
   expect(flight.cancelMissedViewport({ x: 0, y: 0, zoom: Number.NaN }, 100, 100)).toBe(false)
 })
 
-test('an active gesture yields only a same-zoom pan that misses the viewport', () => {
+test('an active gesture keeps a pure zoom-out and yields a pan that leaves that sample', () => {
   let cancelled = 0
   const flight = navigationCoverageFlight({}, 1, {
     zoom: 2, bounds: { x: 0, y: 0, width: 512, height: 256 }, cancel: () => cancelled++,
   })
-  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 1 }, 1024, 512, 0.5, true)).toBe(false)
+  // Zoom 2 at the origin still sits inside a centered zoom-out to 1.
+  const zoomed = { x: 256, y: 128, zoom: 1 }
+  expect(captureVisibleFraction({ x: 0, y: 0, width: 512, height: 256 }, zoomed, 1024, 512)).toBe(1)
+  expect(flight.cancelMissedViewport(zoomed, 1024, 512, 0.5, true)).toBe(false)
   expect(flight.cancelMissedViewport({ x: -40, y: 0, zoom: 2 }, 1024, 512, 0.5, true)).toBe(false)
+  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 3 }, 1024, 512, 0.5, true)).toBe(false)
   expect(cancelled).toBe(0)
-  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 2 }, 1024, 512, 0.5, true)).toBe(true)
+  // The same sample is off the live viewport after the long pan, even though
+  // its zoom has not caught the zoom-out yet.
+  const panned = { x: -700, y: 0, zoom: 1 }
+  expect(captureVisibleFraction({ x: 0, y: 0, width: 512, height: 256 }, panned, 1024, 512)).toBe(0)
+  expect(flight.cancelMissedViewport(panned, 1024, 512, 0.5, true)).toBe(true)
   expect(cancelled).toBe(1)
-  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 2 }, 1024, 512, 0.5, true)).toBe(false)
+  expect(flight.cancelMissedViewport(panned, 1024, 512, 0.5, true)).toBe(false)
+  expect(liveNavigationCapture({ x: 0, y: 0, zoom: 2 }, zoomed, 1024, 512)).toEqual({ x: 0, y: 0, zoom: 2 })
+  expect(liveNavigationCapture({ x: 0, y: 0, zoom: 2 }, panned, 1024, 512)).toEqual(panned)
+  expect(liveNavigationCapture({ x: 0, y: 0, zoom: 2 }, { x: -700, y: 0, zoom: 2 }, 1024, 512)).toEqual({ x: -700, y: 0, zoom: 2 })
+  expect(liveNavigationCapture({ x: 0, y: 0, zoom: 2 }, { x: -40, y: 0, zoom: 2 }, 1024, 512)).toEqual({ x: 0, y: 0, zoom: 2 })
+  expect(captureMostlyOffscreen({ x: 0, y: 0, width: 512, height: 256 }, panned, 1024, 512)).toBe(true)
+  expect(captureMostlyOffscreen({ x: 0, y: 0, width: 512, height: 256 }, zoomed, 1024, 512)).toBe(false)
+  expect(captureMostlyOffscreen({ x: 0, y: 0, width: 512, height: 256 }, panned, 1024, 512, Number.NaN)).toBe(false)
+  expect(liveNavigationCapture({ x: Number.NaN, y: 0, zoom: 2 }, panned, 1024, 512)).toEqual({ x: Number.NaN, y: 0, zoom: 2 })
 })
 
 test('a covering capture and finished/capture-free flights never spend reversal cancellation',()=>{
