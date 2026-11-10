@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import React, { act } from 'react'
@@ -78,8 +79,8 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await act(async () => root.unmount())
-  mount.remove()
+  if (root) await act(async () => root.unmount())
+  mount?.remove()
   vi.unstubAllGlobals()
 })
 
@@ -114,7 +115,7 @@ test('saved API and token-plan rows can activate and delete without showing secr
   expect(button('QA B', '用这条连接')?.disabled).toBe(false)
   expect((document.querySelector('input[aria-label="密钥"]') as HTMLInputElement).value).toBe('')
 
-  await act(async () => row('本机').querySelector('.agent-saved-summary')!.click())
+  await act(async () => row('本机').querySelector<HTMLElement>('.agent-saved-summary')!.click())
   expect(calls.filter(item => item.method === 'activate').at(-1)).toEqual({ method: 'activate', body: { id: 'local' } })
 
   await act(async () => button('QA A', '删除连接')!.click())
