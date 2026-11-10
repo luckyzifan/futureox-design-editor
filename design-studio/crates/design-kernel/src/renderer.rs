@@ -754,9 +754,16 @@ impl Engine {
             crate::dirty_region::patch_damage_with_fonts(source, next, patch, &self.fonts)
         };
         if patch.nodes.iter().any(|(id, node)| self.render_index.as_ref().is_some_and(|i| i.in_sketch_mask_chain(id))
-            || node.as_ref().is_some_and(crate::sketch_masks::starts)) {
-            damage = crate::dirty_region::PatchDamage { full: true, reason: Some("masked-chain"),
-                bounds: None, rects: None, translation_only: None };
+            || node.as_ref().is_some_and(crate::sketch_masks::starts))
+            && !(damage.full && damage.reason != Some("masked-chain"))
+        {
+            // A page-root mask still has no finite container. Glass and other
+            // unbounded proofs stay full. A nested chain repaints its owner
+            // subtree, including backdrop readers that actually intersect it.
+            // The mask projection itself is still rebuilt below.
+            damage = crate::dirty_region::sketch_mask_range(source, next, patch, &self.fonts).unwrap_or(
+                crate::dirty_region::PatchDamage { full: true, reason: Some("masked-chain"),
+                    bounds: None, rects: None, translation_only: None });
         }
         if crate::repeat::has_repeats(source) || crate::repeat::has_repeats(next) {
             damage.full = true; damage.reason = Some("repeat-derived-scene"); damage.bounds = None; damage.rects = None;
