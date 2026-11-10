@@ -8,11 +8,11 @@ import { initializePicking } from './kernel/picking'
 // Chai's inspectClass then reads `undefined.name` and hides the assertion that
 // was comparing a jsdom SVG node. Keep the class as the constructor value.
 const defineProperties = Object.defineProperties
-Object.defineProperties = function (target, properties) {
-  const constructor = properties?.constructor
+Object.defineProperties = function <T>(target: T, properties: PropertyDescriptorMap & ThisType<unknown>): T {
+  const constructor = Object.getOwnPropertyDescriptor(properties, 'constructor')?.value as PropertyDescriptor | undefined
   if (properties && properties._values && constructor && !('value' in constructor) && !constructor.get && !constructor.set)
-    properties = { ...properties, constructor: { ...constructor, value: target.constructor } }
-  return defineProperties.call(Object, target, properties)
+    properties = { ...properties, constructor: { ...constructor, value: (target as { constructor?: unknown }).constructor } }
+  return defineProperties(target, properties)
 }
 beforeAll(async () => {
   const wasm = new Uint8Array(await readFile(new FileURL('../public/kernel/design_kernel_bg.wasm', import.meta.url)))
