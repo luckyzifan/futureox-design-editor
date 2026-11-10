@@ -27,3 +27,17 @@ test('loading and unsupported states keep Cancel available and cannot start rend
   expect(find(tree,n=>n.type===SketchReadOnlyPreview)).toBeUndefined()
  }
 })
+test('unsupported native preview names the compatibility import and keeps confirmation disabled',()=>{
+ const render=harness(),onClose=vi.fn(),onImport=vi.fn()
+ const value={...result(),preview:{status:'unavailable' as const,reason:'Sketch archive: Unsupported("Sketch page transforms")'}}
+ const tree=render(()=>SketchInspectionDialog({result:value,onClose,onImportCompatibility:onImport}))
+ expect(find(tree,n=>n.type==='button'&&n.props.children==='确认打开').props.disabled).toBe(true)
+ expect(JSON.stringify(tree)).toContain('可以用兼容格式导入')
+ expect(JSON.stringify(tree)).toContain('Sketch page transforms')
+ find(tree,n=>n.type==='button'&&n.props.children==='用兼容格式导入…').props.onClick()
+ expect(onImport).toHaveBeenCalledOnce()
+ expect(find(tree,n=>n.type===SketchReadOnlyPreview)).toBeUndefined()
+ const named=render(()=>SketchInspectionDialog({result:value,onClose}))
+ expect(JSON.stringify(named)).toContain('导入 Sketch / FIG / SVG / PDF')
+ expect(find(named,n=>n.type==='button'&&n.props.children==='用兼容格式导入…')).toBeUndefined()
+})
