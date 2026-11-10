@@ -50,6 +50,13 @@ fn write(path: &Path, generation:&str, doc: &Document, warnings: &[String], canc
 }
 
 pub(super) fn convert(s: &Session, p: usize, n: usize, cancel: &AtomicBool, context: &projection::SketchContext) -> Result<(Document, Vec<String>)> {
+    convert_with(s, p, n, cancel, context, true)
+}
+/// `persist` writes the disposable window scene. A cold full-source snapshot
+/// already publishes one merged store; persisting every singleton first repeats
+/// that serialization on the snapshot critical path. Later reads still hit a
+/// window that was persisted by an earlier material conversion.
+pub(super) fn convert_with(s: &Session, p: usize, n: usize, cancel: &AtomicBool, context: &projection::SketchContext, persist: bool) -> Result<(Document, Vec<String>)> {
     check_cancel(cancel).map_err(issue)?;
     let cached = {
         let mut cache = s.converted_windows.lock().map_err(issue)?;
@@ -74,13 +81,22 @@ pub(super) fn convert(s: &Session, p: usize, n: usize, cancel: &AtomicBool, cont
     let (document, warnings) = projection::sketch_window_in(s, p, n, 64 * 1024 * 1024, context,cancel)?;
     check_cancel(cancel).map_err(issue)?;
     s.converted_windows.lock().map_err(issue)?.conversions += 1;
+    if !persist {
+        check_cancel(cancel).map_err(issue)?;
+        return Ok((document, warnings));
+    }
     let path = {
         let mut cache = s.converted_windows.lock().map_err(issue)?;
         cache.directory(s).ok().map(|directory|directory.join(format!("{p}-{n}.scene")))
     };
     if let Some(path) = path {
         let generation=format!("{}:{}:{}:{p}:{n}",s.owner.document_id,s.owner.session_epoch,s.revision);
+        let started=std::time::Instant::now();
         if let Ok(entry) = write(&path, &generation, &document, &warnings, cancel) {
+            let elapsed=started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+            s.snapshot_account.window_write_ns.fetch_add(elapsed, Ordering::Relaxed);
+            s.snapshot_account.window_write_bytes.fetch_add(entry.descriptor.bytes, Ordering::Relaxed);
+            s.snapshot_account.window_writes.fetch_add(1, Ordering::Relaxed);
             s.converted_windows.lock().map_err(issue)?.entries.insert((p,n), entry);
         }
     }

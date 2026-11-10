@@ -76,7 +76,8 @@ export type LargeDocumentPageRange = {offset:number;end:number;totalRoots:number
 export type SourceCanvasBox={x:number;y:number;width:number;height:number}
 export type SourceCanvasItem={key:string;id:string;name:string;kind:string;pageId:string;pageName:string;source:SourceCanvasBox;placed:SourceCanvasBox;bytes:number}
 export type SourceCanvasCatalogue={items:SourceCanvasItem[];bounds:SourceCanvasBox;total:number;offset:number;hasMore:boolean;boundsAreLayoutHints:true}
-export type SourceCanvasSnapshot={viewportSubset?:boolean;openingMaterial?:number;materialKeys?:readonly string[];owner:LargeDocumentOwner;revision:number;token:string;bytes:number;nodes:number;roots:number;pageId:string;stageId:string;bounds:SourceCanvasBox;warnings:string[];rasterProfile:'analytic'|'figma'|'figmaSubpixel'|'figmaSoftware';colorManaged:boolean}
+export type SourceSnapshotPhases={readNs:number;convertNs:number;windowWriteNs:number;snapshotWriteNs:number;readBytes:number;windowWriteBytes:number;storeBytes:number;windowWrites:number}
+export type SourceCanvasSnapshot={viewportSubset?:boolean;openingMaterial?:number;materialKeys?:readonly string[];owner:LargeDocumentOwner;revision:number;token:string;bytes:number;nodes:number;roots:number;pageId:string;stageId:string;bounds:SourceCanvasBox;warnings:string[];rasterProfile:'analytic'|'figma'|'figmaSubpixel'|'figmaSoftware';colorManaged:boolean;phases?:SourceSnapshotPhases}
 export type OpeningPage = [id:string,name:string,materials:number]
 export type SourceOpeningResult = {phase:'pending'|'unavailable'} | {
   phase:'available';indexing?:boolean;moreDetails?:boolean;detailPending?:boolean;detailBase?:number;nextDetailCursor?:number;detail?:{index:number;png:string}|null;materialDisplay?:SourceCanvasSnapshot;cacheHit:boolean;rendered:number;owner:LargeDocumentOwner;revision:0;bounds:SourceCanvasBox;total:number;pages:OpeningPage[]|null;

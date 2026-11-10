@@ -11,6 +11,7 @@ pub(super) struct Snapshot {
     pub raster_profile: RasterProfile,
     pub color_managed: bool,
     pub navigation: Option<navigation_image::NavigationImage>,
+    pub phases: Phases,
 }
 
 /// Only immutable stores for previously requested material scopes are kept.
@@ -79,9 +80,9 @@ fn append_batch(s:&Session,batch:&[(usize,usize)],cancel:&AtomicBool,context:&pr
 
 #[cfg(test)]
 pub(super) fn build(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool) -> Result<(Document, String, Vec<String>)> {
-    build_inner(s,layout,cancel,false).map(|(doc, id, notes)| (doc.into_document(), id, notes))
+    build_inner(s,layout,cancel,false,true).map(|(doc, id, notes)| (doc.into_document(), id, notes))
 }
-fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool, render_only:bool) -> Result<(ValidatedSource, String, Vec<String>)> {
+fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool, render_only:bool, persist_windows:bool) -> Result<(ValidatedSource, String, Vec<String>)> {
     if layout.revision != s.revision { return Err(issue("Source canvas layout is stale")); }
     let context = projection::SketchContext::new(s)?;
     let mut full: Option<Document> = None;
@@ -102,20 +103,32 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     // merging its result in source order; a slow neighbouring batch no longer
     // leaves the other conversion slot idle for the rest of a fixed pair.
     let convert=|batch:&Vec<(usize,usize)>| {
-        if batch.len()==1 {
-            // Singleton batches share the material-viewer cache. A full-source
-            // snapshot that revisits one already converted root does not parse
-            // that archive window again. Multi-root batches keep shared symbol
-            // admission and are not reconstructed from singleton caches.
-            let (p,n)=batch[0];
-            let (mut document,warnings)=window_cache::convert(s,p,n,cancel,&context)?;
-            if render_only {if let Some(system)=&mut document.design_system{system.sketch_containers.clear();}}
-            return Ok((document,warnings.into_iter().collect()));
-        }
-        let mut document=None;let mut notes=std::collections::BTreeSet::new();
-        s.snapshot_account.source_batches.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        append_batch(s,batch,cancel,&context,&mut document,&mut notes,render_only)?;
-        Ok::<_,BackendError>((document.ok_or_else(||issue("Empty source batch"))?,notes))
+        projection::begin_read_account();
+        let started=std::time::Instant::now();
+        let result=|| -> Result<(Document,std::collections::BTreeSet<String>)> {
+            if batch.len()==1 {
+                // Singleton batches share the material-viewer cache. A full-source
+                // snapshot that revisits one already converted root does not parse
+                // that archive window again. Multi-root batches keep shared symbol
+                // admission and are not reconstructed from singleton caches.
+                let (p,n)=batch[0];
+                let (mut document,warnings)=window_cache::convert_with(s,p,n,cancel,&context,persist_windows)?;
+                if render_only {if let Some(system)=&mut document.design_system{system.sketch_containers.clear();}}
+                return Ok((document,warnings.into_iter().collect()));
+            }
+            let mut document=None;let mut notes=std::collections::BTreeSet::new();
+            s.snapshot_account.source_batches.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            append_batch(s,batch,cancel,&context,&mut document,&mut notes,render_only)?;
+            Ok((document.ok_or_else(||issue("Empty source batch"))?,notes))
+        }();
+        let read=projection::end_read_account();
+        let total=started.elapsed().as_nanos();
+        let read_ns=read.1.min(u128::from(u64::MAX)) as u64;
+        let convert_ns=total.saturating_sub(read.1).min(u128::from(u64::MAX)) as u64;
+        s.snapshot_account.read_bytes.fetch_add(read.0, std::sync::atomic::Ordering::Relaxed);
+        s.snapshot_account.read_ns.fetch_add(read_ns, std::sync::atomic::Ordering::Relaxed);
+        s.snapshot_account.convert_ns.fetch_add(convert_ns, std::sync::atomic::Ordering::Relaxed);
+        result
     };
     std::thread::scope(|scope| -> Result<()> {
         let mut remaining=batches.iter();
@@ -136,7 +149,9 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
         Ok(())
     })?;
     let document = full.ok_or_else(||issue("The source has no drawable canvas objects"))?;
+    let admit_started=std::time::Instant::now();
     let (document,id)=place_materials(document,&s.owner.document_id,&s.name,layout)?;
+    s.snapshot_account.convert_ns.fetch_add(admit_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64, std::sync::atomic::Ordering::Relaxed);
     Ok((document,id,warnings.into_iter().collect()))
 }
 
@@ -215,6 +230,27 @@ pub(super) fn build_individual(s: &Session, layout: &canvas_layout::Layout, canc
     Ok((document,id,warnings.into_iter().collect()))
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Phases {
+    pub read_ns: u64,
+    pub convert_ns: u64,
+    pub window_write_ns: u64,
+    pub snapshot_write_ns: u64,
+    pub read_bytes: u64,
+    pub window_write_bytes: u64,
+    pub store_bytes: u64,
+    pub window_writes: u64,
+}
+impl Phases {
+    fn json(self) -> Value {
+        json!({
+            "readNs": self.read_ns, "convertNs": self.convert_ns,
+            "windowWriteNs": self.window_write_ns, "snapshotWriteNs": self.snapshot_write_ns,
+            "readBytes": self.read_bytes, "windowWriteBytes": self.window_write_bytes,
+            "storeBytes": self.store_bytes, "windowWrites": self.window_writes,
+        })
+    }
+}
 #[derive(Debug, Default)]
 pub(super) struct Account {
     pub descriptor_hits: u64,
@@ -224,6 +260,12 @@ pub(super) struct Account {
     pub scene_writes: u64,
     /// Multi-root archive batches. Singleton roots use the window cache instead.
     pub source_batches: std::sync::atomic::AtomicU64,
+    pub read_ns: std::sync::atomic::AtomicU64,
+    pub convert_ns: std::sync::atomic::AtomicU64,
+    pub window_write_ns: std::sync::atomic::AtomicU64,
+    pub read_bytes: std::sync::atomic::AtomicU64,
+    pub window_write_bytes: std::sync::atomic::AtomicU64,
+    pub window_writes: std::sync::atomic::AtomicU64,
 }
 
 pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool, material_keys:Option<&[String]>,navigation_window:Option<canvas_layout::Box2>) -> Result<Value> {
@@ -265,12 +307,20 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
             Ok(canvas_layout::Layout{revision:layout.revision,bounds:layout.bounds,items})
         }).transpose()?;
         let work=selected.as_ref().unwrap_or(&layout);
-        let (document,stage_id,warnings)=build_inner(s,work,cancel,true)?;
+        // The full source publishes one scene. Do not also serialize every
+        // singleton window on that critical path. A material scope still
+        // persists its windows so a repeated detail request can reuse them.
+        for counter in [&s.snapshot_account.read_ns,&s.snapshot_account.convert_ns,&s.snapshot_account.window_write_ns,
+            &s.snapshot_account.read_bytes,&s.snapshot_account.window_write_bytes,&s.snapshot_account.window_writes] {
+            counter.store(0, std::sync::atomic::Ordering::Relaxed);
+        }
+        let (document,stage_id,warnings)=build_inner(s,work,cancel,true,scope.is_some())?;
         let suffix=scope.as_ref().map(|v|format!("-{v}")).unwrap_or_default();
         let path=s.directory.join(format!("canvas-native-{}{suffix}.scene",s.revision));
         let next=s.directory.join("canvas-native.next");
         let result=(||{
             let generation=format!("{}:{}:{}{suffix}",s.owner.document_id,s.owner.session_epoch,s.revision);
+            let write_started=std::time::Instant::now();
             let write=||document.write(&next,&generation,&warnings,cancel);
             let store=match write(){
                 Err(error) if error.kind()==std::io::ErrorKind::StorageFull && !s.recent_materials.0.is_empty()=>{
@@ -278,10 +328,21 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
                 }
                 result=>result.map_err(issue)?,
             };
+            let snapshot_write_ns=write_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
             check_cancel(cancel).map_err(issue)?;
             fs::rename(&next,&path).map_err(issue)?;
+            let window_write_ns=s.snapshot_account.window_write_ns.load(std::sync::atomic::Ordering::Relaxed);
+            let phases=Phases{
+                read_ns:s.snapshot_account.read_ns.load(std::sync::atomic::Ordering::Relaxed),
+                convert_ns:s.snapshot_account.convert_ns.load(std::sync::atomic::Ordering::Relaxed).saturating_sub(window_write_ns),
+                window_write_ns, snapshot_write_ns,
+                read_bytes:s.snapshot_account.read_bytes.load(std::sync::atomic::Ordering::Relaxed),
+                window_write_bytes:s.snapshot_account.window_write_bytes.load(std::sync::atomic::Ordering::Relaxed),
+                store_bytes:store.bytes,
+                window_writes:s.snapshot_account.window_writes.load(std::sync::atomic::Ordering::Relaxed),
+            };
             let mut snapshot=Snapshot{scope:scope.clone(),revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,
-                nodes:document.nodes.len(),roots:work.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some(),navigation:None};
+                nodes:document.nodes.len(),roots:work.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some(),navigation:None,phases};
             if let Some(window)=navigation_window{
                 let margin=32.;
                 let left=work.items.iter().map(|i|i.placed.x-margin).fold(f64::INFINITY,f64::min).max(window.x).max(layout.bounds.x);
@@ -315,5 +376,6 @@ pub(super) fn snapshot_descriptor(snapshot:&Snapshot,owner:&Owner)->Value {
     // capability, never forward this native filesystem descriptor to UI code.
     json!({"owner":owner,"revision":snapshot.revision,"path":snapshot.path,"bytes":snapshot.store.bytes,"store":snapshot.store,
         "scope":snapshot.scope,"pageId":snapshot.page_id,"stageId":snapshot.stage_id,"nodes":snapshot.nodes,"roots":snapshot.roots,
-        "bounds":snapshot.bounds,"warnings":snapshot.warnings,"rasterProfile":snapshot.raster_profile,"colorManaged":snapshot.color_managed})
+        "bounds":snapshot.bounds,"warnings":snapshot.warnings,"rasterProfile":snapshot.raster_profile,"colorManaged":snapshot.color_managed,
+        "phases":snapshot.phases.json()})
 }

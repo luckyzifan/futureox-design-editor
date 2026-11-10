@@ -179,7 +179,8 @@ test('native canvas snapshots expose only opaque, window-and-revision-bound capa
  const host=new LargeDocumentHost(async(method,params)=>{
   if(method==='large.open')return live={...status({documentId:params.documentId,sessionEpoch:params.sessionEpoch}),format:'sketch'}
   if(method==='large.canvasSnapshot'){snapshotCalls++;return {owner:live.owner,revision:live.revision,path:`/native/cache/canvas-native-${live.revision}.scene`,bytes:600*1024**2,
-   store:{generation:`${live.owner.documentId}:${live.owner.sessionEpoch}:${live.revision}`,documentId:live.owner.documentId,bytes:600*1024**2,nodes:124447,footerHash:Array(32).fill(42)},nodes:124447,roots:306,pageId:'page',stageId:'stage',bounds:{x:0,y:0,width:20000,height:30000},warnings:[],rasterProfile:'figma',colorManaged:true}}
+   store:{generation:`${live.owner.documentId}:${live.owner.sessionEpoch}:${live.revision}`,documentId:live.owner.documentId,bytes:600*1024**2,nodes:124447,footerHash:Array(32).fill(42)},nodes:124447,roots:306,pageId:'page',stageId:'stage',bounds:{x:0,y:0,width:20000,height:30000},warnings:[],rasterProfile:'figma',colorManaged:true,
+   phases:{readNs:1,convertNs:2,windowWriteNs:0,snapshotWriteNs:3,readBytes:4,windowWriteBytes:0,storeBytes:600*1024**2,windowWrites:0}}}
   if(method==='large.canvasPreview')return {phase:'ready',image:{width:1,height:1,scale:1/30000,png:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+nHoQAAAAASUVORK5CYII='}}
   if(method==='large.apply')return live={...live,revision:live.revision+1}
   throw Error(method)
@@ -187,7 +188,8 @@ test('native canvas snapshots expose only opaque, window-and-revision-bound capa
  const opened=await host.open(),request={owner:opened.owner,expectedRevision:0}
  await assert.rejects(()=>host.canvasSnapshot({...request,path:'/renderer/forged'}),/Invalid/)
  const snapshot=await host.canvasSnapshot(request)
- assert.equal(snapshot.bytes,600*1024**2);assert.equal(Object.hasOwn(snapshot,'path'),false);assert.equal(Object.hasOwn(snapshot,'hash'),false);assert.equal(Object.hasOwn(snapshot,'store'),false)
+  assert.equal(snapshot.bytes,600*1024**2);assert.equal(Object.hasOwn(snapshot,'path'),false);assert.equal(Object.hasOwn(snapshot,'hash'),false);assert.equal(Object.hasOwn(snapshot,'store'),false)
+  assert.equal(snapshot.phases.storeBytes,snapshot.bytes);assert.equal(snapshot.phases.windowWrites,0);assert.equal(snapshot.phases.readBytes,4)
  await assert.rejects(()=>host.canvasPreview({...request,token:'different'}),/Stale/)
  const preview=await host.canvasPreview({...request,token:snapshot.token})
  assert.equal(preview.phase,'ready');assert.equal(preview.width,1)

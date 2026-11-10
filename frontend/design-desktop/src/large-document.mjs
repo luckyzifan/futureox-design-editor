@@ -233,10 +233,17 @@ export class LargeDocumentHost {
       !object(box)||!['x','y','width','height'].every(key=>typeof box[key]==='number'&&Number.isFinite(box[key]))||box.width<=0||box.height<=0||
       !['analytic','figma','figmaSubpixel','figmaSoftware'].includes(result.rasterProfile)||typeof result.colorManaged!=='boolean'||
       !Array.isArray(result.warnings)||result.warnings.some(value=>typeof value!=='string'))throw Error('Invalid native canvas snapshot')
+    const phaseNames=['convertNs','readBytes','readNs','snapshotWriteNs','storeBytes','windowWriteBytes','windowWriteNs','windowWrites']
+    let phases
+    if(result.phases!==undefined){
+      if(!object(result.phases)||Object.keys(result.phases).sort().join(',')!==phaseNames.join(',')||
+        phaseNames.some(key=>!integer(result.phases[key]))||result.phases.storeBytes!==result.bytes)throw Error('Invalid snapshot phases')
+      phases={...result.phases}
+    }
     const token=randomUUID(),revision=result.revision
     const descriptor=Object.freeze({path:result.path,store:Object.freeze({...result.store,footerHash:Object.freeze([...result.store.footerHash])}),documentId:value.owner.documentId,pageId:result.pageId,stageId:result.stageId,nodes:result.nodes})
     const snapshot={token,revision,scope,descriptor,public:{...(keys?{materialKeys:keys}:{}),owner:{...value.owner},revision,token,bytes:result.bytes,nodes:result.nodes,roots:result.roots,
-      pageId:result.pageId,stageId:result.stageId,bounds:{...box},warnings:[...result.warnings],rasterProfile:result.rasterProfile,colorManaged:result.colorManaged}}
+      pageId:result.pageId,stageId:result.stageId,bounds:{...box},warnings:[...result.warnings],rasterProfile:result.rasterProfile,colorManaged:result.colorManaged,...(phases?{phases}:{})}}
     active.snapshot=snapshot
     this.#rememberScene(snapshot)
     return snapshot.public

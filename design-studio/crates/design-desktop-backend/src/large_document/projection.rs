@@ -3,8 +3,35 @@
 //! live scene nodes or implicitly deleted by a working-set commit.
 use super::*;
 use futureox_design_kernel::{interop, scene::Document};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
+use std::time::Instant;
+
+thread_local! {
+    static READ_ACCOUNT_ON: Cell<bool> = const { Cell::new(false) };
+    static READ_ACCOUNT: Cell<(u64, u128)> = const { Cell::new((0, 0)) };
+}
+pub(super) fn begin_read_account() {
+    READ_ACCOUNT_ON.with(|slot| slot.set(true));
+    READ_ACCOUNT.with(|slot| slot.set((0, 0)));
+}
+pub(super) fn end_read_account() -> (u64, u128) {
+    READ_ACCOUNT_ON.with(|slot| slot.set(false));
+    READ_ACCOUNT.with(|slot| {
+        let measured = slot.get();
+        slot.set((0, 0));
+        measured
+    })
+}
+fn note_read(bytes: u64, started: Instant) {
+    if !READ_ACCOUNT_ON.with(|slot| slot.get()) { return; }
+    let ns = started.elapsed().as_nanos();
+    READ_ACCOUNT.with(|slot| {
+        let (read_bytes, read_ns) = slot.get();
+        slot.set((read_bytes.saturating_add(bytes), read_ns.saturating_add(ns)));
+    });
+}
 
 /// Shared only within one immutable source revision/build. The metadata and
 /// symbol locator cache never survive a save, undo or source replacement.
@@ -66,10 +93,13 @@ pub(super) struct Projection {
     document: Document,
 }
 fn read_span(s: &Session, p: usize, span: Span) -> Result<Vec<u8>> {
+    let started = Instant::now();
     let mut file = File::open(s.directory.join(&s.parts[p].file)).map_err(issue)?;
-    s.state.changes[p]
+    let bytes = s.state.changes[p]
         .fragment(&mut file, span, s.parts[p].base_bytes)
-        .map_err(issue)
+        .map_err(issue)?;
+    note_read(bytes.len() as u64, started);
+    Ok(bytes)
 }
 pub(super) fn read_window(s: &Session, p: usize, span: Span, limit: u64) -> Result<Vec<u8>> {
     if span.len() > limit {
@@ -77,6 +107,7 @@ pub(super) fn read_window(s: &Session, p: usize, span: Span, limit: u64) -> Resu
             "Source subtree exceeds the bounded conversion window; select a smaller subtree",
         ));
     }
+    let started = Instant::now();
     let mut file = File::open(s.directory.join(&s.parts[p].file)).map_err(issue)?;
     let mut source = s.state.changes[p]
         .reader(&mut file, s.parts[p].base_bytes)
@@ -90,6 +121,7 @@ pub(super) fn read_window(s: &Session, p: usize, span: Span, limit: u64) -> Resu
     if bytes.len() as u64 != span.len() {
         return Err(issue("Truncated source window"));
     }
+    note_read(bytes.len() as u64, started);
     Ok(bytes)
 }
 pub(super) fn field(s: &Session, p: usize, n: usize, key: &str) -> Result<Vec<u8>> {

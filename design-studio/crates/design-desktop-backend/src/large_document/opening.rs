@@ -600,13 +600,14 @@ fn selected_snapshot(c:&Catalog, i:usize, parts:&[Part], dir:&Path, owner:&Owner
     let next=dir.join("opening-material.next");
     let result=(||{
         let store=doc.write(&next,&generation,&warnings,cancel).map_err(issue)?;
+        let store_bytes=store.bytes;
         super::check_cancel(cancel).map_err(issue)?;
         fs::rename(&next,&path).map_err(issue)?;
         Ok(canvas_snapshot::snapshot_descriptor(&canvas_snapshot::Snapshot{
             scope:Some(scope),revision:0,path,store,page_id:doc.pages[0].id.clone(),stage_id,
             nodes:doc.nodes.len(),roots:1,bounds:c.bounds,warnings,
             raster_profile:doc.raster_profile.unwrap_or(RasterProfile::Analytic),
-            color_managed:doc.color_management.is_some(),navigation:None,
+            color_managed:doc.color_management.is_some(),navigation:None,phases:canvas_snapshot::Phases{store_bytes,..canvas_snapshot::Phases::default()},
         },owner))
     })();
     if result.is_err(){let _=fs::remove_file(next);}

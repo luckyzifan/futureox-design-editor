@@ -1188,3 +1188,148 @@ fn selection_export_promotes_roots_keeps_required_masters_and_does_not_save_the_
     assert_eq!(grouped["layers"].as_array().unwrap().len(),1);
     assert_eq!(grouped["layers"][0]["layers"][0]["do_objectID"],RECT);
 }
+
+fn file_sha256(path: &Path) -> String {
+    let mut file = File::open(path).unwrap();
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 1024 * 1024];
+    loop {
+        let n = file.read(&mut buffer).unwrap();
+        if n == 0 { break; }
+        hasher.update(&buffer[..n]);
+    }
+    digest_hex(hasher.finalize().as_slice())
+}
+fn proc_status_kb(key: &str) -> u64 {
+    let text = fs::read_to_string("/proc/self/status").unwrap_or_default();
+    text.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        (name == key).then(|| value.split_whitespace().next()?.parse().ok())?
+    }).unwrap_or(0)
+}
+
+/// Production `large.canvasSnapshot` + `load_source_snapshot` on the real topology
+/// source. This is not a Mac/Electron/Metal/GUI result and does not time tile drawing.
+#[test]
+#[ignore = "Real topology source; set absolute TOPOLOGY_SKETCH. Not Mac/Electron/Metal."]
+fn topology_source_snapshot_load_measures_production_entries() {
+    let source = std::env::var_os("TOPOLOGY_SKETCH").map(PathBuf::from).expect("TOPOLOGY_SKETCH");
+    assert!(source.is_absolute(), "TOPOLOGY_SKETCH must be absolute");
+    let before_hash = file_sha256(&source);
+    let before_len = fs::metadata(&source).unwrap().len();
+    let font = fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap();
+    let samples: usize = std::env::var("SNAPSHOT_SAMPLES").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+    assert!(samples >= 1, "SNAPSHOT_SAMPLES must be at least 1");
+    let mut rows = Vec::new();
+    for index in 0..samples {
+        let root = std::env::temp_dir().join(format!("topology-snapshot-load-{}-{}", std::process::id(), index));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let sessions = Sessions::new(root.join("cache"));
+        let cancel = AtomicBool::new(false);
+        let open_at = std::time::Instant::now();
+        let status = sessions.open(Open {
+            opening_preview: false,
+            path: source.clone(),
+            document_id: format!("topology-snapshot-{index}"),
+            session_epoch: 1,
+        }, &cancel).unwrap();
+        let open_ms = open_at.elapsed().as_secs_f64() * 1000.0;
+        let request = Fixture::request(&status, json!({"navigationPreview": false}));
+        let snap_at = std::time::Instant::now();
+        let snapshot = sessions.dispatch("large.canvasSnapshot", request, &cancel).unwrap();
+        let snapshot_ms = snap_at.elapsed().as_secs_f64() * 1000.0;
+        let snap_rss = proc_status_kb("VmRSS");
+        let snap_hwm = proc_status_kb("VmHWM");
+        let warm_at = std::time::Instant::now();
+        let warm = sessions.dispatch("large.canvasSnapshot", Fixture::request(&status, json!({"navigationPreview": false})), &cancel).unwrap();
+        let warm_ms = warm_at.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(warm, snapshot, "warm descriptor must reuse the cold snapshot");
+        let scene_path = PathBuf::from(snapshot["path"].as_str().unwrap());
+        let scene_bytes = snapshot["bytes"].as_u64().unwrap();
+        assert_eq!(fs::metadata(&scene_path).unwrap().len(), scene_bytes);
+        let scene_hash = file_sha256(&scene_path);
+        let descriptor = json!({
+            "path": snapshot["path"], "store": snapshot["store"],
+            "documentId": snapshot["owner"]["documentId"], "pageId": snapshot["pageId"],
+            "stageId": snapshot["stageId"], "nodes": snapshot["nodes"],
+        });
+        let mut preparation = futureox_design_kernel::preparation::Preparation::new(&font).unwrap();
+        let load_at = std::time::Instant::now();
+        let loaded = preparation.request("canvas", "load_source_snapshot", &[descriptor]).unwrap();
+        let load_ms = load_at.elapsed().as_secs_f64() * 1000.0;
+        let load_rss = proc_status_kb("VmRSS");
+        let load_hwm = proc_status_kb("VmHWM");
+        assert_eq!(loaded.metadata["value"]["documentId"], snapshot["owner"]["documentId"]);
+        assert_eq!(loaded.metadata["value"]["pageId"], snapshot["pageId"]);
+        assert_eq!(loaded.metadata["value"]["stageId"], snapshot["stageId"]);
+        assert_eq!(loaded.metadata["value"]["nodes"], snapshot["nodes"]);
+        assert_eq!(file_sha256(&source), before_hash, "original topology bytes changed");
+        assert_eq!(fs::metadata(&source).unwrap().len(), before_len);
+        let row = json!({
+            "sample": index, "warmup": index == 0,
+            "openMs": open_ms, "snapshotMs": snapshot_ms, "warmDescriptorMs": warm_ms, "loadMs": load_ms,
+            "phaseMs": snapshot_ms + load_ms,
+            "nodes": snapshot["nodes"], "roots": snapshot["roots"], "storeBytes": scene_bytes,
+            "sceneSha256": scene_hash, "sourceSha256": before_hash, "sourceBytes": before_len,
+            "snapshotRssKb": snap_rss, "snapshotHwmKb": snap_hwm, "loadRssKb": load_rss, "loadHwmKb": load_hwm,
+            "navigationPreview": false, "phases": snapshot["phases"],
+        });
+        eprintln!("SNAPSHOT_LOAD_SAMPLE {}", row);
+        rows.push(row);
+        drop(preparation);
+        drop(sessions);
+        let _ = fs::remove_dir_all(root);
+    }
+    eprintln!("SNAPSHOT_LOAD_DONE {}", json!({"samples": rows, "sourceSha256": before_hash}));
+}
+
+#[test]
+fn full_source_snapshot_does_not_repeat_singleton_window_serialization() {
+    // Three roots above the pairing size, still under the 4 MiB fragment limit.
+    // The last root is its own batch. The old full-source path serialized that
+    // singleton before writing the merged scene; the merged scene is the copy
+    // load_source_snapshot reads.
+    let pad = "x".repeat(3 * 1024 * 1024);
+    let layer = |id, name, x| json!({"_class":"rectangle","do_objectID":id,"name":name,
+        "frame":{"x":x,"y":0,"width":20,"height":20},"privateUnknown":{"pad":pad}});
+    let third = "10000000-0000-4000-8000-000000000003";
+    let page = json!({"_class":"page","do_objectID":PAGE,"name":"source page","layers":[
+        layer(RECT, "original rectangle", 0), layer(OTHER, "cold sibling", 40), layer(third, "tail", 80)]});
+    let (f, status) = Fixture::new(&page.to_string());
+    let before = f.snapshot();
+    let full = f.call(&status, "large.canvasSnapshot", json!({})).unwrap();
+    assert_eq!(full["roots"], 3);
+    assert_eq!(full["phases"]["windowWrites"], 0);
+    assert_eq!(full["phases"]["windowWriteBytes"], 0);
+    assert_eq!(full["phases"]["storeBytes"], full["bytes"]);
+    assert!(full["phases"]["readBytes"].as_u64().unwrap() > 8 * 1024 * 1024);
+    {
+        let slot = f.sessions.current.lock().unwrap();
+        let session = slot.as_ref().unwrap();
+        assert!(session.converted_windows.lock().unwrap().files().is_empty());
+        assert_eq!(session.snapshot_account.builds, 1);
+        assert_eq!(session.snapshot_account.scene_writes, 1);
+    }
+    let again = f.call(&status, "large.canvasSnapshot", json!({})).unwrap();
+    assert_eq!(again, full);
+    let store = serde_json::from_value(full["store"].clone()).unwrap();
+    let (doc, _) = futureox_design_kernel::scene_store::Reader::open(
+        Path::new(full["path"].as_str().unwrap()), &store, &AtomicBool::new(false)).unwrap()
+        .into_document(&AtomicBool::new(false)).unwrap();
+    assert_eq!(doc.nodes.len(), full["nodes"].as_u64().unwrap() as usize);
+    assert_eq!(doc.pages[0].children, vec![full["stageId"].as_str().unwrap()]);
+    let layout = f.call(&status, "large.canvasLayout", json!({})).unwrap();
+    let keys: Vec<_> = layout["items"].as_array().unwrap().iter().map(|row| row["key"].clone()).collect();
+    let scoped = f.call(&status, "large.canvasSnapshot", json!({"materialKeys": keys})).unwrap();
+    assert_eq!(scoped["roots"], 3);
+    assert!(scoped["phases"]["windowWrites"].as_u64().unwrap() >= 1);
+    assert!(scoped["phases"]["windowWriteBytes"].as_u64().unwrap() > 0);
+    {
+        let slot = f.sessions.current.lock().unwrap();
+        assert!(!slot.as_ref().unwrap().converted_windows.lock().unwrap().files().is_empty());
+    }
+    let after = f.snapshot();
+    assert_eq!(before.0, after.0);
+    assert_eq!(f.export_members(&status, "singleton-window-original.sketch"), f.members);
+}
