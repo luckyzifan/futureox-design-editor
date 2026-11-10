@@ -1,6 +1,16 @@
 import type { Matrix, Point } from './model'
 import { apply, bounds, boxPoints } from './geometry'
 
+/** Own-paint rotation draws the moving outline. The document outline is still
+ * the pre-gesture quad while preview is deferred, so it must not also paint. */
+export function rotationDocumentChromeSuppressed(input: {
+  kind: string | undefined
+  sourcePaint: boolean
+  holding: boolean
+}): boolean {
+  return input.kind === 'rotate' && input.sourcePaint && !input.holding
+}
+
 /** The blue box stays on the texture still showing. A gesture-follow snapshot
  * already moves its own outline with those pixels, so this hold does not apply
  * while that layer is placing the snapshot. */
