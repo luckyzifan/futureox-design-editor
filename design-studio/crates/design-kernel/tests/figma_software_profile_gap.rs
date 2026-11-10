@@ -6,6 +6,7 @@ use futureox_design_kernel::fidelity::resolve_software_sample_planes_2x;
 use futureox_design_kernel::software_raster::sample_bytes;
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 fn references() -> (std::path::PathBuf, Vec<Value>) {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -105,6 +106,45 @@ fn software_profile_matches_the_bit_exact_browser_references() {
             );
         }
     }
+}
+
+/// The frozen Chrome PNG for radius 4, offset (0, 4), opacity 0.25.
+/// On main `5bef88b` the figma CPU export differed in 668 pixels, max channel 2.
+/// The export-grid tent leaves 429 pixels, max channel 1. The reference bytes
+/// stay the oracle; this does not claim a zero-error match.
+#[test]
+fn figma_radius4_outer_shadow_moves_closer_to_the_frozen_chrome_png() {
+    let (root, cases) = references();
+    let case = cases.iter().find(|case| case["id"] == "shadow").unwrap();
+    let reference = root.join(case["reference"].as_str().unwrap());
+    let png = std::fs::read(&reference).unwrap();
+    let digest: [u8; 32] = Sha256::digest(&png).into();
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    assert_eq!(
+        hex,
+        "40ba48ba82e2796732fb201e8609de3071879df1613a8d5cf58a24db139c22f9"
+    );
+    let expected = image::open(&reference).unwrap().into_rgba8();
+    let actual = render(case, "figma", 1);
+    assert_eq!(actual.len(), expected.as_raw().len());
+    let mut different = 0usize;
+    let mut max_channel = 0u8;
+    for (got, want) in actual.chunks_exact(4).zip(expected.as_raw().chunks_exact(4)) {
+        if got != want {
+            different += 1;
+            max_channel = got
+                .iter()
+                .zip(want)
+                .map(|(a, b)| a.abs_diff(*b))
+                .fold(max_channel, u8::max);
+        }
+    }
+    assert!(
+        different < 668 && max_channel <= 1,
+        "regression against main 668/2: different={different} max={max_channel}"
+    );
+    assert_eq!(different, 429);
+    assert_eq!(max_channel, 1);
 }
 
 #[test]

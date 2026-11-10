@@ -3890,12 +3890,21 @@ impl Painter<'_> {
                 }
             } else if fx.kind == "shadow" || fx.kind == "inner-shadow" {
                 let inner = fx.kind == "inner-shadow";
-                let alpha = effects::shadow_alpha(
-                    &resolved,
-                    self.blur_filter(fx.blur_radius() * scale),
-                    fx.spread * scale,
-                    inner,
-                )?;
+                let alpha = if self.compatible && self.profile.is_export() {
+                    effects::shadow_alpha_export_half(
+                        &resolved,
+                        fx.blur_radius() * scale / 2.,
+                        fx.spread * scale / 2.,
+                        inner,
+                    )?
+                } else {
+                    effects::shadow_alpha(
+                        &resolved,
+                        self.blur_filter(fx.blur_radius() * scale),
+                        fx.spread * scale,
+                        inner,
+                    )?
+                };
                 let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
                 let pointwise = fx.radius == 0.
                     && fx.spread == 0.
@@ -4423,12 +4432,21 @@ impl Painter<'_> {
                     let basis = shadow_basis.as_ref().unwrap();
                     let mut shadow = if self.compatible {
                         let inner = fx.kind == "inner-shadow";
-                        let alpha = effects::shadow_alpha(
-                            basis,
-                            self.blur_filter(fx.radius * scale),
-                            fx.spread * scale,
-                            inner,
-                        )?;
+                        let alpha = if self.profile.is_export() {
+                            effects::shadow_alpha_export_half(
+                                basis,
+                                fx.blur_radius() * scale / 2.,
+                                fx.spread * scale / 2.,
+                                inner,
+                            )?
+                        } else {
+                            effects::shadow_alpha(
+                                basis,
+                                self.blur_filter(fx.radius * scale),
+                                fx.spread * scale,
+                                inner,
+                            )?
+                        };
                         let painted = crate::color::pixel(
                             self.doc.color_management,
                             &fx.color,

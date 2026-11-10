@@ -987,6 +987,65 @@ pub(crate) fn shadow_alpha(
     }
 }
 
+/// Figma exports supersample coverage by 2, then reduce. A device-pixel tent
+/// whose radius was multiplied by that scale does not reduce to the tent of
+/// the authored radius on the export grid. The frozen radius-4 outer shadow
+/// follows the export-pixel tent. Blur alpha on that grid and replicate it
+/// into the supersampled surface so the existing reducer returns it.
+pub(crate) fn shadow_alpha_export_half(
+    surface: &Surface,
+    radius: f64,
+    spread: f64,
+    inner: bool,
+) -> Result<Surface, String> {
+    if !radius.is_finite() || !(0. ..=512.).contains(&radius) || !spread.is_finite() {
+        return Err("Invalid export shadow filter".into());
+    }
+    let rect = surface.rect;
+    if rect.w == 0 || rect.h == 0 {
+        return surface.try_clone();
+    }
+    let hx0 = rect.x.div_euclid(2);
+    let hy0 = rect.y.div_euclid(2);
+    let hx1 = (rect.right() - 1).div_euclid(2) + 1;
+    let hy1 = (rect.bottom() - 1).div_euclid(2) + 1;
+    let (Ok(half_w), Ok(half_h)) = (u32::try_from(hx1 - hx0), u32::try_from(hy1 - hy0)) else {
+        return Err("Export shadow bin is empty".into());
+    };
+    let half_rect = Rect::new(hx0, hy0, half_w, half_h);
+    let mut half = surface.new_like(half_rect)?;
+    for hy in hy0..hy1 {
+        for hx in hx0..hx1 {
+            let mut sum = 0u32;
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let sample = surface.at(hx * 2 + dx, hy * 2 + dy).0[3];
+                    sum += (sample * 255.).round_ties_even() as u32;
+                }
+            }
+            let q = sum / 4;
+            let remainder = sum % 4;
+            let byte = q + u32::from(remainder > 2 || (remainder == 2 && q % 2 == 1));
+            half.pixels[half_rect.index(hx, hy).expect("export shadow bin")] =
+                Pixel([0., 0., 0., byte as f32 / 255.]);
+        }
+    }
+    let blurred = shadow_alpha(
+        &half,
+        BlurFilter::PortableTent(f64::from(radius as f32)),
+        spread,
+        inner,
+    )?;
+    let mut out = surface.new_like(rect)?;
+    for y in rect.y..rect.bottom() {
+        for x in rect.x..rect.right() {
+            out.pixels[rect.index(x, y).expect("export shadow")] =
+                blurred.at(x.div_euclid(2), y.div_euclid(2));
+        }
+    }
+    Ok(out)
+}
+
 /// A square of exact ones stays one through every box pass. Blur only the
 /// band that can see a non-one sample, and write the proved interior as one.
 fn blur_alpha_outside_solid_core(alpha: Surface, sigma: f64) -> Result<Surface, String> {
