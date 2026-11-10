@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { acceptNativeSample, densityCertifiesDemand, frameHandoff, partialSharpSample, settledCoverageChoice } from './frame-handoff'
+import { acceptNativeSample, densityCertifiesDemand, frameHandoff, partialSharpSample, settledCoverageChoice, viewportPreviewRole } from './frame-handoff'
 
 const ready = {
   sameRevision: true,
@@ -47,6 +47,18 @@ test('a stale high zoom does not certify the current low-zoom sample', () => {
   expect(strip.tiles.map(tile => tile.key)).toEqual(['strip'])
   expect(strip.certify).toBe(true)
   expect(strip.continuity).toBe(true)
+})
+
+test('a continuous-zoom preview keeps same-revision detail and still replaces a foreign picture', () => {
+  expect(viewportPreviewRole({ preview: false, exact: true, foreignShown: false, sameRevisionDetail: 4, sharperThanShown: false })).toBe('omit')
+  expect(viewportPreviewRole({ preview: true, exact: true, foreignShown: false, sameRevisionDetail: 0, sharperThanShown: false })).toBe('exclusive')
+  expect(viewportPreviewRole({ preview: true, exact: false, foreignShown: false, sameRevisionDetail: 0, sharperThanShown: true })).toBe('omit')
+  expect(viewportPreviewRole({ preview: true, exact: true, foreignShown: true, sameRevisionDetail: 0, sharperThanShown: false })).toBe('exclusive')
+  expect(viewportPreviewRole({ preview: true, exact: false, foreignShown: true, sameRevisionDetail: 0, sharperThanShown: false })).toBe('omit')
+  expect(viewportPreviewRole({ preview: true, exact: true, foreignShown: false, sameRevisionDetail: 2, sharperThanShown: false })).toBe('under')
+  expect(viewportPreviewRole({ preview: true, exact: false, foreignShown: false, sameRevisionDetail: 2, sharperThanShown: false })).toBe('under')
+  expect(viewportPreviewRole({ preview: true, exact: true, foreignShown: true, sameRevisionDetail: 1, sharperThanShown: true })).toBe('above')
+  expect(viewportPreviewRole({ preview: true, exact: true, foreignShown: false, sameRevisionDetail: Number.NaN, sharperThanShown: true })).toBe('omit')
 })
 
 test('a regional sample is partial-sharp and never screen-ready', () => {

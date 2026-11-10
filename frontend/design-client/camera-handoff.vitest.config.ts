@@ -13,6 +13,10 @@ export default defineConfig({
       'src/kernel/source-overview-handoff.test.ts',
       'src/kernel/source-material-refinement.test.ts',
       'src/kernel/native-navigation-handoff.test.ts',
-    ],
+      'src/kernel/frame-handoff.test.ts',
+      'src/kernel/continuous-zoom-scale.test.ts',
+      'src/kernel/zoom-in-frame.test.ts',
+      'src/kernel/NativeSourceSurface.pipeline.test.tsx',
+],
   },
 })

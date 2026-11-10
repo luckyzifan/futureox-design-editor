@@ -61,6 +61,36 @@ export function partialSharpSample(input: {
   }) === 'partial-sharp'
 }
 
+/** How a viewport preview may meet pixels that are already on screen.
+ *  `exclusive` is a cold picture or a different revision: the preview is the
+ *  only image, so two revisions are never composited.
+ *  `under` keeps same-revision residents and partial sharp regions. The
+ *  preview only fills holes. Publishing it alone, then restoring the old
+ *  frame on the next wheel tick, is the continuous-zoom flash.
+ *  `above` is the same continuity when this preview is at least twice as
+ *  dense. It stays in the stack while it still intersects; it is not a
+ *  one-sample replacement that the next camera withdraws.
+ *  `omit` leaves the existing choice unchanged. */
+export type ViewportPreviewRole = 'exclusive' | 'above' | 'under' | 'omit'
+
+export function viewportPreviewRole(input: {
+  preview: boolean
+  /** Capture camera and coverage match the live view. A mismatched record
+   * must not become the sole picture. */
+  exact: boolean
+  foreignShown: boolean
+  sameRevisionDetail: number
+  /** Preview samples at least twice the shown same-revision detail. */
+  sharperThanShown: boolean
+}): ViewportPreviewRole {
+  if (!input.preview) return 'omit'
+  const detail = input.sameRevisionDetail
+  if (!Number.isFinite(detail) || detail < 0) return 'omit'
+  if (input.foreignShown && detail === 0) return input.exact ? 'exclusive' : 'omit'
+  if (detail > 0) return input.sharperThanShown ? 'above' : 'under'
+  return input.exact ? 'exclusive' : 'omit'
+}
+
 export function frameHandoff(input: {
   sameRevision: boolean
   sameCamera: boolean
