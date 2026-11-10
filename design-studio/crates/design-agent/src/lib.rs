@@ -204,8 +204,9 @@ async fn activate_provider(State(core): State<AgentCore>, Json(body): Json<Value
 
 async fn remove_provider(State(core): State<AgentCore>, Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
     let id = body.get("id").and_then(Value::as_str).unwrap_or("");
-    core.inner.providers.write().await.remove(id).map_err(ApiError)?;
-    Ok(Json(json!({ "ok": true })))
+    let mut providers = core.inner.providers.write().await;
+    let active = providers.remove(id).map_err(ApiError)?;
+    Ok(Json(json!({ "ok": true, "active": active })))
 }
 
 async fn ccswitch_handler() -> Json<CcSwitchSnapshot> {

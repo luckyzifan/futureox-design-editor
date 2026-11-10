@@ -30,6 +30,21 @@
 .agent-settings { display: flex; flex-direction: column; gap: 10px; }
 .agent-settings label { display: flex; flex-direction: column; gap: 4px; }
 .agent-settings input, .agent-settings select { min-height: 32px; padding: 6px 10px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-field); color: var(--workspace-text); }
-.agent-settings ul { margin: 0; padding-left: 18px; }
-.design-agent-panel [role=alert] { color: var(--workspace-danger); }
+.agent-settings ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.agent-settings li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 0; padding: 8px 10px; border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-field); }
+.agent-settings li:not(.is-active) { cursor: pointer; }
+.agent-settings li.is-active { border-color: var(--workspace-accent, #3459d4); box-shadow: inset 3px 0 0 var(--workspace-accent, #3459d4); cursor: default; }
+.agent-settings .agent-saved-summary { min-width: 0; line-height: 1.5; }
+.agent-settings .agent-saved-actions { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
+.agent-settings .agent-connection-action { min-height: 32px; padding: 4px 10px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-panel); color: var(--workspace-text); }
+.agent-settings .agent-connection-action:not(:disabled):hover { background: var(--workspace-hover); }
+.agent-settings .agent-connection-action:disabled { opacity: 0.55; cursor: not-allowed; }
+.agent-settings .agent-connection-action.danger:not(:disabled):hover { color: var(--workspace-danger, #b42318); border-color: var(--workspace-danger, #b42318); }
+.agent-settings > button { align-self: flex-start; min-height: 32px; padding: 6px 12px; border: 1px solid var(--workspace-accent, #3459d4); border-radius: 8px; background: var(--workspace-accent, #3459d4); color: #fff; }
+.agent-settings > button:not(:disabled):hover { background: var(--workspace-accent-hover, #2747b6); }
+.agent-settings button { transition: background-color 160ms var(--workspace-ease, ease), border-color 160ms var(--workspace-ease, ease), color 160ms var(--workspace-ease, ease); }
+.agent-settings [role=alert], .design-agent-panel [role=alert] { color: var(--workspace-danger, #b42318); }
+@media (prefers-reduced-motion: reduce) {
+  .agent-settings button { transition: none; }
+}
 .design-agent-failure { margin: 0; padding: 8px 10px; border: 1px solid var(--workspace-danger); border-radius: 8px; background: var(--workspace-field); }

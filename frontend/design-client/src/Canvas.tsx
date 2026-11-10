@@ -3168,6 +3168,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   }
                 }
                 const marks: React.ReactNode[] = []
+                // Zero-radius rectangles must still support direct corner rounding.
                 if (rectangleCornerTarget(n)) {
                   const corners: readonly CornerIndex[] = n.radii.every(radius => radius === n.radii[0]) ? [0] : [0, 1, 2, 3]
                   corners.forEach((index) => {

@@ -1712,6 +1712,14 @@ footer button {
 .editor-shell .editor-header .document-title { grid-column: 2; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: 26px 18px; gap: 2px 4px; padding: 10px 10px 8px 14px; min-width: 0; contain: inline-size; background: var(--workspace-panel); border-bottom: 1px solid var(--workspace-border); z-index: 30; }
 .editor-shell .document-title input { grid-column: 1; grid-row: 1; width: 100%; min-width: 0; padding: 0; font-weight: 600; font-size: 12px; text-overflow: ellipsis; }
 .editor-shell .document-title .document-location { display: block; grid-column: 1 / -1; grid-row: 2; justify-self: start; padding: 0; font-size: 11px; }
+.editor-shell .document-title .document-location:hover,
+.editor-shell .document-title .document-location:focus-visible { color: var(--workspace-text); }
+/* The 1250px header hides .document-location. In the shell that label is the
+   only persistent library entry once Figma workspace drops the duplicate rail
+   control, so the shell keeps it visible at the same breakpoint. */
+@media (max-width: 1250px) {
+  .editor-shell .document-title .document-location { display: block; }
+}
 .editor-shell .document-title > button[aria-pressed] { grid-column: 2; grid-row: 1; width: 28px; padding: 4px; }
 .editor-shell .document-title > b, .editor-shell .document-title .draft-badge { display: none; }
 .editor-shell .layers-panel { grid-column: 2; grid-row: 3; }
