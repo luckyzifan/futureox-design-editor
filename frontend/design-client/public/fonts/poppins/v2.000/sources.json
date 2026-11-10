@@ -1,0 +1,38 @@
+{
+  "family": "Poppins",
+  "version": "2.000",
+  "license": "OFL-1.1",
+  "licenseFile": "../OFL.txt",
+  "foundry": "Indian Type Foundry",
+  "copyright": "Copyright (c) 2014 Indian Type Foundry (info@indiantypefoundry.com)",
+  "sourceCommit": "c93ee27fc0",
+  "source": "https://github.com/google/fonts/tree/c93ee27fc0/ofl/poppins",
+  "note": "FIG fontDigest is the SHA-1 of the font file Figma shaped with. These Version 2.000 files are that source for the 01有料素材 series. The Version 4 files in the parent directory are a different cut: same family name, different advances. A digest match uses this directory; a different digest must not reuse these bytes.",
+  "files": [
+    {
+      "file": "Poppins-Regular.ttf",
+      "style": "Regular",
+      "postscript": "Poppins-Regular",
+      "sha1": "58ca484f2ec5b8817a63136af362e1db1d29d49e",
+      "sha256": "4554cfac77e8cefa48f89ffcd4f1705f7c02ee34bd9b25415d1208065e4edb52",
+      "bytes": 256920
+    },
+    {
+      "file": "Poppins-Medium.ttf",
+      "style": "Medium",
+      "postscript": "Poppins-Medium",
+      "sha1": "01be8feaed323d19eeccf16fd79ea3b74206cfdb",
+      "sha256": "2f0180fd06a508c270696893eec11bb01fe595be9cb88cd2122bc33e638f6f6f",
+      "bytes": 275044
+    },
+    {
+      "file": "Poppins-Bold.ttf",
+      "style": "Bold",
+      "postscript": "Poppins",
+      "sha1": "45dc28c425c3ee2237440bf9cb926753c5aa3b5c",
+      "sha256": "b8b92424acfd9581c9dd74723a5627b6a5882a643b2148bd0463e9cd077d3728",
+      "bytes": 277756,
+      "note": "Version 2.000 name ID 6 is Poppins, not Poppins-Bold."
+    }
+  ]
+}

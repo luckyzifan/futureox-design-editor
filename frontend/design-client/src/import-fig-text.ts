@@ -29,12 +29,32 @@ function letterSpacingPixels(value: any, size: number): number | undefined {
 }
 const casing = (value: unknown): TextRun['textCase'] => value === 'UPPER' ? 'upper' : value === 'LOWER' ? 'lower' : value === 'ORIGINAL' ? 'original' : undefined
 
+function digestHex(bytes: unknown): string | undefined {
+  if (!(bytes instanceof Uint8Array) || bytes.length !== 20) return
+  const hex = [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('')
+  return /^[0-9a-f]{40}$/.test(hex) ? hex : undefined
+}
+function fontKey(font: any) {
+  return [font?.family, font?.style].filter(Boolean).join('\0').toLowerCase()
+}
+/** SHA-1 values FIG stored on the measured face. Empty when the file has none. */
+function figFontDigests(record: any) {
+  const byKey = new Map<string, string>()
+  for (const meta of [...(record.derivedTextData?.fontMetaData || []), ...(record.textData?.fontMetaData || [])]) {
+    const digest = digestHex(meta?.fontDigest)
+    const key = fontKey(meta?.key)
+    if (digest && key && !byKey.has(key)) byKey.set(key, digest)
+  }
+  return byKey
+}
+
 /** Embedded-schema UTF-16 style IDs, indexed once rather than searching the
  * style table per character. Original text stays editable and unmodified. */
 export function importFigTextRuns(node: DesignNode, record: any, warnings: ImportWarningSink, colorSpace: 'srgb' | 'display-p3' = 'srgb') {
   const styles = new Map<number, any>((record.textData?.styleOverrideTable || []).map((s: any)=>[s.styleID,s]))
   const ids = record.textData?.characterStyleIDs || []
-  const runs: TextRun[] = [], fonts: Record<string,string> = {}
+  const runs: TextRun[] = [], fonts: Record<string,string> = {}, runDigests: Record<string, string> = {}
+  const digests = figFontDigests(record)
   if (node.textStyle) node.textStyle.weight = weight(record.fontName?.style)
   let previous: unknown
   for (const segment of new Intl.Segmenter('und',{granularity:'grapheme'}).segment(node.text)) {
@@ -62,12 +82,24 @@ export function importFigTextRuns(node: DesignNode, record: any, warnings: Impor
     if (style.letterSpacing !== undefined && (tracking === undefined || Math.abs(tracking) > 1000)) warnings.add('文字片段 letterSpacing 尚需核对')
     else if (tracking !== undefined) run.letterSpacing = tracking
     const font=fontName(style.fontName)
-    if (font) fonts[String(runs.length)]=font
+    if (font) {
+      const index = String(runs.length)
+      fonts[index]=font
+      const digest = digests.get(fontKey(style.fontName))
+      if (digest) runDigests[index] = digest
+    }
     if (style.textAlignHorizontal !== undefined) warnings.add('文字片段 textAlignHorizontal 尚需核对')
     runs.push(run); previous=id
   }
   if (runs.length) node.textRuns=runs
-  return {style:fontName(record.fontName),runs:fonts}
+  const style = fontName(record.fontName)
+  const digest = digests.get(fontKey(record.fontName))
+  return {
+    ...(style ? { style } : {}),
+    runs: fonts,
+    ...(digest ? { digest } : {}),
+    ...(Object.keys(runDigests).length ? { runDigests } : {}),
+  }
 }
 
 const featureTag = /^-?[a-z0-9]{4}$/

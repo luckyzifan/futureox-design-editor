@@ -16,6 +16,18 @@ test('mixed native FIG styles preserve UTF-16 ranges, casing, alpha and font ide
   expect(warnings.size).toBe(0)
 })
 
+test('FIG fontDigest is kept with the source face and is not a family name', () => {
+  const n = node('text'); n.text = 'Ag'; n.textStyle = defaultTextStyle()
+  const digest = Uint8Array.from({ length: 20 }, (_, i) => i + 1)
+  const fonts = importFigTextRuns(n, {
+    fontName: { family: 'Poppins', style: 'Bold' },
+    derivedTextData: { fontMetaData: [{ key: { family: 'Poppins', style: 'Bold' }, fontDigest: digest, fontWeight: 700 }] },
+    textData: { characters: 'Ag' },
+  }, new Set<string>())
+  expect(fonts.digest).toBe([...digest].map(byte => byte.toString(16).padStart(2, '0')).join(''))
+  expect(fonts.style).toBe('Poppins Bold')
+})
+
 test('per-run Figma line height and letter spacing become schema 21 metrics', () => {
   const n=node('text'); n.text='ab'; n.fontSize=20; n.textStyle=defaultTextStyle()
   const warnings=new Set<string>()

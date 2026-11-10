@@ -4,10 +4,10 @@ import { desktopBridge, type DesktopFontData } from './desktop'
 import type { Editor } from './engine'
 import type { DesignDocument } from './model'
 import { ImportOwner, importStep } from './import-ownership'
-import { applySelectionFont, FONT_PAGE_SIZE, searchFontChoices, matchSourceFontsInDocument, unmatchedEditableSourceFonts } from './font-management'
+import { applySelectionFont, FONT_PAGE_SIZE, searchFontChoices, matchSourceFontsInDocument, unmatchedEditableSourceFontRequests } from './font-management'
 import { commitPendingEdits } from './pending-edits'
-import { resolveListedFace } from './font-catalog'
-import { type FontResource } from './font-matching'
+import { catalogEntryFor, resolveListedFace } from './font-catalog'
+import { fontMatchKey, type FontResource } from './font-matching'
 import { initializeKernelModule } from './kernel/module'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
 
@@ -38,10 +38,16 @@ export async function browserFontResource(font: BrowserFont): Promise<FontResour
     data: btoa(binary), index: found[0].index }
 }
 
+function resourceBytes(resource: FontResource) {
+  return Uint8Array.from(atob(resource.data), c => c.charCodeAt(0))
+}
 async function resourceId(resource: FontResource) {
-  const bytes = Uint8Array.from(atob(resource.data), c => c.charCodeAt(0))
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', resourceBytes(resource)))
   return Array.from(digest, b => b.toString(16).padStart(2, '0')).join('') + `-${resource.index || 0}`
+}
+async function resourceSha1(resource: FontResource) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', resourceBytes(resource)))
+  return Array.from(digest, b => b.toString(16).padStart(2, '0')).join('')
 }
 /** read.index addresses the returned bytes; a collection's source index addresses different bytes. */
 export function nativeFontResource(read: DesktopFontData): NonNullable<DesignDocument['fonts']>[string] {
@@ -114,26 +120,40 @@ export function SystemFontPicker({ editor, ids, detachSharedStyle = false }: { e
     const request = owner.begin(editor); setBusy(true); setMessage('正在匹配原字体…')
     try {
       const { fonts } = await importStep(request, list)
-      const names = unmatchedEditableSourceFonts(editor.state.doc)
+      const requests = unmatchedEditableSourceFontRequests(editor.state.doc)
       const matched = new Map<string, { id: string; resource: FontResource }>(), missing: string[] = []
       const loaded = new Map<string, { id: string; resource: FontResource }>(), faces = new Map<string, { id: string; resource: FontResource }>()
-      for (const name of names) {
-        const font = resolveListedFace(name, fonts)
-        if (!font) { missing.push(name); continue }
-        let entry = faces.get(font.id)
-        if (!entry) {
-          const resource = await importStep(request, () => read(font))
-          const id = await importStep(request, () => resourceId(resource))
-          entry = loaded.get(id)
-          if (!entry) {
-            // Admission allows 32 resources. Retain at most that many plus
-            // the single face currently being identified; aliases reuse bytes.
-            if (loaded.size >= 32) throw Error('文档最多支持 32 个字体资源；请先缩小原字体匹配范围')
-            entry = { id, resource }; loaded.set(id, entry)
+      const seen = new Set<string>()
+      for (const source of requests) {
+        const key = fontMatchKey(source.name, source.digest)
+        if (seen.has(key)) continue
+        seen.add(key)
+        const family = catalogEntryFor(source.name)?.entry.family
+        const preferred = resolveListedFace(source.name, fonts)
+        const sameFamily = family ? fonts.filter(font => font.family.normalize('NFKC').replace(/[\s_-]+/g, '').toLowerCase() === family.normalize('NFKC').replace(/[\s_-]+/g, '').toLowerCase()) : []
+        const candidates = source.digest
+          ? [...(preferred ? [preferred] : []), ...sameFamily.filter(font => font !== preferred)].slice(0, 8)
+          : preferred ? [preferred] : []
+        if (!candidates.length) { missing.push(source.digest ? `${source.name} 摘要 ${source.digest}` : source.name); continue }
+        let entry: { id: string; resource: FontResource } | undefined
+        for (const font of candidates) {
+          let cached = faces.get(font.id)
+          if (!cached) {
+            const resource = await importStep(request, () => read(font))
+            const id = await importStep(request, () => resourceId(resource))
+            cached = loaded.get(id)
+            if (!cached) {
+              // Admission allows 32 resources. Retain at most that many plus
+              // the single face currently being identified; aliases reuse bytes.
+              if (loaded.size >= 32) throw Error('文档最多支持 32 个字体资源；请先缩小原字体匹配范围')
+              cached = { id, resource }; loaded.set(id, cached)
+            }
+            faces.set(font.id, cached)
           }
-          faces.set(font.id, entry)
+          if (!source.digest || await resourceSha1(cached.resource) === source.digest) { entry = cached; break }
         }
-        matched.set(name, entry)
+        if (!entry) { missing.push(source.digest ? `${source.name} 摘要 ${source.digest}` : source.name); continue }
+        matched.set(key, entry)
       }
       request.assertCurrent()
       if (!commitPendingEdits(editor)) { setMessage(editor.state.message); return }
