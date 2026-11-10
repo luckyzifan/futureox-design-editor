@@ -11,7 +11,7 @@ import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
-import {acceptTranslatedCoverage,coverageBeyondBacking,releaseInFlightForDemand,retainInFlightTile,selectCoverageStack,sharperCoverageFrame} from './coverage-stack'
+import {acceptTranslatedCoverage,coverageBeyondBacking,releaseInFlightForDemand,retainInFlightTile,selectCoverageStack,sharperCoverageFrame,zoomInFramePastPlan} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
@@ -424,8 +424,15 @@ export function NativeSourceSurface(props:Props){
         // A ready finer tile has to land on this frame. Waiting for the whole
         // lattice is what leaves the low-density bitmap stretched across it.
         // This reads the cache only. It does not start a page raster.
-        const promoted=refining&&moving&&continuousZoom&&zoomingIn&&backing&&bitmapContext&&!focal
-          ?sharperCoverageFrame(cache.values(),backingTiles,p.view,p):undefined
+        const residentPlan=tiles.flatMap(tile=>{const hit=cache.get(tile.key);return hit?[hit]:[]})
+        const planIsNative=!refining&&densityCertifiesDemand(residentPlan,p.view.zoom*ratio)
+        // While the lattice is in flight, any twice-finer cached region can
+        // replace the stretched backing. Once that lattice is cached it is
+        // still not the current camera: keep a finer resident in the same
+        // frame instead of publishing only the coarse plan. A lattice that
+        // already certifies native density is left alone.
+        const wantSharper=moving&&continuousZoom&&zoomingIn&&backing&&bitmapContext&&!focal&&!planIsNative
+        const promoted=wantSharper?(refining?sharperCoverageFrame(cache.values(),backingTiles,p.view,p):zoomInFramePastPlan(cache.values(),backingTiles,p.view,p,raster.scale)):undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
         if(!promoted&&!stored&&(refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
           const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
@@ -447,7 +454,7 @@ export function NativeSourceSurface(props:Props){
           certify=choice.certify
           continuity=choice.continuity
         }
-        else if(promoted){visible=promoted}
+        else if(promoted){visible=promoted;if(!refining)certify=false}
         else if(refining && wheel){
           // An immutable lower rung can cover the rest of the new viewport.
           // Submit only a complete mosaic with genuinely sharper source pixels.
@@ -471,7 +478,7 @@ export function NativeSourceSurface(props:Props){
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
         submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:continuity,mixed,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
         if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
-        const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:exact&&keys.has(tile.key)?4:1,
+        const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:promoted?1:(exact&&keys.has(tile.key)?4:1),
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
         wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,scale:raster.scale,complete:certify,mixed,demand,ids}
         if(backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y))

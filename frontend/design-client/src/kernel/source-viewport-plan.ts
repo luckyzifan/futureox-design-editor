@@ -8,6 +8,7 @@ import {tileComputationDependsOnCamera,tileComputationKey,periodicComputationCam
 import {panPrefetch} from './pan-prefetch'
 import type {RasterTile} from './tile-cache'
 import {tileIntersectsView} from './tile-preview'
+import {continuousZoomInScale} from './continuous-zoom-scale'
 import type {ResidentAcknowledgement} from './resident-presentation'
 
 export const SOURCE_PREFETCH_BUDGET={tiles:8,bytes:8*514*514*4} as const
@@ -206,12 +207,13 @@ export class SourceViewportPlanner {
     const nativeLattice=!moving || this.zoomingIn&&!continuousZoom || panBands
     let scale=reduced ? Math.min(native,tileLevel(native/2)) : !nativeLattice ? nativeTileMotionScale(view,ratio,width,height) : undefined
     if(moving&&continuousZoom&&this.zoomingIn&&this.visibleDensity>0&&native>this.visibleDensity){
-      // Keep one drawable lattice in flight across wheel events. A new camera
-      // changes the visible tiles without restarting refinement at a new scale.
-      if(this.inwardRung<=this.visibleDensity||this.inwardRung>native*1.2||native>this.inwardRung*8){
-        const next=2**(Math.floor(Math.log2(this.visibleDensity)*2+1e-9)/2+.5)
-        this.inwardRung=Math.min(nativeTileMotionScale(view,ratio,width,height),Math.max(next,2**Math.floor(Math.log2(native/4))))
-      }
+      // One lattice stays in flight across wheel ticks. Retarget when it is
+      // outside the preview ratio of this camera, and do not replace it with
+      // anything coarser than half the native density. Waiting until an 8×
+      // gap, then rastering native/4, left the fit bitmap stretched for the
+      // whole gesture. Quiet still certifies the native lattice.
+      const motion=scale&&scale>0?scale:nativeTileMotionScale(view,ratio,width,height)
+      this.inwardRung=continuousZoomInScale(this.visibleDensity,native,motion,this.inwardRung)
       scale=this.inwardRung
     }
     let raster=canvasRasterPlan(view,ratio,width,height,{rasterProfile:this.rasterProfile,exactPhase:nativeLattice,

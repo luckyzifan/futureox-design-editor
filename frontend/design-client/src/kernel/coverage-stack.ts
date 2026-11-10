@@ -147,6 +147,19 @@ export function selectSharperCoverage<T extends RasterTile>(candidates: readonly
   return chosen
 }
 
+/** A finished motion lattice is still the stretched picture when a finer
+ * resident is already cached. The union has to cover: a partial sharper
+ * region stays with the backing, and a covering finer set can stand alone
+ * after that backing texture has been released. Undefined keeps the lattice. */
+export function zoomInFramePastPlan<T extends RasterTile>(cached: Iterable<T>, backing: readonly RasterTile[],
+  view: CanvasCamera, size: { width: number; height: number }, planScale: number): T[] | undefined {
+  if (!(planScale > 0) || !Number.isFinite(planScale)) return
+  const finerThanPlan = (tile: T) => tile.zoom > planScale * (1 + 1e-9)
+  const frame = sharperCoverageFrame(cached, backing, view, size)
+  if (frame?.some(finerThanPlan)) return frame
+  return selectCoverageStack([...cached].filter(finerThanPlan), view, size)
+}
+
 /** Backing residents plus every ready tile that replaces a stretched region,
  * when that union still covers the viewport. Undefined leaves the previous
  * image up; a partial set is not published as a hole. */
