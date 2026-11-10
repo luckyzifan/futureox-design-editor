@@ -58,6 +58,8 @@ import { areaShaderWgsl } from './area-shader'
 import { sampleOnlyAreaShaderWgsl } from './sample-only-area-shader'
 import { SampleOnlyAreaPrograms } from './sample-only-area-programs'
 import { opaqueSolidShader } from './opaque-solid-shader'
+import { analyticViewportShader } from './analytic-viewport-shader'
+import { analyticViewportBatch } from './analytic-viewport-batch'
 import { hasOpaqueSolidGroups } from './scene-index'
 import { rational_tent_kernel_rgba,certified_tent_prefix_plan } from '../../generated/design-kernel/design_kernel'
 import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic, OpaqueSolidBatch } from './types'
@@ -331,6 +333,7 @@ export class WebGpuDriver implements Driver {
   description = 'WebGPU'
   lost = false
   drawCalls = 0
+  analyticSolidsReady = false
   opaqueTentPasses = 0
   private mergedExactFilterPasses = 0
   triangles = 0
@@ -571,6 +574,7 @@ export class WebGpuDriver implements Driver {
   private binaryPipelines = new Map<number, GPURenderPipeline>()
   private overPipeline!: GPURenderPipeline
   private solidPipeline!: GPURenderPipeline
+  private analyticPipeline?: GPURenderPipeline
   private nativeTentKernels=new WeakMap<Texture,{operator:'rational-tent'|'certified-tent';radius:number;resource:unknown;width:number;height:number;boundBits:number}>()
   private certifiedTentPasses=0
   private opaqueSolidPipeline?: GPURenderPipeline
@@ -1055,6 +1059,17 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       primitive: { topology: 'triangle-list' },
     })
     })
+    this.pipelines.register('analytic-viewport', async () => {
+      const module=this.device.createShaderModule({code:analyticViewportShader,label:'Analytic viewport solid batch'})
+      const errors=(await module.getCompilationInfo()).messages.filter(message=>message.type==='error')
+      if(errors.length)throw new Error(errors.map(error=>`${error.lineNum}:${error.message}`).join('\n'))
+      this.analyticPipeline=await this.device.createRenderPipelineAsync({
+        layout:this.device.createPipelineLayout({bindGroupLayouts:[this.layout,this.solidLayout]}),
+        vertex:{module,entryPoint:'analyticQuad'},
+        fragment:{module,entryPoint:'analyticFragment',targets:[{format:this.layerFormat}]},
+        primitive:{topology:'triangle-list'},
+      })
+    },false)
     this.pipelines.register('opaque-solid', async () => {
       const module=this.device.createShaderModule({code:opaqueSolidShader,label:'Exact opaque four-sample group'})
       this.opaqueSolidPipeline=await this.device.createRenderPipelineAsync({
@@ -1196,6 +1211,8 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     this.certifiedTentPasses=0
     this.sampleOnlyPrograms.resetFrame()
     this.opaqueSolidBatches=new WeakMap();this.opaqueSolidDraws=0
+    this.analyticSolidsReady=false
+    const analyticBatch=analyticViewportBatch(scene,this,displayOnly)
     this.opaqueSolidRequested=(import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'||import.meta.env.VITE_DESIGN_MIXED_SOLID_RUNS!=='0') && this.managed===true &&
       scene.coherentSamples===true && !scene.softwareRaster && hasOpaqueSolidGroups(scene)
     // Bitmap-assembly display leaves intentionally set captureDisplay=false.
@@ -1247,10 +1264,12 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     if (paths.length) required.add('solid')
     if (this.opaqueSolidRequested) required.add('opaque-solid')
     if (paths.some(p => p.area && p.count)) required.add('area')
+    if (analyticBatch) required.add('analytic-viewport')
     if (this.managed && paths.length) { required.add('binary'); required.add('scalar') }
     if (!this.managed) for (const path of paths)
       if (path.count && !path.area && !path.analytic) required.add(`mask:${path.rule}`)
     await this.pipelines.prepare(required)
+    this.analyticSolidsReady=analyticBatch&&!!this.analyticPipeline
     if (this.sampleOnlyRequested && required.has('area')) {
       await this.prepareSampleOnlyCoverage()
       if (this.sampleOnlyScalarPipeline) this.sampleOnlyCoverageEligibleScenes++
@@ -2815,6 +2834,14 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
     this.drawSolidInstances(target,u,data,this.solidPipeline,clip)
   }
+  drawAnalyticSolids(target: Texture, source: Texture, u: Float32Array, data: Float32Array) {
+    if(!this.analyticSolidsReady||!this.analyticPipeline||source===target||source.resource===target.resource||
+      data.length<SOLID_INSTANCE_FLOATS*2||data.length%SOLID_INSTANCE_FLOATS!==0)return false
+    let pixels=0
+    for(let index=0;index<data.length;index+=SOLID_INSTANCE_FLOATS)pixels+=data[index+18]*data[index+19]
+    this.drawSolidInstances(target,u,data,this.analyticPipeline,undefined,source,65,pixels)
+    return true
+  }
   prepareOpaqueSolids(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[],scissor?:Rect):OpaqueSolidBatch|undefined {
     if(!this.opaqueSolidRequested||!this.opaqueSolidPipeline||!this.curves||this.lost||this.disposed||
       nodes.length<8||nodes.length>this.solidBatchRemaining()||color.length!==4||color[3]!==1||
@@ -2850,9 +2877,9 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     recordGpuDiagnostic('cache',{opaqueSolidDraws:1,opaqueSolidInstances:batch.count,opaqueSolidPixels:batch.pixels})
     return true
   }
-  private drawSolidInstances(target:Texture,u:Float32Array,data:Float32Array,pipeline:GPURenderPipeline,clip?:Texture){
+  private drawSolidInstances(target:Texture,u:Float32Array,data:Float32Array,pipeline:GPURenderPipeline,clip?:Texture,sample?:Texture,mode=64,pixels?:number){
     this.invalidateTextureCertificates(target)
-    if (clip === target) throw new Error('GPU texture feedback loop')
+    if (clip === target || sample === target || sample?.resource === target.resource) throw new Error('GPU texture feedback loop')
     this.closeOver()
     if (!this.solidBuffer) {
       this.solidBuffer = this.device.createBuffer({
@@ -2874,7 +2901,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       this.solidRanges.set(data, base)
     }
     u[36] = base
-    const bind = this.bind(u, clip ? [this.blank, this.blank, clip] : [])
+    const bind = this.bind(u, sample ? [sample] : clip ? [this.blank, this.blank, clip] : [])
     const pass = this.encoder.beginRenderPass({
       colorAttachments: [
         { view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'load', storeOp: 'store' },
@@ -2886,7 +2913,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     const count = data.length / SOLID_INSTANCE_FLOATS
     pass.draw(6, count)
     pass.end()
-    this.noteDraw(64)
+    this.noteDraw(mode,1,pixels)
     this.triangles += count * 2
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {

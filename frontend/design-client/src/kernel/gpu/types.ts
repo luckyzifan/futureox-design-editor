@@ -511,6 +511,14 @@ export interface Driver {
     instances: Float32Array,
     clip?: Texture,
   ): void
+  /** Prepared only for an analytic float viewport. False encodes nothing. */
+  readonly analyticSolidsReady?: boolean
+  drawAnalyticSolids?(
+    target: Texture,
+    source: Texture,
+    uniforms: Float32Array,
+    instances: Float32Array,
+  ): boolean
   finish(
     source: Texture,
     sourceRect: Rect,

@@ -6,6 +6,9 @@ type Proofs={color:(value:string)=>readonly number[];image:(node:GpuNode,paint:G
 function covers(rect:Rect|undefined,region:Rect){
  return !!rect&&rect.x<=region.x&&rect.y<=region.y&&rect.x+rect.w>=region.x+region.w&&rect.y+rect.h>=region.y+region.h
 }
+function contained(inner:Rect,outer:Rect){
+ return inner.x>=outer.x&&inner.y>=outer.y&&inner.x+inner.w<=outer.x+outer.w&&inner.y+inner.h<=outer.y+outer.h
+}
 /** Only normal, bounded sources may disappear behind a complete overwrite.
  * This preserves the old zero/NaN behaviour: unknown images, HDR/overflow,
  * masks, backdrop reads and unsupported operators never grant this proof. */
@@ -96,4 +99,46 @@ export function sourcePainterOrder(scene:GpuScene,ids:string[],region:Rect):stri
  }
  ids.forEach(append)
  return changed?result:ids
+}
+
+/** Same neutral-group proof as `sourcePainterOrder`, without its 4096-node
+ * cap. A settled analytic viewport walks the whole visible tree; the detail
+ * cap stops inlining and leaves one isolation pass per wrapper. Depth past
+ * 256 fails closed and keeps that wrapper on the ordinary path. */
+export function flattenSourceDisplayList(scene:GpuScene,ids:readonly string[],region:Rect):string[]{
+ const checked=new Map<string,boolean>()
+ const independent=(id:string,depth:number):boolean=>{
+  const known=checked.get(id);if(known!==undefined)return known
+  if(depth>256)return false
+  checked.set(id,false)
+  const n=scene.nodes[id]
+  const result=!n || (!n.captureReplay&&!n.textureReplay&&(n.blend==='normal'||!!n.passthrough&&n.blend==='pass-through')&&
+    !n.effects.some(e=>e.visible&&(e.kind==='background-blur'||e.kind==='glass'))&&n.children.every(child=>independent(child,depth+1)))
+  checked.set(id,result);return result
+ }
+ let changed=false
+ const result:string[]=[]
+ const append=(id:string)=>{
+  const n=scene.nodes[id],mask=n?.maskId?scene.nodes[n.maskId]:undefined
+  const identityMask=!n?.maskId||!!mask&&mask.maskType==='shape'&&mask.opacity===1&&
+    !mask.children.length&&mask.fill.count>0&&covers(mask.fill.opaqueRect,region)
+  // Prepared bounds include strokes and effect margins. A child that sticks
+  // out of this group is clipped by the group's layer; inlining it into the
+  // parent would paint those pixels. Keep that wrapper on the ordinary path.
+  let inside=false
+  if(n){
+    const group=n
+    inside=group.children.every(child=>{
+      const childNode=scene.nodes[child]
+      return child===group.maskId||!childNode||contained(childNode.rect,group.rect)
+    })
+  }
+  if(n&&inside&&n.children.length&&!n.mask&&identityMask&&(!n.clip||covers(n.fill.opaqueRect,region))&&
+      n.opacity===1&&!n.fills.some(p=>p.visible)&&!n.strokes.length&&!n.effects.some(e=>e.visible)&&independent(id,0)){
+    changed=true
+    for(const child of n.children)if(child!==n.maskId)append(child)
+  }else result.push(id)
+ }
+ for(const id of ids)append(id)
+ return changed?result:ids as string[]
 }

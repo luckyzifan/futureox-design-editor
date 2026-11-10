@@ -4,6 +4,7 @@ import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
 import { ResourceLedger, type ResourceClass } from './resource-ledger'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
+import {analyticSolidInstances,analyticViewportBatch,takeAnalyticSolids,unionRect} from './analytic-viewport-batch'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
@@ -74,7 +75,7 @@ import type {
   TextureSourcePlan,
 } from './types'
 import { parameters, blends, rect, intersect } from './types'
-import {opaquePainterStart,sourcePainterOrder} from './opaque-painter-prefix'
+import {flattenSourceDisplayList,opaquePainterStart,sourcePainterOrder} from './opaque-painter-prefix'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
@@ -809,6 +810,7 @@ export class GpuRenderer {
   private denseAtlas?:Surface
   private sourceTileOcclusion=false
   private sourceSolidLayers=false
+  private analyticViewport=false
   private opaquePrefixEnabled=import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX==='1'
   private uniformColorSurfaces=import.meta.env.VITE_DESIGN_UNIFORM_COLOR_SURFACES==='1'
   private sequentialGaussian=import.meta.env.VITE_DESIGN_SEQUENTIAL_GAUSSIAN==='1'
@@ -3535,15 +3537,51 @@ export class GpuRenderer {
     }
     return {targets,end}
   }
+  private async drawAnalyticViewport(ids:string[],start:number,target:Surface):Promise<{end:number}|undefined>{
+    if(!this.analyticViewport||!this.optimized||!this.driver.analyticSolidsReady||!this.driver.drawAnalyticSolids||!this.driver.solidBatchRemaining)return
+    if((this.aliases.get(target.texture)||1)>1||target.logicalBounds||target.texture.uniformColor||target.texture.transparentZero)return
+    const remaining=this.driver.solidBatchRemaining()
+    if(!Number.isSafeInteger(remaining)||remaining<2)return
+    const pending:(GpuNode|undefined)[]=[]
+    const max=Math.min(MAX_SOLID_INSTANCES,remaining)
+    for(let index=start;index<ids.length&&pending.length<max;index++){
+      const node=this.scene.nodes[ids[index]]
+      if(node&&this.outsidePoseDemand(node.rect))break
+      pending.push(node)
+    }
+    const run=takeAnalyticSolids(pending,target.rect,value=>this.color(value),value=>this.alpha(value),max)
+    if(run.count<2)return
+    const nodes=pending.slice(0,run.count) as GpuNode[]
+    const union=unionRect(run.quads)
+    const regional=this.regionalOverPlan(union,target,[])
+    const beforeRect=regional?.before??(regional===undefined?target.rect:undefined)
+    if(!beforeRect)return
+    await this.reclaimForSurface(beforeRect)
+    const before=this.copy(target,beforeRect)
+    try{
+      const drew=this.driver.drawAnalyticSolids(target.texture,before.texture,parameters(target.rect,before.rect),
+        analyticSolidInstances(nodes,run.quads,value=>this.color(value),value=>this.alpha(value)))
+      if(!drew)return
+    }finally{this.release(before)}
+    this.fastWork.add('analyticViewportBatches')
+    this.fastWork.add('analyticViewportNodes',run.count)
+    return {end:start+run.count}
+  }
   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
-    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
-      ids=sourcePainterOrder(this.scene,ids,target.rect)
+    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled()){
+      if(this.sourceTileOcclusion&&target.texture.transparentZero)ids=sourcePainterOrder(this.scene,ids,target.rect)
+      else if(this.analyticViewport)ids=flattenSourceDisplayList(this.scene,ids,target.rect)
+    }
     if(this.opaqueBatchEnabled()&&!clip&&!skip&&this.sampleIndex!==undefined){
       const batched=await this.drawOpaqueGroup(ids,[target],[this.sampleIndex]);if(batched)return batched[0]
     }
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const children = skip ? ids.filter((id) => id !== skip) : ids
     for (let i = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0; i < children.length; ) {
+      if(this.analyticViewport&&!clip){
+        const batch=await this.drawAnalyticViewport(children,i,target)
+        if(batch){i=batch.end;continue}
+      }
       if(this.sourceSolidLayers&&this.sampleIndex!==undefined){
         const batch=await this.drawSourceSolidLayers(children,i,[target],[this.sampleIndex],clip?[clip]:undefined)
         if(batch){target=batch.targets[0];i=batch.end;continue}
@@ -7661,6 +7699,7 @@ export class GpuRenderer {
     this.skippedPainterVisits=0
     const managedDisplay=present&&!readback&&this.driver.name==='webgpu'&&!!this.driver.managed&&!this.driver.hdr&&!this.driver.displayMath
     this.sourceSolidLayers=sourceSolidLayerDisplay(scene,this.driver,present&&!readback)
+    this.analyticViewport=analyticViewportBatch(scene,this.driver,present&&!readback)
     this.sourceTileOcclusion=managedDisplay && scene.sourceDetailTile===true && import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX!=='0' &&
       !!scene.output && scene.coherentSamples===true && scene.colorManagement?.documentSpace==='srgb' &&
       !scene.resolve && !scene.presentation && !scene.interactionRetained && !scene.softwareRaster

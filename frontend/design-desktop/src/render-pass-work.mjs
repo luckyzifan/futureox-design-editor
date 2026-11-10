@@ -1,5 +1,5 @@
 // Encoded draw counts, not GPU time. Unknown modes retain their own bucket.
-// Synthetic lanes: 64 = solid instance batch, 63 = stencil coverage.
+// Synthetic lanes: 64 = solid instance batch, 65 = analytic viewport solid batch, 63 = stencil coverage.
 // Shader modes 60/61/62 are color controls, motion blur and zoom blur.
 const groups=['Coverage','Paint','Merge','Effect','Copy','Present','PaintMerge','Resolve','Other']
 export const fastPathKeys=['fastSampleOnlyPasses','fastSampleOnlyPixels','fastPackedCoveragePasses','fastCanvasBlurPasses','fastCanvasMotionPasses','fastCanvasZoomPasses','fastSolidAttempts','fastSolidBatches','fastSolidNodes','fastSolidTargetReject','fastSolidProofReject','fastSolidCapacityReject',
@@ -7,7 +7,8 @@ export const fastPathKeys=['fastSampleOnlyPasses','fastSampleOnlyPixels','fastPa
  'fastGradientFused','fastGradientPaintReject','fastGradientLatticeReject','fastGradientCoverageReject','fastGradientColorReject',
  'fastRegionalUsed','fastRegionalSharedReject','fastRegionalFeedbackReject','fastRegionalLatticeReject','fastRegionalLargeReject',
  'fastRegionalPixels','fastRegionalFullPixels','fastGradientSavedPixels','fastCoverageSavedPixels',
- 'backdropCapturePixels','glassCapturePixels','glassFieldTexelsSaved','densePaintBatches','densePaintRoots','densePaintEffects','sourceLayerNodes','sourceLayerBatches','sourceShadowPaintsSaved','sourceProgramPixelsSaved','denseGradientBuildPixels','gradientWindowBuildPixels']
+ 'backdropCapturePixels','glassCapturePixels','glassFieldTexelsSaved','densePaintBatches','densePaintRoots','densePaintEffects','sourceLayerNodes','sourceLayerBatches','sourceShadowPaintsSaved','sourceProgramPixelsSaved','denseGradientBuildPixels','gradientWindowBuildPixels',
+ 'analyticViewportBatches','analyticViewportNodes']
 export const drawWorkLimits={drawWorkVersion:2,drawWorkCapped:1,clearPasses:1e9,drawPixelsMeasuredDraws:1e9,drawPixelsUnmeasuredDraws:1e9,...Object.fromEntries(groups.map(name=>['draw'+name,1e9])),
   ...Object.fromEntries(groups.map(name=>['drawPixels'+name,1e15])),
   ...Object.fromEntries(fastPathKeys.map(name=>[name,1e15])),
