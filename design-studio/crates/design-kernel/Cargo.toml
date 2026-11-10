@@ -92,6 +92,10 @@ harness = false
 name = "dirty_region"
 harness = false
 
+[[bench]]
+name = "rotate_settle"
+harness = false
+
 [build-dependencies]
 serde_json.workspace = true
 

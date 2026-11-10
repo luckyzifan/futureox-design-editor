@@ -1031,6 +1031,121 @@ fn propagate_background_reads<'a>(
 /// output footprints. Internal masks cannot escape their unchanged root clip.
 /// Propagate finite backdrop reads in the final scene: the removed root's old
 /// output is already dirty, and all other read scopes retain their placement.
+/// Nested Sketch mask chains repaint the owning subtree, not the page.
+/// `None` means the chain is a page-root mask, an unbounded effect, or
+/// geometry that cannot be certified — callers keep a full redraw.
+pub(crate) fn sketch_mask_range(
+    before: &Document,
+    after: &Document,
+    patch: &crate::editing::DocumentPatch,
+    fonts: &Fonts,
+) -> Option<PatchDamage> {
+    if patch.nodes.is_empty() { return None; }
+    let parents_before = parent_map(before);
+    let parents_after = parent_map(after);
+    let edited: Vec<&str> = patch.nodes.keys().map(String::as_str).collect();
+    if edited_page_has_root_mask(before, &parents_before, &edited)
+        || edited_page_has_root_mask(after, &parents_after, &edited)
+        || has_unbounded_backdrop_for_patch(before, patch)
+        || has_unbounded_backdrop_for_patch(after, patch)
+    {
+        return None;
+    }
+    let owners_before = crate::sketch_masks::owners(before, &crate::render_index::Parents::new(before));
+    let owners_after = crate::sketch_masks::owners(after, &crate::render_index::Parents::new(after));
+    let mut corners = Vec::new();
+    for id in &edited {
+        for (doc, parents, owners) in [
+            (before, &parents_before, &owners_before),
+            (after, &parents_after, &owners_after),
+        ] {
+            let root = containing_mask_owner(parents, owners, id)?;
+            if subtree_effect_unbounded(doc, root) { return None; }
+            let bounds = subtree_bounds(doc, parents, root, Some(fonts))?;
+            if !bounds.iter().all(|v| v.is_finite() && v.abs() <= 1e9) { return None; }
+            corners.push(bounds);
+        }
+    }
+    if corners.is_empty() { return None; }
+    let mut region = DirtyRegion {
+        full: false,
+        reason: None,
+        world_bounds: Some([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY]),
+        world_rects: Vec::new(),
+        tiles: Vec::new(),
+    };
+    for bounds in &corners {
+        add_paint_rect(&mut region, *bounds);
+        union_box(region.world_bounds.as_mut()?, *bounds);
+    }
+    let ops: Vec<Op> = edited.iter().map(|id| Op::SetTransform { id: (*id).to_string(), matrix: Transform::default().0 }).collect();
+    if !propagate_background_reads(before, after, &mut region, Some(fonts), &ops, &mut Default::default(),
+        Some([&parents_before, &parents_after]), None)
+    {
+        return None;
+    }
+    let bounds = region.world_bounds?;
+    if !bounds.iter().all(|v| v.is_finite()) || bounds[0] > bounds[2] || bounds[1] > bounds[3] { return None; }
+    Some(PatchDamage {
+        translation_only: None,
+        full: false,
+        reason: None,
+        bounds: Some([bounds[0], bounds[1], bounds[2] - bounds[0], bounds[3] - bounds[1]]),
+        rects: Some(region.world_rects),
+    })
+}
+
+fn edited_page_has_root_mask(doc: &Document, parents: &BTreeMap<&str, &str>, edited: &[&str]) -> bool {
+    edited.iter().any(|id| {
+        let mut cursor = *id;
+        for _ in 0..doc.nodes.len().saturating_add(2) {
+            if let Some(page) = doc.pages.iter().find(|page| page.id == cursor) {
+                return page.children.iter().any(|child| doc.nodes.get(child).is_some_and(crate::sketch_masks::starts));
+            }
+            match parents.get(cursor).copied() {
+                Some(parent) => cursor = parent,
+                None => {
+                    return doc.pages.iter().any(|page| page.children.iter().any(|child| child == id)
+                        && page.children.iter().any(|child| doc.nodes.get(child).is_some_and(crate::sketch_masks::starts)));
+                }
+            }
+        }
+        true
+    })
+}
+
+fn containing_mask_owner<'a>(
+    parents: &BTreeMap<&'a str, &'a str>,
+    owners: &std::collections::HashSet<String>,
+    id: &'a str,
+) -> Option<&'a str> {
+    if owners.contains(id) { return Some(id); }
+    let mut cursor = parents.get(id).copied();
+    for _ in 0..parents.len().saturating_add(1) {
+        let at = cursor?;
+        if owners.contains(at) { return Some(at); }
+        cursor = parents.get(at).copied();
+    }
+    None
+}
+
+fn subtree_effect_unbounded(doc: &Document, id: &str) -> bool {
+    let mut stack = vec![id];
+    let mut seen = 0usize;
+    while let Some(id) = stack.pop() {
+        seen += 1;
+        if seen > doc.nodes.len() { return true; }
+        let Some(node) = doc.nodes.get(id) else { return true; };
+        if node.boolean_operation.is_some() { return true; }
+        if node.effects.iter().any(|effect| effect.visible && (
+            effect.glass.is_some() || effect.texture.is_some() || effect.gradient_blur.is_some()
+            || matches!(effect.kind.as_str(), "glass" | "noise" | "texture")
+        )) { return true; }
+        stack.extend(node.children.iter().map(String::as_str));
+    }
+    false
+}
+
 pub(crate) fn clipped_translation_damage(doc: &Document, rects: Vec<[f64;4]>, ids: Vec<String>, fonts: &Fonts) -> PatchDamage {
     let full=|reason|PatchDamage{translation_only:Some(true),full:true,reason:Some(reason),bounds:None,rects:None};
     if doc.pages.iter().flat_map(|p|&p.children).any(|id|doc.nodes[id].mask)
@@ -2484,6 +2599,95 @@ mod tests {
         })).unwrap());
         let parents = crate::render_index::Parents::new(&filtered);
         assert!(resolved_leaf_pose_damage(&filtered, &parents, &turned, &fonts).is_none());
+    }
+
+    #[test]
+    fn nested_sketch_mask_rotation_repaints_the_owner_and_keeps_a_far_sibling() {
+        let doc: Document = serde_json::from_value(json!({
+            "schemaVersion": 4, "id": "d", "name": "mask-range",
+            "pages": [{"id": "p", "name": "p", "children": ["board", "far"], "background": "#ffffff"}],
+            "nodes": {
+                "board": {"id": "board", "kind": "frame", "width": 220., "height": 180.,
+                    "transform": [1., 0., 0., 1., 48., 64.],
+                    "fills": [{"kind": "solid", "color": "#f4f1ea"}], "children": ["mask", "mover"]},
+                "mask": {"id": "mask", "kind": "rectangle", "mask": true, "maskType": "shape", "maskChain": "start",
+                    "width": 200., "height": 150., "transform": [1., 0., 0., 1., 8., 10.],
+                    "fills": [{"kind": "solid", "color": "#ffffff"}]},
+                "mover": {"id": "mover", "kind": "rectangle", "width": 70., "height": 36.,
+                    "transform": [1., 0., 0., 1., 40., 48.],
+                    "fills": [{"kind": "solid", "color": "#cc3344"}]},
+                "far": {"id": "far", "kind": "rectangle", "width": 30., "height": 24.,
+                    "transform": [1., 0., 0., 1., 1400., 900.],
+                    "fills": [{"kind": "solid", "color": "#112233"}]}
+            }
+        })).unwrap();
+        let mut turned = doc.clone();
+        turned.nodes.get_mut("mover").unwrap().transform = Transform([0., 1., -1., 0., 40., 48.]);
+        let patch = crate::editing::DocumentPatch::between(&doc, &turned).unwrap();
+        let fonts = Fonts::new();
+        let damage = sketch_mask_range(&doc, &turned, &patch, &fonts).expect("nested chain");
+        assert!(!damage.full);
+        let bounds = damage.bounds.expect("union");
+        let covers = |x: f64, y: f64| bounds[0] <= x && bounds[1] <= y && bounds[0] + bounds[2] >= x && bounds[1] + bounds[3] >= y;
+        assert!(covers(100., 120.), "old mover missed {bounds:?}");
+        assert!(covers(88., 182.), "rotated mover missed {bounds:?}");
+        assert!(covers(52., 112.), "rotated mover missed {bounds:?}");
+        assert!(!covers(1400., 900.), "far sibling entered {bounds:?}");
+        let mut backdrop = doc.clone();
+        backdrop.nodes.insert("reader".into(), serde_json::from_value(json!({
+            "id": "reader", "kind": "rectangle", "width": 90., "height": 50.,
+            "transform": [1., 0., 0., 1., 60., 80.],
+            "fills": [{"kind": "solid", "color": "#88aacc", "opacity": 0.4}],
+            "effects": [{"kind": "background-blur", "radius": 6., "visible": true, "color": "#000000"}]
+        })).unwrap());
+        backdrop.pages[0].children.push("reader".into());
+        let mut backdrop_turned = backdrop.clone();
+        backdrop_turned.nodes.get_mut("mover").unwrap().transform = Transform([0., 1., -1., 0., 40., 48.]);
+        let backdrop_patch = crate::editing::DocumentPatch::between(&backdrop, &backdrop_turned).unwrap();
+        let backdrop_damage = sketch_mask_range(&backdrop, &backdrop_turned, &backdrop_patch, &fonts).expect("overlapping backdrop stays bounded");
+        let backdrop_bounds = backdrop_damage.bounds.expect("backdrop union");
+        let backdrop_covers = |x: f64, y: f64| backdrop_bounds[0] <= x && backdrop_bounds[1] <= y
+            && backdrop_bounds[0] + backdrop_bounds[2] >= x && backdrop_bounds[1] + backdrop_bounds[3] >= y;
+        assert!(backdrop_covers(70., 90.), "overlapping background read missed {backdrop_bounds:?}");
+        let mut distant = backdrop.clone();
+        distant.nodes.get_mut("reader").unwrap().transform.0[4] = 1400.;
+        distant.nodes.get_mut("reader").unwrap().transform.0[5] = 900.;
+        let mut distant_turned = distant.clone();
+        distant_turned.nodes.get_mut("mover").unwrap().transform = Transform([0., 1., -1., 0., 40., 48.]);
+        let distant_patch = crate::editing::DocumentPatch::between(&distant, &distant_turned).unwrap();
+        let distant_damage = sketch_mask_range(&distant, &distant_turned, &distant_patch, &fonts).expect("distant backdrop stays bounded");
+        let distant_bounds = distant_damage.bounds.expect("distant union");
+        assert!(distant_bounds[0] + distant_bounds[2] < 1400., "distant background read was pulled into {distant_bounds:?}");
+        let mut page_mask = doc.clone();
+        page_mask.pages[0].children = vec!["mask".into(), "mover".into(), "far".into()];
+        page_mask.nodes.get_mut("board").unwrap().children.clear();
+        let mut page_turned = page_mask.clone();
+        page_turned.nodes.get_mut("mover").unwrap().transform = Transform([0., 1., -1., 0., 40., 48.]);
+        let page_patch = crate::editing::DocumentPatch::between(&page_mask, &page_turned).unwrap();
+        assert!(sketch_mask_range(&page_mask, &page_turned, &page_patch, &fonts).is_none(), "page-root mask stays full");
+        let mut engine = crate::renderer::Engine::new();
+        engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+        let options = serde_json::from_value(json!({"pageId":"p","width":512,"height":512,
+            "view":{"x":0.,"y":0.,"zoom":1.},"rasterProfile":"analytic"})).unwrap();
+        let before = engine.render(&options).unwrap();
+        let admitted = engine.apply_document_patch_with_damage(&patch).unwrap();
+        assert!(!admitted.full, "{:?}", admitted.reason);
+        let after = engine.render(&options).unwrap();
+        let rects = admitted.rects.clone().expect("chain rects");
+        let mut changed = 0;
+        for (i, (a, b)) in before.chunks_exact(4).zip(after.chunks_exact(4)).enumerate() {
+            if a == b { continue; }
+            changed += 1;
+            let x = (i % 512) as f64;
+            let y = (i / 512) as f64;
+            assert!(rects.iter().any(|r| x >= r[0] && y >= r[1] && x < r[0] + r[2] && y < r[1] + r[3]),
+                "changed pixel {x},{y} escaped {rects:?}");
+        }
+        assert!(changed > 0);
+        let mut fresh = crate::renderer::Engine::new();
+        fresh.load_document(&serde_json::to_string(&turned).unwrap()).unwrap();
+        let presented = engine.render_tiled_frame(&options, Some(&rects)).unwrap();
+        assert_eq!(presented.rgba, fresh.render(&options).unwrap());
     }
 }
 
