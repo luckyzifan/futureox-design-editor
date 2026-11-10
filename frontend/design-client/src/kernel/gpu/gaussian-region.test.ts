@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest'
-import {gaussianRegionRects,unmanagedByteGaussianBox} from './gaussian-region'
+import {gaussianRegionRects,unmanagedByteGaussianBox,verticalPlaneReuse} from './gaussian-region'
 import {uniformBoxRadius} from './box-prefix'
 const plan={source:{x:-2070,y:-2070,w:4654,h:4654},output:{x:0,y:0,w:514,h:514},radii:[690,690,690] as [number,number,number]}
 test('large Gaussian keeps every original tap while the virtual input exceeds a stored-surface budget',()=>{
@@ -36,4 +36,27 @@ test('uniform prefix accepts actual canonical coefficient words and refuses alte
  expect(uniformBoxRadius(packet(1025))).toBeUndefined()
  expect(uniformBoxRadius(packet(0))).toBeUndefined()
  const shared=new Uint8Array(new SharedArrayBuffer(packet(64).length));shared.set(packet(64));expect(uniformBoxRadius(shared)).toBeUndefined()
+})
+test('117 zoom-64 Gaussian planes reuse the vertical overlap and recompute one strip',()=>{
+  // First stored plane of sigma 612.1517944335938 on a 514 tile: 2962×4184.
+  const anchor={x:-1835,y:-1836,w:2962,h:4184}
+  const below={...anchor,y:anchor.y+512}
+  const reuse=verticalPlaneReuse(anchor,below)
+  expect(reuse).toEqual({
+    source:{x:0,y:512,w:2962,h:3672},
+    origin:[0,0],
+    fresh:{x:anchor.x,y:anchor.y+anchor.h,w:2962,h:512},
+  })
+  const above=verticalPlaneReuse(below,anchor)
+  expect(above?.fresh).toEqual({x:anchor.x,y:anchor.y,w:2962,h:512})
+  expect(above?.origin).toEqual([0,512])
+  expect(above?.source.h).toBe(3672)
+  const step=verticalPlaneReuse(anchor,{...anchor,y:anchor.y+1024})
+  expect(step?.fresh.h).toBe(1024)
+  expect(step?.source.h).toBe(3160)
+  expect(verticalPlaneReuse(anchor,anchor)).toBeUndefined()
+  expect(verticalPlaneReuse(anchor,{...anchor,y:anchor.y+4184})).toBeUndefined()
+  expect(verticalPlaneReuse(anchor,{...anchor,x:anchor.x+512})).toBeUndefined()
+  expect(verticalPlaneReuse(anchor,{...anchor,h:4183})).toBeUndefined()
+  expect(verticalPlaneReuse(anchor,{...anchor,y:anchor.y+0.5})).toBeUndefined()
 })

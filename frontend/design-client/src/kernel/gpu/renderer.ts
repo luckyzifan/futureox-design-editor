@@ -5,7 +5,7 @@ import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLaye
 import { ResourceLedger, type ResourceClass } from './resource-ledger'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
-import {gaussianRegionRects} from './gaussian-region'
+import {gaussianRegionRects, verticalPlaneReuse} from './gaussian-region'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
 import {sourceBitmapDimensions} from '../image-row-source'
 import { canvasBlurSceneEligible } from './canvas-blur-filter'
@@ -320,6 +320,31 @@ export class GpuRenderer {
   private residentImageRequest = false
   private frameImageReuse = false
   private horizontalFilters = new HorizontalFilterCache(plane => this.release(plane))
+  /** First horizontal plane of a regional Gaussian, keyed by content and column.
+   * Later tiles in that column blit the overlap and rasterize only the new rows.
+   * At most four columns; a frame that cannot also allocate the next plane drops them. */
+  private gaussianPrefixes?: { family: string; columns: Map<string, { rect: Rect; surface: Surface }> }
+  private clearGaussianPrefixes() {
+    const cache = this.gaussianPrefixes
+    this.gaussianPrefixes = undefined
+    if (!cache) return
+    for (const entry of cache.columns.values()) this.release(entry.surface)
+  }
+  private gaussianPrefixOwns(texture: Texture) {
+    const columns = this.gaussianPrefixes?.columns
+    if (!columns) return false
+    for (const entry of columns.values()) if (entry.surface.texture === texture) return true
+    return false
+  }
+  /** Content identity of one Gaussian column. The plane's x is the column;
+   * its y changes as the viewport walks down the same blur. */
+  private gaussianPrefixFamily(n: GpuNode, region: Rect) {
+    const plan = n.gaussianRegion
+    if (!plan || plan.factor !== undefined) return
+    return exactFilterKey([n.id, n.matrix, n.inverse, n.size, n.fills, n.effects, plan.radii,
+      region.w, region.h, this.scene.view.zoom, !!this.scene.coherentSamples, !!this.scene.floatCompositing,
+      this.scene.colorManagement ?? null, !!this.driver.managed, !!this.driver.hdr, !!this.driver.displayMath])
+  }
   private staticImageBlurs = new StaticImageBlurCache(plane => this.release(plane), texture => this.driver.imageTableRange?.(texture))
   private staticImageTableProofs = new WeakMap<ExactImageTable, { source: StaticImageBlurSource; input: Rect }>()
   private staticImageBlurEligible = 0
@@ -1237,6 +1262,7 @@ export class GpuRenderer {
     // Optional retained filter work never expands the common working budget.
     // Pool release preserves ordering when the entry was copied this frame.
     this.horizontalFilters.clear()
+    this.clearGaussianPrefixes()
     this.reapRetiredKernels()
     this.kernelCache.evictCompleted(this.workingBytes + required - this.frameBudget, this.driver.completedResourceEpoch ?? -1)
     this.materialFields.evictUnused(this.workingBytes + required - this.frameBudget)
@@ -2542,7 +2568,7 @@ export class GpuRenderer {
     const textures = new Set([...this.images.values()].map(surface => surface.texture))
     for (const page of this.atlasPages) textures.add(page.texture)
     this.images.clear(); this.imageOrigins.clear(); this.imageDims.clear(); this.sourceWindowKeys.clear(); this.sourceSrgbKeys.clear(); this.sourcePngProofs.clear(); this.atlasPages = []
-    this.horizontalFilters.clear(); this.retireDisplayMaterial()
+    this.horizontalFilters.clear(); this.clearGaussianPrefixes(); this.retireDisplayMaterial()
     const epoch = this.driver.resourceEpoch
     for (const texture of textures) {
       this.staticImageBlurs.retireSource(texture)
@@ -3842,7 +3868,7 @@ export class GpuRenderer {
       this.retireNestedPrefix()
       if(this.coherentSubtrees?.size)this.coherentSubtreePressure=true
       this.retireCoherentSubtrees()
-      this.horizontalFilters.clear(); this.staticImageBlurs.discardPending(this.driver.resourceEpoch)
+      this.horizontalFilters.clear(); this.clearGaussianPrefixes(); this.staticImageBlurs.discardPending(this.driver.resourceEpoch)
     }
     // The shared worker replaces two former 256 MiB raster owners. Keep the
     // active interaction working set warm below its bounded pressure line.
@@ -5824,12 +5850,22 @@ export class GpuRenderer {
       throw Error('GPU surface budget exceeded (unsupported regional Gaussian source)')
     const kernels=plan.radii.map(r=>this.filterKernel('rational-region-box',r,()=>rational_region_box_kernel_rgba(r)))
     const savedSample=this.sampleIndex,savedCapture=this.interactionCapturing;this.interactionCapturing=true;let current:Surface|undefined
+    const prefixFamily=this.gaussianPrefixFamily(n,regions[1])
+    const prefixColumn=String(regions[1].x)
+    if(prefixFamily&&this.gaussianPrefixes&&this.gaussianPrefixes.family!==prefixFamily)this.clearGaussianPrefixes()
+    let prefixHold:Surface|undefined
     try{
       await this.reclaimForSurface(regions[1]);this.checkFrameCurrent();current=this.acquire(regions[1])
       const source=regions[0]
-      for(let y=source.y;y<source.y+source.h;y+=64){
+      const cached=prefixFamily&&this.gaussianPrefixes?.family===prefixFamily?this.gaussianPrefixes.columns.get(prefixColumn):undefined
+      let rowReuse=cached&&cached.surface.texture.width===regions[1].w&&cached.surface.texture.height===regions[1].h
+        ?verticalPlaneReuse(cached.rect,regions[1]):undefined
+      if(rowReuse&&(rowReuse.fresh.y<source.y||rowReuse.fresh.y+rowReuse.fresh.h>source.y+source.h))rowReuse=undefined
+      if(rowReuse&&cached)this.driver.copyRegion(current.texture,cached.surface.texture,rowReuse.source,rowReuse.origin)
+      const yStart=rowReuse?rowReuse.fresh.y:source.y,yEnd=rowReuse?rowReuse.fresh.y+rowReuse.fresh.h:source.y+source.h
+      for(let y=yStart;y<yEnd;y+=64){
         await this.yieldEncoding();this.checkFrameCurrent()
-        const band={x:source.x,y,w:source.w,h:Math.min(64,source.y+source.h-y)},output={x:regions[1].x,y,w:regions[1].w,h:band.h}
+        const band={x:source.x,y,w:source.w,h:Math.min(64,yEnd-y)},output={x:regions[1].x,y,w:regions[1].w,h:band.h}
         // Image coordinate fields are keyed by paint identity and sample.
         // Each band owns its own fields; sharing the first band's paint would
         // incorrectly bind that band's coordinates to later source rows.
@@ -5853,6 +5889,11 @@ export class GpuRenderer {
           this.driver.copyRegion(current.texture,filtered.texture,{x:0,y:0,w:output.w,h:output.h},[0,y-regions[1].y])
         }finally{this.release(mask,layer,resolved,filtered);if(paint!==n.fills[0])this.imageGrids.delete(paint)}
       }
+      if(prefixFamily&&current){
+        if(!this.gaussianPrefixes)this.gaussianPrefixes={family:prefixFamily,columns:new Map()}
+        const cache=this.gaussianPrefixes
+        if(cache.family===prefixFamily&&!cache.columns.has(prefixColumn)&&cache.columns.size<4)prefixHold=this.retain(current)
+      }
       for(let pass=1;pass<6;pass++){
         await this.yieldEncoding();await this.reclaimForSurface(regions[pass+1]);this.checkFrameCurrent()
         const radius=plan.radii[Math.floor(pass/2)],kernel=kernels[Math.floor(pass/2)]
@@ -5864,8 +5905,12 @@ export class GpuRenderer {
         const full=this.run(74,plan.fullOutput!,[current],u=>{u[36]=plan.factor!})
         this.release(current);current=full
       }
-      const result=current;current=undefined;return result
-    }finally{this.sampleIndex=savedSample;this.interactionCapturing=savedCapture;this.release(current)}
+      const result=current;current=undefined
+      if(prefixHold&&prefixFamily&&this.gaussianPrefixes?.family===prefixFamily&&!this.gaussianPrefixes.columns.has(prefixColumn))
+        this.gaussianPrefixes.columns.set(prefixColumn,{rect:{...regions[1]},surface:prefixHold})
+      prefixHold=undefined
+      return result
+    }finally{this.sampleIndex=savedSample;this.interactionCapturing=savedCapture;if(prefixHold)this.release(prefixHold);this.release(current)}
   }
   private async wideImageGaussian(input:Surface,n:GpuNode,sigma:number):Promise<Surface|undefined>{
     const paint=n.fills[0],source=input.rect,texture=input.texture
@@ -8076,7 +8121,7 @@ export class GpuRenderer {
         // An abort may advance the resource-retirement epoch even after
         // discarding an unsubmitted encoder. That never publishes its pixels.
         if (this.displayMaterial && !this.displayMaterial.published) this.retireDisplayMaterial()
-        this.retireNestedPrefix(); this.retireCoherentSubtrees(); this.horizontalFilters.clear(); this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear(); if(!cancelledUploadsComplete)this.materialFields.clear(); this.interactionInvalid = true
+        this.retireNestedPrefix(); this.retireCoherentSubtrees(); this.horizontalFilters.clear(); this.clearGaussianPrefixes(); this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear(); if(!cancelledUploadsComplete)this.materialFields.clear(); this.interactionInvalid = true
       }
       if(this.denseAtlas){this.admissionPins.delete(this.denseAtlas.texture);this.denseAtlas=undefined}
       for (const texture of this.coordinateMaps) {
@@ -8100,7 +8145,7 @@ export class GpuRenderer {
       this.replayParameters = undefined
       for (const texture of [...this.busy])
         if (!this.coverage.has(texture) && !this.materialFields.has(texture) && !this.interactionTextures.has(texture) &&
-            !this.horizontalFilters.has(texture) && !this.staticImageBlurs.has(texture) && this.displayMaterial?.surface.texture !== texture)
+            !this.horizontalFilters.has(texture) && !this.staticImageBlurs.has(texture) && !this.gaussianPrefixOwns(texture) && this.displayMaterial?.surface.texture !== texture)
           this.release({ texture, rect: rect(0, 0, texture.width, texture.height) })
       this.sampleIndex = undefined
       this.masks.clear()
@@ -8115,6 +8160,7 @@ export class GpuRenderer {
     this.displayMaterial = undefined
     this.sequentialImagePins.clear()
     this.horizontalFilters.clear()
+    this.clearGaussianPrefixes()
     this.staticImageBlurs.dispose()
     this.coefficientBytes.clear()
     this.encodeYield.dispose()

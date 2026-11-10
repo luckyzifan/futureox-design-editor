@@ -1,4 +1,32 @@
 import type {Rect} from './types'
+
+/** Shared rows of two equal planes that differ only by a vertical shift.
+ * The fresh rectangle is the single strip the new plane must recompute.
+ * Copy coordinates are texture-local. */
+export function verticalPlaneReuse(cached: Rect, next: Rect): {
+  source: Rect
+  origin: [number, number]
+  fresh: Rect
+} | undefined {
+  if (cached.x !== next.x || cached.w !== next.w || cached.h !== next.h || cached.w < 1 || cached.h < 1) return
+  if (![cached.x, cached.y, cached.w, cached.h, next.x, next.y].every(v => Number.isSafeInteger(v))) return
+  const delta = next.y - cached.y
+  if (delta === 0 || Math.abs(delta) >= cached.h) return
+  if (delta > 0) {
+    const overlap = cached.h - delta
+    return {
+      source: { x: 0, y: delta, w: cached.w, h: overlap },
+      origin: [0, 0],
+      fresh: { x: next.x, y: cached.y + cached.h, w: next.w, h: delta },
+    }
+  }
+  const overlap = cached.h + delta
+  return {
+    source: { x: 0, y: 0, w: cached.w, h: overlap },
+    origin: [0, -delta],
+    fresh: { x: next.x, y: next.y, w: next.w, h: -delta },
+  }
+}
 export type GaussianRegion={source:Rect;output:Rect;radii:[number,number,number];factor?:2|4|8;fullOutput?:Rect}
 /** Unmanaged byte mode 22 already sums an integer uniform box from the radius.
  *  Radii in (512, 1024] belong to the existing regional admission. They must
