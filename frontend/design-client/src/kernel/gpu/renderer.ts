@@ -3,7 +3,7 @@ import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
 import { ResourceLedger, type ResourceClass } from './resource-ledger'
-import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
+import {sourceDisplayProgram,sourceSolidLayerDisplay} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
@@ -74,7 +74,7 @@ import type {
   TextureSourcePlan,
 } from './types'
 import { parameters, blends, rect, intersect } from './types'
-import {opaquePainterStart,sourcePainterOrder} from './opaque-painter-prefix'
+import {flattenSourceDisplayList,opaquePainterStart,sourcePainterOrder} from './opaque-painter-prefix'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
@@ -3513,7 +3513,7 @@ export class GpuRenderer {
     for(;end<ids.length;end++){
       const node=this.scene.nodes[ids[end]]
       if(!node)break
-      const layer=sourceSolidLayer(node,path=>this.driver.sourceProgramOffset!(path),
+      const layer=sourceDisplayProgram(node,path=>this.driver.sourceProgramOffset!(path),
         key=>[...this.color(key),this.alpha(key)],SOURCE_LAYER_FLOATS-words)
       if(!layer)break
       layers.push(layer);words+=layer.data[0].length
@@ -3536,8 +3536,10 @@ export class GpuRenderer {
     return {targets,end}
   }
   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
-    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
-      ids=sourcePainterOrder(this.scene,ids,target.rect)
+    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled()){
+      if(this.sourceTileOcclusion&&target.texture.transparentZero)ids=sourcePainterOrder(this.scene,ids,target.rect)
+      else if(this.sourceSolidLayers)ids=flattenSourceDisplayList(this.scene,ids,target.rect)
+    }
     if(this.opaqueBatchEnabled()&&!clip&&!skip&&this.sampleIndex!==undefined){
       const batched=await this.drawOpaqueGroup(ids,[target],[this.sampleIndex]);if(batched)return batched[0]
     }
@@ -4237,8 +4239,11 @@ export class GpuRenderer {
     compactSource = false,
   ): Promise<Surface[]> {
     if(this.sourceTileOcclusion&&clip?.length===4&&clip.every((mask,i)=>this.identityClip(mask,targets[i].rect)))clip=undefined
-    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&targets.every(t=>t.texture.transparentZero)&&!prefix&&!compactSource&&!this.interactionCapturing&&
-        !this.painterStagesEnabled()&&targets[0])ids=sourcePainterOrder(this.scene,ids,targets[0].rect)
+    if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&!prefix&&!compactSource&&!this.interactionCapturing&&
+        !this.painterStagesEnabled()&&targets[0]){
+      if(this.sourceTileOcclusion&&targets.every(t=>t.texture.transparentZero))ids=sourcePainterOrder(this.scene,ids,targets[0].rect)
+      else if(this.sourceSolidLayers)ids=flattenSourceDisplayList(this.scene,ids,targets[0].rect)
+    }
     if(this.opaqueBatchEnabled()&&!clip&&!prefix&&!compactSource&&targets.length===4){
       const batched=await this.drawOpaqueGroup(ids,targets,[0,1,2,3]);if(batched)return batched
     }

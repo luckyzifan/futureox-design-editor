@@ -1,5 +1,5 @@
 import {afterEach,expect,test,vi} from 'vitest'
-import {sourceSolidLayer,sourceSolidLayerDisplay} from './source-solid-layers'
+import {sourceDisplayProgram,sourceSolidLayer,sourceSolidLayerDisplay} from './source-solid-layers'
 import {GpuRenderer} from './renderer'
 import type {Driver,GpuNode,GpuScene,Texture} from './types'
 afterEach(()=>vi.unstubAllEnvs())
@@ -43,7 +43,7 @@ test('opaque source programs preserve original four phase offsets and decline un
 })
 test('renderer batches in painter order, binds each actual binary clip and retains soft-mask fallback',async()=>{
   const r=new GpuRenderer({...driver,sourceLayersReady:true,sourceProgramOffset:()=>29} as Driver) as any
-  r.sourceSolidLayers=true;r.scene={nodes:{a:node('a'),b:node('b'),stop:{...node('stop'),opacity:.5}}}
+  r.sourceSolidLayers=true;r.scene={nodes:{a:node('a'),b:node('b'),stop:{...node('stop'),effects:[{kind:'blur',visible:true,radius:2}]}}}
   r.color=()=>[.125,.25,.5];r.alpha=()=>1
   const texture={binaryCoverage:true} as Texture,rect={x:0,y:0,w:32,h:32}
   const targets=Array.from({length:4},()=>({texture:{},rect})),clip=targets.map(()=>({texture,rect}))
@@ -60,6 +60,20 @@ test('renderer batches in painter order, binds each actual binary clip and retai
   expect(await r.drawSourceSolidLayers(['a'],0,targets,[0,1,2,3],clip)).toBeUndefined()
   r.interactionCapturing=true
   expect(await r.drawSourceSolidLayers(['a'],0,targets,[0,1,2,3])).toBeUndefined()
+})
+test('partial opacity and translucent strokes join the viewport batch; sampled effects do not',()=>{
+  const plain=node(),translucent={...plain,id:'fade',opacity:.5} as GpuNode
+  const faded=sourceDisplayProgram(translucent,()=>29,colour)
+  expect(sourceSolidLayer(translucent,()=>29,colour)).toBeUndefined()
+  expect(faded?.data[0][1]).toBe(.5)
+  const stroke={...plain,id:'stroke',strokes:[{path:plain.fill,paint:{...plain.fills[0],opacity:.4},align:'center'}]} as GpuNode
+  expect(sourceSolidLayer(stroke,()=>29,colour)).toBeUndefined()
+  expect(sourceDisplayProgram(stroke,()=>29,colour)?.fields).toEqual([])
+  const shadow={...plain,effects:[{kind:'inner-shadow',visible:true,radius:2,spread:0,x:0,y:0,color:'#ffffff',opacity:1}],
+    sourceFilterField:{factor:2,effectIndex:0,sharpHalo:0,radius:1,gaussian:false,input:plain.rect,output:plain.rect,masks:[]}} as unknown as GpuNode
+  expect(sourceDisplayProgram(shadow,()=>29,colour)).toBeUndefined()
+  expect(sourceDisplayProgram({...plain,opticalPrefixNext:'next'},()=>29,colour)).toBeUndefined()
+  expect(sourceDisplayProgram({...plain,effects:[{kind:'blur',visible:true,radius:2}]} as unknown as GpuNode,()=>29,colour)).toBeUndefined()
 })
 test('opaque source leaves stop on the uniform budget',async()=>{
   const r=new GpuRenderer({...driver,sourceLayersReady:true,sourceProgramOffset:()=>29} as Driver) as any

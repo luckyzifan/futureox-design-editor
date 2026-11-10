@@ -29,3 +29,16 @@ export function sourceSolidLayer(node:GpuNode,programOffset:Parameters<typeof so
   if(!brushes)return
   return sourceLayer(node,programOffset,colour,availableFloats)
 }
+
+/** Low-zoom viewport refine uses the same mode-76 program as detail tiles for
+ * leaves that need no sampled filter. Visible effects stay on the ordinary
+ * shadow/blur path; a field-bearing pack would drop that texture. */
+export function sourceDisplayProgram(node:GpuNode,programOffset:Parameters<typeof sourceLayer>[1],
+  colour:Parameters<typeof sourceLayer>[2],availableFloats=SOURCE_LAYER_FLOATS):SourceLayerProgram|undefined {
+  const solid=sourceSolidLayer(node,programOffset,colour,availableFloats)
+  if(solid)return solid
+  if(node.opticalPrefixNext||node.effects.some(e=>e.visible))return
+  const packed=sourceLayer(node,programOffset,colour,availableFloats)
+  if(!packed||packed.fields.length>0)return
+  return packed
+}
