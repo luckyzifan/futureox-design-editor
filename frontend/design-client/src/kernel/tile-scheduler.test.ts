@@ -60,8 +60,7 @@ async function settleMicrotasks(times = 12) {
 const viewport = { x: 0, y: 0, width: 1024, height: 1024 }
 
 describe('viewport-distance priority', () => {
-  test('Figma frame-budget defaults are pinned (16 ms / 2 rasterizations)', () => {
-    // m2.defaultTimeBudgetInSeconds = .016, m2.defaultTileRenderingBudget = 2
+  test('frame-budget defaults are pinned (16 ms / 2 rasterizations)', () => {
     expect(DEFAULT_TILE_FRAME_TIME_BUDGET_MS).toBe(16)
     expect(DEFAULT_TILE_FRAME_TILE_RENDER_BUDGET).toBe(2)
   })
@@ -114,7 +113,7 @@ describe('viewport-distance priority', () => {
 })
 
 describe('frame budget', () => {
-  test('mirrors Figma m2 accounting: per-frame reset, overspend, exemption', () => {
+  test('tracks per-frame reset, overspend and exemption', () => {
     const c = clock(100)
     const budget = new TileFrameBudget({ now: c.now })
     budget.beginFrame()

@@ -1349,8 +1349,8 @@ export function ProgressiveSurfaceImpl(
         if (rimMissing.length) await submitChunk(rimMissing)
         return
       }
-      // Viewport-distance priority + per-frame budget (Figma viewer scheduler
-      // alignment, see tile-scheduler.ts): on-screen tiles submit in full,
+      // Viewport-distance priority + per-frame budget (see tile-scheduler.ts):
+      // on-screen tiles submit in full,
       // exempt from the budget; off-screen tiles defer frame by frame under
       // the 16 ms / 2-rasterization budget without ever dropping a request.
       // The fill set is viewport misses plus prefetch-rim misses — the rim is

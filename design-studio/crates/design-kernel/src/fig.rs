@@ -665,7 +665,7 @@ const KNOWN_KINDS: &[(&str, &str)] = &[
     ("TABLE_CELL", "text"),
     ("SHAPE_WITH_TEXT", "group"),
     ("TABLE", "frame"),
-    // Figma 其余节点类型(从其产品文档与 wasm 字符串恢复):
+    // Additional supported Figma node types:
     ("EMBED", "frame"),
     ("MEDIA", "frame"),
     ("GIF", "frame"),

@@ -1,5 +1,4 @@
-/** Frame-debounced value, mirroring the Figma viewer tile scheduler's
- * debounce class. Initial values publish immediately; a changed queued value
+/** Frame-debounced value. Initial values publish immediately; a changed queued value
  * restarts the frame countdown. Repeating the queued value does not postpone
  * publication. In particular, queueing the committed value while another
  * value is pending still waits two frames. */
