@@ -2141,7 +2141,7 @@ export function ProgressiveSurfaceImpl(
                   rasterProfile,
                   // The worker streams and checks cancellation after each
                   // tile. One batch shares preparation across the whole view.
-                  tileViewport: coarseFocus,
+                  tileViewport: [...coarseFocus],
                   tilePrepareViewport: tilePrepareViewport(coarseFocus, coarseCamera),
                   renderIntent: 'preview',
                   ...(props.presentationEpoch === undefined ? {} : {
