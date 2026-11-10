@@ -10,8 +10,10 @@ cargo build -p futureox-design-agent
 cargo test -p futureox-design-agent
 
 cd ../frontend/design-desktop
-# 桌面应用会启动 ../design-studio/target/debug/futureox-design-agent
-# 也可以用 DESIGN_AGENT_BIN 指向别的构建
+node scripts/build.mjs --fast
+# 正常构建会把 futureox-design-agent 装到 dist/bin。
+# 未打包时桌面应用从 dist/bin 加载；打包后从 resources/bin 加载。
+# DESIGN_AGENT_BIN 仍可指向别的构建。程序缺失、提前退出、端口占用或健康检查失败会返回错误，不会留下未处理的 spawn 事件。
 ```
 
 默认只监听 `127.0.0.1:3927`。网页开发时 Vite 把 `/api/agent` 转到这个地址。
@@ -26,7 +28,7 @@ cd ../frontend/design-desktop
 | Token plan | 同样的 HTTP，凭证是订阅 token |
 | CC Switch | 只借用 [farion1231/cc-switch](https://github.com/farion1231/cc-switch) `b184a88c99428571d718d10d1a1403e9502cd28b`（MIT）里「一条供应商 = 一个上游地址和密钥」这一点。数据库默认 `~/.cc-switch/cc-switch.db`，可用 `CCSWITCH_DB` 改位置。设置里点一条，下一轮设计对话就打到那条 API 或 Token plan。 |
 
-没有密钥时，对话仍由本机助手按技能直接改画布。配了 `GROK_ASSISTANT_BASE_URL` 和 `GROK_ASSISTANT_API_KEY` 时，启动后优先用这条 Grok 兼容接口，然后再是设置里保存的 API、Token plan 和 CC Switch。不要把密钥写进仓库。
+没有外部模型密钥时，设置和设计助手面板显示「本机模式」，对话由本机规则直接改画布。配了 `GROK_ASSISTANT_BASE_URL` 和 `GROK_ASSISTANT_API_KEY` 时，启动后优先用这条 Grok 兼容接口，然后再是设置里保存的 API、Token plan 和 CC Switch。不要把密钥写进仓库。
 
 CC Switch 在这里只做切换：本机 Grok、已保存的 API、Token plan，或数据库里的一条上游。实现在 `design-studio/crates/design-agent/src/ccswitch.rs`，文件头保留 MIT 与 Copyright (c) 2025 Jason Young。没有带入它的桌面界面、本地代理、故障转移队列、熔断器或 OAuth。密钥留在 CC Switch 数据库里，设置列表不返回密钥。选中的地址返回 401、429、503、超时或无法识别的内容时，这一轮不改画布，并说明失败原因。不会自动改用本机规则，也不会自动改打另一条供应商。用户可以重试，或明确改用本机规则模板。本机规则模板会标明它不是已配置模型的结果。
 

@@ -28,6 +28,8 @@ test('local desktop defaults to optimized native products and records GPU source
   assert.throws(() => buildProfile(['--debug', '--release']), /Choose/)
   assert.ok(BUILD_DIRECTORIES.includes('design-studio/crates/design-gpu/src'))
   assert.ok(BUILD_FILES.includes('design-studio/crates/design-gpu/Cargo.toml'))
+  assert.ok(BUILD_DIRECTORIES.includes('design-studio/crates/design-agent/src'))
+  assert.ok(BUILD_FILES.includes('design-studio/crates/design-agent/Cargo.toml'))
 })
 
 test('build provenance detects edited/deleted inputs while generated artifacts do not self-invalidate', async () => {

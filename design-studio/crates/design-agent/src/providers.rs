@@ -54,18 +54,31 @@ pub struct ProviderSet {
     pub active: String,
 }
 
+pub(crate) fn local_provider() -> Provider {
+    Provider {
+        id: "local".into(),
+        name: "本机模式".into(),
+        kind: ProviderKind::Local,
+        base_url: String::new(),
+        secret: String::new(),
+        model: "本机规则".into(),
+        wire: Wire::OpenaiChat,
+        profile_id: String::new(),
+    }
+}
+
+/// `local` is the supported mode when no external model secret is active.
+pub(crate) fn availability(set: &ProviderSet) -> (&'static str, String) {
+    match set.active() {
+        Some(provider) if provider.kind == ProviderKind::Local => ("local", "本机模式".into()),
+        Some(provider) => ("configured", provider.name.clone()),
+        None => ("unavailable", "设计助手不可用".into()),
+    }
+}
+
 impl ProviderSet {
     pub fn from_env() -> Self {
-        let mut items = vec![Provider {
-            id: "local".into(),
-            name: "当前 Grok / Cursor 助手（本机）".into(),
-            kind: ProviderKind::Local,
-            base_url: String::new(),
-            secret: String::new(),
-            model: "grok-local".into(),
-            wire: Wire::OpenaiChat,
-            profile_id: String::new(),
-        }];
+        let mut items = vec![local_provider()];
         if let Some(provider) = env_provider(
             "grok",
             "Grok",
@@ -282,8 +295,16 @@ mod tests {
         assert_eq!(chat_url("http://127.0.0.1:15721/v1"), "http://127.0.0.1:15721/v1/chat/completions");
         assert_eq!(chat_url("https://api.example.test"), "https://api.example.test/v1/chat/completions");
         assert_eq!(startup_active(&set.items), "local");
+        let (mode, label) = availability(&ProviderSet { items: vec![super::local_provider()], active: "local".into() });
+        assert_eq!(mode, "local");
+        assert_eq!(label, "本机模式");
+        let local = super::local_provider();
+        assert!(local.secret.is_empty());
+        assert_eq!(local.name, "本机模式");
         set.items.insert(1, Provider { id: "grok".into(), name: "Grok".into(), kind: ProviderKind::Api, base_url: "https://grok.example/v1".into(), secret: "g".into(), model: "grok-4".into(), wire: Wire::OpenaiChat, profile_id: String::new() });
         assert_eq!(startup_active(&set.items), "grok");
+        let configured = ProviderSet { items: set.items.clone(), active: "grok".into() };
+        assert_eq!(availability(&configured).0, "configured");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from '../engine'
 import type { DesktopBridge } from '../desktop'
+import { agentAvailability, AGENT_CONNECTION_CHANGED, type AgentAvailability } from './agent-availability'
 import { applyAgentOperations, explainApplyFailure, type AgentFence } from './apply-operations'
 import { assistantStatus, cancelTurn, requestTurn, snapshotContext, type AgentTurn } from './agent-client'
 import { compareUserFile, sketchRoundTripGaps, type DesignGap } from './format-gap'
@@ -22,13 +23,14 @@ function rowsFrom(turn: AgentTurn, previous: Row[]): Row[] {
   return next
 }
 
-export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, initial, onImport }: {
+export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, initial, onImport, active = true }: {
   editor: Editor
   desktop?: DesktopBridge | null
   onClose(): void
   endpoint?: string
   initial?: AgentTargetDetail | null
   onImport?: (file: File, mode: 'open' | 'append') => void
+  active?: boolean
 }) {
   const snapshot = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [rows, setRows] = useState<Row[]>([])
@@ -41,6 +43,7 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   const [gaps, setGaps] = useState<DesignGap[]>([])
   const [gapLabel, setGapLabel] = useState('')
   const [actor, setActor] = useState('')
+  const [availability, setAvailability] = useState<AgentAvailability | { tone: 'pending'; text: string } | null>(null)
   const session = useRef(`page-${crypto.randomUUID()}`)
   const sentInitial = useRef(false)
   const history = useRef<string[]>([])
@@ -51,6 +54,24 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   const target = pinned && pinnedDocument.current === snapshot.doc.id ? pinned : snapshot.page
   const pageName = snapshot.doc.pages.find(page => page.id === target)?.name || '指定页面已不存在'
   const followingCurrent = target === snapshot.page
+
+  useEffect(() => {
+    if (!active || !desktop?.designAgent) return undefined
+    let live = true
+    let request = 0
+    const refresh = () => {
+      const ticket = ++request
+      setAvailability({ tone: 'pending', text: '正在连接本机设计助手…' })
+      void desktop.designAgent!.status().then(result => {
+        if (live && ticket === request) setAvailability(agentAvailability(result))
+      }).catch(failure => {
+        if (live && ticket === request) setAvailability({ tone: 'error', text: failure instanceof Error ? failure.message : '设计助手不可用' })
+      })
+    }
+    refresh()
+    window.addEventListener(AGENT_CONNECTION_CHANGED, refresh)
+    return () => { live = false; window.removeEventListener(AGENT_CONNECTION_CHANGED, refresh) }
+  }, [active, desktop])
 
   const send = async (message: string, pageId = target, options?: { useLocalRules?: boolean }) => {
     const text = message.trim()
@@ -157,6 +178,7 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
       <button type="button" onClick={freshConversation}>新对话</button>
       <button type="button" aria-pressed="true" onClick={onClose}>切换</button>
     </header>
+    {availability?.text && <p className={`design-agent-mode is-${availability.tone}`} role={availability.tone === 'error' ? 'alert' : 'status'} data-agent-mode={availability.tone}>{availability.text}</p>}
     <p className="design-agent-target" data-target-page={target}>{followingCurrent ? `默认改「${pageName}」。` : `将修改「${pageName}」。`}点名其他页面时，助手会改那一页。</p>
     {actor && <p role="status">{actor}</p>}
     <div className="design-agent-log" ref={scroller} aria-live="polite">

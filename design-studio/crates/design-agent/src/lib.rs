@@ -166,12 +166,22 @@ fn valid_session(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
 
-async fn health() -> Json<Value> {
-    Json(json!({
+fn health_body(set: &providers::ProviderSet) -> Value {
+    let (mode, label) = providers::availability(set);
+    json!({
         "ok": true,
         "service": "futureox-design-agent",
+        "pid": std::process::id(),
         "skills": skills::default_skills().iter().map(|skill| skill.as_str()).collect::<Vec<_>>(),
-    }))
+        "mode": mode,
+        "active": set.active,
+        "label": label,
+    })
+}
+
+async fn health(State(core): State<AgentCore>) -> Json<Value> {
+    let set = core.inner.providers.read().await;
+    Json(health_body(&set))
 }
 
 async fn turn_handler(State(core): State<AgentCore>, Json(request): Json<TurnRequest>) -> Result<Json<TurnResponse>, ApiError> {
@@ -186,8 +196,10 @@ async fn cancel_handler(State(core): State<AgentCore>, Json(body): Json<Value>) 
 }
 
 async fn list_providers(State(core): State<AgentCore>) -> Json<Value> {
-    let views = core.inner.providers.read().await.views();
-    Json(json!({ "providers": views }))
+    let set = core.inner.providers.read().await;
+    let (mode, label) = providers::availability(&set);
+    let views = set.views();
+    Json(json!({ "providers": views, "mode": mode, "label": label }))
 }
 
 async fn upsert_provider(State(core): State<AgentCore>, Json(provider): Json<Provider>) -> Result<Json<Value>, ApiError> {
@@ -220,11 +232,19 @@ impl axum::response::IntoResponse for ApiError {
     }
 }
 
+pub fn bind_failure(bind: &str, error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::AddrInUse {
+        format!("AGENT_PORT {bind} {error}")
+    } else {
+        format!("AGENT_BIND {bind} {error}")
+    }
+}
+
 pub async fn serve(bind: &str) -> Result<(), String> {
     if !(bind.starts_with("127.0.0.1:") || bind.starts_with("localhost:")) {
         return Err("the agent only binds to loopback".into());
     }
-    let listener = tokio::net::TcpListener::bind(bind).await.map_err(|error| error.to_string())?;
+    let listener = tokio::net::TcpListener::bind(bind).await.map_err(|error| bind_failure(bind, &error))?;
     let core = AgentCore::from_env();
     axum::serve(listener, core.router()).await.map_err(|error| error.to_string())
 }
@@ -336,5 +356,27 @@ mod session_tests {
         let later = bodies[2].to_string();
         assert!(later.contains("先做咖啡页") && later.contains("把标题改成暖季菜单"), "{later}");
         assert!(later.contains("toolu_hist_1"));
+    }
+
+    #[test]
+    fn health_names_local_mode_when_no_external_secret_is_active() {
+        let set = providers::ProviderSet { items: vec![providers::local_provider()], active: "local".into() };
+        let body = health_body(&set);
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["service"], "futureox-design-agent");
+        assert_eq!(body["mode"], "local");
+        assert_eq!(body["label"], "本机模式");
+        assert_eq!(body["active"], "local");
+        assert!(body["skills"].as_array().unwrap().iter().any(|skill| skill == "one-click-generate"));
+        let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        assert!(bind_failure("127.0.0.1:1", &denied).starts_with("AGENT_BIND 127.0.0.1:1 "));
+    }
+
+    #[tokio::test]
+    async fn a_taken_loopback_port_is_reported_as_agent_port() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let error = serve(&format!("127.0.0.1:{port}")).await.expect_err("taken port");
+        assert!(error.starts_with(&format!("AGENT_PORT 127.0.0.1:{port} ")), "{error}");
     }
 }

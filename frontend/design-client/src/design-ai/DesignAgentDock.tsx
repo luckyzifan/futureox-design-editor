@@ -13,7 +13,7 @@ export function DesignAgentDock({ editor, desktop, onImport }: {
 }) {
   const dock = useSyncExternalStore(subscribeAgentDock, getAgentDock)
   return <div id="design-agent-dock" className="design-agent-dock" hidden={!dock.open}>
-    <DesignAgentPanel editor={editor} desktop={desktop} initial={dock.initial} onImport={onImport}
+    <DesignAgentPanel editor={editor} desktop={desktop} initial={dock.initial} onImport={onImport} active={dock.open}
       onClose={() => setAgentDockOpen(false)} />
   </div>
 }

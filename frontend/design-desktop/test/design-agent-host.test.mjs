@@ -1,12 +1,68 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
+import { existsSync } from 'node:fs'
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createDesignAgentHost } from '../src/design-agent-host.mjs'
+import { createDesignAgentHost, resolveDesignAgentBinary } from '../src/design-agent-host.mjs'
 
-const bin = new URL('../../../design-studio/target/debug/futureox-design-agent', import.meta.url).pathname
+function builtAgent() {
+  const names = [
+    process.env.DESIGN_AGENT_BIN,
+    filePath('../dist/bin/futureox-design-agent'),
+    filePath('../../../design-studio/target/desktop-dev/futureox-design-agent'),
+    filePath('../../../design-studio/target/release/futureox-design-agent'),
+    filePath('../../../design-studio/target/debug/futureox-design-agent'),
+  ].filter(Boolean)
+  return names.find(candidate => existsSync(candidate))
+}
+
+function filePath(relative) {
+  return new URL(relative, import.meta.url).pathname
+}
+
+function agentEnv(extra = {}) {
+  const env = { ...process.env, ...extra }
+  for (const key of Object.keys(env)) {
+    if (/(?:^|_)(KEY|TOKEN|SECRET|PASSWORD)$/i.test(key) || key.startsWith('GROK_ASSISTANT_')) delete env[key]
+  }
+  return env
+}
+
+let portCursor = 22000 + (process.pid % 20000)
+const nextPort = () => portCursor++
+
+async function executable(dir, name, body) {
+  const file = path.join(dir, name)
+  await writeFile(file, body)
+  await chmod(file, 0o755)
+  return file
+}
+
+async function expectBounded(run) {
+  const crashes = []
+  const onCrash = error => { crashes.push(error) }
+  process.on('uncaughtException', onCrash)
+  try {
+    const started = Date.now()
+    const result = await run()
+    await new Promise(resolve => setTimeout(resolve, 40))
+    assert.equal(crashes.length, 0, crashes.map(error => error?.stack || String(error)).join('\n'))
+    assert.equal(result.status, 'error')
+    assert.equal(typeof result.code, 'string')
+    assert.equal(typeof result.message, 'string')
+    assert.ok(result.message.length > 0)
+    assert.ok(Date.now() - started < 4000, `error reply took too long (${Date.now() - started}ms)`)
+    return result
+  } finally {
+    process.off('uncaughtException', onCrash)
+  }
+}
+
+
+const bin = builtAgent()
 
 test('desktop host stores an API and a token plan, switches them, and reads CC Switch without echoing secrets', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'design-agent-'))
@@ -239,4 +295,128 @@ test('activating a saved connection sends the next turn to that provider and kee
     server.close()
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+test('installed agent path replaces the debug cargo default', async () => {
+  assert.equal(resolveDesignAgentBinary({ env: {}, resourcesRoot: '/app/dist', platform: 'linux' }), '/app/dist/bin/futureox-design-agent')
+  assert.equal(resolveDesignAgentBinary({ env: {}, resourcesRoot: '/Resources', platform: 'win32' }), path.join('/Resources', 'bin', 'futureox-design-agent.exe'))
+  assert.equal(resolveDesignAgentBinary({ env: { DESIGN_AGENT_BIN: '/opt/agent' }, resourcesRoot: '/app/dist' }), '/opt/agent')
+  const main = await readFile(new URL('../src/main.mjs', import.meta.url), 'utf8')
+  const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8')
+  const verify = await readFile(new URL('../scripts/verify-package.mjs', import.meta.url), 'utf8')
+  assert.equal(main.includes('target/debug/futureox-design-agent'), false)
+  assert.match(main, /resolveDesignAgentBinary/)
+  assert.match(build, /'futureox-design-agent'/)
+  assert.match(build, /agentBinary/)
+  assert.match(verify, /futureox-design-agent/)
+})
+
+test('missing agent, early exit, a taken port, and a failed health check stay bounded', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'design-agent-fault-'))
+  const hosts = []
+  try {
+    const missing = await expectBounded(() => {
+      const host = createDesignAgentHost({ bin: path.join(dir, 'missing-futureox-design-agent'), port: nextPort(), env: agentEnv(), readyTimeoutMs: 500, pollMs: 20 })
+      hosts.push(host)
+      return Promise.all([host.status(), host.turn({ session_id: 'missing', message: '一键出图' })]).then(([status, turn]) => {
+        assert.equal(turn.status, 'error')
+        assert.equal(turn.code, 'AGENT_BIN')
+        assert.match(turn.message, /未找到设计助手程序/)
+        return status
+      })
+    })
+    assert.equal(missing.code, 'AGENT_BIN')
+    const empty = await expectBounded(() => {
+      const host = createDesignAgentHost({ bin: '', port: nextPort(), readyTimeoutMs: 200 })
+      hosts.push(host)
+      return host.status()
+    })
+    assert.equal(empty.code, 'AGENT_BIN')
+
+    const earlyBin = await executable(dir, 'early-agent', '#!/bin/sh\necho agent-left-early >&2\nexit 9\n')
+    const early = await expectBounded(() => {
+      const host = createDesignAgentHost({ bin: earlyBin, port: nextPort(), env: agentEnv(), readyTimeoutMs: 1000, pollMs: 20 })
+      hosts.push(host)
+      return host.status()
+    })
+    assert.equal(early.code, 'AGENT_EXIT')
+    assert.match(early.message, /agent-left-early/)
+
+    const portBin = await executable(dir, 'port-agent', '#!/bin/sh\necho "AGENT_PORT 127.0.0.1:1 Address already in use (os error 98)" >&2\nexit 1\n')
+    const taken = await expectBounded(() => {
+      const host = createDesignAgentHost({ bin: portBin, port: nextPort(), env: agentEnv(), readyTimeoutMs: 1000, pollMs: 20 })
+      hosts.push(host)
+      return host.status()
+    })
+    assert.equal(taken.code, 'AGENT_PORT')
+    assert.match(taken.message, /已被占用/)
+
+    const healthPort = nextPort()
+    const healthBin = await executable(dir, 'health-agent.mjs', `#!/usr/bin/env node
+import http from 'node:http'
+const bind = process.argv.find((arg, index, all) => all[index - 1] === '--bind')
+const port = Number(String(bind).split(':').pop())
+http.createServer((_req, res) => {
+  res.writeHead(503, { 'content-type': 'application/json' })
+  res.end(JSON.stringify({ ok: false }))
+}).listen(port, '127.0.0.1')
+`)
+    const health = await expectBounded(() => {
+      const host = createDesignAgentHost({ bin: healthBin, port: healthPort, env: agentEnv(), readyTimeoutMs: 1000, pollMs: 20 })
+      hosts.push(host)
+      return host.status()
+    })
+    assert.equal(health.code, 'AGENT_HEALTH')
+    assert.match(health.message, /健康检查/)
+
+    const silentBin = await executable(dir, 'silent-agent', '#!/bin/sh\nsleep 30\n')
+    const timeout = await expectBounded(() => {
+      const host = createDesignAgentHost({ bin: silentBin, port: nextPort(), env: agentEnv(), readyTimeoutMs: 220, pollMs: 20 })
+      hosts.push(host)
+      return host.status()
+    })
+    assert.equal(timeout.code, 'AGENT_TIMEOUT')
+    assert.match(timeout.message, /没有在/)
+  } finally {
+    for (const host of hosts) host.dispose()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+
+test('the installed agent turns a taken port into a bounded reply', async () => {
+  const bin = builtAgent()
+  assert.ok(bin, 'futureox-design-agent is not installed. Build the desktop app or cargo build -p futureox-design-agent.')
+  const sockets = new Set()
+  const server = createNetServer(socket => {
+    sockets.add(socket)
+    socket.on('close', () => sockets.delete(socket))
+    socket.destroy()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const host = createDesignAgentHost({ bin, port: address.port, env: agentEnv(), readyTimeoutMs: 4000, pollMs: 20 })
+  try {
+    const status = await expectBounded(() => host.status())
+    assert.equal(status.code, 'AGENT_PORT')
+    assert.match(status.message, /AGENT_PORT/)
+    assert.match(status.message, /已被占用/)
+  } finally {
+    host.dispose()
+    for (const socket of sockets) socket.destroy()
+    if (server.listening) await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('two agent instances do not adopt the health of the instance already holding the port', async () => {
+  const bin = builtAgent(); assert.ok(bin)
+  const port = nextPort(), first = createDesignAgentHost({ bin, port, env: agentEnv(), readyTimeoutMs: 1500 }), second = createDesignAgentHost({ bin, port, env: agentEnv(), readyTimeoutMs: 1500 })
+  try {
+    assert.equal((await first.status()).status, 'ok')
+    const rejected = await second.status()
+    assert.equal(rejected.status, 'error')
+    assert.equal(rejected.code, 'AGENT_PORT')
+    assert.equal((await first.status()).status, 'ok')
+  } finally { second.dispose(); first.dispose() }
 })

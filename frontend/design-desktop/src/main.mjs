@@ -1,6 +1,6 @@
 import { desktopText, localizeNativeMenu } from './native-locale.mjs'
 import { createDesignAiHost } from './design-ai.mjs'
-import { createDesignAgentHost } from './design-agent-host.mjs'
+import { createDesignAgentHost, resolveDesignAgentBinary } from './design-agent-host.mjs'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
@@ -319,7 +319,9 @@ register('design-ai-status', () => designAi.status(), false)
 register('design-ai-configure', value => designAi.configure(value), false)
 register('design-ai-run', value => designAi.run(value), false)
 register('design-ai-cancel', value => designAi.cancel(value), false)
-const designAgentBin = process.env.DESIGN_AGENT_BIN || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../design-studio/target/debug/futureox-design-agent')
+const designAgentBin = resolveDesignAgentBinary({
+  resourcesRoot: app.isPackaged ? process.resourcesPath : assets,
+})
 const designAgent = createDesignAgentHost({
   bin: designAgentBin,
   storePath: () => path.join(app.getPath('userData'), 'design-agent-providers.json'),

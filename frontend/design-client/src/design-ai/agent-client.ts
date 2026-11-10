@@ -27,7 +27,7 @@ const AGENT_CONTEXT_GRAPH = 100_000
 type IndexedNode = { id: string; parentId: string | null; depth: number; pageId: string }
 
 export function assistantLabel(assistant: string): string {
-  if (assistant === 'local-rules' || assistant === 'grok-local' || assistant.includes('fallback-local')) return '本机规则模板'
+  if (assistant === 'local-rules' || assistant === 'grok-local' || assistant === '本机模式' || assistant.includes('fallback-local')) return '本机规则模板'
   if (assistant.startsWith('ccswitch:')) return 'CC Switch 上游'
   if (assistant === 'token-plan') return '已配置的 Token plan'
   if (assistant === 'api') return '已配置的模型'

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { agentAvailability, AGENT_CONNECTION_CHANGED } from './agent-availability'
 import { desktopBridge, type DesktopResult } from '../desktop'
 import './design-agent.css'
 
@@ -25,11 +26,11 @@ export function AgentSettings() {
   const [providers, setProviders] = useState<ProviderView[]>([])
   const [ccswitch, setCcswitch] = useState<CcSwitch | null>(null)
   const [message, setMessage] = useState('')
-  const [tone, setTone] = useState<'status' | 'error'>('status')
+  const [tone, setTone] = useState<'status' | 'local' | 'configured' | 'error' | 'pending'>('status')
   const [pending, setPending] = useState('')
   const pendingRef = useRef('')
 
-  const refresh = async () => {
+  const refresh = async (announce = false) => {
     if (!desktop?.designAgent) {
       setTone('error')
       setMessage('桌面版会连接本机 Rust 助手。网页预览需要先启动 design-agent。')
@@ -37,12 +38,15 @@ export function AgentSettings() {
     }
     const status = await desktop.designAgent.status()
     if (status.status !== 'ok') { setTone('error'); setMessage(refused(status)); return null }
+    const availability = agentAvailability(status)
+    if (announce) { setTone(availability.tone); setMessage(availability.text) }
     const next = status.providers || []
     setProviders(next)
     setCcswitch(status.ccswitch || null)
+    window.dispatchEvent(new Event(AGENT_CONNECTION_CHANGED))
     return next
   }
-  useEffect(() => { void refresh() }, [])
+  useEffect(() => { void refresh(true) }, [])
 
   const useSwitch = async (provider: { id: string; app_type: string; name: string }) => {
     if (!desktop?.designAgent) { setTone('error'); setMessage('请在桌面版里选择 CC Switch 供应商。'); return }
@@ -66,6 +70,17 @@ export function AgentSettings() {
     if (!await refresh()) return
     setTone('status')
     setMessage('已保存到本机助手，密钥不会出现在列表里。')
+  }
+
+  const useLocal = async () => {
+    if (!desktop?.designAgent || pendingRef.current) return
+    pendingRef.current = 'local'; setPending('local')
+    try {
+      const result = await desktop.designAgent.activate({ id: 'local' })
+      if (result.status !== 'ok') { setTone('error'); setMessage(refused(result)); return }
+      if (!await refresh()) return
+      setTone('local'); setMessage('已改用本机模式。不需要外部模型密钥，一键出图由本机规则直接改画布。')
+    } finally { pendingRef.current = ''; setPending('') }
   }
 
   const activateSaved = async (provider: ProviderView) => {
@@ -116,7 +131,7 @@ export function AgentSettings() {
     <label>地址<input aria-label="接口地址" placeholder={kind === 'ccswitch' ? 'http://127.0.0.1:15721/v1' : 'https://…/v1'} value={baseUrl} onChange={event => setBaseUrl(event.target.value)} /></label>
     <label>模型<input aria-label="模型名" value={model} onChange={event => setModel(event.target.value)} /></label>
     <label>{kind === 'token_plan' ? 'Plan token' : 'API key'}<input aria-label="密钥" type="password" autoComplete="off" value={secret} onChange={event => setSecret(event.target.value)} /></label>
-    <button type="button" onClick={() => void save()}>保存并使用</button>
+    <div className="design-ai-actions"><button type="button" disabled={pending !== ''} onClick={() => void save()}>保存并使用</button><button type="button" disabled={pending !== ''} onClick={() => void useLocal()}>改用本机模式</button></div>
     {!!providers.length && <ul className="agent-saved-list" aria-label="已保存的连接">{providers.map(provider => <li key={provider.id} className={provider.active ? 'is-active' : undefined} onClick={() => { if (!provider.active && !pending) void activateSaved(provider) }}>
       <span className="agent-saved-summary">{provider.active ? '使用中 · ' : ''}{provider.name} · {provider.kind} · {provider.model}{provider.has_secret ? ' · 已保存密钥' : ''}</span>
       <span className="agent-saved-actions">
@@ -128,6 +143,6 @@ export function AgentSettings() {
       <p role="status">CC Switch 数据库{ccswitch.present ? '已找到' : '未找到'}。{ccswitch.detail || ''}</p>
       {!!ccswitch.providers?.length && <ul aria-label="CC Switch 供应商">{ccswitch.providers.map(provider => <li key={`${provider.app_type}:${provider.id}`} className={provider.current ? 'is-active' : undefined}>{provider.current ? '当前 · ' : ''}{provider.name} · {provider.kind || provider.app_type} · {provider.model || '未写模型'}{provider.has_secret ? ' · 已有密钥' : ' · 缺少可执行地址或密钥'} <button type="button" className="agent-connection-action" onClick={() => void useSwitch(provider)}>用这条连接</button></li>)}</ul>}
     </div>}
-    {message && <p role={tone === 'error' ? 'alert' : 'status'}>{message}</p>}
+    {message && <p role={tone === 'error' ? 'alert' : 'status'} data-agent-mode={tone}>{message}</p>}
   </div>
 }
