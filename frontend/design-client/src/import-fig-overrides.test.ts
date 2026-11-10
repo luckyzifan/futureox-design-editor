@@ -143,3 +143,59 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   expect(messages.some(message => message.includes('fontVariantCaps') || message.includes('stackSpacing') || message.includes('stackChildAlignSelf'))).toBe(false)
   expect(receipts.get(instance.id)?.figOverrideVariableConsumption).toContain('RECTANGLE_TOP_LEFT_CORNER_RADIUS')
 })
+
+test('nested component property assignments execute only when the target exists', () => {
+  const doc = blank('属性')
+  const outer = node('frame', 0, 0, 120, 80)
+  const nested = node('frame', 0, 0, 80, 40)
+  const inner = node('frame', 0, 0, 80, 40)
+  const shown = node('rectangle', 0, 0, 20, 20)
+  const icon = node('frame', 0, 0, 16, 16)
+  const leaf = node('frame', 0, 0, 16, 16)
+  const replacement = node('frame', 0, 0, 16, 16)
+  const instance = node('frame', 0, 100, 120, 80)
+  outer.children = [nested.id]
+  inner.children = [shown.id, icon.id]
+  doc.nodes = {
+    [outer.id]: outer, [nested.id]: nested, [inner.id]: inner, [shown.id]: shown,
+    [icon.id]: icon, [leaf.id]: leaf, [replacement.id]: replacement, [instance.id]: instance,
+  }
+  const records = new Map<string, any>([
+    ['inner', { type: 'SYMBOL', componentPropDefs: [
+      { id: 'shown', name: 'Shown', type: 'BOOL', initialValue: { boolValue: true } },
+      { id: 'icon', name: 'Icon', type: 'INSTANCE_SWAP', initialValue: { guidValue: 'leaf' } },
+    ] }],
+    ['shown', { type: 'RECTANGLE', componentPropRefs: [{ defID: 'shown', componentPropNodeField: 'VISIBLE' }] }],
+    ['icon', { type: 'INSTANCE', symbolData: { symbolID: 'leaf' }, componentPropRefs: [{ defID: 'icon', componentPropNodeField: 'OVERRIDDEN_SYMBOL_ID' }] }],
+    ['leaf', { type: 'SYMBOL' }],
+    ['replacement', { type: 'SYMBOL' }],
+    ['outer', { type: 'SYMBOL' }],
+    ['nested', { type: 'INSTANCE', symbolData: { symbolID: 'inner' } }],
+    ['inst', { type: 'INSTANCE', symbolData: { symbolID: 'outer', symbolOverrides: [
+      { guidPath: { guids: ['nested'] }, componentPropAssignments: [
+        { defID: 'shown', value: {}, varValue: { value: { boolValue: false } } },
+        { defID: 'icon', value: { guidValue: 'replacement' } },
+        { defID: 'missing', value: { boolValue: true } },
+        { defID: 'shown', value: {}, varValue: { value: { alias: { guid: 'token' } } } },
+      ] },
+      { guidPath: { guids: ['absent'] }, componentPropAssignments: [
+        { defID: 'shown', value: { boolValue: false } },
+      ] },
+    ] } }],
+  ])
+  const ids = new Map([
+    ['outer', outer.id], ['nested', nested.id], ['inner', inner.id], ['shown', shown.id],
+    ['icon', icon.id], ['leaf', leaf.id], ['replacement', replacement.id], ['inst', instance.id],
+  ])
+  const warnings = new Set<string>()
+  importFigComponents(doc, records, ids, () => paint('#000000'), () => [], { add: (message) => warnings.add(message) })
+  const values = doc.nodes[instance.id].instance!.overrides[nested.id].propertyValues as Record<string, string | boolean>
+  expect(values.shown).toBe(false)
+  expect(values.icon).toBe(replacement.id)
+  expect(values.missing).toBeUndefined()
+  expect(doc.nodes[instance.id].instance!.overrides.absent?.propertyValues).toBeUndefined()
+  const messages = [...warnings]
+  expect(messages.some(message => message.includes('缺少定义'))).toBe(true)
+  expect(messages.some(message => message.includes('componentPropAssignments'))).toBe(true)
+  expect(messages.some(message => message.includes('赋值 shown'))).toBe(true)
+})

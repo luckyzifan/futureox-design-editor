@@ -19,6 +19,113 @@ fn property_value(kind: &PropertyKind, value: &Value) -> Option<Value> {
             .map(|v| Value::String(guid_string(v))),
     }
 }
+
+/// `value` is the authored literal. `varValue.value` is the same literal after
+/// Figma resolved it; an alias there is still a variable, not a value to run.
+fn resolved_assignment_value(kind: &PropertyKind, assignment: &Value) -> Option<Value> {
+    if let Some(value) = assignment.get("value") {
+        if let Some(literal) = property_value(kind, value) {
+            return Some(literal);
+        }
+    }
+    let resolved = assignment.pointer("/varValue/value")?;
+    if let Some(literal) = property_value(kind, resolved) {
+        return Some(literal);
+    }
+    if matches!(kind, PropertyKind::InstanceSwap) {
+        resolved
+            .pointer("/symbolIdValue/guid")
+            .map(|guid| Value::String(guid_string(guid)))
+    } else {
+        None
+    }
+}
+
+fn accepted_assignment(doc: &Document, kind: &PropertyKind, assignment: &Value) -> Option<Value> {
+    let value = resolved_assignment_value(kind, assignment)?;
+    if matches!(kind, PropertyKind::InstanceSwap) {
+        let id = value.as_str()?;
+        if doc
+            .nodes
+            .get(id)
+            .is_none_or(|node| node.component.is_none())
+        {
+            return None;
+        }
+    }
+    Some(value)
+}
+
+fn read_property_assignments(
+    doc: &Document,
+    properties: &BTreeMap<String, Property>,
+    assignments: &Value,
+    unsupported: &mut BTreeSet<String>,
+) -> BTreeMap<String, Value> {
+    let mut values = BTreeMap::new();
+    let Some(list) = assignments.as_array() else {
+        unsupported.insert("componentPropAssignments".into());
+        return values;
+    };
+    for assignment in list {
+        let Some(key) = assignment.get("defID").map(guid_string) else {
+            unsupported.insert("componentPropAssignments".into());
+            continue;
+        };
+        let Some(property) = properties.get(&key) else {
+            unsupported.insert(format!("property assignment {key}"));
+            continue;
+        };
+        let Some(value) = accepted_assignment(doc, &property.kind, assignment) else {
+            unsupported.insert(format!("property assignment {key}"));
+            continue;
+        };
+        values.insert(key, value);
+    }
+    values
+}
+
+fn override_property_map(
+    doc: &Document,
+    records: &BTreeMap<String, Value>,
+    root_properties: &BTreeMap<String, Property>,
+    path: &str,
+    resolved: bool,
+    target_id: &str,
+) -> Option<BTreeMap<String, Property>> {
+    if !resolved {
+        return None;
+    }
+    if path == "$root" {
+        return Some(root_properties.clone());
+    }
+    let record = records.get(target_id)?;
+    if str_of(record, "type") != Some("INSTANCE") {
+        return None;
+    }
+    let nested = record
+        .get("symbolData")
+        .and_then(|data| data.get("symbolID"))
+        .map(guid_string)?;
+    doc.nodes
+        .get(&nested)
+        .and_then(|node| node.component.as_ref())
+        .map(|component| component.properties.clone())
+}
+
+fn merge_property_values(entry: &mut BTreeMap<String, Value>, incoming: Value) {
+    let Some(incoming) = incoming.as_object() else {
+        return;
+    };
+    let slot = entry
+        .entry("propertyValues".into())
+        .or_insert_with(|| json!({}));
+    if let Some(slot) = slot.as_object_mut() {
+        for (key, value) in incoming {
+            slot.insert(key.clone(), value.clone());
+        }
+    }
+}
 fn descendants(doc: &Document, root: &str) -> Result<Vec<String>, Error> {
     let mut pending = doc.nodes[root].children.clone();
     let mut seen = BTreeSet::new();
@@ -1558,6 +1665,7 @@ fn apply_styles(
 
 fn trim_override_fields(fields: &mut BTreeMap<String, Value>, unsupported: &mut BTreeSet<String>) {
     const KEEP: &[&str] = &[
+        "propertyValues",
         "width",
         "height",
         "radii",
@@ -1848,7 +1956,7 @@ pub(super) fn import(
                 unsupported.insert(format!("property assignment {key}"));
                 continue;
             };
-            let Some(value) = property_value(&property.kind, &assignment["value"]) else {
+            let Some(value) = accepted_assignment(doc, &property.kind, assignment) else {
                 unsupported.insert(format!("property assignment {key}"));
                 continue;
             };
@@ -1879,6 +1987,26 @@ pub(super) fn import(
                 target_id(&path, &component_id)
             } else {
                 String::new()
+            };
+            let prepared_property_values = if let Some(raw) = ov.get("componentPropAssignments") {
+                match override_property_map(
+                    doc,
+                    records,
+                    &properties,
+                    &path,
+                    resolved.is_some(),
+                    &target_id,
+                ) {
+                    Some(props) => {
+                        Some(read_property_assignments(doc, &props, raw, &mut unsupported))
+                    }
+                    None => {
+                        unsupported.insert("componentPropAssignments".into());
+                        None
+                    }
+                }
+            } else {
+                None
             };
             let template = doc.nodes.get(&target_id);
             let source = records.get(&target_id);
@@ -1951,6 +2079,16 @@ pub(super) fn import(
                         fields.insert("fills".into(), serde_json::to_value(fills).unwrap());
                     }
                     "strokePaints" => {}
+                    "componentPropAssignments" => {
+                        if let Some(values) = &prepared_property_values {
+                            if !values.is_empty() {
+                                fields.insert(
+                                    "propertyValues".into(),
+                                    serde_json::to_value(values).unwrap_or_else(|_| json!({})),
+                                );
+                            }
+                        }
+                    }
                     "symbolID" | "overriddenSymbolID" => {
                         let id = guid_string(value);
                         if doc
@@ -2147,7 +2285,11 @@ pub(super) fn import(
                 kept.insert("path".into(), Value::String(original_path.clone()));
                 retained.push(Value::Object(kept));
             }
-            overrides.entry(path).or_default().extend(fields);
+            let entry = overrides.entry(path).or_default();
+            if let Some(values) = fields.remove("propertyValues") {
+                merge_property_values(entry, values);
+            }
+            entry.extend(fields);
         }
         let node = doc.nodes.get_mut(id).unwrap();
         node.instance = Some(

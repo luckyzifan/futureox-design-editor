@@ -8,6 +8,45 @@ function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,st
   if (kind === 'instance-swap' && ids.has(guid(value?.guidValue))) return ids.get(guid(value.guidValue))!
   throw new Error('FIG 组件属性缺少可执行的常量值；原文件未修改')
 }
+/** `value` is the authored literal. `varValue.value` is that literal after
+ * Figma resolved it. An alias is still a variable, not a value to run. */
+function assignmentLiteral(kind: ComponentProperty['kind'], assignment: any, ids: Map<string, string>): string | boolean | undefined {
+  for (const value of [assignment?.value, assignment?.varValue?.value]) {
+    if (!value || typeof value !== 'object') continue
+    try { return literal(kind, value, ids) } catch { /* the other carrier may hold the literal */ }
+    if (kind === 'instance-swap') {
+      const swapped = ids.get(guid(value.symbolIdValue?.guid))
+      if (swapped) return swapped
+    }
+  }
+}
+function overridePropertyValues(doc: DesignDocument, properties: Record<string, ComponentProperty>, assignments: any, ids: Map<string, string>, warnings?: { add(message: string): unknown }) {
+  const values: Record<string, string | boolean> = {}
+  if (!Array.isArray(assignments)) {
+    warnings?.add('FIG 实例覆盖 componentPropAssignments 暂不能执行，其余覆盖已保留')
+    return values
+  }
+  for (const assignment of assignments) {
+    const key = guid(assignment?.defID)
+    const property = properties[key]
+    if (!property) { warnings?.add(`FIG 组件属性赋值 ${key} 缺少定义，已跳过`); continue }
+    const value = assignmentLiteral(property.kind, assignment, ids)
+    if (value === undefined || (property.kind === 'instance-swap' && !doc.nodes[String(value)]?.component)) {
+      warnings?.add(`FIG 组件属性赋值 ${key} 暂不能执行，其余覆盖已保留`)
+      continue
+    }
+    values[key] = value
+  }
+  return values
+}
+function overrideProperties(doc: DesignDocument, records: Map<string, any>, ids: Map<string, string>, reverse: Map<string, string>, component: { properties: Record<string, ComponentProperty> }, path: string, resolved: string[]) {
+  if (path === '$root') return component.properties
+  const targetId = resolved.at(-1)
+  const record = targetId ? records.get(reverse.get(targetId) || '') : undefined
+  if (record?.type !== 'INSTANCE') return
+  const symbolId = ids.get(guid(record.symbolData?.symbolID))
+  return symbolId ? doc.nodes[symbolId]?.component?.properties : undefined
+}
 /** Resolve after assembly so property references name actual template layers. */
 const NULL_STYLE = new Set(['4294967295:4294967295', '0:0'])
 const STROKE_INPUTS = ['strokeWeight','strokeAlign','strokeCap','strokeJoin','dashPattern','borderStrokeWeightsIndependent','borderTopWeight','borderRightWeight','borderBottomWeight','borderLeftWeight']
@@ -151,8 +190,12 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
     for(const assignment of r.componentPropAssignments||r.symbolData?.componentPropAssignments||[]) {
       const key=guid(assignment.defID),property=component.properties[key]
       if(!property){warnings?.add(`FIG 组件属性赋值 ${key} 缺少定义，已跳过`);continue}
-      try{n.instance.propertyValues[key]=literal(property.kind,assignment.value,ids)}
-      catch(error){warnings?.add(error instanceof Error?error.message:String(error))}
+      const value = assignmentLiteral(property.kind, assignment, ids)
+      if (value === undefined || (property.kind === 'instance-swap' && !doc.nodes[String(value)]?.component)) {
+        warnings?.add('FIG 组件属性缺少可执行的常量值；原文件未修改')
+        continue
+      }
+      n.instance.propertyValues[key] = value
     }
     const retained: unknown[] = []
     for(const override of r.symbolData?.symbolOverrides||[]) {
@@ -165,7 +208,7 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       const sourceKey = [...ids].find(([, id]) => id === targetId)?.[0]
       const source = sourceKey ? records.get(sourceKey) : undefined
       const fields:Record<string,unknown>={}
-      const skip = new Set(['guidPath','overrideKey','styleID','guid','phase','parentIndex','type','cornerRadius','cornerSmoothing','size','textData','effects','textTracking','exportSettings','pluginData','derivedTextData','variableConsumptionMap','parameterConsumptionMap','variableModeBySetMap','stackReverseZIndex','styleIdForGrid',...STROKE_INPUTS,...LAYOUT_KEYS,...Object.keys(STYLE_FIELDS),...FONT_KEYS,'textAlignHorizontal','textAlignVertical','textAutoResize','lineHeight','letterSpacing','paragraphSpacing','paragraphIndent','textCase','fontName','textDecoration','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius','rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius'])
+      const skip = new Set(['guidPath','overrideKey','styleID','guid','phase','parentIndex','type','cornerRadius','cornerSmoothing','size','textData','effects','textTracking','exportSettings','pluginData','derivedTextData','variableConsumptionMap','parameterConsumptionMap','variableModeBySetMap','stackReverseZIndex','styleIdForGrid','componentPropAssignments',...STROKE_INPUTS,...LAYOUT_KEYS,...Object.keys(STYLE_FIELDS),...FONT_KEYS,'textAlignHorizontal','textAlignVertical','textAutoResize','lineHeight','letterSpacing','paragraphSpacing','paragraphIndent','textCase','fontName','textDecoration','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius','rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius'])
       for(const [key,value] of Object.entries(override)) {
         if(Array.isArray(override.strokePaints) && STROKE_INPUTS.includes(key)) continue
         if(skip.has(key)) continue
@@ -183,6 +226,14 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
         else warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
       }
       if(override.pluginData !== undefined) warnings?.add('FIG 实例覆盖 pluginData 暂不能执行，其余覆盖已保留')
+      if(override.componentPropAssignments !== undefined) {
+        const props = resolved ? overrideProperties(doc, records, ids, reverse, component, path, resolved) : undefined
+        if(!props) warnings?.add('FIG 实例覆盖 componentPropAssignments 暂不能执行，其余覆盖已保留')
+        else {
+          const values = overridePropertyValues(doc, props, override.componentPropAssignments, ids, warnings)
+          if(Object.keys(values).length) fields.propertyValues = { ...(fields.propertyValues as Record<string, string | boolean> | undefined), ...values }
+        }
+      }
       if(override.derivedTextData !== undefined) warnings?.add('FIG 实例覆盖 derivedTextData 暂不能执行，其余覆盖已保留')
       if(override.styleIdForGrid !== undefined) warnings?.add('FIG 实例覆盖 styleIdForGrid 暂不能执行，其余覆盖已保留')
       applySize(fields, override, warnings)
@@ -197,6 +248,10 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       const kept = applyConsumption(fields, override, variables, warnings)
       if(override.exportSettings !== undefined) kept.exportSettings = override.exportSettings
       if(Object.keys(kept).length) retained.push({ path: parts.join('/') || path, ...kept })
+      const previousValues = n.instance.overrides[path]?.propertyValues
+      if(fields.propertyValues && previousValues && typeof previousValues === 'object') {
+        fields.propertyValues = { ...(previousValues as Record<string, string | boolean>), ...(fields.propertyValues as Record<string, string | boolean>) }
+      }
       n.instance.overrides[path] = { ...(n.instance.overrides[path] || {}), ...fields }
     }
     if(retained.length && receipts && ids.get(sourceId)) {

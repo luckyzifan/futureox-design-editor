@@ -1144,3 +1144,127 @@ fn editor_modify_undo_save_reopen_keeps_override_fields() {
         .validate()
         .expect("reopened overrides stay executable");
 }
+
+/// Nested symbol overrides carry component property assignments. A resolved
+/// literal in `value` or `varValue` writes `propertyValues`. A missing layer,
+/// a missing definition, an alias, or a swap whose component is not in the
+/// file stays reported and is not stored.
+#[test]
+fn nested_component_property_assignments_execute_only_with_a_real_target() {
+    let mut inner = placed("SYMBOL", 1, 30, (0, 1), "a");
+    inner["size"] = json!({"x": 80., "y": 40.});
+    inner["componentPropDefs"] = json!([
+        {"id": guid(9, 1), "name": "Shown", "type": "BOOL", "initialValue": {"boolValue": true}},
+        {"id": guid(9, 2), "name": "Icon", "type": "INSTANCE_SWAP", "initialValue": {"guidValue": guid(1, 50)}},
+        {"id": guid(9, 3), "name": "Label", "type": "TEXT", "initialValue": {"textValue": {"characters": "Hi"}}},
+        {"id": guid(9, 4), "name": "Missing icon", "type": "INSTANCE_SWAP", "initialValue": {"guidValue": guid(1, 50)}}
+    ]);
+    let mut shown = placed("RECTANGLE", 1, 31, (1, 30), "b");
+    shown["componentPropRefs"] = json!([
+        {"defID": guid(9, 1), "componentPropNodeField": "VISIBLE"}
+    ]);
+    let mut icon = placed("INSTANCE", 1, 40, (1, 30), "c");
+    icon["symbolData"] = json!({"symbolID": guid(1, 50)});
+    icon["componentPropRefs"] = json!([
+        {"defID": guid(9, 2), "componentPropNodeField": "OVERRIDDEN_SYMBOL_ID"}
+    ]);
+    let leaf = placed("SYMBOL", 1, 50, (0, 1), "d");
+    let replacement = placed("SYMBOL", 1, 60, (0, 1), "e");
+    let mut outer = placed("SYMBOL", 1, 2, (0, 1), "f");
+    outer["size"] = json!({"x": 120., "y": 80.});
+    let mut nested = placed("INSTANCE", 1, 20, (1, 2), "g");
+    nested["symbolData"] = json!({"symbolID": guid(1, 30)});
+    let mut instance = placed("INSTANCE", 1, 5, (0, 1), "h");
+    instance["size"] = json!({"x": 120., "y": 80.});
+    instance["symbolData"] = json!({
+        "symbolID": guid(1, 2),
+        "symbolOverrides": [
+            {
+                "guidPath": {"guids": [guid(1, 20)]},
+                "componentPropAssignments": [
+                    {"defID": guid(9, 1), "value": {}, "varValue": {"value": {"boolValue": false}, "dataType": "BOOLEAN"}},
+                    {"defID": guid(9, 2), "value": {"guidValue": guid(1, 60)}},
+                    {"defID": guid(9, 4), "value": {"guidValue": guid(9, 9)}},
+                    {"defID": guid(9, 99), "value": {"boolValue": true}},
+                    {"defID": guid(9, 3), "value": {}, "varValue": {"value": {"alias": {"guid": guid(8, 1)}}}}
+                ]
+            },
+            {
+                "guidPath": {"guids": [guid(44, 1)]},
+                "componentPropAssignments": [
+                    {"defID": guid(9, 1), "value": {"boolValue": false}}
+                ]
+            }
+        ]
+    });
+    let doc = document_from_canvas(
+        &json!({"nodeChanges": [
+            json!({"guid": guid(0, 1), "type": "CANVAS", "name": "Page", "parentIndex": {"guid": guid(0, 0), "position": ""}}),
+            inner, shown, icon, leaf, replacement, outer, nested, instance
+        ]}),
+        BTreeMap::new(),
+        Vec::new(),
+    )
+    .expect("nested property assignments must not reject the file");
+    let values = &node(&doc, 1, 5).instance.as_ref().unwrap().overrides["fig-1-20"]["propertyValues"];
+    assert_eq!(values["fig-9-1"], json!(false));
+    assert_eq!(values["fig-9-2"], json!("fig-1-60"));
+    assert!(values.get("fig-9-4").is_none());
+    assert!(values.get("fig-9-99").is_none());
+    assert!(values.get("fig-9-3").is_none());
+    assert!(
+        node(&doc, 1, 5)
+            .instance
+            .as_ref()
+            .unwrap()
+            .overrides
+            .get("fig-44-1")
+            .and_then(|fields| fields.get("propertyValues"))
+            .is_none()
+    );
+    let notes = notes(&doc);
+    for name in [
+        "property assignment fig-9-4",
+        "property assignment fig-9-99",
+        "property assignment fig-9-3",
+        "componentPropAssignments",
+    ] {
+        assert!(notes.contains(name), "missing {name} in {notes}");
+    }
+    assert!(
+        !notes.contains("property assignment fig-9-1"),
+        "executed bool was reported: {notes}"
+    );
+    assert!(
+        !notes.contains("property assignment fig-9-2"),
+        "executed swap was reported: {notes}"
+    );
+    let mut resolved = doc;
+    resolve(&mut resolved).unwrap();
+    let hidden = resolved
+        .nodes
+        .values()
+        .find(|node| {
+            node.instance_origin
+                .as_ref()
+                .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key.ends_with("fig-1-31"))
+        })
+        .expect("generated shown layer");
+    assert!(!hidden.visible);
+    let swapped = resolved
+        .nodes
+        .values()
+        .find(|node| {
+            node.instance_origin.as_ref().is_some_and(|origin| {
+                origin.owner == "fig-1-5" && origin.key.ends_with("fig-1-40")
+            })
+        })
+        .expect("generated icon instance");
+    assert_eq!(
+        swapped.instance.as_ref().unwrap().component_id,
+        "fig-1-60"
+    );
+    resolved
+        .validate()
+        .expect("resolved nested property assignments stay valid");
+}

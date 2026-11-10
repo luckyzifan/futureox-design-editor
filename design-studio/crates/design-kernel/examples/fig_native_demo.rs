@@ -62,8 +62,12 @@ fn main() {
                 let mut sized = 0usize;
                 let mut radii = 0usize;
                 let mut line_height = 0usize;
+                let mut property_values = 0usize;
                 for instance in doc.nodes.values().filter_map(|node| node.instance.as_ref()) {
                     for fields in instance.overrides.values() {
+                        if fields.get("propertyValues").is_some() {
+                            property_values += 1;
+                        }
                         if fields.get("layout").is_some() {
                             layout += 1;
                         }
@@ -86,7 +90,7 @@ fn main() {
                     }
                 }
                 println!(
-                    "覆盖写入: layout {layout} | effects {effects} | size {sized} | radii {radii} | lineHeight {line_height}"
+                    "覆盖写入: layout {layout} | effects {effects} | size {sized} | radii {radii} | lineHeight {line_height} | propertyValues {property_values}"
                 );
                 if let Some(notes) = doc
                     .design_system
