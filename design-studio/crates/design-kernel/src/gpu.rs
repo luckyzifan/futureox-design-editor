@@ -1594,6 +1594,31 @@ fn painter_support_extent(
     })
 }
 
+/// Admit one prepared geometry window. Capture-read planning may narrow an
+/// already proved phase-three certificate, but a failed refinement keeps that
+/// certificate instead of mixing the two plans.
+fn admit_painter_support(
+    doc: &Document,
+    roots: &[String],
+    viewport: Rect,
+    prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
+    guard: Rect,
+    legacy_extent: Rect,
+    coherent: bool,
+    capture_reads: bool,
+) -> Option<PainterSupport> {
+    let phase_three = painter_support_extent(doc, roots, viewport, prepared, guard, coherent, None)
+        .filter(|support| painter_backdrop_phases_supported(doc, prepared, legacy_extent, support));
+    phase_three.map(|previous| {
+        if !capture_reads { return previous; }
+        let Some(stages) = previous.stages.as_ref() else { return previous; };
+        painter_support_extent(doc, roots, viewport, prepared, guard, coherent, Some(stages))
+            .filter(|support| support.stages.is_some() &&
+                painter_backdrop_phases_supported(doc, prepared, legacy_extent, support))
+            .unwrap_or(previous)
+    })
+}
+
 struct Compiler<'a> {
     doc: &'a Document,
     fonts: &'a Fonts,
@@ -2555,41 +2580,70 @@ impl Engine {
         // Radial source planning already includes painter/backdrop dependencies.
         // Drawing padding is not an allocation or sampling requirement.
         let extent=zoom_extent.unwrap_or(extent);
+        // The emitted map above follows this tile. A retained prepare window
+        // can be wider; its geometry is what can prove a sibling chain whose
+        // summed support exceeds the legacy tree maximum.
+        let mut emitted_guard = tile_guard;
+        let proved_window = self.camera_prepare.as_ref().and_then(|cache| {
+            if cache.incomplete { return None; }
+            let (x, y, w, h) = cache.key.3;
+            let guard = Rect::new(x, y, w, h);
+            (guard != tile_guard).then(|| (guard, Arc::clone(&cache.prepared)))
+        });
         let painter_support = if painter_support && has_region && !regional_foreground {
-            // A retained camera entry can own a wider, complete geometry
-            // window than this request. Use that window only when it owns the
-            // exact prepared map consumed below. Otherwise keep this request's
-            // proven preparation guard; do not infer missing geometry.
-            let support_guard = self.camera_prepare.as_ref()
-                .filter(|cache| !cache.incomplete && Arc::ptr_eq(&cache.prepared, &prepared))
-                .map(|cache| { let (x,y,w,h) = cache.key.3; Rect::new(x,y,w,h) })
-                .unwrap_or(tile_guard);
-            // A complete sibling chain can require MORE than the legacy tree
-            // maximum. Adopting only smaller certificates would silently keep
-            // the old under-supported crop. The unchanged surface cap below
-            // still applies to every admitted complete certificate.
+            // Try the tile first so a chain that already fits keeps the
+            // tile-local contours. A wider proved window may then admit a
+            // larger extent. Rebuild the emitted map for that extent alone:
+            // the whole prepare union must not become the node rect, and a
+            // tile-culled map is not proof of the outer ring. The surface
+            // cap below is unchanged.
             let coherent = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
-            let phase_three = painter_support_extent(doc, &page.children, viewport, &prepared, support_guard,
-                coherent, None)
-                .filter(|support| painter_backdrop_phases_supported(doc, &prepared, extent, support));
-            phase_three.map(|previous| {
-                if !capture_reads { return previous; }
-                let Some(stages) = previous.stages.as_ref() else { return previous; };
-                // The frozen logical limits own capture origins/dimensions.
-                // A failed stage/geometry/phase proof keeps the already proven
-                // phase-three certificate, never a mixture of the two plans.
-                painter_support_extent(doc, &page.children, viewport, &prepared, support_guard,
-                    coherent, Some(stages))
-                    .filter(|support| support.stages.is_some() &&
-                        painter_backdrop_phases_supported(doc, &prepared, extent, support))
-                    .unwrap_or(previous)
-            })
+            let tile_certificate = admit_painter_support(
+                doc, &page.children, viewport, &prepared, tile_guard, extent, coherent, capture_reads);
+            if let Some(certificate) = tile_certificate {
+                Some(certificate)
+            } else if let Some((window, wide)) = proved_window {
+                match admit_painter_support(
+                    doc, &page.children, viewport, &wide, window, extent, coherent, capture_reads)
+                {
+                    Some(admitted) if tile_guard.intersect(admitted.extent) != admitted.extent => {
+                        let guard = admitted.extent;
+                        if guard.pixels() > 16_777_216 {
+                            Some(admitted)
+                        } else {
+                            let mut local = HashMap::new();
+                            let mut segments = 0usize;
+                            for root in &page.children {
+                                crate::geometry_snapshot::prepare_node_geometry_indexed(
+                                    root, camera, (doc, &self.fonts, guard, compatible),
+                                    &mut self.paths, &mut self.local_strokes, &mut local, &mut segments,
+                                    world_support.as_deref(),
+                                )?;
+                            }
+                            let rebuilt = Arc::new(local);
+                            match admit_painter_support(
+                                doc, &page.children, viewport, &rebuilt, guard, extent, coherent, capture_reads)
+                            {
+                                Some(confirmed) if guard.intersect(confirmed.extent) == confirmed.extent => {
+                                    prepared = rebuilt;
+                                    emitted_guard = guard;
+                                    Some(confirmed)
+                                }
+                                _ => None,
+                            }
+                        }
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
         } else { None };
         let extent = painter_support.as_ref().map_or(extent, |support| support.extent);
         if extent.pixels() > 16_777_216 {
             return Err("GPU surface budget exceeded".into());
         }
-        let emission_guard=(tile_guard.x,tile_guard.y,tile_guard.w,tile_guard.h);
+        let emission_guard=(emitted_guard.x,emitted_guard.y,emitted_guard.w,emitted_guard.h);
         let programs = if cache_key.is_some() {
             self.camera_prepare.as_mut().map(|cache|{
                 if cache.program_guard!=Some(emission_guard) {
