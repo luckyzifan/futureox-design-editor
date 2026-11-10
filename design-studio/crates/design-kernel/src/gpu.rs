@@ -2471,13 +2471,18 @@ impl Engine {
             // Chord replacement outside the retained guard changes flattened
             // bounds. Publishing those bounds makes a real FIG node rect follow
             // the union instead of the tile. Rebuild only the emitted map.
+            // Copy contours the tile guard would flatten identically, and keep
+            // the cheap leaf rejection for paths already cached by this wider
+            // window. Curves the tile would chord are flattened again. This is
+            // not a projection superset: emitted nodes and bounds stay the tile's.
+            let prior=prepared.clone();
             let mut local=HashMap::new();
             let mut tile_segments=0usize;
             for root in &page.children {
-                crate::geometry_snapshot::prepare_node_geometry_indexed(
+                crate::geometry_snapshot::prepare_node_geometry_indexed_reusing(
                     root,camera,(doc,&self.fonts,tile_guard,compatible),
                     &mut self.paths,&mut self.local_strokes,&mut local,&mut tile_segments,
-                    world_support.as_deref(),
+                    world_support.as_deref(),&prior,built_guard,
                 )?;
             }
             prepared=Arc::new(local);
@@ -4046,5 +4051,69 @@ mod page_predicate_cache_tests {
         assert_eq!(constant_contours(std::slice::from_ref(&poly),false,Rect::new(1200,100,16,16)),Some(true));
         assert_eq!(constant_contours(std::slice::from_ref(&poly),false,Rect::new(100,1200,16,16)),Some(false));
         assert_eq!(constant_contours(&[poly],false,Rect::new(400,399,16,16)),None);
+    }
+}
+
+#[cfg(test)]
+mod tile_prepare_reuse_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn engine() -> Engine {
+        let mut document = json!({
+            "schemaVersion": 20, "id": "tiles", "name": "tiles",
+            "colorManagement": {"documentSpace": "srgb", "referenceWhiteNits": 203.0, "peakLuminanceNits": 1000.0},
+            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["inside", "cross", "far", "round"]}],
+            "nodes": {
+                "inside": {"id": "inside", "kind": "vector", "width": 40, "height": 30,
+                    "transform": [1, 0, 0, 1, 80, 70],
+                    "fills": [{"kind": "solid", "color": "#3366cc"}],
+                    "strokes": [{"width": 2, "paint": {"kind": "solid", "color": "#112233"}}],
+                    "vectorGeometry": {"fillRule": "nonzero", "fill": [
+                        {"move": [2, 2]}, {"cubic": [8, 28, 30, -6, 36, 18]}, {"line": [4, 26]}, "close"]}},
+                "cross": {"id": "cross", "kind": "vector", "width": 80, "height": 40,
+                    "transform": [1, 0, 0, 1, 490, 200],
+                    "fills": [{"kind": "solid", "color": "#cc6633"}],
+                    "vectorGeometry": {"fillRule": "nonzero", "fill": [
+                        {"move": [0, 4]}, {"cubic": [10, 40, 70, -20, 78, 30]}, {"line": [8, 34]}, "close"]}},
+                "far": {"id": "far", "kind": "rectangle", "width": 36, "height": 24,
+                    "transform": [1, 0, 0, 1, 1400, 900],
+                    "fills": [{"kind": "solid", "color": "#228855"}]},
+                "round": {"id": "round", "kind": "rectangle", "width": 48, "height": 32,
+                    "transform": [1, 0, 0, 1, 220, 260], "radii": [10, 10, 10, 10],
+                    "fills": [{"kind": "solid", "color": "#885522"}]}
+            }
+        });
+        document["nodes"]["inside"]["strokes"][0]["align"] = json!("center");
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        engine
+    }
+    fn packet(engine: &mut Engine, tile: Rect, prepare: Option<Rect>) -> Vec<u8> {
+        let mut request = json!({
+            "pageId": "p", "width": tile.w, "height": tile.h,
+            "view": {"x": 0.0, "y": 0.0, "zoom": 1.0},
+            "rasterProfile": "figmaSubpixel",
+            "gpuViewport": {"x": tile.x, "y": tile.y, "w": tile.w, "h": tile.h}
+        });
+        if let Some(prepare) = prepare {
+            request["prepareViewport"] = json!({"x": prepare.x, "y": prepare.y, "w": prepare.w, "h": prepare.h});
+        }
+        engine.compile_gpu_packet_request(&request.to_string()).unwrap()
+    }
+
+    #[test]
+    fn wider_prepare_reuses_contours_without_changing_interior_or_crossing_tiles() {
+        let union = Rect::new(0, 0, 1538, 1026);
+        let tiles = [Rect::new(0, 0, 514, 514), Rect::new(512, 0, 514, 514), Rect::new(0, 512, 514, 514)];
+        let mut shared = engine();
+        // Prime the retained window, matching a multi-tile viewport.
+        packet(&mut shared, tiles[0], Some(union));
+        for tile in tiles {
+            let mut direct = engine();
+            let legacy = packet(&mut direct, tile, None);
+            let reused = packet(&mut shared, tile, Some(union));
+            assert_eq!(legacy, reused, "tile {tile:?} changed when contours were reused");
+        }
     }
 }

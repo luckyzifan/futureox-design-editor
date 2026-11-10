@@ -63,21 +63,33 @@ fn prepare_node_geometry_impl(
     local_strokes: &mut crate::resident_strokes::ResidentStrokes,
     prepared: &mut HashMap<String, Prepared>, segments: &mut usize, early: bool,
 ) -> Result<Rect, String> {
-    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None)
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None,None)
 }
 pub(crate) fn prepare_node_geometry_indexed(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
     paths:&mut HashMap<String,crate::path::SharedPaths>,local_strokes:&mut crate::resident_strokes::ResidentStrokes,
     prepared:&mut HashMap<String,Prepared>,segments:&mut usize,support:Option<&crate::world_support::WorldSupport>,
 ) -> Result<Rect,String>{
-    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None)
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None,None)
+}
+/// Tile emission against a guard contained by an already-prepared window.
+/// Contours are copied only when `flatten_for_fill` would produce the same
+/// points; this is not a demand-projection superset and does not publish the
+/// wider guard's bounds for a curve the tile guard would chord.
+pub(crate) fn prepare_node_geometry_indexed_reusing(
+    id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
+    paths:&mut HashMap<String,crate::path::SharedPaths>,local_strokes:&mut crate::resident_strokes::ResidentStrokes,
+    prepared:&mut HashMap<String,Prepared>,segments:&mut usize,support:Option<&crate::world_support::WorldSupport>,
+    wide:&HashMap<String,Prepared>,wide_guard:Rect,
+) -> Result<Rect,String>{
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None,Some((wide,wide_guard)))
 }
 pub(crate) fn prepare_cpu_frame_geometry(
     id: &str, camera: Transform, context: (&Document, &Fonts, Rect, bool),
     paths: &mut HashMap<String, crate::path::SharedPaths>, strokes: &mut crate::resident_strokes::ResidentStrokes,
     prepared: &mut HashMap<String, Prepared>, segments: &mut usize, reuse: &mut crate::cpu_frame_plan::FrameGeometry,
 ) -> Result<Rect, String> {
-    prepare_node_geometry_supported::<true>(id, camera, context, paths, strokes, prepared, segments, true, None, Some(reuse))
+    prepare_node_geometry_supported::<true>(id, camera, context, paths, strokes, prepared, segments, true, None, Some(reuse), None)
 }
 fn prepare_node_geometry_supported<const FRAME: bool>(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
@@ -85,6 +97,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
     prepared:&mut HashMap<String,Prepared>,segments:&mut usize,early:bool,
     support:Option<(&crate::world_support::WorldSupport,Transform)>,
     mut reuse:Option<&mut crate::cpu_frame_plan::FrameGeometry>,
+    wide:Option<(&HashMap<String,Prepared>,Rect)>,
 ) -> Result<Rect,String>{
     crate::render_cancellation::checkpoint()?;
     if let Some(cached) = prepared.get(id) {
@@ -113,7 +126,9 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
             fill_program_bounds:Rect::default(),strokes:Vec::new(),stroke_program_bounds:Vec::new(),bounds:Rect::default(),halo:0,segments:0});
         return Ok(Rect::default());
     }
-    if early && !paths.contains_key(id) {
+    // A path cached for the wider window must not disable this rejection.
+    // The hull is the same conservative proof already used before the path exists.
+    if early && (wide.is_some() || !paths.contains_key(id)) {
         if let Some(bounds) = crate::geometry_support::leaf_control_bounds(n,matrix) {
             let halo = n.effect_outset(scale);
             let stroke = n.strokes.iter().filter(|s|s.visible)
@@ -224,44 +239,57 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         );
         return Ok(Rect::default());
     }
-    let fill = fill_path.flatten_for_fill(
-        matrix,
-        if compatible {
-            0.0001220703125
-        } else {
-            0.015625
-        },
-        guard,
-    )?;
-    let mut bound = Rect::from_points(fill.iter().flat_map(|p| p.points.iter().copied()));
-    let fill_program_bounds=bound.expand(1);
-    let mut strokes = Vec::new();
-    let mut stroke_program_bounds=Vec::new();
-    for s in &n.strokes {
-        if !s.visible || s.width <= 0. {
-            strokes.push(Arc::new(Vec::new()));
-            stroke_program_bounds.push(Rect::default());
-            continue;
-        }
-        let local=local_strokes.get(&paths[id],s,(0.125/scale).min(1.),0.125/scale)?;
-        let mut outline = (*local).clone();
-        for c in &mut outline {
-            for p in &mut c.points {
-                *p = matrix.point(*p);
+    let tolerance = if compatible { 0.0001220703125 } else { 0.015625 };
+    let reused = reused_contours(wide, id, matrix, guard, fill_path, n.strokes.len());
+    let (fill, mut bound, fill_program_bounds, strokes, stroke_program_bounds) = if let Some(reused) = reused {
+        let mut bound = Rect::from_points(reused.fill.iter().flat_map(|p| p.points.iter().copied()));
+        let fill_program_bounds = bound.expand(1);
+        let mut strokes = Vec::new();
+        let mut stroke_program_bounds = Vec::new();
+        for (stroke, outline) in n.strokes.iter().zip(reused.strokes.iter()) {
+            if !stroke.visible || stroke.width <= 0. {
+                strokes.push(Arc::clone(outline));
+                stroke_program_bounds.push(Rect::default());
+                continue;
             }
+            let stroke_bounds = Rect::from_points(outline.iter().flat_map(|c| c.points.iter().copied()));
+            bound = bound.union(stroke_bounds);
+            stroke_program_bounds.push(stroke_bounds.expand(1));
+            strokes.push(Arc::clone(outline));
         }
-        let stroke_bounds=Rect::from_points(
-            outline.iter().flat_map(|c| c.points.iter().copied()),
-        );
-        bound=bound.union(stroke_bounds);stroke_program_bounds.push(stroke_bounds.expand(1));
-        strokes.push(Arc::new(outline));
-    }
+        (reused.fill, bound, fill_program_bounds, strokes, stroke_program_bounds)
+    } else {
+        let fill = fill_path.flatten_for_fill(matrix, tolerance, guard)?;
+        let mut bound = Rect::from_points(fill.iter().flat_map(|p| p.points.iter().copied()));
+        let fill_program_bounds = bound.expand(1);
+        let mut strokes = Vec::new();
+        let mut stroke_program_bounds = Vec::new();
+        for s in &n.strokes {
+            if !s.visible || s.width <= 0. {
+                strokes.push(Arc::new(Vec::new()));
+                stroke_program_bounds.push(Rect::default());
+                continue;
+            }
+            let local = local_strokes.get(&paths[id], s, (0.125 / scale).min(1.), 0.125 / scale)?;
+            let mut outline = (*local).clone();
+            for c in &mut outline {
+                for p in &mut c.points {
+                    *p = matrix.point(*p);
+                }
+            }
+            let stroke_bounds = Rect::from_points(outline.iter().flat_map(|c| c.points.iter().copied()));
+            bound = bound.union(stroke_bounds);
+            stroke_program_bounds.push(stroke_bounds.expand(1));
+            strokes.push(Arc::new(outline));
+        }
+        (Arc::new(fill), bound, fill_program_bounds, strokes, stroke_program_bounds)
+    };
     let fill_bounds = crate::bounds::path_bounds(fill_path, matrix);
     let own = bound;
     let mut child_bounds = Rect::default();
     for child in n.render_children() {
         child_bounds = child_bounds.union(prepare_node_geometry_supported::<FRAME>(
-            child, matrix, context, paths, local_strokes, prepared, segments, early,support,reuse.as_deref_mut(),
+            child, matrix, context, paths, local_strokes, prepared, segments, early,support,reuse.as_deref_mut(),wide,
         )?);
     }
     if n.clip && !own.empty() {
@@ -290,7 +318,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
             support_culled:false,
             fill_bounds,
             matrix,
-            fill: Arc::new(fill),
+            fill,
             fill_program_bounds,
             strokes,
             stroke_program_bounds,
@@ -304,6 +332,43 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         cache.shape(n, support_bounds, guard, paths[id].pair().0, &prepared[id]);
     }
     Ok(bound)
+}
+
+struct ReusedContours {
+    fill: Arc<Vec<Contour>>,
+    strokes: Vec<Arc<Vec<Contour>>>,
+}
+/// Copy device contours only when this guard's fill flatten is the same point
+/// sequence the wider guard already stored. Strokes are not guard-clipped.
+fn reused_contours(
+    wide: Option<(&HashMap<String, Prepared>, Rect)>,
+    id: &str,
+    matrix: Transform,
+    guard: Rect,
+    fill_path: &crate::path::Path,
+    stroke_count: usize,
+) -> Option<ReusedContours> {
+    let (prepared, wide_guard) = wide?;
+    let old = prepared.get(id)?;
+    if old.matrix != matrix || old.support_culled || old.strokes.len() != stroke_count {
+        return None;
+    }
+    if old.fill.is_empty() && old.strokes.iter().all(|stroke| stroke.is_empty()) {
+        return None;
+    }
+    let curved = fill_path.commands.iter().any(|command| {
+        matches!(command, crate::path::Command::Quad(_, _) | crate::path::Command::Cubic(_, _, _) | crate::path::Command::SmoothCorner(_))
+    });
+    if curved {
+        let hull = fill_path.control_bounds(matrix);
+        let inside = |outer: Rect| {
+            !hull.empty() && hull.x >= outer.x && hull.y >= outer.y && hull.right() <= outer.right() && hull.bottom() <= outer.bottom()
+        };
+        if !inside(wide_guard) || !inside(guard) {
+            return None;
+        }
+    }
+    Some(ReusedContours { fill: Arc::clone(&old.fill), strokes: old.strokes.clone() })
 }
 
 #[cfg(test)]
