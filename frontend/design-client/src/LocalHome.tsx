@@ -1,6 +1,7 @@
 import { useEffect,useLayoutEffect,useRef,useState,type ReactNode } from 'react'
 import { File,FolderOpen,Grid2X2,List,Plus,Search,Settings } from 'lucide-react'
 import { FileMark } from './chrome-icons'
+import { useInterfacePreferences, useInterfaceText } from './interface-preference'
 import type { HomeEntry,HomeSource } from './local-home-source'
 import './local-home.css'
 
@@ -16,10 +17,23 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
  source:HomeSource;ready:boolean;busy?:boolean;startupError?:string;importError?:string;currentName:string
  onResume:()=>void;onNew:()=>Promise<boolean>;onOpenFile:()=>Promise<boolean|'pending'>;onSettings:()=>void
 }) {
+ const { locale } = useInterfacePreferences()
+ const text = useInterfaceText()
  const [entries,setEntries]=useState<HomeEntry[]>([]),[query,setQuery]=useState(''),[layout,setLayout]=useState<'grid'|'list'>('grid')
  const [loading,setLoading]=useState(false),[working,setWorking]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
  const root=useRef<HTMLElement>(null),search=useRef<HTMLInputElement>(null),alive=useRef(false),ticket=useRef(0),operation=useRef(false),latest=useRef(source)
  latest.current=source
+ const knownStatus = (value: string) => {
+  const table: Record<string, string> = {
+   '读取本机设计失败': text.readLocalDesignsFailed,
+   '操作已取消或未完成，当前设计已保留。': text.operationCancelledDesignKept,
+   '打开失败，当前设计已保留': text.openFailedDesignKept,
+   '正在读取本机设计…': text.readingLocalDesigns,
+   '文档操作暂不可用，仍可调整本机设置。': text.documentActionsUnavailable,
+   '本地恢复失败，文档操作和自动保存已暂停。': text.localRecoveryPaused,
+  }
+  return table[value] ?? value
+ }
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;ticket.current++}},[])
  useLayoutEffect(()=>{
   const shell=root.current?.parentElement,previous=document.activeElement
@@ -42,18 +56,23 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
   finally{operation.current=false;if(alive.current)setWorking(false)}
  }
  const disabled=!ready||busy||working,visible=entries.filter(e=>e.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
- return <section ref={root} className="local-home" aria-label="本机设计首页" aria-busy={loading||working||!ready} onKeyUp={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'&&!disabled){e.preventDefault();onResume()}}}>
-  <aside className="local-home-sidebar"><div className="local-home-brand"><img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" /><strong>Futureox Design</strong></div><div className="local-home-identity"><span aria-hidden="true">a</span><div><strong>admin</strong><small>本机工作空间</small></div></div>
-   <nav aria-label="首页模块"><button type="button" aria-current="page"><File size={16}/>设计 · 最近文件</button><button type="button" disabled={working || (ready && busy)} onClick={onSettings}><Settings size={16}/>设置</button></nav>
-   <p>仅本机使用，不连接后台。admin 是本机显示身份，不授予服务器权限。</p>
+ const continueLabel = locale === 'en' ? `Continue editing · ${currentName}` : `继续编辑 · ${currentName}`
+ const savedWhere = source.kind === 'web-local' ? text.savedInBrowser : text.savedOnComputer
+ return <section ref={root} className="local-home" aria-label={text.localDesignHome} aria-busy={loading||working||!ready} onKeyUp={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'&&!disabled){e.preventDefault();onResume()}}}>
+  <aside className="local-home-sidebar"><div className="local-home-brand"><img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" /><strong>Futureox Design</strong></div><div className="local-home-identity"><span aria-hidden="true">a</span><div><strong>admin</strong><small>{text.localWorkspace}</small></div></div>
+   <nav aria-label={text.homeSections}><button type="button" aria-current="page"><File size={16}/>{text.designRecentFiles}</button><button type="button" disabled={working || (ready && busy)} onClick={onSettings}><Settings size={16}/>{text.settingsTitle}</button></nav>
+   <p>{text.localIdentityNote}</p>
   </aside>
-  <div className="local-home-content"><header><div><h1>最近的设计</h1><p>保存在{source.kind==='web-local'?'此浏览器':'此电脑'}的作品</p></div><button type="button" disabled={disabled} onClick={onResume}>继续编辑 · {currentName}</button></header>
-   <div className="local-home-actions"><button type="button" disabled={disabled} onClick={()=>void run(onNew)}><Plus size={17}/>新建设计</button><button type="button" disabled={disabled} onClick={()=>void run(onOpenFile)}><FolderOpen size={17}/>打开设计文件</button></div>
-   <div className="local-home-filter"><label><Search size={16}/><input ref={search} aria-label="搜索最近设计" placeholder="搜索设计名称" value={query} onChange={e=>setQuery(e.target.value)}/></label><button type="button" disabled={loading||disabled} onClick={()=>void refresh()}>刷新</button><div role="group" aria-label="文件显示方式"><button type="button" aria-label="网格显示" aria-pressed={layout==='grid'} onClick={()=>setLayout('grid')}><Grid2X2 size={17}/></button><button type="button" aria-label="列表显示" aria-pressed={layout==='list'} onClick={()=>setLayout('list')}><List size={17}/></button></div></div>
-   {(error||importError)&&<p role="alert" className="local-home-error">{error||importError}</p>}{notice&&<p role="status">{notice}</p>}
-   {!ready?<p className="activity-line" role={startupError?"alert":"status"}>{startupError||"正在读取本机设计…"} 文档操作暂不可用，仍可调整本机设置。{!startupError&&<span className="activity-track" aria-hidden="true"><i/></span>}</p>:loading?<p className="activity-line" role="status">正在读取本机设计…<span className="activity-track" aria-hidden="true"><i/></span></p>:<div className={`local-home-files ${layout}`} aria-label="最近设计列表">{visible.map(entry=><button type="button" className="local-home-file" key={entry.id} disabled={disabled} onClick={()=>void run(()=>latest.current.open(entry.id))}>
-    <span className="local-home-placeholder" aria-hidden="true"><FileMark kind="fd" size={40}/></span><span className="local-home-file-meta"><strong>{entry.name}</strong><small>版本 {entry.revision} · 更新于 {new Date(entry.updatedAt).toLocaleString()}</small></span>
-   </button>)}{!visible.length&&<p className="local-home-empty">{query?'没有匹配的设计。':source.kind==='desktop-files'?'此版本使用本机文件，可通过“打开设计文件”继续。':'还没有保存的设计。新建或打开文件开始创作。'}</p>}</div>}
+  <div className="local-home-content"><header><div><h1>{text.recentDesignsTitle}</h1><p>{savedWhere}</p></div><button type="button" disabled={disabled} onClick={onResume}>{continueLabel}</button></header>
+   <div className="local-home-actions"><button type="button" disabled={disabled} onClick={()=>void run(onNew)}><Plus size={17}/>{text.newDesign}</button><button type="button" disabled={disabled} onClick={()=>void run(onOpenFile)}><FolderOpen size={17}/>{text.openDesignFile}</button></div>
+   <div className="local-home-filter"><label><Search size={16}/><input ref={search} aria-label={text.searchRecentDesigns} placeholder={text.searchDesignNames} value={query} onChange={e=>setQuery(e.target.value)}/></label><button type="button" disabled={loading||disabled} onClick={()=>void refresh()}>{text.refresh}</button><div role="group" aria-label={text.fileDisplay}><button type="button" aria-label={text.gridDisplay} aria-pressed={layout==='grid'} onClick={()=>setLayout('grid')}><Grid2X2 size={17}/></button><button type="button" aria-label={text.listDisplay} aria-pressed={layout==='list'} onClick={()=>setLayout('list')}><List size={17}/></button></div></div>
+   {(error||importError)&&<p role="alert" className="local-home-error">{knownStatus(error||importError||'')}</p>}{notice&&<p role="status">{knownStatus(notice)}</p>}
+   {!ready?<p className="activity-line" role={startupError?"alert":"status"}>{knownStatus(startupError||"正在读取本机设计…")} {knownStatus("文档操作暂不可用，仍可调整本机设置。")}{!startupError&&<span className="activity-track" aria-hidden="true"><i/></span>}</p>:loading?<p className="activity-line" role="status">{knownStatus("正在读取本机设计…")}<span className="activity-track" aria-hidden="true"><i/></span></p>:<div className={`local-home-files ${layout}`} aria-label={text.recentDesignList}>{visible.map(entry=>{
+    const when = new Date(entry.updatedAt).toLocaleString()
+    const meta = locale === 'en' ? `Version ${entry.revision} · Updated ${when}` : `版本 ${entry.revision} · 更新于 ${when}`
+    return <button type="button" className="local-home-file" key={entry.id} disabled={disabled} onClick={()=>void run(()=>latest.current.open(entry.id))}>
+    <span className="local-home-placeholder" aria-hidden="true"><FileMark kind="fd" size={40}/></span><span className="local-home-file-meta"><strong>{entry.name}</strong><small>{meta}</small></span>
+   </button>})}{!visible.length&&<p className="local-home-empty">{query?text.noMatchingDesigns:source.kind==='desktop-files'?text.desktopFilesEmpty:text.noSavedDesigns}</p>}</div>}
   </div>
  </section>
 }

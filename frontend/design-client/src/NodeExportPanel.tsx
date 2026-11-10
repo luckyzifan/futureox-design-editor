@@ -7,9 +7,11 @@ import { NumberField } from './fields'
 import { DraftInput } from './DraftInput'
 import { commitExportEdits, ExportOwner } from './export-ownership'
 import { commitPendingEdits } from './pending-edits'
+import { usePropertyText } from './property-interface-messages'
 
 type Preview = { name: string; url: string; pdf: boolean; pdfVector: boolean }
 export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
+  const { locale, tr } = usePropertyText()
   const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[previews,setPreviews]=useState<Preview[]>([])
   const managed=!!editor.state.doc.colorManagement
   const explicit=managed && subtreeNeedsExplicitColorEncoding(editor.state.doc, node.id)
@@ -27,6 +29,19 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
   useEffect(()=>{setEncoding(explicit?'':'srgb')},[node.id,explicit])
   useEffect(()=>{release();setPreviews([])},[node,editor.state.doc,editor.state.page])
   const update=(fn:(settings:ExportSetting[])=>void)=>editor.updateProperties([node.id],n=>{n.exportSettings??=[];fn(n.exportSettings)},'修改图层导出设置')
+  const indexed = (zh: string, en: string, index: number) => locale === 'en' ? `${en} ${index + 1}` : `${zh} ${index + 1}`
+  const present = (value: string) => {
+    const generated = /^已生成 (\d+) 个文件$/.exec(value)
+    if (locale === 'en' && generated) {
+      const count = Number(generated[1])
+      return `Generated ${count} ${count === 1 ? 'file' : 'files'}`
+    }
+    if (locale !== 'en') return value
+    const wrapped = /^Error: ([\s\S]*)$/.exec(value)
+    if (!wrapped) return tr(value)
+    const inner = tr(wrapped[1])
+    return inner === wrapped[1] ? value : inner
+  }
   async function generate() {
     if(busy || !commitExportEdits(editor))return
     const request=owner.current.begin(editor,'layer-export');if(!request)return
@@ -58,22 +73,24 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     } catch(error){if(request.isCurrent())desktopPet.event('error');release();if(mounted.current)setMessage(request.signal.aborted?'导出已取消：图层或文档已变化':String(error))}
     finally{owner.current.cancel(request);if(mounted.current)setBusy(false)}
   }
-  return <section aria-label="图层导出设置" className="node-export-panel">
-    <div className="section-title"><h3>导出</h3><button type="button" aria-label="添加图层导出设置" disabled={busy || (node.exportSettings?.length||0)>=16} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.push({id:uid(),format:'png',scale:1,suffix:''}))}}>＋</button></div>
+  return <section aria-label={tr('图层导出设置')} className="node-export-panel">
+    <div className="section-title"><h3>{tr('导出')}</h3><button type="button" aria-label={tr('添加图层导出设置')} disabled={busy || (node.exportSettings?.length||0)>=16} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.push({id:uid(),format:'png',scale:1,suffix:''}))}}>＋</button></div>
     {(node.exportSettings||[]).map((setting,i)=><div className="node-export-setting" key={setting.id}>
-      <NumberField label={`导出倍率 ${i+1}`} value={setting.scale} min={.001} max={128} onChange={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.scale=value})} />
-      <select aria-label={`导出格式 ${i+1}`} value={setting.format} onChange={event=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.format=event.target.value as ExportSetting['format']})}><option value="png">PNG</option><option value="svg">SVG</option><option value="jpeg">JPEG</option><option value="jpg">JPG（Sketch）</option><option value="webp">WebP</option><option value="pdf">PDF</option><option value="pdf-vector" disabled={vectorIssues.length>0}>PDF（矢量）</option><option value="tiff">TIFF（仅 Sketch 往返）</option><option value="eps">EPS（仅 Sketch 往返）</option></select>
-      <DraftInput aria-label={`导出后缀 ${i+1}`} placeholder="后缀" value={setting.suffix} validate={v=>v.length<=80&&!exportSuffixHasForbiddenCharacters(v)} onCommit={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.suffix=value})}/>
-      <button type="button" aria-label={`删除导出设置 ${i+1}`} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.splice(s.findIndex(s=>s.id===setting.id),1))}}>−</button>
+      <NumberField label={indexed('导出倍率', 'Export scale', i)} value={setting.scale} min={.001} max={128} onChange={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.scale=value})} />
+      <select aria-label={indexed('导出格式', 'Export format', i)} value={setting.format} onChange={event=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.format=event.target.value as ExportSetting['format']})}><option value="png">PNG</option><option value="svg">SVG</option><option value="jpeg">JPEG</option><option value="jpg">{tr('JPG（Sketch）')}</option><option value="webp">WebP</option><option value="pdf">PDF</option><option value="pdf-vector" disabled={vectorIssues.length>0}>{tr('PDF（矢量）')}</option><option value="tiff">{tr('TIFF（仅 Sketch 往返）')}</option><option value="eps">{tr('EPS（仅 Sketch 往返）')}</option></select>
+      <DraftInput aria-label={indexed('导出后缀', 'Export suffix', i)} placeholder={tr('后缀')} value={setting.suffix} validate={v=>v.length<=80&&!exportSuffixHasForbiddenCharacters(v)} onCommit={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.suffix=value})}/>
+      <button type="button" aria-label={indexed('删除导出设置', 'Remove export setting', i)} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.splice(s.findIndex(s=>s.id===setting.id),1))}}>−</button>
     </div>)}
-    {managed && <label className="node-export-encoding">输出编码 <select aria-label="图层导出输出编码" value={selected} disabled={busy} onChange={event=>setEncoding(event.target.value as 'srgb' | 'display-p3' | '')}>{explicit && <option value="">请选择</option>}<option value="srgb">sRGB</option><option value="display-p3">Display P3</option></select></label>}
-    {explicit && !selected && <p className="muted">此图层含广色域、HDR 或负值分量。请先选择与顶部导出相同的输出编码；未选择时不会导出，也不会把高光静默压成 8 位。</p>}
-    {managed && !explicit && <p className="muted">输出编码为 sRGB，与顶部导出的 sRGB 使用同一显式编码。</p>}
-    {!!node.exportSettings?.length && <button type="button" className="wide-button" disabled={busy || (explicit && !selected)} onClick={()=>void generate()}>{busy?'生成中…':'预览并导出此图层'}</button>}
-    {node.exportSettings?.some(s=>s.format==='jpeg')&&<p className="muted">JPEG 使用质量 100，透明区域填充为白色。</p>}
-    {node.exportSettings?.some(s=>s.format==='webp')&&<p className="muted">WebP 使用无损编码。</p>}
-    {node.exportSettings?.some(s=>s.format==='pdf-vector')&&<p className="muted">矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，与倍率无关{vectorIssues.length?`；当前图层包含${vectorIssues.join('、')}，将回退为位图 PDF`:''}。</p>}
-    {message&&<p role="status">{message}</p>}
-    {previews.map((p,i)=><div key={p.url} className="node-export-preview">{p.pdf?<span>{p.pdfVector?'PDF · 矢量':'PDF · 精确位图'}</span>:<img src={p.url} alt={`图层导出预览 ${i+1}`}/>}<a href={p.url} download={p.name}>{p.name}</a></div>)}
+    {managed && <label className="node-export-encoding">{tr('输出编码')} <select aria-label={tr('图层导出输出编码')} value={selected} disabled={busy} onChange={event=>setEncoding(event.target.value as 'srgb' | 'display-p3' | '')}>{explicit && <option value="">{tr('请选择')}</option>}<option value="srgb">sRGB</option><option value="display-p3">Display P3</option></select></label>}
+    {explicit && !selected && <p className="muted">{tr('此图层含广色域、HDR 或负值分量。请先选择与顶部导出相同的输出编码；未选择时不会导出，也不会把高光静默压成 8 位。')}</p>}
+    {managed && !explicit && <p className="muted">{tr('输出编码为 sRGB，与顶部导出的 sRGB 使用同一显式编码。')}</p>}
+    {!!node.exportSettings?.length && <button type="button" className="wide-button" disabled={busy || (explicit && !selected)} onClick={()=>void generate()}>{busy?tr('生成中…'):tr('预览并导出此图层')}</button>}
+    {node.exportSettings?.some(s=>s.format==='jpeg')&&<p className="muted">{tr('JPEG 使用质量 100，透明区域填充为白色。')}</p>}
+    {node.exportSettings?.some(s=>s.format==='webp')&&<p className="muted">{tr('WebP 使用无损编码。')}</p>}
+    {node.exportSettings?.some(s=>s.format==='pdf-vector')&&<p className="muted">{locale === 'en'
+      ? `Vector PDF writes paths, gradients and text outlines as native PDF objects, independent of scale${vectorIssues.length ? `; this layer includes ${vectorIssues.map(issue => tr(issue)).join(', ')}, and falls back to a bitmap PDF` : ''}.`
+      : `矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，与倍率无关${vectorIssues.length?`；当前图层包含${vectorIssues.join('、')}，将回退为位图 PDF`:''}。`}</p>}
+    {message&&<p role="status">{present(message)}</p>}
+    {previews.map((p,i)=><div key={p.url} className="node-export-preview">{p.pdf?<span>{p.pdfVector?tr('PDF · 矢量'):tr('PDF · 精确位图')}</span>:<img src={p.url} alt={indexed('图层导出预览', 'Layer export preview', i)}/>}<a href={p.url} download={p.name}>{p.name}</a></div>)}
   </section>
 }

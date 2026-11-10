@@ -1105,7 +1105,8 @@ export class DesktopSession {
     this.publish()
     this.editor.notify(this.conflict
       ? `文件已被外部修改。当前画布已保留，请另存为，或重新打开磁盘文件：${message}`
-      : `操作失败，当前画布已保留：${message}`)
+      : `操作失败，当前画布已保留：${message}`,
+      this.conflict ? undefined : { key: 'operationFailedCanvasRetained', error: message })
     return false
   }
 
