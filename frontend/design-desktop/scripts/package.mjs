@@ -80,6 +80,6 @@ const outputs = await packager({
   overwrite: true,
   asar: true,
   prune: false,
-  extraResource: [mcp, path.join(root, 'dist/sidecar'), path.join(root, 'dist/bin'), path.join(root, 'dist/fonts')],
+  extraResource: [mcp, path.join(root, 'dist/sidecar'), path.join(root, 'dist/bin'), path.join(root, 'dist/fonts'), path.join(root, 'third-party-notices')],
 })
 for (const output of outputs) console.log(`Unsigned native development bundle: ${output}`)

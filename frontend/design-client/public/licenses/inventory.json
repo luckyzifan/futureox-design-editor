@@ -1,5 +1,5 @@
 {
-  "scope": "UI runtime notices plus bundled font and vendored moxcms/flo_curves. Not a full Rust/Electron/transitive compliance clearance.",
+  "scope": "UI runtime notices, including quickjs-emscripten and the wasm variants its package entry imports, plus bundled font and vendored moxcms/flo_curves. Rust crate notices are generated separately from the packaged cargo tree. Not a signed release clearance.",
   "packages": [
     {
       "package": "fflate",
@@ -72,6 +72,62 @@
       "file": "svg-pathdata-LICENSE.txt",
       "sha256": "cd05e8e2516f46a2cd79494bbabdea76f874e8d049dbc19a76b367534a4e013e",
       "source": "frontend/design-client/node_modules/svg-pathdata/LICENSE"
+    },
+    {
+      "package": "quickjs-emscripten",
+      "version": "0.32.0",
+      "license": "MIT",
+      "file": "quickjs-emscripten-LICENSE.txt",
+      "sha256": "3c6040aa318612a234cc951609b640c0c63d85ae5a98a9330d3116f1553a79db",
+      "source": "https://registry.npmmirror.com/quickjs-emscripten/-/quickjs-emscripten-0.32.0.tgz package/LICENSE"
+    },
+    {
+      "package": "quickjs-emscripten-core",
+      "version": "0.32.0",
+      "license": "MIT",
+      "file": "quickjs-emscripten-LICENSE.txt",
+      "sha256": "3c6040aa318612a234cc951609b640c0c63d85ae5a98a9330d3116f1553a79db",
+      "source": "https://registry.npmmirror.com/quickjs-emscripten-core/-/quickjs-emscripten-core-0.32.0.tgz package/LICENSE"
+    },
+    {
+      "package": "@jitl/quickjs-ffi-types",
+      "version": "0.32.0",
+      "license": "MIT",
+      "file": "quickjs-emscripten-LICENSE.txt",
+      "sha256": "3c6040aa318612a234cc951609b640c0c63d85ae5a98a9330d3116f1553a79db",
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-ffi-types/-/quickjs-ffi-types-0.32.0.tgz package/LICENSE"
+    },
+    {
+      "package": "@jitl/quickjs-wasmfile-debug-asyncify",
+      "version": "0.32.0",
+      "license": "MIT",
+      "file": "quickjs-wasmfile-LICENSE.txt",
+      "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-debug-asyncify/-/quickjs-wasmfile-debug-asyncify-0.32.0.tgz package/LICENSE"
+    },
+    {
+      "package": "@jitl/quickjs-wasmfile-debug-sync",
+      "version": "0.32.0",
+      "license": "MIT",
+      "file": "quickjs-wasmfile-LICENSE.txt",
+      "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-debug-sync/-/quickjs-wasmfile-debug-sync-0.32.0.tgz package/LICENSE"
+    },
+    {
+      "package": "@jitl/quickjs-wasmfile-release-asyncify",
+      "version": "0.32.0",
+      "license": "MIT",
+      "file": "quickjs-wasmfile-LICENSE.txt",
+      "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-release-asyncify/-/quickjs-wasmfile-release-asyncify-0.32.0.tgz package/LICENSE"
+    },
+    {
+      "package": "@jitl/quickjs-wasmfile-release-sync",
+      "version": "0.32.0",
+      "license": "MIT",
+      "file": "quickjs-wasmfile-LICENSE.txt",
+      "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-release-sync/-/quickjs-wasmfile-release-sync-0.32.0.tgz package/LICENSE"
     },
     {
       "package": "flo_curves",
