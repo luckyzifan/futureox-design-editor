@@ -33,6 +33,8 @@ node --import ./scripts/node-ts-local-resolver.mjs --test src/image-import.test.
 
 `use-zoom-activity.test.mjs` 会导入已安装的 `react`。省略该文件时也必须带上同一个 `--import`，否则 `render-diagnostics.test.mjs` 仍会在加载阶段失败。
 
+Node 26 的类型剥离只支持 `strip`。帧防抖类使用显式字段初始化，Hook 测试也使用 `strip`，不依赖已经移除的 `transform` 模式；其帧数、相等性判断和取消断言保持不变。
+
 这些 `.test.mjs` 用 Node 自带测试运行器直接导入实际生产模块，不依赖 Vitest、WASM 或 GPU。诊断的 14 个测试覆盖默认关闭、暂停/重开、512 条上限、丢弃计数、字段白名单、错误脱敏、非法数值、不可变快照、预算摘要跨边界验证，以及现有性能面板录制控制的集成。`scripts/node-ts-local-resolver.test.mjs` 只检查上述预加载：不带它时同一组文件在断言前失败，带上之后通过。它不计入这 14 个诊断用例。
 
 `npm run test:renderer-contracts` 还验证生产分配拒绝携带的摘要、状态消费、成功/非法分配/新渲染尝试清除旧状态。安装依赖后，`npm test -- src/kernel/render-budget-client.test.ts src/kernel/client.test.ts` 用 worker 替身验证 Web 和 Electron 两种主机策略走同一通道，包含未启用录制、启用/暂停、错误分类隔离、取消后迟到消息和后续成功；不启动真实 GPU。
