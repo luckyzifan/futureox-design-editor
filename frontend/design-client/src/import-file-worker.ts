@@ -43,6 +43,20 @@ export function importFileInWorker(
   }, signal, diagnostic)
 }
 
+/** Retry Sketch admission with local libraries. The original file stays closed on failure. */
+export function importSketchWithLibraries(bytes: ArrayBuffer, libraries: ArrayBuffer[], name: string, signal?: AbortSignal, diagnostic?: ImportDiagnostic): Promise<ImportedDesign> {
+  for (const buffer of [bytes, ...libraries]) assertImportInputBytes(buffer.byteLength)
+  if (libraries.length < 1 || libraries.length > 8) throw new Error('打开前请附上 1 到 8 个本地 .sketch 库')
+  return runFileWorker({ format: 'sketch-with-libraries', bytes, libraries, name }, [bytes, ...libraries], 'SKETCH', (message) => {
+    const result = message.result as ImportedDesign
+    diagnostic?.stage(ImportStage.validate)
+    validateDocument(result.document)
+    if (!Array.isArray(result.warnings) || result.warnings.some(warning => typeof warning !== 'string'))
+      throw new Error('文件导入兼容报告无效')
+    return result
+  }, signal, diagnostic)
+}
+
 /** Compatibility export shares the same WASM codec in both application hosts. */
 export function exportSketchInWorker(document: DesignDocument, signal?: AbortSignal): Promise<Uint8Array> {
   return runFileWorker({ format: 'sketch-export', document }, [], 'Sketch 导出', (message) => {

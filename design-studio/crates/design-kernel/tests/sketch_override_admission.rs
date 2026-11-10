@@ -199,6 +199,8 @@ fn missing_style_master_and_corrupt_target_stay_distinct_and_blocked() {
     let style_error = interop::import_sketch_report(&missing_style).err().unwrap().to_string();
     assert!(style_error.contains("GONE-STYLE"), "{style_error}");
     assert!(style_error.contains("缺失的外部库样式"), "{style_error}");
+    assert!(style_error.contains("页面「Page」"), "{style_error}");
+    assert!(style_error.contains("打开前定位"), "{style_error}");
     assert!(!style_error.contains("no supported editable mapping"), "{style_error}");
     assert!(style_error.contains("不会发明样式"), "{style_error}");
 
@@ -209,6 +211,8 @@ fn missing_style_master_and_corrupt_target_stay_distinct_and_blocked() {
     assert!(master_error.contains("MISSING-MASTER"), "{master_error}");
     assert!(master_error.contains("缺失的外部库符号"), "{master_error}");
     assert!(master_error.contains("不会发明主组件"), "{master_error}");
+    assert!(master_error.contains("页面「Page」"), "{master_error}");
+    assert!(master_error.contains("打开前定位"), "{master_error}");
 
     let mut shape = layer("SHAPE", "rectangle");
     shape["style"] = json!({"fills": []});
@@ -222,6 +226,7 @@ fn missing_style_master_and_corrupt_target_stay_distinct_and_blocked() {
     assert!(corrupt.contains("could not be resolved"), "{corrupt}");
     assert!(corrupt.contains("损坏的覆盖引用"), "{corrupt}");
     assert!(corrupt.contains("DF9F8712-F384-496A-AFFD-EE3744A1A99B"), "{corrupt}");
+    assert!(corrupt.contains("页面「Page」"), "{corrupt}");
     assert!(corrupt.contains("不会发明图层"), "{corrupt}");
 
     let mut layers = styled_symbol("STYLE-1", json!({}));
@@ -313,6 +318,45 @@ fn local_library_supplies_a_missing_master_by_symbol_id_and_preserves_export() {
     assert!(reopened.nodes.values().any(|node| node.text == "From project"));
 }
 
+#[test]
+fn named_page_fills_a_sibling_master_by_id_and_does_not_import_the_other_page() {
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default();
+    let mut label = layer("LABEL", "text");
+    label["attributedString"] = json!({"string": "Library", "attributes": []});
+    let mut master = layer("LIB-MASTER", "symbolMaster");
+    master["symbolID"] = json!("LIB-SYMBOL");
+    master["layers"] = json!([label]);
+    let mut only = layer("ONLY-ON-B", "rectangle");
+    only["name"] = json!("ONLY-ON-B");
+    let mut instance = layer("INSTANCE", "symbolInstance");
+    instance["symbolID"] = json!("LIB-SYMBOL");
+    instance["overrideValues"] = json!([{"overrideName": "LABEL_stringValue", "value": "From page"}]);
+    let files = [
+        ("meta.json", json!({"version": 144, "pagesAndArtboards": {"PAGE-A": {"name": "Using"}, "PAGE-B": {"name": "Definitions"}}})),
+        ("document.json", json!({"_class": "document", "do_objectID": "DOC-1", "colorSpace": 1, "pages": [
+            {"_class": "MSJSONFileReference", "_ref": "pages/PAGE-A"},
+            {"_class": "MSJSONFileReference", "_ref": "pages/PAGE-B"}
+        ]})),
+        ("pages/PAGE-A.json", json!({"_class": "page", "do_objectID": "PAGE-A", "name": "Using", "layers": [instance]})),
+        ("pages/PAGE-B.json", json!({"_class": "page", "do_objectID": "PAGE-B", "name": "Definitions", "layers": [master, only]})),
+    ];
+    for (name, value) in files {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(&serde_json::to_vec(&value).unwrap()).unwrap();
+    }
+    let bytes = zip.finish().unwrap().into_inner();
+    let missing = interop::import_sketch_page_report(&bytes, "Missing", &[]).err().unwrap().to_string();
+    assert!(missing.contains("was not found"), "{missing}");
+    let mut document = interop::import_sketch_page_report(&bytes, "Using", &[]).unwrap().document;
+    assert!(document.pages.iter().any(|page| page.name == "Using"));
+    assert!(!document.pages.iter().any(|page| page.name == "Definitions"));
+    assert!(!document.nodes.values().any(|node| node.name == "ONLY-ON-B"));
+    assert_eq!(document.nodes["INSTANCE"].instance.as_ref().unwrap().overrides["LABEL"]["text"], "From page");
+    components::resolve(&mut document).unwrap();
+    assert!(document.nodes.values().any(|node| node.text == "From page"));
+}
+
 /// Official archives are not in git. Run with
 /// `SKETCH_OFFICIAL_DIR=/path cargo test --test sketch_override_admission -- --ignored official_uswds`.
 #[test]
@@ -326,76 +370,112 @@ fn official_uswds_and_carbon_override_admission_matches_the_real_archives() {
     assert!(project_error.contains("6F0139C2-C417-4447-8E8B-5926F071C14F"), "{project_error}");
     assert!(project_error.contains("缺失的外部库符号"), "{project_error}");
     assert!(project_error.contains("不会发明主组件"), "{project_error}");
+    assert!(project_error.contains("打开前定位"), "{project_error}");
+    assert!(project_error.contains("border color"), "{project_error}");
     let linked = interop::import_sketch_report_with_libraries(&project, &[&library]).err().unwrap().to_string();
     assert!(linked.contains("6F0139C2-C417-4447-8E8B-5926F071C14F"), "{linked}");
     assert!(linked.contains("已核对本地库"), "{linked}");
     assert!(linked.contains("uswds"), "{linked}");
     assert!(linked.contains("不会发明主组件"), "{linked}");
+    assert!(linked.contains("上游定义缺失") || linked.contains("其中没有这个 symbolID"), "{linked}");
+    assert!(!linked.contains("Border color"), "{linked}");
     let library_error = interop::import_sketch_report(&library).err().unwrap().to_string();
     assert!(library_error.contains("DF9F8712-F384-496A-AFFD-EE3744A1A99B"), "{library_error}");
     assert!(library_error.contains("could not be resolved"), "{library_error}");
     assert!(library_error.contains("损坏的覆盖引用"), "{library_error}");
+    assert!(library_error.contains("位置："), "{library_error}");
 
     let carbon = read("Carbon_DataViz_Master_v2.sketch");
-    let color = carbon_color_window(&carbon);
-    let report = interop::import_sketch_report(&color).expect("Color page layerStyle overrides admit");
-    let mut admitted = report.document;
-    assert!(admitted.nodes.values().any(|node| node.instance.as_ref().is_some_and(|instance| {
-        instance.overrides.values().any(|fields| fields.get("styleRefs").and_then(|refs| refs.get("fills")).is_some())
-    })));
+    let report = interop::import_sketch_page_report(&carbon, "Color", &[]).expect("Color page layerStyle overrides admit");
+    assert!(report.document.pages.iter().any(|page| page.name == "Color"));
+    assert!(!report.document.pages.iter().any(|page| matches!(page.name.as_str(), "Legend" | "About" | "Layout" | "Axis")));
+    let style_id = report.document.nodes.values().find_map(|node| {
+        node.instance.as_ref().and_then(|instance| {
+            instance.overrides.values().find_map(|fields| {
+                fields.get("styleRefs").and_then(|refs| refs.get("fills")).and_then(|id| id.as_str()).map(str::to_owned)
+            })
+        })
+    }).expect("Color page keeps a shared layerStyle on the instance");
+    let mut admitted = report.document.clone();
     components::resolve(&mut admitted).unwrap();
     let painted = admitted.nodes.values().any(|node| node.instance_origin.is_some() && node.fills.iter().any(|paint| paint.visible && !paint.color.is_empty()));
     assert!(painted, "a resolved instance layer keeps the shared layer style fill");
+    let before = pixel_of_styled_instance(&admitted, &style_id);
+    let mut editor = futureox_design_kernel::editing::DocumentEditor::new(report.document).unwrap();
+    let original = editor.document().clone();
+    let mut edited = original.clone();
+    edited.design_system.as_mut().unwrap().styles.get_mut(&style_id).unwrap().value[0]["color"] = json!("#00ff00");
+    editor.apply(editor.revision(), futureox_design_kernel::editing::DocumentPatch::between(&original, &edited).unwrap()).unwrap();
+    let mut resolved = editor.document().clone();
+    components::resolve(&mut resolved).unwrap();
+    assert_ne!(pixel_of_styled_instance(&resolved, &style_id), before, "editing the shared layer style changes the Color page pixel");
+    editor.undo().unwrap();
+    assert_eq!(editor.document().design_system.as_ref().unwrap().styles[&style_id].value[0]["color"], original.design_system.as_ref().unwrap().styles[&style_id].value[0]["color"]);
+    editor.redo().unwrap();
+    let exported = interop::export_sketch(editor.document()).unwrap();
+    let mut reopened = interop::import_sketch_report(&exported).unwrap().document;
+    assert!(reopened.nodes.values().any(|node| node.instance.as_ref().is_some_and(|instance| {
+        instance.overrides.values().any(|fields| fields.get("styleRefs").and_then(|refs| refs.get("fills")).and_then(|id| id.as_str()) == Some(style_id.as_str()))
+    })));
+    components::resolve(&mut reopened).unwrap();
+    assert_eq!(pixel_of_styled_instance(&reopened, &style_id), pixel_of_styled_instance(&resolved, &style_id));
 }
 
-fn carbon_color_window(bytes: &[u8]) -> Vec<u8> {
-    let files = interop::read_zip_public(bytes).unwrap();
-    let meta: Value = serde_json::from_slice(&files["meta.json"]).unwrap();
-    let document: Value = serde_json::from_slice(&files["document.json"]).unwrap();
-    let mut pages = Vec::new();
-    for (name, bytes) in &files {
-        if name.starts_with("pages/") && name.ends_with(".json") {
-            pages.push(serde_json::from_slice::<Value>(bytes).unwrap());
-        }
+fn pixel_of_styled_instance(document: &futureox_design_kernel::scene::Document, style_id: &str) -> u64 {
+    let page = document.pages.iter().find(|page| page.name == "Color").expect("Color page");
+    let mut parent = std::collections::BTreeMap::new();
+    for node in document.nodes.values() {
+        for child in &node.children { parent.insert(child.clone(), node.id.clone()); }
     }
-    let color_id = meta["pagesAndArtboards"].as_object().unwrap().iter().find(|(_, page)| page["name"] == "Color").unwrap().0.clone();
-    let color = pages.iter().find(|page| page["do_objectID"] == color_id).unwrap();
-    let mut masters = std::collections::BTreeMap::new();
-    fn walk(layers: &Value, masters: &mut std::collections::BTreeMap<String, Value>) {
-        for layer in layers.as_array().into_iter().flatten() {
-            if layer["_class"] == "symbolMaster" && let Some(id) = layer["symbolID"].as_str() {
-                masters.insert(id.to_ascii_uppercase(), layer.clone());
-            }
-            walk(&layer["layers"], masters);
-        }
+    let mut on_page = std::collections::BTreeSet::new();
+    let mut stack = page.children.clone();
+    while let Some(id) = stack.pop() {
+        if !on_page.insert(id.clone()) { continue; }
+        if let Some(node) = document.nodes.get(&id) { stack.extend(node.children.iter().cloned()); }
     }
-    for page in &pages {
-        walk(&page["layers"], &mut masters);
+    let instance_id = document.nodes.values().find(|node| {
+        on_page.contains(&node.id) && node.instance.as_ref().is_some_and(|instance| {
+            instance.overrides.values().any(|fields| fields.get("styleRefs").and_then(|refs| refs.get("fills")).and_then(|id| id.as_str()) == Some(style_id))
+        })
+    }).map(|node| node.id.clone()).expect("instance with the shared layer style");
+    let mut owned = std::collections::BTreeSet::new();
+    let mut stack = vec![instance_id];
+    while let Some(id) = stack.pop() {
+        if !owned.insert(id.clone()) { continue; }
+        if let Some(node) = document.nodes.get(&id) { stack.extend(node.children.iter().cloned()); }
     }
-    let mut needed = Vec::new();
-    fn instances(layer: &Value, needed: &mut Vec<String>) {
-        if layer["_class"] == "symbolInstance" && let Some(id) = layer["symbolID"].as_str() {
-            needed.push(id.to_ascii_uppercase());
-        }
-        for child in layer["layers"].as_array().into_iter().flatten() {
-            instances(child, needed);
-        }
+    let node = document.nodes.values().find(|node| {
+        owned.contains(&node.id) && node.width >= 4. && node.height >= 4.
+            && node.fills.iter().any(|paint| paint.visible && paint.color.starts_with('#'))
+    }).expect("resolved layer painted by the shared layer style");
+    let mut x = 0.;
+    let mut y = 0.;
+    let mut cursor = Some(node.id.clone());
+    for _ in 0..32 {
+        let Some(id) = cursor else { break };
+        let Some(current) = document.nodes.get(&id) else { break };
+        x += current.transform.0[4];
+        y += current.transform.0[5];
+        cursor = parent.get(&id).cloned();
     }
-    for layer in color["layers"].as_array().unwrap() {
-        instances(layer, &mut needed);
-    }
-    let mut selected = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    while let Some(id) = needed.pop() {
-        if !seen.insert(id.clone()) { continue; }
-        if let Some(master) = masters.get(&id) {
-            instances(master, &mut needed);
-            selected.push(master.clone());
-        }
-    }
-    let mut layers = color["layers"].as_array().unwrap().clone();
-    layers.extend(selected);
-    let mut document = document;
-    document["pages"] = json!([{"_class":"MSJSONFileReference","_ref":"pages/page"}]);
-    archive(document, layers)
+    let mut engine = futureox_design_kernel::Engine::new();
+    engine.load_font(include_bytes!("../../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap();
+    engine.load_document(&serde_json::to_string(document).unwrap()).unwrap();
+    let side_w = node.width.clamp(1., 48.).round() as u32;
+    let side_h = node.height.clamp(1., 48.).round() as u32;
+    let bytes = engine.render(&futureox_design_kernel::RenderOptions {
+        page_id: page.id.clone(),
+        width: side_w,
+        height: side_h,
+        view: futureox_design_kernel::View { x: -x, y: -y, zoom: 1. },
+        transparent: true,
+        grid: false,
+        pixel_preview: None,
+        animation: None,
+        raster_profile: futureox_design_kernel::fidelity::RasterProfile::Analytic,
+        interactive_effects: false,
+        checkerboard: false,
+    }).unwrap();
+    bytes.iter().fold(0u64, |hash, byte| hash.wrapping_mul(16777619).wrapping_add(*byte as u64))
 }
+

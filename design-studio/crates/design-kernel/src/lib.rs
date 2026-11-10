@@ -450,6 +450,7 @@ pub fn stroke_geometry(json: &str) -> Result<String, String> {
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use super::*;
+    use js_sys::{Array, Uint8Array};
     use wasm_bindgen::prelude::*;
     /// Trusted bootstrap only. No document field or operation argument routes here.
     #[wasm_bindgen]
@@ -2370,6 +2371,35 @@ mod wasm {
     #[wasm_bindgen]
     pub fn import_sketch_json(bytes: &[u8]) -> Result<String, JsValue> {
         let report = interop::import_sketch_report(bytes)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        serde_json::to_string(&report).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Attach local .sketch libraries by symbol/style ID, then admit. Each
+    /// library is a Uint8Array. Missing IDs stay blocked; names are not guessed.
+    #[wasm_bindgen]
+    pub fn import_sketch_with_libraries_json(bytes: &[u8], libraries: Array) -> Result<String, JsValue> {
+        if libraries.length() == 0 || libraries.length() > 8 {
+            return Err(JsValue::from_str("打开前请附上 1 到 8 个本地 .sketch 库"));
+        }
+        let mut owned = Vec::with_capacity(libraries.length() as usize);
+        for value in libraries.iter() {
+            if !value.is_instance_of::<Uint8Array>() {
+                return Err(JsValue::from_str("Sketch 库必须是未解码的文件字节"));
+            }
+            owned.push(Uint8Array::new(&value).to_vec());
+        }
+        let refs: Vec<&[u8]> = owned.iter().map(Vec::as_slice).collect();
+        let report = interop::import_sketch_report_with_libraries(bytes, &refs)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        serde_json::to_string(&report).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Admit one named page without expanding sibling members that are outside
+    /// that page and its symbol closure. Entry ceilings stay unchanged.
+    #[wasm_bindgen]
+    pub fn import_sketch_page_json(bytes: &[u8], page: &str) -> Result<String, JsValue> {
+        let report = interop::import_sketch_page_report(bytes, page, &[])
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         serde_json::to_string(&report).map_err(|e| JsValue::from_str(&e.to_string()))
     }

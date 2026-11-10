@@ -18,6 +18,9 @@ import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
 import { SourceDocumentStatus } from './SourceDocumentStatus'
+import { SketchLibraryLocate } from './SketchLibraryLocate'
+import { sketchLibraryGap } from './sketch-library-locate'
+import { importSketchWithLibraries } from './import-file-worker'
 import { SourcePageInspector } from './SourcePageInspector'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
@@ -164,6 +167,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
   const [showHome, setShowHome] = useState(!source)
   const [homeImportError, setHomeImportError] = useState('')
+  const [libraryGap, setLibraryGap] = useState<{ file: File; error: string } | null>(null)
   const [startupError, setStartupError] = useState('')
   const homeSettingsFocus = useRef<HTMLElement | null>(null)
   const [showTools, setShowTools] = useState(false)
@@ -331,6 +335,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if(mode==='open'&&desktopBridge()?.largeDocument&&/\.(json|sketch)$/i.test(f.name)&&/Sketch archive: Limit|archive resource limit:/.test(String(error))){setLargeDocument({file:f});return}
         desktopPet.event('error')
         const reason = error instanceof Error ? error.message : String(error)
+        if (mode === 'open' && /\.sketch$/i.test(f.name) && sketchLibraryGap(reason)?.canAttach) setLibraryGap({ file: f, error: reason })
         editor.notify(reason, importInputStatus(error))
         if (showHome) setHomeImportError(reason)
       }
@@ -1289,6 +1294,28 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </button>
           </div>}
           {source&&<SourceDocumentStatus source={source}/>}
+      {libraryGap && sketchLibraryGap(libraryGap.error) && <SketchLibraryLocate gap={sketchLibraryGap(libraryGap.error)!} error={libraryGap.error} busy={importing} onClose={() => setLibraryGap(null)} onAttach={async libraries => {
+        const request = fileImports.begin(editor)
+        setImporting(true)
+        try {
+          const bytes = await libraryGap.file.arrayBuffer()
+          const attached = await Promise.all(libraries.map(file => file.arrayBuffer()))
+          const imported = await importSketchWithLibraries(bytes, attached, libraryGap.file.name, request.signal)
+          request.assertCurrent()
+          const document = createImportedCopy(imported.document)
+          const opened = await switchDocument(document, undefined, true, request)
+          if (!opened || !request.isCurrent()) return
+          setLibraryGap(null)
+          setHomeImportError('')
+          if (imported.warnings.length) setImportReport({ documentId: document.id, warnings: imported.warnings })
+          editor.notify('已按库中的真实 ID 补齐并打开', { key: 'sketchLibraryAttached' })
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error)
+          setLibraryGap({ file: libraryGap.file, error: reason })
+          setHomeImportError(reason)
+          editor.notify(reason)
+        } finally { request.finish(); setImporting(false) }
+      }} />}
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}
             onSelectSourcePoint={source?.selectMaterialAt} selectedMaterialBox={source?.selectedMaterialBox} pickSourceMaterial={source?.pickMaterial} prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}

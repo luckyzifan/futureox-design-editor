@@ -6,6 +6,7 @@ import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
 type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
   | { document: DesignDocument; format: 'sketch-export' }
+  | { name: string; format: 'sketch-with-libraries'; bytes: ArrayBuffer; libraries: ArrayBuffer[] }
 self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>) => {
   let importStage = 238 // initialize
   try {
@@ -30,6 +31,22 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
     } else source = event.data.bytes
     assertImportInputBytes(source.byteLength)
     const bytes = new Uint8Array(source)
+    if (event.data.format === 'sketch-with-libraries') {
+      await initializeKernelModule()
+      const kernel = await import('./generated/design-kernel/design_kernel') as {
+        import_sketch_with_libraries_json?: (bytes: Uint8Array, libraries: Uint8Array[]) => string
+      }
+      if (typeof kernel.import_sketch_with_libraries_json !== 'function') {
+        throw new Error('当前内核不能在打开前附上 Sketch 库')
+      }
+      importStage = 233
+      const libraries = event.data.libraries.map(buffer => new Uint8Array(buffer))
+      const result = JSON.parse(kernel.import_sketch_with_libraries_json(bytes, libraries))
+      result.document.id = uid()
+      result.document.name = event.data.name || result.document.name
+      self.postMessage({ result })
+      return
+    }
     if (event.data.format === 'sketch' || event.data.format === 'sketch-library') {
       await initializeKernelModule()
       const { import_sketch_json } = await import('./generated/design-kernel/design_kernel')

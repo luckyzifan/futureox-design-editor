@@ -99,6 +99,17 @@ fn read_zip(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
 }
 
 fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<String, Vec<u8>>> {
+    read_zip_bounded_filtered(bytes, limits, None)
+}
+
+/// `only` expands just those members. Every other member stays compressed and
+/// does not spend the expanded-byte budget. A requested member still uses the
+/// same per-entry and total ceilings; exceeding one is an error, not a skip.
+fn read_zip_bounded_filtered(
+    bytes: &[u8],
+    limits: ArchiveLimits,
+    only: Option<&BTreeSet<String>>,
+) -> Result<BTreeMap<String, Vec<u8>>> {
     if bytes.len() > limits.input {
         return Err(archive_limit("input bytes"));
     }
@@ -177,6 +188,9 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
         if file.is_dir() {
             continue;
         }
+        if only.is_some_and(|wanted| !wanted.contains(&name) && !wanted.contains(path)) {
+            continue;
+        }
         let declared = file.size();
         let remaining = limits.total.saturating_sub(total);
         let entry_limit = if name == "document.json" {
@@ -213,6 +227,78 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
         out.insert(name, data);
     }
     Ok(out)
+}
+
+struct ZipMember {
+    name: String,
+    size: u64,
+}
+
+/// Names and declared sizes only. The same directory checks run, and no member
+/// body is expanded.
+fn sketch_zip_members(bytes: &[u8], limits: ArchiveLimits) -> Result<Vec<ZipMember>> {
+    if bytes.len() > limits.input {
+        return Err(archive_limit("input bytes"));
+    }
+    let end = (bytes.len().saturating_sub(22 + u16::MAX as usize)..bytes.len().saturating_sub(21))
+        .rev()
+        .find(|&at| {
+            bytes.get(at..at + 4) == Some(b"PK\x05\x06")
+                && at + 22 + u16::from_le_bytes([bytes[at + 20], bytes[at + 21]]) as usize
+                    == bytes.len()
+        })
+        .ok_or_else(|| Error::NotAZip("missing ZIP32 end record".into()))?;
+    let directory_size = u32::from_le_bytes(bytes[end + 12..end + 16].try_into().unwrap()) as usize;
+    let directory_start = end
+        .checked_sub(directory_size)
+        .ok_or_else(|| Error::NotAZip("invalid central directory size".into()))?;
+    let mut at = directory_start;
+    let mut records = 0;
+    while bytes.get(at..at.saturating_add(4)) == Some(b"PK\x01\x02") {
+        let header = bytes
+            .get(at..at.saturating_add(46))
+            .ok_or_else(|| Error::NotAZip("truncated central directory".into()))?;
+        let length = |offset| u16::from_le_bytes([header[offset], header[offset + 1]]) as usize;
+        at = at
+            .checked_add(46 + length(28) + length(30) + length(32))
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| Error::NotAZip("truncated central entry".into()))?;
+        records += 1;
+        if records > limits.entries {
+            return Err(archive_limit("entry count"));
+        }
+    }
+    if at != end || bytes.get(at..at.saturating_add(4)) != Some(b"PK\x05\x06") {
+        return Err(Error::Unsupported(
+            "non-ZIP32 or unsupported central directory trailer".into(),
+        ));
+    }
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| Error::NotAZip(e.to_string()))?;
+    if archive.central_directory_start() != directory_start as u64 {
+        return Err(Error::NotAZip("inconsistent central directory offset".into()));
+    }
+    if records != archive.len() {
+        return Err(Error::NotAZip("duplicate central directory identity".into()));
+    }
+    let mut members = Vec::new();
+    let mut names = BTreeSet::new();
+    for i in 0..archive.len() {
+        let file = archive.by_index(i).map_err(|e| Error::Io(e.to_string()))?;
+        let name = file.name().map_err(|e| Error::Io(e.to_string()))?.into_owned();
+        let path = name.strip_suffix('/').unwrap_or(&name);
+        if !crate::sketch::archive::safe_path(path) || !names.insert(path.to_owned()) {
+            return Err(Error::NotAZip(format!("unsafe/duplicate archive path: {name}")));
+        }
+        if file.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+            return Err(Error::NotAZip("archive symlink".into()));
+        }
+        if file.is_dir() {
+            continue;
+        }
+        members.push(ZipMember { name, size: file.size() });
+    }
+    Ok(members)
 }
 
 fn write_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
@@ -3445,7 +3531,18 @@ fn checked_library_note(document: &Document) -> String {
         })
         .collect::<Vec<_>>()
         .join("、");
-    format!("已核对本地库 {listed}。")
+    let unchecked = entries
+        .iter()
+        .filter_map(|entry| entry.get("unchecked").and_then(Value::as_array))
+        .flat_map(|items| items.iter().filter_map(Value::as_str))
+        .take(8)
+        .collect::<Vec<_>>()
+        .join("、");
+    if unchecked.is_empty() {
+        format!("已核对本地库 {listed}。")
+    } else {
+        format!("已核对本地库 {listed}。以下库成员超过现有条目上限，未展开，不能据此判定定义缺失：{unchecked}。不会提高预算。")
+    }
 }
 
 fn recorded_libraries(document: &Document) -> String {
@@ -3499,17 +3596,21 @@ fn shared_style_override(
     let expected = if native_field == "textStyle" { "text" } else { "paint" };
     let Some((id, style)) = resolve_shared_style(document, style_id) else {
         let checked = checked_library_note(document);
-        let repair = if checked.is_empty() {
-            "修复：附上包含该共享样式 ID 的本地 .sketch 库。不会发明样式，也不会丢弃该覆盖。真实定义缺失时打开保持阻断，源文件保持不变。"
+        let place = node_location(document, instance_id);
+        let repair = if checked.contains("未展开") {
+            "修复：先提供一份条目上限内、且包含该共享样式 ID 的库文件。未展开的成员不算已核对，也不会被当成缺失。"
+        } else if checked.is_empty() {
+            "修复：打开前定位并附上包含该共享样式 ID 的本地 .sketch 库。不会发明样式，也不会丢弃该覆盖。真实定义缺失时打开保持阻断，源文件保持不变。"
         } else {
             "其中没有这个共享样式 ID。上游样式定义缺失，打开保持阻断。不会发明样式，也不会丢弃该覆盖。"
         };
         return Err(Error::Unsupported(format!(
-            "Sketch shared {native_field} `{id}` is not embedded。这是缺失的外部库样式定义，不是无法映射的字段，也不是损坏的图层路径。实例「{name}」（{instance}）的覆盖 `{path}_{native_field}` 指向该样式，但 layerStyles、layerTextStyles 和 foreignLayerStyles、foreignTextStyles 都没有它。{recorded}{checked}{repair}",
+            "Sketch shared {native_field} `{id}` is not embedded。这是缺失的外部库样式定义，不是无法映射的字段，也不是损坏的图层路径。实例「{name}」（{instance}）的覆盖 `{path}_{native_field}` 指向该样式，但 layerStyles、layerTextStyles 和 foreignLayerStyles、foreignTextStyles 都没有它。{place}{recorded}{checked}{repair}",
             id = clip_id(style_id),
             name = clip_id(instance_name),
             instance = clip_id(instance_id),
             path = clip_id(full_path),
+            place = place,
             recorded = recorded_libraries(document),
             checked = checked,
             repair = repair
@@ -3659,15 +3760,61 @@ fn unresolved_override_message(document: &Document, full_path: &str, missing: &s
         "文档其他位置也没有这个图层。"
     };
     format!(
-        "Sketch override target `{path}` could not be resolved。这是损坏的覆盖引用，不是缺失的外部库符号，也不是无法映射的字段。实例「{name}」（{instance}）的主组件「{master}」（symbolID {symbol}）里没有图层 {missing}。{location}不会跳过该覆盖，也不会发明图层。修复：需要源文件里的该主组件真正包含这个图层；更换无关库不能生成它。",
+        "Sketch override target `{path}` could not be resolved。这是损坏的覆盖引用，不是缺失的外部库符号，也不是无法映射的字段。实例「{name}」（{instance}）的主组件「{master}」（symbolID {symbol}）里没有图层 {missing}。{located}{location}不会跳过该覆盖，也不会发明图层。修复：需要源文件里的该主组件真正包含这个图层；更换无关库不能生成它。",
         path = clip_id(full_path),
         name = clip_id(instance_name),
         instance = clip_id(instance_id),
         master = clip_id(master_name),
         symbol = clip_id(master_symbol),
         missing = clip_id(missing),
+        located = node_location(document, instance_id),
         location = location
     )
+}
+
+fn node_location(document: &Document, id: &str) -> String {
+    let mut parent = BTreeMap::<String, String>::new();
+    for node in document.nodes.values() {
+        for child in &node.children {
+            parent.insert(child.clone(), node.id.clone());
+        }
+    }
+    for page in &document.pages {
+        for child in &page.children {
+            parent.insert(child.clone(), format!("page:{id}", id = page.id));
+        }
+    }
+    let mut names = Vec::new();
+    let mut cursor = Some(id.to_owned());
+    let mut guard = 0usize;
+    while let Some(current) = cursor {
+        guard += 1;
+        if guard > 32 {
+            break;
+        }
+        if let Some(page_id) = current.strip_prefix("page:") {
+            let page_name = document
+                .pages
+                .iter()
+                .find(|page| page.id == page_id)
+                .map(|page| page.name.as_str())
+                .unwrap_or(page_id);
+            names.push(format!("页面「{}」", clip_id(page_name)));
+            break;
+        }
+        if let Some(node) = document.nodes.get(&current) {
+            if !node.name.is_empty() {
+                names.push(clip_id(&node.name));
+            }
+        }
+        cursor = parent.get(&current).cloned();
+    }
+    names.reverse();
+    if names.is_empty() {
+        String::new()
+    } else {
+        format!("位置：{}。", names.join(" / "))
+    }
 }
 
 /// Resolve the separate Sketch symbol identity before shared-model admission.
@@ -3698,20 +3845,29 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
         symbols.insert(key, node.id.clone());
     }
     let library_context = format!("{}{}", recorded_libraries(document), checked_library_note(document));
+    let locations = document
+        .nodes
+        .values()
+        .filter(|node| node.instance.is_some())
+        .map(|node| (node.id.clone(), node_location(document, &node.id)))
+        .collect::<BTreeMap<_, _>>();
     for node in document.nodes.values_mut() {
         if let Some(instance) = &mut node.instance {
             let symbol = instance.component_id.clone();
             let name = node.name.clone();
             let id = node.id.clone();
+            let located = locations.get(&id).cloned().unwrap_or_default();
             instance.component_id = symbols.get(&symbol.to_ascii_uppercase()).cloned().ok_or_else(|| {
-                let repair = if library_context.contains("已核对本地库") {
+                let repair = if library_context.contains("未展开") {
+                    "修复：先定位一份条目上限内、且包含该 symbolID 的本地 .sketch 库。未展开的成员不算已核对，也不会被当成缺失。不会按名称猜测，也不会发明主组件。"
+                } else if library_context.contains("已核对本地库") {
                     "其中没有这个 symbolID。上游定义缺失，打开保持阻断。不会发明主组件，源文件保持不变。"
                 } else {
-                    "修复：在原生导入时附上包含该 symbolID 的本地 .sketch 库。只按 symbolID 对接，不会按名称猜测，也不会发明主组件。真实定义缺失时打开保持阻断，源文件保持不变。"
+                    "修复：打开前定位并附上包含该 symbolID 的本地 .sketch 库。只按 symbolID 对接，不会按名称猜测，也不会发明主组件。真实定义缺失时打开保持阻断，源文件保持不变。"
                 };
                 Error::Unsupported(format!(
-                    "Sketch instance requires an embedded symbol master: {}。这是缺失的外部库符号定义，不是无法映射的字段，也不是损坏的图层引用。实例「{}」（{}）引用了该 symbolID，但页面主组件和已嵌入的 foreignSymbols 都没有它。{}{}",
-                    clip_id(&symbol), clip_id(&name), clip_id(&id), library_context, repair
+                    "Sketch instance requires an embedded symbol master: {}。这是缺失的外部库符号定义，不是无法映射的字段，也不是损坏的图层引用。实例「{}」（{}）引用了该 symbolID，但页面主组件和已嵌入的 foreignSymbols 都没有它。{}{}{}",
+                    clip_id(&symbol), clip_id(&name), clip_id(&id), located, library_context, repair
                 ))
             })?;
         }
@@ -3803,6 +3959,207 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
     finish_sketch_report(import_sketch(bytes)?)
 }
 
+/// Admit one named page from `bytes` without expanding sibling members that
+/// are outside this page and its symbol closure. Requested members keep the
+/// existing entry and total ceilings. A page or master that itself exceeds
+/// those ceilings stays blocked; nothing is skipped inside it and the budget
+/// is not raised.
+pub fn import_sketch_page_report(bytes: &[u8], page_query: &str, libraries: &[&[u8]]) -> Result<SketchImportReport> {
+    let query = page_query.trim();
+    if query.is_empty() || query.len() > 200 {
+        return Err(Error::Unsupported("Sketch page query is empty or too long".into()));
+    }
+    let limits = archive_limits();
+    let members = sketch_zip_members(bytes, limits)?;
+    let member = |name: &str| members.iter().find(|member| member.name == name);
+    let require = |name: &str| -> Result<u64> {
+        let size = member(name).map(|member| member.size).ok_or_else(|| Error::MissingPart(name.into()))?;
+        let limit = if name == "document.json" { limits.document_entry } else { limits.entry };
+        if size > limit {
+            return Err(archive_limit("entry expanded bytes"));
+        }
+        Ok(size)
+    };
+    require("meta.json")?;
+    require("document.json")?;
+    let mut selected = BTreeSet::from(["meta.json".to_owned(), "document.json".to_owned()]);
+    let mut total = member("meta.json").map(|m| m.size).unwrap_or(0) + member("document.json").map(|m| m.size).unwrap_or(0);
+    if total > limits.total {
+        return Err(archive_limit("total expanded bytes"));
+    }
+    let prelude = read_zip_bounded_filtered(bytes, limits, Some(&selected))?;
+    let meta = json_part(&prelude, "meta.json")?;
+    let mut document = json_part(&prelude, "document.json")?;
+    let page_id = resolve_sketch_page(&meta, &members, query)?;
+    let page_name = format!("pages/{page_id}.json");
+    let page_size = require(&page_name)?;
+    total = total.saturating_add(page_size);
+    if total > limits.total {
+        return Err(archive_limit("total expanded bytes"));
+    }
+    selected.insert(page_name);
+    let mut unread = Vec::new();
+    for member in &members {
+        let Some(id) = member.name.strip_prefix("pages/").and_then(|name| name.strip_suffix(".json")) else { continue };
+        if id == page_id {
+            continue;
+        }
+        let over = member.size > limits.entry || total.saturating_add(member.size) > limits.total;
+        if over {
+            let label = meta
+                .get("pagesAndArtboards")
+                .and_then(|pages| pages.get(id))
+                .and_then(|page| page.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or(id);
+            unread.push(format!("{label}（{id}，{} 字节）", member.size));
+        }
+    }
+    let mut files = read_zip_bounded_filtered(bytes, limits, Some(&selected))?;
+    let page: Value = serde_json::from_slice(&files[&format!("pages/{page_id}.json")])
+        .map_err(|e| Error::MalformedJson(e.to_string()))?;
+    let mut defined = BTreeSet::new();
+    let mut needed = BTreeSet::new();
+    let mut style_ids = BTreeSet::new();
+    let mut referenced = BTreeSet::new();
+    collect_archive_symbols(&document, &[page.clone()], &mut defined, &mut needed, &mut style_ids, &mut referenced);
+    let mut pending: Vec<String> = needed.difference(&defined).cloned().collect();
+    let mut seen = BTreeSet::new();
+    while let Some(symbol) = pending.pop() {
+        if !seen.insert(symbol.clone()) || defined.contains(&symbol) {
+            continue;
+        }
+        let mut found = None;
+        for member in &members {
+            let Some(id) = member.name.strip_prefix("pages/").and_then(|name| name.strip_suffix(".json")) else { continue };
+            if id == page_id || member.size > limits.entry || total.saturating_add(member.size) > limits.total {
+                continue;
+            }
+            if !files.contains_key(&member.name) {
+                let one = BTreeSet::from([member.name.clone()]);
+                let extra = read_zip_bounded_filtered(bytes, limits, Some(&one))?;
+                total = total.saturating_add(member.size);
+                if let Some(body) = extra.get(&member.name) {
+                    files.insert(member.name.clone(), body.clone());
+                }
+            }
+            let Some(body) = files.get(&member.name) else { continue };
+            let other: Value = serde_json::from_slice(body).map_err(|e| Error::MalformedJson(e.to_string()))?;
+            let mut masters = BTreeMap::new();
+            index_library_masters(other.get("layers"), "same-archive", "同一归档的其他页", &mut masters)?;
+            if let Some(master) = masters.get(&symbol) {
+                found = Some(master.master.clone());
+                break;
+            }
+        }
+        let Some(master) = found else {
+            if !unread.is_empty() {
+                return Err(Error::Unsupported(format!(
+                    "Sketch instance requires an embedded symbol master: {symbol}。当前页和已嵌入的 foreignSymbols 没有它。这些其他页超过现有条目上限，未展开，因此不能判定定义缺失：{}。不会提高预算，也不会跳过该实例。",
+                    unread.join("、")
+                )));
+            }
+            break;
+        };
+        if defined.len() > 512 {
+            return Err(Error::Unsupported(
+                "Sketch library dependency set exceeds 512 symbols; select a smaller library working set".into(),
+            ));
+        }
+        let entry = json!({
+            "_class": "MSImmutableForeignSymbol",
+            "do_objectID": sketch_id(&format!("same-archive:{symbol}")),
+            "libraryID": document.get("do_objectID").and_then(Value::as_str).unwrap_or("same-archive"),
+            "sourceLibraryName": "同一归档的其他页",
+            "symbolPrivate": false,
+            "originalMaster": master,
+            "symbolMaster": master,
+        });
+        defined.insert(symbol);
+        let mut nested = BTreeSet::new();
+        collect_one_layer(&master, &mut defined, &mut nested, &mut referenced);
+        pending.extend(nested.difference(&defined).cloned());
+        document.as_object_mut().ok_or_else(|| Error::MalformedJson("document.json".into()))?
+            .entry("foreignSymbols").or_insert_with(|| json!([])).as_array_mut()
+            .ok_or_else(|| Error::MalformedJson("foreignSymbols".into()))?.push(entry);
+    }
+    document["pages"] = json!([{"_class":"MSJSONFileReference","_ref":format!("pages/{page_id}")}]);
+    // Drop sibling page files so admission stays on the requested page. Masters
+    // that were copied above already live in foreignSymbols.
+    files.retain(|name, _| !name.starts_with("pages/") || name == &format!("pages/{page_id}.json"));
+    files.insert("document.json".into(), serde_json::to_vec(&document).map_err(|e| Error::Io(e.to_string()))?);
+    attach_sketch_libraries(&mut files, libraries)?;
+    finish_sketch_report(import_sketch_files(&files)?)
+}
+
+fn resolve_sketch_page(meta: &Value, members: &[ZipMember], query: &str) -> Result<String> {
+    let mut matches = Vec::new();
+    if let Some(pages) = meta.get("pagesAndArtboards").and_then(Value::as_object) {
+        for (id, page) in pages {
+            let name = page.get("name").and_then(Value::as_str).unwrap_or("");
+            if id.eq_ignore_ascii_case(query) || name == query || name.eq_ignore_ascii_case(query) {
+                matches.push(id.clone());
+            }
+        }
+    }
+    if matches.is_empty() {
+        for member in members {
+            if let Some(id) = member.name.strip_prefix("pages/").and_then(|name| name.strip_suffix(".json")) {
+                if id.eq_ignore_ascii_case(query) {
+                    matches.push(id.to_owned());
+                }
+            }
+        }
+    }
+    match matches.len() {
+        1 => Ok(matches.remove(0)),
+        0 => Err(Error::Unsupported(format!(
+            "Sketch page `{query}` was not found。这是定位失败，不会改打开另一页。"
+        ))),
+        _ => Err(Error::Unsupported(format!(
+            "Sketch page `{query}` matches more than one page。不会按顺序挑一页。"
+        ))),
+    }
+}
+
+/// JSON definitions only. Bitmap members are not expanded. A page JSON that
+/// exceeds the existing entry or remaining total ceiling is listed as unchecked
+/// instead of failing the libraries whose other pages do fit. document.json
+/// itself still has to fit; that failure stays an archive limit.
+fn read_library_definitions(bytes: &[u8]) -> Result<(BTreeMap<String, Vec<u8>>, Vec<String>)> {
+    let limits = archive_limits();
+    let members = sketch_zip_members(bytes, limits)?;
+    let mut selected = BTreeSet::new();
+    let mut unchecked = Vec::new();
+    let mut total = 0u64;
+    for required in ["meta.json", "document.json"] {
+        let Some(member) = members.iter().find(|member| member.name == required) else {
+            return Err(Error::MissingPart(required.into()));
+        };
+        let limit = if required == "document.json" { limits.document_entry } else { limits.entry };
+        if member.size > limit {
+            return Err(archive_limit("entry expanded bytes"));
+        }
+        if total.saturating_add(member.size) > limits.total {
+            return Err(archive_limit("total expanded bytes"));
+        }
+        total += member.size;
+        selected.insert(required.to_owned());
+    }
+    for member in &members {
+        if !member.name.starts_with("pages/") || !member.name.ends_with(".json") {
+            continue;
+        }
+        if member.size > limits.entry || total.saturating_add(member.size) > limits.total {
+            unchecked.push(member.name.clone());
+            continue;
+        }
+        total += member.size;
+        selected.insert(member.name.clone());
+    }
+    Ok((read_zip_bounded_filtered(bytes, limits, Some(&selected))?, unchecked))
+}
+
 /// Admit `bytes` together with local `.sketch` libraries. Symbols and shared
 /// styles are copied only when their IDs match; nothing is invented by name.
 /// Libraries that still lack a referenced ID leave admission blocked.
@@ -3835,7 +4192,7 @@ fn attach_sketch_libraries(files: &mut BTreeMap<String, Vec<u8>>, libraries: &[&
     let mut styles: BTreeMap<String, Option<LibraryStyle>> = BTreeMap::new();
     let mut checked = Vec::new();
     for library in libraries {
-        let lib_files = read_zip(library)?;
+        let (lib_files, unchecked) = read_library_definitions(library)?;
         let lib_doc = json_part(&lib_files, "document.json")?;
         let document_id = lib_doc.get("do_objectID").and_then(Value::as_str).filter(|id| !id.is_empty()).unwrap_or("library").to_owned();
         let name = document
@@ -3845,7 +4202,7 @@ fn attach_sketch_libraries(files: &mut BTreeMap<String, Vec<u8>>, libraries: &[&
             .and_then(|entry| entry.get("name").and_then(Value::as_str))
             .unwrap_or(document_id.as_str())
             .to_owned();
-        checked.push(json!({"documentId": document_id, "name": name}));
+        checked.push(json!({"documentId": document_id, "name": name, "unchecked": unchecked}));
         let mut lib_pages = Vec::new();
         for (entry_name, bytes) in &lib_files {
             if entry_name.strip_prefix("pages/").and_then(|name| name.strip_suffix(".json")).is_some() {
@@ -7355,6 +7712,41 @@ fn baked_curves(
 }
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
+fn sync_foreign_paint_styles(document: &mut Value, doc: &Document, images: &mut ExportedImages) -> Result<()> {
+    let Some(system) = &doc.design_system else { return Ok(()) };
+    let Some(entries) = document.get_mut("foreignLayerStyles").and_then(Value::as_array_mut) else { return Ok(()) };
+    for entry in entries {
+        let Some(local_id) = entry.pointer("/localSharedStyle/do_objectID").and_then(Value::as_str).map(str::to_owned) else { continue };
+        let Some(shared) = system.styles.get(&local_id) else { continue };
+        if shared.kind != "paint" { continue };
+        let mut paints = Vec::new();
+        if let Some(values) = shared.value.as_array() {
+            for value in values {
+                if let Ok(paint) = serde_json::from_value::<Paint>(value.clone())
+                    && let Some(part) = export_paint(&paint, images, [1., 1.])?
+                {
+                    paints.push(part);
+                }
+            }
+        }
+        let mut style_lossy = Vec::new();
+        let (borders, shadows, inner_shadows, blur, border_options) = export_style_parts(
+            &shared.strokes, &shared.effects, &mut style_lossy, images, [1., 1.],
+        )?;
+        let Some(value) = entry.pointer_mut("/localSharedStyle/value") else { continue };
+        if !value.is_object() {
+            *value = json!({"_class": "style"});
+        }
+        value["fills"] = Value::Array(paints);
+        value["borders"] = Value::Array(borders);
+        value["shadows"] = Value::Array(shadows);
+        value["innerShadows"] = Value::Array(inner_shadows);
+        value["blur"] = blur;
+        value["borderOptions"] = border_options;
+    }
+    Ok(())
+}
+
 fn foreign_shared_style_ids(system: &crate::design_system::DesignSystem) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
     for key in ["foreignLayerStyles", "foreignTextStyles"] {
@@ -7736,6 +8128,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             document[key] = value.clone();
         }
     }
+    sync_foreign_paint_styles(&mut document, doc, &mut images)?;
     crate::interop_resources::export_fonts(doc, &mut document)?;
     let mut foreign_symbols = foreign_symbol_export(doc, &mut images)?;
     if let Some(system) = &doc.design_system
@@ -8120,6 +8513,28 @@ mod tests {
         for end in 0..bytes.len() {
             assert!(read_zip(&bytes[..end]).is_err());
         }
+    }
+
+    #[test]
+    fn selected_members_skip_siblings_that_exceed_the_entry_budget() {
+        let bytes = write_zip(&[
+            ("meta.json".into(), br#"{"version":1}"#.to_vec()),
+            ("keep.json".into(), vec![1; 100]),
+            ("huge.json".into(), vec![2; 2000]),
+        ]).unwrap();
+        let mut limits = archive_test_limits();
+        limits.input = bytes.len();
+        limits.entries = 8;
+        limits.entry = 500;
+        limits.document_entry = 500;
+        limits.total = 4000;
+        let only = BTreeSet::from(["meta.json".to_owned(), "keep.json".to_owned()]);
+        let files = read_zip_bounded_filtered(&bytes, limits, Some(&only)).unwrap();
+        assert!(files.contains_key("keep.json"));
+        assert!(!files.contains_key("huge.json"));
+        assert!(read_zip_bounded_filtered(&bytes, limits, None).unwrap_err().to_string().contains("entry expanded"));
+        let wanted = BTreeSet::from(["huge.json".to_owned()]);
+        assert!(read_zip_bounded_filtered(&bytes, limits, Some(&wanted)).unwrap_err().to_string().contains("entry expanded"));
     }
 
     #[test]
