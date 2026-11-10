@@ -299,33 +299,18 @@ fn variables_from(records: &BTreeMap<String, Value>) -> Variables {
         if str_of(record, "type") != Some("VARIABLE_SET") {
             continue;
         }
-        let collection = str_of(record, "key").unwrap_or(id).to_string();
-        let mut modes = Vec::new();
-        if let Some(list) = record.get("variableSetModes").and_then(Value::as_array) {
-            for mode in list {
-                let name = str_of(mode, "name")
-                    .filter(|name| !name.is_empty())
-                    .unwrap_or("Mode");
-                if let Some(mode_id) = mode.get("id") {
-                    out.mode_name.insert(guid_string(mode_id), name.to_string());
-                }
-                if !modes.iter().any(|existing: &String| existing == name) {
-                    modes.push(name.to_string());
-                }
-            }
-        }
-        if modes.is_empty() {
-            modes.push("Default".into());
-        }
-        if modes.len() > 32 {
-            continue;
-        }
+        let parsed = super::fig_collection_modes(record);
+        let collection = str_of(record, "key")
+            .filter(|key| !key.is_empty())
+            .unwrap_or(id)
+            .to_string();
+        out.mode_name.extend(parsed.mode_names);
         out.collection_by_set.insert(id.clone(), collection.clone());
         if let Some(key) = str_of(record, "key").filter(|key| !key.is_empty()) {
             out.collection_by_set
                 .insert(key.to_string(), collection.clone());
         }
-        out.collection_modes.insert(collection, modes);
+        out.collection_modes.insert(collection, parsed.names);
     }
     for (id, record) in records {
         if str_of(record, "type") != Some("VARIABLE") {
@@ -1587,7 +1572,7 @@ fn apply_consumption(
                     .or_else(|| vars.collection_by_set.get(&reference_guid(set)));
                 let name = entry
                     .get("variableModeID")
-                    .map(guid_string)
+                    .map(super::reference_guid)
                     .and_then(|id| vars.mode_name.get(&id));
                 match (collection, name) {
                     (Some(collection), Some(name))
@@ -1997,9 +1982,12 @@ pub(super) fn import(
                     resolved.is_some(),
                     &target_id,
                 ) {
-                    Some(props) => {
-                        Some(read_property_assignments(doc, &props, raw, &mut unsupported))
-                    }
+                    Some(props) => Some(read_property_assignments(
+                        doc,
+                        &props,
+                        raw,
+                        &mut unsupported,
+                    )),
                     None => {
                         unsupported.insert("componentPropAssignments".into());
                         None

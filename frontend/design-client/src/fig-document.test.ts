@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { canDeletePage, userPages } from './fig-document'
 import { applyFigDocumentSemantics, importFigVariableNodes } from './import-fig-document'
-import { blank, node, uid, validateDocument, type Paint } from './model'
+import { blank, defaultLayout, node, uid, validateDocument, type Paint } from './model'
 import { Editor } from './engine'
 
 test('a hidden Figma page stays in the file and cannot be the last deleted page', () => {
@@ -132,6 +132,56 @@ test('variable set aliases resolve by publish key and supported fields bind', ()
   expect(doc.designSystem?.sketchContainers?.figDocument).toMatchObject({
     notes: expect.arrayContaining(['FIG variable fields without an executable property are retained as figVariableConsumption']),
   })
+  validateDocument(doc)
+})
+
+test('node modes and counter-axis bindings follow the variable collection', () => {
+  const doc = blank('Modes')
+  doc.schemaVersion = 6
+  const board = node('frame', 0, 0, 80, 40)
+  board.layout = { ...defaultLayout(), mode: 'horizontal', gap: 4 }
+  doc.nodes = { [board.id]: board }
+  doc.pages[0].children = [board.id]
+  const modes = Array.from({ length: 33 }, (_, index) => ({ name: `M${String(index).padStart(2, '0')}`, id: { sessionID: 3, localID: index } }))
+  const entries = modes.map((mode, index) => ({ modeID: mode.id, variableData: { value: { floatValue: index + 0.5 } } }))
+  const records = new Map<string, Record<string, unknown>>([
+    ['1:3', { type: 'VARIABLE_SET', name: 'Primitives', key: 'set-key', variableSetModes: [
+      { name: 'Light', id: { sessionID: 9, localID: 1 } },
+      { name: 'Dark', id: { sessionID: 9, localID: 2 } },
+    ] }],
+    ['1:4', { type: 'VARIABLE', name: 'Gap', key: 'gap-key', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'set-key' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 8 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 12 } } },
+      ] } }],
+    ['1:8', { type: 'VARIABLE', name: 'Paragraph', key: 'para-key', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'set-key' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 3 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 4 } } },
+      ] } }],
+    ['wide', { type: 'VARIABLE_SET', name: 'Wide', key: 'wide', variableSetModes: modes }],
+    ['wide-a', { type: 'VARIABLE', name: 'A', key: 'wide-a', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'wide' } },
+      variableDataValues: { entries } }],
+    ['wide-b', { type: 'VARIABLE', name: 'B', key: 'wide-b', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'wide' } },
+      variableDataValues: { entries: [{ modeID: { sessionID: 3, localID: 0 }, variableData: { value: { floatValue: 7 } } }] } }],
+    ['board', { type: 'FRAME', variableConsumptionMap: { entries: [
+      { variableField: 'WIDTH', variableData: { value: { alias: { assetRef: { key: 'gap-key' } } } } },
+      { variableField: 'STACK_COUNTER_SPACING', variableData: { value: { alias: { assetRef: { key: 'gap-key' } } } } },
+      { variableField: 'PARAGRAPH_SPACING', variableData: { value: { alias: { assetRef: { key: 'para-key' } } } } },
+    ] }, variableModeBySetMap: { entries: [
+      { variableSetID: { assetRef: { key: 'set-key' } }, variableModeID: { sessionID: 9, localID: 2 } },
+    ] } }],
+  ])
+  importFigVariableNodes(doc, records, new Map([['board', board.id]]))
+  expect(board.variableModes).toEqual({ 'set-key': 'Dark' })
+  expect(board.bindings?.width).toBe('1:4')
+  expect(board.bindings?.['layout.lineGap']).toBe('1:4')
+  expect(board.bindings?.['layout.lineGap']).not.toBe('1:8')
+  expect(doc.designSystem?.collections.wide.modes).toHaveLength(32)
+  expect(doc.designSystem?.collections.wide.modes[0]).toBe('M00')
+  expect(doc.designSystem?.variables['wide-a'].values.M00).toBe(0.5)
+  expect(doc.designSystem?.variables['wide-b'].collection).toBe('wide')
+  expect(JSON.stringify(doc.designSystem?.sketchContainers?.figDocument)).toContain('32')
   validateDocument(doc)
 })
 

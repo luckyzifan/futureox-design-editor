@@ -2525,6 +2525,59 @@ fn guid_string(guid: &Value) -> String {
     format!("fig-{session:.0}-{local:.0}")
 }
 
+pub(super) fn reference_guid(value: &Value) -> String {
+    if let Some(nested) = value.get("guid") {
+        guid_string(nested)
+    } else {
+        guid_string(value)
+    }
+}
+
+pub(super) struct FigCollectionModes {
+    pub names: Vec<String>,
+    pub mode_names: BTreeMap<String, String>,
+    pub truncated: bool,
+    pub duplicate_names: bool,
+}
+
+/// Mode order is the file order. The design system stores at most 32 unique
+/// names; later names stay in `mode_names` so a reference can be reported
+/// instead of applied.
+pub(super) fn fig_collection_modes(record: &Value) -> FigCollectionModes {
+    let mut names = Vec::new();
+    let mut mode_names = BTreeMap::new();
+    let mut duplicate_names = false;
+    if let Some(list) = record.get("variableSetModes").and_then(Value::as_array) {
+        for mode in list {
+            let name = str_of(mode, "name")
+                .filter(|name| !name.is_empty())
+                .unwrap_or("Mode")
+                .to_string();
+            if let Some(mode_id) = mode.get("id") {
+                mode_names.insert(reference_guid(mode_id), name.clone());
+            }
+            if names.iter().any(|existing| existing == &name) {
+                duplicate_names = true;
+            } else {
+                names.push(name);
+            }
+        }
+    }
+    if names.is_empty() {
+        names.push("Default".into());
+    }
+    let truncated = names.len() > 32;
+    if truncated {
+        names.truncate(32);
+    }
+    FigCollectionModes {
+        names,
+        mode_names,
+        truncated,
+        duplicate_names,
+    }
+}
+
 /// Assemble a kernel [`Document`] from a decoded kiwi canvas tree.
 fn normalize_mask_suffixes(doc:&mut Document)->Result<(),Error>{
     let parents:Vec<_>=doc.nodes.keys().map(|id|(id.clone(),false))

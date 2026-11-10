@@ -939,6 +939,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   )
     ? 5
     : 4
+  if (Object.values(doc.nodes).some(n => Object.keys(n.variableModes || {}).length || Object.values(n.instance?.overrides || {}).some(fields => !!fields && Object.hasOwn(fields, 'variableModes'))))
+    doc.schemaVersion = Math.max(6, doc.schemaVersion) as typeof doc.schemaVersion
   if(Object.values(doc.nodes).some(n=>n.arc || n.cornerRadius))doc.schemaVersion=Math.max(7,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.adjust))) doc.schemaVersion = 13
   if(Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.tile)))doc.schemaVersion=Math.max(14,doc.schemaVersion) as typeof doc.schemaVersion

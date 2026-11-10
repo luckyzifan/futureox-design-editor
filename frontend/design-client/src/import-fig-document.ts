@@ -201,10 +201,31 @@ export function applyFigDocumentSemantics(
   for (const note of notes) warnings.add(`FIG document: ${note}`)
 }
 
-const guidText = (value: any): string => {
+export function figReferenceGuid(value: unknown): string {
   if (typeof value === 'string') return value
-  const guid = value?.sessionID !== undefined ? value : value?.guid
+  if (!value || typeof value !== 'object') return ''
+  const record = value as FigRecord
+  const guid = record.sessionID !== undefined ? record : record.guid
   return guid && guid.sessionID !== undefined ? `${guid.sessionID}:${guid.localID}` : ''
+}
+
+const guidText = (value: unknown): string => figReferenceGuid(value)
+
+/** Mode order follows the file. At most 32 unique names become executable. */
+export function figCollectionModes(record: FigRecord) {
+  const modes: string[] = []
+  const modeNames = new Map<string, string>()
+  let duplicateNames = false
+  for (const mode of record.variableSetModes || []) {
+    const name = typeof mode?.name === 'string' && mode.name ? mode.name : 'Mode'
+    const modeId = figReferenceGuid(mode?.id)
+    if (modeId) modeNames.set(modeId, name)
+    if (modes.includes(name)) duplicateNames = true
+    else modes.push(name)
+  }
+  if (!modes.length) modes.push('Default')
+  const truncated = modes.length > 32
+  return { modes: truncated ? modes.slice(0, 32) : modes, modeNames, truncated, duplicateNames }
 }
 
 function variableColor(color: any): string | undefined {
@@ -220,9 +241,9 @@ function variableColor(color: any): string | undefined {
 const VARIABLE_FIELDS: Record<string, string> = {
   WIDTH: 'width', HEIGHT: 'height', OPACITY: 'opacity', VISIBLE: 'visible',
   TEXT_DATA: 'text', CHARACTERS: 'text', FONT_SIZE: 'fontSize',
-  STACK_SPACING: 'layout.gap', ITEM_SPACING: 'layout.gap',
+  STACK_SPACING: 'layout.gap', ITEM_SPACING: 'layout.gap', STACK_COUNTER_SPACING: 'layout.lineGap',
   LINE_HEIGHT: 'textStyle.lineHeight', LETTER_SPACING: 'textStyle.letterSpacing',
-  FONT_WEIGHT: 'textStyle.weight', PARAGRAPH_SPACING: 'layout.lineGap',
+  FONT_WEIGHT: 'textStyle.weight',
 }
 
 function variableKind(record: FigRecord) {
@@ -244,23 +265,33 @@ function bindingKind(path: string) {
 }
 
 /** VARIABLE_SET / VARIABLE records are design-system data, not layers. */
+function pushFigNote(doc: DesignDocument, note: string) {
+  const systemDoc = system(doc)
+  const receipt = (systemDoc.sketchContainers?.figDocument ?? { source: 'figma' }) as FigRecord
+  const stored = Array.isArray(receipt.notes) ? receipt.notes : []
+  stored.push(note)
+  receipt.notes = stored
+  systemDoc.sketchContainers ??= {}
+  systemDoc.sketchContainers.figDocument = receipt
+}
+
 export function importFigVariableNodes(doc: DesignDocument, records: Map<string, FigRecord>, ids?: Map<string, string>) {
   const modeNames = new Map<string, string>()
+  const collectionBySet = new Map<string, string>()
   const systemDoc = system(doc)
   for (const [id, record] of records) {
     if (record.type !== 'VARIABLE_SET') continue
+    const parsed = figCollectionModes(record)
     const collectionId = typeof record.key === 'string' && record.key ? record.key : id
-    const modes: string[] = []
-    for (const mode of record.variableSetModes || []) {
-      const name = typeof mode?.name === 'string' && mode.name ? mode.name : 'Mode'
-      const modeId = guidText(mode?.id)
-      if (modeId) modeNames.set(modeId, name)
-      if (!modes.includes(name)) modes.push(name)
-    }
-    if (!modes.length) modes.push('Default')
-    if (modes.length > 32) continue
-    systemDoc.collections[collectionId] = { name: record.name || 'Variables', modes, defaultMode: modes[0] }
-    systemDoc.activeModes[collectionId] = modes[0]
+    const collectionName = record.name || 'Variables'
+    if (parsed.truncated) pushFigNote(doc, `variable collection ${collectionName} has more than 32 modes; modes after the first 32 were not imported`)
+    if (parsed.duplicateNames) pushFigNote(doc, `variable collection ${collectionName} repeats a mode name; values for that name share one mode`)
+    if (systemDoc.collections[collectionId]) pushFigNote(doc, `variable collection ${collectionId} was defined more than once; the later mode list was kept`)
+    for (const [modeId, name] of parsed.modeNames) modeNames.set(modeId, name)
+    collectionBySet.set(id, collectionId)
+    if (typeof record.key === 'string' && record.key) collectionBySet.set(record.key, collectionId)
+    systemDoc.collections[collectionId] = { name: collectionName, modes: parsed.modes, defaultMode: parsed.modes[0] }
+    systemDoc.activeModes[collectionId] = parsed.modes[0]
   }
   const keyToId = new Map<string, string>()
   const drafts: Array<[string, FigRecord]> = []
@@ -272,7 +303,8 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
   const known = new Set(drafts.map(([id]) => id))
   let unresolvedAliases = 0
   for (const [id, record] of drafts) {
-    const collection = record.variableSetID?.assetRef?.key || guidText(record.variableSetID) || id
+    const referenced = record.variableSetID?.assetRef?.key || figReferenceGuid(record.variableSetID)
+    const collection = (referenced && collectionBySet.get(referenced)) || referenced || id
     if (!systemDoc.collections[collection]) {
       systemDoc.collections[collection] = { name: collection, modes: ['Default'], defaultMode: 'Default' }
       systemDoc.activeModes[collection] = 'Default'
@@ -280,7 +312,7 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
     const kind = variableKind(record)
     const values: Record<string, string | number | boolean | { alias: string }> = {}
     for (const entry of record.variableDataValues?.entries || []) {
-      const mode = modeNames.get(guidText(entry?.modeID)) || 'Default'
+      const mode = modeNames.get(figReferenceGuid(entry?.modeID)) || 'Default'
       const data = entry?.variableData
       const raw = data?.value
       if (raw && (raw.alias || raw.variableAlias)) {
@@ -298,7 +330,6 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
       else if (typeof raw?.floatValue === 'number' && Number.isFinite(raw.floatValue)) values[mode] = raw.floatValue
     }
     const modes = systemDoc.collections[collection].modes
-    if (modes.length > 32) continue
     const fallback = kind === 'boolean' ? false : kind === 'number' ? 0 : kind === 'color' ? '#000000' : ''
     if (!Object.keys(values).length) values[modes[0]] = fallback
     for (const mode of modes) if (values[mode] === undefined) values[mode] = values[modes[0]] ?? fallback
@@ -362,6 +393,25 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
     try { parsed = JSON.parse(raw) } catch { continue }
     for (const [field, id] of linked(parsed)) node.bindings = { ...node.bindings, [field]: id }
   }
+  let unresolvedModes = false
+  if (ids) {
+    for (const [source, record] of records) {
+      const node = doc.nodes[ids.get(source) || '']
+      const entries = record.variableModeBySetMap?.entries
+      if (!node || !Array.isArray(entries) || !entries.length) continue
+      const modes: Record<string, string> = {}
+      for (const entry of entries) {
+        const set = entry?.variableSetID
+        const key = typeof set?.assetRef?.key === 'string' ? set.assetRef.key : ''
+        const collection = (key && collectionBySet.get(key)) || collectionBySet.get(figReferenceGuid(set))
+        const name = modeNames.get(figReferenceGuid(entry?.variableModeID))
+        if (collection && name && systemDoc.collections[collection]?.modes.includes(name)) modes[collection] = name
+        else unresolvedModes = true
+      }
+      if (Object.keys(modes).length) node.variableModes = modes
+    }
+  }
+  if (unresolvedModes) pushFigNote(doc, 'FIG variable modes that do not name a local collection mode are retained as figVariableModes')
   normalizeFigOpacityBindings(doc)
 }
 

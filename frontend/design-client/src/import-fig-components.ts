@@ -1,6 +1,7 @@
 import type { ComponentProperty, DesignDocument, Effect, Paint, Stroke } from './model'
 import { defaultLayout, defaultSizing, defaultTextStyle } from './model'
 import type { FigReceipts } from './import-fig-nodes'
+import { figCollectionModes, figReferenceGuid } from './import-fig-document'
 const guid = (g: any): string => typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : ''
 function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,string>): string | boolean {
   if (kind === 'boolean' && typeof value?.boolValue === 'boolean') return value.boolValue
@@ -245,7 +246,7 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       applyStyles(fields, override, target, source, records, ids, warnings)
       if(Array.isArray(override.strokePaints)) fields.strokes = strokesOf(override)
       else if(STROKE_INPUTS.some(key => override[key] !== undefined)) applyStrokeAttrs(fields, override, target, warnings)
-      const kept = applyConsumption(fields, override, variables, warnings)
+      const kept = applyConsumption(fields, override, variables, warnings, target?.variableModes)
       if(override.exportSettings !== undefined) kept.exportSettings = override.exportSettings
       if(Object.keys(kept).length) retained.push({ path: parts.join('/') || path, ...kept })
       const previousValues = n.instance.overrides[path]?.propertyValues
@@ -666,14 +667,26 @@ function applyStyles(fields: Record<string, unknown>, override: any, target: { s
 function variableCatalog(records: Map<string, any>) {
   const idByKey = new Map<string, string>()
   const kindById = new Map<string, string>()
+  const collectionBySet = new Map<string, string>()
+  const collectionModes = new Map<string, string[]>()
+  const modeName = new Map<string, string>()
   for(const [id, record] of records) {
+    if(record.type === 'VARIABLE_SET') {
+      const parsed = figCollectionModes(record)
+      const collection = typeof record.key === 'string' && record.key ? record.key : id
+      for(const [modeId, name] of parsed.modeNames) modeName.set(modeId, name)
+      collectionBySet.set(id, collection)
+      if(typeof record.key === 'string' && record.key) collectionBySet.set(record.key, collection)
+      collectionModes.set(collection, parsed.modes)
+      continue
+    }
     if(record.type !== 'VARIABLE') continue
     const resolved = String(record.variableResolvedType || '')
     kindById.set(id, resolved === 'COLOR' ? 'color' : resolved === 'BOOLEAN' ? 'boolean' : resolved === 'STRING' ? 'string' : 'number')
     idByKey.set(id, id)
     if(typeof record.key === 'string' && record.key) idByKey.set(record.key, id)
   }
-  return { idByKey, kindById }
+  return { idByKey, kindById, collectionBySet, collectionModes, modeName }
 }
 
 function bindingKind(path: string) {
@@ -690,7 +703,7 @@ function aliasId(value: any, variables: ReturnType<typeof variableCatalog>) {
   return id && id !== '0:0' && variables.kindById.has(id) ? id : undefined
 }
 
-function applyConsumption(fields: Record<string, unknown>, override: any, variables: ReturnType<typeof variableCatalog>, warnings?: { add(message: string): unknown }) {
+function applyConsumption(fields: Record<string, unknown>, override: any, variables: ReturnType<typeof variableCatalog>, warnings?: { add(message: string): unknown }, templateModes?: Record<string, string>) {
   const kept: Record<string, unknown> = {}
   const map = override.variableConsumptionMap
   if(Array.isArray(map?.entries) && map.entries.length) {
@@ -712,6 +725,24 @@ function applyConsumption(fields: Record<string, unknown>, override: any, variab
   if(Array.isArray(override.parameterConsumptionMap?.entries) && override.parameterConsumptionMap.entries.length) {
     kept.parameterConsumptionMap = override.parameterConsumptionMap
     warnings?.add('FIG 实例覆盖 parameterConsumptionMap 暂不能执行，消费表已保留')
+  }
+  const modeMap = override.variableModeBySetMap
+  if(Array.isArray(modeMap?.entries) && modeMap.entries.length) {
+    kept.variableModeBySetMap = modeMap
+    const modes = { ...(templateModes || {}) }
+    let failed = false
+    for(const entry of modeMap.entries) {
+      const set = entry?.variableSetID
+      const key = typeof set?.assetRef?.key === 'string' ? set.assetRef.key : ''
+      const collection = (key && variables.collectionBySet.get(key)) || variables.collectionBySet.get(figReferenceGuid(set))
+      const name = variables.modeName.get(figReferenceGuid(entry?.variableModeID))
+      if(collection && name && variables.collectionModes.get(collection)?.includes(name)) modes[collection] = name
+      else failed = true
+    }
+    if(failed) warnings?.add('FIG 实例覆盖 variableModeBySetMap 暂不能完全执行，模式表已保留')
+    const same = Object.keys(modes).length === Object.keys(templateModes || {}).length
+      && Object.entries(modes).every(([key, value]) => templateModes?.[key] === value)
+    if(Object.keys(modes).length && !same) fields.variableModes = modes
   }
   return kept
 }
