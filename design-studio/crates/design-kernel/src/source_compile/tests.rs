@@ -600,7 +600,9 @@ fn offscreen_stage_bounds_do_not_request_an_unobserved_backdrop_prefix() {
         &request(-480.25, -480.375, 1.),
     );
     assert_eq!(runtime.stats["mode"], "demand");
-    assert_eq!(runtime.stats["residentAuthoredNodes"], 3);
+    // The edge backdrop misses this tile, so it is not part of the closure.
+    assert_eq!(runtime.stats["residentAuthoredNodes"], 2);
+    assert!(!runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("c"));
 }
 #[test]
 fn actual_compile_extent_adds_offscreen_records_before_wire_publication() {
@@ -712,4 +714,29 @@ fn source_replay_cannot_cross_revision_or_source_descriptor() {
     crate::capacity::with_source_storage_scope(true,||expected.load_source_document(changed)).unwrap();
     compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
     assert_ne!(runtime.stats["mode"],"demand-replay");
+}
+
+#[test]
+fn a_known_miss_outside_the_stage_stays_out_of_the_tile_and_a_reaching_shadow_stays_in() {
+    let mut far = document();
+    far.nodes.get_mut("c").unwrap().transform = Transform([1., 0., 0., 1., 20_000., 500.]);
+    let desc = descriptor(&far);
+    let mut expected = owner(far.clone(), "oracle-far");
+    let mut actual = owner(far, "live-far");
+    let mut runtime = Runtime::default();
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &request(-480.25, -480.375, 1.));
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert!(runtime.stats["resolvedCompileNodes"].as_u64().unwrap() < desc.nodes);
+    assert!(!runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("c"));
+
+    let mut reaching = document();
+    let c = reaching.nodes.get_mut("c").unwrap();
+    c.transform = Transform([1., 0., 0., 1., 20_000., 500.]);
+    c.effects = serde_json::from_value(json!([{"kind":"shadow","radius":8,"x":-20000,"color":"#000000","opacity":0.8}])).unwrap();
+    let desc = descriptor(&reaching);
+    let mut expected = owner(reaching.clone(), "oracle-shadow");
+    let mut actual = owner(reaching, "live-shadow");
+    let mut runtime = Runtime::default();
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &request(-480.25, -480.375, 1.));
+    assert!(runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("c"));
 }

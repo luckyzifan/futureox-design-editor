@@ -505,10 +505,12 @@ impl Catalog {
         // of painter position, and every unknown-output root is included.
         let visible = self.viewport(camera, guard, cancel)?.visible;
         let mut demand = self.plan(visible, cancel, false)?;
-        // These roots supply the neutral stage's conservative bounds, not
-        // viewport painter input. Their resolved records need no new layout
-        // dependencies. If their output enters the actual compiled extent,
-        // the compiler's post-plan query closes their painter dependencies.
+        // Roots that are not contained in the neutral stage can still paint
+        // into it. Unknown bounds stay in the closure. A root whose support
+        // is a known miss of this guard cannot move the compiled extent, so
+        // resolving it only repeats the same 10k-node context on every tile.
+        // The post-plan query calls this again with the published extent and
+        // picks up a root the moment that extent reaches it.
         let m = camera.0;
         let body = Rect::new(
             (m[4].ceil() + 4.) as i32,
@@ -517,9 +519,10 @@ impl Catalog {
             (self.stage_size[1] * m[0] - 8.).max(0.) as u32,
         );
         for (id, unit) in &self.roots {
-            if !self.support.contained_in(id, camera, body) {
-                demand.units.insert(*unit);
+            if self.support.contained_in(id, camera, body) || self.support.culls(id, camera, guard) {
+                continue;
             }
+            demand.units.insert(*unit);
         }
         Ok(demand)
     }
