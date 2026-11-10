@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
-import { acceptTranslatedCoverage, coverageBeyondBacking, coversUnpaintedViewport, retainInFlightTile, selectCoverageStack, selectCoverageUnderlay } from './coverage-stack'
+import { acceptTranslatedCoverage, coverageBeyondBacking, coversUnpaintedViewport, dominantUpscale, retainInFlightTile, selectCoverageStack, selectCoverageUnderlay, selectSharperCoverage, sharperCoverageFrame } from './coverage-stack'
+import { MAX_PREVIEW_SCALE_RATIO } from './tile-preview'
 import { panStripBounds, panStripOverview, viewportExtendsPastPage } from './navigation-overview'
 import type { RasterTile } from './tile-cache'
 
@@ -112,6 +113,35 @@ test('a coverage frame is kept when the pan moves before its acknowledgement', (
   expect(acceptTranslatedCoverage({ ...frame, idsMatch: true, tileCount: 2, shownCount: 2 })).toBe(true)
   expect(acceptTranslatedCoverage({ ...frame, matchesSubmission: false })).toBe(false)
   expect(acceptTranslatedCoverage({ ...frame, idsMatch: false })).toBe(false)
+})
+
+test('a continuous zoom-in replaces a stretched backing where a twice-finer tile is ready', () => {
+  const view = { x: 0, y: 0, zoom: 8 }
+  const backing = tile('backing', 1, 0, 0, 800)
+  const ready = tile('ready', 4, 0, 0, 800)
+  const twice = tile('twice', 2, 0, 0, 800)
+  const near = tile('near', 1.5, 0, 0, 800)
+  expect(selectSharperCoverage([ready, near], view, size, [])).toEqual([])
+  expect(selectSharperCoverage([ready, near], view, size, [backing]).map(item => item.key)).toEqual(['ready'])
+  expect(selectSharperCoverage([twice], { x: 0, y: 0, zoom: 4 }, size, [backing]).map(item => item.key)).toEqual(['twice'])
+  const frame = sharperCoverageFrame([backing, ready, near], [backing], view, size)
+  expect(frame?.map(item => item.key)).toEqual(['backing', 'ready'])
+  expect(dominantUpscale(frame!, view, size)).toBeLessThanOrEqual(MAX_PREVIEW_SCALE_RATIO)
+  expect(dominantUpscale([backing], view, size)).toBe(8)
+  expect(sharperCoverageFrame([ready], [backing], view, size)).toBeUndefined()
+})
+
+test('zooming out from 3200% keeps the crop and fills the new viewport from a cached coarse page', () => {
+  const low = { x: 0, y: 0, zoom: 1 }
+  const crop = tile('crop', 32, 0, 0, 64)
+  const page = tile('page', 0.05, 0, 0, 4000)
+  expect(selectCoverageUnderlay([page], low, size, [])).toEqual([])
+  expect(selectCoverageUnderlay([page], low, size, [crop])).toEqual([])
+  expect(selectCoverageUnderlay([page], low, size, [crop], 24, true).map(item => item.key)).toEqual(['page'])
+  expect(selectCoverageStack([crop, page], low, size, 48, true)?.map(item => item.key).sort()).toEqual(['crop', 'page'])
+  const previous = { view: { x: 0, y: 0, zoom: 32 }, width: size.width, height: size.height }
+  expect(coverageBeyondBacking([crop, page], low, size, previous, 48, true)?.map(item => item.key).sort()).toEqual(['crop', 'page'])
+  expect(coverageBeyondBacking([crop], low, size, previous, 48, true)).toBeUndefined()
 })
 
 test('zoom-in still drops a large capture that does not fill a hole, and keeps a large hole filler', () => {

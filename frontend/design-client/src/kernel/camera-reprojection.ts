@@ -31,6 +31,7 @@ export class CameraReprojection {
   private zoom?:number
   private size=''
   private zoomTimer?:ReturnType<typeof setTimeout>
+  private zoomHold?:ReturnType<typeof setTimeout>
   zooming=false
   readonly history: NavigationBacking
   constructor(private canvas: HTMLCanvasElement, private host: HTMLElement,private zoomSettled?:()=>void) { this.history = new NavigationBacking(host) }
@@ -38,7 +39,7 @@ export class CameraReprojection {
   update(backing: ResidentAcknowledgement | undefined, view: CanvasCamera, width: number, height: number, allowed: boolean, bounds?: ScreenRect, hasUnderlay=false) {
     const size=`${width}/${height}`
     const sameSize = size===this.size
-    if(!allowed||!backing||!sameSize){clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.zoom=undefined}
+    if(!allowed||!backing||!sameSize){clearTimeout(this.zoomTimer);clearTimeout(this.zoomHold);this.zoomTimer=this.zoomHold=undefined;this.zooming=false;this.zoom=undefined}
     this.size=size
     if(allowed&&backing){
       if(this.zoom!==undefined&&this.zoom!==view.zoom){
@@ -48,8 +49,16 @@ export class CameraReprojection {
         // A jump past the preview scale limit still asks for the exact frame
         // immediately, and the old bitmap stays up until that frame covers.
         const jump=!previewCameraScaleWithinLimit(this.zoom,view.zoom)
-        this.zooming=!jump;clearTimeout(this.zoomTimer)
-        this.zoomTimer=setTimeout(()=>{this.zoomTimer=undefined;this.zooming=false;this.zoomSettled?.()},jump?0:80)
+        // The exact frame is still requested on a large jump. The gesture
+        // itself stays open for the same quiet window, so a narrow crop cannot
+        // replace the wide picture between two wheel events.
+        this.zooming=true;clearTimeout(this.zoomTimer);clearTimeout(this.zoomHold)
+        if(jump){
+          this.zoomTimer=setTimeout(()=>{this.zoomTimer=undefined;this.zoomSettled?.()},0)
+          // A narrow exact image may have been discarded during the hold.
+          // Wake the presenter again once it can accept the latest cohort.
+          this.zoomHold=setTimeout(()=>{this.zoomHold=undefined;this.zooming=false;this.zoomSettled?.()},80)
+        }else this.zoomTimer=setTimeout(()=>{this.zoomTimer=undefined;this.zooming=false;this.zoomSettled?.()},80)
       }
       this.zoom=view.zoom
     }
@@ -135,5 +144,5 @@ export class CameraReprojection {
     else this.history.hide()
     return { active: !!placed, changed }
   }
-  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.displayedView=undefined;this.heldRequest=undefined;this.displayedBacking=undefined;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
+  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);clearTimeout(this.zoomHold);this.zoomTimer=this.zoomHold=undefined;this.zooming=false;this.displayedView=undefined;this.heldRequest=undefined;this.displayedBacking=undefined;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
 }

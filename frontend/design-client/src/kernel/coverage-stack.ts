@@ -44,7 +44,7 @@ function bringsSamplingDetail(tile: RasterTile, view: CanvasCamera, size: { widt
  *  beats a stack of fragments that cover less. The previous picture stays up
  *  until this stack covers. */
 export function selectCoverageUnderlay<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
-  size: { width: number; height: number }, shown: readonly RasterTile[], limit = 24): T[] {
+  size: { width: number; height: number }, shown: readonly RasterTile[], limit = 24, coarseHoles = false): T[] {
   if (!Number.isSafeInteger(limit) || limit < 1) return []
   const shownSet = new Set(shown)
   const order = (a: T, b: T) => a.zoom - b.zoom || a.x - b.x || a.y - b.y
@@ -60,6 +60,18 @@ export function selectCoverageUnderlay<T extends RasterTile>(candidates: readonl
     if (!coversUnpaintedViewport(tile, view, size, [...shown, ...chosen])) continue
     chosen.push(tile)
   }
+  // A zoom-out crop leaves world the 2× near set does not own. The closest
+  // coarser resident may fill only that hole. It is not a certified frame and
+  // is never the picture for a zoom-in that has no finer resident.
+  if (coarseHoles && !tilesCoverBounds([...shown, ...chosen], backingWorld(view, size))) {
+    const coarse = visible.filter(tile => tile.zoom * MAX_PREVIEW_SCALE_RATIO < view.zoom)
+      .sort((a, b) => b.zoom - a.zoom || a.x - b.x || a.y - b.y)
+    for (const tile of coarse) {
+      if (chosen.length >= limit) break
+      if (!coversUnpaintedViewport(tile, view, size, [...shown, ...chosen])) continue
+      chosen.push(tile)
+    }
+  }
   return chosen
 }
 
@@ -67,9 +79,9 @@ export function selectCoverageUnderlay<T extends RasterTile>(candidates: readonl
  *  when the union covers the viewport. Otherwise the caller keeps the previous
  *  image instead of publishing a holed frame. */
 export function selectCoverageStack<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
-  size: { width: number; height: number }, limit = 48): T[] | undefined {
+  size: { width: number; height: number }, limit = 48, coarseHoles = false): T[] | undefined {
   if (![view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite) || view.zoom <= 0) return
-  const under = selectCoverageUnderlay(candidates, view, size, [], limit)
+  const under = selectCoverageUnderlay(candidates, view, size, [], limit, coarseHoles)
   const detail: T[] = []
   const rest = candidates.filter(tile => !under.includes(tile) && tileIntersectsView(tile, view, size))
     .sort((a, b) => b.zoom - a.zoom || a.x - b.x || a.y - b.y)
@@ -93,9 +105,10 @@ export function backingWorld(view: CanvasCamera, size: { width: number; height: 
  *  A zoom-in that stays inside the old bitmap returns undefined: CSS already
  *  shows those pixels, and publishing again would only resample them. */
 export function coverageBeyondBacking<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
-  size: { width: number; height: number }, previous: { view: CanvasCamera; width: number; height: number }, limit = 48): T[] | undefined {
+  size: { width: number; height: number }, previous: { view: CanvasCamera; width: number; height: number }, limit = 48,
+  coarseHoles = false): T[] | undefined {
   if (!(previous.view.zoom > 0) || !(previous.width > 0) || !(previous.height > 0)) return
-  const stack = selectCoverageStack(candidates, view, size, limit)
+  const stack = selectCoverageStack(candidates, view, size, limit, coarseHoles)
   if (!stack) return
   const old = backingWorld(previous.view, previous)
   const tol = 1 / Math.max(view.zoom, 1e-6)
@@ -106,6 +119,73 @@ export function coverageBeyondBacking<T extends RasterTile>(candidates: readonly
       rect.x + rect.width > old.x + old.width + tol || rect.y + rect.height > old.y + old.height + tol
   })
   return spills ? stack : undefined
+}
+
+/** Ready tiles that are at least twice as dense as the stretched picture under
+ * them. A smaller step stays on the current bitmap so a wheel tick does not
+ * swap nearly identical samples. This never supplies the sole picture: the
+ * caller keeps the backing in the same stack, and the union must cover. */
+export function selectSharperCoverage<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
+  size: { width: number; height: number }, shown: readonly RasterTile[], limit = 24): T[] {
+  if (!shown.length || !Number.isSafeInteger(limit) || limit < 1) return []
+  if (![view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite) || view.zoom <= 0) return []
+  const shownSet = new Set(shown)
+  const pool = candidates.filter(tile => !shownSet.has(tile) && tile.zoom > 0 && tileIntersectsView(tile, view, size))
+    .sort((a, b) => b.zoom - a.zoom || a.x - b.x || a.y - b.y)
+  const chosen: T[] = []
+  for (const tile of pool) {
+    if (chosen.length >= limit) break
+    const rect = tileVisibleWorld(tile, view, size)
+    if (!rect) continue
+    // Equality is included: a tile twice as dense as the picture under it is
+    // already enough to stop that picture dominating the sample.
+    if (tilesCoverBounds([...shown, ...chosen], rect, tile.zoom / MAX_PREVIEW_SCALE_RATIO * (1 + 1e-9))) continue
+    if (!bringsSamplingDetail(tile, view, size, [...shown, ...chosen])) continue
+    chosen.push(tile)
+  }
+  return chosen
+}
+
+/** Backing residents plus every ready tile that replaces a stretched region,
+ * when that union still covers the viewport. Undefined leaves the previous
+ * image up; a partial set is not published as a hole. */
+export function sharperCoverageFrame<T extends RasterTile>(cached: Iterable<T>, backing: readonly RasterTile[],
+  view: CanvasCamera, size: { width: number; height: number }): T[] | undefined {
+  if (![view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite) || view.zoom <= 0) return
+  const byKey = new Map<string, T>()
+  for (const tile of cached) byKey.set(tile.key, tile)
+  const base = backing.flatMap(tile => {
+    const live = byKey.get(tile.key)
+    return live && tileIntersectsView(live, view, size) ? [live] : []
+  })
+  const extra = selectSharperCoverage([...byKey.values()], view, size, base)
+  if (!extra.length) return
+  const seen = new Set(base.map(tile => tile.key))
+  const stack = [...base, ...extra.filter(tile => !seen.has(tile.key))]
+  return tilesCoverBounds(stack, backingWorld(view, size)) ? stack : undefined
+}
+
+/** Largest view/sample ratio among five interior probes. A probe with no tile
+ * does not count: missing coverage is a hole, not an upscale. */
+export function dominantUpscale(tiles: readonly RasterTile[], view: CanvasCamera, size: { width: number; height: number }) {
+  if (!(view.zoom > 0)) return Number.POSITIVE_INFINITY
+  const samples = [[.5, .5], [.2, .2], [.8, .2], [.2, .8], [.8, .8]]
+  let worst = 0
+  let seen = 0
+  for (const [sx, sy] of samples) {
+    const x = -view.x / view.zoom + size.width / view.zoom * sx
+    const y = -view.y / view.zoom + size.height / view.zoom * sy
+    let best = 0
+    for (const tile of tiles) {
+      const rect = tileVisibleWorld(tile, view, size)
+      if (!rect || x < rect.x || y < rect.y || x >= rect.x + rect.width || y >= rect.y + rect.height) continue
+      best = Math.max(best, tile.zoom)
+    }
+    if (!(best > 0)) continue
+    seen++
+    worst = Math.max(worst, view.zoom / best)
+  }
+  return seen ? worst : Number.POSITIVE_INFINITY
 }
 
 /** A coverage frame may arrive after the pointer has already panned. Accept it

@@ -30,4 +30,4 @@ description: Plan, implement, benchmark, review, or package Futureox Design Core
 
 修改后优先给出：本轮改了什么；哪些 G 门已实测；哪些 FAIL/BLOCKED/NOT_RUN；证据与源码/产物 hash；下一步尚缺什么。全应用完成声明须满足规范的联合判定，单项候选只报告自身已证明范围。
 
-当前实现与未完成范围见[渲染配置](../../../docs/RENDER_RUNTIME_CONFIGURATION_V1.md)、[缩放清晰度](../../../docs/ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)和[最新主线复核](../../../docs/PR_REVIEW_20261110.zh-CN.md)。历史测量只适用于对应提交；不在 Skill 中重复保存逐轮报告。
+当前实现与未完成范围见[渲染配置](../../../docs/RENDER_RUNTIME_CONFIGURATION_V1.md)、[缩放清晰度](../../../docs/ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)、[连续缩放交接](../../../docs/ZOOM_HANDOFF_20261109.zh-CN.md)和[最新主线复核](../../../docs/PR_REVIEW_20261110.zh-CN.md)。历史测量只适用于对应提交；不在 Skill 中重复保存逐轮报告。

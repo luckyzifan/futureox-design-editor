@@ -67,7 +67,10 @@ export function panStripBounds(view: CanvasCamera, size: { width: number; height
 
 /** One coarse page tile before a finer refine. Pasteboard keeps its quiet
  *  admission. A same-zoom pan that has left the resident pictures asks for
- *  the strip even while the previous zoom gesture is still marked continuous. */
+ *  the strip even while the previous zoom gesture is still marked continuous.
+ *  A continuous zoom-out does not, even when this camera's exact tiles are
+ *  already cached: that page held the only raster owner and stretched
+ *  inverse-wheel ready+sharp. Cached residents still fill the hole. */
 export function coarsePanCoverNeeded(options: {
   firstNative: boolean
   hasStrip: boolean

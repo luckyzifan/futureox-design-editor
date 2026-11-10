@@ -53,7 +53,7 @@ import { isTileAdmissionBudgetError, planTileAdmission, retireRejectedTile, Hand
   replacementTileBudget, tileAdmissionDiagnostic, type TileAdmissionDiagnostic } from './tile-admission'
 import { CompositeFrameWitness } from './composite-frame-witness'
 import { prioritizeUncoveredTiles } from './coverage-priority'
-import { selectCoverageUnderlay } from './coverage-stack'
+import { selectCoverageUnderlay, selectSharperCoverage } from './coverage-stack'
 import {
   prioritizeTileFill,
   TileFillScheduler,
@@ -2406,7 +2406,6 @@ export function ProgressiveSurfaceImpl(
     const shown = visible.filter(tile => !inactiveSet.has(tile) && (fineTile(tile) || baseTile(tile) || coarseTile(tile) || cachedPreviewTile(tile)))
     const world = { x: -requestedView.x / requestedView.zoom, y: -requestedView.y / requestedView.zoom,
       width: width / requestedView.zoom, height: height / requestedView.zoom }
-    if (tilesCoverBounds(shown, world)) return [] as PaintedTile[]
     const device = previewDevice.current
     if (device.client !== rasterClient || !device.key) return [] as PaintedTile[]
     // A whole-viewport preview has its own admission. A mismatched capture must
@@ -2415,7 +2414,18 @@ export function ProgressiveSurfaceImpl(
       tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
       tile.gpuTile !== undefined && (!tile.residentDevice ||
         tile.residentDevice.client === rasterClient && tile.residentDevice.key === device.key))
-    return selectCoverageUnderlay(candidates, requestedView, { width, height }, shown, 24)
+    const zoomingOut = !!displayed && requestedView.zoom < displayed.view.zoom
+    // Geometric cover is not sharpness. A full low-density frame still has to
+    // yield pixels to a ready tile that is at least twice as dense. A zoom-out
+    // does not punch that frame with a finer crop.
+    if (tilesCoverBounds(shown, world)) {
+      if (zoomingOut) return [] as PaintedTile[]
+      return selectSharperCoverage(candidates, requestedView, { width, height }, shown).slice(0, 24)
+    }
+    const under = selectCoverageUnderlay(candidates, requestedView, { width, height }, shown, 24, zoomingOut)
+    if (zoomingOut) return under
+    const sharper = selectSharperCoverage(candidates, requestedView, { width, height }, [...shown, ...under])
+    return [...under, ...sharper].slice(0, 24)
   })()
   const continuityKeys = new Set(continuityUnderlay.map(tile => tile.key))
   // One frame description owns both actual composition and cache-use proof.

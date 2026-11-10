@@ -12,6 +12,15 @@ test('pasteboard still asks for the coarse strip when the camera is quiet', () =
   expect(coarsePanCoverNeeded({ ...base, pasteboard: true, translated: true })).toBe(true)
 })
 
+test('a continuous zoom-out does not take the paste strip even when exact tiles are cached', () => {
+  expect(coarsePanCoverNeeded({
+    ...base, pasteboard: true, moving: true, continuousZoom: true, quietStripAllowed: true, residentsCover: true,
+  })).toBe(false)
+  expect(coarsePanCoverNeeded({
+    ...base, pasteboard: true, moving: false, continuousZoom: false, quietStripAllowed: false,
+  })).toBe(false)
+})
+
 test('a pan that leaves resident pictures asks for the strip before the old refine', () => {
   expect(coarsePanCoverNeeded({ ...base, translationFollow: true, residentsCover: false })).toBe(true)
   expect(coarsePanCoverNeeded({ ...base, translationFollow: true, residentsCover: true })).toBe(false)
