@@ -1,5 +1,5 @@
 import { desktopPet } from './desktop-pet'
-import { pdfVectorIssues, sliceExportTarget } from './export-metadata'
+import { layerExportColorOutput, pdfVectorIssues, sliceExportTarget, subtreeNeedsExplicitColorEncoding } from './export-metadata'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from './engine'
 import { exportSuffixHasForbiddenCharacters, uid, type DesignNode, type ExportSetting } from './model'
@@ -11,6 +11,10 @@ import { commitPendingEdits } from './pending-edits'
 type Preview = { name: string; url: string; pdf: boolean; pdfVector: boolean }
 export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
   const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[previews,setPreviews]=useState<Preview[]>([])
+  const managed=!!editor.state.doc.colorManagement
+  const explicit=managed && subtreeNeedsExplicitColorEncoding(editor.state.doc, node.id)
+  const [encoding,setEncoding]=useState<'srgb' | 'display-p3' | ''>('')
+  const selected=encoding==='srgb'||encoding==='display-p3'?encoding:(explicit?'':'srgb')
   const owner=useRef(new ExportOwner()),urls=useRef<string[]>([]),mounted=useRef(true)
   // A vector preset is only offered when the node's own subtree stays inside
   // the true-vector writer's v1 scope; otherwise the bitmap PDF remains.
@@ -20,6 +24,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     [editor.state.doc,editor.state.page,node.id,hasSettings])
   const release=()=>{for(const url of urls.current)URL.revokeObjectURL(url);urls.current=[]}
   useEffect(()=>{mounted.current=true;const manager=owner.current;manager.activate(editor);return()=>{mounted.current=false;manager.dispose();release()}},[editor,node.id])
+  useEffect(()=>{setEncoding(explicit?'':'srgb')},[node.id,explicit])
   useEffect(()=>{release();setPreviews([])},[node,editor.state.doc,editor.state.page])
   const update=(fn:(settings:ExportSetting[])=>void)=>editor.updateProperties([node.id],n=>{n.exportSettings??=[];fn(n.exportSettings)},'修改图层导出设置')
   async function generate() {
@@ -30,9 +35,10 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     if(!settings.length){owner.current.cancel(request);return}
     setBusy(true);setMessage('正在生成导出预览…');release();setPreviews([])
     try {
-      // A document working space is not an export encoding. Implicitly using
-      // it for uint16 PNG could clip HDR/negative channels even with toneMap:none.
-      if(request.document.colorManagement) throw new Error('广色域 / HDR 图层请在“色彩与 HDR”中明确选择输出编码；图层预设暂不自动转换颜色')
+      // Ordinary sRGB uses the same explicit clip encoding as the top bar.
+      // Wide-gamut, HDR and negative channels stay blocked until that choice
+      // is made; the working space is not an implicit uint16 conversion.
+      const colorOutput=layerExportColorOutput(request.document,node.id,selected)
       if(settings.some(s=>['tiff','eps'].includes(s.format)||s.scale===0))throw new Error('包含仅用于 Sketch 往返的格式或零倍率设置；请改用可执行格式和正倍率')
       const {exportImage,targetBounds,filename}=await import('./export')
       const bounds=targetBounds(request.document,request.page,target)
@@ -41,7 +47,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       const next:Preview[]=[]
       for(const setting of settings) {
         const format=(setting.format==='jpg'?'jpeg':setting.format) as 'png'|'svg'|'jpeg'|'webp'|'pdf'|'pdf-vector'
-        const asset=await exportImage(request.document,request.page,format,setting.scale,undefined,request.signal,target)
+        const asset=await exportImage(request.document,request.page,format,setting.scale,colorOutput,request.signal,target)
         if(!request.isCurrent())throw new Error('导出已取消：图层或文档已变化')
         const url=URL.createObjectURL(asset.blob);urls.current.push(url)
         const name=filename(request.document.nodes[node.id].name+(setting.suffix || (setting.scale===1?'':`@${setting.scale}x`)))+'.'+(setting.format==='jpeg'?'jpg':setting.format==='pdf-vector'?'pdf':setting.format)
@@ -60,7 +66,10 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       <DraftInput aria-label={`导出后缀 ${i+1}`} placeholder="后缀" value={setting.suffix} validate={v=>v.length<=80&&!exportSuffixHasForbiddenCharacters(v)} onCommit={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.suffix=value})}/>
       <button type="button" aria-label={`删除导出设置 ${i+1}`} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.splice(s.findIndex(s=>s.id===setting.id),1))}}>−</button>
     </div>)}
-    {!!node.exportSettings?.length && <button type="button" className="wide-button" disabled={busy} onClick={()=>void generate()}>{busy?'生成中…':'预览并导出此图层'}</button>}
+    {managed && <label className="node-export-encoding">输出编码 <select aria-label="图层导出输出编码" value={selected} disabled={busy} onChange={event=>setEncoding(event.target.value as 'srgb' | 'display-p3' | '')}>{explicit && <option value="">请选择</option>}<option value="srgb">sRGB</option><option value="display-p3">Display P3</option></select></label>}
+    {explicit && !selected && <p className="muted">此图层含广色域、HDR 或负值分量。请先选择与顶部导出相同的输出编码；未选择时不会导出，也不会把高光静默压成 8 位。</p>}
+    {managed && !explicit && <p className="muted">输出编码为 sRGB，与顶部导出的 sRGB 使用同一显式编码。</p>}
+    {!!node.exportSettings?.length && <button type="button" className="wide-button" disabled={busy || (explicit && !selected)} onClick={()=>void generate()}>{busy?'生成中…':'预览并导出此图层'}</button>}
     {node.exportSettings?.some(s=>s.format==='jpeg')&&<p className="muted">JPEG 使用质量 100，透明区域填充为白色。</p>}
     {node.exportSettings?.some(s=>s.format==='webp')&&<p className="muted">WebP 使用无损编码。</p>}
     {node.exportSettings?.some(s=>s.format==='pdf-vector')&&<p className="muted">矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，与倍率无关{vectorIssues.length?`；当前图层包含${vectorIssues.join('、')}，将回退为位图 PDF`:''}。</p>}

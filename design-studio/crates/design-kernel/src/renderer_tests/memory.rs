@@ -575,3 +575,74 @@ fn oversized_analytic_blur_keeps_fill_when_the_frame_cannot_fit() {
     let outside = pixel(4, 4);
     assert_eq!(outside, [255, 255, 255, 255]);
 }
+
+fn shadow_fixture(effects: serde_json::Value) -> String {
+    json!({
+        "schemaVersion": 4,
+        "id": "f17e8186-bd9b-4281-b6be-a88781cea764",
+        "rasterProfile": "figma",
+        "colorManagement": {"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000},
+        "name": "Minimal shadow 64",
+        "pages": [{"id":"p","name":"drop","children":["frame"],"background":"#ffffff"}],
+        "nodes": {
+            "frame": {"id":"frame","kind":"frame","width":256,"height":256,"children":["rect"],
+                "blend":"normal","opacity":1,"clip":false,
+                "fills":[{"kind":"solid","color":"#ffffff","opacity":1,"visible":true}]},
+            "rect": {"id":"rect","kind":"rectangle","width":96,"height":64,
+                "transform":[1,0,0,1,80,88],"blend":"normal","opacity":1,
+                "fills":[{"kind":"solid","color":"#bfcce6","opacity":1,"visible":true}],
+                "effects": effects}
+        }
+    }).to_string()
+}
+fn shadow_effect(kind: &str, radius: f64) -> serde_json::Value {
+    json!({"kind":kind,"visible":true,"radius":radius,"x":0,"y":10,"spread":0,"color":"#000000","opacity":0.35})
+}
+fn export_view(scale: f64) -> RenderOptions {
+    let side = (256. * scale).round() as u32;
+    serde_json::from_value(json!({"pageId":"p","width":side,"height":side,"transparent":false,
+        "rasterProfile":"figma","view":{"x":0,"y":0,"zoom":scale}})).unwrap()
+}
+fn render_shadow(effects: serde_json::Value, scale: f64) -> (Vec<crate::blend::Pixel>, usize) {
+    let mut engine = Engine::new();
+    engine.load_document(&shadow_fixture(effects.clone())).unwrap();
+    if let Some(radius) = effects.get(0).and_then(|effect| effect.get("radius")).and_then(|value| value.as_f64()) {
+        assert_eq!(engine.source_doc.as_ref().unwrap().nodes["rect"].effects[0].radius, radius);
+    }
+    let pixels = engine.render_linear(&export_view(scale)).unwrap();
+    let peak = engine.stats().peak_compositing_bytes;
+    assert!(peak <= 256 * 1024 * 1024, "peak {peak} scale {scale}");
+    assert_eq!(engine.compositing_ledger().budget_rejections, 0);
+    (pixels, peak)
+}
+fn sample(pixels: &[crate::blend::Pixel], side: u32, x: u32, y: u32) -> [u32; 4] {
+    pixels[(y * side + x) as usize].0.map(f32::to_bits)
+}
+
+#[test]
+fn wide_drop_shadow_exports_inside_the_existing_compositing_budget() {
+    let plain = render_shadow(json!([]), 2.).0;
+    let narrow = render_shadow(json!([shadow_effect("shadow", 4.)]), 2.).0;
+    let (wide, _) = render_shadow(json!([shadow_effect("shadow", 64.)]), 2.);
+    let side = 512u32;
+    let center = sample(&wide, side, 256, 240);
+    assert_eq!(center, sample(&plain, side, 256, 240), "opaque fill must cover the shadow");
+    let near = sample(&wide, side, 112, 240);
+    assert_ne!(near, sample(&plain, side, 112, 240), "radius 64 must remain visible");
+    assert_ne!(near, sample(&narrow, side, 112, 240), "radius 64 must reach farther than radius 4");
+    for scale in [1., 3.] {
+        let _ = render_shadow(json!([shadow_effect("shadow", 64.)]), scale);
+    }
+    let _ = render_shadow(json!([shadow_effect("inner-shadow", 64.)]), 2.);
+    let _ = render_shadow(json!([shadow_effect("shadow", 64.), shadow_effect("inner-shadow", 8.)]), 2.);
+    let mut engine = Engine::new();
+    engine.load_document(&shadow_fixture(json!([shadow_effect("shadow", 64.)]))).unwrap();
+    let opts = export_view(2.);
+    let png = engine.render_color_png(&opts, crate::color::ColorOutput::default()).unwrap();
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    let mut other = Engine::new();
+    other.load_document(&shadow_fixture(json!([shadow_effect("shadow", 64.)]))).unwrap();
+    let explicit = crate::color::ColorOutput { space: crate::color::ColorSpace::Srgb, tone_map: crate::color::ToneMap::Clip };
+    assert_eq!(png, other.render_color_png(&opts, explicit).unwrap());
+    assert_eq!(engine.source_doc.as_ref().unwrap().nodes["rect"].effects[0].radius, 64.);
+}

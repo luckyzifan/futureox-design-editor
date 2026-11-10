@@ -123,6 +123,13 @@ pub fn linear_tent_blur(
 ) -> Result<Surface, String> {
     crate::rational_filter::blur(surface, radius, clamp_edges)
 }
+pub(crate) fn linear_tent_blur_owned(
+    surface: Surface,
+    radius: f64,
+    clamp_edges: bool,
+) -> Result<Surface, String> {
+    crate::rational_filter::blur_owned(surface, radius, clamp_edges)
+}
 fn tent_blur_impl(
     surface: &Surface,
     radius: f64,
@@ -952,7 +959,10 @@ pub(crate) fn shadow_alpha(
         // Alpha is no longer needed after filtering. Consume it rather than
         // retaining an additional full surface through all six Gaussian passes.
         BlurFilter::Gaussian(sigma) => blur_alpha_outside_solid_core(alpha, sigma),
-        _ => filter.apply(&alpha),
+        // The managed tent otherwise clones `alpha` and allocates every pass
+        // while the caller still holds that same buffer.
+        BlurFilter::LinearTent(radius) => linear_tent_blur_owned(alpha, radius, false),
+        other => other.apply(&alpha),
     }
 }
 
@@ -1786,5 +1796,36 @@ mod gaussian_scanline_memory_tests {
         drop(actual);
         drop(source);
         assert_eq!(budget.usage().live_bytes, 0);
+    }
+
+    #[test]
+    fn tent_on_content_union_matches_padded_halo_inside_the_viewport() {
+        let viewport = Rect::new(0, 0, 48, 40);
+        let content = Rect::new(10, 12, 16, 10);
+        let padded = content.expand(30);
+        let mut full = Surface::new(padded).unwrap();
+        for y in content.y..content.bottom() {
+            for x in content.x..content.right() {
+                full.pixels[full.rect.index(x, y).unwrap()] = Pixel([0.2, 0.3, 0.4, 1.]);
+            }
+        }
+        let blurred = linear_tent_blur(&full, 18.5, false).unwrap();
+        let union = content.union(viewport);
+        let mut tight = Surface::new(union).unwrap();
+        for y in content.y..content.bottom() {
+            for x in content.x..content.right() {
+                tight.pixels[tight.rect.index(x, y).unwrap()] = Pixel([0.2, 0.3, 0.4, 1.]);
+            }
+        }
+        let blurred_tight = linear_tent_blur(&tight, 18.5, false).unwrap();
+        for y in viewport.y..viewport.bottom() {
+            for x in viewport.x..viewport.right() {
+                assert_eq!(
+                    blurred.at(x, y).0.map(f32::to_bits),
+                    blurred_tight.at(x, y).0.map(f32::to_bits),
+                    "{x},{y}"
+                );
+            }
+        }
     }
 }

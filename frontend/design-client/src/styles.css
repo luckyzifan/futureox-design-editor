@@ -1668,6 +1668,8 @@ footer button {
 .canvas-arrow { cursor: crosshair; }
 
 .node-export-setting { display:grid; grid-template-columns:1fr 60px; gap:6px; margin:8px 0; }
+.node-export-encoding { display:flex; align-items:center; gap:8px; margin:8px 0; }
+.node-export-encoding select { flex:1; min-width:0; }
 .node-export-setting input { min-width:0; }
 .node-export-preview img { width:100%; max-height:160px; object-fit:contain; background:repeating-conic-gradient(#eee 0% 25%,white 0% 50%) 0/12px 12px; }
 .node-export-preview a { display:block; padding:8px 0; overflow-wrap:anywhere; }

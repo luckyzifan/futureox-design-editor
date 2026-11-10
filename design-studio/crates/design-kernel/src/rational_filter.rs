@@ -497,19 +497,26 @@ fn round_certified_dyadic(value: i128, quantum: i32) -> u32 {
 }
 
 pub fn blur(input: &Surface, radius: f64, clamp_edges: bool) -> Result<Surface, String> {
+    blur_owned(input.try_clone()?, radius, clamp_edges)
+}
+
+pub(crate) fn blur_owned(
+    mut current: Surface,
+    radius: f64,
+    clamp_edges: bool,
+) -> Result<Surface, String> {
     if radius <= 0. {
-        return input.try_clone();
+        return Ok(current);
     }
     let kernel = RationalKernel::tent(radius)?;
     // Measured crossover: direct convolution wins at r=16; certified prefix
     // wins at r=32 and r=64 on both 64x64 and 256x256 varying HDR inputs.
     // Dispatch changes cost only: both paths require the same exact RNE.
     if radius >= 32. {
-        return crate::certified_filter::blur(input, radius, clamp_edges, &kernel);
+        return crate::certified_filter::blur_owned(current, radius, clamp_edges, &kernel);
     }
-    let _scratch = input.reserve_scratch::<f32>(kernel.reach() * 2 + 1)?;
+    let _scratch = current.reserve_scratch::<f32>(kernel.reach() * 2 + 1)?;
     let mut values = vec![0.; kernel.reach() * 2 + 1];
-    let mut current = input.try_clone()?;
     for horizontal in [true, false] {
         let Rect { x, y, w, h } = current.rect;
         let mut out = current.new_like(current.rect)?;

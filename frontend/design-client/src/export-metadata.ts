@@ -1,5 +1,6 @@
 import { scene, worldMatrix } from './geometry'
-import { maskChild, type DesignDocument, type Bounds, type Matrix } from './model'
+import { maskChild, type DesignDocument, type DesignNode, type Bounds, type Matrix } from './model'
+import type { ColorOutput } from './color'
 
 export type ExportTarget =
   | { kind: 'page'; padding?: number }
@@ -37,4 +38,58 @@ export function pdfVectorIssues(doc: DesignDocument, pageId: string, target: Exp
       issues.add('角向/菱形渐变')
   }
   return [...issues]
+}
+
+/** `#rrggbb` and in-range `color(srgb …)` are ordinary SDR. Any other authored
+ * color, or a non-sRGB document space, needs an explicit output encoding. */
+export function colorNeedsExplicitEncoding(value: string): boolean {
+  if (/^#[0-9a-f]{6}$/i.test(value)) return false
+  const match = /^color\(\s*([a-z0-9-]+)\s+([^\s/]+)\s+([^\s/]+)\s+([^\s/]+)/i.exec(value.trim())
+  if (!match || match[1].toLowerCase() !== 'srgb') return true
+  return [match[2], match[3], match[4]].some((part) => {
+    const channel = Number(part)
+    return !Number.isFinite(channel) || channel < 0 || channel > 1
+  })
+}
+
+function nodeColors(node: DesignNode): string[] {
+  const colors = [...node.fills.flatMap((paint) => [paint.color, ...paint.stops.map((stop) => stop.color)])]
+  for (const stroke of node.strokes) colors.push(stroke.paint.color, ...stroke.paint.stops.map((stop) => stop.color))
+  for (const effect of node.effects) colors.push(effect.color)
+  for (const run of node.textRuns || []) if (run.color) colors.push(run.color)
+  return colors
+}
+
+/** True when this subtree cannot reuse the top bar's ordinary sRGB encoding
+ * without an explicit wide-gamut / HDR choice. */
+export function subtreeNeedsExplicitColorEncoding(doc: DesignDocument, rootId: string): boolean {
+  if (!doc.colorManagement) return false
+  if (doc.colorManagement.documentSpace !== 'srgb') return true
+  const seen = new Set<string>()
+  const stack = [rootId]
+  while (stack.length) {
+    const id = stack.pop()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    const node = doc.nodes[id]
+    if (!node) continue
+    if (nodeColors(node).some(colorNeedsExplicitEncoding)) return true
+    stack.push(...node.children)
+  }
+  return false
+}
+
+/** The layer preset and the top bar share this encoding. Ordinary sRGB is
+ * explicit clip. A missing kernel color output is that same sRGB clip default.
+ * HDR, wide-gamut, and negative channels stay unset until the user chooses. */
+export function layerExportColorOutput(
+  doc: DesignDocument,
+  rootId: string,
+  encoding: 'srgb' | 'display-p3' | '',
+): ColorOutput | undefined {
+  if (!doc.colorManagement) return undefined
+  if (subtreeNeedsExplicitColorEncoding(doc, rootId) && encoding !== 'srgb' && encoding !== 'display-p3') {
+    throw new Error('广色域 / HDR 或负值分量需要先明确选择输出编码；图层预设不会静默裁成 8 位')
+  }
+  return { space: encoding === 'display-p3' ? 'display-p3' : 'srgb', toneMap: 'clip' }
 }

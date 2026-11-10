@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Editor } from './engine'
 import { blank, exportSuffixHasForbiddenCharacters, node, uid, validateDocument } from './model'
+import { defaultColorSettings } from './color'
 import { exportImage, svgSource, sliceExportTarget, targetBounds } from './export'
 import * as metadata from './export-metadata'
 import { NodeExportPanel } from './NodeExportPanel'
@@ -89,4 +90,41 @@ test('Sketch export settings accept source-only formats and zero scale without a
   n.exportSettings=[{id:'invalid',format:'png',scale,suffix:''}]
   expect(()=>validateDocument(d)).toThrow('图层导出设置无效')
  }
+})
+test('ordinary sRGB layer presets use the top bar sRGB encoding and HDR still requires a choice', () => {
+  const d = blank(), shape = node('rectangle', 80, 88, 96, 64), child = node('rectangle', 4, 4, 8, 8)
+  d.schemaVersion = 4
+  d.colorManagement = defaultColorSettings()
+  d.rasterProfile = 'figma'
+  shape.children = [child.id]
+  shape.exportSettings = [{ id: uid(), format: 'png', scale: 2, suffix: '' }]
+  d.nodes = { [shape.id]: shape, [child.id]: child }
+  d.pages[0].children = [shape.id]
+  expect(metadata.subtreeNeedsExplicitColorEncoding(d, shape.id)).toBe(false)
+  expect(metadata.colorNeedsExplicitEncoding('#bfcce6')).toBe(false)
+  expect(metadata.layerExportColorOutput(d, shape.id, '')).toEqual({ space: 'srgb', toneMap: 'clip' })
+  expect(metadata.layerExportColorOutput(d, shape.id, 'display-p3')).toEqual({ space: 'display-p3', toneMap: 'clip' })
+  const editor = new Editor(d); editors.push(editor)
+  const html = renderToStaticMarkup(createElement(NodeExportPanel, { editor, node: editor.state.doc.nodes[shape.id] }))
+  expect(html).toContain('图层导出输出编码')
+  expect(html).toContain('预览并导出此图层')
+  expect(html).toContain('与顶部导出的 sRGB')
+  expect(html).not.toContain('图层预设暂不自动转换颜色')
+  expect(html).not.toContain('disabled')
+
+  child.fills[0].color = 'color(srgb 1.4 0 0)'
+  expect(metadata.subtreeNeedsExplicitColorEncoding(d, shape.id)).toBe(true)
+  expect(metadata.colorNeedsExplicitEncoding('color(srgb -0.2 0.2 0.2)')).toBe(true)
+  expect(metadata.colorNeedsExplicitEncoding('color(display-p3 0.2 0.3 0.4)')).toBe(true)
+  expect(() => metadata.layerExportColorOutput(d, shape.id, '')).toThrow(/不会静默裁成 8 位/)
+  expect(metadata.layerExportColorOutput(d, shape.id, 'srgb')).toEqual({ space: 'srgb', toneMap: 'clip' })
+  const wide = structuredClone(d)
+  wide.colorManagement = { ...defaultColorSettings(), documentSpace: 'display-p3' }
+  wide.nodes[child.id].fills[0].color = '#bfcce6'
+  expect(metadata.subtreeNeedsExplicitColorEncoding(wide, shape.id)).toBe(true)
+  const hdr = new Editor(structuredClone(d)); editors.push(hdr)
+  const blocked = renderToStaticMarkup(createElement(NodeExportPanel, { editor: hdr, node: hdr.state.doc.nodes[shape.id] }))
+  expect(blocked).toContain('请先选择与顶部导出相同的输出编码')
+  expect(blocked).toContain('disabled')
+  expect(metadata.layerExportColorOutput(blank(), shape.id, '')).toBeUndefined()
 })
