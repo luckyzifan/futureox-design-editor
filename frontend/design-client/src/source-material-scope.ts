@@ -11,6 +11,68 @@ function scopeSignature(keys: readonly string[]) {
   return [...keys].sort().join('\n')
 }
 
+/** A host snapshot that finishes after the camera has moved. The current
+ * generation may install it. A stale generation may install it only when it
+ * covers the latest keys and the picture already on screen does not. */
+export function acceptFinishedMaterialScope(input:{
+  generationCurrent:boolean
+  latestKeys:readonly (string|undefined)[]
+  finishedKeys:readonly string[]
+  presentedKeys?:readonly string[]
+}) {
+  if(input.generationCurrent)return true
+  const latest=input.latestKeys.filter((key):key is string=>!!key)
+  // An empty or torn index list is not a covered return. Installing it would
+  // replace the host token after the demand has already moved on.
+  if(!latest.length||latest.length!==input.latestKeys.length||!includesMaterials(input.finishedKeys,latest))return false
+  if(input.presentedKeys&&includesMaterials(input.presentedKeys,latest))return false
+  return true
+}
+
+/** Coverage already installed in the view. This is not the host capability token. */
+export type DisplayedMaterialCoverage={
+  token:string
+  materialKeys?:readonly string[]
+  viewportSubset?:boolean
+}
+
+/** Post-await publication state for one finished material snapshot.
+ * `hostToken` is the host's current capability. A successful publication
+ * revokes the previous token, so this changes even when the frame is not
+ * installed. `displayedToken` is the non-subset snapshot whose keys are on
+ * screen. A refused frame must not take that ownership. */
+export type MaterialScopePublication={
+  hostToken:string|undefined
+  displayedToken:string|undefined
+  presented:DisplayedMaterialCoverage|null
+}
+
+/** Decide whether the snapshot that just returned replaces the view.
+ * The host token is recorded first, because the publication has already
+ * revoked the previous capability. The picture on screen is fenced by the
+ * displayed-coverage token captured before that write. Fencing on the host
+ * token afterwards makes the presented keys disappear, and the same policy
+ * then accepts a stale superset of a range that is already visible. */
+export function finishMaterialScopePublication(state:MaterialScopePublication,input:{
+  frameToken:string
+  generationCurrent:boolean
+  latestKeys:readonly (string|undefined)[]
+  finishedKeys:readonly string[]
+}) {
+  const displayedToken=state.displayedToken
+  state.hostToken=input.frameToken
+  const presented=state.presented
+  const presentedKeys=presented&&presented.token===displayedToken&&!presented.viewportSubset?presented.materialKeys:undefined
+  const install=acceptFinishedMaterialScope({
+    generationCurrent:input.generationCurrent,
+    latestKeys:input.latestKeys,
+    finishedKeys:input.finishedKeys,
+    presentedKeys,
+  })
+  if(install)state.displayedToken=input.frameToken
+  return install
+}
+
 /** A scope already published for this revision can be recalled without the
  * overlap sample. Another revision, an empty list, or a different key set waits. */
 export function rememberedMaterialScope(input:{

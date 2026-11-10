@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest'
-import {deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope} from './source-material-scope'
+import {acceptFinishedMaterialScope,deferOverlappingMaterialScope,finishMaterialScopePublication,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,type MaterialScopePublication} from './source-material-scope'
 import type {SourceCanvasItem} from './desktop'
 const items=Array.from({length:40},(_,i)=>({key:'p:'+i,pageId:i===4?'other':'p',bytes:i===3?9*1024**2:100,
  placed:{x:i===2?3000:i*10,y:0,width:8,height:8}})) as SourceCanvasItem[]
@@ -21,6 +21,52 @@ test('an overlapping dense scope waits, and a covered or disjoint scope does not
  expect(deferOverlappingMaterialScope({viewportDriven:false,held,wanted:['a','z']})).toBe(false)
  expect(deferOverlappingMaterialScope({viewportDriven:true,held:held.slice(0,5),wanted:['a','z']})).toBe(false)
  expect(deferOverlappingMaterialScope({viewportDriven:true,held,wanted:[]})).toBe(false)
+})
+
+test('a stale overlapping publish does not replace a presented scope that already covers the return',()=>{
+ const finished=['a','b','c','d','e','f']
+ const presented=['a','b']
+ expect(acceptFinishedMaterialScope({generationCurrent:true,latestKeys:['a'],finishedKeys:finished,presentedKeys:presented})).toBe(true)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['a','b'],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['a','z'],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['c'],finishedKeys:finished,presentedKeys:presented})).toBe(true)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:[],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['a',undefined],finishedKeys:finished,presentedKeys:presented})).toBe(false)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:['c'],finishedKeys:finished})).toBe(true)
+ expect(acceptFinishedMaterialScope({generationCurrent:false,latestKeys:[],finishedKeys:finished})).toBe(false)
+})
+
+test('the post-await publication keeps displayed coverage after the host token moves',()=>{
+ // Already-presented range A is token T1. A stale AB snapshot returns T2
+ // after the latest need is A again. Writing the host token first and then
+ // fencing the picture on that token drops the presented keys.
+ const input={frameToken:'T2',generationCurrent:false,latestKeys:['a'],finishedKeys:['a','b']}
+ const presented={token:'T1',materialKeys:['a']}
+ const rejected:MaterialScopePublication={hostToken:'T1',displayedToken:'T1',presented}
+ rejected.hostToken=input.frameToken
+ const rejectedKeys=rejected.presented&&rejected.presented.token===rejected.hostToken&&!rejected.presented.viewportSubset?rejected.presented.materialKeys:undefined
+ expect(acceptFinishedMaterialScope({...input,presentedKeys:rejectedKeys})).toBe(true)
+ const state:MaterialScopePublication={hostToken:'T1',displayedToken:'T1',presented}
+ expect(finishMaterialScopePublication(state,input)).toBe(false)
+ expect(state.hostToken).toBe('T2')
+ expect(state.displayedToken).toBe('T1')
+})
+
+test('displayed coverage ownership stays fenced after a publication is refused',()=>{
+ const state:MaterialScopePublication={hostToken:'T1',displayedToken:'T1',presented:{token:'T1',materialKeys:['a']}}
+ expect(finishMaterialScopePublication(state,{frameToken:'T2',generationCurrent:false,latestKeys:['z'],finishedKeys:['a','b']})).toBe(false)
+ expect(state.hostToken).toBe('T2')
+ expect(state.displayedToken).toBe('T1')
+ const foreign:MaterialScopePublication={hostToken:'T0',displayedToken:undefined,presented:{token:'T-old',materialKeys:['a']}}
+ expect(finishMaterialScopePublication(foreign,{frameToken:'T2',generationCurrent:false,latestKeys:['a'],finishedKeys:['a','b']})).toBe(true)
+ expect(foreign.displayedToken).toBe('T2')
+ const subset:MaterialScopePublication={hostToken:'T1',displayedToken:'T1',presented:{token:'T1',materialKeys:['a','b'],viewportSubset:true}}
+ expect(finishMaterialScopePublication(subset,{frameToken:'T3',generationCurrent:false,latestKeys:['a'],finishedKeys:['a','b']})).toBe(true)
+ expect(subset.displayedToken).toBe('T3')
+ const current:MaterialScopePublication={hostToken:'T1',displayedToken:'T1',presented:{token:'T1',materialKeys:['a']}}
+ expect(finishMaterialScopePublication(current,{frameToken:'T4',generationCurrent:true,latestKeys:['a'],finishedKeys:['a','b']})).toBe(true)
+ expect(current.hostToken).toBe('T4')
+ expect(current.displayedToken).toBe('T4')
 })
 
 test('a published scope is recalled immediately and a different revision is not',()=>{

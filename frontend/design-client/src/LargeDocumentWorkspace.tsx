@@ -7,7 +7,7 @@ import { Editor } from './engine'
 import { blank, type DesignDocument, type Point } from './model'
 import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
-import {deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
+import {deferOverlappingMaterialScope,finishMaterialScopePublication,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged, subscribePendingEdits } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
@@ -65,6 +65,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const reviewedScope=useRef<{token:string;at:number}|undefined>(undefined)
   const publishedScopes=useRef<{revision:number; keys:readonly string[]}[]>([])
   const lastMaterialToken=useRef<string|undefined>(undefined)
+  const displayedMaterialToken=useRef<string|undefined>(undefined)
   const pageDetailIntent=useRef<string|undefined>(undefined)
   const requestDetail=useCallback((indices:number[],retry=false,fromViewport=false)=>{
     const key=indices.join(',')
@@ -307,7 +308,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     if(canBrowse&&!forceFull){
       // The source and every material remain addressable in the catalogue.
       // No full-scene conversion or GPU draw is needed to show the overview.
-      snapshot=null;nativeSnapshotRef.current=null;setNativeSnapshot(null);setShowOpening(true)
+      snapshot=null;nativeSnapshotRef.current=null;displayedMaterialToken.current=undefined;setNativeSnapshot(null);setShowOpening(true)
     } else if(!snapshot || snapshot.materialKeys || snapshot.owner.documentId!==owner.owner.documentId ||
         snapshot.owner.sessionEpoch!==owner.owner.sessionEpoch || snapshot.revision!==owner.expectedRevision){
       preparingOverview.current=true
@@ -315,7 +316,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       finally{preparingOverview.current=false}
       if(queuedLoad.current||!alive.current||!sameSource(current,statusRef.current))return
       if(items.length!==snapshot.roots)throw Error('完整画板目录与源内容不一致')
-      nativeSnapshotRef.current=snapshot;setNativeSnapshot(snapshot)
+      nativeSnapshotRef.current=snapshot;displayedMaterialToken.current=undefined;setNativeSnapshot(snapshot)
     }
     const keepView=canBrowse && !activeRef.current?editor.effectiveView():undefined
     editor.setMutationRestriction(undefined)
@@ -385,17 +386,24 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
             if(first.materialKeys?.join(',')!==focal.join(',')||first.roots!==focal.length)throw Error('素材精修范围不匹配')
             if(demandGeneration.current!==generation)return
             const subset={...first,viewportSubset:true}
+            displayedMaterialToken.current=undefined
             nativeSnapshotRef.current=subset;setNativeSnapshot(subset)
           }else if(demandGeneration.current!==generation||queuedLoad.current)return
         }
         const frame=admitted(await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:keys,...(navigationWindow?{navigationWindow}:{})}))
         if(!alive.current || activeRef.current || !sameSource(selected,statusRef.current))return
-        // A successful host publication revokes the previous token even if
-        // the viewport changed while native preparation was running.
-        lastMaterialToken.current=frame.token
-        const latestWanted=requestedIndices.current.map(i=>itemsForSnapshot.current[i]?.key)
-        if(demandGeneration.current!==generation && (!latestWanted.length||!includesMaterials(keys,latestWanted)))return
+        // The publication has revoked the previous host token. Whether this
+        // frame may replace the picture is decided with the coverage token
+        // captured before that write; the two identities are not the same.
+        const publication={hostToken:lastMaterialToken.current,displayedToken:displayedMaterialToken.current,presented:nativeSnapshotRef.current}
+        const install=finishMaterialScopePublication(publication,{
+          frameToken:frame.token,generationCurrent:demandGeneration.current===generation,
+          latestKeys:requestedIndices.current.map(i=>itemsForSnapshot.current[i]?.key),finishedKeys:keys,
+        })
+        lastMaterialToken.current=publication.hostToken
+        if(!install)return
         if(frame.materialKeys?.join(',')!==keys.join(',') || frame.roots!==keys.length)throw Error('素材精修范围不匹配')
+        displayedMaterialToken.current=publication.displayedToken
         rememberPublishedScope(publishedScopes.current, frame.revision, keys)
         nativeSnapshotRef.current=frame;setNativeSnapshot(frame);setWarnings(frame.warnings)
         setNativeRenderStatus({phase:'refining',done:0,total:frame.roots})
@@ -542,7 +550,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);itemsForSnapshot.current=[]
     editor.setMutationRestriction(undefined);editor.load(blank(),true);editor.setMutationRestriction('正在准备源文件，暂时只能浏览。');editor.set({tool:'hand',selection:[]})
     openingRef.current=undefined;statusRef.current=null;setStatus(null)
-    nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);setSourcePage('')
+    nativeSnapshotRef.current=null;displayedMaterialToken.current=undefined;setNativeSnapshot(null);setCatalogue([]);setOverview(false);setSourcePage('')
     nativePresentedToken.current=undefined
     pageDetailIntent.current=undefined;setFocusedMaterial(undefined);setSelectedMaterialId(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
     let next:LargeDocumentStatus
@@ -557,7 +565,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       return
     }
     if(!alive.current){admittedOpen.current=next;return}
-    baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);admittedOpen.current=next;openOutcome.current='ok';updateStatus(next)
+    baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);nativeSnapshotRef.current=null;displayedMaterialToken.current=undefined;setNativeSnapshot(null);setCatalogue([]);setOverview(false);admittedOpen.current=next;openOutcome.current='ok';updateStatus(next)
     await openInitialCanvas()
   },true)
   const allPages=()=>{setParents([]);setOffset(0);setFilter('');setQuery('')}

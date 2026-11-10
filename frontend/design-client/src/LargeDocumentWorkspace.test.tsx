@@ -454,3 +454,45 @@ test('a failed open rebinds the host document so refine can show a native frame'
  expect(binding.source!.hideNative).toBe(false)
  expect(document.querySelector('.source-row-name')!.textContent).toBe('140x140pt 30个（黑色）')
 })
+
+test('a stale superset publication does not replace a range that is already presented',async()=>{
+ const owner={documentId:'source-return',sessionEpoch:1}
+ const status={owner,revision:0,name:'sample.sketch',format:'sketch',dirty:false,undoCount:0,redoCount:0,indexedObjects:8,expandedBytes:100,maxExpandedBytes:100000}
+ const bounds={x:0,y:0,width:500,height:200},rect={x:0,y:0,width:100,height:100}
+ const items=['alpha','beta'].map((name,i)=>({id:name,name,kind:'artboard',pageId:'p',pageName:'page',source:rect,placed:{...rect,x:i*400},key:'1:'+i,bytes:1024}))
+ const frame=(token:string,keys:string[])=>({status:'ok' as const,owner,revision:0,token,materialKeys:keys,bytes:123,nodes:keys.length,roots:keys.length,pageId:'p',stageId:'s',bounds,warnings:[],rasterProfile:'figma' as const,colorManaged:true})
+ let resolveStale:((value:ReturnType<typeof frame>)=>void)|undefined
+ let finishOpen:((value:unknown)=>void)|undefined
+ const shown:string[]=[]
+ const canvasSnapshot=vi.fn(async(request:{materialKeys?:string[]})=>{
+  const keys=[...(request.materialKeys??[])]
+  if(keys.join(',')==='1:0,1:1')return await new Promise<ReturnType<typeof frame>>(resolve=>{resolveStale=resolve})
+  if(keys.join(',')!=='1:0')throw Error('unexpected material scope '+keys.join(','))
+  return frame('T1',keys)
+ })
+ const bridge={cancel:vi.fn(async()=>({status:'ok' as const})),open:()=>new Promise(resolve=>{finishOpen=resolve}),openingView:async()=>({status:'ok' as const,phase:'available' as const,owner,bounds,revision:0,total:2,
+  items:items.map((item,i)=>({...item,key:'preview-'+i})),pages:[['p','page',2]],offset:0,nextOffset:2,cursor:2,images:[{index:0,png:'a'},{index:1,png:'b'}],moreImages:false,finished:true,rendered:0,cacheHit:true}),
+  canvasLayout:async()=>({status:'ok' as const,items,total:2,hasMore:false}),canvasSnapshot} as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={source=>{
+  const snap=source.nativeCanvas?.snapshot
+  const mark=snap?`${snap.token}:${(snap.materialKeys??[]).join(',')}`:''
+  if(mark&&shown.at(-1)!==mark)shown.push(mark)
+  return <div ref={source.canvas}>{workbench(source)}</div>
+ }} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ await act(async()=>finishOpen!({status:'ok',...status}))
+ expect(canvasSnapshot).not.toHaveBeenCalled()
+ await act(async()=>binding.source!.onDetail!([0]))
+ await act(async()=>binding.source!.nativeCanvas!.onStatus({phase:'ready',done:1,total:1}))
+ expect(binding.source!.nativeCanvas!.snapshot).toMatchObject({token:'T1',materialKeys:['1:0']})
+ expect(binding.source!.parkNative).toBe(false)
+ await act(async()=>binding.source!.onDetail!([0,1]))
+ expect(canvasSnapshot.mock.calls.map(([request])=>request.materialKeys)).toEqual([['1:0'],['1:0','1:1']])
+ expect(resolveStale).toBeTypeOf('function')
+ await act(async()=>binding.source!.onDetail!([0]))
+ expect(canvasSnapshot).toHaveBeenCalledTimes(2)
+ await act(async()=>{resolveStale!(frame('T2',['1:0','1:1']))})
+ expect(shown.some(mark=>mark.startsWith('T2:'))).toBe(false)
+ expect(binding.source!.nativeCanvas!.snapshot).toMatchObject({token:'T1',materialKeys:['1:0']})
+ expect(binding.source!.parkNative).toBe(false)
+ expect(canvasSnapshot.mock.calls.map(([request])=>request.materialKeys)).toEqual([['1:0'],['1:0','1:1'],['1:0']])
+})
