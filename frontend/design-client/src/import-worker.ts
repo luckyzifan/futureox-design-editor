@@ -1,7 +1,7 @@
 import { assertImportInputBytes } from './import-input-policy'
 import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
-import { fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
+import { abeezeeLineBreakDiagnostic, fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
 type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
@@ -68,8 +68,9 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
         if(!result.warnings.includes(message)) result.warnings.push(message)
       }
       for(const name of fonts.missing){
+        const specific=abeezeeLineBreakDiagnostic(name)
         const link=fontDownloadFor(name)
-        const message=link?`字体 ${name} 未捆绑。许可 ${link.license}，下载：${link.url}`:`字体 ${name} 未捆绑，文字已保留，显示用当前回退。`
+        const message=specific??(link?`字体 ${name} 未捆绑。许可 ${link.license}，下载：${link.url}`:`字体 ${name} 未捆绑，文字已保留，显示用当前回退。`)
         if(!result.warnings.includes(message)) result.warnings.push(message)
       }
       self.postMessage({ result })
