@@ -2,6 +2,7 @@ import {compactSourceAxes,readSourceGrid,readDenseSourceGrid,readDenseSourceGrid
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
+import { ResourceLedger } from './resource-ledger'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
@@ -762,12 +763,16 @@ export class GpuRenderer {
   }
   private free: Map<string,Texture[]> = new SurfacePool<Texture>()
   private busy = new Set<Texture>()
-  private aliases = new Map<Texture, number>()
-  private releasedAliases = new WeakSet<Surface>()
+  private readonly ledger = new ResourceLedger<Texture, Surface>()
+  private get aliases() { return this.ledger.aliases }
+  private get releasedAliases() { return this.ledger.released }
+  private set releasedAliases(value: WeakSet<Surface>) { this.ledger.released = value }
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
-  private bytes = 0
-  private peak = 0
+  private get bytes() { return this.ledger.bytes }
+  private set bytes(value: number) { this.ledger.bytes = value }
+  private get peak() { return this.ledger.peak }
+  private set peak(value: number) { this.ledger.peak = value }
   private passPixels = 0
   private readonly fastWork = new FastPathWork()
   private readonly fieldRetirementIndexEnabled = import.meta.env.VITE_DESIGN_FIELD_RETIREMENT_INDEX!=='0'
@@ -913,7 +918,7 @@ export class GpuRenderer {
   private lastUsed = new Map<Texture, number>()
   // A pool entry has no future reader until acquire removes it. Stamp actual
   // pool return, not allocation: cached coverage may be read in a newer frame.
-  private poolReleaseEpoch = new WeakMap<Texture, number>()
+  private get poolReleaseEpoch() { return this.ledger.poolEpochs }
   // Parameter uploads whose last read has been encoded. Destroying them early
   // could race queued commands and pooling them would let a later writeTexture
   // overtake pending reads, so only a completed checkpoint may destroy them.
@@ -1081,7 +1086,7 @@ export class GpuRenderer {
     }
     if (gpuDiagnosticsEnabled()) try { this.surfaceAllocationTags.set(texture, surfaceAllocationTag(allocationSite, passMode)) }
     catch { /* diagnostic-only tag cannot alter allocation */ }
-    this.poolReleaseEpoch.delete(texture)
+    this.ledger.clearPoolEpoch(texture)
     delete texture.transparentZero
     delete texture.uniformColor
     delete texture.finitePixels
@@ -1238,21 +1243,14 @@ export class GpuRenderer {
   }
   private release(...surfaces: (Surface | undefined)[]) {
     for (const s of new Set(surfaces)) {
-      if (!s || this.materialFields.has(s.texture) || this.gradientPhaseResources.has(s.texture) || this.releasedAliases.has(s)) continue
-      this.releasedAliases.add(s)
-      const references = this.aliases.get(s.texture)
-      if (references) {
-        if (references > 1) { this.aliases.set(s.texture, references - 1); continue }
-        this.aliases.delete(s.texture)
-      }
+      if (!s || this.materialFields.has(s.texture) || this.gradientPhaseResources.has(s.texture)) continue
+      if (this.ledger.beginRelease(s) !== 'pool') continue
       if (!this.busy.delete(s.texture)) continue
       const key = `${s.texture.scalarCoverage ? 'scalar:' : s.texture.binaryCoverage ? 'binary:' : ''}${s.texture.width}:${s.texture.height}`,
         list = this.free.get(key) || []
       list.push(s.texture)
       ;(this.free as SurfacePool<Texture>).added?.(s.texture)
-      const epoch = this.driver.resourceEpoch
-      if (Number.isSafeInteger(epoch) && epoch! > 0) this.poolReleaseEpoch.set(s.texture, epoch!)
-      else this.poolReleaseEpoch.delete(s.texture)
+      this.ledger.notePoolReturn(s.texture, this.driver.resourceEpoch)
       if((this.free as SurfacePool<Texture>).setOwned)(this.free as SurfacePool<Texture>).setOwned(key,list)
       else this.free.set(key,list)
       // Returning to the pool is the end of this texture's latest use; stamp
@@ -1261,8 +1259,17 @@ export class GpuRenderer {
     }
   }
   private retain(surface: Surface): Surface {
-    this.aliases.set(surface.texture, (this.aliases.get(surface.texture) || 1) + 1)
+    this.ledger.retain(surface.texture)
     return { ...surface }
+  }
+  /** Active, waiting on GPU completion, or reclaimable. Logical retirement is
+   * not reported as released. */
+  textureLife(texture: Texture) {
+    return this.ledger.life({
+      busy: this.busy.has(texture),
+      poolEpoch: this.poolReleaseEpoch.get(texture),
+      completedEpoch: this.driver.completedResourceEpoch,
+    })
   }
   private empty(r: Rect) {
     if (this.optimized && this.driver.managed && !this.allowSolidBatch && this.driver.zeroTextureSampling) {

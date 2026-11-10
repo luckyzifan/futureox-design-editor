@@ -79,9 +79,10 @@ export function coarsePanCoverNeeded(options: {
   continuousZoom: boolean
   translationFollow: boolean
   residentsCover: boolean
+  quietStripAllowed?: boolean
 }) {
   if (options.firstNative || !options.hasStrip || options.stripCached) return false
-  const quietPasteboard = options.pasteboard && (options.cpuOnly || options.translated || (!options.moving && !options.continuousZoom))
+  const quietPasteboard = options.pasteboard && (options.cpuOnly || options.translated || (!options.moving && !options.continuousZoom && options.quietStripAllowed !== false))
   return quietPasteboard || (options.translationFollow && !options.residentsCover)
 }
 

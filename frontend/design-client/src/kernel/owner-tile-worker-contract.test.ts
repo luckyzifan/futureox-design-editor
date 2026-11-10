@@ -20,5 +20,5 @@ test('worker cache commits require owned bytes, uncanceled request, and captured
   expect(source).toContain('ownsExactTileBytes(result) && cacheOwner.current(cacheTicket)')
   expect(source).toContain('cacheTicket = cacheOwner.capture()')
   expect(source).toContain('exactTilePayloadBytes(result), cacheTicket)')
-  expect(source).toMatch(/packetWait\?\.controller\.signal\.aborted[^\n]*throw new Error\('PREVIEW_CANCELLED'\)\s+\/\/ Only the exact scene/)
+  expect(source).toMatch(/tileFence\(false\)\.action === 'cancel'\) throw new Error\('PREVIEW_CANCELLED'\)\s+\/\/ Only the exact scene/)
 })

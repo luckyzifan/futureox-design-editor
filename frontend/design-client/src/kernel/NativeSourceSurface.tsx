@@ -14,6 +14,8 @@ import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,select
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
+import {frameHandoff} from './frame-handoff'
+import {exactTilesBeforeOverview,quietPasteStripAllowed} from './zoom-refinement-policy'
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
@@ -158,7 +160,11 @@ export function NativeSourceSurface(props:Props){
       const live=latest.current.view,shown=renderExecutionPolicy.cpuOnly?cpuView:backing?.view
       const atCamera=!!shown&&shown.x===live.x&&shown.y===live.y&&shown.zoom===live.zoom
       const nativeDensity=renderExecutionPolicy.cpuOnly||backingTiles.length>0&&backingTiles.every(tile=>tile.zoom>=live.zoom*density.current*.999999)
-      const sharp=status.phase==='ready'&&atCamera&&nativeDensity&&!holed&&!farTiles&&element.dataset.previewUpscaleRejected!=='true'
+      const sharp=frameHandoff({
+        sameRevision:true,sameCamera:atCamera,nativeDensity,
+        nativePhase:!farTiles&&element.dataset.previewUpscaleRejected!=='true',
+        viewportCovered:status.phase==='ready'&&!holed,regional:false,
+      })==='screen-ready'
       const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}/${Number(farTiles)}/${Number(holed)}/${Number(sharp)}/${live.x}/${live.y}/${live.zoom}`,now=performance.now()
       // A single visible decoded board is enough to keep routine status quiet.
       // Reprojection and final receipts separately require full coverage.
@@ -511,11 +517,15 @@ export function NativeSourceSurface(props:Props){
           const residentsCover=panResidents.length>0&&tilesCoverBounds(panResidents,panWorld)
           // The artboard lattice does not cover pasteboard. One coarse page
           // tile does, and a quarter-viewport pan stays inside the same tile.
+          const quietStrip=quietPasteStripAllowed({moving,continuousZoom,exactMissing:missing.length})
+          // Preserve the bootstrap strip until the first accepted backing.
+          // A decoded full-source opening can go straight to native tiles.
+          const bootstrapStrip=!backing&&!firstNative
           // A large pan after zoom-out is the same hole even when the page
           // still contains the viewport: take the strip before the old refine.
           const wantStrip=coarsePanCoverNeeded({
             firstNative,hasStrip:!!stripTile,stripCached:!!stripTile&&cache.has(stripTile.key),
-            pasteboard,cpuOnly:renderExecutionPolicy.cpuOnly,translated,moving,continuousZoom,
+            quietStripAllowed:quietStrip||bootstrapStrip,pasteboard,cpuOnly:renderExecutionPolicy.cpuOnly,translated,moving,continuousZoom,
             translationFollow,residentsCover,
           })
           if(firstNative&&optional){schedulePaint();break}
@@ -541,12 +551,14 @@ export function NativeSourceSurface(props:Props){
           // After the first visible pixels, one coarse page tile is built while
           // the user is still. The first zoom-out then already has coverage.
           // Material files used to stop here and never build that page.
-          const coldTile=!firstNative&&!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
+          const coldTile=missing.length===0&&!firstNative&&!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
             ?overviewWarmBatch(overview.tiles,p.view,p.width,p.height,tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key))[0]
             :undefined
           const warmBase = !coldTile && optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
             tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
-          const candidates=wantStrip&&stripTile?[stripTile]:coldTile?[{...coldTile,prefetch:true as const}]:warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
+          const overviewCandidates=coldTile?[{...coldTile,prefetch:true as const}]:warmBase?.length?warmBase.map(tile=>({...tile,prefetch:true as const})):[]
+          const ranked=exactTilesBeforeOverview(missing,overviewCandidates)
+          const candidates=wantStrip&&stripTile?[stripTile]:ranked.length?ranked:
             optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
           if(coldTile&&!(wantStrip&&stripTile))coldBudget--
           if(!candidates.length)break
