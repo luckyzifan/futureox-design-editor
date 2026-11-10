@@ -115,6 +115,17 @@ pub struct RationalKernel {
     weights: Vec<Nat>,
     approximations: Vec<f64>,
 }
+
+/// Q64 interior plan shared with the GPU prefix. `None` keeps the general
+/// rational evaluator; accepted pixels match `exact` binary32 bits.
+pub(crate) struct Q64Prefix {
+    pub weights: Vec<u128>,
+    pub interior: usize,
+    pub bound: u32,
+    pub center: i128,
+    pub slope: i128,
+    pub intercept: i128,
+}
 impl RationalKernel {
     pub fn tent(radius: f64) -> Result<Self, String> {
         if !radius.is_finite() || radius <= 0. || radius > 2048. {
@@ -277,6 +288,34 @@ impl RationalKernel {
     pub fn certified_prefix_plan(&self, interior: usize, bytes: &[u8]) -> Option<u32> {
         let (expected, bound) = self.certified_packet(Some(interior));
         (expected == bytes).then_some(bound).flatten()
+    }
+    /// Same admission as [`Self::certified_prefix_plan`], with the coefficients
+    /// retained for a line prefix. The radius still selects the kernel; this
+    /// does not widen the 2048 tent limit or the Q64 interior proof.
+    pub(crate) fn q64_prefix(&self, radius: f64) -> Option<Q64Prefix> {
+        if !radius.is_finite() || radius < 8. {
+            return None;
+        }
+        let interior = radius.floor() as usize - 1;
+        if self.reach() != radius.ceil() as usize {
+            return None;
+        }
+        let wide = self.reach() >= 3 && self.weights[0].cmp(&self.denominator).is_lt();
+        if !wide {
+            return None;
+        }
+        let weights = self.certified_weights_at(64);
+        let bound = Self::certified_prefix_bound(&weights, interior)?;
+        let slope = weights[1].checked_sub(weights[2])?;
+        let intercept = weights[1].checked_add(slope)?;
+        Some(Q64Prefix {
+            center: i128::try_from(weights[0]).ok()?,
+            slope: i128::try_from(slope).ok()?,
+            intercept: i128::try_from(intercept).ok()?,
+            weights,
+            interior,
+            bound,
+        })
     }
     fn certified_prefix_bound(weights: &[u128], interior: usize) -> Option<u32> {
         let reach=weights.len().checked_sub(1)?;
@@ -457,7 +496,7 @@ impl RationalKernel {
 
 /// Round an exact signed integer * 2^quantum without native float operations.
 /// Exact zero is +0; a strictly negative value rounding to zero remains -0.
-fn round_certified_dyadic(value: i128, quantum: i32) -> u32 {
+pub(crate) fn round_certified_dyadic(value: i128, quantum: i32) -> u32 {
     if value == 0 {
         return 0;
     }
@@ -661,5 +700,54 @@ mod large_canvas_tent_tests {
         }
         assert_eq!(RationalKernel::large_tent(4095.9999999999995).unwrap_err(), "Large exact filter packet exceeds 64 KiB");
         for radius in [0.,512.,2048.,4096.0001,f64::NAN,f64::INFINITY] {assert!(RationalKernel::large_tent(radius).is_err());}
+    }
+}
+
+#[cfg(test)]
+mod wide_shadow_prefix_tests {
+    use super::RationalKernel;
+    use crate::{blend::{Pixel, Surface}, effects, math::Rect};
+
+    fn direct(source: &Surface, radius: f64) -> Surface {
+        let kernel = RationalKernel::tent(radius).unwrap();
+        let reach = kernel.reach() as i32;
+        let mut expected = source.try_clone().unwrap();
+        let mut taps = vec![0.; kernel.reach() * 2 + 1];
+        for horizontal in [true, false] {
+            let rect = expected.rect;
+            let mut out = Surface::new(rect).unwrap();
+            for y in rect.y..rect.bottom() {
+                for x in rect.x..rect.right() {
+                    let mut value = [0.; 4];
+                    for (channel, sample) in value.iter_mut().enumerate() {
+                        for (index, tap) in taps.iter_mut().enumerate() {
+                            let delta = index as i32 - reach;
+                            let (sx, sy) = if horizontal { (x + delta, y) } else { (x, y + delta) };
+                            *tap = expected.at(sx, sy).0[channel];
+                        }
+                        *sample = kernel.convolve(&taps).unwrap();
+                    }
+                    out.pixels[rect.index(x, y).unwrap()] = Pixel(value);
+                }
+            }
+            expected = out;
+        }
+        expected
+    }
+
+    #[test]
+    fn wide_shadow_radii_keep_exact_bits_through_the_q64_prefix() {
+        for radius in [64., 128.5, 256., 384.] {
+            assert!(RationalKernel::tent(radius).unwrap().q64_prefix(radius).is_some(), "{radius}");
+            let mut source = Surface::new(Rect::new(-4, 2, 64, 3)).unwrap();
+            for x in 12..40 {
+                source.pixels[64 + x] = Pixel([0.35, -0.5, 1., 0.125]);
+            }
+            let actual = effects::linear_tent_blur(&source, radius, false).unwrap();
+            let expected = direct(&source, radius);
+            for (index, (got, want)) in actual.pixels.iter().zip(&expected.pixels).enumerate() {
+                assert_eq!(got.0.map(f32::to_bits), want.0.map(f32::to_bits), "r={radius} pixel={index}");
+            }
+        }
     }
 }
