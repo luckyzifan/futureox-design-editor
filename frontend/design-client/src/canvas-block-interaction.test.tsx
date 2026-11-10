@@ -246,6 +246,7 @@ test('retained child movement yields to a live tree change when crossing frames 
 
 test('a rectangle corner drag sets every radius, and alt keeps the other corners', async () => {
   const rect = node('rectangle', 100, 100, 80, 60)
+  rect.radii = [10, 10, 10, 10]
   await render([rect])
   await act(async () => editor.select([rect.id]))
   const handle = () => mount.querySelector<SVGCircleElement>('[data-testid="corner-radius-0"]')!
@@ -255,13 +256,13 @@ test('a rectangle corner drag sets every radius, and alt keeps the other corners
   await act(async () => pointer('pointerdown', x, y, {}, first))
   await act(async () => pointer('pointermove', x + 20, y, {}, first))
   await act(async () => pointer('pointerup', x + 20, y, {}, first))
-  expect(editor.state.doc.nodes[rect.id].radii).toEqual([20, 20, 20, 20])
+  expect(editor.state.doc.nodes[rect.id].radii).toEqual([30, 30, 30, 30])
   const next = handle()
   const nx = Number(next.getAttribute('cx')), ny = Number(next.getAttribute('cy'))
   await act(async () => pointer('pointerdown', nx, ny, { altKey: true }, next))
   await act(async () => pointer('pointermove', nx + 10, ny, { altKey: true }, next))
   await act(async () => pointer('pointerup', nx + 10, ny, { altKey: true }, next))
-  expect(editor.state.doc.nodes[rect.id].radii).toEqual([30, 20, 20, 20])
+  expect(editor.state.doc.nodes[rect.id].radii).toEqual([40, 30, 30, 30])
   expect(mount.querySelector('[data-testid="corner-radius-2"]')).not.toBeNull()
 })
 
