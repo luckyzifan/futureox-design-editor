@@ -88,6 +88,16 @@ export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw
 export function hostedDenseByteFrame(frame:{present:boolean;readback:boolean;resolve?:boolean;presentation?:boolean;softwareRaster?:boolean}){
  return frame.present&&!frame.readback&&frame.resolve!==true&&frame.presentation!==true&&frame.softwareRaster!==true
 }
+/** WebGPU requires a 256-byte row stride. Already-aligned images keep their
+ *  packed buffer; other widths are copied into a padded staging image. */
+export function straightImageUploadRows(bytes:Uint8Array,width:number,height:number){
+ if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||bytes.length!==width*height*4)throw Error('Invalid straight sRGB source')
+ const bytesPerRow=Math.ceil(width*4/256)*256
+ if(bytesPerRow===width*4)return {bytes,bytesPerRow}
+ const padded=new Uint8Array(bytesPerRow*height)
+ for(let y=0;y<height;y++)padded.set(bytes.subarray(y*width*4,(y+1)*width*4),y*bytesPerRow)
+ return {bytes:padded,bytesPerRow}
+}
 /** Managed paint uniforms for a straight RGBA8 image. u[207] selects the
  *  table decode in linearImageTexel. u[206] is the separate source-detail
  *  mix, and this helper never enables the byte-space u[187] branch. */

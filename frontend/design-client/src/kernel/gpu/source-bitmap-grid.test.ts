@@ -1,5 +1,5 @@
 import {describe,it,expect,vi,afterEach} from 'vitest'
-import {compactSourceAxes,hostedDenseByteFrame,noteHostedStraightImage,readDenseSourceGrid,readDenseSourceGridBytes,sampleHostedByteImage} from './source-bitmap-grid'
+import {compactSourceAxes,hostedDenseByteFrame,noteHostedStraightImage,readDenseSourceGrid,readDenseSourceGridBytes,sampleHostedByteImage,straightImageUploadRows} from './source-bitmap-grid'
 import {straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
 afterEach(()=>vi.unstubAllGlobals())
 describe('file-backed image grid',()=>{
@@ -58,6 +58,19 @@ it('exact frames stay off the straight grid and image paint does not enable byte
  u[16]=22;u[207]=7
  noteHostedStraightImage(u,false,true,true)
  expect(u[207]).toBe(7)
+})
+it('straight uploads pad only the WebGPU row stride and keep every logical texel',()=>{
+ const aligned=new Uint8Array(256*2*4);aligned[4]=9;aligned[256*4+7]=3
+ const same=straightImageUploadRows(aligned,256,2)
+ expect(same.bytesPerRow).toBe(1024);expect(same.bytes).toBe(aligned)
+ const width=272,height=3,bytes=new Uint8Array(width*height*4)
+ bytes[0]=11;bytes[width*4-1]=22;bytes[(height-1)*width*4+5]=33
+ const padded=straightImageUploadRows(bytes,width,height)
+ expect(padded.bytesPerRow).toBe(1280);expect(padded.bytesPerRow%256).toBe(0)
+ expect(padded.bytes).not.toBe(bytes);expect(padded.bytes.length).toBe(1280*height)
+ expect(padded.bytes[0]).toBe(11);expect(padded.bytes[width*4-1]).toBe(22);expect(padded.bytes[1280*2+5]).toBe(33)
+ expect(padded.bytes[width*4]).toBe(0)
+ expect(()=>straightImageUploadRows(bytes,width,height-1)).toThrow('Invalid straight sRGB source')
 })
 it.each(['cell','short','status'])('dense byte transport rejects %s without returning partial pixels',kind=>{
  vi.stubGlobal('XMLHttpRequest',class{status=kind==='status'?500:200;responseType='';response=new ArrayBuffer(kind==='short'?4:16);open(){}send(){}})

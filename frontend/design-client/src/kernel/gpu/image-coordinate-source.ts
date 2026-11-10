@@ -1,22 +1,11 @@
 import { replaceWgslBody } from './display-arithmetic'
 
 /** WebGPU transport may factor exact coordinate metadata into two rows.
- * The sampler and its arithmetic are unchanged, including in the HDR tier. */
+ * Straight RGBA8 decoding stays in the shared linearImageTexel, including the
+ * sRGB table selected by u(51).w. This rewrite does not enable u(46).w. */
 export function imageCoordinateSource(source: string): string {
-  const addressed=replaceWgslBody(source,'linearImageTexel',`
- if(any(q<vec2<i32>(0))||any(q>=vec2<i32>(u(2).zw))){return vec4<f32>(0);}
- let v=textureLoad(sourceB,q,0);
- if(u(4).x==2.&&u(7).x==3.&&u(51).w==1.){
-  let b=vec4<i32>(round(v*255.));let row=i32(u(2).w);
-  let a=sourceTableWord(b.a,row+1);
-  return vec4<f32>(mulRN4(vec4<f32>(sourceTableWord(b.r,row),sourceTableWord(b.g,row),sourceTableWord(b.b,row),1.),vec4<f32>(a)).rgb,a);
- }
- return v;
- `)
-  return `fn sourceTableWord(index:i32,row:i32)->f32{
- let bits=vec4<u32>(round(textureLoad(sourceB,vec2<i32>(index,row),0)*255.));
- return bitcast<f32>(bits.r|(bits.g<<8u)|(bits.b<<16u)|(bits.a<<24u));
-}\n`+replaceWgslBody(addressed, 'linearImage', `
+  if(!source.includes('fn sourceTableWord(')||!source.includes('u(51).w==1.'))throw Error('Straight image decode is missing from the shared shader')
+  return replaceWgslBody(source, 'linearImage', `
  let pixel=vec2<i32>(floor(p-u(51).xy));var grid:vec4<f32>;
  if(textureLoad(sourceD,vec2<i32>(0),0).w<0.){
   let x=textureLoad(sourceD,vec2<i32>(pixel.x,0),0);let y=textureLoad(sourceD,vec2<i32>(pixel.y,1),0);
