@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "bun run install:runtime && bun run build --fast && bun run start",
     "build": "node scripts/build.mjs",
-    "build:host": "node --check src/main.mjs && node --check src/preload.cjs && node --check src/security.mjs && node --check src/sidecar.mjs && node --check src/ffmpeg-encode.mjs && node --check scripts/ffmpeg-bundle.mjs && node --check src/workspace-sqlite-worker.mjs && node --check src/workspace-sqlite-worker-host.mjs",
+    "build:host": "node --check src/main.mjs && node --check src/preload.cjs && node --check src/security.mjs && node --check src/sidecar.mjs && node --check src/ffmpeg-encode.mjs && node --check scripts/ffmpeg-bundle.mjs && node --check src/workspace-sqlite-worker.mjs && node --check src/workspace-sqlite-worker-host.mjs && node --check src/product-export.mjs",
     "start": "electron .",
     "test": "node --test test/*.test.mjs",
     "test:preparation": "node --test test/runtime/preparation-runtime.test.mjs",

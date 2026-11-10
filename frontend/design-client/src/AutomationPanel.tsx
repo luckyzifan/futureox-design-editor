@@ -82,12 +82,23 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
     if(!mounted.current)return
     setAuditRows(previous=>append?[...previous,...rows.entries].slice(-500):rows.entries);setNextAudit(rows.hasMore?rows.nextBeforeId??null:null)
   }
+  const publishProduct=async(kind:'fd'|'html-zip',filename:string,bytes:Uint8Array)=>{
+    if(desktop){
+      const channel=desktop.exportProductFile
+      if(!channel)throw new Error(kind==='fd'?text.fdChannelUnavailable:text.zipChannelUnavailable)
+      const result=await channel({kind,filename,bytes})
+      if(result.status==='cancelled')return
+      if(result.status!=='ok')throw new Error(result.message)
+      return
+    }
+    download(filename,bytes as BlobPart,kind==='fd'?'application/octet-stream':'application/zip')
+  }
   const saveNative=()=>{const data=exportNativeDocument(editor.state.doc);download('design.json',data.content,'application/json')}
-  const exportHtml=(view=false)=>{
+  const exportHtml=async(view=false)=>{
     const data=exportDesignCode(editor.state.doc,{pageId:editor.state.page,maxNodes:500})
     setResult(JSON.stringify({warnings:data.warnings,assets:data.assets.map(a=>({...a,dataUrl:undefined}))},null,2))
     if(view)setHtml(sandboxedCodePreview(data))
-    else download('design-html.zip',codeExportZip(data) as Uint8Array<ArrayBuffer>,'application/zip')
+    else await publishProduct('html-zip','design-html.zip',codeExportZip(data))
   }
   return <div className="modal-backdrop"><section className="remote-modal automation-dialog" role="dialog" aria-modal="true" aria-label={text.title} style={{width:'min(920px, calc(100vw - 32px))',maxHeight:'90vh',overflow:'auto'}} onKeyDown={e=>{
     if(e.key==='Escape'){e.preventDefault();e.stopPropagation();onClose()}
@@ -116,7 +127,7 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
       <button onClick={()=>void task(()=>{execute('design.check',{pageId:editor.state.page})})}>{text.checkPage}</button>
       <button onClick={()=>void task(async signal=>{const doc=editor.state.doc,session=editor.sessionGeneration;const output=await captureDesignPreview(doc,{pageId:editor.state.page,signal});if(signal.aborted||!mounted.current||session!==editor.sessionGeneration||doc!==editor.state.doc)throw new Error(text.stalePreview);setPreview(output.dataUrl)})}>{text.previewPage}</button>
       <button onClick={()=>void task(()=>{execute('font.list')})}>{text.checkFonts}</button>
-      <button onClick={()=>void task(()=>{const r=api.execute({method:'document.export',params:{format:'fd'}});if(!r.ok)throw new Error(r.error.message);const out=r.result as {base64:string;encoding?:string;filename?:string;mimeType?:string};if(out.encoding!=='base64')throw new Error(text.fdNotReady);const bytes=Uint8Array.from(atob(out.base64),c=>c.charCodeAt(0));download(out.filename??'design.fd',bytes,'application/octet-stream')})}>{text.exportFd}</button>
+      <button onClick={()=>void task(async()=>{const r=api.execute({method:'document.export',params:{format:'fd'}});if(!r.ok)throw new Error(r.error.message);const out=r.result as {base64:string;encoding?:string;filename?:string;mimeType?:string};if(out.encoding!=='base64')throw new Error(text.fdNotReady);const bytes=Uint8Array.from(atob(out.base64),c=>c.charCodeAt(0));await publishProduct('fd',out.filename??'design.fd',bytes)})}>{text.exportFd}</button>
       <button onClick={()=>void task(saveNative)}>{text.exportJson}</button>
       <button onClick={()=>void task(()=>{const r=api.execute({method:'sketch.export',params:{}});if(!r.ok)throw new Error(r.error.message);const out=r.result as {base64:string;filename:string;mimeType:string;warnings:unknown[];lossless:boolean};const bytes=Uint8Array.from(atob(out.base64),c=>c.charCodeAt(0));download(out.filename,bytes,out.mimeType);setResult(JSON.stringify({lossless:out.lossless,warnings:out.warnings},null,2))})}>{text.exportSketch}</button>
       <button onClick={()=>void task(()=>{const out=exportDesignSvg(editor.state.doc,{pageId:editor.state.page,maxNodes:500});download(out.filename,out.content ?? Uint8Array.from(atob(out.base64!), c => c.charCodeAt(0)),out.mimeType);setResult(JSON.stringify(out.warnings,null,2))})}>{text.exportSvg}</button>

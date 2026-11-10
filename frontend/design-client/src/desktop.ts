@@ -208,6 +208,12 @@ export interface DesktopBridge {
     documentJson: string
     saveAs?: boolean
   }): Promise<DesktopResult<DesktopFile>>
+  /** Writes one validated panel export. The host chooses the dialog and extension. */
+  exportProductFile?(request: {
+    kind: 'fd' | 'html-zip'
+    filename: string
+    bytes: Uint8Array
+  }): Promise<DesktopResult<{ displayName: string }>>
   readRecovery(): Promise<DesktopResult<{ documentJson: string; displayName: string; recoveryHandle: string }>>
   acceptRecovery(request: { recoveryHandle: string }): Promise<DesktopResult>
   writeRecovery(request: {

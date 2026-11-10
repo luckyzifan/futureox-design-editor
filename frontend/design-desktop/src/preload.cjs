@@ -229,6 +229,8 @@ contextBridge.exposeInMainWorld(
     openPendingDocument: () => invoke('open-pending'),
     acceptDocument: (value) => invoke('document-accept', value),
     saveDocument: (value) => invoke('save', value),
+    // FD and HTML/asset ZIP only. The main process checks the bytes and shows the save dialog.
+    exportProductFile: value => invoke('export-product-file', value),
     readRecovery: () => invoke('recovery-read'),
     acceptRecovery: (value) => invoke('recovery-accept', value),
     writeRecovery: (value) => invoke('recovery-write', value),

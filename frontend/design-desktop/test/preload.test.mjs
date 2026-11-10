@@ -75,6 +75,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'openPendingDocument',
       'acceptDocument',
       'saveDocument',
+      'exportProductFile',
       'readRecovery',
       'acceptRecovery',
       'writeRecovery',
@@ -121,6 +122,7 @@ test('preload request methods map only to the fixed desktop IPC allowlist', asyn
     ['openPendingDocument', 'open-pending', undefined],
     ['acceptDocument', 'document-accept', { handle: '10000000-0000-0000-0000-000000000001' }],
     ['saveDocument', 'save', { documentJson: '{"test":true}', saveAs: true }],
+    ['exportProductFile', 'export-product-file', { kind: 'fd', filename: 'design.fd', bytes: Uint8Array.of(70, 88) }],
     ['readRecovery', 'recovery-read', undefined],
     [
       'acceptRecovery',

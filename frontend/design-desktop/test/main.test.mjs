@@ -2,6 +2,7 @@ import { DOCUMENT_MEMORY_BYTES, DOCUMENT_BYTE_LIMIT } from '../src/document-capa
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath, symlink } from 'node:fs/promises'
+import { makeFd, productZip } from './product-export-fixtures.mjs'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
@@ -1497,5 +1498,151 @@ test('startup enables declared plugins in the menu without exposing filesystem p
     assert.equal(english.submenu[2].label, 'Save')
     const fileSave = state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Export copy…')
     assert.equal(fileSave.accelerator, 'CmdOrCtrl+Shift+S')
+  } finally { await state.dispose() }
+})
+
+function downloadProbe(state, filename) {
+  let options
+  let blocked = 0
+  const before = state.prompts.length
+  const item = Object.assign(new EventEmitter(), {
+    getFilename: () => filename,
+    getURL: () => 'blob:design-app://app/1234-abcd',
+    getReceivedBytes: () => 32,
+    getTotalBytes: () => 32,
+    getInitiatorOrigin: () => 'design-app://app',
+    setSaveDialogOptions(value) { options = value },
+    cancel() {},
+  })
+  state.session.emit('will-download', { preventDefault() { blocked += 1 } }, item, state.window.webContents)
+  return { blocked, options, prompt: state.prompts.length > before ? state.prompts.at(-1) : undefined }
+}
+
+test('blob downloads still reject .fd and .zip and name the extension that failed', async () => {
+  const state = await host()
+  try {
+    const svg = downloadProbe(state, 'drawing.svg')
+    assert.equal(svg.blocked, 0)
+    assert.equal(svg.options.defaultPath, 'drawing.svg')
+    assert.equal(svg.prompt, undefined)
+    const fd = downloadProbe(state, 'design.fd')
+    assert.equal(fd.blocked, 1)
+    assert.equal(fd.options, undefined)
+    assert.match(fd.prompt.message, /\.fd/)
+    assert.match(fd.prompt.message, /另存为/)
+    const zip = downloadProbe(state, 'design-html.zip')
+    assert.equal(zip.blocked, 1)
+    assert.equal(zip.options, undefined)
+    assert.match(zip.prompt.message, /\.zip/)
+    assert.equal(zip.prompt.message.includes('.fd'), false)
+    const script = downloadProbe(state, 'script.sh')
+    assert.equal(script.blocked, 1)
+    assert.match(script.prompt.message, /\.sh/)
+    assert.equal(script.prompt.message.includes('.fd'), false)
+    assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
+    const english = downloadProbe(state, 'design-html.zip')
+    assert.equal(english.blocked, 1)
+    assert.match(english.prompt.message, /\.zip/)
+    assert.equal(english.prompt.message.includes('.fd'), false)
+    assert.match(downloadProbe(state, 'design.fd').prompt.message, /Save As/)
+  } finally { await state.dispose() }
+})
+
+test('product export channel writes validated FD and HTML ZIP only at the dialog path', async () => {
+  const state = await host()
+  try {
+    const dialogs = []
+    state.electron.dialog.showSaveDialog = async (...args) => {
+      dialogs.push(args.at(-1))
+      return state.save.shift() || { canceled: true }
+    }
+    const requests = state.requests.length
+    const fd = Uint8Array.from(makeFd('panel-fd'))
+    const fdPath = path.join(state.root, 'design.fd')
+    state.save.push({ canceled: false, filePath: fdPath })
+    const savedFd = await state.invoke('export-product-file', { kind: 'fd', filename: '../outside.fd', bytes: fd })
+    assert.equal(savedFd.status, 'ok')
+    assert.equal(savedFd.displayName, 'design.fd')
+    assert.equal(JSON.stringify(savedFd).includes(state.root), false)
+    assert.equal(dialogs.at(-1).defaultPath, 'design.fd')
+    assert.deepEqual(dialogs.at(-1).filters, [{ name: '设计导出文件', extensions: ['fd'] }])
+    assert.deepEqual(dialogs.at(-1).properties, ['showOverwriteConfirmation', 'createDirectory'])
+    assert.deepEqual(await readFile(fdPath), Buffer.from(fd))
+    const outside = path.join(path.dirname(state.root), 'outside.fd')
+    await assert.rejects(readFile(outside), /ENOENT/)
+
+    const zip = Uint8Array.from(productZip())
+    const zipPath = path.join(state.root, 'design-html.zip')
+    state.save.push({ canceled: false, filePath: zipPath })
+    const savedZip = await state.invoke('export-product-file', {
+      kind: 'html-zip', filename: 'https://evil.example/design-html.zip', bytes: zip,
+    })
+    assert.equal(savedZip.status, 'ok')
+    assert.equal(savedZip.displayName, 'design-html.zip')
+    assert.equal(dialogs.at(-1).defaultPath, 'design-html.zip')
+    assert.deepEqual(dialogs.at(-1).filters[0].extensions, ['zip'])
+    assert.deepEqual(await readFile(zipPath), Buffer.from(zip))
+
+    const dialogsAfterValid = dialogs.length
+    const tampered = Uint8Array.from(fd)
+    tampered[tampered.length - 1] ^= 1
+    const badFd = await state.invoke('export-product-file', { kind: 'fd', filename: 'design.fd', bytes: tampered })
+    assert.equal(badFd.status, 'error')
+    assert.match(badFd.message, /\.fd/)
+    assert.equal(badFd.message.includes('ZIP'), false)
+    assert.equal(dialogs.length, dialogsAfterValid)
+    await assert.rejects(readFile(path.join(state.root, 'bad.fd')), /ENOENT/)
+    const badZip = await state.invoke('export-product-file', {
+      kind: 'html-zip', filename: 'design-html.zip', bytes: productZip({ extra: [['payload.exe', Buffer.from('MZ')]] }),
+    })
+    assert.equal(badZip.status, 'error')
+    assert.match(badZip.message, /ZIP/)
+    assert.equal(badZip.message.includes('.fd'), false)
+    assert.equal(dialogs.length, dialogsAfterValid)
+
+    state.save.push({ canceled: false, filePath: path.join(state.root, 'notes.txt') })
+    const wrong = await state.invoke('export-product-file', { kind: 'fd', filename: 'design.fd', bytes: fd })
+    assert.equal(wrong.status, 'error')
+    assert.match(wrong.message, /\.txt/)
+    assert.match(wrong.message, /\.fd/)
+    assert.equal(wrong.message.includes('ZIP'), false)
+    await assert.rejects(readFile(path.join(state.root, 'notes.txt')), /ENOENT/)
+
+    state.save.push({ canceled: false, filePath: path.join(state.root, 'copy') })
+    const appended = await state.invoke('export-product-file', { kind: 'html-zip', filename: 'design-html.zip', bytes: zip })
+    assert.equal(appended.status, 'ok')
+    assert.equal(appended.displayName, 'copy.zip')
+    assert.deepEqual(await readFile(path.join(state.root, 'copy.zip')), Buffer.from(zip))
+    state.save.push({ canceled: false, filePath: path.join(state.root, 'copy') })
+    const exists = await state.invoke('export-product-file', { kind: 'html-zip', filename: 'design-html.zip', bytes: zip })
+    assert.equal(exists.status, 'error')
+    assert.match(exists.message, /\.zip/)
+    assert.equal(exists.message.includes('.fd'), false)
+    assert.deepEqual(await readFile(path.join(state.root, 'copy.zip')), Buffer.from(zip))
+
+    const kept = path.join(state.root, 'kept.txt')
+    await writeFile(kept, 'keep')
+    const link = path.join(state.root, 'link.fd')
+    await symlink(kept, link)
+    state.save.push({ canceled: false, filePath: link })
+    const linked = await state.invoke('export-product-file', { kind: 'fd', filename: 'design.fd', bytes: fd })
+    assert.equal(linked.status, 'error')
+    assert.match(linked.message, /\.fd/)
+    assert.equal(await readFile(kept, 'utf8'), 'keep')
+
+    state.save.push({ canceled: true })
+    assert.equal((await state.invoke('export-product-file', { kind: 'fd', filename: 'design.fd', bytes: fd })).status, 'cancelled')
+    const networked = await state.invoke('export-product-file', { kind: 'fd', filename: 'design.fd', bytes: fd, url: 'https://evil.example/design.fd' })
+    assert.equal(networked.status, 'error')
+    assert.equal((await state.invoke('export-product-file', { kind: 'zip', filename: 'design.zip', bytes: zip })).message.includes('.fd'), false)
+    await assert.rejects(
+      state.invoke('export-product-file', { kind: 'fd', filename: 'design.fd', bytes: fd }, { sender: {}, senderFrame: state.window.webContents.mainFrame }),
+      /Untrusted desktop IPC sender/,
+    )
+    assert.equal(state.requests.length, requests)
+    assert.equal(state.requests.some(request => request.method === 'save'), false)
+    assert.deepEqual(state.recent, [])
+    assert.equal(downloadProbe(state, 'design.fd').blocked, 1)
+    assert.equal(downloadProbe(state, 'design-html.zip').blocked, 1)
   } finally { await state.dispose() }
 })
