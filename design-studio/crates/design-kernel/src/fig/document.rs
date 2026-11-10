@@ -730,13 +730,48 @@ fn scaled_fig_opacity_variable(
     next_id
 }
 
+fn percent_number_variable(variable: &Variable) -> bool {
+    variable.kind == "number"
+        && variable.values.values().any(|value| {
+            value
+                .as_f64()
+                .is_some_and(|number| number.is_finite() && number > 1. && number <= 100.)
+        })
+        && variable
+            .values
+            .values()
+            .all(|value| value.as_f64().is_some_and(|number| number.is_finite()))
+}
+
+fn scale_opacity_numbers(variable: &mut Variable) {
+    for value in variable.values.values_mut() {
+        if let Some(number) = value.as_f64() {
+            if number > 1. && number <= 100. {
+                *value = serde_json::json!(number / 100.);
+            }
+        }
+    }
+}
+
 fn normalize_imported_opacity(doc: &mut Document) {
+    let mut uses: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut sites = Vec::new();
+    let mut record = |field: &str, variable: &str, node_id: &str, override_path: Option<&str>| {
+        uses.entry(variable.to_string())
+            .or_default()
+            .insert(field.to_string());
+        if opacity_binding_path(field) {
+            sites.push((
+                node_id.to_string(),
+                override_path.map(str::to_string),
+                field.to_string(),
+                variable.to_string(),
+            ));
+        }
+    };
     for (id, node) in &doc.nodes {
         for (field, variable) in &node.bindings {
-            if opacity_binding_path(field) {
-                sites.push((id.clone(), None, field.clone(), variable.clone()));
-            }
+            record(field, variable, id, None);
         }
         let Some(instance) = &node.instance else {
             continue;
@@ -749,19 +784,31 @@ fn normalize_imported_opacity(doc: &mut Document) {
                 let Some(variable) = variable.as_str() else {
                     continue;
                 };
-                if opacity_binding_path(field) {
-                    sites.push((
-                        id.clone(),
-                        Some(path.clone()),
-                        field.clone(),
-                        variable.to_string(),
-                    ));
-                }
+                record(field, variable, id, Some(path));
             }
         }
     }
     if sites.is_empty() || doc.design_system.is_none() {
         return;
+    }
+    let mut inplace = BTreeSet::new();
+    {
+        let system = doc.design_system.as_mut().unwrap();
+        for (id, fields) in &uses {
+            let Some(variable) = system.variables.get(id) else {
+                continue;
+            };
+            if fields.iter().all(|field| opacity_binding_path(field))
+                && percent_number_variable(variable)
+            {
+                inplace.insert(id.clone());
+            }
+        }
+        for id in &inplace {
+            if let Some(variable) = system.variables.get_mut(id) {
+                scale_opacity_numbers(variable);
+            }
+        }
     }
     let mut memo = BTreeMap::new();
     let mut stack = BTreeSet::new();
@@ -772,6 +819,10 @@ fn normalize_imported_opacity(doc: &mut Document) {
         ids.sort();
         ids.dedup();
         for id in ids {
+            if inplace.contains(&id) {
+                mapped.insert(id.clone(), id);
+                continue;
+            }
             let scaled = scaled_fig_opacity_variable(system, &id, &mut memo, &mut stack);
             mapped.insert(id, scaled);
         }

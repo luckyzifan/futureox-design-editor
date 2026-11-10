@@ -840,6 +840,10 @@ fn fig_percent_opacity_is_normalized_only_during_import() {
     unit["variableConsumptionMap"] = json!({"entries": [
         {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 6), "assetRef": {"key": "half"}}}}}
     ]});
+    let mut solo = placed("RECTANGLE", 1, 13, (0, 1), "i");
+    solo["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 10), "assetRef": {"key": "solo"}}}}}
+    ]});
     let mut via_alias = placed("RECTANGLE", 1, 10, (0, 1), "c");
     via_alias["variableConsumptionMap"] = json!({"entries": [
         {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 7), "assetRef": {"key": "disabled-alias"}}}}}
@@ -897,6 +901,14 @@ fn fig_percent_opacity_is_normalized_only_during_import() {
                 ]}
             }),
             json!({
+                "guid": g(9, 10), "type": "VARIABLE", "name": "Solo 50%", "key": "solo",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 50.}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 20.}}}
+                ]}
+            }),
+            json!({
                 "guid": g(9, 6), "type": "VARIABLE", "name": "Half", "key": "half",
                 "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
                 "variableDataValues": {"entries": [
@@ -928,7 +940,7 @@ fn fig_percent_opacity_is_normalized_only_during_import() {
                     {"modeID": g(9, 5), "variableData": {"value": {"textValue": {"characters": "Yo"}}}}
                 ]}
             }),
-            shared, unit, via_alias, text, symbol, child, label, instance
+            shared, unit, solo, via_alias, text, symbol, child, label, instance
         ]}),
         BTreeMap::new(),
         Vec::new(),
@@ -946,6 +958,10 @@ fn fig_percent_opacity_is_normalized_only_during_import() {
         json!(0.2)
     );
     assert!(system.variables.get("fig-9-6#fig-opacity").is_none());
+    assert!(system.variables.get("fig-9-10#fig-opacity").is_none());
+    assert_eq!(system.variables["fig-9-10"].values["Light"], json!(0.5));
+    assert_eq!(system.variables["fig-9-10"].values["Dark"], json!(0.2));
+    assert_eq!(doc.nodes["fig-1-13"].bindings["opacity"], "fig-9-10");
     assert_eq!(
         system.variables["fig-9-7#fig-opacity"].values["Light"]["alias"],
         json!("fig-9-4#fig-opacity")
@@ -983,6 +999,7 @@ fn fig_percent_opacity_is_normalized_only_during_import() {
     resolve(&mut resolved).unwrap();
     assert!((resolved.nodes["fig-1-8"].width - 50.).abs() < 1e-9);
     assert!((resolved.nodes["fig-1-8"].opacity - 0.5).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-13"].opacity - 0.5).abs() < 1e-9);
     assert!((resolved.nodes["fig-1-9"].opacity - 0.25).abs() < 1e-9);
     assert!((resolved.nodes["fig-1-10"].opacity - 0.5).abs() < 1e-9);
     assert!(

@@ -133,6 +133,11 @@ test('fig opacity percentages are copied at import and ordinary numbers stay', (
         { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 50 } } },
         { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 20 } } },
       ] } }],
+    ['1:6', { type: 'VARIABLE', name: 'Solo 50%', key: 'solo', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'theme' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 80 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 40 } } },
+      ] } }],
     ['1:5', { type: 'VARIABLE', name: 'Half', key: 'half', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'theme' } },
       variableDataValues: { entries: [
         { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 0.25 } } },
@@ -145,12 +150,18 @@ test('fig opacity percentages are copied at import and ordinary numbers stay', (
     ['unit', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
       { variableField: 'OPACITY', variableData: { value: { alias: { assetRef: { key: 'half' } } } } },
     ] } }],
+    ['solo', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
+      { variableField: 'OPACITY', variableData: { value: { alias: { assetRef: { key: 'solo' } } } } },
+    ] } }],
   ])
-  importFigVariableNodes(doc, records, new Map([['chip', chip.id], ['unit', main.id]]))
+  importFigVariableNodes(doc, records, new Map([['chip', chip.id], ['unit', main.id], ['solo', instance.id]]))
   expect(doc.designSystem?.variables['1:4'].values.Light).toBe(50)
   expect(doc.designSystem?.variables['1:4'].values.Dark).toBe(20)
   expect(doc.designSystem?.variables['1:4#fig-opacity'].values).toEqual({ Light: 0.5, Dark: 0.2 })
   expect(doc.designSystem?.variables['1:5#fig-opacity']).toBeUndefined()
+  expect(doc.designSystem?.variables['1:6#fig-opacity']).toBeUndefined()
+  expect(doc.designSystem?.variables['1:6'].values).toEqual({ Light: 0.8, Dark: 0.4 })
+  expect(instance.bindings?.opacity).toBe('1:6')
   expect(chip.bindings?.width).toBe('1:4')
   expect(chip.bindings?.opacity).toBe('1:4#fig-opacity')
   expect(main.bindings?.opacity).toBe('1:5')

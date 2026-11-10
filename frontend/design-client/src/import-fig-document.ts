@@ -414,29 +414,53 @@ function scaledFigOpacityVariable(
   return nextId
 }
 
-/** FIG opacity numbers above 1 are percentages. Copy them onto a 0–1 variable
- * and leave the source number alone so width bindings of the same token stay put. */
+function percentNumberVariable(variable: NonNullable<DesignDocument['designSystem']>['variables'][string]) {
+  const values = Object.values(variable.values)
+  return variable.kind === 'number'
+    && values.some(value => typeof value === 'number' && value > 1 && value <= 100)
+    && values.every(value => typeof value === 'number' && Number.isFinite(value))
+}
+
+/** FIG opacity numbers above 1 are percentages. A token used only for opacity
+ * is scaled in place. A token also used as a length keeps its source number,
+ * and only the opacity binding points at a 0–1 copy. */
 export function normalizeFigOpacityBindings(doc: DesignDocument) {
   const system = doc.designSystem
   if (!system) return
+  const uses = new Map<string, Set<string>>()
   const sites: Array<{ map: Record<string, string>; field: string }> = []
-  const take = (map: Record<string, string> | undefined) => {
+  const take = (map: Record<string, unknown> | undefined) => {
     if (!map) return
-    for (const field of Object.keys(map)) if (opacityBindingPath(field)) sites.push({ map, field })
+    for (const [field, id] of Object.entries(map)) {
+      if (typeof id !== 'string') continue
+      const fields = uses.get(id) ?? new Set<string>()
+      fields.add(field)
+      uses.set(id, fields)
+      if (opacityBindingPath(field)) sites.push({ map: map as Record<string, string>, field })
+    }
   }
   for (const node of Object.values(doc.nodes)) {
     take(node.bindings)
     for (const fields of Object.values(node.instance?.overrides || {})) {
       const bindings = fields.bindings
-      if (bindings && typeof bindings === 'object' && !Array.isArray(bindings)) take(bindings as Record<string, string>)
+      if (bindings && typeof bindings === 'object' && !Array.isArray(bindings)) take(bindings as Record<string, unknown>)
     }
   }
   if (!sites.length) return
+  const inplace = new Set<string>()
+  for (const [id, fields] of uses) {
+    const variable = system.variables[id]
+    if (!variable || ![...fields].every(opacityBindingPath) || !percentNumberVariable(variable)) continue
+    for (const [mode, value] of Object.entries(variable.values)) {
+      if (typeof value === 'number' && value > 1 && value <= 100) variable.values[mode] = value / 100
+    }
+    inplace.add(id)
+  }
   const memo = new Map<string, string>()
   const stack = new Set<string>()
   for (const site of sites) {
     const current = site.map[site.field]
-    if (typeof current !== 'string') continue
+    if (typeof current !== 'string' || inplace.has(current)) continue
     const next = scaledFigOpacityVariable(system, current, memo, stack)
     if (next !== current) site.map[site.field] = next
   }
