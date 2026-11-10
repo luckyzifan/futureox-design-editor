@@ -1,7 +1,17 @@
-//! Issue 179. The frozen Chrome cases now carry the Figma glass readback
-//! (depth, refraction, dispersion, light) instead of the old amount/opacity
-//! stand-in, so export profiles use the calibrated capture. Ceilings are the
-//! measured gaps after that mapping and are below the 2026-11-10 main deltas.
+//! Issue 179. Glass frost and full glass on the figma profile match the frozen
+//! Chrome PNGs. The software profile's separable byte lerp on the glass filter
+//! axis, and its separable read of the finished capture, were a code high.
+//! Those two reads now use the joint Q4 sample that the exact export already
+//! matches. Downsample and the filter store stay on the software byte contract.
+//!
+//! Measured on this Linux CPU build against browser-2026-10-07 (PNG checksums
+//! unchanged). Backdrop is unchanged. figmaSoftware glass pixel counts fell;
+//! the max channel did not.
+//!
+//! | case | profile | main pixels / max | candidate |
+//! | --- | --- | ---: | ---: |
+//! | glass-frost-only | figmaSoftware | 2536 / 2 | 1690 / 2 |
+//! | glass-full | figmaSoftware | 2077 / 3 | 1579 / 3 |
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -11,9 +21,26 @@ const CEILINGS: &[(&str, &str, usize, u8)] = &[
     ("backdrop-blur", "figma", 3887, 7),
     ("backdrop-blur", "figmaSoftware", 3974, 7),
     ("glass-frost-only", "figma", 0, 0),
-    ("glass-frost-only", "figmaSoftware", 2536, 2),
+    ("glass-frost-only", "figmaSoftware", 1690, 2),
     ("glass-full", "figma", 0, 0),
-    ("glass-full", "figmaSoftware", 2077, 3),
+    ("glass-full", "figmaSoftware", 1579, 3),
+];
+
+/// Cases that were exact on main and must stay exact.
+const EXACT: &[(&str, &str)] = &[
+    ("integer-rectangle", "figma"),
+    ("integer-rectangle", "figmaSoftware"),
+    ("fractional-rectangle", "figma"),
+    ("fractional-rectangle", "figmaSoftware"),
+    ("ellipse", "figma"),
+    ("rotated-rectangle", "figma"),
+    ("smooth-corner", "figma"),
+    ("multiply-opacity", "figma"),
+    ("outside-stroke", "figma"),
+    ("blur-small", "figma"),
+    ("blur-small", "figmaSoftware"),
+    ("alpha-mask", "figma"),
+    ("alpha-mask", "figmaSoftware"),
 ];
 
 fn root() -> std::path::PathBuf {
@@ -102,14 +129,32 @@ fn glass_cases_bind_the_frozen_figma_readback() {
 }
 
 #[test]
+fn previously_exact_chrome_references_stay_exact() {
+    let cases = cases();
+    for &(id, profile) in EXACT {
+        let case = case(&cases, id);
+        let (pixels, max) = gap(&render(case, profile), &reference(case));
+        assert_eq!((pixels, max), (0, 0), "{id}/{profile}");
+    }
+}
+
+#[test]
 fn issue_179_appearance_stays_within_the_measured_ceilings() {
     let cases = cases();
     for &(id, profile, pixels, max) in CEILINGS {
         let case = case(&cases, id);
         let (got_pixels, got_max) = gap(&render(case, profile), &reference(case));
+        eprintln!("issue179 {id}/{profile}: pixels {got_pixels} max {got_max}");
         assert!(
             got_pixels <= pixels && got_max <= max,
             "{id}/{profile}: pixels {got_pixels} ceiling {pixels}, max {got_max} ceiling {max}"
         );
+        if profile == "figmaSoftware" && (id == "glass-frost-only" || id == "glass-full") {
+            let previous = if id == "glass-frost-only" { 2536 } else { 2077 };
+            assert!(
+                got_pixels < previous,
+                "{id} did not improve on main's {previous} software pixels: {got_pixels}"
+            );
+        }
     }
 }

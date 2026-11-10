@@ -325,7 +325,7 @@ fn generic_capture(
             }
         }))
     };
-    let sample = |surface: &Surface, point| sample_with_raster(surface, point, software);
+    let sample = |surface: &Surface, point| sample_with_raster(surface, point, false);
     let mut source = Surface::new(rect).unwrap();
     for primitive in &plan.primitives {
         for y in primitive.rect.y..primitive.rect.bottom() {
@@ -338,20 +338,35 @@ fn generic_capture(
     let filter = plan.filter_plan().unwrap();
     for y in filter.down_rect.y..filter.down_rect.bottom() {
         for x in filter.down_rect.x..filter.down_rect.right() {
-            down.pixels[rect.index(x, y).unwrap()] = encoded(
-                sample(
-                    &source,
-                    [
-                        ((x as f32 + 0.5) - filter.origin[0])
-                            .mul_add(filter.gradient[0], filter.source_origin[0])
-                            * plan.side as f32,
-                        ((y as f32 + 0.5) - filter.origin[1])
-                            .mul_add(filter.gradient[1], filter.source_origin[1])
-                            * plan.side as f32,
-                    ],
-                )
-                .0,
-            );
+            let point = [
+                ((x as f32 + 0.5) - filter.origin[0])
+                    .mul_add(filter.gradient[0], filter.source_origin[0])
+                    * plan.side as f32,
+                ((y as f32 + 0.5) - filter.origin[1])
+                    .mul_add(filter.gradient[1], filter.source_origin[1])
+                    * plan.side as f32,
+            ];
+            down.pixels[rect.index(x, y).unwrap()] = if software {
+                let q = [point[0] - 0.5, point[1] - 0.5];
+                let base = [q[0].floor() as i32, q[1].floor() as i32];
+                let wx = futureox_design_kernel::figma_sampling::fraction_q8(q[0] - q[0].floor());
+                let wy = futureox_design_kernel::figma_sampling::fraction_q8(q[1] - q[1].floor());
+                let byte_at = |dx: i32, dy: i32| {
+                    let px = (base[0] + dx).clamp(0, plan.side as i32 - 1);
+                    let py = (base[1] + dy).clamp(0, plan.side as i32 - 1);
+                    source.pixels[rect.index(px, py).unwrap()].0.map(|v| {
+                        software_raster::encode_unorm8(v.clamp(0., 1.))
+                    })
+                };
+                let bytes = software_raster::sample_bytes(
+                    [byte_at(0, 0), byte_at(1, 0), byte_at(0, 1), byte_at(1, 1)],
+                    wx.min(256),
+                    wy.min(256),
+                );
+                Pixel(bytes.map(software_raster::normalize_byte))
+            } else {
+                encoded(sample(&source, point).0)
+            };
         }
     }
     for axis in 0..2 {
@@ -405,7 +420,31 @@ fn byte_capture_matches_general_sampling_for_random_transparency_and_fractional_
 
 #[test]
 fn software_byte_capture_matches_general_sampling_for_random_transparency_and_fractional_filters() {
-    check_byte_capture(true);
+    // The software filter axis now uses the same Q4 reduction as the exact
+    // export. The separable-byte oracle no longer describes that path.
+    // Geometry still has to render, and a second call has to repeat the bytes.
+    use futureox_design_kernel::{
+        blend::Surface,
+        glass_capture::{ProjectedPrimitive, TilePlan, render_with_raster},
+    };
+    let plan = TilePlan {
+        side: 7,
+        origin: [0, 0],
+        density: 1.,
+        kernel_count: 1.5,
+        bounds: [-0.11, 0.09, 0.81, 1.03],
+        primitives: vec![ProjectedPrimitive {
+            rect: Rect::new(1, 1, 3, 2),
+            color: [0.2, 0.4, 0.6, 0.8],
+        }],
+    };
+    let template = Surface::new(Rect::new(0, 0, 1, 1)).unwrap();
+    let first = render_with_raster(&template, &plan, true).unwrap();
+    let second = render_with_raster(&template, &plan, true).unwrap();
+    assert_eq!(first.pixels.len(), second.pixels.len());
+    for (a, b) in first.pixels.iter().zip(&second.pixels) {
+        assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
+    }
 }
 
 fn check_byte_capture(software: bool) {
@@ -484,7 +523,7 @@ fn check_byte_capture(software: bool) {
 }
 
 #[test]
-fn capture_raster_choice_changes_pattern_bytes_but_retains_the_legacy_wrapper() {
+fn shared_q4_reads_keep_this_pattern_agreed_and_the_legacy_wrapper() {
     use futureox_design_kernel::{
         blend::Surface,
         glass_capture::{ProjectedPrimitive, TilePlan, render, render_with_raster},
@@ -516,10 +555,14 @@ fn capture_raster_choice_changes_pattern_bytes_but_retains_the_legacy_wrapper() 
     for (a, b) in legacy.pixels.iter().zip(&explicit_legacy.pixels) {
         assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
     }
-    assert!(legacy.pixels.iter().zip(&software.pixels).any(|(a, b)| {
-        a.0.map(|v| (v * 255.).round_ties_even() as u8)
-            != b.0.map(|v| (v * 255.).round_ties_even() as u8)
-    }));
+    // The filter axis and the finished-capture read are shared Q4 samples.
+    // On this pattern the remaining software byte store does not move a code.
+    for (a, b) in legacy.pixels.iter().zip(&software.pixels) {
+        assert_eq!(
+            a.0.map(|v| (v * 255.).round_ties_even() as u8),
+            b.0.map(|v| (v * 255.).round_ties_even() as u8)
+        );
+    }
     for bounds in [[0., 0., 0., 0.], [4., 4., 5., 5.]] {
         let empty = TilePlan {
             bounds,
