@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest'
-import {sourceTileRetirement,rememberSourceTier} from './source-tile-retirement'
+import {sourceTileRetirement,rememberSourceTier,zoomOutRetentionCohort} from './source-tile-retirement'
 
 test('lower-density motion keeps a complete 25-tile return view inside the same 32 slots',()=>{
   const group=(prefix:string,count:number,time:number)=>Array.from({length:count},(_,i)=>({key:prefix+i,used:time+i}))
@@ -21,6 +21,19 @@ test('nearby high zoom completions keep the wide return cohort within the same t
   expect([...history.values()]).toEqual([wide,latest]);expect(history.size).toBe(2)
   rememberSourceTier(history,2.00000038,near)
   expect([...history.values()]).toEqual([latest,near]);expect(history.size).toBe(2)
+})
+
+test('a 25% return keeps the coarse cohort that a scale>=2 gate drops',()=>{
+  const page=new Set(['page']),crop=new Set(['crop'])
+  const history=[[2,page],[64,crop]] as const
+  expect(zoomOutRetentionCohort(history,0.5)).toBe(page)
+  expect(zoomOutRetentionCohort(history,64)).toBe(page)
+  expect(zoomOutRetentionCohort(history,2)).toBeUndefined()
+  expect(zoomOutRetentionCohort(history,Number.NaN)).toBeUndefined()
+  const tiles=[{key:'page',used:1},{key:'crop',used:50},{key:'live',used:9}]
+  const dropped=sourceTileRetirement(tiles,[page,crop],false,zoomOutRetentionCohort(history,0.5))
+    .filter(tile=>tile.key!=='live').slice(0,1)
+  expect(dropped.map(tile=>tile.key)).toEqual(['crop'])
 })
 
 test('wide-cohort preference evicts old fine tiles before return pixels without growing capacity',()=>{

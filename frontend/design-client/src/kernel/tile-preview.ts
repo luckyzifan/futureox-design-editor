@@ -23,6 +23,14 @@ export function previewCameraScaleWithinLimit(sourceZoom: number, viewZoom: numb
   return sourceZoom / viewZoom <= MAX_PREVIEW_SCALE_RATIO
 }
 
+/** 3200% back to 100% or 25% is outside the preview ratio. The flat page
+ * color and the camera-preview white are the blank/gray gap. A same-zoom
+ * pan, and a zoom-in, stay on their existing paths. */
+export function zoomOutBeyondPreview(sourceZoom: number, viewZoom: number) {
+  if (!(sourceZoom > 0) || !(viewZoom > 0) || !Number.isFinite(sourceZoom) || !Number.isFinite(viewZoom)) return false
+  return sourceZoom > viewZoom && !previewCameraScaleWithinLimit(sourceZoom, viewZoom)
+}
+
 /** The last complete bitmap stays visible past the preview ratio until a closer
  * image covers the viewport. Failing the ratio still refuses to certify it. */
 export function showRetainedPreview(input: {

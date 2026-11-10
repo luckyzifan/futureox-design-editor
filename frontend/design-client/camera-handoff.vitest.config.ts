@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     include: [
       'src/kernel/camera-reprojection.test.ts',
+      'src/kernel/source-tile-retirement.test.ts',
       'src/kernel/progressive-quality.test.ts',
       'src/kernel/navigation-zoom.test.ts',
       'src/kernel/navigation-coverage.test.ts',

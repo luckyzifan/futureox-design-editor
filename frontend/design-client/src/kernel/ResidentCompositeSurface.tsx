@@ -19,6 +19,7 @@ import { liveInteractionStack } from './resident-layer-stack'
 import { settleResidentImport } from './resident-import-ownership'
 import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
 import {allowIncompletePanPreview,type PanPreviewBacking} from './pan-preview'
+import {zoomOutBeyondPreview} from './tile-preview'
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
 
 const activeAffineGesture = (interaction?: InteractionProps) =>
@@ -208,7 +209,10 @@ export function ResidentCompositeSurface(props: {
     try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay, gpuOverlayIdentity: overlay ? scopedOverlay?.uiIdentity : undefined,
       gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
     catch (error) { p.onFailure(String(error)); return }
-    const panPreview=!moved&&allowIncompletePanPreview({allowed:p.allowPanPreview &&
+    // The white camera-preview fill is a same-zoom pan strip. Using it while
+    // the live zoom is a 3200% return clears the only picture on screen.
+    const heldZoom=acceptedCamera.current?.actual.view.zoom??actualPresentation.current?.view.zoom??0
+    const panPreview=!zoomOutBeyondPreview(heldZoom,p.view.zoom)&&!moved&&allowIncompletePanPreview({allowed:p.allowPanPreview &&
       (atomicCanvas.current || actualPresentation.current?.view.zoom===p.view.zoom),frame:p.presentation,
       document:p.sourceDocument,revision:p.contentRevision,pageId:p.pageId,width:p.width,height:p.height,dpr:p.dpr,items:p.items,backing:p.panBacking})
     const frame: ResidentFrame = {

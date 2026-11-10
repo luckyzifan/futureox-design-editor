@@ -2,6 +2,8 @@
 import { JSDOM } from 'jsdom'
 import { afterEach, expect, test, vi } from 'vitest'
 import { CameraReprojection, keepCompleteCameraBacking } from './camera-reprojection'
+import { NavigationBacking, NAVIGATION_BACKING_BYTES } from './navigation-backing'
+import { zoomOutBeyondPreview } from './tile-preview'
 const worlds:JSDOM[]=[]
 afterEach(()=>{worlds.splice(0).forEach(dom=>dom.window.close());vi.unstubAllGlobals()})
 function fixture(){
@@ -10,6 +12,75 @@ function fixture(){
  const backing={presentationId:'accepted',view:{x:10,y:20,zoom:1},width:100,height:80,dpr:2,interaction:false,ids:[1]}
  return{host,canvas,projection,backing}
 }
+test('a 3200% preview still shows the retained wide page, and later narrow captures do not erase it', () => {
+  const dom = new JSDOM('<main></main>')
+  worlds.push(dom)
+  vi.stubGlobal('document', dom.window.document)
+  vi.spyOn(dom.window.HTMLCanvasElement.prototype as { getContext(kind: '2d'): CanvasRenderingContext2D | null }, 'getContext')
+    .mockReturnValue({ clearRect() {}, drawImage() {} } as unknown as CanvasRenderingContext2D)
+  const host = document.querySelector('main')!
+  const backing = new NavigationBacking(host)
+  const page = { x: 0, y: 0, width: 400, height: 200 }
+  const source = document.createElement('canvas')
+  source.width = 200
+  source.height = 100
+  const base = { dpr: 1, interaction: false, ids: [1], preview: false, navigationBackingBytes: NAVIGATION_BACKING_BYTES, width: 200, height: 100 }
+  backing.bind({})
+  backing.capture(source, { ...base, view: { x: 0, y: 0, zoom: 1 } }, page)
+  backing.show({ ...base, view: { x: 0, y: 0, zoom: 32 }, preview: true }, { view: { x: 0, y: 0, zoom: 1 }, width: 200, height: 100 })
+  expect(host.querySelector<HTMLElement>('[data-camera-history]')?.style.display).toBe('block')
+  backing.show({ ...base, view: { x: 0, y: 0, zoom: 32 }, preview: true }, { view: { x: 40, y: -10, zoom: .25 }, width: 200, height: 100 })
+  expect(host.querySelector<HTMLElement>('[data-camera-history]')?.style.display).toBe('block')
+  for (let i = 0; i < 20; i++) backing.capture(source, { ...base, view: { x: i, y: 0, zoom: 32 } }, page)
+  const crop = { ...base, view: { x: 0, y: 0, zoom: 32 } }
+  expect(backing.canProject(crop, { view: { x: 0, y: 0, zoom: 1 }, width: 200, height: 100 }, page)).toBe(true)
+  expect(backing.canProject(crop, { view: { x: 30, y: 10, zoom: .25 }, width: 200, height: 100 }, page)).toBe(true)
+  backing.dispose()
+})
+
+test('3200% back to 100% and 25% is outside the preview ratio, and a same-zoom pan is not', () => {
+  expect(zoomOutBeyondPreview(32, 1)).toBe(true)
+  expect(zoomOutBeyondPreview(32, .25)).toBe(true)
+  expect(zoomOutBeyondPreview(2, 1)).toBe(false)
+  expect(zoomOutBeyondPreview(1, 32)).toBe(false)
+  expect(zoomOutBeyondPreview(Number.NaN, 1)).toBe(false)
+})
+
+test('returning from 3200% keeps the wide page in the margin instead of a gray plate', () => {
+  const dom = new JSDOM('<div><canvas></canvas></div>')
+  worlds.push(dom)
+  vi.stubGlobal('document', dom.window.document)
+  vi.spyOn(dom.window.HTMLCanvasElement.prototype as { getContext(kind: '2d'): CanvasRenderingContext2D | null }, 'getContext')
+    .mockReturnValue({ clearRect() {}, drawImage() {} } as unknown as CanvasRenderingContext2D)
+  const host = document.querySelector('div')!
+  const canvas = document.querySelector('canvas')!
+  const projection = new CameraReprojection(canvas, host)
+  const bounds = { x: 0, y: 0, width: 400, height: 300 }
+  const wide = {
+    presentationId: 'wide', view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 80, dpr: 1,
+    interaction: false, ids: [1], preview: false, navigationBackingBytes: NAVIGATION_BACKING_BYTES,
+  }
+  canvas.width = 80
+  canvas.height = 60
+  projection.history.bind({})
+  projection.history.capture(canvas, wide, bounds)
+  const crop = { ...wide, presentationId: 'crop', view: { x: 0, y: 0, zoom: 32 }, preview: true }
+  projection.update(crop, crop.view, 100, 80, true, bounds)
+  projection.update(crop, { x: 10, y: -4, zoom: 1 }, 100, 80, true, bounds)
+  const plates = [...host.querySelectorAll('div')].filter(element => element.style.background === 'rgb(245, 245, 245)' && element.style.display === 'block')
+  expect(plates).toHaveLength(0)
+  expect(host.querySelector<HTMLElement>('[data-camera-history]')?.style.display).toBe('block')
+  expect(canvas.style.visibility).not.toBe('hidden')
+  projection.update(crop, { x: 40, y: 8, zoom: .25 }, 100, 80, true, bounds)
+  expect([...host.querySelectorAll('div')].filter(element => element.style.background === 'rgb(245, 245, 245)' && element.style.display === 'block')).toHaveLength(0)
+  expect(host.querySelector<HTMLElement>('[data-camera-history]')?.style.display).toBe('block')
+  // A same-zoom pan still paints the new strip.
+  const panned = projection.update(wide, { x: 30, y: 0, zoom: 1 }, 100, 80, true)
+  expect(panned.active).toBe(true)
+  expect([...host.querySelectorAll('div')].some(element => element.style.background === 'rgb(245, 245, 245)' && element.style.display === 'block')).toBe(true)
+  projection.dispose()
+})
+
 test('a low-zoom fit does not replace a complete image with a gapped preview', () => {
   const {backing} = fixture()
   const fitted = {...backing, view:{x:0,y:0,zoom:0.15}, preview:true, previewGaps:[{x:10,y:10,width:40,height:30}]}

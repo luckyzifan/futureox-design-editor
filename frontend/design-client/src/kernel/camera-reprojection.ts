@@ -1,7 +1,7 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { frameTransform } from './presentation'
 import type { ResidentAcknowledgement } from './resident-presentation'
-import { previewCameraScaleWithinLimit, showRetainedPreview } from './tile-preview'
+import { previewCameraScaleWithinLimit, showRetainedPreview, zoomOutBeyondPreview } from './tile-preview'
 
 import { NavigationBacking, type ScreenRect } from './navigation-backing'
 export { keepCompleteCameraBacking } from './navigation-backing'
@@ -124,7 +124,10 @@ export class CameraReprojection {
     this.canvas.dataset.projectedCamera = JSON.stringify(active ? view : backing?.view || view)
     this.displayedView = allowed && backing ? {...view} : undefined
     this.gaps.forEach(gap => { gap.style.display = 'none' })
-    if (placed && backing && !hasUnderlay) {
+    // A same-zoom pan still marks the new strip. A 3200% return is outside
+    // the preview ratio: the gray plate covers the wide page and the opening
+    // picture. The crop stays; history and whatever is behind fill the margin.
+    if (placed && backing && !hasUnderlay && !zoomOutBeyondPreview(backing.view.zoom, view.zoom)) {
       const scale = view.zoom / backing.view.zoom
       const left = Math.max(0, Math.min(width, view.x - backing.view.x * scale))
       const top = Math.max(0, Math.min(height, view.y - backing.view.y * scale))

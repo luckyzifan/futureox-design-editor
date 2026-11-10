@@ -11,6 +11,22 @@ export function sourceTileRetirement<T extends {key:string;used:number}>(tiles:I
   return [...tiles].sort((a,b)=>rank(a.key)-rank(b.key)||a.used-b.used)
 }
 
+/** Coarsest completed cohort in the existing two-slot history. It is the
+ * picture a 3200% → 100%/25% return still has. The old caller only passed
+ * this set while the live raster scale was at least 2, so the return to 25%
+ * (scale 0.5 at DPR 2) evicted it first and the new viewport had nothing
+ * left to paint. The current scale's own keys are not a second cohort. */
+export function zoomOutRetentionCohort<T>(history:Iterable<readonly [number,T]>,currentScale:number):T|undefined{
+  if(!(currentScale>0)||!Number.isFinite(currentScale))return
+  let bestScale=Infinity,best:T|undefined
+  for(const [scale,value] of history){
+    if(!(scale>0)||!Number.isFinite(scale)||scale>=bestScale)continue
+    bestScale=scale;best=value
+  }
+  if(best===undefined||bestScale===currentScale)return
+  return best
+}
+
 /** Two completed density cohorts, as before. Repeated nearly equal high zooms
  * replace their nearest cohort instead of throwing out the wide return view.
  * This is eviction priority only; no camera/key/sample value is quantized. */
