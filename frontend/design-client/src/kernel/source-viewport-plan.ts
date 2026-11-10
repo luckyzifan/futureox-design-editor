@@ -7,6 +7,7 @@ import {planTilesWithPrefetchRim} from './tile-plan-aligned'
 import {tileComputationDependsOnCamera,tileComputationKey,periodicComputationCamera} from './tile-computation-key'
 import {panPrefetch} from './pan-prefetch'
 import type {RasterTile} from './tile-cache'
+import {continuousZoomInScale} from './continuous-zoom-scale'
 import {tileIntersectsView} from './tile-preview'
 import type {ResidentAcknowledgement} from './resident-presentation'
 
@@ -208,10 +209,10 @@ export class SourceViewportPlanner {
     if(moving&&continuousZoom&&this.zoomingIn&&this.visibleDensity>0&&native>this.visibleDensity){
       // Keep one drawable lattice in flight across wheel events. A new camera
       // changes the visible tiles without restarting refinement at a new scale.
-      if(this.inwardRung<=this.visibleDensity||this.inwardRung>native*1.2||native>this.inwardRung*8){
-        const next=2**(Math.floor(Math.log2(this.visibleDensity)*2+1e-9)/2+.5)
-        this.inwardRung=Math.min(nativeTileMotionScale(view,ratio,width,height),Math.max(next,2**Math.floor(Math.log2(native/4))))
-      }
+      this.inwardRung=continuousZoomInScale({
+        shown:this.visibleDensity,native,previous:this.inwardRung,
+        motion:nativeTileMotionScale(view,ratio,width,height),
+      })
       scale=this.inwardRung
     }
     let raster=canvasRasterPlan(view,ratio,width,height,{rasterProfile:this.rasterProfile,exactPhase:nativeLattice,

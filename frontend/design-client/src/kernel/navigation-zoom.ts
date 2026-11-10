@@ -1,6 +1,6 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { allowsReducedSampling } from './render-quality'
-import { previewCameraScaleWithinLimit } from './tile-preview'
+import { MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit } from './tile-preview'
 
 /** Navigation-only timing. A wheel/pinch burst keeps one latest target rather
  * than refining every intermediate camera. Expensive filtered panning may opt
@@ -116,6 +116,20 @@ export function zoomDetailInsteadOfViewportPreview(input: {
   const displayed = input.displayedZoom
   if (!input.navigating || !(input.requestedZoom >= 1) || displayed === undefined || !(displayed > 0)) return false
   return input.requestedZoom > displayed && !previewCameraScaleWithinLimit(displayed, input.requestedZoom)
+}
+
+/** Ratio passed to an undelivered viewport capture's zoom-in cancel.
+ * The ordinary preview ratio keeps a capture that can still land as a usable
+ * picture. Once the bitmap already on screen is past that ratio, a capture
+ * that is merely closer than the live camera still occupies the only raster
+ * channel, and the current-density tiles never start. Any undelivered capture
+ * behind the live zoom yields; a capture of the live zoom stays. */
+export function inFlightPreviewCancelRatio(input: {
+  navigating: boolean
+  displayedZoom?: number
+  requestedZoom: number
+}) {
+  return zoomDetailInsteadOfViewportPreview(input) ? 1 : MAX_PREVIEW_SCALE_RATIO
 }
 
 export function navigationPreviewDensity(dpr: number, width: number, height: number, native = false, zoom?: number) {

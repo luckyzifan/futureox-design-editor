@@ -29,7 +29,7 @@ import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
-import { navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
+import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
 import { navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
@@ -1046,7 +1046,12 @@ export function ProgressiveSurfaceImpl(
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
         // A zoom-in capture more than the preview ratio behind the live camera
         // can only be stretched. Yield the raster channel to closer tiles.
-        if (!zoomOutCoverage) flight.cancelStaleZoomIn(requestedView)
+        // When the bitmap already on screen is that stretched picture, an
+        // undelivered capture that is only somewhat finer still holds the
+        // channel, so the same yield uses the live zoom as its ratio.
+        if (!zoomOutCoverage) flight.cancelStaleZoomIn(requestedView, inFlightPreviewCancelRatio({
+          navigating: navigationZoom.active, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
+        }))
         // A small pan keeps the running capture. A same-zoom pan that leaves
         // most of the newest viewport outside it yields while the gesture is
         // still active; waiting for quiet left the picture on the pre-pan camera.

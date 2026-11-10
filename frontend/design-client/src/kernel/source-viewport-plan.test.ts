@@ -153,15 +153,18 @@ test('far source coordinates are rebased without changing the world lattice or f
  expect(plan.raster.phase).toEqual({x:0,y:0})
 })
 
-test('a continuous zoom retains its current lattice until visible detail advances',()=>{
+test('a continuous zoom retains its current lattice until the picture is stretched past the preview ratio',()=>{
  const planner=new SourceViewportPlanner('figmaSubpixel',true)
  const view=(zoom:number)=>({x:0,y:0,zoom})
  planner.plan(view(.25),2,800,600,false);planner.presented(view(.25),2,800,600)
  const first=planner.plan(view(.45),2,800,600,true,undefined,true)
- const waiting=planner.plan(view(.56),2,800,600,true,undefined,true)
- expect(waiting.raster.scale).toBe(first.raster.scale)
- expect(planner.presentedDetail(waiting.raster.scale)).toBe(true)
- expect(planner.plan(view(.58),2,800,600,true,undefined,true).raster.scale).toBeGreaterThan(waiting.raster.scale)
+ const inside=planner.plan(view(.49),2,800,600,true,undefined,true)
+ expect(inside.raster.scale).toBe(first.raster.scale)
+ // 0.56 / 0.25 leaves the preview ratio, and the half-octave rung is not
+ // twice the fit picture. Keeping it is what stretches that picture.
+ const crossed=planner.plan(view(.56),2,800,600,true,undefined,true)
+ expect(crossed.raster.scale).toBeGreaterThanOrEqual(.5*2)
+ expect(planner.presentedDetail(crossed.raster.scale)).toBe(true)
  expect(planner.plan(view(.58),2,800,600,false).exact).toBe(true)
 })
 
