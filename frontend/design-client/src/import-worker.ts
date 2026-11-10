@@ -1,6 +1,7 @@
 import { assertImportInputBytes } from './import-input-policy'
 import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
+import { finalizeFigWarnings } from './import-warnings'
 import { abeezeeLineBreakDiagnostic, fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
@@ -62,17 +63,21 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       importStage = 233 // decode
       const result=importFig(bytes,event.data.name)
       const fonts=await matchBundledImportFonts(result.document)
-      result.warnings=retainedFontWarnings(result.warnings, fonts)
+      const warnings=retainedFontWarnings(result.warnings, fonts)
       for(const item of fonts.substitutions){
         const message=`字体 ${item.from} 没有同名文件，已用 ${item.face} 显示`
-        if(!result.warnings.includes(message)) result.warnings.push(message)
+        if(!warnings.includes(message)) warnings.push(message)
       }
       for(const name of fonts.missing){
         const specific=abeezeeLineBreakDiagnostic(name)
         const link=fontDownloadFor(name)
         const message=specific??(link?`字体 ${name} 未捆绑。许可 ${link.license}，下载：${link.url}`:`字体 ${name} 未捆绑，文字已保留，显示用当前回退。`)
-        if(!result.warnings.includes(message)) result.warnings.push(message)
+        if(!warnings.includes(message)) warnings.push(message)
       }
+      const report=finalizeFigWarnings(warnings, result.droppedOccurrences ?? 0)
+      result.warnings=report.warnings
+      if(report.droppedOccurrences) result.droppedOccurrences=report.droppedOccurrences
+      else delete result.droppedOccurrences
       self.postMessage({ result })
     } else throw new Error('不支持的导入格式')
   } catch (error) {

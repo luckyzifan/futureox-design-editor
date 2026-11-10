@@ -143,8 +143,8 @@ impl Node {
         let valid = |v: f64, lo: f64, hi: f64| v.is_finite() && (lo..=hi).contains(&v);
         if let Some(l) = &self.layout
             && (!matches!(self.kind.as_str(), "frame" | "group" | "section")
-                || !valid(l.gap, 0., 1e5)
-                || !valid(l.line_gap, 0., 1e5)
+                || !valid(l.gap, -1e5, 1e5)
+                || !valid(l.line_gap, -1e5, 1e5)
                 || l.padding.iter().any(|v| !valid(*v, 0., 1e5))
                 || !(1..=64).contains(&l.columns))
         {

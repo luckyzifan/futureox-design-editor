@@ -201,8 +201,11 @@ export function applyFigDocumentSemantics(
   for (const note of notes) warnings.add(`FIG document: ${note}`)
 }
 
-const guidText = (value: any): string =>
-  typeof value === 'string' ? value : value && value.sessionID !== undefined ? `${value.sessionID}:${value.localID}` : ''
+const guidText = (value: any): string => {
+  if (typeof value === 'string') return value
+  const guid = value?.sessionID !== undefined ? value : value?.guid
+  return guid && guid.sessionID !== undefined ? `${guid.sessionID}:${guid.localID}` : ''
+}
 
 function variableColor(color: any): string | undefined {
   const channel = (key: string) => color?.[key]

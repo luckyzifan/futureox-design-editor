@@ -78,15 +78,64 @@ function inflate(bytes: Uint8Array, limit = MAX) {
   if (declared !== undefined && output.length !== declared) throw new Error('Zstd 内容长度不符')
   return output
 }
-/** Interpret the embedded schema. Imported names are data, never generated JS. */
+/** One complete value. The ceiling stays 2_000_000; a large file continues in
+ * another segment instead of raising this untrusted read budget. */
+const FIG_SEGMENT_WORK = 2_000_000
+const FIG_MAX_DEPTH = 128
+class FigDecodeBudgetError extends Error {
+  constructor(readonly reason: 'work' | 'depth') {
+    super('FIG 解码预算超限')
+  }
+}
+const workBudget = (error: unknown): error is FigDecodeBudgetError =>
+  error instanceof FigDecodeBudgetError && error.reason === 'work'
+
+/** Interpret the embedded schema. Imported names are data, never generated JS.
+ * Message fields and message-array elements are segment boundaries. A value
+ * that crosses the segment restarts alone; a value that still does not fit
+ * rejects. Struct fields stay in one segment. Byte arrays are payload, not
+ * one read per byte. The same rules are enforced by the native kiwi reader. */
 export function decodeKiwi(schema: Schema, bytes: Uint8Array): Record<string, any> {
   if (schema.definitions.length > 4096) throw new Error('FIG schema 过大')
   const defs = new Map(schema.definitions.map((d) => [d.name, d]))
   if (defs.size !== schema.definitions.length) throw new Error('FIG schema 类型名称重复')
   const bb = new ByteBuffer(bytes)
+  const cursor = bb as ByteBuffer & { _index: number }
+  if (!Number.isInteger(cursor._index)) throw new Error('FIG 解码游标不可用')
   let work = 0
+  const valueAt = (f: Definition['fields'][number], depth: number): any => {
+    if (!f.type) throw new Error('FIG 字段缺少类型')
+    if (!f.isArray) return read(f.type, depth + 1)
+    const count = bb.readVarUint()
+    if (count > MAX || (f.type !== 'byte' && count > 200000)) throw new Error('FIG 数组过大')
+    if (f.type === 'byte') {
+      const out = new Uint8Array(count)
+      for (let i = 0; i < count; i++) out[i] = bb.readByte()
+      return out
+    }
+    const message = defs.get(f.type)?.kind === 'MESSAGE'
+    const items = new Array(count)
+    for (let i = 0; i < count; i++) {
+      if (!message) {
+        items[i] = read(f.type, depth + 1)
+        continue
+      }
+      const at = cursor._index
+      const spent = work
+      try {
+        items[i] = read(f.type, depth + 1)
+      } catch (error) {
+        if (!workBudget(error) || spent === 0) throw error
+        cursor._index = at
+        work = 0
+        items[i] = read(f.type, depth + 1)
+      }
+    }
+    return items
+  }
   const read = (type: string, depth: number): any => {
-    if (++work > 2_000_000 || depth > 128) throw new Error('FIG 解码预算超限')
+    if (depth > FIG_MAX_DEPTH) throw new FigDecodeBudgetError('depth')
+    if (++work > FIG_SEGMENT_WORK) throw new FigDecodeBudgetError('work')
     switch (type) {
       case 'bool':
         return !!bb.readByte()
@@ -111,26 +160,30 @@ export function decodeKiwi(schema: Schema, bytes: Uint8Array): Record<string, an
       const value = bb.readVarUint()
       return d.fields.find((f) => f.value === value)?.name ?? value
     }
-    const result: Record<string, any> = Object.create(null),
-      byId = new Map(d.fields.map((f) => [f.value, f]))
-    const field = (f: Definition['fields'][number]) => {
-      if (!f.type) throw new Error('FIG 字段缺少类型')
-      if (f.isArray) {
-        const count = bb.readVarUint()
-        if (count > MAX || (f.type !== 'byte' && count > 200000)) throw new Error('FIG 数组过大')
-        if (f.type === 'byte') {
-          const out = new Uint8Array(count)
-          for (let i = 0; i < count; i++) out[i] = bb.readByte()
-          result[f.name] = out
-        } else result[f.name] = Array.from({ length: count }, () => read(f.type!, depth + 1))
-      } else result[f.name] = read(f.type, depth + 1)
+    const result: Record<string, any> = Object.create(null)
+    const assign = (f: Definition['fields'][number]) => {
+      result[f.name] = valueAt(f, depth)
     }
-    if (d.kind === 'STRUCT') for (const f of d.fields) field(f)
-    else {
-      for (let tag = bb.readVarUint(); tag !== 0; tag = bb.readVarUint()) {
-        const f = byId.get(tag)
-        if (!f) throw new Error(`FIG schema 缺少字段 ${tag}`)
-        field(f)
+    if (d.kind === 'STRUCT') {
+      for (const f of d.fields) assign(f)
+      return result
+    }
+    const byId = new Map(d.fields.map((f) => [f.value, f]))
+    for (;;) {
+      const at = cursor._index
+      const spent = work
+      const tag = bb.readVarUint()
+      if (tag === 0) break
+      const f = byId.get(tag)
+      if (!f) throw new Error(`FIG schema 缺少字段 ${tag}`)
+      try {
+        assign(f)
+      } catch (error) {
+        if (!workBudget(error) || spent === 0) throw error
+        cursor._index = at
+        work = 0
+        if (bb.readVarUint() !== tag) throw new Error(`FIG schema 缺少字段 ${tag}`)
+        assign(f)
       }
     }
     return result
@@ -212,7 +265,7 @@ type FigLayoutRecord = Record<string, unknown> & {
   minSize?: { value?: { x: number; y: number } }
   maxSize?: { value?: { x: number; y: number } }
 }
-function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord | undefined, reverseZ: Set<string>) {
+function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord | undefined, reverseZ: Set<string>, note?: (message: string) => void) {
   const unsupported = (field: string, value: unknown): never => {
     throw new Error(
       `FIG 图层「${n.name}」的 ${field}=${String(value)} 暂不支持无损导入；原文件未修改`,
@@ -259,12 +312,19 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord
     }
     if (!['frame', 'group', 'section'].includes(n.kind)) unsupported('stackMode', r.stackMode)
     const horizontal = distance('stackHorizontalPadding'),
-      vertical = distance('stackVerticalPadding')
+      vertical = distance('stackVerticalPadding'),
+      // Negative spacing is authored overlap. Padding stays non-negative.
+      spacing = (field: string) => {
+        const value = r[field] ?? 0
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < -1e5 || value > 1e5)
+          unsupported(field, value)
+        return value as number
+      }
     n.layout = {
       ...defaultLayout(),
       mode,
-      gap: distance('stackSpacing'),
-      lineGap: Number.isNaN(r.stackCounterSpacing) ? distance('stackSpacing') : distance('stackCounterSpacing'),
+      gap: spacing('stackSpacing'),
+      lineGap: Number.isNaN(r.stackCounterSpacing) ? spacing('stackSpacing') : spacing('stackCounterSpacing'),
       padding: [
         vertical,
         distance('stackPaddingRight', horizontal),
@@ -277,7 +337,9 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord
         { ...stackAlign, SPACE_BETWEEN: 'space-between', SPACE_EVENLY: 'space-evenly', SPACE_AROUND: 'space-around' } as const,
         'start',
       ),
-      align: choice('stackCounterAlignItems', stackAlign, 'start'),
+      align: r.stackCounterAlignItems === 'BASELINE'
+        ? (note?.('stackCounterAlignItems=BASELINE'), 'start')
+        : choice('stackCounterAlignItems', stackAlign, 'start'),
     }
   }
   const sizing = defaultSizing()
@@ -332,10 +394,20 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord
   ] as const) {
     if (r[field]?.value === undefined) continue // OptionalVector with no value means no bound.
     const { x, y } = r[field].value
-    if (![x, y].every((v) => Number.isFinite(v) && v >= 0.01 && v <= 1e7))
-      unsupported(field, `${x},${y}`)
-    sizing[`${prefix}Width`] = x
-    sizing[`${prefix}Height`] = y
+    // Figma stores an absent maximum as +Infinity. The editable model already
+    // uses 1e7 as that unconstrained ceiling; the source sentinel is retained.
+    const axis = (value: number) => {
+      if (prefix === 'max' && value === Infinity) return 1e7
+      // An explicit zero minimum is below the editable floor. Keep 0.01 and the source zero.
+      if (prefix === 'min' && value === 0) return 0.01
+      if (!Number.isFinite(value) || value < 0.01 || value > 1e7) unsupported(field, `${x},${y}`)
+      return value
+    }
+    sizing[`${prefix}Width`] = axis(x)
+    sizing[`${prefix}Height`] = axis(y)
+    if (prefix === 'max' && (x === Infinity || y === Infinity))
+      note?.(`maxSize=${x === Infinity ? '+Infinity' : x},${y === Infinity ? '+Infinity' : y}`)
+    if (prefix === 'min' && (x === 0 || y === 0)) note?.(`minSize=${x},${y}`)
     hasSizing = true
   }
   if (sizing.minWidth > sizing.maxWidth || sizing.minHeight > sizing.maxHeight)
@@ -650,13 +722,16 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     const nativeGroup = r.type === 'FRAME' && r.resizeToFit === true && r.isStateGroup !== true &&
       (r.stackMode === undefined || r.stackMode === 'NONE')
     const kind = nativeGroup ? 'group' : figNodeKind(r, warnings)
-    const width = r.size?.x ?? 100, height = r.size?.y ?? 100
-    if (![width, height].every((v) => Number.isFinite(v) && v >= 0 && v <= 1e7))
+    const rawWidth = r.size?.x
+    const rawHeight = r.size?.y
+    const axis = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined
+    const width = axis(rawWidth) ?? 100
+    const height = axis(rawHeight) ?? 100
+    const unresolvedSize = r.size !== undefined && (axis(rawWidth) === undefined || axis(rawHeight) === undefined)
+    if (![width, height].every((v) => v >= 0 && v <= 1e7))
       throw new Error('FIG 图层尺寸无效；原文件未修改')
     const hairline = (kind === 'line' || kind === 'vector') && Math.max(width, height) > 0 && Math.min(width, height) < 0.01
     const zeroLine = hairline
-    if (!zeroLine && (width < 0.01 || height < 0.01))
-      throw new Error('FIG 图层尺寸暂不能无损表达；原文件未修改')
     const n = node(zeroLine ? 'vector' : kind, 0, 0, Math.max(0.01, width), Math.max(0.01, height))
     if (zeroLine) {
       // The model requires a positive layout box; keep the authored path itself
@@ -668,6 +743,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       warnings.add('零尺寸线条已保留为精确可编辑矢量路径，逻辑包围盒使用最小正尺寸')
     }
     n.id = ids.get(key)!
+    if (unresolvedSize) figNote(receipts, n.id, `size=${String(rawWidth)},${String(rawHeight)}`)
+    else if (!zeroLine && (width < 0.01 || height < 0.01)) figNote(receipts, n.id, `size=${width},${height}`)
     n.name = r.name || r.type
     n.transform = matrix(r.transform)
     n.visible = r.visible !== false
@@ -721,6 +798,10 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
           n.strokes=n.strokes.map(item=>({...item,...(cap?{cap:cap.cap,...(cap.endMarker?{endMarker:cap.endMarker}:{})}:{}),...(join?{join}:{})}))
         }
         const {strokeCap: _strokeCap, strokeJoin: _strokeJoin, ...geometry}=piece
+        // Rounded rectangles already own their corner radii. A derived outline
+        // is not a second authoritative path on a non-vector layer.
+        if (n.kind !== 'vector') delete geometry.vectorGeometry
+        if (n.kind !== 'vector' && n.kind !== 'line') delete geometry.network
         Object.assign(n,geometry)
       }
       catch(error){warnings.add(`FIG 矢量 ${n.name||n.id} 的网络几何未能解码，已保留包围盒：${error instanceof Error?error.message:error}`)}
@@ -785,7 +866,11 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if (!(operation in operations)) throw new Error(`FIG 布尔运算 ${operation} 暂不支持；原文件未修改`)
       n.booleanOperation = operations[operation as keyof typeof operations]
     }
-    importLayout(n, r, records.get(guid(r.parentIndex?.guid)), reverseZ)
+    importLayout(n, r, records.get(guid(r.parentIndex?.guid)), reverseZ, (message) => {
+      figNote(receipts, n.id, message)
+      if (message === 'stackCounterAlignItems=BASELINE')
+        warnings.add('FIG 基线对齐已原样保留，当前布局仍使用起点，没有改记成其他对齐')
+    })
     doc.nodes[n.id] = n
   }
   const ordered = [...records].sort((a, b) => {

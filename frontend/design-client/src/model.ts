@@ -1152,8 +1152,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
       const l = { ...defaultLayout(), ...n.layout }
       if (
         !['none', 'horizontal', 'vertical', 'grid'].includes(l.mode) ||
-        !finite(l.gap, 0, 1e5) ||
-        !finite(l.lineGap, 0, 1e5) ||
+        !finite(l.gap, -1e5, 1e5) ||
+        !finite(l.lineGap, -1e5, 1e5) ||
         !Array.isArray(l.padding) ||
         l.padding.length !== 4 ||
         !l.padding.every((v) => finite(v, 0, 1e5)) ||

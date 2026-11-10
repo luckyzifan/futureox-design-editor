@@ -30,3 +30,15 @@ export function boundedImportWarnings() {
   }
   return sink
 }
+
+/** Keep a FIG compatibility report inside the worker contract after extra
+ * font notices are appended. Prior dropped occurrences stay visible. */
+export function finalizeFigWarnings(messages: readonly string[], priorDropped = 0) {
+  const sink = boundedImportWarnings()
+  for (const message of messages) if (message !== FIG_WARNINGS_TRUNCATED) sink.add(message)
+  const report = sink.result()
+  const dropped = priorDropped + (report.droppedOccurrences ?? 0)
+  const warnings = report.warnings.filter(message => message !== FIG_WARNINGS_TRUNCATED)
+  if (dropped > 0) warnings.push(FIG_WARNINGS_TRUNCATED)
+  return { warnings, ...(dropped > 0 ? { droppedOccurrences: dropped } : {}) }
+}
