@@ -2782,7 +2782,7 @@ export function ProgressiveSurfaceImpl(
       {!props.paused && <div
         className={`kernel-status ${failure ? 'error' : ''}`}
         role="status"
-        title={failure ? canvasStatusLabel(failure) : '画布高清显示'}
+        title={failure || '画布高清显示'}
         style={{
           position: 'absolute',
           right: 14,

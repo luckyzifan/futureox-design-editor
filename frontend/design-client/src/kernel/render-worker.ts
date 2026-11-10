@@ -744,14 +744,35 @@ self.onmessage = (e) => {
     gpu?.driver.releaseNavigationTransfer?.(request.token)
     return
   }
-  if(request.command==='display-read-pixel'||request.command==='display-capture-content'||request.command==='display-navigation-tile'){
+  if(request.command==='display-navigation-tile'){
     void (async()=>{
       try{
-        const result=request.command==='display-navigation-tile'?await gpu?.driver.captureNavigationTile?.(request.tile,request.id):
-          request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
+        const result=await gpu?.driver.captureNavigationTile?.(request.tile,request.id)
         if(!result)throw Error('No displayed document content')
         try { self.postMessage({id:request.id,...result},{transfer:'bitmap' in result?[result.bitmap]:[]}) }
-        catch (error) { if ('bitmap' in result) result.bitmap.close(); if ('navigationToken' in result) gpu?.driver.releaseNavigationTransfer?.(result.navigationToken); throw error }
+        catch (error) {
+          // A failed transfer still owns the copy. Close it and drop the
+          // reservation before the error reply, which must not carry a bitmap.
+          if ('bitmap' in result) result.bitmap.close()
+          if ('navigationToken' in result) gpu?.driver.releaseNavigationTransfer?.(result.navigationToken)
+          throw error
+        }
+      }catch(error){self.postMessage({id:request.id,error:String(error)})}
+    })()
+    return
+  }
+  if(request.command==='display-read-pixel'||request.command==='display-capture-content'){
+    void (async()=>{
+      try{
+        const result=request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
+        if(!result)throw Error('No displayed document content')
+        try { self.postMessage({id:request.id,...result},{transfer:'bitmap' in result?[result.bitmap]:[]}) }
+        catch (error) {
+          // Explicit bitmap transport failed after the bitmap was produced.
+          // Close it here; the error reply below has no bitmap property.
+          if ('bitmap' in result) result.bitmap.close()
+          throw error
+        }
       }catch(error){self.postMessage({id:request.id,error:String(error)})}
     })()
     return
