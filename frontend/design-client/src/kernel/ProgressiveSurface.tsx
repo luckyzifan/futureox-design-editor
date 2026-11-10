@@ -30,7 +30,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
-import { navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction, type NavigationCoverageFlight } from './navigation-coverage'
+import { captureMostlyOffscreen, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -408,6 +408,8 @@ export function ProgressiveSurfaceImpl(
   const coverageDirection = useRef<{ contract?: object; zoomOut: boolean }>({ zoomOut: false })
   const coverageGeneration = useRef(0)
   const coverageFlight = useRef<NavigationCoverageFlight<PaintedTile> | null>(null)
+  /** World rect of the one native tile the navigation turn is drawing. */
+  const refinementTile = useRef<{ x: number; y: number; width: number; height: number } | undefined>(undefined)
   const previewAdmission = useRef<{ contract?: object; key?: string; active: boolean }>({ active: false })
   const [navigationIntentOwner] = useState(() => new NavigationIntentOwner())
   const [nativeNavigationHandoff] = useState(() => new NativeNavigationHandoff())
@@ -1050,8 +1052,15 @@ export function ProgressiveSurfaceImpl(
         // A small pan keeps the running capture. A same-zoom pan that leaves
         // most of the newest viewport outside it yields while the gesture is
         // still active; waiting for quiet left the picture on the pre-pan camera.
+        // A zoom sample that has not caught up yields the same way once its
+        // picture has left the live viewport.
         flight.cancelMissedViewport(requestedView, width, height, 0.5, navigationZoom.active)
       }
+      // One in-flight native tile may finish when it is still on screen.
+      // After a long pan it is the old camera: yielding it lets the live
+      // viewport capture use the raster channel. Accepted pixels stay.
+      const refining = refinementTile.current
+      if (refining && captureMostlyOffscreen(refining, requestedView, width, height)) c.cancelTileFill()
     }
     const pendingCoverage = () => {
       const flight = coverageFlight.current, tile = flight?.tile
@@ -1518,6 +1527,15 @@ export function ProgressiveSurfaceImpl(
           protectedAtStart.add(tile.key)
           const deviceAtStart = previewDevice.current.client === c ? previewDevice.current.key : undefined
           let delivered = false
+          const gutter = tile.gutter ?? 1
+          const tileBounds = tile.zoom > 0 ? {
+            x: (tile.x + gutter - (tile.phaseX ?? 0)) / tile.zoom,
+            y: (tile.y + gutter - (tile.phaseY ?? 0)) / tile.zoom,
+            width: (tile.width - 2 * gutter) / tile.zoom,
+            height: (tile.height - 2 * gutter) / tile.zoom,
+          } : undefined
+          if (tileBounds && [tileBounds.x, tileBounds.y, tileBounds.width, tileBounds.height].every(Number.isFinite) &&
+              tileBounds.width > 0 && tileBounds.height > 0) refinementTile.current = tileBounds
           const receiveRefinement = (result: TileResult) => {
             if (sameContent() && coverageGeneration.current === generation &&
                 (!deviceAtStart || previewDevice.current.client === c && previewDevice.current.key === deviceAtStart)) {
@@ -1547,7 +1565,10 @@ export function ProgressiveSurfaceImpl(
             // A completed request without an actual tile delivery must not
             // spend another turn re-requesting the same missing world pixels.
             return delivered && missing.length > 1
-          } finally { protectedAtStart.delete(tile.key) }
+          } finally {
+            protectedAtStart.delete(tile.key)
+            if (tileBounds && refinementTile.current === tileBounds) refinementTile.current = undefined
+          }
         },
       })
     }
@@ -1624,11 +1645,10 @@ export function ProgressiveSurfaceImpl(
             void navigationRefinement.request()
             return
           }
-          // The 160 ms sample can still describe the pre-pan camera. Once most
-          // of the live viewport is outside that sample, rasterize the live one.
-          const sampleFraction = sample.view.zoom === requestedView.zoom
-            ? viewportOverlapFraction(navigationCoverageBounds(sample.view, width, height), requestedView, width, height) : 1
-          const captureView = sampleFraction < 0.5 ? requestedView : sample.view
+          // The 160 ms sample can still describe the pre-pan camera, or an
+          // earlier zoom step. Rasterize the live camera once that picture
+          // has left the viewport. A pure zoom-out keeps the sample.
+          const captureView = liveNavigationCapture(sample.view, requestedView, width, height)
           const ratio = navigationPreviewDensity(dpr, width, height, nativeNavigation, captureView.zoom), scale = captureView.zoom * ratio
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
           const camera = { x: captureView.x * ratio, y: captureView.y * ratio, zoom: scale }

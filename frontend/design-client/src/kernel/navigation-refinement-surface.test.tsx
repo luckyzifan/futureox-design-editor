@@ -121,6 +121,19 @@ test('continuous DPR2 navigation gives one real native tile a bounded turn', asy
   } finally { await act(async () => f.root.unmount()) }
 })
 
+test('a long pan after the zoom sample yields the native tile that left the view and a short move does not', async () => {
+  const f = await fixture(4)
+  try {
+    await f.complete(0)
+    await vi.waitFor(() => expect(state.pending.some(job => job.options.tileViewport?.length === 1)).toBe(true))
+    const cancels = state.clients[0].cancelTileFill.mock.calls.length
+    await f.render({ view: { x: -12, y: 4, zoom: 4 } })
+    expect(state.clients[0].cancelTileFill).toHaveBeenCalledTimes(cancels)
+    await f.render({ view: { x: -4000, y: 80, zoom: 0.5 } })
+    expect(state.clients[0].cancelTileFill.mock.calls.length).toBeGreaterThan(cancels)
+  } finally { await act(async () => f.root.unmount()) }
+})
+
 test('latest pan wins queued refinement while one in-flight native tile survives inputs and previews continue', async () => {
   const f = await fixture()
   try {
