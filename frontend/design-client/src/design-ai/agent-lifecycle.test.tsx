@@ -36,7 +36,7 @@ function host(turn: (body: TurnBody) => Promise<unknown> | unknown, cancel: (ses
       async remove() { return { status: 'ok' as const } },
       async cancel(body: { sessionId: string }) { cancel(body.sessionId); return { status: 'ok' as const } },
     },
-  } as DesktopBridge
+  } as unknown as DesktopBridge
 }
 
 function quietTurn(body: TurnBody, assistant = 'api') {
