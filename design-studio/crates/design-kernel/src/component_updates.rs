@@ -9,6 +9,24 @@ mod pose;
 pub(crate) struct Plan { pub instances:BTreeSet<String>, pub roots:BTreeSet<String> }
 fn parents(doc:&Document)->BTreeMap<String,String>{doc.nodes.iter().flat_map(|(id,n)|n.children.iter().map(move|c|(c.clone(),id.clone()))).collect()}
 fn ancestors(id:&str,parents:&BTreeMap<String,String>)->Vec<String>{let mut out=vec![id.to_owned()];while let Some(p)=parents.get(out.last().unwrap()){out.push(p.clone());}out}
+/// True when a connector endpoint is a patched id or a descendant of one.
+/// `patched` alone misses a wire whose endpoint names a child of the transformed node.
+fn connector_targets_transformed_subtree(doc:&Document,patched:&BTreeSet<&str>,parents:&BTreeMap<String,String>)->bool{
+    if patched.is_empty(){return false}
+    doc.nodes.values().any(|node|node.connector.as_ref().is_some_and(|connector|{
+        [connector.from.node_id.as_deref(),connector.to.node_id.as_deref()].into_iter().flatten()
+            .any(|target|endpoint_in_transformed_subtree(target,patched,parents))
+    }))
+}
+fn endpoint_in_transformed_subtree(start:&str,patched:&BTreeSet<&str>,parents:&BTreeMap<String,String>)->bool{
+    let mut id=start.to_owned();
+    let mut seen=BTreeSet::new();
+    loop{
+        if patched.contains(id.as_str()){return true}
+        if !seen.insert(id.clone()){return true}
+        match parents.get(&id){Some(parent)=>id.clone_from(parent),None=>return false}
+    }
+}
 fn blocks_scoped_patch(n:&Node)->bool{
  n.connector.is_some()||n.text_path.is_some()||n.repeat.is_some()||n.board.as_ref().is_some_and(|b|b.kind=="code-block")||!n.bindings.is_empty()||!n.style_refs.is_empty()||!n.variable_modes.is_empty()||n.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())||n.component.as_ref().is_some_and(|c|!c.properties.is_empty()||!c.slots.is_empty())
 }
@@ -26,17 +44,13 @@ fn plan_patch(before:&Document,patch:&DocumentPatch)->Result<Option<Plan>,String
  }
  let next=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).unwrap_or(&before.nodes[id]);
  let parent=parents(before);
- // Cold connectors, repeats and bindings do not force a full resolve. A
- // connector forces it only when an endpoint names a patched node. Patched
- // nodes and their ancestors keep the previous dependency gate.
+ // Cold connectors do not force a full resolve. An endpoint that names the
+ // transformed subtree does: a parent pose moves every descendant, and a wire
+ // aimed at one of them is not described by the patched id list. Patched nodes
+ // and their ancestors keep the previous dependency gate.
  for id in patch.nodes.keys(){if ancestors(id,&parent).iter().any(|id|blocks_scoped_patch(next(id))){return Ok(None)}}
- let edited:BTreeSet<&str>=patch.nodes.keys().map(String::as_str).collect();
- for (id,node) in &before.nodes {
-  if patch.nodes.contains_key(id){continue}
-  if let Some(connector)=&node.connector {
-   if connector.from.node_id.as_deref().is_some_and(|target|edited.contains(target))||connector.to.node_id.as_deref().is_some_and(|target|edited.contains(target)){return Ok(None)}
-  }
- }
+ let patched:BTreeSet<&str>=patch.nodes.keys().map(String::as_str).collect();
+ if connector_targets_transformed_subtree(before,&patched,&parent){return Ok(None)}
  // An ordinary reparent/reorder affects both complete original root islands.
  // Parent lists are explicit patch entries; global validation below still
  // rejects missing counterparts, duplicate parents and cycles atomically.

@@ -273,10 +273,10 @@ export class Editor {
     return document
   }
   private posePublication(before:DesignDocument,patches:Record<string,Partial<DesignNode>>){
-    // Effect-bearing selections keep the original live-document handoff;
-    // their source window and sampled pose have a separate pixel receipt.
-    if (Object.keys(patches).some(id => !before.nodes[id] || before.nodes[id].mask ||
-        before.nodes[id].effects.some(effect => effect.visible))) return
+    // Shape masks keep the original live-document handoff; their coverage window
+    // has a separate pixel receipt. A visible effect stays on the node, so a
+    // transform-only pose is still that node's authored document.
+    if (Object.keys(patches).some(id => !before.nodes[id] || before.nodes[id].mask)) return
     const next=producePoseDocument(before,patches)
     if(next&&this.publicationValid(before)&&immutableDocument(next))this.validatedPublications.add(next)
     return next
@@ -992,7 +992,7 @@ export class Editor {
   private certifiedGesturePose(base: DesignDocument, patches: Record<string,Partial<DesignNode>>) {
     if (!this.publicationValid(base)) return
     const ids=Object.keys(patches)
-    if (!ids.length || ids.length>16 || ids.some(id=>!base.nodes[id] || base.nodes[id].mask || base.nodes[id].effects.some(effect=>effect.visible) || Object.keys(patches[id]).length!==1 || !Object.hasOwn(patches[id],'transform'))) return
+    if (!ids.length || ids.length>16 || ids.some(id=>!base.nodes[id] || base.nodes[id].mask || Object.keys(patches[id]).length!==1 || !Object.hasOwn(patches[id],'transform'))) return
     const key=JSON.stringify(ids),epoch=pickingGeometryEpoch()
     if(this.posePreview?.base!==base || this.posePreview.epoch!==epoch || this.posePreview.key!==key)
       this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids,'document-pose'),

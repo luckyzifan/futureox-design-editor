@@ -1,5 +1,5 @@
 import type { ConstraintAnchor, DesignDocument, DesignNode } from '../model'
-import { snapshotParents, snapshotTargets } from '../page-edit-scope'
+import { connectorIntoSubtree, snapshotParents, snapshotTargets } from '../page-edit-scope'
 
 const hasReferences = (node: DesignNode, booleanGeometry = true) =>
   !!(node.component || node.componentSet || node.componentKey != null || node.instance ||
@@ -59,7 +59,9 @@ export class PoseTopology implements ReadonlyMap<string, string> {
     for (const node of Object.values(document.nodes)) {
       repeats ||= node.repeat !== undefined
       sketchMasks ||= node.mask && (node.maskType === 'shape' || node.maskChain !== undefined)
-      if (node.connector || (node.board?.kind === 'code-block' && node.board.language)) valid = false
+      // A connector or code block elsewhere does not make every pose depend on
+      // it. Endpoint attachment is rejected from the transformed subtree;
+      // code highlighting does not read this transform.
       for (const child of node.children) {
         if (this.#parents.has(child) || !document.nodes[child]) valid = false
         this.#parents.set(child, node.id)
@@ -97,7 +99,7 @@ export class TranslationPreviewPlan {
     const purpose=typeof topologyOrPurpose==='string'?topologyOrPurpose:'pixels'
     const topology=typeof topologyOrPurpose==='string'?new PoseTopology(base):topologyOrPurpose
     this.topology=topology;this.ids=[...ids]
-    if(!topology.matches(base)||!topology.permitsPose||base.animations?.length||!ids.length||new Set(ids).size!==ids.length||snapshotTargets(base,ids))this.valid=false
+    if(!topology.matches(base)||!topology.permitsPose||base.animations?.length||!ids.length||new Set(ids).size!==ids.length||snapshotTargets(base,ids)||connectorIntoSubtree(base,ids))this.valid=false
     for(const id of ids){const seen=new Set<string>();let at:string|undefined=id
       let booleanRoot:string|undefined
       const documentLeaf=purpose==='document-pose'&&base.nodes[id]?.children.length===0
@@ -161,7 +163,7 @@ export function translationOnlyChanges(previous: DesignDocument, next: DesignDoc
     if (node.children.length !== before.children.length || node.children.some((child, index) => child !== before.children[index])) return null
     changed.push(id)
   }
-  if (snapshotTargets(previous, changed)) return null
+  if (snapshotTargets(previous, changed) || connectorIntoSubtree(previous, changed)) return null
   for (const id of changed) {
     const seen = new Set<string>()
     let at: string | undefined = id

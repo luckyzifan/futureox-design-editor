@@ -67,6 +67,21 @@ test('a whole-page resize island does not invalidate native global state with un
   expect(wire.fields).toEqual({});expect(Object.keys(wire.nodes)).toEqual([f.child.id])
  }finally{patch.mockRestore();editor.dispose()}
 })
+test('a wire aimed at a descendant is not an island pose of the parent', () => {
+  const aimed = fixture()
+  const wire = node('vector', 0, 400, 30, 8)
+  wire.connector = { from: { point: { x: 0, y: 0 }, nodeId: aimed.child.id, anchor: { x: 0.5, y: 0.5 } }, to: { point: { x: 20, y: 0 } }, style: 'straight' }
+  aimed.doc.nodes[wire.id] = wire
+  aimed.doc.pages[0].children = [...aimed.doc.pages[0].children, wire.id]
+  expect(new PreviewLayout(aimed.doc).prepare({ [aimed.root.id]: { transform: [0, 1, -1, 0, 12, 8] } })).toBeUndefined()
+  const outside = fixture()
+  const sibling = node('vector', 0, 400, 30, 8)
+  sibling.connector = { from: { point: { x: 0, y: 0 }, nodeId: outside.staticRoot.id, anchor: { x: 0, y: 0 } }, to: { point: { x: 20, y: 0 } }, style: 'straight' }
+  outside.doc.nodes[sibling.id] = sibling
+  outside.doc.pages[0].children = [...outside.doc.pages[0].children, sibling.id]
+  expect(new PreviewLayout(outside.doc).prepare({ [outside.root.id]: { width: 220 } })).not.toBeUndefined()
+})
+
 test('unsupported topology and external dependencies cannot use an island proof',()=>{
  const f=fixture();const editor=new Editor(f.doc)
  try{const plan=new PreviewLayout(editor.state.doc);expect(plan.prepare({[f.root.id]:{children:[]}})).toBeUndefined()
