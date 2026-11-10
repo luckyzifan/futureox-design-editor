@@ -109,6 +109,18 @@ test('reparent, node-set changes, parent resize, attached connectors and animati
   }
 })
 
+test('an unrelated connector or code block still allows an affine pose; an attached connector does not', () => {
+  const { document, moving, other } = fixture()
+  other.connector = { from: { point: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' }
+  other.board = { kind: 'code-block', language: 'rust' }
+  const patches = { [moving.id]: { transform: [0, 1, -1, 0, 10, 10] as DesignNode['transform'] } }
+  expect(new PoseTopology(document).permitsPose).toBe(true)
+  expect(new TranslationPreviewPlan(document, [moving.id]).acceptsAffine(patches)).toBe(true)
+  const attachedNode = { ...other, connector: { from: { point: { x: 0, y: 0 }, nodeId: moving.id, anchor: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' as const } }
+  const attached = { ...document, nodes: { ...document.nodes, [other.id]: attachedNode } }
+  expect(new TranslationPreviewPlan(attached, [moving.id]).acceptsAffine(patches)).toBe(false)
+})
+
 test('a connector or code block on another node does not reject a placement-only edit', () => {
   const { document, moving, other, translated } = fixture()
   other.connector = { from: { point: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' }

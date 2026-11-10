@@ -1,7 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { Editor } from '../engine'
-import { blank, defaultLayout, node, paint, type ConstraintAnchor, type DesignDocument, type Matrix } from '../model'
+import { blank, defaultLayout, effect, node, paint, type ConstraintAnchor, type DesignDocument, type Matrix } from '../model'
+import { prepareDocument } from '../prepared-document'
 import { emptySystem } from '../design-system'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
 import { kernelLayout } from './picking'
@@ -187,6 +188,46 @@ test('a parent-preserving drag stays on the translation path and does not string
     expect(resolve).not.toHaveBeenCalled()
     expect(stringify.mock.calls.some(([value]) => value === editor.state.doc)).toBe(false)
     editor.cancel()
+    expect(editor.state.doc).toBe(before)
+  } finally { editor.dispose() }
+})
+
+test('a FIG-like effect or parent rotation does not resolve components when an unrelated connector exists', () => {
+  const doc = blank('FIG pose')
+  doc.schemaVersion = 21
+  const board = node('frame', 0, 0, 400, 300)
+  const shadow = node('rectangle', 20, 30, 80, 40)
+  shadow.effects = [effect('shadow')]
+  const child = node('rectangle', 40, 90, 30, 20)
+  board.children = [shadow.id, child.id]
+  const wire = node('vector', 0, 340, 40, 10)
+  wire.connector = { from: { point: { x: 0, y: 0 } }, to: { point: { x: 40, y: 0 } }, style: 'straight' }
+  doc.nodes = { [board.id]: board, [shadow.id]: shadow, [child.id]: child, [wire.id]: wire }
+  doc.pages[0].children = [board.id, wire.id]
+  const editor = new Editor()
+  expect(editor.load(prepareDocument(doc))).toBe(true)
+  editor.warmEditingHistory(editor.state.doc, editor.sessionGeneration)
+  try {
+    const before = editor.state.doc
+    const resolve = observeResolution()
+    editor.begin('旋转')
+    expect(editor.preview({ [shadow.id]: { transform: [0, 1, -1, 0, 30, 24] } })).toBe(true)
+    expect(resolve).not.toHaveBeenCalled()
+    expect(editor.state.doc.nodes[child.id]).toBe(before.nodes[child.id])
+    expect(editor.state.doc.nodes[shadow.id].effects).toBe(before.nodes[shadow.id].effects)
+    expect(editor.state.doc.nodes[shadow.id].transform).toEqual([0, 1, -1, 0, 30, 24])
+    expect(editor.commit()?.status).toBe('committed')
+    expect(editor.historyOperationMode).toBe('op-batch')
+    expect(editor.historyFrameBytes).toBe(0)
+    editor.undo()
+    expect(editor.state.doc.nodes[shadow.id].transform).toEqual(before.nodes[shadow.id].transform)
+    resolve.mockClear()
+    editor.begin('旋转画板')
+    expect(editor.preview({ [board.id]: { transform: [0, 1, -1, 0, 12, 8] } })).toBe(true)
+    expect(resolve).not.toHaveBeenCalled()
+    expect(editor.state.doc.nodes[shadow.id]).toBe(before.nodes[shadow.id])
+    expect(editor.commit()?.status).toBe('committed')
+    editor.undo()
     expect(editor.state.doc).toBe(before)
   } finally { editor.dispose() }
 })

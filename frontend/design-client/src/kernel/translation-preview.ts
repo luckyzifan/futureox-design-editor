@@ -59,7 +59,9 @@ export class PoseTopology implements ReadonlyMap<string, string> {
     for (const node of Object.values(document.nodes)) {
       repeats ||= node.repeat !== undefined
       sketchMasks ||= node.mask && (node.maskType === 'shape' || node.maskChain !== undefined)
-      if (node.connector || (node.board?.kind === 'code-block' && node.board.language)) valid = false
+      // A connector or code block elsewhere does not make every pose depend on
+      // it. Endpoint attachment is recorded in the external-reference set and
+      // rejected per target; code highlighting does not read this transform.
       for (const child of node.children) {
         if (this.#parents.has(child) || !document.nodes[child]) valid = false
         this.#parents.set(child, node.id)
