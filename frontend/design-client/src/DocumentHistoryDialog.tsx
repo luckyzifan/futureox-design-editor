@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { modalKeyDown, useModalOwnership } from './modal-keyboard'
 import type { DesignDocument } from './model'
 import type { DesktopSession } from './desktop-session'
 import { createDocumentHistory, type HistoryEntry } from './document-history'
@@ -41,6 +42,10 @@ export function DocumentHistoryDialog({
   const [error, setError] = useState('')
   const [preview, setPreview] = useState<{ document: DesignDocument; revision: number } | null>(null)
   const [pending, setPending] = useState<number | null>(null)
+  const backdrop = useRef<HTMLDivElement>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const dismiss = () => { if (!busyRef.current && pending === null) onClose() }
+  useModalOwnership(backdrop, closeButton)
   const desktop = history.route === 'desktop'
   const headRevision = page?.entries[0]?.revision
 
@@ -94,16 +99,11 @@ export function DocumentHistoryDialog({
   }
 
   return (
-    <div
-      className="modal-backdrop"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && !busy && pending === null) onClose()
-      }}
-    >
-      <section className="remote-modal" role="dialog" aria-modal="true" aria-label="历史版本">
+    <div ref={backdrop} className="modal-backdrop" onKeyDown={event => modalKeyDown(event, dismiss)}>
+      <section className="remote-modal" role="dialog" aria-modal="true" aria-label="历史版本" tabIndex={-1}>
         <h2>
           历史版本
-          <button aria-label="关闭历史版本" disabled={busy} onClick={onClose}>
+          <button ref={closeButton} type="button" aria-label="关闭历史版本" disabled={busy} onClick={onClose}>
             ×
           </button>
         </h2>
@@ -249,6 +249,9 @@ function RevisionPreview({
   onRestore: () => void
 }) {
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '')
+  const backdrop = useRef<HTMLDivElement>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  useModalOwnership(backdrop, closeButton)
   const active = document.pages.find((p) => p.id === pageId) ?? document.pages[0]
   const frame = useMemo(() => {
     const bounds = scene(document, active.id).map((entry) => entry.bounds)
@@ -266,13 +269,8 @@ function RevisionPreview({
     width = Math.ceil(frame.width * zoom),
     height = Math.ceil(frame.height * zoom)
   return (
-    <div
-      className="feature-backdrop"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && !busy) { e.stopPropagation(); onExit() }
-      }}
-    >
-      <div className="prototype-player" data-history-preview role="dialog" aria-modal="true" aria-label="历史版本只读预览">
+    <div ref={backdrop} className="feature-backdrop" onKeyDown={event => modalKeyDown(event, () => { if (!busy) onExit() })}>
+      <div className="prototype-player" data-history-preview role="dialog" aria-modal="true" aria-label="历史版本只读预览" tabIndex={-1}>
         <header>
           <strong>
             只读预览 · 版本 {revision} · {document.name}
@@ -292,7 +290,7 @@ function RevisionPreview({
           <button type="button" disabled={busy} onClick={onRestore}>
             恢复此版本
           </button>
-          <button type="button" onClick={onExit}>
+          <button ref={closeButton} type="button" onClick={onExit}>
             退出预览
           </button>
         </header>

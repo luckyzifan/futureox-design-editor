@@ -17,6 +17,7 @@ import { createAnimationBakeSession, kernelBakeRevision, type KernelAnimationBak
 import { initialPrototype, prototypeEase, prototypeEvent, prototypeDocument, type Interaction } from './prototype'
 import { animatePrototypeScroll } from './prototype-scroll'
 import { framesNeedLightweightMotion, lightenPrototypeMotion, reducedMotionRequested, startTransitionClock } from './prototype-motion'
+import { modalKeyDown, useModalOwnership } from './modal-keyboard'
 
 export function PrototypePlayer({
   document: source,
@@ -31,7 +32,12 @@ export function PrototypePlayer({
     [videoAsset, setVideoAsset] = useState<{ url: string; name: string } | null>(null)
   const videoReady = useVideoEncodeAvailable()
   const scroll = useRef<HTMLDivElement>(null),
-    snapshot = useRef(source)
+    snapshot = useRef(source),
+    backdrop = useRef<HTMLDivElement>(null),
+    closeButton = useRef<HTMLButtonElement>(null),
+    exportingRef = useRef(false)
+  exportingRef.current = exporting
+  useModalOwnership(backdrop, closeButton)
   snapshot.current = source
   // Preview deliberately owns an immutable design version and temporary values.
   const [progress, setProgress] = useState(1)
@@ -208,8 +214,8 @@ export function PrototypePlayer({
     }
   }
   return (
-    <div className="feature-backdrop">
-      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
+    <div ref={backdrop} className="feature-backdrop" onKeyDown={event => modalKeyDown(event, () => { if (!exportingRef.current) onClose() })}>
+      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-modal="true" aria-label="交互原型预览" tabIndex={-1}>
         <header>
           <strong>原型 · {n.name}</strong>
           <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
@@ -223,7 +229,7 @@ export function PrototypePlayer({
           >
             返回
           </button>
-          <button type="button" onClick={onClose}>
+          <button ref={closeButton} type="button" onClick={onClose}>
             关闭预览
           </button>
           {videoReady && (

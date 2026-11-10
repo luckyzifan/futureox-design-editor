@@ -152,7 +152,7 @@ export const PLUGIN_API_COVERAGE: readonly PluginApiEntry[] = [
   { api: 'figma.currentUser', status: 'partial', notes: 'Always null. There is no account user. Optional chaining works; reading an id does not.' },
   { api: 'figma.util.rgb', status: 'supported', notes: 'Returns {r, g, b} with channels from 0 to 1.' },
   { api: 'figma.util.solidPaint', status: 'supported', notes: 'SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object.' },
-  { api: 'figma.on', status: 'partial', notes: 'selectionchange, currentpagechange, and documentchange are delivered for editor changes outside the plugin. documentchange has an empty documentChanges list. The plugin’s own edits do not emit them. close runs inside closePlugin. run and other events throw.' },
+  { api: 'figma.on', status: 'partial', notes: 'The Plugins panel forwards selectionchange, currentpagechange, and documentchange for editor changes outside the plugin. documentchange has an empty documentChanges list. The plugin’s own edits do not emit them. Listeners stop when the panel closes or the document session changes. close runs inside closePlugin. run and other events throw.' },
   { api: 'figma.skipInvisibleInstanceChildren', status: 'partial', notes: 'The flag is stored. findAll does not skip invisible instance children.' },
   { api: 'setTimeout', status: 'partial', notes: 'Only a zero delay during the current turn. A positive delay throws. setInterval throws.' },
   { api: 'fetch', status: 'partial', notes: 'Main-thread fetch only, and only to origins declared in networkAccess. https except an explicit localhost origin. Private networks, metadata hosts, credentials, and the UI frame stay blocked. No collaboration server.' },

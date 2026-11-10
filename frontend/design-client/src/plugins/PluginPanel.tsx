@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '../engine'
 import { desktopBridge, type DesktopBridge } from '../desktop'
 import { useInterfacePreferences } from '../interface-preference'
-import { modalKeyDown } from '../modal-keyboard'
+import { modalKeyDown, useModalOwnership } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
-import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, pluginEditorEvents, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -23,6 +23,7 @@ const copy = {
     path: '示例文件夹：frontend/design-client/plugins/labeled-rectangles',
     enabled: '启动时已启用',
     run: '运行',
+    commands: '选择要运行的命令',
     none: '这次启动没有启用本机插件。放入插件文件夹后重新打开桌面应用。',
     missing: '这个本机插件已不再启用。',
   },
@@ -40,16 +41,18 @@ const copy = {
     path: 'Sample folder: frontend/design-client/plugins/labeled-rectangles',
     enabled: 'Enabled at startup',
     run: 'Run',
+    commands: 'Choose a command',
     none: 'No local plugins were enabled at startup. Add a plugin folder and reopen the desktop app.',
     missing: 'That local plugin is no longer enabled.',
   },
 } as const
 
-export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, onClose }: {
+export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, onClose, returnFocus = null }: {
   editor: Editor
   desktop?: DesktopBridge
   launch?: { grant: string; token: number } | null
   onClose: () => void
+  returnFocus?: HTMLElement | null
 }) {
   const { locale } = useInterfacePreferences()
   const text = copy[locale]
@@ -62,14 +65,19 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [running, setRunning] = useState(false)
+  const [pending, setPending] = useState<PluginBundle | null>(null)
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
   const controller = useRef<PluginController | null>(null)
+  const backdrop = useRef<HTMLDivElement>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  useModalOwnership(backdrop, closeButton, returnFocus)
   const archive = useRef<HTMLInputElement>(null)
   const launchSeen = useRef<number | null>(null)
   const runListedRef = useRef<(plugin: DeclaredPlugin) => Promise<void>>(async () => {})
   const generation = useRef(0)
   const uiOpen = useRef(false)
   const unlisten = useRef<(() => void) | null>(null)
+  const stopRef = useRef<() => void>(() => {})
 
   function stop() {
     generation.current += 1
@@ -83,6 +91,42 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   }
 
   useEffect(() => stop, [desktop])
+  stopRef.current = stop
+
+  useEffect(() => {
+    if (typeof editor.subscribe !== 'function') return
+    let watch = {
+      pageId: editor.state.page, selection: editor.state.selection.join('\0'), revision: editor.state.version,
+      documentId: editor.state.doc.id, session: editor.sessionGeneration,
+    }
+    return editor.subscribe(() => {
+      const next = {
+        pageId: editor.state.page, selection: editor.state.selection.join('\0'), revision: editor.state.version,
+        documentId: editor.state.doc.id, session: editor.sessionGeneration,
+      }
+      const previous = watch
+      watch = next
+      const active = controller.current
+      if (!active || active.closed) return
+      if (next.documentId !== previous.documentId || next.session !== previous.session) {
+        stopRef.current()
+        return
+      }
+      const events = pluginEditorEvents(previous, next, active.applying)
+      for (const event of events) {
+        try {
+          const delivered = active.emit(event)
+          if (delivered) void Promise.resolve(delivered).catch(failure => {
+            setError(failure instanceof Error ? failure.message : String(failure))
+            stopRef.current()
+          })
+        } catch (failure) {
+          setError(failure instanceof Error ? failure.message : String(failure))
+          stopRef.current()
+        }
+      }
+    })
+  }, [editor])
 
   useEffect(() => {
     const list = desktop?.plugins?.list
@@ -109,16 +153,24 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     }
   }
 
-  async function runBundle(bundle: PluginBundle, notes: string[]) {
+  async function runBundle(bundle: PluginBundle, notes: string[], command?: string) {
     stop()
     const token = generation.current
     setError('')
     setWarnings(notes)
+    // A manifest menu is a choice. Loading the file must not run commands[0].
+    if (command === undefined && bundle.manifest.commands.length > 0) {
+      setPending(bundle)
+      setStatus('')
+      setRunning(false)
+      return
+    }
+    setPending(null)
     setRunning(true)
     try {
       const manifest = bundle.manifest
       const next = await openPlugin(editor, bundle, {
-        command: manifest.commands[0]?.command,
+        command,
         systemFonts: desktop?.fonts ? {
           list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
           read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
@@ -213,15 +265,23 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   }
 
   return (
-    <div className="plugin-panel-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <div ref={backdrop} className="plugin-panel-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <section className="plugin-panel" role="dialog" aria-modal="true" aria-labelledby="plugin-panel-title" tabIndex={-1} onKeyDown={event => modalKeyDown(event, onClose)}>
         <header>
           <h2 id="plugin-panel-title">{text.title}</h2>
-          <button type="button" onClick={onClose}>{text.close}</button>
+          <button ref={closeButton} type="button" onClick={onClose}>{text.close}</button>
         </header>
         <section>
           <p>{text.intro}</p>
           <p>{text.path}</p>
+          {pending && <div className="plugin-command-list">
+            <h3>{text.commands}</h3>
+            <ul className="plugin-local-list" aria-label={text.commands}>
+              {pending.manifest.commands.map((item, index) => <li key={`${index}:${item.command}`}>
+                <button type="button" disabled={running} onClick={() => void runBundle(pending, warnings, item.command)}>{item.name}</button>
+              </li>)}
+            </ul>
+          </div>}
           {enabled && enabled.length > 0 ? (
             <div>
               <h3>{text.enabled}</h3>
