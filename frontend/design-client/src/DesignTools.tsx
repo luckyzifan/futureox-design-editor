@@ -1,4 +1,5 @@
 import { PrototypeLogicBuilder } from './PrototypeLogicBuilder'
+import { interactionsHeading, libraryPublishedLine, saveStyleButton, useProfessionalDialogText } from './professional-dialog-messages'
 import { hasLogic } from './prototype-logic'
 import { validatePrototype } from './automation/interactions'
 import { modalKeyDown } from './modal-keyboard'
@@ -25,6 +26,7 @@ import { ImportOwner, importStep } from './import-ownership'
 
 export type DesignToolsTab = 'variables' | 'styles' | 'libraries' | 'prototype'
 export function DesignTools({ editor, onClose, initialTab = 'variables', embedded = false }: { editor: Editor; onClose: () => void; initialTab?: DesignToolsTab; embedded?: boolean }) {
+  const { locale, tr } = useProfessionalDialogText()
   const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     system = doc.designSystem || emptySystem(),
     n = doc.nodes[selection[0]]
@@ -89,16 +91,16 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
   }
   const close = () => { if (tab !== 'variables' || commitPendingEdits(editor)) onClose() }
   const accessibility = embedded
-    ? { role: 'region' as const, 'aria-label': '原型属性' }
-    : { role: 'dialog' as const, 'aria-modal': 'true' as const, 'aria-label': '设计系统与交互' }
+    ? { role: 'region' as const, 'aria-label': tr('原型属性') }
+    : { role: 'dialog' as const, 'aria-modal': 'true' as const, 'aria-label': tr('设计系统与交互') }
   return (
     <>
       <div className={embedded ? 'embedded-design-tools' : 'feature-backdrop'}>
         <div ref={dialog} className="design-tools" {...accessibility} tabIndex={-1} onKeyDown={embedded ? undefined : (event) => modalKeyDown(event, close)}>
           {!embedded && <header>
-            <strong>设计系统与交互</strong>
+            <strong>{tr('设计系统与交互')}</strong>
             <button type="button" onClick={close}>
-              关闭
+              {tr('关闭')}
             </button>
           </header>}
           {!embedded && <nav>
@@ -109,19 +111,19 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
               ['prototype', '交互原型'],
             ].map(([id, label]) => (
               <button type="button" key={id} aria-pressed={tab === id} onClick={() => { if (tab !== 'variables' || commitPendingEdits(editor)) setTab(id as DesignToolsTab) }}>
-                {label}
+                {tr(label)}
               </button>
             ))}
           </nav>}
-          {error && <p role="alert">{error}</p>}
+          {error && <p role="alert">{tr(error)}</p>}
           {tab === 'variables' && <VariablesPanel key={`${doc.id}:${editor.sessionGeneration}`} editor={editor} />}
           {tab === 'styles' && (
             <section>
               <input
-                aria-label="样式名称"
+                aria-label={tr('样式名称')}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="样式名称"
+                placeholder={tr('样式名称')}
               />
               {(['paint', 'text', 'effect'] as const).map((kind) => (
                 <button
@@ -152,7 +154,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                     })
                   }
                 >
-                  保存 {kind} 样式
+                  {saveStyleButton(kind, locale)}
                 </button>
               ))}
               {Object.entries(system.styles).map(([id, s]) => (
@@ -179,7 +181,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                       )
                     }
                   >
-                    应用
+                    {tr('应用')}
                   </button>
                   <button
                     type="button"
@@ -200,7 +202,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                       })
                     }
                   >
-                    用选中图层更新
+                    {tr('用选中图层更新')}
                   </button>
                 </div>
               ))}
@@ -209,10 +211,10 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
           {tab === 'libraries' && (
             <section>
               <p>
-                发布当前文档的组件为带版本与摘要的组件库；在其他文件导入，同一组件库的更新保留实例覆盖。
+                {tr('发布当前文档的组件为带版本与摘要的组件库；在其他文件导入，同一组件库的更新保留实例覆盖。')}
               </p>
               <input
-                aria-label="组件库版本"
+                aria-label={tr('组件库版本')}
                 type="number"
                 min={1}
                 value={version}
@@ -233,10 +235,10 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                   }
                 }}
               >
-                发布组件库文件
+                {tr('发布组件库文件')}
               </button>
               <button type="button" onClick={() => { imports.invalidate(); file.current?.click() }}>
-                导入 / 更新组件库
+                {tr('导入 / 更新组件库')}
               </button>
               <input
                 ref={file}
@@ -272,7 +274,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
               />
               {Object.values(system.libraries).map((l) => (
                 <p key={l.digest}>
-                  {l.name} · v{l.version} · {l.componentIds.length} 个根组件
+                  {libraryPublishedLine(l.name, l.version, l.componentIds.length, locale)}
                 </p>
               ))}
             </section>
@@ -289,18 +291,18 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                   })
                 }
               >
-                将选中图层设为起点
+                {tr('将选中图层设为起点')}
               </button>
               <button
                 type="button"
                 disabled={!doc.pages.some((p) => p.children.length)}
                 onClick={() => setPreview(true)}
               >
-                播放原型
+                {tr('播放原型')}
               </button>
               {n && (
                 <>
-                  <h3>{n.name} 的交互</h3>
+                  <h3>{interactionsHeading(n.name, locale)}</h3>
                   <button
                     type="button"
                     onClick={() =>
@@ -324,12 +326,12 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                       })
                     }
                   >
-                    添加交互
+                    {tr('添加交互')}
                   </button>
                   {(doc.prototype?.interactions[n.id] || []).map((e, i) => (
                     <div className="interaction-card" key={i}>
                       <select
-                        aria-label="交互触发"
+                        aria-label={tr('交互触发')}
                         value={e.trigger}
                         onChange={(ev) =>
                           interaction(i, (e) => {
@@ -338,12 +340,12 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                         }
                       >
                         {[['click', '点击'], ['hover', '鼠标移入'], ['leave', '鼠标移出'], ['after-delay', '延迟后']].map(([t, label]) => (
-                          <option key={t} value={t}>{label}</option>
+                          <option key={t} value={t}>{tr(label)}</option>
                         ))}
                       </select>
                       {e.trigger === 'after-delay' && (
                         <input
-                          aria-label="延迟毫秒"
+                          aria-label={tr('延迟毫秒')}
                           type="number"
                           min={0}
                           value={e.delayMs || 0}
@@ -355,9 +357,9 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                         />
                       )}
                       <label>
-                        条件
+                        {tr('条件')}
                         <select
-                          aria-label="条件变量"
+                          aria-label={tr('条件变量')}
                           value={e.condition?.variable || ''}
                           onChange={(ev) =>
                             interaction(i, (e) => {
@@ -370,7 +372,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             })
                           }
                         >
-                          <option value="">始终执行</option>
+                          <option value="">{tr('始终执行')}</option>
                           {Object.entries(system.variables).map(([id, v]) => (
                             <option key={id} value={id}>
                               {v.name}
@@ -380,7 +382,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                       </label>
                       {e.condition && (
                         <input
-                          aria-label="条件等于"
+                          aria-label={tr('条件等于')}
                           value={String(e.condition.equals)}
                           onChange={(ev) =>
                             interaction(i, (e) => {
@@ -396,7 +398,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                       {e.actions.map((a, j) => a.kind === 'if' || a.expression ? null : (
                         <div className="feature-row" key={j}>
                           <select
-                            aria-label="交互动作"
+                            aria-label={tr('交互动作')}
                             value={a.kind}
                             onChange={(ev) =>
                               interaction(i, (e) => {
@@ -423,12 +425,12 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               ['scroll-to', '滚动到'],
                               ['set-variable', '设置变量'],
                             ].map(([k, label]) => (
-                              <option key={k} value={k}>{label}</option>
+                              <option key={k} value={k}>{tr(label)}</option>
                             ))}
                           </select>
                           {!['back', 'close-overlay'].includes(a.kind) && (
                             <select
-                              aria-label="动作目标"
+                              aria-label={tr('动作目标')}
                               value={a.target || ''}
                               onChange={(ev) =>
                                 interaction(i, (e) => {
@@ -459,14 +461,14 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             </select>
                           )}
                           {['navigate', 'overlay', 'scroll-to'].includes(a.kind) && a.target && doc.nodes[a.target] && (
-                            <button type="button" aria-label="跳转到目标" onClick={() => {
+                            <button type="button" aria-label={tr('跳转到目标')} onClick={() => {
                               const host = document.querySelector('[data-testid=canvas]')
                               jumpToNode(editor, a.target!, { width: host?.clientWidth || 800, height: host?.clientHeight || 600 })
-                            }}>跳转到目标</button>
+                            }}>{tr('跳转到目标')}</button>
                           )}
                           {a.kind === 'set-variable' && a.target && system.variables[a.target] && (
                             <input
-                              aria-label="变量新值"
+                              aria-label={tr('变量新值')}
                               value={String(a.value ?? '')}
                               onChange={(ev) =>
                                 interaction(i, (e) => {
@@ -478,11 +480,11 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               }
                             />
                           )}
-                          {['navigate','back'].includes(a.kind) && <select aria-label="过渡方式" value={a.transitionStyle ?? ''} onChange={ev=>action(i,j,x=>{x.transitionStyle=(ev.target.value || undefined) as PrototypeAction['transitionStyle']})}>
-                            <option value="">智能动画</option><option value="dissolve">溶解（透明度）</option><option value="none">无动画</option><option value="slide-left">从左滑入</option><option value="slide-right">从右滑入</option><option value="slide-top">从上滑入</option><option value="slide-bottom">从下滑入</option>
+                          {['navigate','back'].includes(a.kind) && <select aria-label={tr('过渡方式')} value={a.transitionStyle ?? ''} onChange={ev=>action(i,j,x=>{x.transitionStyle=(ev.target.value || undefined) as PrototypeAction['transitionStyle']})}>
+                            <option value="">{tr('智能动画')}</option><option value="dissolve">{tr('溶解（透明度）')}</option><option value="none">{tr('无动画')}</option><option value="slide-left">{tr('从左滑入')}</option><option value="slide-right">{tr('从右滑入')}</option><option value="slide-top">{tr('从上滑入')}</option><option value="slide-bottom">{tr('从下滑入')}</option>
                           </select>}
                           <input
-                            aria-label="过渡毫秒"
+                            aria-label={tr('过渡毫秒')}
                             type="number"
                             min={0}
                             max={10000}
@@ -494,7 +496,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             }
                           />
                           <select
-                            aria-label="过渡曲线"
+                            aria-label={tr('过渡曲线')}
                             value={a.easingCurve || ''}
                             onChange={(ev) =>
                               interaction(i, (e) => {
@@ -503,16 +505,16 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               })
                             }
                           >
-                            <option value="">线性</option>
-                            <option value="ease-in">缓入</option>
-                            <option value="ease-out">缓出</option>
-                            <option value="ease-in-out">缓入缓出</option>
-                            <option value="spring">弹簧</option>
+                            <option value="">{tr('线性')}</option>
+                            <option value="ease-in">{tr('缓入')}</option>
+                            <option value="ease-out">{tr('缓出')}</option>
+                            <option value="ease-in-out">{tr('缓入缓出')}</option>
+                            <option value="spring">{tr('弹簧')}</option>
                           </select>
                           {a.kind === 'overlay' && (
                             <div className="overlay-position-editor">
                               <select
-                                aria-label="浮层位置"
+                                aria-label={tr('浮层位置')}
                                 value={a.overlayPosition?.origin || 'center'}
                                 onChange={(ev) =>
                                   interaction(i, (e) => {
@@ -542,14 +544,14 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                   ['manual', '手动'],
                                 ].map(([value, label]) => (
                                   <option key={value} value={value}>
-                                    {label}
+                                    {tr(label)}
                                   </option>
                                 ))}
                               </select>
                               {a.overlayPosition?.origin === 'manual' && (
                                 <>
                                   <input
-                                    aria-label="浮层 X 偏移"
+                                    aria-label={tr('浮层 X 偏移')}
                                     type="number"
                                     value={a.overlayPosition.x ?? 0}
                                     onChange={(ev) =>
@@ -559,7 +561,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                     }
                                   />
                                   <input
-                                    aria-label="浮层 Y 偏移"
+                                    aria-label={tr('浮层 Y 偏移')}
                                     type="number"
                                     value={a.overlayPosition.y ?? 0}
                                     onChange={(ev) =>
@@ -573,7 +575,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               <label className="check-row">
                                 <input
                                   type="checkbox"
-                                  aria-label="浮层背景遮罩"
+                                  aria-label={tr('浮层背景遮罩')}
                                   checked={a.overlayPosition?.background ?? true}
                                   onChange={(ev) =>
                                     interaction(i, (e) => {
@@ -586,17 +588,17 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                     })
                                   }
                                 />
-                                背景遮罩
+                                {tr('背景遮罩')}
                               </label>
                             </div>
                           )}
                           {/* Playback executes the supported transition fields;
                            * media/component reset still report unavailable. */}
                           <details className="action-advanced">
-                            <summary>高级</summary>
+                            <summary>{tr('高级')}</summary>
                             <div className="feature-row">
                               <select
-                                aria-label="媒体命令"
+                                aria-label={tr('媒体命令')}
                                 value={a.mediaAction || ''}
                                 onChange={(ev) =>
                                   action(i, j, (x) =>
@@ -604,7 +606,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                   )
                                 }
                               >
-                                <option value="">无媒体命令</option>
+                                <option value="">{tr('无媒体命令')}</option>
                                 {[
                                   ['play', '播放'],
                                   ['pause', '暂停'],
@@ -616,7 +618,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                   ['rewind', '快退'],
                                 ].map(([value, label]) => (
                                   <option key={value} value={value}>
-                                    {label}
+                                    {tr(label)}
                                   </option>
                                 ))}
                               </select>
@@ -628,12 +630,12 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               ).map(([key, label]) => (
                                 <input
                                   key={key}
-                                  aria-label={label}
+                                  aria-label={tr(label)}
                                   type="number"
                                   min={0}
                                   max={1000000}
                                   step={0.1}
-                                  placeholder={label}
+                                  placeholder={tr(label)}
                                   value={a[key] ?? ''}
                                   onChange={(ev) =>
                                     action(i, j, (x) => {
@@ -662,7 +664,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                 <label className="check-row" key={key}>
                                   <input
                                     type="checkbox"
-                                    aria-label={label}
+                                    aria-label={tr(label)}
                                     checked={a[key] ?? (key === 'transitionShouldSmartAnimate')}
                                     onChange={(ev) =>
                                       action(i, j, (x) =>
@@ -670,13 +672,13 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                       )
                                     }
                                   />
-                                  {label}
+                                  {tr(label)}
                                 </label>
                               ))}
                             </div>
                             <div className="feature-row">
                               <select
-                                aria-label="过渡时长变量"
+                                aria-label={tr('过渡时长变量')}
                                 value={a.transitionDurationVar || ''}
                                 onChange={(ev) =>
                                   action(i, j, (x) =>
@@ -684,7 +686,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                   )
                                 }
                               >
-                                <option value="">无时长变量</option>
+                                <option value="">{tr('无时长变量')}</option>
                                 {Object.entries(system.variables)
                                   .filter(([, v]) => v.kind === 'number')
                                   .map(([id, v]) => (
@@ -694,7 +696,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                   ))}
                               </select>
                               <select
-                                aria-label="过渡曲线变量"
+                                aria-label={tr('过渡曲线变量')}
                                 value={a.transitionEasingVar || ''}
                                 onChange={(ev) =>
                                   action(i, j, (x) =>
@@ -702,7 +704,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                   )
                                 }
                               >
-                                <option value="">无曲线变量</option>
+                                <option value="">{tr('无曲线变量')}</option>
                                 {Object.entries(system.variables).map(([id, v]) => (
                                   <option key={id} value={id}>
                                     {v.name}
@@ -712,7 +714,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             </div>
                             <div className="feature-row">
                               <select
-                                aria-label="目标变量"
+                                aria-label={tr('目标变量')}
                                 value={a.targetVariable || ''}
                                 onChange={(ev) =>
                                   action(i, j, (x) => {
@@ -728,7 +730,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                   })
                                 }
                               >
-                                <option value="">无目标变量</option>
+                                <option value="">{tr('无目标变量')}</option>
                                 {Object.entries(system.variables).map(([id, v]) => (
                                   <option key={id} value={id}>
                                     {v.name}
@@ -737,7 +739,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               </select>
                               {a.targetVariable && system.variables[a.targetVariable] && (
                                 <select
-                                  aria-label="目标变量模式"
+                                  aria-label={tr('目标变量模式')}
                                   value={a.targetVariableModeId || ''}
                                   onChange={(ev) =>
                                     action(i, j, (x) =>
@@ -745,7 +747,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                     )
                                   }
                                 >
-                                  <option value="">默认模式</option>
+                                  <option value="">{tr('默认模式')}</option>
                                   {(
                                     system.collections[
                                       system.variables[a.targetVariable].collection
@@ -765,8 +767,8 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               ).map(([key, label]) => (
                                 <input
                                   key={key}
-                                  aria-label={label}
-                                  placeholder={label}
+                                  aria-label={tr(label)}
+                                  placeholder={tr(label)}
                                   value={a[key] ?? ''}
                                   onChange={(ev) =>
                                     action(i, j, (x) => setExtra(x, key, ev.target.value || undefined))
@@ -783,8 +785,8 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               ).map(([field, label]) => (
                                 <input
                                   key={field}
-                                  aria-label={label}
-                                  placeholder={label}
+                                  aria-label={tr(label)}
+                                  placeholder={tr(label)}
                                   value={String(a.targetVariableData?.[field] ?? '')}
                                   onChange={(ev) =>
                                     action(i, j, (x) => {
@@ -812,7 +814,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                           })
                         }
                       >
-                        添加动作
+                        {tr('添加动作')}
                       </button>
                       <button
                         type="button"
@@ -822,7 +824,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                           })
                         }
                       >
-                        删除交互
+                        {tr('删除交互')}
                       </button>
                     </div>
                   ))}

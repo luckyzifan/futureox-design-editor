@@ -6,6 +6,7 @@ import type { DesktopBridge } from '../desktop'
 import { commitPendingEdits } from '../pending-edits'
 import { getAgentDock, openAgentDock, setAgentDockOpen, subscribeAgentDock } from './design-agent-dock'
 import { AGENT_TARGET_EVENT, type AgentTargetDetail } from './target-event'
+import { useInterfaceText } from '../interface-preference'
 
 export function DesignAgentLauncher({ editor, disabled }: {
   editor: Editor
@@ -14,6 +15,7 @@ export function DesignAgentLauncher({ editor, disabled }: {
   onImport?: (file: File, mode: 'open' | 'append') => void
 }) {
   const open = useSyncExternalStore(subscribeAgentDock, () => getAgentDock().open)
+  const text = useInterfaceText()
   const trigger = useRef<HTMLButtonElement>(null)
   useEffect(() => { if (disabled) setAgentDockOpen(false) }, [disabled])
   useEffect(() => {
@@ -25,10 +27,10 @@ export function DesignAgentLauncher({ editor, disabled }: {
     window.addEventListener(AGENT_TARGET_EVENT, onTarget)
     return () => window.removeEventListener(AGENT_TARGET_EVENT, onTarget)
   }, [disabled, editor])
-  return <button type="button" className="design-agent-toggle" ref={trigger} aria-label="设计助手" title="设计助手"
+  return <button type="button" className="design-agent-toggle" ref={trigger} aria-label={text.agentTab} title={text.agentTab}
     aria-pressed={open} aria-expanded={open} aria-controls="design-agent-dock" disabled={disabled}
     onClick={() => {
       if (open) { setAgentDockOpen(false); return }
       if (!editor.state.busy && !editor.interactionActive && commitPendingEdits(editor)) openAgentDock()
-    }}><Sparkles size={16}/><span>设计助手</span></button>
+    }}><Sparkles size={16}/><span>{text.agentTab}</span></button>
 }

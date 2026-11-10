@@ -476,7 +476,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "按住 Shift 同时约束对边": "Hold Shift to pin both sides",
   "隐藏": "Hide",
   "显示": "Show",
-  "填满": "Fill"
+  "填满": "Fill",
+  "选中图层后，在这里编辑颜色、形状与约束。": "Select a layer to edit color, shape, and constraints here."
 })
 export function translateProperty(source: string, locale: InterfaceLocale = 'zh-CN'): string { return locale === 'en' && Object.prototype.hasOwnProperty.call(propertyEnglish, source) ? propertyEnglish[source] : source }
 const zhText = (source: string) => translateProperty(source, 'zh-CN')

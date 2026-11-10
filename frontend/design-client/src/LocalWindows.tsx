@@ -5,6 +5,7 @@ import { AnchoredMenu } from './anchored-menu'
 import type { Editor } from './engine'
 import type { DesktopSession } from './desktop-session'
 import { desktopBridge, type LocalPeer, type WorkspaceDocument } from './desktop'
+import { followLabel, localLinkStatus, localWindowTitle, useProfessionalDialogText } from './professional-dialog-messages'
 export function useLocalWindows(editor: Editor, session: DesktopSession | undefined, ready: boolean) {
   const [peers, setPeers] = useState<LocalPeer[]>([]),
     [error, setError] = useState(''),
@@ -114,6 +115,7 @@ export function LocalWindowControl({
   session: DesktopSession
   live: ReturnType<typeof useLocalWindows>
 }) {
+  const { locale, tr } = useProfessionalDialogText()
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('')
@@ -137,18 +139,18 @@ export function LocalWindowControl({
   }
   return (
     <div className="local-window-control" data-local-peers={live.peers.length}>
-      <button ref={trigger} type="button" aria-label="本机窗口" title={`本机窗口：${live.peers.length + 1}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button ref={trigger} type="button" aria-label={tr('本机窗口')} title={localWindowTitle(live.peers.length + 1, locale)} aria-expanded={open} onClick={() => setOpen(!open)}>
         <Users size={16} aria-hidden="true"/><span>{live.peers.length + 1}</span>
       </button>
       {open && createPortal(
-        <AnchoredMenu anchor={trigger.current} className="local-window-popover" prefer="below" role="dialog" label="本机多窗口">
-          <strong>本机窗口</strong>
+        <AnchoredMenu anchor={trigger.current} className="local-window-popover" prefer="below" role="dialog" label={tr('本机多窗口')}>
+          <strong>{tr('本机窗口')}</strong>
           <button
             type="button"
             disabled={busy || session.status.busy || editor.interactionActive}
             onClick={() => void newWindow()}
           >
-            在新窗口打开此设计
+            {tr('在新窗口打开此设计')}
           </button>
           {live.peers.map((p) => (
             <button
@@ -157,19 +159,19 @@ export function LocalWindowControl({
               aria-pressed={live.following === p.id}
               onClick={() => live.setFollowing(live.following === p.id ? null : p.id)}
             >
-              {p.name} · {live.following === p.id ? '停止跟随' : '跟随视图'}
+              {followLabel(p.name, live.following === p.id, locale)}
             </button>
           ))}
-          <p>共用本机文档库。未保存的编辑保留在各自窗口，版本冲突时可保存副本。</p>
+          <p>{tr('共用本机文档库。未保存的编辑保留在各自窗口，版本冲突时可保存副本。')}</p>
           <button type="button" onClick={() => setOpen(false)}>
-            关闭
+            {tr('关闭')}
           </button>
         </AnchoredMenu>,
         document.body,
       )}
       {(live.error || error) && (
         <span role="alert" title={live.error || error}>
-          本机联动：{live.error || error}
+          {localLinkStatus(live.error || error, locale)}
         </span>
       )}
     </div>
