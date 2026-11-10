@@ -25,6 +25,8 @@ export class CameraReprojection {
   private key = ''
   private displayedBacking?: ResidentAcknowledgement
   private displayedView?: CanvasCamera
+  /** Requested camera last refused while a cold zoom-out kept the old picture. */
+  private heldRequest?: CanvasCamera
   private gaps: HTMLDivElement[] = []
   private zoom?:number
   private size=''
@@ -58,16 +60,33 @@ export class CameraReprojection {
       // budget was declined. Warming a tile or accepting a frame retries it.
       // A large zoom-out is not this case: pinning the old camera there leaves
       // the high-zoom crop on screen after Actual Size or zoom-to-selection.
-      if (this.displayedBacking === backing && sameSize) return {active:false,changed:false}
-      // A late intermediate bitmap may cover the camera already on screen.
-      // Publishing its capture camera here would visibly step backwards on
-      // every ACK while the requested wider view is still waiting for pixels.
-      // Only retain the displayed pose when this bitmap/history fully covers
-      // it; mere intersection does not authorize introducing another gap.
-      view = sameSize && this.displayedView &&
-        this.history.coversPage(backing,{view:this.displayedView,width,height},bounds)
-        ? this.displayedView : backing.view
-    }
+      // A later pan at that same requested zoom still has to slide the picture.
+      // Keeping the zoom pin and ignoring x/y left the content fixed while the
+      // pointer moved.
+      if (this.displayedBacking === backing && sameSize) {
+        const requested = view
+        const held = this.displayedView
+        const base = this.heldRequest
+        const follow = !!held && !!base && requested.zoom === base.zoom &&
+          (requested.x !== base.x || requested.y !== base.y)
+        if (!follow || !held || !base) {
+          this.heldRequest = { ...requested }
+          return {active:false,changed:false}
+        }
+        view = { x: held.x + (requested.x - base.x), y: held.y + (requested.y - base.y), zoom: held.zoom }
+        this.heldRequest = { ...requested }
+      } else {
+        this.heldRequest = undefined
+        // A late intermediate bitmap may cover the camera already on screen.
+        // Publishing its capture camera here would visibly step backwards on
+        // every ACK while the requested wider view is still waiting for pixels.
+        // Only retain the displayed pose when this bitmap/history fully covers
+        // it; mere intersection does not authorize introducing another gap.
+        view = sameSize && this.displayedView &&
+          this.history.coversPage(backing,{view:this.displayedView,width,height},bounds)
+          ? this.displayedView : backing.view
+      }
+    } else this.heldRequest = undefined
     this.displayedBacking = backing
     const active = !!backing && allowed && (backing.view.x !== view.x || backing.view.y !== view.y ||
       backing.view.zoom !== view.zoom || backing.width !== width || backing.height !== height)
@@ -116,5 +135,5 @@ export class CameraReprojection {
     else this.history.hide()
     return { active: !!placed, changed }
   }
-  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.displayedView=undefined;this.displayedBacking=undefined;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
+  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.displayedView=undefined;this.heldRequest=undefined;this.displayedBacking=undefined;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
 }
