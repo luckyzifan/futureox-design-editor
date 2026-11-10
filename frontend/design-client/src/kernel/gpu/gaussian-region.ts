@@ -1,5 +1,11 @@
 import type {Rect} from './types'
 export type GaussianRegion={source:Rect;output:Rect;radii:[number,number,number];factor?:2|4|8;fullOutput?:Rect}
+/** Unmanaged byte mode 22 already sums an integer uniform box from the radius.
+ *  Radii in (512, 1024] belong to the existing regional admission. They must
+ *  not call uniform_box and must not require the managed float prefix. */
+export function unmanagedByteGaussianBox(managed:boolean|undefined,hdr:boolean|undefined,displayMath:boolean|undefined,channels:number,radius:number,format:string|undefined,scalar:boolean|undefined,binary:boolean|undefined){
+  return managed===false&&hdr!==true&&displayMath!==true&&channels===15&&scalar!==true&&binary!==true&&format==='rgba8unorm'&&Number.isInteger(radius)&&radius>512&&radius<=1024
+}
 /** Complete six-pass support, with the first source kept virtual. Every stored
  * intermediate obeys the pre-existing 16 MP surface ceiling. */
 export function gaussianRegionRects(plan:GaussianRegion):Rect[]|undefined{

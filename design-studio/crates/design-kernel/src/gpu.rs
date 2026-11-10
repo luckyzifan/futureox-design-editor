@@ -479,6 +479,20 @@ pub struct GaussianRegion { pub source:Rect, pub output:Rect, pub radii:[u32;3],
     #[serde(skip_serializing_if="Option::is_none")] pub factor:Option<u32>,
     #[serde(skip_serializing_if="Option::is_none")] pub full_output:Option<Rect>,
 }
+/// Device sigma above the whole-surface cap. Parent scale is included; the
+/// check only decides whether an unmanaged tile may use the existing regional
+/// plan. It does not widen that plan's 1024 limit.
+fn page_has_large_gaussian(doc:&Document,roots:&[String],camera:Transform)->bool{
+    fn walk(doc:&Document,id:&str,parent:Transform)->bool{
+        let Some(n)=doc.nodes.get(id) else { return false };
+        if !n.visible||n.opacity<=0.{return false}
+        let matrix=parent.concat(n.transform);
+        let scale=matrix.max_scale();
+        n.effects.iter().any(|e|e.visible&&e.kind=="gaussian-blur"&&e.gradient_blur.is_none()&&e.radius.is_finite()&&e.radius*scale>512.)
+            ||n.children.iter().any(|child|walk(doc,child,matrix))
+    }
+    roots.iter().any(|id|walk(doc,id,camera))
+}
 fn gaussian_region_plan(n:&Node,matrix:Transform,output:Rect)->Option<GaussianRegion>{
     gaussian_region_plan_above(n,matrix,output,512.)
 }
@@ -2258,7 +2272,7 @@ impl Engine {
         gaussian_reduction:u32,
         source_filter_fields:bool,
     ) -> Result<GpuScene, String> {
-        let gaussian_regions=gaussian_regions&&options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel&&options.pixel_preview.is_none()&&options.animation.is_none();
+        let mut gaussian_regions=gaussian_regions&&options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel&&options.pixel_preview.is_none()&&options.animation.is_none();
         let source_filter_fields=source_filter_fields&&gaussian_regions&&self.doc.as_ref().is_some_and(|d|
             d.color_management.as_ref().is_some_and(|c|c.document_space==crate::color::ColorSpace::Srgb));
         crate::render_cancellation::checkpoint()?;
@@ -2590,7 +2604,7 @@ impl Engine {
             let guard = Rect::new(x, y, w, h);
             (guard != tile_guard).then(|| (guard, Arc::clone(&cache.prepared)))
         });
-        let painter_support = if painter_support && has_region && !regional_foreground {
+        let mut painter_support = if painter_support && has_region && !regional_foreground {
             // Try the tile first so a chain that already fits keeps the
             // tile-local contours. A wider proved window may then admit a
             // larger extent. Rebuild the emitted map for that extent alone:
@@ -2639,7 +2653,29 @@ impl Engine {
                 None
             }
         } else { None };
-        let extent = painter_support.as_ref().map_or(extent, |support| support.extent);
+        let mut extent = painter_support.as_ref().map_or(extent, |support| support.extent);
+        // Unmanaged encoded-sRGB tiles do not receive the color-managed region
+        // retry. A device sigma in (512, 1024] still belongs to the existing
+        // regional three-box plan: the 512 whole-surface cap, the kernel
+        // weights and the authored radius stay unchanged.
+        let unmanaged_tile = has_region && doc.color_management.is_none()
+            && metadata.noise_guard.is_none() && options.pixel_preview.is_none()
+            && options.animation.is_none() && !options.raster_profile.is_export()
+            && page_has_large_gaussian(doc, &page.children, camera);
+        if unmanaged_tile {
+            gaussian_regions = true;
+        }
+        if extent.pixels() > 16_777_216 && unmanaged_tile && !regional_foreground {
+            let coherent = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
+            let proved = page.children.iter().all(|id| foreground_region_supported(
+                doc, id, viewport, &prepared, coherent, true, true, false));
+            if proved {
+                regional_foreground = true;
+                extent = viewport.expand(2);
+                // Stage rectangles were proved against the rejected extent.
+                painter_support = None;
+            }
+        }
         if extent.pixels() > 16_777_216 {
             return Err("GPU surface budget exceeded".into());
         }

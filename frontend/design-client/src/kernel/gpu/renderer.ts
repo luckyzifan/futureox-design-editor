@@ -5809,7 +5809,15 @@ export class GpuRenderer {
   private async streamedGaussian(n:GpuNode):Promise<Surface>{
     const plan=n.gaussianRegion,regions=plan&&gaussianRegionRects(plan)
     const header=n.fill.area&&new Float32Array(this.curveBits.buffer,this.curveBits.byteOffset+n.fill.area.first*16,1)[0]
-    if(!plan||!regions||plan.factor!==undefined&&!this.driver.supportsGaussianReduction?.()||!this.driver.supportsGaussianRegions?.()||!this.driver.copyRegion||!n.fill.area||!this.scene.coherentSamples||![3,4].includes(header!)||
+    // Managed SDR still requires the float prefix. An unmanaged byte frame
+    // uses the compositor's existing integer uniform box, whose regional
+    // admission is 1024, and does not build a uniform_box packet above 512.
+    const byteBox=!!plan&&plan.factor===undefined&&!this.driver.managed&&!this.driver.hdr&&!this.driver.displayMath&&
+      plan.radii.every(radius=>Number.isInteger(radius)&&radius>=1&&radius<=1024)
+    // Coherent sample programs are headers 3 and 4. Analytic float tiles keep
+    // the continuous area program, whose header is 0.
+    const headerOk=this.scene.coherentSamples?[3,4].includes(header!):header===0||header===3||header===4
+    if(!plan||!regions||(plan.factor!==undefined&&!this.driver.supportsGaussianReduction?.())||!(byteBox||this.driver.supportsGaussianRegions?.())||!this.driver.copyRegion||!n.fill.area||(plan.factor!==undefined&&!this.scene.coherentSamples)||!headerOk||
         n.children.length||n.strokes.length||n.mask||n.clip||n.passthrough||n.fills.length!==1||!['solid','image'].includes(n.fills[0].kind)||
         n.fills[0].kind==='image'&&plan.factor!==undefined||
         n.effects.filter(e=>e.visible).length!==1||!n.effects.some(e=>e.visible&&e.kind==='gaussian-blur'))
@@ -5828,13 +5836,15 @@ export class GpuRenderer {
         const paint=n.fills[0].kind==='image'?{...n.fills[0]}:n.fills[0]
         let resolved:Surface|undefined,mask:Surface|undefined,layer:Surface|undefined,filtered:Surface|undefined
         try{
-          for(let sample=0;sample<4;sample++){
-            await this.reclaimForSurface(band,3);this.checkFrameCurrent();this.sampleIndex=sample
-            mask=this.acquire(band,true);this.driver.mask(n.fill,mask.texture,sample,band)
+          const phases=this.scene.coherentSamples?4:1
+          for(let sample=0;sample<phases;sample++){
+            await this.reclaimForSurface(band,3);this.checkFrameCurrent();this.sampleIndex=this.scene.coherentSamples?sample:undefined
+            mask=this.acquire(band,!!this.scene.coherentSamples&&!!this.driver.managed);this.driver.mask(n.fill,mask.texture,this.scene.coherentSamples?sample:undefined,band)
             layer=this.empty(band)
             const paintNode={...n,rect:band,fills:[paint],gaussianRegion:undefined,effects:[]}
             const painted=await this.paintOver(paintNode,paint,mask,layer,undefined,true)
             layer=painted
+            if(phases===1){this.release(mask);mask=undefined;resolved=layer;layer=undefined;break}
             const next=this.run(48,band,resolved?[layer,resolved]:[layer],u=>{u[17]=sample})
             this.release(mask,layer,resolved);mask=layer=undefined;resolved=next
           }
@@ -7416,6 +7426,10 @@ export class GpuRenderer {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const n = this.scene.nodes[id]
     if (!n) return
+    // Analytic tiles keep one plane. A regional Gaussian plan is the bounded
+    // source for sigma in (512, 1024]; the normal blur asks the whole-surface
+    // cap and fails the frame.
+    if (!skipEffects && n.gaussianRegion && !this.scene.coherentSamples) return this.streamedGaussian(n)
     let fill: Surface | undefined
     const background = skipEffects ? undefined : backdropEffect(n.effects)
     const directBackdrop = !!background && background.kind === 'background-blur' && !n.passthrough &&
