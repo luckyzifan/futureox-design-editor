@@ -19,6 +19,9 @@ import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
 import { SourceDocumentStatus } from './SourceDocumentStatus'
+import { SketchLibraryLocate } from './SketchLibraryLocate'
+import { sketchOpenBlock } from './sketch-library-locate'
+import { importSketchWithLibraries } from './import-file-worker'
 import { SourcePageInspector } from './SourcePageInspector'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
@@ -165,6 +168,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
   const [showHome, setShowHome] = useState(!source)
   const [homeImportError, setHomeImportError] = useState('')
+  const [libraryGap, setLibraryGap] = useState<{ file: File; error: string } | null>(null)
   const [startupError, setStartupError] = useState('')
   const homeSettingsFocus = useRef<HTMLElement | null>(null)
   const [showTools, setShowTools] = useState(false)
@@ -304,6 +308,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setImporting(true)
     const request = fileImports.begin(editor)
     setHomeImportError('')
+    setLibraryGap(null)
     diagnostic.bindRequest(request)
     try {
       const imported = await importStep(request, () => readDesignFile(f, request.signal, diagnostic))
@@ -332,6 +337,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if(mode==='open'&&desktopBridge()?.largeDocument&&/\.(json|sketch)$/i.test(f.name)&&/Sketch archive: Limit|archive resource limit:/.test(String(error))){setLargeDocument({file:f});return}
         desktopPet.event('error')
         const reason = error instanceof Error ? error.message : String(error)
+        if (mode === 'open' && /\.sketch$/i.test(f.name) && sketchOpenBlock(reason)) setLibraryGap({ file: f, error: reason })
         editor.notify(reason, importInputStatus(error))
         if (showHome) setHomeImportError(reason)
       }
@@ -975,6 +981,27 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>{menuText.stopOperation}</button>}
       </ActivityBanner>}
       {importing && !showHome && !showFileActivity && <ActivityBanner activity="import" label={activityText[locale].importing} />}
+      {libraryGap && sketchOpenBlock(libraryGap.error) && <SketchLibraryLocate block={sketchOpenBlock(libraryGap.error)!} error={libraryGap.error} busy={importing} onClose={() => setLibraryGap(null)} onAttach={async libraries => {
+        const request = fileImports.begin(editor)
+        setImporting(true)
+        try {
+          const imported = await importStep(request, () => importSketchWithLibraries(libraryGap.file, libraries, libraryGap.file.name.replace(/\.sketch$/i, ''), request.signal))
+          request.assertCurrent()
+          const document = createImportedCopy(imported.document)
+          const opened = await switchDocument(document, undefined, true, request)
+          if (!opened || !request.isCurrent()) return
+          setLibraryGap(null)
+          setHomeImportError('')
+          if (imported.warnings.length) setImportReport({ documentId: document.id, warnings: imported.warnings })
+          editor.notify('已按库中的真实 ID 补齐并打开')
+        } catch (error) {
+          if (request.signal.aborted || !request.isCurrent()) return
+          const reason = error instanceof Error ? error.message : String(error)
+          setLibraryGap({ file: libraryGap.file, error: reason })
+          if (showHome) setHomeImportError(reason)
+          editor.notify(reason, importInputStatus(error))
+        } finally { request.finish(); setImporting(false) }
+      }} />}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
         onOpenFile={openHomeFile} onSettings={() => {

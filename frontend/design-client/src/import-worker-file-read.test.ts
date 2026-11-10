@@ -10,6 +10,36 @@ afterAll(() => vi.unstubAllGlobals())
 
 // Invokes the production worker handler. The source File-like read boundary is
 // controlled; these tests do not claim a browser Worker or a new codec pass.
+test('library attach checks every selected file before the first byte read', async () => {
+  scope.postMessage.mockClear()
+  const projectRead = vi.fn()
+  const libraryRead = vi.fn()
+  await scope.onmessage!({ data: {
+    format: 'sketch-with-libraries', name: 'uswds-project',
+    project: { size: 4, arrayBuffer: projectRead },
+    libraries: [{ size: 1024 ** 3 + 1, arrayBuffer: libraryRead }],
+  } } as MessageEvent)
+  expect(projectRead).not.toHaveBeenCalled()
+  expect(libraryRead).not.toHaveBeenCalled()
+  expect(scope.postMessage.mock.calls.some(call => call[0]?.kind === 'import-stage')).toBe(false)
+  expect(scope.postMessage.mock.calls.at(-1)![0].error).toContain('1 GiB')
+})
+
+test('library attach reads only after every size check, and a read failure adopts nothing', async () => {
+  scope.postMessage.mockClear()
+  const order: string[] = []
+  await scope.onmessage!({ data: {
+    format: 'sketch-with-libraries', name: 'project',
+    project: { size: 4, arrayBuffer: async () => { order.push('project'); return new ArrayBuffer(4) } },
+    libraries: [{ size: 4, arrayBuffer: async () => { order.push('library'); throw new Error('read denied') } }],
+  } } as MessageEvent)
+  expect(order).toEqual(['project', 'library'])
+  expect(scope.postMessage.mock.calls.map(call => call[0])).toEqual([
+    { kind: 'import-stage', importStage: 231 },
+    { importStage: 231, error: 'read denied' },
+  ])
+})
+
 test('a selected File is checked in the worker before its first byte read', async () => {
   scope.postMessage.mockClear()
   const arrayBuffer = vi.fn()
