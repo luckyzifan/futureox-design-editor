@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, defaultTextStyle, node } from './model'
 import { emptySystem } from './design-system'
-import { matchBundledImportFonts } from './bundled-import-fonts'
+import { abeezeeLineBreakDiagnostic, matchBundledImportFonts, retainedFontWarnings, selectBundledImportFace } from './bundled-import-fonts'
 
 test('Inter, ABeeZee, and Poppins import names attach the bundled files', async () => {
   const doc = blank('字体')
@@ -39,4 +39,32 @@ test('Inter, ABeeZee, and Poppins import names attach the bundled files', async 
   expect(again.missing).not.toContain('Poppins BoldItalic')
   expect(again.substitutions.some(item => item.from === 'Poppins BoldItalic')).toBe(false)
   expect(doc.fonts?.[italic.textStyle.fontId!].postscript).toBe('Poppins-BoldItalic')
+})
+
+test('ABeeZee italic stays unmatched instead of borrowing Regular line breaks', async () => {
+  expect(selectBundledImportFace('ABeeZee')?.postscript).toBe('ABeeZee-Regular')
+  expect(selectBundledImportFace('ABeeZee Regular')?.style).toBe('Regular')
+  expect(selectBundledImportFace('ABeeZee Italic')).toBeUndefined()
+  expect(selectBundledImportFace('ABeeZee-Italic')).toBeUndefined()
+  expect(abeezeeLineBreakDiagnostic('ABeeZee Italic')).toContain('不能把 Regular 的换行')
+  expect(abeezeeLineBreakDiagnostic('ABeeZee')).toBeUndefined()
+  const doc = blank('斜体')
+  const text = node('text', 0, 0, 200, 80)
+  text.text = 'Poster title'
+  text.textStyle = defaultTextStyle()
+  doc.nodes = { [text.id]: text }
+  doc.designSystem = { ...emptySystem(), fontSources: { [text.id]: { style: 'ABeeZee Italic' } } }
+  const matched = await matchBundledImportFonts(doc)
+  expect(matched.substitutions).toEqual([])
+  expect(matched.missing).toContain('ABeeZee Italic')
+  expect(doc.nodes[text.id].textStyle?.fontId ?? 'default').toBe('default')
+})
+
+test('a matched family warning is case-insensitive, and a missing face keeps it', () => {
+  const warning = '字体 poppins 尚需匹配，已保留文字内容'
+  expect(retainedFontWarnings([warning, '其他'], { families: ['Poppins'], missing: [], substitutions: [] })).toEqual(['其他'])
+  expect(retainedFontWarnings([warning], { families: ['Poppins'], missing: ['Poppins Light'], substitutions: [] })).toEqual([warning])
+  expect(retainedFontWarnings(['字体 ABeeZee 尚需匹配，已保留文字内容'], {
+    families: [], missing: [], substitutions: [{ from: 'ABeeZee-Regular' }],
+  })).toEqual([])
 })

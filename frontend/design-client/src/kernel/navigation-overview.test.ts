@@ -29,13 +29,17 @@ test('a pan that leaves resident pictures asks for the strip before the old refi
   expect(coarsePanCoverNeeded({ ...base, translationFollow: true, stripCached: true })).toBe(false)
 })
 
-test('a large pan yields a viewport tile that only clips the edge, and keeps a cell that is still on screen', () => {
+test('a large pan yields a viewport tile and a tiny cell, and keeps a neighbour that still covers the view', () => {
   const size = { width: 1000, height: 800 }
   const view = { x: -600, y: 0, zoom: 1 }
   const shifted = { x: 0, y: 0, width: 1000, height: 800, zoom: 1, gutter: 0 }
   expect(retainPannedTile(shifted, view, size)).toBe(false)
+  // Fully on screen, but only 5% of the viewport. It must not keep the raster
+  // owner ahead of the coarse strip.
   const cell = { x: 600, y: 0, width: 200, height: 200, zoom: 1, gutter: 0 }
-  expect(retainPannedTile(cell, view, size)).toBe(true)
+  expect(retainPannedTile(cell, view, size)).toBe(false)
+  const neighbour = { x: 512, y: 0, width: 514, height: 514, zoom: 1, gutter: 1 }
+  expect(retainPannedTile(neighbour, { x: -600, y: 0, zoom: 1 }, { width: 800, height: 700 })).toBe(true)
   const page = { x: 0, y: 0, width: 4000, height: 3000, zoom: 1, gutter: 0 }
   expect(retainPannedTile(page, { x: 0, y: 0, zoom: 1 }, size)).toBe(true)
   expect(retainPannedTile(shifted, view, size, Number.NaN)).toBe(true)

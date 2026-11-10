@@ -1079,6 +1079,43 @@ impl Document {
             .filter_map(|id| self.nodes.get(id))
             .find(|n| n.mask && n.visible)
     }
+    /// Sketch absolute-size presets archive `scale: 0` and keep the size mode
+    /// in retained source fields (`visibleScaleType` 1 = width, 2 = height).
+    /// A native render multiplier has no such record.
+    fn preserved_sketch_absolute_exports(&self, node: &Node) -> HashSet<usize> {
+        let raw = node
+            .bindings
+            .get("sketchExportFormatFields")
+            .map(String::as_str)
+            .or_else(|| {
+                self.design_system
+                    .as_ref()?
+                    .sketch_containers
+                    .get("nodeMetadata")?
+                    .get(&node.id)?
+                    .get("bindings")?
+                    .get("sketchExportFormatFields")?
+                    .as_str()
+            });
+        let Some(raw) = raw else {
+            return HashSet::new();
+        };
+        let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(raw) else {
+            return HashSet::new();
+        };
+        entries
+            .into_iter()
+            .filter_map(|entry| {
+                let index = entry.get("index")?.as_u64()?;
+                let mode = entry.pointer("/fields/visibleScaleType")?.as_u64()?;
+                if matches!(mode, 1 | 2) {
+                    usize::try_from(index).ok()
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
     pub(crate) fn validate_nodes<'a>(
         &self,
         nodes: impl IntoIterator<Item = (&'a String, &'a Node)>,
@@ -1226,8 +1263,12 @@ impl Document {
                 return Err("Layer exports require schema 8".into());
             }
             let mut export_ids = HashSet::new();
-            if n.export_settings.len() > 16
-                || n.export_settings.iter().any(|s| {
+            let mut zero_scales = Vec::new();
+            let malformed = n.export_settings.len() > 16
+                || n.export_settings.iter().enumerate().any(|(index, s)| {
+                    if s.scale == 0. {
+                        zero_scales.push(index);
+                    }
                     s.id.is_empty()
                         || s.id.len() > 128
                         || !export_ids.insert(&s.id)
@@ -1241,8 +1282,15 @@ impl Document {
                         || s.suffix
                             .chars()
                             .any(|c| c.is_control() || "\\/:*?\"<>|".contains(c))
-                })
-            {
+                });
+            // Scale 0 is not a native multiplier. It remains valid only as the
+            // Sketch absolute-size sentinel carried with the source fields.
+            let bare_zero_scale = !zero_scales.is_empty()
+                && {
+                    let preserved = self.preserved_sketch_absolute_exports(n);
+                    zero_scales.iter().any(|index| !preserved.contains(index))
+                };
+            if malformed || bare_zero_scale {
                 return Err("Invalid layer export settings".into());
             }
             if self.schema_version < 7

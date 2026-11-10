@@ -4,19 +4,22 @@ use futureox_design_kernel::{
     path::Contour,
 };
 use futureox_design_kernel::sketch::{CommandEnvelope, Document, Error, Session, SketchCommand};
-use futureox_design_kernel::sketch::preview::{PreviewRequest, compile_preview};
+use futureox_design_kernel::sketch::preview::{PreviewRequest, compile_preview, display_snapshot};
 use serde_json::{Value, json};
 use std::io::{Cursor, Write};
 fn session(layers: Value) -> Session {
     session_with_color_space(layers, json!(0))
 }
 fn session_with_color_space(layers: Value, color_space: Value) -> Session {
+    session_document(layers, json!({"_class":"document","colorSpace":color_space,"pages":[{"_ref":"pages/P"}]}))
+}
+fn session_document(layers: Value, document: Value) -> Session {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     for (name, value) in [
         ("meta.json", json!({"version":146})),
         (
             "document.json",
-            json!({"_class":"document","colorSpace":color_space,"pages":[{"_ref":"pages/P"}]}),
+            document,
         ),
         (
             "pages/P.json",
@@ -59,6 +62,21 @@ fn explicit_native_srgb_keeps_preview_colors_and_does_not_admit_p3_as_srgb() {
         serde_json::to_value(&actual).unwrap()
     );
     assert_eq!(original, srgb.document().to_sketch().unwrap());
+    assert!(actual.scene.color_management.is_none());
+    assert!(!actual.scene.float_compositing);
+    let encoded = &actual.scene.colors["color(srgb 0.125 0.5 1 / 1)"];
+    assert!((encoded[0] - 0.125).abs() < 1e-5, "{encoded:?}");
+    let marked = session_document(json!([rectangle()]), json!({
+        "_class":"document","colorSpace":1,"pages":[{"_ref":"pages/P"}],
+        "userInfo":{"com.futureox.design-kernel":{"linearSrgbComposite":true}}
+    }));
+    let linear = compile_preview(&marked, &request(&marked)).unwrap();
+    assert!(linear.scene.color_management.is_some());
+    assert!(linear.scene.float_compositing);
+    let decoded = &linear.scene.colors["color(srgb 0.125 0.5 1 / 1)"];
+    assert!((decoded[0] - 0.125).abs() > 0.05, "{decoded:?}");
+    assert!(display_snapshot(&srgb, "P").unwrap().document.color_management.is_none());
+    assert!(display_snapshot(&marked, "P").unwrap().document.color_management.is_some());
     for space in [
         json!(2),
         json!(3),

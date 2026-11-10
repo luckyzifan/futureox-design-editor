@@ -2924,10 +2924,23 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             background: "#ffffff".into(),
         });
     }
-    // P0-4: color space (document.json colorSpace: 0 unmanaged, 1 sRGB, 2 P3)
+    // P0-4: color space (document.json colorSpace: 0 unmanaged, 1 sRGB, 2 P3).
+    // Sketch composites in the encoded document space. Treating colorSpace 1 as
+    // linear management blends a 50% dark fill on white to about
+    // RGB(190,190,189) instead of Sketch's encoded RGB(150,150,148). Only an
+    // archive this editor marked `linearSrgbComposite` restores linear sRGB.
+    let mut sketch_encoded_srgb = false;
     match document.get("colorSpace").and_then(Value::as_i64) {
         Some(1) => {
-            doc.color_management = Some(crate::color::ColorSettings::default());
+            let linear = document
+                .pointer("/userInfo/com.futureox.design-kernel/linearSrgbComposite")
+                .and_then(Value::as_bool)
+                == Some(true);
+            if linear {
+                doc.color_management = Some(crate::color::ColorSettings::default());
+            } else {
+                sketch_encoded_srgb = true;
+            }
         }
         Some(2) => {
             doc.color_management = Some(crate::color::ColorSettings {
@@ -3080,6 +3093,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // (design_system has no swatch concept) ride the raw container store;
     // the shared-style fidelity map joins them under a fixed key.
     let mut sketch_containers: BTreeMap<String, Value> = BTreeMap::new();
+    if sketch_encoded_srgb {
+        sketch_containers.insert("sketchDocumentColorSpace".into(), json!(1));
+    }
     if let Some(ids) = document.pointer("/userInfo/com.futureox.design-kernel/sharedStyleIds") {
         sketch_containers.insert("sharedStyleIds".into(), ids.clone());
     }
@@ -6874,9 +6890,16 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     // 1 sRGB, 2 P3 — the kernel color_management maps onto the same three
     // states. Unsupported target profiles have already failed at admission;
     // no linear/HDR document is silently relabelled as unmanaged.
+    let sketch_srgb_tag = doc
+        .design_system
+        .as_ref()
+        .and_then(|system| system.sketch_containers.get("sketchDocumentColorSpace"))
+        .and_then(Value::as_i64)
+        == Some(1);
     let color_space = match doc.color_management.as_ref().map(|c| c.document_space) {
         Some(crate::color::ColorSpace::DisplayP3) => 2,
         Some(crate::color::ColorSpace::Srgb) => 1,
+        _ if sketch_srgb_tag => 1,
         _ => 0,
     };
 
@@ -7046,6 +7069,27 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             .collect();
         document["userInfo"] = json!({"com.futureox.design-kernel":{"sharedStyleIds":ids}});
     }
+    if doc.color_management.as_ref().is_some_and(|c| c.document_space == crate::color::ColorSpace::Srgb) {
+        let user = document
+            .as_object_mut()
+            .expect("document object")
+            .entry("userInfo")
+            .or_insert_with(|| json!({}));
+        if !user.is_object() {
+            *user = json!({});
+        }
+        let ns = user
+            .as_object_mut()
+            .expect("userInfo object")
+            .entry("com.futureox.design-kernel")
+            .or_insert_with(|| json!({}));
+        if !ns.is_object() {
+            *ns = json!({});
+        }
+        ns.as_object_mut()
+            .expect("kernel userInfo object")
+            .insert("linearSrgbComposite".into(), json!(true));
+    }
     // P1-13: verbatim document-level containers (sharedSwatches, foreign
     // style/swatch lists, library metadata) return untouched; foreign
     // symbols are rebuilt from their local masters, with entries that had
@@ -7063,6 +7107,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     | "rulerData"
                     | "figDocument"
                     | "figRetainedStyles"
+                    | "sketchDocumentColorSpace"
             ) {
                 continue;
             }
@@ -7295,8 +7340,8 @@ mod tests {
                 interactive_effects: false,
                 checkerboard: false,
             };
-            let actual = a.render_linear(&options).unwrap();
-            let expected = b.render_linear(&options).unwrap();
+            let actual = a.render(&options).unwrap();
+            let expected = b.render(&options).unwrap();
             let changed = actual.iter().zip(&expected).filter(|(a, b)| a != b).count();
             assert_eq!(changed, 0, "Sketch boolean code {code}");
         }
@@ -7393,7 +7438,7 @@ mod tests {
     }
     #[test]
     fn import_input_policy_does_not_raise_expansion_budget() {
-        assert_eq!(archive_limits().input as u64, crate::capacity::memory_budget_bytes().clamp(1_073_741_824, crate::capacity::WASM_ADDRESS_BYTES));
+        assert_eq!(archive_limits().input, crate::sketch::archive::addressable_bytes(crate::capacity::memory_budget_bytes().clamp(1_073_741_824, crate::capacity::WASM_ADDRESS_BYTES)));
         assert_eq!(archive_limits().entries, 4096);
     }
 
@@ -9306,8 +9351,7 @@ mod tests {
             engine.load_document(&serde_json::to_string(doc).unwrap()).unwrap();
             let options = engine.parse_options(json!({"pageId":doc.pages[0].id,"width":48,"height":24,
                 "view":{"x":0,"y":0,"zoom":1}})).unwrap();
-            engine.render_linear(&options).unwrap().into_iter()
-                .map(|p|p.0.map(f32::to_bits)).collect::<Vec<_>>()
+            engine.render(&options).unwrap()
         };
         let before = render(&doc);
         let mut native = doc.clone();

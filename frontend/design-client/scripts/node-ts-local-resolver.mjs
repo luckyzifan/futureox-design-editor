@@ -1,6 +1,10 @@
-// Node 24 strips TypeScript but does not resolve extensionless TS imports.
-// This test-only loader resolves existing relative .ts files without replacing
-// implementations, mocking browser globals or intercepting bare packages.
+// Node strip-only TypeScript does not resolve extensionless relative imports.
+// This was recorded for Node 24 and is verified on Node v22.23.4.
+// test:render-diagnostics and test:render-contracts preload this module with
+// --import. When default resolution throws ERR_MODULE_NOT_FOUND, a relative
+// specifier is mapped onto an existing .ts file and handed back to Node's own
+// loader. This does not rewrite implementations, mock browser globals,
+// intercept bare specifiers, or transform TypeScript parameter properties.
 import { registerHooks } from 'node:module'
 import { existsSync } from 'node:fs'
 import { extname } from 'node:path'

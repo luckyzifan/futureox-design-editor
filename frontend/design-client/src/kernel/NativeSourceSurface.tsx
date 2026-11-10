@@ -14,7 +14,7 @@ import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,select
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
-import {frameHandoff} from './frame-handoff'
+import {densityCertifiesDemand,frameHandoff,settledCoverageChoice} from './frame-handoff'
 import {exactTilesBeforeOverview,quietPasteStripAllowed} from './zoom-refinement-policy'
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
@@ -430,9 +430,19 @@ export function NativeSourceSurface(props:Props){
           }
         }
         if(focal&&!partialTiles&&!promoted){emit({phase:'refining',done,total:tiles.length});return}
-        if(stored){visible=stored}
+        // Planner completeness is not the sample on screen. A return pan can
+        // still be holding 3200% residents while the cached lattice is the
+        // current density. Publishing those residents as ready leaves sharp
+        // false. An in-range pasteboard strip is unchanged.
+        let certify=complete,continuity=!!stored
+        if(partialTiles){visible=partialTiles}
+        else if(stored){
+          const choice=settledCoverageChoice({stored,exact:tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]}),exactComplete:complete,targetScale:p.view.zoom*ratio})
+          visible=choice.tiles as Tile[]
+          certify=choice.certify
+          continuity=choice.continuity
+        }
         else if(promoted){visible=promoted}
-        else if(partialTiles){visible=partialTiles}
         else if(refining && wheel){
           // An immutable lower rung can cover the rest of the new viewport.
           // Submit only a complete mosaic with genuinely sharper source pixels.
@@ -449,15 +459,16 @@ export function NativeSourceSurface(props:Props){
           const last=submittedPlacements.get(previous.sequence)?.regions??partialMaterials
           if(last&&last.length===regions.length&&last.every(old=>regions!.some(r=>r.materialKey===old.materialKey)))return
         }
-        if(previous?.demand===demand && previous.complete===complete && previous.mixed===refining && previous.scale===raster.scale &&
+        const mixed=refining||(continuity&&!certify&&certify!==complete)
+        if(previous?.demand===demand && previous.complete===certify && previous.mixed===mixed && previous.scale===raster.scale &&
             previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile)))return
         const sequence=++submission,id=`${prefix}:${sequence}`
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
-        submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:!!stored,mixed:refining,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
+        submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:continuity,mixed,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
         if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:exact&&keys.has(tile.key)?4:1,
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
-        wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,scale:raster.scale,complete,mixed:refining,demand,ids}
+        wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,scale:raster.scale,complete:certify,mixed,demand,ids}
         if(backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y))
           element.dataset.sourceCoverageExtend='pan'
         // The presenter independently checks actual textures and physical coverage.
@@ -802,6 +813,15 @@ export function NativeSourceSurface(props:Props){
           const total=plan().tiles.length
           const arrived=plan().tiles.filter(tile=>cache.has(tile.key)).length
           emit({phase:'refining',done:arrived,total})
+        }else if(complete && !densityCertifiesDemand(shownTiles,p.view.zoom*actual.dpr)){
+          // Tile count and a matching camera are not the current sample.
+          // sourceRenderScale / sourceReadyCamera from an older frame stay stale.
+          delete element.dataset.sourceReadyCamera
+          const planned=plan()
+          const arrived=planned.tiles.filter(tile=>cache.has(tile.key)).length
+          wanted=undefined
+          emit({phase:'refining',done:arrived,total:planned.tiles.length})
+          schedulePaint();void run()
         }else if(complete){
         if(source.materialKeys){
           const scale=actual.view.zoom*actual.dpr
@@ -925,8 +945,9 @@ export function NativeSourceSurface(props:Props){
         const stripKey=strip?.tiles[0]?.key
         const world={x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom}
         const residents=[...cache.values()].filter(tile=>(tile.gpuTile!=null||!!tile.bytes?.byteLength)&&tileIntersectsView(tile,p.view,p))
-        // A neighbour that still paints most of the pan stays. A viewport-sized
-        // capture that only clips the new view yields, or the strip never starts.
+        // A tile that still paints most of the pan stays. A viewport-sized
+        // capture that only clips the new view, and a small cell left over
+        // from the zoom-in, both yield or the strip never follows the pointer.
         if(stripKey&&!cache.has(stripKey)&&!(residents.length>0&&tilesCoverBounds(residents,world)))
           workQueue.demand(false,tile=>tile.key===stripKey||retainPannedTile(tile,p.view,p))
       }

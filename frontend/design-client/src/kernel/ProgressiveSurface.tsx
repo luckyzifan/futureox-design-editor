@@ -22,7 +22,7 @@ import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRaster
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
-import { acceptNativeSample } from './frame-handoff'
+import { partialSharpSample } from './frame-handoff'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
@@ -1044,11 +1044,10 @@ export function ProgressiveSurfaceImpl(
       if (flight?.contract === contract && flight.generation === generation) {
         if (navigationZoom.active && zoomOutCoverage)
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
-        // Sampled navigation keeps its running capture: cancelling every pan
-        // starved the lane. A quiet zoom-out capture is different. Once a large
-        // pan leaves most of the newest viewport outside it, yield that job.
-        if (!navigationZoom.active)
-          flight.cancelMissedViewport(requestedView, width, height)
+        // A small pan keeps the running capture. A same-zoom pan that leaves
+        // most of the newest viewport outside it yields while the gesture is
+        // still active; waiting for quiet left the picture on the pre-pan camera.
+        flight.cancelMissedViewport(requestedView, width, height, 0.5, navigationZoom.active)
       }
     }
     const pendingCoverage = () => {
@@ -1760,9 +1759,9 @@ export function ProgressiveSurfaceImpl(
           // the latest active plan or certifies its native-phase readiness.
           // Keep the last acknowledged preview while the new one imports; the
           // ordinary byte-budgeted LRU bounds this compatible history.
-          const delivered = receive({ key: residentDisplay ? viewportPreviewKey(identity) : `navigation-preview:${contract.revision}:${serial.current + 1}`, x: -sample.view.x * ratio,
-            y: -sample.view.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
-            previewSource: previewSource(sample.view),
+          const delivered = receive({ key: residentDisplay ? viewportPreviewKey(identity) : `navigation-preview:${contract.revision}:${serial.current + 1}`, x: -captureView.x * ratio,
+            y: -captureView.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
+            previewSource: previewSource(captureView),
             ...(residentDisplay ? { viewportCache: captureViewportPreview(identity) } : {}),
             ...(navigationCapture?.device && result.backend === 'webgpu' ? { nativeNavigationDevice: navigationCapture.device } : {}),
             bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
@@ -2354,7 +2353,7 @@ export function ProgressiveSurfaceImpl(
   const partialDetail=progressiveNativeRepair&&residentDisplay&&reusableFrame&&currentPlan&&
     !hdrCompositing&&!cameraDependent&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&!props.interaction?.active&&syncedDoc.current===doc
   const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile &&
-    (fullPlanReady||partialDetail&&acceptNativeSample({
+    (fullPlanReady||partialDetail&&partialSharpSample({
       sameRevision: tile.document===doc&&tile.revision===contract.revision,
       nativeDensity: tile.zoom>=detailLevel,
       nativePhase: tileHasNativePhase(tile,requestedView,dpr),
@@ -2645,7 +2644,7 @@ export function ProgressiveSurfaceImpl(
             qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}
           overlay={props.overlay}
           sourceDocument={doc} contentRevision={contract.revision} translationItems={visible.filter(tile=>syncedDoc.current===doc&&ready.current.has(tile.key)&&
-            acceptNativeSample({sameRevision:tile.revision===contract.revision,nativeDensity:tile.zoom===detailLevel,nativePhase:tileHasNativePhase(tile,requestedView,dpr)})&&
+            partialSharpSample({sameRevision:tile.revision===contract.revision,nativeDensity:tile.zoom===detailLevel,nativePhase:tileHasNativePhase(tile,requestedView,dpr)})&&
             (!fullPlanReady||props.interaction?.active||!plan||plan.ids.has(tile.key)))
             .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
           interaction={navigationZoom.active ? undefined : props.interaction?{...props.interaction,navigating:cameraMoving}:undefined} pageId={pageId} rasterProfile={rasterProfile} backend={backend}

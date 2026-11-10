@@ -67,11 +67,31 @@ test('cold zoom-out keeps the visible image until real pixels cover newly expose
  f.projection.update(backing,backing.view,100,80,true,bounds)
  f.projection.update(backing,target,100,80,true,bounds)
  expect(f.canvas.style.transform).toBe('')
- expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(backing.view)
+  expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(backing.view)
  // White pasteboard outside the actual page does not hold back navigation.
  f.projection.update(backing,target,100,80,true,{x:0,y:0,width:100,height:80})
  expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(target)
  f.projection.dispose()
+})
+
+test('a large pan after a cold zoom-out slides the retained image with the input', () => {
+  const f = fixture(), bounds = { x: 0, y: 0, width: 400, height: 400 }
+  const backing = { ...f.backing, view: { x: 0, y: 0, zoom: 1 } }
+  const shrunk = { x: 25, y: 20, zoom: 0.5 }
+  f.projection.update(backing, backing.view, 100, 80, true, bounds)
+  f.projection.update(backing, shrunk, 100, 80, true, bounds)
+  expect(f.canvas.style.transform).toBe('')
+  const panned = { x: 85, y: 20, zoom: 0.5 }
+  f.projection.update(backing, panned, 100, 80, true, bounds)
+  expect(f.canvas.style.transform).toBe('translate(60px, 0px) scale(1)')
+  expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual({ x: 60, y: 0, zoom: 1 })
+  f.projection.update(backing, { x: 90, y: 15, zoom: 0.5 }, 100, 80, true, bounds)
+  expect(f.canvas.style.transform).toBe('translate(65px, -5px) scale(1)')
+  // A further zoom inside the pin keeps the pan already followed.
+  f.projection.update(backing, { x: 90, y: 15, zoom: 0.6 }, 100, 80, true, bounds)
+  expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual({ x: 65, y: -5, zoom: 1 })
+  expect(f.canvas.style.transform).toBe('translate(65px, -5px) scale(1)')
+  f.projection.dispose()
 })
 
 test('a lower-density navigation preview still follows horizontal and upward wheel cameras',()=>{

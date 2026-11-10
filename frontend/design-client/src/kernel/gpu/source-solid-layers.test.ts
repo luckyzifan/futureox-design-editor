@@ -61,3 +61,21 @@ test('renderer batches in painter order, binds each actual binary clip and retai
   r.interactionCapturing=true
   expect(await r.drawSourceSolidLayers(['a'],0,targets,[0,1,2,3])).toBeUndefined()
 })
+test('opaque source leaves stop on the uniform budget',async()=>{
+  const r=new GpuRenderer({...driver,sourceLayersReady:true,sourceProgramOffset:()=>29} as Driver) as any
+  r.sourceSolidLayers=true
+  const nodes:Record<string,GpuNode>={}
+  const ids:string[]=[]
+  for(let i=0;i<12;i++){const id=`n${i}`;ids.push(id);nodes[id]=node(id)}
+  r.scene={nodes}
+  r.color=()=>[.125,.25,.5];r.alpha=()=>1
+  const rect={x:0,y:0,w:32,h:32}
+  const targets=Array.from({length:4},()=>({texture:{},rect}))
+  let count=0
+  r.composeSourceProgram=vi.fn(async(_mode:number,target:any,_inputs:any[],_region:any,write:(u:Float32Array)=>void)=>{
+    const u=new Float32Array(256);write(u);count=u[17];return target
+  })
+  const result=await r.drawSourceSolidLayers(ids,0,targets,[0,1,2,3])
+  expect(result.end).toBe(count)
+  expect(count).toBe(7)
+})

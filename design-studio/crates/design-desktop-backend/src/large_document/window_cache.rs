@@ -9,6 +9,8 @@ struct Cached { path: PathBuf, descriptor: scene_store::Descriptor }
 #[derive(Default)]
 pub(super) struct Windows {
     revision: Option<u64>, directory: Option<PathBuf>, entries: BTreeMap<(usize, usize), Cached>,
+    pub conversions: u64,
+    pub retained_reads: u64,
     #[cfg(test)] pub hits: usize,
 }
 impl Windows {
@@ -57,7 +59,9 @@ pub(super) fn convert(s: &Session, p: usize, n: usize, cancel: &AtomicBool, cont
     if let Some(cached) = cached {
         match read(&cached, cancel) {
             Ok(value) => {
-                #[cfg(test)] { s.converted_windows.lock().map_err(issue)?.hits += 1; }
+                let mut cache = s.converted_windows.lock().map_err(issue)?;
+                cache.retained_reads += 1;
+                #[cfg(test)] { cache.hits += 1; }
                 return Ok(value);
             }
             Err(_) => {
@@ -69,6 +73,7 @@ pub(super) fn convert(s: &Session, p: usize, n: usize, cancel: &AtomicBool, cont
     }
     let (document, warnings) = projection::sketch_window_in(s, p, n, 64 * 1024 * 1024, context,cancel)?;
     check_cancel(cancel).map_err(issue)?;
+    s.converted_windows.lock().map_err(issue)?.conversions += 1;
     let path = {
         let mut cache = s.converted_windows.lock().map_err(issue)?;
         cache.directory(s).ok().map(|directory|directory.join(format!("{p}-{n}.scene")))

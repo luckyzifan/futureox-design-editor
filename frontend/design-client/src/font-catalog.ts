@@ -29,7 +29,8 @@ const system = (family: string, aliases: readonly string[] = [], substitutes: re
 
 export const FONT_CATALOG: readonly CatalogFamily[] = Object.freeze([
   { family: 'Noto Sans SC', aliases: ['Noto Sans CJK SC', 'Source Han Sans SC', '思源黑体', '思源黑体 SC', 'NotoSansSC'], scripts: ['sc', 'latin'], category: 'bundled', substitutes: [] },
-  { family: 'Poppins', aliases: [], scripts: ['latin'], category: 'bundled', substitutes: [] },
+  { family: 'Poppins', aliases: ['Poppins-Regular'], scripts: ['latin'], category: 'bundled', substitutes: [] },
+  { family: 'ABeeZee', aliases: ['ABeeZee-Regular'], scripts: ['latin'], category: 'bundled', substitutes: [] },
   cjk('Noto Sans TC', ['tc', 'latin'], ['Noto Sans CJK TC', 'Source Han Sans TC', 'Source Han Sans HC', '思源黑体 TC']),
   cjk('Noto Sans HK', ['tc', 'latin'], ['Noto Sans CJK HK', 'Source Han Sans HK']),
   cjk('Noto Sans JP', ['jp', 'latin'], ['Noto Sans CJK JP', 'Source Han Sans JP', '思源黑体 JP']),
@@ -68,7 +69,7 @@ export const FONT_CATALOG: readonly CatalogFamily[] = Object.freeze([
   cjk('WenQuanYi Micro Hei', ['sc', 'latin'], ['文泉驿微米黑']),
   cjk('WenQuanYi Zen Hei', ['sc', 'latin'], ['文泉驿正黑']),
   cjk('Droid Sans Fallback', ['sc', 'tc', 'jp', 'kr', 'latin'], ['DroidSansFallback']),
-  web('Inter', ['Inter Variable']),
+  { family: 'Inter', aliases: ['Inter-Regular', 'Inter Variable'], scripts: ['latin'], category: 'bundled', substitutes: [] },
   web('Roboto'),
   web('Open Sans'),
   web('Lato'),

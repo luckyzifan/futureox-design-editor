@@ -353,3 +353,43 @@ test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async
   expect(document.querySelector('.native-source-content')?.getAttribute('data-source-coverage-extend')).toBe('pan')
  expect(state.frames.at(-1)?.items.some(item=>item.tile.gpuTile===901)).toBe(true)
 })
+
+test('a return pan after 3200% does not stay ready on the stale high-density tiles',async()=>{
+ vi.stubGlobal('OffscreenCanvas',class {})
+ vi.stubGlobal('ImageBitmapRenderingContext',class {})
+ Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+ const {previewCameraScaleWithinLimit}=await import('./tile-preview')
+ const home={x:0,y:0,zoom:0.25}
+ const finish=async()=>{
+  for(let guard=0;guard<8;guard++){
+   const job=[...state.jobs].reverse().find(item=>item.active)
+   if(!job)break
+   const base=5000+guard*20
+   await act(async()=>{
+    job.options.tileViewport!.forEach((_,index)=>deliver(job,index,base+index))
+    job.finish();await pause();paint()
+   })
+  }
+ }
+ await draw(home);await finish()
+ expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:home})
+ await draw({x:0,y:0,zoom:32});await finish()
+ expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true})
+ expect(state.frames.at(-1)?.items.some(item=>item.tile.zoom>=32)).toBe(true)
+ await draw(home);await finish()
+ await act(async()=>{paint();await pause()})
+ expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:home})
+ await draw({x:-220,y:0,zoom:0.25})
+ await act(async()=>{paint();await pause()})
+ await draw({x:220,y:0,zoom:0.25})
+ await act(async()=>{paint();await pause()})
+ await draw(home)
+ await act(async()=>{paint();await pause();await new Promise(resolve=>setTimeout(resolve,40));paint();await pause()})
+ await finish()
+ const target=home.zoom
+ const frame=state.frames.at(-1)
+ expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:home})
+ expect(frame?.view).toMatchObject(home)
+ expect(frame?.items.length).toBeGreaterThan(0)
+ expect(frame?.items.every(item=>item.tile.zoom>=target*.999999&&previewCameraScaleWithinLimit(item.tile.zoom,target))).toBe(true)
+})

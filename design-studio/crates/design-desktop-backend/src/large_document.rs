@@ -194,6 +194,8 @@ struct Session {
     recent_materials: canvas_snapshot::RecentMaterials,
     #[serde(skip)]
     converted_windows: Mutex<window_cache::Windows>,
+    #[serde(skip)]
+    snapshot_account: canvas_snapshot::Account,
 }
 #[derive(Default)]
 struct Progress {
@@ -610,6 +612,7 @@ impl Sessions {
                 canvas_snapshot: None,
                 recent_materials: Default::default(),
                 converted_windows: Mutex::default(),
+                snapshot_account: Default::default(),
             })
         })();
         match result {
@@ -1286,6 +1289,7 @@ fn recover_with_opening(
                 canvas_snapshot: None,
                 recent_materials: Default::default(),
                 converted_windows: Mutex::default(),
+                snapshot_account: Default::default(),
         }));
     }
     Ok(None)

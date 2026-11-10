@@ -83,8 +83,10 @@ export type NavigationCoverageFlight<T> = {
    * Its original run still owns done and late-payload retirement. */
   cancelObsoleteZoomOut(view: CanvasCamera, width: number, height: number, minimumRatio?: number): boolean
   /** Yield an undelivered capture once most of the newest viewport is outside
-   * it. A delivered tile and a capture that still covers the view stay. */
-  cancelMissedViewport(view: CanvasCamera, width: number, height: number, minimumFraction?: number): boolean
+   * it. A delivered tile and a capture that still covers the view stay.
+   * sameZoomOnly leaves a zoom sample running; a same-zoom pan that misses
+   * still yields so the live camera can be drawn. */
+  cancelMissedViewport(view: CanvasCamera, width: number, height: number, minimumFraction?: number, sameZoomOnly?: boolean): boolean
 }
 export function navigationCoverageFlight<T>(contract: object, generation: number, capture?: NavigationCoverageCapture): NavigationCoverageFlight<T> {
   let finish!: () => void
@@ -117,9 +119,10 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
       // clear/release acknowledged pixels; cancellation may await a GPU boundary.
       return cancelPending()
     },
-    cancelMissedViewport: (view, width, height, minimumFraction = 0.5) => {
+    cancelMissedViewport: (view, width, height, minimumFraction = 0.5, sameZoomOnly = false) => {
       const source = pending
       if (!source || flight.tile !== undefined) return false
+      if (sameZoomOnly && source.zoom !== view.zoom) return false
       if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !(width > 0) || !(height > 0)) return false
       if (!Number.isFinite(minimumFraction) || minimumFraction <= 0 || minimumFraction > 1) return false
       if (viewportOverlapFraction(source.bounds, view, width, height) >= minimumFraction) return false

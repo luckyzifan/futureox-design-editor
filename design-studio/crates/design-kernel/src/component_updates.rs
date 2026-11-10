@@ -19,6 +19,9 @@ pub(crate) fn plan(before:&Document,after:&Document)->Result<Option<Plan>,String
 fn plan_patch(before:&Document,patch:&DocumentPatch)->Result<Option<Plan>,String>{
  if !patch.fields.is_empty()||!before.animations.is_empty()||patch.nodes.len()>4096{return Ok(None)}
  for(id,next)in &patch.nodes{let(Some(old),Some(next))=(before.nodes.get(id),next)else{return Ok(None)};
+  // Clearing a mode map removes the selection the scoped gate looks for, but
+  // descendants were already resolved under it. Rebuild them on the full path.
+  if old.variable_modes!=next.variable_modes{return Ok(None)}
   if old.kind!=next.kind||old.component!=next.component||old.component_set!=next.component_set||old.component_key!=next.component_key||old.instance_origin!=next.instance_origin{return Ok(None)}
  }
  let next=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).unwrap_or(&before.nodes[id]);
@@ -319,5 +322,32 @@ mod tests{
   aimed.connector.as_mut().unwrap().to.node_id=Some("plain".into());
   doc.nodes.insert("wire".into(),aimed);
   assert!(plan_patch(&doc,&patch).unwrap().is_none());
+ }
+ #[test]fn cleared_ancestor_modes_rebuild_resolved_instance_geometry(){
+  let fonts=Fonts::new();
+  let source:Document=serde_json::from_value(json!({"schemaVersion":6,"id":"d","name":"ancestor modes",
+   "pages":[{"id":"p","name":"Page","background":"#ffffff","children":["main","dark"]}],
+   "designSystem":{"collections":{"theme":{"name":"Theme","modes":["light","dark"],"defaultMode":"light"}},
+    "variables":{"width":{"name":"Width","collection":"theme","kind":"number","values":{"light":20,"dark":80}}}},
+   "nodes":{
+    "main":{"id":"main","kind":"frame","width":100,"height":100,"children":["leaf"],"component":{}},
+    "leaf":{"id":"leaf","kind":"rectangle","width":10,"height":10,"bindings":{"width":"width"}},
+    "dark":{"id":"dark","kind":"frame","width":100,"height":100,"children":["b"],"variableModes":{"theme":"dark"}},
+    "b":{"id":"b","kind":"frame","width":100,"height":100,"instance":{"componentId":"main"}}}})).unwrap();
+  let mut state=State::default();
+  state.full(&serde_json::to_string(&source).unwrap(),&fonts).unwrap();
+  let before=state.document.clone().unwrap();
+  let placed=|doc:&Document| doc.nodes.values().find(|n| n.instance_origin.as_ref().is_some_and(|o| o.owner=="b" && o.key=="leaf")).unwrap().width;
+  assert_eq!(placed(&before),80.);
+  let mut next=before.clone();
+  next.nodes.get_mut("dark").unwrap().variable_modes.clear();
+  let patch=DocumentPatch::between(&before,&next).unwrap();
+  assert!(plan_patch(&before,&patch).unwrap().is_none());
+  let receipt=state.receipt;
+  let reply:serde_json::Value=serde_json::from_str(&state.patch(&serde_json::to_string(&patch).unwrap(),receipt,&fonts).unwrap()).unwrap();
+  assert_eq!(reply["stats"]["scoped"],false);
+  assert_eq!(placed(state.document.as_ref().unwrap()),20.);
+  resolve_full(&mut next,&fonts).unwrap();
+  assert_eq!(state.document.as_ref().unwrap(),&next);
  }
 }

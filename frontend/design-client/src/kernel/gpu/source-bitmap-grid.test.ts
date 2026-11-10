@@ -1,5 +1,5 @@
 import {describe,it,expect,vi,afterEach} from 'vitest'
-import {compactSourceAxes,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
+import {compactSourceAxes,hostedDenseByteFrame,noteHostedStraightImage,readDenseSourceGrid,readDenseSourceGridBytes,sampleHostedByteImage} from './source-bitmap-grid'
 import {straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
 afterEach(()=>vi.unstubAllGlobals())
 describe('file-backed image grid',()=>{
@@ -28,13 +28,36 @@ it('dense byte transport preserves all original cells, f32 fractions and lineari
  const bytes=readDenseSourceGridBytes('source?x=1',c,b,iw,ih),decoded=new Float32Array(bytes.length)
  for(let i=0;i<bytes.length;i+=4){const alpha=lut[256+bytes[i+3]];decoded[i]=lut[bytes[i]]*alpha;decoded[i+1]=lut[bytes[i+1]]*alpha;decoded[i+2]=lut[bytes[i+2]]*alpha;decoded[i+3]=alpha}
  expect(requests).toEqual(originalRequests);expect(requests.length).toBeGreaterThan(1)
- expect(c[0]).toBe(-2);expect(c[2]).toBe(0)
- const sample=4
- expect(c[sample]).toBeCloseTo(a[sample]+.125,5)
- expect(c[sample+1]).toBeCloseTo(a[sample+1]+.875,5)
- expect(c[sample+2]).toBe(1);expect(c[sample+3]).toBe(0)
+ expect(Array.from(c)).toEqual(Array.from(a))
+ expect(c[0]).toBe(-2);expect(c[6]).toBeCloseTo(.125,5);expect(c[7]).toBeCloseTo(.875,5)
  expect(new Uint32Array(decoded.buffer)).toEqual(new Uint32Array(original.buffer))
  expect(bytes.byteLength*4).toBe(original.byteLength)
+ const width=b.w*2,at=4,ix=c[at],iy=c[at+1]
+ const byteSpace=sampleHostedByteImage(bytes,width,b.h*2,ix+c[at+2],iy+c[at+3])
+ const corner=(iy*width+ix)*4
+ let nonlinear=false
+ for(let i=0;i<bytes.length;i+=4){
+  if(!bytes[i+3])continue
+  if(Math.abs(bytes[i]/255-lut[bytes[i]])>1e-4){nonlinear=true;break}
+ }
+ expect(nonlinear).toBe(true)
+ expect(byteSpace.some((v,i)=>Math.abs(v-decoded[corner+i])>1e-3)).toBe(true)
+})
+it('exact frames stay off the straight grid and image paint does not enable byte-space sampling',()=>{
+ expect(hostedDenseByteFrame({present:true,readback:false})).toBe(true)
+ for(const frame of [
+  {present:true,readback:true},{present:false,readback:false},
+  {present:true,readback:false,resolve:true},{present:true,readback:false,presentation:true},
+  {present:true,readback:false,softwareRaster:true},
+ ])expect(hostedDenseByteFrame(frame)).toBe(false)
+ const u=new Float32Array(256);u[16]=2;u[28]=3;u[187]=0
+ noteHostedStraightImage(u,true,false,false)
+ expect([u[187],u[206],u[207]]).toEqual([0,0,1])
+ noteHostedStraightImage(u,true,true,false)
+ expect([u[187],u[206],u[207]]).toEqual([0,1,1])
+ u[16]=22;u[207]=7
+ noteHostedStraightImage(u,false,true,true)
+ expect(u[207]).toBe(7)
 })
 it.each(['cell','short','status'])('dense byte transport rejects %s without returning partial pixels',kind=>{
  vi.stubGlobal('XMLHttpRequest',class{status=kind==='status'?500:200;responseType='';response=new ArrayBuffer(kind==='short'?4:16);open(){}send(){}})

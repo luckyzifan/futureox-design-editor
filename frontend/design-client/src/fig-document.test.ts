@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { canDeletePage, userPages } from './fig-document'
 import { applyFigDocumentSemantics, importFigVariableNodes } from './import-fig-document'
 import { blank, node, uid, validateDocument, type Paint } from './model'
+import { Editor } from './engine'
 
 test('a hidden Figma page stays in the file and cannot be the last deleted page', () => {
   const doc = blank('File')
@@ -62,13 +63,38 @@ test('Figma document name, shared styles, and component sets survive validation'
   expect(large.component?.variants).toEqual({ Size: 'Large' })
   expect(chip.styleRefs?.fills).toBe(ids.get(styleKey))
   expect(doc.designSystem?.styles[ids.get(styleKey)!]).toMatchObject({ name: 'Swatch', kind: 'paint' })
-  expect(chip.bindings?.figComponentKey).toBe('chip-key')
-  expect(chip.bindings?.figBoundVariables).toContain('color')
+  const metadata = doc.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings: Record<string, string> }>
+  expect(metadata[chip.id].bindings.figComponentKey).toBe('chip-key')
+  expect(metadata[chip.id].bindings.figBoundVariables).toContain('color')
+  expect(chip.bindings?.figComponentKey).toBeUndefined()
+  expect(chip.bindings?.figBoundVariables).toBeUndefined()
   const reopened = validateDocument(JSON.parse(JSON.stringify(doc)))
   expect(reopened.designSystem?.sketchContainers?.figDocument).toMatchObject({
     source: 'figma', documentId: '1:1', colorProfile: 'SRGB',
   })
   expect(reopened.nodes[small.id].component?.variants).toEqual({ Size: 'Small' })
+})
+
+test('FIG provenance remains inert through real editor admission and reload', () => {
+  const doc = blank('FIG provenance'), chip = node('rectangle')
+  doc.schemaVersion = 4
+  doc.nodes[chip.id] = chip
+  doc.pages[0].children.push(chip.id)
+  const records = new Map([['chip', { type: 'RECTANGLE', componentKey: 'published-component',
+    boundVariables: { opacity: { sessionID: 9, localID: 2 } } }]])
+  applyFigDocumentSemantics(doc, records, new Map([['chip', chip.id]]), String, {
+    toPaint: () => ({}) as Paint, effectsOf: () => [], strokesOf: () => [], fallbackName: doc.name,
+  }, { add() {} })
+  importFigVariableNodes(doc, records)
+  const editor = new Editor(doc)
+  try {
+    expect(editor.load(JSON.parse(JSON.stringify(editor.authoredDocument)))).toBe(true)
+    expect(editor.state.doc.nodes[chip.id].bindings).toBeUndefined()
+    expect(editor.state.doc.designSystem?.sketchContainers?.nodeMetadata).toMatchObject({
+      [chip.id]: { format: 'fig', bindings: { figComponentKey: 'published-component',
+        figBoundVariables: JSON.stringify({ opacity: { sessionID: 9, localID: 2 } }) } },
+    })
+  } finally { editor.dispose() }
 })
 
 test('variable set aliases resolve by publish key and supported fields bind', () => {
@@ -106,5 +132,67 @@ test('variable set aliases resolve by publish key and supported fields bind', ()
   expect(doc.designSystem?.sketchContainers?.figDocument).toMatchObject({
     notes: expect.arrayContaining(['FIG variable fields without an executable property are retained as figVariableConsumption']),
   })
+  validateDocument(doc)
+})
+
+test('fig opacity percentages are copied at import and ordinary numbers stay', () => {
+  const doc = blank('Opacity')
+  doc.schemaVersion = 6
+  const chip = node('rectangle', 0, 0, 40, 24)
+  const main = node('frame', 0, 40, 40, 24)
+  main.component = { variants: {}, properties: {} }
+  const instance = node('frame', 0, 80, 40, 24)
+  instance.instance = {
+    componentId: main.id,
+    overrides: { child: { bindings: { opacity: '1:4', width: '1:4' } } },
+    propertyValues: {},
+  }
+  doc.nodes = { [chip.id]: chip, [main.id]: main, [instance.id]: instance }
+  doc.pages[0].children = [chip.id, main.id, instance.id]
+  const records = new Map<string, Record<string, unknown>>([
+    ['1:3', { type: 'VARIABLE_SET', name: 'Theme', key: 'theme', variableSetModes: [
+      { name: 'Light', id: { sessionID: 9, localID: 1 } },
+      { name: 'Dark', id: { sessionID: 9, localID: 2 } },
+    ] }],
+    ['1:4', { type: 'VARIABLE', name: 'Disabled 50%', key: 'disabled', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'theme' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 50 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 20 } } },
+      ] } }],
+    ['1:6', { type: 'VARIABLE', name: 'Solo 50%', key: 'solo', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'theme' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 80 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 40 } } },
+      ] } }],
+    ['1:5', { type: 'VARIABLE', name: 'Half', key: 'half', variableResolvedType: 'FLOAT', variableSetID: { assetRef: { key: 'theme' } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 9, localID: 1 }, variableData: { value: { floatValue: 0.25 } } },
+        { modeID: { sessionID: 9, localID: 2 }, variableData: { value: { floatValue: 0.25 } } },
+      ] } }],
+    ['chip', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
+      { variableField: 'WIDTH', variableData: { value: { alias: { assetRef: { key: 'disabled' } } } } },
+      { variableField: 'OPACITY', variableData: { value: { alias: { assetRef: { key: 'disabled' } } } } },
+    ] } }],
+    ['unit', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
+      { variableField: 'OPACITY', variableData: { value: { alias: { assetRef: { key: 'half' } } } } },
+    ] } }],
+    ['solo', { type: 'RECTANGLE', variableConsumptionMap: { entries: [
+      { variableField: 'OPACITY', variableData: { value: { alias: { assetRef: { key: 'solo' } } } } },
+    ] } }],
+  ])
+  importFigVariableNodes(doc, records, new Map([['chip', chip.id], ['unit', main.id], ['solo', instance.id]]))
+  expect(doc.designSystem?.variables['1:4'].values.Light).toBe(50)
+  expect(doc.designSystem?.variables['1:4'].values.Dark).toBe(20)
+  expect(doc.designSystem?.variables['1:4#fig-opacity'].values).toEqual({ Light: 0.5, Dark: 0.2 })
+  expect(doc.designSystem?.variables['1:5#fig-opacity']).toBeUndefined()
+  expect(doc.designSystem?.variables['1:6#fig-opacity']).toBeUndefined()
+  expect(doc.designSystem?.variables['1:6'].values).toEqual({ Light: 0.8, Dark: 0.4 })
+  expect(instance.bindings?.opacity).toBe('1:6')
+  expect(chip.bindings?.width).toBe('1:4')
+  expect(chip.bindings?.opacity).toBe('1:4#fig-opacity')
+  expect(main.bindings?.opacity).toBe('1:5')
+  const override = instance.instance?.overrides.child.bindings as Record<string, string>
+  expect(override.opacity).toBe('1:4#fig-opacity')
+  expect(override.width).toBe('1:4')
   validateDocument(doc)
 })

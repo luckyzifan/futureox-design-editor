@@ -52,6 +52,19 @@ test('a large pan yields an undelivered capture that misses the newest viewport'
   expect(flight.cancelMissedViewport({ x: 0, y: 0, zoom: Number.NaN }, 100, 100)).toBe(false)
 })
 
+test('an active gesture yields only a same-zoom pan that misses the viewport', () => {
+  let cancelled = 0
+  const flight = navigationCoverageFlight({}, 1, {
+    zoom: 2, bounds: { x: 0, y: 0, width: 512, height: 256 }, cancel: () => cancelled++,
+  })
+  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 1 }, 1024, 512, 0.5, true)).toBe(false)
+  expect(flight.cancelMissedViewport({ x: -40, y: 0, zoom: 2 }, 1024, 512, 0.5, true)).toBe(false)
+  expect(cancelled).toBe(0)
+  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 2 }, 1024, 512, 0.5, true)).toBe(true)
+  expect(cancelled).toBe(1)
+  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 2 }, 1024, 512, 0.5, true)).toBe(false)
+})
+
 test('a covering capture and finished/capture-free flights never spend reversal cancellation',()=>{
   const source={zoom:8,bounds:{x:-200,y:-200,width:1000,height:1000},cancel:()=>{throw Error('Unexpected cancel')}}
   const flight=navigationCoverageFlight({},1,source)

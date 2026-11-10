@@ -2,6 +2,8 @@
 
 Unmanaged documents store fill, stroke, and stop colors as encoded sRGB. `#RRGGBB` and `color(srgb r g b / a)` share `color::pixel`. The Figma raster profile composites those bytes in place. It does not decode them to linear light and encode them again on the way out. A managed document decodes every authored color into extended-range linear sRGB, then encodes on output. Alpha is coverage and is not run through a transfer curve.
 
+Sketch `colorSpace` 1 is an sRGB tag, not linear management. Native Sketch composites in that encoded space, so those archives stay unmanaged and re-export as `colorSpace` 1. A document that already has sRGB color management exports `userInfo.com.futureox.design-kernel.linearSrgbComposite` and imports back onto the linear path. Native Sketch preview exports keep that linear management when the flag is present; other `colorSpace` 1 previews stay encoded. An unmanaged source reports color settings as JSON `null`, and PNG row decoding accepts that token instead of requiring `ColorSettings`. Display P3 (`colorSpace` 2) stays managed.
+
 ## Canvas
 
 2D previews request `{ colorSpace: 'srgb' }`. The resident WebGPU swapchain is also `colorSpace: 'srgb'`.

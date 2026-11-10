@@ -28,3 +28,17 @@ test('actual Rust rectangle/cubic scene admits; corrupted transport and stale ow
   assert.equal(sketchInspection(summary, 'host-document', 7, 'file.sketch').preview.status, 'ready')
   assert.throws(() => sketchInspection({ ...summary, preview: { ...summary.preview, pageId: 'other' } }, 'host-document', 7, 'file.sketch'))
 })
+
+test('encoded Sketch previews omit color management; linear frames still require it', () => {
+  const encoded = structuredClone(original)
+  encoded.scene.floatCompositing = false
+  delete encoded.scene.colorManagement
+  encoded.scene.colors['color(srgb 0.125 0.5 1 / 1)'] = [0.125, 0.5, 1, 1]
+  assert.equal(admitSketchPreview(JSON.stringify(encoded), original.owner).scene.floatCompositing, false)
+  const mixed = structuredClone(encoded)
+  mixed.scene.colorManagement = original.scene.colorManagement
+  assert.throws(() => admitSketchPreview(JSON.stringify(mixed), original.owner))
+  const cleared = structuredClone(original)
+  delete cleared.scene.colorManagement
+  assert.throws(() => admitSketchPreview(JSON.stringify(cleared), original.owner))
+})

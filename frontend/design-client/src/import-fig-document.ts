@@ -146,11 +146,15 @@ export function applyFigDocumentSemantics(
       warnings.add(`FIG ${node.name || node.id}: stroke style reference is preserved on the style, not applied to fills`)
     if (record.inheritGridStyleID) warnings.add(`FIG ${node.name || node.id}: grid style reference is not executable`)
     if (record.boundVariables) {
-      node.bindings = { ...node.bindings, figBoundVariables: JSON.stringify(record.boundVariables) }
+      const metadata = (system(doc).sketchContainers!.nodeMetadata ??= {}) as FigRecord
+      const receipt = (metadata[node.id] ??= { format: 'fig', bindings: {} })
+      receipt.bindings.figBoundVariables = JSON.stringify(record.boundVariables)
       warnings.add(`FIG ${node.name || node.id}: variable bindings retained as source metadata, not executable`)
     }
     if (typeof record.componentKey === 'string' && record.componentKey) {
-      node.bindings = { ...node.bindings, figComponentKey: record.componentKey }
+      const metadata = (system(doc).sketchContainers!.nodeMetadata ??= {}) as FigRecord
+      const receipt = (metadata[node.id] ??= { format: 'fig', bindings: {} })
+      receipt.bindings.figComponentKey = record.componentKey
     }
   }
 
@@ -348,11 +352,122 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
     return Object.entries(value).flatMap(([key, child]) => linked(child, field || key))
   }
   for (const node of Object.values(doc.nodes)) {
-    const raw = node.bindings?.figBoundVariables
+    const metadata = systemDoc.sketchContainers?.nodeMetadata as FigRecord | undefined
+    const raw = metadata?.[node.id]?.bindings?.figBoundVariables
     if (!raw) continue
     let parsed: unknown
     try { parsed = JSON.parse(raw) } catch { continue }
     for (const [field, id] of linked(parsed)) node.bindings = { ...node.bindings, [field]: id }
+  }
+  normalizeFigOpacityBindings(doc)
+}
+
+function opacityBindingPath(path: string) {
+  return path === 'opacity' || path.endsWith('.opacity')
+}
+
+function scaledFigOpacityVariable(
+  system: NonNullable<DesignDocument['designSystem']>,
+  id: string,
+  memo: Map<string, string>,
+  stack: Set<string>,
+): string {
+  const done = memo.get(id)
+  if (done) return done
+  if (stack.has(id)) return id
+  const source = system.variables[id]
+  if (!source || source.kind !== 'number') {
+    memo.set(id, id)
+    return id
+  }
+  stack.add(id)
+  const values: typeof source.values = {}
+  let scaled = false
+  for (const [mode, value] of Object.entries(source.values)) {
+    if (value && typeof value === 'object' && 'alias' in value) {
+      const next = scaledFigOpacityVariable(system, value.alias, memo, stack)
+      if (next !== value.alias) scaled = true
+      values[mode] = { alias: next }
+    } else if (typeof value === 'number' && Number.isFinite(value)) {
+      if (value > 1 && value <= 100) {
+        scaled = true
+        values[mode] = value / 100
+      } else values[mode] = value
+    } else {
+      stack.delete(id)
+      memo.set(id, id)
+      return id
+    }
+  }
+  stack.delete(id)
+  if (!scaled) {
+    memo.set(id, id)
+    return id
+  }
+  let nextId = `${id}#fig-opacity`
+  let generation = 2
+  while (system.variables[nextId]) {
+    nextId = `${id}#fig-opacity-${generation}`
+    generation += 1
+    if (generation > 8) {
+      memo.set(id, id)
+      return id
+    }
+  }
+  system.variables[nextId] = { name: source.name, collection: source.collection, kind: source.kind, values }
+  memo.set(id, nextId)
+  return nextId
+}
+
+function percentNumberVariable(variable: NonNullable<DesignDocument['designSystem']>['variables'][string]) {
+  const values = Object.values(variable.values)
+  return variable.kind === 'number'
+    && values.some(value => typeof value === 'number' && value > 1 && value <= 100)
+    && values.every(value => typeof value === 'number' && Number.isFinite(value))
+}
+
+/** FIG opacity numbers above 1 are percentages. A token used only for opacity
+ * is scaled in place. A token also used as a length keeps its source number,
+ * and only the opacity binding points at a 0–1 copy. */
+export function normalizeFigOpacityBindings(doc: DesignDocument) {
+  const system = doc.designSystem
+  if (!system) return
+  const uses = new Map<string, Set<string>>()
+  const sites: Array<{ map: Record<string, string>; field: string }> = []
+  const take = (map: Record<string, unknown> | undefined) => {
+    if (!map) return
+    for (const [field, id] of Object.entries(map)) {
+      if (typeof id !== 'string') continue
+      const fields = uses.get(id) ?? new Set<string>()
+      fields.add(field)
+      uses.set(id, fields)
+      if (opacityBindingPath(field)) sites.push({ map: map as Record<string, string>, field })
+    }
+  }
+  for (const node of Object.values(doc.nodes)) {
+    take(node.bindings)
+    for (const fields of Object.values(node.instance?.overrides || {})) {
+      const bindings = fields.bindings
+      if (bindings && typeof bindings === 'object' && !Array.isArray(bindings)) take(bindings as Record<string, unknown>)
+    }
+  }
+  if (!sites.length) return
+  const inplace = new Set<string>()
+  for (const [id, fields] of uses) {
+    const variable = system.variables[id]
+    if (!variable || ![...fields].every(opacityBindingPath) || !percentNumberVariable(variable)) continue
+    for (const [mode, value] of Object.entries(variable.values)) {
+      if (typeof value === 'number' && value > 1 && value <= 100) variable.values[mode] = value / 100
+    }
+    inplace.add(id)
+  }
+  const memo = new Map<string, string>()
+  const stack = new Set<string>()
+  for (const site of sites) {
+    const current = site.map[site.field]
+    if (typeof current !== 'string' || inplace.has(current)) continue
+    const next = scaledFigOpacityVariable(system, current, memo, stack)
+    if (next !== current) site.map[site.field] = next
   }
 }
 
