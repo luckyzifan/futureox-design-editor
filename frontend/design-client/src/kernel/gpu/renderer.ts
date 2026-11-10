@@ -2,7 +2,7 @@ import {compactSourceAxes,hostedDenseByteFrame,readSourceGrid,readDenseSourceGri
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
-import { ResourceLedger, type ResourceClass } from './resource-ledger'
+import { ResourceLedger, residencyBaseKey, sceneResidencyCondition, type ResourceClass } from './resource-ledger'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
@@ -766,6 +766,9 @@ export class GpuRenderer {
   private free: Map<string,Texture[]> = new SurfacePool<Texture>()
   private busy = new Set<Texture>()
   private readonly ledger = new ResourceLedger<Texture, Surface>()
+  private residencyBases: string[] = []
+  private residencyStableBytes: number | null = null
+  private residencyConditionKey: string | null = null
   /** Class of the next `bytes` assignment. Scratch is the constructor charge;
    * every later assignment is unclassified until a callsite says otherwise. */
   private byteClass: ResourceClass = 'scratch'
@@ -1322,6 +1325,56 @@ export class GpuRenderer {
   private retain(surface: Surface): Surface {
     this.ledger.retain(surface.texture)
     return { ...surface }
+  }
+  /** Completed free textures the finished frame did not reference. In-flight
+   * epochs stay charged: logical retirement is not physical release. Textures
+   * still in `used` stay so the next same-size frame can reuse them. */
+  private releaseUnreferencedReclaimable() {
+    const completed = this.driver.completedResourceEpoch
+    const current = this.driver.resourceEpoch
+    if (!Number.isSafeInteger(completed) || completed! < 0) return 0
+    if (!Number.isSafeInteger(current) || completed! < current!) return 0
+    const before = this.bytes
+    for (const list of [...this.free.values()]) {
+      for (const texture of [...list]) {
+        if (this.used.has(texture) || this.busy.has(texture) || this.admissionPins.has(texture)) continue
+        if (this.textureLife(texture) !== 'reclaimable') continue
+        this.destroyFree(texture)
+      }
+    }
+    const released = before - this.bytes
+    if (!Number.isSafeInteger(released) || released <= 0) return 0
+    this.ledger.noteCompletedFree(released)
+    return released
+  }
+  /** Same viewport, material keys, scale, DPR and cold/warm. A different key
+   * starts a new trend instead of extending the previous one. */
+  private commitResidencyCycle(scene: GpuScene) {
+    const released = this.releaseUnreferencedReclaimable()
+    const draft = sceneResidencyCondition(scene, false)
+    if (!draft) {
+      this.residencyStableBytes = null
+      this.residencyConditionKey = null
+      return
+    }
+    const base = residencyBaseKey(draft)
+    const condition = { ...draft, thermal: this.residencyBases.includes(base) ? 'warm' as const : 'cold' as const }
+    if (!this.ledger.bindCondition(condition)) return
+    const point = this.ledger.recordCycle(this.driver.completedResourceEpoch, released)
+    if (!point) {
+      this.residencyStableBytes = null
+      this.residencyConditionKey = null
+      return
+    }
+    this.rememberResidencyBase(base)
+    this.residencyStableBytes = point.stableBytes
+    this.residencyConditionKey = point.conditionKey
+  }
+  private rememberResidencyBase(base: string) {
+    const at = this.residencyBases.indexOf(base)
+    if (at >= 0) this.residencyBases.splice(at, 1)
+    this.residencyBases.push(base)
+    if (this.residencyBases.length > 32) this.residencyBases.shift()
   }
   /** Active, waiting on GPU completion, or reclaimable. Logical retirement is
    * not reported as released. */
@@ -7989,6 +8042,7 @@ export class GpuRenderer {
       this.horizontalFilters.finish(!this.frameCurrent || this.frameCurrent())
       this.staticImageBlurs.finish(!this.frameCurrent || this.frameCurrent(), this.driver.completedResourceEpoch)
       this.collectRetiredImageAssets()
+      this.commitResidencyCycle(scene)
       return {
         ...result,
         staticImageBlurEligible: this.staticImageBlurEligible, staticImageBlurHits: this.staticImageBlurHits,
@@ -8039,6 +8093,8 @@ export class GpuRenderer {
         commandSubmissions: this.driver.commandSubmissions,
         triangles: this.driver.triangles,
         textureBytes: this.bytes,
+        residencyStableBytes: this.residencyStableBytes,
+        residencyConditionKey: this.residencyConditionKey,
         workingBudgetBytes: this.frameBudget,
         interactionBudgetBytes: this.interactionBudget,
         peakTextureBytes: this.peak,
@@ -8147,5 +8203,6 @@ export class GpuRenderer {
     this.releasedAliases = new WeakSet()
     this.maskOwners.clear()
     this.bytes = 0
+    this.ledger.forgetTracked()
   }
 }

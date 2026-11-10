@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { ResourceLedger } from './resource-ledger'
+import { ResourceLedger, sceneResidencyCondition, residencyBaseKey, residencyConditionKey } from './resource-ledger'
 
 type Tex = { id: number; bytes: number }
 type Surf = { texture: Tex }
@@ -95,4 +95,58 @@ test('a new peak records the class that caused it and completion does not lower 
   expect(ledger.lifeBytes.active).toBe(64)
   expect(ledger.lifeBytes.reclaimable).toBe(0)
   expect(ledger.bytes).toBe(96)
+})
+
+test('same-condition trend keeps retired bytes until a physical release', () => {
+  const ledger = new ResourceLedger<Tex, Surf>()
+  const cold = sceneResidencyCondition({
+    view: { x: 1, y: 2, zoom: 0.5, dpr: 2 }, width: 100, height: 80,
+    extent: { w: 1000, h: 800 }, densePaint: { width: 32, height: 16, nodes: { b: 1, a: 2 }, sources: { s: 0 } },
+    resolve: { scale: 1 },
+  }, false)
+  const reordered = sceneResidencyCondition({
+    view: { x: 1, y: 2, zoom: 0.5, dpr: 2 }, width: 100, height: 80,
+    extent: { w: 1000, h: 800 }, densePaint: { width: 32, height: 16, nodes: { a: 2, b: 1 }, sources: { s: 0 } },
+    resolve: { scale: 1 },
+  }, false)
+  expect(cold && reordered && residencyBaseKey(cold) === residencyBaseKey(reordered)).toBe(true)
+  expect(ledger.bindCondition(cold!)).toBe(true)
+  const spare = { id: 8, bytes: 128, width: 4, height: 8 }
+  const kept = { id: 9, bytes: 64, width: 4, height: 4 }
+  ledger.chargeTracked(spare, 'surface')
+  ledger.chargeTracked(kept, 'surface')
+  ledger.park(spare, 2, 1)
+  ledger.park(kept, 2, 1)
+  const pending = ledger.recordCycle(1, 0)
+  expect(pending?.stableBytes).toBe(192)
+  expect(pending?.life['retired-pending-completion']).toBe(192)
+  expect(ledger.bytes).toBe(192)
+  expect(ledger.peak).toBe(192)
+  ledger.dischargeTracked(spare, 2)
+  ledger.noteCompletedFree(128)
+  const warm = { ...cold!, thermal: 'warm' as const }
+  expect(residencyConditionKey(warm)).not.toBe(residencyConditionKey(cold!))
+  expect(ledger.bindCondition(warm)).toBe(true)
+  const released = ledger.recordCycle(2, 128)
+  expect(released?.stableBytes).toBe(64)
+  expect(released?.life.reclaimable).toBe(64)
+  expect(released?.life['retired-pending-completion']).toBe(0)
+  expect(ledger.peak).toBe(192)
+  expect(ledger.resources(2).map(row => row.bytes)).toEqual([64])
+  expect(ledger.resources(2)[0]).toMatchObject({ class: 'surface', width: 4, height: 4, life: 'reclaimable' })
+  ledger.bindCondition(warm)
+  ledger.recordCycle(2, 0)
+  const trend = ledger.pressureTrend()
+  expect(trend.cycles).toBe(2)
+  expect(trend.stableBytes).toEqual([64, 64])
+  expect(trend.grew).toBe(false)
+  expect(trend.delta).toBe(0)
+  expect(trend.thermal).toBe('warm')
+  const other = sceneResidencyCondition({ view: { x: 1, y: 2, zoom: 0.5, dpr: 1 }, width: 100, height: 80 }, false)
+  expect(ledger.bindCondition(other!)).toBe(true)
+  ledger.recordCycle(2, 0)
+  expect(ledger.pressureTrend().cycles).toBe(1)
+  expect(ledger.pressureTrend().stableBytes).toEqual([64])
+  expect(ledger.crossConditionResets).toBe(2)
+  expect(sceneResidencyCondition({ view: { x: 0, y: 0, zoom: 1, dpr: Number.NaN } }, false)).toBeUndefined()
 })

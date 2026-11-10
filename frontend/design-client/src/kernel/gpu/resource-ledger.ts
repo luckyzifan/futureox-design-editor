@@ -25,11 +25,59 @@ export type ResidencySample = {
   life: LifeBreakdown
 }
 
+export type TrackedResource = {
+  id: number
+  class: ResourceClass
+  bytes: number
+  width: number
+  height: number
+  life: LifeBucket
+  poolEpoch: number
+}
+
+/** Same-condition identity. Cold and warm are different keys, so a warm-up
+ * sample is not a cyclic trend point. */
+export type ResidencyCondition = {
+  viewport: string
+  materialKeys: string
+  scale: string
+  dpr: string
+  thermal: 'cold' | 'warm'
+}
+
+export type CyclePoint = {
+  cycle: number
+  conditionKey: string
+  chargedBytes: number
+  /** Charged bytes after this completion's physical releases. Retired-pending
+   * bytes are still included. */
+  stableBytes: number
+  peakBytes: number
+  releasedBytes: number
+  classes: ByteBreakdown
+  life: LifeBreakdown
+}
+
+export type PressureTrend = {
+  conditionKey: string | null
+  thermal: 'cold' | 'warm' | null
+  cycles: number
+  stableBytes: number[]
+  peakBytes: number[]
+  delta: number
+  grew: boolean
+  crossConditionResets: number
+}
+
 export type TextureAttribution = ResidencySample & {
   peakBytes: number
   completedFreeBytes: number
   peakSample: ResidencySample | null
   completionSample: ResidencySample | null
+  stableBytes: number | null
+  conditionKey: string | null
+  resources: TrackedResource[]
+  trend: PressureTrend
 }
 
 const emptyClasses = (): ByteBreakdown => ({
@@ -40,7 +88,10 @@ const emptyLife = (): LifeBreakdown => ({
   active: 0, 'retired-pending-completion': 0, reclaimable: 0, 'epoch-unknown': 0,
 })
 
-type Track = { class: ResourceClass; parkedEpoch?: number }
+type Track = { id: number; class: ResourceClass; width: number; height: number; parkedEpoch?: number }
+
+const finiteDim = (value: unknown) =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000 ? value : 0
 
 const finiteBytes = (bytes: number) => Number.isSafeInteger(bytes) && bytes >= 0
 
@@ -57,8 +108,15 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
   readonly lifeBytes: LifeBreakdown = emptyLife()
   peakSample: ResidencySample | null = null
   completionSample: ResidencySample | null = null
-  private readonly tracked = new WeakMap<Texture, Track>()
+  private readonly tracked = new Map<Texture, Track>()
   private readonly pendingEpochs = new Map<number, number>()
+  private nextId = 1
+  private conditionKey: string | null = null
+  private conditionThermal: 'cold' | 'warm' | null = null
+  private cycle = 0
+  private trend: CyclePoint[] = []
+  private latestResources: TrackedResource[] = []
+  crossConditionResets = 0
 
   charge(bytes: number, klass: ResourceClass = 'unclassified') {
     this.applyDelta(bytes, klass)
@@ -91,6 +149,10 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
       completedFreeBytes: this.completedFreeBytes,
       peakSample: this.peakSample,
       completionSample: this.completionSample,
+      stableBytes: this.trend.length ? this.trend[this.trend.length - 1].stableBytes : null,
+      conditionKey: this.conditionKey,
+      resources: this.latestResources.map(row => ({ ...row })),
+      trend: this.pressureTrend(),
     }
   }
 
@@ -106,7 +168,8 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
     const seen = this.tracked.has(texture)
     this.applyDelta(bytes, klass)
     if (!seen) {
-      this.tracked.set(texture, { class: klass })
+      const shape = texture as { width?: number; height?: number }
+      this.tracked.set(texture, { id: this.nextId++, class: klass, width: finiteDim(shape.width), height: finiteDim(shape.height) })
       this.lifeBytes.active += bytes
       if (this.peak === this.bytes) this.peakSample = this.sample()
     }
@@ -228,6 +291,82 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
     }
   }
 
+  /** Drop per-resource rows after the device is gone. Byte charges stay with
+   * the caller; this only stops the row table from pinning destroyed textures. */
+  forgetTracked() {
+    this.tracked.clear()
+    this.pendingEpochs.clear()
+    this.lifeBytes.active = 0
+    this.lifeBytes['retired-pending-completion'] = 0
+    this.lifeBytes.reclaimable = 0
+    this.lifeBytes['epoch-unknown'] = 0
+    this.latestResources = []
+  }
+
+  bindCondition(condition: ResidencyCondition) {
+    if (!validCondition(condition)) return false
+    const key = residencyConditionKey(condition)
+    if (this.conditionKey !== key) {
+      if (this.conditionKey !== null) this.crossConditionResets++
+      this.conditionKey = key
+      this.conditionThermal = condition.thermal
+      this.trend = []
+      this.cycle = 0
+    }
+    return true
+  }
+
+  /** Record one same-condition sample. `releasedBytes` must already have been
+   * destroyed. This does not subtract retired-pending or reclaimable bytes. */
+  recordCycle(completed: number | undefined, releasedBytes: number): CyclePoint | null {
+    if (!this.conditionKey) return null
+    if (!Number.isSafeInteger(completed) || completed! < 0) return null
+    if (!Number.isSafeInteger(releasedBytes) || releasedBytes < 0) return null
+    if (!Number.isSafeInteger(this.bytes) || this.bytes < 0) return null
+    this.noteCompletion(completed)
+    this.cycle += 1
+    const point: CyclePoint = {
+      cycle: this.cycle, conditionKey: this.conditionKey, chargedBytes: this.bytes, stableBytes: this.bytes,
+      peakBytes: this.peak, releasedBytes, classes: { ...this.classes }, life: { ...this.lifeBytes },
+    }
+    this.trend.push(point)
+    if (this.trend.length > 8) this.trend.shift()
+    this.latestResources = this.resources(completed)
+    return point
+  }
+
+  resources(completed?: number): TrackedResource[] {
+    const rows: TrackedResource[] = []
+    for (const [texture, slot] of this.tracked) {
+      const bytes = (texture as { bytes?: number }).bytes
+      if (!finiteBytes(bytes ?? -1)) continue
+      rows.push({
+        id: slot.id, class: slot.class, bytes: bytes!, width: slot.width, height: slot.height,
+        life: this.rowLife(slot, completed), poolEpoch: slot.parkedEpoch ?? 0,
+      })
+    }
+    rows.sort((left, right) => left.id - right.id)
+    return rows
+  }
+
+  pressureTrend(): PressureTrend {
+    const stableBytes = this.trend.map(point => point.stableBytes)
+    let grew = false
+    for (let index = 1; index < stableBytes.length; index++) if (stableBytes[index] > stableBytes[index - 1]) grew = true
+    return {
+      conditionKey: this.conditionKey, thermal: this.conditionThermal, cycles: this.trend.length, stableBytes,
+      peakBytes: this.trend.map(point => point.peakBytes),
+      delta: stableBytes.length >= 2 ? stableBytes[stableBytes.length - 1] - stableBytes[0] : 0,
+      grew, crossConditionResets: this.crossConditionResets,
+    }
+  }
+
+  private rowLife(slot: Track, completed: number | undefined): LifeBucket {
+    if (slot.parkedEpoch === undefined) return 'active'
+    if (slot.parkedEpoch === 0) return 'epoch-unknown'
+    return Number.isSafeInteger(completed) && slot.parkedEpoch <= completed! ? 'reclaimable' : 'retired-pending-completion'
+  }
+
   private takeParked(bytes: number, epoch: number, completed: number | undefined) {
     if (epoch === 0) {
       this.lifeBytes['epoch-unknown'] -= bytes
@@ -242,4 +381,78 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
     if (left <= 0) this.pendingEpochs.delete(epoch)
     else this.pendingEpochs.set(epoch, left)
   }
+}
+
+const bounded = (value: string) => value.length <= 512 && !value.includes('\0')
+
+function validCondition(condition: ResidencyCondition) {
+  return (condition.thermal === 'cold' || condition.thermal === 'warm') &&
+    [condition.viewport, condition.materialKeys, condition.scale, condition.dpr].every(value => typeof value === 'string' && bounded(value))
+}
+
+export function residencyBaseKey(condition: Pick<ResidencyCondition, 'viewport' | 'materialKeys' | 'scale' | 'dpr'>) {
+  return [condition.viewport, condition.materialKeys, condition.scale, condition.dpr].join('\n')
+}
+
+export function residencyConditionKey(condition: ResidencyCondition) {
+  return `${residencyBaseKey(condition)}\n${condition.thermal}`
+}
+
+function fnv128(text: string) {
+  let a = 0x811c9dc5, b = 0x01000193, c = 0x811c9dc5 ^ 0x01000193, d = 0x9e3779b1
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index)
+    a = Math.imul(a ^ code, 0x01000193)
+    b = Math.imul(b ^ (code + 0x9e), 0x01000193)
+    c = Math.imul(c ^ (code + 0x7f), 0x01000193)
+    d = Math.imul(d ^ (code + 3), 0x01000193)
+  }
+  return [a, b, c, d].map(part => (part >>> 0).toString(16).padStart(8, '0')).join('')
+}
+
+function num(value: unknown): string | undefined {
+  if (value === undefined) return ''
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return Object.is(value, -0) ? '-0' : String(value)
+}
+
+export type SceneResidencySource = {
+  view?: { x?: unknown; y?: unknown; zoom?: unknown; dpr?: unknown }
+  output?: { x?: unknown; y?: unknown; w?: unknown; h?: unknown }
+  extent?: { w?: unknown; h?: unknown }
+  width?: unknown
+  height?: unknown
+  resolve?: { scale?: unknown }
+  presentation?: { scale?: unknown }
+  densePaint?: { width?: unknown; height?: unknown; nodes?: Record<string, unknown>; sources?: Record<string, unknown> }
+}
+
+/** Viewport, material-key set, scale, DPR and cold/warm. Missing DPR is an
+ * empty token; a non-finite DPR rejects the sample instead of mixing it. */
+export function sceneResidencyCondition(scene: SceneResidencySource, warm: boolean): ResidencyCondition | undefined {
+  const view = scene.view
+  if (!view) return undefined
+  const x = num(view.x), y = num(view.y), zoom = num(view.zoom), dpr = num(view.dpr)
+  if (!x || !y || !zoom || dpr === undefined) return undefined
+  const output = scene.output, extent = scene.extent
+  const parts = [x, y, zoom,
+    output ? num(output.x) : '', output ? num(output.y) : '', output ? num(output.w) : '', output ? num(output.h) : '',
+    extent ? num(extent.w) : '', extent ? num(extent.h) : '', num(scene.width), num(scene.height)]
+  if (parts.some(part => part === undefined)) return undefined
+  const scales = [num(scene.resolve?.scale), num(scene.presentation?.scale)]
+  if (scales.some(part => part === undefined)) return undefined
+  const dense = scene.densePaint
+  let materialKeys = '0'
+  if (dense) {
+    const width = num(dense.width), height = num(dense.height)
+    if (!width || !height) return undefined
+    const nodes = dense.nodes && typeof dense.nodes === 'object' ? Object.keys(dense.nodes).sort() : []
+    const sources = dense.sources && typeof dense.sources === 'object' ? Object.keys(dense.sources).sort() : []
+    materialKeys = `${nodes.length}+${sources.length}:${fnv128(nodes.join('\n') + '\n' + sources.join('\n') + '\n' + width + 'x' + height)}`
+  }
+  const condition: ResidencyCondition = {
+    viewport: (parts as string[]).join(','), materialKeys,
+    scale: scales.filter(part => part !== '').join(',') || '1', dpr, thermal: warm ? 'warm' : 'cold',
+  }
+  return validCondition(condition) ? condition : undefined
 }
