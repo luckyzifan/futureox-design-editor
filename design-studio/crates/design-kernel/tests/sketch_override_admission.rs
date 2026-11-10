@@ -159,6 +159,19 @@ fn foreign_layer_style_is_addressed_by_remote_id_without_becoming_a_local_duplic
 }
 
 #[test]
+fn conflicting_foreign_remote_style_aliases_do_not_select_the_last_library_entry() {
+    let mut blue = paint_style("LOCAL-B");
+    blue["value"]["fills"][0]["color"]["red"] = json!(0.0);
+    blue["value"]["fills"][0]["color"]["blue"] = json!(1.0);
+    let bytes = archive(document_with(vec![("foreignLayerStyles", json!([
+        {"remoteStyleID":"REMOTE", "localSharedStyle":paint_style("LOCAL-A")},
+        {"remoteStyleID":"remote", "localSharedStyle":blue}
+    ]))]), styled_symbol("REMOTE", json!("REMOTE")));
+    let error = interop::import_sketch_report(&bytes).err().expect("ambiguous remote identity must reject");
+    assert!(error.to_string().contains("duplicate shared style alias"), "{error}");
+}
+
+#[test]
 fn inline_layer_style_dict_becomes_editable_paints_and_exports_as_layer_style() {
     let style = paint_style("INLINE")["value"].clone();
     let bytes = archive(document_with(vec![]), styled_symbol("INLINE", style));

@@ -3117,7 +3117,11 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
                 styles.insert(style_id.to_string(), admitted);
             }
             if foreign && let Some(remote) = remote_id.filter(|id| !id.is_empty()) {
-                style_aliases.insert(remote.to_ascii_uppercase(), json!(style_id));
+                let alias = remote.to_ascii_uppercase();
+                if let Some(previous) = style_aliases.get(&alias) && previous != &json!(style_id) {
+                    return Err(Error::MalformedJson(format!("duplicate shared style alias {remote}")));
+                }
+                style_aliases.insert(alias, json!(style_id));
             }
         }
     // P1-13: document-level containers without a kernel-native home
