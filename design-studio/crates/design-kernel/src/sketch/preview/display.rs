@@ -688,6 +688,7 @@ impl Projection<'_> {
                     String::new()
                 },
                 letter_spacing: num(first, "kerning", 0.),
+                line_height_auto: line <= 0.,
                 wrap: num(v, "textBehaviour", 0.) != 0.,
                 align: align.into(),
                 paragraph_spacing: num(p, "paragraphSpacing", 0.),

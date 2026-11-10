@@ -385,6 +385,8 @@ export type TextStyle = {
   lineHeight: number
   /** Sketch fixed line boxes use `nearest-point`. Omitted keeps unrounded half-leading. */
   lineBoxBaseline?: '' | 'nearest-point'
+  /** Sketch text with no authored line box uses the font's own line metrics. */
+  lineHeightAuto?: boolean
   letterSpacing: number
   wrap: boolean
   align: 'start' | 'center' | 'end' | 'justify'

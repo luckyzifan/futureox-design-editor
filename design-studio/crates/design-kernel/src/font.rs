@@ -95,6 +95,11 @@ pub struct TextStyle {
     /// baseline on the nearest document point and leave x fractional.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub line_box_baseline: String,
+    /// Sketch text with no authored line box uses the font's ascender,
+    /// descender and line gap. An explicit line height other than the 1.35
+    /// default turns this off. Editor-created text leaves it false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub line_height_auto: bool,
     pub letter_spacing: f64,
     pub wrap: bool,
     pub align: String,
@@ -144,6 +149,9 @@ pub struct TextVariation {
 fn is_top(s: &str) -> bool {
     s == "top"
 }
+fn is_false(value: &bool) -> bool {
+    !*value
+}
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
@@ -156,6 +164,7 @@ impl Default for TextStyle {
             weight: 400.,
             line_height: 1.35,
             line_box_baseline: String::new(),
+            line_height_auto: false,
             letter_spacing: 0.,
             wrap: false,
             align: "start".into(),
@@ -657,6 +666,11 @@ fn cluster_tracking(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 
         .and_then(|run| run.letter_spacing)
         .unwrap_or(style.letter_spacing)
 }
+fn sketch_font_line_box(style: &TextStyle) -> bool {
+    // Sketch leaves an unspecified line box on the font's own metrics.
+    // The editor default 1.35 stays in force once a line height is authored.
+    style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9
+}
 fn cluster_line_multiplier(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 {
     run_covering(runs, cluster)
         .and_then(|run| run.line_height)
@@ -927,11 +941,17 @@ impl Fonts {
     /// Per-pixel smear for fake bold on static faces (see the outline loop).
     /// Zero when the face already exposes a `wght` axis or the weight does
     /// not ask for bold at all.
-    fn synthetic_bold_delta(&self, has_weight_axis: bool, weight: f32, size: f64) -> f64 {
+    fn synthetic_bold_delta(&self, has_weight_axis: bool, face_weight: f32, weight: f32, size: f64) -> f64 {
         if weight <= 550. || !(weight.is_finite() && size.is_finite() && size > 0.) {
             return 0.;
         }
         if has_weight_axis {
+            return 0.;
+        }
+        // A static face that already is this weight class is the source
+        // outline. Smearing it would no longer be those glyphs. A lighter
+        // static face keeps the existing fake-bold amount.
+        if face_weight >= 1. && face_weight + 50. >= weight {
             return 0.;
         }
         size * f64::from((weight - 500.).clamp(0., 500.)) / 500. * 0.04
@@ -984,6 +1004,7 @@ impl Fonts {
                     .into_iter()
                     .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
             }),
+            us_weight: face.weight().to_number(),
             ..Outline::default()
         };
         face.outline_glyph(ttf_parser::GlyphId(glyph.id), &mut outline);
@@ -1014,6 +1035,7 @@ impl Fonts {
                 None,
                 OutlineOutput::Geometry,
                 None,
+                false,
             )?
             .path)
     }
@@ -1026,6 +1048,7 @@ impl Fonts {
             None,
             OutlineOutput::None,
             None,
+            false,
         )?;
         Ok((l.width.max(0.01), l.height))
     }
@@ -1055,6 +1078,7 @@ impl Fonts {
             width,
             output,
             node.text_path.as_deref(),
+            sketch_font_line_box(style),
         )?;
         if style.writing_mode == "horizontal" && node.text_path.is_none() {
             let offset = (node.height - result.height).max(0.)
@@ -1104,6 +1128,7 @@ impl Fonts {
             width,
             OutlineOutput::None,
             node.text_path.as_deref(),
+            sketch_font_line_box(style),
         )
     }
     pub fn node_path(&self, node: &Node) -> Result<Path, String> {
@@ -1439,13 +1464,23 @@ impl Fonts {
         width: Option<f64>,
         output: OutlineOutput,
         text_path: Option<&crate::text_path::TextPath>,
+        font_line_box: bool,
     ) -> Result<TextLayout, String> {
         if style.text_case == TextCase::Original
             && runs
                 .iter()
                 .all(|r| r.text_case.is_none_or(|c| c == TextCase::Original))
         {
-            return self.layout_raw(text, size, style, runs, width, output, text_path);
+            return self.layout_raw(
+                text,
+                size,
+                style,
+                runs,
+                width,
+                output,
+                text_path,
+                font_line_box,
+            );
         }
         let display = crate::text_case::display_text(text, style.text_case, runs);
         let mut result = self.layout_raw(
@@ -1456,6 +1491,7 @@ impl Fonts {
             width,
             output,
             text_path,
+            font_line_box,
         )?;
         for glyph in &mut result.glyphs {
             glyph.cluster = display.starts[glyph.cluster];
@@ -1476,6 +1512,7 @@ impl Fonts {
         width: Option<f64>,
         output: OutlineOutput,
         text_path: Option<&crate::text_path::TextPath>,
+        font_line_box: bool,
     ) -> Result<TextLayout, String> {
         style.validate()?;
         if !size.is_finite() || size <= 0. || size > 4096. || text.len() > 400000 {
@@ -1554,8 +1591,19 @@ impl Fonts {
                     while end < entries.len() {
                         // Compare occupied width directly: subtracting the
                         // inset from an exact-fit Hug width can round down.
+                        // A space that itself overflows hangs on this line.
+                        // Breaking there rewinds to the previous legal break
+                        // and drops the word that already fit, which is how a
+                        // Sketch title that is three lines becomes four or five.
+                        let byte = entries[end].0;
+                        let hanging = text[byte..]
+                            .chars()
+                            .next()
+                            .is_some_and(|ch| matches!(ch, ' ' | '\t'));
+                        let tracking = cluster_tracking(runs, utf16[byte], style);
                         if end > begin
-                            && advance + entries[end].1 - style.letter_spacing
+                            && !hanging
+                            && advance + entries[end].1 - tracking
                                 + if begin == 0 {
                                     style.paragraph_indent.max(0.)
                                 } else {
@@ -1766,6 +1814,23 @@ impl Fonts {
                         ascent = ascent.round_ties_even();
                     }
                 }
+                if font_line_box && attributes.is_none() && !explicit_line_height {
+                    if natural == 0. {
+                        if let Ok(face) = self.face(&style.font_id, style.weight) {
+                            let face = face.borrow_face();
+                            let scale = size / face.units_per_em() as f64;
+                            natural = (face.ascender() as f64 - face.descender() as f64
+                                + face.line_gap() as f64)
+                                * scale;
+                            if shaped.is_empty() {
+                                ascent = face.ascender() as f64 * scale;
+                            }
+                        }
+                    }
+                    if natural > 0. {
+                        height = natural;
+                    }
+                }
                 let trailing = shaped
                     .last()
                     .map(|glyph| cluster_tracking(runs, glyph.cluster, style))
@@ -1858,8 +1923,12 @@ impl Fonts {
             // entirely; synthesize bold with the classic four-way sub-pixel
             // outline smear (QuickDraw fake bold). Advances stay shaped, so
             // layout, wrapping and exported width tables are unaffected.
-            let bold =
-                self.synthetic_bold_delta(glyph_outline.weight_axis, glyph.weight, glyph.size);
+            let bold = self.synthetic_bold_delta(
+                glyph_outline.weight_axis,
+                f32::from(glyph_outline.us_weight),
+                glyph.weight,
+                glyph.size,
+            );
             let offsets: &[(f64, f64)] = if bold > 0. {
                 &[(0., 0.), (bold, 0.), (0., bold), (bold, bold)]
             } else {
@@ -2781,5 +2850,106 @@ mod persistent_font_cache_tests {
             weak_bytes.upgrade().is_none(),
             "last face drop releases its backing bytes without a leak"
         );
+    }
+
+    fn poppins_v2(style: &str) -> Vec<u8> {
+        std::fs::read(format!(
+            "{}/../../../frontend/design-client/public/fonts/poppins/v2.000/Poppins-{style}.ttf",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap()
+    }
+
+    /// FIG `01有料素材.fig` stored these em advances for "Back to Home"
+    /// (textCase UPPER, Poppins Bold digest 45dc28c4…, 13px). They are the
+    /// independent reference, not this shaper's previous output.
+    const FIG_BACK_TO_HOME: [f64; 12] = [
+        0.6740000247955322,
+        0.7130000591278076,
+        0.7640000581741333,
+        0.7200000286102295,
+        0.30000001192092896,
+        0.6080000400543213,
+        0.7880000472068787,
+        0.30000001192092896,
+        0.7630000114440918,
+        0.7880000472068787,
+        0.9450000524520874,
+        0.5720000267028809,
+    ];
+
+    #[test]
+    fn poppins_v2_bold_matches_fig_advances_and_keeps_its_own_outline() {
+        let mut fonts = Fonts::new();
+        fonts.load(&poppins_v2("Bold")).unwrap();
+        let mut sized = node(
+            "Back to Home",
+            serde_json::json!({"weight":700,"fontId":"default","textCase":"upper","wrap":false}),
+        );
+        sized.font_size = 13.;
+        sized.width = 400.;
+        let layout = fonts.node_layout(&sized, Some(400.)).unwrap();
+        assert_eq!(layout.glyphs.len(), FIG_BACK_TO_HOME.len());
+        for (glyph, expected) in layout.glyphs.iter().zip(FIG_BACK_TO_HOME) {
+            let em = glyph.advance / 13.;
+            assert!(
+                (em - expected).abs() <= 0.001,
+                "glyph {} em {em} fig {expected}",
+                glyph.cluster
+            );
+        }
+        let bold = fonts
+            .node_layout(
+                &node("B", serde_json::json!({"weight":700,"fontId":"default"})),
+                None,
+            )
+            .unwrap();
+        let book = fonts
+            .node_layout(
+                &node("B", serde_json::json!({"weight":400,"fontId":"default"})),
+                None,
+            )
+            .unwrap();
+        assert!(
+            bold.path.commands.len() > 4,
+            "source outline should contain a contour"
+        );
+        assert_eq!(
+            bold.path.commands.len(),
+            book.path.commands.len(),
+            "weight 700 on the Bold file must not smear a second copy of the outline"
+        );
+        let mut other = Fonts::new();
+        other
+            .load(
+                &std::fs::read(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../frontend/design-client/public/fonts/poppins/Poppins-Bold.ttf"
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+        let v4 = other.node_layout(&sized, Some(400.)).unwrap();
+        let space = v4.glyphs[4].advance / 13.;
+        assert!(
+            (space - FIG_BACK_TO_HOME[4]).abs() > 0.05,
+            "version 4 space {space} must stay distinct from the FIG advance"
+        );
+    }
+
+    #[test]
+    fn poppins_v2_medium_keeps_the_fig_line_break() {
+        let mut fonts = Fonts::new();
+        fonts.load(&poppins_v2("Medium")).unwrap();
+        let text = "To keep connected with us please login with your personal info.";
+        let mut sample = node(
+            text,
+            serde_json::json!({"weight":500,"fontId":"default","wrap":true}),
+        );
+        sample.font_size = 14.;
+        sample.width = 294.;
+        let layout = fonts.node_layout(&sample, Some(294.)).unwrap();
+        let ends: Vec<usize> = layout.lines.iter().map(|line| line.end).collect();
+        assert_eq!(ends, vec![39, text.len()]);
     }
 }
