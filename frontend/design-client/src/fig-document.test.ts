@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { canDeletePage, userPages } from './fig-document'
 import { applyFigDocumentSemantics, importFigVariableNodes } from './import-fig-document'
 import { blank, node, uid, validateDocument, type Paint } from './model'
+import { Editor } from './engine'
 
 test('a hidden Figma page stays in the file and cannot be the last deleted page', () => {
   const doc = blank('File')
@@ -62,13 +63,38 @@ test('Figma document name, shared styles, and component sets survive validation'
   expect(large.component?.variants).toEqual({ Size: 'Large' })
   expect(chip.styleRefs?.fills).toBe(ids.get(styleKey))
   expect(doc.designSystem?.styles[ids.get(styleKey)!]).toMatchObject({ name: 'Swatch', kind: 'paint' })
-  expect(chip.bindings?.figComponentKey).toBe('chip-key')
-  expect(chip.bindings?.figBoundVariables).toContain('color')
+  const metadata = doc.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings: Record<string, string> }>
+  expect(metadata[chip.id].bindings.figComponentKey).toBe('chip-key')
+  expect(metadata[chip.id].bindings.figBoundVariables).toContain('color')
+  expect(chip.bindings?.figComponentKey).toBeUndefined()
+  expect(chip.bindings?.figBoundVariables).toBeUndefined()
   const reopened = validateDocument(JSON.parse(JSON.stringify(doc)))
   expect(reopened.designSystem?.sketchContainers?.figDocument).toMatchObject({
     source: 'figma', documentId: '1:1', colorProfile: 'SRGB',
   })
   expect(reopened.nodes[small.id].component?.variants).toEqual({ Size: 'Small' })
+})
+
+test('FIG provenance remains inert through real editor admission and reload', () => {
+  const doc = blank('FIG provenance'), chip = node('rectangle')
+  doc.schemaVersion = 4
+  doc.nodes[chip.id] = chip
+  doc.pages[0].children.push(chip.id)
+  const records = new Map([['chip', { type: 'RECTANGLE', componentKey: 'published-component',
+    boundVariables: { opacity: { sessionID: 9, localID: 2 } } }]])
+  applyFigDocumentSemantics(doc, records, new Map([['chip', chip.id]]), String, {
+    toPaint: () => ({}) as Paint, effectsOf: () => [], strokesOf: () => [], fallbackName: doc.name,
+  }, { add() {} })
+  importFigVariableNodes(doc, records)
+  const editor = new Editor(doc)
+  try {
+    expect(editor.load(JSON.parse(JSON.stringify(editor.authoredDocument)))).toBe(true)
+    expect(editor.state.doc.nodes[chip.id].bindings).toBeUndefined()
+    expect(editor.state.doc.designSystem?.sketchContainers?.nodeMetadata).toMatchObject({
+      [chip.id]: { format: 'fig', bindings: { figComponentKey: 'published-component',
+        figBoundVariables: JSON.stringify({ opacity: { sessionID: 9, localID: 2 } }) } },
+    })
+  } finally { editor.dispose() }
 })
 
 test('variable set aliases resolve by publish key and supported fields bind', () => {

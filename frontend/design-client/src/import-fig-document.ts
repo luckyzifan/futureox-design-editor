@@ -146,11 +146,15 @@ export function applyFigDocumentSemantics(
       warnings.add(`FIG ${node.name || node.id}: stroke style reference is preserved on the style, not applied to fills`)
     if (record.inheritGridStyleID) warnings.add(`FIG ${node.name || node.id}: grid style reference is not executable`)
     if (record.boundVariables) {
-      node.bindings = { ...node.bindings, figBoundVariables: JSON.stringify(record.boundVariables) }
+      const metadata = (system(doc).sketchContainers!.nodeMetadata ??= {}) as FigRecord
+      const receipt = (metadata[node.id] ??= { format: 'fig', bindings: {} })
+      receipt.bindings.figBoundVariables = JSON.stringify(record.boundVariables)
       warnings.add(`FIG ${node.name || node.id}: variable bindings retained as source metadata, not executable`)
     }
     if (typeof record.componentKey === 'string' && record.componentKey) {
-      node.bindings = { ...node.bindings, figComponentKey: record.componentKey }
+      const metadata = (system(doc).sketchContainers!.nodeMetadata ??= {}) as FigRecord
+      const receipt = (metadata[node.id] ??= { format: 'fig', bindings: {} })
+      receipt.bindings.figComponentKey = record.componentKey
     }
   }
 
@@ -348,7 +352,8 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
     return Object.entries(value).flatMap(([key, child]) => linked(child, field || key))
   }
   for (const node of Object.values(doc.nodes)) {
-    const raw = node.bindings?.figBoundVariables
+    const metadata = systemDoc.sketchContainers?.nodeMetadata as FigRecord | undefined
+    const raw = metadata?.[node.id]?.bindings?.figBoundVariables
     if (!raw) continue
     let parsed: unknown
     try { parsed = JSON.parse(raw) } catch { continue }
