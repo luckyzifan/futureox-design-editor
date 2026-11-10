@@ -1113,6 +1113,11 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listening }, get applying() { return applying > 0 },
     get closed() { return closed }, get closeMessage() { return closeMessage }, get flushes() { return flushes },     get pluginId() { return pluginId },
     flush,
+    /** Drop the queued turn after a failed run. Already flushed history stays. */
+    abandonTurn() {
+      commands.splice(0)
+      pluginStoreDirty = false
+    },
     hasNetwork: () => networkJobs.length > 0,
     takeNetwork: () => networkJobs.shift() ?? null,
     hasFontJobs: () => fontJobs.length > 0,
@@ -1470,7 +1475,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const format = String(body.format || 'PNG').toUpperCase()
         if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'exportAsync supports SVG in this host. PNG, JPG, and PDF use the editor export panel.')
         const scale = body.scale === undefined ? undefined : finite(body.scale, 'scale', 0.01, 4)
-        const exported = operationResult(execute('vector.export', { nodeIds: [id], textMode: 'path', fontMode: 'none', ...(scale === undefined ? {} : { scale }) }, false))
+        const exported = operationResult(execute('vector.export', { nodeIds: [id], textMode: 'outlines', fontMode: 'references', ...(scale === undefined ? {} : { scale }) }, false))
         const text = exported.content
         if (typeof text !== 'string' || !text) throw new PluginApiError('plugin_failed', 'SVG export did not return markup')
         return { text }

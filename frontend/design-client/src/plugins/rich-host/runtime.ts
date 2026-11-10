@@ -112,6 +112,9 @@ export class PluginController {
       if (session.closed || (!session.uiShown && !session.listening)) controller.release()
       return controller
     } catch (error) {
+      // A failed turn drops only the unflushed queue. commitUndo, closePlugin,
+      // export, and reads that already flushed stay in the undo history.
+      session.abandonTurn()
       controller.release()
       throw error
     }
@@ -126,9 +129,14 @@ export class PluginController {
 
   emit(type: 'selectionchange' | 'currentpagechange' | 'documentchange') {
     if (!this.context || this.session.closed) return
-    const pending = this.evaluate(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
     const finish = () => { this.session.flush(); if (this.session.closed) this.release() }
-    if (pending) return pending.then(finish)
+    try {
+      const pending = this.evaluate(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
+      if (pending) return pending.then(finish, (error: unknown) => { this.session.abandonTurn(); throw error })
+    } catch (error) {
+      this.session.abandonTurn()
+      throw error
+    }
     finish()
   }
 
@@ -139,9 +147,14 @@ export class PluginController {
     const payload = this.context.newString(json)
     this.context.setProp(this.context.global, '__pluginMessageJson', payload)
     payload.dispose()
-    const pending = this.evaluate('globalThis.__deliverPluginMessage(JSON.parse(globalThis.__pluginMessageJson))')
     const finish = () => { this.session.flush(); if (this.session.closed) this.release() }
-    if (pending) return pending.then(finish)
+    try {
+      const pending = this.evaluate('globalThis.__deliverPluginMessage(JSON.parse(globalThis.__pluginMessageJson))')
+      if (pending) return pending.then(finish, (error: unknown) => { this.session.abandonTurn(); throw error })
+    } catch (error) {
+      this.session.abandonTurn()
+      throw error
+    }
     finish()
   }
 
@@ -155,15 +168,54 @@ export class PluginController {
     if (!this.context) throw new PluginApiError('plugin_closed', 'The plugin has finished')
     this.arm()
     const evaluated = this.context.evalCode(code, 'plugin.js', { type: 'global' })
+    if (evaluated.error) {
+      const message = guestText(this.context, evaluated.error)
+      evaluated.dispose()
+      if (closedNotice(message) != null) return
+      throw errorFromGuest(message)
+    }
+    // QuickJS reports an async throw as a rejected completion promise, not as
+    // an eval error and not as an executePendingJobs error. Keep the handle
+    // until host jobs (fonts, fetch, export) have resumed the same promise.
+    const result = evaluated.value
+    let settled = false
+    const settle = () => {
+      if (settled) return
+      settled = true
+      try { this.failIfRejected(result) }
+      finally { if (result.alive) result.dispose() }
+    }
     try {
-      if (evaluated.error) {
-        const message = guestText(this.context, evaluated.error)
-        if (closedNotice(message) != null) return
-        throw errorFromGuest(message)
-      }
       this.drain()
-      if (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs()) return this.finishAsync()
-    } finally { evaluated.dispose() }
+      if (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs()) {
+        return this.finishAsync().then(() => {
+          try { this.drain(); settle() }
+          catch (error) { if (!settled && result.alive) result.dispose(); throw error }
+        }, (error: unknown) => {
+          if (!settled && result.alive) result.dispose()
+          throw error
+        })
+      }
+      settle()
+    } catch (error) {
+      if (!settled && result.alive) result.dispose()
+      throw error
+    }
+  }
+
+  /** The script completion promise is the host-visible channel for an async rejection.
+   * A caught rejection fulfills. closePlugin's sentinel is a normal stop, not a failure. */
+  private failIfRejected(result: QuickJSHandle) {
+    if (!this.context || !result.alive) return
+    const state = this.context.getPromiseState(result)
+    if (state.type !== 'rejected') {
+      if (state.type === 'fulfilled' && !state.notAPromise) state.value.dispose()
+      return
+    }
+    const message = guestText(this.context, state.error)
+    state.error.dispose()
+    if (closedNotice(message) != null) return
+    throw errorFromGuest(message)
   }
 
   private async finishAsync() {

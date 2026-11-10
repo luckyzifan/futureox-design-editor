@@ -1399,7 +1399,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
-      {showPlugins && <PluginPanel editor={editor} desktop={desktop} launch={pluginLaunch} onClose={() => { setShowPlugins(false); setPluginLaunch(null) }} />}
+      {showPlugins && <PluginPanel editor={editor} desktop={desktop} launch={pluginLaunch} returnFocus={fileMenuTrigger.current} onClose={() => { setShowPlugins(false); setPluginLaunch(null) }} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}
         busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">设计尚未就绪，暂不能切换工作区目录。</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
           busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {

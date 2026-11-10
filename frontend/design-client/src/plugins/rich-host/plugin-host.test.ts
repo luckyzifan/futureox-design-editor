@@ -137,6 +137,72 @@ describe('Figma plugin host', () => {
     expect(nodes(current)).toHaveLength(0)
   })
 
+  it('rejects an async failure and does not commit the queued rectangle', async () => {
+    const current = editor()
+    const version = current.state.version
+    await expect(openPlugin(current, bundle('Async', `
+      ;(async function () {
+        const rect = figma.createRectangle()
+        rect.name = 'QA before async rejection'
+        throw new Error('QA controlled asynchronous failure')
+      })()
+    `))).rejects.toThrow(/QA controlled asynchronous failure/)
+    expect(current.state.version).toBe(version)
+    expect(nodes(current).map(node => node.name)).not.toContain('QA before async rejection')
+  })
+
+  it('keeps commitUndo history when a later async rejection drops only the next turn', async () => {
+    const current = editor()
+    await expect(openPlugin(current, bundle('AsyncUndo', `
+      ;(async function () {
+        figma.createRectangle().name = 'Kept'
+        figma.commitUndo()
+        figma.createRectangle().name = 'Dropped'
+        throw new Error('after commit')
+      })()
+    `))).rejects.toThrow(/after commit/)
+    expect(nodes(current).map(node => node.name)).toEqual(['Kept'])
+    current.undo()
+    expect(nodes(current)).toHaveLength(0)
+    expect(current.canUndo).toBe(false)
+  })
+
+  it('still commits async closePlugin and a caught rejection', async () => {
+    const current = editor()
+    const closed = await openPlugin(current, bundle('AsyncClose', `
+      ;(async function () {
+        figma.createRectangle().name = 'Kept'
+        figma.closePlugin('bye')
+      })()
+    `))
+    expect(closed.closeMessage).toBe('bye')
+    expect(nodes(current).map(node => node.name)).toEqual(['Kept'])
+    closed.close()
+    const caught = await openPlugin(current, bundle('Caught', `
+      ;(async function () {
+        try { await Promise.reject(new Error('caught')) } catch (error) {}
+        await Promise.resolve()
+        figma.createRectangle().name = 'After catch'
+      })()
+    `))
+    expect(nodes(current).map(node => node.name)).toContain('After catch')
+    caught.close()
+  })
+
+  it('drops a rectangle created after an await when the completion promise rejects', async () => {
+    const current = editor()
+    const version = current.state.version
+    await expect(openPlugin(current, bundle('LaterReject', `
+      ;(async function () {
+        await Promise.resolve()
+        figma.createRectangle().name = 'After await'
+        throw new Error('after await')
+      })()
+    `))).rejects.toThrow(/after await/)
+    expect(current.state.version).toBe(version)
+    expect(nodes(current)).toHaveLength(0)
+  })
+
   it('loads a font that exists and rejects one that does not', async () => {
     const current = editor()
     const run = await openPlugin(current, bundle('Font', `
@@ -489,11 +555,12 @@ describe('Figma plugin host', () => {
         rect.name = 'Photo'
         rect.fills = [{ type: 'IMAGE', imageHash: image.hash, scaleMode: 'FIT' }]
         const svg = await rect.exportAsync({ format: 'SVG' })
-        const text = new TextDecoder().decode(svg)
+        let text = ''
+        for (let i = 0; i < svg.length; i++) text += String.fromCharCode(svg[i])
         if (text.indexOf('<svg') < 0) throw new Error(text.slice(0, 80))
-        var pngBlocked = false
-        try { await rect.exportAsync({ format: 'PNG' }) } catch (error) { pngBlocked = String(error).indexOf('SVG') >= 0 }
-        if (!pngBlocked) throw new Error('png export accepted')
+        var pdfBlocked = false
+        try { await rect.exportAsync({ format: 'PDF' }) } catch (error) { pdfBlocked = String(error).indexOf('unsupported_api') >= 0 }
+        if (!pdfBlocked) throw new Error('pdf export accepted')
       })()
     `))
     const rect = named(current, 'Photo')
