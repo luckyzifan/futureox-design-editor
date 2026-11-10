@@ -2162,6 +2162,20 @@ impl<'a> Importer<'a> {
                         }
                     }
                 }
+                // No authored min/max line box: Sketch uses the font's metrics.
+                // Keep 1.35 stored so an explicit editor line height still wins.
+                if let Some(style) = node.text_style.as_mut()
+                    && (style.line_height - 1.35).abs() <= 1e-9
+                    && node.text_runs.iter().all(|run| {
+                        run.line_height.is_none()
+                            && run.paragraph.as_ref().is_none_or(|paragraph| {
+                                paragraph.minimum_line_height == 0.
+                                    && paragraph.maximum_line_height == 0.
+                            })
+                    })
+                {
+                    style.line_height_auto = true;
+                }
             }
             "bitmap" => {
                 node.bindings.insert("sketchSourceBitmap".into(), "true".into());

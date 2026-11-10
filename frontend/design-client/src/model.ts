@@ -382,6 +382,8 @@ export type TextStyle = {
   fallbacks: string[]
   weight: number
   lineHeight: number
+  /** Sketch text with no authored line box uses the font's own line metrics. */
+  lineHeightAuto?: boolean
   letterSpacing: number
   wrap: boolean
   align: 'start' | 'center' | 'end' | 'justify'

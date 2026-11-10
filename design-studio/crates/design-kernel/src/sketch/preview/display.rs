@@ -672,6 +672,7 @@ impl Projection<'_> {
                     1.35
                 },
                 letter_spacing: num(first, "kerning", 0.),
+                line_height_auto: line <= 0.,
                 wrap: num(v, "textBehaviour", 0.) != 0.,
                 align: match num(p, "alignment", 0.) as i32 {
                     1 => "end",

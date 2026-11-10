@@ -90,6 +90,11 @@ pub struct TextStyle {
     pub fallbacks: Vec<String>,
     pub weight: f32,
     pub line_height: f64,
+    /// Sketch text with no authored line box uses the font's ascender,
+    /// descender and line gap. An explicit line height other than the 1.35
+    /// default turns this off. Editor-created text leaves it false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub line_height_auto: bool,
     pub letter_spacing: f64,
     pub wrap: bool,
     pub align: String,
@@ -139,6 +144,9 @@ pub struct TextVariation {
 fn is_top(s: &str) -> bool {
     s == "top"
 }
+fn is_false(value: &bool) -> bool {
+    !*value
+}
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
@@ -150,6 +158,7 @@ impl Default for TextStyle {
             fallbacks: vec![],
             weight: 400.,
             line_height: 1.35,
+            line_height_auto: false,
             letter_spacing: 0.,
             wrap: false,
             align: "start".into(),
@@ -650,6 +659,11 @@ fn cluster_tracking(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 
         .and_then(|run| run.letter_spacing)
         .unwrap_or(style.letter_spacing)
 }
+fn sketch_font_line_box(style: &TextStyle) -> bool {
+    // Sketch leaves an unspecified line box on the font's own metrics.
+    // The editor default 1.35 stays in force once a line height is authored.
+    style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9
+}
 fn cluster_line_multiplier(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 {
     run_covering(runs, cluster)
         .and_then(|run| run.line_height)
@@ -1007,6 +1021,7 @@ impl Fonts {
                 None,
                 OutlineOutput::Geometry,
                 None,
+                false,
             )?
             .path)
     }
@@ -1019,6 +1034,7 @@ impl Fonts {
             None,
             OutlineOutput::None,
             None,
+            false,
         )?;
         Ok((l.width.max(0.01), l.height))
     }
@@ -1048,6 +1064,7 @@ impl Fonts {
             width,
             output,
             node.text_path.as_deref(),
+            sketch_font_line_box(style),
         )?;
         if style.writing_mode == "horizontal" && node.text_path.is_none() {
             let offset = (node.height - result.height).max(0.)
@@ -1097,6 +1114,7 @@ impl Fonts {
             width,
             OutlineOutput::None,
             node.text_path.as_deref(),
+            sketch_font_line_box(style),
         )
     }
     pub fn node_path(&self, node: &Node) -> Result<Path, String> {
@@ -1432,13 +1450,23 @@ impl Fonts {
         width: Option<f64>,
         output: OutlineOutput,
         text_path: Option<&crate::text_path::TextPath>,
+        font_line_box: bool,
     ) -> Result<TextLayout, String> {
         if style.text_case == TextCase::Original
             && runs
                 .iter()
                 .all(|r| r.text_case.is_none_or(|c| c == TextCase::Original))
         {
-            return self.layout_raw(text, size, style, runs, width, output, text_path);
+            return self.layout_raw(
+                text,
+                size,
+                style,
+                runs,
+                width,
+                output,
+                text_path,
+                font_line_box,
+            );
         }
         let display = crate::text_case::display_text(text, style.text_case, runs);
         let mut result = self.layout_raw(
@@ -1449,6 +1477,7 @@ impl Fonts {
             width,
             output,
             text_path,
+            font_line_box,
         )?;
         for glyph in &mut result.glyphs {
             glyph.cluster = display.starts[glyph.cluster];
@@ -1469,6 +1498,7 @@ impl Fonts {
         width: Option<f64>,
         output: OutlineOutput,
         text_path: Option<&crate::text_path::TextPath>,
+        font_line_box: bool,
     ) -> Result<TextLayout, String> {
         style.validate()?;
         if !size.is_finite() || size <= 0. || size > 4096. || text.len() > 400000 {
@@ -1547,8 +1577,19 @@ impl Fonts {
                     while end < entries.len() {
                         // Compare occupied width directly: subtracting the
                         // inset from an exact-fit Hug width can round down.
+                        // A space that itself overflows hangs on this line.
+                        // Breaking there rewinds to the previous legal break
+                        // and drops the word that already fit, which is how a
+                        // Sketch title that is three lines becomes four or five.
+                        let byte = entries[end].0;
+                        let hanging = text[byte..]
+                            .chars()
+                            .next()
+                            .is_some_and(|ch| matches!(ch, ' ' | '\t'));
+                        let tracking = cluster_tracking(runs, utf16[byte], style);
                         if end > begin
-                            && advance + entries[end].1 - style.letter_spacing
+                            && !hanging
+                            && advance + entries[end].1 - tracking
                                 + if begin == 0 {
                                     style.paragraph_indent.max(0.)
                                 } else {
@@ -1750,6 +1791,23 @@ impl Fonts {
                     // Center the font metrics in the constrained line box.
                     // Keep unrounded document-space values; raster sampling stays unchanged.
                     ascent += (height - natural) / 2.;
+                }
+                if font_line_box && attributes.is_none() && !explicit_line_height {
+                    if natural == 0. {
+                        if let Ok(face) = self.face(&style.font_id, style.weight) {
+                            let face = face.borrow_face();
+                            let scale = size / face.units_per_em() as f64;
+                            natural = (face.ascender() as f64 - face.descender() as f64
+                                + face.line_gap() as f64)
+                                * scale;
+                            if shaped.is_empty() {
+                                ascent = face.ascender() as f64 * scale;
+                            }
+                        }
+                    }
+                    if natural > 0. {
+                        height = natural;
+                    }
                 }
                 let trailing = shaped
                     .last()
