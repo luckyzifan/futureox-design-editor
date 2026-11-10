@@ -162,7 +162,22 @@ test('property changes travel through real compressed op/facet batches and share
   const result = h.apply(0, next)
   expect(result.revision).toBe(1)
   expect(h.mode).toBe('op-batch')
+  expect(h.frameBytes).toBe(0)
+  const frames: Uint8Array[] = []
+  h.setSyncFrameConsumer({ onFrame(frame, revision) { frames.push(frame); expect(revision).toBe(2) } })
+  const third = structuredClone(next)
+  third.nodes[n.id].name = '同步帧'
+  expect(h.apply(1, third).revision).toBe(2)
   expect(h.frameBytes).toBeGreaterThan(0)
+  const { Graph } = await import('./kernel/graph')
+  const { augmentedDocumentJson } = await import('./kernel/op-sync')
+  const probe = Graph.open(augmentedDocumentJson(d))
+  try {
+    const decoded = probe.decodeOpsFrame(frames[0], true)
+    expect(decoded.revision).toBe(2)
+    expect(decoded.ops).toEqual([expect.objectContaining({ type: 'setName', id: n.id, name: '同步帧' })])
+  } finally { probe.free() }
+  expect(h.undo().patch.nodes[n.id]).toEqual(next.nodes[n.id])
   expect(h.undo().patch.nodes[n.id]).toEqual(n)
   expect(h.redo().patch.nodes[n.id]).toEqual(next.nodes[n.id])
   h.free()

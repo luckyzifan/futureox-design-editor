@@ -257,6 +257,23 @@ mod tests {
     }
 
     #[test]
+    fn content_update_round_trips_through_lz4_without_dropping_authored_fields() {
+        let mut node = sample_node("f1", "frame");
+        node.name = "Filled".into();
+        node.opacity = 0.25;
+        node.font_size = 12.5;
+        node.text = "你好".into();
+        let ops = vec![Op::UpdateNodeContent {
+            id: "f1".into(),
+            node,
+        }];
+        let frame = encode_ops_frame(&ops, 4, Compression::Lz4);
+        let (revision, decoded) = decode_ops_frame(&frame).unwrap();
+        assert_eq!(revision, 4);
+        assert_eq!(decoded, ops);
+    }
+
+    #[test]
     fn text_frame_rejects_binary_decode() {
         assert!(
             decode_ops_frame(&Frame::Text {

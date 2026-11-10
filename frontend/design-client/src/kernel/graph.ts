@@ -51,6 +51,7 @@ export type Op =
   | { type: 'removeNode'; id: string }
   | { type: 'reorderChild'; parent: string; from: number; to: number }
   | { type: 'clearFacet'; id: string; kind: string }
+  | { type: 'updateNodeContent'; id: string; node: unknown }
 
 export type EditSource = 'system' | 'user' | 'plugin' | 'onboarding' | 'autosave' | 'ai'
 

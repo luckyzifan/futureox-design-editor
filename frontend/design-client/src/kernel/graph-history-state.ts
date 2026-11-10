@@ -5,6 +5,13 @@ import { documentPatch, shareDocument, type DocumentPatch, type EditResult } fro
 import type { EditScope, Op } from './graph'
 import type { DesignDocument } from '../model'
 
+/** A real transport subscriber. Local commits do not build a sync frame unless
+ * one is attached; the frame is checked before the kernel commit and is not
+ * applied as a second document model. */
+export interface SyncFrameConsumer {
+  onFrame(frame: Uint8Array, revision: number): void
+}
+
 /** CPU-only history contract; production supplies the real initialized Graph. */
 export interface EditingGraph {
   free(): void
@@ -18,7 +25,11 @@ export interface EditingGraph {
   applyOps(ops: Op[], scope?: EditScope): void
 }
 
-export function createGraphHistoryState(document: DesignDocument, graph: EditingGraph) {
+export function createGraphHistoryState(
+  document: DesignDocument,
+  graph: EditingGraph,
+  options?: { syncFrames?: SyncFrameConsumer | null },
+) {
   let current: DesignDocument = document
   // The Editor and this timeline share immutable authored records. These are
   // bounded references, not cloned or JSON-normalized second documents. Rust
@@ -29,6 +40,7 @@ export function createGraphHistoryState(document: DesignDocument, graph: Editing
   let mode: 'op-batch' | 'document' = 'document'
   let frameBytes = 0
   let disposed = false
+  let syncFrames = options?.syncFrames ?? null
 
   const assertLive = () => {
     if (disposed) throw Error('编辑历史已释放')
@@ -67,16 +79,25 @@ export function createGraphHistoryState(document: DesignDocument, graph: Editing
       mode = 'document'; frameBytes = 0
       return
     }
-    const frame = measureCpuStage(CpuStage.historyEncode, () => graph.opsFrame(batch.ops, revision + 1, true))
-    const decoded = measureCpuStage(CpuStage.historyDecode, () => graph.decodeOpsFrame(frame, true))
-    // Insert ops pass through Rust's typed Node serializer, which expands
-    // defaults. Compare the protocol revision; authored field shapes remain
-    // owned by the snapshots below, not by that normalized projection.
-    if (decoded.revision !== revision + 1) throw Error('同步协议帧版本不一致')
+    // Local authority is one typed admission. The LZ4 frame is a transport
+    // artifact: encode and decode it only for an attached sync consumer, and
+    // reject a bad protocol revision before the kernel commit. applyOps still
+    // parses native ops, so defaults, atomic rejection and edit scope remain.
+    let ops = batch.ops
+    let nextFrameBytes = 0
+    if (syncFrames) {
+      const frame = measureCpuStage(CpuStage.historyEncode, () => graph.opsFrame(batch.ops, revision + 1, true))
+      const decoded = measureCpuStage(CpuStage.historyDecode, () => graph.decodeOpsFrame(frame, true))
+      if (decoded.revision !== revision + 1) throw Error('同步协议帧版本不一致')
+      syncFrames.onFrame(frame, decoded.revision)
+      ops = decoded.ops
+      nextFrameBytes = frame.byteLength
+    }
     // Rejection is an editing error, not a reason to silently commit a
     // different operation. GraphApi stages failed batches atomically.
-    measureCpuStage(CpuStage.historyApply, () => graph.applyOps(decoded.ops, scope))
-    mode = 'op-batch'; frameBytes = frame.byteLength
+    measureCpuStage(CpuStage.historyApply, () => graph.applyOps(ops, scope))
+    mode = 'op-batch'
+    frameBytes = nextFrameBytes
   }
 
   return {
@@ -84,6 +105,9 @@ export function createGraphHistoryState(document: DesignDocument, graph: Editing
     get revision() { return revision },
     get mode() { return mode },
     get frameBytes() { return frameBytes },
+    /** Attach or clear the only sync-frame subscriber. Passing null restores
+     * the local commit path, which does not allocate a transport frame. */
+    setSyncFrameConsumer(consumer: SyncFrameConsumer | null) { syncFrames = consumer },
     free,
     [Symbol.dispose]: free,
     /** Typed local commit. JSON belongs only at the WASM/transport boundary.
