@@ -71,6 +71,7 @@ import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresente
 import { interactionPatchTransforms, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
+import { cohortSliceRect, dominantDeviceBlurRadius, regionalGaussianBlocksCover, settledBlurCaptureRect, settledBlurCovers } from './settled-blur-cohort'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
 import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
 import { paintDamageIntersects, viewportDamage, type PaintDamage } from './paint-damage'
@@ -923,7 +924,7 @@ self.onmessage = (e) => {
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, settledBlurCohort, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
@@ -1573,12 +1574,15 @@ self.onmessage = (e) => {
             const slot = (tile: RasterTile) => namespace + '/' + coordinateSlot([
               tile.x, tile.y, tile.width, tile.height, tile.zoom, tile.phaseX ?? 0, tile.phaseY ?? 0,
               ...(cameraDependent ? [renderOptions.view.x, renderOptions.view.y, tile.zoom] : [])])
-            const compileTile = async (tile: RasterTile) => {
+            const compileTile = async (tile: RasterTile, viewport: 'tile' | 'capture' = 'tile') => {
               if (!current()) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
               const compile = async () => {
+                // A packed cover is larger than TILE_SIZE+2, so it cannot use
+                // gpuViewport. Capture is the existing larger-viewport contract.
+                const useCapture = viewport === 'capture' || (sourceBand && Math.max(tile.width, tile.height) > TILE_SIDE + 2)
                 const options = {...renderOptions,view:{...renderOptions.view,zoom:tile.zoom},width:tile.width,height:tile.height,
-                  [sourceBand&&Math.max(tile.width,tile.height)>TILE_SIDE+2?'captureViewport':'gpuViewport']:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
+                  [useCapture ? 'captureViewport' : 'gpuViewport']:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
                   ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
                 const signal=packetWait?.controller.signal
                 const ordinary=()=>compilePacket(kernel,JSON.stringify(options),signal)
@@ -1615,6 +1619,88 @@ self.onmessage = (e) => {
               }
               return { bytes, ms: performance.now() - at, tile }
             }
+            const cohortSatisfied = new Set<RasterTile>()
+            let cohortTried = false
+            let cohortRadius: number | undefined
+            let cohortNodes: GpuScene['nodes'][string][] | undefined
+            // The center tile has already been posted. One same-zoom capture of
+            // the remaining visible union replaces the repeated blur halo.
+            // The capture uses the existing native capture contract. Failure
+            // leaves those tiles on the original per-tile path.
+            const publishBlurCover = async (first: RasterTile) => {
+              if (settledBlurCohort !== true || cohortRadius === undefined || !cohortNodes || backend !== 'webgpu' ||
+                  channel !== 'canvas' || renderIntent !== 'canvas' || request.png || request.readback || !!exportFormat ||
+                  renderOptions.pixelPreview || renderOptions.animation || renderOptions.grid || renderOptions.checkerboard ||
+                  !gpu?.driver.slicePresented) return
+              const renderer = gpu
+              const visible = (tileViewport as RasterTile[]).filter(entry => entry.prefetch !== true)
+              const covers = settledBlurCovers(visible, { radius: cohortRadius, quiet: true })
+                ?.filter(cover => !regionalGaussianBlocksCover(cohortNodes!, cover.width, cover.height))
+              if (!covers?.length || !visible.includes(first)) return
+              await ahead.drain()
+              renderer.releaseFilterBatch(filterBatchLease)
+              const origin = { x: Math.floor(renderOptions.view.x), y: Math.floor(renderOptions.view.y) }
+              for (const cover of covers) {
+                if (!current()) throw Error('PREVIEW_CANCELLED')
+                const pending = cover.members.filter(entry => entry !== first && !cohortSatisfied.has(entry))
+                if (pending.length < 1) continue
+                const capture = settledBlurCaptureRect(cover, origin)
+                if (!capture) continue
+                const crops: { x: number; y: number; w: number; h: number; rect: { x: number; y: number; w: number; h: number } }[] = []
+                let aligned = true
+                for (const entry of pending) {
+                  const slice = cohortSliceRect(cover, entry)
+                  if (!slice) { aligned = false; break }
+                  crops.push({ ...slice, rect: { x: entry.x + origin.x, y: entry.y + origin.y, w: entry.width, h: entry.height } })
+                }
+                if (!aligned || crops.length !== pending.length) continue
+                const coverTile: RasterTile = {
+                  key: `cohort:${cover.x}:${cover.y}:${cover.width}:${cover.height}`,
+                  x: cover.x, y: cover.y, width: cover.width, height: cover.height, zoom: first.zoom,
+                  gutter: first.gutter ?? 1, phaseX: first.phaseX, phaseY: first.phaseY,
+                }
+                let coverGpu: number | undefined
+                let copies: number[] | undefined
+                let postedCount = 0
+                try {
+                  const prepared = await compileTile(coverTile, 'capture')
+                  if (prepared.tile !== coverTile || !current()) throw Error('PREVIEW_CANCELLED')
+                  const renderedCover = await renderTiledPreview(kernel, { ...renderOptions, view: { ...renderOptions.view, zoom: coverTile.zoom } }, backend, color,
+                    settingsJson, Math.max(cover.width, cover.height),
+                    { x: capture.x, y: capture.y, width: capture.w, height: capture.h },
+                    decodeScenePacket(prepared.bytes), false, prepareForTile(coverTile), true, canvasDisplayFilters, canvasMath, reportRasterProgress,
+                    current, hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
+                    draws => reportWorkProgress(2, draws), displayBackpressure, false, false)
+                  renderedCover.bitmap?.close()
+                  coverGpu = renderedCover.gpuTile
+                  if (!current()) throw Error('PREVIEW_CANCELLED')
+                  if (!coverGpu) continue
+                  copies = await renderer.driver.slicePresented!(coverGpu, crops)
+                  if (!copies || copies.length !== pending.length) continue
+                  const contract = pixelSourceContract({ ...renderOptions, view: { ...renderOptions.view, zoom: coverTile.zoom } })
+                  for (let index = 0; index < pending.length; index++) {
+                    const entry = pending[index], id = copies[index]
+                    renderer.driver.tagExactTile?.(id, kernel.contentIdentity, contract, entry.gutter ?? 1)
+                    self.postMessage({ id: request.id, tile: {
+                      ...entry, gpuTile: id, backend, description: renderedCover.description || 'settled blur cover',
+                      milliseconds: 0, cached: false,
+                    } })
+                    postedCount++
+                    cohortSatisfied.add(entry)
+                  }
+                  rendered += pending.length
+                  milliseconds += renderedCover.milliseconds || 0
+                  tileCompileMs += renderedCover.compileMs || 0
+                  tileGraphMs += renderedCover.graphMs || 0
+                  tileFinishMs += renderedCover.finishMs || 0
+                } catch (error) {
+                  if (String(error).includes('PREVIEW_CANCELLED') || /device lost|GPU device|has been lost|设备已丢失/i.test(String(error))) throw error
+                } finally {
+                  const leftover = [...(coverGpu === undefined ? [] : [coverGpu]), ...(copies ?? []).slice(postedCount)]
+                  if (leftover.length) renderer.driver.releasePresented?.(leftover)
+                }
+              }
+            }
             try { for (let tileOrderIndex = 0; tileOrderIndex < tileViewport.length; tileOrderIndex++) {
               const tileIndex = order.indexAt(tileOrderIndex)
               const tile = tileViewport[tileIndex] as RasterTile
@@ -1622,6 +1708,7 @@ self.onmessage = (e) => {
               let nextColumnPlan: { index: number | undefined; changed: boolean; deltaY: number } | undefined
               try {
               if (tileFence(true).action === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              if (cohortSatisfied.has(tile)) continue
               // World slots retain the computation camera for measured byte
               // dithering, grids and pixel preview. Those established paths
               // cannot certify a translated hit from world address alone.
@@ -1713,6 +1800,10 @@ self.onmessage = (e) => {
                 const tileCurrent = preparedTileContinuation(tile, current, ()=>preparedCameraFallback||
                   panContinuation&&!!displayFrame&&tile.zoom===displayFrame.view.zoom*displayFrame.dpr,
                   () => displayFrame, () => displayCoverageVersion,()=>{cameraFallback=true})
+                if (cohortRadius === undefined && preparedScene && !tile.prefetch) {
+                  cohortNodes = Object.values(preparedScene.nodes)
+                  cohortRadius = dominantDeviceBlurRadius(cohortNodes)
+                }
                 result = await renderTiledPreview(kernel, tileOptions, backend, color,
                   settingsJson, tileSide, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
@@ -1847,6 +1938,10 @@ self.onmessage = (e) => {
               // Allow input/control messages and higher-priority interaction
               // work through without interleaving command encoders.
               await yieldPreviewTask()
+              if (!cohortTried && !tile.prefetch && cohortRadius !== undefined) {
+                cohortTried = true
+                await publishBlurCover(tile)
+              }
               await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0, GPU_PRIORITY_BURST)
               // A canceled returning lane must not retire the interaction's
               // current resources merely to restore an obsolete canvas owner.

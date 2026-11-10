@@ -278,6 +278,13 @@ export class WebGpuDriver implements Driver {
   acceptPresentation(token:number,accepted=true){this.presenter?.acceptPresentation(token,accepted)}
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
+  slicePresented(sourceId: number, crops: readonly { x: number; y: number; w: number; h: number; rect: Rect }[]) {
+    // The copies are encoded on the presenter device. Its queue is not the
+    // raster queue: waiting here would resolve before a separate presentation
+    // device finished the copy. The presenter awaits its own producer queue
+    // and only then returns texture ids.
+    return this.presenter?.slice(sourceId, crops) ?? Promise.resolve(undefined)
+  }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
   presentedContentToken(slot:number){return this.lost||this.disposed?undefined:this.presenter?.contentToken(slot)}
   tagExactTile(...args: Parameters<ResidentPresenter['tagExactTile']>) { this.presenter?.tagExactTile(...args) }

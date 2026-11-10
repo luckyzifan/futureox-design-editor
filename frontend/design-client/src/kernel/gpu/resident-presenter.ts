@@ -348,6 +348,39 @@ export class ResidentPresenter {
       }
     }
   }
+  /** Split one presented raster into planned tile textures. The source stays
+   * owned by the caller. Ids are returned only after this device queue, which
+   * submitted the copies, has completed. A rejected crop releases only the
+   * copies started here. */
+  async slice(sourceId: number, crops: readonly { x: number; y: number; w: number; h: number; rect: Rect }[]) {
+    const entry = this.textures.get(sourceId)
+    if (!entry || entry.samples !== 1 || entry.linear || !crops.length || this.disposed) return
+    const created: { id: number }[] = []
+    try {
+      const encoder = this.device.createCommandEncoder()
+      for (const crop of crops) {
+        if (![crop.x, crop.y, crop.w, crop.h, crop.rect.x, crop.rect.y, crop.rect.w, crop.rect.h].every(Number.isSafeInteger) ||
+            crop.w < 1 || crop.h < 1 || crop.x < 0 || crop.y < 0 || crop.rect.w !== crop.w || crop.rect.h !== crop.h ||
+            crop.x + crop.w > entry.texture.width || crop.y + crop.h > entry.texture.height) {
+          throw Error('Invalid presented tile slice')
+        }
+        const content = entry.content ? {
+          owner: entry.content.owner, ...(entry.content.contract === undefined ? {} : { contract: entry.content.contract }),
+          ...(entry.content.raster ? { raster: { view: { ...entry.content.raster.view }, rect: { ...crop.rect } } } : {}),
+        } : undefined
+        const dest = this.capture(crop.w, crop.h, entry.background, content, false, 1)
+        created.push(dest)
+        encoder.copyTextureToTexture({ texture: entry.texture, origin: [crop.x, crop.y] }, { texture: dest.texture }, [crop.w, crop.h])
+      }
+      this.device.queue.submit([encoder.finish()])
+      await this.device.queue.onSubmittedWorkDone()
+      if (this.disposed) throw Error('Display device retired')
+      return created.map(item => item.id)
+    } catch (error) {
+      if (created.length) this.release(created.map(item => item.id))
+      throw error
+    }
+  }
   replace(slot: number, next: number) {
     const old = this.textures.get(slot),
       replacement = this.textures.get(next)

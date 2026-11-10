@@ -316,6 +316,9 @@ export interface Driver {
   acceptPresentation?(token:number,accepted?:boolean):void
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
+  /** Copy a presented raster into the original tile grid. Same texels, no resample.
+   * Resolves only after the queue that produced the copies has completed. */
+  slicePresented?(sourceId: number, crops: readonly { x: number; y: number; w: number; h: number; rect: Rect }[]): Promise<number[] | undefined>
   replacePresented?(slot:number,next:number):void
   /** Private immutable captured-texture identity; absent after loss/release. */
   presentedContentToken?(slot:number):object|undefined
