@@ -1,16 +1,3 @@
-/**
- * 玻璃效果 GPU 片元化 - 完整 Shader 实现
- *
- * 实现要点：
- * - 平滑圆角 SDF（四角独立 radii + smoothings）
- * - 法线计算
- * - 折射（Snell's law）
- * - 倒角/splay
- * - 八档色散（chromatic aberration）
- *
- * 目标：将玻璃效果从 CPU 字段准备（187ms）迁移到 GPU 实时计算（2.6ms），性能提升 72×
- */
-
 export const glassEffectFragmentShaderWGSL = /* wgsl */`
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,

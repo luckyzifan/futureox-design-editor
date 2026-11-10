@@ -1,13 +1,12 @@
 import type { RasterTile } from './tile-cache'
 
 
-/** Figma viewer `m2.defaultTimeBudgetInSeconds = .016`. */
+/** Default scheduling window per frame, in milliseconds. */
 export const DEFAULT_TILE_FRAME_TIME_BUDGET_MS = 16
-/** Figma viewer `m2.defaultTileRenderingBudget = 2`. */
+/** Default number of off-screen tile rasterizations per frame. */
 export const DEFAULT_TILE_FRAME_TILE_RENDER_BUDGET = 2
-/** Figma viewer `m2.defaultRenderTargetSwitchBudget = 250`. Recorded for
- * parity only: our worker path has no per-frame RT-switch counter, so this
- * budget is never consulted. */
+/** Reserved render-target switch budget. The worker path has no per-frame
+ * render-target switch counter, so this budget is never consulted. */
 export const TILE_FRAME_RENDER_TARGET_SWITCH_BUDGET = 250
 
 export type ViewportRect = { x: number; y: number; width: number; height: number }
@@ -72,12 +71,11 @@ export function prioritizeTileFill(tiles: RasterTile[], viewport: ViewportRect):
 }
 
 export type TileFrameBudgetOptions = {
-  /** Per-frame scheduling window in milliseconds. Default 16 (Figma). */
+  /** Per-frame scheduling window in milliseconds. Default 16. */
   timeBudgetMs?: number
-  /** Tile rasterizations permitted per frame. Default 2 (Figma). */
+  /** Tile rasterizations permitted per frame. Default 2. */
   tileRenderBudget?: number
-  /** Injectable clock for deterministic tests (Figma mirrors this with
-   * `useDeterministicTimeBudgetForTests`). */
+  /** Injectable clock for deterministic tests. */
   now?: () => number
 }
 
@@ -120,7 +118,7 @@ export class TileFrameBudget {
     this.tileRendersRemaining--
   }
 
-  /** On-screen exemption (Figma m2 API): work continues past every budget. */
+  /** On-screen exemption: work continues past every budget. */
   permitWorkAfterBudgetExceeded() {
     this.overrideBudget = true
   }

@@ -504,7 +504,12 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         const modes={RECTANGULAR:'grid',HORIZONTAL_HEXAGONAL:'stagger_horizontal',VERTICAL_HEXAGONAL:'stagger_vertical'} as const
         const mode=p.patternTileType ?? 'RECTANGULAR'
         if(!(mode in modes))throw new Error(`FIG 平铺模式 ${mode} 暂不支持`)
-        const align = (value: unknown) => value === 'CENTER' ? 'center' as const : value === 'END' ? 'end' as const : 'start' as const
+        const align = (value: unknown, field: string) => {
+          if (value === undefined || value === 'START') return 'start' as const
+          if (value === 'CENTER') return 'center' as const
+          if (value === 'END') return 'end' as const
+          throw new Error(`FIG 平铺对齐 ${field}=${String(value)} 暂不支持；原文件未修改`)
+        }
         const scale = p.scale ?? 1
         const rotation = p.rotation ?? 0
         const spacingX = p.patternSpacing?.x ?? (typeof p.spacing === 'number' ? p.spacing : 0)
@@ -516,7 +521,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
           mode:modes[mode as keyof typeof modes],
           size:[0,0],
           offset:[0,0],
-          alignment:[align(p.horizontalAlignment), align(p.verticalAlignment)],
+          alignment:[align(p.horizontalAlignment, 'horizontalAlignment'), align(p.verticalAlignment, 'verticalAlignment')],
           ...(scale !== 1 ? { scale } : {}),
           ...(rotation !== 0 ? { rotation } : {}),
           ...(spacingX !== 0 || spacingY !== 0 ? { spacing: [spacingX, spacingY] as [number, number] } : {}),
@@ -760,6 +765,16 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       keepFonts(n, r)
       importFigTextExtras(n, r, warnings)
     }
+    if (r.variableConsumptionMap) {
+      const kept = receipts.get(n.id) ?? {}
+      kept.figVariableConsumption = JSON.stringify(r.variableConsumptionMap)
+      receipts.set(n.id, kept)
+    }
+    if (Array.isArray(r.variableModeBySetMap?.entries) && r.variableModeBySetMap.entries.length) {
+      const kept = receipts.get(n.id) ?? {}
+      kept.figVariableModes = JSON.stringify(r.variableModeBySetMap)
+      receipts.set(n.id, kept)
+    }
     if (r.type === 'SYMBOL') n.component = { variants: {}, properties: {} }
     if (r.type === 'INSTANCE') n.instance = { componentId: '', overrides: {}, propertyValues: {} }
     if (r.type === 'BOOLEAN_OPERATION') n.network = { vertices: [], edges: [], fillRule: 'evenodd' }
@@ -796,7 +811,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     receipts.set(id, bindings)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
-  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings)
+  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts)
   // The shared model's direct mask owns its whole container. Native FIG masks
   // only following siblings. Explicit identity groups keep all original node
   // IDs, local coordinates, order and component override keys intact.
@@ -820,7 +835,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   importFigPrototype(records, ids, doc, receipts)
   parkFigReceipts(doc, receipts)
   applyFigDocumentSemantics(doc, records, ids, guid, { toPaint, effectsOf, strokesOf, fallbackName: name }, warnings)
-  importFigVariableNodes(doc, records)
+  importFigVariableNodes(doc, records, ids)
   storeFigVariables(doc, data)
   const unhandledProps = new Set<string>()
   for (const record of records.values()) {

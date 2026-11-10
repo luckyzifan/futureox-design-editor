@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PreviewAdmission, renderPreviewRegions, renderPreviewTiles, renderBitmapPreviewTiles, type PreviewTile } from './preview-tiles'
+import { PreviewAdmission, prepareWindowRetriable, renderPreviewRegions, renderPreviewTiles, renderBitmapPreviewTiles, type PreviewTile } from './preview-tiles'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -20,6 +20,14 @@ const pixels = (tile: PreviewTile, float = false) => {
       )
   return data
 }
+describe('prepare window admission', () => {
+  it('retries a wide guard only for aggregate program or path budgets', () => {
+    expect(prepareWindowRetriable(Error('Scene path budget exceeded'))).toBe(true)
+    expect(prepareWindowRetriable(Error('GPU analytic interval program budget exceeded'))).toBe(true)
+    expect(prepareWindowRetriable(Error('Flattened path budget exceeded'))).toBe(false)
+    expect(prepareWindowRetriable(Error('GPU 设备已丢失'))).toBe(false)
+  })
+})
 describe('bounded preview tile assembly', () => {
   it('learns failed dimensions before repeating expensive work, preserving every float pixel', async () => {
     const admission=new PreviewAdmission(), failures:number[]=[]

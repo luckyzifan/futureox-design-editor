@@ -1,60 +1,14 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
-2026-11-09 缩出后平移与松手旋转只改捕获让出和粗页条调度，不提高预算，不改采样坐标、效果、导出或撤销。定向测试 507 项通过。大图输入到可见 P95 未测。不关闭 33/100ms、完整 G2/G5、#61 或 #64。详细命令留在当次 PR，`/testing/` 按忽略规则不入库。
+版本：1。本文定义工程与验收要求；当前候选是否通过须由对应提交的运行证据证明。
 
-2026-11-09 [拓扑 GPU 批绘与成熟度](TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)：低物理采样倍率的原生源 SDR 显示只合并已证明的不透明纯色 brush，保持原四相、顺序、裁剪、质量和预算。基线约 113.9 秒，采用方案中位约 100.5 秒，默认构建复核约 101.8 秒；原生 superset 复用候选未达到收益门，已撤回。按完整拓扑、模板二、主框架03主基准及 117/FIG/test 对照判断；额外输入造成的错误相机回放不能算有效验收。仍不关闭完整 G2/G5、33/100ms 或生产级发布门。
+入口：[项目渲染优先 Skill](../.agents/skills/futureox-rendering-first/SKILL.md)。配合[开发契约](DEVELOPMENT_CONTRACT_V1.md)和[项目开发 Skill](../.agents/skills/futureox-design-development/SKILL.md)使用。保持现有精度、所有权、容量、安全和实验默认值。
 
-2026-11-09 [缩放清晰度方案选择](ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)：普通桌面 SDR WebGPU 默认渐进替换已完成的原密度区域，保留同源连续预览，整屏回执仍需全部完成；`VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR=0` 回退。117 首个原密度区域呈现 ACK 约 10.5→0.8 秒，整屏约 8.5 秒；模板二首区域仍约 5.6 秒。原密度/相位、版本、设备、取消边界与最终像素保持，native-visible-tiles 等其他实验不推广。不代表运动始终清晰或完整 G2/G5。[整个应用开源/商业分发评估](OPEN_SOURCE_COMMERCIAL_READINESS_20261109.zh-CN.md)仍有项目许可、素材/代码来源与实际发布包授权缺口，不能从渲染通过推导可发布。
-
-2026-11-09 [GPU 启动与缩放调度](ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地 GPU 优先、CPU 兜底。已有同源预览时，完整源先完成原密度瓦片，粗页预取在首个原生回执后继续；高倍停止输入后仅撤销未完成的可选滤镜预览，保留冷启动、已交付图像和原任务完结/迟到释放边界。组合版完整拓扑两次约 110–115 秒，旧版约 172 秒；117 的 3200% 约 25.7→10.5 秒。原生画布及可见内容像素一致，预算、效果、密度和 GPU 数学不变。集合替换仅改善 1.9%，已撤回。不是 33/100ms 或完整 G2/G5。
-
-2026-11-09 [最新 main 的 Electron 回归修复](ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)：本地保持 WebGPU 优先，CPU 只兜底。保留 PR56/57 的覆盖场、位图保留、原生 JSON 与重绑定/恢复。单素材原生回执只开放当前 catalogue key 的已认可区域；opening 缩略图旧 key 不能跨重绑定授予整页覆盖。高倍 SDR 图片 Gaussian 按原密度、四相和六遍分条，预算与导出/HDR 入口不放宽。真实 GPU 的 test/FIG/拓扑/117 回放通过；完整拓扑本轮约 177.1 秒，仍慢，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-07 的[冷缩出粗覆盖](../testing/verification-cold-zoom-seed-20261107/README.md)在大源首屏已有像素且用户停手时先排一张页级总览瓦片。不提高预算，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-07 的[打开预览盖住平移条](../testing/verification-zoom-coverage-continuity-20261107/README.md)在画板只占视口一小块时把打开预览放到原生画布上面，条带用覆盖场。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
-
-2026-11-07 的[CPU 清屏白](../testing/verification-zoom-coverage-continuity-20261107/README.md)在页面矩形以外、瓦片绘制之后铺覆盖场，避免平移条只剩 `fillRect` 的纯白。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
-
-2026-11-07 的[CPU 粘贴板平移](../testing/verification-zoom-coverage-continuity-20261107/README.md)让 `--core-cpu-only` 也画出粗页瓦片，并在画板缩得很小时不再把原生画布裁成缩略图。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
-
-2026-11-07 的[8% 粘贴板平移](../testing/verification-zoom-coverage-continuity-20261107/README.md)在视口大于页面时先排一张粗页瓦片，平移时用它填新露出的条，并写下 `data-source-coverage-extend="pan"`。不提高预算，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-07 的[平移条粗覆盖](../testing/verification-zoom-coverage-continuity-20261107/README.md)在提交平移帧时写下 `data-source-coverage-extend="pan"`，回执只核对该帧自己的瓦片。连续平移不再整段丢掉已覆盖的粗条。不提高预算，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-07 的[连续缩放覆盖](../testing/verification-zoom-coverage-continuity-20261107/README.md)只改变缩放时哪些已有瓦片可以留在画面上、哪些在途瓦片算过期。不提高预算，不把预览密度改成永久 1x，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-02 的[吸管与取色](../testing/verification-eyedropper-color-picker-20261102/README.md)只改颜色界面。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-02 的[选区、框选与测距](../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改画布交互叠层。gaps5：选区、悬停和框选边是整像素上的 1px `#4597F7`，框选填充 `#DCE9F5`，间距 `#E05634`。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-02 的[原型播放](../testing/verification-playback-plugins-import-20261102/README.md)只在原型预览里封顶中间帧的玻璃和模糊，溶解用两张已结算画面交叉。落定帧和编辑器画布仍用原稿。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-02 的[画布呈现续](../testing/verification-canvas-render-continuity-20261102/README.md)让 CPU 参考帧在快速缩小后继续盖住视口。旋转之后的缩小不再用更紧的完成帧换掉宽画面，选区跟实时相机。合成压力不再整帧红字。预算和实验开关未放宽。33/100ms 与完整 G2/G5 未通过。
-
-2026-11-02 的[Electron 主线程序列化](../testing/verification-electron-perf-flame-20261102/README.md)减少相机、平移预览和多页文档里单页编辑的整份序列化与重布局。损伤父级表只覆盖被改的页，视口瓦片按脏区相交丢掉。其它页节点引用保持不动；跨页依赖和首次打开仍全量。不改像素、瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
-
-2026-11-01 的[连续操作续轮](../testing/verification-fluid-canvas-20261101/README.md)将白色缺口限定为用户要求的临时预览，网格在400%起由独立层显示；不改页面/导出语义。图片驻留须区分静态、交互和压力场景，不能由默认请求推出普遍收益。局部旋转、材质上传减量与提交/可见时间分别留证；存在像素差异或仍有秒级延迟的候选不得默认推广或关闭联合验收门。
-
-2026-11-01 的[相机连续呈现记录](../testing/verification-camera-continuity-20261101/README.md)将同源缓存、显式缺口占位、浏览器 backing 投影与精确完成分开。预览可以连续跟随，但不能提升 native/terminal 质量回执；DOM 相机时间不等于 GUI 像素或物理 scanout。GPU 分段/高水位观察保留资源 fence、全部预算及导出精度。首轮 Worker 延迟、录屏干扰与夹具错误单列，完整 G2/G5 和所有精修场景仍需原有联合门。
-
-2026-11-01 后续[三项复用 A/B](../testing/verification-raster-reuse-ab-20261101/README.md)保持隔离：描边蒙版、材质模板和程序身份的单项/组合均未达到冻结速度门，不能根据调用数减少默认推广。池化 driver 归还前恢复 QA 包装，计时帧必须断言无QA像素返回；修正夹具后既有Gaussian自动选择四个命中视口约14.4%，替代旧速度口径。全部结论仍限于实测范围。
-
-2026-11-01 的[拓扑模糊 A/B](../testing/verification-blur-ab-20261101/README.md)先在隔离源码验证，再采用普通 SDR Gaussian 直接/前缀和自动选择；`VITE_DESIGN_GAUSSIAN_AUTO=0` 可回退。该采用保留原核、六遍、RGBA32F、四相、输出密度和预算，沿用既有 SDR 误差门，HDR/精确输出逐位比较不变。RGBA16F 性能不达门、缩小工作面证据有限，均未默认推广；指定视口收益、基线队列测试失败与完整 G2/G5 分开记录。
-
-版本：1，2026-10-22。性质：后续工作与交付的规范，不是实现完成报告。
-
-2026-10-30 的稀疏画布、源准备与实时像素修复见[本轮验证](../testing/verification-sparse-canvas-20261030/README.md)。实时捕获必须高于实际页面质量层级，不能用固定 layer 4：原精确 layer 5 曾遮挡已生成的新像素，渲染回执变快并未消除蓝框先动。必须保留真实截图负/正对照。FXSCENE4 共享完整图片/几何并保留原始 f64 位；两 CPU 转换槽按源序合并，单 GPU owner 不变。空白复用需完整源、同 owner/颜色/密度的实际 GPU texel 证明，白色 authored paint 仍保留。四采样子树/静态前缀与高斯分条均使用原预算；新实验准入与开关不整体放开。有界捕获扩展只保留 owner-valid 输出边界，最多一原生百万像素，不授予像素复用或完整性。截图会阻塞 IPC 回执，像素回放与无截图计时分开；冷启动、100 ms 精修、可见 P95、任意嵌套/HDR 覆盖及完整 G5 尚未关闭。
-
-2026-10-26 高倍率阴影实现的限定范围验收见[本轮记录](../testing/verification-topology-navigation-20261026/README.md)。私有有界阴影证明不授予全局实验或任意滤镜的新准入；保留原运算符边界、64 KiB 系数包、实际纹理限制和 GPU 总量预算。其局部通过与尚待复测的视口分别登记，不改变以下联合验收规则。
-
-2026-10-29 四相四附件候选见[实现与对照](../testing/verification-gpu-packed-coverage-20261029/README.md)。`VITE_DESIGN_PACKED_COVERAGE` 继续默认关闭，仅显式 `1` 启用；只对四张全新、私有且通过实际上传证明的 RGBA8 目标合并光栅化，缓存命中和非显示路径回退。算子及生产像素一致不等于生产提速或完整 G2/G5 通过；暖帧未获益，不推广默认开启。
-
-入口：[项目渲染优先 Skill](../.agents/skills/futureox-rendering-first/SKILL.md)。配合[现有开发契约](DEVELOPMENT_CONTRACT_V1.md)与[现有项目 Skill](../.agents/skills/futureox-design-development/SKILL.md)使用。本规范确定新工作的优先级和验收要求，不撤销已有精度、所有权、容量、安全或默认关闭边界。若历史记录与本轮结果不同，保留两份带 hash 的证据，不覆盖历史。
+当前实现与已知缺口见[缩放清晰度](ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)、[桌面 GPU 调度](ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)、[拓扑渲染](TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)和[主线复核](PR_REVIEW_20261110.zh-CN.md)。[全源画布容量契约](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)区分源总量和内部任务粒度。历史通过项不自动适用于当前组合版本，完整 G2/G5 与 33/100ms 目标仍需独立验收。
 
 ## 判定约定
 
-2026-10-29 的[画布模糊迭代](../testing/verification-canvas-blur-20261029/README.md)对限定 SDR WebGPU 画布累加采用预先冻结的误差门（黑/白底合成后最大未量化编码误差与 alpha 误差均 < 1/255），不再要求该显示层与旧有理累加逐位一致。原核、半径、支撑、四相、分条、内存、HDR/显式精确输出及文档语义仍保留；其它 G3 要求不变。该例外不授权降低画布分辨率，也不把算子或指定视口收益当成 33/100ms 或全 G2/G5 验收。
+限定 SDR WebGPU 画布累加采用预先冻结的误差门（黑/白底合成后最大未量化编码误差与 alpha 误差均 < 1/255），不再要求该显示层与旧有理累加逐位一致。原核、半径、支撑、四相、分条、内存、HDR/显式精确输出及文档语义仍保留；其它 G3 要求不变。该例外不授权降低画布分辨率，也不把算子或指定视口收益当成 33/100ms 或全 G2/G5 验收。
 
 - 每个门只有 PASS、FAIL、BLOCKED、NOT_RUN、NOT_APPLICABLE 五种状态。PASS 必须同时有指定输入、实际运行命令、退出码、日志和本门要求的观测证据。BLOCKED 是缺少环境/样本/oracle/阈值；NOT_RUN 是尚未执行；两者都不是通过。
 - NOT_APPLICABLE 须写明变更范围和理由；不能用于删除固定矩阵、把不支持平台隐藏掉或绕过真实应用门。限定范围开发包可以带未通过项交付，但必须标为候选，不能声称完整渲染验收。
@@ -237,29 +191,3 @@ REAL117x10 必须经过实际 append/import 操作产生十个独立可编辑副
 ## 本规范自身的验收边界
 
 本文及配套 Skill 是项目规则交付，不改变应用代码、预算、精度、实验开关或功能实现。它们的格式/链接/hash 检查通过，不证明任何运行时、真实 117、十份导入、固定规模、600 张图标导出、GPU、GUI、持久化或性能门已经通过。当前候选的完成情况必须由对应运行记录逐项证明。
-
-## 2026-10-23 大源文件与后台调度证据
-
-[4 GiB 验证记录](../testing/verification-large-document-4gib-20261023/README.md)单列实际 4 GiB 源文件、真实拓扑 Sketch、完整导出、原生排队/保存/取消及 Electron 局部画布证据。磁盘源容量与完整 live scene、WASM/GPU 工作集是独立边界。源索引建立期间 UI 响应、后台保存及时和局部对象出现像素均不能代替整个大文档的高倍率/旋转/连续编辑 G0–G8 验收。
-
-
-2026-10-27 用户明确授权调整源文件容量策略并要求全源单画板，当前实现与未完成边界见[全源单画布容量契约](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)。内部工作粒度与可回收缓存不能作为源文档总量配额；此授权不改变精度、所有权、实际设备能力或验收证据要求。
-
-
-2026-10-29 的准备/共享图片/源任务控制增量与三文件回归见[实施记录](../testing/verification-sharp-refactor-20261029/README.md)。保留 64 MiB 共享缓存的分配前预留及版本内拒绝记忆；严格区分不同历史基线、native 配对、GPU readback 与 GUI 操作。该增量仍有秒级精修、运动放大和未执行的 G5 项，不构成全应用验收，字段退休索引通过上述专属维护路径证据后默认启用，0回退；其余旧候选策略不变。用户新确认的33/100ms目标仍未达到。
-
-
-### 2026-10-29 场景运行时第三模块的验收边界
-
-[模块3记录](../testing/verification-scene-runtime-20261029/module-3/README.md)保留UI/Worker → 宿主授权源 → Rust准备通道 → 需求投影 → FGSC/资源协议。G3检查完整与按需编译的解码字段、几何浮点位、资源确认/切换/取消和修改撤销投影；不代替硬件或独立像素保真。G4分别记录完整源/目录构建、投影更换、复用和完整回退；未优化单次顺序耗时不能证明整体提速或关闭33/100ms。完整源仍驻留，不宣称首屏O(视口)或无限画布内存已解决。用户要求统一构建后才启动Electron真实回归，本模块不关闭G2/G5。
-
-### 2026-10-29 格式语义与全源平移证据
-
-[格式修复](../testing/verification-fig-sketch-interop-20261029/README.md)明确分开真实枚举/文件往返、编辑保存、跨渲染器像素；新 outline 语义不能用静默 alpha 替代。[源画布平移](../testing/verification-source-pan-20261029/README.md)的预取收益包含单列预热代价，先保持屏内回执、单 raster owner 和实际 GPU 资源完成边界。只删除相机 key 中整周期等价项，不能量化实际相机来制造 cache hit。部分视口的等待改善不关闭冷启动和全 G2/G5。
-
-2026-10-29/30 响应修复的限定实现、长平移、解码重复工作与三文件回归见[本轮记录](../testing/verification-responsive-editor-20261029/README.md)。图片解码器共享不是共享文档/权限/GPU 身份，完整原生 fork 回执或既有同源证明、颜色/mip 一致及分离所有权仍必须成立。根拖动实际像素修复不关闭首次捕获、3200% 大模糊、冷启动、33/100ms 或完整 G5；最长回放与最终增量分开归属。
-
-
-### 2026-11-01 局部拖动与精确源回访
-
-[本轮证据](../testing/verification-local-drag-revisit-20261101/README.md)以冻结的未提交工作树为基线，保留既有高斯自动选择与前一轮拖动修复。局部滤镜捕获和有界精确编译结果缓存分别验证。原生请求耗时、GPU graph wall、合成 ACK 与真实呈现延迟不混用；旧基线整板捕获造成的七个静态像素差异单列，以重新加载的静态精确画面建立旧失败/新通过，而非放宽容差。47 请求压力、资源 ACK/换 scope/取消/修改检查不替代全部 G7；33/100 ms 与全 G5 未关闭。

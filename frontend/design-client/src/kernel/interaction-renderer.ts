@@ -1424,7 +1424,7 @@ export class InteractionRenderer {
           }
           const reduced=allowsReducedSampling(this.qualityZoom)
           // Gesture-time adaptive density (strict opt-in): a still-moving
-          // capture above the pixel budget rasterizes at the Figma-viewer
+          // capture above the pixel budget rasterizes at a budget-based
           // stepped density instead of full zoom*DPR. Settled exact tiles and
           // the low-zoom reduced tier are unchanged.
           const gestureScale = interactionAdaptiveScale(resident.scale, b, this.props?.active === true, reduced)
