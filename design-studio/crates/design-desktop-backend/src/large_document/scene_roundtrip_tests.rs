@@ -230,6 +230,19 @@ fn native_canvas_snapshot_has_one_artboard_and_keeps_all_original_subtrees() {
         assert_eq!(node.transform.0[5],item["placed"]["y"].as_f64().unwrap());
     }
     assert_eq!(f.call(&status,"large.canvasSnapshot",json!({})).unwrap(),result);
+    {
+        let slot = f.sessions.current.lock().unwrap();
+        let s = slot.as_ref().unwrap();
+        assert_eq!(s.snapshot_account.builds, 1);
+        assert_eq!(s.snapshot_account.scene_writes, 1);
+        assert_eq!(s.snapshot_account.descriptor_hits, 1);
+        assert_eq!(s.snapshot_account.layout_reuses, 1);
+        assert_eq!(s.snapshot_account.layout_builds, 0);
+        assert_eq!(s.snapshot_account.source_batches.load(std::sync::atomic::Ordering::Relaxed), 1);
+        let windows = s.converted_windows.lock().unwrap();
+        assert_eq!(windows.conversions, 0);
+        assert_eq!(windows.retained_reads, 0);
+    }
     let cancelled=f.sessions.dispatch("large.canvasSnapshot",Fixture::request(&status,json!({})),&AtomicBool::new(true));
     assert!(cancelled.unwrap_err().message.contains("cancelled"));
     assert_eq!(fs::read(&path).unwrap(),bytes);
@@ -373,12 +386,16 @@ fn converted_source_windows_reuse_exact_values_recover_corruption_and_follow_rev
     let second = f.call(&status, "large.scene", json!({"key":key})).unwrap();
     assert_eq!(second["hash"], first["hash"]);
     { let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
-      assert_eq!(s.converted_windows.lock().unwrap().hits,1); assert_eq!(s.scene.as_ref().unwrap().document,initial); }
+      let windows=s.converted_windows.lock().unwrap();
+      assert_eq!(windows.hits,1); assert_eq!(windows.retained_reads,1); assert_eq!(windows.conversions,1);
+      assert_eq!(s.scene.as_ref().unwrap().document,initial); }
     fs::write(&files[0], b"corrupt disposable cache").unwrap();
     let repaired = f.call(&status, "large.scene", json!({"key":key})).unwrap();
     assert_eq!(repaired["hash"],first["hash"]);
     { let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
-      assert_eq!(s.converted_windows.lock().unwrap().hits,1); assert_eq!(s.scene.as_ref().unwrap().document,initial); }
+      let windows=s.converted_windows.lock().unwrap();
+      assert_eq!(windows.hits,1); assert_eq!(windows.retained_reads,1); assert_eq!(windows.conversions,2);
+      assert_eq!(s.scene.as_ref().unwrap().document,initial); }
     let cancelled=f.sessions.dispatch("large.scene",Fixture::request(&status,json!({"key":key})),&AtomicBool::new(true));
     assert!(cancelled.unwrap_err().message.contains("cancelled"));
     let changed=f.call(&status,"large.sceneCommit",json!({"key":key,"json":json!({RECT:{"patch":{"name":"new name"}}}).to_string(),"requestId":"cache-edit"})).unwrap();

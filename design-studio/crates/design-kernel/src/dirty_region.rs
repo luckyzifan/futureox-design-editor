@@ -250,7 +250,11 @@ pub(crate) fn resolved_leaf_pose_damage(doc:&Document,parents:&crate::render_ind
     let mut union:Option<[f64;4]>=None;let mut rects=Vec::new();let mut translation=true;
     for (id,transform) in transforms{
         let node=doc.nodes.get(id)?;
-        if !node.render_children().is_empty() || node.mask { return None; }
+        if node.mask { return None; }
+        // A container pose stays local when this node itself does not filter.
+        // Child support still comes from the same subtree bounds oracle; a
+        // visible effect on the container can sample outside that proof.
+        if !node.render_children().is_empty() && node.effects.iter().any(|e| e.visible) { return None; }
         let has_effects = node.effects.iter().any(|e| e.visible);
         if has_effects && (node.kind != "vector" || node.blend != "normal" || node.path_offset != 0. ||
             node.vector_brush.is_some() || node.derived_path.is_some() || node.strokes.iter().any(|s| s.visible) ||
@@ -2436,6 +2440,42 @@ mod tests {
         backdrop.nodes.get_mut("b").unwrap().effects.push(serde_json::from_value(json!({"kind":"background-blur","radius":4.,"color":"#000000","visible":true})).unwrap());
         let parents = crate::render_index::Parents::new(&backdrop);
         assert!(resolved_leaf_pose_damage(&backdrop, &parents, &turned, &fonts).is_none());
+    }
+
+    #[test]
+    fn grouped_leaf_rotation_stays_local_until_the_container_filters() {
+        let doc = serde_json::from_value(json!({
+            "schemaVersion": 2, "id": "d", "name": "dirty",
+            "pages": [{"id": "p", "name": "p", "children": ["g", "far"], "background": "#ffffff"}],
+            "nodes": {
+                "g": {"id": "g", "kind": "group", "width": 80., "height": 60.,
+                    "transform": [1., 0., 0., 1., 24., 24.], "children": ["c"], "fills": []},
+                "c": {"id": "c", "kind": "rectangle", "width": 20., "height": 16.,
+                    "transform": [1., 0., 0., 1., 10., 10.],
+                    "fills": [{"kind": "solid", "color": "#4477dd"}]},
+                "far": {"id": "far", "kind": "rectangle", "width": 10., "height": 10.,
+                    "transform": [1., 0., 0., 1., 400., 300.],
+                    "fills": [{"kind": "solid", "color": "#112233"}]}
+            }
+        })).unwrap();
+        let parents = crate::render_index::Parents::new(&doc);
+        let fonts = Fonts::new();
+        let mut turned = BTreeMap::new();
+        turned.insert("g".into(), Transform([0., -1., 1., 0., 24., 24.]));
+        let damage = resolved_leaf_pose_damage(&doc, &parents, &turned, &fonts).expect("plain group rotation");
+        assert!(!damage.full);
+        let bounds = damage.bounds.expect("union");
+        let covers = |x: f64, y: f64| bounds[0] <= x && bounds[1] <= y && bounds[0] + bounds[2] >= x && bounds[1] + bounds[3] >= y;
+        assert!(covers(34., 34.), "old child missed {bounds:?}");
+        assert!(covers(40., 0.), "rotated child missed {bounds:?}");
+        assert!(!covers(400., 300.), "far sibling entered {bounds:?}");
+        assert!(damage.rects.is_some_and(|rects| rects.len() == 2));
+        let mut filtered = doc.clone();
+        filtered.nodes.get_mut("g").unwrap().effects.push(serde_json::from_value(json!({
+            "kind": "blur", "radius": 4., "color": "#000000", "visible": true
+        })).unwrap());
+        let parents = crate::render_index::Parents::new(&filtered);
+        assert!(resolved_leaf_pose_damage(&filtered, &parents, &turned, &fonts).is_none());
     }
 }
 

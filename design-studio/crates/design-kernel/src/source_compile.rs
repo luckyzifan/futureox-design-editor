@@ -439,6 +439,7 @@ impl Runtime {
         let stage_id = plan.stage.clone();
         let stage_children = plan.children.clone();
         let mut expansions = 0;
+        let mut projection_decision;
         loop {
             let demand_stats = demand.stats();
             if demand_stats.required_nodes == demand_stats.total_nodes {
@@ -464,9 +465,11 @@ impl Runtime {
                 self.units = units;
                 self.base_units = base_units.clone();
                 self.rebuilds += 1;
+                projection_decision = "rebuild";
                 owner.invalidate_frame_scene_request();
             } else {
                 self.reuses += 1;
+                projection_decision = "reuse";
             }
             if !self.active {
                 owner.invalidate_frame_scene_request();
@@ -519,6 +522,7 @@ impl Runtime {
             if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),self.authored_nodes);}
             self.stats = json!({"mode":"demand","sourceNodes":descriptor.nodes,"residentAuthoredNodes":self.authored_nodes,
                 "resolvedCompileNodes":compiler.doc.as_ref().unwrap().nodes.len(),"projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
+                "projectionDecision":projection_decision,
                 "scopeExpansions":expansions,"excludedNodePayloadCopies":0,"residentAuthority":true,"globalPadding":padding,
                 "globalMarginEvaluations":self.margin_evaluations,"contextMarginBytes":margin.bytes(),"cache":cache,
                 "frameScene":owner.frame_scene.stats()});

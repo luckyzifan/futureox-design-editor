@@ -86,6 +86,7 @@ fn default_source_compiler_uses_subset_and_reuses_it_across_cameras() {
     assert_eq!(runtime.stats["mode"], "demand");
     assert_eq!(runtime.stats["resolvedCompileNodes"], 2);
     assert_eq!(runtime.stats["projectionRebuilds"], 1);
+    assert_eq!(runtime.stats["projectionDecision"], "rebuild");
     let repeat = compare(
         &mut runtime,
         &mut actual,
@@ -103,6 +104,7 @@ fn default_source_compiler_uses_subset_and_reuses_it_across_cameras() {
     );
     assert_eq!(runtime.stats["projectionRebuilds"], 1);
     assert_eq!(runtime.stats["projectionReuses"], 2);
+    assert_eq!(runtime.stats["projectionDecision"], "reuse");
     assert_eq!(runtime.stats["globalMarginEvaluations"], 1);
     compare(
         &mut runtime,
