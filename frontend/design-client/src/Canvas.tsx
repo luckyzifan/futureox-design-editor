@@ -49,7 +49,8 @@ import { useUtilityTools, translateVertices } from './utility-tools'
 import { resolveShortcut, shortcutPlatform } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
 import { dispatchEditorShortcut, shortcutTargetOwnsKeyboard } from './editor-shortcuts'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
+import { scheduleCanvasView } from './canvas-view-schedule'
 import { gridOverlayRectangles, layoutGridRectangles } from './grid-overlay'
 import { canvasDropFrame, insideParentFrame } from './canvas-drop'
 import { dispatchEditorCommand } from './editor-commands'
@@ -380,7 +381,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     editor.discardPendingView()
   }
   const scheduleView = (next: typeof state.view) => {
-    editor.setViewCoalesced(next, next.zoom===editor.effectiveView().zoom&&import.meta.env.VITE_DESIGN_LEADING_PAN_INPUT!=='0')
+    scheduleCanvasView(editor, next, flushSync, import.meta.env.VITE_DESIGN_LEADING_PAN_INPUT !== '0')
   }
   /** Base camera for incremental wheel math: the pending write when one is
    * coalesced, otherwise the committed editor view. */
