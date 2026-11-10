@@ -851,9 +851,22 @@ fn bytePreview(point:vec2<f32>)->vec4<f32>{
 }
 // Image addresses are compiled from the same binary64 transforms as CPU
 // sampling. This field carries no colors; the GPU fetches its own source image.
+// A straight RGBA8 upload stores the Rust sRGB table in the two rows under the
+// image. u(51).w selects that decode before bsBilinear4. u(46).w stays clear:
+// the byte-space branch would skip the table.
+fn sourceTableWord(index:i32,row:i32)->f32{
+ let bits=vec4<u32>(round(textureLoad(sourceB,vec2<i32>(index,row),0)*255.));
+ return bitcast<f32>(bits.r|(bits.g<<8u)|(bits.b<<16u)|(bits.a<<24u));
+}
 fn linearImageTexel(q:vec2<i32>)->vec4<f32>{
  if(any(q<vec2<i32>(0))||any(q>=vec2<i32>(u(2).zw))){return vec4<f32>(0);}
- return textureLoad(sourceB,q,0);
+ let v=textureLoad(sourceB,q,0);
+ if(u(4).x==2.&&u(7).x==3.&&u(51).w==1.){
+  let b=vec4<i32>(round(v*255.));let row=i32(u(2).w);
+  let a=sourceTableWord(b.a,row+1);
+  return vec4<f32>(mulRN4(vec4<f32>(sourceTableWord(b.r,row),sourceTableWord(b.g,row),sourceTableWord(b.b,row),1.),vec4<f32>(a)).rgb,a);
+ }
+ return v;
 }
 // W=1 identifies two independent coordinate rows; general affine fields
 // retain the dense address layout. Both carry metadata only, never colours.

@@ -41,7 +41,7 @@ import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { displayImageSource } from './display-image-source'
 import { imageCoordinateSource } from './image-coordinate-source'
-import { noteHostedStraightImage } from './source-bitmap-grid'
+import { noteHostedStraightImage, straightImageUploadRows } from './source-bitmap-grid'
 import { IMAGE_RESOLVE_STEP_MODE, imageResolveStepWgsl } from './image-resolve-step'
 import { certifyExactImageRange, imageXTablePlanRange, type ExactImageRange, type ExactImageXTablePlan } from './exact-image-x-table'
 import { ImageXTablePipeline, ImageXTableStorage } from './image-x-table-gpu'
@@ -2164,9 +2164,10 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       throw Error('Invalid straight sRGB source')
     const table=this.straightTable??=new Uint8Array(straight_srgb8_table())
     if(table.length!==2048)throw Error('Invalid sRGB transfer table')
+    const image=straightImageUploadRows(bytes,width,height)
     const texture=this.createFormat(width,height+2,'rgba8unorm')
     try{
-      this.device.queue.writeTexture({texture:texture.resource as GPUTexture},bytes as Uint8Array<ArrayBuffer>,{bytesPerRow:width*4},[width,height])
+      this.device.queue.writeTexture({texture:texture.resource as GPUTexture},image.bytes as Uint8Array<ArrayBuffer>,{bytesPerRow:image.bytesPerRow},[width,height])
       this.device.queue.writeTexture({texture:texture.resource as GPUTexture,origin:[0,height]},table,{bytesPerRow:1024},[256,2])
       this.straightSources.add(texture);return texture
     }catch(e){this.destroy(texture);throw e}
