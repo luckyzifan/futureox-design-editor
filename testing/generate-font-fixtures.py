@@ -88,9 +88,12 @@ def generate(source: Path, cache_root: Path):
     source_bytes = source.read_bytes()  # Read once, bounded by the exact size above.
     if len(source_bytes) != SOURCE_BYTES or hashlib.sha256(source_bytes).hexdigest() != SOURCE_SHA256:
         raise RuntimeError(f"Bundled source font SHA-256 mismatch: {source}; expected {SOURCE_SHA256}")
-    cache_root = cache_root.resolve()
+    # macOS /tmp and /var may be symlinks. Validate the real destination,
+    # but return the caller's absolute spelling so cache identities stay stable.
+    real_cache_root = cache_root.resolve()
+    cache_root = cache_root.absolute()
     try:
-        cache_root.relative_to(ROOT)
+        real_cache_root.relative_to(ROOT)
     except ValueError:
         pass
     else:
