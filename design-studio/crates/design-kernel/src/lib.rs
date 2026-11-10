@@ -1549,8 +1549,7 @@ mod wasm {
     impl ImageRowDecoder {
         #[wasm_bindgen(constructor)]
         pub fn new(uri: &str, settings: &str) -> Result<ImageRowDecoder, JsValue> {
-            let settings = serde_json::from_str(settings).map_err(|e| JsValue::from_str(&format!("{e}")))?;
-            Ok(Self { inner: crate::image_rows::Decoder::new(uri, settings).map_err(|e| JsValue::from_str(&e))? })
+            Ok(Self { inner: crate::image_rows::Decoder::from_settings_json(uri, settings).map_err(|e| JsValue::from_str(&e))? })
         }
         pub fn width(&self) -> u32 { self.inner.width() }
         pub fn height(&self) -> u32 { self.inner.height() }

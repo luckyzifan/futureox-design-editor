@@ -24,10 +24,17 @@ fn entry_limit(name: &str) -> u64 {
 }
 /// Encoded input floor matches frontend import-input-policy.ts
 /// IMPORT_INPUT_MAX_BYTES; the process memory budget can widen it.
+/// `2^32` is a legal `u64` ceiling and not a `usize` on wasm32. A truncating
+/// cast becomes 0, so every sketch archive is rejected as `archive input`
+/// when the host pins the address ceiling.
+pub(crate) fn addressable_bytes(limit: u64) -> usize {
+    usize::try_from(limit).unwrap_or(usize::MAX)
+}
 pub(crate) fn max_input_bytes() -> usize {
-    crate::capacity::memory_budget_bytes()
-        .clamp(1024 * 1024 * 1024, crate::capacity::WASM_ADDRESS_BYTES)
-        as usize
+    addressable_bytes(
+        crate::capacity::memory_budget_bytes()
+            .clamp(1024 * 1024 * 1024, crate::capacity::WASM_ADDRESS_BYTES),
+    )
 }
 pub(crate) fn max_total_bytes() -> u64 {
     crate::capacity::memory_budget_bytes()
@@ -190,8 +197,16 @@ mod input_policy_tests {
             1024 * 1024 * 1024 - 1, max_input_bytes()] {
             assert!(check_input_len(len).is_ok(), "admission rejected {len}");
         }
-        assert!(matches!(check_input_len(max_input_bytes() + 1), Err(Error::Limit("archive input"))));
-        assert!(matches!(check_input_len(usize::MAX), Err(Error::Limit("archive input"))));
+        if let Some(over) = max_input_bytes().checked_add(1) {
+            assert!(matches!(check_input_len(over), Err(Error::Limit("archive input"))));
+        }
+        if max_input_bytes() < usize::MAX {
+            assert!(matches!(check_input_len(usize::MAX), Err(Error::Limit("archive input"))));
+        }
+        // wasm32 cannot hold 2^32. A truncating cast is 0 and rejects every archive.
+        assert_eq!(u32::try_from(1u64 << 32).unwrap_or(u32::MAX), u32::MAX);
+        assert!(addressable_bytes(1u64 << 32) > 4096);
+        assert!(max_input_bytes() > 4096);
         // Admission is not proof that an archive is valid or can be expanded.
         assert!(read(&[]).is_err());
     }

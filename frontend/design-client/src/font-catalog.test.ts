@@ -16,6 +16,11 @@ test('style tokens recognize weight and italic without treating unknown words as
   expect(parseFontStyle('Missing Bold').weight).toBeUndefined()
   expect(catalogEntryFor('Noto Sans SC Bold')?.entry.family).toBe('Noto Sans SC')
   expect(catalogEntryFor('Internal Sans')).toBeUndefined()
+  expect(catalogEntryFor('ABeeZee')?.entry).toMatchObject({ family: 'ABeeZee', category: 'bundled' })
+  expect(catalogEntryFor('ABeeZee-Regular')?.entry.family).toBe('ABeeZee')
+  expect(catalogEntryFor('Inter')?.entry.category).toBe('bundled')
+  expect(resolveListedFace('ABeeZee-Regular', [face('ABeeZee', 'Regular', { weight: 400 })])?.postscript).toBe('ABeeZee-Regular')
+  expect(resolveListedFace('Inter-Regular', [face('Inter', 'Regular', { weight: 400 })])?.family).toBe('Inter')
 })
 
 test('aliases and variable axes match a face, and a different weight stays a suggestion', () => {

@@ -96,6 +96,12 @@ fn context(map: &Map<String, Value>) -> Result<f64> {
     }
     Ok(opacity)
 }
+pub(super) fn linear_srgb_composite(document: &Value) -> bool {
+    document
+        .pointer("/userInfo/com.futureox.design-kernel/linearSrgbComposite")
+        .and_then(Value::as_bool)
+        == Some(true)
+}
 fn native_color(value: &Value, scene: &mut GpuScene) -> Result<([f64; 4], String)> {
     let color = object(value)?;
     keys(color, &["_class", "red", "green", "blue", "alpha"])?;
@@ -107,10 +113,14 @@ fn native_color(value: &Value, scene: &mut GpuScene) -> Result<([f64; 4], String
         }
     }
     let text = format!("color(srgb {} {} {} / {})", c[0], c[1], c[2], c[3]);
-    let linear = ColorSettings::default()
-        .parse_straight(&text)
-        .map_err(Error::Invalid)?;
-    scene.colors.insert(text.clone(), linear);
+    let straight = if scene.color_management.is_some() {
+        ColorSettings::default()
+            .parse_straight(&text)
+            .map_err(Error::Invalid)?
+    } else {
+        crate::color::unmanaged_straight(&text).map_err(Error::Invalid)?
+    };
+    scene.colors.insert(text.clone(), straight);
     Ok((c, text))
 }
 // Native schema evidence: sketchformat_style.dis.txt FillType=1 (gradient),
@@ -564,14 +574,17 @@ pub fn compile_preview(session: &Session, request: &PreviewRequest) -> Result<Pr
         &["_class", "do_objectID", "name", "isVisible", "isLocked"],
     )?;
     let extent = Rect::new(0, 0, request.width, request.height);
+    // Encoded sRGB is the Sketch document-space blend. An archive this editor
+    // marked linearSrgbComposite keeps the linear preview instead of clearing it.
+    let linear = linear_srgb_composite(doc.native_document());
     let mut scene = GpuScene {
         dense_paint:None,
         page_paint_rects: None,
         software_raster: false,
         output: None,
         root_input_box: None,
-        float_compositing: true,
-        color_management: Some(ColorSettings::default()),
+        float_compositing: linear,
+        color_management: linear.then(ColorSettings::default),
         colors: BTreeMap::new(),
         backdrop_samples: false,
         coherent_samples: false,

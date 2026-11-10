@@ -776,7 +776,10 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         }],
         nodes: p.nodes.into(),
         fonts: BTreeMap::new(),
-        color_management: Some(ColorSettings::default()),
+        // Encoded sRGB stays unmanaged. Explicit linearSrgbComposite keeps
+        // linear management; do not clear that request.
+        color_management: super::linear_srgb_composite(native.native_document())
+            .then(ColorSettings::default),
         raster_profile: Some(crate::fidelity::RasterProfile::Figma),
         design_system: None,
         prototype: None,
