@@ -1,6 +1,6 @@
 # Futureox brand resources
 
-The current mark is a refined letter F for Futureox: a white stroke with round terminals on an indigo squircle (`#3459D4`). It is not a font glyph, a third-party logo, or a multicolor pill. The parent brand is Futureox; the product display name is Futureox Design. The repository spelling remains `futureox-desgin`. The earlier F/D silhouette remains in `docs/branding/` as prior authoring, not the runtime icon.
+The current mark is a refined letter F for Futureox: a white stroke with round terminals on an indigo squircle (`#3459D4`). It is not a font glyph, a third-party logo, or a multicolor pill. The parent brand is Futureox; the product display name is Futureox Design. The GitHub repository is `luckyzifan/futureox-design-editor`. The earlier F/D silhouette remains in `docs/branding/` as prior authoring, not the runtime icon.
 
 ## Source and regeneration
 

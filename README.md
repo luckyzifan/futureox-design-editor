@@ -2,30 +2,32 @@
   <img src="docs/assets/readme-banner.svg" alt="Futureox Design — A local-first canvas, built in the open." width="100%" />
 </p>
 
+# Futureox Design — Rust Vector & UI Design Editor
+
 <p align="center">
   <strong>让设计工具更开放，让创作留在你手中。</strong><br />
-  开源、本地优先的 2D 设计编辑器，受 Figma 和 Sketch 启发。
+  基于 Rust 的开源矢量编辑器与 UI 设计工具，本地优先，支持 Web 和 Electron 桌面。
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3459D4?style=flat-square" alt="License: MIT" /></a>
   <a href="docs/ROADMAP.md"><img src="https://img.shields.io/badge/stage-Developer%20Alpha-D9A441?style=flat-square" alt="Stage: Developer Alpha" /></a>
   <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/core-Rust-242938?style=flat-square" alt="Core: Rust" /></a>
-  <a href="https://github.com/luckyzifan/futureoxDesgin/graphs/contributors"><img src="https://img.shields.io/github/contributors/luckyzifan/futureoxDesgin?style=flat-square&color=3459D4" alt="GitHub contributors" /></a>
+  <a href="https://github.com/luckyzifan/futureox-design-editor/graphs/contributors"><img src="https://img.shields.io/github/contributors/luckyzifan/futureox-design-editor?style=flat-square&color=3459D4" alt="GitHub contributors" /></a>
 </p>
 
 <p align="center">
   <strong>简体中文</strong> · <a href="README.en.md">English</a><br />
-  <a href="#快速开始">快速开始</a> · <a href="docs/README.md">文档</a> · <a href="docs/ROADMAP.md">路线图</a> · <a href="CONTRIBUTING.md">参与贡献</a> · <a href="https://github.com/luckyzifan/futureoxDesgin/issues/new/choose">反馈问题</a>
+  <a href="#快速开始">快速开始</a> · <a href="docs/README.md">文档</a> · <a href="docs/ROADMAP.md">路线图</a> · <a href="CONTRIBUTING.md">参与贡献</a> · <a href="https://github.com/luckyzifan/futureox-design-editor/issues/new/choose">反馈问题</a>
 </p>
 
 ---
 
 ## 一个可以一起改进的设计工作空间
 
-Futureox Design 面向界面设计、矢量绘制与本地设计文件处理。我们希望把画布、文档格式与自动化能力放在一个开放的代码库里，让设计师能够反馈真实工作流，让开发者能够理解、修改和扩展自己的工具。
+Futureox Design 是一个基于 Rust 的开源矢量编辑器（**Rust vector editor**）与 **UI design tool（界面设计工具）**。作为开发中的 **open-source Figma alternative** 和 **Sketch alternative**，它面向界面设计、矢量绘制与本地设计文件处理。我们希望把画布、文档格式与自动化能力放在一个开放的代码库里，让设计师能够反馈真实工作流，让开发者能够理解、修改和扩展自己的工具。
 
-项目以 **Rust 内核**承载文档与编辑语义，**React 共享客户端**连接网页和 Electron 桌面，配合 WebGPU／CPU 渲染与本地 MCP 接口。基础编辑围绕本地运行与本地存储展开。
+项目以 **Rust 内核**承载文档与编辑语义，通过 **WebAssembly（WASM）** 接入网页，**React 共享客户端**连接网页和 Electron 桌面，配合 **WebGPU／CPU 渲染**与本地 **Model Context Protocol（MCP）** 自动化接口。基础编辑围绕本地运行与本地存储展开。
 
 <p align="center">
   <img src="docs/assets/workspace.png" alt="Futureox Design 真实编辑器界面：图层面板、探索画布和设计属性面板" width="100%" />
@@ -43,15 +45,15 @@ Futureox Design 面向界面设计、矢量绘制与本地设计文件处理。�
 | **设计文件互通** | `.fd` 原生文档；FIG／Sketch／SVG／PDF 等导入入口及受支持的导出路径 | [导入与本地操作契约](docs/IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md) |
 | **自动化与扩展** | 本地 MCP 适配器，通过共享编辑事务查询、修改和导出文档 | [MCP 入门](frontend/design-mcp/README.md) |
 
-**当前阶段：开发者 Alpha。** 欢迎构建、试用和参与开发。连续缩放、大文件与重效果渲染、格式保真和跨平台桌面体验仍在完善中；已有实现的覆盖范围以具体功能文档和验证记录为准。当前优先事项见[路线图](docs/ROADMAP.md)，近期问题见[跟踪索引 #91](https://github.com/luckyzifan/futureoxDesgin/issues/91)。
+**当前阶段：开发者 Alpha。** 欢迎构建、试用和参与开发。连续缩放、大文件与重效果渲染、格式保真和跨平台桌面体验仍在完善中；已有实现的覆盖范围以具体功能文档和验证记录为准。当前优先事项见[路线图](docs/ROADMAP.md)，近期问题见[跟踪索引 #91](https://github.com/luckyzifan/futureox-design-editor/issues/91)。
 
 ## 快速开始
 
 准备 Git、[Rust 工具链](rust-toolchain.toml)、Bun 1.4+、Node.js 24+ 和 Python 3。以下命令从源码启动网页客户端：
 
 ```bash
-git clone https://github.com/luckyzifan/futureoxDesgin.git
-cd futureoxDesgin
+git clone https://github.com/luckyzifan/futureox-design-editor.git
+cd futureox-design-editor
 
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.130 --locked
@@ -92,9 +94,9 @@ testing/                      回归测试、夹具与统一运行器
 
 不必从一个大功能开始。复现一个问题、改进一处界面、修正文档、补充翻译，或为一个边界情况提供原创测试样本，都是很好的贡献。
 
-- **遇到问题**：通过 [Bug 表单](https://github.com/luckyzifan/futureoxDesgin/issues/new?template=bug_report.yml)提供版本、复现步骤和预期结果。
-- **有新想法**：通过[功能建议](https://github.com/luckyzifan/futureoxDesgin/issues/new?template=feature_request.yml)描述你希望完成的设计工作流。
-- **准备提交代码**：阅读[贡献指南](CONTRIBUTING.md)，选择一个范围清晰的改动，提交 [Pull Request](https://github.com/luckyzifan/futureoxDesgin/pulls)。
+- **遇到问题**：通过 [Bug 表单](https://github.com/luckyzifan/futureox-design-editor/issues/new?template=bug_report.yml)提供版本、复现步骤和预期结果。
+- **有新想法**：通过[功能建议](https://github.com/luckyzifan/futureox-design-editor/issues/new?template=feature_request.yml)描述你希望完成的设计工作流。
+- **准备提交代码**：阅读[贡献指南](CONTRIBUTING.md)，选择一个范围清晰的改动，提交 [Pull Request](https://github.com/luckyzifan/futureox-design-editor/pulls)。
 
 较大的功能和架构调整，欢迎先在 Issue 中交流方向。渲染相关贡献优先解决真实体验问题，沿用[渲染优先工程规范](docs/RENDERING_FIRST_ENGINEERING_CONTRACT.zh-CN.md)。
 
@@ -108,7 +110,7 @@ testing/                      回归测试、夹具与统一运行器
   <a href="https://github.com/cursoragent"><img src="https://github.com/cursoragent.png?size=96" width="56" height="56" alt="Cursor Agent" /></a>
 </p>
 
-[查看完整贡献记录 →](https://github.com/luckyzifan/futureoxDesgin/graphs/contributors)
+[查看完整贡献记录 →](https://github.com/luckyzifan/futureox-design-editor/graphs/contributors)
 
 [@luckyzifan](https://github.com/luckyzifan) · [@wangly19](https://github.com/wangly19) · [@cursoragent](https://github.com/cursoragent)
 

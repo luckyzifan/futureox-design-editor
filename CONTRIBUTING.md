@@ -10,8 +10,8 @@
 
 ## 找到一个合适的起点
 
-- 在 [Issues](https://github.com/luckyzifan/futureoxDesgin/issues) 查找已有讨论，避免重复报告。
-- [路线图](docs/ROADMAP.md)说明当前重点；[问题索引 #91](https://github.com/luckyzifan/futureoxDesgin/issues/91)汇总近期已知问题。
+- 在 [Issues](https://github.com/luckyzifan/futureox-design-editor/issues) 查找已有讨论，避免重复报告。
+- [路线图](docs/ROADMAP.md)说明当前重点；[问题索引 #91](https://github.com/luckyzifan/futureox-design-editor/issues/91)汇总近期已知问题。
 - 认领前可以在 Issue 中说明你的思路。较大的功能、依赖或架构调整，先讨论方向。
 - 不必修改代码：清晰的复现步骤、原创最小样例和文档修正同样有帮助。
 
@@ -52,11 +52,11 @@ bun run test --config camera-handoff.vitest.config.ts
 
 Rust 修改后，重建本次源码的 WASM／受影响原生程序再引用前端结果。完整测试的依赖、生成夹具、字体与产物要求见[贡献与测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md)。当前统一运行器和 CI 仍有未纳入版本控制的依赖文件缺口，实际状态见[本轮复核报告](docs/PR_REVIEW_20261110.zh-CN.md)。
 
-在 PR 中分别列出通过、失败、跳过和未运行的检查及原因。CPU／jsdom 的结果只证明对应路径；GPU、真实桌面窗口、文件保存重开与性能结论需要各自的证据。CI 页面见 [Actions](https://github.com/luckyzifan/futureoxDesgin/actions/workflows/local-design-cpu.yml)。
+在 PR 中分别列出通过、失败、跳过和未运行的检查及原因。CPU／jsdom 的结果只证明对应路径；GPU、真实桌面窗口、文件保存重开与性能结论需要各自的证据。CI 页面见 [Actions](https://github.com/luckyzifan/futureox-design-editor/actions/workflows/local-design-cpu.yml)。
 
 ## 文档、翻译与视觉素材
 
-- 项目名统一为 **Futureox Design**；仓库地址保留现有 `futureoxDesgin` 拼写。
+- 项目名统一为 **Futureox Design**；GitHub 仓库使用 `luckyzifan/futureox-design-editor`，首页与简介保持 Rust、vector editor、UI design、Figma alternative 等功能关键词和实际开发阶段一致。
 - 修改首页时同步维护 [中文](README.md)与[英文](README.en.md)的事实、命令、链接和项目阶段。
 - 功能描述区分已有实现、已验证范围和未来计划。不要把局部测试结果写成全应用保证。
 - 截图使用当前应用与原创示例，记录来源；品牌素材沿用[现有标识](docs/BRANDING.md)。
@@ -65,7 +65,7 @@ Rust 修改后，重建本次源码的 WASM／受影响原生程序再引用前�
 
 Thank you for helping build Futureox Design. Code, design feedback, reproductions, documentation, and translations are all welcome. Keep discussions respectful, specific, and focused on the work.
 
-Start with the [open issues](https://github.com/luckyzifan/futureoxDesgin/issues), [roadmap](docs/ROADMAP.md#english), and [current issue index](https://github.com/luckyzifan/futureoxDesgin/issues/91). Describe your approach before a substantial feature or architecture change. A clear reproduction or an original minimal fixture is a useful contribution on its own.
+Start with the [open issues](https://github.com/luckyzifan/futureox-design-editor/issues), [roadmap](docs/ROADMAP.md#english), and [current issue index](https://github.com/luckyzifan/futureox-design-editor/issues/91). Describe your approach before a substantial feature or architecture change. A clear reproduction or an original minimal fixture is a useful contribution on its own.
 
 Follow the [quick start](README.en.md#quick-start). Use the pinned Rust toolchain and `wasm-bindgen-cli 0.2.130`; install each frontend package from its own lockfile. See the [desktop guide](frontend/design-desktop/README.md#develop-and-test) for Electron.
 
@@ -75,4 +75,4 @@ For documentation, check facts, links, and rendering. For behavior changes, demo
 
 Read the [architecture guide](docs/architecture/README.zh-CN.md), [development contract](docs/DEVELOPMENT_CONTRACT_V1.md), and the relevant rendering or MCP contract before changing those boundaries. Keep temporary outputs and personal configuration out of commits. Use original, redistributable fixtures with documented provenance.
 
-Keep the Chinese and English READMEs aligned. Use the product name **Futureox Design**, retain the repository URL spelling, and separate implemented behavior, verified scope, and plans. Screenshots should show the current application with original examples and reuse the existing brand assets.
+Keep the Chinese and English READMEs aligned. Use the product name **Futureox Design** and the GitHub repository `luckyzifan/futureox-design-editor`. Keep search terms such as Rust, vector editor, UI design, and Figma alternative consistent with the actual features and development stage, and separate implemented behavior, verified scope, and plans. Screenshots should show the current application with original examples and reuse the existing brand assets.
