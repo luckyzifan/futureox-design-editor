@@ -15,7 +15,7 @@ import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
 import {frameHandoff} from './frame-handoff'
-import {exactTilesBeforeOverview} from './zoom-refinement-policy'
+import {exactTilesBeforeOverview,quietPasteStripAllowed} from './zoom-refinement-policy'
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
@@ -514,7 +514,8 @@ export function NativeSourceSurface(props:Props){
             source.revision===0&&!backing&&!moving&&!continuousZoom&&!!p.underlay?.current?.(p.view,p.width,p.height,'any')
           // The artboard lattice does not cover pasteboard. One coarse page
           // tile does, and a quarter-viewport pan stays inside the same tile.
-          const wantStrip=!firstNative&&!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(renderExecutionPolicy.cpuOnly||translated||(!moving&&!continuousZoom))
+          const quietStrip=quietPasteStripAllowed({moving,continuousZoom,exactMissing:missing.length})
+          const wantStrip=!firstNative&&!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(renderExecutionPolicy.cpuOnly||translated||quietStrip)
           if(firstNative&&optional){schedulePaint();break}
           if(!wantStrip&&!optional&&outwardCover()){schedulePaint();break}
           if(!wantStrip&&optional && source.materialKeys && moving)break

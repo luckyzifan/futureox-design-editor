@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { choosePreparedTile, exactTilesBeforeOverview } from './zoom-refinement-policy'
+import { choosePreparedTile, exactTilesBeforeOverview, quietPasteStripAllowed } from './zoom-refinement-policy'
 
 const base = {
   aborted: false,
@@ -26,4 +26,12 @@ test('missing exact tiles stay ahead of a page overview', () => {
   expect(exactTilesBeforeOverview(['a', 'b'], ['page'])).toEqual(['a', 'b'])
   expect(exactTilesBeforeOverview([], ['page'])).toEqual(['page'])
   expect(exactTilesBeforeOverview([], [])).toEqual([])
+})
+
+test('a quiet pasteboard strip waits until the exact lattice is cached', () => {
+  expect(quietPasteStripAllowed({ moving: false, continuousZoom: false, exactMissing: 4 })).toBe(false)
+  expect(quietPasteStripAllowed({ moving: false, continuousZoom: false, exactMissing: 0 })).toBe(true)
+  expect(quietPasteStripAllowed({ moving: true, continuousZoom: false, exactMissing: 0 })).toBe(false)
+  expect(quietPasteStripAllowed({ moving: false, continuousZoom: true, exactMissing: 0 })).toBe(false)
+  expect(quietPasteStripAllowed({ moving: false, continuousZoom: false, exactMissing: -1 })).toBe(false)
 })

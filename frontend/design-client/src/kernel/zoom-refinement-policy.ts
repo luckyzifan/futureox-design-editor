@@ -33,3 +33,16 @@ export function choosePreparedTile(input: {
 export function exactTilesBeforeOverview<T>(exactMissing: readonly T[], overview: readonly T[]): readonly T[] {
   return exactMissing.length ? [...exactMissing] : [...overview]
 }
+
+/** The quiet pasteboard strip may use the raster batch only when the gesture
+ * has stopped and this camera's exact tiles are already cached. Invalid
+ * counts refuse it. Cached tiles are not dropped by this decision. */
+export function quietPasteStripAllowed(input: {
+  moving: boolean
+  continuousZoom: boolean
+  exactMissing: number
+}) {
+  if (input.moving || input.continuousZoom) return false
+  if (!Number.isSafeInteger(input.exactMissing) || input.exactMissing < 0) return false
+  return input.exactMissing === 0
+}
