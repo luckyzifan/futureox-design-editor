@@ -17,6 +17,7 @@ of the rest of Futureox Design.
 | Build script | `rebuild.sh` |
 | Static libraries | libx264, libvpx |
 | Dynamic libraries | glibc (`libc.so.6`, `libm.so.6`, `ld-linux-x86-64.so.2`) and `libz.so.1` |
+| Minimum required glibc symbol version | `GLIBC_2.38`, independently read from this ELF; older Linux distributions were not validated |
 
 `source.json` stores the full `ffmpeg -version` configuration line. The prefix
 in that line is `/tmp/futureox-ffmpeg-rebuild/prefix`, which is the default
