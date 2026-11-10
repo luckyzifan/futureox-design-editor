@@ -1221,9 +1221,9 @@
   {
     "id": "glass-frost-only",
     "strictComparable": true,
-    "mappingNote": "Common zero-refraction, zero-light, zero-dispersion subset; frost radius 4.",
+    "mappingNote": "Frozen Figma readback bound to the current glass model: frost radius 4, depth 8, refraction 0, dispersion 0, lightAngle 45, lightIntensity 0. figma and figmaSoftware quantize at the RGBA8 export resolve. analytic is a separate precision layer and is not this acceptance profile.",
     "document": {
-      "schemaVersion": 4,
+      "schemaVersion": 5,
       "id": "glass-frost-only",
       "name": "glass-frost-only",
       "pages": [
@@ -1377,8 +1377,15 @@
               "kind": "glass",
               "radius": 4,
               "amount": 0,
-              "opacity": 0,
-              "color": "#000000"
+              "opacity": 1,
+              "color": "#000000",
+              "glass": {
+                "depth": 8,
+                "refraction": 0,
+                "dispersion": 0,
+                "lightAngle": 45,
+                "lightIntensity": 0
+              }
             }
           ],
           "opacity": 1
@@ -1402,10 +1409,10 @@
   },
   {
     "id": "glass-full",
-    "strictComparable": false,
-    "mappingNote": "Illustrative approximation: Figma depth 8/refraction .5/dispersion .3/lightAngle 45; kernel has no independent depth, dispersion or lightAngle. amount 4 is not an equivalent parameter.",
+    "strictComparable": true,
+    "mappingNote": "Frozen Figma readback bound to the current glass model: frost radius 4, depth 8, refraction 0.5, dispersion 0.30000001192092896, lightAngle 45, lightIntensity 0.5. This replaces the legacy amount/opacity approximation. figma and figmaSoftware quantize at the RGBA8 export resolve. analytic is a separate precision layer and is not this acceptance profile.",
     "document": {
-      "schemaVersion": 4,
+      "schemaVersion": 5,
       "id": "glass-full",
       "name": "glass-full",
       "pages": [
@@ -1558,9 +1565,16 @@
             {
               "kind": "glass",
               "radius": 4,
-              "amount": 4,
-              "opacity": 0.5,
-              "color": "#000000"
+              "amount": 0,
+              "opacity": 1,
+              "color": "#000000",
+              "glass": {
+                "depth": 8,
+                "refraction": 0.5,
+                "dispersion": 0.30000001192092896,
+                "lightAngle": 45,
+                "lightIntensity": 0.5
+              }
             }
           ],
           "opacity": 1
