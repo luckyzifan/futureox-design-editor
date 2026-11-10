@@ -2663,3 +2663,59 @@ test.each(['same','camera','dpr','epoch','policy','document','device'] as const)
   parts=surfaceParts(h.render(edit));expect(parts.wrapper.props['data-detail-ready']).toBe('false')
   if(change==='same')expect(worker.clients[0].releasePresented.mock.calls.flat(2)).not.toContain(19500)
 })
+
+test('continuous zoom keeps shown residents when a matching preview arrives and the wheel moves again', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const seeds = [
+    { key: '4:0:0:0:0', x: -1, y: -1, width: 514, height: 514, zoom: 4, gpuTile: 11 },
+    { key: '4:0:0:1:0', x: 511, y: -1, width: 514, height: 514, zoom: 4, gpuTile: 12 },
+  ]
+  const h = harness(seeds)
+  const settled = { backend: 'webgpu' as const, width: 1024, height: 512, view: { x: 0, y: 0, zoom: 4 } }
+  h.render(settled)
+  await flushRasterWork()
+  let parts = surfaceParts(h.render(settled))
+  const device = { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 }
+  parts.compositor.props.onPresented({ view: settled.view, width: 1024, height: 512, dpr: 1, interaction: false, ids: [11, 12] },
+    parts.compositor.props.presentation, device)
+  parts = surfaceParts(h.render(settled))
+  expect(parts.wrapper.props['data-frame-publication']).toBe('complete')
+  expect(parts.compositor.props.items.filter((item: any) => item.active).map((item: any) => item.tile.gpuTile).sort()).toEqual([11, 12])
+  const zoomed = { ...settled, view: { x: -20, y: 8, zoom: 4.2 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: zoomed.view } }
+  worker.zooming = true
+  h.render(zoomed)
+  await vi.waitFor(() => expect(worker.calls.some((call: any) => call.options.renderIntent === 'preview' && call.options.view.zoom === zoomed.view.zoom)).toBe(true))
+  const previewCall = [...worker.calls].reverse().find((call: any) => call.options.renderIntent === 'preview')
+  previewCall.resolve({ gpuTile: 50, backend: 'webgpu' })
+  await flushRasterWork()
+  parts = surfaceParts(h.render(zoomed))
+  const preview = parts.compositor.props.items.find((item: any) => item.tile.gpuTile === 50)
+  expect(preview?.tile.viewportPreview).toBe(true)
+  parts.compositor.props.onReady(preview.tile.key, preview.tile.serial, false)
+  parts = surfaceParts(h.render(zoomed))
+  const active = parts.compositor.props.items.filter((item: any) => item.active)
+  expect(active.some((item: any) => item.tile.gpuTile === 11)).toBe(true)
+  expect(active.some((item: any) => item.tile.gpuTile === 12)).toBe(true)
+  const draws = compositeDrawPlan(parts.compositor.props.items, zoomed.view, zoomed.width, zoomed.height)
+  const area = draws.reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)
+  expect(area).toBe(zoomed.width * zoomed.height)
+  expect(draws.every(row => (row.item.tile as { document?: object }).document === h.doc)).toBe(true)
+  const covered = compositeDrawPlan(parts.compositor.props.items.filter((item: any) => item.tile.gpuTile === 11 || item.tile.gpuTile === 12), zoomed.view, zoomed.width, zoomed.height)
+    .reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)
+  expect(draws.filter(row => (row.item.tile as { gpuTile?: number }).gpuTile === 11 || (row.item.tile as { gpuTile?: number }).gpuTile === 12)
+    .reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)).toBe(covered)
+  const later = { ...zoomed, view: { x: -48, y: 16, zoom: 4.6 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: later.view } }
+  parts = surfaceParts(h.render(later))
+  const still = parts.compositor.props.items.filter((item: any) => item.active)
+  expect(still.some((item: any) => item.tile.gpuTile === 11)).toBe(true)
+  expect(still.some((item: any) => item.tile.gpuTile === 12)).toBe(true)
+  const laterDraws = compositeDrawPlan(parts.compositor.props.items, later.view, later.width, later.height)
+  const laterResidents = compositeDrawPlan(parts.compositor.props.items.filter((item: any) => item.tile.gpuTile === 11 || item.tile.gpuTile === 12), later.view, later.width, later.height)
+  const paint = (rows: typeof laterDraws) => rows.reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)
+  expect(paint(laterDraws.filter(row => (row.item.tile as { gpuTile?: number }).gpuTile === 11 || (row.item.tile as { gpuTile?: number }).gpuTile === 12))).toBe(paint(laterResidents))
+})

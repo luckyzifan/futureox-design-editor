@@ -22,7 +22,7 @@ import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRaster
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
-import { partialSharpSample } from './frame-handoff'
+import { partialSharpSample, viewportPreviewRole } from './frame-handoff'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
@@ -2334,25 +2334,29 @@ export function ProgressiveSurfaceImpl(
     plan.pageId === pageId && plan.epoch === (props.presentationEpoch || 0)
   // Publish the target lattice together, including on camera-only changes.
   const fullPlanReady = currentPlan && !!plan?.ids.size && [...plan.ids].every(key=>ready.current.has(key)) && syncedDoc.current===doc
-  // A complete current viewport preview is an atomic replacement, including
-  // continuous navigation; it never mixes partial tiles over another revision. The old
-  // frame stays retained until the actual resident compositor ACK below.
-  // Do not treat import-ready as displayed, or geometric coverage as quality.
-  const previewReplacement = residentDisplay && !hdrCompositing && !fullPlanReady &&
-    (!displayed || !reusableFrame || navigationZoom.active) && props.visible !== false && !props.paused && !navigationZoom.suspended
-    ? [...visible].reverse().find(tile => {
-      const capture = tile.previewSource, device = previewDevice.current
-      return tile.viewportPreview && tile.backend === 'webgpu' && tileRef.current.get(tile.key) === tile &&
-        tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
-        Number.isSafeInteger(tile.gpuTile) && tile.gpuTile! > 0 && capture?.contract === contract &&
-        capture.generation === coverageGeneration.current && capture.client === client.current &&
-        device.client === capture.client && (!capture.device || capture.device === device.key) &&
-        capture.width === width && capture.height === height && capture.dpr === dpr &&
-        capture.precision === previewPrecision && capture.profile === rasterProfile &&
-        Object.is(capture.view.x, requestedView.x) && Object.is(capture.view.y, requestedView.y) &&
-        Object.is(capture.view.zoom, requestedView.zoom) &&
-        navigationHasCoverage([tile], requestedView, width, height)
-    }) : undefined
+  // A viewport preview is an atomic replacement only when it is the first
+  // picture or the previous picture is another revision. Same-revision
+  // residents and partial sharp regions stay in this composite. An exact
+  // sample must not become the only image and then hand the old frame back
+  // on the next wheel tick. Import-ready is not displayed, and geometric
+  // coverage is not quality.
+  const previewCandidate = (tile: PaintedTile, exact: boolean) => {
+    const capture = tile.previewSource, device = previewDevice.current
+    if (!(residentDisplay && !hdrCompositing && !fullPlanReady &&
+      (!displayed || !reusableFrame || navigationZoom.active) && props.visible !== false && !props.paused && !navigationZoom.suspended)) return false
+    if (!(tile.viewportPreview && tile.backend === 'webgpu' && tileRef.current.get(tile.key) === tile &&
+      tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
+      Number.isSafeInteger(tile.gpuTile) && tile.gpuTile! > 0 && capture?.contract === contract &&
+      capture.generation === coverageGeneration.current && capture.client === client.current &&
+      device.client === capture.client && (!capture.device || capture.device === device.key) &&
+      capture.width === width && capture.height === height && capture.dpr === dpr &&
+      capture.precision === previewPrecision && capture.profile === rasterProfile)) return false
+    if (exact) return Object.is(capture.view.x, requestedView.x) && Object.is(capture.view.y, requestedView.y) &&
+      Object.is(capture.view.zoom, requestedView.zoom) && navigationHasCoverage([tile], requestedView, width, height)
+    return tileIntersectsView(tile, requestedView, { width, height })
+  }
+  const previewReplacement = [...visible].reverse().find(tile => previewCandidate(tile, true))
+  const heldPreviews = visible.filter(tile => previewCandidate(tile, false))
   const replacementFrame: DisplayFrame | undefined = previewReplacement ? {
     preview: true, key: `preview-frame:${contract.revision}:${previewReplacement.serial}`,
     revision: contract.revision, document: doc, view: { ...requestedView }, dpr, width, height,
@@ -2413,13 +2417,18 @@ export function ProgressiveSurfaceImpl(
   const coarseTile = (tile: PaintedTile) => !!coarseCohort?.has(tile) || coarsePreviewSet.has(tile)
   const baseTile = (tile: PaintedTile) => !fullPlanReady && !coarseCohort && !cachedViewport &&
     displayed?.residents.get(tile.key) === tile
+  // A covering viewport preview used to clear this flag and take the whole
+  // frame. The published residents are still the picture; the preview may
+  // only fill what they do not paint.
+  const displayedResident = (tile: PaintedTile) => !fullPlanReady && !coarseCohort && !inactiveSet.has(tile) &&
+    displayed?.residents.get(tile.key) === tile && !tile.viewportPreview
   // The previous frame is one camera. Zoom-out and a pan during zoom expose
   // world the frame does not own. Ready overview and coarser tiles already in
   // memory paint those pixels in the same present; they are not a new density.
   const continuityPlan = (() => {
     const none = { tiles: [] as PaintedTile[], sharper: [] as PaintedTile[] }
-    if (previewReplacement || fullPlanReady || !residentDisplay) return none
-    const shown = visible.filter(tile => !inactiveSet.has(tile) && (fineTile(tile) || baseTile(tile) || coarseTile(tile) || cachedPreviewTile(tile)))
+    if (fullPlanReady || !residentDisplay) return none
+    const shown = visible.filter(tile => !inactiveSet.has(tile) && (fineTile(tile) || baseTile(tile) || displayedResident(tile) || coarseTile(tile) || cachedPreviewTile(tile)))
     const world = { x: -requestedView.x / requestedView.zoom, y: -requestedView.y / requestedView.zoom,
       width: width / requestedView.zoom, height: height / requestedView.zoom }
     const device = previewDevice.current
@@ -2448,21 +2457,43 @@ export function ProgressiveSurfaceImpl(
   const continuityUnderlay = continuityPlan.tiles
   const continuityKeys = new Set(continuityUnderlay.map(tile => tile.key))
   const sharperKeys = new Set(continuityPlan.sharper.map(tile => tile.key))
+  const previewTile = previewReplacement ?? heldPreviews[heldPreviews.length - 1]
+  const stackShows = (tile: PaintedTile) => !inactiveSet.has(tile) && !heldPreviews.includes(tile) &&
+    (fineTile(tile) || displayedResident(tile) || baseTile(tile) || coarseTile(tile) || cachedPreviewTile(tile) || continuityKeys.has(tile.key))
+  const sameRevisionShown = previewTile ? visible.filter(tile => stackShows(tile) && !tile.viewportPreview &&
+    !previewUnderlayHides(tile, previewTile)) : []
+  const shownZoom = sameRevisionShown.reduce((max, tile) => Math.max(max, tile.zoom), 0)
+  const previewRole = viewportPreviewRole({
+    preview: !!previewTile,
+    exact: !!previewReplacement && previewTile === previewReplacement,
+    foreignShown: !!previewTile && visible.some(tile => stackShows(tile) && previewUnderlayHides(tile, previewTile)),
+    sameRevisionDetail: sameRevisionShown.length,
+    sharperThanShown: shownZoom > 0 && !!previewTile && previewTile.zoom > shownZoom &&
+      !previewCameraScaleWithinLimit(shownZoom, previewTile.zoom),
+  })
+  const keepShownPreview = previewRole === 'under' || previewRole === 'above'
   // One frame description owns both actual composition and cache-use proof.
   // Intersecting history that contributes no physical fragment stays evictable.
   const compositeItems = visible.map(tile => {
-    // Full replacement starts from the compositor's cleared target; do not
-    // source-over a translucent new page onto old-revision pixels.
-    if (previewReplacement) return { tile, gutter: tile.gutter ?? 1, active: tile === previewReplacement, layer: 2 }
+    // A different revision still starts from a cleared target. Same-revision
+    // detail stays above a hole-filling preview, or under a strictly finer one.
+    if (previewRole === 'exclusive') return { tile, gutter: tile.gutter ?? 1, active: tile === previewReplacement, layer: 2 }
+    if (keepShownPreview && previewTile && previewUnderlayHides(tile, previewTile))
+      return { tile, gutter: tile.gutter ?? 1, active: false, layer: 0 }
     const fine = !inactiveSet.has(tile) && fineTile(tile), base = !inactiveSet.has(tile) && baseTile(tile),
       coarse = !inactiveSet.has(tile) && coarseTile(tile), cached = !inactiveSet.has(tile) && cachedPreviewTile(tile),
       continuity = continuityKeys.has(tile.key)
-    return { tile, gutter: tile.gutter ?? 1, active: fine || base || coarse || cached || continuity,
-      layer: progressiveTileLayer({ fine, cached, coarse, refining: !complete && canRefine, cameraDependent,
-        nativeDensity: tile.zoom >= requestedView.zoom * dpr,
-        nativePhase:tileHasNativePhase(tile,requestedView,dpr),
-        sameContent: tile.document === doc && tile.revision === contract.revision,
-        sharperThanPreview: sharperKeys.has(tile.key) }) }
+    const held = keepShownPreview ? heldPreviews.find(item => item === tile) : undefined
+    const previewAbove = !!held && shownZoom > 0 && held.zoom > shownZoom && !previewCameraScaleWithinLimit(shownZoom, held.zoom)
+    const previewUnder = !!held && !previewAbove
+    const residentKept = keepShownPreview && displayedResident(tile)
+    let layer = previewUnder ? 0 : progressiveTileLayer({ fine, cached: cached || residentKept, coarse, refining: !complete && canRefine, cameraDependent,
+      nativeDensity: tile.zoom >= requestedView.zoom * dpr,
+      nativePhase:tileHasNativePhase(tile,requestedView,dpr),
+      sameContent: tile.document === doc && tile.revision === contract.revision,
+      sharperThanPreview: sharperKeys.has(tile.key) || previewAbove })
+    if (keepShownPreview && !previewAbove && !previewUnder && layer < 1) layer = 1
+    return { tile, gutter: tile.gutter ?? 1, active: fine || base || coarse || cached || continuity || previewAbove || previewUnder || residentKept, layer }
   })
   useLayoutEffect(() => {
     // Publish owner, camera, items and budget atomically after child layout
@@ -2484,7 +2515,8 @@ export function ProgressiveSurfaceImpl(
   // camera are strictly closer to intent than a frozen viewport.
   const cameraPreview = props.visible !== false && !props.paused && !complete &&
     (reusableFrame || lodVisibleCount > 0 || fineVisibleCount > 0 || cachedPreviewCount > 0 || baseVisibleCount > 0)
-  const visual = replacementFrame || (cameraPreview && plan ? (reusableFrame ? displayed : plan) : displayed)
+  const visual = (previewRole === 'exclusive' ? replacementFrame : undefined) ||
+    (cameraPreview && plan ? (reusableFrame ? displayed : plan) : displayed)
   // Keep child layout anchored to the completed camera. A gesture changes one
   // compositor transform, instead of every resident canvas's layout rectangle.
   const placementView = displayed?.view || view
@@ -2722,7 +2754,7 @@ export function ProgressiveSurfaceImpl(
                 publishedDensity: densities.length ? Math.min(...densities) : undefined })
             }
             const latestView = latestContext.current.requestedView || latestContext.current.view
-            if (previewReplacement && replacementFrame && source?.document === doc && source.preview &&
+            if (previewRole === 'exclusive' && previewReplacement && replacementFrame && source?.document === doc && source.preview &&
                 source.pageId === pageId && source.epoch === (props.presentationEpoch || 0) &&
                 latestContext.current.document === doc && latestContext.current.pageId === pageId &&
                 latestContext.current.backend === backend && latestContext.current.presentationEpoch === props.presentationEpoch &&
