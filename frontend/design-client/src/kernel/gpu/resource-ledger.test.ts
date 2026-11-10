@@ -57,3 +57,42 @@ test('device loss forgets owners without pretending the bytes were destroyed', (
   expect(ledger.bytes).toBe(8)
   expect(ledger.peak).toBe(8)
 })
+
+test('a new peak records the class that caused it and completion does not lower it', () => {
+  const ledger = new ResourceLedger<Tex, Surf>()
+  ledger.charge(32, 'scratch')
+  const first = { id: 4, bytes: 64 }
+  const second = { id: 5, bytes: 64 }
+  ledger.chargeTracked(first, 'surface')
+  ledger.chargeTracked(second, 'image')
+  expect(ledger.bytes).toBe(160)
+  expect(ledger.peak).toBe(160)
+  expect(ledger.peakSample).toMatchObject({
+    chargedBytes: 160,
+    classes: { scratch: 32, surface: 64, image: 64 },
+    life: { active: 128, 'retired-pending-completion': 0, reclaimable: 0 },
+  })
+  ledger.park(first, 4, 1)
+  ledger.park(second, 2, 2)
+  expect(ledger.lifeBytes.active).toBe(0)
+  expect(ledger.lifeBytes['retired-pending-completion']).toBe(64)
+  expect(ledger.lifeBytes.reclaimable).toBe(64)
+  expect(ledger.peak).toBe(160)
+  ledger.noteCompletion(4)
+  expect(ledger.lifeBytes['retired-pending-completion']).toBe(0)
+  expect(ledger.lifeBytes.reclaimable).toBe(128)
+  expect(ledger.completionSample?.chargedBytes).toBe(160)
+  ledger.dischargeTracked(first, 4)
+  ledger.noteCompletedFree(64)
+  expect(ledger.bytes).toBe(96)
+  expect(ledger.peak).toBe(160)
+  expect(ledger.completedFreeBytes).toBe(64)
+  expect(ledger.lifeBytes.reclaimable).toBe(64)
+  expect(ledger.classes.surface).toBe(0)
+  expect(ledger.classes.image).toBe(64)
+  expect(ledger.classes.scratch).toBe(32)
+  ledger.unpark(second, 4)
+  expect(ledger.lifeBytes.active).toBe(64)
+  expect(ledger.lifeBytes.reclaimable).toBe(0)
+  expect(ledger.bytes).toBe(96)
+})

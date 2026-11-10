@@ -2,7 +2,7 @@ import {compactSourceAxes,readSourceGrid,readDenseSourceGrid,readDenseSourceGrid
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
-import { ResourceLedger } from './resource-ledger'
+import { ResourceLedger, type ResourceClass } from './resource-ledger'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
@@ -552,7 +552,7 @@ export class GpuRenderer {
     const texture=entry.plane.texture
     this.interactionTextures.delete(texture);this.busy.delete(texture);this.used.delete(texture)
     this.lastUsed.delete(texture);this.aliases.delete(texture)
-    this.driver.destroy(texture);this.bytes-=texture.bytes;this.interactionBytes-=texture.bytes
+      this.driver.destroy(texture);this.dischargeTexture(texture);this.interactionBytes-=texture.bytes
     this.stationaryBackdrop=undefined
   }
   private interactionBackdrop(n: GpuNode, backdrop: Surface, sigma: number): Surface {
@@ -652,7 +652,7 @@ export class GpuRenderer {
     for (const {texture} of this.interactionPrefix?.planes || []) {
       this.interactionTextures.delete(texture); this.busy.delete(texture); this.used.delete(texture)
       this.lastUsed.delete(texture); this.aliases.delete(texture)
-      this.driver.destroy(texture); this.bytes -= texture.bytes; this.interactionBytes -= texture.bytes
+      this.driver.destroy(texture); this.dischargeTexture(texture); this.interactionBytes -= texture.bytes
     }
     this.interactionPrefix = undefined
   }
@@ -666,7 +666,7 @@ export class GpuRenderer {
       for (const { texture } of cached.planes) {
         this.interactionTextures.delete(texture); this.busy.delete(texture); this.used.delete(texture)
         this.lastUsed.delete(texture); this.aliases.delete(texture)
-        this.driver.destroy(texture); this.bytes -= texture.bytes; this.interactionBytes -= texture.bytes
+        this.driver.destroy(texture); this.dischargeTexture(texture); this.interactionBytes -= texture.bytes
       }
       this.interactionRoots.delete(key)
     }
@@ -764,15 +764,37 @@ export class GpuRenderer {
   private free: Map<string,Texture[]> = new SurfacePool<Texture>()
   private busy = new Set<Texture>()
   private readonly ledger = new ResourceLedger<Texture, Surface>()
+  /** Class of the next `bytes` assignment. Scratch is the constructor charge;
+   * every later assignment is unclassified until a callsite says otherwise. */
+  private byteClass: ResourceClass = 'scratch'
   private get aliases() { return this.ledger.aliases }
   private get releasedAliases() { return this.ledger.released }
   private set releasedAliases(value: WeakSet<Surface>) { this.ledger.released = value }
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
   private get bytes() { return this.ledger.bytes }
-  private set bytes(value: number) { this.ledger.bytes = value }
+  private set bytes(value: number) {
+    this.ledger.applyDelta(value - this.ledger.bytes, this.byteClass)
+    this.byteClass = 'unclassified'
+  }
   private get peak() { return this.ledger.peak }
   private set peak(value: number) { this.ledger.peak = value }
+  private chargeTexture(texture: Texture, klass: ResourceClass) {
+    this.ledger.chargeTracked(texture, klass)
+  }
+  private dischargeTexture(texture: Texture) {
+    this.ledger.dischargeTracked(texture, this.driver.completedResourceEpoch)
+  }
+  private noteScratch(before: number) {
+    this.byteClass = 'scratch'
+    this.bytes += (this.driver.scratchBytes || 0) - before
+  }
+  /** Class and life totals for the charged working set. This reads the ledger;
+   * it does not allocate, destroy, or complete a GPU resource. */
+  texturePeakAttribution() {
+    this.ledger.noteCompletion(this.driver.completedResourceEpoch)
+    return this.ledger.attribution()
+  }
   private passPixels = 0
   private readonly fastWork = new FastPathWork()
   private readonly fieldRetirementIndexEnabled = import.meta.env.VITE_DESIGN_FIELD_RETIREMENT_INDEX!=='0'
@@ -937,7 +959,7 @@ export class GpuRenderer {
     this.used.delete(texture)
     this.lastUsed.delete(texture)
     this.driver.destroy(texture)
-    this.bytes -= texture.bytes
+    this.dischargeTexture(texture)
   })
   // Immutable geometry fields share the compositor's global budget. Cache only
   // exact full-parameter keys; cached fields never enter the writable color pool.
@@ -955,7 +977,7 @@ export class GpuRenderer {
     this.used.delete(texture)
     this.lastUsed.delete(texture)
     this.driver.destroy(texture)
-    this.bytes -= texture.bytes
+    this.dischargeTexture(texture)
   })
   // Synchronous dynamic scope only; restored even when a primitive is thrown.
   private activeImageFieldFailure?: () => Record<string, number>
@@ -1008,8 +1030,7 @@ export class GpuRenderer {
       } catch (error) { throw this.failureOrigin(error, 7, fieldKind) }
       if (maximumStop !== undefined) this.gradientFieldProofs.set(texture, {resource: texture.resource, maximumStop})
       this.fieldUploadBytes += values.byteLength
-      this.bytes += texture.bytes
-      this.peak = Math.max(this.peak, this.bytes)
+      this.chargeTexture(texture, 'material-field')
       if (key === undefined || !this.materialFields.put(key, noGeometryWords, texture)) this.coordinateMaps.addOwned(texture)
     }
     this.busy.add(texture)
@@ -1060,7 +1081,10 @@ export class GpuRenderer {
     const key = `${scalarCoverage ? 'scalar:' : binaryCoverage ? 'binary:' : ''}${r.w}:${r.h}`,
       list = this.free.get(key)
     let texture = list?.pop()
-    if(texture)(this.free as SurfacePool<Texture>).removed?.(texture)
+    if (texture) {
+      this.ledger.unpark(texture, this.driver.completedResourceEpoch)
+      ;(this.free as SurfacePool<Texture>).removed?.(texture)
+    }
     if (!texture) {
       // Over-budget pressure first evicts the oldest generations of the free
       // pool and the least-recently-used images (both re-create identically).
@@ -1081,8 +1105,7 @@ export class GpuRenderer {
       }
       try { texture = scalarCoverage ? this.driver.createScalarCoverage!(r.w,r.h) : binaryCoverage ? this.driver.createBinaryCoverage!(r.w, r.h) : this.driver.create(r.w, r.h) }
       catch(error){throw annotateTextureFailure(error,{textureAllocationSite:allocationSite,texturePass:passMode+1})}
-      this.bytes += texture.bytes
-      this.peak = Math.max(this.peak, this.bytes)
+      this.chargeTexture(texture, binaryCoverage || scalarCoverage ? 'coverage' : 'surface')
     }
     if (gpuDiagnosticsEnabled()) try { this.surfaceAllocationTags.set(texture, surfaceAllocationTag(allocationSite, passMode)) }
     catch { /* diagnostic-only tag cannot alter allocation */ }
@@ -1126,11 +1149,11 @@ export class GpuRenderer {
       for (const texture of drop) {
         this.used.delete(texture)
         this.lastUsed.delete(texture)
+        this.dischargeTexture(texture)
         this.ledger.clearPoolEpoch(texture)
         this.driver.destroy(texture)
         ;(this.free as SurfacePool<Texture>).removed?.(texture)
         this.ledger.noteCompletedFree(texture.bytes)
-        this.bytes -= texture.bytes
       }
       if (retained.length) {
         if ((this.free as SurfacePool<Texture>).setOwned) (this.free as SurfacePool<Texture>).setOwned(key, retained)
@@ -1153,7 +1176,7 @@ export class GpuRenderer {
     this.used.delete(texture)
     this.lastUsed.delete(texture)
     this.driver.destroy(texture)
-    this.bytes -= texture.bytes
+    this.dischargeTexture(texture)
   }
   /** Evict least-recently-used images until `required` bytes are free. Outside
    * a completed checkpoint only images unreferenced by this frame's commands
@@ -1177,7 +1200,7 @@ export class GpuRenderer {
       this.used.delete(surface.texture)
       this.lastUsed.delete(surface.texture)
       this.driver.destroy(surface.texture)
-      this.bytes -= surface.texture.bytes
+      this.dischargeTexture(surface.texture)
       required -= surface.texture.bytes
     }
     // Atlas pages evict whole (shared texture). A page pinned by any sampled
@@ -1286,6 +1309,7 @@ export class GpuRenderer {
       list.push(s.texture)
       ;(this.free as SurfacePool<Texture>).added?.(s.texture)
       this.ledger.notePoolReturn(s.texture, this.driver.resourceEpoch)
+      this.ledger.park(s.texture, this.driver.resourceEpoch, this.driver.completedResourceEpoch)
       if((this.free as SurfacePool<Texture>).setOwned)(this.free as SurfacePool<Texture>).setOwned(key,list)
       else this.free.set(key,list)
       // Returning to the pool is the end of this texture's latest use; stamp
@@ -1497,13 +1521,12 @@ export class GpuRenderer {
     if (filter && this.prefixAllowed) {
       const before = this.driver.scratchBytes || 0
       this.driver.prepareFilterPass?.(out.texture, u, inputs.map((s) => s.texture), channels, filter, this.frameBudget - this.workingBytes)
-      this.bytes += (this.driver.scratchBytes || 0) - before
-      this.peak = Math.max(this.peak, this.bytes)
+      this.noteScratch(before)
     }
     if(mode===22&&!filter&&!region&&u[39]===2&&this.driver.prepareCanvasBoxPass){
       const before=this.driver.scratchBytes||0
       this.driver.prepareCanvasBoxPass(out.texture,u,inputs.map(s=>s.texture),channels,this.frameBudget-this.workingBytes)
-      this.bytes+=(this.driver.scratchBytes||0)-before;this.peak=Math.max(this.peak,this.bytes)
+      this.noteScratch(before)
     }
     this.driver.pass(
       out.texture,
@@ -2196,8 +2219,7 @@ export class GpuRenderer {
       })() : this.driver.uploadLinear(bakeFloats(image.pixels), image.width, image.height)
       const descriptor = this.staticImageSourceDescriptor(uri, level, intoAtlas, adjust), proof = this.driver.imageTableRange?.(texture)
       if (descriptor && proof) this.staticImageBlurs.registerUpload(texture, proof, descriptor.uri, descriptor.policy)
-      this.bytes += texture.bytes
-      this.peak = Math.max(this.peak, this.bytes)
+      this.chargeTexture(texture, 'image')
       this.used.add(texture)
       this.touch(texture)
       return { texture, rect: rect(0, 0, image.width, image.height) }
@@ -2221,8 +2243,7 @@ export class GpuRenderer {
     if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
       return this.writeAtlasSlot(uri, level, image.width, image.height, { bytes: bake(image.bytes) }, adjust)
     const texture = this.driver.uploadRgba8(bake(image.bytes), image.width, image.height)
-    this.bytes += texture.bytes
-    this.peak = Math.max(this.peak, this.bytes)
+    this.chargeTexture(texture, 'image')
     this.used.add(texture)
     this.touch(texture)
     return { texture, rect: rect(0, 0, image.width, image.height) }
@@ -2262,8 +2283,7 @@ export class GpuRenderer {
         this.driver.destroy(texture)
         throw this.budgetError('GPU 图集页内存预算超限', 6, 0, SurfaceAllocationSite.atlasPage)
       }
-      this.bytes += texture.bytes
-      this.peak = Math.max(this.peak, this.bytes)
+      this.chargeTexture(texture, 'atlas')
       if (gpuDiagnosticsEnabled()) try { this.surfaceAllocationTags.set(texture, surfaceAllocationTag(SurfaceAllocationSite.atlasPage)) } catch { /* diagnostic only */ }
       page = { texture, x: 0, y: 0, rowHeight: 0, entries: new Map() }
       this.atlasPages.push(page)
@@ -2302,7 +2322,7 @@ export class GpuRenderer {
     this.used.delete(page.texture)
     this.lastUsed.delete(page.texture)
     this.driver.destroy(page.texture)
-    this.bytes -= page.texture.bytes
+    this.dischargeTexture(page.texture)
     this.atlasPages = this.atlasPages.filter((p) => p !== page)
   }
   /** Cache base dimensions without retaining a transient row decoder. */
@@ -2397,7 +2417,7 @@ export class GpuRenderer {
       this.sourcePngProofs.set(uri,opaque)
       image={texture,rect:rect(0,0,raw.width,raw.height),imageUri:uri}
       this.images.set(key,image);this.imageDims.set(uri,dims)
-      this.bytes+=texture.bytes;this.peak=Math.max(this.peak,this.bytes);this.imageAssetCounters.uploads++
+      this.chargeTexture(texture, 'image');this.imageAssetCounters.uploads++
     }else this.imageAssetCounters.hits++
     this.used.add(image.texture);this.touch(image.texture);return image
   }
@@ -2481,7 +2501,7 @@ export class GpuRenderer {
       }
       image={texture,rect:rect(0,0,w,h),imageUri:uri}
       this.images.set(key,image);this.imageAssetCounters.uploads++
-      this.bytes+=texture.bytes;this.peak=Math.max(this.peak,this.bytes)
+      this.chargeTexture(texture, 'image')
     }else this.imageAssetCounters.hits++
     this.used.add(image.texture);this.touch(image.texture)
     const span=Math.max(b.w,b.h)
@@ -2585,7 +2605,7 @@ export class GpuRenderer {
       this.checkFrameCurrent()
       const scratch = this.driver.scratchBytes || 0
       try { await this.driver.waitForSubmittedWork() }
-      finally { this.bytes += (this.driver.scratchBytes || 0) - scratch }
+      finally { this.noteScratch(scratch) }
       this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
       this.coverRetiredImageAssets(retiring)
       this.checkFrameCurrent()
@@ -2611,7 +2631,7 @@ export class GpuRenderer {
       this.used.delete(surface.texture)
       this.lastUsed.delete(surface.texture)
       this.driver.destroy(surface.texture)
-      this.bytes -= surface.texture.bytes
+      this.dischargeTexture(surface.texture)
     }
     // generation counts resource touches, not frames. Retain current assets
     // across arbitrary graph work; existing pressure-driven LRU eviction owns
@@ -3490,7 +3510,7 @@ export class GpuRenderer {
       targets.some(t=>!!t.logicalBounds)||clip&&(clip.length!==targets.length||clip.some(c=>!c.texture.binaryCoverage)))return
     const layers:SourceLayerProgram[]=[]
     let words=0,end=start,bounds:Rect|undefined
-    for(;end<ids.length&&layers.length<10;end++){
+    for(;end<ids.length;end++){
       const node=this.scene.nodes[ids[end]]
       if(!node)break
       const layer=sourceSolidLayer(node,path=>this.driver.sourceProgramOffset!(path),
@@ -3716,7 +3736,7 @@ export class GpuRenderer {
     this.used.delete(texture)
     this.lastUsed.delete(texture)
     this.driver.destroy(texture)
-    this.bytes -= texture.bytes
+    this.dischargeTexture(texture)
   }
   /** Destroy one still-cached coordinate upload and detach every alias, so a
    * later cache miss re-uploads identical bytes instead of binding a
@@ -3803,7 +3823,7 @@ export class GpuRenderer {
     // synchronous scratch delta before pressure tests or warm-path early exits.
     const completedScratch = this.driver.scratchBytes || 0
     try { this.driver.collectCompletedImageTables?.() }
-    finally { this.bytes += (this.driver.scratchBytes || 0) - completedScratch }
+    finally { this.noteScratch(completedScratch) }
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     this.collectRetiredImageAssets()
     const preserveImmutableImages = this.residentImageRequest || this.frameImageReuse || import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
@@ -3968,7 +3988,7 @@ export class GpuRenderer {
     } finally {
       // A real checkpoint can now collect logically retired image tables.
       // Preserve actual scratch accounting even when a later step rejects.
-      this.bytes += (this.driver.scratchBytes || 0) - checkpointScratch
+      this.noteScratch(checkpointScratch)
     }
     this.maintenanceResidency.completed()
     this.checkpointMs += performance.now() - checkpointStart
@@ -4337,7 +4357,7 @@ export class GpuRenderer {
           targets.every(t=>!t.logicalBounds)&&!this.scene.resolve&&!this.scene.presentation){
         const layers:SourceLayerProgram[]=[],fields:Surface[]=[]
         let words=0,numFields=0
-        for(let i=at;i<ids.length&&layers.length<10;i++){
+        for(let i=at;i<ids.length;i++){
           const child=this.scene.nodes[ids[i]];if(!child||child.opacity<=0)break
           const layer=sourceLayer(child,path=>this.driver.sourceProgramOffset!(path),key=>[...this.color(key),this.alpha(key)],SOURCE_LAYER_FLOATS-words)
           if(!layer||words+layer.data[0].length>SOURCE_LAYER_FLOATS||numFields+layer.fields.length>3)break
@@ -5028,8 +5048,7 @@ export class GpuRenderer {
         this.passPixels += output.w * output.h
         return target
       } finally {
-        this.bytes += (this.driver.scratchBytes || 0) - before
-        this.peak = Math.max(this.peak, this.bytes)
+        this.noteScratch(before)
       }
     } catch (error) {
       this.release(target)
@@ -5269,7 +5288,7 @@ export class GpuRenderer {
       }
       return table
     }
-    finally{this.bytes+=(this.driver.scratchBytes||0)-before;this.peak=Math.max(this.peak,this.bytes)}
+    finally{this.noteScratch(before)}
     } finally { this.pendingImageTableSources.delete(image.texture) }
   }
   private async streamIsolatedFilter(n: GpuNode, targets: Surface[], clip?: Surface[]): Promise<Surface[] | undefined> {
@@ -5462,7 +5481,7 @@ export class GpuRenderer {
     if(imageTable && this.driver.retireImageTable){
       const before=this.driver.scratchBytes||0,at=performance.now()
       try{await this.driver.retireImageTable(imageTable)}
-      finally{this.bytes+=(this.driver.scratchBytes||0)-before;this.checkpointMs+=performance.now()-at}
+      finally{this.noteScratch(before);this.checkpointMs+=performance.now()-at}
     }
     await this.reclaimScratch(filterOutput.w*filterOutput.h*16 + (whole ? 0 : filterOutput.h*64*16))
     const blurred=this.acquire(filterOutput, false, false, SurfaceAllocationSite.isolatedBlurOutput)
@@ -6019,8 +6038,7 @@ export class GpuRenderer {
         if (!pixels && !tint) return true
         if (pixels) {
           const texture = this.driver.uploadLinear(pixels, crop.w, crop.h)
-          this.bytes += texture.bytes
-          this.peak = Math.max(this.bytes, this.peak)
+          this.chargeTexture(texture, 'image')
           window = {texture, rect: crop}
         }
       }
@@ -6538,8 +6556,7 @@ export class GpuRenderer {
         texture.prefixRationalUnsupported = prefixRationalUnsupported(values)
       this.kernelBuilds++
       this.kernelUploadBytes += bytes
-      this.bytes += texture.bytes
-      this.peak = Math.max(this.peak, this.bytes)
+      this.chargeTexture(texture, 'kernel')
       if (this.retainKernels) this.kernelCache.put(key, texture, this.driver.resourceEpoch!, this.driver.completedResourceEpoch!)
     }
     const surface = { texture, rect: rect(0, 0, texture.width, texture.height) }
@@ -7080,8 +7097,7 @@ export class GpuRenderer {
     return out
   }
   private retainTextureData(texture: Texture, r: Rect): Surface {
-    this.bytes += texture.bytes
-    this.peak = Math.max(this.peak, this.bytes)
+    this.chargeTexture(texture, 'upload')
     this.busy.add(texture)
     this.used.add(texture)
     this.touch(texture)
@@ -7582,7 +7598,7 @@ export class GpuRenderer {
       this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
       this.coverRetiredImageAssets(retiring)
     }
-    finally { this.bytes += (this.driver.scratchBytes || 0) - reserved }
+    finally { this.noteScratch(reserved) }
   }
   async render(scene: GpuScene, readback = false, present = true, isCurrent?: () => boolean, onEncodingProgress?: (drawCalls:number)=>void, displayBackpressure=false, onFinishStarted?:()=>void) {
     // Cancellation requires an explicit encoder-abandon/completion boundary.
@@ -7756,7 +7772,7 @@ export class GpuRenderer {
           upcomingLargeSizes!.has(`${t.width}:${t.height}`)&&largeKept++<2)) return true
         this.driver.destroy(t)
         ;(this.free as SurfacePool<Texture>).removed?.(t)
-        this.bytes -= t.bytes
+        this.dischargeTexture(t)
         this.lastUsed.delete(t)
         return false
       })
@@ -7810,7 +7826,7 @@ export class GpuRenderer {
     this.checkFrameCurrent()
     const preparingScratch = this.driver.scratchBytes || 0
     try { await this.prepareWithFailureOrigin(4, () => this.driver.prepareFrameResources?.(vertices, curves)) }
-    finally { this.bytes += (this.driver.scratchBytes || 0) - preparingScratch }
+    finally { this.noteScratch(preparingScratch) }
     this.checkFrameCurrent()
     this.prepareWithFailureOrigin(4, () => this.driver.begin(vertices, curves))
     this.masks.clear()
@@ -7948,7 +7964,7 @@ export class GpuRenderer {
         try { onFinishStarted?.() } finally { result = await finishing }
       } catch (error) { throw this.failureOrigin(markRenderFailure(error, { failureStage: 7 }), 5) } finally {
         // Driver finish may retire scratch before a later readback fails.
-        this.bytes += (this.driver.scratchBytes || 0) - finishingScratch
+        this.noteScratch(finishingScratch)
       }
       completed = true
       if (scene.sequentialDisplay) this.sequentialDisplayFrames++
@@ -8052,7 +8068,7 @@ export class GpuRenderer {
         this.used.delete(texture)
         this.lastUsed.delete(texture)
         this.driver.destroy(texture)
-        this.bytes -= texture.bytes
+        this.dischargeTexture(texture)
       }
       this.coordinateMaps.clear()
       // Retired geometry fields already left coordinateMaps; finish releases
