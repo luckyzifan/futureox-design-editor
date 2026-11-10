@@ -4,7 +4,7 @@
 use crate::{
     blend::{Pixel, Surface},
     math::Rect,
-    rational_filter::RationalKernel,
+    rational_filter::{round_certified_dyadic, Q64Prefix, RationalKernel},
 };
 #[derive(Clone, Copy, Default)]
 struct Prefix {
@@ -92,6 +92,16 @@ pub(crate) fn blur_owned(
     clamp_edges: bool,
     kernel: &RationalKernel,
 ) -> Result<Surface, String> {
+    // Transparent-boundary shadows are the wide export. The Q64 line prefix is
+    // the same enclosure as the GPU certificate: accepted pixels are exact
+    // binary32, and a declined pixel still uses RationalKernel::convolve.
+    // Clamped edges keep the general evaluator so their repeated border
+    // samples stay on the path already compared with direct convolution.
+    if !clamp_edges {
+        if let Some(plan) = kernel.q64_prefix(radius) {
+            return blur_q64_prefix(current, kernel, &plan);
+        }
+    }
     let reach = kernel.reach() as i32;
     let interior = radius.floor() as i32 - 1;
     let one = Interval::point(1.);
@@ -199,6 +209,213 @@ pub(crate) fn blur_owned(
                     line as usize * w as usize + at as usize
                 } else {
                     at as usize * w as usize + line as usize
+                };
+                out.pixels[index] = Pixel(output);
+            }
+        }
+        current = out;
+    }
+    Ok(current)
+}
+
+struct ChannelScratch {
+    values: Vec<i128>,
+    sums: Vec<i128>,
+    moments: Vec<i128>,
+}
+
+#[derive(Clone, Copy)]
+struct ChannelPlan {
+    mode: ChannelMode,
+    minimum: u32,
+    span: u32,
+}
+
+#[derive(Clone, Copy)]
+enum ChannelMode {
+    Constant(f32),
+    Slow,
+    Prefix,
+}
+
+fn scaled_sample(value: f32, minimum: u32) -> i128 {
+    let bits = value.to_bits();
+    let exponent = (bits >> 23) & 255;
+    let mantissa = (bits & 0x7f_ffff) | if exponent == 0 { 0 } else { 0x80_0000 };
+    if mantissa == 0 {
+        return 0;
+    }
+    let magnitude = i128::from(mantissa) << (exponent.max(1) - minimum);
+    if bits >> 31 == 0 {
+        magnitude
+    } else {
+        -magnitude
+    }
+}
+
+fn prepare_channel(line: &[Pixel], channel: usize, bound: u32, scratch: &mut ChannelScratch) -> ChannelPlan {
+    scratch.values.clear();
+    scratch.sums.clear();
+    scratch.moments.clear();
+    let mut minimum = 255u32;
+    let mut maximum = 0u32;
+    let mut first = None;
+    let mut uniform = true;
+    for pixel in line {
+        let bits = pixel.0[channel].to_bits();
+        if first.is_none() {
+            first = Some(bits);
+        } else if first != Some(bits) {
+            uniform = false;
+        }
+        if bits & 0x7fff_ffff != 0 {
+            let exponent = ((bits >> 23) & 255).max(1);
+            minimum = minimum.min(exponent);
+            maximum = maximum.max(exponent);
+        }
+    }
+    // Outside this line is transparent. A line of zeros stays zero. Any other
+    // constant still changes at the border, so it has to be filtered.
+    if uniform && f32::from_bits(first.unwrap_or(0)) == 0. {
+        return ChannelPlan { mode: ChannelMode::Constant(0.), minimum: 0, span: 0 };
+    }
+    if maximum == 0 {
+        return ChannelPlan { mode: ChannelMode::Slow, minimum: 0, span: 0 };
+    }
+    let span = maximum - minimum;
+    if span > 40 || 24 + span + bound > 123 {
+        return ChannelPlan { mode: ChannelMode::Slow, minimum, span };
+    }
+    scratch.values.reserve(line.len());
+    for pixel in line {
+        scratch.values.push(scaled_sample(pixel.0[channel], minimum));
+    }
+    scratch.sums.resize(line.len() + 1, 0);
+    scratch.moments.resize(line.len() + 1, 0);
+    let mut alive = true;
+    for (index, &value) in scratch.values.iter().enumerate() {
+        let Some(sum) = scratch.sums[index].checked_add(value) else { alive = false; break; };
+        let Some(product) = value.checked_mul(index as i128) else { alive = false; break; };
+        let Some(moment) = scratch.moments[index].checked_add(product) else { alive = false; break; };
+        scratch.sums[index + 1] = sum;
+        scratch.moments[index + 1] = moment;
+    }
+    if !alive {
+        return ChannelPlan { mode: ChannelMode::Slow, minimum, span };
+    }
+    ChannelPlan { mode: ChannelMode::Prefix, minimum, span }
+}
+
+fn prefix_bits(
+    scratch: &ChannelScratch,
+    x: usize,
+    plan: &Q64Prefix,
+    span: u32,
+    minimum: u32,
+) -> Option<u32> {
+    let reach = plan.weights.len() - 1;
+    let interior = plan.interior;
+    let lo = x.saturating_sub(interior);
+    let hi = (x + interior + 1).min(scratch.values.len());
+    let left = scratch.sums[x].checked_sub(scratch.sums[lo])?;
+    let right = scratch.sums[hi].checked_sub(scratch.sums[x + 1])?;
+    let left_moment = scratch.moments[x].checked_sub(scratch.moments[lo])?;
+    let right_moment = scratch.moments[hi].checked_sub(scratch.moments[x + 1])?;
+    let distances = left
+        .checked_mul(x as i128)?
+        .checked_sub(left_moment)?
+        .checked_add(right_moment)?
+        .checked_sub(right.checked_mul(x as i128)?)?;
+    let mut numerator = scratch.values[x]
+        .checked_mul(plan.center)?
+        .checked_add(left.checked_add(right)?.checked_mul(plan.intercept)?)?
+        .checked_sub(distances.checked_mul(plan.slope)?)?;
+    for distance in interior + 1..=reach {
+        let left_sample = x.checked_sub(distance).and_then(|index| scratch.values.get(index).copied()).unwrap_or(0);
+        let right_sample = scratch.values.get(x + distance).copied().unwrap_or(0);
+        let weight = i128::try_from(*plan.weights.get(distance)?).ok()?;
+        numerator = numerator.checked_add(left_sample.checked_add(right_sample)?.checked_mul(weight)?)?;
+    }
+    let width = (interior * interior + 7 * interior + 1 + 2 * (reach - interior)) as i128;
+    let error = (0xff_ffff_i128).checked_shl(span)?.checked_mul(width)?;
+    let quantum = minimum as i32 - 214;
+    let low = round_certified_dyadic(numerator.checked_sub(error)?, quantum);
+    let high = round_certified_dyadic(numerator.checked_add(error)?, quantum);
+    (low == high && low & 0x7f80_0000 != 0x7f80_0000).then_some(low)
+}
+
+fn blur_q64_prefix(mut current: Surface, kernel: &RationalKernel, plan: &Q64Prefix) -> Result<Surface, String> {
+    let reach = kernel.reach();
+    let mut taps = vec![0.; reach * 2 + 1];
+    let mut scratch = [
+        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
+        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
+        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
+        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
+    ];
+    for horizontal in [true, false] {
+        let Rect { x, y, w, h } = current.rect;
+        let (lines, len) = if horizontal { (h as i32, w as i32) } else { (w as i32, h as i32) };
+        let len_usize = len.max(0) as usize;
+        let mut line = vec![Pixel::default(); len_usize];
+        let mut out = current.new_like(current.rect)?;
+        for line_index in 0..lines {
+            for at in 0..len {
+                line[at as usize] = if horizontal {
+                    current.at(x + at, y + line_index)
+                } else {
+                    current.at(x + line_index, y + at)
+                };
+            }
+            let plans = [
+                prepare_channel(&line, 0, plan.bound, &mut scratch[0]),
+                prepare_channel(&line, 1, plan.bound, &mut scratch[1]),
+                prepare_channel(&line, 2, plan.bound, &mut scratch[2]),
+                prepare_channel(&line, 3, plan.bound, &mut scratch[3]),
+            ];
+            for at in 0..len_usize {
+                let mut output = [0.; 4];
+                for channel in 0..4 {
+                    output[channel] = match plans[channel].mode {
+                        ChannelMode::Constant(value) => value,
+                        ChannelMode::Prefix => {
+                            if let Some(bits) = prefix_bits(
+                                &scratch[channel],
+                                at,
+                                plan,
+                                plans[channel].span,
+                                plans[channel].minimum,
+                            ) {
+                                f32::from_bits(bits)
+                            } else {
+                                for (index, tap) in taps.iter_mut().enumerate() {
+                                    let sample_at = at as i32 + index as i32 - reach as i32;
+                                    *tap = if sample_at < 0 || sample_at >= len {
+                                        0.
+                                    } else {
+                                        line[sample_at as usize].0[channel]
+                                    };
+                                }
+                                kernel.convolve(&taps)?
+                            }
+                        }
+                        ChannelMode::Slow => {
+                            for (index, tap) in taps.iter_mut().enumerate() {
+                                let sample_at = at as i32 + index as i32 - reach as i32;
+                                *tap = if sample_at < 0 || sample_at >= len {
+                                    0.
+                                } else {
+                                    line[sample_at as usize].0[channel]
+                                };
+                            }
+                            kernel.convolve(&taps)?
+                        }
+                    };
+                }
+                let index = if horizontal {
+                    line_index as usize * w as usize + at
+                } else {
+                    at * w as usize + line_index as usize
                 };
                 out.pixels[index] = Pixel(output);
             }

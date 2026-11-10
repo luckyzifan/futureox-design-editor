@@ -646,3 +646,42 @@ fn wide_drop_shadow_exports_inside_the_existing_compositing_budget() {
     assert_eq!(png, other.render_color_png(&opts, explicit).unwrap());
     assert_eq!(engine.source_doc.as_ref().unwrap().nodes["rect"].effects[0].radius, 64.);
 }
+
+#[test]
+fn selected_frame_radius_64_exports_512_png_inside_the_worker_deadline() {
+    // The worker rejects an export that is still running after 30s. This is
+    // the product entry: the selected 256 frame, explicit sRGB, scale 2.
+    let started = std::time::Instant::now();
+    let mut engine = Engine::new();
+    engine.load_document(&shadow_fixture(json!([shadow_effect("shadow", 64.)]))).unwrap();
+    let request = crate::export::RegionRequest {
+        page_id: "p".into(),
+        bounds: crate::export::ExportBounds { x: 0., y: 0., width: 256., height: 256. },
+        scale: 2.,
+        node_ids: Some(vec!["frame".into()]),
+        raster_profile: Some(crate::fidelity::RasterProfile::Figma),
+        color_output: Some(crate::color::ColorOutput {
+            space: crate::color::ColorSpace::Srgb,
+            tone_map: crate::color::ToneMap::Clip,
+        }),
+    };
+    let png = engine.render_region_png(&request).unwrap();
+    let elapsed = started.elapsed();
+    assert!(elapsed.as_millis() < 20_000, "selected 512 export took {elapsed:?}");
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    let ledger = engine.compositing_ledger();
+    assert_eq!(ledger.budget_rejections, 0, "{ledger:?}");
+    assert!(ledger.scene_peak_bytes <= COMPOSITING_BYTES && ledger.scene_peak_bytes > 0, "peak {}", ledger.scene_peak_bytes);
+    assert_eq!(engine.source_doc.as_ref().unwrap().nodes["rect"].effects[0].radius, 64.);
+    let image = image::load_from_memory(&png).unwrap().into_rgba8();
+    assert_eq!(image.dimensions(), (512, 512));
+    let mut bare = Engine::new();
+    bare.load_document(&shadow_fixture(json!([]))).unwrap();
+    let plain = image::load_from_memory(&bare.render_region_png(&request).unwrap()).unwrap().into_rgba8();
+    let shadow = image.get_pixel(112, 240).0;
+    let background = plain.get_pixel(112, 240).0;
+    assert_ne!(shadow, background, "radius 64 did not change the frame");
+    assert!(shadow[0] < background[0], "shadow {shadow:?} background {background:?}");
+    let fill = image.get_pixel(256, 240).0;
+    assert!(fill[2] > fill[0] && fill[3] == 255, "fill {fill:?}");
+}
