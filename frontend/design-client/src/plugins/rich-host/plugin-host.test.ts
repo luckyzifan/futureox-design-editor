@@ -72,6 +72,36 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('runs the labeled-rectangles sample the panel launches without a top-level await parse failure', async () => {
+    // #201: the bundled sample is evaluated as a script, so its awaits must
+    // stay inside one async function, and the panel launches the first
+    // declared menu command ("run") to create the promised three rectangles.
+    const current = editor()
+    const root = new URL('../../../plugins/labeled-rectangles/', import.meta.url)
+    const manifest = parsePluginManifest(JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8')))
+    expect(manifest.commands[0]?.command).toBe('run')
+    const run = await openPlugin(current, {
+      manifest,
+      main: readFileSync(new URL('code.js', root), 'utf8'),
+      ui: readFileSync(new URL('ui.html', root), 'utf8'),
+    }, { command: manifest.commands[0]?.command })
+    const rectangles = nodes(current).filter(node => node.kind === 'rectangle' && node.name === 'Label')
+    const labels = nodes(current).filter(node => node.kind === 'text' && node.text === 'Label')
+    expect(rectangles).toHaveLength(3)
+    expect(labels).toHaveLength(3)
+    expect(rectangles[0].width).toBe(160)
+    expect(rectangles[0].height).toBe(96)
+    expect(labels[0].fontSize).toBe(16)
+    expect(run.notifications).toContain('Created 3 labels')
+    await run.deliver({ type: 'create', label: 'Note', count: 1 })
+    expect(nodes(current).filter(node => node.kind === 'rectangle' && node.name === 'Note')).toHaveLength(1)
+    expect(nodes(current).filter(node => node.kind === 'text' && node.text === 'Note')).toHaveLength(1)
+    expect(run.notifications).toContain('Created 1 labels')
+    await run.deliver({ type: 'cancel' })
+    expect(run.closeMessage).toBe('Closed')
+    run.close()
+  })
+
   it('runs the bundled sample against the live document and undo removes it', async () => {
     const current = editor()
     const run = await openPlugin(current, samplePluginBundle())

@@ -5,5 +5,6 @@
   "main": "code.js",
   "ui": "ui.html",
   "editorType": ["figma"],
-  "networkAccess": { "allowedDomains": ["none"] }
+  "networkAccess": { "allowedDomains": ["none"] },
+  "menu": [{ "name": "Create labeled rectangles", "command": "run" }]
 }
