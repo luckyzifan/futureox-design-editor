@@ -84,8 +84,10 @@ impl Interval {
         (self.lo.is_finite() && self.hi.is_finite() && lo.to_bits() == hi.to_bits()).then_some(lo)
     }
 }
-pub(crate) fn blur(
-    input: &Surface,
+/// Consumes `current` instead of cloning it again. Shadow admission keeps one
+/// live source plus the pass output.
+pub(crate) fn blur_owned(
+    mut current: Surface,
     radius: f64,
     clamp_edges: bool,
     kernel: &RationalKernel,
@@ -117,9 +119,8 @@ pub(crate) fn blur(
             )
         })
         .collect();
-    let _taps = input.reserve_scratch::<f32>((reach * 2 + 1) as usize)?;
+    let _taps = current.reserve_scratch::<f32>((reach * 2 + 1) as usize)?;
     let mut taps = vec![0.; (reach * 2 + 1) as usize];
-    let mut current = input.try_clone()?;
     for horizontal in [true, false] {
         let Rect { x, y, w, h } = current.rect;
         let (lines, len) = if horizontal {
@@ -131,7 +132,7 @@ pub(crate) fn blur(
         let pad = if clamp_edges { reach } else { 0 };
         let start = -pad;
         let end = len + pad;
-        let _prefix = input.reserve_scratch::<[Prefix; 4]>((end - start + 1) as usize * 2)?;
+        let _prefix = current.reserve_scratch::<[Prefix; 4]>((end - start + 1) as usize * 2)?;
         let mut sums = vec![[Prefix::default(); 4]; (end - start + 1) as usize];
         let mut moments = sums.clone();
         let mut out = current.new_like(current.rect)?;

@@ -123,6 +123,13 @@ pub fn linear_tent_blur(
 ) -> Result<Surface, String> {
     crate::rational_filter::blur(surface, radius, clamp_edges)
 }
+pub(crate) fn linear_tent_blur_owned(
+    surface: Surface,
+    radius: f64,
+    clamp_edges: bool,
+) -> Result<Surface, String> {
+    crate::rational_filter::blur_owned(surface, radius, clamp_edges)
+}
 fn tent_blur_impl(
     mut current: Surface,
     radius: f64,
@@ -185,6 +192,7 @@ fn tent_blur_impl(
         // Snapshot one scanline and write the pass back in place. The
         // previous full-frame destination was the 32 MiB allocation that
         // a radius-64 export could not admit.
+        let _scanline = current.reserve_scratch::<Pixel>(len.max(0) as usize)?;
         let mut line_pixels = vec![Pixel::default(); len.max(0) as usize];
         // Conservative rounding guard: only pixels whose nearest half-byte lies
         // inside this conservative error interval need the exact integer dot
@@ -975,7 +983,7 @@ pub(crate) fn shadow_alpha(
             )
         }
         BlurFilter::IntegratedTent(radius) => tent_blur_impl(alpha, radius, false, false, false),
-        BlurFilter::LinearTent(radius) => linear_tent_blur(&alpha, radius, false),
+        BlurFilter::LinearTent(radius) => linear_tent_blur_owned(alpha, radius, false),
     }
 }
 
@@ -1816,5 +1824,52 @@ mod gaussian_scanline_memory_tests {
         drop(actual);
         drop(source);
         assert_eq!(budget.usage().live_bytes, 0);
+    }
+
+    #[test]
+    fn tent_on_content_union_matches_padded_halo_inside_the_viewport() {
+        let viewport = Rect::new(0, 0, 48, 40);
+        let content = Rect::new(10, 12, 16, 10);
+        let padded = content.expand(30);
+        let mut full = Surface::new(padded).unwrap();
+        for y in content.y..content.bottom() {
+            for x in content.x..content.right() {
+                full.pixels[full.rect.index(x, y).unwrap()] = Pixel([0.2, 0.3, 0.4, 1.]);
+            }
+        }
+        let blurred = linear_tent_blur(&full, 18.5, false).unwrap();
+        let union = content.union(viewport);
+        let mut tight = Surface::new(union).unwrap();
+        for y in content.y..content.bottom() {
+            for x in content.x..content.right() {
+                tight.pixels[tight.rect.index(x, y).unwrap()] = Pixel([0.2, 0.3, 0.4, 1.]);
+            }
+        }
+        let blurred_tight = linear_tent_blur(&tight, 18.5, false).unwrap();
+        for y in viewport.y..viewport.bottom() {
+            for x in viewport.x..viewport.right() {
+                assert_eq!(
+                    blurred.at(x, y).0.map(f32::to_bits),
+                    blurred_tight.at(x, y).0.map(f32::to_bits),
+                    "{x},{y}"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tent_scanline_budget_tests {
+    use super::*;
+    #[test]
+    fn scanline_storage_is_charged_before_filtering() {
+        let width = 1024usize;
+        let surface_bytes = width * std::mem::size_of::<Pixel>();
+        let prefix_bytes = (width + 1) * 2 * std::mem::size_of::<[f64; 4]>();
+        let budget = crate::memory::Budget::new(surface_bytes * 2 + prefix_bytes);
+        let source = Surface::new_in(Rect::new(0, 0, width as u32, 1), &budget).unwrap();
+        let result = tent_blur_edge(&source, 2.0, false);
+        assert!(result.is_err(), "two surfaces and prefix storage leave no room for a full scanline");
+        assert_eq!(budget.usage().live_bytes, surface_bytes);
     }
 }

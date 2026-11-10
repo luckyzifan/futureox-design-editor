@@ -164,6 +164,67 @@ fn effect_halo_in_view(
     halo
 }
 
+/// Backdrop and pass-through filters sample the destination outside the
+/// viewport. A drop shadow is painted on its own layer and only the viewport
+/// intersection is kept, so the page target does not need the effect halo.
+/// PNG scale, suffix and the other export-preset fields do not change pixels.
+/// Any other node or document field keeps the normal invalidation path.
+fn export_metadata_keeps_pixels(
+    before: &Document,
+    after: &Document,
+    patch: &crate::editing::DocumentPatch,
+) -> bool {
+    if patch.nodes.is_empty() {
+        return false;
+    }
+    if patch
+        .fields
+        .keys()
+        .any(|key| !matches!(key.as_str(), "name" | "reviews" | "schemaVersion"))
+    {
+        return false;
+    }
+    if before.id != after.id
+        || before.pages != after.pages
+        || before.fonts != after.fonts
+        || before.animations != after.animations
+        || before.color_management != after.color_management
+        || before.raster_profile != after.raster_profile
+        || before.design_system != after.design_system
+        || before.prototype != after.prototype
+        || before.fd_compatibility != after.fd_compatibility
+    {
+        return false;
+    }
+    patch.nodes.iter().all(|(id, node)| {
+        let (Some(previous), Some(updated)) = (before.nodes.get(id), after.nodes.get(id)) else {
+            return false;
+        };
+        if node.as_ref().is_none() {
+            return false;
+        }
+        let mut visual = previous.clone();
+        visual.export_settings = updated.export_settings.clone();
+        &visual == updated
+    })
+}
+
+fn scene_needs_extended_target(doc: &Document) -> bool {
+    doc.nodes.values().any(|n| {
+        if !n.visible || n.opacity <= 0. {
+            return false;
+        }
+        if n.backdrop_effect().is_some() {
+            return true;
+        }
+        n.passes_backdrop()
+            && n.effects.iter().any(|e| {
+                e.visible
+                    && !matches!(e.kind.as_str(), "noise" | "color-controls")
+            })
+    })
+}
+
 fn fitted_display_halo(viewport: Rect, mut halo: i32) -> i32 {
     let cap = display_surface_pixel_cap();
     while halo > 0 {
@@ -673,6 +734,17 @@ impl Engine {
             .map_err(|e| e.to_string())?.flatten();
         let applied = match local { Some(applied) => applied, None => patch.apply_with_size(source).map_err(|e| e.to_string())? };
         let next = applied.document();
+        let keep_pixels = export_metadata_keeps_pixels(source, next, patch);
+        if keep_pixels {
+            self.commit_export_metadata(applied, patch);
+            return Ok(crate::dirty_region::PatchDamage {
+                translation_only: None,
+                full: false,
+                reason: None,
+                bounds: None,
+                rects: Some(vec![]),
+            });
+        }
         let retained_paint = self.retainable_paint_changes(patch);
         let mut damage = if retained_paint.as_ref().is_some_and(Vec::is_empty) {
             // Certify once from resolved placement. The exact material proof
@@ -733,6 +805,50 @@ impl Engine {
             self.install_document_policy(DocumentInstall::Patch { applied, retain_index })?;
         }
         Ok(damage)
+    }
+    fn commit_export_metadata(
+        &mut self,
+        applied: crate::editing::AppliedDocument,
+        patch: &crate::editing::DocumentPatch,
+    ) {
+        let schema = applied.document().schema_version;
+        let name = applied.document().name.clone();
+        let reviews = applied.document().reviews.clone();
+        let exports: Vec<_> = patch
+            .nodes
+            .keys()
+            .filter_map(|id| {
+                applied
+                    .document()
+                    .nodes
+                    .get(id)
+                    .map(|node| (id.clone(), node.export_settings.clone()))
+            })
+            .collect();
+        let touch = |doc: &mut Document| {
+            doc.schema_version = schema;
+            doc.name = name.clone();
+            doc.reviews = reviews.clone();
+            for (id, settings) in &exports {
+                if let Some(node) = doc.nodes.get_mut(id) {
+                    node.export_settings = settings.clone();
+                }
+            }
+        };
+        if let Some(doc) = &mut self.doc {
+            touch(doc);
+        }
+        if let Some(doc) = &mut self.text_base {
+            touch(doc);
+        }
+        if let Some(doc) = &mut self.animation_base {
+            touch(doc);
+        }
+        let (next, bytes) = applied.into_parts();
+        let source = SharedDocument::from_edit(next);
+        self.retained_source_size = Some(RetainedSourceSize::new(&source, bytes));
+        self.source_doc_bytes = None;
+        self.source_doc = Some(source);
     }
     fn retainable_paint_changes(&self, patch: &crate::editing::DocumentPatch) -> Option<Vec<String>> {
         let source = self.source_doc.as_ref()?;
@@ -1791,7 +1907,12 @@ impl Engine {
         // instead of failing the frame or dropping the effect.
         let slot = std::mem::size_of::<Pixel>() as u64;
         let pixels = u64::from(extent.w).saturating_mul(u64::from(extent.h));
-        if zoom_guard.is_none()
+        // Shrinking this halo clips filter support. Do it only when the page
+        // target itself must carry that support. Shadow layers use a tighter
+        // rect and must keep the uncropped content.
+        let extended_target = scene_needs_extended_target(doc);
+        if extended_target
+            && zoom_guard.is_none()
             && pixels.saturating_mul(slot).saturating_mul(4) > COMPOSITING_BYTES as u64
         {
             used_halo = fitted_display_halo(viewport, used_halo);
@@ -1813,21 +1934,12 @@ impl Engine {
                 _ => None,
             }
         } else { None };
-        // Four coherent targets used to cover the filter halo. A shadow's own
-        // layer still holds that support; the page target is only read again
-        // outside the viewport by backdrop, grid, or checkerboard consumers.
-        // Keeping those targets on the viewport leaves the blur radius intact
-        // and stays inside the existing compositing ledger.
-        let reads_outside_viewport = crate::fidelity::has_backdrop(doc, options)
-            || options.grid
-            || options.checkerboard;
         let target_rect = if let Some(root) = isolated_root {
             prepared[&root.id].bounds.intersect(extent)
-        } else if reads_outside_viewport {
+        } else if extended_target {
             extent
         } else {
-            let local = viewport.intersect(extent);
-            if local.empty() { extent } else { local }
+            viewport
         };
         let mut target = Surface::new_in(target_rect, &budget)?;
         let background = if options.transparent {
@@ -1844,14 +1956,14 @@ impl Engine {
             let alt = crate::color::pixel(doc.color_management, "#eeeeee", 1.)?;
             let cell = if options.raster_profile.is_export() { 32 } else { 16 };
             // Row-level optimization: precompute y.div_euclid(cell) once per row
-            for y in target_rect.y..target_rect.bottom() {
+            for y in target.rect.y..target.rect.bottom() {
                 let y_cell = y.div_euclid(cell);
-                for x in target_rect.x..target_rect.right() {
+                for x in target.rect.x..target.rect.right() {
                     // Inner loop only needs x.div_euclid(cell), saves ~50% divisions
                     if ((x.div_euclid(cell) ^ y_cell) & 1) == 0 {
                         continue;
                     }
-                    let i = target_rect.index(x, y).expect("checker");
+                    let i = target.rect.index(x, y).expect("checker");
                     target.pixels[i] = alt;
                 }
             }
@@ -1859,7 +1971,7 @@ impl Engine {
         if options.grid && !options.transparent && options.view.zoom > 0.13 {
             let spacing = 32. * options.view.zoom;
             // Row-level optimization: precompute dy and dy_sq once per row
-            for y in target_rect.y..target_rect.bottom() {
+            for y in target.rect.y..target.rect.bottom() {
                 let dy = (y as f64 + 0.5 - options.view.y)
                     .rem_euclid(spacing)
                     .min((options.view.y - y as f64 - 0.5).rem_euclid(spacing));
@@ -1867,14 +1979,14 @@ impl Engine {
                     continue;
                 }
                 let dy_sq = dy * dy; // Precompute for sqrt in inner loop
-                for x in target_rect.x..target_rect.right() {
+                for x in target.rect.x..target.rect.right() {
                     let dx = (x as f64 + 0.5 - options.view.x)
                         .rem_euclid(spacing)
                         .min((options.view.x - x as f64 - 0.5).rem_euclid(spacing));
                     // Use sqrt(dx^2 + dy^2) instead of hypot for better performance
                     let coverage = (1. - (dx * dx + dy_sq).sqrt()).clamp(0., 1.) as f32;
                     if coverage > 0. {
-                        let i = target_rect.index(x, y).expect("grid");
+                        let i = target.rect.index(x, y).expect("grid");
                         target.pixels[i] = over(
                             background,
                             Pixel::rgba(0.65, 0.67, 0.73, coverage * 0.4),
@@ -3019,54 +3131,23 @@ impl Painter<'_> {
         clean_backdrop: Option<&[Surface;4]>,
         omit_optics: bool,
     ) -> Result<(), String> {
-        let n = &self.doc.nodes[id];
-        let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
-        let outline=n.outline_mask_node(inherited_outline);
-        let n=outline.as_ref().unwrap_or(n);
+        let original = &self.doc.nodes[id];
+        let geometric=inherited_outline || original.mask && original.mask_type.as_deref()==Some("outline");
+        let outline=original.outline_mask_node(inherited_outline);
+        let n=outline.as_ref().unwrap_or(original);
         if !n.visible || n.opacity <= 0. {
             return Ok(());
         }
         let prepared = &self.prepared[id];
-        if prepared.bounds.intersect(targets[0].rect).empty() {
+        if prepared.bounds.intersect(targets[0].rect).empty() && prepared.bounds.intersect(self.viewport).empty() {
             self.stats.culled += 1;
             return Ok(());
         }
         let m = prepared.matrix;
         let scale = m.max_scale();
         let full = prepared.bounds.intersect(self.extent);
-        // The geometry outset is wider than the filter that actually runs.
-        // A tile only needs samples that can reach its viewport, so a wide
-        // shadow does not allocate the whole outset on every sample plane.
-        let r = if n.render_children().is_empty()
-            && self.doc.mask_child(n).is_none()
-            && n.backdrop_effect().is_none()
-            && !n.passes_backdrop()
-            && n.effects.iter().any(|e| {
-                e.visible && matches!(e.kind.as_str(), "shadow" | "inner-shadow")
-            })
-            && n.effects.iter().all(|e| {
-                !e.visible || matches!(e.kind.as_str(), "shadow" | "inner-shadow")
-            }) {
-            let mut reach = 2i32;
-            for fx in n.effects.iter().filter(|e| e.visible) {
-                let support = if self.compatible {
-                    (fx.radius * scale).ceil() as i32
-                } else {
-                    let sigma = fx.radius * scale / 2.;
-                    effects::gaussian_box_radii(sigma)
-                        .map(|radii| radii.into_iter().sum::<u32>() as i32)
-                        .unwrap_or((fx.radius * scale).ceil() as i32)
-                };
-                let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
-                let pad = support
-                    .saturating_add(offset.x.abs().ceil() as i32)
-                    .saturating_add(offset.y.abs().ceil() as i32)
-                    .saturating_add((fx.spread.abs() * scale).ceil() as i32)
-                    .saturating_add(2);
-                reach = reach.max(pad);
-            }
-            let clipped = full.intersect(self.viewport.expand(reach));
-            if clipped.empty() { full } else { clipped }
+        let r = if outline.is_none() {
+            self.shadow_composite_rect(original, prepared, scale).unwrap_or(full)
         } else {
             full
         };
@@ -3107,6 +3188,32 @@ impl Painter<'_> {
                 }
             }
             self.paint_siblings(n.render_children(), targets, Some(&fill), geometric, None)?;
+            self.sample = None;
+            return Ok(());
+        }
+        if self.paint_group_directly(n, full) {
+            for sample in 0..4 {
+                self.sample = Some(sample);
+                for paint in &n.fills {
+                    self.paint(n, paint, m, &fill.plane(sample), &mut targets[sample], true, |_, _| 1.)?;
+                }
+            }
+            self.sample = None;
+            self.paint_siblings(n.render_children(), targets, None, geometric, None)?;
+            for (i, stroke) in n.strokes.iter().enumerate().filter(|(_, s)| s.visible && s.width > 0.) {
+                let masks = self.rasterize_bundle(&prepared.strokes[i], r, false)?;
+                for sample in 0..4 {
+                    self.sample = Some(sample);
+                    self.paint(n, &stroke.paint, m, &masks.plane(sample), &mut targets[sample],
+                        !matches!(stroke.align.as_str(), "inside" | "outside"),
+                        |x, y| match stroke.align.as_str() {
+                            "inside" => fill.at(sample, x, y),
+                            "outside" => 1. - fill.at(sample, x, y),
+                            _ => 1.,
+                        },
+                    )?;
+                }
+            }
             self.sample = None;
             return Ok(());
         }
@@ -3917,6 +4024,81 @@ impl Painter<'_> {
         self.stats.effect_layers += 1;
         Ok(planes)
     }
+    /// Sharp shadow input is zero outside the unpadded content. The blur only
+    /// has to cover that content and the viewport (plus earlier shadows when a
+    /// later shadow reads them). The old layer used the full effect outset in
+    /// every direction, which allocated four halo-sized sample planes for a
+    /// small rectangle.
+    fn shadow_composite_rect(&self, n: &Node, prepared: &Prepared, scale: f64) -> Option<Rect> {
+        let shadows: Vec<_> = n
+            .effects
+            .iter()
+            .filter(|e| e.visible && matches!(e.kind.as_str(), "shadow" | "inner-shadow"))
+            .collect();
+        if shadows.is_empty()
+            || n.effects.iter().any(|e| {
+                e.visible && !matches!(e.kind.as_str(), "shadow" | "inner-shadow" | "noise")
+            })
+        {
+            return None;
+        }
+        let own = n.effect_outset(scale).ceil() as i32;
+        let content = if own > 0 {
+            prepared.bounds.expand(-own)
+        } else {
+            prepared.bounds
+        };
+        if content.empty() {
+            return None;
+        }
+        let read = if shadows.len() > 1 {
+            let effect = shadows[shadows.len() - 1];
+            let pad = (effect.blur_radius() * 2.
+                + effect.spread.abs()
+                + effect.x.abs()
+                + effect.y.abs())
+                * scale;
+            if pad.is_finite() { pad.ceil() as i32 } else { return None; }
+        } else {
+            0
+        };
+        let needed = content.union(self.viewport.expand(read)).intersect(self.extent);
+        let full = prepared.bounds.intersect(self.extent);
+        if needed.empty() || needed.pixels() >= full.pixels() {
+            None
+        } else {
+            Some(needed)
+        }
+    }
+    fn group_samples_backdrop(&self, n: &Node) -> bool {
+        n.render_children().iter().any(|id| {
+            let Some(child) = self.doc.nodes.get(id) else {
+                return true;
+            };
+            if !child.visible || child.opacity <= 0. {
+                return false;
+            }
+            child.backdrop_effect().is_some() || self.group_samples_backdrop(child)
+        })
+    }
+    /// A normal, unclipped group composites with source-over. Painting it onto
+    /// the page targets avoids four copies of a child shadow's padded bounds.
+    fn paint_group_directly(&self, n: &Node, layer: Rect) -> bool {
+        let bytes = layer
+            .pixels()
+            .saturating_mul(std::mem::size_of::<Pixel>())
+            .saturating_mul(4);
+        bytes > COMPOSITING_BYTES / 4
+            && n.opacity == 1.
+            && n.blend == "normal"
+            && !n.clip
+            && !n.mask
+            && n.boolean_operation.is_none()
+            && self.doc.mask_child(n).is_none()
+            && !n.effects.iter().any(|e| e.visible)
+            && !n.passes_backdrop()
+            && !self.group_samples_backdrop(n)
+    }
     // The regional Gaussian proof is analytic and unmanaged. Unsupported
     // effects and mask subtrees keep their original full-domain evaluation.
     fn bounded_node(&self, id: &str) -> bool {
@@ -4018,10 +4200,10 @@ impl Painter<'_> {
         original_target: Rect,
         inherited_outline: bool,
     ) -> Result<Option<Surface>, String> {
-        let n = &self.doc.nodes[id];
-        let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
-        let outline=n.outline_mask_node(inherited_outline);
-        let n=outline.as_ref().unwrap_or(n);
+        let original = &self.doc.nodes[id];
+        let geometric=inherited_outline || original.mask && original.mask_type.as_deref()==Some("outline");
+        let outline=original.outline_mask_node(inherited_outline);
+        let n=outline.as_ref().unwrap_or(original);
         if !n.visible {
             return Ok(None);
         }
@@ -4050,9 +4232,15 @@ impl Painter<'_> {
             return Ok(None);
         }
         let bounded = output.is_some() && self.bounded_node(id);
-        let r = if bounded {
+        let mut r = if bounded {
             self.regional_children(n.render_children(), basis.intersect(output.unwrap()))?.0.intersect(basis)
         } else { basis };
+        if outline.is_none() {
+            if let Some(needed) = self.shadow_composite_rect(original, prepared, scale) {
+                let needed = needed.intersect(basis);
+                if !needed.empty() && needed.pixels() < r.pixels() { r = needed; }
+            }
+        }
         if r.empty() {
             self.stats.culled += 1;
             return Ok(None);
@@ -4362,6 +4550,10 @@ mod memory_tests;
 #[cfg(test)]
 #[path = "renderer_tests/gpu_ledger.rs"]
 mod gpu_ledger_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/export_metadata.rs"]
+mod export_metadata_tests;
 
 #[cfg(test)]
 #[path = "renderer_tests/translation_retention.rs"]
