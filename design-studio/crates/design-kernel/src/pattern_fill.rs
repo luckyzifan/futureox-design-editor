@@ -9,11 +9,14 @@ pub const STAGGER_HORIZONTAL: &str = "stagger_horizontal";
 pub const STAGGER_VERTICAL: &str = "stagger_vertical";
 /// Authored "off" — same rendering path as an absent field.
 pub const NONE: &str = "none";
-/// kiwi `PatternAlignment` ordinal 0 — cells anchor at the fill's start edge.
+/// kiwi `PatternAlignment` ordinal 0 — the scaled image's start edge lies on
+/// the fill's start edge.
 pub const ALIGN_START: &str = "start";
-/// kiwi `PatternAlignment` ordinal 1 — cells center within the fill.
+/// kiwi `PatternAlignment` ordinal 1 — the scaled image's center lies on the
+/// fill's center.
 pub const ALIGN_CENTER: &str = "center";
-/// kiwi `PatternAlignment` ordinal 2 — cells anchor at the end edge.
+/// kiwi `PatternAlignment` ordinal 2 — the scaled image's end edge lies on
+/// the fill's end edge.
 pub const ALIGN_END: &str = "end";
 
 /// `patternTileType` value for a mode name.
@@ -41,11 +44,10 @@ pub struct PatternTile {
     /// folded in — same pre-fract translation, opposite sign).
     #[serde(default)]
     pub offset: [f64; 2],
-    /// kiwi `verticalAlignment`/`horizontalAlignment` (`PatternAlignment`:
-    /// start/center/end), axis order [x, y]. The engine-side mapping of an
-    /// alignment to shader uniforms was not recovered, so the authored
-    /// values are carried verbatim (import/export round-trip) without
-    /// perturbing `tile_uv`.
+    /// kiwi `horizontalAlignment` / `verticalAlignment` (`PatternAlignment`),
+    /// axis order [x, y]. The scaled image box is pinned to the fill on each
+    /// axis. The trailing spacing gap is outside that box. Rotation is about
+    /// the pin, so a start-aligned pattern still turns around the fill origin.
     #[serde(default = "default_alignment")]
     pub alignment: [String; 2],
     /// Uniform scale of the image inside the cell. `1` with `size: 0` is the
@@ -164,23 +166,87 @@ impl PatternTile {
 /// vertex-shader `_coord2` role); `size` is the resolved cell period; the
 /// return value is the texture UV in `[0,1)²` (`fract(g)` with `i = 1`, so
 /// the caller's half-texel bilinear clamp implements `j`).
+///
+/// This entry is the start-aligned shader chain. Fill alignment is applied
+/// by [`tile_sample_in_fill`] before the chain runs.
 pub fn tile_uv(pattern: &PatternTile, point: Point, size: [f64; 2]) -> Point {
     tile_sample(pattern, point, size).unwrap_or(Point::new(0., 0.))
 }
 
+fn rotate_pattern_sample(point: Point, degrees: f64) -> Point {
+    if degrees == 0. {
+        return point;
+    }
+    let rad = -degrees.to_radians();
+    let (sin, cos) = rad.sin_cos();
+    Point::new(cos * point.x - sin * point.y, sin * point.x + cos * point.y)
+}
+
+fn image_extent(pattern: &PatternTile, period: [f64; 2]) -> [f64; 2] {
+    [
+        (period[0] - pattern.spacing[0].max(0.)).max(1e-6),
+        (period[1] - pattern.spacing[1].max(0.)).max(1e-6),
+    ]
+}
+
+/// Where the scaled image box is pinned, `(fill pin, image pin)`, one axis.
+fn image_pin(align: &str, fill: f64, image: f64) -> (f64, f64) {
+    match align {
+        ALIGN_CENTER => (fill * 0.5, image * 0.5),
+        ALIGN_END => (fill, image),
+        _ => (0., 0.),
+    }
+}
+
 /// UV inside the image portion of one cell. `None` is the transparent gap
 /// introduced by `spacing`. `size` is the resolved cell period from
-/// [`PatternTile::resolve`], including that gap.
-pub fn tile_sample(pattern: &PatternTile, mut point: Point, size: [f64; 2]) -> Option<Point> {
-    if pattern.rotation != 0. {
-        let rad = -pattern.rotation.to_radians();
-        let (sin, cos) = rad.sin_cos();
-        point = Point::new(cos * point.x - sin * point.y, sin * point.x + cos * point.y);
+/// [`PatternTile::resolve`], including that gap. Alignment is not applied;
+/// [`tile_sample_in_fill`] is the fill-aware entry.
+pub fn tile_sample(pattern: &PatternTile, point: Point, size: [f64; 2]) -> Option<Point> {
+    sample_placed(
+        pattern,
+        rotate_pattern_sample(point, pattern.rotation),
+        size,
+    )
+}
+
+/// Place `point` in a fill of `fill` pixels, then sample.
+///
+/// On each axis the scaled image — not the trailing gap — is pinned to the
+/// fill: start to start, center to center, end to end. Positive `rotation`
+/// turns the pattern about that pin (the sample point turns the other way).
+/// Start alignment is the historical origin-pinned chain, bit for bit.
+pub fn tile_sample_in_fill(
+    pattern: &PatternTile,
+    point: Point,
+    period: [f64; 2],
+    fill: [f64; 2],
+) -> Option<Point> {
+    if pattern.alignment[0] == ALIGN_START && pattern.alignment[1] == ALIGN_START {
+        return tile_sample(pattern, point, period);
     }
-    let content = [
-        (size[0] - pattern.spacing[0].max(0.)).max(1e-6),
-        (size[1] - pattern.spacing[1].max(0.)).max(1e-6),
-    ];
+    if ![period[0], period[1], fill[0], fill[1]]
+        .iter()
+        .all(|value| value.is_finite())
+    {
+        return None;
+    }
+    let image = image_extent(pattern, period);
+    let (fill_x, image_x) = image_pin(&pattern.alignment[0], fill[0], image[0]);
+    let (fill_y, image_y) = image_pin(&pattern.alignment[1], fill[1], image[1]);
+    let placed = rotate_pattern_sample(
+        Point::new(point.x - fill_x, point.y - fill_y),
+        pattern.rotation,
+    );
+    sample_placed(
+        pattern,
+        Point::new(placed.x + image_x, placed.y + image_y),
+        period,
+    )
+}
+
+fn sample_placed(pattern: &PatternTile, point: Point, size: [f64; 2]) -> Option<Point> {
+    let content = image_extent(pattern, size);
     // vec2 g = _coord2 * (fillSizePixels/patternTexSizePixels) — with our
     // `size` absorbing that ratio and `offset` folding `-f + h`:
     let mut g = Point::new(

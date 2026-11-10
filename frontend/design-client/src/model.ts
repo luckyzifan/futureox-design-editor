@@ -83,7 +83,8 @@ export type PatternTile = {
   /** `offsetPixels` in node-local px (`patternBoundsOffsetPixels` folds in:
    * same pre-repeat translation, opposite sign). */
   offset: [number, number]
-  /** Preserved native pattern alignment; it does not alter tile sampling yet. */
+  /** Pins the scaled image box to the fill on each axis. The trailing
+   * spacing gap is outside that box, and rotation is about the pin. */
   alignment?: ['start'|'center'|'end', 'start'|'center'|'end']
   /** Uniform scale of the native image. Omitted means 1. Explicit `size` is not scaled again. */
   scale?: number

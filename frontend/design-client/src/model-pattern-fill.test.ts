@@ -61,8 +61,17 @@ test('pattern tiles reject older schemas, non-image paints and bad values', () =
   unknownMode.d.nodes[unknownMode.rect.id].fills[0].tile!.mode = 'brick' as never
   expect(() => validateDocument(unknownMode.d)).toThrow('图层数据无效')
   const unknownField = docWithTile(14)
-  ;(unknownField.d.nodes[unknownField.rect.id].fills[0].tile as unknown as Record<string, unknown>).rotation = 0.5
+  ;(unknownField.d.nodes[unknownField.rect.id].fills[0].tile as unknown as Record<string, unknown>).phase = 1
   expect(() => validateDocument(unknownField.d)).toThrow('图层数据无效')
+  const authored = docWithTile(14)
+  Object.assign(authored.d.nodes[authored.rect.id].fills[0].tile!, {
+    scale: 2.5, rotation: 90, spacing: [2, 0], alignment: ['center', 'end'],
+  })
+  expect(() => validateDocument(authored.d)).not.toThrow()
+  const restored = JSON.parse(JSON.stringify(authored.d))
+  expect(restored.nodes[authored.rect.id].fills[0].tile).toMatchObject({
+    scale: 2.5, rotation: 90, spacing: [2, 0], alignment: ['center', 'end'],
+  })
 })
 
 test('stagger modes validate and absent tiles keep legacy documents valid', () => {

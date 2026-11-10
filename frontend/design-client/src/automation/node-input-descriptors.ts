@@ -26,7 +26,10 @@ const paint = obj({
   visible: bool, angle: num(), stops: describe(array(obj({ offset: unit, color }, ['offset', 'color']), MAX_GRADIENT_STOPS), 'Gradient kinds require at least two stops.'),
   image: describe(nullable(str()), 'PNG/JPEG/WebP base64 data URL; subject to request byte budget.'), fit: en('cover', 'contain', 'stretch'), blend: en(...blendModes), transform: nullable(paintTransform),
   adjust: describe(obj({ exposure: num(-1, 1), contrast: num(-1, 1), temperature: num(-1, 1), tint: num(-1, 1), highlights: num(-1, 1), shadows: num(-1, 1), color: num(-1, 1), highlightShadowThreshold: unit }), 'Image paints only; missing adjustments use identity defaults.'),
-  tile: describe(obj({ mode: en('none', 'grid', 'stagger_horizontal', 'stagger_vertical'), size: tuple(num(0), 2), offset: tuple(num(), 2) }, ['mode', 'size', 'offset']), 'Image paints only. Zero size uses native image extent.'),
+  tile: describe(obj({
+    mode: en('none', 'grid', 'stagger_horizontal', 'stagger_vertical'), size: tuple(num(0), 2), offset: tuple(num(), 2),
+    alignment: tuple(en('start', 'center', 'end'), 2), scale: num(Number.MIN_VALUE, 1e6), rotation: num(-1e6, 1e6), spacing: tuple(num(0, 1e7), 2),
+  }, ['mode', 'size', 'offset']), 'Image paints only. Zero size uses the native image extent; scale multiplies that extent and does not rescale an explicit size. Rotation is degrees about the alignment pin. Spacing is the transparent gap after the image. Alignment pins the scaled image to the fill: start, center, or end.'),
 }, ['kind', 'color', 'opacity', 'angle', 'stops'])
 const marker = en('none', 'arrow', 'triangle', 'circle', 'diamond', 'square', 'bar')
 const stroke = obj({ id: str(), paint, width: num(0, 10000), align: en('inside', 'center', 'outside'), cap: en('butt', 'round', 'square'), join: en('miter', 'round', 'bevel'), dash: describe(str(1000), 'Comma/space-separated nonnegative dash lengths; nonzero values must be at least 1e-6 and at most 1e7.'), dashOffset: num(), visible: bool, startMarker: marker, endMarker: marker,

@@ -33,7 +33,7 @@ import { emptySystem } from './design-system'
 import { importFigTextExtras, importFigTextRuns } from './import-fig-text'
 import { applyFigFacet, assertFigStructure, figNodeKind, figNote, importFigPrototype, parkFigReceipts, type FigReceipts } from './import-fig-nodes'
 import { defaultColorSettings } from './color'
-import { figImageAdjust } from './import-fig-image'
+import { figImageAdjust, figImageTile } from './import-fig-image'
 import { importFigComponents } from './import-fig-components'
 import { applyFigDocumentSemantics, figGuides, importFigVariableNodes, includeFigRecord, storeFigVariables } from './import-fig-document'
 import { inverse } from './commands/affine'
@@ -573,33 +573,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       result.adjust = figImageAdjust(p)
       if (p.imageScaleMode !== undefined && !['STRETCH','FIT','FILL','TILE'].includes(p.imageScaleMode))
         throw new Error(`FIG 图片缩放 ${p.imageScaleMode} 暂不支持`)
-      if (p.imageScaleMode === 'TILE') {
-        const modes={RECTANGULAR:'grid',HORIZONTAL_HEXAGONAL:'stagger_horizontal',VERTICAL_HEXAGONAL:'stagger_vertical'} as const
-        const mode=p.patternTileType ?? 'RECTANGULAR'
-        if(!(mode in modes))throw new Error(`FIG 平铺模式 ${mode} 暂不支持`)
-        const align = (value: unknown, field: string) => {
-          if (value === undefined || value === 'START') return 'start' as const
-          if (value === 'CENTER') return 'center' as const
-          if (value === 'END') return 'end' as const
-          throw new Error(`FIG 平铺对齐 ${field}=${String(value)} 暂不支持；原文件未修改`)
-        }
-        const scale = p.scale ?? 1
-        const rotation = p.rotation ?? 0
-        const spacingX = p.patternSpacing?.x ?? (typeof p.spacing === 'number' ? p.spacing : 0)
-        const spacingY = p.patternSpacing?.y ?? (typeof p.spacing === 'number' ? p.spacing : 0)
-        if (![scale, rotation, spacingX, spacingY].every(value => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e7)
-          || scale <= 0 || spacingX < 0 || spacingY < 0)
-          throw new Error('FIG 平铺参数无效；原文件未修改')
-        result.tile={
-          mode:modes[mode as keyof typeof modes],
-          size:[0,0],
-          offset:[0,0],
-          alignment:[align(p.horizontalAlignment, 'horizontalAlignment'), align(p.verticalAlignment, 'verticalAlignment')],
-          ...(scale !== 1 ? { scale } : {}),
-          ...(rotation !== 0 ? { rotation } : {}),
-          ...(spacingX !== 0 || spacingY !== 0 ? { spacing: [spacingX, spacingY] as [number, number] } : {}),
-        }
-      }
+      if (p.imageScaleMode === 'TILE') result.tile = figImageTile(p)
 
       result.fit =
         p.imageScaleMode === 'FIT'

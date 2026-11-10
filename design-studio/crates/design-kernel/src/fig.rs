@@ -737,16 +737,53 @@ fn positive_axis_scale(extent: f64, source: f64) -> f64 {
     }
 }
 
-/// `spacing` is one gap on both axes. `patternSpacing` wins when present.
-fn tile_gap(paint: &Value) -> (f64, f64) {
-    if paint.get("patternSpacing").is_some() {
-        (
-            f64_of(paint.get("patternSpacing"), "x"),
-            f64_of(paint.get("patternSpacing"), "y"),
-        )
-    } else {
-        let gap = f64_of(Some(paint), "spacing");
-        (gap, gap)
+fn finite_number(value: &Value) -> Option<f64> {
+    value.as_f64().filter(|number| number.is_finite())
+}
+
+/// A present tile scalar must be a finite number. Absence uses `default`.
+fn tile_scalar(paint: &Value, key: &str, default: f64) -> Result<f64, Error> {
+    match paint.get(key) {
+        None => Ok(default),
+        Some(value) => finite_number(value).ok_or_else(|| {
+            Error::Unsupported(format!(
+                "FIG image tile {key} is not a finite number; the source file was not modified"
+            ))
+        }),
+    }
+}
+
+/// `spacing` is one gap on both axes. `patternSpacing` wins when present;
+/// a missing vector component is zero, not the scalar gap.
+fn tile_gap(paint: &Value) -> Result<(f64, f64), Error> {
+    if let Some(spacing) = paint.get("patternSpacing") {
+        let axes = spacing.as_object().ok_or_else(|| {
+            Error::Unsupported(
+                "FIG image tile patternSpacing is not a vector; the source file was not modified"
+                    .into(),
+            )
+        })?;
+        let axis = |key: &str| match axes.get(key) {
+            None => Ok(0.),
+            Some(value) => finite_number(value).ok_or_else(|| {
+                Error::Unsupported(format!(
+                    "FIG image tile patternSpacing.{key} is not a finite number; the source file was not modified"
+                ))
+            }),
+        };
+        return Ok((axis("x")?, axis("y")?));
+    }
+    match paint.get("spacing") {
+        None => Ok((0., 0.)),
+        Some(value) => {
+            let gap = finite_number(value).ok_or_else(|| {
+                Error::Unsupported(
+                    "FIG image tile spacing is not a finite number; the source file was not modified"
+                        .into(),
+                )
+            })?;
+            Ok((gap, gap))
+        }
     }
 }
 
@@ -756,14 +793,12 @@ fn reject_unrepresentable_tile(paint: &Value) -> Result<(), Error> {
     if str_of(paint, "imageScaleMode") != Some("TILE") {
         return Ok(());
     }
-    let scale = paint.get("scale").and_then(Value::as_f64).unwrap_or(1.);
-    let rotation = paint.get("rotation").and_then(Value::as_f64).unwrap_or(0.);
-    let (gap_x, gap_y) = tile_gap(paint);
-    if !(scale.is_finite() && scale > 0. && scale <= 1e6)
-        || !(rotation.is_finite() && rotation.abs() <= 1e6)
-        || ![gap_x, gap_y]
-            .iter()
-            .all(|value| value.is_finite() && *value >= 0. && *value <= 1e7)
+    let scale = tile_scalar(paint, "scale", 1.)?;
+    let rotation = tile_scalar(paint, "rotation", 0.)?;
+    let (gap_x, gap_y) = tile_gap(paint)?;
+    if !(scale > 0. && scale <= 1e6)
+        || rotation.abs() > 1e6
+        || ![gap_x, gap_y].iter().all(|value| *value >= 0. && *value <= 1e7)
     {
         return Err(Error::Unsupported(
             "FIG image tile spacing/scale/rotation is out of range; the source file was not modified"
@@ -771,20 +806,20 @@ fn reject_unrepresentable_tile(paint: &Value) -> Result<(), Error> {
         ));
     }
     for key in ["horizontalAlignment", "verticalAlignment"] {
-        if let Some(value) = str_of(paint, key)
-            && !matches!(value, "START" | "CENTER" | "END")
-        {
+        if paint.get(key).is_some() && !matches!(str_of(paint, key), Some("START" | "CENTER" | "END")) {
+            let value = paint.get(key).map(|item| item.to_string()).unwrap_or_default();
             return Err(Error::Unsupported(format!(
                 "FIG image tile {key}={value} is not supported; the source file was not modified"
             )));
         }
     }
-    if let Some(mode) = str_of(paint, "patternTileType")
+    if paint.get("patternTileType").is_some()
         && !matches!(
-            mode,
-            "RECTANGULAR" | "HORIZONTAL_HEXAGONAL" | "VERTICAL_HEXAGONAL"
+            str_of(paint, "patternTileType"),
+            Some("RECTANGULAR" | "HORIZONTAL_HEXAGONAL" | "VERTICAL_HEXAGONAL")
         )
     {
+        let mode = paint.get("patternTileType").map(|item| item.to_string()).unwrap_or_default();
         return Err(Error::Unsupported(format!("patternTileType={mode}")));
     }
     Ok(())
@@ -1207,9 +1242,9 @@ impl FigImporter {
                     Some("TILE") => {
                         // TILE renders through the pattern-fill pipeline.
                         // scale multiplies the image's native cell, rotation
-                        // is degrees, and spacing/patternSpacing is the
-                        // transparent gap. Alignment is stored for round-trip;
-                        // sampling still anchors at the node origin.
+                        // is degrees about the alignment pin, and
+                        // spacing/patternSpacing is the transparent gap after
+                        // the image. Alignment pins that image box to the fill.
                         let mut tile = crate::pattern_fill::PatternTile::native();
                         if let Some(mode) = str_of(p, "patternTileType") {
                             tile.mode = match mode {
@@ -1228,7 +1263,10 @@ impl FigImporter {
                         }
                         tile.scale = p.get("scale").and_then(Value::as_f64).unwrap_or(1.);
                         tile.rotation = f64_of(Some(p), "rotation");
-                        let (gap_x, gap_y) = tile_gap(p);
+                        let (gap_x, gap_y) = tile_gap(p).unwrap_or_else(|error| {
+                            untranslated.push(error.to_string());
+                            (0., 0.)
+                        });
                         tile.spacing = [gap_x, gap_y];
                         let mut alignment_of = |key: &str| {
                             str_of(p, key)
@@ -5124,6 +5162,12 @@ mod tests {
             assert!(importer.validate_record(&invalid).unwrap_err().to_string().contains("out of range"));
             let unknown=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","horizontalAlignment":"SPACE"}]});
             assert!(importer.validate_record(&unknown).unwrap_err().to_string().contains("not supported"));
+            let partial=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","spacing":9.,"patternSpacing":{"x":2.}}]});
+            importer.validate_record(&partial).expect("partial patternSpacing");
+            let partial_paint=importer.paint(&partial["fillPaints"][0], &mut Vec::new()).unwrap();
+            assert_eq!(partial_paint.tile.unwrap().spacing, [2., 0.]);
+            let textual=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","scale":"2.5"}]});
+            assert!(importer.validate_record(&textual).unwrap_err().to_string().contains("not a finite number"));
         }
 
         #[test]

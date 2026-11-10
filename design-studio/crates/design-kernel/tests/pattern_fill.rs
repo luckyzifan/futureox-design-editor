@@ -470,3 +470,235 @@ fn pattern_works_through_export_coordinate_grids() {
     .unwrap();
     assert_eq!(field, dense, "compact field must equal the dense oracle");
 }
+
+fn quadrant_png() -> String {
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 2, 2);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&[
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+            ])
+            .unwrap();
+    }
+    format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
+}
+
+fn aligned(alignment: [&str; 2], spacing: [f64; 2]) -> PatternTile {
+    PatternTile {
+        alignment: [alignment[0].into(), alignment[1].into()],
+        spacing,
+        ..PatternTile::native()
+    }
+}
+
+/// Second writing of the image-box pin. It does not call the production
+/// helpers. The gap trails the image; positive rotation turns the sample
+/// point by the opposite angle about the pin.
+fn reference_image_uv(
+    align: [&str; 2],
+    rotation: f64,
+    offset: [f64; 2],
+    spacing: [f64; 2],
+    period: [f64; 2],
+    fill: [f64; 2],
+    point: [f64; 2],
+) -> Option<[f64; 2]> {
+    let image = [period[0] - spacing[0], period[1] - spacing[1]];
+    let pin = |name: &str, span: f64, extent: f64| match name {
+        "center" => (span * 0.5, extent * 0.5),
+        "end" => (span, extent),
+        _ => (0.0, 0.0),
+    };
+    let (fill_x, image_x) = pin(align[0], fill[0], image[0]);
+    let (fill_y, image_y) = pin(align[1], fill[1], image[1]);
+    let mut x = point[0] - fill_x;
+    let mut y = point[1] - fill_y;
+    if rotation != 0. {
+        let radians = -rotation.to_radians();
+        let (sin, cos) = radians.sin_cos();
+        let next_x = cos * x - sin * y;
+        let next_y = sin * x + cos * y;
+        x = next_x;
+        y = next_y;
+    }
+    x += image_x;
+    y += image_y;
+    let gx = (x - offset[0]) / period[0];
+    let gy = (y - offset[1]) / period[1];
+    let fx = gx - gx.floor();
+    let fy = gy - gy.floor();
+    if fx * period[0] >= image[0] || fy * period[1] >= image[1] {
+        return None;
+    }
+    Some([fx * period[0] / image[0], fy * period[1] / image[1]])
+}
+
+#[test]
+fn start_alignment_stays_on_the_origin_pinned_chain() {
+    let mut pattern = aligned(["start", "start"], [1., 0.]);
+    pattern.rotation = 90.;
+    pattern.scale = 2.;
+    let period = pattern.resolve([8., 4.]);
+    for point in [[0.5, 0.5], [3.25, -1.5], [8., 4.], [-2., 7.]] {
+        let direct = pattern_fill::tile_sample(&pattern, Point::new(point[0], point[1]), period);
+        let placed = pattern_fill::tile_sample_in_fill(
+            &pattern,
+            Point::new(point[0], point[1]),
+            period,
+            [20., 10.],
+        );
+        match (direct, placed) {
+            (None, None) => {}
+            (Some(left), Some(right)) => {
+                assert_eq!(left.x.to_bits(), right.x.to_bits(), "{point:?}");
+                assert_eq!(left.y.to_bits(), right.y.to_bits(), "{point:?}");
+            }
+            other => panic!("start alignment diverged at {point:?}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn alignment_scale_rotation_and_spacing_match_the_image_box_reference() {
+    let cases = [
+        (aligned(["center", "center"], [0., 0.]), 0., [8., 6.]),
+        (aligned(["end", "start"], [2., 0.]), 0., [6., 2.]),
+        (aligned(["center", "end"], [0., 1.]), 90., [8., 8.]),
+        (aligned(["end", "end"], [1., 2.]), 90., [9., 7.]),
+        (aligned(["start", "center"], [0., 0.]), 0., [5., 5.]),
+    ];
+    let points = [[0.5, 0.5], [2.5, 0.5], [4.0, 3.0], [5.5, 1.5], [7.25, 6.5]];
+    for (pattern, rotation, fill) in cases {
+        let mut pattern = pattern;
+        pattern.rotation = rotation;
+        let period = pattern.resolve([2., 2.]);
+        for point in points {
+            let got = pattern_fill::tile_sample_in_fill(
+                &pattern,
+                Point::new(point[0], point[1]),
+                period,
+                fill,
+            );
+            let want = reference_image_uv(
+                [&pattern.alignment[0], &pattern.alignment[1]],
+                rotation,
+                pattern.offset,
+                pattern.spacing,
+                period,
+                fill,
+                point,
+            );
+            match (got, want) {
+                (None, None) => {}
+                (Some(uv), Some([x, y])) => {
+                    assert!(
+                        (uv.x - x).abs() <= 1e-12 && (uv.y - y).abs() <= 1e-12,
+                        "align {:?} rot {rotation} fill {fill:?} point {point:?}: got {uv:?} want {x},{y}",
+                        pattern.alignment
+                    );
+                }
+                other => panic!("gap disagreement {other:?} at {point:?}"),
+            }
+        }
+    }
+    // The fill center samples the image center, including when spacing makes
+    // the repeat cell larger than the image and when the pattern is rotated.
+    let centered = aligned(["center", "center"], [2., 2.]);
+    let period = centered.resolve([2., 2.]);
+    let center =
+        pattern_fill::tile_sample_in_fill(&centered, Point::new(5., 5.), period, [10., 10.])
+            .unwrap();
+    assert!((center.x - 0.5).abs() <= 1e-12 && (center.y - 0.5).abs() <= 1e-12);
+    let mut turned = centered.clone();
+    turned.rotation = 90.;
+    let turned_center =
+        pattern_fill::tile_sample_in_fill(&turned, Point::new(5., 5.), period, [10., 10.]).unwrap();
+    assert!(
+        (turned_center.x - 0.5).abs() <= 1e-12 && (turned_center.y - 0.5).abs() <= 1e-12,
+        "rotation keeps the pinned image center on the fill center"
+    );
+}
+
+fn render_quadrant(tile: PatternTile, w: u32, h: u32) -> Vec<u8> {
+    let uri = quadrant_png();
+    let doc: Document = serde_json::from_value(serde_json::json!({
+        "schemaVersion":14,"id":"0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b","name":"a",
+        "pages":[{"id":"p","name":"p","children":["n"],"background":"#ffffff"}],
+        "nodes":{"n":{"id":"n","kind":"rectangle","width":w,"height":h,
+            "fills":[{"kind":"image","color":"#000000","image":uri,"tile":tile}]}}
+    }))
+    .unwrap();
+    doc.validate().unwrap();
+    let mut engine = futureox_design_kernel::renderer::Engine::new();
+    engine
+        .load_document(&serde_json::to_string(&doc).unwrap())
+        .unwrap();
+    let options = serde_json::from_value(serde_json::json!({
+        "pageId":"p","width":w,"height":h,"view":{"x":0,"y":0,"zoom":1},"transparent":true
+    }))
+    .unwrap();
+    engine.render(&options).unwrap()
+}
+
+fn rgba_at(bytes: &[u8], width: u32, x: u32, y: u32) -> &[u8] {
+    let index = ((y * width + x) * 4) as usize;
+    &bytes[index..index + 4]
+}
+
+#[test]
+fn aligned_tiles_paint_the_pinned_image_and_leave_the_gap_clear() {
+    // 2×2 image, native period 2. Start pins the red texel to the origin.
+    // Center on a 4×4 fill shifts by half a period, so the same pixel reads
+    // the white texel. End plus a 2px horizontal gap pins the image's right
+    // edge to x=6, which puts green at x=5 and the gap at x=2.
+    let start = render_quadrant(aligned(["start", "start"], [0., 0.]), 4, 4);
+    let center = render_quadrant(aligned(["center", "center"], [0., 0.]), 4, 4);
+    assert_eq!(rgba_at(&start, 4, 0, 0), [255, 0, 0, 255]);
+    assert_eq!(rgba_at(&start, 4, 1, 0), [0, 255, 0, 255]);
+    assert_eq!(rgba_at(&center, 4, 0, 0), [255, 255, 255, 255]);
+    assert_ne!(start, center);
+    // Width 5 is not a multiple of the 4px period, so pinning the image end
+    // to x=5 is not the same phase as the origin. Pixel 0 is the green texel.
+    // A 6px width wraps back onto the start phase and does not prove the pin.
+    let ended = render_quadrant(aligned(["end", "start"], [2., 0.]), 5, 2);
+    assert_eq!(rgba_at(&ended, 5, 0, 0), [0, 255, 0, 255]);
+    assert_eq!(rgba_at(&ended, 5, 2, 0), [0, 0, 0, 0]);
+    let (paint, node) = image_node(
+        &quadrant_png(),
+        Some(aligned(["center", "center"], [0., 0.])),
+        4.,
+        4.,
+    );
+    let grid = futureox_design_kernel::paint::image_sampling_grid(
+        Rect::new(0, 0, 4, 4),
+        Transform([1., 0., 0., 1., 0., 0.]),
+        [4., 4.],
+        [2, 2],
+        &paint,
+        None,
+    )
+    .unwrap();
+    let plain = aligned(["start", "start"], [0., 0.]);
+    let (plain_paint, _) = image_node(&quadrant_png(), Some(plain), 4., 4.);
+    let plain_grid = futureox_design_kernel::paint::image_sampling_grid(
+        Rect::new(0, 0, 4, 4),
+        Transform([1., 0., 0., 1., 0., 0.]),
+        [node.width, node.height],
+        [2, 2],
+        &plain_paint,
+        None,
+    )
+    .unwrap();
+    assert_ne!(
+        grid, plain_grid,
+        "GPU coordinate grids must follow alignment"
+    );
+}
