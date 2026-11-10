@@ -125,6 +125,7 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   const childFields = doc.nodes[instance.id].instance!.overrides[child.id]
   expect(childFields.sizing).toEqual(expect.objectContaining({ width: 'fill', height: 'fill', alignSelf: 'stretch' }))
   const textFields = doc.nodes[instance.id].instance!.overrides[text.id]
+  expect((textFields.textStyle as { features: string[]; letterSpacing: number }).letterSpacing).toBe(120)
   expect((textFields.textStyle as { features: string[] }).features).toEqual(expect.arrayContaining(['-liga', '-clig', 'smcp', 'kern']))
   const missing = doc.nodes[instance.id].instance!.overrides['44:1']
   expect(missing.layout).toBeUndefined()
@@ -132,7 +133,7 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   const messages = [...warnings]
   expect(messages.some(message => message.includes('stackPaddingRight'))).toBe(true)
   expect(messages.some(message => message.includes('fontVariantNumericFraction'))).toBe(true)
-  expect(messages.some(message => message.includes('textTracking'))).toBe(true)
+  expect(messages.some(message => message.includes('textTracking'))).toBe(false)
   expect(messages.some(message => message.includes('fontVariantCaps') || message.includes('stackSpacing') || message.includes('stackChildAlignSelf'))).toBe(false)
   expect(receipts.get(instance.id)?.figOverrideVariableConsumption).toContain('RECTANGLE_TOP_LEFT_CORNER_RADIUS')
 })

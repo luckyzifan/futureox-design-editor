@@ -25,6 +25,57 @@ const STYLE_FIELDS: Record<string, { field: string; type: string }> = {
   styleIdForText: { field: 'textStyle', type: 'TEXT' },
 }
 
+function claimAddress(addresses: Map<string, string>, blocked: Set<string>, key: string, id: string) {
+  if (!key || key === '0:0' || blocked.has(key)) return
+  const existing = addresses.get(key)
+  if (existing && existing !== id) {
+    addresses.delete(key)
+    blocked.add(key)
+    return
+  }
+  if (!existing) addresses.set(key, id)
+}
+
+function symbolAddresses(records: Map<string, any>, reverse: Map<string, string>, descendants: Set<string>) {
+  const addresses = new Map<string, string>()
+  const blocked = new Set<string>()
+  for (const nodeId of descendants) {
+    claimAddress(addresses, blocked, nodeId, nodeId)
+    const source = reverse.get(nodeId)
+    if (!source) continue
+    claimAddress(addresses, blocked, source, nodeId)
+    const record = records.get(source)
+    const overrideKey = guid(record?.overrideKey)
+    if (overrideKey) claimAddress(addresses, blocked, overrideKey, nodeId)
+    const own = guid(record?.guid)
+    if (own) claimAddress(addresses, blocked, own, nodeId)
+  }
+  return addresses
+}
+
+function resolveOverridePath(addressesByComponent: Map<string, Map<string, string>>, records: Map<string, any>, ids: Map<string, string>, reverse: Map<string, string>, componentId: string, parts: string[]) {
+  let component = componentId
+  const resolved: string[] = []
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index]
+    const source = reverse.get(component)
+    const own = guid(records.get(source || '')?.overrideKey)
+    if (part === component || part === source || (own && part === own)) {
+      if (index + 1 === parts.length) return resolved.length ? resolved : ['$root']
+      continue
+    }
+    const id = addressesByComponent.get(component)?.get(part) || addressesByComponent.get(component)?.get(ids.get(part) || '')
+    if (!id) return
+    resolved.push(id)
+    if (index + 1 === parts.length) break
+    const nested = reverse.get(id)
+    const next = ids.get(guid(records.get(nested || '')?.symbolData?.symbolID))
+    if (!next) return
+    component = next
+  }
+  return resolved
+}
+
 export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, strokesOf: (record:any)=>Stroke[], warnings?: { add(message: string): unknown }, receipts?: FigReceipts) {
   for (const [sourceId, r] of records) {
     const n=doc.nodes[ids.get(sourceId)!]
@@ -70,6 +121,23 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
     }
   }
   const variables = variableCatalog(records)
+  const reverse = new Map([...ids].map(([source, id]) => [id, source]))
+  const addressesByComponent = new Map<string, Map<string, string>>()
+  for (const [sourceId, record] of records) {
+    if (record.type !== 'SYMBOL') continue
+    const rootId = ids.get(sourceId)
+    const root = rootId && doc.nodes[rootId]
+    if (!root) continue
+    const pending = [...root.children]
+    const descendants = new Set<string>()
+    while (pending.length) {
+      const id = pending.pop()!
+      if (descendants.has(id)) break
+      descendants.add(id)
+      if (!doc.nodes[id]?.instance) pending.push(...(doc.nodes[id]?.children || []))
+    }
+    addressesByComponent.set(root.id, symbolAddresses(records, reverse, descendants))
+  }
   for(const [sourceId,r] of records) {
     const n=doc.nodes[ids.get(sourceId)!]
     if(!n || r.type!=='INSTANCE')continue
@@ -89,13 +157,15 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
     const retained: unknown[] = []
     for(const override of r.symbolData?.symbolOverrides||[]) {
       const sourcePath=override.guidPath?.guids || (override.overrideKey?[override.overrideKey]:[])
-      const path=sourcePath.map((g:any)=>ids.get(guid(g))||guid(g)).join('/')||'$root'
-      const targetId = path === '$root' ? componentId : path.split('/').at(-1)!
+      const parts=sourcePath.map((g:any)=>guid(g)).filter(Boolean)
+      const resolved = parts.length ? resolveOverridePath(addressesByComponent, records, ids, reverse, componentId, parts) : undefined
+      const path = resolved?.join('/') || parts.map((part: string) => ids.get(part) || part).join('/') || '$root'
+      const targetId = path === '$root' ? componentId : resolved ? resolved.at(-1)! : ''
       const target = doc.nodes[targetId]
       const sourceKey = [...ids].find(([, id]) => id === targetId)?.[0]
       const source = sourceKey ? records.get(sourceKey) : undefined
       const fields:Record<string,unknown>={}
-      const skip = new Set(['guidPath','overrideKey','styleID','guid','phase','parentIndex','type','cornerRadius','cornerSmoothing','size','textData','effects','pluginData','derivedTextData','variableConsumptionMap','parameterConsumptionMap','variableModeBySetMap','stackReverseZIndex','styleIdForGrid',...STROKE_INPUTS,...LAYOUT_KEYS,...Object.keys(STYLE_FIELDS),...FONT_KEYS,'textAlignHorizontal','textAlignVertical','textAutoResize','lineHeight','letterSpacing','paragraphSpacing','paragraphIndent','textCase','fontName','textDecoration','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius','rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius'])
+      const skip = new Set(['guidPath','overrideKey','styleID','guid','phase','parentIndex','type','cornerRadius','cornerSmoothing','size','textData','effects','textTracking','exportSettings','pluginData','derivedTextData','variableConsumptionMap','parameterConsumptionMap','variableModeBySetMap','stackReverseZIndex','styleIdForGrid',...STROKE_INPUTS,...LAYOUT_KEYS,...Object.keys(STYLE_FIELDS),...FONT_KEYS,'textAlignHorizontal','textAlignVertical','textAutoResize','lineHeight','letterSpacing','paragraphSpacing','paragraphIndent','textCase','fontName','textDecoration','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius','rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius'])
       for(const [key,value] of Object.entries(override)) {
         if(Array.isArray(override.strokePaints) && STROKE_INPUTS.includes(key)) continue
         if(skip.has(key)) continue
@@ -105,7 +175,11 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
         else if(key==='textData') fields.text=(value as any)?.characters??''
         else if(key==='fillPaints') fields.fills=(value as any[]).map(toPaint)
         else if(key==='strokePaints') fields.strokes=strokesOf(override)
-        else if(key==='symbolID') fields.swapComponent=ids.get(guid(value))
+        else if(key==='symbolID' || key==='overriddenSymbolID') {
+          const swapped = ids.get(guid(value))
+          if(swapped && doc.nodes[swapped]?.component) fields.swapComponent = swapped
+          else warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
+        }
         else warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
       }
       if(override.pluginData !== undefined) warnings?.add('FIG 实例覆盖 pluginData 暂不能执行，其余覆盖已保留')
@@ -113,14 +187,16 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       if(override.styleIdForGrid !== undefined) warnings?.add('FIG 实例覆盖 styleIdForGrid 暂不能执行，其余覆盖已保留')
       applySize(fields, override, warnings)
       applyCorners(fields, override, target, warnings)
+      applyExport(fields, override, warnings)
       applyText(fields, override, target, warnings)
       applyLayout(fields, override, target, source, records, warnings)
       applyStyles(fields, override, target, source, records, ids, warnings)
       if(Array.isArray(override.strokePaints)) fields.strokes = strokesOf(override)
       else if(STROKE_INPUTS.some(key => override[key] !== undefined)) applyStrokeAttrs(fields, override, target, warnings)
       const kept = applyConsumption(fields, override, variables, warnings)
-      if(Object.keys(kept).length) retained.push({ path, ...kept })
-      n.instance.overrides[path]=fields
+      if(override.exportSettings !== undefined) kept.exportSettings = override.exportSettings
+      if(Object.keys(kept).length) retained.push({ path: parts.join('/') || path, ...kept })
+      n.instance.overrides[path] = { ...(n.instance.overrides[path] || {}), ...fields }
     }
     if(retained.length && receipts && ids.get(sourceId)) {
       const current = receipts.get(n.id) ?? {}
@@ -196,6 +272,12 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
   }
   const style = { ...(target?.textStyle ?? defaultTextStyle()) }
   let changed = false
+  if(override.letterSpacing === undefined && override.textTracking !== undefined) {
+    if(typeof override.textTracking === 'number' && Number.isFinite(override.textTracking) && Math.abs(override.textTracking) <= 1000) {
+      style.letterSpacing = override.textTracking
+      changed = true
+    } else warnings?.add('FIG 实例覆盖 textTracking 暂不能执行，其余覆盖已保留')
+  }
   if(override.textAlignHorizontal !== undefined) {
     const align = { LEFT: 'start', CENTER: 'center', RIGHT: 'end', JUSTIFIED: 'justify' } as Record<string, string>
     if(align[override.textAlignHorizontal]) { style.align = align[override.textAlignHorizontal] as typeof style.align; changed = true }
@@ -314,6 +396,30 @@ function distance(record: any, field: string, fallback = 0) {
   const value = record[field] ?? fallback
   if(typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1e5) return undefined
   return value
+}
+
+function applyExport(fields: Record<string, unknown>, override: any, warnings?: { add(message: string): unknown }) {
+  if(override.exportSettings === undefined) return
+  if(!Array.isArray(override.exportSettings)) {
+    warnings?.add('FIG 实例覆盖 exportSettings 暂不能执行，其余覆盖已保留')
+    return
+  }
+  const formats: Record<string, string> = { PNG: 'png', JPG: 'jpeg', JPEG: 'jpeg', SVG: 'svg', SVG_STRING: 'svg', PDF: 'pdf', WEBP: 'webp', TIFF: 'tiff' }
+  const exported: { id: string; format: string; scale: number; suffix: string }[] = []
+  let failed = false
+  override.exportSettings.forEach((setting: any, index: number) => {
+    const format = formats[setting?.imageType]
+    const constraint = setting?.constraint
+    const scale = constraint?.type === 'SCALE' || constraint?.type === 'CONTENT_SCALE' ? constraint.value : constraint ? undefined : 1
+    const suffix = typeof setting?.suffix === 'string' ? setting.suffix : ''
+    if(!format || typeof scale !== 'number' || !Number.isFinite(scale) || scale < 0 || scale > 128 || suffix.length > 80) {
+      failed = true
+      return
+    }
+    exported.push({ id: `fig-export-${index}`, format, scale, suffix })
+  })
+  if(failed || (!exported.length && override.exportSettings.length)) warnings?.add('FIG 实例覆盖 exportSettings 暂不能执行，其余覆盖已保留')
+  if(exported.length) fields.exportSettings = exported
 }
 
 function applyLayout(fields: Record<string, unknown>, override: any, target: any, source: any, records: Map<string, any>, warnings?: { add(message: string): unknown }) {

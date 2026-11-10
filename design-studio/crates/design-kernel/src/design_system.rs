@@ -1,6 +1,6 @@
 //! Authored variables/styles. Resolution is deterministic and never evaluates code.
 use crate::scene::{Document, Node};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -181,6 +181,20 @@ fn expected(path: &str) -> &'static str {
         "number"
     }
 }
+/// FIG opacity variables in this corpus are percentages (`50` means 50%).
+/// Layer and paint opacity in the kernel are 0–1. Values already in that
+/// interval stay unchanged, so a true `0.5` binding is not scaled again.
+fn bound_number(field: &str, value: Value) -> Value {
+    if field == "opacity" || field.ends_with(".opacity") {
+        if let Some(number) = value.as_f64() {
+            if number > 1. && number <= 100. {
+                return serde_json::json!(number / 100.);
+            }
+        }
+    }
+    value
+}
+
 pub fn set_path(root: &mut Value, path: &str, value: Value) -> Result<(), String> {
     let parts: Vec<_> = path.split('.').collect();
     let mut target = root;
@@ -258,7 +272,8 @@ fn validate_style_parts(doc: &Document, style: &SharedStyle) -> Result<(), Strin
                     | "texture"
                     | "color-controls"
                     | "gaussian-blur"
-                    | "motion-blur" | "zoom-blur"
+                    | "motion-blur"
+                    | "zoom-blur"
             )
         {
             return Err("Invalid shared style effect parameters".into());
@@ -289,17 +304,28 @@ pub fn validate(doc: &Document) -> Result<(), String> {
     {
         return Err("Design system budget exceeded".into());
     }
-    if s.font_sources.len() > 20_000 || s.font_sources.iter().any(|(id, source)| {
-        id.len() > 256 || source.runs.len() > 4096
-            || source.style.iter().chain(source.runs.values()).any(|s| s.is_empty() || s.len() > 512)
-            || source.runs.keys().any(|index| index.parse::<usize>().is_err())
-            || source.resolved.len() > 4097
-            || source.resolved.iter().any(|name| {
-                name.is_empty()
-                    || name.len() > 512
-                    || (source.style.as_ref() != Some(name) && !source.runs.values().any(|value| value == name))
-            })
-    }) {
+    if s.font_sources.len() > 20_000
+        || s.font_sources.iter().any(|(id, source)| {
+            id.len() > 256
+                || source.runs.len() > 4096
+                || source
+                    .style
+                    .iter()
+                    .chain(source.runs.values())
+                    .any(|s| s.is_empty() || s.len() > 512)
+                || source
+                    .runs
+                    .keys()
+                    .any(|index| index.parse::<usize>().is_err())
+                || source.resolved.len() > 4097
+                || source.resolved.iter().any(|name| {
+                    name.is_empty()
+                        || name.len() > 512
+                        || (source.style.as_ref() != Some(name)
+                            && !source.runs.values().any(|value| value == name))
+                })
+        })
+    {
         return Err("Invalid imported font identities".into());
     }
     for (id, c) in &s.collections {
@@ -422,7 +448,10 @@ fn validate_node(s: &DesignSystem, n: &Node) -> Result<(), String> {
         let style = s.styles.get(id).ok_or("Missing shared style")?;
         if !matches!(
             (field.as_str(), style.kind.as_str()),
-            ("fills", "paint") | ("strokes", "paint") | ("textStyle", "text") | ("effects", "effect")
+            ("fills", "paint")
+                | ("strokes", "paint")
+                | ("textStyle", "text")
+                | ("effects", "effect")
         ) {
             return Err("Shared style/property mismatch".into());
         }
@@ -465,7 +494,8 @@ pub(crate) fn resolve_node(
             let shared = &s.styles[id];
             // Stroke styles are paint styles whose payload is `strokes`, not fills.
             if field == "strokes" {
-                json["strokes"] = serde_json::to_value(&shared.strokes).map_err(|e| e.to_string())?;
+                json["strokes"] =
+                    serde_json::to_value(&shared.strokes).map_err(|e| e.to_string())?;
                 continue;
             }
             json[field] = style_with_defaults(shared)?;
@@ -485,7 +515,11 @@ pub(crate) fn resolve_node(
     }
     for (field, id) in &n.bindings {
         if !overridden(field.split('.').next().unwrap()) {
-            set_path(&mut json, field, value_in(s, id, modes)?)?;
+            set_path(
+                &mut json,
+                field,
+                bound_number(field, value_in(s, id, modes)?),
+            )?;
         }
     }
     let mut next = serde_json::from_value(json).map_err(|e| e.to_string())?;
@@ -629,8 +663,18 @@ mod mode_scope_tests {
         .unwrap();
         validate(&doc).unwrap();
         let again = serde_json::to_value(&doc.design_system).unwrap();
-        assert_eq!(again["fontSources"]["text"]["resolved"], json!(["PingFang SC"]));
-        doc.design_system.as_mut().unwrap().font_sources.get_mut("text").unwrap().resolved.insert("Unknown".into());
+        assert_eq!(
+            again["fontSources"]["text"]["resolved"],
+            json!(["PingFang SC"])
+        );
+        doc.design_system
+            .as_mut()
+            .unwrap()
+            .font_sources
+            .get_mut("text")
+            .unwrap()
+            .resolved
+            .insert("Unknown".into());
         assert!(validate(&doc).is_err());
     }
     #[test]
