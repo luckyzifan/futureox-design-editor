@@ -9,6 +9,7 @@ export function applyWholeTextStyle(node: DesignNode, patch: Partial<TextStyle>)
   node.textStyle ??= defaultTextStyle()
   const missing = Object.fromEntries(Object.entries(defaultTextStyle()).filter(([key]) => !Object.hasOwn(node.textStyle!, key)))
   Object.assign(node.textStyle, missing, patch)
+  if (patch.lineHeight !== undefined && patch.lineHeightAuto === undefined) node.textStyle.lineHeightAuto = false
   for (const run of node.textRuns || []) {
     if (patch.fontId !== undefined) delete run.fontId
     if (patch.weight !== undefined) delete run.weight

@@ -76,12 +76,21 @@ test('the current fidelity and fixture scan grants only the synthetic I/O images
     assert.match(file.attribution, /generate\.py/)
   }
   const sketch = report.files.find(file => file.path === 'testing/fixtures/user-regression-20261109/117.sketch')
-  assert.equal(sketch.record, 'lfs_oid_matches_manifest')
   assert.equal(sketch.publication, 'withhold')
-  assert.equal(sketch.hashCheck, 'pointer_oid_match')
-  assert.equal(sketch.contentBytesReviewed, false)
   assert.match(sketch.source, /Downloads/)
-  assert.equal(sketch.lfsOid, 'd494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70')
+  const originalHash = 'd494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70'
+  if (sketch.lfsOid) {
+    assert.equal(sketch.record, 'lfs_oid_matches_manifest')
+    assert.equal(sketch.hashCheck, 'pointer_oid_match')
+    assert.equal(sketch.contentBytesReviewed, false)
+    assert.equal(sketch.lfsOid, originalHash)
+  } else {
+    assert.equal(sketch.record, 'source_list_hash_match')
+    assert.equal(sketch.hashCheck, 'match')
+    assert.equal(sketch.checkoutSha256, originalHash)
+    assert.equal(sketch.contentBytesReviewed, true)
+    assert.equal(sketch.license, null)
+  }
   const fidelity = report.files.filter(file => file.path.startsWith('frontend/design-client/public/fidelity/'))
   assert.equal(fidelity.length, 349)
   assert.equal(fidelity.every(file => file.publication === 'withhold'), true)
@@ -117,7 +126,11 @@ test('the current fidelity and fixture scan grants only the synthetic I/O images
   assert.equal(imageMetadata.includes('public/fidelity'), false)
   for (const rel of report.proposedPublic) assert.match(ioCheck, new RegExp(path.posix.basename(rel).replaceAll('.', '\\.')))
   const committed = JSON.parse(await readFile(new URL('../docs/publication/asset-inventory.json', import.meta.url), 'utf8'))
-  assert.deepEqual(committed, report)
+  // Checkout evidence changes after LFS materialization; redistribution grants do not.
+  const plan = inventory => inventory.files.map(({ path, publication, source, attribution, license, licenseStatus, copyright, nearestLicenseApplied }) =>
+    ({ path, publication, source, attribution, license, licenseStatus, copyright, nearestLicenseApplied }))
+  assert.deepEqual(plan(committed), plan(report))
+  assert.deepEqual(committed.files.filter(file => file.publication === 'public'), report.files.filter(file => file.publication === 'public'))
 })
 
 test('a parent LICENSE inside a fixture tree is recorded and not applied', async () => {

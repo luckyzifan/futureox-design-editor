@@ -180,7 +180,7 @@ function proveRotationBackdrop(
       if (!chain[outerIndex].node.clip) continue
       const box = axisAlignedBox(chain[outerIndex].node, chain[outerIndex].matrix)
       if (!box) return null
-      const next = outer ? intersectArea(outer, box) : box
+      const next: Bounds | null = outer ? intersectArea(outer, box) : box
       if (!next) return null
       outer = next
     }

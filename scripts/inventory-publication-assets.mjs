@@ -618,6 +618,9 @@ export async function inventoryPublicationAssets(root = repo) {
   const files = []
   for (const draft of drafts) {
     const binding = bound.byPath.get(draft.path) ?? null
+    const contentHashCheck = binding?.hashCheck ?? (isSha(draft.manifestEntry?.sha256)
+      ? draft.checkoutSha256 === draft.manifestEntry.sha256 ? 'match' : 'mismatch'
+      : undefined)
     let grantAttempt = null
     if (duplicateGrants.has(draft.path)) grantAttempt = { ok: false, reason: 'explicit grant names this path more than once' }
     else if (grantByPath.has(draft.path)) grantAttempt = await evaluateGrant(grantByPath.get(draft.path), draft, root, lists.parsed)
@@ -626,7 +629,7 @@ export async function inventoryPublicationAssets(root = repo) {
       selfProvenance: draft.selfProvenance,
       manifestEntry: draft.manifestEntry,
       manifestLicenseNote: draft.manifestLicenseNote,
-      hashCheck: binding?.hashCheck,
+      hashCheck: contentHashCheck,
       observedLicense: draft.observedLicense || draft.noticedSource ? draft.observedLicense || 'notice' : null,
       directoryHasSourceList: lists.directories.has(path.posix.dirname(draft.path)) || draft.sourceNoticeOmits,
       grantAttempt,
@@ -652,7 +655,7 @@ export async function inventoryPublicationAssets(root = repo) {
           : 'not_listed'
       : draft.selfProvenance
         ? 'record_only'
-        : binding?.hashCheck ?? 'not_listed'
+        : contentHashCheck ?? 'not_listed'
     files.push({
       path: draft.path,
       bytes: draft.bytes,

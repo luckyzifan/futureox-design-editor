@@ -1,6 +1,19 @@
 import { expect, test } from 'vitest'
 import { applyWholeTextStyle, clearWholeTextRunColor, replaceText, replaceTextRange, setWholeTextFontSize, styleTextRange } from './text'
 import { node, validateDocument, blank, copyName, defaultTextStyle } from './model'
+test('an explicit line height disables imported automatic metrics while other edits preserve them', () => {
+  const n = node('text')
+  n.textStyle = { ...defaultTextStyle(), lineHeightAuto: true }
+  applyWholeTextStyle(n, { weight: 700 })
+  expect(n.textStyle.lineHeightAuto).toBe(true)
+  applyWholeTextStyle(n, { lineHeight: 1.35 })
+  expect(n.textStyle.lineHeightAuto).toBe(false)
+  applyWholeTextStyle(n, { lineHeight: 2 })
+  applyWholeTextStyle(n, { lineHeight: 1.35 })
+  expect(n.textStyle.lineHeightAuto).toBe(false)
+  applyWholeTextStyle(n, { lineHeight: 1.35, lineHeightAuto: true })
+  expect(n.textStyle.lineHeightAuto).toBe(true)
+})
 test('text replacement preserves surrounding runs and inherits inserted text style', () => {
   const n = node('text')
   n.text = 'abcdef'

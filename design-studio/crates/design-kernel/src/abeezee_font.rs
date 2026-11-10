@@ -442,7 +442,8 @@ pub(crate) fn pin_imported_faces(document: &mut Document) -> PinnedAbeezee {
                 "breaks": layout.lines.iter().map(|line| json!({"start": line.start, "end": line.end})).collect::<Vec<_>>(),
                 "measuredBox": {"width": layout.width, "height": layout.height},
                 "nativeBox": {"width": native_width, "height": native_height},
-                "textBoxMatches": node.width == native_width && node.height == native_height,
+                "authoredTextBoxPreserved": node.width == native_width && node.height == native_height,
+                "measuredHeightMatchesNativeBox": layout.height == native_height,
                 "pinnedFaceIsTheRequest": request,
                 "glyphPixels": false
             });

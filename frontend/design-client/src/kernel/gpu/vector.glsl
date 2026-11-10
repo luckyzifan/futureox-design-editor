@@ -997,7 +997,7 @@ vec4 shade(vec2 p){
    if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4(opacity));}
   }
   if(kind==3&&u[60].x>.5){paint=mulRN4(linearImage(p),vec4(opacity));}else if(kind==3&&u[46].w>.5){vec4 grid=byteImageAddress(p);paint=grid.z>.5?roundEven(smpBytesIndex(sourceB,grid.xy,u[2])*opacity)/255.:vec4(0);}else if(kind==3){vec2 size=u[2].zw;vec2 coord=paintUV(q)*size-.5;if(u[62].z<.5){coord=(q*size-u[6].zw*.5)/u[6].zw;if(u[8].z<1.5){float ratio=u[8].z<.5?max(u[6].z/size.x,u[6].w/size.y):min(u[6].z/size.x,u[6].w/size.y);coord=(q-(u[6].zw-(size-1.)*ratio)*.5)/ratio;}}if(u[8].z>.5&&u[8].z<1.5&&(any(lessThan(coord,vec2(-.5)))||any(greaterThanEqual(coord,size-.5))))paint=vec4(0);else if(u[46].w>.5)paint=roundEven(smpBytesIndex(sourceB,clamp(coord,vec2(0),size-1.),u[2])*opacity)/255.;else paint=smpIndex(sourceB,clamp(coord,vec2(0),size-1.),u[2])*opacity;}
-  {vec4 half=halfScaleStretch(p);if(kind==3&&half.x>=0.)paint=half*opacity;}
+  {vec4 filteredImage=halfScaleStretch(p);if(kind==3&&filteredImage.x>=0.)paint=filteredImage*opacity;}
   if(u[46].w>.5)paint=roundEven(paint*255.)/255.;vec4 result=paint*at(sourceA,p,u[1]).a;if(u[60].x>.5)result=mulRN4(paint,vec4(at(sourceA,p,u[1]).a));if(mode==16){result*=u[4].z;if(u[4].w>0.5)result*=at(sourceC,p,u[3]).a;}return result;
  }
  if(mode==15){vec4 src=a*u[4].z;if(u[4].w>0.5)src*=at(sourceC,p,u[3]).a;return src;}

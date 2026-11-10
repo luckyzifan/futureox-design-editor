@@ -22,6 +22,12 @@ Git LFS pointers are not hashed as the design bytes. For
 `manifest.json`. That manifest says inclusion does not grant a new
 redistribution license.
 
+Materialized LFS content is checked against the same manifest hash. A content
+hash match still leaves the file withheld. The committed inventory records its
+review checkout; pointer/content observations can differ in another checkout.
+Tests compare the publication plan and every public grant exactly, while
+checking the current checkout's content observations separately.
+
 `docs/UI_ASSET_PROVENANCE.md` cites `testing/fixtures/design/io/provenance.json`.
 That file is back in this checkout, restored from git history rather than
 rewritten. The scan reads its `images` list and does not treat the list as a

@@ -83,7 +83,7 @@ fn shaping_node(font_id: &str, width: f64) -> Node {
         "width": width,
         "height": 40.,
         "fontSize": SIZE,
-        "textStyle": {"fontId": font_id, "lineHeight": 1.35, "wrap": true, "align": "start", "weight": 400}
+        "textStyle": {"fontId": font_id, "lineHeight": 1.35, "lineHeightAuto": true, "wrap": true, "align": "start", "weight": 400}
     }))
     .unwrap()
 }
@@ -268,6 +268,11 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
     let (width, reference_lines, baseline_lines, raw_lines) =
         chosen.expect("no width where ABeeZee line breaks differ from Noto and match raw advances");
     let reference_layout = measure_file(&abeezee, "abeezee", width, false);
+    let face = ttf_parser::Face::parse(&abeezee, 0).unwrap();
+    let natural_height = (f64::from(face.ascender()) - f64::from(face.descender()) + f64::from(face.line_gap()))
+        * SIZE / f64::from(face.units_per_em()) * raw_lines.len() as f64;
+    assert!((reference_layout.height - natural_height).abs() < 1e-9,
+        "automatic Sketch line box must use the pinned font's independent vertical metrics");
     let archive = sketch(vec![
         text_layer(
             "regular",
@@ -343,7 +348,7 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
             "baselineBoxHeightDelta": baseline_box_delta,
             "candidateBoxHeightDelta": candidate_box_delta,
             "nativeBox": [regular.width, regular.height],
-            "textBoxMatches": record["textBoxMatches"],
+            "authoredTextBoxPreserved": record["authoredTextBoxPreserved"],
             "glyphPixels": record["glyphPixels"],
             "basis": record["basis"],
             "pinnedFaceIsTheRequest": record["pinnedFaceIsTheRequest"]
@@ -369,7 +374,7 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
     assert_eq!(record["lineCount"], candidate_lines.len());
     assert_eq!(record["glyphPixels"], false);
     assert_eq!(record["pinnedFaceIsTheRequest"], true);
-    assert_eq!(record["textBoxMatches"], true);
+    assert_eq!(record["authoredTextBoxPreserved"], true);
     assert_eq!(record["nativeBox"]["width"].as_f64(), Some(width));
     assert_eq!(
         record["nativeBox"]["height"].as_f64(),
