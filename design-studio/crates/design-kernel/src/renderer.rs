@@ -3274,7 +3274,14 @@ impl Painter<'_> {
             planes = self.apply_foreground_coverage(id, planes, &mut coverage)?;
         }
         let blend_mode=crate::blend::BlendMode::from_name(n.composite_blend());
-        let byte_opacity=self.compatible && matches!(blend_mode,crate::blend::BlendMode::Normal|crate::blend::BlendMode::Multiply|crate::blend::BlendMode::Screen)
+        // An alpha/luminance mask is a coverage factor for later siblings, not a
+        // displayed layer. Quantizing opacity 0.5 to UNORM 128/255 and blending
+        // again turns Figma's 128 gray into 127. Keep the authored factor exact
+        // and quantize only the final composite.
+        let exact_mask_factor = n.mask
+            && n.opacity < 1.
+            && !matches!(n.mask_type.as_deref(), Some("outline") | Some("shape"));
+        let byte_opacity=self.compatible && !exact_mask_factor && matches!(blend_mode,crate::blend::BlendMode::Normal|crate::blend::BlendMode::Multiply|crate::blend::BlendMode::Screen)
             && n.opacity<1. && coverage.is_none();
         for sample in 0..4 {
             let source = &planes[sample];
@@ -3304,12 +3311,12 @@ impl Painter<'_> {
                             value.0[c] -= dst.0[c] * extra;
                         }
                     }
-                    target.pixels[target.rect.index(x, y).expect("composite")] = if self.compatible
-                    {
-                        value.rgba8_quantized()
-                    } else {
-                        value
-                    };
+                    target.pixels[target.rect.index(x, y).expect("composite")] =
+                        if self.compatible && !exact_mask_factor {
+                            value.rgba8_quantized()
+                        } else {
+                            value
+                        };
                 }
             }
         }
@@ -3909,13 +3916,20 @@ impl Painter<'_> {
         let Some(layer) = self.node_layer(id, target, true, output, original_target, geometric)? else {
             return Ok(());
         };
+        let exact_mask_factor = n.mask
+            && n.opacity < 1.
+            && !matches!(n.mask_type.as_deref(), Some("outline") | Some("shape"));
         if n.passes_backdrop() {
             target.interpolate(
                 &layer,
                 |x, y| n.opacity as f32 * clip.map_or(1., |m| m.at(x, y)),
                 self.compatible,
             );
-        } else if self.compatible && n.composite_blend() == "normal" && n.opacity < 1. {
+        } else if self.compatible
+            && !exact_mask_factor
+            && n.composite_blend() == "normal"
+            && n.opacity < 1.
+        {
             // The single-layer fast profile must use the same opacity contract
             // as correlated sample planes, including intermediate byte storage.
             target.composite_rgba8(&layer, n.opacity as f32, |x, y| {
@@ -3928,7 +3942,7 @@ impl Painter<'_> {
                 clip.map_or(1., |m| m.at(x, y))
             });
         }
-        if self.compatible {
+        if self.compatible && !exact_mask_factor {
             target.quantize_rgba8();
         }
 
