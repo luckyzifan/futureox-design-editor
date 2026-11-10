@@ -21,7 +21,7 @@ const phrases = {
   fineQuality: ['精细（更耗内存）', 'Fine (more memory)'],
   figmaExportQuality: ['Figma 导出兼容', 'Figma export compatible'],
   wideGamutTitle: ['广色域 / HDR 使用精细覆盖采样', 'Wide gamut / HDR uses fine coverage sampling'],
-  figmaQualityTitle: ['保留精细采样。已与这组独立 Figma 参考逐字节对齐的是整数矩形、未触发的小模糊和半透明 alpha 蒙版；字节边缘、渐变、模糊、阴影、玻璃和 Texture 不在此列。配置随文件保存', 'Keeps fine sampling. Against this independent Figma reference set, integer rectangles, inactive small blurs, and semi-transparent alpha masks are bit-exact. Byte edges, gradients, blur, shadows, glass, and texture are not. Saved with the file.'],
+  figmaQualityTitle: ['保留精细采样。CPU 对照中，整数矩形、未触发的小模糊和半透明 alpha 蒙版已与这组独立 Figma 参考逐字节对齐；GPU 输出仍有差异，字节边缘、渐变、模糊、阴影、玻璃和 Texture 也仍需核对。配置随文件保存', 'Keeps fine sampling. CPU reference checks are bit-exact for integer rectangles, inactive small blurs, and semi-transparent alpha masks. GPU output still differs; byte edges, gradients, blur, shadows, glass, and texture also need further checks. Saved with the file.'],
   saveCopy: ['保存为本机副本', 'Save a local copy'],
   saveAs: ['另存为设计文件…', 'Save design as…'],
   exportFull: ['导出完整文件…', 'Export full file…'],
