@@ -26,9 +26,24 @@ test('V2 dictionary binds actual source and every static literal matches without
   const dictionary=JSON.parse(await readFile(new URL('../../../../docs/RENDER_FAILURE_DICTIONARY_V2.json',import.meta.url),'utf8'))
   const source=await readFile(new URL('./render-failure-telemetry.ts',import.meta.url))
   assert.equal(dictionary.version,2);assert.equal(dictionary.sourceSha256,createHash('sha256').update(source).digest('hex'))
-  const used=new Set()
+  const text=source.toString()
+  const known=text.slice(text.indexOf('const known:'), text.indexOf('const codes'))
+  const literals=[...known.matchAll(/\[\s*(['"])((?:\\.|(?!\1).)*)\1\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/g)].map(match=>({
+    exactMessage:match[2], category:Number(match[3]), code:Number(match[4]) }))
+  assert.ok(literals.length>0)
+  const byMessage=new Map(dictionary.exactMessages.map(item=>[item.exactMessage, item]))
+  assert.equal(byMessage.size, dictionary.exactMessages.length)
+  assert.equal(byMessage.size, literals.length)
+  const categories=new Map()
+  for(const literal of literals){
+    const item=byMessage.get(literal.exactMessage)
+    assert.ok(item, literal.exactMessage)
+    assert.equal(item.category, literal.category, literal.exactMessage)
+    assert.equal(item.code, literal.code, literal.exactMessage)
+    if(categories.has(item.code)) assert.equal(categories.get(item.code), item.category, literal.exactMessage)
+    else categories.set(item.code, item.category)
+  }
   for(const item of dictionary.exactMessages){
-    assert(!used.has(item.code));used.add(item.code)
     for(const value of [item.exactMessage,new Error(item.exactMessage)]){
       const fields=renderFailureFields(value)
       assert.equal(fields.failureCode,item.code);assert.equal(fields.failureCategory,item.category)

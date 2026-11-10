@@ -68,7 +68,7 @@ test('source contract: opening prepares before local publication and adoption ac
   assert.match(preparation, /return prepareAdmittedDocument\(admitDocumentJsonSync\(source, syntaxFailureAttempt\), captureValidatedJson\)/)
   assert.match(preparation, /function prepareAdmittedDocument\(original: DesignDocument, captureValidatedJson\?: \(json: string\) => void\): DesignDocument \{\s+const prepared = documentStage\(DocumentStage\.layout, \(\) => kernelLayout\(\{/)
   assert.ok(preparation.indexOf('admitDocumentSync(value)') < preparation.indexOf('const prepared = documentStage(DocumentStage.layout'))
-  assert.match(preparation, /const json = JSON\.stringify\(prepared\)\s+validateKernelDocument\(json\)\s+captureValidatedJson\?\.\(json\)/)
+  assert.match(preparation, /const json = layoutWire\.get\(prepared\) \?\? JSON\.stringify\(prepared\)\s+validateKernelDocument\(json\)\s+captureValidatedJson\?\.\(json\)/)
   assert.ok(preparation.indexOf('validateKernelDocument(json)') < preparation.indexOf('return prepared'))
   const app = read('./App.tsx')
   const opening = app.slice(app.indexOf('async function switchDocument('), app.indexOf('async function openLocalFiles('))

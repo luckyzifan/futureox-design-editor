@@ -1,7 +1,7 @@
 {
   "version": 2,
   "source": "frontend/design-client/src/kernel/render-failure-telemetry.ts",
-  "sourceSha256": "b4ce0f92ef737c559fdbd478799f13f41b57e5ee4867787aab4b38b1b93d211d",
+  "sourceSha256": "cec5e712bb0e021b935e0b3913af906c66c18135327e714fbd891664d287c90d",
   "categories": {
     "0": "unknown",
     "1": "cancellation",
@@ -452,6 +452,171 @@
       "code": 118,
       "category": 4,
       "exactMessage": "GPU device lost during preview recovery"
+    },
+    {
+      "code": 136,
+      "category": 3,
+      "exactMessage": "Combined filter dependency halo exceeds 2048 device pixels"
+    },
+    {
+      "code": 137,
+      "category": 3,
+      "exactMessage": "画布瓦片预览超时，请重试"
+    },
+    {
+      "code": 138,
+      "category": 2,
+      "exactMessage": "Exact large blur radius must be in (2048,4096]"
+    },
+    {
+      "code": 139,
+      "category": 3,
+      "exactMessage": "Large exact filter packet exceeds 64 KiB"
+    },
+    {
+      "code": 140,
+      "category": 5,
+      "exactMessage": "Invalid bounded shadow coefficient packet"
+    },
+    {
+      "code": 141,
+      "category": 3,
+      "exactMessage": "Decoded image budget exceeded"
+    },
+    {
+      "code": 142,
+      "category": 3,
+      "exactMessage": "PNG row source dimensions exceed bounded admission"
+    },
+    {
+      "code": 143,
+      "category": 2,
+      "exactMessage": "PNG row decoding requires unrotated source pixels"
+    },
+    {
+      "code": 143,
+      "category": 2,
+      "exactMessage": "PNG row decoding requires a noninterlaced still image"
+    },
+    {
+      "code": 143,
+      "category": 2,
+      "exactMessage": "PNG row decoding requires lossless 8-bit expanded channels"
+    },
+    {
+      "code": 144,
+      "category": 5,
+      "exactMessage": "Incomplete PNG row source"
+    },
+    {
+      "code": 144,
+      "category": 5,
+      "exactMessage": "Incomplete PNG row upload"
+    },
+    {
+      "code": 144,
+      "category": 5,
+      "exactMessage": "Truncated PNG rows"
+    },
+    {
+      "code": 145,
+      "category": 5,
+      "exactMessage": "Invalid PNG row upload dimensions"
+    },
+    {
+      "code": 145,
+      "category": 5,
+      "exactMessage": "Invalid PNG row upload range"
+    },
+    {
+      "code": 145,
+      "category": 5,
+      "exactMessage": "Invalid PNG row upload pixel"
+    },
+    {
+      "code": 119,
+      "category": 5,
+      "exactMessage": "GPU transform exceeds precision budget"
+    },
+    {
+      "code": 120,
+      "category": 5,
+      "exactMessage": "Render options must be an object"
+    },
+    {
+      "code": 121,
+      "category": 5,
+      "exactMessage": "Invalid GPU painter support policy"
+    },
+    {
+      "code": 122,
+      "category": 5,
+      "exactMessage": "Invalid GPU painter capture-read policy"
+    },
+    {
+      "code": 123,
+      "category": 5,
+      "exactMessage": "GPU painter capture reads require painter support"
+    },
+    {
+      "code": 124,
+      "category": 5,
+      "exactMessage": "Ambiguous GPU region"
+    },
+    {
+      "code": 125,
+      "category": 5,
+      "exactMessage": "Invalid prepare viewport bounds"
+    },
+    {
+      "code": 126,
+      "category": 6,
+      "exactMessage": "Native capture is a canvas operation"
+    },
+    {
+      "code": 127,
+      "category": 6,
+      "exactMessage": "Pixel preview uses complete-frame presentation"
+    },
+    {
+      "code": 128,
+      "category": 6,
+      "exactMessage": "Load document first"
+    },
+    {
+      "code": 129,
+      "category": 5,
+      "exactMessage": "Missing page"
+    },
+    {
+      "code": 130,
+      "category": 5,
+      "exactMessage": "GPU effect support exceeds coordinate budget"
+    },
+    {
+      "code": 131,
+      "category": 3,
+      "exactMessage": "Scene path budget exceeded"
+    },
+    {
+      "code": 132,
+      "category": 5,
+      "exactMessage": "Composed transform exceeds precision budget"
+    },
+    {
+      "code": 133,
+      "category": 5,
+      "exactMessage": "Effect expansion exceeds device coordinate budget"
+    },
+    {
+      "code": 134,
+      "category": 5,
+      "exactMessage": "Nested effect expansion exceeds device coordinate budget"
+    },
+    {
+      "code": 135,
+      "category": 6,
+      "exactMessage": "Scene sequence exhausted"
     }
   ],
   "otherCodes": {
@@ -459,5 +624,5 @@
     "60": "SyntaxError fallback when exact known message is absent",
     "200": "generic allocation rejection source tag; exact known inherited code20/21 remains authoritative"
   },
-  "knownAdditionsEvidence": "Verified exact static literals in main1e4a3ba; no prefix or raw-message hash matching."
+  "knownAdditionsEvidence": "Exact static literals from frontend/design-client/src/kernel/render-failure-telemetry.ts. sourceSha256 binds that file. Matching is exact and never a prefix."
 }

@@ -119,7 +119,7 @@ test('production imports capture ownership before read/hash/verify and wire canc
   assert.match(input, /switchDocument\(document, undefined, true, request\)/)
   assert.match(input, /request\.isLatest\(\) && editor\.state\.doc\.id === document\.id/)
   assert.match(app, /desktopSession\.replace\(document, adoption\.isCurrent\)/)
-  assert.match(app, /onCloseRequested\(\(\{ requestId \}\) => \{\s+fileImports\.invalidate\(\)/)
+  assert.match(app, /onCloseRequested\(\(\{ requestId \}\) => \{\s+if \(largeDocument \|\| source\) return\s+fileImports\.invalidate\(\)/)
   assert.match(app, /switchLifetime\.current\+\+\s+switchGate\.current = null\s+fileImports\.dispose\(\)/)
   assert.match(app, /fileImports\.invalidate\(\); setMenu\(false\); setShowCatalog\(true\)/)
   assert.match(app, /fileImports\.invalidate\(\); setShowCatalog\(false\)/)
@@ -145,7 +145,7 @@ function switchHarness() {
   current.load = prepared => { current.state = { doc: prepared.snapshot(), version: 0 }; current.sessionGeneration++; return true }
   let cleanup
   const context = vm.createContext({
-    editor: current, fileImports, desktopSession: undefined, ready: true,
+    editor: current, fileImports, desktopSession: undefined, source: undefined, ready: true,
     beginEditorAction: () => ({ result() {}, finish() {} }),
     CanvasAction: { import: 'import' }, ActionSource: { lifecycle: 'lifecycle' },
     ActionOutcome: { cancelled: 'cancelled', observed: 'observed', rejected: 'rejected' },

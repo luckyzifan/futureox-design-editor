@@ -75,7 +75,9 @@ function harness() {
   }]))
   const context = vm.createContext({ exports: owner, editor, loadExportModule, commitExportEdits, sdrToneMap: 'clip',
     beginEditorAction, CanvasAction, ActionSource, ActionOutcome, ActionReason, desktopPet,
-    request: { current: null }, kind: 'selection', format: 'png', padding: '40', region: { x: '0', y: '0', width: '10', height: '10' }, scales: [1],
+    request: { current: null }, kind: 'selection', format: 'png', gamut: 'srgb',
+    tx: zh => zh,
+    padding: '40', region: { x: '0', y: '0', width: '10', height: '10' }, scales: [1],
     structuredClone, AbortController, URL: urlApi, urls: { current: [] }, setAssets() {}, setStatus() {}, release() {},
     exportRequest: { current: null }, setBusy: value => busy.push(value), setError: value => errors.push(value), onClose: () => { closed++ },
   })
