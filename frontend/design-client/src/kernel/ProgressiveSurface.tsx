@@ -16,7 +16,7 @@ import { paintDamageIntersects } from './paint-damage'
 import { recordRenderDiagnostic, renderDiagnosticError, renderDiagnostics } from './render-diagnostics'
 import type { BackendPreference } from './gpu/types'
 import type { ColorPresenter } from './color-presenter'
-import { TILE_SIDE, budgetTileLimit, displayTileBudget, tilesCoverBounds, type RasterTile } from './tile-cache'
+import { TILE_SIDE, budgetTileLimit, displayTileBudget, lodBucketScale, tilesCoverBounds, type RasterTile } from './tile-cache'
 import { planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
 import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale, nativeTileMotionScale, gestureRasterScale, gestureViewportCapture } from './canvas-raster-plan'
 import { pageHasFilteredContent } from './canvas-effect-sampling'
@@ -2350,7 +2350,6 @@ export function ProgressiveSurfaceImpl(
     ready.current.has(tile.key) && tileIntersectsView(tile,requestedView,{width,height})) : []
   const coarseCohort = coarse.length && navigationHasCoverage(coarse, requestedView, width, height)
     ? new Set(coarse) : undefined
-  const coarseTile = (tile: PaintedTile) => !!coarseCohort?.has(tile)
   const previews = !fullPlanReady && !coarseCohort && canRefine ? visible.filter(tile =>
     !inactiveSet.has(tile) && (!plan?.ids.has(tile.key) || tile.viewportPreview) && tileRef.current.get(tile.key) === tile &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
@@ -2360,6 +2359,23 @@ export function ProgressiveSurfaceImpl(
   const cachedViewport = previews.find(tile => navigationHasCoverage([tile], requestedView, width, height)) ??
     (!displayed ? previews.find(tile => tile.viewportPreview) : undefined)
   const cachedPreviewTile = (tile: PaintedTile) => tile === cachedViewport
+  // A full coarse cohort still has to cover before it replaces a retained frame.
+  // Until that frame exists, an intersecting coarse tile follows the requested
+  // camera instead of dropping its placement. The bucket scale is the cached
+  // preview density; dynamic LOD can stay at the exact density while that
+  // exact frame is still pending.
+  const coarseBucket = lodBucketScale(detailLevel)
+  const coarsePreview = !coarseCohort && !displayed && !cachedViewport && !previewReplacement &&
+    !fullPlanReady && canRefine && !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles
+    ? visible.filter(tile => {
+        const bucket = tile.zoom === coarseBucket && coarseBucket < detailLevel
+        const scheduled = lodActive && tile.zoom === lodScale
+        return (bucket || scheduled) && !inactiveSet.has(tile) && tileRef.current.get(tile.key) === tile &&
+          tile.lod === true && tile.document === doc && tile.revision === contract.revision &&
+          ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height })
+      }) : []
+  const coarsePreviewSet = new Set(coarsePreview)
+  const coarseTile = (tile: PaintedTile) => !!coarseCohort?.has(tile) || coarsePreviewSet.has(tile)
   const baseTile = (tile: PaintedTile) => !fullPlanReady && !coarseCohort && !cachedViewport &&
     displayed?.residents.get(tile.key) === tile
   // The previous frame is one camera. Zoom-out and a pan during zoom expose
