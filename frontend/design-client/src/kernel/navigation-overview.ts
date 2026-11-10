@@ -115,8 +115,12 @@ export function panTileOverlap(
 }
 
 /** Keep an in-flight tile during a large pan when it still paints most of the
- * viewport or most of the tile is still on screen. A viewport-sized capture
- * that has slid more than half way yields. An invalid threshold does not yield. */
+ * viewport, or when most of the tile is on screen and that overlap is still a
+ * real fraction of the view. A tiny cell left over from a zoom-in can sit
+ * fully on screen while covering almost none of the panned view; keeping it
+ * occupied the raster owner and the coarse picture never followed the pointer.
+ * A viewport-sized capture that has slid more than halfway yields. An invalid
+ * threshold does not yield. */
 export function retainPannedTile(
   tile: Pick<RasterTile, 'x' | 'y' | 'width' | 'height' | 'zoom' | 'gutter' | 'phaseX' | 'phaseY'>,
   view: CanvasCamera,
@@ -125,7 +129,11 @@ export function retainPannedTile(
 ) {
   if (!Number.isFinite(minimumFraction) || minimumFraction <= 0 || minimumFraction > 1) return true
   const overlap = panTileOverlap(tile, view, size)
-  return overlap.viewport >= minimumFraction || overlap.tile >= minimumFraction
+  if (overlap.viewport >= minimumFraction) return true
+  // Most of a tiny cell can sit inside the viewport after a shrink without
+  // painting enough of it to hold the raster owner. A neighbour that still
+  // covers a real fraction of the view stays.
+  return overlap.tile >= minimumFraction && overlap.viewport >= minimumFraction / 4
 }
 
 /** Page-level coarse tile for the pasteboard around a zoomed-out artboard.

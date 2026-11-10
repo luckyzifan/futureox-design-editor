@@ -2262,6 +2262,45 @@ test.each(['document', 'page', 'session', 'paused'] as const)('late running zoom
 })
 
 
+test('a large pan during an active shrink sample draws the live camera, not the stale sample', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(false)
+  const shrunk = { x: 0, y: 0, zoom: 1 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: shrunk } }
+  h.render({ backend: 'webgl2', view: shrunk })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+  const running = worker.calls[0]
+  expect(running.options.livePreview).toBe(true)
+  expect(running.options.view).toMatchObject({ x: 0, y: 0, zoom: 1 })
+  // The 160 ms sample is still the pre-pan camera. A short move must not restart it.
+  h.render({ backend: 'webgl2', view: { x: -40, y: 0, zoom: 1 } })
+  await settleRejected()
+  expect(running.signal.aborted).toBe(false)
+  expect(worker.calls).toHaveLength(1)
+  const panned = { x: -800, y: 40, zoom: 1 }
+  h.render({ backend: 'webgl2', view: panned })
+  await settleRejected()
+  expect(running.signal.aborted).toBe(true)
+  const close = vi.fn()
+  running.resolve({ bitmap: { close }, gpuTile: 61 })
+  await settleRejected()
+  expect(close).toHaveBeenCalledOnce()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
+  const live = worker.calls[1]
+  expect(live.signal.aborted).toBe(false)
+  expect(live.options.view).toMatchObject({ x: panned.x, y: panned.y, zoom: panned.zoom })
+  live.resolve({ gpuTile: 62 })
+  await flushRasterWork()
+  const tile = surfaceParts(h.render({ backend: 'webgl2', view: panned })).compositor.props.items
+    .map((item: any) => item.tile).find((item: any) => item.gpuTile === 62)
+  expect(tile).toMatchObject({ x: -panned.x, y: -panned.y, zoom: 1 })
+  expect(tile.previewSource.view).toEqual(panned)
+  expect(surfaceParts(h.render({ backend: 'webgl2', view: panned })).compositor.props.items
+    .some((item: any) => item.tile.gpuTile === 61)).toBe(false)
+})
+
 test('a large pan after zoom-out yields the capture that misses the new viewport', async () => {
   const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
   const zoomed = { ...options, view: { x: 0, y: 0, zoom: 2 } }

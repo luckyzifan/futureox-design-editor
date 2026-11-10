@@ -1044,11 +1044,10 @@ export function ProgressiveSurfaceImpl(
       if (flight?.contract === contract && flight.generation === generation) {
         if (navigationZoom.active && zoomOutCoverage)
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
-        // Sampled navigation keeps its running capture: cancelling every pan
-        // starved the lane. A quiet zoom-out capture is different. Once a large
-        // pan leaves most of the newest viewport outside it, yield that job.
-        if (!navigationZoom.active)
-          flight.cancelMissedViewport(requestedView, width, height)
+        // A small pan keeps the running capture. A same-zoom pan that leaves
+        // most of the newest viewport outside it yields while the gesture is
+        // still active; waiting for quiet left the picture on the pre-pan camera.
+        flight.cancelMissedViewport(requestedView, width, height, 0.5, navigationZoom.active)
       }
     }
     const pendingCoverage = () => {
@@ -1760,9 +1759,9 @@ export function ProgressiveSurfaceImpl(
           // the latest active plan or certifies its native-phase readiness.
           // Keep the last acknowledged preview while the new one imports; the
           // ordinary byte-budgeted LRU bounds this compatible history.
-          const delivered = receive({ key: residentDisplay ? viewportPreviewKey(identity) : `navigation-preview:${contract.revision}:${serial.current + 1}`, x: -sample.view.x * ratio,
-            y: -sample.view.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
-            previewSource: previewSource(sample.view),
+          const delivered = receive({ key: residentDisplay ? viewportPreviewKey(identity) : `navigation-preview:${contract.revision}:${serial.current + 1}`, x: -captureView.x * ratio,
+            y: -captureView.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
+            previewSource: previewSource(captureView),
             ...(residentDisplay ? { viewportCache: captureViewportPreview(identity) } : {}),
             ...(navigationCapture?.device && result.backend === 'webgpu' ? { nativeNavigationDevice: navigationCapture.device } : {}),
             bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
