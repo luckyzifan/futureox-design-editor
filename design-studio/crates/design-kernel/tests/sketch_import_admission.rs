@@ -584,9 +584,37 @@ fn native_text_behaviour_uses_shared_sizing_and_retains_source_text_metadata() {
 
 #[test]
 fn import_any_reports_archive_limits_instead_of_marker_miss() {
-    // Archive admission scales with the process memory budget; pin a small
-    // one so this binary deterministically refuses the oversized entry.
-    let _ = futureox_design_kernel::capacity::configure(64 * 1024 * 1024);
+    // Archive admission scales with the process memory budget. Sibling tests
+    // pin that OnceLock first, and a swallowed configure() then leaves the
+    // host budget in place: the 17MiB deflate entry passes the entry window
+    // and fails the ratio guard. Own a fresh process so the 64MiB pin is real.
+    const CHILD: &str = "CORE_SKETCH_ARCHIVE_LIMIT_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "import_any_reports_archive_limits_instead_of_marker_miss",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("CORE_DOCUMENT_MEMORY_BYTES", (64 * 1024 * 1024).to_string())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    futureox_design_kernel::capacity::configure(64 * 1024 * 1024)
+        .expect("pins the process budget");
+    assert_eq!(
+        futureox_design_kernel::capacity::memory_budget_bytes(),
+        64 * 1024 * 1024,
+        "admission must be judged against the pinned 64MiB budget"
+    );
     let oversized = vec![b' '; 17 * 1024 * 1024];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (name, body) in [
