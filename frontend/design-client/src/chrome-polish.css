@@ -14,7 +14,7 @@
   --workspace-ease: cubic-bezier(0.22, 0.8, 0.28, 1);
 }
 body { background: var(--workspace-canvas); }
-.file-menu, .workspace-actions-menu, .remote-modal, .settings-dialog, .local-window-popover {
+.file-menu, .workspace-actions-menu, .remote-modal, .local-window-popover {
   border-radius: 14px;
   box-shadow: var(--workspace-shadow);
 }

@@ -1,5 +1,5 @@
 .settings-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: #1c191752; backdrop-filter: blur(10px); overscroll-behavior: contain; }
-.settings-dialog { display: flex; flex-direction: column; width: min(760px, 100%); max-height: min(720px, calc(100dvh - 48px)); min-height: 0; overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 18px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 24px 64px #1c191724, 0 1px 2px #1c19170a; font-size: 13px; }
+.settings-dialog { display: flex; flex-direction: column; width: min(760px, 100%); max-height: min(720px, calc(100dvh - 48px)); min-height: 0; overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 12px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 20px 70px #0005; font-size: 13px; }
 .settings-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 16px; border-bottom: 1px solid var(--workspace-border); flex: none; }
 .settings-header h2 { margin: 0; font-size: 18px; }
 .settings-header p { margin: 8px 0 0; color: var(--workspace-muted); line-height: 1.6; }
@@ -23,8 +23,8 @@
 .settings-toggle input { margin: 0; width: 17px; height: 17px; flex: none; accent-color: var(--workspace-accent); }
 .settings-help { font-size: 12px; color: var(--workspace-muted); margin: 6px 0 0; }
 .settings-control .settings-help { padding-left: 27px; }
-.settings-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--workspace-border); flex: none; }
-.settings-status { flex: 1 1 220px; min-width: 0; font-size: 12px; line-height: 1.6; color: var(--workspace-muted); }
+.settings-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; height: auto; padding: 14px 20px 20px; border-top: 1px solid var(--workspace-border); flex: none; font-size: inherit; }
+.settings-status { display: block; flex: 1 1 220px; min-width: 0; font-size: 12px; line-height: 1.6; color: var(--workspace-muted); }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-actions button { min-height: 36px; padding: 8px 12px; border-radius: 6px; }
 @media (max-width: 560px) {
@@ -56,7 +56,7 @@
 .interface-settings > button { margin-top: 14px; min-height: 32px; border: 1px solid var(--workspace-border); border-radius: 6px; }
 
 /* Surface rhythm only: preserve native controls, focus trap and document guards. */
-.settings-dialog { font-size: 12px; line-height: 1.5; box-shadow: 0 24px 64px #1c191724, 0 1px 2px #1c19170a; }
+.settings-dialog { font-size: 12px; line-height: 1.5; box-shadow: 0 20px 70px #0005; }
 .settings-header { align-items: center; padding: 20px; }
 .settings-header h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
 .settings-header p { margin-top: 4px; font-size: 12px; }
@@ -74,7 +74,8 @@
 .settings-dialog .nudge-settings input { min-height: 32px; padding: 6px 10px; font: inherit; border-radius: 6px; }
 .settings-dialog .nudge-settings input { font-variant-numeric: tabular-nums; }
 .settings-dialog .nudge-settings { margin: 20px 0; }
-.settings-footer { padding: 12px 20px; background: var(--workspace-panel); }
+.settings-footer { height: auto; padding: 14px 20px 20px; background: var(--workspace-panel); font-size: inherit; }
+.settings-footer button { font-size: inherit; }
 .settings-actions button { border: 1px solid var(--workspace-border); background: var(--workspace-field); color: var(--workspace-text); }
 .settings-actions button:not(:disabled):hover, .settings-header > button:not(:disabled):hover { background: var(--workspace-hover); border-color: var(--workspace-border); }
 .settings-dialog button:disabled, .settings-dialog input:disabled, .settings-dialog select:disabled { cursor: not-allowed; }
