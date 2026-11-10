@@ -60,7 +60,7 @@ import { exactTilePayloadBytes, OwnerTileCache, ownsExactTileBytes } from './own
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
 import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
-import { PreviewAdmission, isAnalyticProgramBudget, isScenePathBudget } from './preview-tiles'
+import { PreviewAdmission, isAnalyticProgramBudget, isScenePathBudget, prepareWindowRetriable } from './preview-tiles'
 import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
@@ -1593,7 +1593,7 @@ self.onmessage = (e) => {
               let bytes: ScenePacket
               try { bytes = await compile() }
               catch (error) {
-                if (!prepareViewport || !isScenePathBudget(error)) throw error
+                if (!prepareViewport || !prepareWindowRetriable(error)) throw error
                 // A camera-wide preparation window is optional reuse, not
                 // admission for a bounded tile. Retry this exact crop once.
                 prepareViewport = undefined
@@ -2641,7 +2641,7 @@ async function renderTiledPreview(
           let packet: ScenePacket
           try { packet = await compileRegion() }
           catch (error) {
-            if (!prepareViewport || !isScenePathBudget(error)) throw error
+            if (!prepareViewport || !prepareWindowRetriable(error)) throw error
             prepareViewport = undefined
             checkCurrent()
             packet = await compileRegion()
