@@ -188,6 +188,53 @@ test('native implicit-size hug and omitted primary sizing are preserved on eithe
   }
 })
 
+test('a sub-hairline FIG box keeps the source size and uses the positive floor', () => {
+  const { document, child } = imported({}, { size: { x: 0, y: 16 } })
+  expect(child.width).toBe(0.01)
+  expect(child.height).toBe(16)
+  const note = (document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { figUntranslated?: string } }>)[child.id].bindings?.figUntranslated
+  expect(note).toContain('size=0,16')
+  expect(() => importFig(fixture({}, { size: { x: -1, y: 10 } }))).toThrow(/尺寸无效/)
+  const unresolved = imported({}, { size: { x: Number.NaN, y: Number.NaN } })
+  expect(unresolved.child.width).toBe(100)
+  expect(unresolved.child.height).toBe(100)
+  const unresolvedNote = (unresolved.document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { figUntranslated?: string } }>)[unresolved.child.id].bindings?.figUntranslated
+  expect(unresolvedNote).toContain('size=NaN,NaN')
+})
+
+test('baseline counter alignment is retained and still laid out from the start', () => {
+  const { document, frame, warnings } = imported({ stackMode: 'HORIZONTAL', stackCounterAlignItems: 'BASELINE' })
+  expect(frame.layout?.align).toBe('start')
+  expect(warnings.some(warning => warning.includes('基线对齐'))).toBe(true)
+  const note = (document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { figUntranslated?: string } }>)[frame.id].bindings?.figUntranslated
+  expect(note).toContain('stackCounterAlignItems=BASELINE')
+})
+
+test('negative FIG stack spacing is stored as overlap', () => {
+  const { frame } = imported({ stackMode: 'HORIZONTAL', stackSpacing: -5, stackCounterSpacing: -2 })
+  expect(frame.layout).toMatchObject({ gap: -5, lineGap: -2 })
+  expect(() => validateDocument(imported({ stackMode: 'HORIZONTAL', stackSpacing: -5 }).document)).not.toThrow()
+  expect(() => importFig(fixture({ stackMode: 'HORIZONTAL', stackSpacing: -1e5 - 1 }))).toThrow(/stackSpacing/)
+})
+
+test('a zero FIG minimum uses the editable floor and keeps the source zero', () => {
+  const { document, child } = imported({}, { minSize: { value: { x: 0, y: 24 } } })
+  expect(child.sizing).toMatchObject({ minWidth: 0.01, minHeight: 24 })
+  const note = (document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { figUntranslated?: string } }>)[child.id].bindings?.figUntranslated
+  expect(note).toContain('minSize=0,24')
+  expect(() => importFig(fixture({}, { minSize: { value: { x: -1, y: 10 } } }))).toThrow(/minSize/)
+})
+
+test('an unbounded FIG maximum stays the editable ceiling and keeps its source sentinel', () => {
+  const { document, child } = imported({}, { maxSize: { value: { x: 880, y: Infinity } } })
+  expect(child.sizing).toMatchObject({ maxWidth: 880, maxHeight: 1e7 })
+  const note = (document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { figUntranslated?: string } }>)[child.id].bindings?.figUntranslated
+  expect(note).toContain('maxSize=880,+Infinity')
+  expect(() => validateDocument(document)).not.toThrow()
+  expect(() => importFig(fixture({}, { minSize: { value: { x: Infinity, y: 10 } } }))).toThrow(/minSize/)
+  expect(() => importFig(fixture({}, { maxSize: { value: { x: 1e8, y: 10 } } }))).toThrow(/maxSize/)
+})
+
 test.each(['HORIZONTAL', 'VERTICAL'])(
   'child fill and optional bounds survive %s layout import',
   (stackMode) => {
@@ -313,11 +360,9 @@ test('stackReverseZIndex false leaves authored order and writes no receipt', () 
 
 test.each([
   ['stackMode', 'GRID'],
-  ['stackCounterAlignItems', 'BASELINE'],
   ['stackPrimaryAlignItems', 'SPACE_EVENLY_CSS'],
   ['stackCounterAlignContent', 'SPACE_BETWEEN'],
   ['stackCounterAlign', 'BASELINE'],
-  ['stackSpacing', -1],
   ['stackPaddingRight', -1],
   ['stackPadding', 8],
 ])(

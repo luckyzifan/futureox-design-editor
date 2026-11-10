@@ -147,20 +147,59 @@ fn parse_schema(data: &[u8]) -> Result<Vec<TypeDef>, Error> {
     Ok(types)
 }
 
+/// Per-segment kiwi read budget. This is the untrusted read ceiling for one
+/// complete value; it is not raised for a large legitimate file. Message
+/// fields and message-array elements are segment boundaries. A value that
+/// crosses the ceiling restarts on a fresh segment. A value that cannot fit
+/// in an empty segment still rejects. Byte arrays stay one value: each byte
+/// is payload, not another read.
+const FIG_SEGMENT_WORK: u32 = 2_000_000;
+const FIG_MAX_DEPTH: u32 = 128;
+const FIG_MAX_ARRAY: u64 = 200_000;
+const FIG_MAX_BYTES: u64 = 64 * 1024 * 1024;
+const FIG_BUDGET: &str = "decode budget exceeded";
+const FIG_DEPTH: &str = "decode depth exceeded";
+
+struct DecodeBudget {
+    work: u32,
+}
+
+fn work_budget(err: &Error) -> bool {
+    matches!(err, Error::Malformed(message) if message == FIG_BUDGET)
+}
+
+fn charge(budget: &mut DecodeBudget, depth: u32) -> Result<(), Error> {
+    if depth > FIG_MAX_DEPTH {
+        return Err(Error::Malformed(FIG_DEPTH.into()));
+    }
+    budget.work = budget.work.saturating_add(1);
+    if budget.work > FIG_SEGMENT_WORK {
+        return Err(Error::Malformed(FIG_BUDGET.into()));
+    }
+    Ok(())
+}
+
 fn decode_value(
     r: &mut Reader<'_>,
     types: &[TypeDef],
     type_id: i64,
     array: bool,
 ) -> Result<Value, Error> {
+    decode_value_limited(r, types, type_id, array, &mut DecodeBudget { work: 0 }, 0)
+}
+
+fn decode_value_limited(
+    r: &mut Reader<'_>,
+    types: &[TypeDef],
+    type_id: i64,
+    array: bool,
+    budget: &mut DecodeBudget,
+    depth: u32,
+) -> Result<Value, Error> {
     if array {
-        let n = r.uint()? as usize;
-        let mut items = Vec::with_capacity(n.min(1 << 20));
-        for _ in 0..n {
-            items.push(decode_value(r, types, type_id, false)?);
-        }
-        return Ok(Value::Array(items));
+        return decode_array(r, types, type_id, budget, depth);
     }
+    charge(budget, depth)?;
     if type_id < 0 {
         // builtins: -1 bool, -2 byte, -3 int, -4 uint, -5 float, -6 string,
         //           -7 int64, -8 uint64
@@ -169,7 +208,7 @@ fn decode_value(
             2 => Value::from(r.byte()? as i64),
             3 => Value::from(r.int()?),
             4 => Value::from(r.uint()?),
-            5 => Value::from(r.float()?),
+            5 => json_float(r.float()?),
             6 => Value::from(r.string()?),
             7 => Value::from(r.int()?),
             8 => Value::from(r.uint()?),
@@ -192,39 +231,142 @@ fn decode_value(
             Ok(Value::from(name))
         }
         1 => {
-            // struct: every field in ordinal order
+            // Struct fields stay in one segment. A struct is one value, so a
+            // single over-budget struct still rejects instead of being split.
             let mut map = serde_json::Map::new();
             for f in &ty.fields {
-                map.insert(f.name.clone(), decode_value(r, types, f.type_id, f.array)?);
+                map.insert(
+                    f.name.clone(),
+                    decode_value_limited(
+                        r,
+                        types,
+                        f.type_id,
+                        f.array,
+                        budget,
+                        depth.saturating_add(1),
+                    )?,
+                );
             }
             Ok(Value::Object(map))
         }
-        _ => {
-            // message: field-id loop until 0
-            let mut map = serde_json::Map::new();
-            loop {
-                let fid = r.uint()?;
-                if fid == 0 {
-                    break;
-                }
-                let Some(field) = ty.fields.iter().find(|f| f.ordinal == fid) else {
-                    return Err(Error::Malformed(format!("field {fid} not in {}", ty.name)));
-                };
-                // Kiwi encodes an inherited wrap gap as NaN. JSON has no NaN;
-                // preserve that one sentinel without accepting infinite spacing.
-                let value = if ty.name == "NodeChange" && field.name == "stackCounterSpacing"
-                    && field.type_id == -5 && !field.array {
-                    let gap = r.float()?;
-                    if gap.is_infinite() { return Err(Error::Malformed("Infinite stackCounterSpacing".into())); }
-                    Value::from(gap)
-                } else {
-                    decode_value(r, types, field.type_id, field.array)?
-                };
-                map.insert(field.name.clone(), value);
+        _ => decode_message(r, types, ty, budget, depth),
+    }
+}
+
+fn decode_array(
+    r: &mut Reader<'_>,
+    types: &[TypeDef],
+    type_id: i64,
+    budget: &mut DecodeBudget,
+    element_depth: u32,
+) -> Result<Value, Error> {
+    let count = r.uint()?;
+    let bytes = type_id == -2;
+    if count > FIG_MAX_BYTES || (!bytes && count > FIG_MAX_ARRAY) {
+        return Err(Error::Malformed("array too large".into()));
+    }
+    let count = count as usize;
+    if bytes {
+        let end = r
+            .p
+            .checked_add(count)
+            .filter(|end| *end <= r.b.len())
+            .ok_or_else(|| Error::Malformed("eof".into()))?;
+        let items = r.b[r.p..end]
+            .iter()
+            .map(|byte| Value::from(i64::from(*byte)))
+            .collect();
+        r.p = end;
+        return Ok(Value::Array(items));
+    }
+    let message = type_id >= 0
+        && types
+            .get(type_id as usize)
+            .is_some_and(|ty| ty.kind != 0 && ty.kind != 1);
+    let mut items = Vec::with_capacity(count.min(1 << 20));
+    for _ in 0..count {
+        if !message {
+            items.push(decode_value_limited(
+                r, types, type_id, false, budget, element_depth,
+            )?);
+            continue;
+        }
+        let at = r.p;
+        let spent = budget.work;
+        match decode_value_limited(r, types, type_id, false, budget, element_depth) {
+            Ok(value) => items.push(value),
+            Err(err) if work_budget(&err) && spent > 0 => {
+                r.p = at;
+                budget.work = 0;
+                items.push(decode_value_limited(
+                    r, types, type_id, false, budget, element_depth,
+                )?);
             }
-            Ok(Value::Object(map))
+            Err(err) => return Err(err),
         }
     }
+    Ok(Value::Array(items))
+}
+
+fn decode_message(
+    r: &mut Reader<'_>,
+    types: &[TypeDef],
+    ty: &TypeDef,
+    budget: &mut DecodeBudget,
+    depth: u32,
+) -> Result<Value, Error> {
+    let mut map = serde_json::Map::new();
+    loop {
+        let tag_at = r.p;
+        let spent = budget.work;
+        let fid = r.uint()?;
+        if fid == 0 {
+            break;
+        }
+        let Some(field) = ty.fields.iter().find(|f| f.ordinal == fid) else {
+            return Err(Error::Malformed(format!("field {fid} not in {}", ty.name)));
+        };
+        let child_depth = depth.saturating_add(1);
+        let spacing = ty.name == "NodeChange"
+            && field.name == "stackCounterSpacing"
+            && field.type_id == -5
+            && !field.array;
+        let type_id = field.type_id;
+        let is_array = field.array;
+        let read_field = |r: &mut Reader, budget: &mut DecodeBudget| -> Result<Value, Error> {
+            if spacing {
+                // Same one-read charge as any other scalar field.
+                charge(budget, child_depth)?;
+                    let gap = r.float()?;
+                    if gap.is_infinite() {
+                        return Err(Error::Malformed("Infinite stackCounterSpacing".into()));
+                    }
+                    // Kiwi encodes an inherited wrap gap as NaN. JSON has no NaN;
+                    // preserve that one sentinel without accepting infinite spacing.
+                    return Ok(json_float(gap));
+            }
+            decode_value_limited(r, types, type_id, is_array, budget, child_depth)
+        };
+        match read_field(r, budget) {
+            Ok(value) => {
+                map.insert(field.name.clone(), value);
+            }
+            Err(err) if work_budget(&err) && spent > 0 => {
+                r.p = tag_at;
+                budget.work = 0;
+                let retried = r.uint()?;
+                if retried != fid {
+                    return Err(Error::Malformed(format!(
+                        "field {fid} retry saw {retried} in {}",
+                        ty.name
+                    )));
+                }
+                map.insert(field.name.clone(), read_field(r, budget)?);
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(Value::Object(map))
 }
 
 /// Decode `canvas.fig` bytes (Kiwi stream) into a JSON value tree.
@@ -385,7 +527,7 @@ fn encode_value(
             2 => w.byte((v.as_i64().unwrap_or(0).rem_euclid(256)) as u8),
             3 | 7 => w.int(v.as_i64().ok_or_else(|| Error::Malformed("expected int".into()))?),
             4 | 8 => w.uint(v.as_u64().ok_or_else(|| Error::Malformed("expected uint".into()))?),
-            5 => w.float(v.as_f64().unwrap_or(0.)),
+            5 => w.float(f64_value(v).unwrap_or(0.)),
             6 => w.string(v.as_str().ok_or_else(|| Error::Malformed("expected string".into()))?),
             other => return Err(Error::Malformed(format!("bad builtin {other}"))),
         }
@@ -560,9 +702,29 @@ pub fn read_fig(bytes: &[u8]) -> Result<(Value, BTreeMap<String, Vec<u8>>, Vec<V
 use crate::layout::{Align, Anchor, Constraints, Flow, Layout, SizeMode, Sizing};
 
 fn f64_of(v: Option<&Value>, key: &str) -> f64 {
-    v.and_then(|v| v.get(key))
-        .and_then(Value::as_f64)
-        .unwrap_or(0.)
+    v.and_then(|v| v.get(key)).and_then(f64_value).unwrap_or(0.)
+}
+
+/// serde_json cannot store non-finite numbers. +Infinity is Figma's explicit
+/// "no maximum" sentinel and must not collapse to null/0.
+fn f64_value(value: &Value) -> Option<f64> {
+    match value {
+        Value::String(text) if text == "+Infinity" => Some(f64::INFINITY),
+        Value::String(text) if text == "-Infinity" => Some(f64::NEG_INFINITY),
+        other => other.as_f64(),
+    }
+}
+
+fn json_float(value: f64) -> Value {
+    if value.is_nan() {
+        Value::Null
+    } else if value == f64::INFINITY {
+        Value::String("+Infinity".into())
+    } else if value == f64::NEG_INFINITY {
+        Value::String("-Infinity".into())
+    } else {
+        Value::from(value)
+    }
 }
 
 /// A zero or non-finite FIG normalized axis is a hairline, not a scale.
@@ -804,13 +966,14 @@ fn align_of_stack_justify(v: &str) -> Result<Align, Error> {
     })
 }
 
-fn align_of_stack_align(v: &str) -> Result<Align, Error> {
+fn align_of_stack_align(v: &str) -> Result<(Align, bool), Error> {
     Ok(match v {
-        "MIN" => Align::Start,
-        "CENTER" => Align::UnsafeCenter,
-        "MAX" => Align::UnsafeEnd,
-        // BASELINE has no kernel counterpart; silently mapping it to any of
-        // the plain aligns would change the rendered stack.
+        "MIN" => (Align::Start, false),
+        "CENTER" => (Align::UnsafeCenter, false),
+        "MAX" => (Align::UnsafeEnd, false),
+        // BASELINE has no executable counterpart. Keep the token and the
+        // default start alignment; do not relabel it as center or end.
+        "BASELINE" => (Align::Start, true),
         other => return Err(layout_unsupported("stackCounterAlignItems", other)),
     })
 }
@@ -866,8 +1029,17 @@ fn layout_unsupported(field: &str, value: &str) -> Error {
 /// Bounded non-negative distance as validated by the TS importer
 /// (finite, 0..=1e5).
 fn distance(record: &Value, field: &str) -> Result<f64, Error> {
-    let v = record.get(field).and_then(Value::as_f64).unwrap_or(0.);
-    if !v.is_finite() || !(0. ..=1e5).contains(&v) {
+    signed_distance(record, field, 0.)
+}
+
+/// Stack spacing may be negative (authored overlap). Padding uses [`distance`].
+fn spacing(record: &Value, field: &str) -> Result<f64, Error> {
+    signed_distance(record, field, -1e5)
+}
+
+fn signed_distance(record: &Value, field: &str, minimum: f64) -> Result<f64, Error> {
+    let v = record.get(field).and_then(f64_value).unwrap_or(0.);
+    if !v.is_finite() || !(minimum..=1e5).contains(&v) {
         return Err(layout_unsupported(field, &v.to_string()));
     }
     Ok(v)
@@ -1202,6 +1374,11 @@ impl FigImporter {
             untranslated.push(
                 "zero-size vector kept with a minimum positive layout box".into(),
             );
+        }
+        if node.width >= 0. && node.height >= 0. && (node.width < 0.01 || node.height < 0.01) {
+            untranslated.push(format!("size={},{}", node.width, node.height));
+            node.width = node.width.max(0.01);
+            node.height = node.height.max(0.01);
         }
         if let Some(m) = change.get("transform") {
             node.transform = Transform([
@@ -2152,16 +2329,19 @@ impl FigImporter {
                 Some(v) => align_of_stack_justify(v)?,
                 None => Align::Start,
             };
-            let align = match enum_str(record, "stackCounterAlignItems") {
+            let (align, baseline) = match enum_str(record, "stackCounterAlignItems") {
                 Some(v) => align_of_stack_align(v)?,
-                None => Align::Start,
+                None => (Align::Start, false),
             };
-            let gap = distance(record, "stackSpacing")?;
+            if baseline {
+                untranslated.push("stackCounterAlignItems=BASELINE".into());
+            }
+            let gap = spacing(record, "stackSpacing")?;
             node.layout = Some(Layout {
                 mode,
                 gap,
                 line_gap: if record.get("stackCounterSpacing") == Some(&Value::Null) { gap }
-                    else { distance(record, "stackCounterSpacing")? },
+                    else { spacing(record, "stackCounterSpacing")? },
                 padding,
                 wrap,
                 justify,
@@ -2258,18 +2438,42 @@ impl FigImporter {
             };
             let x = f64_of(Some(value), "x");
             let y = f64_of(Some(value), "y");
-            if ![x, y]
-                .iter()
-                .all(|v| v.is_finite() && (0.01..=1e7).contains(v))
-            {
-                return Err(layout_unsupported(field, &format!("{x},{y}")));
+            let maximum = prefix == "max";
+            let bound = |component: f64| -> Result<f64, Error> {
+                // +Infinity is an authored "no maximum", already the model's 1e7 ceiling.
+                if maximum && component.is_infinite() && component.is_sign_positive() {
+                    return Ok(1e7);
+                }
+                // An explicit zero minimum is below the editable floor.
+                if !maximum && component == 0. {
+                    return Ok(0.01);
+                }
+                if !component.is_finite() || !(0.01..=1e7).contains(&component) {
+                    return Err(layout_unsupported(field, &format!("{x},{y}")));
+                }
+                Ok(component)
+            };
+            let x_bound = bound(x)?;
+            let y_bound = bound(y)?;
+            let text = |component: f64| {
+                if component.is_infinite() && component.is_sign_positive() {
+                    "+Infinity".to_string()
+                } else {
+                    component.to_string()
+                }
+            };
+            if maximum && (x.is_infinite() || y.is_infinite()) {
+                untranslated.push(format!("maxSize={},{}", text(x), text(y)));
+            }
+            if !maximum && (x == 0. || y == 0.) {
+                untranslated.push(format!("minSize={},{}", text(x), text(y)));
             }
             if prefix == "min" {
-                sizing.min_width = x;
-                sizing.min_height = y;
+                sizing.min_width = x_bound;
+                sizing.min_height = y_bound;
             } else {
-                sizing.max_width = x;
-                sizing.max_height = y;
+                sizing.max_width = x_bound;
+                sizing.max_height = y_bound;
             }
             has_sizing = true;
         }
@@ -2740,6 +2944,184 @@ mod tests {
         ));
     }
 
+    fn push_uvar(out: &mut Vec<u8>, mut value: u64) {
+        loop {
+            let byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value == 0 {
+                out.push(byte);
+                return;
+            }
+            out.push(byte | 0x80);
+        }
+    }
+
+    fn field_def(name: &str, type_id: i64, array: bool, ordinal: u64) -> FieldDef {
+        FieldDef { name: name.into(), type_id, array, ordinal }
+    }
+
+    fn item_message_types() -> Vec<TypeDef> {
+        vec![
+            TypeDef {
+                name: "Item".into(),
+                kind: 2,
+                fields: vec![field_def("values", -4, true, 1)],
+            },
+            TypeDef {
+                name: "Message".into(),
+                kind: 2,
+                fields: vec![field_def("items", 0, true, 1), field_def("tail", -4, true, 2)],
+            },
+        ]
+    }
+
+    /// Many message elements whose combined reads exceed one segment, each
+    /// element well under the segment ceiling, plus a following field.
+    #[test]
+    fn segmented_message_array_keeps_every_element_and_the_following_field() {
+        let types = item_message_types();
+        let items = 2_900u64;
+        let values = 700u64;
+        let mut bytes = Vec::with_capacity((items * (values + 4) + 16) as usize);
+        push_uvar(&mut bytes, 1);
+        push_uvar(&mut bytes, items);
+        for index in 0..items {
+            push_uvar(&mut bytes, 1);
+            push_uvar(&mut bytes, values);
+            for _ in 0..values {
+                push_uvar(&mut bytes, index + 1);
+            }
+            push_uvar(&mut bytes, 0);
+        }
+        push_uvar(&mut bytes, 2);
+        push_uvar(&mut bytes, 3);
+        bytes.extend_from_slice(&[9, 8, 7]);
+        push_uvar(&mut bytes, 0);
+        let mut reader = Reader { b: &bytes, p: 0 };
+        let value = decode_value(&mut reader, &types, 1, false).unwrap();
+        assert_eq!(reader.p, bytes.len());
+        let decoded = value["items"].as_array().unwrap();
+        assert_eq!(decoded.len(), items as usize);
+        assert_eq!(decoded[0]["values"].as_array().unwrap().len(), values as usize);
+        assert_eq!(decoded[0]["values"][0], Value::from(1));
+        assert_eq!(
+            decoded[items as usize - 1]["values"][values as usize - 1],
+            Value::from(items)
+        );
+        assert_eq!(
+            value["tail"].as_array().unwrap(),
+            &vec![Value::from(9), Value::from(8), Value::from(7)]
+        );
+        // 2_900 messages × (1 message read + 700 uint reads) exceeds one segment.
+        assert!(1 + items * (1 + values) > u64::from(FIG_SEGMENT_WORK));
+    }
+
+    #[test]
+    fn one_struct_over_the_segment_budget_still_rejects() {
+        let mut fields = Vec::new();
+        for index in 0..11 {
+            fields.push(field_def(
+                &format!("column{index}"),
+                -4,
+                true,
+                index,
+            ));
+        }
+        let types = vec![
+            TypeDef { name: "Heavy".into(), kind: 1, fields },
+            TypeDef {
+                name: "Item".into(),
+                kind: 2,
+                fields: vec![field_def("payload", 0, false, 1)],
+            },
+            TypeDef {
+                name: "Message".into(),
+                kind: 2,
+                fields: vec![field_def("items", 1, true, 1)],
+            },
+        ];
+        let columns = 190_000u64;
+        let mut bytes = Vec::new();
+        push_uvar(&mut bytes, 1);
+        push_uvar(&mut bytes, 1);
+        push_uvar(&mut bytes, 1);
+        for _ in 0..11 {
+            push_uvar(&mut bytes, columns);
+            bytes.extend(std::iter::repeat(1u8).take(columns as usize));
+        }
+        push_uvar(&mut bytes, 0);
+        push_uvar(&mut bytes, 0);
+        let mut reader = Reader { b: &bytes, p: 0 };
+        let error = decode_value(&mut reader, &types, 2, false).unwrap_err();
+        assert!(work_budget(&error), "{error}");
+        assert_eq!(FIG_SEGMENT_WORK, 2_000_000);
+    }
+
+    #[test]
+    fn decode_depth_limit_still_rejects_and_the_maximum_depth_decodes() {
+        let types = vec![TypeDef {
+            name: "Message".into(),
+            kind: 2,
+            fields: vec![field_def("child", 0, false, 1)],
+        }];
+        let mut allowed = vec![1u8; FIG_MAX_DEPTH as usize];
+        allowed.extend(std::iter::repeat(0u8).take(FIG_MAX_DEPTH as usize + 1));
+        let mut reader = Reader { b: &allowed, p: 0 };
+        decode_value(&mut reader, &types, 0, false).unwrap();
+        assert_eq!(reader.p, allowed.len());
+        let mut too_deep = vec![1u8; FIG_MAX_DEPTH as usize + 1];
+        too_deep.push(0);
+        let mut reader = Reader { b: &too_deep, p: 0 };
+        let error = decode_value(&mut reader, &types, 0, false).unwrap_err();
+        assert!(matches!(error, Error::Malformed(ref message) if message == FIG_DEPTH), "{error}");
+    }
+
+    #[test]
+    fn positive_infinity_float_is_preserved_instead_of_becoming_zero() {
+        let types = vec![TypeDef {
+            name: "Message".into(),
+            kind: 2,
+            fields: vec![field_def("value", -5, false, 1)],
+        }];
+        let mut bytes = Vec::new();
+        push_uvar(&mut bytes, 1);
+        bytes.extend_from_slice(&f32::INFINITY.to_bits().rotate_left(9).to_le_bytes());
+        push_uvar(&mut bytes, 0);
+        let mut reader = Reader { b: &bytes, p: 0 };
+        let value = decode_value(&mut reader, &types, 0, false).unwrap();
+        assert_eq!(value["value"], Value::String("+Infinity".into()));
+        assert_eq!(f64_of(Some(&value), "value"), f64::INFINITY);
+    }
+
+    #[test]
+    fn byte_arrays_do_not_consume_the_segment_per_byte_and_overlong_arrays_reject() {
+        let types = vec![TypeDef {
+            name: "Message".into(),
+            kind: 2,
+            fields: vec![field_def("blob", -2, true, 1)],
+        }];
+        let count = FIG_SEGMENT_WORK as usize + 1;
+        let mut bytes = Vec::with_capacity(count + 8);
+        push_uvar(&mut bytes, 1);
+        push_uvar(&mut bytes, count as u64);
+        bytes.resize(bytes.len() + count, 0);
+        push_uvar(&mut bytes, 0);
+        let mut reader = Reader { b: &bytes, p: 0 };
+        let value = decode_value(&mut reader, &types, 0, false).unwrap();
+        assert_eq!(value["blob"].as_array().unwrap().len(), count);
+        let mut too_many = Vec::new();
+        push_uvar(&mut too_many, 1);
+        push_uvar(&mut too_many, FIG_MAX_ARRAY + 1);
+        let mut reader = Reader { b: &too_many, p: 0 };
+        let uints = vec![TypeDef {
+            name: "Message".into(),
+            kind: 2,
+            fields: vec![field_def("values", -4, true, 1)],
+        }];
+        let error = decode_value(&mut reader, &uints, 0, false).unwrap_err();
+        assert!(matches!(error, Error::Malformed(ref message) if message == "array too large"), "{error}");
+    }
+
     // -----------------------------------------------------------------
     // test kiwi writer — mirrors the reader so fixtures round-trip through
     // the exact wire format (including the rotated varfloat)
@@ -2834,7 +3216,7 @@ mod tests {
                     2 => w.byte(v.as_u64().unwrap_or(0) as u8),
                     3 => w.int(v.as_i64().unwrap_or(0)),
                     4 => w.uint(v.as_u64().unwrap_or(0)),
-                    5 => w.float(v.as_f64().unwrap_or(0.)),
+                    5 => w.float(f64_value(v).unwrap_or(0.)),
                     6 => w.string(v.as_str().unwrap_or("")),
                     7 => w.int(v.as_i64().unwrap_or(0)),
                     8 => w.uint(v.as_u64().unwrap_or(0)),
@@ -3729,6 +4111,45 @@ mod tests {
         }
 
         #[test]
+        fn unbounded_maximum_uses_the_editable_ceiling_and_keeps_the_sentinel() {
+            let mut changes = canvas_only();
+            let mut frame = base_change("FRAME", 1, 2);
+            frame["maxSize"] = json!({"value": {"x": 880.0, "y": "+Infinity"}});
+            changes.push(frame);
+            let doc = doc_with(changes).unwrap();
+            let sizing = node_of(&doc, 1, 2).sizing.as_ref().unwrap();
+            assert!((sizing.max_width - 880.).abs() < 1e-9);
+            assert!((sizing.max_height - 1e7).abs() < 1e-6);
+            let note = source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").unwrap();
+            assert!(note.contains("maxSize=880,+Infinity"), "{note}");
+            let mut zero = canvas_only();
+            let mut frame = base_change("FRAME", 1, 2);
+            frame["minSize"] = json!({"value": {"x": 0.0, "y": 24.0}});
+            zero.push(frame);
+            let doc = doc_with(zero).unwrap();
+            let sizing = node_of(&doc, 1, 2).sizing.as_ref().unwrap();
+            assert!((sizing.min_width - 0.01).abs() < 1e-9);
+            assert!((sizing.min_height - 24.).abs() < 1e-9);
+            let note = source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").unwrap();
+            assert!(note.contains("minSize=0,24"), "{note}");
+            let mut overlap = canvas_only();
+            let mut frame = base_change("FRAME", 1, 2);
+            frame["stackMode"] = json!("HORIZONTAL");
+            frame["stackSpacing"] = json!(-5.0);
+            frame["stackCounterSpacing"] = json!(-2.0);
+            overlap.push(frame);
+            let doc = doc_with(overlap).unwrap();
+            let layout = node_of(&doc, 1, 2).layout.as_ref().unwrap();
+            assert!((layout.gap + 5.).abs() < 1e-9);
+            assert!((layout.line_gap + 2.).abs() < 1e-9);
+            let mut rejected = canvas_only();
+            let mut min = base_change("FRAME", 1, 2);
+            min["minSize"] = json!({"value": {"x": "+Infinity", "y": 10.0}});
+            rejected.push(min);
+            assert!(doc_with(rejected).is_err());
+        }
+
+        #[test]
         fn space_around_and_space_evenly_map() {
             for (name, align) in [
                 ("SPACE_EVENLY", Align::SpaceEvenly),
@@ -3783,17 +4204,18 @@ mod tests {
         }
 
         #[test]
-        fn baseline_counter_align_rejects_explicitly() {
+        fn baseline_counter_align_is_retained_and_not_relabelled() {
             let mut changes = canvas_only();
             let mut frame = base_change("FRAME", 1, 2);
             frame["stackMode"] = json!("HORIZONTAL");
             frame["stackCounterAlignItems"] = json!("BASELINE");
             changes.push(frame);
-            let err = doc_with(changes).unwrap_err();
-            match err {
-                Error::Unsupported(msg) => assert!(msg.contains("BASELINE"), "{msg}"),
-                other => panic!("{other:?}"),
-            }
+            let doc = doc_with(changes).unwrap();
+            assert_eq!(node_of(&doc, 1, 2).layout.as_ref().unwrap().align, Align::Start);
+            let note = source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").unwrap();
+            assert!(note.contains("stackCounterAlignItems=BASELINE"), "{note}");
+            let err = align_of_stack_align("FIRST_BASELINE").unwrap_err().to_string();
+            assert!(err.contains("FIRST_BASELINE"), "{err}");
         }
 
         #[test]

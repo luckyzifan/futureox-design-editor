@@ -135,6 +135,29 @@ test('variable set aliases resolve by publish key and supported fields bind', ()
   validateDocument(doc)
 })
 
+test('variable set membership follows a nested guid instead of inventing one collection per variable', () => {
+  const doc = blank('Theme')
+  doc.schemaVersion = 4
+  const records = new Map<string, Record<string, unknown>>([
+    ['2082:2349', { type: 'VARIABLE_SET', name: 'USWDS Theme', variableSetModes: [
+      { name: 'Project theme', id: { sessionID: 1, localID: 1 } },
+    ] }],
+    ['9:1', { type: 'VARIABLE', name: 'theme/font/role/ui', variableResolvedType: 'STRING', variableSetID: { guid: { sessionID: 2082, localID: 2349 } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 1, localID: 1 }, variableData: { value: { textValue: { characters: 'Source Sans Pro' } } } },
+      ] } }],
+    ['9:2', { type: 'VARIABLE', name: 'theme/font/role/heading', variableResolvedType: 'STRING', variableSetID: { guid: { sessionID: 2082, localID: 2349 } },
+      variableDataValues: { entries: [
+        { modeID: { sessionID: 1, localID: 1 }, variableData: { value: { textValue: { characters: 'Merriweather' } } } },
+      ] } }],
+  ])
+  importFigVariableNodes(doc, records)
+  expect(Object.keys(doc.designSystem?.collections ?? {})).toEqual(['2082:2349'])
+  expect(doc.designSystem?.variables['9:1'].collection).toBe('2082:2349')
+  expect(doc.designSystem?.variables['9:2'].collection).toBe('2082:2349')
+  validateDocument(doc)
+})
+
 test('fig opacity percentages are copied at import and ordinary numbers stay', () => {
   const doc = blank('Opacity')
   doc.schemaVersion = 6
