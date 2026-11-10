@@ -1,17 +1,4 @@
 /**
- * 自适应 GPU 预算管理
- *
- * 问题：
- * 1. 3200% 超高倍率时，单层表面内存超过 256MB 预算
- * 2. 预算超限导致 GPU 降级，使用率下降
- *
- * 解决方案：
- * 1. 根据缩放等级动态提升预算
- * 2. 启用分块渲染策略
- * 3. 优化内存回收机制
- */
-
-/**
  * 检测是否在 Electron 环境中运行
  */
 export function isElectronEnvironment(): boolean {
@@ -45,7 +32,6 @@ export function adaptiveBudget(
   const multiplier = budgetMultiplierForZoom(zoom)
   const adjusted = baseBytes * multiplier
 
-  // Electron 桌面版：不限制，使用设备内存的 50%（更激进）
   if (isElectron) {
     const deviceMem = deviceMemory || 16 * 1024 * 1024 * 1024 // 默认 16GB
     return Math.min(adjusted, deviceMem * 0.5) // 最多使用 50% 设备内存

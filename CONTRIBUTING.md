@@ -50,9 +50,9 @@ cd frontend/design-client
 bun run test --config camera-handoff.vitest.config.ts
 ```
 
-Rust 修改后，重建本次源码的 WASM／受影响原生程序再引用前端结果。完整测试的依赖、生成夹具、字体与产物要求见[贡献与测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md)。当前统一运行器和 CI 仍有未纳入版本控制的依赖文件缺口，实际状态见[本轮复核报告](docs/PR_REVIEW_20261110.zh-CN.md)。
+Rust 修改后，重建本次源码的 WASM／受影响原生程序再引用前端结果。完整测试的依赖、生成夹具、字体与产物要求见[贡献与测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md)。检查按包独立运行，生成日志和报告保留在本机。
 
-在 PR 中分别列出通过、失败、跳过和未运行的检查及原因。CPU／jsdom 的结果只证明对应路径；GPU、真实桌面窗口、文件保存重开与性能结论需要各自的证据。CI 页面见 [Actions](https://github.com/luckyzifan/futureox-design-editor/actions/workflows/local-design-cpu.yml)。
+在 PR 中分别列出通过、失败、跳过和未运行的检查及原因。CPU／jsdom 的结果只证明对应路径；GPU、真实桌面窗口、文件保存重开与性能结论需要各自的证据。
 
 ## 文档、翻译与视觉素材
 
@@ -71,7 +71,7 @@ Follow the [quick start](README.en.md#quick-start). Use the pinned Rust toolchai
 
 Fork the repository, branch from current `main`, and keep each PR focused on one problem. Explain the resulting behavior, related issue, exact checks, and limits of verification. Use `Refs #number` for partial fixes. Preserve contributor attribution when merging.
 
-For documentation, check facts, links, and rendering. For behavior changes, demonstrate the regression on the baseline and the fix on the candidate with the same input. Rebuild WASM/native artifacts after Rust changes. The command above runs one focused CPU/jsdom suite without generated WASM. See the [testing requirements](docs/TESTING_CONTRIBUTIONS.zh-CN.md) and [review report](docs/PR_REVIEW_20261110.zh-CN.md) for full-suite prerequisites and the current missing CI inputs. Report passes, failures, skips, and checks not run separately. CPU results do not establish GPU, desktop, persistence, or performance acceptance.
+For documentation, check facts, links, and rendering. For behavior changes, demonstrate the regression on the baseline and the fix on the candidate with the same input. Rebuild WASM/native artifacts after Rust changes. The command above runs one focused CPU/jsdom suite without generated WASM. See the [testing requirements](docs/TESTING_CONTRIBUTIONS.zh-CN.md) for package commands and prerequisites. Report passes, failures, skips, and checks not run separately. CPU results do not establish GPU, desktop, persistence, or performance acceptance.
 
 Read the [architecture guide](docs/architecture/README.zh-CN.md), [development contract](docs/DEVELOPMENT_CONTRACT_V1.md), and the relevant rendering or MCP contract before changing those boundaries. Keep temporary outputs and personal configuration out of commits. Use original, redistributable fixtures with documented provenance.
 

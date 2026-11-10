@@ -85,7 +85,7 @@ design-studio/
 ├── crates/design-desktop-backend/  本地文件、SQLite 与恢复
 └── scripts/                  内核构建与验证工具
 docs/                         架构、功能契约与开发记录
-testing/                      回归测试、夹具与统一运行器
+testing/                      格式夹具与兼容性扫描
 ```
 
 界面与自动化使用同一套编辑事务，桌面能力通过宿主适配接入。详细职责见[架构分层](docs/architecture/README.zh-CN.md)；按主题查找资料，请从[文档索引](docs/README.md)开始。

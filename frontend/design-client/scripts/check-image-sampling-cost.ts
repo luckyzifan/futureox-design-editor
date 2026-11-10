@@ -26,7 +26,7 @@ try{
    },
    async load(id){if(mode!=='legacy-address'||id!==shader+'?raw')return
     const source=await readFile(shader,'utf8')
-    const branch='else if(kind==3&&u(46).w>0.5){let grid=byteImageAddress(p);if(grid.z>0.5){paint=round(smpBytesIndex(sourceB,grid.xy,u(2))*opacity)/255.;}else{paint=vec4<f32>(0);}}'
+    const branch='if(kind==3&&u(46).w>0.5){let grid=byteImageAddress(p);if(grid.z>0.5){paint=round(smpBytesIndex(sourceB,grid.xy,u(2))*opacity)/255.;}else{paint=vec4<f32>(0);}}'
     if(source.split(branch).length!==2)throw Error('Coordinate shader anchor changed')
     const changed=source.replace(branch,'');transforms.push({mode,path:id,original:hash(source),changed:hash(changed)})
     return 'export default '+JSON.stringify(changed)

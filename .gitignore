@@ -11,6 +11,10 @@
 # design-client tsc. Do not drop this rule to publish local dumps.
 /testing/
 .zcode/
+.grok-bot-shots/
+*.mac-local.*
+/evidence/phase/
+/futureoxdesgin/
 
 # Generated kernel outputs (rebuilt via design-client `build:kernel`)
 /frontend/design-client/public/kernel/

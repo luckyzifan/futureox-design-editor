@@ -191,6 +191,6 @@ for (const plugin of plugins) {
   console.log(`  ${plugin.repo.padEnd(38)} ${String(plugin.plugin).slice(0, 36).padEnd(38)} 用${String(plugin.used).padEnd(4)} 兼容${String(rate).padStart(3)}% 阻断${blockers}`)
 }
 
-const reportPath = join(ROOT, 'verification-figmaplugin-public-20261106/coverage.json')
+const reportPath = join(ROOT, '../test-results/figmaplugin-coverage.json')
 await Bun.write(reportPath, JSON.stringify({ generated: new Date().toISOString(), totals: { supported, partial, unsupported, unknown }, blockers: [...blockerCount.entries()], plugins }, null, 2))
 console.log('\nJSON 报告: %s', reportPath)

@@ -85,7 +85,7 @@ design-studio/
 ├── crates/design-desktop-backend/  Local files, SQLite, recovery
 └── scripts/                  Kernel builds and verification tools
 docs/                         Architecture, feature contracts, development records
-testing/                      Regression suites, fixtures, unified test runner
+testing/                      Format fixtures and compatibility scans
 ```
 
 UI actions and automation use the same editing transactions; desktop capabilities connect through host adapters. Read the [architecture guide (Chinese)](docs/architecture/README.zh-CN.md) for responsibilities, or browse the [documentation index](docs/README.md).

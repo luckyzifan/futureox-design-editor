@@ -78,8 +78,7 @@ pub struct Action {
     /// Schema passthrough only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_variable_data: Option<Value>,
-    /// `mediaAction`: media command enum. The wasm corpus recovers the
-    /// field name, not the value set — the closed set follows the public
+    /// `mediaAction`: media command enum. The closed set follows the public
     /// fig-kiwi action schema (see `valid_media_action`). No media action
     /// `kind` exists yet. Schema passthrough only.
     #[serde(default, skip_serializing_if = "Option::is_none")]

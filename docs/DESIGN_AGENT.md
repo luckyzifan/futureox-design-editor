@@ -2,8 +2,6 @@
 
 桌面版优先。页面上的「设计助手」对话、页面列表悬停后的 AI，以及设置里的「设计助手」，都走本机 Rust + Tokio 进程 `futureox-design-agent`。
 
-画布复测和导入差距写在 `testing/verification-fix-regression-20261108`、`testing/verification-figma-sketch-gap-20261108`。自动保存和撤销的现状写在 `testing/verification-autosave-undo-20261108`。
-
 ## 启动
 
 ```sh

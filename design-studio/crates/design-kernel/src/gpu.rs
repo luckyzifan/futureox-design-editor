@@ -63,10 +63,14 @@ use std::{
 };
 
 /// Camera-scoped cache of the geometry-prepare phase shared by every tile of
-/// one render request. The prepare guard is the union of all requested crop
-/// rects, which is a superset of each tile's own guard: leaves outside the
-/// union are the only entries emptied by a per-tile guard, so every entry a
-/// tile actually consumes is byte-identical to a standalone per-tile compile.
+/// one render request. The retained guard may be the union of the request's
+/// crops. `flatten_for_fill` replaces curves outside that guard with chords, so
+/// a wider guard is not a superset of a tile guard: on a real FIG the published
+/// rect of `fig-0-8200` moved from y=131,h=195 to y=90,h=236. Scene emission
+/// therefore prepares again against the tile's own guard. The retained map
+/// stays on the requested window for incremental edits. Programs are dropped
+/// when that emission guard changes so a neighbouring tile cannot reuse a
+/// crop compiled from different contours.
 /// One active entry plus bounded inactive camera variants are retained. All
 /// variants remain keyed by exact document/font geometry lineage.
 type CameraPrepareKey = (u64, String, (f64, f64, f64), (i32, i32, u32, u32), bool, Option<crate::animation::Sample>);
@@ -74,6 +78,9 @@ pub(crate) struct CameraPrepare {
     pub(crate) key: CameraPrepareKey,
     pub(crate) prepared: Arc<HashMap<String, crate::geometry_snapshot::Prepared>>,
     programs: ProgramCache,
+    /// Emission guard the cached programs were compiled from. A wider retained
+    /// map can serve several tiles; their contours are not interchangeable.
+    program_guard: Option<(i32, i32, u32, u32)>,
     fragments: fragments::FragmentCache,
     metadata: Option<CameraMetadata>,
     reuses: u64,
@@ -2339,14 +2346,14 @@ impl Engine {
         let large_packet = crate::capacity::native_source_storage() || options.interactive_effects || viewport.w > 514 || viewport.h > 514;
         // The prepare guard defaults to this call's own viewport; a request may
         // widen it to the union of all its crops so the flattened geometry is
-        // computed once per camera and cloned per tile. The union is a superset
-        // of every tile guard, so entries consumed by a tile are identical to
-        // a standalone compile; only far leaves differ (prepared vs empty), and
-        // both cull to zero for this tile's halo and extent decisions.
+        // retained once per camera. Flattening is guard-dependent, so the
+        // retained map is not what the tile publishes. `tile_guard` is the
+        // guard `prepare=None` would use for this viewport.
         let zoom_extent=if properties.has_zoom{Some(crate::zoom_support::scene_guard_active(doc,&page.children,camera,viewport,&self.fonts)?)}else{None};
         let base_prepare=prepare_viewport.unwrap_or(viewport);
         let zoom_prepare=if !properties.has_zoom||base_prepare==viewport{zoom_extent}else{Some(crate::zoom_support::scene_guard_active(doc,&page.children,camera,base_prepare,&self.fonts)?)};
         let prepare_guard=zoom_prepare.map_or(base_prepare.expand(padding),|z|z.union(base_prepare.expand(padding)));
+        let tile_guard=zoom_extent.map_or_else(||viewport.expand(padding),|z|z.union(viewport.expand(padding)));
         // Full native interaction captures share the same geometry/program
         // lifetime as regional tiles. Their exact viewport is the guard when
         // no wider tile preparation window was supplied. Camera, resources,
@@ -2412,11 +2419,29 @@ impl Engine {
                     cache.prepared = prepared.clone(); cache.metadata = Some(metadata); cache.incomplete = false;
                 } else {
                     self.camera_prepare = Some(CameraPrepare {
-                        key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(), fragments: fragments::FragmentCache::default(),
+                        key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(), program_guard: None, fragments: fragments::FragmentCache::default(),
                         metadata: Some(metadata), reuses: 0, incomplete: false, retained_nodes: 0, incremental:false,
                     });
                 }
             }
+        }
+        let built_guard=self.camera_prepare.as_ref().map(|cache|{
+            let (x,y,w,h)=cache.key.3; Rect::new(x,y,w,h)
+        }).unwrap_or(prepare_guard);
+        if built_guard!=tile_guard {
+            // Chord replacement outside the retained guard changes flattened
+            // bounds. Publishing those bounds makes a real FIG node rect follow
+            // the union instead of the tile. Rebuild only the emitted map.
+            let mut local=HashMap::new();
+            let mut tile_segments=0usize;
+            for root in &page.children {
+                crate::geometry_snapshot::prepare_node_geometry_indexed(
+                    root,camera,(doc,&self.fonts,tile_guard,compatible),
+                    &mut self.paths,&mut self.local_strokes,&mut local,&mut tile_segments,
+                    world_support.as_deref(),
+                )?;
+            }
+            prepared=Arc::new(local);
         }
         if has_region && !regional_foreground && doc.color_management.is_some() && metadata.noise_guard.is_none() {
             regional_foreground = page.children.iter().all(|id|
@@ -2538,7 +2563,7 @@ impl Engine {
             let support_guard = self.camera_prepare.as_ref()
                 .filter(|cache| !cache.incomplete && Arc::ptr_eq(&cache.prepared, &prepared))
                 .map(|cache| { let (x,y,w,h) = cache.key.3; Rect::new(x,y,w,h) })
-                .unwrap_or(prepare_guard);
+                .unwrap_or(tile_guard);
             // A complete sibling chain can require MORE than the legacy tree
             // maximum. Adopting only smaller certificates would silently keep
             // the old under-supported crop. The unchanged surface cap below
@@ -2564,8 +2589,15 @@ impl Engine {
         if extent.pixels() > 16_777_216 {
             return Err("GPU surface budget exceeded".into());
         }
+        let emission_guard=(tile_guard.x,tile_guard.y,tile_guard.w,tile_guard.h);
         let programs = if cache_key.is_some() {
-            self.camera_prepare.as_mut().map(|cache|std::mem::take(&mut cache.programs)).unwrap_or_default()
+            self.camera_prepare.as_mut().map(|cache|{
+                if cache.program_guard!=Some(emission_guard) {
+                    cache.programs=ProgramCache::default();
+                    cache.program_guard=Some(emission_guard);
+                }
+                std::mem::take(&mut cache.programs)
+            }).unwrap_or_default()
         } else { ProgramCache::default() };
         let PainterSupport { backdrop_outputs, shadow_outputs, stages, .. } = painter_support.unwrap_or_else(||
             PainterSupport { extent, backdrop_outputs: HashMap::new(), shadow_outputs: HashMap::new(), stages: None });
@@ -2610,7 +2642,11 @@ impl Engine {
             compiler.node(root, camera, regional_foreground.then_some(viewport))?;
         }
         if cache_key.is_some() {
-            if let Some(cache) = self.camera_prepare.as_mut() { cache.programs = compiler.programs; cache.fragments=compiler.fragments; }
+            if let Some(cache) = self.camera_prepare.as_mut() {
+                cache.programs = compiler.programs;
+                cache.program_guard=Some(emission_guard);
+                cache.fragments=compiler.fragments;
+            }
         }
         let mut nodes = compiler.nodes;
         if let Some(context)=&self.source_compile_context {if let Some(stage)=nodes.get_mut(&context.stage){stage.children=(*context.stage_children).clone();}}

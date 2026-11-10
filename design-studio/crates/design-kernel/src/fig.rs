@@ -564,6 +564,69 @@ fn f64_of(v: Option<&Value>, key: &str) -> f64 {
         .and_then(Value::as_f64)
         .unwrap_or(0.)
 }
+
+/// A zero or non-finite FIG normalized axis is a hairline, not a scale.
+fn positive_axis_scale(extent: f64, source: f64) -> f64 {
+    let value = extent / source;
+    if value.is_finite() && value > 0. {
+        value
+    } else {
+        1.
+    }
+}
+
+/// `spacing` is one gap on both axes. `patternSpacing` wins when present.
+fn tile_gap(paint: &Value) -> (f64, f64) {
+    if paint.get("patternSpacing").is_some() {
+        (
+            f64_of(paint.get("patternSpacing"), "x"),
+            f64_of(paint.get("patternSpacing"), "y"),
+        )
+    } else {
+        let gap = f64_of(Some(paint), "spacing");
+        (gap, gap)
+    }
+}
+
+/// Non-default TILE scale, rotation, spacing and alignment are imported.
+/// Values outside the pattern-tile contract still reject the whole file.
+fn reject_unrepresentable_tile(paint: &Value) -> Result<(), Error> {
+    if str_of(paint, "imageScaleMode") != Some("TILE") {
+        return Ok(());
+    }
+    let scale = paint.get("scale").and_then(Value::as_f64).unwrap_or(1.);
+    let rotation = paint.get("rotation").and_then(Value::as_f64).unwrap_or(0.);
+    let (gap_x, gap_y) = tile_gap(paint);
+    if !(scale.is_finite() && scale > 0. && scale <= 1e6)
+        || !(rotation.is_finite() && rotation.abs() <= 1e6)
+        || ![gap_x, gap_y]
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0. && *value <= 1e7)
+    {
+        return Err(Error::Unsupported(
+            "FIG image tile spacing/scale/rotation is out of range; the source file was not modified"
+                .into(),
+        ));
+    }
+    for key in ["horizontalAlignment", "verticalAlignment"] {
+        if let Some(value) = str_of(paint, key)
+            && !matches!(value, "START" | "CENTER" | "END")
+        {
+            return Err(Error::Unsupported(format!(
+                "FIG image tile {key}={value} is not supported; the source file was not modified"
+            )));
+        }
+    }
+    if let Some(mode) = str_of(paint, "patternTileType")
+        && !matches!(
+            mode,
+            "RECTANGULAR" | "HORIZONTAL_HEXAGONAL" | "VERTICAL_HEXAGONAL"
+        )
+    {
+        return Err(Error::Unsupported(format!("patternTileType={mode}")));
+    }
+    Ok(())
+}
 fn str_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key).and_then(Value::as_str)
 }
@@ -602,7 +665,7 @@ const KNOWN_KINDS: &[(&str, &str)] = &[
     ("TABLE_CELL", "text"),
     ("SHAPE_WITH_TEXT", "group"),
     ("TABLE", "frame"),
-    // Figma 其余节点类型(从其产品文档与 wasm 字符串恢复):
+    // Additional supported Figma node types:
     ("EMBED", "frame"),
     ("MEDIA", "frame"),
     ("GIF", "frame"),
@@ -875,16 +938,7 @@ impl FigImporter {
                             return Err(Error::Unsupported(format!("paintType={kind}")));
                         }
                         if kind == "IMAGE" { self.image_bytes(paint)?; }
-                        if str_of(paint,"imageScaleMode")==Some("TILE") {
-                            if f64_of(Some(paint),"spacing")!=0. || f64_of(paint.get("patternSpacing"),"x")!=0. || f64_of(paint.get("patternSpacing"),"y")!=0.
-                                || paint.get("scale").and_then(Value::as_f64).unwrap_or(1.)!=1. || f64_of(Some(paint),"rotation")!=0.
-                                || ["horizontalAlignment","verticalAlignment"].iter().any(|key|str_of(paint,key).is_some_and(|v|v!="START")) {
-                                return Err(Error::Unsupported("TILE spacing/scale/rotation/alignment is not rendered".into()));
-                            }
-                            if str_of(paint,"patternTileType").is_some_and(|v| !matches!(v,"RECTANGULAR"|"HORIZONTAL_HEXAGONAL"|"VERTICAL_HEXAGONAL")) {
-                                return Err(Error::Unsupported("patternTileType".into()));
-                            }
-                        }
+                        reject_unrepresentable_tile(paint)?;
                         if let Some(filter)=paint.get("paintFilter").or_else(||paint.get("filterColorAdjust")) {
                             for (key,value) in filter.as_object().into_iter().flatten() {
                                 if value.as_f64().is_none_or(|v|!v.is_finite() || v.abs()>1.) {
@@ -979,14 +1033,11 @@ impl FigImporter {
                     Some("STRETCH") => "stretch".into(),
                     Some("FIT") => "contain".into(),
                     Some("TILE") => {
-                        // TILE renders through the pattern-fill pipeline. The
-                        // kiwi `Paint` message carries the authored tiling
-                        // parameters (v106 schema, ordinals 27-30):
-                        // spacing (cell period), patternTileType
-                        // (RECTANGULAR / HORIZONTAL_HEXAGONAL /
-                        // VERTICAL_HEXAGONAL) and the two PatternAlignment
-                        // axes. Missing fields keep the base mapping (a
-                        // regular grid at the image's native size).
+                        // TILE renders through the pattern-fill pipeline.
+                        // scale multiplies the image's native cell, rotation
+                        // is degrees, and spacing/patternSpacing is the
+                        // transparent gap. Alignment is stored for round-trip;
+                        // sampling still anchors at the node origin.
                         let mut tile = crate::pattern_fill::PatternTile::native();
                         if let Some(mode) = str_of(p, "patternTileType") {
                             tile.mode = match mode {
@@ -1003,10 +1054,10 @@ impl FigImporter {
                                 }
                             };
                         }
-                        let spacing = f64_of(Some(p), "spacing");
-                        if spacing > 0. {
-                            tile.size = [spacing, spacing];
-                        }
+                        tile.scale = p.get("scale").and_then(Value::as_f64).unwrap_or(1.);
+                        tile.rotation = f64_of(Some(p), "rotation");
+                        let (gap_x, gap_y) = tile_gap(p);
+                        tile.spacing = [gap_x, gap_y];
                         let mut alignment_of = |key: &str| {
                             str_of(p, key)
                                 .map(|v| match v {
@@ -1141,6 +1192,16 @@ impl FigImporter {
                 "vertices":[{"id":"0","x":0.,"y":0.},{"id":"1","x":w,"y":h}],
                 "edges":[{"id":"0","from":"0","to":"1"}],"fillRule":"nonzero"
             })).expect("static line network"));
+        }
+        if fig_type == "VECTOR"
+            && (node.width == 0. || node.height == 0.)
+            && node.width.max(node.height) > 0.
+        {
+            node.width = node.width.max(0.01);
+            node.height = node.height.max(0.01);
+            untranslated.push(
+                "zero-size vector kept with a minimum positive layout box".into(),
+            );
         }
         if let Some(m) = change.get("transform") {
             node.transform = Transform([
@@ -1587,8 +1648,8 @@ impl FigImporter {
                 .get("normalizedSize")
                 .map(|size| {
                     (
-                        node.width / f64_of(Some(size), "x"),
-                        node.height / f64_of(Some(size), "y"),
+                        positive_axis_scale(node.width, f64_of(Some(size), "x")),
+                        positive_axis_scale(node.height, f64_of(Some(size), "y")),
                     )
                 })
                 .unwrap_or((1., 1.));
@@ -2536,7 +2597,7 @@ pub fn document_from_canvas(
     doc.nodes = nodes.into();
     let mut document_notes = Vec::new();
     document::import_styles(&mut doc, &records, &importer, &mut document_notes)?;
-    components::import(&mut doc, &records, &importer)?;
+    components::import(&mut doc, &records, &importer, &mut document_notes)?;
     normalize_mask_suffixes(&mut doc)?;
     document::apply_component_sets(&mut doc, &records, &mut document_notes)?;
     // honest serialization version: bindings/booleans/text styles need 4,
@@ -2623,8 +2684,11 @@ pub fn document_from_canvas(
         doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
         version=version.max(4);
     }
-    document::import_variables(&mut doc, &records);
+    // Receipts above stay inert. import_variables then adds only bindings
+    // whose property and variable kind the design system can execute.
+    document::import_variables(&mut doc, &records, &mut document_notes);
     document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
+    version = version.max(components::schema_floor(&doc));
     document::raise_schema(&doc, &mut version);
     doc.schema_version = version;
     doc.validate().map_err(|e| Error::Unsupported(format!("imported document: {e}")))?;
@@ -4623,8 +4687,21 @@ mod tests {
         #[test]
         fn tile_authored_tiling_parameters_map() {
             let importer=FigImporter {display_p3:false,images:BTreeMap::from([("test".into(),vec![137])]),kiwi_blobs:vec![]};
-            let value=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","spacing":96.,"horizontalAlignment":"CENTER"}]});
-            assert!(importer.validate_record(&value).unwrap_err().to_string().contains("not rendered"));
+            let value=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","spacing":96.,"scale":2.5,"rotation":90.,"horizontalAlignment":"CENTER","verticalAlignment":"END"}]});
+            importer.validate_record(&value).expect("authored tile parameters stay in range");
+            let mut notes=Vec::new();
+            let paint=importer.paint(&value["fillPaints"][0], &mut notes).unwrap();
+            let tile=paint.tile.expect("tile");
+            assert_eq!(tile.spacing, [96., 96.]);
+            assert_eq!(tile.scale, 2.5);
+            assert_eq!(tile.rotation, 90.);
+            assert_eq!(tile.alignment, ["center".to_string(), "end".to_string()]);
+            assert_eq!(tile.size, [0., 0.]);
+            assert!(notes.is_empty(), "{notes:?}");
+            let invalid=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","scale":0.}]});
+            assert!(importer.validate_record(&invalid).unwrap_err().to_string().contains("out of range"));
+            let unknown=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","horizontalAlignment":"SPACE"}]});
+            assert!(importer.validate_record(&unknown).unwrap_err().to_string().contains("not supported"));
         }
 
         #[test]
@@ -4853,8 +4930,20 @@ mod tests {
             instance["symbolData"]=json!({"symbolID":guid(1,2)});
             instance["componentPropAssignments"]=json!([{"defID":guid(1,8),"value":{"boolValue":true}}]);
             changes.push(instance);
-            assert!(doc_with(changes).unwrap_err().to_string().contains("unknown component property"));
+            let doc = doc_with(changes).unwrap();
+            assert!(node_of(&doc, 1, 5).instance.is_some());
+            let notes = doc
+                .design_system
+                .as_ref()
+                .and_then(|system| system.sketch_containers.get("figDocument"))
+                .and_then(|receipt| receipt.get("notes"))
+                .and_then(Value::as_array)
+                .map(|notes| notes.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"))
+                .unwrap_or_default();
+            assert!(
+                notes.contains("property assignment fig-1-8"),
+                "unknown assignments are reported, not a whole-file reject: {notes}"
+            );
         }
-
     }
 }

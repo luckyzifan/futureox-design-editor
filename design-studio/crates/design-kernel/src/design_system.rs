@@ -158,11 +158,19 @@ fn value_in(system: &DesignSystem, id: &str, modes: &impl ModeSelection) -> Resu
     }
     walk(system, id, modes, &mut BTreeSet::new())
 }
+pub(crate) fn binding_kind(path: &str) -> Option<&'static str> {
+    if valid_property(path) {
+        Some(expected(path))
+    } else {
+        None
+    }
+}
+
 pub fn valid_property(path: &str) -> bool {
     matches!(path,"width"|"height"|"opacity"|"visible"|"text"|"fontSize"|"layout.gap"|"layout.lineGap"|"textStyle.weight"|"textStyle.lineHeight"|"textStyle.letterSpacing") ||
     path.strip_prefix("fills.").is_some_and(|v| { let mut p=v.split('.'); matches!((p.next(),p.next(),p.next()),(Some(i),Some("color"|"opacity"),None) if i.parse::<usize>().is_ok_and(|i|i<16)) })
 }
-fn expected(path: &str) -> &str {
+fn expected(path: &str) -> &'static str {
     if path.ends_with("color") {
         "color"
     } else if path == "text" {
@@ -414,7 +422,7 @@ fn validate_node(s: &DesignSystem, n: &Node) -> Result<(), String> {
         let style = s.styles.get(id).ok_or("Missing shared style")?;
         if !matches!(
             (field.as_str(), style.kind.as_str()),
-            ("fills", "paint") | ("textStyle", "text") | ("effects", "effect")
+            ("fills", "paint") | ("strokes", "paint") | ("textStyle", "text") | ("effects", "effect")
         ) {
             return Err("Shared style/property mismatch".into());
         }
@@ -454,10 +462,15 @@ pub(crate) fn resolve_node(
     let mut json = serde_json::to_value(&*n).map_err(|e| e.to_string())?;
     for (field, id) in &n.style_refs {
         if !overridden(field) {
-            json[field] = style_with_defaults(&s.styles[id])?;
+            let shared = &s.styles[id];
+            // Stroke styles are paint styles whose payload is `strokes`, not fills.
+            if field == "strokes" {
+                json["strokes"] = serde_json::to_value(&shared.strokes).map_err(|e| e.to_string())?;
+                continue;
+            }
+            json[field] = style_with_defaults(shared)?;
             // A paint style carrying borders/shadows (full Sketch layer
             // style) resolves them together with the fills it replaces.
-            let shared = &s.styles[id];
             if field == "fills" && shared.kind == "paint" {
                 if !shared.strokes.is_empty() && !overridden("strokes") {
                     json["strokes"] =
