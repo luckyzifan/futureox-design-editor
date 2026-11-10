@@ -29,7 +29,7 @@ import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
-import { navigationPreviewDensity } from './navigation-zoom'
+import { navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
 import { navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
@@ -1044,6 +1044,9 @@ export function ProgressiveSurfaceImpl(
       if (flight?.contract === contract && flight.generation === generation) {
         if (navigationZoom.active && zoomOutCoverage)
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
+        // A zoom-in capture more than the preview ratio behind the live camera
+        // can only be stretched. Yield the raster channel to closer tiles.
+        if (!zoomOutCoverage) flight.cancelStaleZoomIn(requestedView)
         // A small pan keeps the running capture. A same-zoom pan that leaves
         // most of the newest viewport outside it yields while the gesture is
         // still active; waiting for quiet left the picture on the pre-pan camera.
@@ -1472,7 +1475,10 @@ export function ProgressiveSurfaceImpl(
     // Filtered navigation used to return after CSS-density continuity for the
     // entire held gesture. Give actual screen-density work a bounded turn,
     // without turning every intermediate camera into an unbounded tile fill.
-    if (navigationZoom.active && view.zoom >= 1 && residentDisplay && filteredContent && !nativeNavigation &&
+    const detailInsteadOfPreview = zoomDetailInsteadOfViewportPreview({
+      navigating: navigationZoom.active, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
+    })
+    if (navigationZoom.active && view.zoom >= 1 && residentDisplay && (filteredContent || detailInsteadOfPreview) && !nativeNavigation &&
         dpr > navigationPreviewDensity(dpr, width, height) &&
         !hdrCompositing && !props.interaction?.active && navigationZoom.sample) {
       const refinementScope = JSON.stringify([contract.revision, width, height, dpr, generation,
@@ -1609,6 +1615,15 @@ export function ProgressiveSurfaceImpl(
         if (navigationZoom.active&&!nativePanRepair) {
           const sample = navigationZoom.sample
           if (!sample) return
+          if (zoomDetailInsteadOfViewportPreview({
+            navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
+          })) {
+            // The stale whole-frame capture was already yielded. A capture that
+            // is still inside the preview ratio keeps the channel until it
+            // lands; another full-viewport preview would only restart it.
+            void navigationRefinement.request()
+            return
+          }
           // The 160 ms sample can still describe the pre-pan camera. Once most
           // of the live viewport is outside that sample, rasterize the live one.
           const sampleFraction = sample.view.zoom === requestedView.zoom
@@ -2401,13 +2416,14 @@ export function ProgressiveSurfaceImpl(
   // The previous frame is one camera. Zoom-out and a pan during zoom expose
   // world the frame does not own. Ready overview and coarser tiles already in
   // memory paint those pixels in the same present; they are not a new density.
-  const continuityUnderlay = (() => {
-    if (previewReplacement || fullPlanReady || !residentDisplay) return [] as PaintedTile[]
+  const continuityPlan = (() => {
+    const none = { tiles: [] as PaintedTile[], sharper: [] as PaintedTile[] }
+    if (previewReplacement || fullPlanReady || !residentDisplay) return none
     const shown = visible.filter(tile => !inactiveSet.has(tile) && (fineTile(tile) || baseTile(tile) || coarseTile(tile) || cachedPreviewTile(tile)))
     const world = { x: -requestedView.x / requestedView.zoom, y: -requestedView.y / requestedView.zoom,
       width: width / requestedView.zoom, height: height / requestedView.zoom }
     const device = previewDevice.current
-    if (device.client !== rasterClient || !device.key) return [] as PaintedTile[]
+    if (device.client !== rasterClient || !device.key) return none
     // A whole-viewport preview has its own admission. A mismatched capture must
     // not sneak back in as underlay; ordinary world tiles are the coverage stack.
     const candidates = visible.filter(tile => !tile.viewportPreview && !inactiveSet.has(tile) && tileRef.current.get(tile.key) === tile &&
@@ -2419,15 +2435,19 @@ export function ProgressiveSurfaceImpl(
     // yield pixels to a ready tile that is at least twice as dense. A zoom-out
     // does not punch that frame with a finer crop.
     if (tilesCoverBounds(shown, world)) {
-      if (zoomingOut) return [] as PaintedTile[]
-      return selectSharperCoverage(candidates, requestedView, { width, height }, shown).slice(0, 24)
+      if (zoomingOut) return none
+      const sharper = selectSharperCoverage(candidates, requestedView, { width, height }, shown).slice(0, 24)
+      return { tiles: sharper, sharper }
     }
     const under = selectCoverageUnderlay(candidates, requestedView, { width, height }, shown, 24, zoomingOut)
-    if (zoomingOut) return under
+    if (zoomingOut) return { tiles: under, sharper: [] as PaintedTile[] }
     const sharper = selectSharperCoverage(candidates, requestedView, { width, height }, [...shown, ...under])
-    return [...under, ...sharper].slice(0, 24)
+      .slice(0, Math.max(0, 24 - under.length))
+    return { tiles: [...under, ...sharper], sharper }
   })()
+  const continuityUnderlay = continuityPlan.tiles
   const continuityKeys = new Set(continuityUnderlay.map(tile => tile.key))
+  const sharperKeys = new Set(continuityPlan.sharper.map(tile => tile.key))
   // One frame description owns both actual composition and cache-use proof.
   // Intersecting history that contributes no physical fragment stays evictable.
   const compositeItems = visible.map(tile => {
@@ -2441,7 +2461,8 @@ export function ProgressiveSurfaceImpl(
       layer: progressiveTileLayer({ fine, cached, coarse, refining: !complete && canRefine, cameraDependent,
         nativeDensity: tile.zoom >= requestedView.zoom * dpr,
         nativePhase:tileHasNativePhase(tile,requestedView,dpr),
-        sameContent: tile.document === doc && tile.revision === contract.revision }) }
+        sameContent: tile.document === doc && tile.revision === contract.revision,
+        sharperThanPreview: sharperKeys.has(tile.key) }) }
   })
   useLayoutEffect(() => {
     // Publish owner, camera, items and budget atomically after child layout
@@ -2746,6 +2767,7 @@ export function ProgressiveSurfaceImpl(
           const baseVisible = !inactiveSet.has(tile) && baseTile(tile)
           const lodVisible = !inactiveSet.has(tile) && coarseTile(tile)
           const cachedVisible = !inactiveSet.has(tile) && cachedPreviewTile(tile)
+          const sharperVisible = sharperKeys.has(tile.key)
           // Per-tile coarse underlay: map this exact tile's device rect into
           // its covering coarse bitmap (same world, TILE_SIDE grid at the
           // bucket scale, minus the one-pixel gutter).
@@ -2778,9 +2800,9 @@ export function ProgressiveSurfaceImpl(
               onGone={goneHandler}
               onError={errorHandler}
               frame={displayed}
-              active={props.visible !== false && (fineVisible || baseVisible || lodVisible || cachedVisible)}
-              layer={fineVisible ? 3 : cachedVisible ? 2 : lodVisible ? 1 : 0}
-              placement={fineVisible || lodVisible || baseVisible || cachedVisible
+              active={props.visible !== false && (fineVisible || baseVisible || lodVisible || cachedVisible || sharperVisible)}
+              layer={fineVisible ? 3 : sharperVisible ? 2.5 : cachedVisible ? 2 : lodVisible ? 1 : 0}
+              placement={fineVisible || lodVisible || baseVisible || cachedVisible || sharperVisible
                 ? tilePlacementAtView(tile, placementView) : undefined}
               underlay={underlay}
               publishLod={tile.lod === true ? publishLod : undefined}

@@ -92,9 +92,16 @@ export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | und
       return !!loss && !(fallback && contains(fallback, loss))
     })
   }
+  const live = screen(target)
+  const nextCovers = contains(project(next, target), live)
+  const oldCovers = contains(old, live)
+  // A late coarser bitmap must not snap back over a picture that still covers
+  // this camera. Continuous zoom stays inside the 2× window, so the old
+  // "any higher zoom is a narrow crop" rule also dropped covering sharper
+  // frames and left the previous bitmap stretched for the whole gesture.
+  if (next.view.zoom < backing.view.zoom && oldCovers) return true
   if (fallback && contains(fallback, old)) return false
-  return zooming && next.view.zoom > backing.view.zoom ||
-    contains(old, screen(target)) && !contains(project(next, target), screen(target))
+  return !nextCovers && (zooming && next.view.zoom > backing.view.zoom || oldCovers)
 }
 
 /** One small, wider image of this content revision. Only show it through

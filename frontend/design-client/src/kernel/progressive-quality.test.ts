@@ -65,6 +65,32 @@ test('native density alone cannot promote an obsolete plan or a sub-native curre
   expect(compositeDrawPlan([old,low],view,100,100).map(row=>row.item.tile.serial)).toEqual([1])
   expect(progressiveTileLayer({fine:false,cached:true,coarse:false,refining:true,sameContent:true,cameraDependent:false,nativeDensity:true})).toBe(2)
 })
+test('camera-dependent zoom paints a ready twice-finer sample over the stretched preview without a hole', () => {
+  const shared = { coarse: false, sameContent: true, refining: true, cameraDependent: true }
+  const previewLayer = progressiveTileLayer({ ...shared, fine: false, cached: true, nativeDensity: false })
+  const hidden = progressiveTileLayer({ ...shared, fine: false, cached: false, nativeDensity: true })
+  const detailLayer = progressiveTileLayer({ ...shared, fine: false, cached: false, nativeDensity: true, sharperThanPreview: true })
+  expect(previewLayer).toBe(2)
+  expect(hidden).toBe(0)
+  expect(detailLayer).toBe(2)
+  expect(progressiveTileLayer({ fine: true, cached: false, coarse: false, sameContent: true, refining: true,
+    cameraDependent: false, nativeDensity: true, nativePhase: true, sharperThanPreview: true })).toBe(5)
+  const preview: CompositeItem = {
+    active: true, gutter: 0, layer: previewLayer,
+    placement: { left: 0, top: 0, width: 100, height: 100 },
+    tile: { serial: 1, key: 'preview', x: 0, y: 0, width: 100, height: 100, zoom: 1, bytes: new Uint8Array() },
+  }
+  const detail: CompositeItem = {
+    active: true, gutter: 0, layer: detailLayer,
+    placement: { left: 25, top: 25, width: 50, height: 50 },
+    tile: { serial: 2, key: 'detail', x: 0, y: 0, width: 200, height: 200, zoom: 4, bytes: new Uint8Array() },
+  }
+  const rows = compositeDrawPlan([preview, detail], view, 100, 100)
+  const area = (row: (typeof rows)[number]) => (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top)
+  expect(rows.filter(row => row.item === detail).reduce((sum, row) => sum + area(row), 0)).toBe(2500)
+  expect(rows.filter(row => row.item === preview).reduce((sum, row) => sum + area(row), 0)).toBe(7500)
+  expect(rows.reduce((sum, row) => sum + area(row), 0)).toBe(10000)
+})
 test('new document pixels and pixel-exact modes retain content priority over obsolete sharp textures', () => {
   expect(compositeDrawPlan([item(1, 4, false, false), item(2, 1, true)], view, 100, 100).map(row => row.item.tile.serial)).toEqual([2])
   expect(compositeDrawPlan([item(1, 4, false, true, true), item(2, 1, true, true, true)], view, 100, 100).map(row => row.item.tile.serial)).toEqual([2])

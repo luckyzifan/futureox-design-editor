@@ -1,5 +1,6 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { allowsReducedSampling } from './render-quality'
+import { previewCameraScaleWithinLimit } from './tile-preview'
 
 /** Navigation-only timing. A wheel/pinch burst keeps one latest target rather
  * than refining every intermediate camera. Expensive filtered panning may opt
@@ -102,6 +103,21 @@ export class NavigationZoom {
 
 /** Normal-zoom camera previews use physical DPR. Overview/continuity captures
  * without a camera keep their bounded tier. Final/export rules are unchanged. */
+/** A fit bitmap more than the preview ratio behind the live camera is the
+ * stretched low-resolution picture. Continuous zoom then spends the only
+ * raster channel on another whole-viewport capture of that same camera and
+ * the closer tiles never get a turn. Detail replaces that capture; the final
+ * native density is unchanged. Below 100% the existing preview capture stays. */
+export function zoomDetailInsteadOfViewportPreview(input: {
+  navigating: boolean
+  displayedZoom?: number
+  requestedZoom: number
+}) {
+  const displayed = input.displayedZoom
+  if (!input.navigating || !(input.requestedZoom >= 1) || displayed === undefined || !(displayed > 0)) return false
+  return input.requestedZoom > displayed && !previewCameraScaleWithinLimit(displayed, input.requestedZoom)
+}
+
 export function navigationPreviewDensity(dpr: number, width: number, height: number, native = false, zoom?: number) {
   // Existing viewport/device/working-set admission still runs in the
   // client/kernel/driver; a rejected native request is never relabelled 1x.

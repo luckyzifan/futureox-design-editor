@@ -7,6 +7,7 @@ import {
   NAVIGATION_ZOOM_QUIET_MS,
   NAVIGATION_ZOOM_SAMPLE_MS,
   navigationPreviewDensity,
+  zoomDetailInsteadOfViewportPreview,
   type NavigationZoomSample,
 } from './navigation-zoom'
 
@@ -456,6 +457,17 @@ test('native frame policy retains flushed pointer release and conservative quiet
   const release = owner.update(camera(4, 21.25, -.625), 9, false)
   expect(release.active).toBe(false); expect(release.view).toEqual(camera(4, 21.25, -.625))
   expect(owner.frame(1000)).toBe(release)
+})
+
+test('a fit bitmap stretched past the preview ratio yields the viewport capture to closer tiles', () => {
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: true, displayedZoom: 0.403, requestedZoom: 3.942 })).toBe(true)
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: true, displayedZoom: 0.377, requestedZoom: 1.589 })).toBe(true)
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: true, displayedZoom: 0.403, requestedZoom: 0.7 })).toBe(false)
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: true, displayedZoom: 1, requestedZoom: 2 })).toBe(false)
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: true, displayedZoom: 3.942, requestedZoom: 0.88 })).toBe(false)
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: false, displayedZoom: 0.403, requestedZoom: 3.942 })).toBe(false)
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: true, displayedZoom: 0.403, requestedZoom: 0.9 })).toBe(false)
+  expect(zoomDetailInsteadOfViewportPreview({ navigating: true, requestedZoom: 3.942 })).toBe(false)
 })
 
 test.each([1, 1.25, 2, 3])('native navigation keeps real DPR %s without changing the default or startup density', dpr => {

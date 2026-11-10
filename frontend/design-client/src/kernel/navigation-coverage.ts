@@ -1,5 +1,6 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { navigationPreviewDensity } from './navigation-zoom'
+import { MAX_PREVIEW_SCALE_RATIO } from './tile-preview'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
 
 export type CoverageTile = RasterTile & {
@@ -82,6 +83,10 @@ export type NavigationCoverageFlight<T> = {
   /** Revoke only an unfinished, narrower old navigation capture after quiet.
    * Its original run still owns done and late-payload retirement. */
   cancelObsoleteZoomOut(view: CanvasCamera, width: number, height: number, minimumRatio?: number): boolean
+  /** Revoke an unfinished capture once the live zoom has left the preview
+   * ratio. Keeping it holds the only raster channel on a bitmap that can
+   * only be stretched. A delivered tile and a still-usable capture stay. */
+  cancelStaleZoomIn(view: CanvasCamera, maximumRatio?: number): boolean
   /** Yield an undelivered capture once most of the newest viewport is outside
    * it. A delivered tile and a capture that still covers the view stay.
    * sameZoomOnly leaves a zoom sample running; a same-zoom pan that misses
@@ -105,6 +110,13 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
     get cancellationRequested() { return cancellationRequested },
     finish: () => { pending = undefined; finish() },
     cancelForNative: () => flight.tile === undefined && cancelPending(),
+    cancelStaleZoomIn: (view, maximumRatio = MAX_PREVIEW_SCALE_RATIO) => {
+      const source = pending
+      if (!source || flight.tile !== undefined) return false
+      if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !Number.isFinite(maximumRatio) || maximumRatio < 1) return false
+      if (!(view.zoom > source.zoom * maximumRatio)) return false
+      return cancelPending()
+    },
     cancelObsoleteZoomOut: (view, width, height, minimumRatio = 1) => {
       const source = pending
       if (!source || !Number.isFinite(view.zoom) || view.zoom <= 0 || !(view.zoom < source.zoom) ||
