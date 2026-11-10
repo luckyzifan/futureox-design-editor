@@ -16,21 +16,25 @@ export function ffmpegExecutableName(platform = process.platform) {
   return platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
 }
 
-const LICENSE_COPIES = [
+// Packaged names stay beside the binary. The source tarballs are the
+// corresponding source for this GPL executable, not optional documentation.
+export const FFMPEG_PACKAGE_NOTICES = [
   ['LICENSE.txt', 'ffmpeg-LICENSE.txt'],
+  ['BUILD.txt', 'ffmpeg-BUILD.txt'],
+  ['rebuild.sh', 'ffmpeg-rebuild.sh'],
+  ['COPYING.GPLv2', 'ffmpeg-COPYING.GPLv2'],
   ['COPYING.GPLv3', 'ffmpeg-COPYING.GPLv3'],
   ['COPYING.LGPLv2.1', 'ffmpeg-COPYING.LGPLv2.1'],
+  ['COPYING.LGPLv3', 'ffmpeg-COPYING.LGPLv3'],
+  ['x264-COPYING', 'ffmpeg-x264-COPYING'],
+  ['libvpx-LICENSE', 'ffmpeg-libvpx-LICENSE'],
   ['source.json', 'ffmpeg-source.json'],
-  ['UPSTREAM-README.txt', 'ffmpeg-UPSTREAM-README.txt'],
+  ['sources/ffmpeg-n7.0.2.tar.gz', 'ffmpeg-source-ffmpeg-n7.0.2.tar.gz'],
+  ['sources/libvpx-1.15.2.tar.gz', 'ffmpeg-source-libvpx-1.15.2.tar.gz'],
+  ['sources/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz', 'ffmpeg-source-x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz'],
 ]
 
-const LINUX_NOTICES = [
-  'ffmpeg-LICENSE.txt',
-  'ffmpeg-COPYING.GPLv3',
-  'ffmpeg-COPYING.LGPLv2.1',
-  'ffmpeg-source.json',
-  'ffmpeg-UPSTREAM-README.txt',
-]
+export const LINUX_NOTICES = FFMPEG_PACKAGE_NOTICES.map(([, packaged]) => packaged)
 
 export async function installBundledFfmpeg({
   desktop,
@@ -53,9 +57,17 @@ export async function installBundledFfmpeg({
   const dest = path.join(destDir, exe)
   await copyFile(source, dest)
   if (platform !== 'win32') await chmod(dest, 0o755)
-  for (const [fromName, toName] of LICENSE_COPIES) {
+  for (const [fromName, toName] of FFMPEG_PACKAGE_NOTICES) {
     const from = path.join(sourceDir, fromName)
-    if (existsSync(from)) await copyFile(from, path.join(destDir, toName))
+    if (!existsSync(from)) {
+      if (platform === 'linux' && arch === 'x64') {
+        throw new Error(`Bundled FFmpeg notice is required at ${from}`)
+      }
+      continue
+    }
+    const noticeDest = path.join(destDir, toName)
+    await copyFile(from, noticeDest)
+    if (toName.endsWith('.sh') && platform !== 'win32') await chmod(noticeDest, 0o755)
   }
   return { installed: true, triple, dest }
 }

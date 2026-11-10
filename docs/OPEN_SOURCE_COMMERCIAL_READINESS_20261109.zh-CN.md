@@ -28,7 +28,7 @@
 | P0 历史披露范围 | 当前历史可能包含已从产品输出排除的素材和旧证据，本轮没有完成拟公开历史的逐项复核。 | 明确公开历史范围，核对设计文件、日志、个人路径/凭据及第三方材料；可准备独立的清理后源码快照，不直接改私有仓库可见性或重写现有历史。 |
 | P0 随包依赖 | 此前 locked/offline Cargo metadata 列出 357 个包；本仓库 5 个 crate 的许可元数据已补齐为 MIT。Electron/Chromium、JS、Rust、native 和 vendor 尚无按目标平台闭合的最终包清单。 | 对实际 release 包生成组件、版本、hash、许可与 notice 清单；区分开发依赖与真正分发依赖。旧清单里的 337 为历史计数，不是当前完整清单。MPL 等许可表达式应按实际分发文件履行义务，不能仅凭名称认定不可商用。 |
 | P0/P1 字体与来源映射 | Noto/Poppins、Lucide、MIT/Apache/BSD 等已有保留 notice；Kiwi npm 包缺少原始 LICENSE，已补上游文本，但精确源码版本映射未闭环。 | 保留已有授权文本和 hash；核对每一实际随包组件及修改声明，补 Kiwi 的精确来源映射。 |
-| P0 二进制 FFmpeg | Linux x64 vendor 是 `7.0.2-static`，含 `--enable-gpl --enable-version3 --enable-static --enable-libx264`；由 Rust 启动独立进程。macOS/Windows 当前目录仅有说明。 | 保留该组件的 GPL 文本，并为实际发布的构建闭合完整对应源码、外部库、修改/构建脚本及取得方式；仅有上游版本号和下载链接不足以在此认定完成。见 [FFmpeg 该版本许可](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.0.2/LICENSE.md)和 [GPLv3 对应源码条款](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.0.2/COPYING.GPLv3)。 |
+| P0 二进制 FFmpeg | 2026-11-10 起，仓库里的 Linux x64 可执行文件由 `rebuild.sh` 从 FFmpeg n7.0.2、libvpx 1.15.2 和 x264 `b35605ac` 源码包编出，GPL-3.0-or-later。libx264 与 libvpx 静态链入；glibc 和 libz 仍是系统动态库。macOS/Windows 目录仍只有说明。 | 已随包的这份 Linux 构建要能从源码包、构建脚本、banner 和许可文本对上。独立进程调用不决定其余应用的许可证。见 [Linux FFmpeg 来源](FFMPEG_LINUX_PROVENANCE.md)。 |
 
 详细已存在的来源记录见 [UI_ASSET_PROVENANCE.md](UI_ASSET_PROVENANCE.md) 与 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。本轮保留全部 attribution；没有将来源待核代码/素材重新声明为自有。
 

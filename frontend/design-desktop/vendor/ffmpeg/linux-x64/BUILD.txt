@@ -1,0 +1,32 @@
+Linux x64 FFmpeg build record. Built 2026-11-10.
+
+Compiler: gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+Assembler: NASM version 2.16.01
+Host: Ubuntu 24.04.5, linux x86-64
+
+rebuild.sh produced this binary from the tarballs in sources/. No patches were applied.
+The script's default work directory is /tmp/futureox-ffmpeg-rebuild, and the shipped
+ffmpeg -version configuration line records that prefix.
+
+Sources:
+- FFmpeg n7.0.2, sources/ffmpeg-n7.0.2.tar.gz
+  https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.0.2.tar.gz
+- libvpx 1.15.2, sources/libvpx-1.15.2.tar.gz
+  https://github.com/webmproject/libvpx/archive/refs/tags/v1.15.2.tar.gz
+- x264 commit b35605ace3ddf7c1a5d67a2eb553f034aef41d55
+  sources/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz
+  https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz
+
+libx264 and libvpx are linked into the executable. glibc and libz.so.1 stay dynamic
+system libraries and are not part of this source tree.
+
+The executable is GPL-3.0-or-later because rebuild.sh passes --enable-gpl and
+--enable-version3. x264 is GPL-2.0-or-later. libvpx 1.15.2 is BSD. FFmpeg n7.0.2
+without those switches is LGPL-2.1-or-later. License texts are COPYING.GPLv2,
+COPYING.GPLv3, COPYING.LGPLv2.1, COPYING.LGPLv3, x264-COPYING, and libvpx-LICENSE.
+
+The Rust sidecar spawns this program. It is not linked into Electron or the design
+kernel, and that spawn does not decide the license of the rest of Futureox Design.
+
+This binary replaces the earlier johnvansickle 7.0.2-static executable. That build's
+release-source index did not contain a matching source archive.

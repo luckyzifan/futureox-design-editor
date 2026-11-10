@@ -15,7 +15,7 @@ unavailable there.
 
 | Triple | Packaged name | Status |
 | --- | --- | --- |
-| `linux-x64` | `ffmpeg` | Vendored static GPL build. See `linux-x64/LICENSE.txt`, `source.json`, and `UPSTREAM-README.txt`. Corresponding source is not vendored. |
+| `linux-x64` | `ffmpeg` | GPL-3.0-or-later build from the tarballs in `linux-x64/sources/`. `rebuild.sh` is the build. libx264 and libvpx are static; glibc and libz stay dynamic. |
 | `darwin-arm64` | `ffmpeg` | Not vendored. Place the executable at `darwin-arm64/ffmpeg`. |
 | `darwin-x64` | `ffmpeg` | Not vendored. Place the executable at `darwin-x64/ffmpeg`. |
 | `win32-x64` | `ffmpeg.exe` | Not vendored. Place the executable at `win32-x64/ffmpeg.exe`. |

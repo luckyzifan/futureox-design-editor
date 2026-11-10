@@ -7,15 +7,18 @@ import { ffmpegProvenance } from '../scripts/ffmpeg-provenance.mjs'
 import { DESKTOP_FLOW, buildDesktopFlowReport, inspectReleasePackage } from '../scripts/release-desktop-flow.mjs'
 import { buildComponentInventory } from '../scripts/release-component-inventory.mjs'
 
-test('vendored linux ffmpeg metadata matches and banner execution is platform-specific', () => {
+test('vendored linux ffmpeg matches the rebuilt corresponding source', () => {
   const report = ffmpegProvenance()
   assert.deepEqual(report.problems, [])
   assert.equal(report.bannerChecked, process.platform === 'linux' && process.arch === 'x64')
-  assert.equal(report.correspondingSourceInRepo, false)
-  assert.equal(report.rebuiltFromSource, false)
-  assert.equal(report.releaseSourceIndexContainsThisBuild, false)
+  assert.equal(report.correspondingSourceInRepo, true)
+  assert.equal(report.rebuiltFromSource, true)
   assert.equal(report.confirmedRuntimeFault, false)
-  assert.equal(report.binarySha256, 'e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99')
+  assert.deepEqual(report.sources.map(item => [item.name, item.version, item.sha256]), [
+    ['ffmpeg', 'n7.0.2', '5eb46d18d664a0ccadf7b0adee03bd3b7fa72893d667f36c69e202a807e6d533'],
+    ['libvpx', '1.15.2', '26fcd3db88045dee380e581862a6ef106f49b74b6396ee95c2993a260b4636aa'],
+    ['x264', 'b35605ace3ddf7c1a5d67a2eb553f034aef41d55', 'cd71a7515b0e9a012e1ac9b1f8415bebcaf6fc97d4db32286642ac4c0fbe24f9'],
+  ])
 })
 
 test('a missing release package leaves every desktop step not_run', async () => {
@@ -49,7 +52,8 @@ test('component inventory keeps cargo and electron out of the shipped list', () 
   assert.ok(report.notDistribution.cargoLockNameEntries > 0)
   assert.match(report.notDistribution.note, /not the files inside a release package/)
   assert.equal(report.notices.every(item => item.matchesInventory), true)
-  assert.equal(report.ffmpeg.sha256, 'e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99')
+  assert.equal(report.ffmpeg.sha256, ffmpegProvenance({ runBinary: false }).binarySha256)
   assert.equal(report.ffmpeg.license, 'GPL-3.0-or-later')
+  assert.equal(report.ffmpeg.correspondingSourceInRepo, true)
   assert.ok(report.designMcpSourceCount > 0)
 })

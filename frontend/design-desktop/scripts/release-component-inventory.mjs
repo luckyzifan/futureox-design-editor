@@ -44,6 +44,10 @@ export function buildComponentInventory({ releaseDir = path.join(desktop, 'relea
     .filter(file => file.endsWith('.mjs'))
     .map(file => ({ path: path.relative(repo, file), sha256: sha256File(file) }))
   const ffmpeg = path.join(desktop, 'vendor/ffmpeg/linux-x64/ffmpeg')
+  const ffmpegSourcePath = path.join(desktop, 'vendor/ffmpeg/linux-x64/source.json')
+  const ffmpegSource = existsSync(ffmpegSourcePath)
+    ? JSON.parse(readFileSync(ffmpegSourcePath, 'utf8'))
+    : null
   const lock = readFileSync(path.join(repo, 'design-studio/Cargo.lock'), 'utf8')
   const electron = JSON.parse(readFileSync(path.join(desktop, 'package.json'), 'utf8')).devDependencies.electron
   return {
@@ -65,9 +69,15 @@ export function buildComponentInventory({ releaseDir = path.join(desktop, 'relea
     notices,
     designMcpSourceCount: mcpFiles.length,
     designMcpSources: mcpFiles,
-    ffmpeg: existsSync(ffmpeg)
-      ? { path: 'frontend/design-desktop/vendor/ffmpeg/linux-x64/ffmpeg', sha256: sha256File(ffmpeg), license: 'GPL-3.0-or-later' }
-      : { path: null, sha256: null },
+    ffmpeg: existsSync(ffmpeg) && ffmpegSource
+      ? {
+          path: 'frontend/design-desktop/vendor/ffmpeg/linux-x64/ffmpeg',
+          sha256: sha256File(ffmpeg),
+          license: ffmpegSource.license,
+          correspondingSourceInRepo: ffmpegSource.correspondingSourceInRepo === true,
+          source: 'frontend/design-desktop/vendor/ffmpeg/linux-x64/source.json',
+        }
+      : { path: null, sha256: null, correspondingSourceInRepo: false },
     unmappedReleaseFiles: releasePresent ? 'not enumerated as a closed notice map' : 'no release bundle to map',
   }
 }

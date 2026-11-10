@@ -1,30 +1,83 @@
 {
   "platform": "linux-x64",
   "file": "ffmpeg",
-  "version": "7.0.2-static",
+  "version": "7.0.2",
+  "bannerPrefix": "ffmpeg version 7.0.2 Copyright",
   "license": "GPL-3.0-or-later",
-  "buildId": "edfa98c6c76982e3c1e0bf47fa06c97212951b21",
-  "sha256": "e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99",
-  "byteLength": 79826272,
-  "configuration": "--enable-gpl --enable-version3 --enable-static --disable-debug --disable-ffplay --disable-indev=sndio --disable-outdev=sndio --cc=gcc --enable-fontconfig --enable-frei0r --enable-gnutls --enable-gmp --enable-libgme --enable-gray --enable-libaom --enable-libfribidi --enable-libass --enable-libvmaf --enable-libfreetype --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenjpeg --enable-librubberband --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libvorbis --enable-libopus --enable-libtheora --enable-libvidstab --enable-libvo-amrwbenc --enable-libvpx --enable-libwebp --enable-libx264 --enable-libx265 --enable-libxml2 --enable-libdav1d --enable-libxvid --enable-libzvbi --enable-libzimg",
+  "buildId": "c14244632ea1466c5ff03cc39da18022390ad696",
+  "sha256": "18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317",
+  "byteLength": 5131728,
+  "configuration": "--prefix=/tmp/futureox-ffmpeg-rebuild/prefix --pkg-config-flags=--static --extra-cflags=-I/tmp/futureox-ffmpeg-rebuild/prefix/include --extra-ldflags=-L/tmp/futureox-ffmpeg-rebuild/prefix/lib --extra-libs='-lpthread -lm -ldl' --disable-shared --enable-static --enable-gpl --enable-version3 --disable-debug --disable-doc --disable-ffplay --disable-ffprobe --disable-network --disable-autodetect --enable-zlib --enable-libx264 --enable-libvpx --disable-encoders --enable-encoder='libx264,libvpx_vp9' --disable-decoders --enable-decoder=png --disable-muxers --enable-muxer='mp4,mov,webm,matroska' --disable-demuxers --enable-demuxer=image2 --disable-parsers --enable-parser='png,h264,vp9' --disable-protocols --enable-protocol=file --disable-filters --enable-filter='pad,scale,format' --disable-bsfs --enable-bsf='vp9_superframe,extract_extradata,h264_mp4toannexb'",
+  "dynamicSonames": [
+    "linux-vdso.so.1",
+    "libm.so.6",
+    "libz.so.1",
+    "libc.so.6",
+    "/lib64/ld-linux-x86-64.so.2"
+  ],
   "encodersUsedByApp": [
     "libx264",
     "libvpx-vp9"
   ],
-  "upstreamBuild": "https://johnvansickle.com/ffmpeg/",
-  "upstreamBuildName": "ffmpeg-7.0.2-amd64-static.tar.xz",
-  "obtainedFrom": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz",
-  "obtainedGzSha256": "bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa",
-  "obtainedVerifiedOn": "2026-11-09",
-  "upstreamReadme": "UPSTREAM-README.txt",
-  "upstreamReadmeSha256": "72f4b1b06d419d22ace6e7cc75f06826f90737345aa0b1736158929f4aacc537",
-  "upstreamReadmeAsset": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.README",
-  "copyingGpLv3Sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
-  "upstreamLicenseAsset": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/linux-x64.LICENSE",
-  "ffmpegSourceTag": "n7.0.2",
-  "correspondingSourceInRepo": false,
-  "rebuiltFromSource": false,
-  "releaseSourceIndex": "https://johnvansickle.com/ffmpeg/release-source/",
-  "releaseSourceIndexContainsThisBuild": false,
-  "note": "sha256 matches the uncompressed b6.1.1 ffmpeg-linux-x64.gz asset checked on 2026-11-09. configuration is the banner from this binary. corresponding source for that build was not in the fetched release-source index and is not vendored here."
+  "compiler": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "nasm": "NASM version 2.16.01",
+  "builtOn": "2026-11-10",
+  "rebuildScript": "rebuild.sh",
+  "rebuildScriptSha256": "30f641d3da6fd5b1b3bcd60a9dc386a4e256b265924dd77c2d2be7124908ac56",
+  "buildRecord": "BUILD.txt",
+  "buildRecordSha256": "c3eb24c3e4deae28befed1dcacae0d023226635135c292602fb985aa2ce9cddd",
+  "correspondingSourceInRepo": true,
+  "rebuiltFromSource": true,
+  "sources": [
+    {
+      "name": "ffmpeg",
+      "version": "n7.0.2",
+      "file": "sources/ffmpeg-n7.0.2.tar.gz",
+      "sha256": "5eb46d18d664a0ccadf7b0adee03bd3b7fa72893d667f36c69e202a807e6d533",
+      "obtainedFrom": "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.0.2.tar.gz"
+    },
+    {
+      "name": "libvpx",
+      "version": "1.15.2",
+      "file": "sources/libvpx-1.15.2.tar.gz",
+      "sha256": "26fcd3db88045dee380e581862a6ef106f49b74b6396ee95c2993a260b4636aa",
+      "obtainedFrom": "https://github.com/webmproject/libvpx/archive/refs/tags/v1.15.2.tar.gz"
+    },
+    {
+      "name": "x264",
+      "version": "b35605ace3ddf7c1a5d67a2eb553f034aef41d55",
+      "file": "sources/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz",
+      "sha256": "cd71a7515b0e9a012e1ac9b1f8415bebcaf6fc97d4db32286642ac4c0fbe24f9",
+      "obtainedFrom": "https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz",
+      "license": "GPL-2.0-or-later"
+    }
+  ],
+  "notices": [
+    {
+      "file": "COPYING.GPLv2",
+      "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+    },
+    {
+      "file": "COPYING.GPLv3",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    {
+      "file": "COPYING.LGPLv2.1",
+      "sha256": "b634ab5640e258563c536e658cad87080553df6f34f62269a21d554844e58bfe"
+    },
+    {
+      "file": "COPYING.LGPLv3",
+      "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+    },
+    {
+      "file": "x264-COPYING",
+      "sha256": "32b1062f7da84967e7019d01ab805935caa7ab7321a7ced0e30ebe75e5df1670"
+    },
+    {
+      "file": "libvpx-LICENSE",
+      "sha256": "8267348d5af1262c11d1a08de2f5afc77457755f1ac658627dd9acf71011d615"
+    }
+  ],
+  "independentProcess": true,
+  "note": "Built by rebuild.sh from the vendored tarballs. libx264 and libvpx are static. glibc and libz.so.1 are dynamic system libraries. This replaces the johnvansickle 7.0.2-static binary, whose release-source index did not contain matching sources."
 }
