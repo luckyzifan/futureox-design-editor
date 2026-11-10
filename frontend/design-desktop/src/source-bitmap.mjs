@@ -4,17 +4,20 @@ import {Readable} from 'node:stream'
 import {Worker} from 'node:worker_threads'
 let service, sequence=0
 const requests=new Map()
+// unref only when no sample is queued. A short-lived node --test loop otherwise
+// looks idle and cancels the still-pending reply. Electron can still exit once
+// the queue is empty.
+function pinSampler(){if(service)requests.size?service.ref():service.unref()}
 function sample(file,iw,ih,body,pairs){
  if(requests.size>=8)throw Error('Source sampler busy')
  if(!service){
   const worker=new Worker(new URL('./source-bitmap-samples.mjs',import.meta.url));service=worker
   const lost=()=>{if(service!==worker)return;service=undefined;for(const job of requests.values())job.reject(Error('Source sampler stopped'));requests.clear()}
   worker.on('error',lost);worker.on('exit',lost)
-  worker.on('message',result=>{const job=requests.get(result.id);if(!job)return;requests.delete(result.id);if(result.error)job.reject(Error('Source sample unavailable'));else job.resolve(result.buffer)})
-  worker.unref()
+  worker.on('message',result=>{const job=requests.get(result.id);if(!job)return;requests.delete(result.id);pinSampler();if(result.error)job.reject(Error('Source sample unavailable'));else job.resolve(result.buffer)})
  }
  const id=++sequence
- return new Promise((resolve,reject)=>{requests.set(id,{resolve,reject});try{service.postMessage({id,file,iw,ih,body,pairs})}catch(e){requests.delete(id);reject(e)}})
+ return new Promise((resolve,reject)=>{requests.set(id,{resolve,reject});pinSampler();try{service.postMessage({id,file,iw,ih,body,pairs})}catch(e){requests.delete(id);pinSampler();reject(e)}})
 }
 export async function serveSourceBitmap(request,active,root) {
  const url=new URL(request.url), match=/^\/source-image\/([a-zA-Z0-9-]{1,160})\/([a-f0-9]{64}-([1-9]\d{0,8})x([1-9]\d{0,8}))\.png$/.exec(url.pathname)

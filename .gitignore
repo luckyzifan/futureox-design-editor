@@ -6,7 +6,9 @@
 **/test-results/
 **/playwright-report/
 
-# Local verification/evidence dumps and agent session data (kept on disk only)
+# Local verification dumps stay untracked. Tracked files under testing/ still
+# clone: fig-tools-public and the design oracles restored for kernel tests and
+# design-client tsc. Do not drop this rule to publish local dumps.
 /testing/
 .zcode/
 
