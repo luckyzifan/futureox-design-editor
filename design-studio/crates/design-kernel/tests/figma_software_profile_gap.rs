@@ -2,6 +2,8 @@
 //! No channel tolerance: a pixel either matches the preserved reference or the
 //! case stays outside this gate.
 use futureox_design_kernel::blend::{Pixel, over};
+use futureox_design_kernel::fidelity::resolve_software_sample_planes_2x;
+use futureox_design_kernel::software_raster::sample_bytes;
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde_json::Value;
 
@@ -47,14 +49,49 @@ fn double_quantized_half_mask_is_one_code_below_the_reference_composite() {
     assert_eq!(accepted, [128, 128, 255, 255]);
 }
 
+/// Separable filtering of a two-and-two 0/255 split is 127. The export resolve
+/// rounds the four taps once, to 128, which is what the Chrome crop keeps.
+#[test]
+fn binary_two_and_two_split_uses_one_rounding_of_the_four_taps() {
+    let split = [
+        [255, 255, 255, 255],
+        [0, 0, 0, 255],
+        [255, 255, 255, 255],
+        [0, 0, 0, 255],
+    ];
+    assert_eq!(sample_bytes(split, 128, 128)[0], 127);
+    let mut planes = [[0u8; 16]; 4];
+    for plane in &mut planes {
+        for pixel in plane.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&[0, 0, 0, 255]);
+        }
+    }
+    // Sample plane 2 is the only partial coverage plane at this edge.
+    planes[2].copy_from_slice(&[
+        255, 255, 255, 255, 0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 255,
+    ]);
+    let resolved = resolve_software_sample_planes_2x(
+        [&planes[0], &planes[1], &planes[2], &planes[3]],
+        1,
+        1,
+    );
+    assert_eq!(resolved, [32, 32, 32, 255]);
+}
+
 #[test]
 fn software_profile_matches_the_bit_exact_browser_references() {
     let (root, cases) = references();
     // integer-rectangle and blur-small were already exact. alpha-mask became
     // exact once the mask factor stopped taking a second UNORM rounding.
-    // Glass, backdrop, and texture stay on their own issues. The other misses
-    // are profile-arithmetic gaps and are not given a tolerance here.
-    for id in ["integer-rectangle", "blur-small", "alpha-mask"] {
+    // The black fractional rectangle becomes exact once a 0/255 two-and-two
+    // split takes one rounding of the four taps. Colored edges, gradients,
+    // filters, glass, and texture stay outside this gate with no tolerance.
+    for id in [
+        "integer-rectangle",
+        "fractional-rectangle",
+        "blur-small",
+        "alpha-mask",
+    ] {
         let case = cases.iter().find(|case| case["id"] == id).unwrap();
         let expected = image::open(root.join(case["reference"].as_str().unwrap()))
             .unwrap()

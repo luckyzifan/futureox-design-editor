@@ -117,6 +117,26 @@ pub fn resolve_sample_planes_2x(samples: [&[u8]; 4], width: u32, height: u32) ->
     out
 }
 
+/// A 0/255 neighborhood is four equal coverage taps. Rounding each axis first
+/// sends the two-and-two split to 127; one rounding of the four-tap mean is
+/// 128, which is the code the measured export keeps after byte accumulation.
+/// Other neighborhoods keep the separable byte filter.
+fn software_binary_coverage_sample(pixels: [[u8; 4]; 4]) -> [u8; 4] {
+    if pixels
+        .iter()
+        .all(|pixel| pixel.iter().all(|channel| *channel == 0 || *channel == 255))
+    {
+        return std::array::from_fn(|channel| {
+            let sum = pixels
+                .iter()
+                .map(|pixel| u32::from(pixel[channel]))
+                .sum::<u32>();
+            ((sum + 2) / 4) as u8
+        });
+    }
+    crate::software_raster::sample_bytes(pixels, 128, 128)
+}
+
 /// Same four jitter planes and 2x source density, with byte-precision
 /// horizontal/vertical filtering and separately rounded UNORM blend terms.
 /// This is an explicit arithmetic contract, not an adaptive quality mode.
@@ -135,7 +155,7 @@ pub fn resolve_software_sample_planes_2x(samples: [&[u8]; 4], width: u32, height
                     let i = ((y * 2 + corner / 2) * width as usize * 2 + x * 2 + corner % 2) * 4;
                     premultiplied_bytes(samples[index], i).map(|v| v as u8)
                 });
-                let source = crate::software_raster::sample_bytes(pixels, 128, 128);
+                let source = software_binary_coverage_sample(pixels);
                 let factor =
                     crate::software_raster::encode_unorm8((1.0_f64 / (pass + 1) as f64) as f32);
                 accumulated = crate::software_raster::blend_constant(accumulated, source, factor);
