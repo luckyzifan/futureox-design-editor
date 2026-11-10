@@ -1,4 +1,4 @@
-import {compactSourceAxes,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
+import {compactSourceAxes,hostedDenseByteFrame,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
@@ -659,8 +659,10 @@ export class GpuRenderer {
   private imageAxisFields = 0
   private imageFieldBytes = 0
   private imageAxes = new WeakMap<Texture, boolean>()
-  /** Straight RGBA8 grids selected by VITE_DESIGN_DENSE_SOURCE_BYTES. */
-  private byteSampleTextures = new WeakSet<Texture>()
+  /** Set for the duration of render(). Paint outside a frame is not an exact output. */
+  private outputFrame?: { readback: boolean; present: boolean }
+  /** An interaction frame uploaded the straight grid. The next exact frame drops its cached layer. */
+  private denseBytePainted = false
   private retireInteractionRoots(keep = new Set<GpuNode>()) {
     for (const [key, cached] of this.interactionRoots) if (!keep.has(key)) {
       for (const { texture } of cached.planes) {
@@ -2412,10 +2414,14 @@ export class GpuRenderer {
       new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
     const grid=compactSourceAxes(axes,b,ref.width,ref.height)
     const w=grid?grid.xs.length:2*b.w,h=grid?grid.ys.length:2*b.h
-    // Opt-in only. Managed float compositing normally takes linearImage because
-    // bind() sets u[240]=1. This upload is a straight RGBA8 texture, and paint()
-    // sets u[187] so the shader takes byteImageAddress before that linear branch.
-    const byteSource=import.meta.env.VITE_DESIGN_DENSE_SOURCE_BYTES==='1'&&!grid&&this.scene.nativeInteraction===true&&
+    // Opt-in interaction display. The coordinate field matches the float grid.
+    // pass() marks the texture straight (u[207]=1) so linearImageTexel decodes
+    // it with the same sRGB table before bsBilinear4. u[187] stays 0: the
+    // byte-space branch would skip that decode. Exact frames never upload it.
+    const exactOutput=!!this.outputFrame&&!hostedDenseByteFrame({
+      present:this.outputFrame.present,readback:this.outputFrame.readback,resolve:!!this.scene.resolve,
+      presentation:!!this.scene.presentation,softwareRaster:this.scene.softwareRaster===true})
+    const byteSource=!exactOutput&&import.meta.env.VITE_DESIGN_DENSE_SOURCE_BYTES==='1'&&!grid&&this.scene.nativeInteraction===true&&
       this.scene.interactionRetained===true&&!this.scene.sourceDetailTile&&!this.scene.softwareRaster&&
       this.driver.name==='webgpu'&&!this.driver.hdr&&!this.driver.displayMath&&!imageAdjustActive(p.adjust)&&
       !!this.driver.uploadStraightSrgb8&&w>=256&&!this.overBudget(w*(h+2)*4,w,h+2)
@@ -2430,7 +2436,7 @@ export class GpuRenderer {
       const pixels=grid?readSourceGrid(uri,grid.xs,grid.ys,lut):readDenseSourceGrid(uri,coords,b,ref.width,ref.height,lut)
       return imageAdjustActive(p.adjust)?adjustLinearPremultiplied(pixels,p.adjust):pixels
     },this.driver.uploadLinear,undefined,w*h*16,false)
-    if(byteSource)this.byteSampleTextures.add(image.texture)
+    if(byteSource)this.denseBytePainted=true
     const field=this.materialField(['file-source-axes',...tag],grid?rect(n.rect.x,n.rect.y,Math.max(b.w,b.h),2):n.rect,()=>coords,this.driver.uploadParameters)
     this.imageAxes.set(field.texture,!!grid)
     return {image,field}
@@ -3225,7 +3231,7 @@ export class GpuRenderer {
           regions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
           maxWidth = Math.max(maxWidth, w); maxHeight = Math.max(maxHeight, h)
           const u = parameters(n.rect, mask.rect, image.rect, mask.rect)
-          u[16] = 2; this.configurePaint(u, n, p); this.noteByteImageSample(u, image.texture); u.set([field.rect.x, field.rect.y], 204)
+          u[16] = 2; this.configurePaint(u, n, p); u.set([field.rect.x, field.rect.y], 204)
           this.driver.pass(out.texture, u, [mask.texture, image.texture, mask.texture, field.texture], draw)
           this.passPixels += draw.w * draw.h
         } finally {
@@ -3284,7 +3290,6 @@ export class GpuRenderer {
     const render = () => {
       const out = this.run(2, n.rect, inputs, (u) => {
         this.configurePaint(u, n, p)
-        if (image) this.noteByteImageSample(u, image.texture)
         if (p.kind === 'image' && inputs[3])
           u.set([inputs[3].rect.x, inputs[3].rect.y], 204)
         if(parameterField && p.kind!=='image')u.set([1,parameterField.rect.x-n.rect.x,parameterField.rect.y-n.rect.y,0],188)
@@ -3326,11 +3331,6 @@ export class GpuRenderer {
     // Include resolved color bits: the same authored token can change profile.
     return this.materialField(['gradient-stops', Array.from(values)], rect(0, 0, stops.length, 2),
       () => values, this.driver.uploadParameters, undefined, values.byteLength)
-  }
-  /** Managed bind() forces u[240]=1, which used to hide this branch. The shader
-   *  now takes byteImageAddress whenever u[187] is set, including that case. */
-  private noteByteImageSample(u: Float32Array, texture: Texture) {
-    if (this.byteSampleTextures.has(texture)) u[187] = 1
   }
   private configurePaint(u: Float32Array, n: GpuNode, p: GpuPaint) {
     this.transform(u, n)
@@ -7587,6 +7587,9 @@ export class GpuRenderer {
   async render(scene: GpuScene, readback = false, present = true, isCurrent?: () => boolean, onEncodingProgress?: (drawCalls:number)=>void, displayBackpressure=false, onFinishStarted?:()=>void) {
     // Cancellation requires an explicit encoder-abandon/completion boundary.
     // WebGL and older drivers retain their existing completed-frame checks.
+    const denseFrame=hostedDenseByteFrame({present,readback,resolve:!!scene.resolve,presentation:!!scene.presentation,softwareRaster:scene.softwareRaster===true})
+    if(this.denseBytePainted&&!denseFrame){this.interactionInvalid=true;this.denseBytePainted=false}
+    this.outputFrame={readback,present}
     this.frameCurrent = this.driver.abortFrameAndReleaseFilterScratch ? isCurrent : undefined
     this.displayBackpressure=displayBackpressure&&!readback&&present&&this.driver.name==='webgpu'&&!this.driver.hdr&&!scene.softwareRaster
     this.driver.rasterPacing=this.displayBackpressure&&import.meta.env.VITE_DESIGN_RASTER_QUEUE_PACING!=='0'
@@ -7608,7 +7611,7 @@ export class GpuRenderer {
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
       try { return await this.renderAttempt(scene, readback, present, onFinishStarted) }
       finally { this.prefixAllowed = true; this.nestedPrefixAllowed = true }
-    } finally { this.frameCurrent = undefined; this.displayBackpressure=false; this.driver.rasterPacing=false; this.residentImageRequest=false; this.frameImageReuse=false; this.gradientPhaseRequest=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
+    } finally { this.outputFrame=undefined; this.frameCurrent = undefined; this.displayBackpressure=false; this.driver.rasterPacing=false; this.residentImageRequest=false; this.frameImageReuse=false; this.gradientPhaseRequest=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true, onFinishStarted?:()=>void) {
     this.imageLevels = new WeakMap()
