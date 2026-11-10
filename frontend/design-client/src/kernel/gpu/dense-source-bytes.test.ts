@@ -3,6 +3,7 @@ import {afterEach,expect,test,vi} from 'vitest'
 import {GpuRenderer} from './renderer'
 import type {Driver,GpuScene,Texture} from './types'
 import {inverse} from '../../geometry'
+import type {Matrix} from '../../model'
 import {imageCoordinateSource} from './image-coordinate-source'
 import {hostedDenseByteFrame,noteHostedStraightImage,sampleHostedByteImage} from './source-bitmap-grid'
 import {WebGpuDriver} from './webgpu'
@@ -25,7 +26,7 @@ function fixture(){
  const r=new GpuRenderer(driver as Driver,true,false,undefined,false,false,1024) as any
  r.scene={colorManagement:{documentSpace:'srgb'},floatCompositing:true,nativeInteraction:true,interactionRetained:true,nodes:{}}
  r.sampleIndex=0
- const a=.27,c=Math.cos(a),s=Math.sin(a),matrix=[c,s,-s,c,0,0]
+ const a=.27,c=Math.cos(a),s=Math.sin(a),matrix=[c,s,-s,c,0,0] as Matrix
  const n={id:'rotated-file-image',rect:{x:0,y:0,w:128,h:16},size:[512,512],matrix,inverse:inverse(matrix as any)}
  const p:any={kind:'image',image:'design-app://app/source-image/owned-1/'+ 'a'.repeat(64)+'-512x512.png?samples=1',color:'#000000',fit:'cover',visible:true,blend:'normal'}
  return{r,driver,n,p,texture}
@@ -106,7 +107,7 @@ test('undo restores the coordinate field and an exact readback uses the float gr
  const f=fixture();patternTransport()
  f.p.stops=[];f.p.opacity=1;f.p.angle=0
  const mask={rect:{...f.n.rect},texture:{width:8,height:8,bytes:64,resource:{}} as Texture}
- const pose=f.n.matrix.slice(),poseInverse=f.n.inverse.slice()
+ const pose=[...f.n.matrix] as Matrix,poseInverse=[...f.n.inverse] as Matrix
  f.r.paint(f.n,f.p,mask)
  const firstField=f.driver.uploadParameters.mock.results[0].value as Texture
  const firstBytes=Uint8Array.from(f.driver.uploadStraightSrgb8.mock.calls[0][0] as Uint8Array)
