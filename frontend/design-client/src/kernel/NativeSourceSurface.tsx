@@ -694,7 +694,8 @@ export function NativeSourceSurface(props:Props){
       for(const id of submittedPlacements.keys())if(id<=sequence)submittedPlacements.delete(id)
       release()
       if(p.parked)return
-      const finerThanBacking=!!backing&&shownTiles.some(tile=>tile.zoom>backing.view.zoom*backing.dpr+1e-6)
+      const backingScale=backing?backing.view.zoom*backing.dpr:undefined
+      const finerThanBacking=backingScale!==undefined&&shownTiles.some(tile=>tile.zoom>backingScale+1e-6)
       const wheelAdvance=sent?.wheel && !actual.preview &&
         bitmap && bitmapContext && sent.tiles.length===shownTiles.length &&
         actual.view.x===sent.view.x && actual.view.y===sent.view.y && actual.view.zoom===sent.view.zoom &&
