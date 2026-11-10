@@ -15,7 +15,8 @@ import {acceptTranslatedCoverage,coverageBeyondBacking,releaseInFlightForDemand,
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
-import {densityCertifiesDemand,frameHandoff,settledCoverageChoice} from './frame-handoff'
+import {densityCertifiesDemand,settledCoverageChoice} from './frame-handoff'
+import {acceptFrameClarity,type ViewportCoverage} from './frame-acceptance'
 import {exactTilesBeforeOverview,quietPasteStripAllowed} from './zoom-refinement-policy'
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
@@ -141,6 +142,19 @@ export function NativeSourceSurface(props:Props){
     let coldBudget=1
     let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive,translationFollow=false
     let cpuView:CanvasCamera|undefined
+    // Density and phase are measured on this surface. Revision, camera and
+    // coverage go through the shared receipt, so a stubbed version cannot
+    // certify the frame. Older presentation sequences are dropped before this
+    // helper, which is why the generation pair stays equal.
+    const frameClarity=(sample:CanvasCamera|undefined,nativeDensity:boolean,nativePhase:boolean,coverage:ViewportCoverage)=>
+      acceptFrameClarity({
+        sampleRevision:source.revision,
+        demandRevision:latest.current.source?.revision,
+        sampleCamera:sample,
+        demandCamera:latest.current.view,
+        nativeDensity,nativePhase,coverage,
+        generation:0,acceptedGeneration:0,
+      })
     const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
     let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
     const hover=latest.current.hover
@@ -159,13 +173,10 @@ export function NativeSourceSurface(props:Props){
       const farTiles=backingTiles.some(tile=>!previewCameraScaleWithinLimit(tile.zoom,requested))
       const holed=!!backing?.preview||(backing?.previewGaps?.length??0)>0
       const live=latest.current.view,shown=renderExecutionPolicy.cpuOnly?cpuView:backing?.view
-      const atCamera=!!shown&&shown.x===live.x&&shown.y===live.y&&shown.zoom===live.zoom
       const nativeDensity=renderExecutionPolicy.cpuOnly||backingTiles.length>0&&backingTiles.every(tile=>tile.zoom>=live.zoom*density.current*.999999)
-      const sharp=frameHandoff({
-        sameRevision:true,sameCamera:atCamera,nativeDensity,
-        nativePhase:!farTiles&&element.dataset.previewUpscaleRejected!=='true',
-        viewportCovered:status.phase==='ready'&&!holed,regional:false,
-      })==='screen-ready'
+      const nativePhase=!farTiles&&element.dataset.previewUpscaleRejected!=='true'
+      const coverage:ViewportCoverage=partialMaterials?'partial':status.phase==='ready'&&!holed?'full':'uncovered'
+      const sharp=frameClarity(shown,nativeDensity,nativePhase,coverage).screenReady
       const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}/${Number(farTiles)}/${Number(holed)}/${Number(sharp)}/${live.x}/${live.y}/${live.zoom}`,now=performance.now()
       // A single visible decoded board is enough to keep routine status quiet.
       // Reprojection and final receipts separately require full coverage.
@@ -348,13 +359,17 @@ export function NativeSourceSurface(props:Props){
         if(surface)surface.dataset.sourceCoverageExtend='pan'
       }
       if(complete&&returnReuse)rememberSourceTier(recentNative,p.view.zoom*dpr,new Set(tiles.map(tile=>tile.key)))
+      if(drewStrip||complete)cpuView={...p.view}
+      const cpuFar=backingTiles.some(tile=>!previewCameraScaleWithinLimit(tile.zoom,p.view.zoom*(backing?.dpr||density.current||1)))
+      const cpuReady=complete&&frameClarity(cpuView,true,!cpuFar&&element.dataset.previewUpscaleRejected!=='true',partialMaterials?'partial':'full').screenReady
       if(drewStrip||complete){
-        cpuView={...p.view}
         // CPU never receives a GPU acknowledgement, so the opening thumbnail
         // stayed on top and the pasteboard remained the workspace gray.
-        latest.current.onPresented?.({view:{...p.view},width:p.width,height:p.height,dpr,interaction:false,ids:[],preview:!complete},complete,complete?p.overviewBoxes:undefined)
+        // The bitmap can exist before camera, revision, density and phase all
+        // match; that receipt stays incomplete.
+        latest.current.onPresented?.({view:{...p.view},width:p.width,height:p.height,dpr,interaction:false,ids:[],preview:!complete},cpuReady,cpuReady?p.overviewBoxes:undefined)
       }
-      emit(complete?{phase:'ready',done,total:tiles.length}:{phase:'refining',done,total:tiles.length})
+      emit(cpuReady?{phase:'ready',done,total:tiles.length}:{phase:'refining',done,total:tiles.length})
       if (!moving && !complete && done<tiles.length && tiles.every(tile=>cache.has(tile.key)) && repairDemand!==demandKey()) {
         clearTimeout(repairTimer)
         repairDemand=demandKey()
@@ -839,11 +854,14 @@ export function NativeSourceSurface(props:Props){
       const hasRequestedDensity=visibleTiles.some(t=>t.zoom===expected.scale)
       element.dataset.sourceRenderScale=String(Math.max(0,...visibleTiles.map(t=>t.zoom)))
       element.dataset.sourceVisibleDemandScale=hasRequestedDensity?String(expected.scale):''
-        if(complete && !previewCameraScaleWithinLimit(actual.view.zoom, p.view.zoom)){
+        const scaleMatches=previewCameraScaleWithinLimit(actual.view.zoom,p.view.zoom)
+        const densityMatches=densityCertifiesDemand(shownTiles,p.view.zoom*actual.dpr)
+        const clarityReady=frameClarity(actual.view,densityMatches,scaleMatches&&element.dataset.previewUpscaleRejected!=='true',partialMaterials?'partial':'full').screenReady
+        if(complete && !scaleMatches){
           const total=plan().tiles.length
           const arrived=plan().tiles.filter(tile=>cache.has(tile.key)).length
           emit({phase:'refining',done:arrived,total})
-        }else if(complete && !densityCertifiesDemand(shownTiles,p.view.zoom*actual.dpr)){
+        }else if(complete && !densityMatches){
           // Tile count and a matching camera are not the current sample.
           // sourceRenderScale / sourceReadyCamera from an older frame stay stale.
           delete element.dataset.sourceReadyCamera
@@ -852,7 +870,7 @@ export function NativeSourceSurface(props:Props){
           wanted=undefined
           emit({phase:'refining',done:arrived,total:planned.tiles.length})
           schedulePaint();void run()
-        }else if(complete){
+        }else if(complete && clarityReady){
           const scale=actual.view.zoom*actual.dpr
           const tierKeys=new Set(shownTiles.map(t=>t.key))
           // Overview canvases have no material keys. They still need the wide
@@ -868,12 +886,16 @@ export function NativeSourceSurface(props:Props){
         element.dataset.sourceReadyCamera=JSON.stringify(actual.view)
         planner.presented(actual.view,actual.dpr,actual.width,actual.height)
         const count=plan().tiles.length;emit({phase:'ready',done:count,total:count})
-      }
+        }else if(complete){
+          const planned=plan()
+          const arrived=planned.tiles.filter(tile=>cache.has(tile.key)).length
+          emit({phase:'refining',done:arrived,total:planned.tiles.length})
+        }
       if(!complete&&moving&&zoomingIn&&quality.scale===undefined&&expected.scale<actual.view.zoom*actual.dpr &&
           hasRequestedDensity&&
           planner.presentedDetail(expected.scale)){schedulePaint();void run()}
       if(terminal&&!complete)hover?.refresh?.()
-      latest.current.onPresented?.(actual,complete,shownMaterials)
+      latest.current.onPresented?.(actual,complete&&clarityReady,shownMaterials)
       if(expected.demand===demandKey()&&quality.scale!==undefined){
         if(quality.presented(plan().raster.scale)){schedulePaint();void run()}
         else if(quality.limited){const total=plan().tiles.length;emit({phase:'limited',done:total,total,error:quality.reason})}
@@ -950,8 +972,11 @@ export function NativeSourceSurface(props:Props){
         const rejected=element.dataset.previewUpscaleRejected==='true'
         // A cached motion rung is not the current sample. Ready still requires
         // the exact phase and a density that certifies this camera.
-        const certified=!rejected&&native.exact&&native.tiles.length>0&&arrived===native.tiles.length&&
-          densityCertifiesDemand(cached,latest.current.view.zoom*density.current)
+        const covered=native.tiles.length>0&&arrived===native.tiles.length
+        const certified=frameClarity(latest.current.view,
+          densityCertifiesDemand(cached,latest.current.view.zoom*density.current),
+          !rejected&&native.exact,
+          partialMaterials?'partial':covered?'full':'uncovered').screenReady
         emit(certified?{phase:'ready',done:arrived,total:arrived}:{phase:'refining',done:arrived,total:native.tiles.length})
       }
       try{

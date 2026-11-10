@@ -22,7 +22,8 @@ import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRaster
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
-import { partialSharpSample, viewportPreviewRole } from './frame-handoff'
+import { viewportPreviewRole } from './frame-handoff'
+import { acceptFrameClarity } from './frame-acceptance'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
@@ -734,10 +735,23 @@ export function ProgressiveSurfaceImpl(
     visible: props.visible !== false && !props.paused,
     view: { ...requestedView }, width, height, dpr, displayBudget, residencyBudget, displayed }
   const phaseExact = canvasRasterPhaseMatches(view, dpr, renderScale, renderPhase)
-  const complete = !navigationZoom.active && !displayed?.preview && phaseExact && displayed?.key === frameKey && displayed.document === doc &&
-    stableDensity === detailLevel &&
-    syncedDoc.current === doc && view.x === requestedView.x &&
-    view.y === requestedView.y && view.zoom === requestedView.zoom
+  // Screen-ready is the shared receipt. Navigation, the document object and
+  // the render camera catching the requested camera stay this surface's own
+  // gates; a preview or a key from another phase cannot satisfy them.
+  const clarity = acceptFrameClarity({
+    sampleRevision: displayed?.document === doc ? displayed.revision : undefined,
+    demandRevision: contract.revision,
+    sampleCamera: displayed?.view,
+    demandCamera: requestedView,
+    nativeDensity: stableDensity === detailLevel && phaseExact,
+    nativePhase: phaseExact && displayed?.key === frameKey,
+    coverage: displayed && !displayed.preview ? 'full' : 'uncovered',
+    generation: displayed?.key === frameKey ? 1 : 0,
+    acceptedGeneration: 1,
+  })
+  const complete = !navigationZoom.active && displayed?.document === doc && syncedDoc.current === doc &&
+    view.x === requestedView.x && view.y === requestedView.y && view.zoom === requestedView.zoom &&
+    clarity.screenReady
   const terminalQualityState = useRef({ key: '', complete: false, sequence: 0 })
   if (complete && (!terminalQualityState.current.complete || terminalQualityState.current.key !== frameKey))
     terminalQualityState.current.sequence = ++nextTerminalQualitySequence
@@ -2393,12 +2407,19 @@ export function ProgressiveSurfaceImpl(
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key))
   const partialDetail=progressiveNativeRepair&&residentDisplay&&reusableFrame&&currentPlan&&
     !hdrCompositing&&!cameraDependent&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&!props.interaction?.active&&syncedDoc.current===doc
+  const partialFrame = (tile: PaintedTile, nativeDensity: boolean) => acceptFrameClarity({
+    sampleRevision: tile.document === doc ? tile.revision : undefined,
+    demandRevision: contract.revision,
+    sampleCamera: requestedView,
+    demandCamera: requestedView,
+    nativeDensity,
+    nativePhase: tileHasNativePhase(tile, requestedView, dpr),
+    coverage: 'partial',
+    generation: 1,
+    acceptedGeneration: 1,
+  }).partialSharp
   const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile &&
-    (fullPlanReady||partialDetail&&partialSharpSample({
-      sameRevision: tile.document===doc&&tile.revision===contract.revision,
-      nativeDensity: tile.zoom>=detailLevel,
-      nativePhase: tileHasNativePhase(tile,requestedView,dpr),
-    })&&
+    (fullPlanReady||partialDetail&&partialFrame(tile, tile.zoom>=detailLevel)&&
       !!tile.gpuTile&&previewDevice.current.client===rasterClient&&!!previewDevice.current.key&&
       (!tile.residentDevice||tile.residentDevice.client===rasterClient&&tile.residentDevice.key===previewDevice.current.key))&&
     !!plan?.ids.has(tile.key) && ready.current.has(tile.key) &&
@@ -2719,7 +2740,7 @@ export function ProgressiveSurfaceImpl(
             qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}
           overlay={props.overlay}
           sourceDocument={doc} contentRevision={contract.revision} translationItems={visible.filter(tile=>syncedDoc.current===doc&&ready.current.has(tile.key)&&
-            partialSharpSample({sameRevision:tile.revision===contract.revision,nativeDensity:tile.zoom===detailLevel,nativePhase:tileHasNativePhase(tile,requestedView,dpr)})&&
+            partialFrame(tile, tile.zoom===detailLevel)&&
             (!fullPlanReady||props.interaction?.active||!plan||plan.ids.has(tile.key)))
             .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
           interaction={navigationZoom.active ? undefined : props.interaction?{...props.interaction,navigating:cameraMoving}:undefined} pageId={pageId} rasterProfile={rasterProfile} backend={backend}

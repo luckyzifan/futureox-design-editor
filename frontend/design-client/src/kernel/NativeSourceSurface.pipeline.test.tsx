@@ -78,6 +78,36 @@ test('the visible viewport presents in one frame as soon as its last tile arrive
  expect(statuses.some(value=>value.phase==='ready'&&value.done===4&&value.total===4)).toBe(true)
 })
 
+test('a same-token revision change cannot keep the cached camera sharp',async()=>{
+ const finish=async()=>{
+  for(let guard=0;guard<8;guard++){
+   const job=[...state.jobs].reverse().find(item=>item.active)
+   if(!job)break
+   const base=7100+guard*20
+   await act(async()=>{
+    job.options.tileViewport!.forEach((_,index)=>deliver(job,index,base+index))
+    job.finish();await pause();paint()
+   })
+   if(statuses.at(-1)?.phase==='ready'&&statuses.at(-1)?.sharp)return
+  }
+ }
+ await draw({x:0,y:0,zoom:1})
+ await finish()
+ expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{x:0,y:0,zoom:1}})
+ const revised={...source,revision:4}
+ const cut=statuses.length
+ await draw({x:0,y:0,zoom:2},revised)
+ await draw({x:0,y:0,zoom:1},revised)
+ await act(async()=>{paint();await pause()})
+ const later=statuses.slice(cut)
+ // Pixels still belong to revision 0. The live source is revision 4.
+ // A cached return to the old camera must not be certified sharp.
+ expect(later.some(status=>status.sharp===true)).toBe(false)
+ expect(later.at(-1)?.view?.zoom).toBe(1)
+ expect(later.at(-1)?.sharp).toBe(false)
+ expect(later.some(status=>status.phase==='ready'&&status.sharp===true&&status.view?.zoom===1)).toBe(false)
+})
+
 test('a placeholder ACK cannot certify a viewport or put a partial replacement on screen',async()=>{
  state.preview=true
  await draw();const first=state.jobs[0]
