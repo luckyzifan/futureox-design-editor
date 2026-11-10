@@ -201,7 +201,7 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
     for(const override of r.symbolData?.symbolOverrides||[]) {
       const sourcePath=override.guidPath?.guids || (override.overrideKey?[override.overrideKey]:[])
       const parts=sourcePath.map((g:any)=>guid(g)).filter(Boolean)
-      const resolved = parts.length ? resolveOverridePath(addressesByComponent, records, ids, reverse, componentId, parts) : undefined
+      const resolved: string[] | undefined = parts.length ? resolveOverridePath(addressesByComponent, records, ids, reverse, componentId, parts) : undefined
       const path = resolved?.join('/') || parts.map((part: string) => ids.get(part) || part).join('/') || '$root'
       const targetId = path === '$root' ? componentId : resolved ? resolved.at(-1)! : ''
       const target = doc.nodes[targetId]

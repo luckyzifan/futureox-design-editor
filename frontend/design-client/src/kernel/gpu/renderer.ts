@@ -2437,11 +2437,11 @@ export class GpuRenderer {
     // Hosted interaction samples the straight grid through linearImageTexel.
     // pass() sets u[207]=1 and leaves u[187] at 0, so the shared sRGB table
     // runs before bsBilinear4. Exact frames keep the predecoded float upload.
-    // VITE_DESIGN_DENSE_SOURCE_BYTES=0 is the explicit opt-out.
+    // Keep this experiment opt-in until complete hardware/GUI conformance.
     const exactOutput=!!this.outputFrame&&!hostedDenseByteFrame({
       present:this.outputFrame.present,readback:this.outputFrame.readback,resolve:!!this.scene.resolve,
       presentation:!!this.scene.presentation,softwareRaster:this.scene.softwareRaster===true})
-    const byteSource=!exactOutput&&import.meta.env.VITE_DESIGN_DENSE_SOURCE_BYTES!=='0'&&!grid&&this.scene.nativeInteraction===true&&
+    const byteSource=!exactOutput&&import.meta.env.VITE_DESIGN_DENSE_SOURCE_BYTES==='1'&&!grid&&this.scene.nativeInteraction===true&&
       this.scene.interactionRetained===true&&!this.scene.sourceDetailTile&&!this.scene.softwareRaster&&
       this.driver.name==='webgpu'&&!this.driver.hdr&&!this.driver.displayMath&&!imageAdjustActive(p.adjust)&&
       !!this.driver.uploadStraightSrgb8&&w>=256&&!this.overBudget(w*(h+2)*4,w,h+2)

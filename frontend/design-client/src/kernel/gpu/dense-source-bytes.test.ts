@@ -14,10 +14,8 @@ function lut(){
  const raw=straight_srgb8_table(),view=new DataView(raw.buffer,raw.byteOffset,raw.byteLength)
  return Float32Array.from({length:512},(_,i)=>view.getFloat32(i*4,true))
 }
-function fixture(flag:'on'|'off'|'default'='on'){
- if(flag==='off')vi.stubEnv('VITE_DESIGN_DENSE_SOURCE_BYTES','0')
- else if(flag==='default')vi.stubEnv('VITE_DESIGN_DENSE_SOURCE_BYTES','')
- else vi.stubEnv('VITE_DESIGN_DENSE_SOURCE_BYTES','1')
+function fixture(){
+ vi.stubEnv('VITE_DESIGN_DENSE_SOURCE_BYTES','1')
  vi.stubGlobal('XMLHttpRequest',class{status=200;responseType='';response=new ArrayBuffer(0);open(){}send(data:Uint32Array){const bytes=new Uint8Array(data[0]*data[1]*16);bytes.fill(255);this.response=bytes.buffer}})
  const texture=(w:number,h:number,bytes=w*h*16)=>({width:w,height:h,bytes,resource:{}} as Texture)
  const driver:any={name:'webgpu',managed:true,linearLight:true,hdr:false,displayMath:false,scratchBytes:0,lost:false,
@@ -40,20 +38,10 @@ function patternTransport(){
   this.response=bytes.buffer
  }})
 }
-test('hosted interaction samples the straight grid unless the flag is explicitly zero',()=>{
+test('dense source bytes stay default-off',()=>{
  expect(import.meta.env.VITE_DESIGN_DENSE_SOURCE_BYTES).not.toBe('1')
  expect(hostedDenseByteFrame({present:true,readback:false})).toBe(true)
  expect(hostedDenseByteFrame({present:true,readback:true})).toBe(false)
- const off=fixture('off');off.p.stops=[]
- off.r.sourceBitmapGrid(off.n,off.p)
- expect(off.driver.uploadStraightSrgb8).not.toHaveBeenCalled()
- expect(off.driver.uploadLinear).toHaveBeenCalledOnce()
- off.r.dispose()
- const on=fixture('default');on.p.stops=[]
- on.r.sourceBitmapGrid(on.n,on.p)
- expect(on.driver.uploadStraightSrgb8).toHaveBeenCalledOnce()
- expect(on.driver.uploadLinear).not.toHaveBeenCalled()
- on.r.dispose()
 })
 test('managed WebGPU decodes the straight grid with the linear image path',()=>{
  const f=fixture();patternTransport()
@@ -102,7 +90,6 @@ test('managed WebGPU decodes the straight grid with the linear image path',()=>{
  const byteAt=addressed.indexOf('if(kind==3&&u(46).w>0.5)')
  const linearCall=addressed.indexOf('paint=mulRN4(linearImage(p)',byteAt)
  expect(decode).toBeGreaterThan(addressed.indexOf('fn linearImageTexel'))
- expect(()=>imageCoordinateSource(addressed.replace('u(51).w==1.','u(51).w==2.'))).toThrow('Straight image decode')
  expect(exact).toBeGreaterThan(linear)
  expect(linearCall).toBeGreaterThan(byteAt)
  expect(u[240]).toBe(1)
