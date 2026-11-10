@@ -3199,31 +3199,32 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
                 // ride the fidelity map so export round-trips stay honest.
                 fidelity.push(("importLossy".into(), serde_json::to_string(&style_lossy).unwrap_or_default()));
             }
-            if !fidelity.is_empty() {
-                let mut colors = Map::new();
-                let mut swatches = Map::new();
-                let mut entry = Map::new();
-                for (key, raw) in fidelity {
-                    if key == "updatableColors" || key == "importLossy" {
-                        entry.insert(key, serde_json::from_str(&raw).unwrap_or(Value::Null));
-                    } else if let Some(slot) = key.strip_prefix("sketchAdaptableColor.") {
-                        colors.insert(
-                            slot.into(),
-                            serde_json::from_str(&raw).unwrap_or(Value::Null),
-                        );
-                    } else if let Some(slot) = key.strip_prefix("sketchSwatchID.") {
-                        swatches.insert(slot.into(), Value::String(raw));
-                    }
+            let mut colors = Map::new();
+            let mut swatches = Map::new();
+            let mut entry = Map::new();
+            for (key, raw) in fidelity {
+                if key == "updatableColors" || key == "importLossy" {
+                    entry.insert(key, serde_json::from_str(&raw).unwrap_or(Value::Null));
+                } else if let Some(slot) = key.strip_prefix("sketchAdaptableColor.") {
+                    colors.insert(
+                        slot.into(),
+                        serde_json::from_str(&raw).unwrap_or(Value::Null),
+                    );
+                } else if let Some(slot) = key.strip_prefix("sketchSwatchID.") {
+                    swatches.insert(slot.into(), Value::String(raw));
                 }
-                if !colors.is_empty() {
-                    entry.insert("colors".into(), Value::Object(colors));
-                }
-                if !swatches.is_empty() {
-                    entry.insert("swatchID".into(), Value::Object(swatches));
-                }
-                entry.insert("model".into(), json!({"value":value,"strokes":strokes,"effects":effects}));
-                style_fidelity.insert(style_id.to_string(), Value::Object(entry));
             }
+            if !colors.is_empty() {
+                entry.insert("colors".into(), Value::Object(colors));
+            }
+            if !swatches.is_empty() {
+                entry.insert("swatchID".into(), Value::Object(swatches));
+            }
+            // Every shared style keeps the admitted paint/text model, including
+            // styles with no adaptable-color payload. Export uses it to notice
+            // an edit without rewriting an unchanged foreign definition.
+            entry.insert("model".into(), json!({"value":value,"strokes":strokes,"effects":effects}));
+            style_fidelity.insert(style_id.to_string(), Value::Object(entry));
             let admitted = crate::design_system::SharedStyle {
                 name,
                 kind: kind.into(),
@@ -7646,6 +7647,53 @@ fn baked_curves(
     }
 }
 
+fn shared_style_model(shared: &crate::design_system::SharedStyle) -> Value {
+    json!({"value": shared.value, "strokes": shared.strokes, "effects": shared.effects})
+}
+
+/// Write an edited foreign layer style back into `foreignLayerStyles`.
+/// Unchanged styles keep the imported container bytes. The instance override
+/// remains a shared-style id, so the fill, stroke and effect stay one style.
+fn sync_foreign_paint_styles(document: &mut Value, doc: &Document, images: &mut ExportedImages) -> Result<()> {
+    let Some(system) = doc.design_system.as_ref() else { return Ok(()) };
+    let Some(entries) = document.get_mut("foreignLayerStyles").and_then(Value::as_array_mut) else { return Ok(()) };
+    for entry in entries {
+        let Some(local_id) = entry.pointer("/localSharedStyle/do_objectID").and_then(Value::as_str).map(str::to_owned) else { continue };
+        let Some(shared) = system.styles.get(&local_id) else { continue };
+        if shared.kind != "paint" { continue };
+        let stored = system.sketch_containers.get("sharedStyleFidelity").and_then(|styles| styles.get(&local_id)).and_then(|style| style.get("model"));
+        if stored == Some(&shared_style_model(shared)) { continue };
+        let mut paints = Vec::new();
+        if let Some(values) = shared.value.as_array() {
+            for value in values {
+                let Ok(paint) = serde_json::from_value::<Paint>(value.clone()) else { continue };
+                if let Some(part) = export_paint(&paint, images, [1., 1.])? {
+                    paints.push(part);
+                }
+            }
+        }
+        let mut lossy = Vec::new();
+        let (borders, shadows, inner_shadows, blur, border_options) = export_style_parts(&shared.strokes, &shared.effects, &mut lossy, images, [1., 1.])?;
+        if !lossy.is_empty() {
+            return Err(Error::Unsupported(format!(
+                "Sketch foreign layer style `{local_id}` edit cannot preserve {}; keep the original .sketch file",
+                lossy.join(",")
+            )));
+        }
+        let Some(value) = entry.pointer_mut("/localSharedStyle/value") else { continue };
+        if !value.is_object() {
+            *value = json!({"_class": "style"});
+        }
+        value["fills"] = Value::Array(paints);
+        value["borders"] = Value::Array(borders);
+        value["shadows"] = Value::Array(shadows);
+        value["innerShadows"] = Value::Array(inner_shadows);
+        value["blur"] = blur;
+        value["borderOptions"] = border_options;
+    }
+    Ok(())
+}
+
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
 fn foreign_shared_style_ids(system: &crate::design_system::DesignSystem) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
@@ -8002,10 +8050,10 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             .expect("kernel userInfo object")
             .insert("linearSrgbComposite".into(), json!(true));
     }
-    // P1-13: verbatim document-level containers (sharedSwatches, foreign
-    // style/swatch lists, library metadata) return untouched; foreign
-    // symbols are rebuilt from their local masters, with entries that had
-    // no embedded copy appended raw.
+    // P1-13: document-level containers return as imported. An edited foreign
+    // layer style is written back below; an unchanged one stays byte-identical.
+    // Foreign symbols are rebuilt from their local masters, with entries that
+    // had no embedded copy appended raw.
     if let Some(system) = &doc.design_system {
         for (key, value) in &system.sketch_containers {
             if matches!(
@@ -8028,6 +8076,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             document[key] = value.clone();
         }
     }
+    sync_foreign_paint_styles(&mut document, doc, &mut images)?;
     crate::interop_resources::export_fonts(doc, &mut document)?;
     let mut foreign_symbols = foreign_symbol_export(doc, &mut images)?;
     if let Some(system) = &doc.design_system
