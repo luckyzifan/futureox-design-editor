@@ -142,7 +142,7 @@ try {
   manifest.checks.push('packaged Electron stdio + loopback HTTP discovery, reads and resource revocation')
   manifest.artifacts['app.asar'] = sha(await readFile(archive))
   manifest.artifacts[`sidecar/${binaryName}`] = sha(native)
-  for (const name of ['design-render', 'design-prepare']) {
+  for (const name of ['design-render', 'design-prepare', 'futureox-design-agent']) {
     const filename = `${name}${process.platform === 'win32' ? '.exe' : ''}`
     const packaged = await readFile(path.join(resources, 'bin', filename))
     assert.equal(sha(packaged), sha(await readFile(path.join(desktop, 'dist/bin', filename))), `${name} must match the current build`)

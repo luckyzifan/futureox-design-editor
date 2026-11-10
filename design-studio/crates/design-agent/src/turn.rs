@@ -243,7 +243,7 @@ fn is_read_only(name: &str) -> bool {
 
 fn assistant_label(provider: &Provider) -> String {
     match provider.kind {
-        ProviderKind::Local => "grok-local".into(),
+        ProviderKind::Local => "本机模式".into(),
         ProviderKind::Api => "api".into(),
         ProviderKind::TokenPlan => "token-plan".into(),
         ProviderKind::CcSwitch => "ccswitch".into(),
@@ -291,6 +291,7 @@ mod tests {
         assert!(outcome.items.iter().any(|item| matches!(item, TurnItem::McpToolCall { status: McpToolCallStatus::Completed, .. })));
         assert!(outcome.operations.iter().any(|op| op.method == "page.create"));
         assert!(outcome.summary.contains("秋日特惠") || outcome.items.iter().any(|item| matches!(item, TurnItem::AgentMessage { text, .. } if text.contains("秋日") || text.contains("技能"))));
+        assert_eq!(outcome.assistant, "本机模式");
     }
 
     #[tokio::test]

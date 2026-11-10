@@ -64,6 +64,8 @@ run(
     'futureox-design-gpu',
     '-p',
     'futureox-design-kernel',
+    '-p',
+    'futureox-design-agent',
     ...cargoProfileFlags,
     ...(nativeFeatures.length ? ['--features', nativeFeatures.join(',')] : []),
   ],
@@ -78,13 +80,17 @@ await installSidecar(path.join(target, profile, binary), path.join(output, 'side
 // Native render loop (item ④): the design-render serve-mode binary and the
 // CJK text font land where the main process resolves them (dist in dev,
 // process.resourcesPath when packaged — see src/native-render.mjs).
-// Both native products share one Cargo graph above, avoiding a second kernel
-// build with a different union of dependency features. --debug is explicit.
+// The backend, GPU utilities, and design agent share one Cargo graph above,
+// avoiding a second kernel build with a different union of dependency features.
+// --debug is explicit. The agent is installed beside design-render so the host
+// loads dist/bin (or resources/bin when packaged), not a debug cargo path.
 const renderBinary = `design-render${process.platform === 'win32' ? '.exe' : ''}`
 await mkdir(path.join(output, 'bin'), { recursive: true })
 await installSidecar(path.join(target, profile, renderBinary), path.join(output, 'bin', renderBinary))
 const prepareBinary = `design-prepare${process.platform === 'win32' ? '.exe' : ''}`
 await installSidecar(path.join(target, profile, prepareBinary), path.join(output, 'bin', prepareBinary))
+const agentBinary = `futureox-design-agent${process.platform === 'win32' ? '.exe' : ''}`
+await installSidecar(path.join(target, profile, agentBinary), path.join(output, 'bin', agentBinary))
 const font = path.join(core, 'frontend/design-client/public/fonts/NotoSansSC.ttf')
 await mkdir(path.join(output, 'fonts'), { recursive: true })
 await copyFile(font, path.join(output, 'fonts', 'NotoSansSC.ttf'))
@@ -92,7 +98,7 @@ for (const notice of ['OFL.txt', 'source.json']) {
   await copyFile(path.join(path.dirname(font), notice), path.join(output, 'fonts', notice))
 }
 console.log(
-  `Built ${process.platform}/${process.arch} desktop renderer and Rust sidecar in ${output}`,
+  `Built ${process.platform}/${process.arch} desktop renderer, Rust sidecar, and design agent in ${output}`,
 )
 
 assert.deepEqual(

@@ -47,8 +47,11 @@ Native builds default to `release` (Thin LTO and one codegen unit). `bun run dev
 `--fast` instead, which selects the `desktop-dev` Cargo profile (opt-level 1, no LTO,
 16 codegen units, incremental): much faster compiles at adequate runtime speed for daily
 editing. Use `node scripts/build.mjs --debug` explicitly for a debug native build, and
-`--release` for anything you package. The backend
-and GPU utility are built in one Cargo invocation; generated WASM remains a release build.
+`--release` for anything you package. The backend, GPU utility, and design agent
+are built in one Cargo invocation. The agent is installed at
+`dist/bin/futureox-design-agent` and the host loads that file (`resources/bin`
+when packaged). `DESIGN_AGENT_BIN` still overrides it. Generated WASM remains a
+release build.
 
 ```sh
 bun run build:host

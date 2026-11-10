@@ -3,8 +3,12 @@
 .design-agent-panel { width: 100%; max-height: none; height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .design-agent-header { display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 12px; border-bottom: 1px solid var(--workspace-border); }
 .design-agent-header h2 { margin: 0; flex: 1; font-size: 13px; }
-.design-agent-header button { font-size: 12px; white-space: nowrap; }
-.design-agent-target, .design-agent-composer { flex: none; }
+.design-agent-header button { min-height: 28px; padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+.design-agent-target, .design-agent-composer, .design-agent-mode { flex: none; }
+.design-agent-target, .design-agent-mode { margin: 8px 12px 0; }
+.design-agent-mode { padding: 8px 10px; border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-field); }
+.design-agent-mode.is-local { border-color: color-mix(in srgb, var(--workspace-accent) 40%, var(--workspace-border)); }
+.design-agent-mode.is-error { color: var(--workspace-danger); border-color: var(--workspace-danger); }
 .design-agent-composer { padding: 8px 12px 12px; border-top: 1px solid var(--workspace-border); }
 .design-agent-log { flex: 1; min-height: 0; max-height: none; }
 .design-agent-panel h2 { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -20,7 +24,13 @@
 .design-agent-row.is-user p { background: var(--workspace-selected); border-radius: 10px; padding: 8px 10px; }
 .design-agent-row.is-plan p, .design-agent-row.is-tool p { border-left: 2px solid var(--workspace-accent); padding-left: 8px; }
 .design-ai-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.design-agent-panel .design-ai-actions button,
+.agent-settings .design-ai-actions button { min-height: 32px; padding: 6px 12px; }
 .design-agent-panel .primary { background: var(--workspace-accent); color: white; border: 0; border-radius: 8px; padding: 8px 12px; }
+.design-agent-panel .primary:hover:not(:disabled) { background: var(--workspace-accent-hover); color: white; }
+.design-agent-panel button:disabled,
+.agent-settings button:disabled { opacity: 0.42; cursor: not-allowed; }
+.agent-settings button:hover:not(:disabled) { background: var(--workspace-hover); }
 .design-agent-compare { border-top: 1px solid var(--workspace-border); margin-top: 8px; padding-top: 8px; }
 .design-agent-compare ul { margin: 8px 0 0; padding-left: 18px; max-height: 140px; overflow: auto; }
 .design-agent-file { font-size: 12px; }
