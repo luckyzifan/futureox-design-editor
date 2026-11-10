@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { describePackage } from './release-package-resources.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
@@ -50,8 +51,9 @@ export function buildComponentInventory({ releaseDir = path.join(desktop, 'relea
     : null
   const lock = readFileSync(path.join(repo, 'design-studio/Cargo.lock'), 'utf8')
   const electron = JSON.parse(readFileSync(path.join(desktop, 'package.json'), 'utf8')).devDependencies.electron
+  const described = releasePresent ? describePackage(releaseDir) : null
   return {
-    schema: 1,
+    schema: 2,
     issue: 88,
     classification: 'release_prep',
     confirmedRuntimeFault: false,
@@ -78,7 +80,21 @@ export function buildComponentInventory({ releaseDir = path.join(desktop, 'relea
           source: 'frontend/design-desktop/vendor/ffmpeg/linux-x64/source.json',
         }
       : { path: null, sha256: null, correspondingSourceInRepo: false },
-    unmappedReleaseFiles: releasePresent ? 'not enumerated as a closed notice map' : 'no release bundle to map',
+    unmappedReleaseFiles: releasePresent ? 'js_wasm_native_listed_not_a_closed_sbom' : 'no release bundle to map',
+    packageResources: described
+      ? {
+          status: described.resources.status,
+          evidenceKind: described.evidence.kind,
+          formalRelease: false,
+          signature: 'not_run',
+          profile: described.evidence.profile,
+          packageSha256: described.identity.sha256,
+          installRoot: described.resources.installRoot,
+          counts: described.resources.counts,
+          entries: described.resources.entries,
+          declaredVersusBytes: described.resources.declaredVersusBytes.status,
+        }
+      : { status: 'not_run', reason: 'no release bundle to map', formalRelease: false, entries: [] },
   }
 }
 
@@ -86,10 +102,11 @@ const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPa
 if (invoked) {
   const report = buildComponentInventory()
   const broken = report.notices.filter(item => !item.matchesInventory)
+  const resourceFailed = report.packageResources.status === 'rejected' || report.packageResources.declaredVersusBytes === 'mismatch'
   console.log(JSON.stringify({
     ...report,
     designMcpSources: report.designMcpSourceCount,
     notices: report.notices.map(item => ({ package: item.package, version: item.version, license: item.license, matchesInventory: item.matchesInventory })),
   }, null, 2))
-  process.exit(broken.length ? 1 : 0)
+  process.exit(broken.length || resourceFailed ? 1 : 0)
 }
