@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { desktopText } from '../src/native-locale.mjs'
@@ -78,7 +78,7 @@ test('publish writes the admitted bytes and refuses symlink or silent appended r
   try {
     const bytes = makeFd('written')
     const target = await publishProductExport({ directory: root, basename: '设计.fd', appended: false }, bytes)
-    assert.equal(target, path.join(root, '设计.fd'))
+    assert.equal(target, path.join(await realpath(root), '设计.fd'))
     assert.deepEqual(await readFile(target), bytes)
     assert.deepEqual((await readdir(root)).filter(name => name.startsWith('.futureox-export-')), [])
     const replaced = makeFd('replaced')

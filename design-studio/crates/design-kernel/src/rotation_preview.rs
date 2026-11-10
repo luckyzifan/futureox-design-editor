@@ -216,12 +216,24 @@ pub fn rotation_source_preview_allowed(
     if source.2 <= 0. || source.3 <= 0. {
         return false;
     }
-    !others.iter().any(|other| other.2 > 0. && other.3 > 0. && rotated_hits_rect(source, *other, center, degrees))
+    !others.iter().any(|other| {
+        other.2 > 0. && other.3 > 0.
+            && (rotated_hits_rect(source, *other, center, 0.)
+                || rotated_hits_rect(source, *other, center, degrees))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn original_footprint_cannot_erase_a_neighbor_when_rotation_moves_away() {
+        assert!(!rotation_source_preview_allowed(
+            "#ff0000", 1., false, false, false, false,
+            (0., 0., 100., 10.), (50., 5.), 90., &[(0., 0., 10., 10.)],
+        ));
+    }
 
     #[test]
     fn eight_digit_color_stays_translucent_when_opacity_is_one() {

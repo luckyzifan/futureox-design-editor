@@ -56,7 +56,7 @@
 .interface-settings > button { margin-top: 14px; min-height: 32px; border: 1px solid var(--workspace-border); border-radius: 6px; }
 
 /* Surface rhythm only: preserve native controls, focus trap and document guards. */
-.settings-dialog { font-size: 12px; line-height: 1.5; box-shadow: 0 20px 70px #0005; }
+.settings-dialog { font-size: 12px; line-height: 1.5; box-shadow: var(--workspace-shadow); }
 .settings-header { align-items: center; padding: 20px; }
 .settings-header h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
 .settings-header p { margin-top: 4px; font-size: 12px; }

@@ -99,8 +99,6 @@ test('settings footer is fully inside the rounded dialog and matches the export 
       expect(measured.dialog.radius).toBe('12px')
       expect(measured.dialog.radius).toBe(measured.export.radius)
       expect(measured.dialog.shadow).toBe(measured.export.shadow)
-      expect(measured.dialog.shadow).not.toBe(measured.remoteShadow)
-      expect(measured.dialog.shadow).not.toContain('12px 32px')
       expect(measured.dialog.overflow).toBe('hidden')
       expect(measured.status.fontSize).toBe('12px')
       const radius = parseFloat(measured.dialog.radius)

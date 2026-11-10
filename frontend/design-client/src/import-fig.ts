@@ -100,7 +100,7 @@ export function decodeKiwi(schema: Schema, bytes: Uint8Array): Record<string, an
   const defs = new Map(schema.definitions.map((d) => [d.name, d]))
   if (defs.size !== schema.definitions.length) throw new Error('FIG schema 类型名称重复')
   const bb = new ByteBuffer(bytes)
-  const cursor = bb as ByteBuffer & { _index: number }
+  const cursor = bb as unknown as { _index: number }
   if (!Number.isInteger(cursor._index)) throw new Error('FIG 解码游标不可用')
   let work = 0
   const valueAt = (f: Definition['fields'][number], depth: number): any => {

@@ -1,6 +1,10 @@
 /** English presentation for professional dialogs that still authored their chrome in Chinese.
  * Keys are the existing Chinese UI strings. Authored names, history labels and raw diagnostics are not keys. */
 export const surfaceEnglish: Readonly<Record<string, string>> = Object.freeze({
+  "这个文件里有原生只读预览还不能绘制的内容，确认打开保持禁用。选择的文件保持原样。": "This file contains content that native read-only preview cannot draw yet. Opening stays disabled. The selected file is unchanged.",
+  "可以用兼容格式导入，把图层放进当前画布继续编辑。兼容导入会保留名称、位置、尺寸、颜色和填充透明度；它是可编辑导入，画面以兼容导入结果为准。": "Import a compatibility format to edit the layers on the current canvas. It preserves names, positions, sizes, colors and fill opacity. The editable import determines the resulting appearance.",
+  "用兼容格式导入…": "Import a compatibility format…",
+  "请从文件菜单选择「导入 Sketch / FIG / SVG / PDF」。": "Choose Import Sketch / FIG / SVG / PDF from the file menu.",
   "历史版本": "Version history",
   "关闭历史版本": "Close version history",
   "本机文档库": "Local design library",

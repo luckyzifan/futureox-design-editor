@@ -129,7 +129,7 @@ test('history and prototype preview take initial focus and Escape closes them', 
   })
   const preview = document.querySelector('[role="dialog"]')
   expect(preview?.getAttribute('aria-modal')).toBe('true')
-  expect(preview?.getAttribute('aria-label')).toBe('交互原型预览')
+  expect(preview?.getAttribute('aria-label')).toBe('Prototype preview')
   expect(preview?.contains(document.activeElement)).toBe(true)
   expect(background.closest('[inert]')).toBeTruthy()
   press(document.activeElement!, 'Escape')

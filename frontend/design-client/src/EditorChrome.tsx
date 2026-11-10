@@ -34,7 +34,7 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     const observer = new ResizeObserver(place)
     observer.observe(toolbar); observer.observe(canvas); window.addEventListener('resize', place)
     const mode = shell && typeof MutationObserver === 'function' ? new MutationObserver(place) : undefined
-    mode?.observe(shell, { attributes: true, attributeFilter: ['data-ui-mode'] })
+    if (shell) mode?.observe(shell, { attributes: true, attributeFilter: ['data-ui-mode'] })
     place()
     return () => { observer.disconnect(); mode?.disconnect(); window.removeEventListener('resize', place) }
   }, [])

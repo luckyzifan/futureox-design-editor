@@ -143,10 +143,10 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     return () => { live = false }
   }, [desktop])
 
-  async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[]) {
+  async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[], command?: string) {
     try {
       const manifest = parseRichManifest(JSON.parse(manifestText))
-      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes)
+      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes, command)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       stop()
@@ -216,7 +216,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   }
 
   async function runSample() {
-    await run(samplePlugin.manifestText, samplePlugin.mainSource, samplePlugin.uiHtml, [])
+    await run(samplePlugin.manifestText, samplePlugin.mainSource, samplePlugin.uiHtml, [], 'run')
   }
 
   async function runManifest(grant: string, manifestText: string) {

@@ -154,7 +154,7 @@ function probeHtml() {
 </div>
 <div class="app-shell editor-shell" data-ui-mode="sketch" style="width:1440px;height:120px">
   <div class="header-right"><div class="ui-mode-switch"><button type="button" id="sketch-mode">Sketch</button></div></div>
-  <div class="toolbar floating-toolbar"><div class="tool-group"><button type="button" id="sketch-tool">排</button></div></div>
+  <div class="canvas-workspace"><div class="toolbar floating-toolbar"><div class="tool-group"><button type="button" id="sketch-tool">排</button></div></div></div>
 </div>
 <section class="design-tools export-panel" id="export-dialog"></section>
 <section class="settings-dialog" id="settings-dialog"></section>
@@ -174,7 +174,7 @@ window.__chrome = { viewport: { w: innerWidth, h: innerHeight }, metrics: Object
 }
 
 async function measureChrome() {
-  const binary = ['/opt/google/chrome/chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(existsSync)
+  const binary = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/opt/google/chrome/chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].filter(Boolean).find(existsSync)
   assert.ok(binary, 'Chrome is required to measure computed chrome')
   const dir = await mkdtemp(join(tmpdir(), 'figma-chrome-'))
   const port = 9300 + Math.floor(Math.random() * 600)

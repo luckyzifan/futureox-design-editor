@@ -1986,6 +1986,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const center = d.rotationCenter || { x: d.box.x + d.box.width / 2, y: d.box.y + d.box.height / 2 }
     const plan = node && world && page ? rotationSourcePlan({
       node, world, others, center, degrees: degrees ?? 0, pageBackground: page.background, parent,
+      documentSpace: source.colorManagement?.documentSpace ?? 'srgb',
       grid: state.grid, checkerboard: state.checkerboard, pixelPreview: state.pixelPreview !== 0,
     }) : null
     if (!plan) { dropGestureFollow(); return }

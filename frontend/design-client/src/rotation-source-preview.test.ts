@@ -22,6 +22,7 @@ const base = {
   center,
   degrees: 45,
   pageBackground: '#ffffff',
+  documentSpace: 'srgb' as const,
   parent: null,
   grid: false,
   checkerboard: false,
@@ -126,4 +127,20 @@ test('a neighbor under the rotated footprint blocks the source redraw', () => {
   expect(rotationSourcePlan({
     ...base, node: shape, world: shape.transform, others: [{ x: 40, y: 40, width: 20, height: 20 }],
   })).toBeNull()
+})
+
+test('clearing the original footprint cannot erase another layer', () => {
+  const shape = node('rectangle', 0, 0, 100, 10)
+  expect(rotationSourcePlan({ ...base, node: shape, world: shape.transform,
+    center: { x: 50, y: 5 }, degrees: 90,
+    others: [{ x: 0, y: 0, width: 10, height: 10 }],
+  })).toBeNull()
+})
+
+test('ancestor composition and non-sRGB colors stay on the renderer path', () => {
+  const shape = rect('#ff0000')
+  const parent = node('frame', -100, -100, 300, 300)
+  parent.opacity = 0.5
+  expect(rotationSourcePlan({ ...base, node: shape, world: shape.transform, parent })).toBeNull()
+  expect(rotationSourcePlan({ ...base, node: shape, world: shape.transform, documentSpace: 'display-p3' })).toBeNull()
 })

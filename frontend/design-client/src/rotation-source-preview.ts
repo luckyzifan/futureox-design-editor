@@ -1,4 +1,5 @@
 import type { Bounds, DesignNode, Matrix, Point } from './model'
+import type { ColorSpace } from './color'
 import { isIdentityImageAdjust } from './model'
 import { apply, boxPoints } from './commands/affine'
 import { color_fully_opaque, rotation_source_preview_allowed } from './generated/design-kernel/design_kernel'
@@ -23,6 +24,7 @@ export type RotationSourceInput = {
   center: Point
   degrees: number
   pageBackground: string
+  documentSpace: ColorSpace
   parent: DesignNode | null
   grid: boolean
   checkerboard: boolean
@@ -55,6 +57,9 @@ export function rotationBackdropColor(pageBackground: string, parent: DesignNode
 
 export function rotationSourcePlan(input: RotationSourceInput): RotationSourcePlan | null {
   const { node } = input
+  // CSS paint has sRGB semantics and does not reconstruct ancestor clipping,
+  // masks, opacity or blend isolation. Keep those on the renderer path.
+  if (input.documentSpace !== 'srgb' || input.parent) return null
   if (input.grid || input.checkerboard || input.pixelPreview) return null
   if (!node.visible || !(node.opacity >= 1 - 1e-9) || (node.blend !== 'normal' && node.blend !== 'pass-through')) return null
   if (node.kind !== 'rectangle' && node.kind !== 'frame') return null
