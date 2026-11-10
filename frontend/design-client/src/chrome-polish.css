@@ -18,6 +18,11 @@ body { background: var(--workspace-canvas); }
   border-radius: 14px;
   box-shadow: var(--workspace-shadow);
 }
+/* Export and settings are one dialog material. The export panel also matches
+   .design-tools, whose own shadow is a heavier separate black blur. */
+.design-tools.export-panel {
+  box-shadow: var(--workspace-shadow);
+}
 .editor-shell .floating-toolbar {
   border-radius: 16px;
   box-shadow: 0 8px 28px #1a243314, 0 1px 2px #1a24330d;

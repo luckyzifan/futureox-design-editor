@@ -2349,9 +2349,54 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-hover: #f5f5f5;
   --workspace-field: #f5f5f5;
   --workspace-text: #333333;
-  --workspace-muted: #888888;
+  /* 11–12px labels sit on white and on #f5f5f5 fields. The old mid-gray was
+     about 3.54:1. This shared chrome secondary ink clears 4.5:1 on both. */
+  --workspace-muted: #5d6673;
+}
+.editor-shell[data-ui-mode="figma"] .editor-header .document-title {
+  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-rows: 32px 18px;
+  padding: 6px 10px 6px 14px;
+}
+.editor-shell[data-ui-mode="figma"] .document-title > button[aria-pressed] {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+/* The 48px bar can hold a 32px control. Horizontal padding stays tight so the
+   Figma/Sketch switch does not grow into the canvas. Sketch layout keeps the
+   26px switch so its top toolbar overlap does not get wider. */
+.editor-shell[data-ui-mode="figma"] .header-right .ui-mode-switch button {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+.editor-shell[data-ui-mode="figma"] .header-right .locale-switch select {
+  height: 32px;
+  min-height: 32px;
+}
+.editor-shell[data-ui-mode="figma"] .header-right .local-window-control > button {
+  font-size: 12px;
 }
 .editor-shell[data-ui-mode="figma"] .floating-toolbar { bottom: 12px; left: 50%; transform: translateX(-50%); border-radius: 12px; }
+@media (min-width: 1181px) {
+  .editor-shell[data-ui-mode="figma"] .floating-toolbar {
+    height: auto;
+    min-height: 52px;
+    padding: 6px 8px;
+  }
+  .editor-shell[data-ui-mode="figma"] .floating-toolbar .tool-group > button,
+  .editor-shell[data-ui-mode="figma"] .floating-toolbar .tool-popover > button:not(.tool-picker-arrow) {
+    width: 40px;
+    height: 40px;
+  }
+  .editor-shell[data-ui-mode="figma"] .floating-toolbar .tool-popover > .tool-picker-arrow {
+    height: 40px;
+  }
+}
 .editor-shell[data-ui-mode="figma"] .layers-pages { max-height: 28%; }
 .editor-shell[data-ui-mode="figma"] .properties-content .inspector > section { border-bottom: 1px solid var(--workspace-border); }
 
