@@ -918,12 +918,14 @@ pub(crate) fn shadow_with_filter(
     inner: bool,
 ) -> Result<Surface, String> {
     let alpha = shadow_alpha(surface, filter, spread, inner)?;
-    color_shadow_linear_owned(surface, alpha, color, dx, dy, inner)
+    // An outer shadow sits under the source. An exact-opaque source pixel hides
+    // that shadow, so the returned texel stays the copied source color.
+    color_shadow_linear_owned_impl(surface, alpha, color, dx, dy, inner, true)
 }
 
-// Only the painter may use this variant: its next operation composites the
-// unchanged source normally over the returned outer shadow. Opaque source
-// pixels then prove that the hidden shadow texel cannot affect the result.
+// The painter composites the unchanged source over this result. It uses the
+// same exact-opaque rule as shadow_with_filter, so the hidden shadow texel
+// cannot affect the composite.
 pub(crate) fn shadow_with_filter_for_composite(
     surface:&Surface,color:Pixel,filter:BlurFilter,spread:f64,dx:f64,dy:f64,inner:bool,
 )->Result<Surface,String>{
@@ -1241,16 +1243,7 @@ fn shadow_tap(alpha: &Surface, x: i32, y: i32) -> f32 {
 // against the vertical translation so all nonzero bilinear taps are still
 // original alpha. Stage a complete output row before overwriting any horizontal
 // taps. This preserves the existing sampler, including fractional offsets.
-fn color_shadow_linear_owned(
-    surface: &Surface,
-    alpha: Surface,
-    color: Pixel,
-    dx: f64,
-    dy: f64,
-    inner: bool,
-) -> Result<Surface, String> {
-    color_shadow_linear_owned_impl(surface,alpha,color,dx,dy,inner,false)
-}
+// `occluded` keeps exact-opaque outer-shadow texels as the copied source.
 fn color_shadow_linear_owned_impl(
     surface:&Surface,mut alpha:Surface,color:Pixel,dx:f64,dy:f64,inner:bool,occluded:bool,
 )->Result<Surface,String>{
@@ -1684,7 +1677,7 @@ mod gaussian_scanline_memory_tests {
                 for inner in [false, true] {
                     let color = Pixel::rgba(0.1, 0.7, 0.3, 0.37);
                     let expected = color_shadow_linear(&source, &source, color, dx, dy, inner).unwrap();
-                    let actual = color_shadow_linear_owned(&source, source.try_clone().unwrap(), color, dx, dy, inner).unwrap();
+                    let actual = color_shadow_linear_owned_impl(&source, source.try_clone().unwrap(), color, dx, dy, inner, false).unwrap();
                     for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
                         assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits), "dx={dx}, dy={dy}, inner={inner}");
                     }
