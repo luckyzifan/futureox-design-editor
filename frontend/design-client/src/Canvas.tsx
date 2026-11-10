@@ -129,6 +129,7 @@ import { ERASER_SCREEN_PX } from './vector-eraser'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { moveCanvasFeedback, concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { mountGestureFollow, isolatedGestureCrop, type GestureFollowLayer } from './gesture-follow'
+import { rotationSnapshotCrop, rotationSnapshotOwnsPreview, rotationSnapshotPlan } from './rotation-follow'
 import { retainedBoardPlan } from './retained-board-preview'
 import { interactivePath } from './selection-hierarchy'
 import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input'
@@ -209,7 +210,7 @@ type Drag = {
   lastScreen?: Point
   lastModifiers?: { shift: boolean; alt: boolean; ctrl: boolean; meta: boolean }
   sampledMovement?: boolean
-  followPlan?: ReturnType<typeof retainedBoardPlan>
+  followPlan?: (NonNullable<ReturnType<typeof retainedBoardPlan>> & { hole?: string }) | null
   rotationDegrees?: number
   rotationCenter?: Point
   originalPivot?: Point
@@ -1975,23 +1976,38 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const isolatedRoot = d.ids.length === 1 && editor.parentMap().get(d.ids[0]) === state.page
       const frame = presentedSignal.getSnapshot().frame
       const page = state.doc.pages.find(page=>page.id === state.page)
-      // A rectangular screen crop also contains everything behind a selection.
-      // Nested, overlapping and optical content stays on its actual layer path.
-      d.followPlan = isolatedRoot && page && /^#[a-f0-9]{6}(?:ff)?$/i.test(page.background) &&
-        !state.grid && !state.checkerboard && !state.pixelPreview && frame && !frame.preview &&
+      const shown = !state.grid && !state.checkerboard && !state.pixelPreview && !!frame && !frame.preview &&
         frame.document === state.doc && frame.pageId === state.page && frame.epoch === d.session &&
-        frame.view.x === d.view.x && frame.view.y === d.view.y && frame.view.zoom === d.view.zoom &&
+        frame.view.x === d.view.x && frame.view.y === d.view.y && frame.view.zoom === d.view.zoom
+      // A board crop also contains everything behind that root, so nested and
+      // overlapping boards stay on the layer path. One rotating layer can
+      // still lift the pixels already on screen.
+      const board = isolatedRoot && page && /^#[a-f0-9]{6}(?:ff)?$/i.test(page.background) && shown &&
         entries.length <= 3000 && entries.every(entry=>!state.doc.nodes[entry.id].effects.some(effect=>effect.visible))
           ? retainedBoardPlan(state.doc,state.page,d.ids,{scene:interactionScene,epoch:d.session}) : null
+      // Rotation of one layer, including a large nested image, can lift the
+      // pixels already on screen. Page-wide effects no longer block that.
+      d.followPlan = board || (d.kind === 'rotate' && d.ids.length === 1 && shown
+        ? rotationSnapshotPlan(state.doc, state.page, d.ids[0], entries) : null)
     }
     if (!d.followPlan) return
-    const fitted = isolatedGestureCrop(d.followPlan.box,d.followPlan.others,d.view,matrix,host.current.clientWidth,host.current.clientHeight)
+    const width = host.current.clientWidth, height = host.current.clientHeight
+    // Board moves keep the stricter crop. Rotation may clip a large image to
+    // the visible screen, then lift that part with the pointer.
+    let fitted = d.followPlan.hole
+      ? rotationSnapshotCrop(d.followPlan.box, d.followPlan.others, d.view, matrix, width, height)
+      : isolatedGestureCrop(d.followPlan.box, d.followPlan.others, d.view, matrix, width, height)
+    if (!fitted && d.kind === 'rotate' && !d.followPlan.hole && d.ids.length === 1) {
+      const rotation = rotationSnapshotPlan(state.doc, state.page, d.ids[0], entries)
+      const clipped = rotation && rotationSnapshotCrop(rotation.box, rotation.others, d.view, matrix, width, height)
+      if (rotation && clipped) { d.followPlan = rotation; fitted = clipped }
+    }
     if (!fitted) { d.followPlan=null; dropGestureFollow(); return }
     if (!layer) {
       const mounted = mountGestureFollow(host.current, {
         box: fitted, view:d.view, corners:selectionCorners,
-        hole:d.followPlan.source.pages.find(page=>page.id===state.page)!.background,
-        drawSelection: !gpuOverlay, ids: d.ids,
+        hole: d.followPlan.hole || d.followPlan.source.pages.find(page=>page.id===state.page)!.background,
+        drawSelection: !!d.followPlan.hole || !gpuOverlay, ids: d.ids,
         onDestroy: () => {
           if (gestureFollow.current === mounted) gestureFollow.current = null
           restoreGpuOverlays()
@@ -2347,6 +2363,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // new topology while holding the last complete picture. Ending here would
     // briefly expose the old page, then start a second capture on the next move.
     if (d.kind === 'move' && gpuMove.current?.previewFailure?.()) gpuMove.current.end(editor.state.doc)
+    // The lifted rotation is already following the pointer. Publishing here
+    // changes the document while the backing texture is still the old one, so
+    // the selection is held to that texture and the large image waits to refine.
+    if (rotationSnapshotOwnsPreview(d.kind, gestureFollow.current)) {
+      pendingBoardMove.current = [patches, placement]
+      clearFallbackMove()
+      guidePoses.current.clear()
+      return
+    }
     if (pendingBoardMove.current) { pendingBoardMove.current = null; retainedMove.current?.restore() }
     editor.preview(patches,placement)
     guidePoses.current.clear()

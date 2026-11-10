@@ -1,11 +1,11 @@
-import type { Bounds, DesignDocument, DesignNode, Matrix, Point } from './model'
+import type { Bounds, DesignDocument, Matrix, Point } from './model'
 import { apply, inverse, multiply, boxPoints, bounds } from './commands/affine'
+import { type FollowCamera } from './gesture-follow-frame'
+export { gestureHoleColor, visibleFollowBox, type FollowCamera } from './gesture-follow-frame'
 import { captureBoardFrame } from './retained-board-capture'
 import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { formatAngleDegrees } from './selection-handles'
 import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
-
-export type FollowCamera = { x: number; y: number; zoom: number }
 
 /** Screen-pixel camera. World deltas become the same CSS pixels the snapshot uses. */
 export function followCamera(view: FollowCamera): Matrix {
@@ -41,24 +41,6 @@ export function elementMatrix(warp: Matrix, origin: { x: number; y: number }): M
     b * origin.x + d * origin.y + f - origin.y]
 }
 
-/** Keep the snapshot inside the viewport. The capture rejects any crop that
- * crosses the canvas edge, which would otherwise disable follow for objects
- * near that edge. */
-export function visibleFollowBox(box: Bounds, view: FollowCamera, width: number, height: number): Bounds | null {
-  if (view.zoom <= 0 || width <= 0 || height <= 0) return null
-  const inset = 4 / view.zoom
-  const left = -view.x / view.zoom + inset
-  const top = -view.y / view.zoom + inset
-  const right = (width - view.x) / view.zoom - inset
-  const bottom = (height - view.y) / view.zoom - inset
-  const x = Math.max(box.x, left)
-  const y = Math.max(box.y, top)
-  const farX = Math.min(box.x + box.width, right)
-  const farY = Math.min(box.y + box.height, bottom)
-  if (!(farX - x >= 1) || !(farY - y >= 1)) return null
-  return { x, y, width: farX - x, height: farY - y }
-}
-
 /** Both the lifted crop (including its two CSS pixel capture border) and its
  * destination must be independent of stationary paint in the completed frame. */
 export function isolatedGestureCrop(box: Bounds, others: readonly Bounds[], view: FollowCamera, delta: Matrix,
@@ -70,15 +52,6 @@ export function isolatedGestureCrop(box: Bounds, others: readonly Bounds[], view
   const moved = bounds(boxPoints(crop).map(point=>apply(delta,point)))
   const overlaps = (a: Bounds,b: Bounds) => a.x<b.x+b.width && b.x<a.x+a.width && a.y<b.y+b.height && b.y<a.y+a.height
   if (!others.some(other=>overlaps(crop,other) || overlaps(moved,other))) return box
-}
-
-/** Fill the punched-out snapshot hole. A solid parent frame is closer to what
- * was behind the object than the page color; otherwise use the page. */
-export function gestureHoleColor(document: DesignDocument, pageId: string, parent: DesignNode | undefined): string {
-  const page = document.pages.find(item => item.id === pageId)?.background || '#ffffff'
-  const fill = parent?.fills.find(paint => paint.visible && paint.kind === 'solid' && paint.opacity > 0 &&
-    /^#[\da-fA-F]{6}(?:[\da-fA-F]{2})?$/.test(paint.color))
-  return fill?.color.slice(0, 7) || page
 }
 
 export type GestureFollowLayer = {
