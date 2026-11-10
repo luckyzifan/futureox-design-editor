@@ -1,17 +1,3 @@
-// GPU 密集型优化 - 玻璃效果片元化
-// 将 SDF/法线/折射计算移到 fragment shader
-
-/**
- * Figma 玻璃效果实现：
- * - 四角独立 radii/smoothings/splay
- * - Fragment shader 实时计算 SDF 和法线
- * - 八档色散（chromatic aberration）
- * - 折射采样
- *
- * 当前问题：我们在 CPU 准备字段 → GPU 合成
- * 优化目标：全部在 GPU fragment shader 计算
- */
-
 export interface GlassEffectParams {
   /** 四角圆角半径 */
   cornerRadii: [number, number, number, number]  // [topLeft, topRight, bottomRight, bottomLeft]
@@ -280,21 +266,3 @@ export class GpuGlassRenderer {
     return encoder.finish()
   }
 }
-
-/**
- * 性能对比：
- *
- * CPU 准备 + GPU 合成：
- * - 准备字段：185ms（交互档冷路径）
- * - GPU 合成：2.6ms
- * - 总计：187.6ms
- *
- * 全 GPU fragment shader：
- * - SDF 计算：0.3ms（并行）
- * - 法线计算：0.2ms（并行）
- * - 折射采样：1.5ms
- * - 色散采样：0.6ms
- * - 总计：2.6ms
- *
- * 性能提升：187.6ms → 2.6ms（72× 提升！）
- */
