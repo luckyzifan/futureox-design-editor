@@ -177,3 +177,49 @@ test('a plugin UI crosses the desktop bridge with only the contracted keys', asy
     current.dispose()
   }
 })
+
+test('a plugin that finishes itself with closePlugin restores the panel load entries', async () => {
+  // #207: after the guest called closePlugin the panel kept running=true, so
+  // every load entry stayed disabled until the user pressed Stop plugin.
+  interfacePreference.set({ locale: 'en' })
+  const code = "const r = figma.createRectangle(); r.name = 'QA closed cleanly'; figma.closePlugin('QA done')"
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, name: 'QA', id: 'qa', displayName: 'QA', manifestText, root: '/tmp/qa' }] }),
+      read: async () => ({ status: 'ok' as const, files: { 'code.js': code, 'ui.html': '<!doctype html><p></p>' } }),
+      openUi: async () => ({ status: 'ok' as const }),
+      closeUi: async () => ({ status: 'ok' as const }),
+      postUi: async () => ({ status: 'ok' as const }),
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+      onLaunch: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  const { Editor: EditorClass } = await import('../engine')
+  const { blank } = await import('../model')
+  const current = new EditorClass(blank('Plugin panel'))
+  try {
+    await act(async () => {
+      root.render(<PluginPanel editor={current} desktop={desktop} onClose={() => {}} />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const run = [...document.querySelectorAll('button')].find(button => button.textContent === 'Run')
+    expect(run).toBeTruthy()
+    await act(async () => {
+      run!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await vi.waitFor(() => {
+        const sample = [...document.querySelectorAll('button')].find(button => button.textContent === 'Run sample plugin') as HTMLButtonElement
+        if (!sample || sample.disabled) throw new Error('load entries still disabled')
+      })
+    })
+    expect(Object.values(current.state.doc.nodes).some(node => node.name === 'QA closed cleanly')).toBe(true)
+    expect(document.querySelector('[role="alert"]')?.textContent ?? '').toBe('')
+    const stop = [...document.querySelectorAll('button')].find(button => button.textContent === 'Stop plugin') as HTMLButtonElement
+    expect(stop.disabled).toBe(true)
+    expect(document.body.textContent).toContain('QA done')
+  } finally {
+    current.dispose()
+  }
+})
