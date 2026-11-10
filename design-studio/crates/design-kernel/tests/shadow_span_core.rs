@@ -42,8 +42,6 @@ fn reference(source: &Surface, color: Pixel, sigma: f64, dx: f64, dy: f64) -> Su
     for (i, pixel) in out.pixels.iter_mut().enumerate() {
         let x = source.rect.x + (i % w) as i32;
         let y = source.rect.y + (i / w) as i32;
-        let src = source.pixels[i];
-        if src.0[3] == 1. { *pixel = src; continue; }
         let (sx, sy) = (f64::from(x) - dx, f64::from(y) - dy);
         let (ix, iy) = (sx.floor() as i32, sy.floor() as i32);
         let (u, v) = ((sx - sx.floor()) as f32, (sy - sy.floor()) as f32);
@@ -92,4 +90,13 @@ fn span_core_and_histogram_fallback_match_the_full_box() {
         }
     }
     assert_shadow(&hole, 1.25);
+}
+
+#[test]
+fn public_shadow_returns_shadow_color_under_an_opaque_source() {
+    let mut source = Surface::new(Rect::new(0, 0, 1, 1)).unwrap();
+    source.pixels[0] = Pixel::rgba(0.2, 0.2, 0.2, 1.);
+    let color = Pixel::rgba(0.15, 0.4, 0.7, 0.5);
+    let output = shadow(&source, color, 0., 0., 0., 0., false).unwrap();
+    assert_eq!(output.pixels[0].0.map(f32::to_bits), color.0.map(f32::to_bits));
 }

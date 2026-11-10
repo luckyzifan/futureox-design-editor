@@ -41,6 +41,7 @@ import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { displayImageSource } from './display-image-source'
 import { imageCoordinateSource } from './image-coordinate-source'
+import { noteHostedStraightImage } from './source-bitmap-grid'
 import { IMAGE_RESOLVE_STEP_MODE, imageResolveStepWgsl } from './image-resolve-step'
 import { certifyExactImageRange, imageXTablePlanRange, type ExactImageRange, type ExactImageXTablePlan } from './exact-image-x-table'
 import { ImageXTablePipeline, ImageXTableStorage } from './image-x-table-gpu'
@@ -2886,8 +2887,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     if(u[16]===2 && u[28]===3){
       const range=this.sourceImageSampling&&inputs[1]&&this.immutableImageRange(inputs[1])
       const straight=!!inputs[1]&&this.straightSources?.has(inputs[1])===true
-      u[207]=Number(straight)
-      u[206]=this.sourceImageSampling&&straight||range&&range.unitAlpha&&range.nonnegativeRgb&&range.maximum.every(v=>v<=127)?1:0
+      noteHostedStraightImage(u,straight,this.sourceImageSampling,!!(range&&range.unitAlpha&&range.nonnegativeRgb&&range.maximum.every(v=>v<=127)))
     }
     this.encodePass(target,u,inputs,region,channels,filter,clearOutside)
   }

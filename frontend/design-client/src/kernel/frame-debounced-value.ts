@@ -6,8 +6,12 @@ export class FrameDebouncedValue<T> {
   private current: { value: T } | null = null
   private queued: { value: T } | null = null
   private remaining = -1
+  private readonly delayFrames: number
+  private readonly equals: (a: T, b: T) => boolean
 
-  constructor(private readonly delayFrames = 2, private readonly equals: (a: T, b: T) => boolean = Object.is) {
+  constructor(delayFrames = 2, equals: (a: T, b: T) => boolean = Object.is) {
+    this.delayFrames = delayFrames
+    this.equals = equals
     if (!Number.isSafeInteger(delayFrames) || delayFrames < 1) throw Error('Invalid frame debounce')
   }
 

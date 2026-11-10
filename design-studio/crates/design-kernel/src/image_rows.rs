@@ -7,14 +7,22 @@ use std::io::Cursor;
 
 pub const ROW_PIXELS: usize = 262_144; // at most 4 MiB returned RGBA32F
 pub struct Decoder {
-    reader: png::Reader<Cursor<Vec<u8>>>, settings: ColorSettings,
+    reader: png::Reader<Cursor<Vec<u8>>>, settings: Option<ColorSettings>,
     space: Option<ColorSpace>, profile: Option<Vec<u8>>,
     width: u32, height: u32, row: u32, color: png::ColorType, depth: png::BitDepth, failed: bool,
     transform: Option<image_color::WorkingTransform>,
 }
 impl Decoder {
-    pub fn new(uri: &str, settings: ColorSettings) -> Result<Self, String> {
-        settings.validate()?;
+    /// `null` is an unmanaged document. Parsing it as `ColorSettings` is the
+    /// tile failure `invalid type: null, expected struct ColorSettings`.
+    pub fn from_settings_json(uri: &str, settings: &str) -> Result<Self, String> {
+        let settings = serde_json::from_str(settings).map_err(|e| e.to_string())?;
+        Self::new(uri, settings)
+    }
+    pub fn new(uri: &str, settings: Option<ColorSettings>) -> Result<Self, String> {
+        if let Some(settings) = settings {
+            settings.validate()?;
+        }
         let data = uri.strip_prefix("data:image/png;base64,").ok_or("Row decoding requires PNG")?;
         let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| "Invalid image data")?;
         let space = image_color::png_space(&bytes)?;
@@ -43,6 +51,12 @@ impl Decoder {
         if !matches!(depth, png::BitDepth::Eight | png::BitDepth::Sixteen) || color == png::ColorType::Indexed {
             return Err("PNG rows require expanded 8-bit or 16-bit channels".into());
         }
+        if settings.is_none() && matches!(space, Some(ColorSpace::Pq | ColorSpace::Hlg)) {
+            return Err("HDR bitmap requires a color-managed document; source bytes retained".into());
+        }
+        if settings.is_none() && depth == png::BitDepth::Sixteen {
+            return Err("High-precision bitmap requires a color-managed document; source bytes retained".into());
+        }
         Ok(Self { reader, settings, space, profile, width, height, row: 0, color, depth, failed: false, transform: None })
     }
     pub fn width(&self) -> u32 { self.width }
@@ -52,7 +66,7 @@ impl Decoder {
     pub fn straight_srgb8(&mut self)->Result<Vec<u8>,String>{
         if self.failed||self.row!=0{return Err("PNG row decoder already consumed".into())}
         if self.depth!=png::BitDepth::Eight||self.profile.is_some()||self.space.is_some_and(|v|v!=ColorSpace::Srgb)||
-            self.settings.document_space!=ColorSpace::Srgb||u64::from(self.width)*u64::from(self.height)>16_777_216{return Ok(Vec::new())}
+            self.settings.is_some_and(|s| s.document_space!=ColorSpace::Srgb)||u64::from(self.width)*u64::from(self.height)>16_777_216{return Ok(Vec::new())}
         self.failed=true;
         let mut pixels=Vec::new();pixels.try_reserve_exact(self.width as usize*self.height as usize*4).map_err(|e|e.to_string())?;
         while self.row<self.height{
@@ -137,14 +151,32 @@ impl Decoder {
             _ => return Err("Unsupported PNG row channels".into()),
         }};
         let mut image = decoded.into_rgba32f();
-        if self.transform.is_none() {
-            self.transform=Some(image_color::WorkingTransform::new(self.settings,self.space,self.profile.as_deref())?);
-            // The compiled transform owns its tables; keep no second raw ICC
-            // buffer for the remainder of this row decoder's lifetime.
-            self.profile=None;
+        if let Some(settings) = self.settings {
+            if self.transform.is_none() {
+                self.transform=Some(image_color::WorkingTransform::new(settings,self.space,self.profile.as_deref())?);
+                // The compiled transform owns its tables; keep no second raw ICC
+                // buffer for the remainder of this row decoder's lifetime.
+                self.profile=None;
+            }
+            self.transform.as_mut().unwrap().apply(&mut image)?;
+            for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).0; }
+        } else {
+            // Same unmanaged boundary as paint::decode_bytes: tagged sources
+            // encode back to sRGB, then every texel is quantized to RGBA8.
+            if self.space.is_some() || self.profile.is_some() {
+                if self.transform.is_none() {
+                    self.transform=Some(image_color::WorkingTransform::new(ColorSettings::default(),self.space,self.profile.as_deref())?);
+                    self.profile=None;
+                }
+                self.transform.as_mut().unwrap().apply(&mut image)?;
+                let settings = ColorSettings::default();
+                for pixel in image.pixels_mut() {
+                    let rgb = settings.from_working([f64::from(pixel[0]), f64::from(pixel[1]), f64::from(pixel[2])], ColorSpace::Srgb);
+                    for channel in 0..3 { pixel[channel] = rgb[channel].clamp(0., 1.) as f32; }
+                }
+            }
+            for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).rgba8_quantized().0; }
         }
-        self.transform.as_mut().unwrap().apply(&mut image)?;
-        for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).0; }
         Ok(image.into_raw())
     }
 }
@@ -253,7 +285,7 @@ mod tests {
                 let settings = ColorSettings { document_space: space, reference_white_nits: 203., peak_luminance_nits: 1000. };
                 let mut images = crate::paint::Images::default(); images.set_color_settings(Some(settings));
                 let expected = images.image(&data).unwrap();
-                let mut rows = Decoder::new(&data, settings).unwrap(); let mut actual = Vec::new();
+                let mut rows = Decoder::new(&data, Some(settings)).unwrap(); let mut actual = Vec::new();
                 loop { let part = rows.next_rows().unwrap(); if part.is_empty() { break; } assert!(part.len() <= ROW_PIXELS * 4); actual.extend(part); }
                 let expected: Vec<_> = expected.pixels.iter().flat_map(|p| p.0).map(f32::to_bits).collect();
                 assert_eq!(actual.into_iter().map(f32::to_bits).collect::<Vec<_>>(), expected);
@@ -265,12 +297,12 @@ mod tests {
     fn source_windows_and_straight_srgb_table_reconstruct_the_full_float_upload() {
         let input=uri(17,11,png::ColorType::Rgba);
         let settings=ColorSettings::default();
-        let mut full=Decoder::new(&input,settings).unwrap();
+        let mut full=Decoder::new(&input, Some(settings)).unwrap();
         let reference=full.next_rows().unwrap();
-        let mut crop=Decoder::new(&input,settings).unwrap();
+        let mut crop=Decoder::new(&input, Some(settings)).unwrap();
         let pixels=crop.window(3,4,6,2).unwrap();
         for y in 0..2 {assert_eq!(&pixels[y*24..(y+1)*24],&reference[((y+4)*17+3)*4..((y+4)*17+9)*4]);}
-        let raw=Decoder::new(&input,settings).unwrap().straight_srgb8().unwrap();
+        let raw=Decoder::new(&input, Some(settings)).unwrap().straight_srgb8().unwrap();
         let table=straight_srgb8_table().unwrap();
         let value=|index:usize|f32::from_le_bytes(table[index*4..index*4+4].try_into().unwrap());
         for(i,p)in raw.chunks_exact(4).enumerate(){
@@ -284,7 +316,7 @@ mod tests {
         let settings = ColorSettings { document_space: ColorSpace::Srgb, reference_white_nits: 203., peak_luminance_nits: 1000. };
         let mut images = crate::paint::Images::default(); images.set_color_settings(Some(settings));
         assert!(images.image(&data).err().unwrap().contains("Decoded image budget exceeded"));
-        let mut decoder = Decoder::new(&data, settings).unwrap(); let mut pixels = 0;
+        let mut decoder = Decoder::new(&data, Some(settings)).unwrap(); let mut pixels = 0;
         loop { let part = decoder.next_rows().unwrap(); if part.is_empty() { break; } assert!(part.len() <= ROW_PIXELS * 4); pixels += part.len() / 4; }
         assert_eq!(pixels, 4096 * 2304);
     }
@@ -300,7 +332,7 @@ mod tests {
         let data = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(encoded));
         assert!(data.len() > 12 * 1024 * 1024);
         let settings = ColorSettings { document_space: ColorSpace::Srgb, reference_white_nits: 203., peak_luminance_nits: 1000. };
-        let mut decoder = Decoder::new(&data, settings).unwrap(); let mut count = 0;
+        let mut decoder = Decoder::new(&data, Some(settings)).unwrap(); let mut count = 0;
         loop {
             let strip = decoder.next_rows().unwrap(); if strip.is_empty() { break; }
             assert!(strip.len() <= ROW_PIXELS * 4);
@@ -320,7 +352,7 @@ mod tests {
         let uri=format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(encoded));
         let settings=ColorSettings::default();let mut images=crate::paint::Images::default();images.set_color_settings(Some(settings));
         let reference=images.image(&uri).unwrap();let before=image_color::icc_preparations();
-        let mut decoder=Decoder::new(&uri,settings).unwrap();let mut offset=0;let mut strips=0;
+        let mut decoder=Decoder::new(&uri, Some(settings)).unwrap();let mut offset=0;let mut strips=0;
         loop {let strip=decoder.next_rows().unwrap();if strip.is_empty(){break}strips+=1;
             for (actual,expected) in strip.chunks_exact(4).zip(&reference.pixels[offset..]) {
                 assert_eq!(actual.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),expected.0.map(f32::to_bits));
@@ -343,7 +375,7 @@ mod tests {
             let settings = ColorSettings { document_space: ColorSpace::DisplayP3, reference_white_nits: 203., peak_luminance_nits: 1000. };
             let mut images = crate::paint::Images::default(); images.set_color_settings(Some(settings));
             let reference = images.image(&data).unwrap();
-            let mut decoder = Decoder::new(&data, settings).unwrap(); let mut offset = 0;
+            let mut decoder = Decoder::new(&data, Some(settings)).unwrap(); let mut offset = 0;
             loop {
                 let strip = decoder.next_rows().unwrap(); if strip.is_empty() { break; }
                 for (actual, expected) in strip.chunks_exact(4).zip(&reference.pixels[offset..]) {
@@ -361,7 +393,7 @@ mod tests {
         let reference = images.image(&uri(256, 1, png::ColorType::Grayscale)).unwrap();
         for (width, height) in [(17, 8193), (4097, 4096)] {
             let data = uri(width, height, png::ColorType::Grayscale);
-            let mut decoder = Decoder::new(&data, settings).unwrap();
+            let mut decoder = Decoder::new(&data, Some(settings)).unwrap();
             assert_eq!((decoder.width(), decoder.height()), (width, height));
             let mut count = 0;
             loop {
@@ -387,8 +419,45 @@ mod tests {
         bytes.truncate(bytes.len() - 9);
         let data = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
         let settings = ColorSettings { document_space: ColorSpace::Srgb, reference_white_nits: 203., peak_luminance_nits: 1000. };
-        let mut decoder = Decoder::new(&data, settings).unwrap();
+        let mut decoder = Decoder::new(&data, Some(settings)).unwrap();
         assert!(decoder.next_rows().is_err());
         assert!(decoder.next_rows().is_err());
+    }
+    #[test]
+    fn null_color_settings_json_opens_unmanaged_rows_and_does_not_linearize() {
+        let data = uri(8, 4, png::ColorType::Rgba);
+        let rejected = serde_json::from_str::<ColorSettings>("null").unwrap_err().to_string();
+        assert!(
+            rejected.contains("invalid type: null, expected struct ColorSettings"),
+            "{rejected}"
+        );
+        let mut unmanaged = Decoder::from_settings_json(&data, "null").unwrap();
+        let mut actual = Vec::new();
+        loop {
+            let part = unmanaged.next_rows().unwrap();
+            if part.is_empty() { break; }
+            actual.extend(part);
+        }
+        let mut images = crate::paint::Images::default();
+        images.set_color_settings(None);
+        let expected = images.image(&data).unwrap();
+        assert_eq!(
+            actual.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            expected.pixels.iter().flat_map(|p| p.0).map(f32::to_bits).collect::<Vec<_>>()
+        );
+        let mut managed = Decoder::new(&data, Some(ColorSettings::default())).unwrap();
+        let mut linear = Vec::new();
+        loop {
+            let part = managed.next_rows().unwrap();
+            if part.is_empty() { break; }
+            linear.extend(part);
+        }
+        assert_ne!(
+            actual.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            linear.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+        );
+        let straight = Decoder::from_settings_json(&data, "null").unwrap().straight_srgb8().unwrap();
+        assert_eq!(straight.len(), 8 * 4 * 4);
+        assert!(Decoder::from_settings_json(&data, "null").unwrap().window(1, 1, 2, 2).is_ok());
     }
 }

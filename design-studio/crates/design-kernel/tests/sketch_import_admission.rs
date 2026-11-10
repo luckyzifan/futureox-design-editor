@@ -336,7 +336,14 @@ fn transparent_gradient_stops_render_translucent_pixels_and_export_source_alpha(
         &[("p", page("p", vec![rectangle]))],
     );
     let report = interop::import_sketch_report(&bytes).unwrap();
-    assert_eq!(report.document.color_management.is_some(), color_space == 1);
+    assert!(report.document.color_management.is_none());
+    let exported_doc: Value = serde_json::from_slice(
+        interop::read_zip_public(&interop::export_sketch(&report.document).unwrap()).unwrap()
+            .get("document.json")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(exported_doc["colorSpace"], color_space);
     let paint = &report.document.nodes["fade"].fills[0];
     assert_eq!(paint.kind, "linear");
     assert!(paint.stops[0].color.ends_with("/ 0)"));
@@ -584,9 +591,37 @@ fn native_text_behaviour_uses_shared_sizing_and_retains_source_text_metadata() {
 
 #[test]
 fn import_any_reports_archive_limits_instead_of_marker_miss() {
-    // Archive admission scales with the process memory budget; pin a small
-    // one so this binary deterministically refuses the oversized entry.
-    let _ = futureox_design_kernel::capacity::configure(64 * 1024 * 1024);
+    // Archive admission scales with the process memory budget. Sibling tests
+    // pin that OnceLock first, and a swallowed configure() then leaves the
+    // host budget in place: the 17MiB deflate entry passes the entry window
+    // and fails the ratio guard. Own a fresh process so the 64MiB pin is real.
+    const CHILD: &str = "CORE_SKETCH_ARCHIVE_LIMIT_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "import_any_reports_archive_limits_instead_of_marker_miss",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("CORE_DOCUMENT_MEMORY_BYTES", (64 * 1024 * 1024).to_string())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    futureox_design_kernel::capacity::configure(64 * 1024 * 1024)
+        .expect("pins the process budget");
+    assert_eq!(
+        futureox_design_kernel::capacity::memory_budget_bytes(),
+        64 * 1024 * 1024,
+        "admission must be judged against the pinned 64MiB budget"
+    );
     let oversized = vec![b' '; 17 * 1024 * 1024];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (name, body) in [
@@ -610,5 +645,69 @@ fn import_any_reports_archive_limits_instead_of_marker_miss() {
             assert!(message.contains("markers"), "{message}");
         }
         other => panic!("expected marker miss, got {other:?}"),
+    }
+}
+
+#[test]
+fn sketch_absolute_size_zero_scale_roundtrips_and_native_zero_does_not() {
+    let scales_of = |doc: &futureox_design_kernel::scene::Document| {
+        doc.nodes
+            .values()
+            .find(|n| !n.export_settings.is_empty())
+            .unwrap()
+            .export_settings
+            .iter()
+            .map(|s| s.scale)
+            .collect::<Vec<_>>()
+    };
+    let layer = json!({
+        "_class":"rectangle","do_objectID":"n","name":"n",
+        "frame":{"x":0,"y":0,"width":40,"height":30},
+        "exportOptions":{"_class":"exportOptions","exportFormats":[
+            {"_class":"exportFormat","absoluteSize":0,"fileFormat":"png","name":"@detail","namingScheme":0,"scale":2.5,"visibleScaleType":0},
+            {"_class":"exportFormat","absoluteSize":100,"fileFormat":"jpg","name":"","namingScheme":0,"scale":0,"visibleScaleType":1},
+            {"_class":"exportFormat","absoluteSize":300,"fileFormat":"jpg","name":"-tall","namingScheme":0,"scale":0,"visibleScaleType":2}
+        ]}
+    });
+    let bytes = archive(
+        json!({"pages":[{"_ref":"pages/p"}]}),
+        &[("p", page("p", vec![layer]))],
+    );
+    let report = interop::import_sketch_report(&bytes).unwrap();
+    report.document.validate().unwrap();
+    let scales = scales_of(&report.document);
+    assert_eq!(scales, vec![2.5, 0., 0.]);
+    let encoded = interop::export_sketch(&report.document).unwrap();
+    let again = interop::import_sketch_report(&encoded).unwrap();
+    again.document.validate().unwrap();
+    assert_eq!(scales_of(&again.document), scales);
+    let mut native = again.document;
+    native
+        .design_system
+        .as_mut()
+        .unwrap()
+        .sketch_containers
+        .remove("nodeMetadata");
+    assert_eq!(
+        native.validate().unwrap_err(),
+        "Invalid layer export settings"
+    );
+    let multiplier = json!({
+        "_class":"rectangle","do_objectID":"n",
+        "frame":{"x":0,"y":0,"width":40,"height":30},
+        "exportOptions":{"exportFormats":[
+            {"_class":"exportFormat","fileFormat":"png","name":"","scale":0,"visibleScaleType":0}
+        ]}
+    });
+    let bad = archive(
+        json!({"pages":[{"_ref":"pages/p"}]}),
+        &[("p", page("p", vec![multiplier]))],
+    );
+    match interop::import_sketch_report(&bad) {
+        Err(interop::Error::InvalidDocument(message)) => {
+            assert!(message.contains("Invalid layer export settings"), "{message}");
+        }
+        Err(error) => panic!("expected zero multiplier rejection, got {error}"),
+        Ok(_) => panic!("expected zero multiplier rejection, import succeeded"),
     }
 }

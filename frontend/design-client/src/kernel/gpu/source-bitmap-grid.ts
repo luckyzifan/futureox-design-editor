@@ -59,10 +59,11 @@ export function readDenseSourceGrid(uri:string,field:Float32Array,b:Rect,iw:numb
  return out
 }
 
-// Straight RGBA8 of the same 2× tap grid as the linear fetch. Valid field
-// texels become byteImageAddress records: xy is the bilinear sample point in
-// this byte texture, z=1 is the shader validity flag. Invalid cells stay at
-// z=0 so the byte branch writes zero instead of a border texel.
+// Straight RGBA8 of the same 2× tap grid as the linear fetch. Coordinates stay
+// in that fetch's layout: xy is the integer 2× cell, zw is the original
+// fraction. Hosted WebGPU decodes these bytes with the sRGB table inside
+// linearImageTexel and filters them with the same bsBilinear4. Invalid cells
+// remain -2 so every tap is outside the texture and contributes zero.
 export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw:number,ih:number){
  const width=b.w*2,height=b.h*2,out=new Uint8Array(width*height*4)
  const bandRows=Math.max(1,Math.floor(8192/b.w))
@@ -73,11 +74,7 @@ export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw
    if(x===-2)continue
    if(!Number.isInteger(x)||!Number.isInteger(v)||x<0||v<0||x>=iw||v>=ih)throw Error('Invalid source image cell')
    data[2+i*2]=x;data[3+i*2]=v
-   const fx=field[off+2],fy=field[off+3]
-   field[off]=2*(i%b.w)+(Number.isFinite(fx)?fx:0)
-   field[off+1]=2*(y+Math.floor(i/b.w))+(Number.isFinite(fy)?fy:0)
-   field[off+2]=1
-   field[off+3]=0
+   field[off]=2*(i%b.w);field[off+1]=2*(y+Math.floor(i/b.w))
   }
   const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&pairs=1',false);xhr.responseType='arraybuffer';xhr.send(data)
   if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==b.w*h*16)throw Error('无法读取旋转图片的原始采样区域')
@@ -85,8 +82,22 @@ export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw
  }
  return out
 }
-/** vector.wgsl `at` + `smpBytesIndex` for a byte texture whose rect origin is
- *  (0,0). `round(unorm*255)` is the stored byte. The paint path divides by 255. */
+/** Interaction display may upload the straight grid. Exact readback, an
+ *  unpresented reference, resolve, presentation and software raster stay on
+ *  the float grid. */
+export function hostedDenseByteFrame(frame:{present:boolean;readback:boolean;resolve?:boolean;presentation?:boolean;softwareRaster?:boolean}){
+ return frame.present&&!frame.readback&&frame.resolve!==true&&frame.presentation!==true&&frame.softwareRaster!==true
+}
+/** Managed paint uniforms for a straight RGBA8 image. u[207] selects the
+ *  table decode in linearImageTexel. u[206] is the separate source-detail
+ *  mix, and this helper never enables the byte-space u[187] branch. */
+export function noteHostedStraightImage(u:Float32Array,straight:boolean,sourceDetailSampling:boolean,certifiedRange:boolean){
+ if(u[16]!==2||u[28]!==3)return
+ u[207]=straight?1:0
+ u[206]=sourceDetailSampling&&straight||certifiedRange?1:0
+}
+/** Byte-space mix used by `smpBytesIndex`. The hosted straight grid does not
+ *  take that branch; tests use this as the unequal negative control. */
 export function sampleHostedByteImage(bytes:Uint8Array,width:number,height:number,x:number,y:number):[number,number,number,number]{
  const at=(px:number,py:number)=>{
   const ix=Math.floor(px),iy=Math.floor(py)

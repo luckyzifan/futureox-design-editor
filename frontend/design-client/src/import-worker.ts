@@ -1,7 +1,7 @@
 import { assertImportInputBytes } from './import-input-policy'
 import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
-import { fontDownloadFor, matchBundledImportFonts } from './bundled-import-fonts'
+import { abeezeeLineBreakDiagnostic, fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
 type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
@@ -62,19 +62,15 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       importStage = 233 // decode
       const result=importFig(bytes,event.data.name)
       const fonts=await matchBundledImportFonts(result.document)
-      result.warnings=result.warnings.filter(warning=>{
-        const family=/^字体 (.+) 尚需匹配，已保留文字内容$/.exec(warning)?.[1]
-        if(!family) return true
-        if(fonts.substitutions.some(item=>item.from===family||item.from.startsWith(family+' ')||item.from.startsWith(family+'-'))) return false
-        return !fonts.families.includes(family)||fonts.missing.some(name=>name===family||name.startsWith(family+'-')||name.startsWith(family+' '))
-      })
+      result.warnings=retainedFontWarnings(result.warnings, fonts)
       for(const item of fonts.substitutions){
         const message=`字体 ${item.from} 没有同名文件，已用 ${item.face} 显示`
         if(!result.warnings.includes(message)) result.warnings.push(message)
       }
       for(const name of fonts.missing){
+        const specific=abeezeeLineBreakDiagnostic(name)
         const link=fontDownloadFor(name)
-        const message=link?`字体 ${name} 未捆绑。许可 ${link.license}，下载：${link.url}`:`字体 ${name} 未捆绑，文字已保留，显示用当前回退。`
+        const message=specific??(link?`字体 ${name} 未捆绑。许可 ${link.license}，下载：${link.url}`:`字体 ${name} 未捆绑，文字已保留，显示用当前回退。`)
         if(!result.warnings.includes(message)) result.warnings.push(message)
       }
       self.postMessage({ result })

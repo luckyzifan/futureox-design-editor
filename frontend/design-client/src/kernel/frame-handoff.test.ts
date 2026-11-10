@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { acceptNativeSample, densityCertifiesDemand, frameHandoff, settledCoverageChoice } from './frame-handoff'
+import { acceptNativeSample, densityCertifiesDemand, frameHandoff, partialSharpSample, settledCoverageChoice } from './frame-handoff'
 
 const ready = {
   sameRevision: true,
@@ -47,4 +47,12 @@ test('a stale high zoom does not certify the current low-zoom sample', () => {
   expect(strip.tiles.map(tile => tile.key)).toEqual(['strip'])
   expect(strip.certify).toBe(true)
   expect(strip.continuity).toBe(true)
+})
+
+test('a regional sample is partial-sharp and never screen-ready', () => {
+  expect(partialSharpSample({ sameRevision: true, nativeDensity: true, nativePhase: true })).toBe(true)
+  expect(partialSharpSample({ sameRevision: false, nativeDensity: true, nativePhase: true })).toBe(false)
+  expect(partialSharpSample({ sameRevision: true, nativeDensity: false, nativePhase: true })).toBe(false)
+  expect(partialSharpSample({ sameRevision: true, nativeDensity: true, nativePhase: false })).toBe(false)
+  expect(frameHandoff({ ...ready, regional: true, viewportCovered: true })).not.toBe('screen-ready')
 })

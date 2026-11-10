@@ -44,6 +44,23 @@ export function acceptNativeSample(input: {
   return input.sameRevision && input.nativeDensity && input.nativePhase
 }
 
+/** Partial sharp is the regional verdict. The caller still owns camera identity:
+ * this only promotes a sample whose revision, density and phase already match. */
+export function partialSharpSample(input: {
+  sameRevision: boolean
+  nativeDensity: boolean
+  nativePhase: boolean
+}) {
+  return frameHandoff({
+    sameRevision: input.sameRevision,
+    sameCamera: true,
+    nativeDensity: input.nativeDensity,
+    nativePhase: input.nativePhase,
+    viewportCovered: false,
+    regional: true,
+  }) === 'partial-sharp'
+}
+
 export function frameHandoff(input: {
   sameRevision: boolean
   sameCamera: boolean

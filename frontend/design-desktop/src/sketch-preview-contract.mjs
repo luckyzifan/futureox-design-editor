@@ -109,12 +109,18 @@ export function admitSketchPreview(frameJson, expectedOwner, expectedRevision = 
   is(['kernel_id', 'document_schema', 'document_id', 'session_epoch'].every(key => owner[key] === expectedOwner[key]))
   integer(expectedRevision, Number.MAX_SAFE_INTEGER); is(frame.revision === expectedRevision); name(frame.page_id)
   const s = record(frame.scene, ['softwareRaster','floatCompositing','colorManagement','colors','backdropSamples','coherentSamples','integratedBlur','curves','version','width','height','extent','background','transparent','grid','view','roots','nodes','vertices'])
-  is(s.version === 7 && s.width === 512 && s.height === 384 && s.floatCompositing === true && s.integratedBlur === true)
+  is(s.version === 7 && s.width === 512 && s.height === 384 && s.integratedBlur === true)
   is(s.softwareRaster === false && s.backdropSamples === false && s.coherentSamples === false && s.transparent === true && s.grid === false && s.background === '#00000000')
   is(sameRect(rect(s.extent), { x: 0, y: 0, w: 512, h: 384 }))
   record(s.view, ['x','y','zoom']); is(s.view.x === 0 && s.view.y === 0 && s.view.zoom === 1)
-  record(s.colorManagement, ['documentSpace','referenceWhiteNits','peakLuminanceNits'])
-  is(s.colorManagement.documentSpace === 'srgb' && s.colorManagement.referenceWhiteNits === 203 && s.colorManagement.peakLuminanceNits === 1000)
+  // Explicit linearSrgbComposite previews stay managed. Encoded Sketch previews
+  // omit colorManagement and must not be treated as that linear document.
+  const linear = s.floatCompositing === true
+  is(linear || s.floatCompositing === false)
+  if (linear) {
+    record(s.colorManagement, ['documentSpace','referenceWhiteNits','peakLuminanceNits'])
+    is(s.colorManagement.documentSpace === 'srgb' && s.colorManagement.referenceWhiteNits === 203 && s.colorManagement.peakLuminanceNits === 1000)
+  } else is(s.colorManagement == null)
   empty(s.vertices)
   is(Array.isArray(s.curves) && s.curves.length <= 262144 && s.curves.length % 4 === 0); s.curves.forEach(v => number(v))
   is(s.nodes && typeof s.nodes === 'object' && !Array.isArray(s.nodes))

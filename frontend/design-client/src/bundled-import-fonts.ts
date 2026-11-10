@@ -47,14 +47,36 @@ function nearestBundled(name: string): Face | undefined {
     : ''
   if (!family) return
   const italic = compact.includes('italic') || compact.includes('oblique')
-  const weight = family === 'ABeeZee' || family === 'DejaVu Sans' ? 'Regular'
-    : compact.includes('semibold') || compact.includes('demibold') ? 'SemiBold'
+  // ABeeZee and DejaVu ship only Regular. Another weight or italic must stay
+  // unmatched. Mapping it onto Regular would make those advances look like the
+  // requested face's line breaks.
+  if (family === 'ABeeZee' || family === 'DejaVu Sans') {
+    if (italic || /bold|medium|semibold|demibold|light|thin|black|heavy|condensed/.test(compact)) return
+    return bundledImportFonts.find(face => face.family === family && face.style === 'Regular')
+  }
+  const weight = compact.includes('semibold') || compact.includes('demibold') ? 'SemiBold'
     : compact.includes('medium') ? 'Medium'
     : compact.includes('bold') || compact.includes('black') || compact.includes('heavy') ? 'Bold'
     : 'Regular'
-  const style = !italic || family === 'ABeeZee' || family === 'DejaVu Sans' ? weight : weight === 'Regular' ? 'Italic' : `${weight} Italic`
+  const style = !italic ? weight : weight === 'Regular' ? 'Italic' : `${weight} Italic`
   return bundledImportFonts.find(face => face.family === family && face.style === style)
 }
+
+/** A requested ABeeZee face this package does not ship. Undefined for the
+ * Regular face and for every other family. */
+export function abeezeeLineBreakDiagnostic(name: string) {
+  const compact = name.toLowerCase().replace(/[\s_-]/g, '')
+  if (!compact.startsWith('abeezee')) return
+  if (compact === 'abeezee' || compact === 'abeezeeregular' || compact === 'abeezeenormal' || compact === 'abeezeeroman') return
+  return `字体 ${name} 没有同名随包文件。ABeeZee 只随包 Regular，不能把 Regular 的换行当成这个请求的结果。文字已保留，显示用当前回退。`
+}
+
+/** Exact bundled face, or a nearest face that is actually shipped. ABeeZee
+ * italic and other unshipped weights return undefined. */
+export function selectBundledImportFace(name: string): Face | undefined {
+  return matchFont(name, [...bundledImportFonts]) || nearestBundled(name)
+}
+
 async function readBundledFont(face:Face):Promise<Uint8Array>{
   // Worker scripts live in src/ during development and assets/ in a build.
   // Their sibling fonts/ directory retains the application's deployment base.
@@ -81,11 +103,38 @@ async function readBundledFont(face:Face):Promise<Uint8Array>{
 
 /** Only a fresh imported document is mutated. The import worker owns this
  * bounded two-task preparation and termination revokes the whole operation. */
+function foldedFontName(value: string) {
+  return value.normalize('NFKC').toLowerCase()
+}
+
+function namesSameFamily(name: string, family: string) {
+  const left = foldedFontName(name)
+  const right = foldedFontName(family)
+  return left === right || left.startsWith(right + ' ') || left.startsWith(right + '-')
+}
+
+/** Drop the generic “family still needs a match” warning once that family was
+ * attached, including a different casing. A still-missing face of the family
+ * keeps the warning. Other warnings stay. */
+export function retainedFontWarnings(warnings: readonly string[], fonts: {
+  families: readonly string[]
+  missing: readonly string[]
+  substitutions: readonly { from: string }[]
+}) {
+  return warnings.filter(warning => {
+    const family = /^字体 (.+) 尚需匹配，已保留文字内容$/.exec(warning)?.[1]
+    if (!family) return true
+    if (fonts.substitutions.some(item => namesSameFamily(item.from, family))) return false
+    const attached = fonts.families.some(name => foldedFontName(name) === foldedFontName(family))
+    return !attached || fonts.missing.some(name => namesSameFamily(name, family))
+  })
+}
+
 export async function matchBundledImportFonts(document:DesignDocument,read=readBundledFont):Promise<{changed:number;missing:string[];families:string[];substitutions:{from:string;face:string}[]}>{
   const names=new Set<string>()
   for(const node of Object.values(document.nodes))unmatchedSourceFonts(document,node).forEach(name=>names.add(name))
   const substitutions: {from:string; face:string}[] = []
-  const requested=[...new Set([...names].map(name=>matchFont(name,[...bundledImportFonts]) || nearestBundled(name)).filter((face):face is Face=>!!face))]
+  const requested=[...new Set([...names].map(name=>selectBundledImportFace(name)).filter((face):face is Face=>!!face))]
   const available=Math.max(0,32-Object.keys(document.fonts||{}).length)
   const candidates=requested.filter(face=>document.fonts?.[face.sha+'-0']).concat(requested.filter(face=>!document.fonts?.[face.sha+'-0']).slice(0,available))
   const loaded=new Map<Face,{id:string;resource:FontResource}>();let next=0
@@ -108,7 +157,7 @@ export async function matchBundledImportFonts(document:DesignDocument,read=readB
   const matches=new Map<string,{id:string;resource:FontResource}>()
   for(const name of names){
     const exact=matchFont(name,[...bundledImportFonts])
-    const face=exact || nearestBundled(name)
+    const face=selectBundledImportFace(name)
     const entry=face&&loaded.get(face)
     if(!entry) continue
     matches.set(name,entry)

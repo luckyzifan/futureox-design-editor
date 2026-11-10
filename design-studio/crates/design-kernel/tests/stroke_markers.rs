@@ -117,6 +117,9 @@ fn native_export_presets_validate_roundtrip_and_cannot_be_dropped_by_old_schema(
     d.schema_version = 7;
     assert!(d.validate().is_err());
     d.schema_version = 8;
+    // Positive multipliers below 0.001 are already part of the native model.
+    d.nodes.get_mut("n").unwrap().export_settings[0].scale = 0.0001;
+    d.validate().unwrap();
     d.nodes.get_mut("n").unwrap().export_settings[0].scale = 0.;
     assert!(d.validate().is_err());
 }
