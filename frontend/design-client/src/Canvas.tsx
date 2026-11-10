@@ -129,6 +129,7 @@ import { ERASER_SCREEN_PX } from './vector-eraser'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { moveCanvasFeedback, concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { mountGestureFollow, isolatedGestureCrop, type GestureFollowLayer } from './gesture-follow'
+import { mountRotationSource, rotationSourcePlan } from './rotation-source-preview'
 import { retainedBoardPlan } from './retained-board-preview'
 import { interactivePath } from './selection-hierarchy'
 import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input'
@@ -1967,7 +1968,48 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       intentResolvedComparison: snapped.x === p.x - d.start.x && snapped.y === p.y - d.start.y ? 1 : 2,
     }
   }
+  function placeRotationSource(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
+    if (d.duplicating || d.ids.length !== 1 || !host.current) { dropGestureFollow(); return }
+    if (gestureFollow.current?.holding) dropGestureFollow()
+    const id = d.ids[0]
+    const source = d.sourceDocument || state.doc
+    const node = source.nodes[id]
+    const world = d.matrices[id]
+    const page = source.pages.find(item => item.id === state.page)
+    const parentId = (d.sourceParents || editor.parentMap()).get(id)
+    const parent = parentId && parentId !== state.page ? source.nodes[parentId] ?? null : null
+    const moving = new Set(d.ids)
+    const others = (d.sourceEntries || entries)
+      .filter(entry => entry.id !== id && !entry.ancestors.some(ancestor => moving.has(ancestor)))
+      .map(entry => entry.bounds)
+    const center = d.rotationCenter || { x: d.box.x + d.box.width / 2, y: d.box.y + d.box.height / 2 }
+    const plan = node && world && page ? rotationSourcePlan({
+      node, world, others, center, degrees: degrees ?? 0, pageBackground: page.background, parent,
+      grid: state.grid, checkerboard: state.checkerboard, pixelPreview: state.pixelPreview !== 0,
+    }) : null
+    if (!plan) { dropGestureFollow(); return }
+    let layer = gestureFollow.current
+    if (!layer) {
+      const mounted = mountRotationSource(host.current, {
+        plan, view: d.view, viewport: {
+          width: host.current.clientWidth || size.width,
+          height: host.current.clientHeight || size.height,
+        },
+        corners: selectionCorners, drawSelection: !gpuOverlay, ids: d.ids,
+        onDestroy: () => {
+          if (gestureFollow.current === mounted) gestureFollow.current = null
+          restoreGpuOverlays()
+        },
+      })
+      if (!mounted) return
+      gestureFollow.current = layer = mounted
+    }
+    layer.place(matrix, screen, degrees)
+  }
   function placeGestureFollow(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
+    // Rotation follows from the node's own paint. A framebuffer crop bakes
+    // encoded alpha and drops pixels that sit outside the viewport.
+    if (d.kind === 'rotate') { placeRotationSource(d, matrix, screen, degrees); return }
     if (d.duplicating || !host.current) { dropGestureFollow(); return }
     if (gestureFollow.current?.holding) dropGestureFollow()
     let layer = gestureFollow.current
@@ -2328,6 +2370,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         pendingBoardMove.current = [patches, placement]
         // The compositor may follow later. The angle field and blue border read
         // the document, so a rotate sample has to publish before the next paint.
+        return
+      }
+      // The source overlay is already showing this rotation. A full preview
+      // on every sample is what leaves a large image on the old frame.
+      if (d.kind === 'rotate' && gestureFollow.current && !gestureFollow.current.holding) {
+        clearFallbackMove()
+        pendingBoardMove.current = [patches, placement]
         return
       }
       if(d.actionToken) actionTrace.sample(d.actionToken,{renderRouteCode:gpuMove.current?2:3,renderFallbackCount:d.renderFallbackCount=Math.min(1e9,(d.renderFallbackCount||0)+1)})

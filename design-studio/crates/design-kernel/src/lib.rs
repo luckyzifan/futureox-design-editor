@@ -44,6 +44,7 @@ pub mod fig;
 pub mod figma_gradient;
 pub mod figma_sampling;
 pub mod figma_rotation;
+pub mod rotation_preview;
 pub mod figma_snap;
 pub mod ruler_units;
 pub mod svg_export;
@@ -452,6 +453,60 @@ mod wasm {
     use super::*;
     use wasm_bindgen::prelude::*;
     /// Trusted bootstrap only. No document field or operation argument routes here.
+    #[wasm_bindgen]
+    pub fn color_fully_opaque(color: &str, opacity: f64) -> bool {
+        rotation_preview::color_fully_opaque(color, opacity)
+    }
+    #[wasm_bindgen]
+    pub fn screenshot_rotation_supplies(
+        source_x: f64, source_y: f64, source_w: f64, source_h: f64,
+        crop_x: f64, crop_y: f64, crop_w: f64, crop_h: f64,
+        center_x: f64, center_y: f64, degrees: f64,
+        view_x: f64, view_y: f64, view_w: f64, view_h: f64,
+    ) -> bool {
+        rotation_preview::screenshot_rotation_supplies(
+            (source_x, source_y, source_w, source_h),
+            (crop_x, crop_y, crop_w, crop_h),
+            (center_x, center_y),
+            degrees,
+            (view_x, view_y, view_w, view_h),
+        )
+    }
+    #[wasm_bindgen]
+    pub fn rotation_screenshot_admitted(
+        color: &str, opacity: f64,
+        source_x: f64, source_y: f64, source_w: f64, source_h: f64,
+        crop_x: f64, crop_y: f64, crop_w: f64, crop_h: f64,
+        center_x: f64, center_y: f64, degrees: f64,
+        view_x: f64, view_y: f64, view_w: f64, view_h: f64,
+    ) -> bool {
+        rotation_preview::rotation_screenshot_admitted(
+            color, opacity,
+            (source_x, source_y, source_w, source_h),
+            (crop_x, crop_y, crop_w, crop_h),
+            (center_x, center_y),
+            degrees,
+            (view_x, view_y, view_w, view_h),
+        )
+    }
+    #[wasm_bindgen]
+    pub fn rotation_source_preview_allowed(
+        color: &str, opacity: f64, image: bool, backdrop: bool, effects: bool, strokes: bool,
+        source_x: f64, source_y: f64, source_w: f64, source_h: f64,
+        center_x: f64, center_y: f64, degrees: f64, others: &[f64],
+    ) -> bool {
+        if others.len() % 4 != 0 {
+            return false;
+        }
+        let rects: Vec<(f64, f64, f64, f64)> = others.chunks(4).map(|c| (c[0], c[1], c[2], c[3])).collect();
+        rotation_preview::rotation_source_preview_allowed(
+            color, opacity, image, backdrop, effects, strokes,
+            (source_x, source_y, source_w, source_h),
+            (center_x, center_y),
+            degrees,
+            &rects,
+        )
+    }
     #[wasm_bindgen]
     pub fn configure_document_capacity(memory_bytes: f64) -> Result<(), JsValue> {
         if !memory_bytes.is_finite() || memory_bytes.fract() != 0. || memory_bytes < 16. || memory_bytes > capacity::WASM_ADDRESS_BYTES as f64 {
