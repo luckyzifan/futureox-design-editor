@@ -3,7 +3,8 @@ import { previewCameraScaleWithinLimit } from './tile-preview'
 /** Shared preview / partial-sharp / screen-ready verdict for the ordinary
  * editor surface and the full-source surface. A regional sharp patch is not
  * a screen-ready frame, and a camera, revision, density or phase mismatch
- * cannot promote a preview. */
+ * cannot promote a preview. Callers that own a real revision use
+ * acceptFrameClarity; this function does not invent a matching version. */
 
 export type FrameHandoff = 'reject' | 'preview' | 'partial-sharp' | 'screen-ready'
 

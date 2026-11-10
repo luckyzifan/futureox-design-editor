@@ -15,6 +15,12 @@
 
 这次不恢复那条路径。连续缩出不因为精确瓦片已缓存就排粘贴板条或页级总览。`coarsePanCoverNeeded` 在 `moving && continuousZoom` 时仍返回 false，包括 `quietStripAllowed: true`。安静粘贴板条、精确瓦片先于总览、平移跟手要条，都保持当前 main。预算、密度和像素公式没有改。
 
+## 两套 Surface 的清晰回执
+
+普通编辑 `ProgressiveSurface` 和完整源 `NativeSourceSurface` 都调用 `frame-acceptance.ts` 的 `acceptFrameClarity`。相机、版本、密度、相位和整屏覆盖同时成立才是 screen-ready。只盖住一块区域是 partial-sharp，不会变成整屏 ready。缩放、同倍平移、更旧的一代或另一版本最多保持预览，另一版本则拒绝；这些晚回不能补成清晰回执。密度和相位仍由各自的格子测量，像素来源、覆盖栈和光栅调度也不合并。
+
+本检出用 `camera-handoff.vitest.config.ts` 跑了这份回执和完整源管线。没有生成的内核，所以普通编辑 Surface 的挂载套件没有执行。没有新的 Mac、Electron 或 Metal 测量。
+
 ## 已运行与未测
 
 在 `frontend/design-client`，用一份不加载 WASM 的 vitest 配置跑了覆盖栈、相机交接、平移条、导航底图和缩放调度策略。42 项通过。`navigation-backing.test.ts` 里「大页区域任务」会调用 `raster_tile_addresses_json`；这个检出没有生成的内核，也没有安装 `wasm32-unknown-unknown`，该项没有对着真实内核执行。上述通过项不包含它。
