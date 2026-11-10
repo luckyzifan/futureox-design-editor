@@ -19,7 +19,7 @@
 
 普通编辑 `ProgressiveSurface` 和完整源 `NativeSourceSurface` 都调用 `frame-acceptance.ts` 的 `acceptFrameClarity`。相机、版本、密度、相位和整屏覆盖同时成立才是 screen-ready。只盖住一块区域是 partial-sharp，不会变成整屏 ready。缩放、同倍平移、更旧的一代或另一版本最多保持预览，另一版本则拒绝；这些晚回不能补成清晰回执。密度和相位仍由各自的格子测量，像素来源、覆盖栈和光栅调度也不合并。
 
-本检出用 `camera-handoff.vitest.config.ts` 跑了这份回执和完整源管线。没有生成的内核，所以普通编辑 Surface 的挂载套件没有执行。没有新的 Mac、Electron 或 Metal 测量。
+同一条完整源管线用例，在 main `ccaa2ea1` 上于版本改为 4 之后回到原相机，出现 2 条 `phase=ready, sharp=true`（4/4）。候选把这 2 条都留在 `refining, sharp=false`。普通编辑 Surface 的挂载套件没有执行：没有生成的内核。没有新的 Mac、Electron 或 Metal 测量。
 
 ## 已运行与未测
 
