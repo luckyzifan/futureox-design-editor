@@ -7,6 +7,7 @@ import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas
 import { elementMatrix, followCamera, screenWarp, type FollowCamera, type GestureFollowLayer } from './gesture-follow'
 import { formatAngleDegrees } from './selection-handles'
 import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
+import { sourceBitmap } from './source-bitmap'
 
 /** Redraw one node's own paint. There is no crop: a viewport slice cannot
  * supply pixels that rotate in from outside the screen, and a framebuffer
@@ -14,8 +15,13 @@ import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 export type RotationSourcePlan = {
   box: Bounds
   hole: string
+  /** Axis-aligned ancestor clip in world space. Paint stays the full source
+   * rectangle; the clip only hides pixels the frame itself would hide. */
+  clip?: Bounds
   paint: { kind: 'solid'; color: string } | { kind: 'image'; src: string; fit: 'cover' | 'contain' | 'fill' }
 }
+
+export type RotationAncestor = { node: DesignNode; matrix: Matrix }
 
 export type RotationSourceInput = {
   node: DesignNode
@@ -26,9 +32,30 @@ export type RotationSourceInput = {
   pageBackground: string
   documentSpace: ColorSpace
   parent: DesignNode | null
+  /** Outermost first. Required when `parent` is set; a parent without this
+   * chain cannot prove clipping, opacity or blend. */
+  ancestors?: readonly RotationAncestor[]
   grid: boolean
   checkerboard: boolean
   pixelPreview: boolean
+}
+
+/** The browser paints this URL once. `?samples=1` is the desktop texel
+ * protocol, not a second image; GET of the same path is the PNG. */
+export function rotationImageAddress(uri: string): string | null {
+  if (/^(?:data:|blob:|https?:|\/)/.test(uri)) return uri
+  if (!sourceBitmap(uri)) return null
+  const query = uri.indexOf('?')
+  return query < 0 ? uri : uri.slice(0, query)
+}
+
+function rotationAncestorRejects(node: DesignNode, matrix: Matrix): boolean {
+  if (!node.visible || !(node.opacity >= 1 - 1e-9)) return true
+  if (node.blend !== 'normal' && node.blend !== 'pass-through') return true
+  if (node.mask) return true
+  if (node.effects.some(effect => effect.visible) || node.strokes.some(stroke => stroke.visible)) return true
+  if ((node.cornerRadius ?? 0) > 1e-6 || node.radii.some(radius => radius > 1e-6) || node.smoothing > 1e-6) return true
+  return !axisAlignedBox(node, matrix)
 }
 
 function axisAlignedBox(node: DesignNode, world: Matrix): Bounds | null {
@@ -57,10 +84,16 @@ export function rotationBackdropColor(pageBackground: string, parent: DesignNode
 
 export function rotationSourcePlan(input: RotationSourceInput): RotationSourcePlan | null {
   const { node } = input
-  // CSS paint has sRGB semantics and does not reconstruct ancestor clipping,
-  // masks, opacity or blend isolation. Keep those on the renderer path.
-  if (input.documentSpace !== 'srgb' || input.parent) return null
+  // CSS paint has sRGB semantics. A parent is allowed only when every ancestor
+  // is an axis-aligned opaque-or-neutral frame we can clip, and the hole is
+  // that parent's own solid. This is not a framebuffer crop.
+  if (input.documentSpace !== 'srgb') return null
   if (input.grid || input.checkerboard || input.pixelPreview) return null
+  const chain = input.ancestors ?? []
+  if (input.parent) {
+    if (!chain.length || chain[chain.length - 1].node !== input.parent) return null
+    if (chain.some(ancestor => rotationAncestorRejects(ancestor.node, ancestor.matrix))) return null
+  } else if (chain.length) return null
   if (!node.visible || !(node.opacity >= 1 - 1e-9) || (node.blend !== 'normal' && node.blend !== 'pass-through')) return null
   if (node.kind !== 'rectangle' && node.kind !== 'frame') return null
   if (node.children.length || node.mask || node.network || node.vectorGeometry || node.booleanOperation || node.arc) return null
@@ -68,6 +101,14 @@ export function rotationSourcePlan(input: RotationSourceInput): RotationSourcePl
   const box = axisAlignedBox(node, input.world)
   const hole = rotationBackdropColor(input.pageBackground, input.parent)
   if (!box || !hole || !Number.isFinite(input.degrees) || !Number.isFinite(input.center.x) || !Number.isFinite(input.center.y)) return null
+  let clip: Bounds | undefined
+  for (const ancestor of chain) {
+    if (!ancestor.node.clip) continue
+    const ancestorBox = axisAlignedBox(ancestor.node, ancestor.matrix)
+    const next = ancestorBox && (clip ? intersectBox(clip, ancestorBox) : ancestorBox)
+    if (!next) return null
+    clip = next
+  }
   const fills = node.fills.filter(paint => paint.visible && paint.opacity > 0)
   if (fills.length !== 1) return null
   const fill = fills[0]
@@ -79,10 +120,12 @@ export function rotationSourcePlan(input: RotationSourceInput): RotationSourcePl
   let paint: RotationSourcePlan['paint']
   if (fill.kind === 'solid') {
     paint = { kind: 'solid', color: fill.color.slice(0, 7) }
-  } else if (fill.kind === 'image' && fill.image && /^(?:data:|blob:|https?:|\/)/.test(fill.image)) {
+  } else if (fill.kind === 'image' && fill.image) {
+    const src = rotationImageAddress(fill.image)
+    if (!src) return null
     if (fill.transform || (fill.adjust && !isIdentityImageAdjust(fill.adjust)) || (fill.tile && fill.tile.mode !== 'none')) return null
     image = true
-    paint = { kind: 'image', src: fill.image, fit: fill.fit === 'stretch' ? 'fill' : fill.fit }
+    paint = { kind: 'image', src, fit: fill.fit === 'stretch' ? 'fill' : fill.fit }
   } else {
     return null
   }
@@ -98,7 +141,7 @@ export function rotationSourcePlan(input: RotationSourceInput): RotationSourcePl
     fill.color, fill.opacity, image, backdrop, effects, strokes,
     box.x, box.y, box.width, box.height, input.center.x, input.center.y, input.degrees, others,
   )) return null
-  return { box, hole, paint }
+  return clip ? { box, hole, clip, paint } : { box, hole, paint }
 }
 
 function pointInConvex(point: Point, corners: readonly Point[]): boolean {
@@ -150,6 +193,7 @@ export function mountRotationSource(host: HTMLElement, options: {
   drawSelection: boolean
   ids: readonly string[]
   onDestroy?: () => void
+  onPaintError?: () => void
 }): GestureFollowLayer | null {
   const { plan, view } = options
   if (!(view.zoom > 0) || !(options.viewport.width > 0) || !(options.viewport.height > 0)) return null
@@ -166,10 +210,12 @@ export function mountRotationSource(host: HTMLElement, options: {
     x: -view.x / view.zoom, y: -view.y / view.zoom,
     width: options.viewport.width / view.zoom, height: options.viewport.height / view.zoom,
   }
-  const hole = intersectBox(plan.box, worldView)
+  const footprint = plan.clip ? intersectBox(plan.box, plan.clip) : plan.box
+  const hole = footprint ? intersectBox(footprint, worldView) : null
+  let patch: HTMLElement | undefined
   if (hole) {
     const holeScreen = screenRect(hole, view)
-    const patch = document.createElement('div')
+    patch = document.createElement('div')
     patch.dataset.testid = 'rotation-source-hole'
     Object.assign(patch.style, {
       position: 'absolute', left: `${holeScreen.x}px`, top: `${holeScreen.y}px`,
@@ -177,24 +223,48 @@ export function mountRotationSource(host: HTMLElement, options: {
     })
     root.append(patch)
   }
+  const clipScreen = plan.clip ? screenRect(plan.clip, view) : null
+  const paintHost = document.createElement('div')
+  if (clipScreen) {
+    paintHost.dataset.testid = 'rotation-source-clip'
+    Object.assign(paintHost.style, {
+      position: 'absolute', overflow: 'hidden',
+      left: `${clipScreen.x}px`, top: `${clipScreen.y}px`,
+      width: `${clipScreen.width}px`, height: `${clipScreen.height}px`,
+    })
+  } else Object.assign(paintHost.style, { position: 'absolute', inset: '0', overflow: 'visible' })
   const source = document.createElement('div')
   source.dataset.testid = 'rotation-source-paint'
   source.dataset.sourceBox = `${plan.box.x},${plan.box.y},${plan.box.width},${plan.box.height}`
   Object.assign(source.style, {
-    position: 'absolute', left: `${rect.x}px`, top: `${rect.y}px`,
+    position: 'absolute', left: `${rect.x - (clipScreen?.x ?? 0)}px`, top: `${rect.y - (clipScreen?.y ?? 0)}px`,
     width: `${rect.width}px`, height: `${rect.height}px`,
     transformOrigin: '0 0', willChange: 'transform',
   })
+  let revealPaint = () => {}
+  let paintFailed = false
+  let destroyPaint: (() => void) | undefined
   if (plan.paint.kind === 'solid') source.style.background = plan.paint.color
   else {
+    // Keep the previous frame until the image resource itself has decoded.
+    // The hole is the backdrop, not a cropped screenshot of the old pixels.
+    source.style.visibility = 'hidden'
+    if (patch) patch.style.visibility = 'hidden'
     const image = document.createElement('img')
     image.alt = ''
     image.draggable = false
+    revealPaint = () => {
+      source.style.visibility = ''
+      if (patch) patch.style.visibility = ''
+    }
+    image.addEventListener('load', () => revealPaint())
+    image.addEventListener('error', () => { paintFailed = true; options.onPaintError?.(); destroyPaint?.() })
     image.src = plan.paint.src
     Object.assign(image.style, { width: '100%', height: '100%', objectFit: plan.paint.fit, display: 'block' })
     source.append(image)
   }
-  root.append(source)
+  paintHost.append(source)
+  root.append(paintHost)
   const hidden = new Map<SVGElement, string>()
   concealCanvasFeedback(host, options.ids, hidden)
   let polygon: SVGPolygonElement | undefined
@@ -269,5 +339,7 @@ export function mountRotationSource(host: HTMLElement, options: {
       options.onDestroy?.()
     },
   }
+  destroyPaint = () => layer.destroy()
+  if (paintFailed) queueMicrotask(() => { if (!destroyed) layer.destroy() })
   return layer
 }

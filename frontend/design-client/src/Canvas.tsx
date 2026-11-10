@@ -8,7 +8,7 @@ import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
-import { rotationChromeHeldToTexture, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
+import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
@@ -213,6 +213,8 @@ type Drag = {
   sampledMovement?: boolean
   followPlan?: ReturnType<typeof retainedBoardPlan>
   rotationDegrees?: number
+  /** This gesture's own-paint image failed to load. Do not mount it again. */
+  rotationSourceRejected?: boolean
   rotationCenter?: Point
   originalPivot?: Point
 }
@@ -303,12 +305,21 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const sourceWheel = useRef<{token:string; view:CanvasCamera} | undefined>(undefined)
   const gpuMove = useRef<GpuMoveControl | null>(null)
   const gestureFollow = useRef<GestureFollowLayer | null>(null)
+  const sourceRotation = useRef(false)
+  const [sourceRotationPaint, setSourceRotationPaint] = useState(false)
+  const noteSourceRotation = (active: boolean) => {
+    if (sourceRotation.current === active) return
+    sourceRotation.current = active
+    setSourceRotationPaint(active)
+  }
   const dropGestureFollow = () => {
     const layer = gestureFollow.current
-    if (!layer) return
-    gestureFollow.current = null
-    layer.destroy()
-    restoreGpuOverlays()
+    if (layer) {
+      gestureFollow.current = null
+      layer.destroy()
+      restoreGpuOverlays()
+    }
+    noteSourceRotation(false)
   }
   const [gpuReadyRevision, gpuReadyChanged] = useState(0)
   const interactionReady = useMemo(() => () => gpuReadyChanged(value => value + 1), [])
@@ -1032,6 +1043,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
     id => !!state.doc.nodes[id] && presented?.document === state.doc)
   const gpuOverlay = canvasGpuOverlayOwnsUi(presented,overlay,presentationScopeMatches)
+  const documentChromeOpacity = rotationDocumentChromeSuppressed({
+    kind: ownedDrag?.kind, sourcePaint: sourceRotationPaint, holding: !!gestureFollow.current?.holding,
+  }) || (gpuOverlay && !(ownedDrag && ['move', 'rotate', 'resize', 'scale'].includes(ownedDrag.kind))) ? 0 : 1
   const pixelGridPath = useMemo(
     () => pixelGridPathData(displayView, size.width, size.height, state.pixelGrid),
     [state.pixelGrid, displayView.x, displayView.y, displayView.zoom, size.width, size.height],
@@ -1970,22 +1984,32 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }
   function placeRotationSource(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
-    if (d.duplicating || d.ids.length !== 1 || !host.current) { dropGestureFollow(); return }
+    if (d.rotationSourceRejected || d.duplicating || d.ids.length !== 1 || !host.current) { dropGestureFollow(); return }
     if (gestureFollow.current?.holding) dropGestureFollow()
     const id = d.ids[0]
     const source = d.sourceDocument || state.doc
     const node = source.nodes[id]
     const world = d.matrices[id]
     const page = source.pages.find(item => item.id === state.page)
-    const parentId = (d.sourceParents || editor.parentMap()).get(id)
-    const parent = parentId && parentId !== state.page ? source.nodes[parentId] ?? null : null
+    const listed = d.sourceEntries || entries
+    const self = listed.find(entry => entry.id === id)
+    if (!self) { dropGestureFollow(); return }
+    const ancestors: { node: DesignNode; matrix: Matrix }[] = []
+    for (const ancestorId of self.ancestors) {
+      const item = listed.find(entry => entry.id === ancestorId)
+      const ancestor = source.nodes[ancestorId]
+      if (!item || !ancestor) { dropGestureFollow(); return }
+      ancestors.push({ node: ancestor, matrix: item.matrix })
+    }
+    const parent = ancestors.at(-1)?.node ?? null
     const moving = new Set(d.ids)
-    const others = (d.sourceEntries || entries)
-      .filter(entry => entry.id !== id && !entry.ancestors.some(ancestor => moving.has(ancestor)))
+    const skip = new Set([id, ...ancestors.map(ancestor => ancestor.node.id)])
+    const others = listed
+      .filter(entry => !skip.has(entry.id) && !entry.ancestors.some(ancestor => moving.has(ancestor)))
       .map(entry => entry.bounds)
     const center = d.rotationCenter || { x: d.box.x + d.box.width / 2, y: d.box.y + d.box.height / 2 }
     const plan = node && world && page ? rotationSourcePlan({
-      node, world, others, center, degrees: degrees ?? 0, pageBackground: page.background, parent,
+      node, world, others, center, degrees: degrees ?? 0, pageBackground: page.background, parent, ancestors,
       documentSpace: source.colorManagement?.documentSpace ?? 'srgb',
       grid: state.grid, checkerboard: state.checkerboard, pixelPreview: state.pixelPreview !== 0,
     }) : null
@@ -1997,14 +2021,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           width: host.current.clientWidth || size.width,
           height: host.current.clientHeight || size.height,
         },
-        corners: selectionCorners, drawSelection: !gpuOverlay, ids: d.ids,
+        corners: selectionCorners, drawSelection: true, ids: d.ids,
+        onPaintError: () => { d.rotationSourceRejected = true },
         onDestroy: () => {
           if (gestureFollow.current === mounted) gestureFollow.current = null
+          noteSourceRotation(false)
           restoreGpuOverlays()
         },
       })
       if (!mounted) return
       gestureFollow.current = layer = mounted
+      noteSourceRotation(true)
     }
     layer.place(matrix, screen, degrees)
   }
@@ -2357,6 +2384,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Overlap, reparenting and Option-copy immediately use the regular path.
     if ((d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
+      // Own paint is already on the pointer. A native capture here would
+      // convert, upload and redraw the same image on every sample.
+      if (d.kind === 'rotate' && gestureFollow.current && !gestureFollow.current.holding) {
+        clearFallbackMove()
+        pendingBoardMove.current = [patches, placement]
+        return
+      }
       const offset = gpuMove.current?.apply(editor.state.doc, movePreview?.patches||patches, d.actionToken ? actionTrace.token(d.actionToken) : undefined,
         [moveGuides.x,moveGuides.y].filter((guide):guide is SmartGuideSegment=>!!guide))
       if (offset) {
@@ -2372,13 +2406,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         pendingBoardMove.current = [patches, placement]
         // The compositor may follow later. The angle field and blue border read
         // the document, so a rotate sample has to publish before the next paint.
-        return
-      }
-      // The source overlay is already showing this rotation. A full preview
-      // on every sample is what leaves a large image on the old frame.
-      if (d.kind === 'rotate' && gestureFollow.current && !gestureFollow.current.holding) {
-        clearFallbackMove()
-        pendingBoardMove.current = [patches, placement]
         return
       }
       if(d.actionToken) actionTrace.sample(d.actionToken,{renderRouteCode:gpuMove.current?2:3,renderFallbackCount:d.renderFallbackCount=Math.min(1e9,(d.renderFallbackCount||0)+1)})
@@ -3124,7 +3151,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 data-testid="canvas-selection-outline"
                 data-selection-role={selected.length > 1 ? 'union' : 'object'}
                 data-selection-held={heldRotationMembers ? 'texture' : undefined}
-                opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
+                opacity={documentChromeOpacity}
                 points={drawnCorners.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke={SELECTION_BLUE}
@@ -3157,7 +3184,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 <polygon
                   key={i}
                   data-testid={`resize-${i}`}
-                  opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
+                  opacity={documentChromeOpacity}
                   points={h.resizePoints.map(p=>`${p.x},${p.y}`).join(' ')}
                   fill="white"
                   stroke={SELECTION_BLUE}
