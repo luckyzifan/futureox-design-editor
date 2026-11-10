@@ -126,7 +126,8 @@ function variableKindForPath(path: string): Variable['kind'] {
   if (/^fills\.(?:[0-9]|1[0-5])\.color$/.test(path)) return 'color'
   if (path === 'text') return 'string'
   if (path === 'visible') return 'boolean'
-  if (['width', 'height', 'opacity', 'fontSize', 'layout.gap', 'layout.lineGap', 'textStyle.weight', 'textStyle.lineHeight', 'textStyle.letterSpacing'].includes(path) || /^fills\.(?:[0-9]|1[0-5])\.opacity$/.test(path)) return 'number'
+  const numberPaths = ['width', 'height', 'opacity', 'fontSize', 'cornerRadius', 'layout.gap', 'layout.lineGap', 'textStyle.weight', 'textStyle.lineHeight', 'textStyle.letterSpacing', 'textStyle.paragraphSpacing', 'textStyle.paragraphIndent', 'sizing.minWidth', 'sizing.maxWidth', 'sizing.minHeight', 'sizing.maxHeight']
+  if (numberPaths.includes(path) || /^fills\.(?:[0-9]|1[0-5])\.opacity$/.test(path) || /^strokes\.(?:[0-9]|1[0-5])\.width$/.test(path) || /^radii\.[0-3]$/.test(path) || /^layout\.padding\.[0-3]$/.test(path)) return 'number'
   throw new Error(`Unsupported variable binding path: ${path}`)
 }
 const styleFields = { fills: 'paint', strokes: 'paint', textStyle: 'text', effects: 'effect' } as const
@@ -714,6 +715,8 @@ export const designSystemExtensions: AutomationExtension[] = [
     const n = requiredNode(d, p.nodeId), path = key(p.path, 'path'), id = key(p.variableId), v = resource(d.designSystem?.variables, id, 'variable')
     if (v.kind !== variableKindForPath(path)) throw new Error('Variable/property type mismatch')
     if (path.startsWith('layout.') && !n.layout) throw new Error('Binding requires an existing layout')
+    if (path.startsWith('sizing.') && !n.sizing) throw new Error('Binding requires sizing')
+    if (/^strokes\.(?:[0-9]|1[0-5])\.width$/.test(path) && !n.strokes[Number(path.split('.')[1])]) throw new Error('Binding stroke index does not exist')
     if (path.startsWith('textStyle.') && n.kind !== 'text') throw new Error('Text-style binding requires a text node')
     if (path.startsWith('textStyle.') && !n.textStyle) n.textStyle = defaultTextStyle()
     if (path.startsWith('fills.')) {

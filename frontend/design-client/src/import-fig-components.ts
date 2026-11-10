@@ -245,7 +245,7 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       applyStyles(fields, override, target, source, records, ids, warnings)
       if(Array.isArray(override.strokePaints)) fields.strokes = strokesOf(override)
       else if(STROKE_INPUTS.some(key => override[key] !== undefined)) applyStrokeAttrs(fields, override, target, warnings)
-      const kept = applyConsumption(fields, override, variables, warnings)
+      const kept = applyConsumption(fields, override, target, variables, warnings)
       if(override.exportSettings !== undefined) kept.exportSettings = override.exportSettings
       if(Object.keys(kept).length) retained.push({ path: parts.join('/') || path, ...kept })
       const previousValues = n.instance.overrides[path]?.propertyValues
@@ -690,28 +690,72 @@ function aliasId(value: any, variables: ReturnType<typeof variableCatalog>) {
   return id && id !== '0:0' && variables.kindById.has(id) ? id : undefined
 }
 
-function applyConsumption(fields: Record<string, unknown>, override: any, variables: ReturnType<typeof variableCatalog>, warnings?: { add(message: string): unknown }) {
-  const kept: Record<string, unknown> = {}
-  const map = override.variableConsumptionMap
-  if(Array.isArray(map?.entries) && map.entries.length) {
-    kept.variableConsumptionMap = map
-    const bindings: Record<string, string> = {}
-    for(const entry of map.entries) {
-      const field = String(entry?.variableField || '')
-      const path = BINDING_FIELDS[field]
-      if(!path) { if(field && field !== 'MISSING') warnings?.add(`FIG 实例覆盖 variableConsumptionMap.${field} 暂不能执行，消费表已保留`); continue }
-      const target = aliasId(entry?.variableData?.value, variables)
-      if(!target || variables.kindById.get(target) !== bindingKind(path) || bindings[path]) {
-        warnings?.add(`FIG 实例覆盖 variableConsumptionMap.${field} 暂不能执行，消费表已保留`)
-        continue
-      }
-      bindings[path] = target
+function consumptionPaths(field: string, fields: Record<string, unknown>, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown } | undefined) {
+  const direct = BINDING_FIELDS[field]
+  if(direct) return [direct]
+  const polygon = target?.kind === 'polygon' || target?.kind === 'star'
+  if(field === 'CORNER_RADIUS') {
+    if(!target) return []
+    return polygon ? ['cornerRadius'] : ['radii.0', 'radii.1', 'radii.2', 'radii.3']
+  }
+  const corners: Record<string, string> = {
+    RECTANGLE_TOP_LEFT_CORNER_RADIUS: 'radii.0',
+    RECTANGLE_TOP_RIGHT_CORNER_RADIUS: 'radii.1',
+    RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS: 'radii.2',
+    RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS: 'radii.3',
+  }
+  if(corners[field]) return !target || polygon ? [] : [corners[field]]
+  if(field === 'STROKE_WEIGHT') {
+    const strokes = Array.isArray(fields.strokes) ? fields.strokes : target?.strokes
+    const count = Math.min(Array.isArray(strokes) ? strokes.length : 0, 16)
+    return count ? Array.from({ length: count }, (_, index) => `strokes.${index}.width`) : []
+  }
+  const padding: Record<string, string> = {
+    STACK_PADDING_TOP: 'layout.padding.0', STACK_PADDING_RIGHT: 'layout.padding.1',
+    STACK_PADDING_BOTTOM: 'layout.padding.2', STACK_PADDING_LEFT: 'layout.padding.3',
+  }
+  if(padding[field]) return fields.layout || target?.layout ? [padding[field]] : []
+  if(field === 'PARAGRAPH_SPACING' || field === 'PARAGRAPH_INDENT') {
+    return fields.textStyle || target?.textStyle ? [field === 'PARAGRAPH_SPACING' ? 'textStyle.paragraphSpacing' : 'textStyle.paragraphIndent'] : []
+  }
+  const sizing: Record<string, string> = {
+    MIN_WIDTH: 'sizing.minWidth', MAX_WIDTH: 'sizing.maxWidth', MIN_HEIGHT: 'sizing.minHeight', MAX_HEIGHT: 'sizing.maxHeight',
+  }
+  if(sizing[field]) return fields.sizing || target?.sizing ? [sizing[field]] : []
+  return undefined
+}
+
+function bindConsumption(entries: any[], prefix: string, fields: Record<string, unknown>, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown } | undefined, variables: ReturnType<typeof variableCatalog>, bindings: Record<string, string>, warnings?: { add(message: string): unknown }) {
+  const ordered = [...entries].sort((left, right) => Number(left?.variableField !== 'CORNER_RADIUS') - Number(right?.variableField !== 'CORNER_RADIUS'))
+  for(const entry of ordered) {
+    const field = String(entry?.variableField || '')
+    if(!field || field === 'MISSING') {
+      if(entry?.nodeField !== undefined) warnings?.add(`FIG 实例覆盖 ${prefix}.nodeField.${entry.nodeField} 暂不能执行，消费表已保留`)
+      continue
     }
-    if(Object.keys(bindings).length) fields.bindings = bindings
+    const paths = consumptionPaths(field, fields, target)
+    const bound = aliasId(entry?.variableData?.value, variables)
+    const replace = field.startsWith('RECTANGLE_') && field.endsWith('CORNER_RADIUS')
+    if(!paths?.length || !bound || paths.some(path => variables.kindById.get(bound) !== bindingKind(path))) {
+      warnings?.add(`FIG 实例覆盖 ${prefix}.${field} 暂不能执行，消费表已保留`)
+      continue
+    }
+    for(const path of paths) {
+      if(bindings[path] && !replace) continue
+      bindings[path] = bound
+    }
   }
-  if(Array.isArray(override.parameterConsumptionMap?.entries) && override.parameterConsumptionMap.entries.length) {
-    kept.parameterConsumptionMap = override.parameterConsumptionMap
-    warnings?.add('FIG 实例覆盖 parameterConsumptionMap 暂不能执行，消费表已保留')
+}
+
+function applyConsumption(fields: Record<string, unknown>, override: any, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown } | undefined, variables: ReturnType<typeof variableCatalog>, warnings?: { add(message: string): unknown }) {
+  const kept: Record<string, unknown> = {}
+  const bindings: Record<string, string> = {}
+  for(const [key, prefix] of [['variableConsumptionMap', 'variableConsumptionMap'], ['parameterConsumptionMap', 'parameterConsumptionMap']] as const) {
+    const map = override[key]
+    if(!Array.isArray(map?.entries) || !map.entries.length) continue
+    kept[key] = map
+    bindConsumption(map.entries, prefix, fields, target, variables, bindings, warnings)
   }
+  if(Object.keys(bindings).length) fields.bindings = bindings
   return kept
 }

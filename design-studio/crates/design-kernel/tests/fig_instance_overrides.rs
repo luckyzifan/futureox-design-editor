@@ -113,7 +113,8 @@ fn instance_override_fields_execute_or_stay_reported() {
                     {"variableField": "STROKE_WEIGHT", "variableData": {"value": {"alias": {"guid": g(9, 3), "assetRef": {"key": "width-token"}}}}}
                 ]},
                 "parameterConsumptionMap": {"entries": [
-                    {"variableField": "WIDTH", "variableData": {"value": {"alias": {"guid": g(9, 3)}}}}
+                    {"variableField": "WIDTH", "variableData": {"value": {"alias": {"guid": g(9, 3)}}}},
+                    {"variableField": "FONT_FAMILY", "variableData": {"value": {"alias": {"guid": g(9, 3)}}}}
                 ]}
             },
             {"stackPaddingRight": 18.}
@@ -217,7 +218,7 @@ fn instance_override_fields_execute_or_stay_reported() {
         "borderStrokeWeightsIndependent",
         "textData.layoutVersion",
         "variableConsumptionMap.STROKE_WEIGHT",
-        "parameterConsumptionMap",
+        "parameterConsumptionMap.FONT_FAMILY",
         "property assignment fig-1-99",
     ] {
         assert!(notes.contains(name), "missing {name} in {notes}");
@@ -235,6 +236,7 @@ fn instance_override_fields_execute_or_stay_reported() {
         "textAlignHorizontal",
         "styleIdForStrokeFill",
         "styleIdForEffect",
+        "parameterConsumptionMap.WIDTH",
     ] {
         assert!(
             !reported.contains(&executed),
@@ -455,7 +457,10 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
         retained.contains("RECTANGLE_TOP_LEFT_CORNER_RADIUS"),
         "{retained}"
     );
-    assert!(spec.overrides["fig-1-13"].get("bindings").is_none());
+    assert_eq!(
+        spec.overrides["fig-1-13"]["bindings"]["radii.0"],
+        "fig-9-3"
+    );
     let notes = notes(&doc);
     for name in [
         "stackPaddingRight",
@@ -463,7 +468,6 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
         "fontVersion",
         "detachOpticalSizeFromFontSize",
         "rectangleCornerRadiiIndependent",
-        "variableConsumptionMap.RECTANGLE_TOP_LEFT_CORNER_RADIUS",
     ] {
         assert!(notes.contains(name), "missing {name} in {notes}");
     }
@@ -485,6 +489,7 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
         "textTracking",
         "toggledOnOTFeatures",
         "proportionsConstrained",
+        "variableConsumptionMap.RECTANGLE_TOP_LEFT_CORNER_RADIUS",
     ] {
         assert!(
             !reported.contains(&executed),
@@ -537,6 +542,17 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
             .iter()
             .any(|feature| feature == "smcp")
     );
+    let corner_node = resolved
+        .nodes
+        .values()
+        .find(|node| {
+            node.instance_origin
+                .as_ref()
+                .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == "fig-1-13")
+        })
+        .unwrap();
+    assert!((corner_node.radii[0] - 40.).abs() < 1e-9);
+    assert_eq!(corner_node.radii[1], 0.);
     resolved
         .validate()
         .expect("resolved in-file overrides stay valid");
@@ -1267,4 +1283,266 @@ fn nested_component_property_assignments_execute_only_with_a_real_target() {
     resolved
         .validate()
         .expect("resolved nested property assignments stay valid");
+}
+
+/// Consumption entries that name an existing kernel property become bindings.
+/// Per-side borders, font families, and targets the file does not contain stay
+/// in the note, and the original maps stay in metadata.
+#[test]
+fn consumption_maps_bind_kernel_fields_and_keep_the_raw_table() {
+    let g = |session: u64, local: u64| json!({"sessionID": session, "localID": local});
+    let placed = |kind: &str, session: u64, local: u64, parent: (u64, u64), position: &str| {
+        json!({
+            "guid": g(session, local),
+            "type": kind,
+            "name": format!("{kind}-{local}"),
+            "parentIndex": {"guid": g(parent.0, parent.1), "position": position},
+            "size": {"x": 40., "y": 20.},
+        })
+    };
+    let alias = |local: u64| {
+        json!({"alias": {"guid": g(9, local), "assetRef": {"key": if local == 3 { "gap" } else { "corner" }}}})
+    };
+    let mut symbol = placed("SYMBOL", 1, 2, (0, 1), "a");
+    symbol["size"] = json!({"x": 240., "y": 220.});
+    symbol["stackMode"] = json!("VERTICAL");
+    symbol["stackSpacing"] = json!(4.);
+    symbol["stackHorizontalPadding"] = json!(2.);
+    symbol["stackVerticalPadding"] = json!(2.);
+    let mut stroked = placed("RECTANGLE", 1, 3, (1, 2), "b");
+    stroked["strokePaints"] = json!([
+        {"type": "SOLID", "color": {"r": 1., "g": 0., "b": 0., "a": 1.}, "opacity": 1., "visible": true},
+        {"type": "SOLID", "color": {"r": 0., "g": 0., "b": 1., "a": 1.}, "opacity": 1., "visible": true}
+    ]);
+    stroked["strokeWeight"] = json!(1.);
+    let bare = placed("RECTANGLE", 1, 7, (1, 2), "c");
+    let mut text = placed("TEXT", 1, 4, (1, 2), "d");
+    text["textData"] = json!({"characters": "Ag"});
+    text["fontSize"] = json!(16.);
+    let mut star = placed("STAR", 1, 14, (1, 2), "e");
+    star["cornerRadius"] = json!(1.);
+    star["count"] = json!(5);
+    star["starInnerScale"] = json!(0.5);
+    let mut polygon = placed("REGULAR_POLYGON", 1, 15, (1, 2), "f");
+    polygon["count"] = json!(5);
+    let mut corners = placed("RECTANGLE", 1, 16, (1, 2), "g");
+    corners["cornerRadius"] = json!(0.);
+    let mut sized = placed("RECTANGLE", 1, 17, (1, 2), "h");
+    sized["minSize"] = json!({"value": {"x": 10., "y": 10.}});
+    let mut literal = placed("RECTANGLE", 1, 18, (1, 2), "i");
+    literal["strokePaints"] = json!([
+        {"type": "SOLID", "color": {"r": 0., "g": 0., "b": 0., "a": 1.}, "opacity": 1., "visible": true}
+    ]);
+    literal["strokeWeight"] = json!(1.);
+    let mut instance = placed("INSTANCE", 1, 5, (0, 1), "j");
+    instance["size"] = json!({"x": 240., "y": 220.});
+    let consume = |field: &str, local: u64| {
+        json!({"variableField": field, "variableData": {"value": alias(local)}})
+    };
+    instance["symbolData"] = json!({
+        "symbolID": g(1, 2),
+        "symbolOverrides": [
+            {
+                "guidPath": {"guids": [g(1, 3)]},
+                "variableConsumptionMap": {"entries": [
+                    consume("STROKE_WEIGHT", 3),
+                    consume("BORDER_TOP_WEIGHT", 3)
+                ]},
+                "parameterConsumptionMap": {"entries": [
+                    consume("HEIGHT", 3),
+                    consume("FONT_FAMILY", 3)
+                ]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 7)]},
+                "variableConsumptionMap": {"entries": [consume("STROKE_WEIGHT", 3)]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 2)]},
+                "variableConsumptionMap": {"entries": [
+                    consume("STACK_PADDING_TOP", 3),
+                    consume("STACK_PADDING_RIGHT", 3),
+                    consume("STACK_PADDING_BOTTOM", 3),
+                    consume("STACK_PADDING_LEFT", 3)
+                ]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 4)]},
+                "variableConsumptionMap": {"entries": [
+                    consume("PARAGRAPH_SPACING", 3),
+                    consume("PARAGRAPH_INDENT", 3)
+                ]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 14)]},
+                "variableConsumptionMap": {"entries": [consume("CORNER_RADIUS", 3)]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 15)]},
+                "variableConsumptionMap": {"entries": [consume("CORNER_RADIUS", 3)]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 16)]},
+                "variableConsumptionMap": {"entries": [
+                    consume("RECTANGLE_TOP_LEFT_CORNER_RADIUS", 4),
+                    consume("CORNER_RADIUS", 3)
+                ]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 17)]},
+                "variableConsumptionMap": {"entries": [consume("MIN_WIDTH", 3)]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 18)]},
+                "strokeWeight": 6.,
+                "variableConsumptionMap": {"entries": [consume("STROKE_WEIGHT", 3)]}
+            },
+            {
+                "guidPath": {"guids": [g(44, 1)]},
+                "variableConsumptionMap": {"entries": [consume("STACK_PADDING_LEFT", 3)]}
+            }
+        ]
+    });
+    let variable = |local: u64, name: &str, key: &str, value: f64| {
+        json!({
+            "guid": g(9, local),
+            "type": "VARIABLE",
+            "name": name,
+            "key": key,
+            "variableResolvedType": "FLOAT",
+            "variableSetID": {"assetRef": {"key": "tokens"}},
+            "variableDataValues": {"entries": [{
+                "modeID": g(9, 2),
+                "variableData": {"value": {"floatValue": value}}
+            }]}
+        })
+    };
+    let doc = document_from_canvas(
+        &json!({"nodeChanges": [
+            {"guid": g(0, 1), "type": "CANVAS", "name": "Page", "parentIndex": {"guid": g(0, 0), "position": ""}},
+            {"guid": g(9, 1), "type": "VARIABLE_SET", "name": "Tokens", "key": "tokens", "variableSetModes": [{"id": g(9, 2), "name": "Light"}]},
+            variable(3, "Gap", "gap", 5.),
+            variable(4, "Corner", "corner", 9.),
+            symbol, stroked, bare, text, star, polygon, corners, sized, literal, instance
+        ]}),
+        BTreeMap::new(),
+        Vec::new(),
+    )
+    .expect("mappable consumption entries must not reject the file");
+    let spec = node(&doc, 1, 5).instance.as_ref().unwrap();
+    let stroke_fields = &spec.overrides["fig-1-3"]["bindings"];
+    assert_eq!(stroke_fields["strokes.0.width"], "fig-9-3");
+    assert_eq!(stroke_fields["strokes.1.width"], "fig-9-3");
+    assert_eq!(stroke_fields["height"], "fig-9-3");
+    assert!(stroke_fields.get("strokes.2.width").is_none());
+    assert!(spec.overrides["fig-1-7"].get("bindings").is_none());
+    let padding = &spec.overrides["$root"]["bindings"];
+    assert_eq!(padding["layout.padding.0"], "fig-9-3");
+    assert_eq!(padding["layout.padding.1"], "fig-9-3");
+    assert_eq!(padding["layout.padding.2"], "fig-9-3");
+    assert_eq!(padding["layout.padding.3"], "fig-9-3");
+    let text_fields = &spec.overrides["fig-1-4"]["bindings"];
+    assert_eq!(text_fields["textStyle.paragraphSpacing"], "fig-9-3");
+    assert_eq!(text_fields["textStyle.paragraphIndent"], "fig-9-3");
+    assert_eq!(spec.overrides["fig-1-14"]["bindings"]["cornerRadius"], "fig-9-3");
+    assert_eq!(spec.overrides["fig-1-15"]["bindings"]["cornerRadius"], "fig-9-3");
+    let radii = &spec.overrides["fig-1-16"]["bindings"];
+    assert_eq!(radii["radii.0"], "fig-9-4");
+    assert_eq!(radii["radii.1"], "fig-9-3");
+    assert_eq!(radii["radii.2"], "fig-9-3");
+    assert_eq!(radii["radii.3"], "fig-9-3");
+    assert_eq!(spec.overrides["fig-1-17"]["bindings"]["sizing.minWidth"], "fig-9-3");
+    assert_eq!(spec.overrides["fig-1-18"]["strokes"][0]["width"], json!(6.));
+    assert_eq!(spec.overrides["fig-1-18"]["bindings"]["strokes.0.width"], "fig-9-3");
+    let retained = doc
+        .design_system
+        .as_ref()
+        .unwrap()
+        .sketch_containers["nodeMetadata"]["fig-1-5"]["bindings"]["figOverrideVariableConsumption"]
+        .as_str()
+        .unwrap();
+    for kept in ["STROKE_WEIGHT", "BORDER_TOP_WEIGHT", "parameterConsumptionMap", "FONT_FAMILY", "STACK_PADDING_LEFT"] {
+        assert!(retained.contains(kept), "dropped {kept} from {retained}");
+    }
+    let notes = notes(&doc);
+    for name in [
+        "variableConsumptionMap.STROKE_WEIGHT",
+        "variableConsumptionMap.BORDER_TOP_WEIGHT",
+        "parameterConsumptionMap.FONT_FAMILY",
+        "variableConsumptionMap.STACK_PADDING_LEFT",
+    ] {
+        assert!(notes.contains(name), "missing {name} in {notes}");
+    }
+    let reported = notes
+        .split("left unchanged: ")
+        .nth(1)
+        .unwrap_or("")
+        .split(", ")
+        .collect::<Vec<_>>();
+    for executed in [
+        "variableConsumptionMap.HEIGHT",
+        "parameterConsumptionMap.HEIGHT",
+        "variableConsumptionMap.CORNER_RADIUS",
+        "variableConsumptionMap.PARAGRAPH_SPACING",
+        "variableConsumptionMap.PARAGRAPH_INDENT",
+        "variableConsumptionMap.MIN_WIDTH",
+        "variableConsumptionMap.STACK_PADDING_TOP",
+        "variableConsumptionMap.RECTANGLE_TOP_LEFT_CORNER_RADIUS",
+    ] {
+        assert!(!reported.contains(&executed), "{executed} was reported: {notes}");
+    }
+
+    let authored = doc.clone();
+    let reopened: Document = serde_json::from_str(&serde_json::to_string(&authored).unwrap()).unwrap();
+    reopened.validate().expect("saved consumption bindings reopen");
+    let mut resolved = reopened.clone();
+    resolve(&mut resolved).unwrap();
+    fn generated_at<'a>(doc: &'a Document, key: &str) -> &'a Node {
+        doc.nodes
+            .values()
+            .find(|node| {
+                node.instance_origin
+                    .as_ref()
+                    .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == key)
+            })
+            .unwrap_or_else(|| panic!("missing generated {key}"))
+    }
+    let stroke_node = generated_at(&resolved, "fig-1-3");
+    assert!((stroke_node.strokes[0].width - 5.).abs() < 1e-9);
+    assert!((stroke_node.strokes[1].width - 5.).abs() < 1e-9);
+    assert!((stroke_node.height - 5.).abs() < 1e-9);
+    assert!((stroke_node.width - 40.).abs() < 1e-9);
+    assert_eq!(resolved.nodes["fig-1-5"].layout.as_ref().unwrap().padding, [5., 5., 5., 5.]);
+    let text_node = generated_at(&resolved, "fig-1-4");
+    let style = text_node.text_style.as_ref().unwrap();
+    assert!((style.paragraph_spacing - 5.).abs() < 1e-9);
+    assert!((style.paragraph_indent - 5.).abs() < 1e-9);
+    assert!((generated_at(&resolved, "fig-1-14").corner_radius - 5.).abs() < 1e-9);
+    assert!((generated_at(&resolved, "fig-1-15").corner_radius - 5.).abs() < 1e-9);
+    assert_eq!(generated_at(&resolved, "fig-1-16").radii, [9., 5., 5., 5.]);
+    assert!((generated_at(&resolved, "fig-1-17").sizing.as_ref().unwrap().min_width - 5.).abs() < 1e-9);
+    assert!((generated_at(&resolved, "fig-1-18").strokes[0].width - 6.).abs() < 1e-9);
+    resolved.validate().expect("resolved consumption bindings stay valid");
+
+    let mut edited = authored.clone();
+    edited
+        .design_system
+        .as_mut()
+        .unwrap()
+        .variables
+        .get_mut("fig-9-3")
+        .unwrap()
+        .values
+        .get_mut("Light")
+        .unwrap()
+        .clone_from(&json!(11.));
+    resolve(&mut edited).unwrap();
+    assert!((generated_at(&edited, "fig-1-3").strokes[0].width - 11.).abs() < 1e-9);
+    assert_eq!(edited.nodes["fig-1-5"].layout.as_ref().unwrap().padding, [11., 11., 11., 11.]);
+    assert_eq!(generated_at(&edited, "fig-1-16").radii, [9., 11., 11., 11.]);
+    let mut undone = authored.clone();
+    resolve(&mut undone).unwrap();
+    assert!((generated_at(&undone, "fig-1-3").strokes[0].width - 5.).abs() < 1e-9);
+    assert_eq!(undone.nodes["fig-1-5"].layout.as_ref().unwrap().padding, [5., 5., 5., 5.]);
+    assert_eq!(generated_at(&undone, "fig-1-16").radii, [9., 5., 5., 5.]);
 }

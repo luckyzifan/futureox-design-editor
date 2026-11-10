@@ -167,8 +167,45 @@ pub(crate) fn binding_kind(path: &str) -> Option<&'static str> {
 }
 
 pub fn valid_property(path: &str) -> bool {
-    matches!(path,"width"|"height"|"opacity"|"visible"|"text"|"fontSize"|"layout.gap"|"layout.lineGap"|"textStyle.weight"|"textStyle.lineHeight"|"textStyle.letterSpacing") ||
-    path.strip_prefix("fills.").is_some_and(|v| { let mut p=v.split('.'); matches!((p.next(),p.next(),p.next()),(Some(i),Some("color"|"opacity"),None) if i.parse::<usize>().is_ok_and(|i|i<16)) })
+    matches!(
+        path,
+        "width"
+            | "height"
+            | "opacity"
+            | "visible"
+            | "text"
+            | "fontSize"
+            | "cornerRadius"
+            | "layout.gap"
+            | "layout.lineGap"
+            | "textStyle.weight"
+            | "textStyle.lineHeight"
+            | "textStyle.letterSpacing"
+            | "textStyle.paragraphSpacing"
+            | "textStyle.paragraphIndent"
+            | "sizing.minWidth"
+            | "sizing.maxWidth"
+            | "sizing.minHeight"
+            | "sizing.maxHeight"
+    ) || indexed_field(path, "fills.", &["color", "opacity"], 16)
+        || indexed_field(path, "strokes.", &["width"], 16)
+        || path
+            .strip_prefix("radii.")
+            .is_some_and(|index| index.parse::<usize>().is_ok_and(|index| index < 4))
+        || path
+            .strip_prefix("layout.padding.")
+            .is_some_and(|index| index.parse::<usize>().is_ok_and(|index| index < 4))
+}
+
+fn indexed_field(path: &str, prefix: &str, fields: &[&str], limit: usize) -> bool {
+    let Some(rest) = path.strip_prefix(prefix) else {
+        return false;
+    };
+    let mut parts = rest.split('.');
+    let (Some(index), Some(field), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    fields.contains(&field) && index.parse::<usize>().is_ok_and(|index| index < limit)
 }
 fn expected(path: &str) -> &'static str {
     if path.ends_with("color") {
@@ -183,20 +220,32 @@ fn expected(path: &str) -> &'static str {
 }
 pub fn set_path(root: &mut Value, path: &str, value: Value) -> Result<(), String> {
     let parts: Vec<_> = path.split('.').collect();
+    if parts.is_empty() || parts.iter().any(|part| part.is_empty()) {
+        return Err("Binding property does not exist".into());
+    }
     let mut target = root;
     for part in &parts[..parts.len() - 1] {
-        target = if let Ok(i) = part.parse::<usize>() {
-            target.get_mut(i)
+        target = if let Ok(index) = part.parse::<usize>() {
+            target.get_mut(index)
         } else {
             target.get_mut(*part)
         }
         .ok_or("Binding property does not exist")?;
     }
-    let key = parts.last().unwrap();
-    let field = target
-        .get_mut(*key)
+    let key = parts[parts.len() - 1];
+    // Array slots such as radii.0 and layout.padding.1 are numeric. An omitted
+    // object field (cornerRadius serializes only when non-zero) is created.
+    if let Ok(index) = key.parse::<usize>() {
+        let field = target
+            .get_mut(index)
+            .ok_or("Binding property does not exist")?;
+        *field = value;
+        return Ok(());
+    }
+    let object = target
+        .as_object_mut()
         .ok_or("Binding property does not exist")?;
-    *field = value;
+    object.insert(key.to_string(), value);
     Ok(())
 }
 /// Node-side stroke/effect rules applied to a paint style's carried
@@ -633,6 +682,32 @@ mod mode_scope_tests {
     use super::*;
     use serde_json::json;
     use std::sync::Arc;
+
+    #[test]
+    fn consumption_paths_address_array_slots_and_an_omitted_corner_radius() {
+        assert!(valid_property("radii.0") && valid_property("radii.3"));
+        assert!(!valid_property("radii.4") && !valid_property("strokes.16.width"));
+        assert!(valid_property("strokes.0.width") && valid_property("strokes.15.width"));
+        assert!(valid_property("layout.padding.2") && valid_property("cornerRadius"));
+        assert!(valid_property("textStyle.paragraphSpacing") && valid_property("sizing.minWidth"));
+        assert_eq!(binding_kind("strokes.0.width"), Some("number"));
+        assert_eq!(binding_kind("radii.1"), Some("number"));
+        let mut value = json!({
+            "radii": [0., 0., 0., 0.],
+            "strokes": [{"width": 1.}],
+            "layout": {"padding": [1., 1., 1., 1.]}
+        });
+        set_path(&mut value, "radii.0", json!(5.)).unwrap();
+        set_path(&mut value, "strokes.0.width", json!(4.)).unwrap();
+        set_path(&mut value, "layout.padding.3", json!(2.)).unwrap();
+        set_path(&mut value, "cornerRadius", json!(3.)).unwrap();
+        assert_eq!(value["radii"][0], json!(5.));
+        assert_eq!(value["strokes"][0]["width"], json!(4.));
+        assert_eq!(value["layout"]["padding"][3], json!(2.));
+        assert_eq!(value["cornerRadius"], json!(3.));
+        assert!(set_path(&mut value, "radii.4", json!(1.)).is_err());
+        assert!(set_path(&mut value, "layout.missing.0", json!(1.)).is_err());
+    }
 
     #[test]
     fn resolved_font_names_round_trip_only_when_they_name_a_real_source() {
