@@ -993,7 +993,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
  // Managed surfaces preserve extended-range linear light in RGBA32F.
  if(u(60).x>0.5){
   if(mode==3||mode==15){var opacity=u(4).z;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceC,p,u(3)).a);}let src=mulRN4(a,vec4<f32>(opacity));if(mode==15){return src;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}
-  if(mode==8){return linearTexture(p);}
+  if(mode==8){let covered=at(sourceA,p,u(1));if(covered.a<=0.){return covered;}return linearTexture(p);}
   if(mode==11){return linearGlass(p);}
   if(mode==23){return meanFourRN(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}
   if(mode==26){return meanFourRN(smp(sourceA,p,u(1)),smp(sourceB,p,u(2)),smp(sourceC,p,u(3)),smp(sourceD,p,u(1)));}
@@ -1056,7 +1056,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
  if(mode==60){return colorControlsPixel(a);}
  if(mode==30){return vec4<f32>(maskLumRN(a.rgb));}
  if(mode==7){let v=noise(vec2<i32>(floor(local(p)*max(0.01,u(10).x))),7u);let alpha=u(10).y*a.a;var source=vec4<f32>(vec3<f32>(v*alpha),alpha);if(u(60).x<0.5){source=round(source*255.)/255.;}return over(a,source,9);}
- if(mode==8){let q=vec2<i32>(floor(local(p)));let delta=(vec2<f32>(noise(q,13u),noise(q,29u))-0.5)*u(10).x;let device=vec2<f32>(u(45).x*delta.x+u(45).z*delta.y,u(45).y*delta.x+u(45).w*delta.y);return smp(sourceA,p+device,u(1));}
+ if(mode==8){let covered=at(sourceA,p,u(1));if(covered.a<=0.){return covered;}let q=vec2<i32>(floor(local(p)));let delta=(vec2<f32>(noise(q,13u),noise(q,29u))-0.5)*u(10).x;let device=vec2<f32>(u(45).x*delta.x+u(45).z*delta.y,u(45).y*delta.x+u(45).w*delta.y);return smp(sourceA,p+device,u(1));}
  if(mode==9){if(at(sourceA,p,u(1)).a>0.5){return vec4<f32>(1);}return encodePoint(floor(p-u(0).xy));}
  if(mode==10){let here=floor(p-u(0).xy);var best=vec2<f32>(-1);var score=1e30;for(var y=-1;y<=1;y=y+1){for(var x=-1;x<=1;x=x+1){let pos=p+vec2<f32>(f32(x),f32(y))*u(9).x;if(any(pos<u(1).xy)||any(pos>=u(1).xy+u(1).zw)){continue;}let candidate=decodePoint(at(sourceA,pos,u(1)));if(candidate.x<0.){continue;}let d=dot(here-candidate,here-candidate);if(d<score){score=d;best=candidate;}}}return encodePoint(best);}
  if(mode==11){let d=distanceField(p);let grad=vec2<f32>(distanceField(p+vec2<f32>(1,0))-distanceField(p-vec2<f32>(1,0)),distanceField(p+vec2<f32>(0,1))-distanceField(p-vec2<f32>(0,1)));let len=max(length(grad),1e-5);let factor=clamp(1.-d/max(u(9).x,4.),0.,1.);let refract=smp(sourceA,p+grad/len*u(9).y*factor*factor,u(1));let highlight=abs(grad.x-grad.y)/len*factor*u(9).z*0.25;if(u(60).x<0.5&&u(9).w>0.5){let dst=vec4<u32>(round(clamp(smpBytes(sourceA,p+grad/len*u(9).y*factor*factor,u(1)),vec4<f32>(0),vec4<f32>(255))));let alpha=u32(round(clamp(highlight,0.,1.)*255.));let sum=dst*(255u-alpha)+vec4<u32>(alpha*255u);let q=sum/vec4<u32>(255);let rem=sum-q*255u;return vec4<f32>(q+select(vec4<u32>(0),vec4<u32>(1),rem*2u>vec4<u32>(255)))/255.;}return over(refract,vec4<f32>(vec3<f32>(highlight),highlight),0)*select(at(sourceC,p,u(3)).a,1.,u(9).w>0.5);}
