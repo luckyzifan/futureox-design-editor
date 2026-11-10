@@ -1277,7 +1277,7 @@ impl Document {
                             "png" | "svg" | "jpeg" | "jpg" | "webp" | "pdf" | "pdf-vector" | "tiff" | "eps"
                         )
                         || !s.scale.is_finite()
-                        || (s.scale != 0. && !(0.001..=128.).contains(&s.scale))
+                        || !(0.0..=128.).contains(&s.scale)
                         || s.suffix.encode_utf16().count() > 80
                         || s.suffix
                             .chars()
