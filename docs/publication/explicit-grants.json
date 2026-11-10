@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "issue": 89,
+  "note": "Only these checkout bytes are proposed for publication. Each path has to match testing/fixtures/design/io/provenance.json, including the synthetic-pixel source sentence, and the root LICENSE copyright line. A nearby LICENSE is not a grant. Fidelity exports, user design inputs, and third-party kits are outside this file.",
+  "files": [
+    {
+      "path": "testing/fixtures/design/io/display-p3-mid-icc.png",
+      "sha256": "e4721be2db2983b37521e6d860e64e594b32deb24c7e667b3e1144522e6b4b9a",
+      "source": "Locally generated synthetic pixels; no user images or Figma reference pixels.",
+      "attribution": "Project-authored 4x4 RGBA image, fill (64, 128, 192, 255). Generator testing/fixtures/design/io/generate.py. The embedded ICC profile is copied from frontend/design-client/public/color-fixtures/p3-red-icc.png, which design-studio/crates/design-kernel/examples/color_assets.rs writes with moxcms ColorProfile::new_display_p3.",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Cookieboty and contributors",
+      "provenance": "testing/fixtures/design/io/provenance.json",
+      "filesMustMatch": [
+        {
+          "path": "testing/fixtures/design/io/provenance.json",
+          "sha256": "2c274155d6a494292ea611404d6b0976a8e9a7cce793cca43981d5cec7a8f654"
+        },
+        {
+          "path": "testing/fixtures/design/io/generate.py",
+          "sha256": "ac845df8733e8f4f1c3139ce705cbab00fc061e34eaae84fa9e42197b856cc71"
+        },
+        {
+          "path": "frontend/design-client/public/color-fixtures/p3-red-icc.png",
+          "sha256": "01b038754d6bb0d963442e1a18c068543f2aa7b97dac4dff1043ec5b603a0b02"
+        }
+      ]
+    },
+    {
+      "path": "testing/fixtures/design/io/lossless.webp",
+      "sha256": "920da8b5a2098b996d6721c7b2ce7bd406bd5f20b5463aa2fd4827395c86c002",
+      "source": "Locally generated synthetic pixels; no user images or Figma reference pixels.",
+      "attribution": "Project-authored 3x2 RGBA image, fill (31, 93, 157, 255), Pillow lossless WebP. Generator testing/fixtures/design/io/generate.py. No third-party image is embedded.",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Cookieboty and contributors",
+      "provenance": "testing/fixtures/design/io/provenance.json",
+      "filesMustMatch": [
+        {
+          "path": "testing/fixtures/design/io/provenance.json",
+          "sha256": "2c274155d6a494292ea611404d6b0976a8e9a7cce793cca43981d5cec7a8f654"
+        },
+        {
+          "path": "testing/fixtures/design/io/generate.py",
+          "sha256": "ac845df8733e8f4f1c3139ce705cbab00fc061e34eaae84fa9e42197b856cc71"
+        }
+      ]
+    },
+    {
+      "path": "testing/fixtures/design/io/orientation-6.jpg",
+      "sha256": "fed2837ad7a94d17ce8130babe47da376723560fa0fe6cfea0acbb84dde82ca2",
+      "source": "Locally generated synthetic pixels; no user images or Figma reference pixels.",
+      "attribution": "Project-authored 8x4 RGB image, left half red and right half green, EXIF orientation 6, JPEG quality 100 and subsampling 0. Generator testing/fixtures/design/io/generate.py. No third-party image is embedded.",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Cookieboty and contributors",
+      "provenance": "testing/fixtures/design/io/provenance.json",
+      "filesMustMatch": [
+        {
+          "path": "testing/fixtures/design/io/provenance.json",
+          "sha256": "2c274155d6a494292ea611404d6b0976a8e9a7cce793cca43981d5cec7a8f654"
+        },
+        {
+          "path": "testing/fixtures/design/io/generate.py",
+          "sha256": "ac845df8733e8f4f1c3139ce705cbab00fc061e34eaae84fa9e42197b856cc71"
+        }
+      ]
+    }
+  ]
+}
