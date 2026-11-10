@@ -1,10 +1,10 @@
 //! Resolve native component GUIDs only after the complete template tree exists.
-use super::{bool_of, f64_of, guid_string, str_of, Error, FigImporter};
-use crate::components::{Component, Instance, Property, PropertyKind};
+use super::{Error, FigImporter, bool_of, f64_of, guid_string, str_of};
+use crate::components::{Component, Instance, Overrides, Property, PropertyKind};
 use crate::math::Transform;
 use crate::scene::{Document, Node, Stroke};
 use crate::stroke::Marker;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn property_value(kind: &PropertyKind, value: &Value) -> Option<Value> {
@@ -157,9 +157,10 @@ fn binding_path(field: &str) -> Option<&'static str> {
         "HEIGHT" => "height",
         "OPACITY" => "opacity",
         "VISIBLE" => "visible",
-        "TEXT_DATA" => "text",
+        "TEXT_DATA" | "CHARACTERS" => "text",
         "FONT_SIZE" => "fontSize",
-        "STACK_SPACING" => "layout.gap",
+        "FONT_WEIGHT" => "textStyle.weight",
+        "STACK_SPACING" | "ITEM_SPACING" => "layout.gap",
         "STACK_COUNTER_SPACING" => "layout.lineGap",
         "LETTER_SPACING" => "textStyle.letterSpacing",
         "LINE_HEIGHT" => "textStyle.lineHeight",
@@ -301,6 +302,109 @@ fn target_id(path: &str, component_id: &str) -> String {
         component_id.to_string()
     } else {
         path.rsplit('/').next().unwrap_or(path).to_string()
+    }
+}
+
+/// `symbolOverrides.guidPath` addresses `overrideKey`, which is not the node
+/// guid. Each component maps those keys, and the node's own id, onto the
+/// layer that actually exists. Ambiguous keys are omitted so a collision
+/// cannot attach a layout to the wrong layer or reject the file.
+struct OverrideTargets {
+    by_component: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl OverrideTargets {
+    fn build(doc: &Document, records: &BTreeMap<String, Value>) -> Self {
+        let mut by_component = BTreeMap::new();
+        for (symbol, record) in records {
+            if str_of(record, "type") != Some("SYMBOL") || !doc.nodes.contains_key(symbol) {
+                continue;
+            }
+            let Ok(children) = descendants(doc, symbol) else {
+                continue;
+            };
+            let mut addresses = BTreeMap::new();
+            let mut blocked = BTreeSet::new();
+            let mut claim = |key: String, id: &str| {
+                if key.is_empty() || key == "fig-0-0" || blocked.contains(&key) {
+                    return;
+                }
+                let conflict = addresses.get(&key).is_some_and(|existing| existing != id);
+                if addresses.contains_key(&key) {
+                    if conflict {
+                        addresses.remove(&key);
+                        blocked.insert(key);
+                    }
+                    return;
+                }
+                addresses.insert(key, id.to_string());
+            };
+            for child in &children {
+                claim(child.clone(), child);
+                let Some(source) = records.get(child) else {
+                    continue;
+                };
+                if let Some(key) = source.get("overrideKey") {
+                    claim(guid_string(key), child);
+                }
+            }
+            by_component.insert(symbol.clone(), addresses);
+        }
+        Self { by_component }
+    }
+
+    /// Rewrite a guid path to the node-id path instance expansion looks up.
+    /// `None` means a segment does not name a layer in this file.
+    fn resolve(
+        &self,
+        doc: &Document,
+        records: &BTreeMap<String, Value>,
+        component_id: &str,
+        path: &str,
+    ) -> Option<String> {
+        if path == "$root" {
+            return Some("$root".into());
+        }
+        let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+        if parts.is_empty() {
+            return Some("$root".into());
+        }
+        let mut component = component_id.to_string();
+        let mut ids = Vec::with_capacity(parts.len());
+        for (index, part) in parts.iter().enumerate() {
+            let own_key = records
+                .get(&component)
+                .and_then(|record| record.get("overrideKey"))
+                .map(guid_string);
+            // A path segment that names the component itself targets that
+            // instance root, not a missing child.
+            if *part == component || own_key.as_deref() == Some(*part) {
+                if index + 1 == parts.len() {
+                    return Some(if ids.is_empty() {
+                        "$root".into()
+                    } else {
+                        ids.join("/")
+                    });
+                }
+                continue;
+            }
+            let id = self.by_component.get(&component)?.get(*part)?.clone();
+            if index + 1 != parts.len() {
+                let next = records
+                    .get(&id)
+                    .and_then(|record| record.get("symbolData"))
+                    .and_then(|data| data.get("symbolID"))
+                    .map(guid_string)
+                    .filter(|next| {
+                        doc.nodes
+                            .get(next)
+                            .is_some_and(|node| node.component.is_some())
+                    })?;
+                component = next;
+            }
+            ids.push(id);
+        }
+        Some(ids.join("/"))
     }
 }
 
@@ -947,8 +1051,9 @@ fn apply_text(
     importer: &FigImporter,
     unsupported: &mut BTreeSet<String>,
 ) {
-    let touches =
-        TEXT_KEYS.iter().any(|key| ov.get(*key).is_some()) || ov.get("textData").is_some();
+    let touches = TEXT_KEYS.iter().any(|key| ov.get(*key).is_some())
+        || ov.get("textData").is_some()
+        || ov.get("textTracking").is_some();
     if !touches {
         return;
     }
@@ -1085,6 +1190,21 @@ fn apply_text(
                 unsupported.insert("letterSpacing".into());
             }
         }
+    } else if let Some(value) = ov.get("textTracking") {
+        // Legacy FIG tracking is a raw pixel float. `letterSpacing` carries units
+        // and wins when both are present.
+        match value
+            .as_f64()
+            .filter(|pixels| pixels.is_finite() && pixels.abs() <= 1000.)
+        {
+            Some(pixels) => {
+                style.letter_spacing = pixels;
+                changed = true;
+            }
+            None => {
+                unsupported.insert("textTracking".into());
+            }
+        }
     }
     if let Some(value) = ov.get("paragraphSpacing").and_then(Value::as_f64) {
         if value.is_finite() && (0. ..=10000.).contains(&value) {
@@ -1185,6 +1305,73 @@ fn apply_text(
         }
     } else if changed && style.validate().is_err() {
         unsupported.insert("textStyle".into());
+    }
+}
+
+fn apply_export(
+    fields: &mut BTreeMap<String, Value>,
+    ov: &Value,
+    unsupported: &mut BTreeSet<String>,
+) {
+    let Some(settings) = ov.get("exportSettings") else {
+        return;
+    };
+    let Some(settings) = settings.as_array() else {
+        unsupported.insert("exportSettings".into());
+        return;
+    };
+    let mut exported = Vec::new();
+    let mut failed = false;
+    for (index, setting) in settings.iter().enumerate() {
+        let format = match str_of(setting, "imageType") {
+            Some("PNG") => "png",
+            Some("JPG" | "JPEG") => "jpeg",
+            Some("SVG" | "SVG_STRING") => "svg",
+            Some("PDF") => "pdf",
+            Some("WEBP") => "webp",
+            Some("TIFF") => "tiff",
+            _ => {
+                failed = true;
+                continue;
+            }
+        };
+        let constraint = setting.get("constraint");
+        let scale = match constraint.and_then(|value| str_of(value, "type")) {
+            Some("SCALE" | "CONTENT_SCALE") => constraint
+                .and_then(|value| value.get("value"))
+                .and_then(Value::as_f64),
+            None => Some(1.),
+            _ => {
+                failed = true;
+                continue;
+            }
+        };
+        let Some(scale) = scale.filter(|scale| scale.is_finite() && (0. ..=128.).contains(scale))
+        else {
+            failed = true;
+            continue;
+        };
+        let suffix = str_of(setting, "suffix").unwrap_or("");
+        if suffix.encode_utf16().count() > 80
+            || suffix
+                .chars()
+                .any(|c| c.is_control() || "\\/:*?\"<>|".contains(c))
+        {
+            failed = true;
+            continue;
+        }
+        exported.push(json!({
+            "id": format!("fig-export-{index}"),
+            "format": format,
+            "scale": scale,
+            "suffix": suffix,
+        }));
+    }
+    if failed || exported.is_empty() && !settings.is_empty() {
+        unsupported.insert("exportSettings".into());
+    }
+    if !exported.is_empty() {
+        fields.insert("exportSettings".into(), json!(exported));
     }
 }
 
@@ -1398,16 +1585,23 @@ fn trim_override_fields(fields: &mut BTreeMap<String, Value>, unsupported: &mut 
         "clip",
         "booleanOperation",
         "swapComponent",
+        "exportSettings",
         "locked",
         "points",
         "innerRadius",
         "arc",
     ];
     while fields.len() > 32 {
-        let Some(drop) = KEEP.iter().rev().find(|key| fields.contains_key(**key)) else {
+        let drop = KEEP
+            .iter()
+            .rev()
+            .find(|key| fields.contains_key(**key))
+            .map(|key| (*key).to_string())
+            .or_else(|| fields.keys().next().cloned());
+        let Some(drop) = drop else {
             break;
         };
-        fields.remove(*drop);
+        fields.remove(&drop);
         unsupported.insert(format!("override field budget:{drop}"));
     }
 }
@@ -1454,6 +1648,13 @@ pub(super) fn schema_floor(doc: &Document) -> u32 {
                 })
             {
                 version = version.max(21);
+            }
+            if fields
+                .get("exportSettings")
+                .and_then(Value::as_array)
+                .is_some_and(|settings| !settings.is_empty())
+            {
+                version = version.max(8);
             }
             if fields
                 .get("effects")
@@ -1505,7 +1706,7 @@ pub(super) fn import(
                 other => {
                     return Err(Error::Unsupported(format!(
                         "component property type {other:?}"
-                    )))
+                    )));
                 }
             };
             let key = def
@@ -1605,6 +1806,7 @@ pub(super) fn import(
         );
     }
     let variables = variables_from(records);
+    let targets = OverrideTargets::build(doc, records);
     let mut unsupported = BTreeSet::new();
     for (id, record) in records
         .iter()
@@ -1652,7 +1854,7 @@ pub(super) fn import(
             };
             property_values.insert(key, value);
         }
-        let mut overrides = BTreeMap::new();
+        let mut overrides: Overrides = BTreeMap::new();
         let mut retained = Vec::new();
         for ov in sd
             .get("symbolOverrides")
@@ -1670,7 +1872,14 @@ pub(super) fn import(
             if path.is_empty() {
                 path = "$root".into();
             }
-            let target_id = target_id(&path, &component_id);
+            let original_path = path;
+            let resolved = targets.resolve(doc, records, &component_id, &original_path);
+            let path = resolved.clone().unwrap_or_else(|| original_path.clone());
+            let target_id = if resolved.is_some() {
+                target_id(&path, &component_id)
+            } else {
+                String::new()
+            };
             let template = doc.nodes.get(&target_id);
             let source = records.get(&target_id);
             let mut fields = BTreeMap::new();
@@ -1691,6 +1900,8 @@ pub(super) fn import(
                         "size"
                             | "textData"
                             | "effects"
+                            | "textTracking"
+                            | "exportSettings"
                             | "variableConsumptionMap"
                             | "parameterConsumptionMap"
                             | "variableModeBySetMap"
@@ -1740,7 +1951,7 @@ pub(super) fn import(
                         fields.insert("fills".into(), serde_json::to_value(fills).unwrap());
                     }
                     "strokePaints" => {}
-                    "symbolID" => {
+                    "symbolID" | "overriddenSymbolID" => {
                         let id = guid_string(value);
                         if doc
                             .nodes
@@ -1749,7 +1960,7 @@ pub(super) fn import(
                         {
                             fields.insert("swapComponent".into(), Value::String(id));
                         } else {
-                            unsupported.insert("symbolID".into());
+                            unsupported.insert(key.clone());
                         }
                     }
                     "booleanOperation" => match value.as_str() {
@@ -1884,6 +2095,7 @@ pub(super) fn import(
             }
             apply_size(&mut fields, ov, &mut unsupported);
             apply_corners(&mut fields, ov, template, &mut unsupported);
+            apply_export(&mut fields, ov, &mut unsupported);
             apply_text(&mut fields, ov, template, importer, &mut unsupported);
             apply_effects(&mut fields, ov, importer, &mut unsupported);
             apply_layout(
@@ -1925,11 +2137,17 @@ pub(super) fn import(
             let mut kept =
                 apply_consumption(&mut fields, ov, &variables, template, &mut unsupported);
             trim_override_fields(&mut fields, &mut unsupported);
+            if ov.get("exportSettings").is_some() {
+                kept.insert(
+                    "exportSettings".into(),
+                    ov.get("exportSettings").cloned().unwrap_or(Value::Null),
+                );
+            }
             if !kept.is_empty() {
-                kept.insert("path".into(), Value::String(path.clone()));
+                kept.insert("path".into(), Value::String(original_path.clone()));
                 retained.push(Value::Object(kept));
             }
-            overrides.insert(path, fields);
+            overrides.entry(path).or_default().extend(fields);
         }
         let node = doc.nodes.get_mut(id).unwrap();
         node.instance = Some(

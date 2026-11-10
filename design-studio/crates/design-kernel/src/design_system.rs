@@ -258,7 +258,8 @@ fn validate_style_parts(doc: &Document, style: &SharedStyle) -> Result<(), Strin
                     | "texture"
                     | "color-controls"
                     | "gaussian-blur"
-                    | "motion-blur" | "zoom-blur"
+                    | "motion-blur"
+                    | "zoom-blur"
             )
         {
             return Err("Invalid shared style effect parameters".into());
@@ -289,17 +290,28 @@ pub fn validate(doc: &Document) -> Result<(), String> {
     {
         return Err("Design system budget exceeded".into());
     }
-    if s.font_sources.len() > 20_000 || s.font_sources.iter().any(|(id, source)| {
-        id.len() > 256 || source.runs.len() > 4096
-            || source.style.iter().chain(source.runs.values()).any(|s| s.is_empty() || s.len() > 512)
-            || source.runs.keys().any(|index| index.parse::<usize>().is_err())
-            || source.resolved.len() > 4097
-            || source.resolved.iter().any(|name| {
-                name.is_empty()
-                    || name.len() > 512
-                    || (source.style.as_ref() != Some(name) && !source.runs.values().any(|value| value == name))
-            })
-    }) {
+    if s.font_sources.len() > 20_000
+        || s.font_sources.iter().any(|(id, source)| {
+            id.len() > 256
+                || source.runs.len() > 4096
+                || source
+                    .style
+                    .iter()
+                    .chain(source.runs.values())
+                    .any(|s| s.is_empty() || s.len() > 512)
+                || source
+                    .runs
+                    .keys()
+                    .any(|index| index.parse::<usize>().is_err())
+                || source.resolved.len() > 4097
+                || source.resolved.iter().any(|name| {
+                    name.is_empty()
+                        || name.len() > 512
+                        || (source.style.as_ref() != Some(name)
+                            && !source.runs.values().any(|value| value == name))
+                })
+        })
+    {
         return Err("Invalid imported font identities".into());
     }
     for (id, c) in &s.collections {
@@ -422,7 +434,10 @@ fn validate_node(s: &DesignSystem, n: &Node) -> Result<(), String> {
         let style = s.styles.get(id).ok_or("Missing shared style")?;
         if !matches!(
             (field.as_str(), style.kind.as_str()),
-            ("fills", "paint") | ("strokes", "paint") | ("textStyle", "text") | ("effects", "effect")
+            ("fills", "paint")
+                | ("strokes", "paint")
+                | ("textStyle", "text")
+                | ("effects", "effect")
         ) {
             return Err("Shared style/property mismatch".into());
         }
@@ -465,7 +480,8 @@ pub(crate) fn resolve_node(
             let shared = &s.styles[id];
             // Stroke styles are paint styles whose payload is `strokes`, not fills.
             if field == "strokes" {
-                json["strokes"] = serde_json::to_value(&shared.strokes).map_err(|e| e.to_string())?;
+                json["strokes"] =
+                    serde_json::to_value(&shared.strokes).map_err(|e| e.to_string())?;
                 continue;
             }
             json[field] = style_with_defaults(shared)?;
@@ -629,8 +645,18 @@ mod mode_scope_tests {
         .unwrap();
         validate(&doc).unwrap();
         let again = serde_json::to_value(&doc.design_system).unwrap();
-        assert_eq!(again["fontSources"]["text"]["resolved"], json!(["PingFang SC"]));
-        doc.design_system.as_mut().unwrap().font_sources.get_mut("text").unwrap().resolved.insert("Unknown".into());
+        assert_eq!(
+            again["fontSources"]["text"]["resolved"],
+            json!(["PingFang SC"])
+        );
+        doc.design_system
+            .as_mut()
+            .unwrap()
+            .font_sources
+            .get_mut("text")
+            .unwrap()
+            .resolved
+            .insert("Unknown".into());
         assert!(validate(&doc).is_err());
     }
     #[test]

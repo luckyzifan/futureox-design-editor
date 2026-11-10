@@ -3,10 +3,12 @@
 //! stay in node metadata. `gold-preview.fig` still depends on the unmerged
 //! import fixes in PR #108 (zero-size vector scale) before this path can be
 //! checked on that file; this fixture covers the same override fields.
+use futureox_design_kernel::binfmt;
 use futureox_design_kernel::design_system::resolve;
+use futureox_design_kernel::editing::{DocumentEditor, DocumentPatch};
 use futureox_design_kernel::fig::document_from_canvas;
 use futureox_design_kernel::scene::{Document, Node};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 fn node<'a>(doc: &'a Document, session: u64, local: u64) -> &'a Node {
@@ -424,6 +426,7 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
     for feature in ["-liga", "-clig", "smcp", "tnum", "kern"] {
         assert!(features.contains(&feature), "{features:?}");
     }
+    assert_eq!(text_fields["textStyle"]["letterSpacing"], json!(120.));
     assert_eq!(text_fields["textStyle"]["weight"], json!(700.));
     assert_eq!(text_fields["textStyle"]["variations"][0]["tag"], "wdth");
     assert_eq!(
@@ -457,7 +460,6 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
     for name in [
         "stackPaddingRight",
         "fontVariantNumericFraction",
-        "textTracking",
         "fontVersion",
         "detachOpticalSizeFromFontSize",
         "rectangleCornerRadiiIndependent",
@@ -480,6 +482,7 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
         "fontVariantCaps",
         "fontVariantCommonLigatures",
         "fontVariations",
+        "textTracking",
         "toggledOnOTFeatures",
         "proportionsConstrained",
     ] {
@@ -525,14 +528,619 @@ fn in_file_layout_font_variants_and_missing_targets_stay_partial() {
                 .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == "fig-1-4")
         })
         .unwrap();
-    assert!(text_node
-        .text_style
-        .as_ref()
-        .unwrap()
-        .features
-        .iter()
-        .any(|feature| feature == "smcp"));
+    assert!(
+        text_node
+            .text_style
+            .as_ref()
+            .unwrap()
+            .features
+            .iter()
+            .any(|feature| feature == "smcp")
+    );
     resolved
         .validate()
         .expect("resolved in-file overrides stay valid");
+}
+
+fn guid(session: u64, local: u64) -> Value {
+    json!({"sessionID": session, "localID": local})
+}
+
+fn placed(kind: &str, session: u64, local: u64, parent: (u64, u64), position: &str) -> Value {
+    json!({
+        "guid": guid(session, local),
+        "type": kind,
+        "name": format!("{kind}-{local}"),
+        "parentIndex": {"guid": guid(parent.0, parent.1), "position": position},
+        "size": {"x": 40., "y": 20.},
+    })
+}
+
+/// Overrides addressed by `overrideKey` rather than the layer guid, including a
+/// nested instance path. This is the gold-preview shape: every override target
+/// exists, and none of the guid paths are node ids.
+fn override_key_document() -> Document {
+    let mut symbol = placed("SYMBOL", 1, 2, (0, 1), "a");
+    symbol["overrideKey"] = guid(5, 2);
+    symbol["size"] = json!({"x": 220., "y": 160.});
+    symbol["stackMode"] = json!("VERTICAL");
+    symbol["stackSpacing"] = json!(4.);
+    symbol["stackHorizontalPadding"] = json!(2.);
+    symbol["stackVerticalPadding"] = json!(2.);
+    let mut frame = placed("FRAME", 1, 10, (1, 2), "b");
+    frame["overrideKey"] = guid(5, 10);
+    frame["stackMode"] = json!("HORIZONTAL");
+    frame["stackSpacing"] = json!(4.);
+    frame["stackHorizontalPadding"] = json!(1.);
+    frame["stackVerticalPadding"] = json!(1.);
+    let mut stroked = placed("RECTANGLE", 1, 3, (1, 2), "c");
+    stroked["overrideKey"] = guid(5, 3);
+    stroked["strokePaints"] = json!([{
+        "type": "SOLID",
+        "color": {"r": 1., "g": 0., "b": 0., "a": 1.},
+        "opacity": 1.,
+        "visible": true
+    }]);
+    stroked["strokeWeight"] = json!(1.);
+    stroked["strokeAlign"] = json!("CENTER");
+    let mut text = placed("TEXT", 1, 4, (1, 2), "d");
+    text["overrideKey"] = guid(5, 4);
+    text["textData"] = json!({"characters": "No"});
+    text["fontSize"] = json!(16.);
+    let mut inner = placed("SYMBOL", 1, 30, (0, 1), "e");
+    inner["size"] = json!({"x": 80., "y": 40.});
+    let mut inner_rect = placed("RECTANGLE", 1, 31, (1, 30), "f");
+    inner_rect["overrideKey"] = guid(5, 31);
+    let mut nested = placed("INSTANCE", 1, 20, (1, 2), "g");
+    nested["overrideKey"] = guid(5, 20);
+    nested["symbolData"] = json!({"symbolID": guid(1, 30)});
+    let mut instance = placed("INSTANCE", 1, 5, (0, 1), "h");
+    instance["size"] = json!({"x": 220., "y": 160.});
+    instance["symbolData"] = json!({
+        "symbolID": guid(1, 2),
+        "symbolOverrides": [
+            {
+                "guidPath": {"guids": [guid(5, 3)]},
+                "cornerRadius": 8.,
+                "rectangleTopLeftCornerRadius": 2.,
+                "size": {"x": 50., "y": 30.},
+                "strokeAlign": "INSIDE",
+                "strokeWeight": 6.,
+                "fillPaints": [{
+                    "type": "SOLID",
+                    "color": {"r": 0., "g": 0., "b": 1., "a": 1.},
+                    "opacity": 1.,
+                    "visible": true
+                }],
+                "effects": [{
+                    "type": "DROP_SHADOW",
+                    "color": {"r": 0., "g": 0., "b": 0., "a": 1.},
+                    "radius": 4.,
+                    "visible": true
+                }],
+                "exportSettings": [{
+                    "imageType": "PNG",
+                    "constraint": {"type": "CONTENT_SCALE", "value": 2.},
+                    "suffix": "@2x",
+                    "contentsOnly": true
+                }],
+                "textTracking": "not-pixels"
+            },
+            {
+                "guidPath": {"guids": [guid(5, 4)]},
+                "textData": {"characters": "Hi"},
+                "textTracking": 4.
+            },
+            {
+                "guidPath": {"guids": [guid(5, 2)]},
+                "stackSpacing": 18.
+            },
+            {
+                "guidPath": {"guids": [guid(5, 10)]},
+                "stackSpacing": 12.,
+                "stackHorizontalPadding": 6.,
+                "stackVerticalPadding": 3.,
+                "stackPaddingRight": 9.,
+                "stackPrimarySizing": "FIXED",
+                "stackCounterSizing": "FIXED"
+            },
+            {
+                "guidPath": {"guids": [guid(5, 20), guid(5, 31)]},
+                "size": {"x": 64., "y": 28.}
+            },
+            {
+                "guidPath": {"guids": [guid(9, 9)]},
+                "stackPaddingRight": 4.,
+                "pluginData": [{"key": "k", "value": "v"}]
+            }
+        ]
+    });
+    let changes = vec![
+        json!({"guid": guid(0, 1), "type": "CANVAS", "name": "Page", "parentIndex": {"guid": guid(0, 0), "position": ""}}),
+        json!({"guid": guid(9, 1), "type": "VARIABLE_SET", "name": "Tokens", "key": "tokens", "variableSetModes": [{"id": guid(9, 2), "name": "Light"}]}),
+        json!({
+            "guid": guid(9, 3),
+            "type": "VARIABLE",
+            "name": "Width",
+            "key": "width-token",
+            "variableResolvedType": "FLOAT",
+            "variableSetID": {"assetRef": {"key": "tokens"}},
+            "variableDataValues": {"entries": [{
+                "modeID": guid(9, 2),
+                "variableData": {"value": {"floatValue": 40.}}
+            }]}
+        }),
+        symbol,
+        frame,
+        stroked,
+        text,
+        inner,
+        inner_rect,
+        nested,
+        instance,
+    ];
+    document_from_canvas(
+        &json!({"nodeChanges": changes}),
+        BTreeMap::new(),
+        Vec::new(),
+    )
+    .expect("an overrideKey path must not reject the file")
+}
+
+#[test]
+fn override_keys_execute_layout_size_text_and_keep_missing_paths() {
+    let doc = override_key_document();
+    let spec = node(&doc, 1, 5).instance.as_ref().unwrap();
+    let shape = spec
+        .overrides
+        .get("fig-1-3")
+        .expect("override key rewrites to the layer id");
+    assert!(spec.overrides.get("fig-5-3").is_none());
+    assert_eq!(shape["width"], json!(50.));
+    assert_eq!(shape["radii"], json!([2., 8., 8., 8.]));
+    assert_eq!(shape["strokes"][0]["width"], json!(6.));
+    assert_eq!(shape["strokes"][0]["align"], "inside");
+    assert_eq!(shape["fills"][0]["color"], "#0000ff");
+    assert_eq!(shape["effects"][0]["kind"], "shadow");
+    assert_eq!(shape["exportSettings"][0]["format"], "png");
+    assert_eq!(shape["exportSettings"][0]["scale"], json!(2.));
+    assert_eq!(shape["exportSettings"][0]["suffix"], "@2x");
+    let text_fields = spec.overrides.get("fig-1-4").unwrap();
+    assert_eq!(text_fields["text"], "Hi");
+    assert_eq!(text_fields["textStyle"]["letterSpacing"], json!(4.));
+    assert_eq!(spec.overrides["$root"]["layout"]["gap"], json!(18.));
+    let frame_fields = spec.overrides.get("fig-1-10").unwrap();
+    assert_eq!(frame_fields["layout"]["gap"], json!(12.));
+    assert_eq!(frame_fields["layout"]["padding"], json!([3., 9., 3., 6.]));
+    assert_eq!(frame_fields["sizing"]["width"], "fixed");
+    let nested = spec.overrides.get("fig-1-20/fig-1-31").unwrap();
+    assert_eq!(nested["width"], json!(64.));
+    assert_eq!(nested["height"], json!(28.));
+    assert!(
+        spec.overrides
+            .get("fig-9-9")
+            .unwrap()
+            .get("layout")
+            .is_none()
+    );
+    let notes = notes(&doc);
+    assert!(notes.contains("stackPaddingRight"), "{notes}");
+    assert!(notes.contains("pluginData"), "{notes}");
+    assert!(notes.contains("textTracking"), "{notes}");
+    for executed in [
+        "stackSpacing",
+        "strokeWeight",
+        "exportSettings",
+        "cornerRadius",
+    ] {
+        assert!(
+            !notes.contains(executed),
+            "{executed} still reported: {notes}"
+        );
+    }
+    let retained = doc
+        .design_system
+        .as_ref()
+        .unwrap()
+        .sketch_containers
+        .get("nodeMetadata")
+        .unwrap()
+        .get("fig-1-5")
+        .unwrap()
+        .get("bindings")
+        .unwrap()
+        .get("figOverrideVariableConsumption")
+        .and_then(Value::as_str)
+        .unwrap();
+    assert!(retained.contains("exportSettings"), "{retained}");
+    assert!(retained.contains("contentsOnly"), "{retained}");
+    let mut resolved = doc.clone();
+    resolve(&mut resolved).unwrap();
+    let shape_node = generated(&resolved, "fig-1-3");
+    assert!((shape_node.width - 50.).abs() < 1e-9);
+    assert_eq!(shape_node.radii, [2., 8., 8., 8.]);
+    assert_eq!(shape_node.fills[0].color, "#0000ff");
+    assert_eq!(shape_node.effects[0].kind, "shadow");
+    assert!((shape_node.effects[0].radius - 4.).abs() < 1e-9);
+    assert_eq!(shape_node.strokes[0].align, "inside");
+    assert_eq!(shape_node.export_settings[0].suffix, "@2x");
+    let text_node = generated(&resolved, "fig-1-4");
+    assert_eq!(text_node.text, "Hi");
+    assert!((text_node.text_style.as_ref().unwrap().letter_spacing - 4.).abs() < 1e-9);
+    let frame_node = generated(&resolved, "fig-1-10");
+    assert_eq!(frame_node.layout.as_ref().unwrap().gap, 12.);
+    let nested_node = generated(&resolved, "fig-1-20/fig-1-31");
+    assert!((nested_node.width - 64.).abs() < 1e-9);
+    assert!((nested_node.height - 28.).abs() < 1e-9);
+    resolved.validate().unwrap();
+}
+
+#[test]
+fn ordinary_opacity_bindings_are_not_treated_as_fig_percentages() {
+    let mut doc: Document = serde_json::from_value(json!({
+        "schemaVersion": 6,
+        "id": "d",
+        "name": "opacity",
+        "pages": [{"id": "p", "name": "Page", "background": "#ffffff", "children": ["n", "unit"]}],
+        "designSystem": {
+            "collections": {"theme": {"name": "Theme", "modes": ["Default"], "defaultMode": "Default"}},
+            "variables": {
+                "percent": {"name": "Disabled 50%", "collection": "theme", "kind": "number", "values": {"Default": 50}},
+                "unit": {"name": "Half", "collection": "theme", "kind": "number", "values": {"Default": 0.25}}
+            },
+            "activeModes": {"theme": "Default"}
+        },
+        "nodes": {
+            "n": {
+                "id": "n",
+                "kind": "rectangle",
+                "width": 40,
+                "height": 20,
+                "opacity": 1,
+                "fills": [{"kind": "solid", "color": "#000000", "opacity": 1, "visible": true}],
+                "bindings": {"opacity": "percent", "width": "percent", "fills.0.opacity": "percent"}
+            },
+            "unit": {"id": "unit", "kind": "frame", "width": 40, "height": 20, "opacity": 1, "bindings": {"opacity": "unit"}}
+        }
+    }))
+    .unwrap();
+    resolve(&mut doc).unwrap();
+    assert!(
+        (doc.nodes["n"].opacity - 50.).abs() < 1e-9,
+        "layer opacity {}",
+        doc.nodes["n"].opacity
+    );
+    assert!((doc.nodes["n"].fills[0].opacity - 50.).abs() < 1e-9);
+    assert!(
+        (doc.nodes["n"].width - 50.).abs() < 1e-9,
+        "width {}",
+        doc.nodes["n"].width
+    );
+    assert!((doc.nodes["unit"].opacity - 0.25).abs() < 1e-9);
+    assert!(
+        (doc.design_system.as_ref().unwrap().variables["percent"].values["Default"]
+            .as_f64()
+            .unwrap()
+            - 50.)
+            .abs()
+            < 1e-9
+    );
+    assert!(doc.validate().is_err());
+}
+
+#[test]
+fn fig_percent_opacity_is_normalized_only_during_import() {
+    let g = |session: u64, local: u64| json!({"sessionID": session, "localID": local});
+    let mut shared = placed("RECTANGLE", 1, 8, (0, 1), "a");
+    shared["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "WIDTH", "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}},
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}}
+    ]});
+    let mut unit = placed("RECTANGLE", 1, 9, (0, 1), "b");
+    unit["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 6), "assetRef": {"key": "half"}}}}}
+    ]});
+    let mut solo = placed("RECTANGLE", 1, 13, (0, 1), "i");
+    solo["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 10), "assetRef": {"key": "solo"}}}}}
+    ]});
+    let mut via_alias = placed("RECTANGLE", 1, 10, (0, 1), "c");
+    via_alias["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "OPACITY", "variableData": {"value": {"alias": {"guid": g(9, 7), "assetRef": {"key": "disabled-alias"}}}}}
+    ]});
+    let mut text = placed("TEXT", 1, 11, (0, 1), "d");
+    text["textData"] = json!({"characters": "No"});
+    text["fontSize"] = json!(16.);
+    text["variableConsumptionMap"] = json!({"entries": [
+        {"variableField": "FONT_WEIGHT", "variableData": {"value": {"alias": {"guid": g(9, 8), "assetRef": {"key": "weight"}}}}},
+        {"variableField": "CHARACTERS", "variableData": {"value": {"alias": {"guid": g(9, 9), "assetRef": {"key": "label"}}}}}
+    ]});
+    let symbol = placed("SYMBOL", 1, 2, (0, 1), "e");
+    let child = placed("RECTANGLE", 1, 3, (1, 2), "f");
+    let mut label = placed("TEXT", 1, 12, (1, 2), "h");
+    label["textData"] = json!({"characters": "No"});
+    label["fontSize"] = json!(16.);
+    let mut instance = placed("INSTANCE", 1, 5, (0, 1), "g");
+    instance["symbolData"] = json!({
+        "symbolID": g(1, 2),
+        "symbolOverrides": [
+            {
+                "guidPath": {"guids": [g(1, 3)]},
+                "variableConsumptionMap": {"entries": [{
+                    "variableField": "OPACITY",
+                    "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}
+                }]}
+            },
+            {
+                "guidPath": {"guids": [g(1, 12)]},
+                "lineHeight": {"units": "PIXELS", "value": 24.},
+                "letterSpacing": {"units": "PERCENT", "value": 10.},
+                "fontName": {"family": "Inter", "style": "Bold"},
+                "effects": [{
+                    "type": "DROP_SHADOW",
+                    "color": {"r": 0., "g": 0., "b": 0., "a": 0.5},
+                    "radius": 4.,
+                    "visible": true
+                }]
+            }
+        ]
+    });
+    let doc = document_from_canvas(
+        &json!({"nodeChanges": [
+            json!({"guid": g(0, 1), "type": "CANVAS", "name": "Page", "parentIndex": {"guid": g(0, 0), "position": ""}}),
+            json!({"guid": g(9, 1), "type": "VARIABLE_SET", "name": "Tokens", "key": "tokens", "variableSetModes": [
+                {"id": g(9, 2), "name": "Light"},
+                {"id": g(9, 5), "name": "Dark"}
+            ]}),
+            json!({
+                "guid": g(9, 4), "type": "VARIABLE", "name": "Disabled 50%", "key": "disabled",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 50.}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 20.}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 10), "type": "VARIABLE", "name": "Solo 50%", "key": "solo",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 50.}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 20.}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 6), "type": "VARIABLE", "name": "Half", "key": "half",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 0.25}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 0.25}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 7), "type": "VARIABLE", "name": "Disabled alias", "key": "disabled-alias",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"alias": {"guid": g(9, 4), "assetRef": {"key": "disabled"}}}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 8), "type": "VARIABLE", "name": "Weight", "key": "weight",
+                "variableResolvedType": "FLOAT", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"floatValue": 700.}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"floatValue": 400.}}}
+                ]}
+            }),
+            json!({
+                "guid": g(9, 9), "type": "VARIABLE", "name": "Label", "key": "label",
+                "variableResolvedType": "STRING", "variableSetID": {"assetRef": {"key": "tokens"}},
+                "variableDataValues": {"entries": [
+                    {"modeID": g(9, 2), "variableData": {"value": {"textValue": {"characters": "Hi"}}}},
+                    {"modeID": g(9, 5), "variableData": {"value": {"textValue": {"characters": "Yo"}}}}
+                ]}
+            }),
+            shared, unit, solo, via_alias, text, symbol, child, label, instance
+        ]}),
+        BTreeMap::new(),
+        Vec::new(),
+    )
+    .expect("percent opacity must not reject the file");
+    let system = doc.design_system.as_ref().unwrap();
+    assert_eq!(system.variables["fig-9-4"].values["Light"], json!(50.));
+    assert_eq!(system.variables["fig-9-4"].values["Dark"], json!(20.));
+    assert_eq!(
+        system.variables["fig-9-4#fig-opacity"].values["Light"],
+        json!(0.5)
+    );
+    assert_eq!(
+        system.variables["fig-9-4#fig-opacity"].values["Dark"],
+        json!(0.2)
+    );
+    assert!(system.variables.get("fig-9-6#fig-opacity").is_none());
+    assert!(system.variables.get("fig-9-10#fig-opacity").is_none());
+    assert_eq!(system.variables["fig-9-10"].values["Light"], json!(0.5));
+    assert_eq!(system.variables["fig-9-10"].values["Dark"], json!(0.2));
+    assert_eq!(doc.nodes["fig-1-13"].bindings["opacity"], "fig-9-10");
+    assert_eq!(
+        system.variables["fig-9-7#fig-opacity"].values["Light"]["alias"],
+        json!("fig-9-4#fig-opacity")
+    );
+    assert_eq!(
+        system.variables["fig-9-7"].values["Light"]["alias"],
+        json!("fig-9-4")
+    );
+    assert_eq!(doc.nodes["fig-1-8"].bindings["width"], "fig-9-4");
+    assert_eq!(
+        doc.nodes["fig-1-8"].bindings["opacity"],
+        "fig-9-4#fig-opacity"
+    );
+    assert_eq!(doc.nodes["fig-1-9"].bindings["opacity"], "fig-9-6");
+    assert_eq!(
+        doc.nodes["fig-1-10"].bindings["opacity"],
+        "fig-9-7#fig-opacity"
+    );
+    assert_eq!(
+        doc.nodes["fig-1-11"].bindings["textStyle.weight"],
+        "fig-9-8"
+    );
+    assert_eq!(doc.nodes["fig-1-11"].bindings["text"], "fig-9-9");
+    let override_bindings =
+        &doc.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-3"]["bindings"];
+    assert_eq!(override_bindings["opacity"], "fig-9-4#fig-opacity");
+    let text_fields = &doc.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-12"];
+    let text_style = &text_fields["textStyle"];
+    assert!((text_style["lineHeight"].as_f64().unwrap() - 1.5).abs() < 1e-9);
+    assert!((text_style["letterSpacing"].as_f64().unwrap() - 1.6).abs() < 1e-9);
+    assert!((text_style["weight"].as_f64().unwrap() - 700.).abs() < 1e-9);
+    assert_eq!(text_fields["effects"][0]["kind"], "shadow");
+    assert!(notes(&doc).contains("fontName.family=Inter"));
+    let mut resolved = doc.clone();
+    resolve(&mut resolved).unwrap();
+    assert!((resolved.nodes["fig-1-8"].width - 50.).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-8"].opacity - 0.5).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-13"].opacity - 0.5).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-9"].opacity - 0.25).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-10"].opacity - 0.5).abs() < 1e-9);
+    assert!(
+        (resolved.nodes["fig-1-11"]
+            .text_style
+            .as_ref()
+            .unwrap()
+            .weight
+            - 700.)
+            .abs()
+            < 1e-9
+    );
+    assert_eq!(resolved.nodes["fig-1-11"].text, "Hi");
+    let generated_child = resolved
+        .nodes
+        .values()
+        .find(|node| {
+            node.instance_origin
+                .as_ref()
+                .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == "fig-1-3")
+        })
+        .unwrap();
+    assert!((generated_child.opacity - 0.5).abs() < 1e-9);
+    let generated_text = resolved
+        .nodes
+        .values()
+        .find(|node| {
+            node.instance_origin
+                .as_ref()
+                .is_some_and(|origin| origin.owner == "fig-1-5" && origin.key == "fig-1-12")
+        })
+        .unwrap();
+    assert!((generated_text.text_style.as_ref().unwrap().line_height - 1.5).abs() < 1e-9);
+    assert!((generated_text.text_style.as_ref().unwrap().letter_spacing - 1.6).abs() < 1e-9);
+    assert_eq!(generated_text.effects[0].kind, "shadow");
+    resolved
+        .design_system
+        .as_mut()
+        .unwrap()
+        .active_modes
+        .insert("tokens".into(), "Dark".into());
+    resolve(&mut resolved).unwrap();
+    assert!((resolved.nodes["fig-1-8"].width - 20.).abs() < 1e-9);
+    assert!((resolved.nodes["fig-1-8"].opacity - 0.2).abs() < 1e-9);
+    resolved
+        .validate()
+        .expect("normalized fig opacity stays valid");
+}
+
+#[test]
+fn editor_modify_undo_save_reopen_keeps_override_fields() {
+    let imported = override_key_document();
+    let mut opened = imported.clone();
+    resolve(&mut opened).unwrap();
+    let mut editor = DocumentEditor::new(opened.clone())
+        .expect("resolved override document opens in the editor");
+    let mut edited = editor.document().clone();
+    edited
+        .nodes
+        .get_mut("fig-1-5")
+        .unwrap()
+        .instance
+        .as_mut()
+        .unwrap()
+        .overrides
+        .get_mut("fig-1-3")
+        .unwrap()
+        .insert("width".into(), json!(77.));
+    resolve(&mut edited).unwrap();
+    let patch = DocumentPatch::between(editor.document(), &edited).unwrap();
+    editor.apply(editor.revision(), patch).unwrap();
+    assert!((generated(editor.document(), "fig-1-3").width - 77.).abs() < 1e-9);
+    editor.undo().unwrap();
+    let undone = editor.document();
+    assert_eq!(
+        undone.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-3"]["width"],
+        json!(50.)
+    );
+    assert_eq!(
+        undone.nodes["fig-1-5"].instance.as_ref().unwrap().overrides["fig-1-3"]["radii"],
+        json!([2., 8., 8., 8.])
+    );
+    let saved = binfmt::encode(undone);
+    let reopened = binfmt::decode(&saved).expect("saved override document reopens");
+    reopened.validate().expect("reopened document validates");
+    let fields = &reopened.nodes["fig-1-5"]
+        .instance
+        .as_ref()
+        .unwrap()
+        .overrides;
+    assert_eq!(fields["fig-1-3"]["width"], json!(50.));
+    assert_eq!(fields["fig-1-3"]["height"], json!(30.));
+    assert_eq!(fields["fig-1-3"]["radii"], json!([2., 8., 8., 8.]));
+    assert_eq!(fields["fig-1-3"]["strokes"][0]["width"], json!(6.));
+    assert_eq!(fields["fig-1-3"]["strokes"][0]["align"], "inside");
+    assert_eq!(fields["fig-1-3"]["fills"][0]["color"], "#0000ff");
+    assert_eq!(fields["fig-1-3"]["effects"][0]["kind"], "shadow");
+    assert_eq!(fields["fig-1-4"]["text"], "Hi");
+    assert_eq!(fields["fig-1-4"]["textStyle"]["letterSpacing"], json!(4.));
+    assert_eq!(fields["fig-1-10"]["layout"]["gap"], json!(12.));
+    assert_eq!(
+        fields["fig-1-10"]["layout"]["padding"],
+        json!([3., 9., 3., 6.])
+    );
+    assert_eq!(fields["fig-1-20/fig-1-31"]["width"], json!(64.));
+    let kept = reopened
+        .design_system
+        .as_ref()
+        .unwrap()
+        .sketch_containers
+        .get("nodeMetadata")
+        .unwrap()
+        .get("fig-1-5")
+        .unwrap()
+        .get("bindings")
+        .unwrap()
+        .get("figOverrideVariableConsumption")
+        .and_then(Value::as_str)
+        .unwrap();
+    assert!(kept.contains("contentsOnly"), "{kept}");
+    let mut resolved = reopened;
+    resolve(&mut resolved).unwrap();
+    let shape = generated(&resolved, "fig-1-3");
+    assert!((shape.width - 50.).abs() < 1e-9, "{}", shape.width);
+    assert!((shape.height - 30.).abs() < 1e-9);
+    assert_eq!(shape.radii, [2., 8., 8., 8.]);
+    assert_eq!(shape.strokes[0].align, "inside");
+    assert!((shape.strokes[0].width - 6.).abs() < 1e-9);
+    assert_eq!(shape.fills[0].color, "#0000ff");
+    assert_eq!(shape.effects[0].kind, "shadow");
+    assert_eq!(generated(&resolved, "fig-1-4").text, "Hi");
+    assert_eq!(
+        generated(&resolved, "fig-1-10")
+            .layout
+            .as_ref()
+            .unwrap()
+            .gap,
+        12.
+    );
+    assert!((generated(&resolved, "fig-1-20/fig-1-31").width - 64.).abs() < 1e-9);
+    resolved
+        .validate()
+        .expect("reopened overrides stay executable");
 }

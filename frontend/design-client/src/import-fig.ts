@@ -17,6 +17,7 @@ import {
   defaultLayout,
   defaultSizing,
   hasStrokeMarkers,
+  hasLayerExports,
   hasLocalTools,
   hasSchema20Features,
   type DesignNode,
@@ -811,7 +812,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     receipts.set(id, bindings)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
-  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts)
+  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts, effectsOf)
   // The shared model's direct mask owns its whole container. Native FIG masks
   // only following siblings. Explicit identity groups keep all original node
   // IDs, local coordinates, order and component override keys intact.
@@ -860,7 +861,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   else if(Object.values(doc.nodes).some(n=>n.network?.filledFaces!==undefined))doc.schemaVersion=Math.max(10,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>n.textRuns?.some(r=>r.letterSpacing !== undefined || r.lineHeight !== undefined))) doc.schemaVersion = Math.max(21, doc.schemaVersion) as typeof doc.schemaVersion
-  if (hasStrokeMarkers(doc)) doc.schemaVersion = Math.max(8, doc.schemaVersion) as typeof doc.schemaVersion
+  if (hasStrokeMarkers(doc) || hasLayerExports(doc)) doc.schemaVersion = Math.max(8, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasLocalTools(doc)) doc.schemaVersion = Math.max(10, doc.schemaVersion) as typeof doc.schemaVersion
   if (doc.pages.some(page => page.guides?.length)) doc.schemaVersion = Math.max(11, doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.designSystem?.styles || {}).some(style => style.strokes?.length || style.effects?.length))
