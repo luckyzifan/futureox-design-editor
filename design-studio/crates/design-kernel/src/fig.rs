@@ -2688,6 +2688,7 @@ pub fn document_from_canvas(
     // whose property and variable kind the design system can execute.
     document::import_variables(&mut doc, &records, &mut document_notes);
     document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
+    version = version.max(components::schema_floor(&doc));
     document::raise_schema(&doc, &mut version);
     doc.schema_version = version;
     doc.validate().map_err(|e| Error::Unsupported(format!("imported document: {e}")))?;
@@ -4929,8 +4930,20 @@ mod tests {
             instance["symbolData"]=json!({"symbolID":guid(1,2)});
             instance["componentPropAssignments"]=json!([{"defID":guid(1,8),"value":{"boolValue":true}}]);
             changes.push(instance);
-            assert!(doc_with(changes).unwrap_err().to_string().contains("unknown component property"));
+            let doc = doc_with(changes).unwrap();
+            assert!(node_of(&doc, 1, 5).instance.is_some());
+            let notes = doc
+                .design_system
+                .as_ref()
+                .and_then(|system| system.sketch_containers.get("figDocument"))
+                .and_then(|receipt| receipt.get("notes"))
+                .and_then(Value::as_array)
+                .map(|notes| notes.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"))
+                .unwrap_or_default();
+            assert!(
+                notes.contains("property assignment fig-1-8"),
+                "unknown assignments are reported, not a whole-file reject: {notes}"
+            );
         }
-
     }
 }
