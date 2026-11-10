@@ -1,28 +1,16 @@
-This linux-x64 `ffmpeg` executable is a GPL build of FFmpeg 7.0.2-static.
-Its `ffmpeg -version` banner and SHA-256 are recorded in `source.json`.
-The banner configuration is longer than the earlier subset
-`--enable-gpl --enable-version3 --enable-static --enable-libx264 --enable-libvpx`.
-It still includes those flags, plus the other libraries named by the banner.
+This linux-x64 ffmpeg executable is GPL-3.0-or-later.
 
-On 2026-11-09 the file matched the uncompressed bytes of
-https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz
-(gzip SHA-256 bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa).
-`UPSTREAM-README.txt` is the `linux-x64.README` asset from that same release.
-It names build `ffmpeg-7.0.2-amd64-static.tar.xz` and lists library versions,
-including libx264 and libvpx. That readme is not a source archive.
+rebuild.sh built it on 2026-11-10 from the tarballs in sources/:
+FFmpeg n7.0.2, libvpx 1.15.2, and x264 commit b35605ace3ddf7c1a5d67a2eb553f034aef41d55.
+source.json records the binary hash, the banner configuration, and each tarball hash.
+BUILD.txt records the compiler and the fact that no patches were applied.
 
-https://johnvansickle.com/ffmpeg/release-source/ was fetched the same day.
-Its index did not contain an FFmpeg 7.0.2 tarball or those library versions.
-Corresponding source is not in this repository, and this binary was not rebuilt
-here. `correspondingSourceInRepo` and `rebuiltFromSource` stay false in
-`source.json`.
+--enable-gpl and --enable-version3 select GPL-3.0-or-later for this program.
+x264 is GPL-2.0-or-later. libvpx is BSD. The FFmpeg COPYING files and x264-COPYING
+and libvpx-LICENSE are the upstream texts, copied unchanged.
 
-`COPYING.GPLv3` matches the b6.1.1 `linux-x64.LICENSE` asset.
-`COPYING.LGPLv2.1` is kept beside it. The executable is distributed under
-GPL-3.0-or-later because the build uses `--enable-gpl` and `--enable-version3`.
-
-Futureox Design ships it as a separate program at `Resources/bin/ffmpeg`
-(Electron extraResource from `dist/bin`). The desktop host resolves that path
-and the Rust sidecar spawns it with a fixed argument list. It is not linked
-into the Electron or Rust binaries. Spawning this program does not decide the
-license of the rest of the application.
+libx264 and libvpx are static. glibc and libz.so.1 are dynamic system libraries.
+The desktop package copies this binary, these texts, rebuild.sh, and the source
+tarballs to Resources/bin. The Rust sidecar spawns the executable. It is not linked
+into Electron or the design kernel. Spawning it does not decide the license of the
+rest of Futureox Design.

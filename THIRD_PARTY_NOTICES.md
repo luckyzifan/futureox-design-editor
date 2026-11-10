@@ -80,22 +80,28 @@ importer in that revision; Sketch continues through this project's own codec.
 ## Bundled FFmpeg
 
 The desktop package can include a separate linux-x64 `ffmpeg` executable under
-`frontend/design-desktop/vendor/ffmpeg/linux-x64/`. It is FFmpeg 7.0.2-static,
-GPL-3.0-or-later. The full `ffmpeg -version` configuration, SHA-256
-`e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99`, and build id
-`edfa98c6c76982e3c1e0bf47fa06c97212951b21` are in `linux-x64/source.json`.
-On 2026-11-09 those bytes matched the uncompressed ffmpeg-static b6.1.1
-`ffmpeg-linux-x64.gz` asset. `UPSTREAM-README.txt` is that release's
-`linux-x64.README` and names `ffmpeg-7.0.2-amd64-static.tar.xz` plus library
-versions. The johnvansickle `release-source` index fetched the same day did not
-contain this build's sources. Corresponding source is not in the repository,
-and the binary was not rebuilt here.
+`frontend/design-desktop/vendor/ffmpeg/linux-x64/`. It is FFmpeg 7.0.2,
+GPL-3.0-or-later. SHA-256
+`18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317`, build id
+`c14244632ea1466c5ff03cc39da18022390ad696`, and the `ffmpeg -version`
+configuration are in `linux-x64/source.json`.
+
+`rebuild.sh` built that binary on 2026-11-10 from the tarballs in
+`linux-x64/sources/`: FFmpeg n7.0.2, libvpx 1.15.2, and x264 commit
+`b35605ace3ddf7c1a5d67a2eb553f034aef41d55`. No patches were applied. libx264 and
+libvpx are linked into the executable. glibc and `libz.so.1` remain dynamic
+system libraries. `--enable-gpl` and `--enable-version3` select
+GPL-3.0-or-later. x264 is GPL-2.0-or-later and libvpx is BSD.
+
+The earlier johnvansickle `7.0.2-static` executable is no longer shipped. Its
+release-source index did not contain a matching source archive.
 
 The binary is spawned by the Rust sidecar; it is not linked into Electron or
 the design kernel. That spawn does not decide the license of the rest of the
-application. License text is `linux-x64/LICENSE.txt`, `COPYING.GPLv3`, and
-`COPYING.LGPLv2.1`. macOS and Windows paths are documented stubs and do not
-ship a binary yet.
+application. License texts are `LICENSE.txt`, `BUILD.txt`, `COPYING.GPLv2`,
+`COPYING.GPLv3`, `COPYING.LGPLv2.1`, `COPYING.LGPLv3`, `x264-COPYING`, and
+`libvpx-LICENSE`. macOS and Windows paths are documented stubs and do not ship
+a binary yet.
 
 ## RustCrypto SHA-2
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { assertPackagedFfmpeg, ffmpegExecutableName, ffmpegVendorTriple, installBundledFfmpeg } from '../scripts/ffmpeg-bundle.mjs'
+import { assertPackagedFfmpeg, FFMPEG_PACKAGE_NOTICES, ffmpegExecutableName, ffmpegVendorTriple, installBundledFfmpeg, LINUX_NOTICES } from '../scripts/ffmpeg-bundle.mjs'
 
 test('vendor triples name the packaged executable', () => {
   assert.equal(ffmpegVendorTriple('linux', 'x64'), 'linux-x64')
@@ -18,17 +18,26 @@ test('install copies a vendored binary and linux x64 is required', async () => {
   try {
     const desktop = path.join(root, 'desktop')
     const output = path.join(root, 'dist')
-    await mkdir(path.join(desktop, 'vendor/ffmpeg/linux-x64'), { recursive: true })
-    await writeFile(path.join(desktop, 'vendor/ffmpeg/linux-x64/ffmpeg'), 'elf-bytes')
-    await chmod(path.join(desktop, 'vendor/ffmpeg/linux-x64/ffmpeg'), 0o755)
-    await writeFile(path.join(desktop, 'vendor/ffmpeg/linux-x64/LICENSE.txt'), 'gpl notice')
-    await writeFile(path.join(desktop, 'vendor/ffmpeg/linux-x64/UPSTREAM-README.txt'), 'upstream readme')
+    const vendor = path.join(desktop, 'vendor/ffmpeg/linux-x64')
+    await mkdir(vendor, { recursive: true })
+    await writeFile(path.join(vendor, 'ffmpeg'), 'elf-bytes')
+    await chmod(path.join(vendor, 'ffmpeg'), 0o755)
+    for (const [fromName] of FFMPEG_PACKAGE_NOTICES) {
+      const file = path.join(vendor, fromName)
+      await mkdir(path.dirname(file), { recursive: true })
+      await writeFile(file, `notice:${fromName}`)
+    }
     const installed = await installBundledFfmpeg({ desktop, output, platform: 'linux', arch: 'x64' })
     assert.equal(installed.installed, true)
     assert.equal(await readFile(installed.dest, 'utf8'), 'elf-bytes')
     assert.equal((await stat(installed.dest)).mode & 0o111, 0o111)
-    assert.equal(await readFile(path.join(output, 'bin/ffmpeg-LICENSE.txt'), 'utf8'), 'gpl notice')
-    assert.equal(await readFile(path.join(output, 'bin/ffmpeg-UPSTREAM-README.txt'), 'utf8'), 'upstream readme')
+    assert.equal(await readFile(path.join(output, 'bin/ffmpeg-LICENSE.txt'), 'utf8'), 'notice:LICENSE.txt')
+    assert.equal(await readFile(path.join(output, 'bin/ffmpeg-source-ffmpeg-n7.0.2.tar.gz'), 'utf8'), 'notice:sources/ffmpeg-n7.0.2.tar.gz')
+    await rm(path.join(vendor, 'sources/libvpx-1.15.2.tar.gz'))
+    await assert.rejects(
+      installBundledFfmpeg({ desktop, output: path.join(root, 'missing-notice'), platform: 'linux', arch: 'x64' }),
+      /notice is required/,
+    )
     const missing = path.join(root, 'empty-desktop')
     await mkdir(missing, { recursive: true })
     await assert.rejects(
@@ -58,7 +67,7 @@ test('package verification requires the linux binary and license to match dist',
     const elf = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from('ffmpeg')])
     await writeFile(path.join(resourcesBin, 'ffmpeg'), elf)
     await writeFile(path.join(distBin, 'ffmpeg'), elf)
-    for (const name of ['ffmpeg-LICENSE.txt', 'ffmpeg-COPYING.GPLv3', 'ffmpeg-COPYING.LGPLv2.1', 'ffmpeg-source.json', 'ffmpeg-UPSTREAM-README.txt']) {
+    for (const name of LINUX_NOTICES) {
       await writeFile(path.join(resourcesBin, name), `notice:${name}`)
       await writeFile(path.join(distBin, name), `notice:${name}`)
     }
