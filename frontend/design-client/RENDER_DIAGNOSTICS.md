@@ -22,15 +22,18 @@ JSON 顶层 `schema: 2` 保留原有 `samples` 阶段耗时，新增 `diagnostic
 
 ## 无 GPU 单元测试
 
-需要支持直接加载可擦除 TypeScript 的 Node.js（本轮使用 Node 24.19.0）：
+这些脚本使用 Node 自带测试运行器，并依赖 Node 的 strip-only TypeScript 加载器。该加载器不解析无扩展名的相对导入。在 Node v22.23.4 上，`render-diagnostics.ts` 导入 `./render-failure-telemetry` 会在进入断言前抛出 `ERR_MODULE_NOT_FOUND`。`scripts/node-ts-local-resolver.mjs` 就是针对这条缺口的测试加载器；`test:render-diagnostics` 和 `test:render-contracts` 用 `--import` 预加载它。它只在默认解析失败时，把已经存在的相对 `.ts` 交回 Node 自己的类型剥离，不改写实现，也不处理 parameter property。直接运行必须带上同一个预加载，不能只写 `node --test`：
 
 ```sh
 cd frontend/design-client
 npm run test:render-diagnostics
 npm run test:render-contracts
+node --import ./scripts/node-ts-local-resolver.mjs --test src/image-import.test.mjs src/kernel/canvas-effect-sampling.test.mjs src/kernel/render-diagnostics.test.mjs src/kernel/cpu-frame-contract.test.mjs src/kernel/use-zoom-activity.test.mjs src/retained-board-capture.test.mjs
 ```
 
-这些 `.test.mjs` 用 Node 自带测试运行器直接导入实际生产模块，不依赖 Vitest、WASM 或 GPU。诊断的 14 个测试覆盖默认关闭、暂停/重开、512 条上限、丢弃计数、字段白名单、错误脱敏、非法数值、不可变快照、预算摘要跨边界验证，以及现有性能面板录制控制的集成。
+`use-zoom-activity.test.mjs` 会导入已安装的 `react`。省略该文件时也必须带上同一个 `--import`，否则 `render-diagnostics.test.mjs` 仍会在加载阶段失败。
+
+这些 `.test.mjs` 用 Node 自带测试运行器直接导入实际生产模块，不依赖 Vitest、WASM 或 GPU。诊断的 14 个测试覆盖默认关闭、暂停/重开、512 条上限、丢弃计数、字段白名单、错误脱敏、非法数值、不可变快照、预算摘要跨边界验证，以及现有性能面板录制控制的集成。`scripts/node-ts-local-resolver.test.mjs` 只检查上述预加载：不带它时同一组文件在断言前失败，带上之后通过。它不计入这 14 个诊断用例。
 
 `npm run test:renderer-contracts` 还验证生产分配拒绝携带的摘要、状态消费、成功/非法分配/新渲染尝试清除旧状态。安装依赖后，`npm test -- src/kernel/render-budget-client.test.ts src/kernel/client.test.ts` 用 worker 替身验证 Web 和 Electron 两种主机策略走同一通道，包含未启用录制、启用/暂停、错误分类隔离、取消后迟到消息和后续成功；不启动真实 GPU。
 
