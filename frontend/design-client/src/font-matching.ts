@@ -2,7 +2,19 @@ import { defaultTextStyle, type DesignDocument, type DesignNode } from './model'
 
 export type FontResource = NonNullable<DesignDocument['fonts']>[string]
 export type FontIdentity = { family: string; style: string; postscript: string }
-export type FontSourceRecord = { style?: string; runs?: Record<string, string>; resolved?: string[] }
+export type FontSourceRecord = {
+  style?: string
+  runs?: Record<string, string>
+  resolved?: string[]
+  /** SHA-1 of the font file the source measured. A family name is not this. */
+  digest?: string
+  runDigests?: Record<string, string>
+}
+export type SourceFontRequest = { name: string; digest?: string }
+/** Digest-qualified identities must not collapse onto a same-named different file. */
+export function fontMatchKey(name: string, digest?: string) {
+  return digest ? `${name}\0${digest}` : name
+}
 type Source = FontSourceRecord
 export function sourceNameResolved(source: Source, name: string) {
   return !!source.resolved?.includes(name)
@@ -19,14 +31,20 @@ export function sourceFonts(document: DesignDocument, node: DesignNode): Source 
   } catch { return {} }
 }
 export function unmatchedSourceFonts(document: DesignDocument, node: DesignNode): string[] {
-  const source = sourceFonts(document, node), names = new Set<string>()
+  return [...new Set(unmatchedSourceFontRequests(document, node).map(request => request.name))]
+}
+export function unmatchedSourceFontRequests(document: DesignDocument, node: DesignNode): SourceFontRequest[] {
+  const source = sourceFonts(document, node), requests: SourceFontRequest[] = []
   const font = node.textStyle?.fontId ?? 'default'
-  if (typeof source.style === 'string' && font === 'default' && !sourceNameResolved(source, source.style)) names.add(source.style)
+  if (typeof source.style === 'string' && font === 'default' && !sourceNameResolved(source, source.style))
+    requests.push({ name: source.style, ...(source.digest ? { digest: source.digest } : {}) })
   for (const [index, name] of Object.entries(source.runs || {})) {
     const run = node.textRuns?.[Number(index)]
-    if (run && typeof name === 'string' && (run.fontId ?? font) === 'default' && !sourceNameResolved(source, name)) names.add(name)
+    const digest = source.runDigests?.[index]
+    if (run && typeof name === 'string' && (run.fontId ?? font) === 'default' && !sourceNameResolved(source, name))
+      requests.push({ name, ...(digest ? { digest } : {}) })
   }
-  return [...names]
+  return requests
 }
 /** Before replacing a missing layer font, pin unresolved imported run faces to
  * their existing fallback. FIG runs can carry only a source identity, so leaving
@@ -57,13 +75,14 @@ export function applyMatchedFonts(document: DesignDocument, matches: Map<string,
     const source = sourceFonts(document, node), original = node.textStyle?.fontId ?? 'default'
     // Assign runs first: changing the layer font must not hide their fallback state.
     for (const [index, name] of Object.entries(source.runs || {})) {
-      const run = node.textRuns?.[Number(index)], match = matches.get(name)
+      const run = node.textRuns?.[Number(index)]
+      const match = lookupMatchedFont(matches, name, source.runDigests?.[index])
       if (run && match && (run.fontId ?? original) === 'default') {
         document.fonts = { ...document.fonts, [match.id]: match.resource }
         run.fontId = match.id; changed++
       }
     }
-    const match = source.style && matches.get(source.style)
+    const match = source.style && lookupMatchedFont(matches, source.style, source.digest)
     if (match && original === 'default') {
       preserveUnmatchedSourceRuns(node, source)
       document.fonts = { ...document.fonts, [match.id]: match.resource }
@@ -71,4 +90,8 @@ export function applyMatchedFonts(document: DesignDocument, matches: Map<string,
     }
   }
   return changed
+}
+function lookupMatchedFont(matches: Map<string, { id: string; resource: FontResource }>, name: string, digest?: string) {
+  if (digest) return matches.get(fontMatchKey(name, digest))
+  return matches.get(name)
 }

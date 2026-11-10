@@ -33,6 +33,14 @@ pub struct FontSource {
     /// is what stops that layer from looking missing forever.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub resolved: BTreeSet<String>,
+    /// SHA-1 of the font file the source measured, when the file recorded one.
+    /// A family name is not this digest. Matching may use only the bytes that
+    /// hash to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    /// Per-run SHA-1, keyed by the same index as `runs`.
+    #[serde(default, rename = "runDigests", skip_serializing_if = "BTreeMap::is_empty")]
+    pub run_digests: BTreeMap<String, String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -267,6 +275,10 @@ fn validate_style_parts(doc: &Document, style: &SharedStyle) -> Result<(), Strin
     }
     Ok(())
 }
+fn valid_font_digest(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 pub fn validate(doc: &Document) -> Result<(), String> {
     let Some(s) = &doc.design_system else {
         if doc.nodes.values().any(|n| {
@@ -309,6 +321,13 @@ pub fn validate(doc: &Document) -> Result<(), String> {
                         || name.len() > 512
                         || (source.style.as_ref() != Some(name)
                             && !source.runs.values().any(|value| value == name))
+                })
+                || source.digest.as_ref().is_some_and(|digest| {
+                    !valid_font_digest(digest) || source.style.is_none()
+                })
+                || source.run_digests.len() > source.runs.len()
+                || source.run_digests.iter().any(|(index, digest)| {
+                    !source.runs.contains_key(index) || !valid_font_digest(digest)
                 })
         })
     {
@@ -657,6 +676,26 @@ mod mode_scope_tests {
             .unwrap()
             .resolved
             .insert("Unknown".into());
+        assert!(validate(&doc).is_err());
+    }
+    #[test]
+    fn font_digest_round_trips_and_rejects_a_family_name() {
+        let mut doc: Document = serde_json::from_value(json!({
+            "schemaVersion":4,"id":"d","name":"Fonts",
+            "pages":[{"id":"p","name":"Page","background":"#ffffff","children":[]}],
+            "nodes":{},
+            "designSystem":{"fontSources":{"text":{
+                "style":"Poppins Bold",
+                "digest":"45dc28c425c3ee2237440bf9cb926753c5aa3b5c",
+                "runs":{"0":"Poppins Medium"},
+                "runDigests":{"0":"01be8feaed323d19eeccf16fd79ea3b74206cfdb"}
+            }}}
+        }))
+        .unwrap();
+        validate(&doc).unwrap();
+        let again = serde_json::to_value(&doc.design_system).unwrap();
+        assert_eq!(again["fontSources"]["text"]["digest"], "45dc28c425c3ee2237440bf9cb926753c5aa3b5c");
+        doc.design_system.as_mut().unwrap().font_sources.get_mut("text").unwrap().digest = Some("Poppins".into());
         assert!(validate(&doc).is_err());
     }
     #[test]

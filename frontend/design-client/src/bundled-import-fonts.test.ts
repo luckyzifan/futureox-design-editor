@@ -1,7 +1,8 @@
 import { expect, test } from 'vitest'
 import { blank, defaultTextStyle, node } from './model'
 import { emptySystem } from './design-system'
-import { abeezeeLineBreakDiagnostic, matchBundledImportFonts, retainedFontWarnings, selectBundledImportFace } from './bundled-import-fonts'
+import { abeezeeLineBreakDiagnostic, fontDigestDiagnostic, matchBundledImportFonts, retainedFontWarnings, selectBundledImportFace } from './bundled-import-fonts'
+import { applyMatchedFonts } from './font-matching'
 
 test('Inter, ABeeZee, and Poppins import names attach the bundled files', async () => {
   const doc = blank('字体')
@@ -39,6 +40,44 @@ test('Inter, ABeeZee, and Poppins import names attach the bundled files', async 
   expect(again.missing).not.toContain('Poppins BoldItalic')
   expect(again.substitutions.some(item => item.from === 'Poppins BoldItalic')).toBe(false)
   expect(doc.fonts?.[italic.textStyle.fontId!].postscript).toBe('Poppins-BoldItalic')
+})
+
+test('a FIG digest selects that file and a different cut stays unmatched', async () => {
+  const v2 = '45dc28c425c3ee2237440bf9cb926753c5aa3b5c'
+  const v4 = '45e4d582cbb4dab2bbad3f624fad9ae567c66547'
+  expect(selectBundledImportFace('Poppins Bold', v2)?.sha.startsWith('b8b92424')).toBe(true)
+  expect(selectBundledImportFace('Poppins Bold', v4)?.postscript).toBe('Poppins-Bold')
+  expect(selectBundledImportFace('Poppins Bold')?.sha1).toBe(v4)
+  expect(selectBundledImportFace('Inter Regular', 'd483e2c7f8032c6638d047167efbeba0030f0649')).toBeUndefined()
+  const doc = blank('摘要')
+  const text = node('text', 0, 0, 120, 32)
+  text.text = 'Back to Home'
+  text.textStyle = defaultTextStyle()
+  doc.nodes = { [text.id]: text }
+  doc.designSystem = { ...emptySystem(), fontSources: { [text.id]: { style: 'Poppins Bold', digest: v2 } } }
+  const matched = await matchBundledImportFonts(doc)
+  expect(matched.digestMismatches).toEqual([])
+  expect(matched.substitutions).toEqual([])
+  expect(text.textStyle.fontId).toBe('b8b92424acfd9581c9dd74723a5627b6a5882a643b2148bd0463e9cd077d3728-0')
+  const unknown = blank('无摘要文件')
+  const inter = node('text', 0, 0, 80, 24)
+  inter.text = 'ABC'
+  inter.textStyle = defaultTextStyle()
+  unknown.nodes = { [inter.id]: inter }
+  unknown.designSystem = { ...emptySystem(), fontSources: { [inter.id]: { style: 'Inter Regular', digest: 'd483e2c7f8032c6638d047167efbeba0030f0649' } } }
+  const missed = await matchBundledImportFonts(unknown)
+  expect(missed.digestMismatches).toEqual([{ name: 'Inter Regular', digest: 'd483e2c7f8032c6638d047167efbeba0030f0649' }])
+  expect(inter.textStyle?.fontId ?? 'default').toBe('default')
+  expect(Object.values(unknown.fonts || {}).some(face => face.postscript === 'Inter-Regular')).toBe(false)
+  expect(fontDigestDiagnostic('Inter Regular', 'd483e2c7f8032c6638d047167efbeba0030f0649')).toContain('不能把同名的另一个文件')
+  const blocked = blank('同名')
+  const bold = node('text', 0, 0, 80, 24)
+  bold.text = 'B'
+  bold.textStyle = defaultTextStyle()
+  blocked.nodes = { [bold.id]: bold }
+  blocked.designSystem = { ...emptySystem(), fontSources: { [bold.id]: { style: 'Poppins Bold', digest: v2 } } }
+  applyMatchedFonts(blocked, new Map([['Poppins Bold', { id: 'name-only', resource: { family: 'Poppins Bold', data: 'QQ==', index: 0 } }]]))
+  expect(bold.textStyle?.fontId ?? 'default').toBe('default')
 })
 
 test('ABeeZee italic stays unmatched instead of borrowing Regular line breaks', async () => {

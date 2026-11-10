@@ -38,6 +38,8 @@ pub(crate) struct Outline {
     pub commands: Vec<Command>,
     pub units_per_em: i32,
     pub weight_axis: bool,
+    /// OS/2 usWeightClass. Zero means the outline was not read from a face.
+    pub us_weight: u16,
 }
 impl Outline {
     pub fn replay(&self, builder: &mut impl ttf_parser::OutlineBuilder) {

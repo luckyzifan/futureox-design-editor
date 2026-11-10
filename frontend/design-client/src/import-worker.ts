@@ -2,7 +2,7 @@ import { assertImportInputBytes } from './import-input-policy'
 import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
 import { finalizeFigWarnings } from './import-warnings'
-import { abeezeeLineBreakDiagnostic, fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
+import { abeezeeLineBreakDiagnostic, fontDigestDiagnostic, fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
 type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
@@ -64,11 +64,16 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       const result=importFig(bytes,event.data.name)
       const fonts=await matchBundledImportFonts(result.document)
       const warnings=retainedFontWarnings(result.warnings, fonts)
+      for(const item of fonts.digestMismatches){
+        const message=fontDigestDiagnostic(item.name, item.digest)
+        if(!warnings.includes(message)) warnings.push(message)
+      }
       for(const item of fonts.substitutions){
         const message=`字体 ${item.from} 没有同名文件，已用 ${item.face} 显示`
         if(!warnings.includes(message)) warnings.push(message)
       }
       for(const name of fonts.missing){
+        if(fonts.digestMismatches.some(item => item.name === name)) continue
         const specific=abeezeeLineBreakDiagnostic(name)
         const link=fontDownloadFor(name)
         const message=specific??(link?`字体 ${name} 未捆绑。许可 ${link.license}，下载：${link.url}`:`字体 ${name} 未捆绑，文字已保留，显示用当前回退。`)

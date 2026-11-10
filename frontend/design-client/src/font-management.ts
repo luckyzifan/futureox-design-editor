@@ -1,7 +1,7 @@
 import type { Editor } from './engine'
 import { defaultTextStyle, type DesignDocument, type DesignNode } from './model'
 import { commitPendingEdits } from './pending-edits'
-import { preserveUnmatchedSourceRuns, sourceFonts, sourceNameResolved, type FontResource } from './font-matching'
+import { fontMatchKey, preserveUnmatchedSourceRuns, sourceFonts, sourceNameResolved, type FontResource, type SourceFontRequest } from './font-matching'
 
 export const FONT_PAGE_SIZE = 40
 export type FontChoice = { id: string; family: string; style?: string; postscript?: string }
@@ -61,6 +61,25 @@ export function fontTargets(doc: DesignDocument, scope: FontScope, options: Font
 
 /** Read only identities the document operation is allowed to change. Locked,
  * shared-style and inherited-only fields must not consume the resource cap. */
+function matchedSourceFont(matches: Map<string, { id: string; resource: FontResource }>, name: string, digest?: string) {
+  if (digest) return matches.get(fontMatchKey(name, digest))
+  return matches.get(name)
+}
+export function unmatchedEditableSourceFontRequests(doc: DesignDocument): SourceFontRequest[] {
+  const requests: SourceFontRequest[] = []
+  for (const target of fontTargets(doc, { kind: 'document' }).targets) {
+    const n = doc.nodes[target.id], source = sourceFonts(doc, n), base = n.textStyle?.fontId ?? 'default'
+    if (target.style && typeof source.style === 'string' && base === 'default' && !sourceNameResolved(source, source.style))
+      requests.push({ name: source.style, ...(source.digest ? { digest: source.digest } : {}) })
+    if (target.runs) for (const [index, name] of Object.entries(source.runs || {})) {
+      const run = n.textRuns?.[Number(index)]
+      const digest = source.runDigests?.[index]
+      if (run && typeof name === 'string' && (run.fontId ?? base) === 'default' && !sourceNameResolved(source, name))
+        requests.push({ name, ...(digest ? { digest } : {}) })
+    }
+  }
+  return requests
+}
 export function unmatchedEditableSourceFonts(doc: DesignDocument): string[] {
   const names = new Set<string>()
   for (const target of fontTargets(doc, { kind: 'document' }).targets) {
@@ -162,10 +181,10 @@ export function matchSourceFontsInDocument(doc: DesignDocument, matches: Map<str
   for (const target of targets.targets) {
     const n = doc.nodes[target.id], source = sourceFonts(doc, n), original = n.textStyle?.fontId ?? 'default'
     if (target.runs) for (const [index, name] of Object.entries(source.runs || {})) {
-      const run = n.textRuns?.[Number(index)], match = matches.get(name)
+      const run = n.textRuns?.[Number(index)], match = matchedSourceFont(matches, name, source.runDigests?.[index])
       if (run && match && (run.fontId ?? original) === 'default') { install(match); run.fontId = match.id }
     }
-    const match = source.style && matches.get(source.style)
+    const match = source.style && matchedSourceFont(matches, source.style, source.digest)
     if (target.style && match && original === 'default') {
       // A style-only instance override cannot author inherited run fields. If
       // changing its base would retarget another source face, leave the base

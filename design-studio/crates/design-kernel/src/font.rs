@@ -920,11 +920,17 @@ impl Fonts {
     /// Per-pixel smear for fake bold on static faces (see the outline loop).
     /// Zero when the face already exposes a `wght` axis or the weight does
     /// not ask for bold at all.
-    fn synthetic_bold_delta(&self, has_weight_axis: bool, weight: f32, size: f64) -> f64 {
+    fn synthetic_bold_delta(&self, has_weight_axis: bool, face_weight: f32, weight: f32, size: f64) -> f64 {
         if weight <= 550. || !(weight.is_finite() && size.is_finite() && size > 0.) {
             return 0.;
         }
         if has_weight_axis {
+            return 0.;
+        }
+        // A static face that already is this weight class is the source
+        // outline. Smearing it would no longer be those glyphs. A lighter
+        // static face keeps the existing fake-bold amount.
+        if face_weight >= 1. && face_weight + 50. >= weight {
             return 0.;
         }
         size * f64::from((weight - 500.).clamp(0., 500.)) / 500. * 0.04
@@ -977,6 +983,7 @@ impl Fonts {
                     .into_iter()
                     .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
             }),
+            us_weight: face.weight().to_number(),
             ..Outline::default()
         };
         face.outline_glyph(ttf_parser::GlyphId(glyph.id), &mut outline);
@@ -1843,8 +1850,12 @@ impl Fonts {
             // entirely; synthesize bold with the classic four-way sub-pixel
             // outline smear (QuickDraw fake bold). Advances stay shaped, so
             // layout, wrapping and exported width tables are unaffected.
-            let bold =
-                self.synthetic_bold_delta(glyph_outline.weight_axis, glyph.weight, glyph.size);
+            let bold = self.synthetic_bold_delta(
+                glyph_outline.weight_axis,
+                f32::from(glyph_outline.us_weight),
+                glyph.weight,
+                glyph.size,
+            );
             let offsets: &[(f64, f64)] = if bold > 0. {
                 &[(0., 0.), (bold, 0.), (0., bold), (bold, bold)]
             } else {
@@ -2766,5 +2777,106 @@ mod persistent_font_cache_tests {
             weak_bytes.upgrade().is_none(),
             "last face drop releases its backing bytes without a leak"
         );
+    }
+
+    fn poppins_v2(style: &str) -> Vec<u8> {
+        std::fs::read(format!(
+            "{}/../../../frontend/design-client/public/fonts/poppins/v2.000/Poppins-{style}.ttf",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap()
+    }
+
+    /// FIG `01有料素材.fig` stored these em advances for "Back to Home"
+    /// (textCase UPPER, Poppins Bold digest 45dc28c4…, 13px). They are the
+    /// independent reference, not this shaper's previous output.
+    const FIG_BACK_TO_HOME: [f64; 12] = [
+        0.6740000247955322,
+        0.7130000591278076,
+        0.7640000581741333,
+        0.7200000286102295,
+        0.30000001192092896,
+        0.6080000400543213,
+        0.7880000472068787,
+        0.30000001192092896,
+        0.7630000114440918,
+        0.7880000472068787,
+        0.9450000524520874,
+        0.5720000267028809,
+    ];
+
+    #[test]
+    fn poppins_v2_bold_matches_fig_advances_and_keeps_its_own_outline() {
+        let mut fonts = Fonts::new();
+        fonts.load(&poppins_v2("Bold")).unwrap();
+        let mut sized = node(
+            "Back to Home",
+            serde_json::json!({"weight":700,"fontId":"default","textCase":"upper","wrap":false}),
+        );
+        sized.font_size = 13.;
+        sized.width = 400.;
+        let layout = fonts.node_layout(&sized, Some(400.)).unwrap();
+        assert_eq!(layout.glyphs.len(), FIG_BACK_TO_HOME.len());
+        for (glyph, expected) in layout.glyphs.iter().zip(FIG_BACK_TO_HOME) {
+            let em = glyph.advance / 13.;
+            assert!(
+                (em - expected).abs() <= 0.001,
+                "glyph {} em {em} fig {expected}",
+                glyph.cluster
+            );
+        }
+        let bold = fonts
+            .node_layout(
+                &node("B", serde_json::json!({"weight":700,"fontId":"default"})),
+                None,
+            )
+            .unwrap();
+        let book = fonts
+            .node_layout(
+                &node("B", serde_json::json!({"weight":400,"fontId":"default"})),
+                None,
+            )
+            .unwrap();
+        assert!(
+            bold.path.commands.len() > 4,
+            "source outline should contain a contour"
+        );
+        assert_eq!(
+            bold.path.commands.len(),
+            book.path.commands.len(),
+            "weight 700 on the Bold file must not smear a second copy of the outline"
+        );
+        let mut other = Fonts::new();
+        other
+            .load(
+                &std::fs::read(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../frontend/design-client/public/fonts/poppins/Poppins-Bold.ttf"
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+        let v4 = other.node_layout(&sized, Some(400.)).unwrap();
+        let space = v4.glyphs[4].advance / 13.;
+        assert!(
+            (space - FIG_BACK_TO_HOME[4]).abs() > 0.05,
+            "version 4 space {space} must stay distinct from the FIG advance"
+        );
+    }
+
+    #[test]
+    fn poppins_v2_medium_keeps_the_fig_line_break() {
+        let mut fonts = Fonts::new();
+        fonts.load(&poppins_v2("Medium")).unwrap();
+        let text = "To keep connected with us please login with your personal info.";
+        let mut sample = node(
+            text,
+            serde_json::json!({"weight":500,"fontId":"default","wrap":true}),
+        );
+        sample.font_size = 14.;
+        sample.width = 294.;
+        let layout = fonts.node_layout(&sample, Some(294.)).unwrap();
+        let ends: Vec<usize> = layout.lines.iter().map(|line| line.end).collect();
+        assert_eq!(ends, vec![39, text.len()]);
     }
 }
