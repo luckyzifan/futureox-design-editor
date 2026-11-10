@@ -87,3 +87,78 @@ Per-file records are in [asset-inventory.json](publication/asset-inventory.json)
 Regenerate with the commands above after the tree changes. Historical counts,
 including the earlier 139 fixture binaries and the 384-file withhold-only
 scan, stay historical.
+
+## Cloud measurement versus main
+
+Measured on this Linux cloud VM on 2026-11-10. Baseline is `main` at
+`ccaa2ea1a4a62aeff162fe4912e3920f99e529a2`. This is not a Mac, Electron, or
+Metal run. No render timing, draw count, or memory budget was changed, so the
+5% end-to-end performance gate does not apply. No fidelity threshold was
+loosened.
+
+Commands:
+
+```bash
+git worktree add /tmp/fx-main ccaa2ea1a4a62aeff162fe4912e3920f99e529a2
+node /tmp/fx-main/scripts/inventory-publication-assets.mjs
+node --test /tmp/fx-main/scripts/opensource-prep.test.mjs
+node /tmp/fx-main/scripts/check-license-coverage.mjs
+node scripts/inventory-publication-assets.mjs
+node --test scripts/opensource-prep.test.mjs
+node scripts/check-license-coverage.mjs
+```
+
+An independent Python hashlib check, not the inventory scanner, compared each
+grant with the provenance `images` entry, the root `LICENSE`, and the
+checkout bytes. The same script compared named sha256 entries inside fidelity
+`provenance.json` and `cases.json` files with the PNG bytes.
+
+| Measurement | Baseline `ccaa2ea` | Candidate |
+| --- | --- | --- |
+| Scanned files | 384 | 385 |
+| `proposedPublic` | 0 | 3 |
+| Files with a non-empty `source` | 0 | 335 |
+| Files with a non-empty `attribution` | 0 | 323 |
+| Files with a license field | 0 | 3, all `MIT` |
+| `licenseStatus` granted / not granted | field absent | 3 / 382 |
+| Content `hashCheck` match / mismatch | field absent | 285 / 0 |
+| Fidelity files with `publication: public` | 0 of 349 | 0 of 349 |
+| User-regression files with `publication: public` | 0 of 7 | 0 of 7 |
+| Cited `testing/fixtures/design/io/provenance.json` missing | 1 | 0 |
+| Independent verifiable public assets | 0 | 3 of 3 |
+| Independent named source-list hashes | 398 match, 0 mismatch | 398 match, 0 mismatch |
+| `display-p3-mid-icc.png` and `orientation-6.jpg` versus main | the baseline bytes | byte-identical, sha256 `e4721be2…` and `fed2837a…` |
+| `node scripts/check-license-coverage.mjs` problems | 0 | 0 |
+| `node --test scripts/opensource-prep.test.mjs` | 4 passed | 6 passed |
+
+The test-count change is not the gain. The gain is that planned-public assets
+with a verifiable basis go from 0 to 3, and 285 checkout hashes are now
+recorded against source lists with 0 mismatches. Unapproved fidelity and user
+files stay at 0 public.
+
+Pillow 12.3.0 on this host ran `generate.py` in `/tmp`, not over the checkout.
+`orientation-6.jpg` sha256 matched `fed2837ad7a94d17ce8130babe47da376723560fa0fe6cfea0acbb84dde82ca2`
+(706 bytes). `lossless.webp` sha256 matched
+`920da8b5a2098b996d6721c7b2ce7bd406bd5f20b5463aa2fd4827395c86c002` (38 bytes).
+`display-p3-mid-icc.png` stayed 438 bytes with the same pixels and the same
+598-byte ICC profile, but the container sha256 was
+`aa4e705baa7663a98fe35bbd212d63af466c9662c5de2189a56da4a6fb667fef` instead of
+the recorded `e4721be2db2983b37521e6d860e64e594b32deb24c7e667b3e1144522e6b4b9a`.
+The checkout file that matches the record was kept.
+
+`cargo test --locked --offline -p futureox-design-kernel --test image_metadata`
+failed before compile because the cargo registry cache was empty
+(`no matching package named axum`). After downloading crates, the same test
+with the lockfile, without `--offline`, passed on both trees. The existing
+assertion `pixels[..4] == [32, 130, 197, 255]` was not changed.
+
+| Command | Result |
+| --- | --- |
+| Baseline: `cargo test --locked --manifest-path /tmp/fx-main/design-studio/Cargo.toml -p futureox-design-kernel --test image_metadata -- --test-threads=1` | 5 passed, 0 failed, 0.01s. Compile 32.48s. |
+| Candidate: `cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --test image_metadata -- --test-threads=1` | 5 passed, 0 failed, 0.02s. Compile 47.64s. |
+
+The 0.01s versus 0.02s test time is run-to-run fluctuation, not a performance
+gain. The included JPEG and Display P3 PNG bytes are identical on both trees.
+
+The browser script `frontend/design-client/scripts/check-io-import.ts` was not
+run: bun is not installed. This VM did not run Mac, Electron, or Metal.
