@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-10 缩小后的大平移：视口级在途瓦片如果既盖不住新视口的一半、自身也不再有一半留在屏内，就让出唯一光栅通道，粗页条才能排上。已交付且仍盖住画面的邻居不取消。旋转松手时，矩阵只差 1e-9 的姿态视为已经在画面上，不再为同一姿态重采样。没有大图输入到可见 P95。不是 33/100ms 或完整 G2/G5。
+
 2026-11-09 缩出后平移与松手旋转：安静缩出捕获在最新视口有一半以上落在外面时让出，已交付瓦片不取消；导航采样仍覆盖时不中止正在跑的预览。同倍率大平移若居民瓦片盖不住新视口，先要一张粗页条，仍相交的邻居留下。仿射松手若画面已是该姿态就不再整帧重捕；在途姿态不是松手姿态时中止这次捕获。手势中途不额外中止。定向 15 个文件 507 项通过。无头 CPU、1440×940、220×160 矩形：约 37° 再反向后变换已提交，撤销恢复原矩阵，空格平移和 25% 后滚轮都改变相机，无页面错误。官方松手脚本的隔离 Vite 因缺少 `production-public.mjs` 退出 1。test.sketch、117、拓扑和 FIG 仍是 Git LFS 指针，输入到可见 P95、旧帧时长、GPU 完成和像素时延未测。不是 33/100ms 或完整 G2/G5。#61 与 #64 不关闭。`/testing/` 按仓库忽略规则只留在本机。
 
 2026-11-09 [拓扑 GPU 批绘与成熟度](../../../docs/TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)：普通原生源 SDR WebGPU 的低物理采样倍率瓦片默认合并已证明不透明的纯色填充/描边，保持四相、顺序、二值裁剪与原预算；`VITE_DESIGN_SOURCE_SOLID_LAYERS=0` 回退。完整拓扑约 113.9→100.5 秒，正常构建复核 101.8 秒，原生画布及三份高倍输出像素一致。superset 原生投影复用减少重建却无稳定端到端收益，已完整撤回，不得保留或宣称 91.7 秒为最终性能。拓扑是主基准，117/FIG/test 防回退；当前为开发者 Alpha，完整 G2/G5 与 33/100ms 未关闭。

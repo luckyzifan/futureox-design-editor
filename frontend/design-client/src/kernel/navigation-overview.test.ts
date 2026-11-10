@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { coarsePanCoverNeeded } from './navigation-overview'
+import { coarsePanCoverNeeded, retainPannedTile } from './navigation-overview'
 
 const base = {
   firstNative: false, hasStrip: true, stripCached: false, pasteboard: false, cpuOnly: false,
@@ -18,4 +18,17 @@ test('a pan that leaves resident pictures asks for the strip before the old refi
   expect(coarsePanCoverNeeded({ ...base, translationFollow: false })).toBe(false)
   expect(coarsePanCoverNeeded({ ...base, translationFollow: true, firstNative: true })).toBe(false)
   expect(coarsePanCoverNeeded({ ...base, translationFollow: true, stripCached: true })).toBe(false)
+})
+
+test('a large pan yields a viewport tile that only clips the edge, and keeps a cell that is still on screen', () => {
+  const size = { width: 1000, height: 800 }
+  const view = { x: -600, y: 0, zoom: 1 }
+  const shifted = { x: 0, y: 0, width: 1000, height: 800, zoom: 1, gutter: 0 }
+  expect(retainPannedTile(shifted, view, size)).toBe(false)
+  const cell = { x: 600, y: 0, width: 200, height: 200, zoom: 1, gutter: 0 }
+  expect(retainPannedTile(cell, view, size)).toBe(true)
+  const page = { x: 0, y: 0, width: 4000, height: 3000, zoom: 1, gutter: 0 }
+  expect(retainPannedTile(page, { x: 0, y: 0, zoom: 1 }, size)).toBe(true)
+  expect(retainPannedTile(shifted, view, size, Number.NaN)).toBe(true)
+  expect(retainPannedTile({ ...shifted, zoom: 0 }, view, size)).toBe(false)
 })

@@ -1,3 +1,4 @@
+import { poseTransformMatches } from './pose-transform-match'
 import { isInnerShadowFill } from './interaction-patch-transforms'
 import { captureFailureCause, observedFailureCause, type FailedCaptureCause } from './pose-failed-cause'
 import { PoseActionCorrelation, type PoseActionToken } from './pose-action-correlation'
@@ -218,7 +219,7 @@ export class InteractionRenderer {
     if (!ids?.length) return false
     return ids.every(id => {
       const left = document.nodes[id]?.transform, right = next.nodes[id]?.transform
-      return !!left && !!right && left.length === right.length && left.every((value, index) => Object.is(value, right[index]))
+      return poseTransformMatches(left, right)
     })
   }
   /** The released pose is already on screen. Another whole-viewport capture
@@ -228,7 +229,7 @@ export class InteractionRenderer {
     if (!shown || !ids?.length) return false
     return ids.every(id => {
       const next = document.nodes[id]?.transform, prev = shown[id]
-      return !!next && !!prev && next.length === prev.length && next.every((value, index) => Object.is(value, prev[index]))
+      return poseTransformMatches(next, prev)
     })
   }
   /** Drop an in-flight affine redraw that is no longer the pose we need.

@@ -4,7 +4,7 @@ import {useLayoutEffect,useMemo,useRef} from 'react'
 import {SourceOverviewHandoff,type OverviewMaterial} from './source-overview-handoff'
 import {sourceOverviewWindow} from './source-overview-window'
 import {desktopBridge,type SourceCanvasSnapshot} from '../desktop'
-import {coarsePanCoverNeeded,navigationOverview,nearOverviewTiles,overviewWarmBatch,panStripOverview,viewportExtendsPastPage} from './navigation-overview'
+import {coarsePanCoverNeeded,navigationOverview,nearOverviewTiles,overviewWarmBatch,panStripOverview,retainPannedTile,viewportExtendsPastPage} from './navigation-overview'
 import {NAVIGATION_BACKING_BYTES} from './navigation-backing'
 import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
@@ -899,11 +899,10 @@ export function NativeSourceSurface(props:Props){
         const stripKey=strip?.tiles[0]?.key
         const world={x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom}
         const residents=[...cache.values()].filter(tile=>(tile.gpuTile!=null||!!tile.bytes?.byteLength)&&tileIntersectsView(tile,p.view,p))
-        // Only a tile that misses the newest viewport is stale. A neighbour
-        // that still paints the pan stays in the batch; cancelling it is what
-        // left a finished edge with no replacement.
+        // A neighbour that still paints most of the pan stays. A viewport-sized
+        // capture that only clips the new view yields, or the strip never starts.
         if(stripKey&&!cache.has(stripKey)&&!(residents.length>0&&tilesCoverBounds(residents,world)))
-          workQueue.demand(false,tile=>tile.key===stripKey||tileIntersectsView(tile,p.view,p))
+          workQueue.demand(false,tile=>tile.key===stripKey||retainPannedTile(tile,p.view,p))
       }
       idleTimer=moving&&!panHeld?setTimeout(()=>{
         if(!alive||failed||suspended)return
