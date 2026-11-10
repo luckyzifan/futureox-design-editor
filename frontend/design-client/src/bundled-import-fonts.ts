@@ -81,6 +81,33 @@ async function readBundledFont(face:Face):Promise<Uint8Array>{
 
 /** Only a fresh imported document is mutated. The import worker owns this
  * bounded two-task preparation and termination revokes the whole operation. */
+function foldedFontName(value: string) {
+  return value.normalize('NFKC').toLowerCase()
+}
+
+function namesSameFamily(name: string, family: string) {
+  const left = foldedFontName(name)
+  const right = foldedFontName(family)
+  return left === right || left.startsWith(right + ' ') || left.startsWith(right + '-')
+}
+
+/** Drop the generic “family still needs a match” warning once that family was
+ * attached, including a different casing. A still-missing face of the family
+ * keeps the warning. Other warnings stay. */
+export function retainedFontWarnings(warnings: readonly string[], fonts: {
+  families: readonly string[]
+  missing: readonly string[]
+  substitutions: readonly { from: string }[]
+}) {
+  return warnings.filter(warning => {
+    const family = /^字体 (.+) 尚需匹配，已保留文字内容$/.exec(warning)?.[1]
+    if (!family) return true
+    if (fonts.substitutions.some(item => namesSameFamily(item.from, family))) return false
+    const attached = fonts.families.some(name => foldedFontName(name) === foldedFontName(family))
+    return !attached || fonts.missing.some(name => namesSameFamily(name, family))
+  })
+}
+
 export async function matchBundledImportFonts(document:DesignDocument,read=readBundledFont):Promise<{changed:number;missing:string[];families:string[];substitutions:{from:string;face:string}[]}>{
   const names=new Set<string>()
   for(const node of Object.values(document.nodes))unmatchedSourceFonts(document,node).forEach(name=>names.add(name))
