@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import { blank, defaultTextStyle, node } from './model'
 import { emptySystem } from './design-system'
 import { unmatchedSourceFonts } from './font-matching'
-import { catalogEntryFor, matchFontStyle, parseFontStyle, resolveListedFace, suggestFontFace } from './font-catalog'
+import { abeezeeAbsentFaceDiagnosis, catalogEntryFor, matchFontStyle, parseFontStyle, resolveListedFace, suggestFontFace, unshippedAbeezeeFace } from './font-catalog'
 import { applyFontSubstitutions, suggestDocumentFont } from './font-substitution'
 import { svgFontFaceCss, cssFontStyle } from './svg-font-face'
 
@@ -43,6 +43,21 @@ test('aliases and variable axes match a face, and a different weight stays a sug
   expect(resolveListedFace('Inter Medium', [variable])?.family).toBe('Inter')
   expect(resolveListedFace('Inter Medium', [variable, inter[1]!])?.style).toBe('Regular')
   expect(matchFontStyle('Inter', [face('Inter', 'Light', { weight: 300 }), face('Inter', 'Medium', { weight: 500 })])).toBeUndefined()
+})
+
+test('an unshipped ABeeZee face is not offered as Regular line breaks', () => {
+  const regular = face('ABeeZee', 'Regular', { weight: 400, id: 'abeezee' })
+  expect(unshippedAbeezeeFace('ABeeZee Italic')).toBe(true)
+  expect(unshippedAbeezeeFace('ABeeZee-Bold')).toBe(true)
+  expect(unshippedAbeezeeFace('ABeeZee Regular')).toBe(false)
+  expect(abeezeeAbsentFaceDiagnosis('ABeeZee Italic')).toContain('不能把 Regular 的换行')
+  expect(abeezeeAbsentFaceDiagnosis('ABeeZee')).toBeUndefined()
+  expect(resolveListedFace('ABeeZee Italic', [regular])).toBeUndefined()
+  expect(resolveListedFace('ABeeZee Bold', [regular])).toBeUndefined()
+  expect(suggestFontFace('ABeeZee Italic', [regular]).face).toBeUndefined()
+  expect(suggestFontFace('ABeeZee Bold', [regular]).kind).toBe('builtin')
+  expect(suggestFontFace('ABeeZee Bold', [regular]).face?.postscript).not.toBe('ABeeZee-Regular')
+  expect(suggestFontFace('ABeeZee', [regular]).face?.postscript).toBe('ABeeZee-Regular')
 })
 
 test('CJK and web names suggest the built-in face until a real family is present', () => {

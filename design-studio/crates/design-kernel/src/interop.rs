@@ -2145,6 +2145,8 @@ impl<'a> Importer<'a> {
                     }
                 }
                 node.text_style = Some((style).into());
+                let parsed_style_font = node.text_style.as_ref().map(|style| style.font_id.clone());
+                let parsed_run_fonts: Vec<Option<String>> = node.text_runs.iter().map(|run| run.font_id.clone()).collect();
                 if let Some(receipt) = user_ns.get("textModel")
                     && receipt.get("native") == Some(&native_text_projection(layer)) {
                     if let (Ok(saved_style),Ok(saved_runs)) = (
@@ -2159,6 +2161,19 @@ impl<'a> Importer<'a> {
                         if saved_style.as_ref().is_none_or(|s|owned(&s.font_id))
                             && saved_runs.iter().all(|r|r.font_id.as_deref().is_none_or(owned)) {
                             node.text_style=saved_style.map(Box::new); node.text_runs=saved_runs.into();
+                            // The receipt stores the editable default face. An unshipped
+                            // ABeeZee name in the native descriptor is still the request.
+                            if let Some(style) = node.text_style.as_mut()
+                                && style.font_id == "default"
+                                && let Some(name) = parsed_style_font.filter(|name| crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
+                                style.font_id = name;
+                            }
+                            for (run, parsed) in node.text_runs.iter_mut().zip(parsed_run_fonts) {
+                                if run.font_id.as_deref().unwrap_or("default") == "default"
+                                    && let Some(name) = parsed.filter(|name| crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
+                                    run.font_id = Some(name);
+                                }
+                            }
                         }
                     }
                 }
@@ -4392,7 +4407,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
                 serde_json::to_string(&source_fonts)
                     .map_err(|e| Error::MalformedJson(e.to_string()))?,
             );
-            warnings.insert("Sketch: fonts without embedded resources use the default font; source font names remain in metadata.".into());
+            warnings.insert(crate::abeezee_font::UNEMBEDDED_FONT_WARNING.to_owned());
         }
         if let Some(source) = document
             .design_system
@@ -4535,6 +4550,35 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
             .sketch_containers
             .insert("nodeMetadata".into(), Value::Object(metadata));
         document.schema_version = document.schema_version.max(4);
+    }
+    let pin = crate::abeezee_font::pin_imported_faces(&mut document);
+    for warning in pin.warnings {
+        warnings.insert(warning);
+    }
+    if !pin.unembedded_remain {
+        warnings.remove(crate::abeezee_font::UNEMBEDDED_FONT_WARNING);
+    }
+    let signatures: Vec<(String, Value)> = pin
+        .changed
+        .iter()
+        .filter_map(|id| {
+            document
+                .nodes
+                .get(id)
+                .map(|node| (id.clone(), text_layout_signature(node)))
+        })
+        .collect();
+    if let Some(layouts) = document
+        .design_system
+        .as_mut()
+        .and_then(|system| system.sketch_containers.get_mut("textSourceLayouts"))
+        .and_then(Value::as_object_mut)
+    {
+        for (id, signature) in signatures {
+            if let Some(source) = layouts.get_mut(&id).and_then(Value::as_object_mut) {
+                source.insert("signature".into(), signature);
+            }
+        }
     }
     document.validate().map_err(Error::InvalidDocument)?;
     let warnings = warnings.into_iter().take(MAX_IMPORT_WARNINGS).collect();
@@ -5254,8 +5298,11 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
 /// font table (PostScript name first, family second); the embedded default
 /// keeps the historical HelveticaNeue mapping because Sketch cannot resolve
 /// the editor's bundled CJK font either way.
-fn sketch_font_name(doc: &Document, font_id: &str) -> String {
+fn sketch_font_name(doc: &Document, font_id: &str, source_name: Option<&str>) -> String {
     if font_id.is_empty() || font_id == "default" {
+        if let Some(name) = source_name.filter(|name| crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
+            return name.to_owned();
+        }
         return "HelveticaNeue".into();
     }
     doc.fonts
@@ -5293,9 +5340,10 @@ fn sketch_font_descriptor(
     font_id: &str,
     size: f64,
     weight: f32,
+    source_name: Option<&str>,
 ) -> Value {
     let mut descriptor = json!({"_class":"fontDescriptor", "attributes":{
-        "name":sketch_font_name(doc, font_id), "size":size}});
+        "name":sketch_font_name(doc, font_id, source_name), "size":size}});
     let has_weight = *axes.entry(font_id.into()).or_insert_with(|| {
         let Some(resource) = doc.fonts.get(font_id) else {
             return false;
@@ -6253,6 +6301,7 @@ fn export_layer_impl(
                 // set). Kernel run offsets are UTF-16 already, so
                 // {location, length} pass through untouched.
                 let style = n.text_style.as_ref();
+                let absent_default = crate::abeezee_font::exported_absent_face(doc, n);
                 let default_font = style.map(|s| s.font_id.as_str()).unwrap_or("default");
                 let default_weight = style.map(|s| s.weight).unwrap_or(400.);
                 let default_color = n
@@ -6296,6 +6345,7 @@ fn export_layer_impl(
                             font,
                             size,
                             weight,
+                            if font == "default" { absent_default.as_deref() } else { None },
                         ),
                     );
                     if let Some(c) = color {
@@ -7573,7 +7623,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                             "_class": "textStyle",
                             "verticalAlignment":match s.vertical_align.as_str() { "center"=>1,"bottom"=>2,_=>0 },
                             "encodedAttributes": {
-                                "MSAttributedStringFontAttribute": sketch_font_descriptor(doc, &mut images.font_weight_axes, &s.font_id, 16., s.weight),
+                                "MSAttributedStringFontAttribute": sketch_font_descriptor(doc, &mut images.font_weight_axes, &s.font_id, 16., s.weight, None),
                                 "kerning": s.letter_spacing,
                                 "paragraphStyle": {"_class": "paragraphStyle",
                                     "alignment": paragraph_alignment(&s.align),

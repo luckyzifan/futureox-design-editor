@@ -50,6 +50,7 @@ pub mod ruler_units;
 pub mod svg_export;
 pub mod fixed_gradient;
 pub mod font;
+pub mod abeezee_font;
 mod font_glyph_cache;
 mod text_path_cache;
 mod read_cache;

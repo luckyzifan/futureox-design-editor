@@ -327,11 +327,26 @@ export function resolveListedFace<T extends FontFaceInfo>(name: string, fonts: r
 export type SuggestionKind = 'exact' | 'alias' | 'variable' | 'nearest' | 'substitute' | 'builtin'
 export type FontSuggestion<T> = { face?: T; fontId?: string; kind: SuggestionKind; distance: number; scripts: readonly FontScript[] }
 
+const compactFontName = (value: string) => value.normalize('NFKC').replace(/[\s_-]+/g, '').toLowerCase()
+
+/** The package ships ABeeZee Regular only. Another face must not inherit that file's line breaks. */
+export function unshippedAbeezeeFace(name: string): boolean {
+  const compact = compactFontName(name)
+  if (!compact.startsWith('abeezee')) return false
+  return compact !== 'abeezee' && compact !== 'abeezeeregular' && compact !== 'abeezeenormal' && compact !== 'abeezeeroman'
+}
+
+export function abeezeeAbsentFaceDiagnosis(name: string): string | undefined {
+  if (!unshippedAbeezeeFace(name)) return
+  return `字体 ${name} 没有同名随包文件。ABeeZee 只随包 Regular，不能把 Regular 的换行当成这个请求的结果。文字已保留，显示用当前回退。`
+}
+
 export function suggestFontFace<T extends FontFaceInfo & { id?: string }>(name: string, fonts: readonly T[]): FontSuggestion<T> {
   const entry = catalogEntryFor(name)?.entry
   const scripts = entry?.scripts ?? []
   const hit = matchFontStyle(name, fonts)
-  if (hit && (hit.kind !== 'nearest' || hit.distance < 1000)) {
+  // A nearest Regular face is a different request. Do not offer its advances.
+  if (hit && !unshippedAbeezeeFace(name) && (hit.kind !== 'nearest' || hit.distance < 1000)) {
     return { face: hit.face, fontId: hit.face.id, kind: hit.kind, distance: hit.distance, scripts }
   }
   for (const substitute of entry?.substitutes ?? []) {
