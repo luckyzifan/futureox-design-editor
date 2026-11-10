@@ -7,6 +7,14 @@ const tile = (key: string, zoom: number, x: number, y: number, span = 512): Rast
   key, x: x * zoom - 1, y: y * zoom - 1, width: span + 2, height: span + 2, zoom, gutter: 1,
 })
 
+test('a one-shot cache iterator can replace a released backing with a covering finer tile', () => {
+  const backing = tile('released', 1, 0, 0, 800)
+  const covered = tile('covered', 8, 0, 0, 1600)
+  const cache = new Map([[covered.key, covered]])
+  expect(zoomInFramePastPlan(cache.values(), [backing], { x: 0, y: 0, zoom: 8 }, size, 2))
+    .toEqual([covered])
+})
+
 test('a finished coarse lattice still publishes a ready finer region of the current camera', () => {
   const view = { x: 0, y: 0, zoom: 8 }
   const backing = tile('backing', 1, 0, 0, 800)

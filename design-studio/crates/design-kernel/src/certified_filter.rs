@@ -263,6 +263,9 @@ fn prepare_channel(line: &[Pixel], channel: usize, bound: u32, scratch: &mut Cha
     let mut uniform = true;
     for pixel in line {
         let bits = pixel.0[channel].to_bits();
+        if !pixel.0[channel].is_finite() {
+            return ChannelPlan { mode: ChannelMode::Slow, minimum: 0, span: 0 };
+        }
         if first.is_none() {
             first = Some(bits);
         } else if first != Some(bits) {
@@ -346,17 +349,23 @@ fn prefix_bits(
 
 fn blur_q64_prefix(mut current: Surface, kernel: &RationalKernel, plan: &Q64Prefix) -> Result<Surface, String> {
     let reach = kernel.reach();
+    let _taps = current.reserve_scratch::<f32>(reach * 2 + 1)?;
     let mut taps = vec![0.; reach * 2 + 1];
-    let mut scratch = [
-        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
-        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
-        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
-        ChannelScratch { values: Vec::new(), sums: Vec::new(), moments: Vec::new() },
-    ];
     for horizontal in [true, false] {
         let Rect { x, y, w, h } = current.rect;
         let (lines, len) = if horizontal { (h as i32, w as i32) } else { (w as i32, h as i32) };
         let len_usize = len.max(0) as usize;
+        let words = len_usize.checked_mul(3).and_then(|n| n.checked_add(2))
+            .and_then(|n| n.checked_mul(4)).ok_or("Q64 scratch size overflow")?;
+        let _prefix = current.reserve_scratch::<i128>(words)?;
+        let _line = current.reserve_scratch::<Pixel>(len_usize)?;
+        // Exact capacities avoid an uncharged amortized growth across axes.
+        // Their leases outlive all four channel buffers for this pass.
+        let mut scratch: [ChannelScratch; 4] = std::array::from_fn(|_| ChannelScratch {
+            values: Vec::with_capacity(len_usize),
+            sums: Vec::with_capacity(len_usize + 1),
+            moments: Vec::with_capacity(len_usize + 1),
+        });
         let mut line = vec![Pixel::default(); len_usize];
         let mut out = current.new_like(current.rect)?;
         for line_index in 0..lines {
@@ -423,4 +432,35 @@ fn blur_q64_prefix(mut current: Surface, kernel: &RationalKernel, plan: &Q64Pref
         current = out;
     }
     Ok(current)
+}
+
+#[cfg(test)]
+mod q64_cpu_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn nonfinite_channels_retain_the_rational_rejection() {
+        for value in [f32::INFINITY, f32::NEG_INFINITY, f32::NAN] {
+            let mut source = Surface::new(Rect::new(0, 0, 32, 3)).unwrap();
+            source.pixels[48] = Pixel([value, 0., 0., 1.]);
+            let kernel = RationalKernel::tent(64.).unwrap();
+            assert!(blur_owned(source, 64., false, &kernel).is_err(),
+                "a nonfinite sample must not become finite prefix output");
+        }
+    }
+
+    #[test]
+    fn q64_rows_cannot_bypass_the_compositing_scratch_ledger() {
+        let width = 1024usize;
+        let plane = width * std::mem::size_of::<Pixel>();
+        let budget = crate::memory::Budget::new(2 * plane + 16);
+        let mut source = Surface::new_in(Rect::new(0, 0, width as u32, 1), &budget).unwrap();
+        for (i, pixel) in source.pixels.iter_mut().enumerate() {
+            *pixel = Pixel([if i % 2 == 0 { 0.35 } else { 0.25 }, 1., -0.5, 0.125]);
+        }
+        let kernel = RationalKernel::tent(64.).unwrap();
+        assert!(blur_owned(source, 64., false, &kernel).is_err(),
+            "two planes leave no room for line and prefix storage");
+        assert_eq!(budget.usage().live_bytes, 0);
+    }
 }

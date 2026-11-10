@@ -154,10 +154,11 @@ export function selectSharperCoverage<T extends RasterTile>(candidates: readonly
 export function zoomInFramePastPlan<T extends RasterTile>(cached: Iterable<T>, backing: readonly RasterTile[],
   view: CanvasCamera, size: { width: number; height: number }, planScale: number): T[] | undefined {
   if (!(planScale > 0) || !Number.isFinite(planScale)) return
+  const available = [...cached]
   const finerThanPlan = (tile: T) => tile.zoom > planScale * (1 + 1e-9)
-  const frame = sharperCoverageFrame(cached, backing, view, size)
+  const frame = sharperCoverageFrame(available, backing, view, size)
   if (frame?.some(finerThanPlan)) return frame
-  return selectCoverageStack([...cached].filter(finerThanPlan), view, size)
+  return selectCoverageStack(available.filter(finerThanPlan), view, size)
 }
 
 /** Backing residents plus every ready tile that replaces a stretched region,
