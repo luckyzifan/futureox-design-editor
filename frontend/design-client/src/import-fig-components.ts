@@ -1,6 +1,7 @@
 import type { ComponentProperty, DesignDocument, Effect, Paint, Stroke } from './model'
 import { defaultLayout, defaultSizing, defaultTextStyle } from './model'
 import type { FigReceipts } from './import-fig-nodes'
+import { figCollectionModes, figReferenceGuid } from './import-fig-document'
 const guid = (g: any): string => typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : ''
 function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,string>): string | boolean {
   if (kind === 'boolean' && typeof value?.boolValue === 'boolean') return value.boolValue
@@ -666,14 +667,26 @@ function applyStyles(fields: Record<string, unknown>, override: any, target: { s
 function variableCatalog(records: Map<string, any>) {
   const idByKey = new Map<string, string>()
   const kindById = new Map<string, string>()
+  const collectionBySet = new Map<string, string>()
+  const collectionModes = new Map<string, string[]>()
+  const modeName = new Map<string, string>()
   for(const [id, record] of records) {
+    if(record.type === 'VARIABLE_SET') {
+      const parsed = figCollectionModes(record)
+      const collection = typeof record.key === 'string' && record.key ? record.key : id
+      for(const [modeId, name] of parsed.modeNames) modeName.set(modeId, name)
+      collectionBySet.set(id, collection)
+      if(typeof record.key === 'string' && record.key) collectionBySet.set(record.key, collection)
+      collectionModes.set(collection, parsed.modes)
+      continue
+    }
     if(record.type !== 'VARIABLE') continue
     const resolved = String(record.variableResolvedType || '')
     kindById.set(id, resolved === 'COLOR' ? 'color' : resolved === 'BOOLEAN' ? 'boolean' : resolved === 'STRING' ? 'string' : 'number')
     idByKey.set(id, id)
     if(typeof record.key === 'string' && record.key) idByKey.set(record.key, id)
   }
-  return { idByKey, kindById }
+  return { idByKey, kindById, collectionBySet, collectionModes, modeName }
 }
 
 function bindingKind(path: string) {
@@ -690,7 +703,7 @@ function aliasId(value: any, variables: ReturnType<typeof variableCatalog>) {
   return id && id !== '0:0' && variables.kindById.has(id) ? id : undefined
 }
 
-function consumptionPaths(field: string, fields: Record<string, unknown>, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown } | undefined) {
+function consumptionPaths(field: string, fields: Record<string, unknown>, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown; variableModes?: Record<string, string> } | undefined) {
   const direct = BINDING_FIELDS[field]
   if(direct) return [direct]
   const polygon = target?.kind === 'polygon' || target?.kind === 'star'
@@ -725,7 +738,7 @@ function consumptionPaths(field: string, fields: Record<string, unknown>, target
   return undefined
 }
 
-function bindConsumption(entries: any[], prefix: string, fields: Record<string, unknown>, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown } | undefined, variables: ReturnType<typeof variableCatalog>, bindings: Record<string, string>, warnings?: { add(message: string): unknown }) {
+function bindConsumption(entries: any[], prefix: string, fields: Record<string, unknown>, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown; variableModes?: Record<string, string> } | undefined, variables: ReturnType<typeof variableCatalog>, bindings: Record<string, string>, warnings?: { add(message: string): unknown }) {
   const ordered = [...entries].sort((left, right) => Number(left?.variableField !== 'CORNER_RADIUS') - Number(right?.variableField !== 'CORNER_RADIUS'))
   for(const entry of ordered) {
     const field = String(entry?.variableField || '')
@@ -747,7 +760,7 @@ function bindConsumption(entries: any[], prefix: string, fields: Record<string, 
   }
 }
 
-function applyConsumption(fields: Record<string, unknown>, override: any, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown } | undefined, variables: ReturnType<typeof variableCatalog>, warnings?: { add(message: string): unknown }) {
+function applyConsumption(fields: Record<string, unknown>, override: any, target: { kind?: string; strokes?: unknown[]; layout?: unknown; textStyle?: unknown; sizing?: unknown; variableModes?: Record<string, string> } | undefined, variables: ReturnType<typeof variableCatalog>, warnings?: { add(message: string): unknown }) {
   const kept: Record<string, unknown> = {}
   const bindings: Record<string, string> = {}
   for(const [key, prefix] of [['variableConsumptionMap', 'variableConsumptionMap'], ['parameterConsumptionMap', 'parameterConsumptionMap']] as const) {
@@ -757,5 +770,24 @@ function applyConsumption(fields: Record<string, unknown>, override: any, target
     bindConsumption(map.entries, prefix, fields, target, variables, bindings, warnings)
   }
   if(Object.keys(bindings).length) fields.bindings = bindings
+  const templateModes = target?.variableModes
+  const modeMap = override.variableModeBySetMap
+  if(Array.isArray(modeMap?.entries) && modeMap.entries.length) {
+    kept.variableModeBySetMap = modeMap
+    const modes = { ...(templateModes || {}) }
+    let failed = false
+    for(const entry of modeMap.entries) {
+      const set = entry?.variableSetID
+      const key = typeof set?.assetRef?.key === 'string' ? set.assetRef.key : ''
+      const collection = (key && variables.collectionBySet.get(key)) || variables.collectionBySet.get(figReferenceGuid(set))
+      const name = variables.modeName.get(figReferenceGuid(entry?.variableModeID))
+      if(collection && name && variables.collectionModes.get(collection)?.includes(name)) modes[collection] = name
+      else failed = true
+    }
+    if(failed) warnings?.add('FIG 实例覆盖 variableModeBySetMap 暂不能完全执行，模式表已保留')
+    const same = Object.keys(modes).length === Object.keys(templateModes || {}).length
+      && Object.entries(modes).every(([key, value]) => templateModes?.[key] === value)
+    if(Object.keys(modes).length && !same) fields.variableModes = modes
+  }
   return kept
 }

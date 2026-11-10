@@ -472,38 +472,44 @@ pub(super) fn import_variables(
 ) {
     use crate::design_system::{Collection, Variable};
     let mut mode_names: BTreeMap<String, String> = BTreeMap::new();
+    let mut set_to_collection: BTreeMap<String, String> = BTreeMap::new();
     let mut collections: BTreeMap<String, Collection> = BTreeMap::new();
     for (id, record) in records {
         if str_of(record, "type") != Some("VARIABLE_SET") {
             continue;
         }
-        let collection_id = str_of(record, "key").unwrap_or(id).to_string();
-        let mut modes = Vec::new();
-        if let Some(list) = record.get("variableSetModes").and_then(Value::as_array) {
-            for mode in list {
-                let name = str_of(mode, "name")
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or("Mode");
-                if let Some(mode_id) = mode.get("id") {
-                    mode_names.insert(guid_string(mode_id), name.to_string());
-                }
-                if !modes.iter().any(|existing: &String| existing == name) {
-                    modes.push(name.to_string());
-                }
-            }
+        let parsed = super::fig_collection_modes(record);
+        let collection_id = str_of(record, "key")
+            .filter(|key| !key.is_empty())
+            .unwrap_or(id)
+            .to_string();
+        let collection_name = str_of(record, "name").unwrap_or("Variables");
+        if parsed.truncated {
+            notes.push(format!(
+                "variable collection {collection_name} has more than 32 modes; modes after the first 32 were not imported"
+            ));
         }
-        if modes.is_empty() {
-            modes.push("Default".into());
+        if parsed.duplicate_names {
+            notes.push(format!(
+                "variable collection {collection_name} repeats a mode name; values for that name share one mode"
+            ));
         }
-        if modes.len() > 32 {
-            continue;
+        if collections.contains_key(&collection_id) {
+            notes.push(format!(
+                "variable collection {collection_id} was defined more than once; the later mode list was kept"
+            ));
+        }
+        mode_names.extend(parsed.mode_names);
+        set_to_collection.insert(id.clone(), collection_id.clone());
+        if let Some(key) = str_of(record, "key").filter(|key| !key.is_empty()) {
+            set_to_collection.insert(key.to_string(), collection_id.clone());
         }
         collections.insert(
             collection_id,
             Collection {
-                name: str_of(record, "name").unwrap_or("Variables").to_string(),
-                default_mode: modes[0].clone(),
-                modes,
+                name: collection_name.to_string(),
+                default_mode: parsed.names[0].clone(),
+                modes: parsed.names,
             },
         );
     }
@@ -513,16 +519,22 @@ pub(super) fn import_variables(
         if str_of(record, "type") != Some("VARIABLE") {
             continue;
         }
-        let from_guid = record.get("variableSetID").map(guid_string);
-        let collection = record
+        let referenced = record
             .get("variableSetID")
             .and_then(|value| value.get("assetRef"))
             .and_then(|value| str_of(value, "key"))
             .filter(|key| !key.is_empty())
             .map(str::to_string)
             .or_else(|| {
-                from_guid.filter(|value| !value.is_empty() && value != "fig-0-0" && value != "0:0")
-            })
+                record.get("variableSetID").and_then(|value| {
+                    let id = super::reference_guid(value);
+                    (!id.is_empty() && id != "fig-0-0" && id != "0:0").then_some(id)
+                })
+            });
+        let collection = referenced
+            .as_ref()
+            .and_then(|id| set_to_collection.get(id).cloned())
+            .or(referenced)
             .unwrap_or_else(|| id.clone());
         if !collections.contains_key(&collection) {
             collections.insert(
@@ -570,7 +582,7 @@ pub(super) fn import_variables(
             for entry in entries {
                 let mode = entry
                     .get("modeID")
-                    .map(guid_string)
+                    .map(super::reference_guid)
                     .and_then(|id| mode_names.get(&id).cloned())
                     .unwrap_or_else(|| "Default".into());
                 let data = entry.get("variableData").unwrap_or(&Value::Null);
@@ -597,9 +609,6 @@ pub(super) fn import_variables(
         else {
             continue;
         };
-        if collection_modes.len() > 32 {
-            continue;
-        }
         if values.is_empty() {
             values.insert(collection_modes[0].clone(), variable_fallback(&draft.kind));
         }
@@ -625,6 +634,14 @@ pub(super) fn import_variables(
             "{unresolved_aliases} variable aliases had no local target of the same type and kept the mode fallback"
         ));
     }
+    apply_node_modes(
+        doc,
+        records,
+        &collections,
+        &mode_names,
+        &set_to_collection,
+        notes,
+    );
     let has_consumption = records.values().any(|record| {
         record
             .get("variableConsumptionMap")
@@ -650,6 +667,65 @@ pub(super) fn import_variables(
     // so a width binding of the same number is still 50, and ordinary
     // documents never pass through this function.
     normalize_imported_opacity(doc);
+}
+
+fn apply_node_modes(
+    doc: &mut Document,
+    records: &BTreeMap<String, Value>,
+    collections: &BTreeMap<String, crate::design_system::Collection>,
+    mode_names: &BTreeMap<String, String>,
+    set_to_collection: &BTreeMap<String, String>,
+    notes: &mut Vec<String>,
+) {
+    let mut unresolved = false;
+    for (id, record) in records {
+        if !doc.nodes.contains_key(id) {
+            continue;
+        }
+        let Some(entries) = record
+            .get("variableModeBySetMap")
+            .and_then(|map| map.get("entries"))
+            .and_then(Value::as_array)
+            .filter(|entries| !entries.is_empty())
+        else {
+            continue;
+        };
+        let mut modes = BTreeMap::new();
+        for entry in entries {
+            let set = entry.get("variableSetID").unwrap_or(&Value::Null);
+            let collection = set
+                .get("assetRef")
+                .and_then(|reference| str_of(reference, "key"))
+                .filter(|key| !key.is_empty())
+                .and_then(|key| set_to_collection.get(key))
+                .or_else(|| set_to_collection.get(&super::reference_guid(set)));
+            let name = entry
+                .get("variableModeID")
+                .map(super::reference_guid)
+                .and_then(|mode_id| mode_names.get(&mode_id));
+            match (collection, name) {
+                (Some(collection), Some(name))
+                    if collections.get(collection).is_some_and(|collection| {
+                        collection.modes.iter().any(|mode| mode == name)
+                    }) =>
+                {
+                    modes.insert(collection.clone(), name.clone());
+                }
+                _ => unresolved = true,
+            }
+        }
+        if !modes.is_empty()
+            && let Some(node) = doc.nodes.get_mut(id)
+        {
+            node.variable_modes = modes;
+        }
+    }
+    if unresolved {
+        notes.push(
+            "FIG variable modes that do not name a local collection mode are retained as figVariableModes"
+                .into(),
+        );
+    }
 }
 
 fn opacity_binding_path(path: &str) -> bool {
@@ -897,10 +973,10 @@ fn executable_variable_field(field: &str) -> Option<&'static str> {
         "TEXT_DATA" | "CHARACTERS" => "text",
         "FONT_SIZE" => "fontSize",
         "STACK_SPACING" | "ITEM_SPACING" => "layout.gap",
+        "STACK_COUNTER_SPACING" => "layout.lineGap",
         "LINE_HEIGHT" => "textStyle.lineHeight",
         "LETTER_SPACING" => "textStyle.letterSpacing",
         "FONT_WEIGHT" => "textStyle.weight",
-        "PARAGRAPH_SPACING" => "layout.lineGap",
         _ => return None,
     })
 }
@@ -1108,6 +1184,17 @@ fn bounded_variables(tree: &Value) -> Option<Value> {
 pub(super) fn raise_schema(doc: &Document, version: &mut u32) {
     if doc.design_system.is_some() {
         *version = (*version).max(4);
+    }
+    if doc.nodes.values().any(|node| {
+        !node.variable_modes.is_empty()
+            || node.instance.as_ref().is_some_and(|instance| {
+                instance
+                    .overrides
+                    .values()
+                    .any(|fields| fields.contains_key("variableModes"))
+            })
+    }) {
+        *version = (*version).max(6);
     }
     if doc.pages.iter().any(|page| !page.guides.is_empty()) {
         *version = (*version).max(11);

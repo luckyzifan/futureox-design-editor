@@ -147,6 +147,35 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   expect(receipts.get(instance.id)?.figOverrideVariableConsumption).toContain('RECTANGLE_TOP_LEFT_CORNER_RADIUS')
 })
 
+test('instance override variable modes select a mode from the imported collection', () => {
+  const doc = blank('模式')
+  const main = node('frame', 0, 0, 40, 24)
+  const shape = node('rectangle', 0, 0, 40, 24)
+  const instance = node('frame', 0, 40, 40, 24)
+  main.children = [shape.id]
+  doc.nodes = { [main.id]: main, [shape.id]: shape, [instance.id]: instance }
+  const records = new Map<string, any>([
+    ['set', { type: 'VARIABLE_SET', name: 'Tokens', key: 'set-key', variableSetModes: [
+      { name: 'Light', id: { sessionID: 9, localID: 1 } },
+      { name: 'Dark', id: { sessionID: 9, localID: 2 } },
+    ] }],
+    ['gap', { type: 'VARIABLE', key: 'gap-key', variableResolvedType: 'FLOAT' }],
+    ['sym', { type: 'SYMBOL' }],
+    ['shape', { type: 'RECTANGLE' }],
+    ['inst', { type: 'INSTANCE', symbolData: { symbolID: 'sym', symbolOverrides: [{
+      guidPath: { guids: ['shape'] },
+      variableModeBySetMap: { entries: [
+        { variableSetID: { assetRef: { key: 'set-key' } }, variableModeID: { sessionID: 9, localID: 2 } },
+        { variableSetID: { assetRef: { key: 'missing' } }, variableModeID: { sessionID: 9, localID: 9 } },
+      ] },
+    }] } }],
+  ])
+  const warnings = new Set<string>()
+  importFigComponents(doc, records, new Map([['sym', main.id], ['shape', shape.id], ['inst', instance.id]]), () => paint('#000000'), () => [], { add: (message) => warnings.add(message) })
+  expect(doc.nodes[instance.id].instance?.overrides[shape.id].variableModes).toEqual({ 'set-key': 'Dark' })
+  expect([...warnings].some(message => message.includes('variableModeBySetMap'))).toBe(true)
+})
+
 test('nested component property assignments execute only when the target exists', () => {
   const doc = blank('属性')
   const outer = node('frame', 0, 0, 120, 80)
