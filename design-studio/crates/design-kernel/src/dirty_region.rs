@@ -254,7 +254,8 @@ pub(crate) fn resolved_leaf_pose_damage(doc:&Document,parents:&crate::render_ind
         // A container pose stays local when this node itself does not filter.
         // Child support still comes from the same subtree bounds oracle; a
         // visible effect on the container can sample outside that proof.
-        if !node.render_children().is_empty() && node.effects.iter().any(|e| e.visible) { return None; }
+        if !node.render_children().is_empty() && (node.clip || node.boolean_operation.is_some() ||
+            node.effects.iter().any(|e| e.visible)) { return None; }
         let has_effects = node.effects.iter().any(|e| e.visible);
         if has_effects && (node.kind != "vector" || node.blend != "normal" || node.path_offset != 0. ||
             node.vector_brush.is_some() || node.derived_path.is_some() || node.strokes.iter().any(|s| s.visible) ||
@@ -2470,6 +2471,10 @@ mod tests {
         assert!(covers(40., 0.), "rotated child missed {bounds:?}");
         assert!(!covers(400., 300.), "far sibling entered {bounds:?}");
         assert!(damage.rects.is_some_and(|rects| rects.len() == 2));
+        let mut clipped = doc.clone();
+        clipped.nodes.get_mut("g").unwrap().clip = true;
+        let parents = crate::render_index::Parents::new(&clipped);
+        assert!(resolved_leaf_pose_damage(&clipped, &parents, &turned, &fonts).is_none());
         let mut filtered = doc.clone();
         filtered.nodes.get_mut("g").unwrap().effects.push(serde_json::from_value(json!({
             "kind": "blur", "radius": 4., "color": "#000000", "visible": true
