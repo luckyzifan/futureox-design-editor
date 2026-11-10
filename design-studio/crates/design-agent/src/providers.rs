@@ -187,7 +187,9 @@ impl ProviderSet {
         Ok(())
     }
 
-    pub fn remove(&mut self, id: &str) -> Result<(), String> {
+    /// Drops a saved connection. The returned id is the connection the next turn
+    /// must use: the previous one when it is still present, otherwise local.
+    pub fn remove(&mut self, id: &str) -> Result<String, String> {
         if id == "local" {
             return Err("the local assistant stays available".into());
         }
@@ -196,10 +198,10 @@ impl ProviderSet {
         if self.items.len() == before {
             return Err(format!("unknown provider {id}"));
         }
-        if self.active == id {
+        if self.active == id || self.items.iter().all(|item| item.id != self.active) {
             self.active = "local".into();
         }
-        Ok(())
+        Ok(self.active.clone())
     }
 }
 
@@ -293,10 +295,10 @@ mod tests {
         assert_eq!(chat_url("http://127.0.0.1:15721/v1"), "http://127.0.0.1:15721/v1/chat/completions");
         assert_eq!(chat_url("https://api.example.test"), "https://api.example.test/v1/chat/completions");
         assert_eq!(startup_active(&set.items), "local");
-        let (mode, label) = availability(&ProviderSet { items: vec![local_provider()], active: "local".into() });
+        let (mode, label) = availability(&ProviderSet { items: vec![super::local_provider()], active: "local".into() });
         assert_eq!(mode, "local");
         assert_eq!(label, "本机模式");
-        let local = local_provider();
+        let local = super::local_provider();
         assert!(local.secret.is_empty());
         assert_eq!(local.name, "本机模式");
         set.items.insert(1, Provider { id: "grok".into(), name: "Grok".into(), kind: ProviderKind::Api, base_url: "https://grok.example/v1".into(), secret: "g".into(), model: "grok-4".into(), wire: Wire::OpenaiChat, profile_id: String::new() });
@@ -323,5 +325,51 @@ INSERT INTO proxy_config VALUES ('codex','127.0.0.1',15721,1,1);"#;
         assert!(!dumped.contains("do-not-leak"));
         assert!(snapshot.present);
         fs::remove_dir_all(dir).ok();
+    }
+
+    fn local_provider() -> Provider {
+        Provider {
+            id: "local".into(),
+            name: "local".into(),
+            kind: ProviderKind::Local,
+            base_url: String::new(),
+            secret: String::new(),
+            model: "grok-local".into(),
+            wire: Wire::OpenaiChat,
+            profile_id: String::new(),
+        }
+    }
+
+    fn saved(id: &str, kind: ProviderKind) -> Provider {
+        Provider {
+            id: id.into(),
+            name: id.into(),
+            kind,
+            base_url: format!("http://127.0.0.1:9/{id}/v1"),
+            secret: format!("synthetic-{id}-key"),
+            model: format!("{id}-model"),
+            wire: Wire::OpenaiChat,
+            profile_id: String::new(),
+        }
+    }
+
+    #[test]
+    fn remove_reports_the_connection_the_next_turn_uses() {
+        let mut set = ProviderSet { items: vec![local_provider()], active: "local".into() };
+        set.upsert(saved("qa-a", ProviderKind::Api)).unwrap();
+        set.upsert(saved("qa-deleted", ProviderKind::TokenPlan)).unwrap();
+        set.activate("qa-a").unwrap();
+        assert_eq!(set.remove("qa-deleted").unwrap(), "qa-a");
+        assert_eq!(set.active, "qa-a");
+        assert!(set.items.iter().all(|item| item.id != "qa-deleted"));
+        assert!(!serde_json::to_string(&set.views()).unwrap().contains("synthetic-qa-deleted-key"));
+        assert!(set.remove("qa-deleted").is_err());
+        assert_eq!(set.active, "qa-a");
+        assert!(set.remove("local").is_err());
+        assert!(set.items.iter().any(|item| item.id == "local"));
+        assert_eq!(set.remove("qa-a").unwrap(), "local");
+        assert_eq!(set.active, "local");
+        assert!(set.views().iter().any(|item| item.id == "local" && item.active));
+        assert!(set.views().iter().all(|item| item.id != "qa-a"));
     }
 }

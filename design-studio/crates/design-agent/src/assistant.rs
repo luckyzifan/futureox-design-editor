@@ -1,9 +1,10 @@
 //! Model calls. The first choice is the active provider (Grok when configured).
 //! Token-plan and generic API endpoints share the OpenAI chat wire; Anthropic
 //! token plans use the Messages API. CC Switch is the local router at
-//! `/v1/chat/completions`. If the network call fails, the same turn continues
-//! on the in-process assistant so the page still changes.
+//! `/v1/chat/completions`. A failed provider call does not silently edit the
+//! page with the local rule template.
 
+use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::items::TurnItem;
@@ -25,6 +26,52 @@ pub struct ModelTurn {
     pub tool_calls: Vec<ToolCall>,
 }
 
+/// A configured provider failed. This is not a local-rule result.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderFailure {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<u16>,
+    pub message: String,
+}
+
+impl ProviderFailure {
+    fn new(code: &str, status: Option<u16>, message: impl Into<String>) -> Self {
+        Self { code: code.to_string(), status, message: message.into() }
+    }
+
+    pub fn http(status: u16) -> Self {
+        let (code, head) = match status {
+            401 => ("unauthorized", "模型服务拒绝访问（HTTP 401）".to_string()),
+            429 => ("rate_limited", "模型服务限流（HTTP 429）".to_string()),
+            503 => ("unavailable", "模型服务暂时不可用（HTTP 503）".to_string()),
+            other => ("http_error", format!("模型服务返回 HTTP {other}")),
+        };
+        Self::new(code, Some(status), format!("{head}。没有改动画布。可以重试，或改用本机规则模板。"))
+    }
+
+    pub fn timeout() -> Self {
+        Self::new("timeout", None, "模型服务超时。没有改动画布。可以重试，或改用本机规则模板。")
+    }
+
+    pub fn invalid() -> Self {
+        Self::new("invalid_response", None, "模型服务返回了无法识别的内容。没有改动画布。可以重试，或改用本机规则模板。")
+    }
+
+    pub fn unreachable() -> Self {
+        Self::new("network", None, "模型服务没有连上。没有改动画布。可以重试，或改用本机规则模板。")
+    }
+
+    pub fn not_configured() -> Self {
+        Self::new("not_configured", None, "这条模型连接没有可用地址。没有改动画布。可以重试，或改用本机规则模板。")
+    }
+}
+
+fn provider_transport(error: reqwest::Error) -> ProviderFailure {
+    if error.is_timeout() { ProviderFailure::timeout() } else { ProviderFailure::unreachable() }
+}
+
 pub fn local_turn(latest: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId], ctx: &DesignContext) -> ModelTurn {
     let current_turn = items.iter().rev().take_while(|item| !matches!(item, TurnItem::UserMessage { .. }));
     if skills.iter().all(|skill| *skill == SkillId::Critique) && !crate::skills::looks_like_mutation(latest) {
@@ -36,6 +83,7 @@ pub fn local_turn(latest: &str, earlier: &str, items: &[TurnItem], skills: &[Ski
     }
     if current_turn.clone().any(|item| matches!(item, TurnItem::FunctionCallOutput { .. })) {
         let notes = current_turn.filter_map(|item| match item {
+            TurnItem::McpToolCall { error: Some(error), .. } => Some(error.as_str()),
             TurnItem::McpToolCall { result: Some(result), .. } => result.get("summary").and_then(Value::as_str),
             _ => None,
         }).collect::<Vec<_>>();
@@ -51,9 +99,9 @@ pub fn local_turn(latest: &str, earlier: &str, items: &[TurnItem], skills: &[Ski
     ModelTurn { plan: Some(plan), message: Some("按对话里选中的技能执行。".into()), tool_calls }
 }
 
-pub async fn remote_turn(http: &reqwest::Client, provider: &Provider, latest: &str, skills: &[SkillId], items: &[TurnItem], ctx: &DesignContext) -> Result<ModelTurn, String> {
+pub async fn remote_turn(http: &reqwest::Client, provider: &Provider, latest: &str, skills: &[SkillId], items: &[TurnItem], ctx: &DesignContext) -> Result<ModelTurn, ProviderFailure> {
     if provider.kind == ProviderKind::Local || provider.base_url.is_empty() {
-        return Err("local provider has no endpoint".into());
+        return Err(ProviderFailure::not_configured());
     }
     let system = format!(
         "你是 Futureox 的页面设计助手。只回答和修改设计：页面、画板、文字、颜色、字体、布局。不要写程序，不要建议代码。技能已经按这段对话选好：{}。\n{}\n{}",
@@ -68,7 +116,7 @@ pub async fn remote_turn(http: &reqwest::Client, provider: &Provider, latest: &s
     }
 }
 
-async fn openai_turn(http: &reqwest::Client, provider: &Provider, system: &str, _latest: &str, items: &[TurnItem]) -> Result<ModelTurn, String> {
+async fn openai_turn(http: &reqwest::Client, provider: &Provider, system: &str, _latest: &str, items: &[TurnItem]) -> Result<ModelTurn, ProviderFailure> {
     let messages = openai_messages(system, items);
     let response = http
         .post(chat_url(&provider.base_url))
@@ -76,11 +124,16 @@ async fn openai_turn(http: &reqwest::Client, provider: &Provider, system: &str, 
         .json(&json!({ "model": provider.model, "messages": messages, "tools": tool_schema(), "tool_choice": "auto" }))
         .send()
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(provider_transport)?;
     if !response.status().is_success() {
-        return Err(format!("provider status {}", response.status()));
+        let status = response.status().as_u16();
+        let _ = response.bytes().await;
+        return Err(ProviderFailure::http(status));
     }
-    let body: Value = response.json().await.map_err(|error| error.to_string())?;
+    let body: Value = response.json().await.map_err(|_| ProviderFailure::invalid())?;
+    if body.pointer("/choices/0/message").is_none() {
+        return Err(ProviderFailure::invalid());
+    }
     let message = body.pointer("/choices/0/message").cloned().unwrap_or(json!({}));
     let text = message.get("content").and_then(Value::as_str).map(str::to_string);
     let tool_calls = message
@@ -97,7 +150,7 @@ fn parse_openai_call(value: &Value) -> Option<ToolCall> {
     Some(ToolCall { id: value.get("id").and_then(Value::as_str).unwrap_or("call").to_string(), name, arguments })
 }
 
-async fn anthropic_turn(http: &reqwest::Client, provider: &Provider, system: &str, _latest: &str, items: &[TurnItem]) -> Result<ModelTurn, String> {
+async fn anthropic_turn(http: &reqwest::Client, provider: &Provider, system: &str, _latest: &str, items: &[TurnItem]) -> Result<ModelTurn, ProviderFailure> {
     let messages = anthropic_messages(items);
     let tools = tool_schema()
         .as_array()
@@ -119,11 +172,16 @@ async fn anthropic_turn(http: &reqwest::Client, provider: &Provider, system: &st
         .json(&json!({ "model": provider.model, "max_tokens": 1024, "system": system, "messages": messages, "tools": tools }))
         .send()
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(provider_transport)?;
     if !response.status().is_success() {
-        return Err(format!("provider status {}", response.status()));
+        let status = response.status().as_u16();
+        let _ = response.bytes().await;
+        return Err(ProviderFailure::http(status));
     }
-    let body: Value = response.json().await.map_err(|error| error.to_string())?;
+    let body: Value = response.json().await.map_err(|_| ProviderFailure::invalid())?;
+    if body.get("content").is_none() {
+        return Err(ProviderFailure::invalid());
+    }
     let blocks = body.get("content").and_then(Value::as_array).cloned().unwrap_or_default();
     let text = blocks
         .iter()
@@ -185,7 +243,12 @@ pub fn design_context_text(ctx: &DesignContext) -> String {
             )).unwrap_or_default()
         )
     }).collect::<Vec<_>>().join("；");
-    format!("当前页「{page_name}」。目标页「{target_name}」。选中：{selection}。图层：{layers}")
+    let omitted = if ctx.omissions.is_empty() {
+        String::new()
+    } else {
+        format!(" 上下文省略：{}。不要把省略说成页面里没有这些内容，也不要修改没有点名的属性。", ctx.omissions.join(" "))
+    };
+    format!("当前页「{page_name}」。目标页「{target_name}」。选中：{selection}。图层：{layers}{omitted}")
 }
 
 pub fn answer_design_question(latest: &str, items: &[TurnItem], ctx: &DesignContext) -> String {
@@ -473,6 +536,7 @@ mod tests {
                 x: 0.0, y: 0.0, width: 80.0, height: 32.0, text: None, fill: Some("#3459d4".into()), stroke: Some("#e05634".into()), stroke_width: Some(2.0), stroke_align: Some("inside".into()), stroke_cap: Some("round".into()), stroke_join: Some("miter".into()), stroke_dash: Some("4 2".into()), opacity: Some(0.5), corner_radius: Some("8".into()), font_size: Some(16.0), font_id: Some("sans".into()),
             }],
             selection: vec!["button".into()],
+            ..crate::operations::DesignContext::default()
         };
         let items = vec![
             TurnItem::UserMessage { id: "u1".into(), text: "标题先用秋日特惠".into() },

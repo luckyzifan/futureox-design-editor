@@ -85,7 +85,7 @@ test('local mode is visible and one-click generation stays enabled', async () =>
   await act(async () => { generate.click() })
   await flush()
   expect(turns).toBe(1)
-  expect(document.body.textContent).toContain('模型：本机模式')
+  expect(document.body.textContent).toContain('执行者：本机规则模板')
   expect(document.body.textContent).toContain('已按本机模式生成页面。')
   expect(button('一键出图').disabled).toBe(false)
   const css = readFileSync(join(process.cwd(), 'src/design-ai/design-agent.css'), 'utf8')
@@ -193,4 +193,20 @@ test('settings show local mode, keep the saved connection usable, and can return
   expect(calls.some(item => item.id === 'local')).toBe(true)
   expect(document.querySelector('[data-agent-mode="local"]')?.textContent).toContain('已改用本机模式')
   expect(button('改用本机模式').disabled).toBe(false)
+})
+
+test('an open assistant updates the connection banner when settings change', async () => {
+  const editor = new Editor(blank('Connection banner'))
+  let configured = false
+  const desktop = { designAgent: { async status() { return { status: 'ok', mode: configured ? 'configured' : 'local', label: configured ? 'QA connection' : '本机模式', providers: [{active:true,kind:configured?'api':'local',name:configured?'QA connection':'本机模式'}] } } } } as unknown as DesktopBridge
+  const host = document.createElement('div');document.body.append(host);root=createRoot(host)
+  await act(async()=>{root!.render(<DesignAgentPanel editor={editor} desktop={desktop} onClose={()=>{}} />)})
+  await flush();expect(document.querySelector('.design-agent-panel [data-agent-mode=local]')).not.toBeNull()
+  configured=true
+  await act(async()=>{window.dispatchEvent(new Event('futureox-agent-connection-changed'))})
+  await flush();expect(document.querySelector('.design-agent-panel [data-agent-mode=configured]')?.textContent).toContain('QA connection')
+  configured=false
+  await act(async()=>{window.dispatchEvent(new Event('futureox-agent-connection-changed'))})
+  await flush();expect(document.querySelector('.design-agent-panel [data-agent-mode=local]')).not.toBeNull()
+  editor.dispose()
 })

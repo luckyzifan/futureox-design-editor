@@ -8,6 +8,8 @@ export type AgentStatusResult = {
 
 export type AgentAvailability = { tone: 'local' | 'configured' | 'error'; text: string }
 
+export const AGENT_CONNECTION_CHANGED = 'futureox-agent-connection-changed'
+
 export function agentAvailability(result: AgentStatusResult): AgentAvailability {
   if (result.status === 'cancelled') return { tone: 'error', text: '已取消' }
   if (result.status !== 'ok') return { tone: 'error', text: result.message || '设计助手不可用' }

@@ -1411,11 +1411,18 @@ fn texture_impl(
     let inverse = transform.inverse_composed(input.rect)?;
     for y in out.rect.y..out.rect.bottom() {
         for x in out.rect.x..out.rect.right() {
+            let index = out.rect.index(x, y).expect("bounds");
+            // The effect halo keeps room for the displacement lookup, but a
+            // texel the shape did not paint is not a sample destination.
+            // Writing it would grow an integer rectangle by the noise reach.
+            if input.pixels[index].0[3] <= 0. {
+                continue;
+            }
             let sample = texture_location(x, y, amount, transform, inverse);
             if !sample.finite() {
                 return Err("Nonfinite texture sample coordinate".into());
             }
-            out.pixels[out.rect.index(x, y).expect("bounds")] = if linear {
+            out.pixels[index] = if linear {
                 input.sample_linear(sample.x, sample.y)
             } else {
                 input.sample(sample.x, sample.y)

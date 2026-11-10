@@ -49,6 +49,9 @@ pub struct TurnRequest {
     pub history: Vec<String>,
     #[serde(default)]
     pub context: DesignContext,
+    /// When true, run the local rule template instead of the configured provider.
+    #[serde(default)]
+    pub use_local_rules: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +65,12 @@ pub struct TurnResponse {
     pub assistant: String,
     pub target_page_id: String,
     pub summary: String,
+    /// Document identity captured with the request. Callers must apply with these fences.
+    pub document_id: String,
+    pub session: u64,
+    pub revision: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<crate::assistant::ProviderFailure>,
 }
 
 impl AgentCore {
@@ -124,7 +133,7 @@ impl AgentCore {
         };
         let cancel = turn::new_cancel();
         self.inner.cancels.write().await.insert(request.session_id.clone(), Arc::clone(&cancel));
-        let outcome = run_turn(&self.inner.http, &provider, &request.message, &earlier, &request.context, &prior, &cancel).await;
+        let outcome = run_turn(&self.inner.http, &provider, &request.message, &earlier, &request.context, &prior, &cancel, request.use_local_rules).await;
         self.inner.cancels.write().await.remove(&request.session_id);
         let outcome = outcome?;
         let new_items = outcome.items[prior.len()..].to_vec();
@@ -139,6 +148,10 @@ impl AgentCore {
             assistant: outcome.assistant,
             target_page_id: outcome.target_page_id,
             summary: outcome.summary,
+            document_id: request.context.document_id,
+            session: request.context.session,
+            revision: request.context.revision,
+            failure: outcome.failure,
         })
     }
 
@@ -158,6 +171,7 @@ fn health_body(set: &providers::ProviderSet) -> Value {
     json!({
         "ok": true,
         "service": "futureox-design-agent",
+        "pid": std::process::id(),
         "skills": skills::default_skills().iter().map(|skill| skill.as_str()).collect::<Vec<_>>(),
         "mode": mode,
         "active": set.active,
@@ -202,8 +216,9 @@ async fn activate_provider(State(core): State<AgentCore>, Json(body): Json<Value
 
 async fn remove_provider(State(core): State<AgentCore>, Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
     let id = body.get("id").and_then(Value::as_str).unwrap_or("");
-    core.inner.providers.write().await.remove(id).map_err(ApiError)?;
-    Ok(Json(json!({ "ok": true })))
+    let mut providers = core.inner.providers.write().await;
+    let active = providers.remove(id).map_err(ApiError)?;
+    Ok(Json(json!({ "ok": true, "active": active })))
 }
 
 async fn ccswitch_handler() -> Json<CcSwitchSnapshot> {
@@ -292,6 +307,7 @@ mod session_tests {
             message: "先做咖啡页，标题秋日特惠".into(),
             history: vec![],
             context: DesignContext::default(),
+            use_local_rules: false,
         };
         core.turn(first).await.expect("first turn");
         let second = TurnRequest {
@@ -307,7 +323,9 @@ mod session_tests {
                     x: 0.0, y: 0.0, width: 80.0, height: 40.0, text: Some("秋日特惠".into()), fill: None, stroke: None, stroke_width: None, stroke_align: None, stroke_cap: None, stroke_join: None, stroke_dash: None, opacity: None, corner_radius: None, font_size: Some(32.0), font_id: Some("sans".into()),
                 }],
                 selection: vec!["title".into()],
+                ..DesignContext::default()
             },
+            use_local_rules: false,
         };
         core.turn(second).await.expect("second turn");
         bodies.lock().expect("bodies").clone()

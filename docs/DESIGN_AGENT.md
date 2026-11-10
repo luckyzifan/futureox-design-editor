@@ -20,7 +20,7 @@ node scripts/build.mjs --fast
 
 ## 模型
 
-设置 → 设计助手，可以保存多条连接并切换：
+设置 → 设计助手，可以保存多条连接并切换。已保存的 API 和 Token plan 在「已保存的连接」里点「用这条连接」即可激活，不用重新填写地址、模型和密钥；「删除」会让 Rust 助手丢掉这条连接，并把同一份本机 JSON 原子换成剩余连接和助手返回的 active。写盘失败时删除不返回成功，内存按原文件恢复。删掉当前连接后，重启仍使用这份 active（没有其他已选连接时是本机助手），不会把已删除的连接重新加回来并激活。内置的本机、Grok、API、Token plan 和 CC Switch 入口不提供删除。列表只显示是否已保存密钥，不显示密钥本身。
 
 | 类型 | 作用 |
 | --- | --- |
@@ -30,7 +30,7 @@ node scripts/build.mjs --fast
 
 没有外部模型密钥时，设置和设计助手面板显示「本机模式」，对话由本机规则直接改画布。配了 `GROK_ASSISTANT_BASE_URL` 和 `GROK_ASSISTANT_API_KEY` 时，启动后优先用这条 Grok 兼容接口，然后再是设置里保存的 API、Token plan 和 CC Switch。不要把密钥写进仓库。
 
-CC Switch 在这里只做切换：本机 Grok、已保存的 API、Token plan，或数据库里的一条上游。实现在 `design-studio/crates/design-agent/src/ccswitch.rs`，文件头保留 MIT 与 Copyright (c) 2025 Jason Young。没有带入它的桌面界面、本地代理、故障转移队列、熔断器或 OAuth。密钥留在 CC Switch 数据库里，设置列表不返回密钥。选中的地址连不上时，这一轮改用本机设计回答，不会自动改打另一条供应商。
+CC Switch 在这里只做切换：本机 Grok、已保存的 API、Token plan，或数据库里的一条上游。实现在 `design-studio/crates/design-agent/src/ccswitch.rs`，文件头保留 MIT 与 Copyright (c) 2025 Jason Young。没有带入它的桌面界面、本地代理、故障转移队列、熔断器或 OAuth。密钥留在 CC Switch 数据库里，设置列表不返回密钥。选中的地址返回 401、429、503、超时或无法识别的内容时，这一轮不改画布，并说明失败原因。不会自动改用本机规则，也不会自动改打另一条供应商。用户可以重试，或明确改用本机规则模板。本机规则模板会标明它不是已配置模型的结果。
 
 其他可选变量：`GROK_ASSISTANT_MODEL`、`DESIGN_AGENT_API_BASE_URL`、`DESIGN_AGENT_API_KEY`、`DESIGN_AGENT_API_MODEL`、`DESIGN_AGENT_TOKEN_PLAN_URL`、`DESIGN_AGENT_TOKEN_PLAN_TOKEN`、`DESIGN_AGENT_TOKEN_PLAN_MODEL`、`CCSWITCH_PROXY_URL`、`CCSWITCH_PROXY_TOKEN`、`CCSWITCH_MODEL`、`DESIGN_AGENT_BIND`。
 
@@ -40,13 +40,15 @@ Anthropic Messages 把连接的 `wire` 设为 `anthropic`。
 
 默认技能始终在：一键出图、细节调整、布局、样式、评论、再来一版。选哪一个只看对话文字。
 
-一键出图会新建一页可编辑画板（导航、标题、副标题、卖点、按钮、页脚）。悬停页面行才出现 AI，用来进入该页做定向修改。主对话默认改这一页；句子里点了别的页面名，就改那一页。
+一键出图会新建一页可编辑画板（导航、标题、副标题、卖点、按钮、页脚）。悬停页面行才出现 AI，用来进入该页做定向修改。主对话默认改当前文档里的当前页；打开、切换、恢复或导入后，如果原来的目标页已经不在文档里，全局入口改回当前页。句子里点了别的页面名，就改那一页。不存在的页面会报错，不会被当成已经改完。
+
+送给助手的图层最多 64 个。采样先放目标页上的标题、选中图层和它们的祖先，再放目标页的其他图层。放不下的内容会说明被省略；省略不等于页面里没有这些内容，也不能因此去改没有点名的圆角。
 
 同一会话会把之前的用户话、助手话和工具调用整段送给模型。工具结果用真实的 `tool_call_id` / `tool_use_id`，不是工具名。超过 48 条时，较早的回合收成一条摘要，最近的回合原样保留。技能选择同时看对话和当前页上已有的画板、文字。
 
 普通设计提问同样看整段会话，不只是带工具的那一轮。提问带上之前的用户话、助手话、计划、工具结果，以及当前页、目标页、选中和图层的文字、填充。本地助手据此回答，不改画布。远程模型的系统提示里有同一段设计上下文。范围只是设计，不写代码。这段上下文组装对应 Codex `c4f0e09912fd4c1173258ccd17e33284a876e826` 里 `clone_history` 在采样前交回整段会话的做法，按本产品的页面和图层重写，没有带入 CLI、沙箱或通用编程工具。
 
-工具调用展开成现有设计操作（`page.create`、`node.create`、`text.set`、`style.set` 等），再经 MCP `OperationBackend` 的 `design_batch_apply` 写入当前编辑器。
+工具调用展开成现有设计操作（`page.create`、`node.create`、`text.replaceRange`、`node.patch`、`style.set` 等），再经 MCP `OperationBackend` 的 `design_batch_apply` 写入当前编辑器。写入使用请求开始时的 documentId、session 和 expectedRevision，文字和圆角还带请求时看到的原值。文档、会话或这些字段已经变了，就拒绝这一批，不会读取返回时的最新版本再覆盖。一次成功的助手修改仍然只产生一条撤销。点「新对话」会取消并丢弃还没回来的旧结果，旧结果不能写进新对话，也不能再改画布。
 
 ## Codex
 

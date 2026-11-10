@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from '../engine'
 import type { DesktopBridge } from '../desktop'
-import { agentAvailability, type AgentAvailability } from './agent-availability'
-import { applyAgentOperations } from './apply-operations'
-import { requestTurn, snapshotContext, type AgentTurn } from './agent-client'
+import { agentAvailability, AGENT_CONNECTION_CHANGED, type AgentAvailability } from './agent-availability'
+import { applyAgentOperations, explainApplyFailure, type AgentFence } from './apply-operations'
+import { assistantStatus, cancelTurn, requestTurn, snapshotContext, type AgentTurn } from './agent-client'
 import { compareUserFile, sketchRoundTripGaps, type DesignGap } from './format-gap'
 import type { AgentTargetDetail } from './target-event'
 import './design-agent.css'
@@ -32,72 +32,125 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   onImport?: (file: File, mode: 'open' | 'append') => void
   active?: boolean
 }) {
+  const snapshot = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [rows, setRows] = useState<Row[]>([])
   const [input, setInput] = useState(initial?.prompt || '')
-  const [target, setTarget] = useState(initial?.pageId || editor.state.page)
+  const [pinned, setPinned] = useState<string | null>(initial?.pageId ?? null)
+  const pinnedDocument = useRef(editor.state.doc.id)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [failurePrompt, setFailurePrompt] = useState<{ message: string; pageId: string } | null>(null)
   const [gaps, setGaps] = useState<DesignGap[]>([])
   const [gapLabel, setGapLabel] = useState('')
-  const [assistant, setAssistant] = useState('')
+  const [actor, setActor] = useState('')
   const [availability, setAvailability] = useState<AgentAvailability | { tone: 'pending'; text: string } | null>(null)
   const session = useRef(`page-${crypto.randomUUID()}`)
   const sentInitial = useRef(false)
   const history = useRef<string[]>([])
+  const generation = useRef(0)
   const file = useRef<HTMLInputElement>(null)
   const chosen = useRef<File | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
-  const pageName = editor.state.doc.pages.find(page => page.id === target)?.name || '当前页'
+  const target = pinned && pinnedDocument.current === snapshot.doc.id ? pinned : snapshot.page
+  const pageName = snapshot.doc.pages.find(page => page.id === target)?.name || '指定页面已不存在'
+  const followingCurrent = target === snapshot.page
+
   useEffect(() => {
     if (!active || !desktop?.designAgent) return undefined
     let live = true
-    setAvailability({ tone: 'pending', text: '正在连接本机设计助手…' })
-    void desktop.designAgent.status().then(result => {
-      if (live) setAvailability(agentAvailability(result))
-    }).catch(failure => {
-      if (live) setAvailability({ tone: 'error', text: failure instanceof Error ? failure.message : '设计助手不可用' })
-    })
-    return () => { live = false }
+    let request = 0
+    const refresh = () => {
+      const ticket = ++request
+      setAvailability({ tone: 'pending', text: '正在连接本机设计助手…' })
+      void desktop.designAgent!.status().then(result => {
+        if (live && ticket === request) setAvailability(agentAvailability(result))
+      }).catch(failure => {
+        if (live && ticket === request) setAvailability({ tone: 'error', text: failure instanceof Error ? failure.message : '设计助手不可用' })
+      })
+    }
+    refresh()
+    window.addEventListener(AGENT_CONNECTION_CHANGED, refresh)
+    return () => { live = false; window.removeEventListener(AGENT_CONNECTION_CHANGED, refresh) }
   }, [active, desktop])
 
-  const send = async (message: string, pageId = target) => {
+  const send = async (message: string, pageId = target, options?: { useLocalRules?: boolean }) => {
     const text = message.trim()
     if (!text || busy) return
-    setBusy(true); setError(''); setInput('')
+    if (!editor.state.doc.pages.some(page => page.id === pageId)) {
+      setError('指定的页面不在当前文档中')
+      return
+    }
+    const ticket = generation.current
+    const sessionId = session.current
+    const context = snapshotContext(editor, pageId, text)
+    const fence: AgentFence = { documentId: context.document_id, session: context.session, revision: context.revision }
+    setBusy(true); setError(''); setFailurePrompt(null); setInput('')
     try {
       const turn = await requestTurn(desktop, endpoint, {
-        session_id: session.current,
+        session_id: sessionId,
         message: text,
         history: history.current,
-        context: snapshotContext(editor, pageId),
+        context,
+        use_local_rules: options?.useLocalRules === true,
       })
+      if (ticket !== generation.current) return
       history.current = [...history.current, text].slice(-12)
-      setAssistant(turn.assistant)
-      setRows(current => rowsFrom(turn, current))
-      if (turn.targetPageId && editor.state.doc.pages.some(page => page.id === turn.targetPageId)) setTarget(turn.targetPageId)
+      if (turn.failure) {
+        setActor(assistantStatus(turn.assistant, turn.failure))
+        setError(turn.failure.message)
+        setFailurePrompt({ message: text, pageId })
+        setRows(current => rowsFrom(turn, current))
+        return
+      }
       if (turn.operations.length) {
-        const applied = await applyAgentOperations(editor, turn.operations, turn.skills.includes('detail-adjust') ? '细节调整' : '一键出图', turn.mutationId)
-        if (!applied.ok) throw new Error(applied.error?.message || '操作没有写入画布')
+        const applied = await applyAgentOperations(editor, turn.operations, turn.skills.includes('detail-adjust') ? '细节调整' : '一键出图', turn.mutationId, fence)
+        if (ticket !== generation.current) return
+        if (!applied.ok) {
+          const reason = explainApplyFailure(applied.error)
+          setError(reason)
+          setActor('')
+          setRows(current => [...current, { id: `user-${crypto.randomUUID()}`, role: 'user', text }, { id: `conflict-${crypto.randomUUID()}`, role: 'agent', text: reason }])
+          return
+        }
+      }
+      if (ticket !== generation.current) return
+      setActor(assistantStatus(turn.assistant, null))
+      setRows(current => rowsFrom(turn, current))
+      const failed = !turn.operations.length ? turn.items.find(item => String(item.type) === 'McpToolCall' && String(item.status) === 'Failed') : undefined
+      if (failed) setError(String(failed.error || turn.summary || '操作没有执行'))
+      if (turn.targetPageId && editor.state.doc.pages.some(page => page.id === turn.targetPageId)) {
+        pinnedDocument.current = editor.state.doc.id
+        setPinned(turn.targetPageId)
       }
     } catch (failure) {
+      if (ticket !== generation.current) return
       setError(failure instanceof Error ? failure.message : '设计助手失败')
-    } finally { setBusy(false) }
+    } finally { if (ticket === generation.current) setBusy(false) }
   }
 
   const appliedTarget = useRef<AgentTargetDetail | null>(null)
   useEffect(() => {
     if (!initial?.pageId || appliedTarget.current === initial) return
     appliedTarget.current = initial
-    setTarget(initial.pageId)
+    pinnedDocument.current = editor.state.doc.id
+    if (!editor.state.doc.pages.some(page => page.id === initial.pageId)) {
+      setPinned(initial.pageId)
+      setError('指定的页面不在当前文档中')
+      return
+    }
+    setPinned(initial.pageId)
     if (!initial.prompt) return
     if (initial.send === false) setInput(initial.prompt)
     else void send(initial.prompt, initial.pageId)
   }, [initial])
   const freshConversation = () => {
+    const previous = session.current
+    generation.current += 1
     session.current = `page-${crypto.randomUUID()}`
     history.current = []
     sentInitial.current = false
-    setRows([]); setInput(''); setAssistant(''); setError(''); setGaps([]); setGapLabel('')
+    setRows([]); setInput(''); setActor(''); setError(''); setFailurePrompt(null); setGaps([]); setGapLabel(''); setBusy(false)
+    void cancelTurn(desktop, endpoint, previous)
   }
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight }) }, [rows, busy])
 
@@ -126,8 +179,8 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
       <button type="button" aria-pressed="true" onClick={onClose}>切换</button>
     </header>
     {availability?.text && <p className={`design-agent-mode is-${availability.tone}`} role={availability.tone === 'error' ? 'alert' : 'status'} data-agent-mode={availability.tone}>{availability.text}</p>}
-    <p className="design-agent-target">默认改「{pageName}」。点名其他页面时，助手会改那一页。</p>
-    {assistant && <p role="status">模型：{assistant}</p>}
+    <p className="design-agent-target" data-target-page={target}>{followingCurrent ? `默认改「${pageName}」。` : `将修改「${pageName}」。`}点名其他页面时，助手会改那一页。</p>
+    {actor && <p role="status">{actor}</p>}
     <div className="design-agent-log" ref={scroller} aria-live="polite">
       {rows.length === 0 && <p className="design-agent-empty">用一键出图生成一整页，或悬停页面列表里的 AI 做定向修改。</p>}
       {rows.map(row => <article key={row.id} className={`design-agent-row is-${row.role}`} data-status={row.status || ''}>
@@ -159,7 +212,11 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
         <button type="submit" className="primary" disabled={busy || !input.trim()}>发送</button>
         {busy && <span role="status">正在执行…</span>}
       </div>
-      {error && <p role="alert">{error}</p>}
+      {error && <p className="design-agent-failure" role="alert">{error}</p>}
+      {failurePrompt && <div className="design-ai-actions">
+        <button type="button" disabled={busy} onClick={() => void send(failurePrompt.message, failurePrompt.pageId)}>重试</button>
+        <button type="button" disabled={busy} onClick={() => void send(failurePrompt.message, failurePrompt.pageId, { useLocalRules: true })}>使用本机规则模板</button>
+      </div>}
     </form>
   </aside>
 }
