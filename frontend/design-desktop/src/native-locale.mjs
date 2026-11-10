@@ -48,7 +48,22 @@ const en = {
   backendUnavailableTitle: 'Local backend unavailable',
   backendUnavailableMessage: 'The local Rust backend could not start. File operations and recovery are unavailable.',
   backendUnavailableDetail: 'Build or reinstall the desktop bundle before editing important work.',
-  canvasOnlyExport: 'This export format is not supported here. Use Save or Save As for .fd documents.',
+  rejectedDownload(extension) {
+    const ext = typeof extension === 'string' ? extension : ''
+    if (ext === '.fd') return 'This export format is not supported here. Use Save or Save As for .fd documents.'
+    if (ext === '.zip') return 'This .zip download is not supported here. An HTML / asset ZIP can only be written by the design export.'
+    const shown = /^\.[a-z0-9]+$/.test(ext) ? ext : '(no extension)'
+    return `This export format ${shown} is not supported here.`
+  },
+  productExportRejected(kind) {
+    if (kind === 'fd') return 'The .fd export failed validation and was not written.'
+    if (kind === 'html-zip') return 'The HTML / asset ZIP is not the fixed design export and was not written.'
+    return 'This export type is not supported.'
+  },
+  productExportExtension: (actual, expected) => actual
+    ? `The selected file is ${actual}; this export only writes ${expected}.`
+    : `This export only writes ${expected}; the selected location is not a usable file path.`,
+  exportAppendedExists: extension => `Adding ${extension} would replace an existing file. Choose that file in the save dialog to confirm replacement.`,
   exportUnknownSize: 'The export has an unknown size or exceeds the 64 MiB desktop limit.',
   exportInterrupted: 'The export was interrupted and was not completed. Please export again.',
   exportTooLarge: 'The export exceeds the 64 MiB desktop limit.',
@@ -73,7 +88,22 @@ const zhCN = {
   backendUnavailableTitle: '本机后端不可用',
   backendUnavailableMessage: '本机 Rust 后端无法启动。文件操作和恢复功能不可用。',
   backendUnavailableDetail: '编辑重要文件前，请先构建或重新安装桌面应用包。',
-  canvasOnlyExport: '此处不支持该导出格式。请使用“保存”或“另存为”保存 .fd 文档。',
+  rejectedDownload(extension) {
+    const ext = typeof extension === 'string' ? extension : ''
+    if (ext === '.fd') return '此处不支持该导出格式。请使用“保存”或“另存为”保存 .fd 文档。'
+    if (ext === '.zip') return '此处不支持导出 .zip。HTML / 素材 ZIP 只能通过设计导出写入。'
+    const shown = /^\.[a-z0-9]+$/.test(ext) ? ext : '（无扩展名）'
+    return `此处不支持导出格式 ${shown}。`
+  },
+  productExportRejected(kind) {
+    if (kind === 'fd') return '无法写入 .fd：内容未通过设计文件校验。'
+    if (kind === 'html-zip') return '无法写入 HTML / 素材 ZIP：压缩包不是固定的设计导出内容。'
+    return '不支持该导出类型。'
+  },
+  productExportExtension: (actual, expected) => actual
+    ? `所选文件是 ${actual}，此导出只能写入 ${expected}。`
+    : `此导出只能写入 ${expected}，所选位置不是可用的文件路径。`,
+  exportAppendedExists: extension => `补充 ${extension} 后会替换已有文件。请在保存对话框中直接选择该文件以确认替换。`,
   exportUnknownSize: '导出大小未知，或超过桌面端 64 MiB 的限制。',
   exportInterrupted: '导出中断，尚未完成。请重新导出。',
   exportTooLarge: '导出超过桌面端 64 MiB 的限制。',

@@ -34,7 +34,15 @@ import {
 } from './security.mjs'
 import { Sidecar } from './sidecar.mjs'
 import { createWorkspaceSqliteCodec, SQLITE_OFFTHREAD_BYTES } from './workspace-sqlite-worker-host.mjs'
-import { DOCUMENT_MEMORY_BYTES } from './document-capacity.mjs'
+import { DOCUMENT_BYTE_LIMIT, DOCUMENT_MEMORY_BYTES } from './document-capacity.mjs'
+import {
+  FD_EXPORT_BYTE_LIMIT,
+  HTML_ZIP_BYTE_LIMIT,
+  exportDialogName,
+  normalizeExportChoice,
+  publishProductExport,
+  validateProductExport,
+} from './product-export.mjs'
 import { registerVideoEncode } from './ffmpeg-encode.mjs'
 import { registerNativeRender } from './native-render.mjs'
 import { registerNativePreparation } from './preparation.mjs'
@@ -844,6 +852,48 @@ register('save', async (value) => {
     ...(saved.warning ? { warning: saved.warning } : {}),
   }
 })
+// Panel FD / HTML ZIP exports. This does not adopt the file, grant a path, or
+// widen the blob allowlist. The native dialog is the only destination.
+register('export-product-file', async value => {
+  const params = record(value, ['kind', 'filename', 'bytes'])
+  const kind = params.kind
+  const text = desktopText[interfaceLocale]
+  if (kind !== 'fd' && kind !== 'html-zip') {
+    return { status: 'error', code: 'PRODUCT_EXPORT_REJECTED', message: text.productExportRejected(kind) }
+  }
+  const expected = kind === 'fd' ? '.fd' : '.zip'
+  const limit = kind === 'fd' ? Math.min(FD_EXPORT_BYTE_LIMIT, DOCUMENT_BYTE_LIMIT) : HTML_ZIP_BYTE_LIMIT
+  let admitted
+  try { admitted = validateProductExport(kind, params.bytes, limit) }
+  catch (error) {
+    if (error?.code === 'PRODUCT_EXPORT_REJECTED') {
+      return { status: 'error', code: 'PRODUCT_EXPORT_REJECTED', message: text.productExportRejected(kind) }
+    }
+    throw error
+  }
+  const selection = await dialog.showSaveDialog(window, {
+    title: text.exportDesign,
+    defaultPath: exportDialogName(kind, params.filename),
+    filters: [{ name: text.exportFileFilter, extensions: [expected.slice(1)] }],
+    properties: ['showOverwriteConfirmation', 'createDirectory'],
+  })
+  if (selection.canceled || !selection.filePath) return cancelled()
+  let choice
+  try { choice = normalizeExportChoice(kind, selection.filePath) }
+  catch (error) {
+    const actual = typeof error?.actual === 'string' ? error.actual : ''
+    return { status: 'error', code: 'PRODUCT_EXPORT_REJECTED', message: text.productExportExtension(actual, expected) }
+  }
+  try { await publishProductExport(choice, admitted) }
+  catch (error) {
+    if (error?.code === 'PRODUCT_EXPORT_REJECTED') {
+      const message = error.reason === 'exists' ? text.exportAppendedExists(expected) : text.productExportRejected(kind)
+      return { status: 'error', code: 'PRODUCT_EXPORT_REJECTED', message }
+    }
+    throw error
+  }
+  return { status: 'ok', displayName: choice.basename }
+})
 register('recovery-write', async (value) => {
   const params = record(value, ['handle', 'documentJson', 'displayName'])
   if (
@@ -1064,8 +1114,10 @@ async function buildWindow() {
       )
       .join('')
       .slice(0, 200)
+      const extension = path.extname(name).toLowerCase()
+      // .fd and .zip stay off this list. Those two panel exports use export-product-file.
       const allowed = ['.png', '.svg', '.svgz', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
-      path.extname(name).toLowerCase(),
+      extension,
     )
     if (
       !window ||
@@ -1081,8 +1133,7 @@ async function buildWindow() {
       event.preventDefault()
       void dialog.showMessageBox(window, {
         type: 'error',
-        message:
-          desktopText[interfaceLocale].canvasOnlyExport,
+        message: desktopText[interfaceLocale].rejectedDownload(extension),
       })
       return
     }

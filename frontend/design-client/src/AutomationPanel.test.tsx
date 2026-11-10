@@ -3,10 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { unzipSync, strFromU8 } from 'fflate'
+import { unzipSync, strFromU8, zipSync, strToU8 } from 'fflate'
 import { AutomationPanel, AutomationDialog, codeExportZip, sandboxedCodePreview } from './AutomationPanel'
 import { Editor } from './engine'
 import { blank,node, type DesignDocument } from './model'
+// @ts-expect-error desktop host module has no TypeScript declarations
+import { validateProductExport } from '../../design-desktop/src/product-export.mjs'
+// @ts-expect-error desktop host module has no TypeScript declarations
+import { desktopText } from '../../design-desktop/src/native-locale.mjs'
 import { encodeDocumentBinary, decodeDocumentBinary } from './kernel/binfmt'
 import { exportDesignCode } from './automation/export'
 import type { DesktopBridge } from './desktop'
@@ -90,6 +94,66 @@ describe('automation actual DOM controls (no browser/GPU)',()=>{
     expect(element.querySelector('[role=alert]')).toBeNull();expect(Object.keys(editor.state.doc.nodes).length).toBeGreaterThan(Object.keys(before.nodes).length)
     editor.undo();expect(editor.state.doc).toBe(before)
   })
+  it('sends real FD and HTML ZIP bytes through the desktop channel instead of a blob download',async()=>{
+    editor.dispose()
+    const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const d=blank('DOM automation'), text=node('text',0,0,200,50), rect=node('rectangle',0,0,80,60)
+    text.text='你好 Hello'
+    rect.fills=[{...rect.fills[0],kind:'image',image:png}]
+    d.nodes[text.id]=text;d.nodes[rect.id]=rect;d.pages[0].children.push(text.id,rect.id);editor=new Editor(d)
+    const calls:{kind:string;filename:string;bytes:Uint8Array}[]=[]
+    const exportProductFile=vi.fn(async(request:{kind:'fd'|'html-zip';filename:string;bytes:Uint8Array}):Promise<{status:'ok'|'error';displayName?:string;code?:string;message?:string}>=>{calls.push({kind:request.kind,filename:request.filename,bytes:request.bytes});return {status:'ok',displayName:request.filename}})
+    const blobs:Blob[]=[]
+    vi.spyOn(URL,'createObjectURL').mockImplementation(blob=>{blobs.push(blob as Blob);return 'blob:channel'})
+    vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{})
+    vi.spyOn(dom.window.HTMLAnchorElement.prototype,'click').mockImplementation(()=>{})
+    await act(async()=>root.render(<AutomationDialog editor={editor} desktop={{exportProductFile} as unknown as DesktopBridge} onClose={()=>{}}/>))
+    await click('导出完整 FD')
+    expect(element.querySelector('[role=alert]')).toBeNull();expect(blobs).toHaveLength(0);expect(calls.map(call=>call.kind)).toEqual(['fd'])
+    expect(calls[0].filename).toBe('design.fd')
+    const fd=calls[0].bytes
+    expect(validateProductExport('fd',fd).equals(Buffer.from(fd))).toBe(true)
+    const decoded=decodeDocumentBinary(fd) as DesignDocument
+    expect(decoded.id).toBe(editor.state.doc.id);expect(decoded.nodes[rect.id].width).toBe(80);expect(decoded.nodes[rect.id].height).toBe(60)
+    const tampered=Uint8Array.from(fd);tampered[tampered.length-1]^=1
+    expect(()=>validateProductExport('fd',tampered)).toThrow()
+    await click('导出 HTML / 素材 ZIP')
+    expect(element.querySelector('[role=alert]')).toBeNull();expect(blobs).toHaveLength(0);expect(calls[1].kind).toBe('html-zip');expect(calls[1].filename).toBe('design-html.zip')
+    const zip=calls[1].bytes
+    expect(validateProductExport('html-zip',zip).length).toBe(zip.byteLength)
+    const files=unzipSync(zip)
+    expect(strFromU8(files['index.html'])).toContain('你好 Hello');expect(strFromU8(files['styles.css'])).toContain('.design-scene{')
+    const assetName=Object.keys(files).find(name=>name.startsWith('assets/'))
+    expect(assetName).toMatch(/^assets\/[A-Za-z0-9][A-Za-z0-9._-]*\.png$/)
+    expect(files[assetName!][0]).toBe(0x89)
+    const manifest=JSON.parse(strFromU8(files['design-manifest.json']))
+    expect(manifest.format).toBe('futureox.design-code.v1');expect(manifest.fidelity).toBe('approximate')
+    expect(manifest.assets.some((asset:{path:string;emitted:boolean;dataUrl?:string})=>asset.path===assetName&&asset.emitted===true&&asset.dataUrl===undefined)).toBe(true)
+    expect(()=>validateProductExport('html-zip',zipSync({...files,'payload.exe':strToU8('MZ')}))).toThrow()
+    await click('导出设计 JSON');expect(blobs).toHaveLength(1);expect(await blobs[0].text()).toContain('你好 Hello')
+    const rejected=desktopText['zh-CN'].productExportRejected('html-zip')
+    exportProductFile.mockResolvedValueOnce({status:'error',code:'PRODUCT_EXPORT_REJECTED',message:rejected})
+    await click('导出 HTML / 素材 ZIP')
+    expect(element.querySelector('[role=alert]')?.textContent).toBe(rejected)
+    expect(rejected).not.toContain('.fd')
+    expect(desktopText['zh-CN'].rejectedDownload('.zip')).not.toContain('.fd')
+    expect(desktopText['zh-CN'].rejectedDownload('.zip')).toContain('.zip')
+    expect(desktopText.en.rejectedDownload('.sh')).not.toContain('.fd')
+  })
+
+  it('reports a missing desktop FD or ZIP channel without starting a blob download',async()=>{
+    const blobs:Blob[]=[]
+    vi.spyOn(URL,'createObjectURL').mockImplementation(blob=>{blobs.push(blob as Blob);return 'blob:missing'})
+    vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{})
+    vi.spyOn(dom.window.HTMLAnchorElement.prototype,'click').mockImplementation(()=>{})
+    await act(async()=>root.render(<AutomationDialog editor={editor} desktop={{} as DesktopBridge} onClose={()=>{}}/>))
+    await click('导出完整 FD')
+    expect(blobs).toHaveLength(0);expect(element.querySelector('[role=alert]')?.textContent).toContain('.fd')
+    await click('导出 HTML / 素材 ZIP')
+    const alert=element.querySelector('[role=alert]')?.textContent??''
+    expect(blobs).toHaveLength(0);expect(alert).toContain('ZIP');expect(alert).not.toContain('.fd')
+  })
+
   it('reads and saves SQLite audit preferences only on explicit interaction',async()=>{
     const config={auditEnabled:false,retentionDays:30,maxAuditEntries:1000,preferredScope:'read' as const,updatedAt:0}
     const automation={status:async()=>({enabled:false,connectedClients:0,pendingRequests:0,journal:[]}),onStatus:()=>()=>{},config:vi.fn(async()=>config),configure:vi.fn(async()=>config),auditHistory:vi.fn(async()=>({entries:[],hasMore:false}))}

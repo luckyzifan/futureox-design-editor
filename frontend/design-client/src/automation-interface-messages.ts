@@ -56,6 +56,8 @@ const phrases = {
   importLabel: ['导入 FD / Sketch / JSON（追加）', 'Import FD / Sketch / JSON (append)'],
   stalePreview: ['预览已过时，请重试', 'Preview is out of date. Try again.'],
   fdNotReady: ['FD 编码未就绪', 'FD encoding is not ready'],
+  fdChannelUnavailable: ['桌面端没有可用的 .fd 导出通道。', 'The desktop .fd export channel is unavailable.'],
+  zipChannelUnavailable: ['桌面端没有可用的 HTML / 素材 ZIP 导出通道。', 'The desktop HTML / asset ZIP export channel is unavailable.'],
   importTooLarge: ['导入文件超过 24 MiB', 'Import is larger than 24 MiB'],
   importCancelled: ['文档已变化，导入取消', 'The document changed, so the import was cancelled'],
   audit: ['SQLite 本地记录', 'Local SQLite record'],
