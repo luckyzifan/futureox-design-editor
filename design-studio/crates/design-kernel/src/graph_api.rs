@@ -865,6 +865,66 @@ mod tests {
     }
 
     #[test]
+    fn content_update_keeps_handles_parent_and_admits_partial_payloads() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let page = api.node_handle("p1");
+        let frame = api.node_handle("f1");
+        let parent = api.store.arc_ptr("p1").unwrap();
+        let before = api.document_json();
+        let submitted = r##"{"ops":[{"type":"updateNodeContent","id":"f1","node":{
+            "id":"f1","kind":"frame","width":100,"height":60,"children":[],
+            "name":"Filled","opacity":0.25,"fontSize":12.5,"text":"你好",
+            "network":null,"futureNodeData":{"keep":null,"n":1.25},
+            "fills":[{"id":"paint","kind":"solid","color":"#123456"}]
+        }}],"source":"plugin"}"##;
+        api.apply_ops_json(submitted).unwrap();
+        assert_eq!(api.node_handle("f1"), frame, "content replacement keeps the handle");
+        assert_eq!(api.node_parent(frame).unwrap(), page);
+        assert_eq!(api.node_children(page).unwrap(), vec![frame]);
+        assert_eq!(api.store.arc_ptr("p1").unwrap(), parent, "parent children allocation stays shared");
+        assert!(api.store.shares_node_ids(&api.undo.last().unwrap().store));
+        assert_eq!(api.undo_depth(), 1);
+        assert_eq!(api.last_commit_scope().unwrap().source, EditSource::Plugin);
+        let document: serde_json::Value = serde_json::from_str(&api.document_json()).unwrap();
+        let node = &document["nodes"]["f1"];
+        assert_eq!(node["name"], "Filled");
+        assert_eq!(node["opacity"], 0.25);
+        assert_eq!(node["fontSize"], 12.5);
+        assert_eq!(node["text"], "你好");
+        assert_eq!(node["fills"][0]["color"], "#123456");
+        assert_eq!(node["fills"][0]["opacity"], 1.0, "typed admission fills paint defaults");
+        assert_eq!(node["visible"], true, "typed admission fills node defaults");
+        assert!(node.get("network").is_none_or(serde_json::Value::is_null), "explicit null does not invent a network");
+        assert!(node.get("futureNodeData").is_none(), "unknown node extensions are not a second document model");
+        assert_eq!(document["nodes"]["p1"]["children"], serde_json::json!(["f1"]));
+        api.undo().unwrap();
+        assert_eq!(api.document_json(), before);
+        assert_eq!(api.node_handle("f1"), frame);
+        api.redo().unwrap();
+        assert_eq!(api.node_handle("f1"), frame);
+        assert_eq!(api.node_name(frame).unwrap(), "Filled");
+
+        let revision = api.revision();
+        let depth = api.undo_depth();
+        let current = api.document_json();
+        let structure = r#"[{"type":"setName","id":"f1","name":"must-not-stick"},{"type":"updateNodeContent","id":"f1","node":{"id":"f1","kind":"frame","width":10,"height":10,"children":["other"],"name":"no"}}]"#;
+        let error = api.apply_ops_json(structure).unwrap_err();
+        assert!(error.to_string().contains("children"), "{error}");
+        assert_eq!(api.document_json(), current);
+        assert_eq!(api.revision(), revision);
+        assert_eq!(api.undo_depth(), depth);
+        assert_eq!(api.node_name(frame).unwrap(), "Filled");
+        let identity = r#"[{"type":"updateNodeContent","id":"f1","node":{"id":"other","kind":"frame","width":1,"height":1,"children":[]}}]"#;
+        assert!(api.apply_ops_json(identity).unwrap_err().to_string().contains("id"));
+        let missing = r#"[{"type":"updateNodeContent","id":"ghost","node":{"id":"ghost","kind":"frame","width":1,"height":1,"children":[]}}]"#;
+        assert!(api.apply_ops_json(missing).unwrap_err().to_string().contains("ghost"));
+        assert_eq!(api.document_json(), current);
+        assert_eq!(api.node_handle("f1"), frame);
+        assert!(api.undo().unwrap());
+        assert_eq!(api.document_json(), before);
+    }
+
+    #[test]
     fn ops_frame_round_trip_with_lz4() {
         let mut api = GraphApi::new(&document_json()).unwrap();
         let ops = r#"[{"type":"setName","id":"f1","name":"Net"}]"#;

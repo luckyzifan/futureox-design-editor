@@ -1072,6 +1072,9 @@ fn op_targets(op: &Op) -> Vec<&str> {
         Op::InsertNode { node, .. } => vec![node.id.as_str()],
         Op::RemoveNode { id } => vec![id],
         Op::ReorderChild { parent, .. } => vec![parent],
+        // Same footprint as the node itself. Parent lists are not rewritten,
+        // so this is not a structural reorder of siblings.
+        Op::UpdateNodeContent { id, .. } => vec![id],
     }
 }
 

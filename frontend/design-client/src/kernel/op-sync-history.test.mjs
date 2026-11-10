@@ -22,7 +22,7 @@ function document() {
 /** Independent model of the CPU Graph transaction boundary. All failed batches
  * leave its store and history untouched, matching graph_api.rs::apply staging. */
 class MemoryGraph {
-  constructor(doc) { this.doc = JSON.parse(augmentedDocumentJson(doc)); this.past = []; this.future = []; this.commits = 0; this.frees = 0; this.appliedScopes = [] }
+  constructor(doc) { this.doc = JSON.parse(augmentedDocumentJson(doc)); this.past = []; this.future = []; this.commits = 0; this.frees = 0; this.appliedScopes = []; this.frameCalls = 0; this.decodeCalls = 0 }
   free() { this.frees++ }
   commit(doc) { this.past.push(clone(this.doc)); if (this.past.length > 128) this.past.shift(); this.doc = doc; this.future = []; this.commits++ }
   replaceDocument(json, scope) {
@@ -36,8 +36,8 @@ class MemoryGraph {
   redoDepth() { return this.future.length }
   undo() { if (this.rejectUndo) throw Error('undo rejected'); if (!this.past.length) return false; this.future.push(this.doc); this.doc = this.past.pop(); return true }
   redo() { if (this.rejectRedo) throw Error('redo rejected'); if (!this.future.length) return false; this.past.push(this.doc); this.doc = this.future.pop(); return true }
-  opsFrame(ops, revision) { return new TextEncoder().encode(JSON.stringify({ ops, revision })) }
-  decodeOpsFrame(frame) { const value = JSON.parse(new TextDecoder().decode(frame)); if (this.badFrameRevision) value.revision++; return value }
+  opsFrame(ops, revision) { this.frameCalls++; return new TextEncoder().encode(JSON.stringify({ ops, revision })) }
+  decodeOpsFrame(frame) { this.decodeCalls++; const value = JSON.parse(new TextDecoder().decode(frame)); if (this.badFrameRevision) value.revision++; return value }
   applyOps(ops, scope) {
     if (this.rejectOps) throw Error('batch rejected')
     const next = clone(this.doc)
@@ -63,6 +63,15 @@ class MemoryGraph {
         case 'reorderChild': {
           const children = next.nodes[op.parent].children
           if (op.from < children.length) { const moved = children.splice(op.from, 1)[0]; children.splice(Math.min(op.to, children.length), 0, moved) }
+          break
+        }
+        case 'updateNodeContent': {
+          assert.equal(op.node.id, op.id)
+          assert.ok(n, `content update target ${op.id} is missing`)
+          assert.deepEqual(op.node.children, n.children)
+          const parents = Object.values(next.nodes).map(parent => parent.children.join('\0')).join('|')
+          next.nodes[op.id] = clone(op.node)
+          assert.equal(Object.values(next.nodes).map(parent => parent.children.join('\0')).join('|'), parents)
           break
         }
         default: throw Error(`test model intentionally lacks ${op.type}`)
@@ -128,7 +137,12 @@ test('text, curves, component and layout payloads are carried exactly to the gra
     layout: { horizontal: true, gap: 9.5 }, constraints: { horizontal: 'scale', vertical: 'max' },
     fills: [{ kind: 'solid', color: '#abcdef' }], futureNodeData: { source: 'figma' } })
   const batch = compileEditOps(before, after)
-  assert.equal(batch.mode, 'ops'); assert.ok(batch.ops.some(op => op.type === 'insertNode'))
+  assert.equal(batch.mode, 'ops')
+  assert.deepEqual(batch.ops.map(op => op.type), ['updateNodeContent'])
+  assert.equal(batch.ops[0].id, 'a')
+  assert.deepEqual(batch.ops[0].node.children, before.nodes.a.children)
+  assert.deepEqual(batch.ops[0].node.futureNodeData, { source: 'figma' })
+  assert.ok(!batch.ops.some(op => op.type === 'removeNode' || op.type === 'insertNode'))
   const graph = new MemoryGraph(before), history = createGraphHistoryState(before, graph)
   history.apply(0, after); assertProjection(graph, after)
   history.undo(); assertProjection(graph, before); history.redo(); assertProjection(graph, after)
@@ -169,13 +183,44 @@ test('replacement and op failures never advance revision or snapshots and the sa
   }
 })
 
-test('frame mismatch and document identity change fail before a commit; no-op stays no-op', () => {
+test('local commits do not build a transport frame; a consumer checks revision before apply', () => {
   const before = document(), graph = new MemoryGraph(before), history = createGraphHistoryState(before, graph)
   assert.equal(history.apply(0, before).revision, 0)
   assert.throws(() => history.apply(0, { ...before, id: 'other' }), /文件标识/)
-  const after = clone(before); after.nodes.a.name = 'changed'; graph.badFrameRevision = true
-  assert.throws(() => history.apply(0, after), /版本不一致/)
-  assert.equal(graph.commits, 0); assertProjection(graph, before)
+  const after = clone(before); after.nodes.a.name = 'changed'
+  history.apply(0, after)
+  assert.equal(graph.frameCalls, 0)
+  assert.equal(graph.decodeCalls, 0)
+  assert.equal(history.frameBytes, 0)
+  assert.equal(history.mode, 'op-batch')
+  assertProjection(graph, after)
+  history.undo(); assertProjection(graph, before)
+  const delivered = []
+  history.setSyncFrameConsumer({ onFrame(frame, revision) { delivered.push({ bytes: frame.byteLength, revision }) } })
+  graph.badFrameRevision = true
+  assert.throws(() => history.apply(2, after), /版本不一致/)
+  assert.equal(graph.commits, 1)
+  assert.equal(delivered.length, 0)
+  assertProjection(graph, before)
+  graph.badFrameRevision = false
+  history.apply(2, after)
+  assert.equal(delivered.length, 1)
+  assert.equal(delivered[0].revision, 3)
+  assert.ok(delivered[0].bytes > 0)
+  assert.equal(history.frameBytes, delivered[0].bytes)
+  assertProjection(graph, after)
+  history.setSyncFrameConsumer({ onFrame() { throw Error('consumer rejected the frame') } })
+  const blocked = clone(after); blocked.nodes.b.name = 'blocked'
+  assert.throws(() => history.apply(3, blocked), /consumer rejected/)
+  assert.equal(history.revision, 3)
+  assertProjection(graph, after)
+  history.setSyncFrameConsumer(null)
+  const again = clone(after); again.nodes.b.name = 'local'
+  const calls = graph.frameCalls
+  history.apply(3, again)
+  assert.equal(graph.frameCalls, calls)
+  assert.equal(history.frameBytes, 0)
+  assertProjection(graph, again)
 })
 
 test('unexpressible disconnected edits use replacement and cycles cannot hang compilation', () => {
@@ -339,4 +384,53 @@ test('document replacements preserve provenance and the same ignored-history sem
   assert.deepEqual(graph.appliedScopes.at(-1), { source: 'plugin' })
   history.undo(); assertProjection(graph, after)
   history.redo(); assertProjection(graph, next)
+})
+
+test('multiple unmoved fills compile to content updates and one undo, without rewriting parents', () => {
+  const before = document(), after = clone(before)
+  after.nodes.a.fills = [{ kind: 'solid', color: '#111111', opacity: 0.25 }]
+  after.nodes.b.fills = [{ kind: 'solid', color: '#222222' }]
+  after.nodes.a.opacity = 0.5
+  const batch = compileEditOps(before, after)
+  assert.equal(batch.mode, 'ops')
+  assert.deepEqual(batch.ops.map(op => op.type), ['updateNodeContent', 'updateNodeContent'])
+  assert.deepEqual(batch.ops.map(op => op.id), ['a', 'b'])
+  assert.equal(batch.ops[0].node.opacity, 0.5)
+  assert.deepEqual(batch.ops[0].node.children, before.nodes.a.children)
+  assert.ok(batch.ops.every(op => op.type !== 'removeNode' && op.type !== 'insertNode'))
+  const graph = new MemoryGraph(before), history = createGraphHistoryState(before, graph)
+  const committed = history.apply(0, after, { source: 'plugin' })
+  assert.equal(committed.revision, 1)
+  assert.deepEqual(committed.changedIds, ['a', 'b'])
+  assert.deepEqual(graph.appliedScopes, [{ source: 'plugin' }])
+  assert.equal(graph.undoDepth(), 1)
+  assert.equal(graph.frameCalls, 0, 'local content commits do not encode a sync frame')
+  assertProjection(graph, after)
+  assert.deepEqual(graph.doc.nodes.frame.children, ['a', 'b'])
+  history.undo(); assertProjection(graph, before)
+  history.redo(); assertProjection(graph, after)
+  assert.throws(() => history.apply(1, after), /版本冲突/)
+  assert.equal(history.revision, 3)
+  assertProjection(graph, after)
+})
+
+test('scalar batches stay scalar ops, and a child move is not a content-only batch', () => {
+  const before = document(), renamed = clone(before)
+  renamed.nodes.a.name = 'first'
+  renamed.nodes.b.opacity = 0.25
+  const scalars = compileEditOps(before, renamed)
+  assert.equal(scalars.mode, 'ops')
+  assert.ok(scalars.ops.every(op => op.type === 'setName' || op.type === 'setOpacity'))
+  assert.equal(scalars.ops.length, 2)
+  const moved = clone(renamed)
+  moved.nodes.frame.children = ['a']
+  moved.nodes.a.children = ['b']
+  moved.nodes.b.fills = [{ kind: 'solid', color: '#abcdef' }]
+  const structural = compileEditOps(renamed, moved)
+  assert.equal(structural.mode, 'ops')
+  assert.ok(structural.ops.some(op => op.type === 'removeNode' || op.type === 'insertNode' || op.type === 'reorderChild'))
+  const graph = new MemoryGraph(renamed), history = createGraphHistoryState(renamed, graph)
+  history.apply(0, moved)
+  assertProjection(graph, moved)
+  history.undo(); assertProjection(graph, renamed)
 })

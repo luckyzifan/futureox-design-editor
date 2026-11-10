@@ -5,13 +5,15 @@
  * whole kernel document.
  *
  * The kernel op vocabulary (ops.rs) covers node scalars (name/visible/opacity/
- * transform/resize), facet-mediated fields (clip/mask/blend) and structural
- * insert/remove/reorder. Structural ops are expressed against an augmented
- * projection in which pages and the page list itself are store nodes, so
- * root-level layer operations have real parents. Node content the vocabulary
- * cannot name (fills, strokes, effects, text, network, …) rides as a
- * remove+insert pair carrying the full node: still an op batch and one undo
- * timeline entry, but coarse.
+ * transform/resize), facet-mediated fields (clip/mask/blend), structural
+ * insert/remove/reorder, and a bounded content replacement. Structural ops are
+ * expressed against an augmented projection in which pages and the page list
+ * itself are store nodes, so root-level layer operations have real parents.
+ * Fills, strokes, effects, text, network and other fields that scalar ops
+ * cannot name use `updateNodeContent` when the node id, child order and parent
+ * stay put. That op rejects identity or child-list changes and does not rewrite
+ * any parent. Remove+insert remains the structural pair for nodes that actually
+ * move.
  *
  * Document/page metadata and edits this vocabulary cannot express require an
  * atomic full projection replacement. A no-op anchor cannot represent them:
@@ -322,15 +324,16 @@ export function compileEditOps(before: DesignDocument, after: DesignDocument): C
         if (!batch) { complete = false; break }
         ops.push(...batch)
       }
-      // The proof excludes topology/ID/base-field changes. A single target
-      // retains the old compiler's exact wire order without augmented parent
-      // maps or a structural simulation. Multi-target batches keep the old
-      // compiler: producer witness order is not node-map enumeration order.
-      // Non-scalar payloads keep the normal exact remove/insert compiler.
+      // The proof excludes topology/ID/base-field changes. A single scalar
+      // target keeps this direct order and does not build parent maps.
+      // Multi-target unmoved edits, including content, are handled below
+      // without the structural simulator. Structural edits still use compile().
       if (complete) return { mode: 'ops', ops }
     }
     const poses = sparseTransformOps(before.nodes, after.nodes)
     if (poses) return { mode: 'ops', ops: poses }
+    const unmoved = compileUnmovedContent(before, after)
+    if (unmoved) return unmoved
     const stable = compileStableNode(before, after)
     if (stable) return stable
     return compile(before, after)
@@ -362,8 +365,40 @@ function replacement(reason: string): CompiledEdit {
   return { mode: 'replace', reason }
 }
 
+function sameChildren(before: readonly string[], after: readonly string[]) {
+  return before === after || (before.length === after.length && before.every((id, index) => id === after[index]))
+}
+
+/** Several nodes whose child lists did not change. Page membership is part of
+ * the base document and has already been rejected by the caller. A parent move
+ * rewrites some children list, so any such patch falls through to compile().
+ * Scalar and content batches both stay here: falling through would build a
+ * full parent map and structural simulator after the diff is already known.
+ * Independent scalar ops commute, so witness order does not change the result. */
+function compileUnmovedContent(before: DesignDocument, after: DesignDocument): CompiledEdit | undefined {
+  const patch = documentPatch(before, after)
+  if (Object.keys(patch.fields).length) return
+  const ids = Object.keys(patch.nodes)
+  if (!ids.length) return
+  const ops: Op[] = []
+  for (const id of ids) {
+    const prior = before.nodes[id]
+    const next = patch.nodes[id]
+    if (!prior || !next || prior.id !== id || next.id !== id) return
+    if (!Array.isArray(prior.children) || !Array.isArray(next.children) || !sameChildren(prior.children, next.children)) return
+    const scalar = scalarOps(id, prior, next)
+    if (scalar) {
+      if (scalar.length) ops.push(...scalar)
+      continue
+    }
+    ops.push({ type: 'updateNodeContent', id, node: next })
+  }
+  if (!ops.length) return
+  return { mode: 'ops', ops }
+}
+
 /** One content node whose parent and children did not move. Scalar fields stay
- * scalar ops. Anything else is one remove+insert at the existing sibling index.
+ * scalar ops. Anything else is one content replacement at the same id.
  * The payload keeps the real children list. Multi-node index shifts stay on compile(). */
 function compileStableNode(before: DesignDocument, after: DesignDocument): CompiledEdit | undefined {
   const patch = documentPatch(before, after)
@@ -386,10 +421,7 @@ function compileStableNode(before: DesignDocument, after: DesignDocument): Compi
   if (index < 0 || siblings.indexOf(id, index + 1) !== -1) return
   return {
     mode: 'ops',
-    ops: [
-      { type: 'removeNode', id },
-      { type: 'insertNode', parent, index, node: { ...next, children: [...next.children] } },
-    ],
+    ops: [{ type: 'updateNodeContent', id, node: next }],
   }
 }
 
@@ -435,6 +467,10 @@ function compile(before: DesignDocument, after: DesignDocument): CompiledEdit {
             scalar.push(...ops)
             continue
           }
+          // Child order and parent are unchanged, so a content replacement
+          // keeps the existing store links. Remove+insert would rescan them.
+          scalar.push({ type: 'updateNodeContent', id, node: b })
+          continue
         }
       }
     }

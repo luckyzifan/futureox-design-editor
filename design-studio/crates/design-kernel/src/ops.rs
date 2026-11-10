@@ -57,6 +57,13 @@ pub enum Op {
         id: String,
         kind: String,
     },
+    /// Replace one existing node's authored payload without moving it.
+    /// The id, child order and parent link are preconditions, not edits:
+    /// a mismatch is rejected and no children list is rewritten.
+    UpdateNodeContent {
+        id: String,
+        node: Node,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -125,6 +132,10 @@ pub enum OpError {
     UnknownParent(String),
     BadIndex { parent: String, index: usize },
     BadFacet(String),
+    /// Content replacement tried to retarget a different node id.
+    ContentIdentity(String),
+    /// Content replacement tried to change child membership or order.
+    ContentStructure(String),
 }
 
 impl std::fmt::Display for OpError {
@@ -136,6 +147,13 @@ impl std::fmt::Display for OpError {
                 write!(f, "child index {index} out of range on `{parent}`")
             }
             OpError::BadFacet(message) => write!(f, "facet rejected: {message}"),
+            OpError::ContentIdentity(id) => {
+                write!(f, "content update cannot change the id of `{id}`")
+            }
+            OpError::ContentStructure(id) => write!(
+                f,
+                "content update cannot change the children of `{id}`"
+            ),
         }
     }
 }
@@ -259,6 +277,23 @@ impl Op {
                 })
                 .map(|_| ())
                 .ok_or_else(|| OpError::UnknownParent(parent.clone())),
+            Op::UpdateNodeContent { id, node } => {
+                if &node.id != id {
+                    return Err(OpError::ContentIdentity(id.clone()));
+                }
+                // Compare against the live child list, then replace the node.
+                // Parent links live only in those lists, and this op never
+                // rewrites one, so the parent and sibling order stay put.
+                let children_match = match store.get(id) {
+                    Some(existing) => existing.children == node.children,
+                    None => return Err(OpError::UnknownNode(id.clone())),
+                };
+                if !children_match {
+                    return Err(OpError::ContentStructure(id.clone()));
+                }
+                store.insert(node.clone());
+                Ok(())
+            }
         }
     }
 
@@ -361,6 +396,16 @@ impl Op {
                     parent: parent.clone(),
                     from: *from,
                     to: previous,
+                }
+            }
+            Op::UpdateNodeContent { id, .. } => {
+                let node = store
+                    .get(id)
+                    .cloned()
+                    .ok_or_else(|| OpError::UnknownNode(id.clone()))?;
+                Op::UpdateNodeContent {
+                    id: id.clone(),
+                    node,
                 }
             }
         })
@@ -692,5 +737,69 @@ mod tests {
             log.undo_sources(),
             vec![EditSource::User, EditSource::Ai, EditSource::Plugin]
         );
+    }
+
+    #[test]
+    fn content_update_preserves_parent_links_and_rejects_structure() {
+        let mut log = OpLog::new(store());
+        let before = log.store().clone();
+        let parent = before.arc_ptr("p1").unwrap();
+        let sibling = before.arc_ptr("f2").unwrap();
+        let mut next = sample_node("f1", "frame");
+        next.name = "Filled".into();
+        next.opacity = 0.25;
+        next.font_size = 12.5;
+        next.text = "authored".into();
+        log.apply(vec![Op::UpdateNodeContent {
+            id: "f1".into(),
+            node: next,
+        }])
+        .unwrap();
+        assert_eq!(log.store().get("f1").unwrap().name, "Filled");
+        assert_eq!(log.store().get("f1").unwrap().opacity, 0.25);
+        assert_eq!(log.store().get("f1").unwrap().font_size, 12.5);
+        assert_eq!(log.store().get("p1").unwrap().children, vec!["f1", "f2"]);
+        assert_eq!(log.store().arc_ptr("p1").unwrap(), parent);
+        assert_eq!(log.store().arc_ptr("f2").unwrap(), sibling);
+        assert!(before.shares_node_ids(log.store()));
+        assert_eq!(log.undo_depth(), 1);
+        log.undo().unwrap();
+        assert_eq!(log.store().get("f1").unwrap().name, "");
+        assert_eq!(log.store().get("f1").unwrap().opacity, 1.);
+        assert_eq!(log.store().arc_ptr("p1").unwrap(), parent);
+        log.redo().unwrap();
+        assert_eq!(log.store().get("f1").unwrap().name, "Filled");
+
+        let mut moved = sample_node("f1", "frame");
+        moved.children = vec!["f2".into()];
+        let rejected = log.apply(vec![
+            Op::SetName {
+                id: "f2".into(),
+                name: "must-not-stick".into(),
+            },
+            Op::UpdateNodeContent {
+                id: "f1".into(),
+                node: moved,
+            },
+        ]);
+        assert!(matches!(rejected, Err(OpError::ContentStructure(_))));
+        assert_eq!(log.store().get("f2").unwrap().name, "");
+        assert_eq!(log.undo_depth(), 1);
+        assert_eq!(log.store().arc_ptr("p1").unwrap(), parent);
+
+        let mut renamed = sample_node("other", "frame");
+        renamed.children = vec![];
+        let identity = log.apply(vec![Op::UpdateNodeContent {
+            id: "f1".into(),
+            node: renamed,
+        }]);
+        assert!(matches!(identity, Err(OpError::ContentIdentity(_))));
+        let missing = log.apply(vec![Op::UpdateNodeContent {
+            id: "ghost".into(),
+            node: sample_node("ghost", "frame"),
+        }]);
+        assert!(matches!(missing, Err(OpError::UnknownNode(_))));
+        assert_eq!(log.store().get("f1").unwrap().name, "Filled");
+        assert!(log.store().get("ghost").is_none());
     }
 }
