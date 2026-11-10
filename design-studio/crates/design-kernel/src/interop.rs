@@ -2144,6 +2144,15 @@ impl<'a> Importer<'a> {
                             .insert("sketchLineSpacingBehaviour".into(), spacing.to_string());
                     }
                 }
+                if node.text_runs.iter().any(|run| {
+                    run.paragraph.as_ref().is_some_and(|paragraph| {
+                        paragraph.minimum_line_height > 0.
+                            && (paragraph.minimum_line_height - paragraph.maximum_line_height).abs()
+                                <= 1e-9
+                    })
+                }) {
+                    style.line_box_baseline = "nearest-point".into();
+                }
                 node.text_style = Some((style).into());
                 if let Some(receipt) = user_ns.get("textModel")
                     && receipt.get("native") == Some(&native_text_projection(layer)) {

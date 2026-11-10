@@ -383,6 +383,8 @@ export type TextStyle = {
   fallbacks: string[]
   weight: number
   lineHeight: number
+  /** Sketch fixed line boxes use `nearest-point`. Omitted keeps unrounded half-leading. */
+  lineBoxBaseline?: '' | 'nearest-point'
   letterSpacing: number
   wrap: boolean
   align: 'start' | 'center' | 'end' | 'justify'

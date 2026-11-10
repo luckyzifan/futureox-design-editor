@@ -90,6 +90,11 @@ pub struct TextStyle {
     pub fallbacks: Vec<String>,
     pub weight: f32,
     pub line_height: f64,
+    /// Empty keeps the historical unrounded half-leading baseline. `nearest-point`
+    /// is the Sketch fixed line box: native text-preview matrices place that
+    /// baseline on the nearest document point and leave x fractional.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_box_baseline: String,
     pub letter_spacing: f64,
     pub wrap: bool,
     pub align: String,
@@ -150,6 +155,7 @@ impl Default for TextStyle {
             fallbacks: vec![],
             weight: 400.,
             line_height: 1.35,
+            line_box_baseline: String::new(),
             letter_spacing: 0.,
             wrap: false,
             align: "start".into(),
@@ -459,6 +465,7 @@ impl TextStyle {
             || !(1. ..=1000.).contains(&self.weight)
             || !self.line_height.is_finite()
             || !(0.1..=10.).contains(&self.line_height)
+            || !["", "nearest-point"].contains(&self.line_box_baseline.as_str())
             || !self.letter_spacing.is_finite()
             || self.letter_spacing.abs() > 1000.
             || !self.paragraph_spacing.is_finite()
@@ -1748,8 +1755,16 @@ impl Fonts {
                         height = height.min(p.maximum_line_height);
                     }
                     // Center the font metrics in the constrained line box.
-                    // Keep unrounded document-space values; raster sampling stays unchanged.
+                    // Authored paragraphs stay unrounded. A Sketch fixed line box
+                    // (equal minimum and maximum) uses the nearest document point,
+                    // which is where native text-preview matrices draw the baseline.
                     ascent += (height - natural) / 2.;
+                    if style.line_box_baseline == "nearest-point"
+                        && p.minimum_line_height > 0.
+                        && (p.minimum_line_height - p.maximum_line_height).abs() <= 1e-9
+                    {
+                        ascent = ascent.round_ties_even();
+                    }
                 }
                 let trailing = shaped
                     .last()
