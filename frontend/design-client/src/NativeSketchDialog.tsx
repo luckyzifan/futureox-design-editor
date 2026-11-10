@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom'
 import type { DesktopBridge } from './desktop'
 import { modalKeyDown } from './modal-keyboard'
 
-export type NativeSketchContentProps = { bridge: DesktopBridge; mode: 'inspect' | 'edit'; onClose: () => void }
+export type NativeSketchContentProps = { bridge: DesktopBridge; mode: 'inspect' | 'edit'; onClose: () => void; onImportCompatibility?: () => void }
 type NativeSketchContent = ComponentType<NativeSketchContentProps>
 const loadContent = () => import('./NativeSketchDialogContent').then(module => module.NativeSketchDialogContent)
 
 /** The optional native UI stays out of the startup chunk. This small portal owns
  * focus continuously across loading/error/content and yields to .fd close prompts. */
-export function NativeSketchDialog({ bridge, mode, onClose, returnFocus, suspended = false, load = loadContent }: NativeSketchContentProps & {
+export function NativeSketchDialog({ bridge, mode, onClose, onImportCompatibility, returnFocus, suspended = false, load = loadContent }: NativeSketchContentProps & {
   returnFocus?: HTMLElement | null; suspended?: boolean; load?: () => Promise<NativeSketchContent>
 }) {
   const [Dialog, setDialog] = useState<NativeSketchContent | null>(null), [error, setError] = useState(''), [attempt, setAttempt] = useState(0)
@@ -38,7 +38,7 @@ export function NativeSketchDialog({ bridge, mode, onClose, returnFocus, suspend
     }
   }, [returnFocus, suspended])
   return createPortal(<div ref={container} hidden={suspended}>
-    {Dialog ? <Dialog bridge={bridge} mode={mode} onClose={onClose} /> :
+    {Dialog ? <Dialog bridge={bridge} mode={mode} onClose={onClose} onImportCompatibility={onImportCompatibility} /> :
       <div className="modal-backdrop" data-desktop-dialog="true"><section className="remote-modal" role="dialog" aria-modal="true" aria-label="原生 Sketch" tabIndex={-1}
         onKeyDown={event => modalKeyDown(event, onClose)}>
         <h2>{mode === 'inspect' ? '预览原生 Sketch（只读）' : '编辑原生 Sketch（有限支持）'}</h2>

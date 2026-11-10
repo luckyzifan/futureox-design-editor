@@ -6,7 +6,7 @@ import { admitSketchInspection, type SketchInspection } from './sketch-inspectio
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 
 /** Loaded only after the user chooses a native Sketch workflow. */
-export function NativeSketchDialogContent({ bridge, mode, onClose }: NativeSketchContentProps) {
+export function NativeSketchDialogContent({ bridge, mode, onClose, onImportCompatibility }: NativeSketchContentProps) {
   const [result, setResult] = useState<SketchInspection | null>(null), [pending, setPending] = useState(false), [error, setError] = useState('')
   const alive = useRef(true), reading = useRef(false), generation = useRef(0)
   useLayoutEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++ } }, [])
@@ -25,5 +25,6 @@ export function NativeSketchDialogContent({ bridge, mode, onClose }: NativeSketc
   const capabilities = nativeSketchCapabilities(bridge)
   return mode === 'edit' && capabilities.edit ? <SketchEditDialog bridge={bridge.sketchSession!} onClose={onClose} /> :
     <SketchInspectionDialog result={result} onClose={onClose} onChoose={capabilities.inspect ? () => void inspect() : undefined} pending={pending}
+      onImportCompatibility={onImportCompatibility}
       error={capabilities.inspect ? error : '当前宿主未提供原生 Sketch 预览。请使用兼容格式导入。'} />
 }

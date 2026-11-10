@@ -1397,7 +1397,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       </main>
       <BatchRenameDialog editor={editor} />
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
-      {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
+      {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} onImportCompatibility={() => {
+        fileImports.invalidate()
+        importMode.current = 'open'
+        setSketchMode(null)
+        window.setTimeout(() => file.current?.click(), 0)
+      }} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
       {showPlugins && <PluginPanel editor={editor} desktop={desktop} launch={pluginLaunch} onClose={() => { setShowPlugins(false); setPluginLaunch(null) }} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}

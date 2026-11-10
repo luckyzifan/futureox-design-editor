@@ -53,6 +53,36 @@ fn transform_flag(v: &Value, key: &str) -> Result<bool> {
             .ok_or_else(|| Error::Invalid(format!("Sketch transform flag {key}"))),
     }
 }
+fn admit_page_placement(fields: &serde_json::Map<String, Value>) -> Result<()> {
+    if ["transform", "affineTransform"]
+        .iter()
+        .any(|key| fields.contains_key(*key))
+    {
+        return Err(Error::Unsupported("Sketch page transforms".into()));
+    }
+    let rotation = match fields.get("rotation") {
+        None => 0.,
+        Some(value) => value
+            .as_f64()
+            .filter(|value| value.is_finite() && value.abs() <= 1e7)
+            .ok_or_else(|| Error::Invalid("Sketch numeric field rotation".into()))?,
+    };
+    let mut flipped = false;
+    for key in ["isFlippedHorizontal", "isFlippedVertical"] {
+        match fields.get(key) {
+            None => {}
+            Some(value) => {
+                flipped |= value
+                    .as_bool()
+                    .ok_or_else(|| Error::Invalid(format!("Sketch transform flag {key}")))?;
+            }
+        }
+    }
+    if rotation != 0. || flipped {
+        return Err(Error::Unsupported("Sketch page transforms".into()));
+    }
+    Ok(())
+}
 fn array<'a>(v: &'a Value, key: &str) -> &'a [Value] {
     v.get(key)
         .and_then(Value::as_array)
@@ -713,18 +743,11 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         .iter()
         .find(|p| p.root().id() == page_id)
         .ok_or_else(|| Error::Missing("Sketch page".into()))?;
-    if [
-        "rotation",
-        "isFlippedHorizontal",
-        "isFlippedVertical",
-        "transform",
-        "affineTransform",
-    ]
-    .iter()
-    .any(|key| page.root().fields().contains_key(*key))
-    {
-        return Err(Error::Unsupported("Sketch page transforms".into()));
-    }
+    // Canonical Sketch pages archive rotation 0 and both flips false. Those
+    // defaults are not a page transform. A non-zero rotation, either flip, or
+    // an explicit matrix is still rejected: this projection does not apply a
+    // page transform to its children.
+    admit_page_placement(page.root().fields())?;
     let mut p = Projection {
         source: native,
         nodes: BTreeMap::new(),
