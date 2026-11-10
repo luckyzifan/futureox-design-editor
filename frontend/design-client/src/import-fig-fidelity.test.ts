@@ -92,7 +92,7 @@ test('FIG vertical fading gradient uses node-to-gradient coordinates, including 
  }finally{engine.free()}
 })
 
-const cardCorners = new URL('../../../testing/verification-interaction-layout-20261030/fig-card-corners.bin', import.meta.url)
+const cardCorners = new URL('../../../testing/fixtures/design/fig-card-corners.bin', import.meta.url)
 test.skipIf(!existsSync(cardCorners))('actual FIG vector card radius is rendered rather than silently kept as unused rectangle radii',()=>{
  // fig-card-corners.bin was never committed. Skipping is not a corner result.
  const bytes=new Uint8Array(readFileSync(cardCorners))

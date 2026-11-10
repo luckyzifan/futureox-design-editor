@@ -3794,7 +3794,7 @@ mod page_predicate_cache_tests {
         assert!(gaussian_region_plan(n,m,Rect::new(1_048_000,0,514,514)).is_none());
     }
     #[test] fn imported_closed_ellipse_network_uses_reduced_gaussian(){
-        let n:Node=serde_json::from_str(include_str!("../../../../testing/verification-interaction-layout-20261030/topology-gaussian-leaf.json")).unwrap();
+        let n:Node=serde_json::from_str(include_str!("../../../../testing/fixtures/design/topology-gaussian-leaf.json")).unwrap();
         let matrix=Transform([64.,0.,0.,64.,729000.,425000.]);
         let plan=gaussian_region_plan(&n,matrix,Rect::new(729087,425471,514,514)).unwrap();
         let path=n.paths().unwrap().0;

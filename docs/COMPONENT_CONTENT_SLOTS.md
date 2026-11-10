@@ -71,4 +71,4 @@ Verified on integrated WASM SHA-256
 5 native CPU tests, 10 dedicated client tests, and 78 existing component and
 automation regression tests passed. The React DOM test uses the real shared
 ComponentPanel and Editor under jsdom; it does not claim browser/GPU end-to-end
-coverage. Logs and the verification manifest are in `evidence/component-slots/`.
+coverage.

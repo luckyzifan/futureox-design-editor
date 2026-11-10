@@ -1,6 +1,0 @@
-/test_files
-.env
-docker-compose.yml
-.DS_Store
-
-.github/.conversion.db

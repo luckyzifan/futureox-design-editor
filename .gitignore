@@ -13,8 +13,9 @@
 .zcode/
 .grok-bot-shots/
 *.mac-local.*
-/evidence/phase/
+/evidence/
 /futureoxdesgin/
+/frontend/design-client/verification/
 
 # Generated kernel outputs (rebuilt via design-client `build:kernel`)
 /frontend/design-client/public/kernel/

@@ -37,6 +37,6 @@ A single Merge uses the existing curve union's 64-operand cap; previews and eras
 - Real regenerated WASM + React CPU DOM: initial 7 tests passed across `shape-builder.test.ts` and `ShapeBuilderDialog.test.tsx`.
 - The test bootstrap checked `FUTUREOX_EXPECT_KERNEL_SHA256=2da305a6864c783685ea6ffcd7d3978ba2df58a206c39653dd20d56689347561`; both generated and public WASM files matched this hash.
 - Full shared TypeScript typecheck exited 0.
-- Raw logs are under `evidence/next-shape-builder/`. No GPU/GUI/socket testing was run or claimed.
+- No GPU/GUI/socket testing was run or claimed.
 
 Fast-drag follow-up verification: all 12 Shape Builder WASM/React/picking tests pass, including a single pointer move crossing two 0.2-world-unit regions and a hole-only drag that selects no surrounding fill. Combined with existing authoring, geometry lifecycle, outline compositing and automation core regressions: 7 files / 55 tests pass against the same hash-checked WASM. Final source includes screen-matrix conversion, pointer capture and coalesced pointer samples. Logs: `wasm-dom-sweep-tests.log`, `shape-and-regressions.log`, `typecheck-sweep.log`.

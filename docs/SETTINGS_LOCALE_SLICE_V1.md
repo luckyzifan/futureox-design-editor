@@ -21,7 +21,7 @@ The approved page-memory preference controls remain unchanged in behavior, inclu
 
 ## Remaining source inventory, not a completion percentage
 
-`frontend/design-client/scripts/generate-i18n-inventory.mjs` uses the installed Rolldown parser to scan production frontend `.ts/.tsx/.js/.mjs` literals, JSX text/attributes and template fragments. It excludes tests, declaration files, comments and the locale catalog. `I18N_REMAINING_STRINGS_V1.json` records exact file SHA-256 values, line/column, text, kind and a canonical source-inventory digest. This slice scans 483 source files and finds 3,698 Han-script candidates in 208 files.
+`frontend/design-client/scripts/generate-i18n-inventory.mjs` uses the installed Rolldown parser to scan production frontend `.ts/.tsx/.js/.mjs` literals, JSX text/attributes and template fragments. It excludes tests, declaration files, comments and the locale catalog. Reports record file SHA-256 values, line/column, text, kind and a source-inventory digest. Generate the current report into the ignored `test-results/i18n-inventory.json`; historical totals do not describe the current source.
 
 These are candidates, not 3,698 proven UI omissions: authored defaults, protocol errors, diagnostics and dev helpers are included. English-only static text, host/runtime strings and interpolation semantics are not detected. Never bulk-translate stored authored names, reference IDs, command names, test fixtures or diagnostic codes.
 

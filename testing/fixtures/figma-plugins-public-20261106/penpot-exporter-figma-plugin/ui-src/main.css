@@ -1,3 +1,0 @@
-body:has(div[data-overflowing='true']) {
-  overflow-y: visible !important;
-}

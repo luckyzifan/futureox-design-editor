@@ -53,7 +53,7 @@ Rust 内核准备几何、布局、材质和渲染数据。浏览器执行位于
 
 - `testing/fixtures/`：格式样本、合成输入和校准数据。
 - `frontend/design-client/public/fidelity/`：截图回归参考，生产构建按既有规则排除。
-- `evidence/`：已纳入版本管理的验证产物。
+- `test-results/`：本机日志、截图和生成报告，不纳入版本管理。
 - `docs/`：维护中的功能、接口和验收契约。
 - `.agents/skills/`：项目开发与渲染优先规则。
 

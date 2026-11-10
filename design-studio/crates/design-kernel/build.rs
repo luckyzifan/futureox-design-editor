@@ -2,8 +2,8 @@ use std::path::Path;
 
 fn main() {
     let manifest = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../..");
-    let card = manifest.join("testing/verification-interaction-layout-20261030/fig-card-corners.bin");
-    let posting = manifest.join("testing/verification-interaction-layout-20261030/fig-posting-corners.bin");
+    let card = manifest.join("testing/fixtures/design/fig-card-corners.bin");
+    let posting = manifest.join("testing/fixtures/design/fig-posting-corners.bin");
     optional_cfg(
         "futureox_has_fig_corner_blobs",
         &card,

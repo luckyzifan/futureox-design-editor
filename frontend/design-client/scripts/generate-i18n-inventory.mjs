@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { parseSync } from 'rolldown/utils'
 const client = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = path.join(client, 'src')
-const output = path.resolve(process.argv[2] || path.join(client, '../../docs/I18N_REMAINING_STRINGS_V1.json'))
+const output = path.resolve(process.argv[2] || path.join(client, '../../test-results/i18n-inventory.json'))
 const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
 const files = [], entries = []
 function visit(directory) {

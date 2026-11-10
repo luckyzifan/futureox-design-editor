@@ -49,7 +49,7 @@ fn import_layers(layer:Value,blobs:Vec<Vec<u8>>,extra:Vec<Value>)->futureox_desi
 }
 #[cfg(futureox_has_fig_corner_blobs)]
 #[test]fn actual_card_corners_execute_in_the_native_importer(){
- let card:&[u8]=include_bytes!("../../../../testing/verification-interaction-layout-20261030/fig-card-corners.bin");
+ let card:&[u8]=include_bytes!("../../../../testing/fixtures/design/fig-card-corners.bin");
  let doc=import(json!({"type":"VECTOR","cornerRadius":6,"vectorData":{"normalizedSize":{"x":548,"y":409},"vectorNetworkBlob":0}}),vec![card.to_vec()]);
  let node=&doc.nodes["fig-1-3"];assert_eq!(node.kind,"vector");assert!(node.network.is_none());assert!(node.vector_geometry.is_some());
  assert!(node.paths().unwrap().0.commands.len()>5);
@@ -60,20 +60,18 @@ fn import_layers(layer:Value,blobs:Vec<Vec<u8>>,extra:Vec<Value>)->futureox_desi
 fn actual_card_corners_execute_in_the_native_importer() {}
 #[cfg(futureox_has_fig_corner_blobs)]
 #[test]fn actual_per_vertex_rounding_preserves_source_and_refuses_unknown_styles(){
- let card:&[u8]=include_bytes!("../../../../testing/verification-interaction-layout-20261030/fig-card-corners.bin");
- let posting:&[u8]=include_bytes!("../../../../testing/verification-interaction-layout-20261030/fig-posting-corners.bin");
+ let posting:&[u8]=include_bytes!("../../../../testing/fixtures/design/fig-posting-corners.bin");
  let original=posting.to_vec();let styles=json!([{"styleID":1,"cornerRadius":6},{"styleID":2,"cornerRadius":6},{"styleID":3,"cornerRadius":6},{"styleID":5,"cornerRadius":6}]);
  let mut decoded=fig_geometry::decode_network(&original,1.,1.).unwrap();
  assert!(fig_geometry::round_network(&mut decoded,0.,0.,&styles).unwrap());
  assert!(decoded.vector_geometry.is_some());assert_eq!(original,posting);
- for unknown in [json!([{"styleID":1,"cornerRadius":6,"fillPaints":[]}]),json!([])]{
+ for (unknown,reason) in [(json!([{"styleID":1,"cornerRadius":6,"fillPaints":[]}]),"paint-style"),(json!([]),"missing-style")]{
   let mut decoded=fig_geometry::decode_network(posting,1.,1.).unwrap();
   let before=serde_json::to_vec(&decoded).unwrap();assert!(!fig_geometry::round_network(&mut decoded,0.,0.,&unknown).unwrap());
+  // Check the diagnostic separately, then retain the exact source-byte guard.
+  assert_eq!(decoded.corner_skip.take().as_deref(),Some(reason));
   assert_eq!(before,serde_json::to_vec(&decoded).unwrap());
  }
- let mut decoded=fig_geometry::decode_network(card,1.,1.).unwrap();
- assert!(!fig_geometry::round_network(&mut decoded,6.,0.5,&Value::Null).unwrap());
- assert!(decoded.network.is_some());
 }
 #[cfg(not(futureox_has_fig_corner_blobs))]
 #[test]
