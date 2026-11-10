@@ -135,3 +135,45 @@ test('an empty startup scan tells the desktop user to reopen after adding a plug
   expect(document.body.textContent).toContain('No local plugins were enabled at startup')
   expect([...document.querySelectorAll('button')].some(button => button.textContent === 'Run')).toBe(false)
 })
+
+test('a plugin UI crosses the desktop bridge with only the contracted keys', async () => {
+  // #202: the panel used to forward the full UI state, and the host's exact
+  // record validation rejected the extra `visible` key, so no plugin window
+  // ever opened. Visibility is decided client-side before the call.
+  interfacePreference.set({ locale: 'en' })
+  const opened: unknown[] = []
+  const uiHtml = '<!doctype html><p>QA UI</p>'
+  const code = "figma.showUI(__html__, { width: 320, height: 200, title: 'QA UI' }); figma.notify('QA ready')"
+  const desktop = {
+    plugins: {
+      list: async () => ({ status: 'ok' as const, plugins: [{ grant, name: 'QA', id: 'qa', displayName: 'QA', manifestText, root: '/tmp/qa' }] }),
+      read: async () => ({ status: 'ok' as const, files: { 'code.js': code, 'ui.html': uiHtml } }),
+      openUi: async (request: unknown) => { opened.push(request); return { status: 'ok' as const } },
+      closeUi: async () => ({ status: 'ok' as const }),
+      postUi: async () => ({ status: 'ok' as const }),
+      onUiMessage: () => () => {},
+      onUiClosed: () => () => {},
+      onLaunch: () => () => {},
+    },
+  } as unknown as DesktopBridge
+  const { Editor: EditorClass } = await import('../engine')
+  const { blank } = await import('../model')
+  const current = new EditorClass(blank('Plugin panel'))
+  try {
+    await act(async () => {
+      root.render(<PluginPanel editor={current} desktop={desktop} onClose={() => {}} />)
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const run = [...document.querySelectorAll('button')].find(button => button.textContent === 'Run')
+    expect(run).toBeTruthy()
+    await act(async () => {
+      run!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await vi.waitFor(() => { if (opened.length === 0) throw new Error('openUi was not called') })
+    })
+    expect(opened).toEqual([{ html: uiHtml, width: 320, height: 200, title: 'QA UI' }])
+  } finally {
+    current.dispose()
+  }
+})

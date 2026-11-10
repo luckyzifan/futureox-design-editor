@@ -129,7 +129,9 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
           if (desktop?.plugins) {
             if (uiOpen.current) return
             uiOpen.current = true
-            void desktop.plugins.openUi(ui).then(opened => {
+            // The host validates an exact record; visibility is handled here,
+            // so only the contracted keys cross the bridge.
+            void desktop.plugins.openUi({ html: ui.html, width: ui.width, height: ui.height, title: ui.title }).then(opened => {
               if (token !== generation.current) return
               if (opened.status === 'error') setError(opened.message)
               else setStatus(text.desktopUi)
