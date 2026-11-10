@@ -640,3 +640,67 @@ fn import_any_reports_archive_limits_instead_of_marker_miss() {
         other => panic!("expected marker miss, got {other:?}"),
     }
 }
+
+#[test]
+fn sketch_absolute_size_zero_scale_roundtrips_and_native_zero_does_not() {
+    let scales_of = |doc: &futureox_design_kernel::scene::Document| {
+        doc.nodes
+            .values()
+            .find(|n| !n.export_settings.is_empty())
+            .unwrap()
+            .export_settings
+            .iter()
+            .map(|s| s.scale)
+            .collect::<Vec<_>>()
+    };
+    let layer = json!({
+        "_class":"rectangle","do_objectID":"n","name":"n",
+        "frame":{"x":0,"y":0,"width":40,"height":30},
+        "exportOptions":{"_class":"exportOptions","exportFormats":[
+            {"_class":"exportFormat","absoluteSize":0,"fileFormat":"png","name":"@detail","namingScheme":0,"scale":2.5,"visibleScaleType":0},
+            {"_class":"exportFormat","absoluteSize":100,"fileFormat":"jpg","name":"","namingScheme":0,"scale":0,"visibleScaleType":1},
+            {"_class":"exportFormat","absoluteSize":300,"fileFormat":"jpg","name":"-tall","namingScheme":0,"scale":0,"visibleScaleType":2}
+        ]}
+    });
+    let bytes = archive(
+        json!({"pages":[{"_ref":"pages/p"}]}),
+        &[("p", page("p", vec![layer]))],
+    );
+    let report = interop::import_sketch_report(&bytes).unwrap();
+    report.document.validate().unwrap();
+    let scales = scales_of(&report.document);
+    assert_eq!(scales, vec![2.5, 0., 0.]);
+    let encoded = interop::export_sketch(&report.document).unwrap();
+    let again = interop::import_sketch_report(&encoded).unwrap();
+    again.document.validate().unwrap();
+    assert_eq!(scales_of(&again.document), scales);
+    let mut native = again.document;
+    native
+        .design_system
+        .as_mut()
+        .unwrap()
+        .sketch_containers
+        .remove("nodeMetadata");
+    assert_eq!(
+        native.validate().unwrap_err(),
+        "Invalid layer export settings"
+    );
+    let multiplier = json!({
+        "_class":"rectangle","do_objectID":"n",
+        "frame":{"x":0,"y":0,"width":40,"height":30},
+        "exportOptions":{"exportFormats":[
+            {"_class":"exportFormat","fileFormat":"png","name":"","scale":0,"visibleScaleType":0}
+        ]}
+    });
+    let bad = archive(
+        json!({"pages":[{"_ref":"pages/p"}]}),
+        &[("p", page("p", vec![multiplier]))],
+    );
+    match interop::import_sketch_report(&bad) {
+        Err(interop::Error::InvalidDocument(message)) => {
+            assert!(message.contains("Invalid layer export settings"), "{message}");
+        }
+        Err(error) => panic!("expected zero multiplier rejection, got {error}"),
+        Ok(_) => panic!("expected zero multiplier rejection, import succeeded"),
+    }
+}
