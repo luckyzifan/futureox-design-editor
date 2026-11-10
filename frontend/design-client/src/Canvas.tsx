@@ -3168,9 +3168,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   }
                 }
                 const marks: React.ReactNode[] = []
-                // A sharp rectangle has no corner circle. Painting one made the
-                // selected-layer chrome assert against a node Chai could not format.
-                if (rectangleCornerTarget(n) && n.radii.some(radius => radius > 0)) {
+                // Zero-radius rectangles must still support direct corner rounding.
+                if (rectangleCornerTarget(n)) {
                   const corners: readonly CornerIndex[] = n.radii.every(radius => radius === n.radii[0]) ? [0] : [0, 1, 2, 3]
                   corners.forEach((index) => {
                     const p = worldPoint(cornerHandlePoint(n.width, n.height, n.radii, index, 14 / zoom))
