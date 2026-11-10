@@ -31,6 +31,27 @@ test('native transport admits negotiated derivation methods without weakening th
  assert.equal(owner.pending.size,0)
 })
 
+test('host admission dispatches the read-only interaction pose damage query',async()=>{
+ // The renderer asks for native pose damage before committing interaction
+ // transforms. Rust and the browser preparation worker implement the method,
+ // so rejecting it at the host allowlist closes the whole session and turns
+ // an ordinary drag into a GPU reset with CPU fallback (#196).
+ const messages=[]
+ const owner=Object.assign(Object.create(NativePreparation.prototype),{
+  pending:new Map(),sequence:0,closed:false,admission:new PreparationAdmission(),reservations:new Set(),diagnostics:{enabled:false},
+  worker:{postMessage:message=>messages.push(message)}
+ })
+ const payload='{"target":{"a":1,"x":4,"y":2,"s":1}}'
+ const query=owner.request({lane:'interaction',method:'interaction_pose_damage',args:[payload]})
+ assert.equal(messages.length,1);assert.equal(messages[0].lane,'interaction')
+ assert.equal(messages[0].method,'interaction_pose_damage');assert.deepEqual(messages[0].args,[payload])
+ assert.equal(owner.pending.size,1);assert.equal(owner.closed,false)
+ const job=owner.pending.get(1);clearTimeout(job.timer);owner.pending.delete(1);owner.release(job.release)
+ job.resolve({id:1,value:'{"full":false,"translationOnly":true}'})
+ assert.deepEqual(await query,{id:1,value:'{"full":false,"translationOnly":true}'})
+ assert.equal(owner.pending.size,0);assert.equal(owner.closed,false)
+})
+
 test('source file descriptors enter preparation only through a private host request',async()=>{
  const messages=[]
  const owner=Object.assign(Object.create(NativePreparation.prototype),{pending:new Map(),sequence:0,closed:false,

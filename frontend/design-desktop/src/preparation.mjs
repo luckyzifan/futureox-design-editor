@@ -3,7 +3,7 @@ import { documentChildEnvironment, DOCUMENT_TRANSFER_BYTES, assertDocumentSerial
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { createRenderDiagnostics, PREFIX } from './render-terminal-diagnostics.mjs'
-const methods=new Set(['serialize','serialize_delta','parse','warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms',
+const methods=new Set(['serialize','serialize_delta','parse','warm_resources','initialize','load_document','apply_document_patch_with_damage','interaction_pose_damage','apply_interaction_transforms',
  'compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown',
  'preparation_capabilities_v1','derive_document_v1','source_hit'])
 const sourceSnapshotRequests=new WeakSet()
