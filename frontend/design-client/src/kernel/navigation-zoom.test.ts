@@ -1,11 +1,13 @@
 /** Deterministic navigation scheduling contracts. These exercise the production
  * state machine, not a browser/GPU or a claim about rendered pixel quality. */
 import { expect, test } from 'vitest'
+import { navigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import {
   NavigationZoom,
   NAVIGATION_ZOOM_QUIET_MS,
   NAVIGATION_ZOOM_SAMPLE_MS,
+  inFlightPreviewCancelRatio,
   navigationPreviewDensity,
   zoomDetailInsteadOfViewportPreview,
   type NavigationZoomSample,
@@ -468,6 +470,29 @@ test('a fit bitmap stretched past the preview ratio yields the viewport capture 
   expect(zoomDetailInsteadOfViewportPreview({ navigating: false, displayedZoom: 0.403, requestedZoom: 3.942 })).toBe(false)
   expect(zoomDetailInsteadOfViewportPreview({ navigating: true, displayedZoom: 0.403, requestedZoom: 0.9 })).toBe(false)
   expect(zoomDetailInsteadOfViewportPreview({ navigating: true, requestedZoom: 3.942 })).toBe(false)
+})
+
+test('a stretched fit bitmap yields an undelivered mid-zoom capture so current-density tiles can run', () => {
+  const stretched = { navigating: true, displayedZoom: 0.403, requestedZoom: 3.942 }
+  expect(inFlightPreviewCancelRatio(stretched)).toBe(1)
+  let cancelled = 0
+  const flight = navigationCoverageFlight({}, 1, {
+    zoom: 2, bounds: { x: 0, y: 0, width: 1000, height: 640 }, cancel: () => { cancelled++ },
+  })
+  // 3.942 is within 2× of this capture, so the ordinary preview ratio keeps it.
+  expect(flight.cancelStaleZoomIn({ x: 0, y: 0, zoom: 3.942 })).toBe(false)
+  expect(flight.cancelStaleZoomIn({ x: 0, y: 0, zoom: 3.942 }, inFlightPreviewCancelRatio(stretched))).toBe(true)
+  expect(cancelled).toBe(1)
+  const live = navigationCoverageFlight({}, 1, {
+    zoom: 3.942, bounds: { x: 0, y: 0, width: 1000, height: 640 }, cancel: () => { throw Error('live capture cancelled') },
+  })
+  expect(live.cancelStaleZoomIn({ x: 0, y: 0, zoom: 3.942 }, inFlightPreviewCancelRatio(stretched))).toBe(false)
+  const near = { navigating: true, displayedZoom: 1, requestedZoom: 1.8 }
+  expect(inFlightPreviewCancelRatio(near)).toBe(2)
+  const nearer = navigationCoverageFlight({}, 1, {
+    zoom: 1.2, bounds: { x: 0, y: 0, width: 10, height: 10 }, cancel: () => { throw Error('near capture cancelled') },
+  })
+  expect(nearer.cancelStaleZoomIn({ x: 0, y: 0, zoom: 1.8 }, inFlightPreviewCancelRatio(near))).toBe(false)
 })
 
 test.each([1, 1.25, 2, 3])('native navigation keeps real DPR %s without changing the default or startup density', dpr => {
