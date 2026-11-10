@@ -21,10 +21,15 @@ export function createDesignAgentHost({ bin, port = 3927, storePath, fetchImpl =
     return run
   }
 
-  async function waitUntilReady(proc) {
+  async function waitUntilReady(proc, spawnFailure) {
     const deadline = Date.now() + 8000
     let last = '设计助手没有在 8 秒内就绪'
     while (Date.now() < deadline) {
+      // Node reports spawn failures (missing binary, EACCES) asynchronously as
+      // an 'error' event; without a listener it stays an unhandled event that
+      // kills the host. Keep it bounded and surface it as a startup failure.
+      const failure = spawnFailure?.()
+      if (failure) throw Object.assign(new Error(`设计助手进程启动失败：${failure.message}`), { code: 'AGENT_SPAWN' })
       if (proc.exitCode != null) throw Object.assign(new Error(last), { code: 'AGENT_EXIT' })
       try {
         const response = await fetchImpl(`${root()}/health`)
@@ -42,8 +47,10 @@ export function createDesignAgentHost({ bin, port = 3927, storePath, fetchImpl =
       if (!bin) throw Object.assign(new Error('未找到 futureox-design-agent。在 design-studio 执行 cargo build -p futureox-design-agent。'), { code: 'AGENT_BIN' })
       child = spawn(bin, ['serve', '--bind', `127.0.0.1:${port}`], { env, stdio: ['ignore', 'pipe', 'pipe'] })
       let stderr = ''
+      let spawnError = null
+      child.on('error', error => { spawnError = error })
       child.stderr?.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-500) })
-      try { await waitUntilReady(child) }
+      try { await waitUntilReady(child, () => spawnError) }
       catch (error) { throw Object.assign(error, { message: stderr.trim() || error.message }) }
       base = root()
       await restore().catch(() => {})

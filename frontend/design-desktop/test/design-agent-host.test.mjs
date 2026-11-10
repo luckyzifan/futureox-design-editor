@@ -240,3 +240,25 @@ test('activating a saved connection sends the next turn to that provider and kee
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('a missing agent binary becomes a bounded startup error instead of an unhandled spawn error', async () => {
+  // #166: a clean build ships no default agent binary, so the host points at
+  // a missing file. The spawn ENOENT used to escape as an unhandled 'error'
+  // event that killed the process; an unhandled event here fails this test
+  // run before the bounded reply can be checked.
+  const dir = await mkdtemp(path.join(tmpdir(), 'design-agent-missing-'))
+  const host = createDesignAgentHost({
+    bin: path.join(dir, 'futureox-design-agent'), port: 39401,
+    storePath: path.join(dir, 'providers.json'), env: process.env,
+  })
+  try {
+    const status = await host.status()
+    assert.equal(status.status, 'error')
+    assert.equal(status.code, 'AGENT_SPAWN')
+    assert.match(status.message, /启动失败|ENOENT/)
+    assert.equal((await host.turn({ prompt: 'hi' })).code, 'AGENT_SPAWN')
+  } finally {
+    host.dispose()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
