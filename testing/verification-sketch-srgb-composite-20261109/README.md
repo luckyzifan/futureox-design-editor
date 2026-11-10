@@ -10,7 +10,7 @@ Sketch `document.json` 的 `colorSpace` 1 只表示颜色是 sRGB。原生 Sketc
 
 - `colorSpace` 0 和未标记的 `colorSpace` 1 都走编码 sRGB 合成。`colorSpace` 1 记在 `sketchDocumentColorSpace`，再导出仍是 1。
 - 只有本编辑器写出的 `userInfo.com.futureox.design-kernel.linearSrgbComposite` 才恢复线性 sRGB 管理。Display P3（`colorSpace` 2）不变。
-- 原生预览不再把已经是编码 sRGB 的颜料放进线性合成。
+- 原生预览默认按编码 sRGB 填色。显式 `linearSrgbComposite` 仍保持线性管理和 `floatCompositing`。
 
 没有放宽容差，没有改 HDR 拒绝，没有改蒙版几何。
 
@@ -56,3 +56,33 @@ Sketch `document.json` 的 `colorSpace` 1 只表示颜色是 sRGB。原生 Sketc
 - 前端 `vitest` 需要 WASM 绑定，这次没有重建，字体匹配单测未跑。产品导入仍走已有的 `matchBundledImportFonts`。
 
 GPU 优先、CPU 兜底没改。这不是 33/100ms，也不是完整 G2/G5。
+
+## 2026-11-10 变基后的补充
+
+基线是当时的 `origin/main` `fb2a2b982dd438b66afc7467aa802ce85576e471`。完整拓扑打开失败是：无色彩管理时 `color_settings()` 为 JSON `null`，PNG 行解码把它当成 `ColorSettings` 结构体，首批瓦片报 `invalid type: null, expected struct ColorSettings at line 1 column 4`。现在 `null` 走无管理解码，像素与 `Images` 的无管理路径一致，并且和线性解码不同。原生场景库可以重新打开这份文档。
+
+显式 `linearSrgbComposite` 的 Sketch 预览和 display snapshot 保留线性 `ColorSettings` 与 `floatCompositing`。没有这个标记时预览颜色是编码值（0.125 仍是 0.125，不是线性解码）。
+
+本轮实际命令与结果（debug，Linux）：
+
+```
+cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --lib image_rows::tests
+```
+
+10/10 通过。
+
+```
+cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --test sketch_srgb_composite --test sketch_native_preview_contract --test sketch_native_display
+```
+
+4 + 5 + 4 通过。
+
+```
+node --test frontend/design-desktop/test/sketch-preview-contract.test.mjs frontend/design-desktop/test/sketch-alpha-gradient.test.mjs
+```
+
+3/3 通过。
+
+`sketch_import_admission` 本轮 11 通过、1 失败：`import_any_reports_archive_limits_instead_of_marker_miss` 得到 `Limit("compression ratio")`，不是 archive resource limit。该用例本轮未改。
+
+前端 `vitest` 因仓库里没有 `src/generated/design-kernel/design_kernel` 未能启动。没有重建 WASM，不能把前端套件当成这次行解码修复的证据。字体目录识别仍不是 #81 的行数验收，也不是 #82/#83 的像素验收。没有 Mac、没有 Figma、没有完整拓扑回放。

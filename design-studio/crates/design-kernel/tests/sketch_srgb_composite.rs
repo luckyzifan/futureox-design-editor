@@ -251,3 +251,53 @@ fn half_scale_bitmap_stays_in_encoded_srgb_and_full_size_is_exact() {
         );
     }
 }
+
+#[test]
+fn unmanaged_srgb_source_reopens_when_color_settings_json_is_null() {
+    let report = import_sketch_report(&archive(
+        1,
+        json!([rectangle(45. / 255., 45. / 255., 41. / 255., 0.5)]),
+        &[],
+    ))
+    .unwrap();
+    assert!(report.document.color_management.is_none());
+    let mut engine = Engine::new();
+    engine
+        .load_document(&serde_json::to_string(&report.document).unwrap())
+        .unwrap();
+    let settings = serde_json::to_string(&engine.color_settings()).unwrap();
+    assert_eq!(settings, "null");
+    let rejected = serde_json::from_str::<futureox_design_kernel::color::ColorSettings>(&settings)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        rejected.contains("invalid type: null, expected struct ColorSettings"),
+        "{rejected}"
+    );
+    let directory = std::env::temp_dir().join(format!(
+        "futureox-srgb-source-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("scene.fsc");
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let stored = futureox_design_kernel::scene_store::write(
+        &path,
+        "source:test",
+        &report.document,
+        &[],
+        &cancel,
+    )
+    .unwrap();
+    let (reopened, _) = futureox_design_kernel::scene_store::Reader::open(&path, &stored, &cancel)
+        .unwrap()
+        .into_document(&cancel)
+        .unwrap();
+    assert!(reopened.color_management.is_none());
+    assert_eq!(reopened.nodes.len(), report.document.nodes.len());
+    let _ = std::fs::remove_dir_all(&directory);
+}

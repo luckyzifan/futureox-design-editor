@@ -5,6 +5,7 @@
 use crate::sketch::{Document, Error, Layer, Owner, Result, Session};
 use crate::{
     boolean::Operation,
+    color::ColorSettings,
     facet::sample_node,
     font::{TextRun, TextStyle},
     math::{Point, Transform},
@@ -775,9 +776,10 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         }],
         nodes: p.nodes.into(),
         fonts: BTreeMap::new(),
-        // Encoded sRGB paints. Linear management would not match Sketch's
-        // document-space composite (see colorSpace 1 import).
-        color_management: None,
+        // Encoded sRGB stays unmanaged. Explicit linearSrgbComposite keeps
+        // linear management; do not clear that request.
+        color_management: super::linear_srgb_composite(native.native_document())
+            .then(ColorSettings::default),
         raster_profile: Some(crate::fidelity::RasterProfile::Figma),
         design_system: None,
         prototype: None,
