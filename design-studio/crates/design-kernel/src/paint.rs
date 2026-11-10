@@ -380,7 +380,7 @@ impl ImageCoordinates {
             Point::new(uv.x * self.size[0], uv.y * self.size[1])
         });
         let pattern = self.pattern.as_ref().expect("caller checks pattern");
-        crate::pattern_fill::tile_sample(pattern, q, pattern.resolve(self.image))
+        crate::pattern_fill::tile_sample_in_fill(pattern, q, pattern.resolve(self.image), self.size)
             .unwrap_or(Point::new(f64::NAN, f64::NAN))
     }
     // The byte paint path works relative to the first texel centre before

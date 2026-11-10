@@ -1,4 +1,6 @@
 //! Regression coverage for FIG files that used to be rejected as a whole.
+use futureox_design_kernel::binfmt;
+use futureox_design_kernel::editing::{DocumentEditor, DocumentPatch};
 use futureox_design_kernel::{fig, scene::Document};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -250,5 +252,85 @@ fn nondefault_image_tiles_import_and_change_pixels() {
             .unwrap()
             .rotation,
         90.
+    );
+}
+
+#[test]
+fn imported_tile_alignment_paints_edits_undo_and_reopens() {
+    let start = tiled_document(json!({}));
+    let centered =
+        tiled_document(json!({"horizontalAlignment":"CENTER","verticalAlignment":"CENTER"}));
+    let start_pixels = rendered(&start);
+    let centered_pixels = rendered(&centered);
+    // 2×2 checker, native period 2, 4×4 fill. Start reads the red texel at
+    // the origin. Center pins the image center to the fill center, so that
+    // same pixel reads the white texel.
+    assert_eq!(&start_pixels[0..4], &[255, 0, 0, 255]);
+    assert_eq!(&centered_pixels[0..4], &[255, 255, 255, 255]);
+    let mut editor = DocumentEditor::new(centered).unwrap();
+    let mut edited = editor.document().clone();
+    edited.nodes.get_mut("fig-1-3").unwrap().fills[0]
+        .tile
+        .as_mut()
+        .unwrap()
+        .alignment = ["end".into(), "end".into()];
+    edited.nodes.get_mut("fig-1-3").unwrap().fills[0]
+        .tile
+        .as_mut()
+        .unwrap()
+        .scale = 2.5;
+    let patch = DocumentPatch::between(editor.document(), &edited).unwrap();
+    editor.apply(editor.revision(), patch).unwrap();
+    let edited_pixels = rendered(editor.document());
+    assert_ne!(edited_pixels, centered_pixels);
+    assert_eq!(
+        editor.document().nodes["fig-1-3"].fills[0]
+            .tile
+            .as_ref()
+            .unwrap()
+            .scale,
+        2.5
+    );
+    editor.undo().unwrap();
+    assert_eq!(rendered(editor.document()), centered_pixels);
+    editor.redo().unwrap();
+    assert_eq!(rendered(editor.document()), edited_pixels);
+    let reopened = binfmt::decode(&binfmt::encode(editor.document())).unwrap();
+    reopened.validate().unwrap();
+    let tile = reopened.nodes["fig-1-3"].fills[0].tile.as_ref().unwrap();
+    assert_eq!(tile.alignment, ["end".to_string(), "end".to_string()]);
+    assert_eq!(tile.scale, 2.5);
+    assert_eq!(rendered(&reopened), edited_pixels);
+    let spaced = tiled_document(json!({
+        "scale":2.5,"rotation":90.,"spacing":9.,
+        "patternSpacing":{"x":2.},
+        "horizontalAlignment":"CENTER","verticalAlignment":"END"
+    }));
+    let opened = binfmt::decode(&binfmt::encode(&spaced)).unwrap();
+    let tile = opened.nodes["fig-1-3"].fills[0].tile.as_ref().unwrap();
+    assert_eq!(tile.scale, 2.5);
+    assert_eq!(tile.rotation, 90.);
+    assert_eq!(
+        tile.spacing,
+        [2., 0.],
+        "patternSpacing replaces scalar spacing"
+    );
+    assert_eq!(tile.alignment, ["center".to_string(), "end".to_string()]);
+    assert_eq!(rendered(&opened), rendered(&spaced));
+    let textual = json!({"nodeChanges":[
+        {"guid":{"sessionID":1,"localID":1},"type":"DOCUMENT"},
+        {"guid":{"sessionID":1,"localID":2},"type":"CANVAS","parentIndex":{"guid":{"sessionID":1,"localID":1},"position":"a"}},
+        {"guid":{"sessionID":1,"localID":3},"type":"RECTANGLE","parentIndex":{"guid":{"sessionID":1,"localID":2},"position":"a"},
+            "size":{"x":4,"y":4},"fillPaints":[{"type":"IMAGE","image":{"dataRef":"img"},"imageScaleMode":"TILE","scale":"2.5"}]}
+    ]});
+    assert!(
+        fig::document_from_canvas(
+            &textual,
+            BTreeMap::from([("img".into(), checker_png())]),
+            vec![]
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("not a finite number")
     );
 }

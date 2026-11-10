@@ -1,5 +1,5 @@
 import { expect,test } from 'vitest'
-import { figImageAdjust } from './import-fig-image'
+import { figImageAdjust, figImageTile } from './import-fig-image'
 import { applyImageAdjust } from './kernel/gpu/image-adjust'
 // Values independently read from a Figma export at source-texel centers.
 test.each([
@@ -17,4 +17,24 @@ test('legacy known fields, identity, malformed values and unsupported filters st
   expect(figImageAdjust({paintFilter:{exposure:0}})).toBeUndefined()
   expect(()=>figImageAdjust({paintFilter:{detail:.2}})).toThrow(/无损/)
   expect(()=>figImageAdjust({paintFilter:{exposure:NaN}})).toThrow(/无效/)
+})
+
+test('non-default image TILE parameters are kept and invalid ones reject', () => {
+  expect(figImageTile({
+    imageScaleMode: 'TILE', scale: 2.5, rotation: 90, spacing: 9,
+    patternSpacing: { x: 2 }, horizontalAlignment: 'CENTER', verticalAlignment: 'END',
+  })).toEqual({
+    mode: 'grid', size: [0, 0], offset: [0, 0], alignment: ['center', 'end'],
+    scale: 2.5, rotation: 90, spacing: [2, 0],
+  })
+  expect(figImageTile({ imageScaleMode: 'TILE', patternTileType: 'HORIZONTAL_HEXAGONAL' })).toMatchObject({
+    mode: 'stagger_horizontal', alignment: ['start', 'start'],
+  })
+  expect(figImageTile({ imageScaleMode: 'TILE', spacing: 4 }).spacing).toEqual([4, 4])
+  expect(figImageTile({ imageScaleMode: 'TILE', scale: 1e6, rotation: -1e6, spacing: 1e7 }).scale).toBe(1e6)
+  for (const paint of [
+    { scale: 0 }, { scale: 1e6 + 1 }, { rotation: 1e6 + 1 }, { spacing: -1 },
+    { patternSpacing: { x: 1, y: '2' } }, { patternSpacing: 2 }, { horizontalAlignment: 'SPACE' },
+    { patternTileType: 'HEXAGONAL_MYSTIC' }, { scale: '2.5' },
+  ]) expect(() => figImageTile({ imageScaleMode: 'TILE', ...paint })).toThrow(/原文件未修改|暂不支持/)
 })
