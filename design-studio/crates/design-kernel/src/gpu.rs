@@ -2258,7 +2258,7 @@ impl Engine {
         gaussian_reduction:u32,
         source_filter_fields:bool,
     ) -> Result<GpuScene, String> {
-        let gaussian_regions=gaussian_regions&&options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel&&options.pixel_preview.is_none()&&options.animation.is_none();
+        let mut gaussian_regions=gaussian_regions&&options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel&&options.pixel_preview.is_none()&&options.animation.is_none();
         let source_filter_fields=source_filter_fields&&gaussian_regions&&self.doc.as_ref().is_some_and(|d|
             d.color_management.as_ref().is_some_and(|c|c.document_space==crate::color::ColorSpace::Srgb));
         crate::render_cancellation::checkpoint()?;
@@ -2639,7 +2639,26 @@ impl Engine {
                 None
             }
         } else { None };
-        let extent = painter_support.as_ref().map_or(extent, |support| support.extent);
+        let mut extent = painter_support.as_ref().map_or(extent, |support| support.extent);
+        // Unmanaged encoded-sRGB displays do not receive the color-managed
+        // region retry. A device sigma in (512, 1024] still belongs to the
+        // existing regional three-box plan: the 512 whole-surface cap, the
+        // kernel weights and the authored radius stay unchanged. Only a tile
+        // that would otherwise exceed the surface budget may take that plan.
+        if extent.pixels() > 16_777_216 && has_region && !regional_foreground
+            && doc.color_management.is_none()
+            && metadata.noise_guard.is_none() && options.pixel_preview.is_none()
+            && options.animation.is_none() && !options.raster_profile.is_export()
+        {
+            let coherent = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
+            let proved = page.children.iter().all(|id| foreground_region_supported(
+                doc, id, viewport, &prepared, coherent, true, true, false));
+            if proved {
+                regional_foreground = true;
+                gaussian_regions = true;
+                extent = viewport.expand(2);
+            }
+        }
         if extent.pixels() > 16_777_216 {
             return Err("GPU surface budget exceeded".into());
         }

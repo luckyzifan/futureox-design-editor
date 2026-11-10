@@ -1223,7 +1223,11 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       hasReducedGaussian ||= n.gaussianRegion?.factor !== undefined
       hasSoftEffects ||= n.effects.some(effect => effect.visible && effect.radius > 0)
       hasSourceFilters ||= !!n.sourceFilterField
-      if (n.gaussianRegion && !n.gaussianRegion.factor && scene.colorManagement?.documentSpace === 'srgb' &&
+      const largestScale = Math.max(Math.hypot(n.matrix[0], n.matrix[1]), Math.hypot(n.matrix[2], n.matrix[3]))
+      const regionalSigma = n.effects.some(effect => effect.visible && effect.kind === 'gaussian-blur' &&
+        effect.radius * largestScale > 512 && effect.radius * largestScale <= 1024)
+      if (((n.gaussianRegion && !n.gaussianRegion.factor) || regionalSigma) &&
+          (scene.colorManagement?.documentSpace === 'srgb' || scene.colorManagement == null) &&
           this.gaussianAutoEnabled && this.canvasBlurRequested && !this.hdr && !this.displayMath) {
         this.fullDensityRegionalGaussian = true
         this.gaussianPrefixRequested = true
