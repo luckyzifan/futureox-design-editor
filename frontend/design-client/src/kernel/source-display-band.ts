@@ -2,6 +2,10 @@ import type {RasterTile} from './tile-cache'
 
 export const MATERIAL_BAND=960
 export const MOVING_DETAIL_CORE=160
+/** Ordinary GPU tile, including the one-pixel gutter. Wider source bands are
+ * one capture; the settled lattice uses this side instead of waiting on the
+ * last wide band. */
+export const ORDINARY_SOURCE_TILE=514
 const PAN_STRIP=256
 type Span={start:number;end:number}
 export type MaterialBandGrid={x:Span;y:Span}
@@ -72,4 +76,22 @@ export function materialTiles(bounds:{x:number;y:number;width:number;height:numb
   }
   const distance=(t:RasterTile)=>Math.hypot(t.x+1+side/2-centerX,t.y+1+side/2-centerY)
   return tiles.sort((a,b)=>distance(a)-distance(b))
+}
+
+/** A source-detail capture wider than an ordinary tile used to take the
+ * present fast path. That path does not observe cancellation until the whole
+ * capture returns, so the last band stays refining and holds the raster owner
+ * after the camera has moved. The recovery grid is the same sample density. */
+export function sourceBandDefersWholePresent(sourceDetail:boolean,width:number,height:number){
+  return sourceDetail===true&&(width>ORDINARY_SOURCE_TILE||height>ORDINARY_SOURCE_TILE)
+}
+
+/** Some wide bands are already cached and at least one wide band is not.
+ * An empty cohort still uses the wide plan for the first pixels. A missing
+ * ordinary tile is not this handoff. */
+export function incompleteWideBandCohort(tiles:readonly {width:number;height:number;cached:boolean}[]){
+  if(tiles.length<2)return false
+  const missing=tiles.filter(tile=>!tile.cached)
+  if(!missing.length||missing.length===tiles.length)return false
+  return missing.every(tile=>tile.width>ORDINARY_SOURCE_TILE||tile.height>ORDINARY_SOURCE_TILE)
 }

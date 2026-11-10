@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { acceptTranslatedCoverage, coverageBeyondBacking, coversUnpaintedViewport, dominantUpscale, retainInFlightTile, selectCoverageStack, selectCoverageUnderlay, selectSharperCoverage, sharperCoverageFrame } from './coverage-stack'
+import { acceptTranslatedCoverage, coverageBeyondBacking, coversUnpaintedViewport, dominantUpscale, releaseInFlightForDemand, retainInFlightTile, selectCoverageStack, selectCoverageUnderlay, selectSharperCoverage, sharperCoverageFrame } from './coverage-stack'
 import { MAX_PREVIEW_SCALE_RATIO } from './tile-preview'
 import { panStripBounds, panStripOverview, viewportExtendsPastPage } from './navigation-overview'
 import type { RasterTile } from './tile-cache'
@@ -142,6 +142,24 @@ test('zooming out from 3200% keeps the crop and fills the new viewport from a ca
   const previous = { view: { x: 0, y: 0, zoom: 32 }, width: size.width, height: size.height }
   expect(coverageBeyondBacking([crop, page], low, size, previous, 48, true)?.map(item => item.key).sort()).toEqual(['crop', 'page'])
   expect(coverageBeyondBacking([crop], low, size, previous, 48, true)).toBeUndefined()
+})
+
+test('a wide capture yields to the ordinary lattice, and a far zoom yields while that lattice is missing', () => {
+  const keys = new Set(['low'])
+  const ordinary = [{ width: 514, height: 514 }]
+  const wide = { key: 'band', width: 962, height: 962, zoom: 64 }
+  expect(releaseInFlightForDemand(wide, { scale: 64, keys, tiles: ordinary, missing: true })).toBe(true)
+  expect(releaseInFlightForDemand({ ...wide, key: 'low' }, { scale: 64, keys: new Set(['low']), tiles: ordinary, missing: true })).toBe(false)
+  expect(releaseInFlightForDemand({ key: 'fine', width: 514, height: 514, zoom: 64 }, {
+    scale: 0.5, keys, tiles: ordinary, missing: true,
+  })).toBe(true)
+  expect(releaseInFlightForDemand({ key: 'near', width: 514, height: 514, zoom: 4 }, {
+    scale: 0.5, keys, tiles: ordinary, missing: true,
+  })).toBe(false)
+  expect(releaseInFlightForDemand(wide, { scale: 64, keys, tiles: [{ width: 962, height: 962 }], missing: true })).toBe(false)
+  expect(releaseInFlightForDemand({ key: 'fine', width: 514, height: 514, zoom: 64 }, {
+    scale: 0.5, keys, tiles: ordinary, missing: false,
+  })).toBe(false)
 })
 
 test('zoom-in still drops a large capture that does not fill a hole, and keeps a large hole filler', () => {

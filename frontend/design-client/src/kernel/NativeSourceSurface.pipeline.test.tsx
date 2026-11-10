@@ -393,3 +393,124 @@ test('a return pan after 3200% does not stay ready on the stale high-density til
  expect(frame?.items.length).toBeGreaterThan(0)
  expect(frame?.items.every(item=>item.tile.zoom>=target*.999999&&previewCameraScaleWithinLimit(item.tile.zoom,target))).toBe(true)
 })
+
+test('a partial 3200% band cohort continues on the ordinary lattice instead of staying at 3/4',async()=>{
+  vi.stubGlobal('OffscreenCanvas',class {})
+  vi.stubGlobal('ImageBitmapRenderingContext',class {})
+  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+  const material={...source,materialKeys:['board']}
+  const render=(view:{x:number;y:number;zoom:number})=>act(async()=>{
+    root.render(<NativeSourceSurface source={material} view={view} width={1700} height={1700} onStatus={value=>statuses.push(value)}/>)
+    await pause()
+  })
+  const finishOrdinary=()=>act(async()=>{
+    for(let guard=0;guard<8;guard++){
+      const job=[...state.jobs].reverse().find(item=>item.active)
+      if(!job||job.options.tileViewport?.some(tile=>tile.width>514))break
+      job.options.tileViewport!.forEach((_,index)=>deliver(job,index,800+guard*10+index))
+      job.finish();await pause();paint()
+    }
+  })
+  await render({x:0,y:0,zoom:0.25})
+  await finishOrdinary()
+  expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{zoom:0.25}})
+  await render({x:0,y:0,zoom:32})
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,40));paint()})
+  const delivered=new Set<string>()
+  let sawWide=false
+  await act(async()=>{
+    for(let guard=0;guard<12;guard++){
+      const job=[...state.jobs].reverse().find(item=>item.active)
+      if(!job)break
+      const tiles=job.options.tileViewport??[]
+      if(!tiles.some(tile=>tile.width>514))break
+      sawWide=true
+      const index=tiles.findIndex(tile=>!delivered.has(tile.key))
+      if(index<0){job.finish();await pause();continue}
+      deliver(job,index,900+delivered.size)
+      delivered.add(tiles[index].key)
+      if(tiles.every(tile=>delivered.has(tile.key)))job.finish()
+      await pause();paint()
+    }
+  })
+  expect(sawWide).toBe(true)
+  expect(delivered.size).toBeGreaterThan(0)
+  expect(delivered.size).toBeLessThan(4)
+  const lattice=[...state.jobs].reverse().find(job=>job.active&&job.options.view.zoom===32&&job.options.tileViewport?.every(tile=>tile.width<=514))
+  expect(lattice?.options.tileViewport?.length).toBeGreaterThan(0)
+  expect(statuses.some(status=>status.phase==='ready'&&status.sharp===true&&status.view?.zoom===32)).toBe(false)
+  await act(async()=>{
+    for(let guard=0;guard<8;guard++){
+      const job=[...state.jobs].reverse().find(item=>item.active)
+      if(!job)break
+      const tiles=job.options.tileViewport??[]
+      if(tiles.some(tile=>tile.width>514))throw Error('wide band returned after the ordinary lattice handoff')
+      tiles.forEach((_,index)=>deliver(job,index,1200+guard*10+index))
+      job.finish();await pause();paint()
+    }
+  })
+  expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{x:0,y:0,zoom:32}})
+  const frame=state.frames.at(-1)
+  expect(frame?.view.zoom).toBe(32)
+  expect(frame?.items.length).toBeGreaterThan(0)
+  expect(frame?.items.every(item=>item.tile.zoom===32)).toBe(true)
+})
+
+test('a zoom change within the refine quiet window publishes the new camera',async()=>{
+  vi.stubGlobal('OffscreenCanvas',class {})
+  vi.stubGlobal('ImageBitmapRenderingContext',class {})
+  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+  const material={...source,materialKeys:['board']}
+  const render=(view:{x:number;y:number;zoom:number})=>act(async()=>{
+    root.render(<NativeSourceSurface source={material} view={view} width={1700} height={1700} onStatus={value=>statuses.push(value)}/>)
+    await pause()
+  })
+  await render({x:0,y:0,zoom:0.25})
+  await act(async()=>{
+    for(let guard=0;guard<8;guard++){
+      const job=[...state.jobs].reverse().find(item=>item.active)
+      if(!job||job.options.tileViewport?.some(tile=>tile.width>514))break
+      job.options.tileViewport!.forEach((_,index)=>deliver(job,index,80+index))
+      job.finish();await pause();paint()
+    }
+  })
+  await render({x:0,y:0,zoom:32})
+  const wide=state.jobs.find(item=>item.active&&item.options.tileViewport?.some(tile=>tile.width>514))
+  expect(wide?.options.tileViewport?.length).toBeGreaterThan(1)
+  await act(async()=>{deliver(wide!,0,42);paint()})
+  expect(statuses.at(-1)).toMatchObject({phase:'refining',view:{zoom:32}})
+  await render({x:10,y:0,zoom:1})
+  expect(statuses.at(-1)?.view).toMatchObject({x:10,y:0,zoom:1})
+})
+
+test('an unfinished 3200% band releases the cached overview instead of keeping that refine',async()=>{
+  vi.stubGlobal('OffscreenCanvas',class {})
+  vi.stubGlobal('ImageBitmapRenderingContext',class {})
+  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+  const material={...source,materialKeys:['board']}
+  const render=(view:{x:number;y:number;zoom:number})=>act(async()=>{
+    root.render(<NativeSourceSurface source={material} view={view} width={1700} height={1700} onStatus={value=>statuses.push(value)}/>)
+    await pause()
+  })
+  await render({x:0,y:0,zoom:0.25})
+  await act(async()=>{
+    for(let guard=0;guard<8;guard++){
+      const job=[...state.jobs].reverse().find(item=>item.active)
+      if(!job||job.options.tileViewport?.some(tile=>tile.width>514))break
+      job.options.tileViewport!.forEach((_,index)=>deliver(job,index,70+guard*10+index))
+      job.finish();await pause();paint()
+    }
+  })
+  expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{zoom:0.25}})
+  await render({x:0,y:0,zoom:32})
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,40));paint()})
+  const wide=state.jobs.find(item=>item.active&&item.options.tileViewport?.some(tile=>tile.width>514))
+  expect(wide).toBeTruthy()
+  await act(async()=>{deliver(wide!,0,91);paint()})
+  expect(statuses.at(-1)?.phase).toBe('refining')
+  await render({x:0,y:0,zoom:0.25})
+  await act(async()=>{paint();await pause();paint()})
+  expect(statuses.at(-1)).toMatchObject({phase:'ready',sharp:true,view:{x:0,y:0,zoom:0.25}})
+  expect(state.frames.at(-1)?.items.every(item=>item.tile.zoom===0.25)).toBe(true)
+  expect(wide?.signal?.aborted).toBe(true)
+})
