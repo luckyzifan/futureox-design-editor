@@ -3,6 +3,7 @@ import { verifyMcp } from './mcp-bundle.mjs'
 import { verifyPackagedMcpTransport } from '../test/runtime/packaged-mcp-transport.mjs'
 import { verifyWasmIdentity } from './wasm-identity.mjs'
 import { buildInputs } from './build-inputs.mjs'
+import { verifyDeclaredResourceList } from './release-package-resources.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
@@ -61,7 +62,7 @@ const manifest = {
   platform: process.platform,
   arch: process.arch,
   claims:
-    'Source/artifact identity and real subprocess contracts; not GUI, signing, installer or byte-reproducibility validation.',
+    'Source/artifact identity, unsigned resource-list bytes, and real subprocess contracts; not GUI, signing, notarization, installer launch, or formal release acceptance.',
   toolchain: {
     electron: require('electron/package.json').version,
     packager: JSON.parse(await readFile(path.join(desktop, 'package.json'), 'utf8'))
@@ -182,6 +183,20 @@ try {
       wasmSources,
     )
   }
+  let resourceList
+  try {
+    resourceList = JSON.parse(await readFile(path.join(temporary, 'resource-list.json'), 'utf8'))
+  } catch (error) {
+    throw new Error(`Unsigned resource list is missing from the package (${error.message})`)
+  }
+  verifyDeclaredResourceList(resourceList, {
+    appRoot: temporary,
+    resourcesRoot: resources,
+    profile: build.profile,
+    platform: process.platform,
+    arch: process.arch,
+  })
+  manifest.checks.push('unsigned resource list matches packaged JS, WASM and native bytes')
   for (const directory of [
     'frontend/design-desktop/src',
     'frontend/design-desktop/scripts',

@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -15,6 +16,7 @@ test('desktop package staging includes the preparation worker and its frame deco
   await cp(new URL('../scripts/package.mjs',import.meta.url),path.join(root,'scripts/package.mjs'))
   await cp(new URL('../scripts/package-source.mjs',import.meta.url),path.join(root,'scripts/package-source.mjs'))
   await cp(new URL('../scripts/mcp-bundle.mjs',import.meta.url),path.join(root,'scripts/mcp-bundle.mjs'))
+  await cp(new URL('../scripts/release-package-resources.mjs',import.meta.url),path.join(root,'scripts/release-package-resources.mjs'))
   await cp(new URL('../../design-mcp/src',import.meta.url),path.join(temporary,'frontend/design-mcp/src'),{recursive:true})
   await mkdir(path.join(temporary,'docs'),{recursive:true})
   await cp(new URL('../../../docs/ELECTRON_LOCAL_MCP.zh-CN.md',import.meta.url),path.join(temporary,'docs/ELECTRON_LOCAL_MCP.zh-CN.md'))
@@ -37,5 +39,21 @@ test('desktop package staging includes the preparation worker and its frame deco
    assert.deepEqual(await readFile(path.join(staged,name)),await readFile(path.join(root,'src',name)))
   const {NativePreparationFrame}=await import(pathToFileURL(path.join(staged,'preparation-frame.mjs')).href)
   assert.equal(new NativePreparationFrame().append(Buffer.from('FPR')),false)
+  const list=JSON.parse(await readFile(path.join(root,'dist/package-app/resource-list.json'),'utf8'))
+  assert.equal(list.formalRelease,false)
+  assert.equal(list.signature,'not_run')
+  assert.equal(list.role,'unsigned_development_bundle_inputs')
+  assert.equal(list.profile,null)
+  assert.equal(list.platform,process.platform)
+  assert.equal(list.arch,process.arch)
+  const worker=list.entries.find(entry=>entry.installPath==='app.asar/src/preparation-worker.mjs')
+  assert.equal(worker.present,true)
+  assert.equal(worker.kind,'js')
+  assert.equal(worker.sha256,createHash('sha256').update(await readFile(path.join(staged,'preparation-worker.mjs'))).digest('hex'))
+  assert.equal(list.entries.filter(entry=>entry.kind==='native'&&entry.present).length,0)
+  assert.equal(list.entries.filter(entry=>entry.kind==='native'&&entry.present===false).length,5)
+  const mcp=list.entries.find(entry=>entry.installPath==='design-mcp/src/server.mjs')
+  assert.equal(mcp.present,true)
+  assert.equal(mcp.sha256,createHash('sha256').update(await readFile(path.join(root,'dist/design-mcp/src/server.mjs'))).digest('hex'))
  }finally{await rm(temporary,{recursive:true,force:true})}
 })

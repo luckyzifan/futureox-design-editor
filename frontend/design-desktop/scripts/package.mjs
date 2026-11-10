@@ -7,6 +7,7 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { packageSourceFilter } from './package-source.mjs'
+import { writeUnsignedResourceList } from './release-package-resources.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -57,6 +58,12 @@ await writeFile(
 // Code signing, notarization and installers are separate release work on each target OS.
 const mcp = path.join(root, 'dist/design-mcp')
 await stageMcp(path.resolve(root, '../..'), mcp)
+// The list rides inside app.asar. formalRelease stays false: this packager
+// does not sign, notarize, or launch an installer.
+const resourceList = writeUnsignedResourceList({ staging, desktop: root })
+if (resourceList.formalRelease !== false || resourceList.signature !== 'not_run') {
+  throw new Error('Unsigned packager cannot write a formal release resource list')
+}
 const outputs = await packager({
   dir: staging,
   name: packageName,

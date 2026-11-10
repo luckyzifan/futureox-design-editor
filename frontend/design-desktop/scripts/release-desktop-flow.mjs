@@ -1,9 +1,9 @@
-// Checklist for a frozen release package. Without that package every GUI step
-// stays not_run. This is release preparation, not a confirmed runtime fault.
-import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+// Checklist for a frozen release package. GUI steps stay not_run until an
+// installer is actually launched. Hashing, resource listing, and read-only
+// original hashes are preparation evidence, not formal acceptance.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { describePackage, recordReadonlyOriginals, releaseEvidenceFailed } from './release-package-resources.mjs'
 
 export const DESKTOP_FLOW = [
   'freeze_release_package',
@@ -20,63 +20,73 @@ export const DESKTOP_FLOW = [
   'distinguish_dev_package_from_release',
 ]
 
-function directoryFiles(directory) {
-  const files = []
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const full = path.join(directory, entry.name)
-    if (entry.isDirectory()) files.push(...directoryFiles(full))
-    else if (entry.isFile()) files.push(full)
+function splitOriginals(value) {
+  if (!value) return []
+  return value.split(path.delimiter).filter(Boolean)
+}
+
+function stepReason(described) {
+  if (!described.identity.present) return 'no frozen release package was supplied'
+  if (described.evidence.kind === 'unopened_installer' || described.evidence.kind === 'opaque_file') {
+    return 'package bytes were hashed; installer was not opened and GUI was not launched'
   }
-  return files
+  if (described.resources.status === 'listed') return 'bundle resources were recorded; installer GUI was not launched'
+  return 'package was not installed and GUI was not launched'
 }
 
 export function inspectReleasePackage(packagePath) {
-  if (!packagePath || !existsSync(packagePath)) return { present: false, sha256: null, files: 0 }
-  const info = statSync(packagePath)
-  if (info.isFile()) {
-    return { present: true, sha256: createHash('sha256').update(readFileSync(packagePath)).digest('hex'), files: 1 }
-  }
-  const files = directoryFiles(packagePath).sort()
-  const hash = createHash('sha256')
-  for (const file of files) {
-    hash.update(path.relative(packagePath, file))
-    hash.update(readFileSync(file))
-  }
-  return { present: true, sha256: hash.digest('hex'), files: files.length }
+  const described = describePackage(packagePath)
+  return { present: described.identity.present, sha256: described.identity.sha256, files: described.identity.files }
 }
 
 export function buildDesktopFlowReport({
   packagePath = process.env.FUTUREOX_RELEASE_PACKAGE,
   platform = process.platform,
   arch = process.arch,
+  runtimeRoot = process.env.FUTUREOX_RELEASE_RUNTIME,
+  originalPaths = splitOriginals(process.env.FUTUREOX_RELEASE_ORIGINALS),
 } = {}) {
-  const inspected = inspectReleasePackage(packagePath)
-  return {
-    schema: 1,
+  const described = describePackage(packagePath, { runtimeRoot, platform, arch })
+  const originals = recordReadonlyOriginals(originalPaths)
+  const reason = stepReason(described)
+  const report = {
+    schema: 2,
     issue: 85,
     classification: 'release_prep',
     confirmedRuntimeFault: false,
     platform,
     arch,
     packagePath: packagePath || null,
-    package: inspected.present
-      ? { status: 'hashed_not_installed', sha256: inspected.sha256, files: inspected.files }
-      : { status: 'missing_environment', sha256: null, files: 0 },
-    devPackageEvidence: 'not a substitute for this checklist',
+    package: !described.identity.present
+      ? { status: 'missing_environment', sha256: null, files: 0 }
+      : described.identity.sha256
+        ? { status: 'hashed_not_installed', sha256: described.identity.sha256, files: described.identity.files }
+        : { status: 'unhashed', sha256: null, files: described.identity.files },
+    evidence: described.evidence,
+    resources: described.resources,
+    originals,
+    devPackageEvidence: described.evidence.note,
     steps: DESKTOP_FLOW.map(id => ({
       id,
       status: 'not_run',
-      reason: inspected.present
-        ? 'package bytes were hashed; installer GUI was not launched'
-        : 'no frozen release package was supplied',
+      reason,
+      packageSha256: described.identity.sha256,
+      platform,
+      arch,
+      packagePlatform: described.evidence.packagePlatform,
+      packageArch: described.evidence.packageArch,
+      evidenceKind: described.evidence.kind,
     })),
     releaseAcceptance: 'not_closed',
   }
+  report.failed = releaseEvidenceFailed(described, originals)
+  return report
 }
 
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (invoked) {
   const report = buildDesktopFlowReport()
   console.log(JSON.stringify(report, null, 2))
-  process.exit(report.steps.every(step => step.status === 'not_run') ? 0 : 1)
+  const stepsOpen = report.steps.every(step => step.status === 'not_run')
+  process.exit(!stepsOpen || report.failed ? 1 : 0)
 }
