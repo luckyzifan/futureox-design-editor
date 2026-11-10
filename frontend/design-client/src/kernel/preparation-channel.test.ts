@@ -1,5 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { PreparationChannel } from './preparation-channel'
+import { PreparationChannel, type PreparationMethod } from './preparation-channel'
+import { preparationProtocol } from '../../../design-desktop/src/preparation-methods-v1'
+
+type Assert<T extends true> = T
+type Includes<U, T> = [T] extends [U] ? true : false
+type _admitsPose = Assert<Includes<PreparationMethod, 'interaction_pose_damage'>>
+type _rejectsUnknown = Assert<Includes<PreparationMethod, 'not-a-method'> extends false ? true : false>
 
 const close: (() => void)[] = []
 afterEach(() => close.splice(0).forEach(fn => fn()))
@@ -187,6 +193,16 @@ test('empty derive capability alone never implies backend patch CAS', async () =
   const { client, server } = fixture()
   server.onmessage = event => server.postMessage({ id: event.data.id, value: { protocol: 1, emptyDeltaDerivation: true } })
   expect(await client.supportsDerivation()).toBe(true); expect(await client.supportsGuardedPatch()).toBe(false)
+})
+
+test('interaction pose damage keeps the shared diagnostic code', async () => {
+  const pair = new MessageChannel(), rows: any[] = []
+  const client = new PreparationChannel(pair.port1, { enabled: () => true, owner: () => 4, record: (_event, fields) => rows.push(fields) })
+  close.push(() => { client.close(); pair.port2.close() })
+  pair.port2.onmessage = event => pair.port2.postMessage({ id: event.data.id, value: '{"full":false,"translationOnly":true}' })
+  expect(preparationProtocol.methods.find(method => method.name === 'interaction_pose_damage')).toMatchObject({ code: 18, dispatch: 'all', browser: true, host: 'renderer' })
+  expect((await client.request('interaction', 'interaction_pose_damage', ['{"n":[1,0,0,1,2,3]}'])).value).toBe('{"full":false,"translationOnly":true}')
+  expect(rows.find(row => row.phase === 2)).toMatchObject({ methodCode: 18, channel: 1 })
 })
 
 test('native pose port shares the physical queue, ignores foreign replies and drains cancellation',async()=>{

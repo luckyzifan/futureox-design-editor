@@ -79,6 +79,15 @@ test('explicit empty derive uses receipts without a full snapshot and rejects st
   expect(next.documentFork).toBe(true)
 })
 
+test('browser admission follows the shared protocol for pose damage and unknown calls', async () => {
+  const client = await setup()
+  await expect(client.request('interaction', 'not-a-method' as never, [])).rejects.toThrow('Invalid CPU preparation request')
+  await expect(client.request('canvas', 'load_source_snapshot', ['token'])).rejects.toThrow('Invalid CPU preparation request')
+  await expect(client.request('canvas', 'source_hit', [{}])).rejects.toThrow('Invalid CPU preparation request')
+  await expect(client.request('untrusted', 'interaction_pose_damage', ['{}'])).rejects.toThrow('Invalid CPU preparation lane')
+  await expect(client.request('interaction', 'interaction_pose_damage', ['{}'])).rejects.toThrow("reading 'apply'")
+})
+
 test('state receipts retire on reset, resource changes and failed mutations', async () => {
   const client = await setup()
   const loaded = await client.request('canvas', 'load_document', ['{"id":"document"}'])

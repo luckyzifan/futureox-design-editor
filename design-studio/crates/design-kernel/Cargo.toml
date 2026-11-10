@@ -92,5 +92,8 @@ harness = false
 name = "dirty_region"
 harness = false
 
+[build-dependencies]
+serde_json.workspace = true
+
 [dev-dependencies]
 tiny-skia = { version = "=0.12.0", default-features = false, features = ["std"] }

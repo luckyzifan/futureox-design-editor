@@ -6,6 +6,9 @@ use serde_json::{Value, json};
 mod source_snapshot;
 #[cfg(not(target_arch = "wasm32"))]
 mod source_hit;
+mod preparation_protocol {
+    include!(concat!(env!("OUT_DIR"), "/preparation_methods.rs"));
+}
 
 #[derive(Default)]
 struct Lane {
@@ -120,6 +123,11 @@ impl Preparation {
     }
     fn request_scoped(&mut self, lane: &str, method: &str, args: &[Value]) -> Result<Reply, String> {
         let index = match lane { "canvas" => 0, "interaction" => 1, _ => return Err("Invalid preparation lane".into()) };
+        // Names come from the shared protocol. Unknown methods stop before any
+        // receipt or source mutation; known methods keep their existing arms.
+        if !preparation_protocol::known_preparation_method(method) {
+            return Err("Unsupported native preparation method".into());
+        }
         if method == "preparation_capabilities_v1" {
             return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true,"guardedPatchReceiptV1":true,"nativeSourceSnapshot":cfg!(not(target_arch="wasm32"))}}), bytes: Vec::new() });
         }
@@ -857,6 +865,53 @@ mod tests {
         let mut session = session();
         assert!(session.request("canvas", "apply_document_patch_with_damage", &[json!("invalid")]).is_err());
         assert_eq!(session.request("interaction", "load_document", &[json!(document().to_string())]).unwrap().metadata["documentFork"], false);
+    }
+
+    #[test]
+    fn shared_protocol_dispatches_known_methods_and_rejects_unknown_names() {
+        let source = include_str!("../../../../frontend/design-desktop/src/preparation-methods-v1.ts");
+        let header = "export const preparationProtocol = ";
+        let footer = "\n} as const\n";
+        assert!(source.starts_with(header));
+        let end = source.find(footer).expect("preparation protocol footer");
+        let value: Value = serde_json::from_str(&source[header.len()..end + 2]).unwrap();
+        let listed: Vec<_> = value["methods"].as_array().unwrap().iter().map(|method| method["name"].as_str().unwrap()).collect();
+        assert_eq!(listed, super::preparation_protocol::PREPARATION_METHODS);
+        let mut session = Preparation { lanes: [Lane::default(), Lane::default()], owner: session_owner(), sequence: 0, operation: 0 };
+        for name in super::preparation_protocol::PREPARATION_METHODS {
+            let lane = if *name == "interaction_pose_damage" || *name == "apply_interaction_transforms" { "interaction" } else { "canvas" };
+            if let Some(error) = session.request(lane, name, &[]).err() {
+                assert_ne!(error, "Unsupported native preparation method", "{name}");
+            }
+        }
+        let receipt = session.lanes[0].receipt.clone();
+        assert_eq!(session.request("canvas", "not-a-method", &[]).err().expect("unknown method"), "Unsupported native preparation method");
+        assert_eq!(session.request("canvas", "serialize", &[]).err().expect("codec method"), "Unsupported native preparation method");
+        assert_eq!(session.lanes[0].receipt, receipt);
+    }
+
+    #[test]
+    fn interaction_pose_damage_is_readonly_and_rejects_the_canvas_lane() {
+        let mut session = session();
+        let input = document().to_string();
+        session.request("interaction", "load_document", &[json!(input)]).unwrap();
+        let canvas_receipt = session.lanes[0].receipt.clone();
+        let interaction_receipt = session.lanes[1].receipt.clone();
+        let revision = session.lanes[1].engine.geo_revision;
+        let options = json!({"pageId":"p","width":32,"height":32,"view":{"x":0,"y":0,"zoom":1},"rasterProfile":"analytic"});
+        let before = session.request("interaction", "render_cpu_frame", &[json!(options.to_string()), Value::Null]).unwrap().bytes;
+        let pose = r#"{"r":[1,0,0,1,22,28]}"#;
+        let reply = session.request("interaction", "interaction_pose_damage", &[json!(pose)]).unwrap();
+        assert!(reply.metadata.get("stateReceipt").is_none());
+        let damage: Value = serde_json::from_str(reply.metadata["value"].as_str().unwrap()).unwrap();
+        assert_eq!(damage["full"], false);
+        assert_eq!(damage["translationOnly"], true);
+        assert_eq!(session.lanes[1].engine.geo_revision, revision);
+        assert_eq!(session.lanes[1].receipt, interaction_receipt);
+        assert_eq!(session.request("interaction", "render_cpu_frame", &[json!(options.to_string()), Value::Null]).unwrap().bytes, before);
+        assert_eq!(session.request("canvas", "interaction_pose_damage", &[json!(pose)]).err().expect("canvas lane"), "Invalid interaction transforms");
+        assert_eq!(session.lanes[0].receipt, canvas_receipt);
+        assert_eq!(session.lanes[1].engine.geo_revision, revision);
     }
 
     #[test]
