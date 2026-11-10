@@ -103,7 +103,8 @@ test('variable set aliases resolve by publish key and supported fields bind', ()
   expect(doc.designSystem?.variables['1:4'].values.Dark).toBe(12)
   expect(chip.bindings?.width).toBe('1:4')
   expect(chip.bindings?.figVariableConsumption).toBeUndefined()
-  const notes = doc.designSystem?.sketchContainers?.figDocument?.notes
-  expect(notes).toContain('FIG variable fields without an executable property are retained as figVariableConsumption')
+  expect(doc.designSystem?.sketchContainers?.figDocument).toMatchObject({
+    notes: expect.arrayContaining(['FIG variable fields without an executable property are retained as figVariableConsumption']),
+  })
   validateDocument(doc)
 })

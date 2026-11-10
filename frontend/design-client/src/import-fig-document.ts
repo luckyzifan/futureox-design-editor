@@ -322,7 +322,7 @@ export function importFigVariableNodes(doc: DesignDocument, records: Map<string,
         seen.add(path)
         const target = aliasTarget(entry?.variableData?.value, keyToId, known)
         const variable = target ? systemDoc.variables[target] : undefined
-        if (!variable || variable.kind !== bindingKind(path)) {
+        if (!target || !variable || variable.kind !== bindingKind(path)) {
           unsupportedField = true
           continue
         }
