@@ -86,6 +86,23 @@ test('workspace rail switches accessible labels in place and keeps section/actio
   expect(onTools).toHaveBeenCalledTimes(1); expect(onVariables).toHaveBeenCalledTimes(1)
 })
 
+test('omitting the rail file action removes that control and its divider without shifting the other sections', async () => {
+  const onSection = vi.fn(), onTools = vi.fn(), onVariables = vi.fn()
+  await act(async () => root.render(<WorkspaceRail section="layers" onSection={onSection} onTools={onTools} onVariables={onVariables} toolsOpen={false} />))
+  const nav = document.querySelector('nav')!
+  expect(nav.querySelector('[title="本机设计文件"]')).toBeNull()
+  expect(nav.querySelector('.workspace-rail-divider')).toBeNull()
+  const buttons = [...nav.querySelectorAll('button')]
+  expect(buttons.map(button => button.textContent)).toEqual(['图层', '资源', '工具', '变量'])
+  buttons[1].focus()
+  await switchLocale('en')
+  expect(document.activeElement).toBe(buttons[1])
+  expect(buttons.map(button => button.textContent)).toEqual(['Layers', 'Assets', 'Tools', 'Variables'])
+  await act(async () => buttons[1].click())
+  expect(onSection).toHaveBeenCalledWith('assets')
+  expect(onTools).not.toHaveBeenCalled()
+})
+
 test('tool presentation lookup preserves registry ids, shortcuts and command mapping', () => {
   const localized = (toolRegistry as unknown as { localizedToolCommands?: (locale: 'en' | 'zh-CN') => typeof toolRegistry.TOOL_COMMANDS }).localizedToolCommands
   expect(typeof localized).toBe('function')
@@ -132,7 +149,8 @@ test('visible toolbar tooltip refreshes its language without replacing the focus
 
 test('App source wires locale into tool-label memoization while keeping Editor initialization stable (source contract only)', () => {
   const source = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
-  expect(source).toContain('const { locale } = useInterfacePreferences()')
+  expect(source).toContain('const { locale, uiMode } = useInterfacePreferences()')
+  expect(source).toContain('libraryRailVisible(uiMode, libraryHostKind(desktopSession))')
   expect(source).toContain('const toolbarText = canvasText[locale]')
   expect(source.match(/localizedToolLabel\(tool\.id, locale, tool\.label\)/g)?.length).toBe(2)
   expect(source.match(/\[shortcutContext, locale\]/g)?.length).toBe(2)

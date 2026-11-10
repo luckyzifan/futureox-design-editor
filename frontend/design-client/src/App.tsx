@@ -4,6 +4,7 @@ import { operationStatusText } from './operation-status-messages'
 import { FramePresetPanel } from './FramePresetPanel'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
 import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
+import { libraryHostKind, libraryRailVisible } from './library-chrome'
 import { ownedPropertyPreviewTarget } from './property-preview'
 import { hasCanvasColorPicker } from './canvas-color-picker'
 import { appendImageFiles, captureImageImportAnchor, StaleImageImport } from './append-image-files'
@@ -691,6 +692,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       editor.notify(String(e))
     }
   }
+  function openPersistentLibrary() {
+    if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true)
+    else if (desktopSession) setShowCatalog(true)
+    else void openLocalFiles()
+  }
   useEffect(() => {
     if (!ready || !desktop?.automation || source || largeDocument) return
     const preferences = createAutomationSettingsAdapter(editor)
@@ -982,11 +988,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </button>
         <span className="header-divider" />
         <div className="document-title">
-          <button type="button" className="document-location" onClick={() => {
-            if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true)
-            else if (desktopSession) setShowCatalog(true)
-            else void openLocalFiles()
-          }}>{desktopSession ? menuText.localDesign : menuText.myDesigns}</button>
+          <button type="button" className="document-location" title={desktopSession?.supportsWorkspace ? menuText.openLibrary : undefined}
+            aria-haspopup={desktopSession?.supportsWorkspace ? 'dialog' : undefined} onClick={openPersistentLibrary}>{desktopSession ? menuText.localDesign : menuText.myDesigns}</button>
           <b>/</b>
           <input
             aria-label={menuText.documentName}
@@ -1269,7 +1272,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
           setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
         }}
-          onFiles={() => { if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else if (desktopSession) setShowCatalog(true); else void openLocalFiles() }}
+          onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
         <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace" ref={source?.canvas}>

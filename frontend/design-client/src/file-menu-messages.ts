@@ -6,6 +6,7 @@ const phrases = {
   history: ['历史版本', 'Version history'],
   historyTitle: ['查看当前设计的本地历史版本', 'View local versions of this design'],
   localDesign: ['本机设计', 'Local design'],
+  openLibrary: ['打开本机文档库', 'Open the local design library'],
   myDesigns: ['我的设计', 'My designs'],
   documentName: ['文档名称', 'Document name'],
   collapseUi: ['收起界面', 'Collapse interface'],
