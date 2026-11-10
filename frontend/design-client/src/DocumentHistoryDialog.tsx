@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { confirmRestoreBody, diffHeading, historyStorageIntro, historyVersionLine, previewPageLabel, readOnlyPreviewTitle, revisionActionLabel, translateChangeKind, translateDiffField, translateGeneratedDiffValue, useProfessionalDialogText } from './professional-dialog-messages'
 import type { DesignDocument } from './model'
 import type { DesktopSession } from './desktop-session'
 import { createDocumentHistory, type HistoryEntry } from './document-history'
@@ -29,6 +30,7 @@ export function DocumentHistoryDialog({
   onLocalAdopt: (record: { document: DesignDocument; revision: number }) => Promise<boolean> | boolean
   onClose: () => void
 }) {
+  const { locale, tr } = useProfessionalDialogText()
   const history = useMemo(() => createDocumentHistory(session), [session])
   const [page, setPage] = useState<{
     entries: HistoryEntry[]
@@ -100,18 +102,18 @@ export function DocumentHistoryDialog({
         if (e.key === 'Escape' && !busy && pending === null) onClose()
       }}
     >
-      <section className="remote-modal" role="dialog" aria-modal="true" aria-label="历史版本">
+      <section className="remote-modal" role="dialog" aria-modal="true" aria-label={tr('历史版本')}>
         <h2>
-          历史版本
-          <button aria-label="关闭历史版本" disabled={busy} onClick={onClose}>
+          {tr('历史版本')}
+          <button aria-label={tr('关闭历史版本')} disabled={busy} onClick={onClose}>
             ×
           </button>
         </h2>
         <p>
-          「{documentName}」的历史版本保存在{desktop ? '本机文档库' : '本机浏览器'}，断网也可查看；恢复会创建新版本，不会覆盖现有历史。
+          {historyStorageIntro(documentName, desktop, locale)}
         </p>
-        {!desktop && <p>浏览器本地保留最近 50 个已保存版本。</p>}
-        {error && <p role="alert">{error}</p>}
+        {!desktop && <p>{tr('浏览器本地保留最近 50 个已保存版本。')}</p>}
+        {error && <p role="alert">{tr(error)}</p>}
         <div className="remote-actions">
           <button
             disabled={busy}
@@ -125,19 +127,18 @@ export function DocumentHistoryDialog({
               })
             }
           >
-            刷新
+            {tr('刷新')}
           </button>
         </div>
-        <section className="remote-list" aria-label="历史版本列表">
+        <section className="remote-list" aria-label={tr('历史版本列表')}>
           {page?.entries.map((entry, index) => (
             <div className="local-file-row" key={entry.revision}>
               <span>
-                版本 {entry.revision} · {entry.summary ?? '自动保存'} ·{' '}
-                {new Date(entry.createdAt).toLocaleString()}
+                {historyVersionLine(entry.revision, entry.summary, new Date(entry.createdAt).toLocaleString(), locale)}
               </span>
               <button
                 disabled={busy}
-                aria-label={`预览版本 ${entry.revision}`}
+                aria-label={revisionActionLabel('预览版本', entry.revision, locale)}
                 onClick={() =>
                   void guarded(async () => {
                     const snapshot = await history.load(documentId, entry.revision)
@@ -146,28 +147,28 @@ export function DocumentHistoryDialog({
                   })
                 }
               >
-                预览
+                {tr('预览')}
               </button>
               <button
                 disabled={busy || !page.entries[index + 1]}
-                aria-label={`比较版本 ${entry.revision}`}
+                aria-label={revisionActionLabel('比较版本', entry.revision, locale)}
                 onClick={() => void guarded(async () => {
                   const previous = page.entries[index + 1]
                   const [before, after] = await Promise.all([history.load(documentId, previous.revision), history.load(documentId, entry.revision)])
                   if (!before || !after) throw new Error('版本已不存在，请刷新列表')
                   setDiff({ from: before.revision, to: after.revision, changes: diffDocuments(before.document, after.document) })
                 })}
-              >与上一版本比较</button>
+              >{tr('与上一版本比较')}</button>
               <button
                 disabled={busy || entry.revision === headRevision}
-                aria-label={`恢复版本 ${entry.revision}`}
+                aria-label={revisionActionLabel('恢复版本', entry.revision, locale)}
                 onClick={() => requestRestore(entry.revision)}
               >
-                恢复此版本
+                {tr('恢复此版本')}
               </button>
             </div>
           ))}
-          {page && !page.entries.length && <p>此设计还没有保存过历史版本；保存后会自动记录。</p>}
+          {page && !page.entries.length && <p>{tr('此设计还没有保存过历史版本；保存后会自动记录。')}</p>}
           {page?.hasMore && page.nextBeforeRevision !== undefined && (
             <button
               disabled={busy}
@@ -182,24 +183,24 @@ export function DocumentHistoryDialog({
                 })
               }
             >
-              加载更早版本
+              {tr('加载更早版本')}
             </button>
           )}
         </section>
-        {diff && <section aria-label="版本差异" style={{ maxHeight: 320, overflow: 'auto' }}>
-          <h3>版本 {diff.from} → {diff.to} · {diff.changes.length} 项变化</h3>
-          <p>按稳定图层 ID 比较已保存快照；资源内容不展开。恢复与撤销编辑独立，会建立新的保存版本。</p>
-          {!diff.changes.length && <p>没有内容变化</p>}
+        {diff && <section aria-label={tr('版本差异')} style={{ maxHeight: 320, overflow: 'auto' }}>
+          <h3>{diffHeading(diff.from, diff.to, diff.changes.length, locale)}</h3>
+          <p>{tr('按稳定图层 ID 比较已保存快照；资源内容不展开。恢复与撤销编辑独立，会建立新的保存版本。')}</p>
+          {!diff.changes.length && <p>{tr('没有内容变化')}</p>}
           <ul>{diff.changes.slice(0, 500).map((change, index) => <li key={index}>
-            {changeLabels[change.kind]} · {change.name} · {change.field} <small>({change.id})</small>
-            {change.before !== undefined && <>：{change.before} → {change.after}</>}
+            {translateChangeKind(changeLabels[change.kind], locale)} · {change.name} · {translateDiffField(change.field, locale)} <small>({change.id})</small>
+            {change.before !== undefined && <>：{translateGeneratedDiffValue(change.field, change.before, locale)} → {translateGeneratedDiffValue(change.field, change.after, locale)}</>}
           </li>)}</ul>
-          {diff.changes.length > 500 && <p>仅显示前 500 项变化，请分版本查看。</p>}
-          <button onClick={() => setDiff(null)}>关闭差异</button>
+          {diff.changes.length > 500 && <p>{tr('仅显示前 500 项变化，请分版本查看。')}</p>}
+          <button onClick={() => setDiff(null)}>{tr('关闭差异')}</button>
         </section>}
         {pending !== null && (
-          <div role="alertdialog" aria-label="确认恢复历史版本">
-            <p>当前有未保存的修改；恢复版本 r{pending} 会丢弃这些修改（已保存的历史不受影响）。</p>
+          <div role="alertdialog" aria-label={tr('确认恢复历史版本')}>
+            <p>{confirmRestoreBody(pending, locale)}</p>
             <div className="remote-actions">
               <button
                 disabled={busy}
@@ -210,9 +211,9 @@ export function DocumentHistoryDialog({
                   void guarded(() => performRestore(revision))
                 }}
               >
-                丢弃修改并恢复
+                {tr('丢弃修改并恢复')}
               </button>
-              <button disabled={busy} onClick={() => setPending(null)}>保留修改，取消恢复</button>
+              <button disabled={busy} onClick={() => setPending(null)}>{tr('保留修改，取消恢复')}</button>
             </div>
           </div>
         )}
@@ -223,6 +224,7 @@ export function DocumentHistoryDialog({
           revision={preview.revision}
           busy={busy}
           onExit={() => setPreview(null)}
+          locale={locale}
           onRestore={() => {
             const revision = preview.revision
             setPreview(null)
@@ -239,15 +241,18 @@ function RevisionPreview({
   document,
   revision,
   busy,
+  locale,
   onExit,
   onRestore,
 }: {
   document: DesignDocument
   revision: number
   busy: boolean
+  locale: 'zh-CN' | 'en'
   onExit: () => void
   onRestore: () => void
 }) {
+  const { tr } = useProfessionalDialogText()
   const [pageId, setPageId] = useState(document.pages[0]?.id ?? '')
   const active = document.pages.find((p) => p.id === pageId) ?? document.pages[0]
   const frame = useMemo(() => {
@@ -272,10 +277,10 @@ function RevisionPreview({
         if (e.key === 'Escape' && !busy) { e.stopPropagation(); onExit() }
       }}
     >
-      <div className="prototype-player" data-history-preview role="dialog" aria-modal="true" aria-label="历史版本只读预览">
+      <div className="prototype-player" data-history-preview role="dialog" aria-modal="true" aria-label={tr('历史版本只读预览')}>
         <header>
           <strong>
-            只读预览 · 版本 {revision} · {document.name}
+            {readOnlyPreviewTitle(revision, document.name, locale)}
           </strong>
           {document.pages.length > 1 &&
             userPages(document).map((p) => (
@@ -283,17 +288,17 @@ function RevisionPreview({
                 key={p.id}
                 type="button"
                 aria-pressed={p.id === active.id}
-                aria-label={`预览页面 ${p.name}`}
+                aria-label={previewPageLabel(p.name, locale)}
                 onClick={() => setPageId(p.id)}
               >
                 {p.name}
               </button>
             ))}
           <button type="button" disabled={busy} onClick={onRestore}>
-            恢复此版本
+            {tr('恢复此版本')}
           </button>
           <button type="button" onClick={onExit}>
-            退出预览
+            {tr('退出预览')}
           </button>
         </header>
         <div style={{ overflow: 'auto', width, height, position: 'relative', background: '#fff' }}>

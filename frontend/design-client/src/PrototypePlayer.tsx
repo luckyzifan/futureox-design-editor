@@ -17,6 +17,7 @@ import { createAnimationBakeSession, kernelBakeRevision, type KernelAnimationBak
 import { initialPrototype, prototypeEase, prototypeEvent, prototypeDocument, type Interaction } from './prototype'
 import { animatePrototypeScroll } from './prototype-scroll'
 import { framesNeedLightweightMotion, lightenPrototypeMotion, reducedMotionRequested, startTransitionClock } from './prototype-motion'
+import { downloadAsset, prototypeTitle, useProfessionalDialogText } from './professional-dialog-messages'
 
 export function PrototypePlayer({
   document: source,
@@ -25,6 +26,7 @@ export function PrototypePlayer({
   document: DesignDocument
   onClose: () => void
 }) {
+  const { locale, tr } = useProfessionalDialogText()
   const [state, setState] = useState(() => initialPrototype(source)),
     [error, setError] = useState(''),
     [exporting, setExporting] = useState(false),
@@ -209,11 +211,11 @@ export function PrototypePlayer({
   }
   return (
     <div className="feature-backdrop">
-      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
+      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label={tr('交互原型预览')}>
         <header>
-          <strong>原型 · {n.name}</strong>
+          <strong>{prototypeTitle(n.name, locale)}</strong>
           <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
-            重新开始
+            {tr('重新开始')}
           </button>
           <button
             type="button"
@@ -221,24 +223,24 @@ export function PrototypePlayer({
               dispatch(current, 'click', { trigger:'click', actions:[{kind:'back',durationMs:state.transitionMs}] })
             }
           >
-            返回
+            {tr('返回')}
           </button>
           <button type="button" onClick={onClose}>
-            关闭预览
+            {tr('关闭预览')}
           </button>
           {videoReady && (
             <>
-              <button type="button" disabled={exporting || !transition} title={transition ? '用打包的 FFmpeg 编码这次智能动画' : '先触发一次智能动画过渡'} onClick={() => void exportTransition('mp4')}>
-                导出过渡 MP4
+              <button type="button" disabled={exporting || !transition} title={transition ? tr('用打包的 FFmpeg 编码这次智能动画') : tr('先触发一次智能动画过渡')} onClick={() => void exportTransition('mp4')}>
+                {tr('导出过渡 MP4')}
               </button>
-              <button type="button" disabled={exporting || !transition} title={transition ? '用打包的 FFmpeg 编码这次智能动画' : '先触发一次智能动画过渡'} onClick={() => void exportTransition('webm')}>
-                导出过渡 WebM
+              <button type="button" disabled={exporting || !transition} title={transition ? tr('用打包的 FFmpeg 编码这次智能动画') : tr('先触发一次智能动画过渡')} onClick={() => void exportTransition('webm')}>
+                {tr('导出过渡 WebM')}
               </button>
             </>
           )}
-          {videoAsset && <a href={videoAsset.url} download={videoAsset.name}>下载 {videoAsset.name}</a>}
+          {videoAsset && <a href={videoAsset.url} download={videoAsset.name}>{downloadAsset(videoAsset.name, locale)}</a>}
         </header>
-        {error && <p role="alert">{error}</p>}
+        {error && <p role="alert">{tr(error)}</p>}
         <div style={{ position: 'relative' }}>
           <div
             ref={scroll}
@@ -281,7 +283,7 @@ export function PrototypePlayer({
                     <button
                       type="button"
                       key={e.id}
-                      aria-label={doc.nodes[e.id].name || '交互区域'}
+                      aria-label={doc.nodes[e.id].name || tr('交互区域')}
                       className="prototype-hotspot"
                       style={{
                         position: 'absolute',
@@ -350,6 +352,7 @@ function Overlay({
   zoom: number
   dispatch: (id: string, trigger: Interaction['trigger'], only?: Interaction) => void
 }) {
+  const { tr } = useProfessionalDialogText()
   const parents = allParents(doc)
   let pageId = id
   while (parents.has(pageId)) pageId = parents.get(pageId)!
@@ -406,7 +409,7 @@ function Overlay({
               type="button"
               key={e.id}
               className="prototype-hotspot"
-              aria-label={doc.nodes[e.id].name || '弹层交互'}
+              aria-label={doc.nodes[e.id].name || tr('弹层交互')}
               style={{
                 position: 'absolute',
                 left: 0,

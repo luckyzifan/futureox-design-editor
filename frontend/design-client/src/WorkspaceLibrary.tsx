@@ -4,8 +4,10 @@ import { FileMark } from './chrome-icons'
 import type { DesktopSession } from './desktop-session'
 import type { WorkspaceDocument } from './desktop'
 import { modalKeyDown } from './modal-keyboard'
+import { libraryHistoryTitle, libraryVersionLine, useProfessionalDialogText } from './professional-dialog-messages'
 
 export function WorkspaceLibrary({ session, onClose }: { session: DesktopSession; onClose: () => void }) {
+  const { locale, tr } = useProfessionalDialogText()
   const [documents, setDocuments] = useState<WorkspaceDocument[]>([])
   const [history, setHistory] = useState<{ document: WorkspaceDocument; revisions: WorkspaceDocument[]; nextBeforeRevision?: number } | null>(null)
   const [query, setQuery] = useState(''), [trash, setTrash] = useState(false)
@@ -36,45 +38,45 @@ export function WorkspaceLibrary({ session, onClose }: { session: DesktopSession
   return <div className="modal-backdrop">
     <section ref={panel} className="remote-modal workspace-library" role="dialog" aria-modal="true" aria-labelledby={heading} aria-busy={busy}
       tabIndex={-1} onKeyDown={event => modalKeyDown(event, () => { if (!busy) onClose() })}>
-      <h2 id={heading}>本机文档库<button type="button" aria-label="关闭本机文档库" disabled={busy} onClick={onClose}>×</button></h2>
-      <p className="dialog-description">设计与历史版本保存在本机，断网也可继续编辑。</p>
+      <h2 id={heading}>{tr('本机文档库')}<button type="button" aria-label={tr('关闭本机文档库')} disabled={busy} onClick={onClose}>×</button></h2>
+      <p className="dialog-description">{tr('设计与历史版本保存在本机，断网也可继续编辑。')}</p>
       <div className="remote-actions">
-        <label className="library-search"><Search size={15} aria-hidden="true" /><input ref={search} aria-label="搜索本机设计" placeholder="搜索设计名称" value={query} onChange={e => setQuery(e.target.value)} /></label>
-        <button type="button" className="secondary" aria-pressed={trash} disabled={busy} onClick={() => { setTrash(v => !v); setHistory(null) }}><Trash2 size={14} aria-hidden="true" />{trash ? '全部设计' : '回收站'}</button>
-        <button type="button" className="secondary" disabled={busy} onClick={() => void action(refresh)}><RefreshCw size={14} aria-hidden="true" />刷新</button>
+        <label className="library-search"><Search size={15} aria-hidden="true" /><input ref={search} aria-label={tr('搜索本机设计')} placeholder={tr('搜索设计名称')} value={query} onChange={e => setQuery(e.target.value)} /></label>
+        <button type="button" className="secondary" aria-pressed={trash} disabled={busy} onClick={() => { setTrash(v => !v); setHistory(null) }}><Trash2 size={14} aria-hidden="true" />{trash ? tr('全部设计') : tr('回收站')}</button>
+        <button type="button" className="secondary" disabled={busy} onClick={() => void action(refresh)}><RefreshCw size={14} aria-hidden="true" />{tr('刷新')}</button>
       </div>
-      {error && <p role="alert">{error}</p>}
-      <div className="library-section-heading"><strong>{trash ? '回收站' : '最近的设计'} <span>{visibleDocuments.length}</span></strong><span>{busy ? '正在处理…' : '本机存储'}</span></div>
+      {error && <p role="alert">{tr(error)}</p>}
+      <div className="library-section-heading"><strong>{trash ? tr('回收站') : tr('最近的设计')} <span>{visibleDocuments.length}</span></strong><span>{busy ? tr('正在处理…') : tr('本机存储')}</span></div>
       <div className="remote-list">
         {visibleDocuments.map(d => <div className="local-file-row" key={d.id}>
           <button type="button" disabled={busy || d.deleted} onClick={() => void action(async () => { if (await session.openWorkspace(d.id)) onClose(); else throw new Error(session.status.error || '当前设计已保留') })}>
-            <span className="library-file-icon"><FileMark name={d.name} size={22} /></span><span className="library-file-name"><b>{d.name}</b><small>版本 {d.revision} · {new Date(d.updatedAt).toLocaleString()}</small></span>
+            <span className="library-file-icon"><FileMark name={d.name} size={22} /></span><span className="library-file-name"><b>{d.name}</b><small>{libraryVersionLine(d.revision, new Date(d.updatedAt).toLocaleString(), locale)}</small></span>
           </button>
           <button type="button" className="library-row-action" disabled={busy} onClick={() => void action(async () => {
             const r = await session.listRevisions(d.id)
             if (r.status !== 'ok') throw new Error(r.status === 'cancelled' ? '已取消' : r.message)
             setHistory({ document: d, revisions: r.revisions, nextBeforeRevision: r.hasMore ? r.nextBeforeRevision : undefined })
-          })}><History size={14} aria-hidden="true" />历史版本</button>
-          <button type="button" className="library-row-action" disabled={busy || d.id === session.activeDocumentId} title={d.id === session.activeDocumentId ? '正在编辑的设计' : undefined} onClick={() => void action(async () => {
+          })}><History size={14} aria-hidden="true" />{tr('历史版本')}</button>
+          <button type="button" className="library-row-action" disabled={busy || d.id === session.activeDocumentId} title={d.id === session.activeDocumentId ? tr('正在编辑的设计') : undefined} onClick={() => void action(async () => {
             const r = await session.trashWorkspace(d, !d.deleted)
             if (r.status !== 'ok') throw new Error(r.status === 'cancelled' ? '已取消' : r.message)
             await refresh()
-          })}>{d.deleted ? '恢复' : '移入回收站'}</button>
+          })}>{d.deleted ? tr('恢复') : tr('移入回收站')}</button>
         </div>)}
-        {!visibleDocuments.length && <div className="library-empty">{query ? <Search size={30} aria-hidden="true" /> : trash ? <Trash2 size={30} aria-hidden="true" /> : <FileMark size={30} kind="fd" />}<strong>{query ? '没有匹配的设计' : trash ? '回收站为空' : '你的设计从这里开始'}</strong><p>{query ? '试试其他名称，或清空搜索。' : trash ? '移入回收站的设计可以在这里恢复。' : '编辑设计后会自动保存到这里。'}</p></div>}
+        {!visibleDocuments.length && <div className="library-empty">{query ? <Search size={30} aria-hidden="true" /> : trash ? <Trash2 size={30} aria-hidden="true" /> : <FileMark size={30} kind="fd" />}<strong>{query ? tr('没有匹配的设计') : trash ? tr('回收站为空') : tr('你的设计从这里开始')}</strong><p>{query ? tr('试试其他名称，或清空搜索。') : trash ? tr('移入回收站的设计可以在这里恢复。') : tr('编辑设计后会自动保存到这里。')}</p></div>}
       </div>
-      {history && <section className="library-history" aria-label="文档历史版本"><h3>{history.document.name} · 历史版本</h3>
-        <p>恢复会创建新版本，保留现有历史。</p>
-        {history.revisions.map(r => <div className="local-file-row" key={r.revision}><span>版本 {r.revision} · {new Date(r.updatedAt).toLocaleString()}</span>
+      {history && <section className="library-history" aria-label={tr('文档历史版本')}><h3>{libraryHistoryTitle(history.document.name, locale)}</h3>
+        <p>{tr('恢复会创建新版本，保留现有历史。')}</p>
+        {history.revisions.map(r => <div className="local-file-row" key={r.revision}><span>{libraryVersionLine(r.revision, new Date(r.updatedAt).toLocaleString(), locale)}</span>
           <button type="button" disabled={busy || r.revision === history.document.revision} onClick={() => void action(async () => {
             if (await session.restoreWorkspace(history.document.id, r.revision, history.document.revision)) onClose()
             else throw new Error(session.status.error || '当前设计已保留')
-          })}>恢复此版本</button></div>)}
+          })}>{tr('恢复此版本')}</button></div>)}
         {history.nextBeforeRevision !== undefined && <button type="button" disabled={busy} onClick={() => void action(async () => {
           const r = await session.listRevisions(history.document.id, history.nextBeforeRevision)
           if (r.status !== 'ok') throw new Error(r.status === 'cancelled' ? '已取消' : r.message)
           setHistory({ ...history, revisions: [...history.revisions, ...r.revisions], nextBeforeRevision: r.hasMore ? r.nextBeforeRevision : undefined })
-        })}>加载更早版本</button>}
+        })}>{tr('加载更早版本')}</button>}
       </section>}
     </section>
   </div>

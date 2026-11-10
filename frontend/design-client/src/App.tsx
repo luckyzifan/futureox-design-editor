@@ -1,6 +1,7 @@
 import { importInputStatus } from './import-input-policy'
 import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnostic } from './import-diagnostics'
 import { operationStatusText } from './operation-status-messages'
+import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
 import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
@@ -1042,13 +1043,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </details>
           <span
             className={`save-status ${(desktopSession ? desktopStatus.error || desktopStatus.warning || desktopStatus.recoveryWarning : saved.includes('失败')) ? 'error' : ''}`}
-            title={source?'编辑自动保存到独立工作副本，原文件保持不变':desktopSession ? desktopStatus.warning || desktopStatus.recoveryWarning || '编辑自动保存到独立工作副本，原文件保持不变' : undefined}
+            title={source?translateProfessional('编辑自动保存到独立工作副本，原文件保持不变', locale):desktopSession ? translateProfessional(desktopStatus.warning || desktopStatus.recoveryWarning || '编辑自动保存到独立工作副本，原文件保持不变', locale) : undefined}
             role="status"
           >
             {desktopSession && desktopStatus.dirty ? <span aria-hidden="true">●</span> : <Check size={13} />}
-            {source?(source.error?'自动保存或加载失败':source.busy?'处理中…':source.dirty?'自动保存中…':'已自动保存到工作副本'):desktopSession ? (!ready ? '载入中' : desktopStatus.operation === 'save' ? '自动保存中…'
+            {translateProfessional(source?(source.error?'自动保存或加载失败':source.busy?'处理中…':source.dirty?'自动保存中…':'已自动保存到工作副本'):desktopSession ? (!ready ? '载入中' : desktopStatus.operation === 'save' ? '自动保存中…'
               : desktopStatus.conflict ? (desktopSession.supportsWorkspace ? '本机库存在新版本' : '文件已被外部修改') : desktopStatus.error ? '操作失败，修改已保留'
-              : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '自动保存有警告' : desktopSession.supportsWorkspace ? '自动保存中…' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已自动保存到工作副本' : '已保存到文件') : saved}
+              : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '自动保存有警告' : desktopSession.supportsWorkspace ? '自动保存中…' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已自动保存到工作副本' : '已保存到文件') : saved, locale)}
           </span>
           {desktopSession&&ready&&<LocalWindowControl editor={editor} session={desktopSession} live={localWindows}/>}
           {!source&&!desktopSession&&<button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
@@ -1075,12 +1076,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button>
           <button type="button" className="app-settings-button" aria-label={panelText.openSettings}
             disabled={!ready || switching || desktopStatus.transitioning}
-            title={!ready || switching || desktopStatus.transitioning ? '正在处理设计文件，完成后可打开设置' : `设置 (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
+            title={!ready || switching || desktopStatus.transitioning ? translateProfessional('正在处理设计文件，完成后可打开设置', locale) : `${panelText.settingsTitle} (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
             aria-haspopup="dialog" aria-expanded={showSettings}
             onClick={openSettings}>
             <SettingsIcon size={16} /><span>{panelText.settingsTitle}</span>
           </button>
-          <span className="avatar">我</span>
+          <span className="avatar">{translateProfessional('我', locale)}</span>
         </div>
       </header>
       {desktopSession?.supportsWorkspace && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
@@ -1235,9 +1236,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         setDesktopPrompt(null)
       }} />}
       {desktopStatus.conflict && !desktopPrompt && <div className="desktop-conflict" role="alert">
-        <span>{desktopSession?.supportsWorkspace ? '本机库已有新版本，当前画布已保留。可保存副本，或重新从本机库打开。' : '文件已被外部修改，当前画布已保留。请另存为，或打开磁盘上的文件后再编辑。'}</span>
-        <button type="button" disabled={desktopStatus.busy} onClick={() => void (desktopSession?.supportsWorkspace ? desktopSession.saveCopy() : desktopSession?.save(true))}>{desktopSession?.supportsWorkspace ? '保存本机副本' : '另存为'}</button>
-        <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件'}</button>
+        <span>{translateProfessional(desktopSession?.supportsWorkspace ? '本机库已有新版本，当前画布已保留。可保存副本，或重新从本机库打开。' : '文件已被外部修改，当前画布已保留。请另存为，或打开磁盘上的文件后再编辑。', locale)}</span>
+        <button type="button" disabled={desktopStatus.busy} onClick={() => void (desktopSession?.supportsWorkspace ? desktopSession.saveCopy() : desktopSession?.save(true))}>{translateProfessional(desktopSession?.supportsWorkspace ? '保存本机副本' : '另存为', locale)}</button>
+        <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{translateProfessional(desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件', locale)}</button>
       </div>}
       {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} onClose={() => setShowExport(false)} />}
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
@@ -1471,19 +1472,19 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       <footer>
         <span>
           {s.busy ? <span className="spinner" /> : <span className="footer-dot" />}
-          {canvasStatusLabel(operationStatusText(s.message, s.messagePresentation, locale))}
+          {translateProfessional(canvasStatusLabel(operationStatusText(s.message, s.messagePresentation, locale)), locale)}
         </span>
         <div>
-          {s.selection.length ? `${s.selection.length} 个图层已选择` : '空格拖动画布 · H 平移 · V 选择'}
+          {s.selection.length ? translateProfessional(`${s.selection.length} 个图层已选择`, locale) : translateProfessional('空格拖动画布 · H 平移 · V 选择', locale)}
           <span>·</span>
           <button onClick={() => editor.reorder('front')} disabled={!s.selection.length}>
-            置顶
+            {translateProfessional('置顶', locale)}
           </button>
           <button onClick={() => editor.reorder('back')} disabled={!s.selection.length}>
-            置底
+            {translateProfessional('置底', locale)}
           </button>
           <button onClick={() => editor.ungroup()} disabled={!s.selection.length}>
-            解除编组
+            {translateProfessional('解除编组', locale)}
           </button>
           <HelpCircle size={13} />
         </div>

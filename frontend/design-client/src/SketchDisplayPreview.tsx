@@ -5,8 +5,10 @@ import {sketchDisplayDocument} from './sketch-display'
 import {KernelSurface} from './kernel/Surface'
 import {fitBounds,zoomAt,type CanvasCamera} from './canvas-camera'
 import {apply,boxPoints,bounds,unionBounds} from './geometry'
+import { fontReplacementSummary, useProfessionalDialogText } from './professional-dialog-messages'
 
 export function SketchDisplayPreview({snapshot}:{snapshot:SketchDisplaySnapshot}){
+  const { locale, tr } = useProfessionalDialogText()
   const host=useRef<HTMLDivElement>(null),[root,setRoot]=useState(snapshot.artboards[0]||''),[document,setDocument]=useState<DesignDocument|null>(null),[error,setError]=useState(''),[ready,setReady]=useState(false)
   const [size,setSize]=useState({width:900,height:520}),[view,setView]=useState<CanvasCamera>({x:0,y:0,zoom:1})
   const navigated=useRef(false)
@@ -33,12 +35,12 @@ export function SketchDisplayPreview({snapshot}:{snapshot:SketchDisplaySnapshot}
   },[])
   return <div className="sketch-display-preview" data-testid="sketch-display-preview" data-ready={ready}>
     <div className="sketch-preview-controls">
-      <label>画板<select aria-label="Sketch 预览画板" value={root} onChange={e=>setRoot(e.target.value)}>{snapshot.artboards.length?snapshot.artboards.map(id=><option key={id} value={id}>{snapshot.document.nodes[id].name||id}</option>):<option value="">当前页面</option>}</select></label>
-      <button type="button" onClick={fit}>适合画板</button><button type="button" onClick={()=>zoom(1)}>100%</button><button type="button" onClick={()=>zoom(view.zoom/1.25)}>−</button><span>{Number((view.zoom*100).toFixed(1))}%</span><button type="button" onClick={()=>zoom(view.zoom*1.25)}>＋</button>
+      <label>{tr('画板')}<select aria-label={tr('Sketch 预览画板')} value={root} onChange={e=>setRoot(e.target.value)}>{snapshot.artboards.length?snapshot.artboards.map(id=><option key={id} value={id}>{snapshot.document.nodes[id].name||id}</option>):<option value="">{tr('当前页面')}</option>}</select></label>
+      <button type="button" onClick={fit}>{tr('适合画板')}</button><button type="button" onClick={()=>zoom(1)}>100%</button><button type="button" onClick={()=>zoom(view.zoom/1.25)}>−</button><span>{Number((view.zoom*100).toFixed(1))}%</span><button type="button" onClick={()=>zoom(view.zoom*1.25)}>＋</button>
     </div>
-    <p role="status">{error||(!document?'正在准备原生图层…':ready?'原生图层已完成绘制；拖动平移，滚轮导航，⌘/Ctrl＋滚轮缩放':'正在按文档精度绘制…')}</p>
+    <p role="status">{error?tr(error):(!document?tr('正在准备原生图层…'):ready?tr('原生图层已完成绘制；拖动平移，滚轮导航，⌘/Ctrl＋滚轮缩放'):tr('正在按文档精度绘制…'))}</p>
     {snapshot.warnings.map((warning,i)=><p className="muted" key={i}>{warning}</p>)}
-    <div ref={host} className="sketch-native-canvas" role="application" aria-label="Sketch 原生只读画布" data-camera-x={view.x} data-camera-y={view.y} data-camera-zoom={view.zoom} data-testid="sketch-native-canvas" tabIndex={-1}
+    <div ref={host} className="sketch-native-canvas" role="application" aria-label={tr('Sketch 原生只读画布')} data-camera-x={view.x} data-camera-y={view.y} data-camera-zoom={view.zoom} data-testid="sketch-native-canvas" tabIndex={-1}
       onKeyDown={e=>{e.stopPropagation();if(e.key==='0'){e.preventDefault();zoom(1)}if(e.key==='1'){e.preventDefault();fit()}}}
       onPointerDown={e=>{e.stopPropagation();if(e.button!==0&&e.button!==1)return;e.preventDefault();e.currentTarget.focus();e.currentTarget.setPointerCapture(e.pointerId);navigated.current=true;drag.current={pointer:e.pointerId,x:e.clientX,y:e.clientY,view}}}
       onPointerMove={e=>{e.stopPropagation();const a=drag.current;if(a?.pointer===e.pointerId)setView({...a.view,x:a.view.x+e.clientX-a.x,y:a.view.y+e.clientY-a.y})}}
@@ -46,6 +48,6 @@ export function SketchDisplayPreview({snapshot}:{snapshot:SketchDisplaySnapshot}
       onPointerCancel={()=>{drag.current=null}} onLostPointerCapture={()=>{drag.current=null}}>
       {document&&<KernelSurface key={`${snapshot.owner.document_id}:${snapshot.revision}:${root}`} document={document} pageId={snapshot.pageId} view={view} width={size.width} height={size.height} grid={false} onPresentation={frame=>setReady(!!frame&&frame.document===document&&frame.view.x===view.x&&frame.view.y===view.y&&frame.view.zoom===view.zoom&&frame.width===size.width&&frame.height===size.height)} onRenderFailure={()=>setReady(false)}/>}
     </div>
-    <details><summary>字体替换记录（{snapshot.sourceFonts.length}）</summary><p>{snapshot.sourceFonts.join('、')}</p></details>
+    <details><summary>{fontReplacementSummary(snapshot.sourceFonts.length, locale)}</summary><p>{snapshot.sourceFonts.join(locale === 'en' ? ', ' : '、')}</p></details>
   </div>
 }

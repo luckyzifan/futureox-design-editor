@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 import { admitSketchPreview } from '../../design-desktop/src/sketch-preview-contract.mjs'
 import type { SketchInspection } from './sketch-inspection'
 import type { GpuRenderer } from './kernel/gpu/renderer'
+import { sketchViewportDescription, useProfessionalDialogText } from './professional-dialog-messages'
 
 /** Detached native scene only; never opens or mutates the active Figma editor. */
 export function SketchReadOnlyPreview({ result, revision = 0, firstPage = true }: { result: Pick<SketchInspection, 'owner' | 'preview' | 'pageCount'>; revision?: number; firstPage?: boolean }) {
+  const { locale, tr } = useProfessionalDialogText()
   const canvas = useRef<HTMLCanvasElement>(null)
   const [status, setStatus] = useState('待实际 WebGPU 渲染')
   useEffect(() => {
@@ -47,10 +49,10 @@ export function SketchReadOnlyPreview({ result, revision = 0, firstPage = true }
     }
   }, [result, revision])
   if(result.preview.status==='display')return <SketchDisplayPreview snapshot={result.preview.snapshot}/>
-  if (result.preview.status !== 'ready') return <p role="status">不可预览：{result.preview.reason}</p>
+  if (result.preview.status !== 'ready') return <p role="status">{tr(`不可预览：${result.preview.reason}`)}</p>
   return <div>
-    <p>仅{firstPage ? '首页' : '选中页'}「{result.preview.pageName}」（{result.preview.pageId}），共 {result.pageCount} 页。视口原点 (0, 0)，512 × 384，文档坐标 1:1；视口外内容不显示，未缩放适配整页。</p>
-    <p role="status">{status}</p>
-    <canvas ref={canvas} width={512} height={384} style={{ width: 512, height: 384, maxWidth: 'none' }} aria-label="Sketch 当前选页只读视口" />
+    <p>{sketchViewportDescription(firstPage, result.preview.pageName, result.preview.pageId, result.pageCount, locale)}</p>
+    <p role="status">{tr(status)}</p>
+    <canvas ref={canvas} width={512} height={384} style={{ width: 512, height: 384, maxWidth: 'none' }} aria-label={tr('Sketch 当前选页只读视口')} />
   </div>
 }

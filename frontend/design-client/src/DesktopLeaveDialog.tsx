@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react'
 import type { LeaveDecision, LeaveReason } from './desktop-session'
+import { leaveBody, useProfessionalDialogText } from './professional-dialog-messages'
 
 export function DesktopLeaveDialog({ name, reason, onDecision }: {
   name: string
   reason: LeaveReason
   onDecision: (decision: LeaveDecision) => void
 }) {
+  const { tr, locale } = useProfessionalDialogText()
   const cancel = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const previous = document.activeElement
@@ -24,12 +26,12 @@ export function DesktopLeaveDialog({ name, reason, onDecision }: {
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }}>
-      <h2 id="desktop-unsaved-title">保存当前设计的修改？</h2>
-      <p>「{name}」有未保存到文件的修改。{reason === 'close' ? '关闭窗口' : '离开当前设计'}前可以先保存。</p>
+      <h2 id="desktop-unsaved-title">{tr('保存当前设计的修改？')}</h2>
+      <p>{leaveBody(name, reason, locale)}</p>
       <div className="remote-actions">
-        <button type="button" ref={cancel} onClick={() => onDecision('cancel')}>取消</button>
-        <button type="button" onClick={() => onDecision('discard')}>不保存</button>
-        <button type="button" className="primary" onClick={() => onDecision('save')}>保存</button>
+        <button type="button" ref={cancel} onClick={() => onDecision('cancel')}>{tr('取消')}</button>
+        <button type="button" onClick={() => onDecision('discard')}>{tr('不保存')}</button>
+        <button type="button" className="primary" onClick={() => onDecision('save')}>{tr('保存')}</button>
       </div>
     </section>
   </div>

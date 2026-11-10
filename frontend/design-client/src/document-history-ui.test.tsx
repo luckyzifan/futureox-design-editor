@@ -18,7 +18,7 @@ function fixture(unsaved = false, beforeLocalRestore?: () => () => boolean) {
   }
   mock.api = api
   const slots: any[] = []; let cursor = 0
-  const hooks = { useState(initial: any) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], (v: any) => slots[i] = v] }, useRef(initial: any) { const i = cursor++; return slots[i] ??= { current: initial } }, useMemo(fn: any) { cursor++; return fn() }, useEffect() { cursor++ } }
+  const hooks = { useState(initial: any) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], (v: any) => slots[i] = v] }, useRef(initial: any) { const i = cursor++; return slots[i] ??= { current: initial } }, useMemo(fn: any) { cursor++; return fn() }, useEffect() { cursor++ }, useSyncExternalStore(_subscribe: any, snapshot: () => any) { cursor++; return snapshot() } }
   const onClose = vi.fn(), onLocalAdopt = vi.fn(async () => true)
   const render = () => { cursor = 0; const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, old = internals.H; internals.H = hooks; try { return DocumentHistoryDialog({ documentId: doc.id, documentName: doc.name, unsaved, beforeLocalRestore, onClose, onLocalAdopt }) } finally { internals.H = old } }
   const button = (name: string) => find(render(), v => v.type === 'button' && (v.props['aria-label'] === name || text(v) === name))
