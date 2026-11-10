@@ -81,6 +81,58 @@ fn append_batch(s:&Session,batch:&[(usize,usize)],cancel:&AtomicBool,context:&pr
 pub(super) fn build(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool) -> Result<(Document, String, Vec<String>)> {
     build_inner(s,layout,cancel,false).map(|(doc, id, notes)| (doc.into_document(), id, notes))
 }
+/// Run `map` on at most `slots` workers and hand each result to `accept` in
+/// input order. A finished later item refills a free slot while an older item
+/// is still running; `accept` still waits for that older item. `admit` can
+/// stop the refill. A worker panic becomes `panic` instead of an unlocked join.
+fn for_each_ordered<T, R, E, F, A, G, P>(items: Vec<T>, slots: usize, map: F, mut accept: A, mut admit: G, panic: P) -> std::result::Result<(), E>
+where
+    T: Send, R: Send, E: Send,
+    F: Fn(T) -> std::result::Result<R, E> + Sync,
+    A: FnMut(R) -> std::result::Result<(), E>,
+    G: FnMut() -> std::result::Result<(), E>,
+    P: Fn() -> E,
+{
+    if items.is_empty() { return Ok(()); }
+    let slots = slots.max(1);
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let map = &map;
+    std::thread::scope(|scope| -> std::result::Result<(), E> {
+        let mut rest = items.into_iter();
+        let mut inflight: std::collections::VecDeque<std::thread::ScopedJoinHandle<std::result::Result<R, E>>> = std::collections::VecDeque::new();
+        loop {
+            while inflight.iter().filter(|job| !job.is_finished()).count() < slots {
+                let Some(item) = rest.next() else { break };
+                admit()?;
+                let tx = tx.clone();
+                inflight.push_back(scope.spawn(move || {
+                    struct Notify(std::sync::mpsc::Sender<()>);
+                    impl Drop for Notify { fn drop(&mut self) { let _ = self.0.send(()); } }
+                    let _notify = Notify(tx);
+                    map(item)
+                }));
+            }
+            let Some(front) = inflight.front() else { break };
+            if !front.is_finished() {
+                admit()?;
+                match rx.recv_timeout(std::time::Duration::from_millis(50)) {
+                    Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {}
+                }
+                if !inflight.front().is_some_and(|job| job.is_finished()) { continue; }
+            }
+            let finished = inflight.pop_front().expect("ordered conversion front");
+            admit()?;
+            match finished.join() {
+                Ok(Ok(value)) => accept(value)?,
+                Ok(Err(error)) => return Err(error),
+                Err(_) => return Err(panic()),
+            }
+        }
+        Ok(())
+    })
+}
+
 fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool, render_only:bool) -> Result<(ValidatedSource, String, Vec<String>)> {
     if layout.revision != s.revision { return Err(issue("Source canvas layout is stale")); }
     let context = projection::SketchContext::new(s)?;
@@ -98,10 +150,10 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     }
     if !batch.is_empty(){batches.push(batch);}
     let mut geometry_pool=futureox_design_kernel::vector_geometry::GeometryPool::default();
-    // At most two independent CPU conversions. Refill a completed slot after
-    // merging its result in source order; a slow neighbouring batch no longer
-    // leaves the other conversion slot idle for the rest of a fixed pair.
-    let convert=|batch:&Vec<(usize,usize)>| {
+    // At most two independent CPU conversions. Results merge in source order,
+    // but a slow oldest batch must not leave the other slot idle: any finished
+    // batch refills that slot before the oldest one is joined.
+    let convert=|batch:&[(usize,usize)]| {
         if batch.len()==1 {
             // Singleton batches share the material-viewer cache. A full-source
             // snapshot that revisits one already converted root does not parse
@@ -117,24 +169,13 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
         append_batch(s,batch,cancel,&context,&mut document,&mut notes,render_only)?;
         Ok::<_,BackendError>((document.ok_or_else(||issue("Empty source batch"))?,notes))
     };
-    std::thread::scope(|scope| -> Result<()> {
-        let mut remaining=batches.iter();
-        let mut pending=std::collections::VecDeque::new();
-        for batch in remaining.by_ref().take(2) {
-            let convert=&convert;pending.push_back(scope.spawn(move||convert(batch)));
-        }
-        while let Some(next)=pending.pop_front() {
-            check_cancel(cancel).map_err(issue)?;
-            let (mut document,notes)=next.join().unwrap_or_else(|_|Err(issue("Source conversion worker failed")))?;
-            warnings.extend(notes);
-            for node in document.nodes.values_mut(){if let Some(geometry)=&mut node.vector_geometry{geometry_pool.intern(geometry);}}
-            if let Some(full)=&mut full {scene::merge_window(full,document)?;} else {full=Some(document);}
-            if let Some(batch)=remaining.next() {
-                let convert=&convert;pending.push_back(scope.spawn(move||convert(batch)));
-            }
-        }
+    for_each_ordered(batches, 2, |batch| convert(&batch), |result| {
+        let (mut document, notes) = result;
+        warnings.extend(notes);
+        for node in document.nodes.values_mut(){if let Some(geometry)=&mut node.vector_geometry{geometry_pool.intern(geometry);}}
+        if let Some(full)=&mut full {scene::merge_window(full,document)?;} else {full=Some(document);}
         Ok(())
-    })?;
+    }, || check_cancel(cancel).map_err(issue), || issue("Source conversion worker failed"))?;
     let document = full.ok_or_else(||issue("The source has no drawable canvas objects"))?;
     let (document,id)=place_materials(document,&s.owner.document_id,&s.name,layout)?;
     Ok((document,id,warnings.into_iter().collect()))
@@ -316,4 +357,59 @@ pub(super) fn snapshot_descriptor(snapshot:&Snapshot,owner:&Owner)->Value {
     json!({"owner":owner,"revision":snapshot.revision,"path":snapshot.path,"bytes":snapshot.store.bytes,"store":snapshot.store,
         "scope":snapshot.scope,"pageId":snapshot.page_id,"stageId":snapshot.stage_id,"nodes":snapshot.nodes,"roots":snapshot.roots,
         "bounds":snapshot.bounds,"warnings":snapshot.warnings,"rasterProfile":snapshot.raster_profile,"colorManaged":snapshot.color_managed})
+}
+
+#[cfg(test)]
+mod ordered_conversion_tests {
+    use super::for_each_ordered;
+    use std::sync::{Arc, Condvar, Mutex, atomic::{AtomicUsize, Ordering}};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_slow_oldest_batch_refills_the_second_slot_and_merges_in_order() {
+        let started = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let accepted = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let current = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let started_job = started.clone();
+        let accepted_job = accepted.clone();
+        let current_job = current.clone();
+        let peak_job = peak.clone();
+        let release_job = release.clone();
+        let worker = std::thread::spawn(move || {
+            for_each_ordered(vec![0u8, 1, 2, 3], 2, move |item| {
+                started_job.lock().expect("start list").push(item);
+                let now = current_job.fetch_add(1, Ordering::SeqCst) + 1;
+                peak_job.fetch_max(now, Ordering::SeqCst);
+                if item == 0 {
+                    let (lock, cv) = &*release_job;
+                    let mut go = lock.lock().expect("release");
+                    while !*go { go = cv.wait(go).expect("release wait"); }
+                }
+                current_job.fetch_sub(1, Ordering::SeqCst);
+                Ok::<_, String>(item)
+            }, |item| {
+                accepted_job.lock().expect("accept list").push(item);
+                Ok(())
+            }, || Ok(()), || "worker panicked".into())
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut saw_refilled = false;
+        while Instant::now() < deadline {
+            if started.lock().expect("start list").contains(&2) { saw_refilled = true; break; }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        {
+            let (lock, cv) = &*release;
+            *lock.lock().expect("release") = true;
+            cv.notify_all();
+        }
+        let result = worker.join().expect("scheduler thread");
+        assert!(saw_refilled, "second slot stayed idle behind the oldest batch; started={:?}", started.lock().unwrap());
+        result.expect("ordered conversion");
+        assert_eq!(*accepted.lock().unwrap(), vec![0, 1, 2, 3]);
+        let peak = peak.load(Ordering::SeqCst);
+        assert!(peak <= 2 && peak >= 2, "conversion slots peaked at {peak}");
+    }
 }

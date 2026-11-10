@@ -7,7 +7,7 @@ import { Editor } from './engine'
 import { blank, type DesignDocument, type Point } from './model'
 import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
-import {deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
+import {deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,thumbnailScale,visibleMaterialWindow,smallerMaterialRequest} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged, subscribePendingEdits } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
@@ -60,7 +60,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const [focusedMaterial,setFocusedMaterial]=useState<number>()
   const [detailIndices,setDetailIndices]=useState<number[]>([])
   const demand=useRef(''), demandGeneration=useRef(0),detailRunning=useRef(false),declinedDemand=useRef('')
-  const viewportDemand=useRef(false),zoomAnchor=useRef<Point|undefined>(undefined)
+  const viewportDemand=useRef(false)
   const requestedIndices=useRef<number[]>([]),preparingKeys=useRef<readonly string[]>([])
   const reviewedScope=useRef<{token:string;at:number}|undefined>(undefined)
   const publishedScopes=useRef<{revision:number; keys:readonly string[]}[]>([])
@@ -347,9 +347,16 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     const viewport=viewportDemand.current&&host?{x:-view.x/view.zoom,y:-view.y/view.zoom,width:host.clientWidth/view.zoom,height:host.clientHeight/view.zoom}:undefined
     const previous=nativePresentedToken.current===current?.token?current?.materialKeys:undefined
     const keys=materialScope(items,detailIndices,previous,viewport)
-    const navigationWindow=viewport&&focusedMaterial===undefined?visibleMaterialWindow(items,detailIndices,viewport):undefined
+    // The full scope is the refine that has to finish. A two-root snapshot
+    // ahead of it is another exclusive scene build, then its compile holds the
+    // only preparation process until a cancellation point. The multi-root
+    // build does not read those singleton cache entries, so the subset is
+    // discarded work on the first-entry path. A warm recall never does it.
+    // The optional CPU navigation raster of this same window starts as the
+    // GPU refine starts and competes for the cores that compile needs. CPU-only
+    // execution still asks for that raster; there is no GPU refine to contest.
+    const navigationWindow=renderExecutionPolicy.cpuOnly&&viewport&&focusedMaterial===undefined?visibleMaterialWindow(items,detailIndices,viewport):undefined
     const selected=status
-    const focal=viewport&&focusedMaterial===undefined?firstVisibleMaterialKeys(items,detailIndices,viewport,current?.materialKeys,zoomAnchor.current):undefined
     void run(async()=>{
       detailRunning.current=true
       try{
@@ -377,17 +384,6 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
           }
         }
         preparingKeys.current=keys
-        if(focal){
-          const first=await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:focal}).catch(()=>undefined)
-          if(!alive.current||activeRef.current||!sameSource(selected,statusRef.current))return
-          if(first?.status==='ok'){
-            lastMaterialToken.current=first.token
-            if(first.materialKeys?.join(',')!==focal.join(',')||first.roots!==focal.length)throw Error('素材精修范围不匹配')
-            if(demandGeneration.current!==generation)return
-            const subset={...first,viewportSubset:true}
-            nativeSnapshotRef.current=subset;setNativeSnapshot(subset)
-          }else if(demandGeneration.current!==generation||queuedLoad.current)return
-        }
         const frame=admitted(await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:keys,...(navigationWindow?{navigationWindow}:{})}))
         if(!alive.current || activeRef.current || !sameSource(selected,statusRef.current))return
         // A successful host publication revokes the previous token even if
@@ -702,7 +698,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     pickMaterial:browsing?pickMaterial:undefined,
     navigatingMaterials:overview&&!!opening&&!!nativePresentedToken.current&&viewportDemand.current&&(!busy||detailRunning.current),
     prepareSourceDisplay:!active&&openingGeneration!==undefined&&/\.sketch$/i.test(initialFile?.name??''),
-    openingPreview:!active?opening:undefined,openingPage:sourcePage||undefined,focusedMaterial,onDetail:requestViewportDetail,onViewport:(box,anchor,density)=>{zoomAnchor.current=anchor;quick.setViewport(box,density,anchor)},hideNative:!!opening&&(showOpening||missingScope&&!shared),
+    openingPreview:!active?opening:undefined,openingPage:sourcePage||undefined,focusedMaterial,onDetail:requestViewportDetail,onViewport:(box,anchor,density)=>{quick.setViewport(box,density,anchor)},hideNative:!!opening&&(showOpening||missingScope&&!shared),
     parkNative:!!opening&&!!nativeSnapshot?.materialKeys&&(!detailIndices.length||missingScope||nativeSnapshot.token!==lastMaterialToken.current),pageBoxes:!active?scopedBoxes:undefined,openPreviewPoint,
     onSourcePresented:view=>{
       const v=editor.effectiveView(),keys=nativeSnapshotRef.current?.materialKeys

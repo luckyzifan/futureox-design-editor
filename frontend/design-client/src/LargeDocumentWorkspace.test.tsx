@@ -454,3 +454,40 @@ test('a failed open rebinds the host document so refine can show a native frame'
  expect(binding.source!.hideNative).toBe(false)
  expect(document.querySelector('.source-row-name')!.textContent).toBe('140x140pt 30个（黑色）')
 })
+
+test('a dense first entry builds the full scope once and does not start a CPU navigation raster',async()=>{
+ const owner={documentId:'source-dense',sessionEpoch:1}
+ const status={owner,revision:0,name:'topology.sketch',format:'sketch',dirty:false,undoCount:0,redoCount:0,indexedObjects:12,expandedBytes:24*1024*1024,maxExpandedBytes:1e12}
+ const bounds={x:0,y:0,width:800,height:200}
+ const placed=(i:number)=>({x:i*60,y:10,width:42,height:70})
+ const items=Array.from({length:12},(_,i)=>({id:'m'+i,name:'m'+i,kind:'artboard',pageId:'p',pageName:'p',source:placed(i),placed:placed(i),key:'1:'+i,bytes:2*1024*1024}))
+ const indices=items.map((_,i)=>i)
+ let serial=0
+ const canvasSnapshot=vi.fn(async(request:{materialKeys?:string[];navigationWindow?:unknown})=>({
+  status:'ok' as const,owner,revision:0,token:'scope-'+(++serial),materialKeys:request.materialKeys,bytes:123,
+  nodes:request.materialKeys?.length??1,roots:request.materialKeys?.length||1,pageId:'p',stageId:'s',bounds,warnings:[],rasterProfile:'figma' as const,colorManaged:true,
+ }))
+ let finish!:(value:unknown)=>void
+ const bridge={cancel:vi.fn(async()=>({status:'ok'})),open:()=>new Promise(resolve=>{finish=resolve}),openingView:async()=>({status:'ok',phase:'available',owner,bounds,revision:0,total:items.length,
+  items:items.map((item,i)=>({...item,key:'preview-'+i})),pages:[['p','p',items.length]],offset:0,nextOffset:items.length,cursor:items.length,
+  images:items.map((_,i)=>({index:i,png:'a'})),moreImages:false,finished:true,rendered:0,cacheHit:true}),
+  canvasLayout:async()=>({status:'ok',items,total:items.length,hasMore:false}),canvasSnapshot} as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=><div ref={s.canvas}>{workbench(s)}</div>} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(document.querySelectorAll('.source-page-entry')).toHaveLength(items.length)
+ await act(async()=>finish({status:'ok',...status}))
+ expect(canvasSnapshot).not.toHaveBeenCalled()
+ const host=binding.source!.canvas.current!
+ Object.defineProperty(host,'clientWidth',{configurable:true,value:800})
+ Object.defineProperty(host,'clientHeight',{configurable:true,value:600})
+ binding.editor!.set({view:{x:0,y:0,zoom:1}})
+ await act(async()=>binding.source!.onDetail!(indices))
+  const detail=canvasSnapshot.mock.calls.map(([request])=>request)
+ expect(detail).toHaveLength(1)
+ expect(detail[0].materialKeys).toEqual([...items.map(item=>item.key)].sort())
+ expect(detail[0].navigationWindow).toBeUndefined()
+ expect(binding.source!.nativeCanvas!.snapshot.roots).toBe(items.length)
+ expect(binding.source!.nativeCanvas!.snapshot.viewportSubset).toBeUndefined()
+ await act(async()=>binding.source!.onDetail!([]))
+ await act(async()=>binding.source!.onDetail!(indices))
+ expect(canvasSnapshot).toHaveBeenCalledTimes(1)
+})

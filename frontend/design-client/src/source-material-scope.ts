@@ -114,8 +114,10 @@ export function visibleMaterialWindow(items:readonly SourceCanvasItem[],indices:
   if(right>left&&bottom>top)return {x:left,y:top,width:right-left,height:bottom-top}
 }
 
-/** While a large new visible set is being prepared, start the bounded group
- * under the user's wheel. Remaining boards continue showing their own pixels. */
+/** Roots nearest the wheel on a large cold viewport. Publishing them as their
+ * own snapshot blocks the full scope on the same exclusive host call, and the
+ * multi-root build does not reuse that singleton cache. Callers keep the
+ * catalogue pixels until the full scope itself is ready. */
 export function firstVisibleMaterialKeys(items:readonly SourceCanvasItem[],indices:readonly number[],viewport:SourceCanvasBox,
   active:readonly string[]|undefined,anchor?:{x:number;y:number}){
   if(indices.length<8)return
