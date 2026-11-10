@@ -66,6 +66,22 @@ describe('Rust workspace persistence session',()=>{
     expect(f.store.commit).toHaveBeenCalledTimes(1)
     expect(JSON.parse(f.rows.get(doc.id)!.documentJson).nodes[n.id].transform[4]).toBe(300)
   })
+  it('a full library reports the write was not stored and accepts a later snapshot', async () => {
+    vi.useFakeTimers()
+    const f = fixture(); await f.session.start(); await f.session.save()
+    const id = f.editor.state.doc.id
+    const stored = f.rows.get(id)!.revision
+    vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'WORKSPACE_STORAGE_FULL', message: 'full' })
+    f.rename('Not written')
+    await vi.advanceTimersByTimeAsync(650)
+    expect(f.session.dirty).toBe(true)
+    expect(f.rows.get(id)!.revision).toBe(stored)
+    expect(f.session.status.error).toBe('full')
+    f.rename('After space returns')
+    await vi.advanceTimersByTimeAsync(650)
+    expect(f.rows.get(id)!.name).toBe('After space returns')
+    expect(f.session.dirty).toBe(false)
+  })
   it.each(['BUSY', 'WORKSPACE_BUSY'])('autosaves a property undo after %s using the exact pending receipt', async code => {
     vi.useFakeTimers()
     const doc = blank('Property undo'), text = node('text', 75.85958862304688, 0, 120, 30)

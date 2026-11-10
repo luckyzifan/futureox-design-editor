@@ -97,4 +97,15 @@ test('backend errors preserve conflict status without leaking local paths', () =
     ),
     false,
   )
+  const full = resultError({ code: 'WORKSPACE_STORAGE_FULL', message: '/private/workspace.sqlite3' })
+  const migration = resultError({ code: 'WORKSPACE_MIGRATION', message: '/private/workspace.sqlite3' })
+  const source = resultError({ code: 'SOURCE_WRITE_FAILED', message: '/private/original.sketch' })
+  assert.equal(full.status, 'error')
+  assert.notEqual(full.message, migration.message)
+  assert.notEqual(full.message, source.message)
+  for (const item of [full, migration, source]) {
+    assert.equal(item.message.includes('/private'), false)
+    assert.equal(item.message.includes('saved'), false)
+    assert.equal(item.message.includes('没有写入') || item.message.includes('未改动'), true)
+  }
 })

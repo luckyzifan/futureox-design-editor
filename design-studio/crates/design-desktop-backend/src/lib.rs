@@ -125,6 +125,8 @@ impl Backend {
             "WORKSPACE_FUTURE_SCHEMA" => "WORKSPACE_FUTURE_SCHEMA",
             "WORKSPACE_CORRUPT" => "WORKSPACE_CORRUPT",
             "WORKSPACE_FULL" => "WORKSPACE_FULL",
+            "WORKSPACE_STORAGE_FULL" => "WORKSPACE_STORAGE_FULL",
+            "WORKSPACE_MIGRATION" => "WORKSPACE_MIGRATION",
             _ => "WORKSPACE_ERROR",
         });
         self

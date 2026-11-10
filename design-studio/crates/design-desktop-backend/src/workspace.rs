@@ -21,24 +21,51 @@ const HISTORY_PAGE: i64 = 1000;
 // Optional, store-local metadata only. Never retain document snapshot BLOBs.
 const MAX_HEADS_CACHE_BYTES: usize = 4 * 1024 * 1024;
 
-fn db(error: sqlx::Error) -> BackendError {
+fn sqlite_primary(error: &sqlx::Error) -> Option<i32> {
     // SQLite extended result codes retain the primary code in the low byte.
+    error.as_database_error()
+        .and_then(|e| e.code())
+        .and_then(|code| code.parse::<i32>().ok())
+        .map(|code| code & 0xff)
+}
+fn db(error: sqlx::Error) -> BackendError {
     // Contention is retryable; preserve the same mutationId after an uncertain
     // response so a committed receipt is replayed instead of duplicating edits.
-    let busy = matches!(&error, sqlx::Error::PoolTimedOut)
-        || error
-            .as_database_error()
-            .and_then(|e| e.code())
-            .and_then(|code| code.parse::<i32>().ok())
-            .is_some_and(|code| matches!(code & 0xff, 5 | 6));
-    BackendError::new(
-        if busy {
-            "WORKSPACE_BUSY"
-        } else {
-            "WORKSPACE_ERROR"
-        },
-        format!("Local document transaction failed: {error}"),
-    )
+    // SQLITE_FULL proves the statement rolled back, so it is not that uncertainty.
+    let primary = sqlite_primary(&error);
+    let (code, message) = if matches!(&error, sqlx::Error::PoolTimedOut) || matches!(primary, Some(5 | 6))
+    {
+        (
+            "WORKSPACE_BUSY",
+            format!("Local document transaction failed: {error}"),
+        )
+    } else if primary == Some(13) {
+        (
+            "WORKSPACE_STORAGE_FULL",
+            format!("Local document storage is full; this change was not written and the last committed revision is unchanged: {error}"),
+        )
+    } else {
+        (
+            "WORKSPACE_ERROR",
+            format!("Local document transaction failed: {error}"),
+        )
+    };
+    BackendError::new(code, message)
+}
+fn migration_failure(error: BackendError) -> BackendError {
+    match error.code {
+        "WORKSPACE_STORAGE_FULL" | "WORKSPACE_BUSY" | "WORKSPACE_FUTURE_SCHEMA" | "WORKSPACE_MIGRATION" => error,
+        _ => BackendError::new(
+            "WORKSPACE_MIGRATION",
+            format!(
+                "Workspace upgrade did not finish; the previous schema and documents are unchanged. {}",
+                error.message
+            ),
+        ),
+    }
+}
+fn migration_step(error: sqlx::Error) -> BackendError {
+    migration_failure(db(error))
 }
 fn invalid(message: &str) -> BackendError {
     BackendError::new("INVALID_REQUEST", message)
@@ -406,12 +433,12 @@ impl WorkspaceStore {
         if Self::inspect(pool).await? == SCHEMA_VERSION {
             return Ok(());
         }
-        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(db)?;
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(migration_step)?;
         // Recheck under the writer lock: a second process may have just migrated.
         let version: i64 = sqlx::query_scalar("PRAGMA user_version")
             .fetch_one(&mut *tx)
             .await
-            .map_err(db)?;
+            .map_err(migration_step)?;
         if version == 0 {
             for sql in [
                 "CREATE TABLE documents(id TEXT PRIMARY KEY,head_revision INTEGER NOT NULL CHECK(head_revision>0))",
@@ -419,7 +446,7 @@ impl WorkspaceStore {
                 "CREATE TABLE mutations(mutation_id TEXT PRIMARY KEY,request_hash TEXT NOT NULL CHECK(length(request_hash)=64),document_id TEXT NOT NULL,revision INTEGER NOT NULL,FOREIGN KEY(document_id,revision) REFERENCES revisions(document_id,revision))",
                 "PRAGMA user_version=1",
             ] {
-                sqlx::query(sql).execute(&mut *tx).await.map_err(db)?;
+                sqlx::query(sql).execute(&mut *tx).await.map_err(migration_step)?;
             }
         } else if !(1..=SCHEMA_VERSION).contains(&version) {
             return Err(BackendError::new(
@@ -434,35 +461,35 @@ impl WorkspaceStore {
                 "CREATE TABLE revision_assets(document_id TEXT NOT NULL,revision INTEGER NOT NULL,asset_hash TEXT NOT NULL REFERENCES assets(hash),PRIMARY KEY(document_id,revision,asset_hash),FOREIGN KEY(document_id,revision) REFERENCES revisions(document_id,revision))",
                 "PRAGMA user_version=2",
             ] {
-                sqlx::query(sql).execute(&mut *tx).await.map_err(db)?;
+                sqlx::query(sql).execute(&mut *tx).await.map_err(migration_step)?;
             }
         }
         if version < 3 {
-            sqlx::query("CREATE TABLE local_sessions(id TEXT PRIMARY KEY,document_id TEXT NOT NULL,payload BLOB NOT NULL CHECK(length(payload)<=262144),updated_at INTEGER NOT NULL)").execute(&mut *tx).await.map_err(db)?;
+            sqlx::query("CREATE TABLE local_sessions(id TEXT PRIMARY KEY,document_id TEXT NOT NULL,payload BLOB NOT NULL CHECK(length(payload)<=262144),updated_at INTEGER NOT NULL)").execute(&mut *tx).await.map_err(migration_step)?;
             sqlx::query(
                 "CREATE INDEX local_sessions_document ON local_sessions(document_id,updated_at)",
             )
             .execute(&mut *tx)
             .await
-            .map_err(db)?;
+            .map_err(migration_step)?;
             sqlx::query("PRAGMA user_version=3")
                 .execute(&mut *tx)
                 .await
-                .map_err(db)?;
+                .map_err(migration_step)?;
         }
         if version < 4 {
-            crate::automation::migrate(&mut tx).await?;
+            crate::automation::migrate(&mut tx).await.map_err(migration_failure)?;
             sqlx::query("PRAGMA user_version=4")
                 .execute(&mut *tx)
                 .await
-                .map_err(db)?;
+                .map_err(migration_step)?;
         }
         if version < 5 {
-            crate::automation::migrate_edits(&mut tx).await?;
+            crate::automation::migrate_edits(&mut tx).await.map_err(migration_failure)?;
             sqlx::query("PRAGMA user_version=5")
                 .execute(&mut *tx)
                 .await
-                .map_err(db)?;
+                .map_err(migration_step)?;
         }
         if version < 6 {
             for sql in [
@@ -476,10 +503,10 @@ impl WorkspaceStore {
                 "ALTER TABLE revision_assets_v6 RENAME TO revision_assets",
                 "PRAGMA user_version=6",
             ] {
-                sqlx::query(sql).execute(&mut *tx).await.map_err(db)?;
+                sqlx::query(sql).execute(&mut *tx).await.map_err(migration_step)?;
             }
         }
-        tx.commit().await.map_err(db)
+        tx.commit().await.map_err(migration_step)
     }
     pub(crate) fn automation_pool(&self) -> &SqlitePool {
         &self.pool
@@ -966,6 +993,109 @@ impl WorkspaceStore {
             .await
             .map_err(db)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod autosave_recovery_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const ID: &str = "10000000-0000-0000-0000-0000000000a1";
+
+    fn document(name: &str) -> Value {
+        json!({
+            "schemaVersion": 6,
+            "id": ID,
+            "name": name,
+            "pages": [{
+                "id": "10000000-0000-0000-0000-0000000000a2",
+                "name": "Page",
+                "background": "#ffffff",
+                "children": []
+            }],
+            "nodes": {}
+        })
+    }
+
+    #[tokio::test]
+    async fn autosave_recovery_sqlite_storage_full_keeps_last_commit() {
+        static N: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "futureox-sqlite-full-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let db = root.join("workspace.sqlite3");
+        let store = WorkspaceStore::open(&db).await.unwrap();
+        let saved = store.commit(&document("consistent"), None, "create-full").await.unwrap();
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE page_fill(payload BLOB NOT NULL)")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let mode: String = sqlx::query_scalar("PRAGMA journal_mode=DELETE")
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        let pages_before: i64 = sqlx::query_scalar("PRAGMA page_count")
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        // Clamp to the current file. Further page allocation is SQLITE_FULL.
+        let applied: i64 = sqlx::query_scalar("PRAGMA max_page_count=1")
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        let mut fills = 0u32;
+        let mut fill_error = String::new();
+        loop {
+            match sqlx::query("INSERT INTO page_fill(payload) VALUES (zeroblob(32))")
+                .execute(&store.pool)
+                .await
+            {
+                Ok(_) => {
+                    fills += 1;
+                    if fills > 20000 {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    fill_error = error.to_string();
+                    break;
+                }
+            }
+        }
+        let mut bulky = document("must-not-commit");
+        bulky["pages"][0]["name"] = json!("p".repeat(9000));
+        let error = store
+            .commit(&bulky, Some(saved.revision), "edit-full")
+            .await;
+        eprintln!(
+            "MEASURE sqlite_storage_full journal_mode={mode} pages_before={pages_before} max_page_count={applied} fill_rows={fills} fill_error={fill_error} status={}",
+            error.as_ref().map(|entry| format!("ok revision={}", entry.revision)).unwrap_or_else(|error| format!("error {}: {}", error.code, error.message))
+        );
+        let error = error.expect_err("a full database must not report the new revision as saved");
+        assert_eq!(error.code, "WORKSPACE_STORAGE_FULL");
+        assert_ne!(error.code, "WORKSPACE_MIGRATION");
+        assert!(!error.message.contains("saved"));
+        assert!(error.message.contains("not written") || error.message.contains("unchanged"));
+        let current = store.read(ID, None).await.unwrap();
+        assert_eq!(current.entry.revision, saved.revision);
+        assert_eq!(current.entry.hash, saved.hash);
+        assert_eq!(current.document["name"], "consistent");
+        store.close().await;
+        let reopened = WorkspaceStore::open(&db).await.unwrap();
+        let current = reopened.read(ID, None).await.unwrap();
+        assert_eq!(current.entry.revision, saved.revision);
+        assert_eq!(current.document, document("consistent"));
+        reopened.close().await;
+        let _ = fs::remove_dir_all(&root);
     }
 }
 

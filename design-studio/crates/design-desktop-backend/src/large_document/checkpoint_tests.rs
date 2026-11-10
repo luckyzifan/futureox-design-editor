@@ -358,3 +358,150 @@ fn published_export_keeps_success_and_saved_marker_warning_if_checkpoint_grows_o
     assert_eq!(recovered.revision, 10);
     assert_eq!(recovered.saved_revision, 0);
 }
+
+fn source_spool_bytes(root: &Path) -> Vec<u64> {
+    let mut sizes = Vec::new();
+    let Ok(entries) = fs::read_dir(root) else {
+        return sizes;
+    };
+    for entry in entries.flatten() {
+        let source = entry.path().join("source");
+        if let Ok(meta) = fs::symlink_metadata(&source) {
+            if meta.is_file() && !meta.file_type().is_symlink() {
+                sizes.push(meta.len());
+            }
+        }
+    }
+    sizes.sort_unstable();
+    sizes
+}
+
+fn close_session(f: &Fixture) {
+    f.sessions
+        .dispatch("large.close", f.request(json!({})), &AtomicBool::new(false))
+        .unwrap();
+}
+
+#[test]
+fn autosave_recovery_reopen_skips_second_copy_when_allocation_is_blocked() {
+    let f = Fixture::new();
+    let original = fs::read(&f.source).unwrap();
+    let journal_dir = f.sessions.current.lock().unwrap().as_ref().unwrap().directory.clone();
+    let journal_before = fs::read(journal_dir.join("journal.json")).unwrap();
+    let copies_before = source_spool_bytes(&f.root.join("cache"));
+    close_session(&f);
+    let blocker = f.root.join("cache").join("reopen-2");
+    fs::write(&blocker, b"not-a-session-directory").unwrap();
+    let opened = f.sessions.open(
+        Open {
+            opening_preview: false,
+            path: f.source.clone(),
+            document_id: "reopen".into(),
+            session_epoch: 2,
+        },
+        &AtomicBool::new(false),
+    );
+    let copies_after = source_spool_bytes(&f.root.join("cache"));
+    eprintln!(
+        "MEASURE reopen_blocked_allocation source_bytes={} journal_bytes={} copies_before={copies_before:?} copies_after={copies_after:?} blocker_bytes={} original_bytes={} status={}",
+        original.len(),
+        journal_before.len(),
+        fs::metadata(&blocker).unwrap().len(),
+        fs::read(&f.source).unwrap().len(),
+        opened.as_ref().map(|value| format!("ok revision={}", value["revision"])).unwrap_or_else(|error| format!("error {}: {}", error.code, error.message))
+    );
+    let opened = opened.expect("last consistent session reopens without a second source copy");
+    assert_eq!(opened["revision"], 0);
+    assert!(opened.get("saveWarning").is_none());
+    assert_eq!(fs::read(&f.source).unwrap(), original);
+    let journal_after: Value = serde_json::from_slice(&fs::read(journal_dir.join("journal.json")).unwrap()).unwrap();
+    let journal_before: Value = serde_json::from_slice(&journal_before).unwrap();
+    assert_eq!(journal_after["sourceHash"], journal_before["sourceHash"]);
+    assert_eq!(journal_after["revision"], journal_before["revision"]);
+    assert_eq!(journal_after["state"], journal_before["state"]);
+    assert_eq!(journal_after["owner"]["documentId"], "reopen");
+    assert_eq!(fs::read(&blocker).unwrap(), b"not-a-session-directory");
+    assert_eq!(copies_after, copies_before);
+    assert_eq!(copies_after.len(), 1);
+    assert_eq!(copies_after[0], original.len() as u64);
+}
+
+#[test]
+fn autosave_recovery_checkpoint_refresh_failure_reopens_last_journal() {
+    let f = Fixture::new();
+    let original = fs::read(&f.source).unwrap();
+    let journal_dir = f.sessions.current.lock().unwrap().as_ref().unwrap().directory.clone();
+    close_session(&f);
+    let journal_before = fs::read(journal_dir.join("journal.json")).unwrap();
+    fs::create_dir(journal_dir.join("journal.next")).unwrap();
+    let opened = f.sessions.open(
+        Open {
+            opening_preview: false,
+            path: f.source.clone(),
+            document_id: "refresh".into(),
+            session_epoch: 2,
+        },
+        &AtomicBool::new(false),
+    );
+    eprintln!(
+        "MEASURE checkpoint_refresh journal_bytes={} original_bytes={} journal_next_is_dir={} status={}",
+        journal_before.len(),
+        original.len(),
+        journal_dir.join("journal.next").is_dir(),
+        opened.as_ref().map(|value| format!("ok warning={}", value.get("saveWarning").and_then(|v| v.as_str()).unwrap_or(""))).unwrap_or_else(|error| format!("error {}: {}", error.code, error.message))
+    );
+    let opened = opened.expect("write failure while refreshing a checkpoint still reopens it");
+    let warning = opened["saveWarning"].as_str().unwrap();
+    assert!(warning.contains("SOURCE_WRITE_FAILED"));
+    assert!(warning.contains("not written"));
+    assert!(!warning.contains("saved"));
+    assert_eq!(opened["revision"], 0);
+    assert_eq!(fs::read(&f.source).unwrap(), original);
+    assert_eq!(fs::read(journal_dir.join("journal.json")).unwrap(), journal_before);
+    assert!(journal_dir.join("journal.next").is_dir());
+    let status = f
+        .sessions
+        .dispatch("large.status", request(&opened, json!({})), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(status["revision"], opened["revision"]);
+    assert_eq!(status["dirty"], false);
+}
+
+#[test]
+fn autosave_recovery_unpublished_crash_copy_is_discarded() {
+    let root = std::env::temp_dir().join(format!(
+        "futureox-crash-copy-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    fs::create_dir(&root).unwrap();
+    let cache = root.join("cache");
+    fs::create_dir(&cache).unwrap();
+    let leaked = cache.join("leak-1");
+    fs::create_dir(&leaked).unwrap();
+    let partial = vec![b'x'; 12345];
+    fs::write(leaked.join("source"), &partial).unwrap();
+    let source = root.join("original.json");
+    fs::write(&source, SOURCE).unwrap();
+    let sessions = Sessions::new(cache);
+    let opened = sessions.open(
+        Open {
+            opening_preview: false,
+            path: source.clone(),
+            document_id: "kept".into(),
+            session_epoch: 1,
+        },
+        &AtomicBool::new(false),
+    );
+    let leaked_after = fs::symlink_metadata(leaked.join("source")).map(|meta| meta.len()).unwrap_or(0);
+    eprintln!(
+        "MEASURE unpublished_crash leaked_bytes_before=12345 leaked_bytes_after={leaked_after} original_bytes={} status={}",
+        fs::read(&source).unwrap().len(),
+        opened.as_ref().map(|value| format!("ok revision={}", value["revision"])).unwrap_or_else(|error| format!("error {}: {}", error.code, error.message))
+    );
+    assert!(opened.is_ok());
+    assert_eq!(leaked_after, 0);
+    assert!(!leaked.exists());
+    assert_eq!(fs::read(&source).unwrap(), SOURCE);
+    let _ = fs::remove_dir_all(&root);
+}
