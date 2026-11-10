@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:render-diagnostics": "node --import ./scripts/node-ts-local-resolver.mjs --test src/kernel/render-diagnostics.test.mjs scripts/node-ts-local-resolver.test.mjs",
     "test:render-contracts": "node --import ./scripts/node-ts-local-resolver.mjs --test src/image-import.test.mjs src/kernel/canvas-effect-sampling.test.mjs src/kernel/render-diagnostics.test.mjs src/kernel/cpu-frame-contract.test.mjs src/kernel/use-zoom-activity.test.mjs src/retained-board-capture.test.mjs scripts/node-ts-local-resolver.test.mjs",
+    "test:node-entries": "node --import ./scripts/node-ts-local-resolver.mjs --test src/import-ownership.test.mjs src/kernel/op-sync-history.test.mjs src/shift-move-snapping.test.mjs src/kernel/render-failure-budget-fields.test.mjs src/kernel/render-failure-origin.test.mjs src/export-ownership.test.mjs src/model-feature-admission.test.mjs src/model-mask-admission.test.mjs src/sketch-text-query.test.mjs",
     "benchmark": "bun scripts/benchmark.ts",
     "lint": "biome lint src",
     "test:desktop-lifecycle": "bun scripts/check-desktop-lifecycle.ts",

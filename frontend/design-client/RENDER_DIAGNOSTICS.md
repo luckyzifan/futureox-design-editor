@@ -22,14 +22,17 @@ JSON 顶层 `schema: 2` 保留原有 `samples` 阶段耗时，新增 `diagnostic
 
 ## 无 GPU 单元测试
 
-这些脚本使用 Node 自带测试运行器，并依赖 Node 的 strip-only TypeScript 加载器。该加载器不解析无扩展名的相对导入。在 Node v22.23.4 上，`render-diagnostics.ts` 导入 `./render-failure-telemetry` 会在进入断言前抛出 `ERR_MODULE_NOT_FOUND`。`scripts/node-ts-local-resolver.mjs` 就是针对这条缺口的测试加载器；`test:render-diagnostics` 和 `test:render-contracts` 用 `--import` 预加载它。它只在默认解析失败时，把已经存在的相对 `.ts` 交回 Node 自己的类型剥离，不改写实现，也不处理 parameter property。直接运行必须带上同一个预加载，不能只写 `node --test`：
+这些脚本使用 Node 自带测试运行器，并依赖 Node 的 strip-only TypeScript 加载器。该加载器不解析无扩展名的相对导入，也不接受 TypeScript parameter property。Node 26 已去掉会改写这种语法的 transform 模式。在 Node v22.23.4 上，`render-diagnostics.ts` 导入 `./render-failure-telemetry` 会在进入断言前抛出 `ERR_MODULE_NOT_FOUND`。`scripts/node-ts-local-resolver.mjs` 是这条 Node 入口的预加载：`test:render-diagnostics`、`test:render-contracts` 和 `test:node-entries` 都带 `--import`。默认解析抛出 `ERR_MODULE_NOT_FOUND` 时，它按 `.ts`、`.mts`、`.js`、`.mjs` 的顺序把已有相对文件交回 Node，`.ts` 优先于同名 `.js`；不发明缺失文件，也不拦截裸包名。源文件里的 parameter property 只在这份测试加载器中改成构造函数里的 `this.name = name`（派生类放在开头的 `super(...)` 之后），其余文本不变，再交给 Node 自己的类型剥离。直接运行必须带上同一个预加载，不能只写 `node --test`：
 
 ```sh
 cd frontend/design-client
 npm run test:render-diagnostics
 npm run test:render-contracts
+npm run test:node-entries
 node --import ./scripts/node-ts-local-resolver.mjs --test src/image-import.test.mjs src/kernel/canvas-effect-sampling.test.mjs src/kernel/render-diagnostics.test.mjs src/kernel/cpu-frame-contract.test.mjs src/kernel/use-zoom-activity.test.mjs src/retained-board-capture.test.mjs
 ```
+
+`test:node-entries` 是 issue #141 里正式渲染契约之外的 9 个 `node:test` 入口。其中会导入生成内核的文件需要当前源码已经生成 `src/generated/design-kernel/design_kernel.js`；缺少该构建产物时失败，预加载不会补造这个模块。
 
 `use-zoom-activity.test.mjs` 会导入已安装的 `react`。省略该文件时也必须带上同一个 `--import`，否则 `render-diagnostics.test.mjs` 仍会在加载阶段失败。
 

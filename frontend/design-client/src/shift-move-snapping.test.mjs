@@ -4,10 +4,15 @@ import { readFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import vm from 'node:vm'
 import { dragThresholdPassed } from './canvas-pointer-intent.ts'
+import { placedSmartGuides } from './canvas-smart-guides.ts'
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 const canvas = read('./Canvas.tsx'), view = read('./canvas-view.ts')
-assert.match(canvas, /import \{ createBox, forcedPixelSnap, resizeInBasis, snapMove(, \w+)* \} from '\.\/canvas-view'/)
+const canvasViewImport = canvas.match(/import \{([^}]+)\} from '\.\/canvas-view'/)
+assert.ok(canvasViewImport, 'canvas move uses the production canvas-view helpers')
+const canvasViewNames = new Set(canvasViewImport[1].split(',').map(name => name.trim()).filter(Boolean))
+for (const name of ['createBox', 'forcedPixelSnap', 'resizeInBasis', 'snapMove'])
+  assert.equal(canvasViewNames.has(name), true, name)
 function boundary(source, start, end) {
   assert.equal(source.split(start).length, 2, `unique start: ${start}`)
   assert.equal(source.split(end).length, 2, `unique end: ${end}`)
@@ -24,13 +29,20 @@ function boundary(source, start, end) {
 // extent spans the union of moving rect and matched target).
 const helpers = boundary(view, 'export const forcedPixelSnap =', 'export function createBox(')
   .replaceAll('export ', '')
-const move = boundary(canvas, "    if (d.kind === 'move') {", "    } else if (d.kind === 'rotate') {")
+// Snapping lives in the production gesture helper. The move branch reaches it
+// only after the layout-reorder gate, so both slices stay the code under test.
+const gesture = boundary(canvas, 'function gestureVisualMatrix(', 'function placeGestureFollow(')
+const moveGate = boundary(canvas, 'const layoutPointer = d.layoutPointerOrigin', 'transform = visual.matrix')
 const script = stripTypeScriptTypes(`${helpers}
+${gesture}
 function movePointer() {
+  const pointerScreen = screenPoint(e)
   let transform
-  setGuides({})
-${move}
-  }
+  let moveGuides = {}
+  setGuides(moveGuides)
+${moveGate}
+  transform = visual.matrix
+  setGuides(moveGuides)
   return transform
 }
 movePointer`)
@@ -84,11 +96,12 @@ function drag({ delta = { x: 10, y: 2 }, shift = true, alt = false, snap = true,
   pixels = false, kind = 'rectangle', box = { x: 100, y: 200, width: 20, height: 20 },
   entries = [], zoom = 1, reorder = false } = {}) {
   let guides, pixelCalls = 0
+  const guideIndex = { current: null }
   const context = vm.createContext({
     d: { kind: 'move', start: { x: 30, y: 40 }, ids: ['selected'], box,
-      moved: true, duplicating: alt },
+      moved: true, duplicating: alt, view: { zoom }, screen: { x: 0, y: 0 } },
     p: { x: 30 + delta.x, y: 40 + delta.y },
-    e: { shiftKey: shift, altKey: alt }, entries, zoom,
+    e: { shiftKey: shift, altKey: alt }, entries, zoom, guideIndex,
     editor: { state: { snap, snapPixels: pixels, doc: { nodes: { selected: { kind } } } },
       previewLayoutOrder: () => reorder, previewFreeMove: () => {} },
     dragThresholdPassed, screenPoint: () => ({ x: 30 + delta.x, y: 40 + delta.y }),
@@ -96,7 +109,14 @@ function drag({ delta = { x: 10, y: 2 }, shift = true, alt = false, snap = true,
     setGuides: value => { guides = { ...value } },
     translate: (x, y) => ({ x, y }),
     kernelSnapPoint: p => { pixelCalls++; return { x: Math.round(p.x), y: Math.round(p.y) } },
-    smartGuidesSnapWorld,
+    smartGuidesSnapWorld, placedSmartGuides,
+    releaseGuideIndex: () => { guideIndex.current = null },
+    dropGestureFollow() {}, clearMoveGuides() {},
+    // The native index is the only kernel call in this branch. Same contract
+    // as the historical canvas twin: integer-grid rects, one guide per axis.
+    createSmartGuidesIndex: (parent, siblings) => ({
+      snap: (moving, threshold) => smartGuidesSnapWorld(moving, parent, siblings, threshold),
+    }),
   })
   const result = vm.runInContext(script, context)()
   return { delta: result, guides, pixelCalls }
@@ -146,7 +166,7 @@ test('non-Shift retains smart snapping and guides on both axes', () => {
 test('disabled snap keeps the axis lock without guides; Alt still snaps the unlocked axis', () => {
   const off = drag({ snap: false, entries: [target(111, 202)] })
   assert.deepEqual(off.delta, { x: 10, y: 0 })
-  assert.deepEqual(off.guides, {})
+  assert.deepEqual(off.guides, { x: undefined, y: undefined })
   assert.equal(off.pixelCalls, 0)
   const alt = drag({ alt: true, entries: [target(111, 202)] })
   assert.deepEqual(alt.delta, { x: 11, y: 0 })
