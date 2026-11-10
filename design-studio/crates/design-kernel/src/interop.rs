@@ -12,7 +12,7 @@ use crate::math::Transform;
 use crate::scene::{Document, Effect, ExportSetting, Node, Page, Paint, Stroke};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 mod boolean_worksets;
 #[cfg(not(target_arch="wasm32"))]
@@ -2953,15 +2953,38 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // P1-6: shared style containers → design system styles
     let mut styles = BTreeMap::new();
     let mut style_fidelity: BTreeMap<String, Value> = BTreeMap::new();
+    // Foreign library styles carry an embedded localSharedStyle. Admit that
+    // definition so a layerStyle/textStyle override can resolve by either the
+    // local id or the remote id. The raw foreign container stays untouched.
+    let mut style_inputs: Vec<(&str, &Value, bool, Option<&str>)> = Vec::new();
     for (container, kind) in [("layerStyles", "paint"), ("layerTextStyles", "text")] {
-        let Some(objects) = document
+        if let Some(objects) = document
             .get(container)
             .and_then(|c| c.get("objects"))
             .and_then(Value::as_array)
-        else {
-            continue;
-        };
-        for object in objects {
+        {
+            for object in objects {
+                style_inputs.push((kind, object, false, None));
+            }
+        }
+    }
+    for (container, kind) in [("foreignLayerStyles", "paint"), ("foreignTextStyles", "text")] {
+        if let Some(entries) = document.get(container).and_then(Value::as_array) {
+            for entry in entries {
+                if let Some(object) = entry.get("localSharedStyle").filter(|value| value.is_object())
+                {
+                    style_inputs.push((
+                        kind,
+                        object,
+                        true,
+                        entry.get("remoteStyleID").and_then(Value::as_str),
+                    ));
+                }
+            }
+        }
+    }
+    let mut style_aliases: Map<String, Value> = Map::new();
+    for (kind, object, foreign, remote_id) in style_inputs {
             let Some(style_id) = object.get("do_objectID").and_then(Value::as_str) else {
                 continue;
             };
@@ -3077,18 +3100,30 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
                 entry.insert("model".into(), json!({"value":value,"strokes":strokes,"effects":effects}));
                 style_fidelity.insert(style_id.to_string(), Value::Object(entry));
             }
-            styles.insert(
-                style_id.to_string(),
-                crate::design_system::SharedStyle {
-                    name,
-                    kind: kind.into(),
-                    value,
-                    strokes,
-                    effects,
-                },
-            );
+            let admitted = crate::design_system::SharedStyle {
+                name,
+                kind: kind.into(),
+                value,
+                strokes,
+                effects,
+            };
+            if let Some(existing) = styles.get(style_id) {
+                if existing != &admitted {
+                    return Err(Error::MalformedJson(format!(
+                        "duplicate shared style ID {style_id}"
+                    )));
+                }
+            } else {
+                styles.insert(style_id.to_string(), admitted);
+            }
+            if foreign && let Some(remote) = remote_id.filter(|id| !id.is_empty()) {
+                let alias = remote.to_ascii_uppercase();
+                if let Some(previous) = style_aliases.get(&alias) && previous != &json!(style_id) {
+                    return Err(Error::MalformedJson(format!("duplicate shared style alias {remote}")));
+                }
+                style_aliases.insert(alias, json!(style_id));
+            }
         }
-    }
     // P1-13: document-level containers without a kernel-native home
     // (design_system has no swatch concept) ride the raw container store;
     // the shared-style fidelity map joins them under a fixed key.
@@ -3099,6 +3134,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if let Some(ids) = document.pointer("/userInfo/com.futureox.design-kernel/sharedStyleIds") {
         sketch_containers.insert("sharedStyleIds".into(), ids.clone());
     }
+    if !style_aliases.is_empty() {
+        sketch_containers.insert("sketchStyleAliases".into(), Value::Object(style_aliases));
+    }
     for key in [
         "assets",
         "sharedSwatches",
@@ -3107,6 +3145,8 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
         "foreignSwatches",
         "foreignStyles",
         "libraries",
+        "perDocumentLibraries",
+        "sketchCheckedLibraries",
     ] {
         if let Some(value) = document.get(key).filter(|v| !v.is_null()) {
             // Every document.json carries a default (empty) assets
@@ -3380,6 +3420,256 @@ pub struct SketchImportReport {
 
 pub const MAX_IMPORT_WARNINGS: usize = 32;
 
+fn clip_id(value: &str) -> String {
+    value.chars().take(128).collect()
+}
+
+fn checked_library_note(document: &Document) -> String {
+    let Some(entries) = document
+        .design_system
+        .as_ref()
+        .and_then(|system| system.sketch_containers.get("sketchCheckedLibraries"))
+        .and_then(Value::as_array)
+    else {
+        return String::new();
+    };
+    if entries.is_empty() {
+        return String::new();
+    }
+    let listed = entries
+        .iter()
+        .filter_map(|entry| {
+            let id = entry.get("documentId").and_then(Value::as_str).unwrap_or("unknown");
+            let name = entry.get("name").and_then(Value::as_str).unwrap_or(id);
+            Some(format!("{name}（documentID {id}）"))
+        })
+        .collect::<Vec<_>>()
+        .join("、");
+    format!("已核对本地库 {listed}。")
+}
+
+fn recorded_libraries(document: &Document) -> String {
+    let Some(entries) = document
+        .design_system
+        .as_ref()
+        .and_then(|system| system.sketch_containers.get("perDocumentLibraries"))
+        .and_then(Value::as_array)
+    else {
+        return String::new();
+    };
+    let listed = entries
+        .iter()
+        .filter_map(|entry| {
+            let name = entry.get("name").and_then(Value::as_str)?;
+            let id = entry.get("documentID").and_then(Value::as_str).unwrap_or("");
+            Some(if id.is_empty() { name.to_owned() } else { format!("{name}（documentID {id}）") })
+        })
+        .collect::<Vec<_>>();
+    if listed.is_empty() {
+        String::new()
+    } else {
+        format!("文档记录的外部库：{}。", listed.join("、"))
+    }
+}
+
+fn resolve_shared_style<'a>(document: &'a Document, id: &str) -> Option<(String, &'a crate::design_system::SharedStyle)> {
+    let system = document.design_system.as_ref()?;
+    if let Some((key, style)) = system.styles.get_key_value(id) {
+        return Some((key.clone(), style));
+    }
+    if let Some((key, style)) = system.styles.iter().find(|(key, _)| key.eq_ignore_ascii_case(id)) {
+        return Some((key.clone(), style));
+    }
+    let alias = system
+        .sketch_containers
+        .get("sketchStyleAliases")
+        .and_then(|aliases| aliases.get(&id.to_ascii_uppercase()))
+        .and_then(Value::as_str)?;
+    system.styles.get(alias).map(|style| (alias.to_owned(), style))
+}
+
+fn shared_style_override(
+    document: &Document,
+    native_field: &str,
+    style_id: &str,
+    instance_name: &str,
+    instance_id: &str,
+    full_path: &str,
+) -> Result<(String, Value)> {
+    let expected = if native_field == "textStyle" { "text" } else { "paint" };
+    let Some((id, style)) = resolve_shared_style(document, style_id) else {
+        let checked = checked_library_note(document);
+        let repair = if checked.is_empty() {
+            "修复：附上包含该共享样式 ID 的本地 .sketch 库。不会发明样式，也不会丢弃该覆盖。真实定义缺失时打开保持阻断，源文件保持不变。"
+        } else {
+            "其中没有这个共享样式 ID。上游样式定义缺失，打开保持阻断。不会发明样式，也不会丢弃该覆盖。"
+        };
+        return Err(Error::Unsupported(format!(
+            "Sketch shared {native_field} `{id}` is not embedded。这是缺失的外部库样式定义，不是无法映射的字段，也不是损坏的图层路径。实例「{name}」（{instance}）的覆盖 `{path}_{native_field}` 指向该样式，但 layerStyles、layerTextStyles 和 foreignLayerStyles、foreignTextStyles 都没有它。{recorded}{checked}{repair}",
+            id = clip_id(style_id),
+            name = clip_id(instance_name),
+            instance = clip_id(instance_id),
+            path = clip_id(full_path),
+            recorded = recorded_libraries(document),
+            checked = checked,
+            repair = repair
+        )));
+    };
+    if style.kind != expected {
+        return Err(Error::Unsupported(format!(
+            "Sketch shared {native_field} `{id}` 的种类是 {}，不能当作{}使用。这是样式种类不匹配的损坏引用，不会改挂到其他样式上。",
+            style.kind,
+            if expected == "paint" { "图层样式" } else { "文本样式" },
+            id = clip_id(style_id)
+        )));
+    }
+    let field = if expected == "text" { "textStyle" } else { "fills" };
+    Ok(("styleRefs".into(), json!({ field: id })))
+}
+
+fn layer_style_parts(document: &Document, style: &Value) -> Result<(Value, Value, Value)> {
+    let files = BTreeMap::new();
+    let bitmaps = SourceBitmapRefs::new();
+    let color_space = document
+        .color_management
+        .as_ref()
+        .map(|settings| settings.document_space)
+        .unwrap_or(ColorSpace::Srgb);
+    let importer = Importer {
+        source_bitmaps: &bitmaps,
+        image_sources: Default::default(),
+        available_fonts: Default::default(),
+        color_space,
+        files: &files,
+        nodes: BTreeMap::new(),
+        uuids: BTreeMap::new(),
+        flows: Vec::new(),
+        has_user_prototype: Default::default(),
+        flow_home: None,
+    };
+    let mut lossy = Vec::new();
+    for key in ["fills", "borders"] {
+        let Some(parts) = style.get(key).and_then(Value::as_array) else { continue };
+        for part in parts {
+            if bool_at(part, "isEnabled") && importer.paint_part(part, 1., "normal", [1., 1.]).is_none() {
+                return Err(Error::Unsupported(format!(
+                    "Sketch override `layerStyle` 的启用{key}无法转换成可编辑绘制属性。不会跳过该部分，也不会关闭无损保护；请保留原始 .sketch 文件。"
+                )));
+            }
+        }
+    }
+    let fills = importer.paints(style, "fills", [1., 1.]);
+    let strokes = importer.strokes(style, [1., 1.], &mut lossy);
+    let effects = importer.effects(style, false);
+    Ok((
+        serde_json::to_value(&fills).map_err(|e| Error::MalformedJson(e.to_string()))?,
+        serde_json::to_value(&strokes).map_err(|e| Error::MalformedJson(e.to_string()))?,
+        serde_json::to_value(&effects).map_err(|e| Error::MalformedJson(e.to_string()))?,
+    ))
+}
+
+fn is_layer_style_dict(value: &Value) -> bool {
+    value.get("_class").and_then(Value::as_str) == Some("style")
+        || value.get("fills").and_then(Value::as_array).is_some()
+        || value.get("borders").and_then(Value::as_array).is_some()
+        || value.get("shadows").and_then(Value::as_array).is_some()
+}
+
+fn push_override(overrides: &mut crate::components::Overrides, key: String, field: String, value: Value) -> Result<()> {
+    let slot = overrides.entry(key).or_default();
+    if field == "styleRefs" {
+        let incoming = value.as_object().cloned().ok_or_else(|| {
+            Error::Unsupported("Sketch style override is not an object".into())
+        })?;
+        let existing = slot.entry("styleRefs".into()).or_insert_with(|| json!({}));
+        let object = existing.as_object_mut().ok_or_else(|| {
+            Error::Unsupported("Sketch style override is not an object".into())
+        })?;
+        for (name, next) in incoming {
+            if let Some(previous) = object.get(&name) && previous != &next {
+                return Err(Error::Unsupported(
+                    "ambiguous Sketch overrides map to the same property".into(),
+                ));
+            }
+            object.insert(name, next);
+        }
+        return Ok(());
+    }
+    if slot.insert(field, value).is_some() {
+        return Err(Error::Unsupported(
+            "ambiguous Sketch overrides map to the same property".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn native_override_path(document: &Document, root: &str, path: &str) -> std::result::Result<String, String> {
+    let mut scope = root.to_owned();
+    let mut keys = Vec::new();
+    let parts: Vec<_> = path.split('/').filter(|part| !part.is_empty()).collect();
+    if parts.is_empty() {
+        return Err(path.to_owned());
+    }
+    for (index, part) in parts.iter().enumerate() {
+        let mut pending = vec![scope.clone()];
+        let mut found = None;
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id.clone()) || visited.len() > 20000 {
+                return Err((*part).to_owned());
+            }
+            let Some(node) = document.nodes.get(&id) else {
+                return Err((*part).to_owned());
+            };
+            if id.eq_ignore_ascii_case(part) {
+                found = Some(node);
+                break;
+            }
+            if id == scope || node.instance.is_none() {
+                pending.extend(node.children.iter().cloned());
+            }
+        }
+        let Some(node) = found else {
+            return Err((*part).to_owned());
+        };
+        if index + 1 == parts.len() {
+            keys.push(if node.id == root {
+                "$root".to_owned()
+            } else {
+                node.component_key.as_ref().unwrap_or(&node.id).clone()
+            });
+        } else if let Some(instance) = &node.instance {
+            keys.push(node.component_key.as_ref().unwrap_or(&node.id).clone());
+            scope = instance.component_id.clone();
+        } else {
+            scope = node.id.clone();
+        }
+    }
+    Ok(keys.join("/"))
+}
+
+fn unresolved_override_message(document: &Document, full_path: &str, missing: &str, instance_name: &str, instance_id: &str, master_id: &str) -> String {
+    let master = document.nodes.get(master_id);
+    let master_name = master.map(|node| node.name.as_str()).unwrap_or("");
+    let master_symbol = master.and_then(|node| node.bindings.get("symbolID")).map(String::as_str).unwrap_or("");
+    let elsewhere = document.nodes.keys().any(|id| id.eq_ignore_ascii_case(missing));
+    let location = if elsewhere {
+        "该 ID 存在于文档的其他图层，但不属于这个符号的可覆盖子树，因此不能改挂到别的组件上。"
+    } else {
+        "文档其他位置也没有这个图层。"
+    };
+    format!(
+        "Sketch override target `{path}` could not be resolved。这是损坏的覆盖引用，不是缺失的外部库符号，也不是无法映射的字段。实例「{name}」（{instance}）的主组件「{master}」（symbolID {symbol}）里没有图层 {missing}。{location}不会跳过该覆盖，也不会发明图层。修复：需要源文件里的该主组件真正包含这个图层；更换无关库不能生成它。",
+        path = clip_id(full_path),
+        name = clip_id(instance_name),
+        instance = clip_id(instance_id),
+        master = clip_id(master_name),
+        symbol = clip_id(master_symbol),
+        missing = clip_id(missing),
+        location = location
+    )
+}
+
 /// Resolve the separate Sketch symbol identity before shared-model admission.
 /// The low-level archival importer intentionally retains native spellings.
 fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
@@ -3407,14 +3697,23 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
         }
         symbols.insert(key, node.id.clone());
     }
+    let library_context = format!("{}{}", recorded_libraries(document), checked_library_note(document));
     for node in document.nodes.values_mut() {
         if let Some(instance) = &mut node.instance {
-            instance.component_id = symbols
-                .get(&instance.component_id.to_ascii_uppercase())
-                .cloned()
-                .ok_or_else(|| {
-                    Error::Unsupported(format!("Sketch instance requires an embedded symbol master: {}", instance.component_id.chars().take(128).collect::<String>()))
-                })?;
+            let symbol = instance.component_id.clone();
+            let name = node.name.clone();
+            let id = node.id.clone();
+            instance.component_id = symbols.get(&symbol.to_ascii_uppercase()).cloned().ok_or_else(|| {
+                let repair = if library_context.contains("已核对本地库") {
+                    "其中没有这个 symbolID。上游定义缺失，打开保持阻断。不会发明主组件，源文件保持不变。"
+                } else {
+                    "修复：在原生导入时附上包含该 symbolID 的本地 .sketch 库。只按 symbolID 对接，不会按名称猜测，也不会发明主组件。真实定义缺失时打开保持阻断，源文件保持不变。"
+                };
+                Error::Unsupported(format!(
+                    "Sketch instance requires an embedded symbol master: {}。这是缺失的外部库符号定义，不是无法映射的字段，也不是损坏的图层引用。实例「{}」（{}）引用了该 symbolID，但页面主组件和已嵌入的 foreignSymbols 都没有它。{}{}",
+                    clip_id(&symbol), clip_id(&name), clip_id(&id), library_context, repair
+                ))
+            })?;
         }
         // Stable keys must survive the host's fresh node-ID assignment.
         if !symbols.is_empty() {
@@ -3424,43 +3723,6 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
     if !symbols.is_empty() {
         document.schema_version = document.schema_version.max(4);
     }
-    fn native_path(document: &Document, root: &str, path: &str) -> Option<String> {
-        let mut scope = root.to_owned();
-        let mut keys = Vec::new();
-        let parts: Vec<_> = path.split('/').collect();
-        for (index, part) in parts.iter().enumerate() {
-            let mut pending = vec![scope.clone()];
-            let mut found = None;
-            let mut visited = std::collections::BTreeSet::new();
-            while let Some(id) = pending.pop() {
-                if !visited.insert(id.clone()) || visited.len() > 20000 {
-                    return None;
-                }
-                let node = document.nodes.get(&id)?;
-                if id.eq_ignore_ascii_case(part) {
-                    found = Some(node);
-                    break;
-                }
-                if id == scope || node.instance.is_none() {
-                    pending.extend(node.children.iter().cloned());
-                }
-            }
-            let node = found?;
-            if index + 1 == parts.len() {
-                keys.push(if node.id == root {
-                    "$root".to_owned()
-                } else {
-                    node.component_key.as_ref().unwrap_or(&node.id).clone()
-                });
-            } else if let Some(instance) = &node.instance {
-                keys.push(node.component_key.as_ref().unwrap_or(&node.id).clone());
-                scope = instance.component_id.clone();
-            } else {
-                scope = node.id.clone();
-            }
-        }
-        Some(keys.join("/"))
-    }
     let mut replacements = Vec::new();
     for node in document.nodes.values() {
         let Some(instance) = &node.instance else {
@@ -3469,78 +3731,366 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
         let mut overrides = crate::components::Overrides::new();
         for (path, fields) in &instance.overrides {
             for (field, value) in fields {
-                let (key, field, mut value) = if crate::components::FIELDS.contains(&field.as_str())
+                if crate::components::FIELDS.contains(&field.as_str())
                     || matches!(field.as_str(), "swapComponent" | "propertyValues")
                 {
-                    (path.clone(), field.clone(), value.clone())
-                } else {
-                    let (layer, native_field) = field.rsplit_once('_').ok_or_else(|| {
-                        Error::Unsupported(format!(
-                            "Sketch override `{field}` has no editable mapping"
-                        ))
-                    })?;
-                    let full_path = if path == "self" {
-                        layer.to_owned()
-                    } else {
-                        format!("{path}/{layer}")
-                    };
-                    let key = native_path(document, &instance.component_id, &full_path)
-                        .ok_or_else(|| {
+                    push_override(&mut overrides, path.clone(), field.clone(), value.clone())?;
+                    continue;
+                }
+                let (layer, native_field) = field.rsplit_once('_').ok_or_else(|| {
+                    Error::Unsupported(format!(
+                        "Sketch override `{field}` has no editable mapping。这是无法映射的字段名，不是缺失的外部库符号。"
+                    ))
+                })?;
+                let full_path = if path == "self" { layer.to_owned() } else { format!("{path}/{layer}") };
+                let key = native_override_path(document, &instance.component_id, &full_path).map_err(|missing| {
+                    Error::Unsupported(unresolved_override_message(
+                        document, &full_path, &missing, &node.name, &node.id, &instance.component_id,
+                    ))
+                })?;
+                match native_field {
+                    "stringValue" if value.is_string() => {
+                        push_override(&mut overrides, key, "text".into(), value.clone())?;
+                    }
+                    "symbolID" if value.is_string() => {
+                        let symbol = value.as_str().ok_or_else(|| {
+                            Error::Unsupported("invalid Sketch symbol override".into())
+                        })?;
+                        let master = symbols.get(&symbol.to_ascii_uppercase()).ok_or_else(|| {
                             Error::Unsupported(format!(
-                                "Sketch override target `{full_path}` could not be resolved"
+                                "Sketch symbol override requires an embedded master。嵌套符号替换目标 `{id}` 没有嵌入的主组件。这是缺失的符号定义，不会按名称猜测，也不会发明主组件。",
+                                id = clip_id(symbol)
                             ))
                         })?;
-                    let field = match native_field {
-                        "stringValue" if value.is_string() => "text",
-                        "symbolID" if value.is_string() => "swapComponent",
-                        "isVisible" if value.is_boolean() => "visible",
-                        _ => {
-                            return Err(Error::Unsupported(format!(
-                                "Sketch override `{native_field}` has no supported editable mapping; keep the original .sketch file"
-                            )));
-                        }
-                    };
-                    (key, field.to_owned(), value.clone())
-                };
-                if field == "swapComponent" {
-                    let symbol = value.as_str().ok_or_else(|| {
-                        Error::Unsupported("invalid Sketch symbol override".into())
-                    })?;
-                    value = json!(symbols.get(&symbol.to_ascii_uppercase()).ok_or_else(|| {
-                        Error::Unsupported(
-                            "Sketch symbol override requires an embedded master".into(),
-                        )
-                    })?);
-                }
-                if overrides
-                    .entry(key)
-                    .or_default()
-                    .insert(field, value)
-                    .is_some()
-                {
-                    return Err(Error::Unsupported(
-                        "ambiguous Sketch overrides map to the same property".into(),
-                    ));
+                        push_override(&mut overrides, key, "swapComponent".into(), json!(master))?;
+                    }
+                    "isVisible" if value.is_boolean() => {
+                        push_override(&mut overrides, key, "visible".into(), value.clone())?;
+                    }
+                    "layerStyle" | "textStyle" if value.is_string() => {
+                        let (field, mapped) = shared_style_override(
+                            document, native_field, value.as_str().unwrap_or_default(), &node.name, &node.id, &full_path,
+                        )?;
+                        push_override(&mut overrides, key, field, mapped)?;
+                    }
+                    "layerStyle" if is_layer_style_dict(value) => {
+                        let (fills, strokes, effects) = layer_style_parts(document, value)?;
+                        push_override(&mut overrides, key.clone(), "fills".into(), fills)?;
+                        push_override(&mut overrides, key.clone(), "strokes".into(), strokes)?;
+                        push_override(&mut overrides, key, "effects".into(), effects)?;
+                    }
+                    _ => {
+                        return Err(Error::Unsupported(format!(
+                            "Sketch override `{native_field}` has no supported editable mapping; keep the original .sketch file。这是无法映射的字段，不是缺失的外部库符号，也不是损坏的图层引用。实例「{}」（{}）的覆盖 `{}_{native_field}` 不能变成可编辑属性。不会跳过该覆盖，也不会关闭无损保护。",
+                            clip_id(&node.name), clip_id(&node.id), clip_id(&full_path)
+                        )));
+                    }
                 }
             }
         }
         replacements.push((node.id.clone(), overrides));
     }
     for (id, overrides) in replacements {
-        document
-            .nodes
-            .get_mut(&id)
-            .unwrap()
-            .instance
-            .as_mut()
-            .unwrap()
-            .overrides = overrides;
+        document.nodes.get_mut(&id).unwrap().instance.as_mut().unwrap().overrides = overrides;
+    }
+    if let Some(system) = document.design_system.as_mut() {
+        system.sketch_containers.remove("sketchCheckedLibraries");
     }
     Ok(())
 }
 
 pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
     finish_sketch_report(import_sketch(bytes)?)
+}
+
+/// Admit `bytes` together with local `.sketch` libraries. Symbols and shared
+/// styles are copied only when their IDs match; nothing is invented by name.
+/// Libraries that still lack a referenced ID leave admission blocked.
+pub fn import_sketch_report_with_libraries(bytes: &[u8], libraries: &[&[u8]]) -> Result<SketchImportReport> {
+    let mut files = read_zip(bytes)?;
+    attach_sketch_libraries(&mut files, libraries)?;
+    finish_sketch_report(import_sketch_files(&files)?)
+}
+
+fn attach_sketch_libraries(files: &mut BTreeMap<String, Vec<u8>>, libraries: &[&[u8]]) -> Result<()> {
+    if libraries.is_empty() {
+        return Ok(());
+    }
+    let mut document = json_part(files, "document.json")?;
+    let mut pages = Vec::new();
+    for (name, bytes) in files.iter() {
+        if let Some(id) = name.strip_prefix("pages/").and_then(|name| name.strip_suffix(".json")) {
+            let _ = id;
+            pages.push(serde_json::from_slice::<Value>(bytes).map_err(|e| Error::MalformedJson(format!("{name}: {e}")))?);
+        }
+    }
+    let mut defined = BTreeSet::new();
+    let mut needed = BTreeSet::new();
+    let mut style_ids = BTreeSet::new();
+    let mut referenced_styles = BTreeSet::new();
+    collect_archive_symbols(&document, &pages, &mut defined, &mut needed, &mut style_ids, &mut referenced_styles);
+    let mut masters: BTreeMap<String, LibraryMaster> = BTreeMap::new();
+    // None records two different definitions for one ID. It blocks only a
+    // reference that still needs a library copy; unused collisions do not.
+    let mut styles: BTreeMap<String, Option<LibraryStyle>> = BTreeMap::new();
+    let mut checked = Vec::new();
+    for library in libraries {
+        let lib_files = read_zip(library)?;
+        let lib_doc = json_part(&lib_files, "document.json")?;
+        let document_id = lib_doc.get("do_objectID").and_then(Value::as_str).filter(|id| !id.is_empty()).unwrap_or("library").to_owned();
+        let name = document
+            .get("perDocumentLibraries")
+            .and_then(Value::as_array)
+            .and_then(|entries| entries.iter().find(|entry| entry.get("documentID").and_then(Value::as_str) == Some(document_id.as_str())))
+            .and_then(|entry| entry.get("name").and_then(Value::as_str))
+            .unwrap_or(document_id.as_str())
+            .to_owned();
+        checked.push(json!({"documentId": document_id, "name": name}));
+        let mut lib_pages = Vec::new();
+        for (entry_name, bytes) in &lib_files {
+            if entry_name.strip_prefix("pages/").and_then(|name| name.strip_suffix(".json")).is_some() {
+                lib_pages.push(serde_json::from_slice::<Value>(bytes).map_err(|e| Error::MalformedJson(format!("{entry_name}: {e}")))?);
+            }
+        }
+        let mut lib_defined = BTreeSet::new();
+        let mut lib_needed = BTreeSet::new();
+        let mut lib_styles = BTreeSet::new();
+        let mut lib_refs = BTreeSet::new();
+        collect_archive_symbols(&lib_doc, &lib_pages, &mut lib_defined, &mut lib_needed, &mut lib_styles, &mut lib_refs);
+        for page in &lib_pages {
+            index_library_masters(page.get("layers"), &document_id, &name, &mut masters)?;
+        }
+        if let Some(entries) = lib_doc.get("foreignSymbols").and_then(Value::as_array) {
+            for entry in entries {
+                if let Some(master) = entry.get("symbolMaster").filter(|master| master.is_object()) {
+                    remember_library_master(master, &document_id, &name, &mut masters)?;
+                }
+            }
+        }
+        index_library_styles(&lib_doc, &document_id, &name, &mut styles)?;
+    }
+    document["sketchCheckedLibraries"] = Value::Array(checked);
+    let mut pending: Vec<String> = needed.difference(&defined).cloned().collect();
+    let mut linked = 0usize;
+    while let Some(symbol) = pending.pop() {
+        if defined.contains(&symbol) {
+            continue;
+        }
+        let Some(master) = masters.get(&symbol).cloned() else { continue };
+        linked += 1;
+        if linked > 512 {
+            return Err(Error::Unsupported(
+                "Sketch library dependency set exceeds 512 symbols; select a smaller library working set".into(),
+            ));
+        }
+        let entry = json!({
+            "_class": "MSImmutableForeignSymbol",
+            "do_objectID": sketch_id(&format!("{}:{}", master.document_id, symbol)),
+            "libraryID": master.document_id,
+            "sourceLibraryName": master.name,
+            "symbolPrivate": false,
+            "originalMaster": master.master,
+            "symbolMaster": master.master,
+        });
+        defined.insert(symbol);
+        let mut nested = BTreeSet::new();
+        collect_one_layer(&master.master, &mut defined, &mut nested, &mut referenced_styles);
+        pending.extend(nested);
+        let symbols = document.as_object_mut().ok_or_else(|| Error::MalformedJson("document.json".into()))?
+            .entry("foreignSymbols").or_insert_with(|| json!([]));
+        symbols.as_array_mut().ok_or_else(|| Error::MalformedJson("foreignSymbols".into()))?.push(entry);
+    }
+    for style_id in referenced_styles {
+        if style_ids.contains(&style_id) {
+            continue;
+        }
+        let style = match styles.get(&style_id) {
+            Some(Some(style)) => style.clone(),
+            Some(None) => return Err(Error::Unsupported(format!(
+                "ambiguous Sketch library style {style_id}。多个本地库以不同内容定义了同一个共享样式 ID，不会按名称挑选。"
+            ))),
+            None => continue,
+        };
+        let entry = json!({
+            "_class": style.class_name,
+            "do_objectID": sketch_id(&format!("{}:{}", style.document_id, style_id)),
+            "libraryID": style.document_id,
+            "sourceLibraryName": style.name,
+            "symbolPrivate": false,
+            "remoteStyleID": style.remote_id,
+            "localSharedStyle": style.local,
+        });
+        style_ids.insert(style_id.clone());
+        if let Some(local) = style.local.get("do_objectID").and_then(Value::as_str) {
+            style_ids.insert(local.to_ascii_uppercase());
+        }
+        let container = style.container;
+        let values = document.as_object_mut().ok_or_else(|| Error::MalformedJson("document.json".into()))?
+            .entry(container).or_insert_with(|| json!([]));
+        values.as_array_mut().ok_or_else(|| Error::MalformedJson(container.into()))?.push(entry);
+    }
+    files.insert("document.json".into(), serde_json::to_vec(&document).map_err(|e| Error::Io(e.to_string()))?);
+    Ok(())
+}
+
+fn collect_archive_symbols(document: &Value, pages: &[Value], defined: &mut BTreeSet<String>, needed: &mut BTreeSet<String>, styles: &mut BTreeSet<String>, referenced: &mut BTreeSet<String>) {
+    for page in pages {
+        if let Some(layers) = page.get("layers").and_then(Value::as_array) {
+            for layer in layers {
+                collect_one_layer(layer, defined, needed, referenced);
+            }
+        }
+    }
+    if let Some(entries) = document.get("foreignSymbols").and_then(Value::as_array) {
+        for entry in entries {
+            if let Some(master) = entry.get("symbolMaster") {
+                collect_one_layer(master, defined, needed, referenced);
+            }
+        }
+    }
+    for (container, _) in [("layerStyles", "paint"), ("layerTextStyles", "text")] {
+        if let Some(objects) = document.get(container).and_then(|c| c.get("objects")).and_then(Value::as_array) {
+            for object in objects {
+                if let Some(id) = object.get("do_objectID").and_then(Value::as_str) {
+                    styles.insert(id.to_ascii_uppercase());
+                }
+            }
+        }
+    }
+    for container in ["foreignLayerStyles", "foreignTextStyles"] {
+        if let Some(entries) = document.get(container).and_then(Value::as_array) {
+            for entry in entries {
+                for id in [
+                    entry.pointer("/localSharedStyle/do_objectID").and_then(Value::as_str),
+                    entry.get("remoteStyleID").and_then(Value::as_str),
+                ].into_iter().flatten() {
+                    styles.insert(id.to_ascii_uppercase());
+                }
+            }
+        }
+    }
+}
+
+fn collect_one_layer(layer: &Value, defined: &mut BTreeSet<String>, needed: &mut BTreeSet<String>, referenced: &mut BTreeSet<String>) {
+    match layer.get("_class").and_then(Value::as_str) {
+        Some("symbolMaster") => {
+            if let Some(id) = layer.get("symbolID").and_then(Value::as_str).filter(|id| !id.is_empty()) {
+                defined.insert(id.to_ascii_uppercase());
+            }
+        }
+        Some("symbolInstance") => {
+            if let Some(id) = layer.get("symbolID").and_then(Value::as_str).filter(|id| !id.is_empty()) {
+                needed.insert(id.to_ascii_uppercase());
+            }
+            for override_value in layer.get("overrideValues").and_then(Value::as_array).into_iter().flatten() {
+                let name = override_value.get("overrideName").and_then(Value::as_str).unwrap_or("");
+                if (name.ends_with("_layerStyle") || name.ends_with("_textStyle"))
+                    && let Some(id) = override_value.get("value").and_then(Value::as_str).filter(|id| !id.is_empty())
+                {
+                    referenced.insert(id.to_ascii_uppercase());
+                }
+                if name.ends_with("_symbolID")
+                    && let Some(id) = override_value.get("value").and_then(Value::as_str).filter(|id| !id.is_empty())
+                {
+                    needed.insert(id.to_ascii_uppercase());
+                }
+            }
+        }
+        _ => {}
+    }
+    if let Some(children) = layer.get("layers").and_then(Value::as_array) {
+        for child in children {
+            collect_one_layer(child, defined, needed, referenced);
+        }
+    }
+}
+
+fn remember_library_master(master: &Value, document_id: &str, name: &str, masters: &mut BTreeMap<String, LibraryMaster>) -> Result<()> {
+    let Some(symbol) = master.get("symbolID").and_then(Value::as_str).filter(|id| !id.is_empty()) else { return Ok(()) };
+    let key = symbol.to_ascii_uppercase();
+    if let Some(previous) = masters.get(&key) && previous.master != *master {
+        return Err(Error::Unsupported(format!(
+            "ambiguous Sketch library symbol {symbol}。多个本地库以不同内容定义了同一个 symbolID，不会按名称挑选。"
+        )));
+    }
+    masters.insert(key, LibraryMaster { document_id: document_id.to_owned(), name: name.to_owned(), master: master.clone() });
+    Ok(())
+}
+
+fn index_library_masters(layers: Option<&Value>, document_id: &str, name: &str, masters: &mut BTreeMap<String, LibraryMaster>) -> Result<()> {
+    let Some(layers) = layers.and_then(Value::as_array) else { return Ok(()) };
+    for layer in layers {
+        if layer.get("_class").and_then(Value::as_str) == Some("symbolMaster") {
+            remember_library_master(layer, document_id, name, masters)?;
+        }
+        index_library_masters(layer.get("layers"), document_id, name, masters)?;
+    }
+    Ok(())
+}
+
+fn index_library_styles(document: &Value, document_id: &str, name: &str, styles: &mut BTreeMap<String, Option<LibraryStyle>>) -> Result<()> {
+    for (container, class_name) in [
+        ("layerStyles", "MSImmutableForeignLayerStyle"),
+        ("layerTextStyles", "MSImmutableForeignTextStyle"),
+    ] {
+        if let Some(objects) = document.get(container).and_then(|c| c.get("objects")).and_then(Value::as_array) {
+            for object in objects {
+                remember_library_style(object, object.get("do_objectID").and_then(Value::as_str), container, class_name, document_id, name, styles)?;
+            }
+        }
+    }
+    for (container, class_name) in [
+        ("foreignLayerStyles", "MSImmutableForeignLayerStyle"),
+        ("foreignTextStyles", "MSImmutableForeignTextStyle"),
+    ] {
+        if let Some(entries) = document.get(container).and_then(Value::as_array) {
+            for entry in entries {
+                let Some(local) = entry.get("localSharedStyle") else { continue };
+                let remote = entry.get("remoteStyleID").and_then(Value::as_str);
+                remember_library_style(local, remote, container, class_name, document_id, name, styles)?;
+                if let Some(local_id) = local.get("do_objectID").and_then(Value::as_str) && remote != Some(local_id) {
+                    remember_library_style(local, Some(local_id), container, class_name, document_id, name, styles)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remember_library_style(local: &Value, remote: Option<&str>, container: &'static str, class_name: &'static str, document_id: &str, name: &str, styles: &mut BTreeMap<String, Option<LibraryStyle>>) -> Result<()> {
+    let Some(remote) = remote.filter(|id| !id.is_empty()) else { return Ok(()) };
+    let key = remote.to_ascii_uppercase();
+    let conflict = styles.get(&key).is_some_and(|previous| previous.as_ref().is_none_or(|style| style.local != *local));
+    if conflict {
+        styles.insert(key, None);
+        return Ok(());
+    }
+    styles.entry(key).or_insert_with(|| Some(LibraryStyle {
+        document_id: document_id.to_owned(),
+        name: name.to_owned(),
+        class_name,
+        container: if class_name.contains("Text") { "foreignTextStyles" } else { "foreignLayerStyles" },
+        remote_id: remote.to_owned(),
+        local: local.clone(),
+    }));
+    let _ = container;
+    Ok(())
+}
+
+#[derive(Clone)]
+struct LibraryMaster {
+    document_id: String,
+    name: String,
+    master: Value,
+}
+#[derive(Clone)]
+struct LibraryStyle {
+    document_id: String,
+    name: String,
+    class_name: &'static str,
+    container: &'static str,
+    remote_id: String,
+    local: Value,
 }
 
 /// Native source storage has already checked the original archive and extracts
@@ -5453,8 +6003,33 @@ fn export_layer_impl(
                     layer.insert("scale".into(), json!(1.));
                     layer.insert("preservesSpaceWhenHidden".into(), json!(false));
                     let mut values = Vec::new();
+                    let mut paint_overrides: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
                     for (path, fields) in &inst.overrides {
                         for (field, value) in fields {
+                            if field == "styleRefs" {
+                                let Some(native_path) = exported_override_path(doc, &inst.component_id, path) else {
+                                    note_lossy(&mut lossy, "component-override-path-in-userInfo");
+                                    continue;
+                                };
+                                let Some(map) = value.as_object() else {
+                                    note_lossy(&mut lossy, "component-overrides-in-userInfo");
+                                    continue;
+                                };
+                                if let Some(id) = map.get("fills").and_then(Value::as_str) {
+                                    values.push(json!({"_class":"overrideValue","overrideName":format!("{native_path}_layerStyle"),"value":id}));
+                                }
+                                if let Some(id) = map.get("textStyle").and_then(Value::as_str) {
+                                    values.push(json!({"_class":"overrideValue","overrideName":format!("{native_path}_textStyle"),"value":id}));
+                                }
+                                if map.contains_key("strokes") && !map.contains_key("fills") || map.contains_key("effects") && !map.contains_key("fills") {
+                                    note_lossy(&mut lossy, "component-overrides-in-userInfo");
+                                }
+                                continue;
+                            }
+                            if matches!(field.as_str(), "fills" | "strokes" | "effects") {
+                                paint_overrides.entry(path.clone()).or_default().insert(field.clone(), value.clone());
+                                continue;
+                            }
                             let canonical = crate::components::FIELDS.contains(&field.as_str())
                                 || matches!(field.as_str(), "swapComponent" | "propertyValues");
                             let mut native_value = value.clone();
@@ -5534,6 +6109,32 @@ fn export_layer_impl(
                                 }));
                             }
                         }
+                    }
+                    for (path, parts) in paint_overrides {
+                        let Some(native_path) = exported_override_path(doc, &inst.component_id, &path) else {
+                            note_lossy(&mut lossy, "component-override-path-in-userInfo");
+                            continue;
+                        };
+                        let fills = parts.get("fills").cloned().and_then(|value| serde_json::from_value::<Vec<Paint>>(value).ok()).unwrap_or_default();
+                        let strokes = parts.get("strokes").cloned().and_then(|value| serde_json::from_value::<Vec<Stroke>>(value).ok()).unwrap_or_default();
+                        let effects = parts.get("effects").cloned().and_then(|value| serde_json::from_value::<Vec<Effect>>(value).ok()).unwrap_or_default();
+                        if parts.contains_key("fills") && parts.get("fills").is_some_and(|value| serde_json::from_value::<Vec<Paint>>(value.clone()).is_err())
+                            || parts.contains_key("strokes") && parts.get("strokes").is_some_and(|value| serde_json::from_value::<Vec<Stroke>>(value.clone()).is_err())
+                            || parts.contains_key("effects") && parts.get("effects").is_some_and(|value| serde_json::from_value::<Vec<Effect>>(value.clone()).is_err())
+                        {
+                            note_lossy(&mut lossy, "component-overrides-in-userInfo");
+                            continue;
+                        }
+                        let (borders, shadows, inner_shadows, blur, border_options) = export_style_parts(&strokes, &effects, &mut lossy, images, [1., 1.])?;
+                        let mut paints = Vec::new();
+                        for paint in &fills {
+                            if let Some(part) = export_paint(paint, images, [1., 1.])? { paints.push(part); }
+                        }
+                        values.push(json!({
+                            "_class":"overrideValue",
+                            "overrideName":format!("{native_path}_layerStyle"),
+                            "value":{"_class":"style","fills":paints,"borders":borders,"shadows":shadows,"innerShadows":inner_shadows,"blur":blur,"borderOptions":border_options}
+                        }));
                     }
                     layer.insert("overrideValues".into(), Value::Array(values));
                 }
@@ -6754,6 +7355,21 @@ fn baked_curves(
 }
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
+fn foreign_shared_style_ids(system: &crate::design_system::DesignSystem) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for key in ["foreignLayerStyles", "foreignTextStyles"] {
+        let Some(entries) = system.sketch_containers.get(key).and_then(Value::as_array) else { continue };
+        for entry in entries {
+            let Some(wire) = entry.pointer("/localSharedStyle/do_objectID").and_then(Value::as_str) else { continue };
+            ids.insert(wire.to_owned());
+            if let Some(mapped) = system.sketch_containers.get("sharedStyleIds").and_then(|ids| ids.get(wire)).and_then(Value::as_str) {
+                ids.insert(mapped.to_owned());
+            }
+        }
+    }
+    ids
+}
+
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     let source = boolean_worksets::source_view(doc)?;
     let doc = source.as_ref();
@@ -6910,7 +7526,11 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     let mut layer_styles = Vec::new();
     let mut layer_text_styles = Vec::new();
     if let Some(system) = &doc.design_system {
+        let foreign_styles = foreign_shared_style_ids(system);
         for (style_id, shared) in &system.styles {
+            if foreign_styles.contains(style_id) {
+                continue;
+            }
             let object = match shared.kind.as_str() {
                 "paint" => {
                     let mut paints = Vec::new();
@@ -7108,6 +7728,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     | "figDocument"
                     | "figRetainedStyles"
                     | "sketchDocumentColorSpace"
+                    | "sketchStyleAliases"
+                    | "sketchCheckedLibraries"
             ) {
                 continue;
             }

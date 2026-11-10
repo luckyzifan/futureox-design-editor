@@ -20,6 +20,17 @@ test('ordinary pressure and source conflict messages do not invent a low startup
   expect(sourceErrorSummary('unsupported imported document')).toContain('技术详情')
 })
 
+test('a Sketch library admission failure stays an error with the repair, not a ready file',()=>{
+ const error='unsupported lossless conversion: Sketch instance requires an embedded symbol master: 6F0139C2-C417-4447-8E8B-5926F071C14F。这是缺失的外部库符号定义，不是无法映射的字段。修复：在原生导入时附上包含该 symbolID 的本地 .sketch 库。不会发明主组件。'
+ expect(sourceErrorSummary(error)).toContain('不会发明主组件')
+ expect(sourceErrorSummary(error)).toContain('6F0139C2')
+ const html=renderToStaticMarkup(<SourceDocumentStatus source={{error,notice:'',busy:false,warnings:[]} as unknown as SourceWorkspace}/>)
+ expect(html).toContain('操作未完成')
+ expect(html).not.toContain('文件已就绪')
+ expect(html).toContain('role="alert"')
+ expect(html).toContain('技术详情')
+})
+
 test('native rendering progress is not labelled as a ready file',()=>{
  const source={error:'',notice:'正在绘制完整画板 1 / 20…',busy:false,warnings:[],nativeCanvas:{status:{phase:'refining',done:1,total:20}}} as unknown as SourceWorkspace
  const html=renderToStaticMarkup(<SourceDocumentStatus source={source}/>)
