@@ -434,6 +434,83 @@ mod tests {
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
+    fn opening_encoded_srgb_source_does_not_reject_null_color_settings() {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        let files = [
+            ("meta.json", serde_json::to_vec(&json!({"version":136})).unwrap()),
+            ("document.json", serde_json::to_vec(&json!({
+                "_class":"document","colorSpace":1,
+                "pages":[{"_class":"MSJSONFileReference","_ref":"pages/p"}]
+            })).unwrap()),
+            ("pages/p.json", serde_json::to_vec(&json!({
+                "_class":"page","do_objectID":"p","name":"Page",
+                "layers":[{"_class":"rectangle","do_objectID":"swatch","name":"Swatch",
+                    "frame":{"x":0,"y":0,"width":16,"height":16},
+                    "style":{"fills":[{"isEnabled":true,"fillType":0,
+                        "color":{"red":45.0/255.0,"green":45.0/255.0,"blue":41.0/255.0,"alpha":0.5}}]}}]
+            })).unwrap()),
+        ];
+        for (name, bytes) in files {
+            zip.start_file(name, options).unwrap();
+            std::io::Write::write_all(&mut zip, &bytes).unwrap();
+        }
+        let report = crate::interop::import_sketch_report(&zip.finish().unwrap().into_inner()).unwrap();
+        assert!(report.document.color_management.is_none());
+        let mut doc = report.document;
+        doc.raster_profile = Some(crate::fidelity::RasterProfile::Analytic);
+        let page_id = doc.pages[0].id.clone();
+        let stage_id = "stage-source".to_string();
+        let mut stage = crate::facet::sample_node(&stage_id, "frame");
+        stage.children = std::mem::take(&mut doc.pages[0].children);
+        stage.blend = "pass-through".into();
+        stage.clip = false;
+        stage.fills.clear();
+        stage.strokes.clear();
+        stage.width = 64.;
+        stage.height = 64.;
+        doc.nodes.insert(stage_id.clone(), stage);
+        doc.pages[0].children = vec![stage_id.clone()];
+        doc.id = "encoded-srgb-source".into();
+        let nodes = doc.nodes.len();
+        let path = std::env::temp_dir().join(format!("encoded-srgb-open-{}.scene", session_owner()));
+        let store = crate::scene_store::write(&path, "source:open", &doc, &[], &std::sync::atomic::AtomicBool::new(false)).unwrap();
+        let descriptor = json!({"path":path,"store":store,"documentId":doc.id,"pageId":page_id,"stageId":stage_id,"nodes":nodes});
+        let mut opened = Preparation { lanes: [Lane::default(), Lane::default()], owner: session_owner(), sequence: 0, operation: 0 };
+        let reply = opened.request("canvas", "load_source_snapshot", &[descriptor]).unwrap();
+        let settings = reply.metadata["settings"].as_str().unwrap().to_string();
+        assert_eq!(settings, "null");
+        let rejected = serde_json::from_str::<crate::color::ColorSettings>(&settings).unwrap_err().to_string();
+        assert!(
+            rejected.contains("invalid type: null, expected struct ColorSettings"),
+            "{rejected}"
+        );
+        assert!(!reply.metadata.to_string().contains("invalid type: null, expected struct ColorSettings"));
+        let mut png = Vec::new();
+        {
+            let image = image::RgbaImage::from_fn(8, 4, |x, y| image::Rgba([x as u8 * 20, y as u8 * 40, 45, 255]));
+            image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        }
+        let uri = format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png));
+        let mut rows = crate::image_rows::Decoder::from_settings_json(&uri, &settings).unwrap();
+        let mut pixels = Vec::new();
+        loop {
+            let part = rows.next_rows().unwrap();
+            if part.is_empty() { break; }
+            pixels.extend(part);
+        }
+        assert_eq!(pixels.len(), 8 * 4 * 4);
+        let frame = opened.request("canvas", "render_png", &[json!(json!({
+            "pageId": page_id, "width": 16, "height": 16,
+            "view": {"x": 0, "y": 0, "zoom": 1}, "rasterProfile": "analytic"
+        }).to_string())]).unwrap();
+        assert!(!frame.bytes.is_empty());
+        assert!(!String::from_utf8_lossy(&frame.bytes).contains("invalid type: null, expected struct ColorSettings"));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn source_demand_uses_admitted_lane_and_is_revoked_by_document_replacement() {
         use crate::{math::{Transform,Rect},scene_demand::Lookup};
         let mut source=document();

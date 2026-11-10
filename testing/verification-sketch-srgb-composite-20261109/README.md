@@ -53,7 +53,7 @@ Sketch `document.json` 的 `colorSpace` 1 只表示颜色是 sRGB。原生 Sketc
 - `Palette examples`、`multi-use-bitmap.sketch` 不在仓库，也不能在这台 Linux 上跑 Sketch。#81 的三行/四行、#83 历史 1.05% 没有用原件重测。
 - `uswds.sketch` 在本机对照目录里。`color/system/*` 页没有文字图层；文字字体是未嵌入的 Public Sans / SF Pro。没有原生导出 PNG，#82 的 1.31% 筛查没有重跑。
 - `testing/fixtures/design/sketch-color-controls.sketch`、`coreimage-color-controls-vectors.json`、`spectral-q4-natural-vectors.json`、`sketch-official/file-format-series/color-library.sketch` 不在树里。`color_controls`、`cargo test --lib`、`sketch_official_reference` 因此编不过。这不是这次删的。
-- 前端 `vitest` 需要 WASM 绑定，这次没有重建，字体匹配单测未跑。产品导入仍走已有的 `matchBundledImportFonts`。
+- 仓库里没有 `testing/generate-font-fixtures.py`。依赖它的 `font-management`、`font-source-preservation`、`font-test-fixtures` 不能生成夹具。
 
 GPU 优先、CPU 兜底没改。这不是 33/100ms，也不是完整 G2/G5。
 
@@ -85,4 +85,12 @@ node --test frontend/design-desktop/test/sketch-preview-contract.test.mjs fronte
 
 `sketch_import_admission` 本轮 11 通过、1 失败：`import_any_reports_archive_limits_instead_of_marker_miss` 得到 `Limit("compression ratio")`，不是 archive resource limit。该用例本轮未改。
 
-前端 `vitest` 因仓库里没有 `src/generated/design-kernel/design_kernel` 未能启动。没有重建 WASM，不能把前端套件当成这次行解码修复的证据。字体目录识别仍不是 #81 的行数验收，也不是 #82/#83 的像素验收。没有 Mac、没有 Figma、没有完整拓扑回放。
+随后 `git pull --rebase origin main` 停在 `bcb1a128`，并生成了 dev WASM。
+
+```
+vitest run src/bundled-import-fonts.test.ts src/font-catalog.test.ts src/font-matching.test.ts src/import-fig-fidelity.test.ts
+```
+
+4 个文件，50 通过，1 跳过。主机把预算钉在 4GiB 时，wasm32 把 `2^32` 截成 0，Sketch 再导入会报 `Limit("archive input")`。输入长度现在用可表示的 `usize`。`load_source_snapshot` 打开 colorSpace 1 源后，返回的设置 JSON 仍是 `null`，行解码和 `render_png` 都完成，错误串没有出现在打开结果里。
+
+这不是 Mac 完整拓扑回放。#81 的行数和 #82/#83 的原生像素图仍然没有。

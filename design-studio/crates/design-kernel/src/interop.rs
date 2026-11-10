@@ -7438,7 +7438,7 @@ mod tests {
     }
     #[test]
     fn import_input_policy_does_not_raise_expansion_budget() {
-        assert_eq!(archive_limits().input as u64, crate::capacity::memory_budget_bytes().clamp(1_073_741_824, crate::capacity::WASM_ADDRESS_BYTES));
+        assert_eq!(archive_limits().input, crate::sketch::archive::addressable_bytes(crate::capacity::memory_budget_bytes().clamp(1_073_741_824, crate::capacity::WASM_ADDRESS_BYTES)));
         assert_eq!(archive_limits().entries, 4096);
     }
 
