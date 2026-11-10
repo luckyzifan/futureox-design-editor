@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError } from './navigation-coverage'
+import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction } from './navigation-coverage'
 import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
@@ -31,6 +31,25 @@ test('large reversal revokes only the optional narrow capture and retains its ph
   await Promise.resolve();expect(done).toBe(false)
   expect(flight.cancelObsoleteZoomOut({x:0,y:0,zoom:2},1024,512,2)).toBe(false)
   flight.finish();await flight.done;expect(done).toBe(true)
+})
+
+test('a large pan yields an undelivered capture that misses the newest viewport', () => {
+  let cancelled = 0
+  const flight = navigationCoverageFlight({}, 1, {
+    zoom: 2, bounds: { x: 0, y: 0, width: 512, height: 256 }, cancel: () => cancelled++,
+  })
+  expect(viewportOverlapFraction({ x: 0, y: 0, width: 512, height: 256 }, { x: -40, y: 0, zoom: 2 }, 1024, 512)).toBeGreaterThan(0.5)
+  expect(flight.cancelMissedViewport({ x: -40, y: 0, zoom: 2 }, 1024, 512)).toBe(false)
+  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 2 }, 1024, 512)).toBe(true)
+  expect(cancelled).toBe(1)
+  expect(flight.cancelMissedViewport({ x: -700, y: 0, zoom: 2 }, 1024, 512)).toBe(false)
+  const delivered = navigationCoverageFlight({}, 1, {
+    zoom: 2, bounds: { x: 0, y: 0, width: 512, height: 256 }, cancel: () => { throw Error('delivered capture stays') },
+  })
+  delivered.tile = {}
+  expect(delivered.cancelMissedViewport({ x: -700, y: 0, zoom: 2 }, 1024, 512)).toBe(false)
+  expect(navigationCoverageFlight({}, 1).cancelMissedViewport({ x: 0, y: 0, zoom: 1 }, 100, 100)).toBe(false)
+  expect(flight.cancelMissedViewport({ x: 0, y: 0, zoom: Number.NaN }, 100, 100)).toBe(false)
 })
 
 test('a covering capture and finished/capture-free flights never spend reversal cancellation',()=>{

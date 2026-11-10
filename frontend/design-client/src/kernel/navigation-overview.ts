@@ -65,6 +65,68 @@ export function panStripBounds(view: CanvasCamera, size: { width: number; height
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
 }
 
+/** One coarse page tile before a finer refine. Pasteboard keeps its quiet
+ *  admission. A same-zoom pan that has left the resident pictures asks for
+ *  the strip even while the previous zoom gesture is still marked continuous. */
+export function coarsePanCoverNeeded(options: {
+  firstNative: boolean
+  hasStrip: boolean
+  stripCached: boolean
+  pasteboard: boolean
+  cpuOnly: boolean
+  translated: boolean
+  moving: boolean
+  continuousZoom: boolean
+  translationFollow: boolean
+  residentsCover: boolean
+}) {
+  if (options.firstNative || !options.hasStrip || options.stripCached) return false
+  const quietPasteboard = options.pasteboard && (options.cpuOnly || options.translated || (!options.moving && !options.continuousZoom))
+  return quietPasteboard || (options.translationFollow && !options.residentsCover)
+}
+
+/** Fractions of the viewport and of the tile that still overlap. A zero result
+ * is not coverage: bad geometry must not keep a stale capture. */
+export function panTileOverlap(
+  tile: Pick<RasterTile, 'x' | 'y' | 'width' | 'height' | 'zoom' | 'gutter' | 'phaseX' | 'phaseY'>,
+  view: CanvasCamera,
+  size: { width: number; height: number },
+) {
+  const none = { viewport: 0, tile: 0 }
+  if (!(tile.zoom > 0) || !(view.zoom > 0) || !(size.width > 0) || !(size.height > 0)) return none
+  const gutter = tile.gutter ?? 1
+  const x0 = (tile.x + gutter - (tile.phaseX ?? 0)) / tile.zoom
+  const y0 = (tile.y + gutter - (tile.phaseY ?? 0)) / tile.zoom
+  const x1 = (tile.x + tile.width - gutter - (tile.phaseX ?? 0)) / tile.zoom
+  const y1 = (tile.y + tile.height - gutter - (tile.phaseY ?? 0)) / tile.zoom
+  const vx = -view.x / view.zoom
+  const vy = -view.y / view.zoom
+  const vw = size.width / view.zoom
+  const vh = size.height / view.zoom
+  if (![x0, y0, x1, y1, vx, vy, vw, vh].every(Number.isFinite)) return none
+  if (!(x1 > x0) || !(y1 > y0) || !(vw > 0) || !(vh > 0)) return none
+  const left = Math.max(x0, vx)
+  const top = Math.max(y0, vy)
+  const right = Math.min(x1, vx + vw)
+  const bottom = Math.min(y1, vy + vh)
+  const area = Math.max(0, right - left) * Math.max(0, bottom - top)
+  return { viewport: area / (vw * vh), tile: area / ((x1 - x0) * (y1 - y0)) }
+}
+
+/** Keep an in-flight tile during a large pan when it still paints most of the
+ * viewport or most of the tile is still on screen. A viewport-sized capture
+ * that has slid more than half way yields. An invalid threshold does not yield. */
+export function retainPannedTile(
+  tile: Pick<RasterTile, 'x' | 'y' | 'width' | 'height' | 'zoom' | 'gutter' | 'phaseX' | 'phaseY'>,
+  view: CanvasCamera,
+  size: { width: number; height: number },
+  minimumFraction = 0.5,
+) {
+  if (!Number.isFinite(minimumFraction) || minimumFraction <= 0 || minimumFraction > 1) return true
+  const overlap = panTileOverlap(tile, view, size)
+  return overlap.viewport >= minimumFraction || overlap.tile >= minimumFraction
+}
+
 /** Page-level coarse tile for the pasteboard around a zoomed-out artboard.
  *  nodes is forced to 0 so a large file stays one tile, not a regional grid. */
 export function panStripOverview(page: Bounds, view: CanvasCamera, size: { width: number; height: number }) {

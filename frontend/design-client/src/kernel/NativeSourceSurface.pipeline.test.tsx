@@ -303,6 +303,28 @@ test('a seeded zoom-out still presents an already resident sharper viewport befo
  seed.mockRestore()
 })
 
+test('a large pan after zoom-out aborts the stale refine and asks for one coarse strip',async()=>{
+  vi.stubGlobal('OffscreenCanvas',class {})
+  vi.stubGlobal('ImageBitmapRenderingContext',class {})
+  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+  await draw()
+  const first=state.jobs[0]
+  await act(async()=>{deliver(first,0,11);deliver(first,1,12);first.finish();await pause()})
+  const second=state.jobs[1]
+  await act(async()=>{deliver(second,0,13);deliver(second,1,14);second.finish();await pause();paint()})
+  expect(statuses.some(value=>value.phase==='ready')).toBe(true)
+  await draw({x:0,y:0,zoom:.5})
+  const refine=state.jobs.at(-1)!
+  expect(refine.options.tileViewport?.[0].key.startsWith('navigation-overview:')).toBe(false)
+  await draw({x:-1200,y:0,zoom:.5})
+  await act(async()=>{paint();await pause()})
+  expect(refine.signal?.aborted).toBe(true)
+  const strip=state.jobs.find(job=>job.active&&job.options.tileViewport?.[0].key.startsWith('navigation-overview:'))
+  expect(strip?.options.tileViewport).toHaveLength(1)
+  expect(state.maxActive).toBe(1)
+  expect(statuses.some(value=>value.phase==='error')).toBe(false)
+})
+
 test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async()=>{
  vi.stubGlobal('OffscreenCanvas',class {})
  vi.stubGlobal('ImageBitmapRenderingContext',class {})
