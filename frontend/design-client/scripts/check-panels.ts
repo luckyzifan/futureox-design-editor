@@ -1,22 +1,22 @@
 /** Real production React/WASM panel controls in an isolated WebGPU browser. */
 import { chromium, expect, type Page } from '@playwright/test'
 import { createServer } from 'vite'
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, realpath, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { blank, node, paint, type DesignDocument } from '../src/model'
-const project = resolve(import.meta.dir, '..'), output = await realpath(await mkdtemp(join(tmpdir(), 'forma-panels-'))), root = join(output, 'snapshot/frontend/design-client')
-await mkdir(root, { recursive: true })
-await cp(join(project, '../../design-studio/crates/design-kernel/shaders'), join(output, 'snapshot/design-studio/crates/design-kernel/shaders'), { recursive: true })
-for (const name of ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'tsconfig.json']) await cp(join(project, name), join(root, name), { recursive: true })
-await symlink(join(project, 'node_modules'), join(root, 'node_modules'), 'dir')
+import { acceptanceCounts, enterOwnedEditor, freezeAcceptanceSnapshot, installGuiLayoutPreference, type OwnedWorkspace } from './gui-acceptance-entry.ts'
+const project = resolve(import.meta.dir, '..'), output = await realpath(await mkdtemp(join(tmpdir(), 'forma-panels-')))
+const frozen = await freezeAcceptanceSnapshot(project, output), root = frozen.clientRoot
 const sources: Record<string, string> = {}
 async function hashTree(folder: string) { for (const entry of await readdir(join(root, folder), { withFileTypes: true })) { const name = `${folder}/${entry.name}`; if (entry.isDirectory()) await hashTree(name); else if (/\.(tsx?|m?js|wasm|css)$/.test(name)) sources[name] = createHash('sha256').update(await readFile(join(root, name))).digest('hex') } }
 await hashTree('src'); sources['scripts/check-panels.ts'] = createHash('sha256').update(await readFile(import.meta.path)).digest('hex')
+Object.assign(sources, frozen.dependencyHashes)
 await writeFile(join(output, 'source-hashes.json'), JSON.stringify(sources, null, 2))
 const server = await createServer({ root, cacheDir: join(root, '.vite-cache'), server: { host: '127.0.0.1', port: 0, strictPort: true } })
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined, page: Page | undefined
+let entry: OwnedWorkspace | undefined
 const checks: { name: string; status: string; error?: string; data?: unknown }[] = [], errors: string[] = []
 const record = async (name: string, action: () => Promise<unknown>) => {
   try { const data = await action(); checks.push({ name, status: 'passed', data }) }
@@ -35,7 +35,7 @@ try {
   page = await browser.newPage({ viewport: { width: 1280, height: 850 }, deviceScaleFactor: 2 })
   const p = page, canvas = p.getByTestId('canvas')
   p.on('pageerror', error => errors.push(String(error)))
-  await p.goto(server.resolvedUrls!.local[0]); await expect(p.locator('.save-status')).toHaveText('已保存到本机', { timeout: 30000 })
+  await installGuiLayoutPreference(p); await p.goto(server.resolvedUrls!.local[0]); entry = await enterOwnedEditor(p, 'new', 'check-panels')
   const stored = () => p.evaluate(async () => { const { localOpen } = await import('/src/local-store.ts'); return (await localOpen())!.document })
   let sequence = 0
   const fresh = async (doc: DesignDocument) => { doc.name = `Panel controls ${++sequence}`; const path = join(output, `${sequence}.fd`); await writeFile(path, JSON.stringify(doc)); await p.locator('input[type=file][accept*=".fd"]').setInputFiles(path); await expect(p.getByLabel('文档名称')).toHaveValue(doc.name); await expect.poll(async () => (await stored()).name).toBe(doc.name); await expect(p.locator('.kernel-presentation')).toHaveAttribute('data-presentation-ready', 'true', { timeout: 30000 }) }
@@ -136,6 +136,7 @@ try {
 finally {
   await browser?.close(); await server.close()
   const status = checks.some(c => c.status === 'failed') || errors.length ? 'failed' : 'passed'
-  await writeFile(join(output, 'results.json'), JSON.stringify({ status, execution: 'Real mouse/keyboard/file input; production React/WASM copied to private source snapshot; WebGPU browser, no render mocks.', checks, errors, output }, null, 2)); console.log(JSON.stringify({ status, output, checks: checks.length, errors }))
+  const counts = acceptanceCounts('check-panels', checks, undefined, !!entry)
+  await writeFile(join(output, 'results.json'), JSON.stringify({ status, execution: 'Real mouse/keyboard/file input; production React/WASM copied to private source snapshot; WebGPU browser, no render mocks.', counts, checks, errors, output }, null, 2)); console.log(`ACCEPTANCE_COUNTS ${JSON.stringify(counts)}`); console.log(JSON.stringify({ status, output, checks: checks.length, errors }))
   if (status === 'failed') process.exitCode = 1
 }
