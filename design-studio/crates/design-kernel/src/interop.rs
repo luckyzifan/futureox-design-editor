@@ -5183,8 +5183,11 @@ fn export_style_parts(
     // Shadow alpha lives in the color payload; kernel keeps it separately
     // in Effect.opacity, so export multiplies it back into the color.
     let shadow_json = |e: &Effect| -> Result<Value> {
+        // Native Sketch uses `_class: innerShadow` for inner shadows. `_class: shadow`
+        // is an outer shadow, including when a fixture author meant the other kind.
+        let class = if e.kind == "inner-shadow" { "innerShadow" } else { "shadow" };
         Ok(
-            json!({"_class": "shadow", "isEnabled": e.visible, "blurRadius": e.radius,
+            json!({"_class": class, "isEnabled": e.visible, "blurRadius": e.radius,
                 "offsetX": e.x, "offsetY": e.y, "spread": e.spread,
                 "color": hex_to_rgba(&e.color, e.opacity.clamp(0., 1.), settings)?,
                 "contextSettings": {"_class": "graphicsContextSettings", "blendMode": 0, "opacity": 1., "isProgressive": false}}),
