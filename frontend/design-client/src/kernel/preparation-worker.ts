@@ -7,7 +7,7 @@ import { loadKernelResources } from './kernel-resources'
 import { PreparationSnapshots } from './preparation-snapshot'
 import { PreparationStates } from './preparation-state'
 
-const allowed = new Set<PreparationMethod>(['preparation_capabilities_v1', 'derive_document_v1', 'warm_resources', 'initialize', 'load_document', 'apply_document_patch_with_damage', 'apply_interaction_transforms',
+const allowed = new Set<PreparationMethod>(['preparation_capabilities_v1', 'derive_document_v1', 'warm_resources', 'initialize', 'load_document', 'apply_document_patch_with_damage', 'interaction_pose_damage', 'apply_interaction_transforms',
   'compile_gpu_packet', 'render_linear', 'render_png', 'render_color_png', 'render_region_png',
   'render_cpu_frame', 'stats', 'gpu_memory_breakdown'])
 let initialized: Promise<Uint8Array> | undefined

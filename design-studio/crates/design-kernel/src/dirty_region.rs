@@ -2419,6 +2419,24 @@ mod tests {
         assert!(region.full);
         assert_eq!(region.reason, Some("visible tile budget exceeded"));
     }
+
+    #[test]
+    fn rigid_leaf_rotation_is_local_and_a_backdrop_reader_stays_unbounded() {
+        let doc = document(json!(["a", "b"]));
+        let parents = crate::render_index::Parents::new(&doc);
+        let fonts = Fonts::new();
+        let mut turned = BTreeMap::new();
+        turned.insert("a".into(), Transform([0., 1., -1., 0., 24., 24.]));
+        let damage = resolved_leaf_pose_damage(&doc, &parents, &turned, &fonts).expect("plain leaf rotation");
+        assert!(!damage.full);
+        let bounds = damage.bounds.expect("union");
+        assert!(bounds[0] <= -16. && bounds[1] <= 24. && bounds[0] + bounds[2] >= 84. && bounds[1] + bounds[3] >= 84.);
+        assert!(damage.rects.is_some_and(|rects| rects.len() == 2));
+        let mut backdrop = doc.clone();
+        backdrop.nodes.get_mut("b").unwrap().effects.push(serde_json::from_value(json!({"kind":"background-blur","radius":4.,"color":"#000000","visible":true})).unwrap());
+        let parents = crate::render_index::Parents::new(&backdrop);
+        assert!(resolved_leaf_pose_damage(&backdrop, &parents, &turned, &fonts).is_none());
+    }
 }
 
 

@@ -457,3 +457,29 @@ fn version_two_image_envelopes_remain_readable(){
     let mut file=File::open(&fixture.path).unwrap();file.seek(SeekFrom::Start(receipt.bytes-FOOTER_BYTES)).unwrap();let mut footer=[0u8;FOOTER_BYTES as usize];file.read_exact(&mut footer).unwrap();receipt.footer_hash=sha(&footer);
     let (restored,_)=Reader::open(&fixture.path,&receipt,&cancel).unwrap().into_document(&cancel).unwrap();assert_eq!(restored,doc);
 }
+
+#[test]
+fn repeated_large_demand_verifies_the_index_once_and_reuses_decoded_nodes() {
+    let fixture = Fixture::new();
+    let doc = document(80);
+    let receipt = fixture.write(&doc);
+    let cancel = AtomicBool::new(false);
+    let mut reader = Reader::open(&fixture.path, &receipt, &cancel).unwrap();
+    let ids: Vec<_> = doc.nodes.keys().cloned().take(50).collect();
+    let first = reader.read_demand(ids.clone(), &cancel).unwrap();
+    assert_eq!(first.len(), 50);
+    assert_eq!(reader.stats().index_proofs, 1, "a large demand verifies the merkle index once");
+    let reads = reader.stats().node_reads;
+    assert!(reads >= 50);
+    let before = reader.stats();
+    let second = reader.read_demand(ids, &cancel).unwrap();
+    assert_eq!(second, first);
+    let delta = reader.stats().since(before);
+    assert_eq!(delta.node_reads, 0);
+    assert_eq!(delta.index_proofs, 0);
+    assert!(delta.node_cache_hits >= 50);
+    let small: Vec<_> = doc.nodes.keys().cloned().take(2).collect();
+    let mut other = Reader::open(&fixture.path, &receipt, &cancel).unwrap();
+    other.read_demand(small, &cancel).unwrap();
+    assert!(other.stats().index_proofs > 1, "a tiny demand keeps the per-row proof");
+}

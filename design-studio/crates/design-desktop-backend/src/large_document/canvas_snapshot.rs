@@ -102,10 +102,11 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     // merging its result in source order; a slow neighbouring batch no longer
     // leaves the other conversion slot idle for the rest of a fixed pair.
     let convert=|batch:&Vec<(usize,usize)>| {
-        if layout.items.len()==1 {
-            // The exact material viewer and the editable workset use the same
-            // source conversion. Cache the complete original before stripping
-            // export-only metadata from the disposable display copy.
+        if batch.len()==1 {
+            // Singleton batches share the material-viewer cache. A full-source
+            // snapshot that revisits one already converted root does not parse
+            // that archive window again. Multi-root batches keep shared symbol
+            // admission and are not reconstructed from singleton caches.
             let (p,n)=batch[0];
             let (mut document,warnings)=window_cache::convert(s,p,n,cancel,&context)?;
             if render_only {if let Some(system)=&mut document.design_system{system.sketch_containers.clear();}}

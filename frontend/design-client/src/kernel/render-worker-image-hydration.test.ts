@@ -111,7 +111,8 @@ async function worker(desktopFullMath = false, withPreparation = false, desktopD
   const executionPolicy = createRenderPolicy(false, false, false, false, desktopFullMath, desktopDisplay)
   const send = (request: any) => scope.onmessage({ data: { executionPolicy, backend: 'auto', ...request } })
   const finish = async (id: number) => {
-    await vi.waitFor(() => expect(messages.some(value => value.id === id && (value.backend || value.error))).toBe(true))
+    // Asset reuse waits for worker completion; GUI acceptance measures latency.
+    await vi.waitFor(() => expect(messages.some(value => value.id === id && (value.backend || value.error))).toBe(true), { timeout: 10_000 })
     return messages.find(value => value.id === id && (value.backend || value.error))
   }
   return { send, finish, messages, kernel }
@@ -573,7 +574,10 @@ test('live capture document patches route pure affine transforms through native 
  w.send({id:981,channel:'interaction',documentPatch:JSON.stringify(documentPatch(w.f.doc,next)),baseDocumentRevision:1,documentRevision:2,options:w.options})
  expect((await w.finish(981)).error).toBeUndefined()
  expect(apply).toHaveBeenCalled()
- expect(w.messages.find(m=>m.id===981&&m.damage)?.damage.reason).toBe('native-interaction-pose')
+ const poseDamage=w.messages.find(m=>m.id===981&&m.damage)?.damage
+ expect(poseDamage.reason).toBe('native-interaction-pose')
+ expect(poseDamage.full).toBe(false)
+ expect(poseDamage.bounds?.[2]).toBeGreaterThan(0)
  expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(transform)
 })
 

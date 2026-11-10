@@ -749,6 +749,16 @@ impl Engine {
     /// or scale the moved subtree and additionally rebuild the camera metadata
     /// summary (device-space effect margins can change). Validate all nodes
     /// atomically.
+    /// Local old/new support for a pose that has not been applied yet.
+    /// `None` means the dependency proof did not close; callers keep a full redraw.
+    pub fn interaction_pose_damage(&self, transforms: &std::collections::BTreeMap<String, Transform>) -> Result<Option<crate::dirty_region::PatchDamage>, String> {
+        if transforms.is_empty() || transforms.len() > 16 { return Err("Invalid interaction transform count".into()); }
+        for transform in transforms.values() {
+            if !transform.0.iter().all(|value| value.is_finite()) { return Err("Non-finite interaction transform".into()); }
+        }
+        let (Some(doc), Some(index)) = (&self.doc, &self.render_index) else { return Ok(None); };
+        Ok(crate::dirty_region::resolved_leaf_pose_damage(doc, &index.parents, transforms, &self.fonts))
+    }
     pub fn apply_interaction_transforms(&mut self, transforms: &std::collections::BTreeMap<String, Transform>) -> Result<bool, String> {
         if transforms.is_empty() || transforms.len() > 16 { return Err("Invalid interaction transform count".into()); }
         let source = self.source_doc.as_ref().ok_or("Load document before interaction")?;

@@ -30,6 +30,18 @@ test('pool return records the encode epoch and completion is a separate life', (
   expect(ledger.peak).toBe(32)
 })
 
+test('completed free-pool bytes are counted apart from the high-water peak', () => {
+  const ledger = new ResourceLedger<Tex, Surf>()
+  ledger.charge(128)
+  ledger.noteCompletedFree(64)
+  ledger.noteCompletedFree(0)
+  ledger.noteCompletedFree(Number.NaN)
+  ledger.discharge(64)
+  expect(ledger.completedFreeBytes).toBe(64)
+  expect(ledger.bytes).toBe(64)
+  expect(ledger.peak).toBe(128)
+})
+
 test('device loss forgets owners without pretending the bytes were destroyed', () => {
   const ledger = new ResourceLedger<Tex, Surf>()
   const texture = { id: 3, bytes: 8 }
