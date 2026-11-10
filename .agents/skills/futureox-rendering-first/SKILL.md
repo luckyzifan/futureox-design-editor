@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-10 精修调度：同一修订里已经发布过的素材范围不再等 120ms 重叠采样，直接向宿主要回原来的令牌。范围不同或修订不同仍等待。没有重测 20082 节点 FIG 的停手时间。不是 33/100ms 或完整 G2/G5。
+
 2026-11-09 [精修调度与准备窗口核对](../../../testing/verification-refine-scheduling-20261109/README.md)：重叠的大素材范围先等一个采样周期，同一修订返回时复用原令牌。并集准备顶到路径或区间程序预算时按原裁剪重试。把低倍准备窗口改成并集的候选已撤回：发布构建里合成 2400 矩形中位约 44.3→40.1 ms，但 `01有料素材 (Copy).fig` 的 `fig-0-8200` 矩形从 y131/h195 变成 y90/h236。没有 GPU 上的完整拓扑端到端数字。不是 33/100ms 或完整 G2/G5。
 
 2026-11-09 [拓扑 GPU 批绘与成熟度](../../../docs/TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)：普通原生源 SDR WebGPU 的低物理采样倍率瓦片默认合并已证明不透明的纯色填充/描边，保持四相、顺序、二值裁剪与原预算；`VITE_DESIGN_SOURCE_SOLID_LAYERS=0` 回退。完整拓扑约 113.9→100.5 秒，正常构建复核 101.8 秒，原生画布及三份高倍输出像素一致。superset 原生投影复用减少重建却无稳定端到端收益，已完整撤回，不得保留或宣称 91.7 秒为最终性能。拓扑是主基准，117/FIG/test 防回退；当前为开发者 Alpha，完整 G2/G5 与 33/100ms 未关闭。

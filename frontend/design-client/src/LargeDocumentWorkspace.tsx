@@ -7,7 +7,7 @@ import { Editor } from './engine'
 import { blank, type DesignDocument, type Point } from './model'
 import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
-import {deferOverlappingMaterialScope,includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
+import {deferOverlappingMaterialScope,includesMaterials,materialScope,rememberedMaterialScope,rememberPublishedScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged, subscribePendingEdits } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
@@ -63,6 +63,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const viewportDemand=useRef(false),zoomAnchor=useRef<Point|undefined>(undefined)
   const requestedIndices=useRef<number[]>([]),preparingKeys=useRef<readonly string[]>([])
   const reviewedScope=useRef<{token:string;at:number}|undefined>(undefined)
+  const publishedScopes=useRef<{revision:number; keys:readonly string[]}[]>([])
   const lastMaterialToken=useRef<string|undefined>(undefined)
   const pageDetailIntent=useRef<string|undefined>(undefined)
   const requestDetail=useCallback((indices:number[],retry=false,fromViewport=false)=>{
@@ -356,7 +357,8 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         // sampled neighbour on a reversing gesture must not discard all of
         // its native tiles. Recheck the actual camera before asking the host.
         const held=current && !current.viewportSubset && nativePresentedToken.current===current.token ? current.materialKeys : undefined
-        if(current && host && deferOverlappingMaterialScope({
+        const knownScope=rememberedMaterialScope({revision:selected.revision, keys, remembered:publishedScopes.current})
+        if(!knownScope && current && host && deferOverlappingMaterialScope({
           viewportDriven:!!viewport && focusedMaterial===undefined,
           held, wanted,
         })){
@@ -394,6 +396,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         const latestWanted=requestedIndices.current.map(i=>itemsForSnapshot.current[i]?.key)
         if(demandGeneration.current!==generation && (!latestWanted.length||!includesMaterials(keys,latestWanted)))return
         if(frame.materialKeys?.join(',')!==keys.join(',') || frame.roots!==keys.length)throw Error('素材精修范围不匹配')
+        rememberPublishedScope(publishedScopes.current, frame.revision, keys)
         nativeSnapshotRef.current=frame;setNativeSnapshot(frame);setWarnings(frame.warnings)
         setNativeRenderStatus({phase:'refining',done:0,total:frame.roots})
       }catch(error){
