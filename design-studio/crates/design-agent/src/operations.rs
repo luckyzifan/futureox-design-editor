@@ -74,6 +74,18 @@ pub struct DesignContext {
     /// Node ids the user has selected on the canvas. Empty means nothing selected.
     #[serde(default)]
     pub selection: Vec<String>,
+    /// Human-readable bounds notes. Omitted layers are not the same as an empty page.
+    #[serde(default)]
+    pub omissions: Vec<String>,
+    /// Editor document id observed when the request was built.
+    #[serde(default)]
+    pub document_id: String,
+    /// Editor session generation observed when the request was built.
+    #[serde(default)]
+    pub session: u64,
+    /// Editor revision observed when the request was built.
+    #[serde(default)]
+    pub revision: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +113,9 @@ pub fn expand_tool(name: &str, arguments: &Value, message: &str, ctx: &DesignCon
         }),
         "design_agent_generate" | "design_agent_iterate" => Ok(build_page(&spec_from(arguments, message))),
         "design_agent_adjust" | "design_agent_style" | "design_agent_layout" => {
+            if !target.is_empty() && !ctx.pages.iter().any(|page| page.id == target) {
+                return Err(format!("Page {target} does not exist"));
+            }
             Ok(build_adjust(name, arguments, message, ctx, &target))
         }
         other => Err(format!("unknown agent tool {other}")),
@@ -210,25 +225,29 @@ fn build_page(spec: &PageSpec) -> ToolExpansion {
 }
 
 fn build_adjust(tool: &str, arguments: &Value, message: &str, ctx: &DesignContext, target: &str) -> ToolExpansion {
+    let nodes: Vec<&NodeRef> = ctx.nodes.iter().filter(|node| target.is_empty() || node.page_id == target).collect();
+    let title_node = nodes.iter().copied().find(|node| node.kind == "text" && (node.name == "标题" || node.name.contains("标题")));
+    let frame = nodes.iter().copied().find(|node| node.name == "画板" || node.kind == "frame");
+    let requested_text = arguments
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+        .or_else(|| title_change(message));
+    // A named title that is not in the bounded context must not become an unrelated edit.
+    if title_node.is_none() && (requested_text.is_some() || message.contains("标题")) {
+        return report_missing_title(ctx, target);
+    }
     let mut operations = Vec::new();
     if !target.is_empty() && target != ctx.current_page_id {
         operations.push(op("page.setCurrent", json!({ "id": target })));
     }
-    let nodes: Vec<&NodeRef> = ctx.nodes.iter().filter(|node| target.is_empty() || node.page_id == target).collect();
-    let title_node = nodes.iter().copied().find(|node| node.kind == "text" && (node.name == "标题" || node.name.contains("标题")));
-    let frame = nodes.iter().copied().find(|node| node.name == "画板" || node.kind == "frame");
     let mut notes = Vec::new();
     if tool != "design_agent_layout" {
-        if let Some(text) = arguments
-            .get("text")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|text| !text.is_empty())
-            .map(str::to_string)
-            .or_else(|| title_change(message))
-        {
+        if let Some(text) = requested_text.clone() {
             if let Some(node) = title_node {
-                operations.push(op("text.set", json!({ "ids": [node.id], "text": clip(&text, 80) })));
+                operations.push(replace_text(node, &clip(&text, 80)));
                 notes.push(format!("标题改为「{text}」"));
             }
         }
@@ -244,7 +263,7 @@ fn build_adjust(tool: &str, arguments: &Value, message: &str, ctx: &DesignContex
     if let Some(radius) = arguments.get("radius").and_then(Value::as_f64).or_else(|| radius_from(message)) {
         if let Some(node) = frame {
             let radius = radius.clamp(0.0, 200.0);
-            operations.push(op("style.set", json!({ "ids": [node.id], "radii": [radius, radius, radius, radius] })));
+            operations.push(patch_radii(node, radius));
             notes.push(format!("圆角改为 {radius}"));
         }
     }
@@ -260,10 +279,15 @@ fn build_adjust(tool: &str, arguments: &Value, message: &str, ctx: &DesignContex
     }
     if notes.is_empty() {
         if let Some(node) = title_node {
-            operations.push(op("text.set", json!({ "ids": [node.id], "fontSize": 64 })));
-            notes.push("没有更具体的句子，先把标题字号调到 64".into());
-        } else if let Some(node) = frame {
-            operations.push(op("style.set", json!({ "ids": [node.id], "radii": [20, 20, 20, 20] })));
+            if let Some(size) = node.font_size {
+                operations.push(op(
+                    "node.patch",
+                    json!({ "ids": [node.id], "patch": { "fontSize": 64.0 }, "expected": { "fontSize": size } }),
+                ));
+                notes.push("没有更具体的句子，先把标题字号调到 64".into());
+            }
+        } else if let Some(node) = frame.filter(|_| !message.contains("标题")) {
+            operations.push(patch_radii(node, 20.0));
             notes.push("没有更具体的句子，先把画板圆角调到 20".into());
         }
     }
@@ -277,6 +301,61 @@ fn build_adjust(tool: &str, arguments: &Value, message: &str, ctx: &DesignContex
         format!("正在修改「{page_name}」：{}", notes.join("，"))
     };
     ToolExpansion { summary, operations, target_page_id: target.to_string(), read_only: false }
+}
+
+fn report_missing_title(ctx: &DesignContext, target: &str) -> ToolExpansion {
+    let page_name = ctx.pages.iter().find(|page| page.id == target).map(|page| page.name.as_str()).unwrap_or("目标页");
+    let omitted = ctx.omissions.iter().filter(|item| !item.is_empty()).cloned().collect::<Vec<_>>().join("");
+    let summary = if ctx.omissions.iter().any(|item| item.contains('标')) {
+        format!("「{page_name}」的标题没有进入这次有限上下文，所以没有修改。{omitted}")
+    } else if omitted.is_empty() {
+        format!("「{page_name}」里没有可改的标题，没有改圆角或其他属性。")
+    } else {
+        format!("「{page_name}」的标题不在这次送出的图层里，没有改圆角或其他属性。{omitted}")
+    };
+    ToolExpansion { summary, operations: Vec::new(), target_page_id: target.to_string(), read_only: true }
+}
+
+fn replace_text(node: &NodeRef, text: &str) -> Operation {
+    let previous = node.text.clone().unwrap_or_default();
+    op(
+        "text.replaceRange",
+        json!({
+            "nodeId": node.id,
+            "start": 0,
+            "end": utf16_len(&previous),
+            "text": text,
+            "expectedText": previous,
+        }),
+    )
+}
+
+fn patch_radii(node: &NodeRef, radius: f64) -> Operation {
+    op(
+        "node.patch",
+        json!({
+            "ids": [node.id],
+            "patch": { "radii": corner_object(radius, radius, radius, radius) },
+            "expected": { "radii": radii_object(node.corner_radius.as_deref()) },
+        }),
+    )
+}
+
+fn corner_object(top_left: f64, top_right: f64, bottom_right: f64, bottom_left: f64) -> Value {
+    json!({ "topLeft": top_left, "topRight": top_right, "bottomRight": bottom_right, "bottomLeft": bottom_left })
+}
+
+fn radii_object(value: Option<&str>) -> Value {
+    let mut parts = value.unwrap_or("0").split(',').map(|part| part.trim().parse::<f64>().unwrap_or(0.0));
+    let top_left = parts.next().unwrap_or(0.0);
+    let top_right = parts.next().unwrap_or(top_left);
+    let bottom_right = parts.next().unwrap_or(top_left);
+    let bottom_left = parts.next().unwrap_or(top_left);
+    corner_object(top_left, top_right, bottom_right, bottom_left)
+}
+
+fn utf16_len(value: &str) -> usize {
+    value.encode_utf16().count()
 }
 
 fn describe(name: &str, ctx: &DesignContext, target: &str) -> String {
@@ -527,12 +606,68 @@ mod tests {
                 font_id: None,
             }],
             selection: Vec::new(),
+            ..DesignContext::default()
         };
         let expanded = expand_tool("design_agent_adjust", &json!({}), "把设置页的标题改成账户", &ctx).unwrap();
         assert_eq!(expanded.target_page_id, settings);
         assert_eq!(expanded.operations[0].method, "page.setCurrent");
-        let text = expanded.operations.iter().find(|op| op.method == "text.set").unwrap();
+        let text = expanded.operations.iter().find(|op| op.method == "text.replaceRange").unwrap();
         assert_eq!(text.params["text"], "账户");
-        assert_eq!(text.params["ids"][0], title);
+        assert_eq!(text.params["expectedText"], "旧标题");
+        assert_eq!(text.params["nodeId"], title);
+        assert_eq!(text.params["start"], 0);
+        assert_eq!(text.params["end"], 3);
+    }
+
+    #[test]
+    fn a_missing_target_page_is_rejected() {
+        let ctx = DesignContext {
+            current_page_id: "page-1".into(),
+            target_page_id: Some("missing-page".into()),
+            pages: vec![PageRef { id: "page-1".into(), name: "当前".into() }],
+            ..DesignContext::default()
+        };
+        let error = expand_tool("design_agent_adjust", &json!({}), "细节调整：把标题改成 QA_NEW_TITLE", &ctx).unwrap_err();
+        assert!(error.contains("missing-page"), "{error}");
+        assert!(error.contains("does not exist"), "{error}");
+    }
+
+    #[test]
+    fn a_title_outside_the_bounded_context_does_not_change_frame_radius() {
+        let ctx = DesignContext {
+            current_page_id: "page-2".into(),
+            target_page_id: Some("page-2".into()),
+            pages: vec![PageRef { id: "page-2".into(), name: "Target QA".into() }],
+            nodes: vec![NodeRef {
+                id: "frame".into(),
+                page_id: "page-2".into(),
+                parent_id: None,
+                name: "画板".into(),
+                kind: "frame".into(),
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 80.0,
+                text: None,
+                fill: None,
+                stroke: None,
+                stroke_width: None,
+                stroke_align: None,
+                stroke_cap: None,
+                stroke_join: None,
+                stroke_dash: None,
+                opacity: None,
+                corner_radius: Some("4".into()),
+                font_size: None,
+                font_id: None,
+            }],
+            omissions: vec!["目标页的标题没有全部进入这次上下文。被省略不等于页面里没有标题。".into()],
+            ..DesignContext::default()
+        };
+        let expanded = expand_tool("design_agent_adjust", &json!({}), "细节调整：把标题改成 QA_NEW_TITLE", &ctx).unwrap();
+        assert!(expanded.operations.is_empty(), "{:?}", expanded.operations);
+        assert!(expanded.summary.contains("标题"), "{}", expanded.summary);
+        assert!(expanded.summary.contains("没有修改"), "{}", expanded.summary);
+        assert!(!expanded.summary.contains("圆角改为"), "{}", expanded.summary);
     }
 }

@@ -32,3 +32,4 @@
 .agent-settings input, .agent-settings select { min-height: 32px; padding: 6px 10px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-field); color: var(--workspace-text); }
 .agent-settings ul { margin: 0; padding-left: 18px; }
 .design-agent-panel [role=alert] { color: var(--workspace-danger); }
+.design-agent-failure { margin: 0; padding: 8px 10px; border: 1px solid var(--workspace-danger); border-radius: 8px; background: var(--workspace-field); }
