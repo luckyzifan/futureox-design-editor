@@ -113,6 +113,7 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
             return Ok((document,warnings.into_iter().collect()));
         }
         let mut document=None;let mut notes=std::collections::BTreeSet::new();
+        s.snapshot_account.source_batches.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         append_batch(s,batch,cancel,&context,&mut document,&mut notes,render_only)?;
         Ok::<_,BackendError>((document.ok_or_else(||issue("Empty source batch"))?,notes))
     };
@@ -214,6 +215,17 @@ pub(super) fn build_individual(s: &Session, layout: &canvas_layout::Layout, canc
     Ok((document,id,warnings.into_iter().collect()))
 }
 
+#[derive(Debug, Default)]
+pub(super) struct Account {
+    pub descriptor_hits: u64,
+    pub builds: u64,
+    pub layout_reuses: u64,
+    pub layout_builds: u64,
+    pub scene_writes: u64,
+    /// Multi-root archive batches. Singleton roots use the window cache instead.
+    pub source_batches: std::sync::atomic::AtomicU64,
+}
+
 pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool, material_keys:Option<&[String]>,navigation_window:Option<canvas_layout::Box2>) -> Result<Value> {
     let keys=material_keys.map(|keys| {
         let mut keys=keys.to_vec();keys.sort();
@@ -231,11 +243,19 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
         check_cancel(cancel).map_err(issue)?;
         if let Some(key)=scope.as_deref() && let Some(cached)=s.recent_materials.take(key,s.revision,cancel)? {
             if let Some(old)=s.canvas_snapshot.replace(cached) {s.recent_materials.park(old,s.revision);}
+            s.snapshot_account.descriptor_hits += 1;
             return Ok(snapshot_descriptor(s.canvas_snapshot.as_ref().unwrap(),&s.owner));
         }
         let layout=match &s.canvas_layout {
-            Some(layout) if layout.revision==s.revision => layout.clone(),
-            _ => canvas_layout::build(s,cancel)?,
+            Some(layout) if layout.revision==s.revision => {
+                s.snapshot_account.layout_reuses += 1;
+                layout.clone()
+            }
+            _ => {
+                let layout = canvas_layout::build(s,cancel)?;
+                s.snapshot_account.layout_builds += 1;
+                layout
+            }
         };
         // Placement and source order always come from the full revision catalogue.
         // Only the explicitly requested roots and their real dependencies are converted.
@@ -275,12 +295,16 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
             }else if navigation_preview && scope.is_none() {
                 snapshot.navigation=navigation_image::NavigationImage::start(document.into_document(),snapshot.page_id.clone(),snapshot.bounds,snapshot.store.bytes,false);
             }
+            s.snapshot_account.scene_writes += 1;
             Ok(snapshot)
         })();
         if result.is_err(){let _=fs::remove_file(&next);}
         let snapshot=result?;
         if let Some(previous)=s.canvas_snapshot.replace(snapshot) {s.recent_materials.park(previous,s.revision);}
         s.canvas_layout=Some(layout);
+        s.snapshot_account.builds += 1;
+    } else {
+        s.snapshot_account.descriptor_hits += 1;
     }
     let snapshot=s.canvas_snapshot.as_ref().unwrap();
     Ok(snapshot_descriptor(snapshot,&s.owner))
