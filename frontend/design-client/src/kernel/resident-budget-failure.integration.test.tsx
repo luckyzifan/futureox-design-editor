@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { ResidentCompositeSurface } from './ResidentCompositeSurface'
+import { canvasStatusLabel } from '../canvas-status-label'
 // Exercise the production component's React layout effects and release calls;
 // no GPU/device timing is claimed. Only unrelated interaction/content services
 // and the worker transport are controlled.
@@ -55,18 +56,27 @@ test('required-frame budget rejection reaches explicit surface failure and exist
   expect(present).toHaveBeenCalledOnce();expect(failures).toEqual([String(error)])
   expect(onRenderFailure).toHaveBeenCalledOnce();expect(onFallback).toHaveBeenCalledExactlyOnceWith(`PREVIEW_CPU_FALLBACK: ${error}`)
   expect(previewDevice.current).toEqual({client:h.client})
-  // The existing status renders this same failure string when fallback is not selected.
+  // Execute the actual title expression instead of pinning its source spelling.
   expect(surface).toContain("className={`kernel-status ${failure ? 'error' : ''}`}")
-  expect(surface).toContain("title={failure || '画布高清显示'}")
+  const status=surface.slice(surface.indexOf("className={`kernel-status ${failure ? 'error' : ''}`}"))
+  const title=status.match(/title=\{([^\n]+)\}/)![1]
+  const titleFor=new Function('failure','canvasStatusLabel',`return (${title})`)
+  expect(titleFor(String(error),canvasStatusLabel)).toBe(String(error))
+  expect(titleFor('Error: working-memory allowance exceeded',canvasStatusLabel)).toBe('内存不足，当前画面已保留')
+  expect(titleFor(undefined,canvasStatusLabel)).toBe('画布高清显示')
 })
-test('failed explicit bitmap transport closes the produced output and reports failure', async()=>{
+test.each(['display-read-pixel','display-capture-content','display-navigation-tile'] as const)('failed %s transport retires produced output and reports failure', async command=>{
   const worker=readFileSync(new URL('./render-worker.ts',import.meta.url),'utf8')
-  const block=worker.slice(worker.indexOf("if(request.command==='display-read-pixel'||request.command==='display-capture-content'){"),worker.indexOf("  if(request.command==='interaction-pose'){"))
-  const close=vi.fn(),bitmap={close},messages:any[]=[],request={id:74,command:'display-capture-content'}
-  const self={postMessage(message:any){if(message.bitmap)throw Error('synthetic transport failure');messages.push(message)}}
-  new Function('request','gpu','self',block)(request,{driver:{captureContentBitmap:async()=>({bitmap,contentFrame:{}})}},self)
-  await Promise.resolve();await Promise.resolve()
-  expect(close).toHaveBeenCalledOnce();expect(messages).toHaveLength(1)
+  const starts=[worker.indexOf("  if(request.command==='display-read-pixel'"),worker.indexOf("  if(request.command==='display-navigation-tile'){")].filter(value=>value>=0)
+  expect(starts.length).toBeGreaterThan(0)
+  const block=worker.slice(Math.min(...starts),worker.indexOf("  if(request.command==='interaction-pose'){"))
+  const close=vi.fn(),release=vi.fn(),bitmap={close},messages:any[]=[],request={id:74,command}
+  const self={postMessage(message:any){if(!message.error)throw Error('synthetic transport failure');messages.push(message)}}
+  const driver={readContentPixel:async()=>({pixel:[0,0,0,255]}),captureContentBitmap:async()=>({bitmap,contentFrame:{}}),captureNavigationTile:async()=>({bitmap,navigationToken:63}),releaseNavigationTransfer:release}
+  new Function('request','gpu','self',block)(request,{driver},self)
+  await vi.waitFor(()=>expect(messages).toHaveLength(1))
+  expect(close).toHaveBeenCalledTimes(command==='display-read-pixel'?0:1)
+  expect(release).toHaveBeenCalledTimes(command==='display-navigation-tile'?1:0)
   expect(messages[0]).toMatchObject({id:74,error:'Error: synthetic transport failure'})
   expect(messages[0]).not.toHaveProperty('bitmap')
 })
