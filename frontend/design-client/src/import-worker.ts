@@ -7,10 +7,51 @@ import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
 type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
   | { document: DesignDocument; format: 'sketch-export' }
+  | { name: string; format: 'sketch-with-libraries'; project: ArrayBuffer | File; libraries: Array<ArrayBuffer | File> }
+
+const SKETCH_LIBRARY_COUNT_MESSAGE = '打开前请附上 1 到 8 个本地 .sketch 库'
+
+function sketchByteSource(value: unknown): { size: number; read?: () => Promise<ArrayBuffer>; buffer?: ArrayBuffer } {
+  if (value instanceof ArrayBuffer) return { size: value.byteLength, buffer: value }
+  if (value && typeof value === 'object' && typeof (value as File).arrayBuffer === 'function' && typeof (value as File).size === 'number') {
+    const file = value as File
+    return { size: file.size, read: () => file.arrayBuffer() }
+  }
+  throw new Error('Sketch 库必须是未读取的文件或已校验的字节')
+}
+
 self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>) => {
   let importStage = 238 // initialize
   try {
     if (event.data.memoryBytes !== undefined) pinDocumentCapacity(event.data.memoryBytes, 'trusted-worker-bootstrap')
+    if (event.data.format === 'sketch-with-libraries') {
+      const libraries = event.data.libraries
+      if (!Array.isArray(libraries) || libraries.length < 1 || libraries.length > 8) throw new Error(SKETCH_LIBRARY_COUNT_MESSAGE)
+      const parts = [sketchByteSource(event.data.project), ...libraries.map(sketchByteSource)]
+      for (const part of parts) assertImportInputBytes(part.size)
+      importStage = 231 // read
+      self.postMessage({ kind: 'import-stage', importStage })
+      const buffers: ArrayBuffer[] = []
+      for (const part of parts) {
+        const read = part.buffer ?? await part.read!()
+        assertImportInputBytes(read.byteLength)
+        buffers.push(read)
+      }
+      await initializeKernelModule()
+      const kernel = await import('./generated/design-kernel/design_kernel') as {
+        import_sketch_with_libraries_json?: (bytes: Uint8Array, libraries: Uint8Array[]) => string
+      }
+      if (typeof kernel.import_sketch_with_libraries_json !== 'function') {
+        throw new Error('当前内核不能在打开前附上 Sketch 库')
+      }
+      importStage = 233 // decode
+      const [project, ...attached] = buffers
+      const result = JSON.parse(kernel.import_sketch_with_libraries_json(new Uint8Array(project), attached.map(buffer => new Uint8Array(buffer))))
+      result.document.id = uid()
+      result.document.name = event.data.name || result.document.name
+      self.postMessage({ result })
+      return
+    }
     if (event.data.format === 'sketch-export') {
       await initializeKernelModule()
       const { export_sketch_json } = await import('./generated/design-kernel/design_kernel')

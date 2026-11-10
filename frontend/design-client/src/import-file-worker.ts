@@ -43,6 +43,30 @@ export function importFileInWorker(
   }, signal, diagnostic)
 }
 
+export const SKETCH_LIBRARY_COUNT_MESSAGE = '打开前请附上 1 到 8 个本地 .sketch 库'
+
+/** Retry Sketch admission with local libraries. Size and count are checked before any byte is read. */
+export function importSketchWithLibraries(
+  project: ArrayBuffer | File,
+  libraries: Array<ArrayBuffer | File>,
+  name: string,
+  signal?: AbortSignal,
+  diagnostic?: ImportDiagnostic,
+): Promise<ImportedDesign> {
+  if (libraries.length < 1 || libraries.length > 8) throw new Error(SKETCH_LIBRARY_COUNT_MESSAGE)
+  const inputs = [project, ...libraries]
+  for (const input of inputs) assertImportInputBytes(input instanceof ArrayBuffer ? input.byteLength : input.size)
+  const transfer = inputs.filter((input): input is ArrayBuffer => input instanceof ArrayBuffer)
+  return runFileWorker({ format: 'sketch-with-libraries', project, libraries, name }, transfer, 'SKETCH', (message) => {
+    const result = message.result as ImportedDesign
+    diagnostic?.stage(ImportStage.validate)
+    validateDocument(result.document)
+    if (!Array.isArray(result.warnings) || result.warnings.some(warning => typeof warning !== 'string'))
+      throw new Error('文件导入兼容报告无效')
+    return result
+  }, signal, diagnostic)
+}
+
 /** Compatibility export shares the same WASM codec in both application hosts. */
 export function exportSketchInWorker(document: DesignDocument, signal?: AbortSignal): Promise<Uint8Array> {
   return runFileWorker({ format: 'sketch-export', document }, [], 'Sketch 导出', (message) => {

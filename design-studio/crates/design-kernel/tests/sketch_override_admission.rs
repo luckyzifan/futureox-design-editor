@@ -201,6 +201,8 @@ fn missing_style_master_and_corrupt_target_stay_distinct_and_blocked() {
     assert!(style_error.contains("缺失的外部库样式"), "{style_error}");
     assert!(!style_error.contains("no supported editable mapping"), "{style_error}");
     assert!(style_error.contains("不会发明样式"), "{style_error}");
+    assert!(style_error.contains("位置："), "{style_error}");
+    assert!(style_error.contains("打开前定位并附上"), "{style_error}");
 
     let mut layers = styled_symbol("STYLE-1", json!("STYLE-1"));
     layers[1]["symbolID"] = json!("MISSING-MASTER");
@@ -209,6 +211,9 @@ fn missing_style_master_and_corrupt_target_stay_distinct_and_blocked() {
     assert!(master_error.contains("MISSING-MASTER"), "{master_error}");
     assert!(master_error.contains("缺失的外部库符号"), "{master_error}");
     assert!(master_error.contains("不会发明主组件"), "{master_error}");
+    assert!(master_error.contains("位置："), "{master_error}");
+    assert!(master_error.contains("页面「Page」"), "{master_error}");
+    assert!(master_error.contains("打开前定位并附上"), "{master_error}");
 
     let mut shape = layer("SHAPE", "rectangle");
     shape["style"] = json!({"fills": []});
@@ -288,7 +293,9 @@ fn local_library_supplies_a_missing_master_by_symbol_id_and_preserves_export() {
     assert!(blocked.contains("embedded symbol master"), "{blocked}");
     assert!(blocked.contains("LIB-SYMBOL"), "{blocked}");
     assert!(blocked.contains("已核对本地库"), "{blocked}");
+    assert!(blocked.contains("上游定义缺失"), "{blocked}");
     assert!(blocked.contains("不会发明主组件"), "{blocked}");
+    assert!(!blocked.contains("未展开"), "{blocked}");
     assert!(!blocked.contains("border color"), "{blocked}");
 
     let mut admitted = interop::import_sketch_report_with_libraries(&project, &[&library]).unwrap().document;
