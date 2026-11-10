@@ -4,7 +4,7 @@
 
 入口：[项目渲染优先 Skill](../.agents/skills/futureox-rendering-first/SKILL.md)。配合[开发契约](DEVELOPMENT_CONTRACT_V1.md)和[项目开发 Skill](../.agents/skills/futureox-design-development/SKILL.md)使用。保持现有精度、所有权、容量、安全和实验默认值。
 
-当前实现与已知缺口见[缩放清晰度](ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)、[桌面 GPU 调度](ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)、[拓扑渲染](TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)和[主线复核](PR_REVIEW_20261110.zh-CN.md)。[全源画布容量契约](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)区分源总量和内部任务粒度。历史通过项不自动适用于当前组合版本，完整 G2/G5 与 33/100ms 目标仍需独立验收。
+当前实现与已知缺口见[缩放清晰度](ZOOM_CLARITY_SELECTION_20261109.zh-CN.md)、[连续缩放交接](ZOOM_HANDOFF_20261109.zh-CN.md)、[桌面 GPU 调度](ELECTRON_GPU_REPAIRS_20261109.zh-CN.md)、[拓扑渲染](TOPOLOGY_RENDER_OPTIMIZATION_20261109.zh-CN.md)和[主线复核](PR_REVIEW_20261110.zh-CN.md)。[全源画布容量契约](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)区分源总量和内部任务粒度。历史通过项不自动适用于当前组合版本，完整 G2/G5 与 33/100ms 目标仍需独立验收。
 
 ## 判定约定
 

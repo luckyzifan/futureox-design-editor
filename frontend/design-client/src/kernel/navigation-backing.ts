@@ -70,9 +70,14 @@ export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | und
   if (!allowed || !backing || backing.preview || backing.interaction || next.interaction) return false
   // A fit or zoom-out past 2× still owns the last complete picture. A preview
   // or a frame with gaps is not the closer replacement, so it must not punch
-  // rectangles through that picture. A gap-free settled frame may replace it.
-  if (!previewCameraScaleWithinLimit(backing.view.zoom, next.view.zoom))
-    return !!next.preview || (next.previewGaps?.length ?? 0) > 0
+  // rectangles through that picture. A gap-free frame may replace it only when
+  // that frame covers the live viewport. A narrow crop from another camera
+  // must not become the picture, and an older crop must not cover a wider one.
+  if (!previewCameraScaleWithinLimit(backing.view.zoom, next.view.zoom)) {
+    if (next.preview || (next.previewGaps?.length ?? 0) > 0) return true
+    if (!target) return false
+    return !contains(project(next, target), screen(target))
+  }
   if (!target) return !!next.preview || zooming && next.view.zoom > backing.view.zoom
   const old = intersect(screen(target), project(backing, target))
   if (!old) return false

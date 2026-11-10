@@ -10,7 +10,7 @@ import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
-import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack} from './coverage-stack'
+import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack,sharperCoverageFrame} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
@@ -408,25 +408,31 @@ export function NativeSourceSurface(props:Props){
           // Coarser residents already in cache have to be drawn there; CSS
           // only shifts the crop and fills the rest with the canvas gray.
           const translated=p.view.zoom===shown.view.zoom&&(p.view.x!==shown.view.x||p.view.y!==shown.view.y)
-          if(!moving&&!translated)return
-          return coverageBeyondBacking(resident,p.view,p,{view:shown.view,width:shown.width,height:shown.height},48)
+          if(!moving&&!translated&&!(shown.view.zoom>p.view.zoom))return
+          return coverageBeyondBacking(resident,p.view,p,{view:shown.view,width:shown.width,height:shown.height},48,shown.view.zoom>p.view.zoom)
         }
         const translatedNow=!!backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y)
         // A same-zoom pan has to publish the coarse page tile even when the
         // planner still calls the artboard lattice complete. Otherwise the
         // cropped bitmap only shifts and the new strip stays #f5f5f5.
         const stored=(refining||translatedNow)?outwardCover()??returned??continuityCover():undefined
+        // A ready finer tile has to land on this frame. Waiting for the whole
+        // lattice is what leaves the low-density bitmap stretched across it.
+        // This reads the cache only. It does not start a page raster.
+        const promoted=refining&&moving&&continuousZoom&&zoomingIn&&backing&&bitmapContext&&!focal
+          ?sharperCoverageFrame(cache.values(),backingTiles,p.view,p):undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
-        if((refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
+        if(!promoted&&!stored&&(refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
           const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
           const certified=completeMaterialRegions(materialRegions(p.overviewBoxes,p,ratio),ready,raster.scale)
           if(certified.length&&retainsVisibleMaterials(partialMaterials,certified,p,ratio)){
             regions=certified.map(r=>r.material);partialTiles=ready
           }
         }
-        if(focal&&!partialTiles){emit({phase:'refining',done,total:tiles.length});return}
-        if(partialTiles){visible=partialTiles}
-        else if(stored){visible=stored}
+        if(focal&&!partialTiles&&!promoted){emit({phase:'refining',done,total:tiles.length});return}
+        if(stored){visible=stored}
+        else if(promoted){visible=promoted}
+        else if(partialTiles){visible=partialTiles}
         else if(refining && wheel){
           // An immutable lower rung can cover the rest of the new viewport.
           // Submit only a complete mosaic with genuinely sharper source pixels.
@@ -447,7 +453,7 @@ export function NativeSourceSurface(props:Props){
             previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile)))return
         const sequence=++submission,id=`${prefix}:${sequence}`
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
-        submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel,outward:!!stored,mixed:refining,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
+        submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:!!stored,mixed:refining,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
         if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:exact&&keys.has(tile.key)?4:1,
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
@@ -518,6 +524,11 @@ export function NativeSourceSurface(props:Props){
           // The artboard lattice does not cover pasteboard. One coarse page
           // tile does, and a quarter-viewport pan stays inside the same tile.
           const quietStrip=quietPasteStripAllowed({moving,continuousZoom,exactMissing:missing.length})
+          // Continuous zoom-out does not take this strip or the page overview.
+          // Doing so after the motion lattice was cached held the only raster
+          // owner and stretched inverse-wheel ready+sharp. Holes are filled
+          // from tiles already in the cache. The quiet strip still waits until
+          // exact tiles are cached.
           // Preserve the bootstrap strip until the first accepted backing.
           // A decoded full-source opening can go straight to native tiles.
           const bootstrapStrip=!backing&&!firstNative
@@ -683,11 +694,13 @@ export function NativeSourceSurface(props:Props){
       for(const id of submittedPlacements.keys())if(id<=sequence)submittedPlacements.delete(id)
       release()
       if(p.parked)return
-      const wheelAdvance=sent?.wheel && (moving&&continuousZoom&&zoomingIn || overviewMode&&current) && !actual.preview &&
+      const finerThanBacking=!!backing&&shownTiles.some(tile=>tile.zoom>backing.view.zoom*backing.dpr+1e-6)
+      const wheelAdvance=sent?.wheel && !actual.preview &&
         bitmap && bitmapContext && sent.tiles.length===shownTiles.length &&
         actual.view.x===sent.view.x && actual.view.y===sent.view.y && actual.view.zoom===sent.view.zoom &&
         actual.width===sent.width && actual.height===sent.height && actual.dpr===sent.dpr &&
-        improvesSourceZoom(backing,actual,p,shownTiles,backingTiles)
+        improvesSourceZoom(backing,actual,p,shownTiles,backingTiles) &&
+        (moving&&continuousZoom&&zoomingIn || overviewMode&&current || finerThanBacking)
       const outwardAdvance=sent?.outward && current && allIds && bitmap && bitmapContext && sent.tiles.length===shownTiles.length
       // The pointer can pan again before this GPU frame is acknowledged.
       // Keeping the frame still fills the strip it was built for; project()

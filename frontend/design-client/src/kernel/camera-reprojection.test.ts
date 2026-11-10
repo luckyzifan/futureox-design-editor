@@ -143,6 +143,70 @@ test('new pan strips can publish without painting a white block over a known par
   expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next,backing)).toBe(false)
 })
 
+test('a 3200% crop cannot replace a covering low-zoom frame, and the covering frame can replace the crop',()=>{
+ const wide={presentationId:'wide',view:{x:0,y:0,zoom:1},width:800,height:600,dpr:2,interaction:false,ids:[1]}
+ const crop={...wide,presentationId:'crop',view:{x:-12000,y:-9000,zoom:32}}
+ const live={view:wide.view,width:wide.width,height:wide.height}
+ expect(keepCompleteCameraBacking(wide,crop,true,false,live)).toBe(true)
+ expect(keepCompleteCameraBacking(crop,wide,true,false,live)).toBe(false)
+ expect(keepCompleteCameraBacking(wide,{...crop,preview:true},true)).toBe(true)
+})
+
+test('a scale jump requests the exact frame without ending the gesture hold',()=>{
+ vi.useFakeTimers()
+ try{
+  const f=fixture(),settled=vi.fn(),projection=new CameraReprojection(f.canvas,f.host,settled)
+  const high={...f.backing,view:{x:0,y:0,zoom:32}}
+  projection.update(high,high.view,100,80,true)
+  projection.update(high,{x:10,y:20,zoom:1},100,80,true)
+  expect(projection.zooming).toBe(true)
+  vi.advanceTimersByTime(0)
+  expect(settled).toHaveBeenCalledOnce()
+  expect(projection.zooming).toBe(true)
+  vi.advanceTimersByTime(79)
+  expect(projection.zooming).toBe(true)
+  vi.advanceTimersByTime(1)
+  expect(projection.zooming).toBe(false)
+  expect(settled).toHaveBeenCalledTimes(2)
+  projection.dispose()
+ }finally{vi.useRealTimers()}
+})
+
+test('an exact frame discarded during a jump is retried when the gesture hold ends',()=>{
+ vi.useFakeTimers()
+ const f=fixture(),target={view:{x:0,y:0,zoom:1},width:100,height:80}
+ const low={...f.backing,view:{x:0,y:0,zoom:.2}},middle={...f.backing,view:{x:0,y:0,zoom:.9}},exact={...f.backing,view:{...target.view}}
+ let displayed=low
+ let projection:CameraReprojection
+ const receive=(next:typeof low)=>{
+  if(keepCompleteCameraBacking(displayed,next,true,projection.zooming,target))return
+  displayed=next;projection.update(displayed,target.view,100,80,true)
+ }
+ projection=new CameraReprojection(f.canvas,f.host,()=>{setTimeout(()=>receive(exact),1)})
+ try{
+  projection.update(low,low.view,100,80,true)
+  projection.update(low,target.view,100,80,true)
+  setTimeout(()=>receive(middle),0)
+  vi.advanceTimersByTime(81)
+  expect(displayed.view).toEqual(target.view)
+  expect(f.canvas.style.transform).toBe('')
+ }finally{projection.dispose();f.projection.dispose();vi.useRealTimers()}
+})
+
+test('disposing a jumping camera cancels the delayed presenter retry',()=>{
+ vi.useFakeTimers()
+ const f=fixture(),settled=vi.fn(),projection=new CameraReprojection(f.canvas,f.host,settled)
+ try{
+  projection.update(f.backing,f.backing.view,100,80,true)
+  projection.update(f.backing,{x:0,y:0,zoom:8},100,80,true)
+  vi.advanceTimersByTime(0)
+  expect(settled).toHaveBeenCalledOnce()
+  projection.dispose()
+  vi.advanceTimersByTime(100)
+  expect(settled).toHaveBeenCalledOnce()
+ }finally{projection.dispose();f.projection.dispose();vi.useRealTimers()}
+})
+
 test('an installed thumbnail underlay follows zoom-out immediately and stays visible in new strips',()=>{
  const f=fixture(),backing={...f.backing,view:{x:0,y:0,zoom:1}},bounds={x:0,y:0,width:400,height:400}
  f.projection.update(backing,backing.view,100,80,true,bounds,true)
