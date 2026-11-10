@@ -4,6 +4,28 @@ import { EventEmitter } from 'node:events'
 import { NativePreparation, PreparationAdmission, registerNativePreparation, bindPosePreparationPort } from '../src/preparation.mjs'
 import { DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 
+test('host admits the shared interaction pose query without admitting unknown methods or private snapshots', async () => {
+ const messages=[]
+ const owner=Object.assign(Object.create(NativePreparation.prototype),{
+  pending:new Map(),sequence:0,closed:false,admission:new PreparationAdmission(),reservations:new Set(),diagnostics:{enabled:false},
+  worker:{postMessage:message=>messages.push(message)}
+ })
+ const pose=owner.request({lane:'interaction',method:'interaction_pose_damage',args:['{"n":[1,0,0,1,2,3]}']})
+ assert.equal(messages[0].method,'interaction_pose_damage')
+ assert.equal(messages[0].lane,'interaction')
+ assert.equal(owner.sequence,1)
+ const pending=owner.pending.get(1)
+ clearTimeout(pending.timer);owner.pending.delete(1);owner.release(pending.release);pending.resolve({id:1,value:'{"full":false}'})
+ assert.equal((await pose).value,'{"full":false}')
+ await assert.rejects(owner.request({lane:'interaction',method:'not-a-method',args:[]}),/Invalid native preparation request/)
+ await assert.rejects(owner.request({lane:'untrusted-lane',method:'interaction_pose_damage',args:['{}']}),/Invalid native preparation request/)
+ await assert.rejects(owner.request({lane:'canvas',method:'load_source_snapshot',args:[{}]}),/Invalid native preparation request/)
+ assert.equal(messages.length,1)
+ assert.equal(owner.sequence,1)
+ assert.equal(owner.pending.size,0)
+ assert.equal(owner.reservations.size,0)
+})
+
 test('native transport admits negotiated derivation methods without weakening the method allowlist', async () => {
  const messages=[]
  // Exercise the real request validator and queue bookkeeping without spawning

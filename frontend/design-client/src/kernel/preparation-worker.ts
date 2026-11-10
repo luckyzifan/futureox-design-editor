@@ -3,13 +3,12 @@ import { initializeKernelModule } from './module'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
 import { renderCpuFrame } from './cpu-frame'
 import type { PreparationMethod } from './preparation-channel'
+import { preparationProtocol } from '../../../design-desktop/src/preparation-methods-v1'
 import { loadKernelResources } from './kernel-resources'
 import { PreparationSnapshots } from './preparation-snapshot'
 import { PreparationStates } from './preparation-state'
 
-const allowed = new Set<PreparationMethod>(['preparation_capabilities_v1', 'derive_document_v1', 'warm_resources', 'initialize', 'load_document', 'apply_document_patch_with_damage', 'interaction_pose_damage', 'apply_interaction_transforms',
-  'compile_gpu_packet', 'render_linear', 'render_png', 'render_color_png', 'render_region_png',
-  'render_cpu_frame', 'stats', 'gpu_memory_breakdown'])
+const allowed = new Set<PreparationMethod>(preparationProtocol.methods.flatMap(method => method.browser ? [method.name] : []))
 let initialized: Promise<Uint8Array> | undefined
 const engines = new Map<string, VectorEngine>()
 function resources() {
