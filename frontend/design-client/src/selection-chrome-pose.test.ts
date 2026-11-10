@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { rotationChromeHeldToTexture, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
+import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 
 const live = { id: 'live' }
 const shown = { id: 'shown' }
@@ -10,6 +10,10 @@ test('rotation chrome stays on the presented texture until that texture is the l
   expect(rotationChromeHeldToTexture({ kind: 'rotate', liveDocument: live, presentedDocument: shown, gestureFollow: true })).toBe(false)
   expect(rotationChromeHeldToTexture({ kind: 'move', liveDocument: live, presentedDocument: shown, gestureFollow: false })).toBe(false)
   expect(rotationChromeHeldToTexture({ kind: 'rotate', liveDocument: live, presentedDocument: null, gestureFollow: false })).toBe(false)
+  expect(rotationDocumentChromeSuppressed({ kind: 'rotate', sourcePaint: true, holding: false })).toBe(true)
+  expect(rotationDocumentChromeSuppressed({ kind: 'rotate', sourcePaint: true, holding: true })).toBe(false)
+  expect(rotationDocumentChromeSuppressed({ kind: 'rotate', sourcePaint: false, holding: false })).toBe(false)
+  expect(rotationDocumentChromeSuppressed({ kind: 'move', sourcePaint: true, holding: false })).toBe(false)
 })
 
 test('the held outline is the start quad, not the live rotation', () => {

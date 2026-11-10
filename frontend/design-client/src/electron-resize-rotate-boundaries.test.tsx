@@ -203,7 +203,9 @@ test('T02 right-hand angle is clockwise-positive and shows two decimals before p
   expect(field.value).toBe('30.00')
   const hint = mount.querySelector('[data-testid="rotation-feedback"]')
   expect(hint?.textContent).toBe(field.value)
-  expect(selectionMetric(editor.state.doc.nodes[n.id], 'rotation', editor.state.doc)).toBeCloseTo(30, 6)
+  // Own paint shows the angle immediately. The document transform is written
+  // on release, so this sample does not reconvert the rectangle.
+  expect(selectionMetric(editor.state.doc.nodes[n.id], 'rotation', editor.state.doc)).toBeCloseTo(0, 6)
   const chip = [...mount.querySelectorAll('text')].map(node => node.textContent).find(text => text?.includes('×'))
   expect(chip).toBe('105.13 × 21.2')
   await at('pointerup', end)
