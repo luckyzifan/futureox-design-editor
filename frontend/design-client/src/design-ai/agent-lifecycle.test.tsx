@@ -266,3 +266,16 @@ test('a provider 503 is shown and does not generate a page until the rule templa
   expect(document.body.textContent).toContain('本机规则模板')
   expect(document.body.textContent).toContain('这不是已配置模型的结果')
 })
+
+test('deleting an explicitly targeted page does not silently retarget a request in the same document', async () => {
+  const doc = blank('Target boundary'), page = { id: uid(), name: 'Explicit target', children: [] as string[], background: '#ffffff' }
+  doc.pages.push(page)
+  const editor = new Editor(doc); editors.push(editor)
+  const calls: TurnBody[] = []
+  const hostElement = document.createElement('div'); document.body.append(hostElement); root = createRoot(hostElement)
+  await act(async () => { root!.render(<DesignAgentPanel editor={editor} desktop={host(body => { calls.push(body); return quietTurn(body) })} onClose={() => {}} initial={{pageId:page.id,prompt:'修改标题',send:false}} />) })
+  await act(async () => { editor.change('Delete target', draft => { draft.pages = draft.pages.filter(item => item.id !== page.id) }) })
+  await clickButton('发送')
+  expect(calls).toHaveLength(0)
+  expect(document.querySelector('[role=alert]')?.textContent).toContain('指定的页面不在当前文档中')
+})

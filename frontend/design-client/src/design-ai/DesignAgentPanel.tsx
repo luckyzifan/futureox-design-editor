@@ -34,6 +34,7 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   const [rows, setRows] = useState<Row[]>([])
   const [input, setInput] = useState(initial?.prompt || '')
   const [pinned, setPinned] = useState<string | null>(initial?.pageId ?? null)
+  const pinnedDocument = useRef(editor.state.doc.id)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [failurePrompt, setFailurePrompt] = useState<{ message: string; pageId: string } | null>(null)
@@ -47,8 +48,8 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   const file = useRef<HTMLInputElement>(null)
   const chosen = useRef<File | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
-  const target = pinned && snapshot.doc.pages.some(page => page.id === pinned) ? pinned : snapshot.page
-  const pageName = snapshot.doc.pages.find(page => page.id === target)?.name || '当前页'
+  const target = pinned && pinnedDocument.current === snapshot.doc.id ? pinned : snapshot.page
+  const pageName = snapshot.doc.pages.find(page => page.id === target)?.name || '指定页面已不存在'
   const followingCurrent = target === snapshot.page
 
   const send = async (message: string, pageId = target, options?: { useLocalRules?: boolean }) => {
@@ -96,7 +97,10 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
       setRows(current => rowsFrom(turn, current))
       const failed = !turn.operations.length ? turn.items.find(item => String(item.type) === 'McpToolCall' && String(item.status) === 'Failed') : undefined
       if (failed) setError(String(failed.error || turn.summary || '操作没有执行'))
-      if (turn.targetPageId && editor.state.doc.pages.some(page => page.id === turn.targetPageId)) setPinned(turn.targetPageId)
+      if (turn.targetPageId && editor.state.doc.pages.some(page => page.id === turn.targetPageId)) {
+        pinnedDocument.current = editor.state.doc.id
+        setPinned(turn.targetPageId)
+      }
     } catch (failure) {
       if (ticket !== generation.current) return
       setError(failure instanceof Error ? failure.message : '设计助手失败')
@@ -107,8 +111,9 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   useEffect(() => {
     if (!initial?.pageId || appliedTarget.current === initial) return
     appliedTarget.current = initial
+    pinnedDocument.current = editor.state.doc.id
     if (!editor.state.doc.pages.some(page => page.id === initial.pageId)) {
-      setPinned(null)
+      setPinned(initial.pageId)
       setError('指定的页面不在当前文档中')
       return
     }
