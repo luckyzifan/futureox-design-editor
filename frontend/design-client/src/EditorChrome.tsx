@@ -119,15 +119,18 @@ export type WorkspaceSection = 'layers' | 'assets'
 export function WorkspaceRail({ section, onSection, onFiles, onTools, onVariables, toolsOpen }: {
   section: WorkspaceSection
   onSection: (section: WorkspaceSection) => void
-  onFiles: () => void
+  /** Omitted when this control would repeat the header library entry. */
+  onFiles?: () => void
   onTools: () => void
   onVariables: () => void
   toolsOpen: boolean
 }) {
   const { locale } = useInterfacePreferences(), text = canvasText[locale]
   return <nav className="workspace-rail" aria-label={text.workspaceNavigation}>
-    <button type="button" onClick={onFiles} title={text.localDesignFiles}><FolderOpen size={19} aria-hidden="true" /><span>{text.files}</span></button>
-    <div className="workspace-rail-divider" role="separator" />
+    {onFiles && <>
+      <button type="button" onClick={onFiles} title={text.localDesignFiles}><FolderOpen size={19} aria-hidden="true" /><span>{text.files}</span></button>
+      <div className="workspace-rail-divider" role="separator" />
+    </>}
     <button type="button" title={text.pagesAndLayers} aria-pressed={section === 'layers'} onClick={() => onSection('layers')}><Layers size={19} aria-hidden="true" /><span>{text.layers}</span></button>
     <button type="button" title={text.componentsAndAssets} aria-pressed={section === 'assets'} onClick={() => onSection('assets')}><Shapes size={19} aria-hidden="true" /><span>{text.assets}</span></button>
     <button type="button" title={text.designTools} aria-pressed={toolsOpen} onClick={onTools}><SlidersHorizontal size={19} aria-hidden="true" /><span>{text.tools}</span></button>
