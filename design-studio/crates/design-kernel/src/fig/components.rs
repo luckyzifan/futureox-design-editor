@@ -287,6 +287,157 @@ fn binding_kind(path: &str) -> &'static str {
     }
 }
 
+enum Consumption {
+    Paths(Vec<String>),
+    Unsupported,
+}
+
+fn layout_ready(template: Option<&Node>, fields: &BTreeMap<String, Value>) -> bool {
+    fields.contains_key("layout") || template.is_some_and(|node| node.layout.is_some())
+}
+
+fn text_style_ready(template: Option<&Node>, fields: &BTreeMap<String, Value>) -> bool {
+    fields.contains_key("textStyle") || template.is_some_and(|node| node.text_style.is_some())
+}
+
+fn sizing_ready(template: Option<&Node>, fields: &BTreeMap<String, Value>) -> bool {
+    fields.contains_key("sizing") || template.is_some_and(|node| node.sizing.is_some())
+}
+
+fn stroke_count(template: Option<&Node>, fields: &BTreeMap<String, Value>) -> usize {
+    if let Some(strokes) = fields.get("strokes").and_then(Value::as_array) {
+        return strokes.len();
+    }
+    template.map(|node| node.strokes.len()).unwrap_or(0)
+}
+
+fn polygon_corner(template: Option<&Node>) -> bool {
+    template.is_some_and(|node| matches!(node.kind.as_str(), "polygon" | "star"))
+}
+
+fn ready_path(ready: bool, path: &str) -> Consumption {
+    if ready {
+        Consumption::Paths(vec![path.to_string()])
+    } else {
+        Consumption::Unsupported
+    }
+}
+
+/// Paths a FIG `VariableField` can write. `Unsupported` is a known or unknown
+/// field this node cannot run; the raw consumption entry stays in metadata.
+fn consumption_paths(
+    field: &str,
+    template: Option<&Node>,
+    fields: &BTreeMap<String, Value>,
+) -> Consumption {
+    if let Some(path) = binding_path(field) {
+        return Consumption::Paths(vec![path.to_string()]);
+    }
+    match field {
+        "CORNER_RADIUS" => match template {
+            Some(node) if polygon_corner(Some(node)) => {
+                Consumption::Paths(vec!["cornerRadius".into()])
+            }
+            Some(_) => Consumption::Paths((0..4).map(|index| format!("radii.{index}")).collect()),
+            None => Consumption::Unsupported,
+        },
+        "RECTANGLE_TOP_LEFT_CORNER_RADIUS" => rectangle_radius(template, 0),
+        "RECTANGLE_TOP_RIGHT_CORNER_RADIUS" => rectangle_radius(template, 1),
+        "RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS" => rectangle_radius(template, 2),
+        "RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS" => rectangle_radius(template, 3),
+        "STROKE_WEIGHT" => {
+            let count = stroke_count(template, fields).min(16);
+            if count == 0 {
+                Consumption::Unsupported
+            } else {
+                Consumption::Paths(
+                    (0..count)
+                        .map(|index| format!("strokes.{index}.width"))
+                        .collect(),
+                )
+            }
+        }
+        "STACK_PADDING_TOP" => ready_path(layout_ready(template, fields), "layout.padding.0"),
+        "STACK_PADDING_RIGHT" => ready_path(layout_ready(template, fields), "layout.padding.1"),
+        "STACK_PADDING_BOTTOM" => ready_path(layout_ready(template, fields), "layout.padding.2"),
+        "STACK_PADDING_LEFT" => ready_path(layout_ready(template, fields), "layout.padding.3"),
+        "PARAGRAPH_SPACING" => {
+            ready_path(text_style_ready(template, fields), "textStyle.paragraphSpacing")
+        }
+        "PARAGRAPH_INDENT" => {
+            ready_path(text_style_ready(template, fields), "textStyle.paragraphIndent")
+        }
+        "MIN_WIDTH" => ready_path(sizing_ready(template, fields), "sizing.minWidth"),
+        "MAX_WIDTH" => ready_path(sizing_ready(template, fields), "sizing.maxWidth"),
+        "MIN_HEIGHT" => ready_path(sizing_ready(template, fields), "sizing.minHeight"),
+        "MAX_HEIGHT" => ready_path(sizing_ready(template, fields), "sizing.maxHeight"),
+        _ => Consumption::Unsupported,
+    }
+}
+
+fn rectangle_radius(template: Option<&Node>, index: usize) -> Consumption {
+    if template.is_some() && !polygon_corner(template) {
+        Consumption::Paths(vec![format!("radii.{index}")])
+    } else {
+        Consumption::Unsupported
+    }
+}
+
+fn bind_consumption_entries(
+    entries: &[Value],
+    prefix: &str,
+    fields: &BTreeMap<String, Value>,
+    template: Option<&Node>,
+    vars: &Variables,
+    bindings: &mut BTreeMap<String, String>,
+    seen: &mut BTreeSet<String>,
+    unsupported: &mut BTreeSet<String>,
+) {
+    let mut ordered: Vec<&Value> = entries.iter().collect();
+    // A uniform corner radius fills every corner; a later per-corner entry replaces one.
+    ordered.sort_by_key(|entry| u8::from(str_of(entry, "variableField") != Some("CORNER_RADIUS")));
+    for entry in ordered {
+        let field = str_of(entry, "variableField").unwrap_or("");
+        if field.is_empty() || field == "MISSING" {
+            if let Some(node_field) = entry.get("nodeField") {
+                unsupported.insert(format!("{prefix}.nodeField.{node_field}"));
+            }
+            continue;
+        }
+        let Consumption::Paths(paths) = consumption_paths(field, template, fields) else {
+            unsupported.insert(format!("{prefix}.{field}"));
+            continue;
+        };
+        if paths.is_empty() {
+            unsupported.insert(format!("{prefix}.{field}"));
+            continue;
+        }
+        let Some(target) = entry
+            .get("variableData")
+            .and_then(|data| data.get("value"))
+            .and_then(|value| alias_target(value, vars))
+        else {
+            unsupported.insert(format!("{prefix}.{field}"));
+            continue;
+        };
+        if paths
+            .iter()
+            .any(|path| vars.kind_by_id.get(&target).map(String::as_str) != Some(binding_kind(path)))
+        {
+            unsupported.insert(format!("{prefix}.{field}"));
+            continue;
+        }
+        let replace = field.starts_with("RECTANGLE_") && field.ends_with("CORNER_RADIUS");
+        for path in paths {
+            if seen.contains(&path) && !replace {
+                continue;
+            }
+            seen.insert(path.clone());
+            bindings.insert(path, target.clone());
+        }
+    }
+}
+
 fn variables_from(records: &BTreeMap<String, Value>) -> Variables {
     let mut out = Variables {
         id_by_key: BTreeMap::new(),
@@ -1520,55 +1671,35 @@ fn apply_consumption(
     unsupported: &mut BTreeSet<String>,
 ) -> Map<String, Value> {
     let mut retained = Map::new();
-    if let Some(map) = ov.get("variableConsumptionMap") {
-        let entries = map.get("entries").and_then(Value::as_array);
-        if entries.is_some_and(|entries| !entries.is_empty()) {
-            retained.insert("variableConsumptionMap".into(), map.clone());
-            let mut bindings = BTreeMap::new();
-            let mut seen = BTreeSet::new();
-            for entry in entries.into_iter().flatten() {
-                let field = str_of(entry, "variableField").unwrap_or("");
-                let Some(path) = binding_path(field) else {
-                    if !field.is_empty() && field != "MISSING" {
-                        unsupported.insert(format!("variableConsumptionMap.{field}"));
-                    } else if let Some(node_field) = entry.get("nodeField") {
-                        unsupported
-                            .insert(format!("variableConsumptionMap.nodeField.{node_field}"));
-                    }
-                    continue;
-                };
-                if !seen.insert(path) {
-                    continue;
-                }
-                let Some(target) = entry
-                    .get("variableData")
-                    .and_then(|data| data.get("value"))
-                    .and_then(|value| alias_target(value, vars))
-                else {
-                    unsupported.insert(format!("variableConsumptionMap.{field}"));
-                    continue;
-                };
-                if vars.kind_by_id.get(&target).map(String::as_str) != Some(binding_kind(path)) {
-                    unsupported.insert(format!("variableConsumptionMap.{field}"));
-                    continue;
-                }
-                bindings.insert(path.to_string(), target);
-            }
-            if !bindings.is_empty() {
-                if let Ok(value) = serde_json::to_value(bindings) {
-                    fields.insert("bindings".into(), value);
-                }
-            }
-        }
-    }
-    if let Some(map) = ov.get("parameterConsumptionMap") {
-        if map
+    let mut bindings = BTreeMap::new();
+    let mut seen = BTreeSet::new();
+    for (key, prefix) in [
+        ("variableConsumptionMap", "variableConsumptionMap"),
+        ("parameterConsumptionMap", "parameterConsumptionMap"),
+    ] {
+        let Some(map) = ov.get(key) else { continue };
+        let Some(entries) = map
             .get("entries")
             .and_then(Value::as_array)
-            .is_some_and(|entries| !entries.is_empty())
-        {
-            retained.insert("parameterConsumptionMap".into(), map.clone());
-            unsupported.insert("parameterConsumptionMap".into());
+            .filter(|entries| !entries.is_empty())
+        else {
+            continue;
+        };
+        retained.insert(key.into(), map.clone());
+        bind_consumption_entries(
+            entries,
+            prefix,
+            fields,
+            template,
+            vars,
+            &mut bindings,
+            &mut seen,
+            unsupported,
+        );
+    }
+    if !bindings.is_empty() {
+        if let Ok(value) = serde_json::to_value(bindings) {
+            fields.insert("bindings".into(), value);
         }
     }
     if let Some(map) = ov.get("variableModeBySetMap") {

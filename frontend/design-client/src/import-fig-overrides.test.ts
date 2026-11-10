@@ -84,10 +84,11 @@ test('executable instance overrides land in kernel fields and consumption maps a
   expect(first.strokes).toEqual([expect.objectContaining({ width: 6, align: 'inside' })])
   expect(first.effects).toEqual([expect.objectContaining({ kind: 'shadow', radius: 4 })])
   expect((first.bindings as Record<string, string>).width).toBe('9:3')
+  expect((first.bindings as Record<string, string>)['strokes.0.width']).toBe('9:3')
   expect([...warnings].some(message => message.includes('pluginData'))).toBe(true)
   expect([...warnings].some(message => message.includes('borderStrokeWeightsIndependent'))).toBe(true)
-  expect([...warnings].some(message => message.includes('variableConsumptionMap.STROKE_WEIGHT'))).toBe(true)
-  expect([...warnings].some(message => message.includes('parameterConsumptionMap'))).toBe(true)
+  expect([...warnings].some(message => message.includes('variableConsumptionMap.STROKE_WEIGHT'))).toBe(false)
+  expect([...warnings].some(message => message.includes('parameterConsumptionMap.WIDTH'))).toBe(true)
   expect([...warnings].some(message => message.includes('cornerRadius') || message.includes('strokeAlign'))).toBe(false)
   const kept = receipts.get(instance.id)?.figOverrideVariableConsumption ?? ''
   expect(kept).toContain('STROKE_WEIGHT')
@@ -106,6 +107,7 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   main.children = [frame.id, child.id, text.id]
   doc.nodes = { [main.id]: main, [frame.id]: frame, [child.id]: child, [text.id]: text, [instance.id]: instance }
   const records = new Map<string, any>([
+    ['9:3', { type: 'VARIABLE', key: 'radius', variableResolvedType: 'FLOAT' }],
     ['sym', { type: 'SYMBOL', stackMode: 'VERTICAL', stackSpacing: 4, stackHorizontalPadding: 2, stackVerticalPadding: 2 }],
     ['frame', { type: 'FRAME', parentIndex: { guid: 'sym' }, stackMode: 'HORIZONTAL', stackSpacing: 4, stackHorizontalPadding: 1, stackVerticalPadding: 1 }],
     ['child', { type: 'RECTANGLE', parentIndex: { guid: 'sym' } }],
@@ -132,6 +134,7 @@ test('in-file auto-layout and font variants execute while missing targets stay r
   expect((textFields.textStyle as { lineHeight: number }).lineHeight).toBe(1.5)
   expect((textFields.textStyle as { weight: number }).weight).toBe(700)
   expect((textFields.textStyle as { features: string[] }).features).toEqual(expect.arrayContaining(['-liga', '-clig', 'smcp', 'kern']))
+  expect((textFields.bindings as Record<string, string>)['radii.0']).toBe('9:3')
   const missing = doc.nodes[instance.id].instance!.overrides['44:1']
   expect(missing.layout).toBeUndefined()
   expect((missing.textStyle as { features: string[] }).features).toEqual(['smcp'])

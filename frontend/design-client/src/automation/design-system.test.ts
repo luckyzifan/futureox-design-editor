@@ -362,6 +362,14 @@ describe('collections and variables', () => {
     const unbound = apply(bound, 'variable.unbind', { nodeId: shape.id, path: 'fills.0.color' }).document
     expect(unbound.nodes[shape.id].bindings).toEqual({})
     expect(apply(d, 'variable.bind', { nodeId: text.id, path: 'textStyle.letterSpacing', variableId: 'spacing' }).document.nodes[text.id].bindings).toEqual({ 'textStyle.letterSpacing': 'spacing' })
+    expect(apply(d, 'variable.bind', { nodeId: text.id, path: 'textStyle.paragraphSpacing', variableId: 'spacing' }).document.nodes[text.id].bindings).toEqual({ 'textStyle.paragraphSpacing': 'spacing' })
+    expect(apply(d, 'variable.bind', { nodeId: shape.id, path: 'radii.0', variableId: 'spacing' }).document.nodes[shape.id].bindings).toEqual({ 'radii.0': 'spacing' })
+    expect(apply(d, 'variable.bind', { nodeId: shape.id, path: 'cornerRadius', variableId: 'spacing' }).document.nodes[shape.id].bindings).toEqual({ cornerRadius: 'spacing' })
+    expect(() => apply(d, 'variable.bind', { nodeId: shape.id, path: 'strokes.0.width', variableId: 'spacing' })).toThrow(/stroke/)
+    expect(() => apply(d, 'variable.bind', { nodeId: shape.id, path: 'layout.padding.0', variableId: 'spacing' })).toThrow(/layout/)
+    expect(() => apply(d, 'variable.bind', { nodeId: shape.id, path: 'sizing.minWidth', variableId: 'spacing' })).toThrow(/sizing/)
+    shape.strokes = [stroke('#000000', 1)]
+    expect(apply(d, 'variable.bind', { nodeId: shape.id, path: 'strokes.0.width', variableId: 'spacing' }).document.nodes[shape.id].bindings).toEqual({ 'strokes.0.width': 'spacing' })
   })
   it('prevents dangling collection, variable, and alias references on deletion', () => {
     const { d, shape } = resources()
