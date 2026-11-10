@@ -52,11 +52,81 @@ fn fill_rgba8(buffer: &mut [u8], pixel: [u8; 4]) {
     }
 }
 
+fn color_is_opaque(color: &str) -> bool {
+    crate::color::parse(color, crate::color::ColorSpace::Srgb)
+        .is_ok_and(|(_, _, alpha)| alpha >= 1.)
+}
+
+fn paint_is_uniformly_opaque(paint: &crate::scene::Paint) -> bool {
+    if !paint.visible || paint.opacity < 1. || paint.image.is_some() {
+        return false;
+    }
+    match paint.kind.as_str() {
+        "solid" => color_is_opaque(&paint.color),
+        "linear" | "radial" | "angular" | "diamond" => {
+            !paint.stops.is_empty() && paint.stops.iter().all(|stop| color_is_opaque(&stop.color))
+        }
+        _ => false,
+    }
+}
+
+fn sharp_axis_aligned_rectangle(node: &Node, matrix: crate::math::Transform) -> bool {
+    let [a, b, c, d, _, _] = matrix.0;
+    matches!(node.kind.as_str(), "rectangle" | "frame" | "section")
+        && node.radii.iter().all(|radius| *radius == 0.)
+        && node.smoothing == 0.
+        && node.path_offset == 0.
+        && node.arc.is_none()
+        && node.boolean_operation.is_none()
+        && node.derived_path.is_none()
+        && node.network.is_none()
+        && node.vector_geometry.is_none()
+        && b == 0.
+        && c == 0.
+        && a.is_finite()
+        && d.is_finite()
+        && a != 0.
+        && d != 0.
+}
+
+/// An outer shadow under a fill is invisible only when that fill is uniformly
+/// opaque and its device silhouette is the sharp rectangle described by its
+/// bounds. Noise keeps that alpha. A rounded, sheared, or translucent shape
+/// still shows the shadow inside the bounding box, so a crop of the box has
+/// to paint the same shadow as the full frame.
+fn outer_shadow_hidden_in_fill_interior(
+    doc: &Document,
+    node: &Node,
+    prepared: &crate::geometry_snapshot::Prepared,
+) -> bool {
+    if !node.effects.iter().any(|effect| effect.visible && effect.kind == "shadow") {
+        return true;
+    }
+    if node.mask || prepared.fill_program_bounds.empty() || doc.mask_child(node).is_some() {
+        return false;
+    }
+    if !sharp_axis_aligned_rectangle(node, prepared.matrix) {
+        return false;
+    }
+    if !node.fills.iter().any(paint_is_uniformly_opaque) {
+        return false;
+    }
+    node.effects
+        .iter()
+        .filter(|effect| effect.visible)
+        .all(|effect| matches!(effect.kind.as_str(), "shadow" | "noise"))
+}
+
 /// Outer effects do not change pixels deep inside an opaque fill. A zoomed
 /// view of a shadowed frame used to expand the whole frame by `blur * zoom`
 /// and allocate that device buffer. Interior cameras keep the fill and a
 /// zero halo; an edge that can actually show the shadow keeps the reach.
-fn effect_halo_in_view(node: &crate::scene::Node, prepared: &crate::geometry_snapshot::Prepared, viewport: Rect) -> i32 {
+fn effect_halo_in_view(
+    doc: &Document,
+    node: &crate::scene::Node,
+    prepared: &crate::geometry_snapshot::Prepared,
+    viewport: Rect,
+) -> i32 {
     let halo = prepared.halo;
     if halo <= 0 || prepared.bounds.intersect(viewport).empty() {
         return 0;
@@ -74,7 +144,7 @@ fn effect_halo_in_view(node: &crate::scene::Node, prepared: &crate::geometry_sna
                     | "inner-shadow"
             )
     });
-    if affects_interior {
+    if affects_interior || !outer_shadow_hidden_in_fill_interior(doc, node, prepared) {
         return halo;
     }
     let shape = if prepared.fill_program_bounds.empty() {
@@ -1692,7 +1762,7 @@ impl Engine {
             .map(|(id, prepared_node)| {
                 doc.nodes
                     .get(id)
-                    .map(|node| effect_halo_in_view(node, prepared_node, viewport))
+                    .map(|node| effect_halo_in_view(doc, node, prepared_node, viewport))
                     .unwrap_or(0)
             })
             .max()
@@ -3252,6 +3322,9 @@ impl Painter<'_> {
         prepared: &crate::geometry_snapshot::Prepared,
         scale: f64,
     ) -> bool {
+        if !outer_shadow_hidden_in_fill_interior(self.doc, n, prepared) {
+            return false;
+        }
         let mut saw_shadow = false;
         for fx in n.effects.iter().filter(|effect| effect.visible) {
             match fx.kind.as_str() {
@@ -4060,10 +4133,16 @@ impl Painter<'_> {
                 "shadow" | "inner-shadow" => {
                     let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
                     // The viewport image only keeps viewport pixels. An outer
-                    // shadow is painted under an opaque fill, so it cannot
-                    // change that image when the viewport sits inside the fill
-                    // farther than the blur, spread, and offset can reach.
-                    if fx.kind == "shadow" && !self.compatible && self.outer_shadow_misses_viewport(fx, scale, offset, prepared) {
+                    // shadow is painted under an opaque sharp rectangle, so it
+                    // cannot change that image when the viewport sits inside
+                    // the fill farther than the blur, spread, and offset can
+                    // reach. Rounded, sheared, and translucent fills still
+                    // show it, and must match a full-frame render.
+                    if fx.kind == "shadow"
+                        && !self.compatible
+                        && outer_shadow_hidden_in_fill_interior(self.doc, n, prepared)
+                        && self.outer_shadow_misses_viewport(fx, scale, offset, prepared)
+                    {
                         continue;
                     }
                     let mut shadow = if self.compatible {
