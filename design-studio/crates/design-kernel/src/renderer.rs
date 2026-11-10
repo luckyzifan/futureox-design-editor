@@ -1813,7 +1813,22 @@ impl Engine {
                 _ => None,
             }
         } else { None };
-        let target_rect = isolated_root.map_or(extent, |root| prepared[&root.id].bounds.intersect(extent));
+        // Four coherent targets used to cover the filter halo. A shadow's own
+        // layer still holds that support; the page target is only read again
+        // outside the viewport by backdrop, grid, or checkerboard consumers.
+        // Keeping those targets on the viewport leaves the blur radius intact
+        // and stays inside the existing compositing ledger.
+        let reads_outside_viewport = crate::fidelity::has_backdrop(doc, options)
+            || options.grid
+            || options.checkerboard;
+        let target_rect = if let Some(root) = isolated_root {
+            prepared[&root.id].bounds.intersect(extent)
+        } else if reads_outside_viewport {
+            extent
+        } else {
+            let local = viewport.intersect(extent);
+            if local.empty() { extent } else { local }
+        };
         let mut target = Surface::new_in(target_rect, &budget)?;
         let background = if options.transparent {
             Pixel::default()
@@ -1829,14 +1844,14 @@ impl Engine {
             let alt = crate::color::pixel(doc.color_management, "#eeeeee", 1.)?;
             let cell = if options.raster_profile.is_export() { 32 } else { 16 };
             // Row-level optimization: precompute y.div_euclid(cell) once per row
-            for y in extent.y..extent.bottom() {
+            for y in target_rect.y..target_rect.bottom() {
                 let y_cell = y.div_euclid(cell);
-                for x in extent.x..extent.right() {
+                for x in target_rect.x..target_rect.right() {
                     // Inner loop only needs x.div_euclid(cell), saves ~50% divisions
                     if ((x.div_euclid(cell) ^ y_cell) & 1) == 0 {
                         continue;
                     }
-                    let i = extent.index(x, y).expect("checker");
+                    let i = target_rect.index(x, y).expect("checker");
                     target.pixels[i] = alt;
                 }
             }
@@ -1844,7 +1859,7 @@ impl Engine {
         if options.grid && !options.transparent && options.view.zoom > 0.13 {
             let spacing = 32. * options.view.zoom;
             // Row-level optimization: precompute dy and dy_sq once per row
-            for y in extent.y..extent.bottom() {
+            for y in target_rect.y..target_rect.bottom() {
                 let dy = (y as f64 + 0.5 - options.view.y)
                     .rem_euclid(spacing)
                     .min((options.view.y - y as f64 - 0.5).rem_euclid(spacing));
@@ -1852,14 +1867,14 @@ impl Engine {
                     continue;
                 }
                 let dy_sq = dy * dy; // Precompute for sqrt in inner loop
-                for x in extent.x..extent.right() {
+                for x in target_rect.x..target_rect.right() {
                     let dx = (x as f64 + 0.5 - options.view.x)
                         .rem_euclid(spacing)
                         .min((options.view.x - x as f64 - 0.5).rem_euclid(spacing));
                     // Use sqrt(dx^2 + dy^2) instead of hypot for better performance
                     let coverage = (1. - (dx * dx + dy_sq).sqrt()).clamp(0., 1.) as f32;
                     if coverage > 0. {
-                        let i = extent.index(x, y).expect("grid");
+                        let i = target_rect.index(x, y).expect("grid");
                         target.pixels[i] = over(
                             background,
                             Pixel::rgba(0.65, 0.67, 0.73, coverage * 0.4),
@@ -3016,9 +3031,45 @@ impl Painter<'_> {
             self.stats.culled += 1;
             return Ok(());
         }
-        let r = prepared.bounds.intersect(self.extent);
         let m = prepared.matrix;
         let scale = m.max_scale();
+        let full = prepared.bounds.intersect(self.extent);
+        // The geometry outset is wider than the filter that actually runs.
+        // A tile only needs samples that can reach its viewport, so a wide
+        // shadow does not allocate the whole outset on every sample plane.
+        let r = if n.render_children().is_empty()
+            && self.doc.mask_child(n).is_none()
+            && n.backdrop_effect().is_none()
+            && !n.passes_backdrop()
+            && n.effects.iter().any(|e| {
+                e.visible && matches!(e.kind.as_str(), "shadow" | "inner-shadow")
+            })
+            && n.effects.iter().all(|e| {
+                !e.visible || matches!(e.kind.as_str(), "shadow" | "inner-shadow")
+            }) {
+            let mut reach = 2i32;
+            for fx in n.effects.iter().filter(|e| e.visible) {
+                let support = if self.compatible {
+                    (fx.radius * scale).ceil() as i32
+                } else {
+                    let sigma = fx.radius * scale / 2.;
+                    effects::gaussian_box_radii(sigma)
+                        .map(|radii| radii.into_iter().sum::<u32>() as i32)
+                        .unwrap_or((fx.radius * scale).ceil() as i32)
+                };
+                let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
+                let pad = support
+                    .saturating_add(offset.x.abs().ceil() as i32)
+                    .saturating_add(offset.y.abs().ceil() as i32)
+                    .saturating_add((fx.spread.abs() * scale).ceil() as i32)
+                    .saturating_add(2);
+                reach = reach.max(pad);
+            }
+            let clipped = full.intersect(self.viewport.expand(reach));
+            if clipped.empty() { full } else { clipped }
+        } else {
+            full
+        };
         self.stats.nodes += 1;
         let texture_passthrough = match self.texture_bundle(n, m, targets, clip)? {
             TextureBundle::Captured => return Ok(()),
@@ -3635,6 +3686,9 @@ impl Painter<'_> {
         let n = &self.doc.nodes[id];
         let m = self.prepared[id].matrix;
         let scale = m.max_scale();
+        // Later drop shadows sample the content from before any shadow in this
+        // chain. They stack underneath; they do not blur the previous shadow.
+        let mut shadow_basis = planes.clone();
         for fx in n
             .effects
             .iter()
@@ -3665,9 +3719,11 @@ impl Painter<'_> {
                     outputs.push(Arc::new(output));
                 }
                 planes = outputs.try_into().map_err(|_| "Invalid color control planes")?;
+                shadow_basis = planes.clone();
                 continue;
             }
-            let resolved = self.resolve_effect_planes(&planes)?;
+            let shadow_effect = matches!(fx.kind.as_str(), "shadow" | "inner-shadow");
+            let resolved = self.resolve_effect_planes(if shadow_effect { &shadow_basis } else { &planes })?;
             if matches!(fx.kind.as_str(), "gaussian-blur" | "motion-blur" | "zoom-blur") {
                 let kernel=if fx.kind=="motion-blur" {Some(crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?)} else {None};
                 let compatible=self.compatible;
@@ -3678,6 +3734,7 @@ impl Painter<'_> {
                     if compatible {value.quantize_rgba8();} Ok(value)
                 };
                 let out=Arc::new(filter(&resolved)?);planes=std::array::from_fn(|_|out.clone());
+                shadow_basis = planes.clone();
                 if let Some(mask)=coverage {let value=Arc::new(filter(&self.resolve_effect_planes(mask)?)?);*mask=std::array::from_fn(|_|value.clone());}
             } else if fx.kind == "blur" {
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
@@ -3703,6 +3760,7 @@ impl Painter<'_> {
                 let output = Arc::new(filter(&resolved)?);
 
                 planes = std::array::from_fn(|_| output.clone());
+                shadow_basis = planes.clone();
                 if let Some(mask) = coverage {
                     let resolved_mask = self.resolve_effect_planes(mask)?;
                     let filtered = Arc::new(filter(&resolved_mask)?);
@@ -3761,14 +3819,16 @@ impl Painter<'_> {
                     if self.compatible {
                         shadow.quantize_rgba8();
                     }
-                    let mut output = self.allocate(source.rect)?;
-                    if inner {
-                        output.pixels.clone_from_slice(&source.pixels);
+                    // Reuse the shadow plane as the composite. A second full
+                    // support surface is what a radius-64 export could not admit.
+                    let mut output = if inner {
+                        let mut output = source.try_clone()?;
                         output.composite_unmasked(&shadow, "normal", 1.);
+                        output
                     } else {
-                        output.pixels.clone_from_slice(&shadow.pixels);
-                        output.composite_unmasked(source, "normal", 1.);
-                    }
+                        shadow.composite_unmasked(source, "normal", 1.);
+                        shadow
+                    };
                     if self.compatible {
                         output.quantize_rgba8();
                     }
@@ -3842,6 +3902,7 @@ impl Painter<'_> {
                 planes = outputs
                     .try_into()
                     .map_err(|_| "Invalid procedural planes")?;
+                shadow_basis = planes.clone();
             } else {
                 return Err(format!("Unsupported sampled effect {}", fx.kind));
             }
@@ -4119,15 +4180,17 @@ impl Painter<'_> {
                 }
             })?;
         }
+        let mut shadow_basis: Option<Surface> = None;
         for fx in n.effects.iter().filter(|e| apply_effects && e.visible) {
             if self.display_degrade && effect_exceeds_display_budget(fx, scale, r) {
                 continue;
             }
             match fx.kind.as_str() {
-                "zoom-blur" => { layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
-                "gaussian-blur" => { layer=effects::gaussian_surface(&layer,fx.radius*scale,self.compatible)?; }
-                "motion-blur" => { layer=crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?.apply(&layer)?; }
+                "zoom-blur" => { shadow_basis=None; layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
+                "gaussian-blur" => { shadow_basis=None; layer=effects::gaussian_surface(&layer,fx.radius*scale,self.compatible)?; }
+                "motion-blur" => { shadow_basis=None; layer=crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?.apply(&layer)?; }
                 "color-controls" => {
+                    shadow_basis = None;
                     fx.color_controls.as_ref().ok_or("Missing color controls")?.apply(&mut layer, self.doc.color_management.is_some());
                 }
                 "shadow" | "inner-shadow" => {
@@ -4145,10 +4208,14 @@ impl Painter<'_> {
                     {
                         continue;
                     }
+                    if shadow_basis.is_none() {
+                        shadow_basis = Some(layer.try_clone()?);
+                    }
+                    let basis = shadow_basis.as_ref().unwrap();
                     let mut shadow = if self.compatible {
                         let inner = fx.kind == "inner-shadow";
                         let alpha = effects::shadow_alpha(
-                            &layer,
+                            basis,
                             self.blur_filter(fx.radius * scale),
                             fx.spread * scale,
                             inner,
@@ -4159,7 +4226,7 @@ impl Painter<'_> {
                             fx.opacity as f32,
                         )?;
                         effects::color_shadow_rgba8(
-                            &layer,
+                            basis,
                             &alpha,
                             painted.rgb(),
                             painted.0[3],
@@ -4169,7 +4236,7 @@ impl Painter<'_> {
                         )?
                     } else {
                         effects::shadow_with_filter_for_composite(
-                            &layer,
+                            basis,
                             crate::color::pixel(
                                 self.doc.color_management,
                                 &fx.color,
@@ -4194,6 +4261,7 @@ impl Painter<'_> {
                     }
                 }
                 "blur" => {
+                    shadow_basis = None;
                     if let Some(gb) = &fx.gradient_blur {
                         // Gradient-modulated blur: render the fully blurred
                         // layer at the peak strength, then blend it against
@@ -4215,6 +4283,7 @@ impl Painter<'_> {
                     }
                 }
                 "texture" => {
+                    shadow_basis = None;
                     layer = if let Some(t) = &fx.texture {
                         crate::material::texture_at(
                             &layer,
@@ -4229,6 +4298,7 @@ impl Painter<'_> {
                     }
                 }
                 "noise" => {
+                    shadow_basis = None;
                     let inverse = m.inverse_composed(r)?;
                     for y in r.y..r.bottom() {
                         for x in r.x..r.right() {

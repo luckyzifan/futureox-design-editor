@@ -84,7 +84,7 @@ pub fn tent_blur_edge(
     radius: f64,
     clamp_edges: bool,
 ) -> Result<Surface, String> {
-    tent_blur_impl(surface, radius, clamp_edges, false, false)
+    tent_blur_impl(surface.try_clone()?, radius, clamp_edges, false, false)
 }
 pub const TENT_WEIGHT_SCALE: u32 = 1 << 24;
 /// Symmetric Q24 coefficients with exact unit mass. The same bytes are uploaded
@@ -109,7 +109,7 @@ pub fn portable_tent_blur_edge(
 ) -> Result<Surface, String> {
     let radius = f64::from(radius as f32);
     tent_blur_impl(
-        surface,
+        surface.try_clone()?,
         radius,
         clamp_edges,
         radius > 0. && radius <= 512. && radius.fract() != 0.,
@@ -124,14 +124,14 @@ pub fn linear_tent_blur(
     crate::rational_filter::blur(surface, radius, clamp_edges)
 }
 fn tent_blur_impl(
-    surface: &Surface,
+    mut current: Surface,
     radius: f64,
     clamp_edges: bool,
     portable: bool,
     linear: bool,
 ) -> Result<Surface, String> {
     if radius <= 0. {
-        return surface.try_clone();
+        return Ok(current);
     }
     let reach = radius.ceil() as i32;
     let interior = (radius.floor() as i32 - 1).max(0);
@@ -170,18 +170,22 @@ fn tent_blur_impl(
             )
         })
         .collect();
-    let mut current = surface.try_clone()?;
+    // The caller owns this plane. A second full clone, then another
+    // destination, is what pushed a radius-64 shadow past the ledger.
     if !linear {
         current.quantize_rgba8();
     }
     for horizontal in [true, false] {
         let rect = current.rect;
-        let mut next = current.new_like(rect)?;
         let (lines, len) = if horizontal {
             (rect.h as i32, rect.w as i32)
         } else {
             (rect.w as i32, rect.h as i32)
         };
+        // Snapshot one scanline and write the pass back in place. The
+        // previous full-frame destination was the 32 MiB allocation that
+        // a radius-64 export could not admit.
+        let mut line_pixels = vec![Pixel::default(); len.max(0) as usize];
         // Conservative rounding guard: only pixels whose nearest half-byte lies
         // inside this conservative error interval need the exact integer dot
         // product. The common path retains O(1) prefix moments per pixel.
@@ -193,20 +197,27 @@ fn tent_blur_impl(
         // of color and its first moment integrate that entire interval in O(1).
         // f64 prevents cancellation from the first moments on long scanlines.
         // Scratch is O(scanline length); work no longer grows with blur radius.
-        let _scratch = surface.reserve_scratch::<[f64; 4]>((len as usize + 1) * 2)?;
+        let _scratch = current.reserve_scratch::<[f64; 4]>((len as usize + 1) * 2)?;
         let mut sums = vec![[0_f64; 4]; len as usize + 1];
         let mut moments = sums.clone();
         for line in 0..lines {
+            for at in 0..len {
+                line_pixels[at as usize] = if horizontal {
+                    current.at(rect.x + at, rect.y + line)
+                } else {
+                    current.at(rect.x + line, rect.y + at)
+                };
+            }
             let sample = |at: i32| {
                 let at = if clamp_edges {
                     at.clamp(0, len - 1)
                 } else {
                     at
                 };
-                let p = if horizontal {
-                    current.at(rect.x + at, rect.y + line)
+                let p = if at < 0 || at >= len {
+                    Pixel::default()
                 } else {
-                    current.at(rect.x + line, rect.y + at)
+                    line_pixels[at as usize]
                 };
                 if integer || portable {
                     Pixel(p.0.map(|v| (v * 255.).round_ties_even()))
@@ -267,7 +278,7 @@ fn tent_blur_impl(
                     at as usize * rect.w as usize + line as usize
                 };
                 if linear {
-                    next.pixels[index] = Pixel(value.map(|v| v as f32));
+                    current.pixels[index] = Pixel(value.map(|v| v as f32));
                     continue;
                 }
                 let bytes = value.map(|v| {
@@ -310,17 +321,16 @@ fn tent_blur_impl(
                         }
                     }
                     // sum(weights) == 2^24; max total == 255*2^24 < u32::MAX.
-                    next.pixels[index] = Pixel(exact.map(|n| {
+                    current.pixels[index] = Pixel(exact.map(|n| {
                         let q = n >> 24;
                         let r = n & 0xffffff;
                         (q + u32::from(r > 0x800000 || (r == 0x800000 && q % 2 == 1))) as f32 / 255.
                     }));
                 } else {
-                    next.pixels[index] = Pixel(bytes.map(|b| b.round_ties_even() as f32 / 255.));
+                    current.pixels[index] = Pixel(bytes.map(|b| b.round_ties_even() as f32 / 255.));
                 }
             }
         }
-        current = next;
     }
     Ok(current)
 }
@@ -952,7 +962,20 @@ pub(crate) fn shadow_alpha(
         // Alpha is no longer needed after filtering. Consume it rather than
         // retaining an additional full surface through all six Gaussian passes.
         BlurFilter::Gaussian(sigma) => blur_alpha_outside_solid_core(alpha, sigma),
-        _ => filter.apply(&alpha),
+        // Same coefficients as BlurFilter::apply. Consuming the alpha plane
+        // avoids the tent's extra full-frame clone.
+        BlurFilter::PortableTent(radius) => {
+            let radius = f64::from(radius as f32);
+            tent_blur_impl(
+                alpha,
+                radius,
+                false,
+                radius > 0. && radius <= 512. && radius.fract() != 0.,
+                false,
+            )
+        }
+        BlurFilter::IntegratedTent(radius) => tent_blur_impl(alpha, radius, false, false, false),
+        BlurFilter::LinearTent(radius) => linear_tent_blur(&alpha, radius, false),
     }
 }
 
