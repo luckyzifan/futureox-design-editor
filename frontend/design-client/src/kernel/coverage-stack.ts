@@ -1,5 +1,6 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
+import { ORDINARY_SOURCE_TILE } from './source-display-band'
 import { MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit, tileIntersectsView } from './tile-preview'
 
 /** World rectangle of a tile's owned core that actually intersects the viewport.
@@ -200,6 +201,22 @@ export function acceptTranslatedCoverage(input: {
   return input.outward && !input.preview && input.idsMatch && input.tileCount > 0 &&
     input.tileCount === input.shownCount && input.sentZoom === input.liveZoom &&
     input.samePixels && input.matchesSubmission
+}
+
+/** The current exact lattice owns the raster slot. A wider same-density
+ * capture, or one more than 8× finer than a demand that is still missing
+ * tiles, is not that lattice. An in-plan key stays. Exactly 8× stays too:
+ * a fast zoom-out still keeps the hole filler at that bound. */
+export function releaseInFlightForDemand(tile: Pick<RasterTile, 'key' | 'width' | 'height' | 'zoom'>, demand: {
+  scale: number
+  keys: ReadonlySet<string>
+  tiles: readonly Pick<RasterTile, 'width' | 'height'>[]
+  missing: boolean
+}) {
+  if (demand.keys.has(tile.key)) return false
+  const ordinary = demand.tiles.length > 0 && demand.tiles.every(item => item.width <= ORDINARY_SOURCE_TILE && item.height <= ORDINARY_SOURCE_TILE)
+  if (ordinary && (tile.width > ORDINARY_SOURCE_TILE || tile.height > ORDINARY_SOURCE_TILE)) return true
+  return demand.missing && demand.scale > 0 && tile.zoom > demand.scale * 8
 }
 
 /** Whether an in-flight tile still belongs to the current camera.

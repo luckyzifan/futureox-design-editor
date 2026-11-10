@@ -2,7 +2,7 @@ import { settledPoseDamage } from './interaction-pose-damage'
 import { choosePreparedTile } from './zoom-refinement-policy'
 import { equalValue } from '../document-patch'
 import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regional-gaussian-display'
-import {MATERIAL_BAND} from './source-display-band'
+import {MATERIAL_BAND,sourceBandDefersWholePresent} from './source-display-band'
 import { ResidentPoseReuse, terminalPoseDisposition } from './resident-pose-reuse'
 import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
 import { pinDocumentCapacity } from '../document-capacity'
@@ -2503,7 +2503,8 @@ async function renderTiledPreview(
   if (
     presentOnly && preparedScene && backend === 'webgpu' && !managedOutput && crop &&
     !options.pixelPreview && tileSide >= Math.max(crop.width, crop.height) &&
-    !(import.meta.env.DEV && forceFirstTileBudgetFailure) && !admission.shouldSplit(crop)
+    !(import.meta.env.DEV && forceFirstTileBudgetFailure) && !admission.shouldSplit(crop) &&
+    !sourceBandDefersWholePresent(sourceImageDisplay, crop.width, crop.height)
   ) {
     await checkpoint?.()
     const scene = preparedScene

@@ -1,3 +1,4 @@
+import {incompleteWideBandCohort} from './source-display-band'
 import {materialRegions,completeMaterialRegions,orderMaterialTiles,focalMaterialTiles,retainsVisibleMaterials} from './source-material-refinement'
 import {sourcePageClip} from '../source-opening-preview'
 import {useLayoutEffect,useMemo,useRef} from 'react'
@@ -10,7 +11,7 @@ import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
-import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack,sharperCoverageFrame} from './coverage-stack'
+import {acceptTranslatedCoverage,coverageBeyondBacking,releaseInFlightForDemand,retainInFlightTile,selectCoverageStack,sharperCoverageFrame} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {nativeSourceBadgeText} from './native-source-status'
@@ -172,7 +173,10 @@ export function NativeSourceSurface(props:Props){
       badge.style.opacity=p.overviewBoxes&&status.phase!=='error'&&status.phase!=='limited'&&
         (backing||p.underlay?.current?.(p.view,p.width,p.height,'any'))?'0':''
       if(signature===lastStatus)return
-      if(status.phase==='refining'&&lastStatus.startsWith('refining/')&&now-lastStatusAt<120)return
+      // Same-camera refine chatter can wait. A zoom or pan must not keep the
+      // previous camera's refining 3/4 on the badge after the view has moved.
+      const sameCamera=lastStatus.endsWith(`/${live.x}/${live.y}/${live.zoom}`)
+      if(status.phase==='refining'&&lastStatus.startsWith('refining/')&&sameCamera&&now-lastStatusAt<120)return
       lastStatus=signature;lastStatusAt=now
       const cpu=renderExecutionPolicy.cpuOnly
       badge.textContent=nativeSourceBadgeText(status,{
@@ -492,7 +496,31 @@ export function NativeSourceSurface(props:Props){
         paint()
       }else if(!tile.prefetch || tileIntersectsView(tile,latest.current.view,latest.current))schedulePaint()
     }
+    const releaseIncompleteWideBand=()=>{
+      // Settled only. A moving zoom still wants the wide bands. Once some of
+      // those bands are cached and a wide one is not, the same raster continues
+      // as the ordinary lattice. Forcing sharp, or painting a coarser frame
+      // over the hole, is not this handoff.
+      if(moving||!source.materialKeys||source.viewportSubset)return false
+      const settled=plan(false)
+      if(!settled.exact)return false
+      const cohort=settled.tiles.map(tile=>({width:tile.width,height:tile.height,cached:cache.has(tile.key)}))
+      if(!incompleteWideBandCohort(cohort))return false
+      return planner.retryNativeCoverage(settled.p.view,settled.ratio,settled.p.width,settled.p.height)
+    }
+    const tileStillNeeded=(tile:RasterTile,next:ReturnType<typeof plan>,settling:boolean,keepPlanned:boolean)=>{
+      const missing=next.tiles.some(item=>!cache.has(item.key))
+      if(stripOverview?.tiles.some(base=>base.key===tile.key))return !zoomingIn
+      if(overview?.tiles.some(base=>base.key===tile.key))return !moving
+      if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
+      if(releaseInFlightForDemand(tile,{scale:next.raster.scale,keys:next.keys,tiles:next.tiles,missing}))return false
+      // Settling keeps the exact key even when its rect test is stale. A live
+      // batch still drops an off-screen neighbour so the visible tile can finish.
+      if(keepPlanned&&next.keys.has(tile.key))return true
+      return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale,settling)
+    }
     const updateWorkDemand=()=>{
+      if(!moving)releaseIncompleteWideBand()
       if(workQueue.current?.pending.size){
         const next=plan()
         // Returning to an exact, fully resident viewport leaves no missing
@@ -503,13 +531,7 @@ export function NativeSourceSurface(props:Props){
         // Completed tiles no longer hold the batch's camera lease. Cancel if
         // either remaining tile would delay the current viewport with old work.
         const optional=[...workQueue.current.pending.values()].every(tile=>tile.prefetch===true)
-        const missing=next.tiles.some(tile=>!cache.has(tile.key))
-        workQueue.demand(covered&&!optional,tile=>{
-          if(stripOverview?.tiles.some(base=>base.key===tile.key))return !zoomingIn
-          if(overview?.tiles.some(base=>base.key===tile.key))return !moving
-          if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
-          return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale)
-        })
+        workQueue.demand(covered&&!optional,tile=>tileStillNeeded(tile,next,false,false))
       }
     }
     const run=async()=>{
@@ -915,10 +937,13 @@ export function NativeSourceSurface(props:Props){
       if(zoomChanged&&initialized){
         const native=plan(true)
         const arrived=native.tiles.filter(tile=>cache.has(tile.key)).length
+        const cached=native.tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
         const rejected=element.dataset.previewUpscaleRejected==='true'
-        emit(!rejected&&native.tiles.length>0&&arrived===native.tiles.length
-          ?{phase:'ready',done:arrived,total:arrived}
-          :{phase:'refining',done:arrived,total:native.tiles.length})
+        // A cached motion rung is not the current sample. Ready still requires
+        // the exact phase and a density that certifies this camera.
+        const certified=!rejected&&native.exact&&native.tiles.length>0&&arrived===native.tiles.length&&
+          densityCertifiesDemand(cached,latest.current.view.zoom*density.current)
+        emit(certified?{phase:'ready',done:arrived,total:arrived}:{phase:'refining',done:arrived,total:native.tiles.length})
       }
       try{
       // Motion headroom is optional work. An already complete exact native
@@ -956,6 +981,7 @@ export function NativeSourceSurface(props:Props){
         moving=false
         quality.settle()
         try{
+          releaseIncompleteWideBand()
           const native=plan(false)
           // Preserve accepted history, but stop pending work that cannot
           // satisfy the current density/phase/owner keys. The request slot
@@ -968,8 +994,7 @@ export function NativeSourceSurface(props:Props){
             missing && source.materialKeys && zoomingIn && continuousZoom && native.raster.scale>1 &&
             backingCoversSettledSource(backing,native.p,density.current)
           workQueue.demand(false,tile=>!(coveredDetail && tile.prefetch!==true && tile.zoom*4<=native.raster.scale) &&
-            (native.keys.has(tile.key)||!missing&&tile.prefetch===true&&native.prefetchKeys.has(tile.key)||
-            retainInFlightTile(tile,native.p.view,native.p,cache.values(),native.keys,native.prefetchKeys,zoomingIn&&continuousZoom,native.raster.scale,true)))
+            tileStillNeeded(tile,native,true,true))
           schedulePaint();void run()
         }catch(error){fail(error)}
       },continuousZoom&&lastInputAt-lastZoomAt<180?Math.min(SOURCE_WHEEL_QUIET_MS,Math.max(56,wheelInterval*2+8)):SOURCE_QUIET_MS):undefined
