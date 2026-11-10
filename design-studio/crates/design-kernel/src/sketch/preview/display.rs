@@ -7,7 +7,7 @@ use crate::{
     boolean::Operation,
     color::ColorSettings,
     facet::sample_node,
-    font::{TextRun, TextStyle},
+    font::{TextParagraph, TextRun, TextStyle},
     math::{Point, Transform},
     scene::{
         Document as DisplayDocument, Edge, Effect, Network, Node, Page, Paint, Stop, Stroke, Vertex,
@@ -662,7 +662,18 @@ impl Projection<'_> {
         )
         .max(1.);
         let p = &first["paragraphStyle"];
-        let line = num(p, "minimumLineHeight", 0.).max(num(p, "maximumLineHeight", 0.));
+        let minimum_line = num(p, "minimumLineHeight", 0.);
+        let maximum_line = num(p, "maximumLineHeight", 0.);
+        let line = minimum_line.max(maximum_line);
+        // Equal Sketch line limits are one fixed line box. Native text previews
+        // center the face in that box and draw the baseline on the nearest point.
+        let fixed_line = minimum_line > 0. && (minimum_line - maximum_line).abs() <= 1e-9;
+        let align = match num(p, "alignment", 0.) as i32 {
+            1 => "end",
+            2 => "center",
+            3 => "justify",
+            _ => "start",
+        };
         n.text_style = Some(
             (TextStyle {
                 font_id: "default".into(),
@@ -671,20 +682,26 @@ impl Projection<'_> {
                 } else {
                     1.35
                 },
+                line_box_baseline: if fixed_line {
+                    "nearest-point".into()
+                } else {
+                    String::new()
+                },
                 letter_spacing: num(first, "kerning", 0.),
                 wrap: num(v, "textBehaviour", 0.) != 0.,
-                align: match num(p, "alignment", 0.) as i32 {
-                    1 => "end",
-                    2 => "center",
-                    3 => "justify",
-                    _ => "start",
-                }
-                .into(),
+                align: align.into(),
                 paragraph_spacing: num(p, "paragraphSpacing", 0.),
                 ..TextStyle::default()
             })
             .into(),
         );
+        let fixed_paragraph = fixed_line.then(|| TextParagraph {
+            align: align.into(),
+            minimum_line_height: minimum_line,
+            maximum_line_height: maximum_line,
+            spacing: num(p, "paragraphSpacing", 0.),
+            indent: num(p, "firstLineHeadIndent", 0.),
+        });
         if n.fills.is_empty() {
             n.fills.push(solid(
                 format!("{}:text", n.id),
@@ -702,7 +719,7 @@ impl Projection<'_> {
             let font_name = font["name"].as_str().unwrap_or("default");
             self.fonts.insert(font_name.into());
             n.text_runs.push(TextRun {
-                paragraph: None,
+                paragraph: fixed_paragraph.clone(),
                 text_case: None,
                 start,
                 end,
@@ -830,6 +847,9 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
                 ]
             }
         }
+    }
+    if document.requires_schema20() {
+        document.schema_version = document.schema_version.max(20);
     }
     // Image references remain opaque resource keys on the wire; each selected
     // artboard is hydrated and validated before rendering. No archive metadata
