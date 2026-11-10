@@ -37,17 +37,28 @@ function screen(target: CameraWindow): ScreenRect {
 }
 
 /** Uncovered parts of the target, including physical scissors the GPU actually
- * filled with the navigation background. Authored white is never inferred. */
-function missing(frame: ResidentAcknowledgement, target: CameraWindow): ScreenRect[] | undefined {
+ * filled with the navigation background. Authored white is never inferred.
+ * Screen rectangles of `frame` that do not cover `target`. A preview
+ * without a gap list still has these margins: hiding them is the gray ring
+ * around a 3200% crop. Internal preview holes stay unknown. */
+function frameMargins(frame: CameraWindow, target: CameraWindow): ScreenRect[] {
   const viewport = screen(target), rect = project(frame, target), inside = intersect(viewport, rect)
   if (!inside) return [viewport]
   const right = inside.x + inside.width, bottom = inside.y + inside.height
-  const gaps = [
+  return [
     { x: 0, y: 0, width: inside.x, height: target.height },
     { x: right, y: 0, width: target.width - right, height: target.height },
     { x: inside.x, y: 0, width: inside.width, height: inside.y },
     { x: inside.x, y: bottom, width: inside.width, height: target.height - bottom },
   ].filter(gap => gap.width > 0 && gap.height > 0)
+}
+
+function missing(frame: ResidentAcknowledgement, target: CameraWindow): ScreenRect[] | undefined {
+  const viewport = screen(target), rect = project(frame, target), inside = intersect(viewport, rect)
+  // A preview that misses the viewport still owes the whole screen. Unknown
+  // internal holes must not hide that fact.
+  if (!inside) return [viewport]
+  const gaps = frameMargins(frame, target)
   if (frame.preview) {
     if (!frame.previewGaps || frame.previewGaps.length > MAX_NAVIGATION_GAPS) return
     const scale = target.view.zoom / (frame.view.zoom * frame.dpr)
@@ -118,7 +129,7 @@ export class NavigationBacking {
   private copying = false
   private granted = false
   private lastCapture = ''
-  private mappedFrame = 0
+  private captureSerial = 0
   get completeFrame() { return !this.atlas || this.atlas.complete ? this.frame : undefined }
   frame?: CameraWindow
 
@@ -134,6 +145,7 @@ export class NavigationBacking {
     this.atlas = undefined
     this.tried.clear()
     this.lastCapture = ''
+    this.captureSerial = 0
     this.hide()
     if (this.surface) { this.surface.width = 0; this.surface.height = 0 }
   }
@@ -183,9 +195,11 @@ export class NavigationBacking {
         width:frame.width/frame.view.zoom,height:frame.height/frame.view.zoom}
       const key = JSON.stringify(region)
       if (this.lastCapture === key) return
-      if (this.paintRegion(source,page,region,0,-1-this.mappedFrame%16)) {
+      // Sixteen rotating slots forgot the wide page after a pinch. Keep that
+      // region and drop only a smaller one. The slot count stays bounded.
+      this.dropSmallestCoverage()
+      if (this.paintRegion(source,page,region,0,-(++this.captureSerial))) {
         this.lastCapture=key
-        this.mappedFrame++
       }
       return
     }
@@ -204,6 +218,28 @@ export class NavigationBacking {
     ctx.drawImage(source, 0, 0, w, h)
     this.frame = { view: { ...frame.view }, width: frame.width, height: frame.height }
     this.lastClip = ''
+  }
+
+  /** The wide page is the largest region. A long zoom may replace smaller
+   * slots; it must not replace that page. Forty-eight is the existing warm
+   * cap's order, not a new byte budget. */
+  private dropSmallestCoverage() {
+    const covered = this.atlas?.covered
+    if (!covered || covered.size < 48) return
+    let largestId: number | undefined
+    let largest = -1
+    for (const [id, rect] of covered) {
+      const area = rect.width * rect.height
+      if (area > largest) { largest = area; largestId = id }
+    }
+    let drop: number | undefined
+    let area = Infinity
+    for (const [id, rect] of covered) {
+      if (id === largestId) continue
+      const next = rect.width * rect.height
+      if (next < area) { area = next; drop = id }
+    }
+    if (drop !== undefined) covered.delete(drop)
   }
 
   private paintRegion(source: ImageBitmap | HTMLCanvasElement, bounds: ScreenRect, region: ScreenRect, gutter: number, id: number) {
@@ -343,7 +379,9 @@ export class NavigationBacking {
     const rect = project(this.frame, target)
     // A far atlas is blurry, not a reason to leave the hole blank. Camera
     // reprojection hides this layer once a closer covering image exists.
-    const holes = missing(backing, target)
+    // A preview crop often has no gap list. `missing` then refuses to certify
+    // the interior, which also used to hide the wide page in the margin.
+    const holes = missing(backing, target) ?? frameMargins(backing, target)
     const covered = this.coverage(target)
     const repairs = holes?.flatMap(hole => covered.flatMap(region => intersect(region,hole) ?? []))
     if (!repairs?.length) { this.hide(); return }

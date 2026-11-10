@@ -19,7 +19,7 @@ import {exactTilesBeforeOverview,quietPasteStripAllowed} from './zoom-refinement
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
-import {sourceTileRetirement,rememberSourceTier} from './source-tile-retirement'
+import {sourceTileRetirement,rememberSourceTier,zoomOutRetentionCohort} from './source-tile-retirement'
 import {SourceQualityLadder,sourceRasterLimit} from './source-quality-ladder'
 import { outwardInteractionScale } from './interaction-adaptive-density'
 import {useDevicePixelRatio} from './presentation'
@@ -329,7 +329,8 @@ export function NativeSourceSurface(props:Props){
       }
       const keys=new Set(tiles.map(tile=>tile.key))
       const keep=Math.max(32,tiles.length*3)
-      for(const tile of [...cache.values()].sort((a,b)=>a.used-b.used)){
+      const cohort=returnReuse?zoomOutRetentionCohort(recentNative,p.view.zoom*dpr):undefined
+      for(const tile of sourceTileRetirement(cache.values(),recentNative.values(),false,cohort)){
         if(cache.size<=keep)break
         if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key) || stripOverview?.tiles.some(base=>base.key===tile.key))continue
         cache.delete(tile.key);retire(tile)
@@ -342,6 +343,7 @@ export function NativeSourceSurface(props:Props){
         const surface=element.parentElement?.parentElement
         if(surface)surface.dataset.sourceCoverageExtend='pan'
       }
+      if(complete&&returnReuse)rememberSourceTier(recentNative,p.view.zoom*dpr,new Set(tiles.map(tile=>tile.key)))
       if(drewStrip||complete){
         cpuView={...p.view}
         // CPU never receives a GPU acknowledgement, so the opening thumbnail
@@ -376,8 +378,7 @@ export function NativeSourceSurface(props:Props){
         const keep=Math.max(32,tiles.length*3)
         const preferLast=import.meta.env.VITE_DESIGN_SOURCE_RETURN_PRIORITY!=='0' && moving &&
           !!p.overviewBoxes && !!source.materialKeys && raster.scale<=1
-        const wider=returnReuse&&p.view.zoom*density.current>=2
-          ?[...recentNative].sort((a,b)=>a[0]-b[0])[0]?.[1]:undefined
+        const wider=returnReuse?zoomOutRetentionCohort(recentNative,p.view.zoom*density.current):undefined
         for(const tile of cache.size>keep?sourceTileRetirement(cache.values(),recentNative.values(),preferLast,wider):[]){
           if(cache.size<=keep)break
           if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key) || stripOverview?.tiles.some(base=>base.key===tile.key))continue
@@ -823,16 +824,17 @@ export function NativeSourceSurface(props:Props){
           emit({phase:'refining',done:arrived,total:planned.tiles.length})
           schedulePaint();void run()
         }else if(complete){
-        if(source.materialKeys){
           const scale=actual.view.zoom*actual.dpr
-          const keys=new Set(shownTiles.map(t=>t.key))
-          if(returnReuse)rememberSourceTier(recentNative,scale,keys)
-          else{
+          const tierKeys=new Set(shownTiles.map(t=>t.key))
+          // Overview canvases have no material keys. They still need the wide
+          // cohort when the camera comes back from 3200%; two slots, same as
+          // a material edit.
+          if(returnReuse)rememberSourceTier(recentNative,scale,tierKeys)
+          else if(source.materialKeys){
             recentNative.delete(scale)
             if(recentNative.size>=2)recentNative.delete(recentNative.keys().next().value!)
-            recentNative.set(scale,keys)
+            recentNative.set(scale,tierKeys)
           }
-        }
         quality.reset()
         element.dataset.sourceReadyCamera=JSON.stringify(actual.view)
         planner.presented(actual.view,actual.dpr,actual.width,actual.height)
