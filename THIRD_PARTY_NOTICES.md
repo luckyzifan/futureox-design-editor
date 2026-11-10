@@ -21,6 +21,10 @@ versions and notice hashes. Keep these texts with distributed copies.
 - react-dom 19.3.1: MIT; `licenses/react-dom-LICENSE.txt`.
 - scheduler 0.28.0: MIT; `licenses/scheduler-LICENSE.txt`.
 - svg-pathdata 9.0.0: MIT; `licenses/svg-pathdata-LICENSE.txt`.
+- quickjs-emscripten 0.32.0, quickjs-emscripten-core 0.32.0, and `@jitl/quickjs-ffi-types` 0.32.0: MIT; `licenses/quickjs-emscripten-LICENSE.txt`.
+- `@jitl/quickjs-wasmfile-debug-asyncify`, `@jitl/quickjs-wasmfile-debug-sync`, `@jitl/quickjs-wasmfile-release-asyncify`, and `@jitl/quickjs-wasmfile-release-sync`, all 0.32.0: MIT, including the QuickJS terms in the npm `LICENSE`; `licenses/quickjs-wasmfile-LICENSE.txt`.
+
+The renderer imports `quickjs-emscripten`. That package's entry re-exports all four wasm variants. Which of those variants remain after the production bundle's tree-shaking was not measured, because this checkout has no built renderer.
 
 Lucide's complete notice includes ISC and Feather-derived MIT terms and both
 copyright attributions. The generic ISC package field does not replace that text.
@@ -33,8 +37,11 @@ package source revision remains a release-verification task.
 - Noto Sans SC: SIL OFL-1.1; `public/fonts/OFL.txt`, `public/fonts/source.json`, and
   `licenses/NotoSansSC-OFL.txt`. Copyright 2014-2021 Adobe; Reserved Font Name Source.
   Preserve the OFL and copyright notice, including with embedded or bundled fonts.
-- moxcms 0.8.1: BSD-3-Clause OR Apache-2.0; both original texts are preserved under
-  `vendor/moxcms/` and `public/licenses/moxcms-*.txt`. No new license election is made.
+- moxcms 0.8.1 and 0.9.1: BSD-3-Clause OR Apache-2.0. The kernel depends on 0.9.1.
+  `image` 0.25.10 pulls the patched 0.8.1 tree under `vendor/moxcms/`. The BSD
+  and Apache texts of those two versions are byte-identical; both are preserved
+  under `vendor/moxcms/` and `public/licenses/moxcms-*.txt`. No new license
+  election is made.
 
 - flo_curves 0.8.1: Apache-2.0; original license in `vendor/flo_curves/LICENSE`
   and `public/licenses/flo_curves-Apache-2.0.txt`. The local ray-collision ordering
@@ -42,10 +49,22 @@ package source revision remains a release-verification task.
 
 ## Release gates
 
-Rust dependency packages and Electron/runtime transitive notices require a
-separate complete binary-distribution inventory. Installed development packages
-are not necessarily shipped runtime code. This document does not clear that
-remaining work.
+`node frontend/design-desktop/scripts/release-component-inventory.mjs` maps the
+current package inputs. It does not accept a signed installer. On 2026-11-10
+the locked graph had 381 package entries. The normal dependency trees of the
+four packaged binaries, across Linux x64, macOS arm64, Windows x64, and
+wasm32, contain 263 third-party crates. 253 of those have a license text under
+`frontend/design-desktop/third-party-notices/cargo/`. The other ten publish an
+SPDX identifier and no license file in the crate archive.
+
+Installed development packages are not shipped runtime code. Vite, Lightning
+CSS, Playwright, and `@electron/packager` stay on that development side. The
+`electron` npm package is a downloader; the runtime that ships is the Electron
+distribution zip.
+
+This document does not clear a signed or notarized release. Native sidecar
+binaries were not built here, and the generated WASM bindings were not in
+this checkout.
 
 Reference fixtures are excluded from production assets, but remain in the source
 repository and tests. Source publication still requires their ownership/permission

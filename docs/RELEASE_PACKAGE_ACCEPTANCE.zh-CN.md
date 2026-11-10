@@ -26,29 +26,37 @@ node frontend/design-desktop/scripts/release-desktop-flow.mjs
 node frontend/design-desktop/scripts/release-component-inventory.mjs
 ```
 
-脚本核对 `frontend/design-client/public/licenses/` 与 `inventory.json` 的哈希，列出 `design-mcp` 源文件和 Linux FFmpeg 的 SHA-256。`Cargo.lock` 里的 `name` 条目和 `package.json` 里的 Electron 版本只标成构建输入。没有 release 目录时，范围是 `packaging_inputs_not_a_release_bundle`。有目录时列出 JS/WASM/native 的安装路径和哈希，范围仍是 `release_directory_present_but_not_a_closed_sbom`，不是闭合的随包物料清单。
+脚本现在按打包输入生成组件清单，而不是把 `Cargo.lock` 的 `name` 条数当成随包清单。没有签名安装包时，`releaseAcceptance` 保持 `not_closed`。桌面流程脚本的行为不变：没有冻结安装包时，打开、编辑和导出步骤仍是 `not_run`。
 
-## 打包入口
+清单区分这些东西：
 
-`frontend/design-desktop/scripts/package.mjs` 在调用 packager 之前把 `resource-list.json` 写入 staging，因此它进入 `app.asar`。这份清单的 `formalRelease` 固定为 false，`signature` 固定为 `not_run`。`verify-package.mjs` 用包内字节复核清单。复核通过只说明这份未签名开发包的清单和字节一致，不是正式安装包的桌面流程验收。本云端环境没有运行完整的 Electron 打包器。
+- 四个会装进包里的 Rust 二进制的 `cargo tree --locked --edges normal`，以及 wasm32 的 kernel 图。`futureox-design-server`、`utoipa`、`sqlx-postgres` 和 dev-dependency `tiny-skia` 不在这个图里。
+- 生产 JS 导入图和它的 lockfile 依赖。Vite、Lightning CSS、Playwright、`@electron/packager` 标成开发依赖。`electron` 这个 npm 包只是下载器。
+- 会复制进 renderer 的字体和会打进 asar 的图标。
+- Linux FFmpeg 可执行文件、notice 和对应源码包。macOS/Windows 目录仍是说明，没有二进制。
+- 提供 `--electron-dist` 时，解压后的 Electron 发行目录里的每个文件。没有这个目录时，Chromium 二进制记为未哈希。
 
 ## 云端结果
 
-2026-11-09，linux x64。本机没有 `frontend/design-desktop/release` 正式包，也没有启动 Electron 安装器。当时的桌面流程 12 步都是 `not_run`。组件清单里 10 条 UI notice 的哈希与 `inventory.json` 一致。Electron 版本记录为 44.7.0，Chromium 二进制没有被哈希。`Cargo.lock` 当时有 381 条 `name` 记录，脚本把它标成构建输入，不是随包清单。
+2026-11-09，linux x64。当时的脚本没有枚举 release 文件。10 条 UI notice 与 `inventory.json` 一致。Electron 44.7.0 的 Chromium 二进制没有被哈希。`Cargo.lock` 有 381 条 `name` 记录，被标成构建输入。
 
-2026-11-10，linux x64 云端虚拟机，源码基线 `ccaa2ea1a4a62aeff162fe4912e3920f99e529a2`。没有签名的 macOS 安装包，没有 Electron GUI，没有 Metal，没有挂载或启动安装器。5% 端到端性能门未使用。合成夹具只用于哈希和路径，不是用户设计文件，也不是截图像素。
+2026-11-10，同一台 linux x64 云端，没有签名安装包，没有构建 native sidecar，也没有 Mac/Electron GUI 或 Metal。当前清单：
 
-同一对目录在旧哈希上碰撞，在新哈希上分开：
-
-| 检查 | 基线 main | 本分支 |
+| 测量 | 2026-11-09 脚本 | 2026-11-10 清单 |
 | --- | --- | --- |
-| `a`/`bc` 与 `ab`/`c` | 同一个 SHA-256 `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad` | `d795c06922fdbd43cafe94a784dabde59ffa0b9da62f1937671f9d0b06732a71` 与 `88824a1d6ea685c2df1989ca1766e4abcefb18828d8240943e40542f8ca1b040` |
-| `Futureox.dmg` 内容 `not-a-real-installer` | `024492aa19c1fc4afb8a39140f49117b491e7b8490fae0252754a4894ca3ca5e`，状态 `hashed_not_installed` | 同一 SHA-256，证据类 `unopened_installer`，资源 `not_inspected` |
-| 5 个文件的 `desktop-dev` 目录 | 旧目录哈希 `72bca3fb3d059765289744381448f494d2b1fe3bd27f0b5679ae33e33a790107`，JS/WASM/native 条数为 0 | 目录哈希 `32b8851870b21ebd449509866494904bc72a95929584ca03f839d20911722d52`；JS 1、WASM 1、native 2 |
-| 安装路径 | 无 | `app/src/main.mjs`、`app/renderer/kernel.wasm`、`bin/design-render`、`sidecar/futureox-design-desktop-backend` |
-| 与运行时字节对照 | 无对照 | 4 条 `byte_match`；把 WASM 最后一字节从 `0x00` 改成 `0x01` 后为 1 条 `byte_mismatch`（包 `93a44bbb96c751218e4c00d479e4c14358122a389acca16205b1e4d0dc5f9476`，运行时 `3f499bf4c9e7483e804244d5e485b3537b2135690a7ce7b3fd7cb2544217d729`） |
-| 12 个桌面步骤 | 12 个 `not_run`，0 个带 `packageSha256` | 12 个仍是 `not_run`，12 个都带包 SHA-256 和 `linux/x64` |
-| 原文件 `synthetic-readonly-bytes` | 报告不记录 SHA | 24 字节，SHA-256 `853b26a5146c2c4743746eb6e3b34ce05fdac295efeacaae32f7adcf350f8455`，两次读取相同；应用会话 `not_run` |
-| 正式验收 | `not_closed` | `not_closed`，`formalRelease` false，签名 `not_run`，`confirmedRuntimeFault` false |
+| 能追到版本、来源、哈希和许可文本的第三方组件 | 10 条 UI notice，加上 1 个 Linux FFmpeg 二进制 | 286 |
+| 其中 Rust 第三方 crate / 有许可文本 | 未按随包图拆开；381 条 lock 记录被排除在随包清单之外 | 263 / 253 |
+| 不在四个打包二进制 normal 依赖图里的 lock 包 | 未计算 | 114 |
+| 生产 JS 依赖有 notice | 上表的 UI notice，不含 quickjs-emscripten | 16 / 16 |
+| 开发依赖，不计入随包 | 未单列 | 177 |
+| 字体文件哈希与 notice 一致 | 未列入组件 | 16 |
+| 图标文件追到仓库 MIT `LICENSE` | 未列入组件 | 16 |
+| 解压后的 Electron 44.7.0 linux-x64 文件 | 0 | 72 |
 
-未设置包路径时，`node frontend/design-desktop/scripts/release-desktop-flow.mjs` 退出码 0：12 步都是 `not_run`，每步 `packageSha256` 为 null，`releaseAcceptance` 为 `not_closed`。`node frontend/design-desktop/scripts/release-component-inventory.mjs` 退出码 0：10/10 条 notice 与清单一致，Electron 44.7.0，Chromium 二进制未哈希，`Cargo.lock` 381 条 `name` 仍是构建输入，`design-mcp` 源文件 11 个，`packageResources` 为 `not_run`。正式安装后的打开、导航、编辑、撤销、自动保存、关闭重开和原生导出仍未执行。
+Electron zip SHA-256 `3ae7d5bdad61c664486c6ab61361dd084d064c8c08af8d13a687096e18ce555a`，与 `electron` 44.7.0 npm 包里的 `checksums.json` 一致。`electron` 二进制 SHA-256 `10a14d05c6ff4f94075cfb3eeb6ed6571be33ebcc08cbd675b5ce9ff84706564`。`LICENSE` SHA-256 `5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d`。`LICENSES.chromium.html` SHA-256 `3375e2a9bd7bc631738fde10be6548a76efe8cf5e4b8826b8140ba8b0c4d6353`。发行目录里的 `libffmpeg.so` SHA-256 `c4c805e46f957356f6b80be31999459e5f07e8b0c351221544ad43a16c980638`，与仓库里的 GPL FFmpeg `18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317` 不是同一个文件。
+
+这组哈希来自官方 Electron zip 的解压目录，不是 Futureox 签名安装包。macOS 和 Windows 的 Electron zip 没有下载。十个 crate 的发布包里没有许可文本：`profiling` 1.0.18、`spirv` 0.4.0+sdk-1.4.341.0，以及 macOS 的 `objc2` / `block2` 系列。`public/color-fixtures/` 的三张图没有来源记录。正式签名包、公证和 native GUI 仍然是 `not_run`。
+
+## 随包资源标识（#264）
+
+打包入口在 staging 内写入 `resource-list.json`，`verify-package.mjs` 核对包内实际字节。组件清单的 `packageResources` 同时记录 JS/WASM/native 的路径和hash。`formalRelease` 仍为 false，签名仍为 `not_run`；目录哈希、资源列表和已安装应用会话属于不同的证据。
