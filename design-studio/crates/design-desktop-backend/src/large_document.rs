@@ -46,6 +46,34 @@ use index::DiskIndex;
 fn issue(error: impl std::fmt::Display) -> BackendError {
     BackendError::new("LARGE_DOCUMENT_ERROR", error.to_string())
 }
+fn save_io(error: io::Error) -> BackendError {
+    // Cancellation and checkpoint-budget errors are not storage failures.
+    if error.kind() == io::ErrorKind::InvalidData
+        || (error.kind() == io::ErrorKind::Other
+            && !matches!(error.raw_os_error(), Some(28 | 112 | 122)))
+    {
+        return issue(error);
+    }
+    let full = error.kind() == io::ErrorKind::StorageFull
+        || matches!(error.raw_os_error(), Some(28 | 112 | 122));
+    if full {
+        BackendError::new(
+            "SOURCE_STORAGE_FULL",
+            format!("Source working copy was not written because storage is full. The original file and the last consistent copy are unchanged: {error}"),
+        )
+    } else {
+        BackendError::new(
+            "SOURCE_WRITE_FAILED",
+            format!("Source working copy was not written. The original file and the last consistent copy are unchanged: {error}"),
+        )
+    }
+}
+fn checkpoint_io(error: serde_json::Error) -> BackendError {
+    match error.io_error_kind() {
+        Some(kind) if kind != io::ErrorKind::InvalidData => save_io(io::Error::new(kind, error.to_string())),
+        _ => issue(error),
+    }
+}
 fn check_cancel(cancel: &AtomicBool) -> io::Result<()> {
     if cancel.load(Ordering::Acquire) {
         Err(io::Error::new(
@@ -381,7 +409,6 @@ impl Sessions {
         if !before.is_file() || before.len() > source_limit {
             return Err(issue("Source exceeds the backing storage capacity or is not a regular file"));
         }
-        capacity::require_space(&self.root, before.len())?;
         let extension = request
             .path
             .extension()
@@ -392,10 +419,19 @@ impl Sessions {
             return Err(issue("Choose a .json or .sketch source"));
         }
         fs::create_dir_all(&self.root).map_err(issue)?;
+        // A crashed first copy has no journal. It is not a saved session, and
+        // leaving it here can fill the volume before the next reopen.
+        discard_unpublished_session_dirs(&self.root);
         let directory = self
             .root
             .join(format!("{}-{}", request.document_id, request.session_epoch));
-        fs::create_dir(&directory).map_err(issue)?;
+        let previews = request.opening_preview && extension == "sketch";
+        if let Some(session) = self.reuse_checkpoint(&request, &directory, before.len(), before.modified().ok(), source_limit, previews, cancel)? {
+            return self.install_session(&mut slot, session);
+        }
+        // Only a cache miss needs another full copy of the source.
+        capacity::require_space(&self.root, before.len())?;
+        fs::create_dir(&directory).map_err(save_io)?;
         let result = (|| -> Result<Session> {
             self.progress.phase("copy", before.len());
             let original = directory.join("source");
@@ -408,7 +444,7 @@ impl Sessions {
                 .create_new(true)
                 .write(true)
                 .open(&original)
-                .map_err(issue)?;
+                .map_err(save_io)?;
             let mut copied=0;
             let mut source_digest=Sha256::new();
             {
@@ -418,12 +454,12 @@ impl Sessions {
                 let mut spool=IndexedSpool{inner:source.by_ref().take(source_limit+1),output:&mut destination,
                     hash:&mut source_digest,bytes:&mut copied};
                 let mut buffer=vec![0u8;128*1024];
-                while spool.read(&mut buffer).map_err(issue)?!=0 {}
+                while spool.read(&mut buffer).map_err(save_io)?!=0 {}
             }
             if copied != before.len() || destination.metadata().map_err(issue)?.len()!=copied {
                 return Err(issue("Source changed or exceeded storage capacity while reading"));
             }
-            destination.sync_all().map_err(issue)?;
+            destination.sync_all().map_err(save_io)?;
             let after = source.inner.metadata().map_err(issue)?;
             if after.len() != before.len() || after.modified().ok() != before.modified().ok() {
                 return Err(issue("Source changed during import"));
@@ -616,19 +652,98 @@ impl Sessions {
             })
         })();
         match result {
-            Ok(session) => {
-                if let Err(error)=persist(&session){self.opening.clear(None);return Err(error)}
-                self.opening.admitted(&session.owner);
-                let value = status(&session);
-                *slot = Some(session);
-                Ok(value)
-            }
+            Ok(session) => self.install_session(&mut slot, session),
             Err(error) => {
                 self.opening.clear(None);
-                let _ = fs::remove_dir_all(&directory);
+                if !committed_journal(&directory) {
+                    let _ = fs::remove_dir_all(&directory);
+                }
                 Err(error)
             }
         }
+    }
+    fn reuse_checkpoint(
+        &self,
+        request: &Open,
+        new_directory: &Path,
+        source_len: u64,
+        modified: Option<std::time::SystemTime>,
+        source_limit: u64,
+        previews: bool,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Session>> {
+        if !checkpoint_can_skip_copy(&self.root, source_len, previews) {
+            return Ok(None);
+        }
+        self.progress.phase("validate", source_len);
+        let source_hash = hash_range(
+            &request.path,
+            Span { start: 0, end: source_len },
+            cancel,
+        )
+        .map_err(issue)?;
+        let after = fs::symlink_metadata(&request.path).map_err(issue)?;
+        if !after.is_file() || after.len() != source_len || after.modified().ok() != modified {
+            return Err(issue("Source changed during import"));
+        }
+        check_cancel(cancel).map_err(issue)?;
+        let owner = Owner {
+            document_id: request.document_id.clone(),
+            session_epoch: request.session_epoch,
+        };
+        let mut checked_cache = false;
+        let Some(mut recovered) = recover_with_opening(&self.root, new_directory, &source_hash, source_limit, cancel, || {
+            if !previews {
+                return false;
+            }
+            checked_cache = true;
+            !self.opening.restore(owner.clone(), &self.root, &source_hash)
+        })?
+        else {
+            return Ok(None);
+        };
+        recovered.owner = Owner {
+            document_id: request.document_id.clone(),
+            session_epoch: request.session_epoch,
+        };
+        if previews && recovered.revision == 0 {
+            self.opening.resume_indexed(&recovered, &source_hash, cancel).map_err(|error| {
+                self.opening.clear(None);
+                error
+            })?;
+            check_cancel(cancel).map_err(issue)?;
+        }
+        let _ = checked_cache;
+        Ok(Some(recovered))
+    }
+    fn install_session(&self, slot: &mut Option<Session>, session: Session) -> Result<Value> {
+        let retained = committed_journal(&session.directory);
+        match persist(&session) {
+            Ok(_) => {}
+            Err(error) if retained && committed_journal(&session.directory) => {
+                // The refresh did not replace the committed journal. Reopening
+                // that journal is not a new save and does not touch the import.
+                self.opening.admitted(&session.owner);
+                let mut value = status(&session);
+                value["saveWarning"] = json!(format!(
+                    "Opened the last consistent working copy. Checkpoint refresh was not written ({}). The original file was not modified.",
+                    error.code
+                ));
+                *slot = Some(session);
+                return Ok(value);
+            }
+            Err(error) => {
+                self.opening.clear(None);
+                if !committed_journal(&session.directory) {
+                    let _ = fs::remove_dir_all(&session.directory);
+                }
+                return Err(error);
+            }
+        }
+        self.opening.admitted(&session.owner);
+        let value = status(&session);
+        *slot = Some(session);
+        Ok(value)
     }
     pub(crate) fn opening_view(&self,request:OpeningRequest)->Result<Value> {self.opening.read(&request)}
     pub(crate) fn dispatch(
@@ -1110,6 +1225,83 @@ struct RecoveryCheckpoint {
     redo: Vec<State>,
     additions: Vec<Vec<Addition>>,
 }
+fn committed_journal(directory: &Path) -> bool {
+    fs::symlink_metadata(directory.join("journal.json"))
+        .ok()
+        .is_some_and(|meta| meta.is_file() && !meta.file_type().is_symlink())
+}
+fn session_directory_name(name: &str) -> bool {
+    if name.starts_with("converted-") || name.starts_with("opening") {
+        return false;
+    }
+    let Some((id, epoch)) = name.rsplit_once('-') else {
+        return false;
+    };
+    identity(id) && epoch != "0" && epoch.bytes().all(|byte| byte.is_ascii_digit())
+}
+fn discard_unpublished_session_dirs(root: &Path) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !session_directory_name(name) {
+            continue;
+        }
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_dir() || committed_journal(&path) {
+            continue;
+        }
+        let _ = fs::remove_dir_all(&path);
+    }
+}
+fn checkpoint_can_skip_copy(root: &Path, source_len: u64, previews: bool) -> bool {
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if !kind.is_dir() || !committed_journal(&path) {
+            continue;
+        }
+        let spool = fs::symlink_metadata(path.join("source"))
+            .ok()
+            .filter(|meta| meta.is_file() && !meta.file_type().is_symlink())
+            .map(|meta| meta.len());
+        let Some(spool) = spool else {
+            continue;
+        };
+        if source_len > spool {
+            continue;
+        }
+        let Ok(file) = File::open(path.join("journal.json")) else {
+            continue;
+        };
+        let Ok(checkpoint) = serde_json::from_reader::<_, RecoveryCheckpoint>(file) else {
+            continue;
+        };
+        let pristine = checkpoint.revision == 0
+            && checkpoint.saved_revision == 0
+            && checkpoint.undo.is_empty()
+            && checkpoint.redo.is_empty();
+        // Unedited Sketch previews still build a fresh index from a new copy.
+        // Every other committed checkpoint can be reopened without that copy.
+        if previews && pristine {
+            continue;
+        }
+        return true;
+    }
+    false
+}
 #[cfg(test)]
 fn recover(root:&Path,new_directory:&Path,source_hash:&str,source_limit:u64,cancel:&AtomicBool)->Result<Option<Session>> {
     recover_with_opening(root,new_directory,source_hash,source_limit,cancel,||false)
@@ -1315,7 +1507,7 @@ fn persist(s: &Session) -> Result<Option<&'static str>> {
     // Reject oversize metadata before creating index.json or touching journal.next.
     // commit() may already have spilled source additions; its existing rollback
     // remains responsible for those. This is not a no-append transaction plan.
-    serde_json::to_writer(&mut CheckpointWriter::new(io::sink()), &metadata).map_err(issue)?;
+    serde_json::to_writer(&mut CheckpointWriter::new(io::sink()), &metadata).map_err(checkpoint_io)?;
     // Indexes are immutable and written once, rather than serialized on edits.
     let index_path = s.directory.join("index.json");
     if !index_path.exists() {
@@ -1324,21 +1516,21 @@ fn persist(s: &Session) -> Result<Option<&'static str>> {
                 .create_new(true)
                 .write(true)
                 .open(&index_path)
-                .map_err(issue)?,
+                .map_err(save_io)?,
         );
-        serde_json::to_writer(&mut out, &s.parts).map_err(issue)?;
-        out.flush().map_err(issue)?;
-        out.get_ref().sync_all().map_err(issue)?;
+        serde_json::to_writer(&mut out, &s.parts).map_err(checkpoint_io)?;
+        out.flush().map_err(save_io)?;
+        out.get_ref().sync_all().map_err(save_io)?;
     }
     let temporary = s.directory.join("journal.next");
     let final_path = s.directory.join("journal.json");
     let mut file = CheckpointWriter::new(BufWriter::new(
-        File::create(&temporary).map_err(issue)?,
+        File::create(&temporary).map_err(save_io)?,
     ));
-    serde_json::to_writer(&mut file, &metadata).map_err(issue)?;
-    file.flush().map_err(issue)?;
-    file.get_ref().get_ref().sync_all().map_err(issue)?;
-    fs::rename(temporary, final_path).map_err(issue)?;
+    serde_json::to_writer(&mut file, &metadata).map_err(checkpoint_io)?;
+    file.flush().map_err(save_io)?;
+    file.get_ref().get_ref().sync_all().map_err(save_io)?;
+    fs::rename(temporary, final_path).map_err(save_io)?;
     // Rename is the commit point. Directory-sync failure remains a committed
     // warning, not an error that could roll the already-published state back.
     Ok(File::open(&s.directory)

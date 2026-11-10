@@ -95,6 +95,10 @@ export function resultError(error) {
   const messages = {
     WORKSPACE_CONFLICT: '本机库中的文档已有新版本。请重新打开或保存副本，当前修改已保留。',
     WORKSPACE_MUTATION_CONFLICT: '保存请求标识与内容不一致，已拒绝覆盖本机数据。',
+    WORKSPACE_STORAGE_FULL: '本机文档库空间不足，这次没有写入。上一份已提交版本仍可打开，当前画布已保留。',
+    WORKSPACE_MIGRATION: '本机文档库升级没有完成，旧结构和已有文档保持原样。这次没有写入。',
+    SOURCE_STORAGE_FULL: '源工作副本空间不足，这次没有写入。原文件和上一份一致副本都未改动。',
+    SOURCE_WRITE_FAILED: '源工作副本没有写入。原文件和上一份一致副本都未改动。',
     WORKSPACE_UNAVAILABLE: '本机文档库不可用，当前画布已保留，可另存为便携文件。',
     WORKSPACE_NOT_FOUND: '本机文档或版本不存在。',
     WORKSPACE_INVALID: '本机文档库无法读取，原数据库已保留。',

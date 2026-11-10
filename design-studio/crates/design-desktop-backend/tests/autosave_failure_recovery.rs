@@ -143,8 +143,10 @@ async fn autosave_recovery_failed_upgrade_keeps_prior_schema_then_retries() {
         .await
         .err()
         .expect("blocked migration must fail");
-    assert_eq!(error.code, "WORKSPACE_ERROR");
-    assert!(!error.message.contains("File saved"));
+    assert_eq!(error.code, "WORKSPACE_MIGRATION");
+    assert_ne!(error.code, "WORKSPACE_STORAGE_FULL");
+    assert!(!error.message.contains("saved"));
+    assert!(error.message.contains("unchanged"));
     let mut connection = f.connection().await;
     assert_eq!(
         sqlx::query_scalar::<_, i64>("PRAGMA user_version")

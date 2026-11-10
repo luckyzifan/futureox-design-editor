@@ -447,6 +447,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         const next=admitted(result);admittedOpen.current=next;openOutcome.current='ok'
         if(!alive.current)return
         updateStatus(next)
+        if(next.saveWarning)setNotice(next.saveWarning)
         await openInitialCanvas()
       }catch(error){openOutcome.current='error';throw error}
     },true)}
@@ -558,6 +559,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     }
     if(!alive.current){admittedOpen.current=next;return}
     baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);admittedOpen.current=next;openOutcome.current='ok';updateStatus(next)
+    if(next.saveWarning)setNotice(next.saveWarning)
     await openInitialCanvas()
   },true)
   const allPages=()=>{setParents([]);setOffset(0);setFilter('');setQuery('')}
