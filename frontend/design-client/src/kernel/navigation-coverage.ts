@@ -14,6 +14,21 @@ export function navigationCoverageBounds(view: CanvasCamera, width: number, heig
   return { x: -view.x / view.zoom, y: -view.y / view.zoom, width: width / view.zoom, height: height / view.zoom }
 }
 
+/** Share of the live viewport that still lies inside an in-flight capture.
+ *  Invalid geometry is zero so a caller can refuse to treat it as coverage. */
+export function viewportOverlapFraction(
+  bounds: Readonly<{ x: number; y: number; width: number; height: number }>,
+  view: CanvasCamera, width: number, height: number) {
+  if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !(width > 0) || !(height > 0)) return 0
+  const target = navigationCoverageBounds(view, width, height)
+  if (![bounds.x, bounds.y, bounds.width, bounds.height, target.x, target.y, target.width, target.height].every(Number.isFinite)) return 0
+  if (bounds.width <= 0 || bounds.height <= 0 || target.width <= 0 || target.height <= 0) return 0
+  const left = Math.max(target.x, bounds.x), top = Math.max(target.y, bounds.y)
+  const right = Math.min(target.x + target.width, bounds.x + bounds.width)
+  const bottom = Math.min(target.y + target.height, bounds.y + bounds.height)
+  return Math.max(0, right - left) * Math.max(0, bottom - top) / (target.width * target.height)
+}
+
 /** Geometric scheduling evidence only. Import/presenter readiness and live GPU
  * ownership must precede coverage reuse; an intersecting crop is not a backing.
  * The contract revision includes page, session, raster and authored changes. */
@@ -67,6 +82,9 @@ export type NavigationCoverageFlight<T> = {
   /** Revoke only an unfinished, narrower old navigation capture after quiet.
    * Its original run still owns done and late-payload retirement. */
   cancelObsoleteZoomOut(view: CanvasCamera, width: number, height: number, minimumRatio?: number): boolean
+  /** Yield an undelivered capture once most of the newest viewport is outside
+   * it. A delivered tile and a capture that still covers the view stay. */
+  cancelMissedViewport(view: CanvasCamera, width: number, height: number, minimumFraction?: number): boolean
 }
 export function navigationCoverageFlight<T>(contract: object, generation: number, capture?: NavigationCoverageCapture): NavigationCoverageFlight<T> {
   let finish!: () => void
@@ -97,6 +115,14 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
           bounds.y + bounds.height >= target.y + target.height) return false
       // Abort is per-request and idempotent. Do not resolve done early or
       // clear/release acknowledged pixels; cancellation may await a GPU boundary.
+      return cancelPending()
+    },
+    cancelMissedViewport: (view, width, height, minimumFraction = 0.5) => {
+      const source = pending
+      if (!source || flight.tile !== undefined) return false
+      if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !(width > 0) || !(height > 0)) return false
+      if (!Number.isFinite(minimumFraction) || minimumFraction <= 0 || minimumFraction > 1) return false
+      if (viewportOverlapFraction(source.bounds, view, width, height) >= minimumFraction) return false
       return cancelPending()
     },
   }

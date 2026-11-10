@@ -25,7 +25,23 @@ export function admitLargeStatus(value, expected) {
  * and bounded JSON fragments; no arbitrary path or RPC method is forwarded. */
 export class LargeDocumentHost {
   #active; #epoch = 0; #busy = false
+  // Same-revision material scenes are immutable. Remember a few so a direction
+  // reversal restores the previous token instead of building and publishing
+  // another scene. A new revision or document drops the map. Only the active
+  // snapshot remains resolvable; remembered entries are not extra capabilities.
+  #rememberedScenes = new Map()
   constructor(request, dialog, window, cancel) { this.request = request; this.dialog = dialog; this.window = window; this.cancelWork=cancel }
+  #rememberScene(snapshot) {
+    if(!snapshot || snapshot.openingMaterial!==undefined)return
+    const key=`${snapshot.revision}\n${snapshot.scope??''}`
+    this.#rememberedScenes.delete(key)
+    this.#rememberedScenes.set(key,snapshot)
+    while(this.#rememberedScenes.size>4)this.#rememberedScenes.delete(this.#rememberedScenes.keys().next().value)
+  }
+  #recallScene(revision,scope) {
+    const snapshot=this.#rememberedScenes.get(`${revision}\n${scope??''}`)
+    return snapshot && snapshot.revision===revision && snapshot.scope===scope ? snapshot : undefined
+  }
   async #exclusive(work) {
     if (this.#busy) throw Error('Large document operation is busy')
     this.#busy = true
@@ -74,16 +90,17 @@ export class LargeDocumentHost {
     if(!['json','sketch'].includes(format))throw Error('Choose a JSON or Sketch source')
     if (this.#epoch >= Number.MAX_SAFE_INTEGER) throw Error('Large document session epoch exhausted')
     const owner = { documentId:randomUUID(), sessionEpoch:++this.#epoch }
+    this.#rememberedScenes.clear()
     this.#active={window,sourcePath:selected.filePaths[0],opening:true,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:0,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
     let result
     try{result=admitLargeStatus(await this.request('large.open', {path:selected.filePaths[0],...owner,...(format==='sketch'?{openingPreview:true}:{})}), owner)}
     catch(error){
       if(this.#active){this.#active.opening=false;if(this.#active.snapshot?.openingMaterial!==undefined)this.#active.snapshot=undefined}
-      if(error?.outcomeUnknown!==true)this.#active=undefined
+      if(error?.outcomeUnknown!==true){this.#rememberedScenes.clear();this.#active=undefined}
       throw error
     }
     if (window !== this.window() || window.isDestroyed()) {
-      await this.request('large.close',{owner,expectedRevision:result.revision}); this.#active=undefined;return {status:'cancelled'}
+      await this.request('large.close',{owner,expectedRevision:result.revision}); this.#rememberedScenes.clear(); this.#active=undefined;return {status:'cancelled'}
     }
     this.#active.opening=false; this.#active.status=result; return {status:'ok',...result}
   }) }
@@ -196,6 +213,8 @@ export class LargeDocumentHost {
         throw Error('Invalid material navigation window')
     }
     if(active.snapshot?.revision===active.status.revision && active.snapshot.scope===scope)return {status:'ok',...active.snapshot.public}
+    const remembered=this.#recallScene(active.status.revision,scope)
+    if(remembered){active.snapshot=remembered;return {status:'ok',...remembered.public}}
     const result=await this.request('large.canvasSnapshot',value)
     this.#check(value,fields)
     return {status:'ok',...this.#publishSnapshot(active,value,result,keys,scope)}
@@ -219,6 +238,7 @@ export class LargeDocumentHost {
     const snapshot={token,revision,scope,descriptor,public:{...(keys?{materialKeys:keys}:{}),owner:{...value.owner},revision,token,bytes:result.bytes,nodes:result.nodes,roots:result.roots,
       pageId:result.pageId,stageId:result.stageId,bounds:{...box},warnings:[...result.warnings],rasterProfile:result.rasterProfile,colorManaged:result.colorManaged}}
     active.snapshot=snapshot
+    this.#rememberScene(snapshot)
     return snapshot.public
   }
   async canvasPreview(value) {
@@ -350,7 +370,7 @@ export class LargeDocumentHost {
   }) }
   async close(value) { return this.#exclusive(async()=>{
     const active=this.#check(value,['owner','expectedRevision'])
-    await this.request('large.close',value);this.#active=undefined;return {status:'ok'}
+    await this.request('large.close',value);this.#rememberedScenes.clear();this.#active=undefined;return {status:'ok'}
   }) }
   async cancel(value) {
     if(value!==undefined||!this.#active||this.#active.window!==this.window()||this.#active.window.isDestroyed()||typeof this.cancelWork!=='function')throw Error('No owned large document operation can be cancelled')

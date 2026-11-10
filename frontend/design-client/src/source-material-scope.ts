@@ -5,6 +5,50 @@ export function includesMaterials(active:readonly string[]|undefined, wanted:rea
   return !!active && wanted.every(key=>active.includes(key))
 }
 
+export type PublishedMaterialScope = { revision: number; keys: readonly string[] }
+
+function scopeSignature(keys: readonly string[]) {
+  return [...keys].sort().join('\n')
+}
+
+/** A scope already published for this revision can be recalled without the
+ * overlap sample. Another revision, an empty list, or a different key set waits. */
+export function rememberedMaterialScope(input:{
+  revision: number
+  keys: readonly string[]
+  remembered: readonly PublishedMaterialScope[]
+}) {
+  if (!Number.isSafeInteger(input.revision) || input.revision < 0 || !input.keys.length) return false
+  const wanted = scopeSignature(input.keys)
+  return input.remembered.some(entry => entry.revision === input.revision && scopeSignature(entry.keys) === wanted)
+}
+
+/** Keep at most four scopes for the revision just published. Older revisions
+ * are dropped so a reused revision number cannot recall another document. */
+export function rememberPublishedScope(remembered: PublishedMaterialScope[], revision: number, keys: readonly string[]) {
+  if (!Number.isSafeInteger(revision) || revision < 0 || !keys.length || keys.length > 4096) return remembered
+  const signature = scopeSignature(keys)
+  const next = [{ revision, keys: [...keys] }, ...remembered.filter(entry => !(entry.revision === revision && scopeSignature(entry.keys) === signature))]
+  remembered.splice(0, remembered.length, ...next.filter(entry => entry.revision === revision).slice(0, 4))
+  return remembered
+}
+
+/** A viewport-driven scope that still overlaps a large presented set must not
+ * publish immediately. Publishing replaces the host token and drops the tiles
+ * already drawn for this revision. One later sample publishes a scope the
+ * camera actually stayed on; a return to keys already on screen never starts
+ * that publication. Disjoint regions and explicit page choices do not wait. */
+export function deferOverlappingMaterialScope(input:{
+  viewportDriven:boolean
+  held:readonly string[]|undefined
+  wanted:readonly string[]
+}) {
+  if(!input.viewportDriven||!input.held||input.held.length<6||!input.wanted.length)return false
+  if(includesMaterials(input.held,input.wanted))return false
+  const held=new Set(input.held)
+  return input.wanted.some(key=>held.has(key))
+}
+
 /** Replace a costly pending conversion when a zoom now needs a small subset. */
 export function smallerMaterialRequest(items:readonly SourceCanvasItem[],pending:readonly string[],next:readonly string[]) {
   if(!next.length||pending.length<6||next.length*3>pending.length||!includesMaterials(pending,next))return false

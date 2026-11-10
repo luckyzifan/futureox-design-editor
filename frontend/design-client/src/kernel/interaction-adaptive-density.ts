@@ -1,6 +1,5 @@
-/** Gesture-time adaptive capture density, after the Figma viewer tile
- * scheduler (figma-wasm-analysis GLUE-JS-MINING §2.4): when required pixels
- * exceed the budget, divide the density by 2^ceil(log4(ratio)) — no fixed
+/** Gesture-time adaptive capture density: when required pixels exceed the
+ * budget, divide the density by 2^ceil(log4(ratio)) — no fixed
  * zoom ladder — so nearby zoom inputs keep one stable capture lattice and do
  * not recompile on every step. Steady-state density demand that fits the
  * budget is never reduced.
@@ -24,8 +23,7 @@ export function interactionAdaptiveScale(residentScale: number, bounds: { width:
   const demand = bounds.width * bounds.height * residentScale * residentScale
   if (demand <= INTERACTION_ADAPTIVE_DENSITY_BUDGET) return residentScale
   // 4^ceil(log4(ratio)) >= ratio, so the first divisor already lands within
-  // the budget; the extra halving keeps parity with the viewer's integer-tile
-  // fallback for degenerate dimensions.
+  // the budget; halve once more if rounding still leaves demand over budget.
   const divisor = Math.pow(2, Math.ceil(Math.log(demand / INTERACTION_ADAPTIVE_DENSITY_BUDGET) / Math.log(4)))
   let scale = residentScale / divisor
   if (bounds.width * bounds.height * scale * scale > INTERACTION_ADAPTIVE_DENSITY_BUDGET)

@@ -2,30 +2,32 @@
   <img src="docs/assets/readme-banner.svg" alt="Futureox Design — A local-first canvas, built in the open." width="100%" />
 </p>
 
+# Futureox Design — Rust Vector & UI Design Editor
+
 <p align="center">
   <strong>Open tools. Local files. Room to create.</strong><br />
-  An open-source, local-first 2D design editor inspired by Figma and Sketch.
+  An open-source Rust vector editor and UI design tool for local-first web and Electron desktop workflows.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3459D4?style=flat-square" alt="License: MIT" /></a>
   <a href="docs/ROADMAP.md"><img src="https://img.shields.io/badge/stage-Developer%20Alpha-D9A441?style=flat-square" alt="Stage: Developer Alpha" /></a>
   <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/core-Rust-242938?style=flat-square" alt="Core: Rust" /></a>
-  <a href="https://github.com/luckyzifan/futureoxDesgin/graphs/contributors"><img src="https://img.shields.io/github/contributors/luckyzifan/futureoxDesgin?style=flat-square&color=3459D4" alt="GitHub contributors" /></a>
+  <a href="https://github.com/luckyzifan/futureox-design-editor/graphs/contributors"><img src="https://img.shields.io/github/contributors/luckyzifan/futureox-design-editor?style=flat-square&color=3459D4" alt="GitHub contributors" /></a>
 </p>
 
 <p align="center">
   <a href="README.md">简体中文</a> · <strong>English</strong><br />
-  <a href="#quick-start">Quick start</a> · <a href="docs/README.md">Documentation</a> · <a href="docs/ROADMAP.md">Roadmap</a> · <a href="CONTRIBUTING.md#english">Contribute</a> · <a href="https://github.com/luckyzifan/futureoxDesgin/issues/new/choose">Report an issue</a>
+  <a href="#quick-start">Quick start</a> · <a href="docs/README.md">Documentation</a> · <a href="docs/ROADMAP.md">Roadmap</a> · <a href="CONTRIBUTING.md#english">Contribute</a> · <a href="https://github.com/luckyzifan/futureox-design-editor/issues/new/choose">Report an issue</a>
 </p>
 
 ---
 
 ## A design workspace we can build together
 
-Futureox Design brings interface design, vector drawing, and local design files into an open workspace. We want designers to shape the workflows and developers to understand, adapt, and extend the tools they use.
+Futureox Design is an **open-source Rust vector editor** and **UI design tool** for interface design, vector graphics, and local design files. It is a developer-alpha **Figma alternative** and **Sketch alternative**, with a local-first workspace on the web and Electron desktop. We want designers to shape the workflows and developers to understand, adapt, and extend the tools they use.
 
-A **Rust kernel** handles document and editing semantics. A **shared React client** connects the web and Electron desktop, with WebGPU/CPU rendering and a local MCP interface. Core editing and storage are built around working locally.
+A **Rust kernel** handles document and editing semantics, with **WebAssembly (WASM)** bindings for the web. A **shared React client** connects the web and Electron desktop, with **WebGPU/CPU rendering** and local **Model Context Protocol (MCP)** automation. Core editing and storage are built around working locally.
 
 <p align="center">
   <img src="docs/assets/workspace.png" alt="The actual Futureox Design editor showing layers, the built-in exploration canvas, and design properties" width="100%" />
@@ -43,15 +45,15 @@ A **Rust kernel** handles document and editing semantics. A **shared React clien
 | **Design files** | Native `.fd` documents; FIG/Sketch/SVG/PDF import entry points and supported export paths | [File operation contract (Chinese)](docs/IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md) |
 | **Automation and extensions** | A local MCP adapter for querying, editing, and exporting through shared transactions | [MCP guide](frontend/design-mcp/README.md) |
 
-**Current stage: Developer Alpha.** Build it, try it, and help improve it. Continuous zoom, large documents, heavy effects, format fidelity, and cross-platform desktop behavior remain active work. Feature documentation and verification records describe the scope actually supported and tested. See the [roadmap](docs/ROADMAP.md#english) and [current issue index #91](https://github.com/luckyzifan/futureoxDesgin/issues/91).
+**Current stage: Developer Alpha.** Build it, try it, and help improve it. Continuous zoom, large documents, heavy effects, format fidelity, and cross-platform desktop behavior remain active work. Feature documentation and verification records describe the scope actually supported and tested. See the [roadmap](docs/ROADMAP.md#english) and [current issue index #91](https://github.com/luckyzifan/futureox-design-editor/issues/91).
 
 ## Quick start
 
 Install Git, the [pinned Rust toolchain](rust-toolchain.toml), Bun 1.4+, Node.js 24+, and Python 3. To start the web client from source:
 
 ```bash
-git clone https://github.com/luckyzifan/futureoxDesgin.git
-cd futureoxDesgin
+git clone https://github.com/luckyzifan/futureox-design-editor.git
+cd futureox-design-editor
 
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.130 --locked
@@ -83,7 +85,7 @@ design-studio/
 ├── crates/design-desktop-backend/  Local files, SQLite, recovery
 └── scripts/                  Kernel builds and verification tools
 docs/                         Architecture, feature contracts, development records
-testing/                      Regression suites, fixtures, unified test runner
+testing/                      Format fixtures and compatibility scans
 ```
 
 UI actions and automation use the same editing transactions; desktop capabilities connect through host adapters. Read the [architecture guide (Chinese)](docs/architecture/README.zh-CN.md) for responsibilities, or browse the [documentation index](docs/README.md).
@@ -92,9 +94,9 @@ UI actions and automation use the same editing transactions; desktop capabilitie
 
 Start small: reproduce a bug, improve an interaction, clarify a document, add a translation, or contribute an original test fixture for a tricky case.
 
-- **Found a bug?** Use the [bug report form](https://github.com/luckyzifan/futureoxDesgin/issues/new?template=bug_report.yml) with your version, reproduction steps, and expected result.
-- **Have an idea?** Describe the design workflow in a [feature request](https://github.com/luckyzifan/futureoxDesgin/issues/new?template=feature_request.yml).
-- **Ready to make a change?** Read [CONTRIBUTING.md](CONTRIBUTING.md#english), keep the scope focused, and open a [Pull Request](https://github.com/luckyzifan/futureoxDesgin/pulls).
+- **Found a bug?** Use the [bug report form](https://github.com/luckyzifan/futureox-design-editor/issues/new?template=bug_report.yml) with your version, reproduction steps, and expected result.
+- **Have an idea?** Describe the design workflow in a [feature request](https://github.com/luckyzifan/futureox-design-editor/issues/new?template=feature_request.yml).
+- **Ready to make a change?** Read [CONTRIBUTING.md](CONTRIBUTING.md#english), keep the scope focused, and open a [Pull Request](https://github.com/luckyzifan/futureox-design-editor/pulls).
 
 For larger features or architecture changes, discuss the direction in an Issue first. Rendering work follows the [rendering-first engineering contract (Chinese)](docs/RENDERING_FIRST_ENGINEERING_CONTRACT.zh-CN.md), with real interaction problems taking priority.
 
@@ -108,7 +110,7 @@ Thank you to the people building Futureox Design. There is room for you here, to
   <a href="https://github.com/cursoragent"><img src="https://github.com/cursoragent.png?size=96" width="56" height="56" alt="Cursor Agent" /></a>
 </p>
 
-[View the full contribution history →](https://github.com/luckyzifan/futureoxDesgin/graphs/contributors)
+[View the full contribution history →](https://github.com/luckyzifan/futureox-design-editor/graphs/contributors)
 
 [@luckyzifan](https://github.com/luckyzifan) · [@wangly19](https://github.com/wangly19) · [@cursoragent](https://github.com/cursoragent)
 

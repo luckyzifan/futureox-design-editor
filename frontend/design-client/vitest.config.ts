@@ -1,7 +1,5 @@
 import { defineConfig } from 'vitest/config'
-// Only Vitest suites live here. The src/**/*.test.mjs files and the standalone
-// node:test render-policy suite run through the isolated verify-contracts
-// harness, not this Vitest glob.
+// Node test suites (*.test.mjs and render-policy.test.ts) use node --test.
 export default defineConfig({
   test: {
     // Functional suites decode and reshape real fonts with the portable scalar
