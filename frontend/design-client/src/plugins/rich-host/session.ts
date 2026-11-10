@@ -57,6 +57,8 @@ type Hooks = {
   onNotify?: (message: string) => void
   onUi?: (ui: PluginUiState) => void
   onPostMessage?: (message: unknown) => void
+  /** The guest finished itself with closePlugin. Host-initiated stop does not fire it. */
+  onClose?: (message: string) => void
 }
 export type PluginUiState = { html: string; width: number; height: number; title: string; visible: boolean }
 
@@ -1143,6 +1145,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         flush()
         closed = true
         closeMessage = shortText(body.message ?? '', 'closePlugin', PLUGIN_LIMITS.notifyChars)
+        options.hooks?.onClose?.(closeMessage)
         throw new PluginClosed(closeMessage)
       }
       if (op === 'meta') return {

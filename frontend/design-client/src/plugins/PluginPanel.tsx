@@ -139,6 +139,16 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
           } else setStatus(text.webUi)
         },
         onPostMessage: message => { void desktop?.plugins?.postUi({ pluginMessage: message }) },
+        onClose: message => {
+          // closePlugin runs inside a guest host call; finalize the panel only
+          // after that turn returns, so a finished plugin frees its window,
+          // subscriptions and load entries without a manual stop (#207).
+          setTimeout(() => {
+            if (token !== generation.current) return
+            stop()
+            if (message) setStatus(message)
+          }, 0)
+        },
       })
       if (token !== generation.current) { next.close(); return }
       controller.current = next

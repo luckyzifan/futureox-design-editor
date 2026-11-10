@@ -37,6 +37,8 @@ export type PluginHooks = {
   onNotify?: (message: string) => void
   onUi?: (ui: PluginUiState) => void
   onPostMessage?: (message: unknown) => void
+  /** The guest finished itself with closePlugin. Host-initiated stop does not fire it. */
+  onClose?: (message: string) => void
   /** Manifest menu command. Omitted when the plugin has no menu. */
   command?: string
   storage?: PluginStorage
