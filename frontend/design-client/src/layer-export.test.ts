@@ -104,8 +104,8 @@ test('TIFF is an executable layer preset while EPS stays round-trip only', () =>
   expect(layer).toContain('value="tiff"')
   expect(layer).not.toContain('TIFF（仅 Sketch 往返）')
   expect(layer).toContain('EPS（仅 Sketch 往返）')
-  expect(layer).toContain('8 位未压缩')
-  expect(layer).toContain('非关联 alpha')
+  expect(layer).toContain('未压缩的 8 位')
+  expect(layer).toContain('透明度')
   expect(layer).not.toContain('HEIC')
 })
 test('ordinary sRGB layer presets use the top bar sRGB encoding and HDR still requires a choice', () => {

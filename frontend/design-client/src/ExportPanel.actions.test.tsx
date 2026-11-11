@@ -9,7 +9,7 @@ import { ExportPanel } from './ExportPanel'
 import { canvasActions, CanvasAction, ActionOutcome } from './canvas-action-diagnostics'
 const exporter = vi.hoisted(() => ({ run: vi.fn() }))
 vi.mock('./export', () => ({ exportRasterBatch: (...args: unknown[]) => exporter.run(...args) }))
-test('the top export offers TIFF and describes the 8-bit big-endian encoder', async () => {
+test('the top export offers TIFF and explains bit depth and transparency', async () => {
   const dom = new JSDOM('<html><body><div id="root"></div></body></html>', { url: 'https://design.invalid' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'Event', 'KeyboardEvent']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
@@ -22,8 +22,8 @@ test('the top export offers TIFF and describes the 8-bit big-endian encoder', as
     expect(select.querySelector('option[value="tiff"]')?.textContent).toBe('TIFF')
     expect(document.body.textContent).not.toContain('HEIC')
     await act(async () => { select.value = 'tiff'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-    expect(document.body.textContent).toContain('MM 00 2A')
-    expect(document.body.textContent).toContain('非关联 alpha')
+    expect(document.body.textContent).toContain('8 位图像')
+    expect(document.body.textContent).toContain('透明度')
     expect(document.body.textContent).not.toContain('HEIC')
   } finally { await act(async () => root.unmount()); editor.dispose(); vi.restoreAllMocks(); vi.unstubAllGlobals(); dom.window.close() }
 })
