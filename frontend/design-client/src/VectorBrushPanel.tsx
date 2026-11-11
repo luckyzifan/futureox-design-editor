@@ -18,7 +18,7 @@ export function VectorBrushPanel({ editor, node }: { editor: Editor; node: Desig
   const attempt = (action: () => void) => { try { action() } catch (error) { editor.notify(String(error)) } }
   const candidates = open || brush ? Object.values(editor.state.doc.nodes).filter(n => n.id !== node.id && n.kind === 'vector' && n.network?.fillRule === 'nonzero' && !n.vectorBrush && n.fills.some(f => f.visible !== false)) : []
   return <details onToggle={event => setOpen(event.currentTarget.open)}><summary>矢量笔刷 {brush ? `· ${brush.mode}` : ''}</summary>
-    <p>源图形使用当前图层的填充。Scatter 保留贝塞尔曲线；Stretch 当前仅支持同向直线路径。</p>
+    <p>源图形使用当前图层的填充。Scatter 保留贝塞尔曲线；Stretch 对同向直线做精确仿射，对光滑曲线按弧长法线拉伸。</p>
     <select aria-label="笔刷源图形" value={source} onChange={e => setSource(e.target.value)}><option value="">选择闭合非零填充矢量源</option>{candidates.map(n => <option key={n.id} value={n.id}>{n.name || n.id}</option>)}</select>
     <button disabled={!source} onClick={() => attempt(() => {
       const network = editor.state.doc.nodes[source]?.network
@@ -26,7 +26,7 @@ export function VectorBrushPanel({ editor, node }: { editor: Editor; node: Desig
       editor.updateProperties([node.id], n => { n.network!.fillRule = 'nonzero'; n.vectorBrush = brush ? { ...brush, source: structuredClone(network) } : defaultVectorBrush(network); if (!n.fills.length) n.fills = [paint('#426bdf')] }, '应用矢量笔刷')
     })}>{brush ? '替换源快照' : '应用 Scatter 笔刷'}</button>
     {brush && <>
-      <select aria-label="矢量笔刷模式" value={brush.mode} onChange={e => attempt(() => update({ mode: e.target.value as VectorBrush['mode'] }))}><option value="scatter">Scatter 散布</option><option value="stretch">Stretch 直线拉伸</option></select>
+      <select aria-label="矢量笔刷模式" value={brush.mode} onChange={e => attempt(() => update({ mode: e.target.value as VectorBrush['mode'] }))}><option value="scatter">Scatter 散布</option><option value="stretch">Stretch 拉伸</option></select>
       <NumberField label="笔刷宽度" value={brush.width} min={.001} max={10000} onChange={width => update({ width })}/>
       {brush.mode === 'scatter' && <>
         <NumberField label="散布间距" value={brush.spacing} min={.001} max={1e7} onChange={spacing => update({ spacing })}/>
@@ -45,7 +45,7 @@ export function VectorBrushPanel({ editor, node }: { editor: Editor; node: Desig
         const network = pathNetwork(paths.fill)
         editor.updateProperties([node.id], n => { n.network = network; delete n.vectorBrush }, '展开矢量笔刷（可撤销）')
       })}>展开为可编辑轮廓（可撤销）</button>
-      <p>保存保留路径、源快照和随机种子。曲线路径的散布位置采用有界弧长近似；尖点按确定的切线规则处理。多色源、孔洞和曲线 Stretch 暂不支持。</p>
+      <p>保存保留路径、源快照和随机种子。曲线 Stretch 与弧长法线映射的偏差不超过 0.00001 本地单位；拐角和尖点会拒绝。Scatter 的种子、间距和弧长预算不变。多色源和孔洞不支持。</p>
     </>}
   </details>
 }

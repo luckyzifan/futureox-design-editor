@@ -143,12 +143,21 @@ it('MCP authors editable vector brushes and rejects unsupported or over-budget e
   expect(create.isError,JSON.stringify(create)).toBe(false)
   expect(f.editor.state.doc.nodes[id].vectorBrush).toEqual(brush)
   expect(f.editor.state.doc.schemaVersion).toBe(15)
-  for(const patch of [{vectorBrush:{...brush,mode:'stretch'}},{vectorBrush:{...brush,spacing:.001}},{vectorBrush:{...brush,seed:-1}}]) {
+  const stretch=await f.mutate('node.update',{ids:[id],patch:{vectorBrush:{...brush,mode:'stretch'}}})
+  expect(stretch.isError,JSON.stringify(stretch)).toBe(false)
+  expect(f.editor.state.doc.nodes[id].vectorBrush!.mode).toBe('stretch')
+  f.editor.undo()
+  expect(f.editor.state.doc.nodes[id].vectorBrush!.mode).toBe('scatter')
+  f.editor.redo()
+  expect(f.editor.state.doc.nodes[id].vectorBrush!.mode).toBe('stretch')
+  const stretched=f.editor.state.doc,stretchedRevision=f.editor.state.version
+  for(const patch of [{vectorBrush:{...brush,spacing:.001}},{vectorBrush:{...brush,seed:-1}}]) {
     const before=f.editor.state.doc,revision=f.editor.state.version
     const result=await f.mutate('node.update',{ids:[id],patch})
     expect(result.isError,JSON.stringify(result)).toBe(true)
     expect(f.editor.state.doc).toBe(before);expect(f.editor.state.version).toBe(revision)
   }
+  expect(f.editor.state.doc).toBe(stretched);expect(f.editor.state.version).toBe(stretchedRevision)
   const clear=await f.mutate('node.update',{ids:[id],patch:{vectorBrush:null}})
   expect(clear.isError,JSON.stringify(clear)).toBe(false)
   expect(f.editor.state.doc.nodes[id].vectorBrush).toBeUndefined()

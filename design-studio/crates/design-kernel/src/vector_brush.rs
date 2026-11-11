@@ -1,5 +1,6 @@
 //! Editable vector brushes preserving source Bezier commands. Scatter uses bounded
-//! arc-length inversion; Stretch currently admits straight guides only.
+//! arc-length inversion. Straight Stretch is an exact affine map; smooth curved
+//! Stretch is a certified arc-length normal offset (see `vector_brush_stretch`).
 use crate::{math::{Point, Transform}, path::{Path, Command}, scene::Network};
 use serde::{Deserialize, Serialize};
 const LIMIT: usize = 100_000;
@@ -49,7 +50,13 @@ fn check_network(n:&Network)->Result<(),String>{
 // A certified geometric bracket: chord <= cubic arc length <= control polygon.
 // Sum of bracket widths is bounded, rather than treating flatness as length error.
 pub const ARC_ERROR: f64 = 0.00001;
+/// Certified deviation of a curved Stretch Bézier from the arc-length normal-offset
+/// map, in guide-local units. This is the same threshold as [`ARC_ERROR`], not a
+/// wider one. Inverse-length placement keeps its separate budget of twice that.
+pub const STRETCH_ERROR: f64 = ARC_ERROR;
 const WORK_LIMIT: usize = 1_000_000;
+#[path = "vector_brush_stretch.rs"]
+mod stretch;
 #[derive(Clone, Copy)]
 struct Curve([Point;4]);
 fn distance(a:Point,b:Point)->f64{(b.x-a.x).hypot(b.y-a.y)}
@@ -127,12 +134,16 @@ pub fn paths(guide:&Network,brush:&VectorBrush)->Result<Path,String>{
     if xmax-xmin<=1e-9||ymax-ymin<=1e-9{return Err("Vector brush source has zero extent".into())}
     let mut work=0;let guide_path=guide.paths()?.1;let mut track=Track::new(&guide_path,ARC_ERROR,&mut work)?;let yc=(ymin+ymax)/2.;let mut out=Vec::new();
     if brush.mode=="stretch"{
-        let(first,t)=track.frame(0.,&mut work)?;
-        // Straight forward-only polyline guides are exact affine maps. Curved
-        // warp requires a device error contract and is deliberately not enabled.
-        for segment in &track.segments{let Segment::Line(a,b)=*segment else{return Err("Curved Stretch brushes are not supported; use Scatter".into())};let u=(b-a)*(1./distance(a,b));if distance(u,t)>1e-12{return Err("Stretch requires a straight forward-only guide; corners and cusps are unsupported".into())}}
-        let sx=track.length/(xmax-xmin);let sy=brush.width/(ymax-ymin);
-        transformed(&source,Transform([t.x*sx,t.y*sx,-t.y*sy,t.x*sy,first.x-t.x*sx*xmin+t.y*sy*yc,first.y-t.y*sx*xmin-t.x*sy*yc]),&mut out)?;
+        let curved=track.segments.iter().any(|segment|matches!(segment,Segment::Cubic(_)));
+        if !curved{
+            let(first,t)=track.frame(0.,&mut work)?;
+            // Straight forward-only polylines stay an exact affine map.
+            for segment in &track.segments{let Segment::Line(a,b)=*segment else{return Err("Curved Stretch brushes are not supported; use Scatter".into())};let u=(b-a)*(1./distance(a,b));if distance(u,t)>1e-12{return Err("Stretch requires a straight forward-only guide; corners and cusps are unsupported".into())}}
+            let sx=track.length/(xmax-xmin);let sy=brush.width/(ymax-ymin);
+            transformed(&source,Transform([t.x*sx,t.y*sx,-t.y*sy,t.x*sy,first.x-t.x*sx*xmin+t.y*sy*yc,first.y-t.y*sx*xmin-t.x*sy*yc]),&mut out)?;
+        }else{
+            stretch::run(&source,&track,xmin,xmax,ymin,ymax,yc,brush.width,&mut out,&mut work)?;
+        }
     }else{
         let count=if track.closed{
             let mut error=ARC_ERROR;

@@ -19,11 +19,23 @@ fn scatter_is_seeded_and_closed_guides_do_not_duplicate_seam(){
     b.rotation_variance=1.;b.scale_variance=0.4;b.scatter=3.;let p=paths(&g,&b).unwrap();assert_eq!(p,paths(&g,&b).unwrap());b.seed=1;assert_ne!(p,paths(&g,&b).unwrap());
 }
 #[test]
-fn curved_scatter_preserves_beziers_and_curved_stretch_is_explicitly_rejected(){
+fn curved_scatter_preserves_beziers_and_curved_stretch_follows_the_guide(){
     let mut g=network(&[(0.,0.),(40.,0.)],false);g.edges[0].c1=Some(Point::new(0.,40.));g.edges[0].c2=Some(Point::new(40.,40.));
-    let mut b=brush();b.source.edges[0].c1=Some(Point::new(-1.,-1.));b.source.edges[0].c2=Some(Point::new(1.,-1.));assert!(paths(&g,&b).unwrap().commands.iter().any(|c|matches!(c,Command::Cubic(..))));
-    b.mode="stretch".into();assert!(paths(&g,&b).unwrap_err().contains("Curved Stretch"));
+    let mut b=brush();b.source.edges[0].c1=Some(Point::new(-1.,-1.));b.source.edges[0].c2=Some(Point::new(1.,-1.));
+    let scatter=paths(&g,&b).unwrap();
+    assert!(scatter.commands.iter().any(|c|matches!(c,Command::Cubic(..))));
+    b.mode="stretch".into();
+    let stretch=paths(&g,&b).unwrap();
+    assert!(stretch.commands.iter().any(|c|matches!(c,Command::Cubic(..))));
+    assert!(stretch.commands.iter().filter(|c|matches!(c,Command::Line(_))).count()<=4);
+    let flat=stretch.flatten(Transform::default(),1e-4).unwrap();
+    let max_y=flat.iter().flat_map(|c|c.points.iter()).map(|p|p.y).fold(f64::NEG_INFINITY,f64::max);
+    assert!(max_y>15.,"{max_y}");
     assert!(paths(&network(&[(0.,0.),(10.,0.),(0.,0.)],false),&b).unwrap_err().contains("cusps"));
+    let mut tri=b.clone();
+    tri.source=network(&[(-2.,-1.),(2.,-1.),(0.,1.)],true);
+    let triangle=paths(&g,&tri).unwrap();
+    assert!(triangle.commands.iter().any(|c|matches!(c,Command::Cubic(..))));
 }
 #[test]
 fn invalid_input_and_budgets_are_errors(){let g=network(&[(0.,0.),(100.,0.)],false);let mut b=brush();b.spacing=0.001;assert!(paths(&g,&b).unwrap_err().contains("budget"));b.spacing=10.;b.width=f64::NAN;assert!(paths(&g,&b).is_err());b.width=4.;b.source.vertices[0].x=f64::INFINITY;assert!(paths(&g,&b).is_err());assert!(paths(&network(&[(0.,0.),(0.,0.)],false),&brush()).is_err());}
@@ -60,6 +72,31 @@ fn sketch_export_rejects_brush_instead_of_serializing_only_guide(){
     assert!(error.contains("vector brush"));assert!(error.contains("native FD"));assert!(error.contains("bake"));
     let restored:Document=serde_json::from_slice(&serde_json::to_vec(&d).unwrap()).unwrap();
     assert_eq!(restored,d);assert!(futureox_design_kernel::interop::export_sketch(&restored).is_err());
+}
+#[test]
+fn curved_stretch_pixels_hit_svg_and_pdf_share_the_derived_geometry(){
+    let mut g=network(&[(0.,0.),(40.,0.)],false);g.edges[0].c1=Some(Point::new(0.,40.));g.edges[0].c2=Some(Point::new(40.,40.));
+    let mut b=brush();b.mode="stretch".into();b.source.edges[0].c1=Some(Point::new(-1.,-1.));b.source.edges[0].c2=Some(Point::new(1.,-1.));
+    let d=fixture(b.clone(),g.clone());d.validate().unwrap();
+    let reopened:Document=serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+    assert_eq!(d,reopened);
+    let options=RenderOptions{page_id:"p".into(),width:96,height:96,view:View{x:0.,y:0.,zoom:1.},transparent:true,grid:false,pixel_preview:None,animation:None,raster_profile:RasterProfile::FigmaSoftware,interactive_effects:false,checkerboard:false};
+    let mut e=Engine::new();e.load_document(&serde_json::to_string(&d).unwrap()).unwrap();
+    let curved=e.render(&options).unwrap();
+    assert!(curved.chunks_exact(4).any(|p|p[3]>0));
+    let straight=fixture(b.clone(),network(&[(0.,0.),(40.,0.)],false));
+    let mut e2=Engine::new();e2.load_document(&serde_json::to_string(&straight).unwrap()).unwrap();
+    let flat=e2.render(&options).unwrap();
+    assert_ne!(curved,flat);
+    let n=&d.nodes["n"];
+    let svg=futureox_design_kernel::export::svg_paths(n,&futureox_design_kernel::font::Fonts::new()).unwrap();
+    assert!(svg.fill.contains('C')&&svg.stroke.contains('C'));
+    let pdf=e.export_pdf_vector(&options).unwrap();
+    let text=String::from_utf8_lossy(&pdf);
+    assert!(text.contains(" c "));
+    assert!(futureox_design_kernel::hit_test_fill_device(n,Point::new(20.,28.),Transform::default()).unwrap());
+    assert!(!futureox_design_kernel::hit_test_fill_device(n,Point::new(20.,0.),Transform::default()).unwrap());
+    let _=g;
 }
 #[test]
 fn scatter_midpoint_matches_analytic_cubic_position_at_3200_percent(){

@@ -3715,13 +3715,13 @@
                       "followTangent"
                     ],
                     "additionalProperties": false,
-                    "description": "Editable embedded single closed nonzero-fill source; vector guide also nonzero. Stretch admits straight forward-only guides; Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
+                    "description": "Editable embedded single closed nonzero-fill source; vector guide also nonzero. Straight Stretch is an exact affine map. Smooth curved Stretch keeps source Bézier commands and certifies the arc-length normal offset within 1e-5 local units, rejecting corners, cusps and budget exhaustion. Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
                   },
                   {
                     "type": "null"
                   }
                 ],
-                "description": "Null removes this optional property. Editable embedded single closed nonzero-fill source; vector guide also nonzero. Stretch admits straight forward-only guides; Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
+                "description": "Null removes this optional property. Editable embedded single closed nonzero-fill source; vector guide also nonzero. Straight Stretch is an exact affine map. Smooth curved Stretch keeps source Bézier commands and certifies the arc-length normal offset within 1e-5 local units, rejecting corners, cusps and budget exhaustion. Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
               },
               "repeat": {
                 "anyOf": [
@@ -8266,13 +8266,13 @@
                       "followTangent"
                     ],
                     "additionalProperties": false,
-                    "description": "Editable embedded single closed nonzero-fill source; vector guide also nonzero. Stretch admits straight forward-only guides; Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
+                    "description": "Editable embedded single closed nonzero-fill source; vector guide also nonzero. Straight Stretch is an exact affine map. Smooth curved Stretch keeps source Bézier commands and certifies the arc-length normal offset within 1e-5 local units, rejecting corners, cusps and budget exhaustion. Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
                   },
                   {
                     "type": "null"
                   }
                 ],
-                "description": "Null removes this optional property. Editable embedded single closed nonzero-fill source; vector guide also nonzero. Stretch admits straight forward-only guides; Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
+                "description": "Null removes this optional property. Editable embedded single closed nonzero-fill source; vector guide also nonzero. Straight Stretch is an exact affine map. Smooth curved Stretch keeps source Bézier commands and certifies the arc-length normal offset within 1e-5 local units, rejecting corners, cusps and budget exhaustion. Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources."
               },
               "repeat": {
                 "anyOf": [

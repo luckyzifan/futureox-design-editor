@@ -17,7 +17,7 @@ test('shared brush inspector exposes actual source, deterministic parameters and
   const editor=new Editor(d)
   try {
     const html=renderToStaticMarkup(<VectorBrushPanel editor={editor} node={editor.state.doc.nodes[target.id]}/>)
-    for(const label of ['Brush source','随机种子','散布间距','跟随路径方向','笔刷源网络 JSON','展开为可编辑轮廓','曲线 Stretch 暂不支持']) expect(html).toContain(label)
+    for(const label of ['Brush source','随机种子','散布间距','跟随路径方向','笔刷源网络 JSON','展开为可编辑轮廓','拐角和尖点会拒绝','0.00001']) expect(html).toContain(label)
   } finally { editor.dispose() }
 })
 test('an unbrushed selection builds the vector source list when its disclosure opens', async () => {
