@@ -83,7 +83,7 @@ test('retained baseline is hash-verified and only declared repeat, SVG option an
     ],
     [
         "      transform: multiply(translate(-box.x, -box.y), entry.matrix),\n    }\n  const bytes = kernelPdfVector(shifted, pageId, width, height, true)\n  return {\n",
-        "      transform: multiply(translate(-box.x, -box.y), entry.matrix),\n    }\n  if (repeatedVisual) {\n    const reachable = new Set<string>(), pending = [...shifted.pages[0].children]\n    while (pending.length) {const id=pending.pop()!;if(reachable.has(id))continue;reachable.add(id);pending.push(...shifted.nodes[id].children)}\n    shifted.nodes = Object.fromEntries(Object.entries(shifted.nodes).filter(([id])=>reachable.has(id)))\n    delete shifted.prototype;delete shifted.reviews;shifted.animations=[]\n  }\n  const bytes = kernelPdfVector(shifted, pageId, width, height, true)\n  return {\n"
+        "      transform: multiply(translate(-box.x, -box.y), entry.matrix),\n    }\n  closeVectorExportSnapshot(shifted, repeatedVisual)\n  const bytes = kernelPdfVector(shifted, pageId, width, height, true)\n  return {\n"
     ],
     [
         "  await initializePicking()\n  if (signal?.aborted) throw new Error('已取消导出')\n  doc = projectSlice(kernelLayout(doc),pageId,target)\n  const box = targetBounds(doc, pageId, target)\n  const plans = scales.map((scale) => {\n",
