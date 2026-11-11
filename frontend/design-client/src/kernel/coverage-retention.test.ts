@@ -49,3 +49,17 @@ test('only the retained native camera, revision and physical viewport can skip t
   coverage.clear()
   expect(coverage.nativeKeys(1, view, 855, 928, 2)).toBeUndefined()
 })
+
+test('a recent native frame can be recalled without pinning any more tiles', () => {
+  const coverage = new CoverageRetention()
+  coverage.retain(frame('wide', 10000), 120)
+  const focus = { view: { x: 0, y: 1.5, zoom: 1 }, width: 855, height: 928, dpr: 2 }
+  coverage.retain({ ...frame('focus', 1000), native: focus }, 120)
+  coverage.retain({ ...frame('high', 100), native: { ...focus, view: { ...focus.view, zoom: 32 } } }, 120)
+  expect(coverage.nativeKeys(1, focus.view, 855, 928, 2)).toEqual(new Set(['focus']))
+  expect(coverage.has('focus')).toBe(false)
+  expect(coverage.has('high')).toBe(false)
+  expect(coverage.has('wide')).toBe(true)
+  coverage.trim(2, 120)
+  expect(coverage.nativeKeys(1, focus.view, 855, 928, 2)).toBeUndefined()
+})

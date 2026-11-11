@@ -46,3 +46,13 @@ test('wide-cohort preference evicts old fine tiles before return pixels without 
  expect(dropped.every(t=>t.key.startsWith('fine'))).toBe(true)
  expect(wide.length+fine.length+active.length-dropped.length).toBe(32)
 })
+
+test('the viewport left by an inward gesture survives pressure from the wider startup frame',()=>{
+  const group=(prefix:string,count:number)=>Array.from({length:count},(_,i)=>({key:prefix+i,used:i}))
+  const wide=group('wide',20),from=group('from',20),active=group('active',4)
+  const wideKeys=new Set(wide.map(tile=>tile.key)),returnKeys=new Set(from.map(tile=>tile.key))
+  const cache=[...wide,...from,...active]
+  const dropped=sourceTileRetirement(cache,[wideKeys],false,wideKeys,returnKeys)
+    .filter(tile=>!active.includes(tile)).slice(0,cache.length-32)
+  expect(dropped).toEqual(wide.slice(0,12))
+})

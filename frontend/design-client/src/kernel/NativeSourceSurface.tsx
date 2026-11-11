@@ -137,6 +137,7 @@ export function NativeSourceSurface(props:Props){
     // needed to prove the next zoom frame preserves all visible detail.
     const submittedPlacements=new Map<number,{tiles:Placement[];wheel:boolean;outward:boolean;mixed:boolean;regions?:OverviewMaterial[];view:CanvasCamera;width:number;height:number;dpr:number}>()
     const recentNative=new Map<number,Set<string>>()
+    let zoomReturn: {scale:number;keys:ReadonlySet<string>}|undefined
     const returnReuse=import.meta.env.VITE_DESIGN_SOURCE_RETURN_REUSE!=='0'
     let deferredOutward='',wheelInterval=SOURCE_WHEEL_QUIET_MS
     let backingTiles:Placement[]=[]
@@ -412,7 +413,7 @@ export function NativeSourceSurface(props:Props){
         const preferLast=import.meta.env.VITE_DESIGN_SOURCE_RETURN_PRIORITY!=='0' && moving &&
           !!p.overviewBoxes && !!source.materialKeys && raster.scale<=1
         const wider=returnReuse?zoomOutRetentionCohort(recentNative,p.view.zoom*density.current):undefined
-        for(const tile of cache.size>keep?sourceTileRetirement(cache.values(),recentNative.values(),preferLast,wider):[]){
+        for(const tile of cache.size>keep?sourceTileRetirement(cache.values(),recentNative.values(),preferLast,wider,zoomReturn?.keys):[]){
           if(cache.size<=keep)break
           if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key) || stripOverview?.tiles.some(base=>base.key===tile.key))continue
           cache.delete(tile.key);retire(tile)
@@ -896,6 +897,7 @@ export function NativeSourceSurface(props:Props){
             if(recentNative.size>=2)recentNative.delete(recentNative.keys().next().value!)
             recentNative.set(scale,tierKeys)
           }
+          if(zoomReturn && !zoomingIn && scale<=zoomReturn.scale)zoomReturn=undefined
         quality.reset()
         element.dataset.sourceReadyCamera=JSON.stringify(actual.view)
         planner.presented(actual.view,actual.dpr,actual.width,actual.height)
@@ -955,6 +957,14 @@ export function NativeSourceSurface(props:Props){
         zoomChanged=true
         translationFollow=false
         const now=performance.now(),inward=latest.current.view.zoom>lastZoom
+        // The fit-to-page view can be wider than the one the user left.
+        // Preserve the latter through a detail excursion using the same
+        // slots, even after another density is acknowledged at high zoom.
+        if(returnReuse&&source.materialKeys&&inward&&!moving&&completeBacking?.dpr===density.current&&
+            completeBacking.view.x===priorView.x&&completeBacking.view.y===priorView.y&&completeBacking.view.zoom===priorView.zoom){
+          const scale=priorView.zoom*density.current,keys=recentNative.get(scale)
+          if(keys)zoomReturn={scale,keys}
+        }
         wheelInterval=now-lastZoomAt
         const wheel=latest.current.wheelView, view=latest.current.view
         continuousZoom=!!wheel && wheel.x===view.x && wheel.y===view.y && wheel.zoom===view.zoom ||
