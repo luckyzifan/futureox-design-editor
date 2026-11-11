@@ -1707,7 +1707,8 @@ footer button {
 /* One shared local editor shell is used by the browser and Electron. */
 .editor-shell { display: grid; grid-template-columns: 57px max-content minmax(0, 1fr) var(--workspace-inspector-width); grid-template-rows: auto 64px minmax(0, 1fr) auto; position: relative; }
 .editor-shell > .editor-header, .editor-shell > .editor-workspace { display: contents; }
-.editor-shell > nav[aria-label="设计文档标签"] { grid-column: 1 / -1; grid-row: 1; }
+/* The accessible name is localized; column span follows the stable marker. */
+.editor-shell > nav[data-workspace-tabs] { grid-column: 1 / -1; grid-row: 1; }
 .editor-shell .workspace-rail { grid-column: 1; grid-row: 2 / 4; padding-top: 64px; }
 .editor-shell .editor-header > .brand { grid-column: 1; grid-row: 2; width: 57px; height: 48px; padding: 10px 15px; align-self: start; z-index: 31; }
 .editor-shell .brand strong, .editor-shell .brand > svg, .editor-shell .header-divider { display: none; }
