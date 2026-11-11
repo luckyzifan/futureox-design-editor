@@ -16,6 +16,9 @@ import { ShapeBuilderDialog } from './ShapeBuilderDialog'
 import { recordLocalError } from './local-diagnostics'
 import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gesture'
 import { BatchRenameDialog } from './BatchRenameDialog'
+import { CommandSearch } from './CommandSearch'
+import { commandSearchText } from './command-search'
+import { commandSearchSnapshot, requestCommandSearch, subscribeCommandSearch } from './command-search-session'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
 import { SourceDocumentStatus } from './SourceDocumentStatus'
@@ -89,6 +92,7 @@ import {
   HelpCircle,
   Puzzle,
   Play,
+  Search,
   SlidersHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -162,6 +166,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const toolbarText = canvasText[locale]
   const menuText = fileMenuText[locale]
   const shortcutProfile = useShortcutProfile()
+  const commandSearchOpen = useSyncExternalStore(subscribeCommandSearch, commandSearchSnapshot, () => 0) !== 0
   const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [shortcutProfile])
   const tools = useMemo(() => toolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
@@ -1119,6 +1124,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <button type="button" onClick={enterHome}><FolderOpen size={15} />{menuText.localHome}</button>
             <button type="button" onClick={openSettings}><SettingsIcon size={15} />{panelText.settingsTitle}</button>
             <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
+            <button type="button" onClick={() => { const opener = fileMenuTrigger.current; setMenu(false); requestCommandSearch(opener) }}>
+              <Search size={15} />{commandSearchText[locale].title}
+              {shortcutProfile === 'sketch-like' && <kbd>{formatShortcutCombo('Mod+K', shortcutContext.platform)} / S</kbd>}
+            </button>
             <button
               onClick={() => {
                 void switchDocument(blank())
@@ -1400,6 +1409,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>{toolbarText.ungroup} <kbd>{shortcutLabel('ungroup', shortcutContext)}</kbd></button>
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>{toolbarText.designSystems}</button>
               </ToolPopover>
+              <button type="button" className="command-search-trigger" aria-label={commandSearchText[locale].label} aria-haspopup="dialog" aria-expanded={commandSearchOpen}
+                title={shortcutProfile === 'sketch-like' ? `${commandSearchText[locale].label} (${formatShortcutCombo('Mod+K', shortcutContext.platform)} / S)` : commandSearchText[locale].label}
+                onClick={() => requestCommandSearch()}>
+                <Search size={18} />
+              </button>
             </div>
           </DesignToolbar>
         </div>
@@ -1424,6 +1438,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
       </main>
       <BatchRenameDialog editor={editor} />
+      <CommandSearch editor={editor} />
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} onImportCompatibility={() => {
         fileImports.invalidate()

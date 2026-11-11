@@ -33,7 +33,7 @@ function isolateModal(container: HTMLElement) {
 
 /** Move focus into a dialog, keep Tab inside it, and restore the opener on close.
  * Background siblings are inert so Esc and Tab are not delivered to the page chrome. */
-export function useModalOwnership(container: RefObject<HTMLElement | null>, focus: RefObject<HTMLButtonElement | null>, returnFocus?: HTMLElement | null) {
+export function useModalOwnership(container: RefObject<HTMLElement | null>, focus: RefObject<HTMLElement | null>, returnFocus?: HTMLElement | null) {
   const restore = useRef<HTMLElement | null>(null)
   restore.current = returnFocus ?? null
   useLayoutEffect(() => {
@@ -45,7 +45,12 @@ export function useModalOwnership(container: RefObject<HTMLElement | null>, focu
     const overflow = document.body.style.overflow
     const saved = isolateModal(root)
     document.body.style.overflow = 'hidden'
-    const focusable = () => focus.current && !focus.current.disabled ? focus.current : root
+    const focusable = () => {
+      const control = focus.current
+      // Buttons and inputs share this ownership path. A disabled control must not take focus.
+      if (control && !('disabled' in control && (control as HTMLButtonElement).disabled)) return control
+      return root
+    }
     focusable().focus({ preventScroll: true })
     let retaining = false
     const retain = (event: FocusEvent) => {

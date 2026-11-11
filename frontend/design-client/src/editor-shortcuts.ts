@@ -2,6 +2,7 @@ import type { Editor } from './engine'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
+import { requestCommandSearch } from './command-search-session'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
   return editableOwnsKeyboard(target) || modalOwnsKeyboard(target)
@@ -12,6 +13,11 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   const binding = resolveShortcut(event, context)
   if (!binding) return false
   event.preventDefault()
+  // Command search is shell state. It must not enter dispatch or document history.
+  if (binding.command === 'open-command-search') {
+    if (!event.repeat && !editor.interactionActive) requestCommandSearch(event.target)
+    return true
+  }
   // Consume held destructive chords without creating additional history entries.
   if ((event.repeat && !binding.repeat) || editor.state.busy || editor.interactionActive) return true
   const command: EditorCommand = binding.command === 'toggle-lock' ? (lockedSelectionIds(editor).length ? 'unlock-selection' : 'lock-selection') :
