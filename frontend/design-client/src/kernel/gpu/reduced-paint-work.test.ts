@@ -130,6 +130,60 @@ test('a gradient field from another resource falls back to the actual two-pass p
  await f.renderer.paintOver(n,n.fills[0],mask,dst,undefined,true)
  expect(f.driver.pass.mock.calls.map((c:any[])=>c[1][16])).toEqual([2,3])
 })
+test.each(['solid fill', 'gradient stroke'])('normalized analytic %s composites the full isolation layer in one pass', async kind => {
+ const f=fixture(),n=leaf('isolated',kind==='solid fill'?'solid':'linear')
+ const mask={...f.surface(),normalizedCoverage:true as const}
+ f.renderer.scene={...f.renderer.scene,coherentSamples:false,nodes:{[n.id]:n}}
+ f.renderer.outputFrame={present:true,readback:false}
+ f.renderer.sampleIndex=undefined
+ f.driver.exactSolidPaintOver=true
+ f.renderer.fillMask=()=>mask
+ f.renderer.mask=()=>mask
+ if(kind==='gradient stroke'){
+  n.strokes=[{path:n.fill,paint:n.fills[0],align:'center'}];n.fills=[]
+  const field=f.surface()
+  f.renderer.gradientGrid=()=>field
+  f.renderer.gradientFieldProofs.set(field.texture,{resource:field.texture.resource,maximumStop:1})
+ }
+ const out=await f.renderer.node(n.id,f.surface())
+ expect(out.rect).toEqual(bounds)
+ expect(f.driver.pass.mock.calls.map((call:any[])=>call[1][16])).toEqual([kind==='solid fill'?47:65])
+ expect(f.driver.pass.mock.calls[0][3]).toBeUndefined()
+})
+test.each(['uncertified coverage','readback'])('analytic gradient with %s retains its paint texture', async kind => {
+ const f=fixture(),n=leaf('isolated','linear')
+ const mask=f.surface()
+ if(kind==='readback')mask.normalizedCoverage=true
+ f.renderer.scene={...f.renderer.scene,coherentSamples:false,nodes:{[n.id]:n}}
+ f.renderer.outputFrame={present:true,readback:kind==='readback'}
+ f.renderer.sampleIndex=undefined
+ f.renderer.fillMask=()=>mask
+ const field=f.surface()
+ f.renderer.gradientGrid=()=>field
+ f.renderer.gradientFieldProofs.set(field.texture,{resource:field.texture.resource,maximumStop:1})
+ await f.renderer.node(n.id,f.surface())
+ expect(f.driver.pass.mock.calls.map((call:any[])=>call[1][16])).toEqual([2,3])
+})
+test('stroke alignment preserves normalized coverage only with two proved inputs',()=>{
+ const f=fixture(),normalized={...f.surface(),normalizedCoverage:true as const}
+ expect(f.renderer.combine(normalized,f.surface(bounds,true),bounds,true).normalizedCoverage).toBe(true)
+ expect(f.renderer.combine(normalized,f.surface(),bounds,true).normalizedCoverage).toBeUndefined()
+})
+test('analytic gradient can fuse normalized paint and clip while preserving the normal merge region', async () => {
+ const f=fixture(),n=leaf('g','linear')
+ n.rect={x:8,y:10,w:8,h:6}
+ f.renderer.scene.coherentSamples=false
+ f.renderer.outputFrame={present:true,readback:false}
+ const mask={...f.surface(n.rect),normalizedCoverage:true as const}
+ const clip={...f.surface(bounds),normalizedCoverage:true as const}
+ const field=f.surface(n.rect),dst=f.surface()
+ f.renderer.gradientGrid=()=>field
+ f.renderer.gradientFieldProofs.set(field.texture,{resource:field.texture.resource,maximumStop:1})
+ expect(await f.renderer.paintOver(n,n.fills[0],mask,dst,clip,true)).toBe(dst)
+ expect(f.driver.pass.mock.calls.map((call:any[])=>call[1][16])).toEqual([0,65])
+ expect(f.driver.pass.mock.calls[1][2][1]).toBe(clip.texture)
+ expect(f.driver.pass.mock.calls[1][3]).toEqual({x:7,y:9,w:10,h:8})
+})
 test('coverage miss reasons separate absent keys from unequal exact geometry words without exposing content',()=>{
  const f=fixture(),cache=new CoverageCache(1024,3,vi.fn()),words=new Uint32Array([1,2])
  cache.begin(true);expect(cache.get('shape',words)).toBeUndefined()

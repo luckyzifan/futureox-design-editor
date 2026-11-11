@@ -155,7 +155,7 @@ type AtlasPage = {
   rowHeight: number
   entries: Map<string, string>
 }
-export type Surface = { texture: Texture; rect: Rect; opaqueInterior?:Rect; logicalBounds?: Rect; compactMaxAbs?: readonly number[]; imageZeroOverIdentity?: true; linearParameterCorners?:true; linearParameterPlane?:true; radialParameterPlane?:true; imageUri?:string }
+export type Surface = { texture: Texture; rect: Rect; opaqueInterior?:Rect; normalizedCoverage?: true; logicalBounds?: Rect; compactMaxAbs?: readonly number[]; imageZeroOverIdentity?: true; linearParameterCorners?:true; linearParameterPlane?:true; radialParameterPlane?:true; imageUri?:string }
 const noGeometryWords = new Uint32Array(0)
 function materialFieldKey(inputs: unknown[]): string {
   return JSON.stringify(inputs, (_key, value) => Object.is(value, -0) ? '-0' : value)
@@ -1586,6 +1586,8 @@ export class GpuRenderer {
   private mask(path: PathMesh, admit: true, defer?: boolean): Surface | Promise<Surface>
   private mask(path: PathMesh, admit: false, defer: boolean): Surface
   private mask(path: PathMesh, admit = false, defer = false): Surface | Promise<Surface> {
+    // WebGPU's area program and the cleared empty path produce [0,1].
+    const normalizedCoverage = !defer && this.driver.name === 'webgpu' && (path.area || !path.count) ? true : undefined
     const analytic =
       path.analyticRect
         ?.map((v, i) => Math.fround(v - (i % 2 ? path.rect.y : path.rect.x)))
@@ -1597,7 +1599,7 @@ export class GpuRenderer {
         : 'mesh'
     const key = `${this.sampleIndex ?? 'resolved'}:${program}:${path.sampleCount || 16}:${analytic}:${path.first}:${path.count}:${path.rule}:${path.rect.x}:${path.rect.y}:${path.rect.w}:${path.rect.h}`
     let s = this.masks.get(key)
-    if (s) return this.trackMask({...s,opaqueInterior:path.opaqueRect})
+    if (s) return this.trackMask({ ...s, opaqueInterior: path.opaqueRect, normalizedCoverage })
     const bits = path.area
       ? this.curveBits.subarray(path.area.first * 4, (path.area.first + path.area.count) * 4)
       : path.analytic
@@ -1623,7 +1625,7 @@ export class GpuRenderer {
       s = { texture: retained, rect: path.rect }
       this.masks.set(key, s)
       this.maskHits++
-      return this.trackMask({...s,opaqueInterior:path.opaqueRect})
+      return this.trackMask({ ...s, opaqueInterior: path.opaqueRect, normalizedCoverage })
     }
     const candidates = this.sharedMasks.get(shapeKey) || []
     if (this.optimized)
@@ -1634,7 +1636,7 @@ export class GpuRenderer {
           s = { texture: candidate.texture, rect: path.rect }
           this.masks.set(key, s)
           this.maskHits++
-          return this.trackMask({...s,opaqueInterior:path.opaqueRect})
+          return this.trackMask({ ...s, opaqueInterior: path.opaqueRect, normalizedCoverage })
         }
       }
     // Figma sample programs and analytic winding return exactly 0 or 1.
@@ -1661,7 +1663,7 @@ export class GpuRenderer {
     if (this.optimized) this.coverage.put(shapeKey, bits, s.texture)
     candidates.push({ bits, texture: s.texture })
     this.sharedMasks.set(shapeKey, candidates)
-    return this.trackMask({...s,opaqueInterior:path.opaqueRect})
+    return this.trackMask({ ...s, opaqueInterior: path.opaqueRect, normalizedCoverage })
   }
   private nodeMask(n: GpuNode): Surface
   private nodeMask(n: GpuNode, admit: true, defer?: boolean): Surface | Promise<Surface>
@@ -1736,9 +1738,12 @@ export class GpuRenderer {
     return masks
   }
   private combine(a: Surface, b: Surface, r: Rect, outside = false) {
-    return this.run(1, r, [a, b], (u) => {
+    const coverage = this.run(1, r, [a, b], (u) => {
       u[36] = outside ? 1 : 0
     })
+    if ((a.normalizedCoverage || a.texture.binaryCoverage) && (b.normalizedCoverage || b.texture.binaryCoverage))
+      coverage.normalizedCoverage = true
+    return coverage
   }
   private compose(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface) {
     const blend = blends.indexOf(mode)
@@ -1926,7 +1931,8 @@ export class GpuRenderer {
   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface, admitMerge = false, compactTarget = false, skipGradientFusion=false): Surface | Promise<Surface> {
     const opaqueConstant = this.constantPaintOver(n, paint, mask, dst, clip)
     if (opaqueConstant) return this.opaqueConstantTarget(dst, opaqueConstant)
-    if(admitMerge&&!skipGradientFusion&&this.gradientFusionEligible(n,paint,mask,dst,clip))return this.gradientPaintOver(n,paint,mask,dst,clip)
+    if(admitMerge&&!skipGradientFusion&&this.gradientFusionEligible(n,paint,mask,dst,clip,this.analyticPaintFusionEnabled()))
+      return this.gradientPaintOver(n,paint,mask,dst,clip)
     const compact = compactTarget && this.compactSolidPlan(n, paint, mask, dst, clip)
     if (compact) {
       if (compact.unchanged) return dst
@@ -1952,23 +1958,7 @@ export class GpuRenderer {
     }
     const constantColor = paint.constantColor ?? (paint.kind === 'solid' ? paint.color : undefined)
     const region = this.exactSolidPaintRegion(n, paint, mask, dst, clip)
-    if (region) {
-      // The original paint target is only sampled at integer pixel centers by
-      // normal composition. Finite solid color and [0,1] coverage prove every
-      // painted neighbor finite, including the zero-weight neighbors. Execute
-      // the same round-to-nearest operations and zero canonicalization in one
-      // pass, retaining the original paint rectangle as its transparency bound.
-      const configure = (u: Float32Array) => {
-        this.configurePaint(u, n, paint)
-        u.set([n.rect.x, n.rect.y, n.rect.w, n.rect.h], 52)
-        u[19] = clip ? 1 : 0
-      }
-      const inplace = this.regionalOver(47, region, dst, clip ? [mask, clip] : [mask], configure)
-      if (inplace) return inplace
-      const out = this.run(47, dst.rect, clip ? [dst, mask, clip] : [dst, mask], configure)
-      this.release(dst)
-      return out
-    }
+    if (region) return this.solidPaintOver(n, paint, mask, dst, clip, region)
     if (!clip && !this.driver.managed && constantColor && paint.blend === 'normal') {
       const alpha = this.alpha(constantColor),
         opacity = Math.fround(paint.opacity)
@@ -2033,6 +2023,43 @@ export class GpuRenderer {
     const source = admitMerge ? this.paintWithBoundedImageFields(n, paint, mask) : this.paint(n, paint, mask)
     return source instanceof Promise ? source.then(compose) : compose(source)
   }
+  private solidPaintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface, region?: Rect) {
+    // Integer-centre sampling of bounded solid paint uses the original
+    // rounded products and canonical zeros without a paint texture.
+    const configure = (u: Float32Array) => {
+      this.configurePaint(u, n, paint)
+      u.set([n.rect.x, n.rect.y, n.rect.w, n.rect.h], 52)
+      u[19] = clip ? 1 : 0
+    }
+    const sources = clip ? [mask, clip] : [mask]
+    const inplace = region && this.regionalOver(47, region, dst, sources, configure)
+    if (inplace) return inplace
+    const out = this.run(47, dst.rect, [dst, ...sources], configure)
+    this.release(dst)
+    return out
+  }
+  private analyticPaintFusionEnabled() {
+    return !!this.outputFrame?.present && !this.outputFrame.readback && this.driver.name === 'webgpu' &&
+      !!this.driver.managed && !this.driver.hdr && !this.driver.displayMath &&
+      !this.scene.softwareRaster && !this.scene.coherentSamples && !this.scene.interactionRetained
+  }
+  private isolatedPaintDomain(n: GpuNode, layer: Surface) {
+    return this.analyticPaintFusionEnabled() && !layer.logicalBounds &&
+      n.rect.x === layer.rect.x && n.rect.y === layer.rect.y && n.rect.w === layer.rect.w && n.rect.h === layer.rect.h
+  }
+  private isolatedSolidPaint(n: GpuNode, paint: GpuPaint, mask: Surface, layer: Surface) {
+    if (!this.isolatedPaintDomain(n, layer) || !paint.visible || paint.kind !== 'solid' || paint.blend !== 'normal' ||
+        !(mask.normalizedCoverage || mask.texture.binaryCoverage) ||
+        !this.exactSolidPaintRegion(n, paint, mask, layer)) return
+    if ([...this.color(paint.color), this.alpha(paint.color), paint.opacity].some(value => value < 0 || value > 1)) return
+    // The original merge covers this whole isolation layer. Keep that same
+    // destination sampling boundary even if the coverage mask is smaller.
+    const draw = () => {
+      this.checkFrameCurrent()
+      return this.solidPaintOver(n, paint, mask, layer)
+    }
+    return this.admitSurface(layer.rect, 1, false, false, [layer, mask], draw) ?? draw()
+  }
   /** A two-stop [0,1] linear gradient needs only the native fixed-point
    * coefficients. Both paint entries use the kernel's exact eighth-pixel
    * sample and RNE conversion; a material field would encode the same t. */
@@ -2044,11 +2071,14 @@ export class GpuRenderer {
       fixed && Number.isInteger(fixed.bits) && fixed.bits>=24 && fixed.bits<=52 && fixed.words.length===3 &&
       fixed.words.every(word=>word.length===4 && word.every(v=>Number.isInteger(v) && v>=0 && v<=65535))
   }
-  private gradientFusionEligible(n:GpuNode,paint:GpuPaint,mask:Surface,dst:Surface,clip?:Surface){
+  private gradientFusionEligible(n:GpuNode,paint:GpuPaint,mask:Surface,dst:Surface,clip?:Surface,allowNormalizedCoverage=false){
     if(!this.optimized||!this.gradientFusionActive||!this.driver.exactGradientPaintOver||!['linear','radial','angular','diamond'].includes(paint.kind))return false
     if(paint.blend!=='normal'||!paint.visible||dst.logicalBounds||n.rect.w*n.rect.h>262144||clip&&paint.stops.length>32){this.fastWork.add('fastGradientPaintReject');return false}
     if(!exactBlendLattice([n.rect,mask.rect,dst.rect,...(clip?[clip.rect]:[])])){this.fastWork.add('fastGradientLatticeReject');return false}
-    if(!mask.texture.binaryCoverage||clip&&!clip.texture.binaryCoverage){this.fastWork.add('fastGradientCoverageReject');return false}
+    if ((!mask.texture.binaryCoverage && !(allowNormalizedCoverage && mask.normalizedCoverage)) ||
+        (clip && !clip.texture.binaryCoverage && !(allowNormalizedCoverage && clip.normalizedCoverage))) {
+      this.fastWork.add('fastGradientCoverageReject');return false
+    }
     const colors=[paint.color,...paint.stops.map(s=>s.color)]
     if(!Number.isFinite(paint.opacity)||paint.opacity<0||paint.opacity>1||paint.stops.length>MAX_GRADIENT_STOPS||
       colors.some(color=>[...this.color(color).map(Math.fround),Math.fround(this.alpha(color))].some(v=>!Number.isFinite(v)||v<0||v>1))){
@@ -7532,8 +7562,13 @@ export class GpuRenderer {
     for (const p of n.fills) {
       if (!p.visible) continue
       const mask=fill||((pendingSurfaceAdmission=this.fillMask(n),pendingSurfaceAdmission instanceof Promise?await pendingSurfaceAdmission:pendingSurfaceAdmission))
-      if(this.gradientFusionEligible(n,p,mask,layer)){
+      if(this.gradientFusionEligible(n,p,mask,layer,undefined,this.isolatedPaintDomain(n,layer))){
         layer=await this.gradientPaintOver(n,p,mask,layer);continue
+      }
+      const fused = this.isolatedSolidPaint(n, p, mask, layer)
+      if (fused) {
+        layer = fused instanceof Promise ? await fused : fused
+        continue
       }
       const painted = ((pendingSurfaceAdmission = this.paint(n, p, mask, undefined, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
       if(this.driver.managed&&(this.scene.interactionRetained||this.surfaceNeedsAdmission(layer.rect)))
@@ -7586,6 +7621,14 @@ export class GpuRenderer {
         if (this.surfaceNeedsAdmission(n.rect)) await this.reclaimForSurface(n.rect)
         clipped = this.combine(strokeMask, fillMask, n.rect, s.align === 'outside')
         strokeMask = clipped
+      }
+      const fused = this.isolatedPaintDomain(n,layer) && this.gradientFusionEligible(n,s.paint,strokeMask,layer,undefined,true)
+        ? this.gradientPaintOver(n,s.paint,strokeMask,layer)
+        : this.isolatedSolidPaint(n, s.paint, strokeMask, layer)
+      if (fused) {
+        try { layer = fused instanceof Promise ? await fused : fused }
+        finally { this.release(clipped) }
+        continue
       }
       const painted = ((pendingSurfaceAdmission = this.paint(n, s.paint, strokeMask, undefined, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
       if(this.driver.managed&&(this.scene.interactionRetained||this.surfaceNeedsAdmission(layer.rect)))
@@ -7873,7 +7916,7 @@ export class GpuRenderer {
     this.scene = scene
     this.poseDemand = this.optimized && present && !readback && this.driver.name==='webgpu' && !this.driver.hdr ? localPoseDemand(scene) : undefined
     this.solidRunsActive=hasOpaqueSolidGroups(scene)
-    this.gradientFusionActive=!!this.driver.exactGradientPaintOver&&gradientFusionWorthwhile(scene)
+    this.gradientFusionActive=!!this.driver.exactGradientPaintOver&&gradientFusionWorthwhile(scene,this.analyticPaintFusionEnabled())
     this.constantCoverageActive=this.constantCoverageEnabled&&scene.coherentSamples===true&&Object.values(scene.nodes).some(n=>
       (n.clip||n.fills.some(p=>p.visible)||n.strokes.some(s=>s.align!=='center')||!!backdropEffect(n.effects))&&
       (n.opaqueCoverage||n.fill.sampleCount===4&&containsRect(n.fill.opaqueRect,n.rect)&&containsRect(n.fill.rect,n.rect)))

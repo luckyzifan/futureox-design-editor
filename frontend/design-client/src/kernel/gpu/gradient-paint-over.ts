@@ -5,7 +5,7 @@ export const GRADIENT_PAINT_OVER_MODE = 65
 /** Cost screening, never pixel authority. Avoid preparing/dispatching a new
  * pipeline for a single tiny opportunity in an otherwise expensive scene.
  * Runtime coverage, colour, field-resource and lattice proofs still apply. */
-export function gradientFusionWorthwhile(scene:GpuScene):boolean {
+export function gradientFusionWorthwhile(scene:GpuScene, singlePlane = false):boolean {
  let count=0
  const bounded=(color:string)=>{
   const decoded=scene.colors?.[color]
@@ -16,8 +16,12 @@ export function gradientFusionWorthwhile(scene:GpuScene):boolean {
   if(!n.rect||!n.fill||!n.strokes)continue
   if(n.rect.w*n.rect.h>262144||!Object.values(n.rect).every(v=>Number.isInteger(v)&&Math.abs(v)<=1048576))continue
   for(const {path,paint}of [{path:n.fill,paint:undefined},...n.strokes.map(s=>({path:s.path,paint:s.align==='center'?s.paint:undefined}))]){
-   if(path.sampleCount!==4||!path.area)continue
-   const header=scene.curves?.[path.area.first*4];if(header!==3&&header!==4&&header!==5)continue
+   if(singlePlane){
+    if(!path.count)continue
+   }else{
+    if(path.sampleCount!==4||!path.area)continue
+    const header=scene.curves?.[path.area.first*4];if(header!==3&&header!==4&&header!==5)continue
+   }
    for(const p of paint?[paint]:path===n.fill?n.fills:[]){
     if(p.visible&&p.blend==='normal'&&['linear','radial','angular','diamond'].includes(p.kind)&&p.opacity>=0&&p.opacity<=1&&
       p.stops.length<=64&&bounded(p.color)&&p.stops.every(s=>bounded(s.color))&&++count>=2)return true
