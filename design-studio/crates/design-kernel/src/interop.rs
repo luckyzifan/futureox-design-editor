@@ -5310,6 +5310,211 @@ fn boolean_from_code(code: i64) -> Option<crate::boolean::Operation> {
     }
 }
 
+/// A contour whose edges already walk the vertices in order. Closed rings and
+/// open chains are the only topologies a Sketch shapePath can store without
+/// dropping handles. An open chain is not a broken closed ring.
+fn sequential_contour(net: &crate::scene::Network, closed: bool) -> bool {
+    let count = net.vertices.len();
+    if count == 0 || (!closed && count < 2) {
+        return false;
+    }
+    let expected = if closed { count } else { count - 1 };
+    net.edges.len() == expected
+        && net.edges.iter().enumerate().all(|(i, edge)| {
+            let next = (i + 1) % count;
+            edge.from == net.vertices[i].id && edge.to == net.vertices[next].id
+        })
+}
+
+/// Official point-string grammar (`sketch-document` `point-string.schema.yaml`):
+/// `^-?\d+(\.\d+)?(e-\d+)?$`. The published pattern leaves `.` unescaped; this
+/// check uses a real decimal point, which that pattern also accepts.
+fn sketch_unit_schema(text: &str) -> bool {
+    let rest = text.strip_prefix('-').unwrap_or(text);
+    let (mantissa, exponent) = match rest.split_once('e') {
+        Some((mantissa, exponent)) => {
+            if !exponent.starts_with('-')
+                || exponent.len() == 1
+                || !exponent[1..].bytes().all(|b| b.is_ascii_digit())
+            {
+                return false;
+            }
+            (mantissa, true)
+        }
+        None => (rest, false),
+    };
+    let _ = exponent;
+    let (whole, fraction) = match mantissa.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (mantissa, None),
+    };
+    !whole.is_empty()
+        && whole.bytes().all(|b| b.is_ascii_digit())
+        && fraction.is_none_or(|fraction| {
+            !fraction.is_empty() && fraction.bytes().all(|b| b.is_ascii_digit())
+        })
+}
+
+fn same_f64_bits(text: &str, value: f64) -> bool {
+    text.parse::<f64>()
+        .ok()
+        .is_some_and(|parsed| parsed.to_bits() == value.to_bits())
+}
+
+/// Expand `1.25e20` into a plain decimal. The schema allows only a negative
+/// exponent, and the digit shift keeps the shortest round-trip.
+fn expand_nonnegative_exponent(debug: &str) -> Option<String> {
+    let negative = debug.starts_with('-');
+    let rest = debug.strip_prefix('-').unwrap_or(debug);
+    let (mantissa, exponent) = rest.split_once(['e', 'E'])?;
+    if exponent.starts_with('-') {
+        return None;
+    }
+    let exponent: i32 = exponent.trim_start_matches('+').parse().ok()?;
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || !fraction.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = format!("{whole}{fraction}");
+    let point = whole.len() as i32 + exponent;
+    let body = if point <= 0 {
+        let zeros = "0".repeat((-point) as usize);
+        let tail = digits.trim_end_matches('0');
+        format!("0.{zeros}{tail}")
+    } else if point as usize >= digits.len() {
+        let zeros = "0".repeat(point as usize - digits.len());
+        format!("{digits}{zeros}")
+    } else {
+        let index = point as usize;
+        let tail = digits[index..].trim_end_matches('0');
+        if tail.is_empty() {
+            digits[..index].to_string()
+        } else {
+            format!("{}.{}", &digits[..index], tail)
+        }
+    };
+    let body = body.trim_start_matches('0');
+    let body = if body.is_empty() || body.starts_with('.') {
+        format!("0{body}")
+    } else {
+        body.to_string()
+    };
+    Some(if negative {
+        format!("-{body}")
+    } else {
+        body
+    })
+}
+
+fn sketch_unit(value: f64) -> Result<String> {
+    if !value.is_finite() {
+        return Err(Error::Unsupported(
+            "Sketch curve points require finite frame-normalized coordinates".into(),
+        ));
+    }
+    let display = format!("{value}");
+    if sketch_unit_schema(&display) && same_f64_bits(&display, value) {
+        return Ok(display);
+    }
+    let debug = format!("{value:?}");
+    let text = expand_nonnegative_exponent(&debug).unwrap_or(debug);
+    if sketch_unit_schema(&text) && same_f64_bits(&text, value) {
+        return Ok(text);
+    }
+    Err(Error::Unsupported(format!(
+        "Sketch curve coordinate {value:?} cannot be written as a point string without coarsening it"
+    )))
+}
+
+fn frame_unit(value: f64, extent: f64) -> Result<f64> {
+    if !value.is_finite() || !extent.is_finite() || extent < 0. {
+        return Err(Error::Unsupported(
+            "Sketch curve points require a finite nonnegative frame".into(),
+        ));
+    }
+    if extent == 0. {
+        if value == 0. {
+            // A collapsed axis has one representable coordinate. Keep the sign
+            // of zero; every other value would leave the frame.
+            return Ok(value);
+        }
+        return Err(Error::Unsupported(
+            "Sketch curve points are frame-normalized, so a nonzero coordinate on a zero-size axis cannot be stored without moving the geometry".into(),
+        ));
+    }
+    let unit = value / extent;
+    if !unit.is_finite() {
+        return Err(Error::Unsupported(
+            "Sketch curve points require finite frame-normalized coordinates".into(),
+        ));
+    }
+    Ok(unit)
+}
+
+fn sketch_curve_coordinate(x: f64, y: f64, width: f64, height: f64) -> Result<String> {
+    Ok(format!(
+        "{{{}, {}}}",
+        sketch_unit(frame_unit(x, width)?)?,
+        sketch_unit(frame_unit(y, height)?)?
+    ))
+}
+
+fn shape_path_curve_points(
+    net: &crate::scene::Network,
+    width: f64,
+    height: f64,
+    closed: bool,
+    corner_radii: &[f64],
+    lossy: &mut Vec<String>,
+) -> Result<Vec<Value>> {
+    let count = net.vertices.len();
+    let ring = sequential_contour(net, closed);
+    if !ring && count > 0 {
+        note_lossy(lossy, "network-topology-flattened-to-ring");
+    }
+    let mut points = Vec::with_capacity(count);
+    for (i, vertex) in net.vertices.iter().enumerate() {
+        let (outgoing, incoming) = if ring {
+            (
+                net.edges.get(i).and_then(|edge| edge.c1),
+                if i > 0 {
+                    net.edges[i - 1].c2
+                } else if closed {
+                    net.edges[count - 1].c2
+                } else {
+                    None
+                },
+            )
+        } else {
+            (None, None)
+        };
+        let mode = curve_mode_of(vertex, outgoing, incoming);
+        let anchor = sketch_curve_coordinate(vertex.x, vertex.y, width, height)?;
+        let curve_from = match outgoing {
+            Some(point) => sketch_curve_coordinate(point.x, point.y, width, height)?,
+            None => anchor.clone(),
+        };
+        let curve_to = match incoming {
+            Some(point) => sketch_curve_coordinate(point.x, point.y, width, height)?,
+            None => anchor.clone(),
+        };
+        points.push(json!({
+            "_class": "curvePoint",
+            "curveMode": mode,
+            "hasCurveFrom": outgoing.is_some(),
+            "hasCurveTo": incoming.is_some(),
+            "point": anchor,
+            "curveFrom": curve_from,
+            "curveTo": curve_to,
+            "cornerRadius": corner_radii.get(i).copied().unwrap_or(0.),
+        }));
+    }
+    Ok(points)
+}
+
 /// 22 号字典 §1 export side: derive curveMode from the handle geometry at
 /// one vertex. c1 is the outgoing handle (curveFrom), c2 the incoming one
 /// (curveTo). No handles → 1 (Straight); two handles collinear with the
@@ -6472,10 +6677,17 @@ fn export_layer_impl(
                 layer.insert("edited".into(),json!(false));
             }
             "shapePath" => {
-                let closed = !n
+                // An authored open chain is a shapePath with isClosed false.
+                // Treating it as a closed ring drops its handles and invents a
+                // closing segment the kernel does not draw.
+                let binding_open = n
                     .bindings
                     .get("sketchOpenPath")
                     .is_some_and(|v| v == "true");
+                let closed = match n.network.as_ref() {
+                    Some(net) if !binding_open && sequential_contour(net, false) => false,
+                    _ => !binding_open,
+                };
                 layer.insert("isClosed".into(), json!(closed));
                 // Per-point corner radii imported from a native document
                 // ride bindings (the kernel has no per-vertex radius slot)
@@ -6485,61 +6697,21 @@ fn export_layer_impl(
                     .get("sketchPointCornerRadii")
                     .and_then(|s| serde_json::from_str(s).ok())
                     .unwrap_or_default();
-                let points: Vec<Value> = n
-                    .network
-                    .as_ref()
-                    .map(|net| {
-                        // P0-1: curve handles. The kernel network stores
-                        // handles on edges (c1 = handle at `from`, c2 = handle
-                        // at `to`); a shapePath is a closed ring through the
-                        // vertices in order, so vertex i's outgoing handle is
-                        // edge[i].c1 and its incoming handle edge[i-1].c2
-                        // (22 号字典 §1 table; Disconnected keeps both ends
-                        // independent, which matches the kernel edge model).
-                        let count = net.vertices.len();
-                        let ring = count > 0
-                            && net.edges.len() == if closed { count } else { count - 1 }
-                            && net.edges.iter().enumerate().all(|(i, e)| {
-                                let next = (i + 1) % count;
-                                e.from == net.vertices[i].id && e.to == net.vertices[next].id
-                            });
-                        if !ring {
-                            note_lossy(&mut lossy, "network-topology-flattened-to-ring");
-                        }
-                        net.vertices
-                            .iter()
-                            .enumerate()
-                            .map(|(i, v)| {
-                                let (c1, c2) = if ring {
-                                    (
-                                        net.edges.get(i).and_then(|e| e.c1),
-                                        if i > 0 {
-                                            net.edges[i - 1].c2
-                                        } else if closed {
-                                            net.edges[count - 1].c2
-                                        } else {
-                                            None
-                                        },
-                                    )
-                                } else {
-                                    (None, None)
-                                };
-                                let mode = curve_mode_of(v, c1, c2);
-                                let mirror = |p: Option<crate::math::Point>| match p {
-                                    Some(p) => json!({"_class": "point", "x": p.x, "y": p.y}),
-                                    None => json!({"_class": "point", "x": v.x, "y": v.y}),
-                                };
-                                json!({
-                                    "_class": "curvePoint", "curveMode": mode,
-                                    "hasCurveFrom": c1.is_some(), "hasCurveTo": c2.is_some(),
-                                    "point": {"_class": "point", "x": v.x, "y": v.y},
-                                    "curveFrom": mirror(c1), "curveTo": mirror(c2),
-                                    "cornerRadius": corner_radii.get(i).copied().unwrap_or(0.)
-                                })
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                // Curve points are frame-normalized "{x, y}" strings. Local
+                // pixel objects are not a Sketch curvePoint and native Sketch
+                // refuses the archive. Handles stay f64; only a non-chain is
+                // reported, and it is not redrawn as a coarser polyline here.
+                let points = match n.network.as_ref() {
+                    Some(net) => shape_path_curve_points(
+                        net,
+                        n.width,
+                        n.height,
+                        closed,
+                        &corner_radii,
+                        &mut lossy,
+                    )?,
+                    None => Vec::new(),
+                };
                 layer.insert("points".into(), Value::Array(points));
             }
             "text" => {
@@ -7001,6 +7173,12 @@ fn export_layer_impl(
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
+        // Admission scales shapePath points only when this marker is set.
+        // Native Sketch ignores the namespace; the coordinates themselves are
+        // already frame-normalized strings.
+        if class == "shapePath" {
+            user_info.insert("geometryUnits".into(), json!("normalized"));
+        }
         if let Some(l) = &n.layout {
             use crate::layout::Align::{UnsafeCenter, UnsafeEnd};
             if l.wrap || matches!(l.justify, UnsafeCenter | UnsafeEnd) || matches!(l.align, UnsafeCenter | UnsafeEnd) {
@@ -9066,6 +9244,28 @@ mod tests {
     }
 
     #[test]
+    fn sketch_curve_units_keep_f64_bits_and_match_the_triangle_example() {
+        for value in [
+            0.0,
+            -0.0,
+            1.0,
+            0.5,
+            1e-7,
+            1e20,
+            f64::from_bits(0x3ff0_0000_0000_0001),
+        ] {
+            let text = sketch_unit(value).unwrap();
+            assert!(sketch_unit_schema(&text), "{text}");
+            assert!(text.parse::<f64>().unwrap().to_bits() == value.to_bits(), "{text}");
+        }
+        assert_eq!(sketch_curve_coordinate(0., 24., 24., 24.).unwrap(), "{0, 1}");
+        assert_eq!(sketch_curve_coordinate(12., 0., 24., 24.).unwrap(), "{0.5, 0}");
+        assert_eq!(sketch_curve_coordinate(24., 24., 24., 24.).unwrap(), "{1, 1}");
+        assert!(frame_unit(5., 0.).is_err());
+        assert_eq!(frame_unit(-0.0, 0.).unwrap().to_bits(), (-0.0f64).to_bits());
+    }
+
+    #[test]
     fn curve_handles_round_trip_through_curve_points() {
         // 21 号 P0-1: network c1/c2 handles survive as curveFrom/curveTo.
         let mut doc = sample_document();
@@ -9118,7 +9318,10 @@ mod tests {
         doc.pages[0].children.push("n3".into());
         doc.nodes.insert("n3".into(), path);
 
-        let back = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
+        // Admission scales the frame-normalized archive back to local pixels.
+        let back = import_sketch_report(&export_sketch(&doc).unwrap())
+            .unwrap()
+            .document;
         let node = back.nodes.get("n3").unwrap();
         let net = node.network.as_ref().expect("network");
         assert_eq!(net.vertices.len(), 3);
@@ -9135,6 +9338,8 @@ mod tests {
 
     #[test]
     fn non_ring_networks_report_topology_loss() {
+        // A single sequential edge is an open contour, not a broken ring.
+        // A branch cannot be one shapePath, so the exporter reports that.
         let mut doc = sample_document();
         let mut path = crate::facet::sample_node("n3", "path");
         path.network = Some((crate::scene::Network {
@@ -9150,14 +9355,28 @@ mod tests {
                     x: 1.,
                     y: 1.,
                 },
+                crate::scene::Vertex {
+                    id: "v2".into(),
+                    x: 0.,
+                    y: 1.,
+                },
             ],
-            edges: vec![crate::scene::Edge {
-                id: "e0".into(),
-                from: "v0".into(),
-                to: "v1".into(),
-                c1: Some(crate::math::Point::new(0.5, 0.5)),
-                c2: None,
-            }],
+            edges: vec![
+                crate::scene::Edge {
+                    id: "e0".into(),
+                    from: "v0".into(),
+                    to: "v1".into(),
+                    c1: Some(crate::math::Point::new(0.5, 0.5)),
+                    c2: None,
+                },
+                crate::scene::Edge {
+                    id: "e1".into(),
+                    from: "v0".into(),
+                    to: "v2".into(),
+                    c1: None,
+                    c2: None,
+                },
+            ],
             fill_rule: "nonzero".into(),
         }).into());
         doc.pages[0].children.push("n3".into());
@@ -9270,7 +9489,10 @@ mod tests {
 
         // Editing modes may re-derive from the retained geometry; they cannot
         // erase active controls or invent inactive ones during the round trip.
-        let re = export_sketch(&back).unwrap();
+        // Re-export the admitted pixel network. The low-level import above
+        // still holds the file's unit numbers and is not a second scaling.
+        let admitted = import_sketch_report(&encoded).unwrap().document;
+        let re = export_sketch(&admitted).unwrap();
         let re_files = read_zip(&re).unwrap();
         let re_page: Value = serde_json::from_slice(&re_files[&name]).unwrap();
         let points = re_page["layers"][2]["points"].as_array().unwrap();
@@ -9284,11 +9506,11 @@ mod tests {
         assert_eq!(points[0]["hasCurveTo"], true);
         assert_eq!(points[1]["hasCurveFrom"], false);
         assert_eq!(points[1]["hasCurveTo"], true);
-        let reopened = import_sketch(&re).unwrap();
-        assert_eq!(reopened.nodes["n3"].network, node.network);
+        let reopened = import_sketch_report(&re).unwrap().document;
+        assert_eq!(reopened.nodes["n3"].network, admitted.nodes["n3"].network);
         assert_eq!(
             reopened.nodes["n3"].bindings.get("sketchPointCornerRadii"),
-            node.bindings.get("sketchPointCornerRadii")
+            admitted.nodes["n3"].bindings.get("sketchPointCornerRadii")
         );
     }
 

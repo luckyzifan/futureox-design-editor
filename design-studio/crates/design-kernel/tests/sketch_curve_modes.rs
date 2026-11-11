@@ -480,7 +480,9 @@ fn export_derives_curve_mode_from_handle_geometry() {
 
 #[test]
 fn native_document_round_trips_modes_handles_and_radii() {
-    let node = import_network(json!([
+    // Admission converts the file's unit strings into the 100×100 frame.
+    // Re-export must write those pixels back as the same unit strings.
+    let admitted = import_sketch_report(&native_sketch(json!([
         // Inactive stored handles remain ignored; the radius is kept.
         {"_class":"curvePoint","point":"{0, 0}","curveFrom":"{0.3, 0.3}",
          "curveTo":"{-0.3, -0.3}","hasCurveFrom":false,"hasCurveTo":false,
@@ -497,14 +499,13 @@ fn native_document_round_trips_modes_handles_and_radii() {
         {"_class":"curvePoint","point":"{0, 1}","curveFrom":"{0.2, 1}",
          "curveTo":"{-0.1, 1}","hasCurveFrom":true,"hasCurveTo":true,
          "curveMode":4,"cornerRadius":0.0}
-    ]));
-    let doc = {
-        let mut d = kernel_doc(node.network.as_deref().expect("network").clone());
-        let target = d.nodes.get_mut("n1").unwrap();
-        target.bindings = node.bindings.clone();
-        d
-    };
-    let points = exported_shape_points(&doc);
+    ]))).unwrap().document;
+    // Source bindings such as per-point radii live in admission metadata.
+    // Export merges them; rebuilding a bare node would drop that contract.
+    let points = exported_shape_points(&admitted);
+    assert!(points.iter().all(|point| {
+        point["point"].is_string() && point["curveFrom"].is_string() && point["curveTo"].is_string()
+    }));
     let modes: Vec<i64> = points
         .iter()
         .map(|p| p["curveMode"].as_i64().unwrap())
