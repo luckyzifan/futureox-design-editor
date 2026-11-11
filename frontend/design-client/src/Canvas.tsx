@@ -25,7 +25,7 @@ import { nudgePreference } from './nudge-preference'
 import { createKeyboardNudgeGesture } from './keyboard-nudge-gesture'
 import { isDimensionNudgeCommand, nudgeSelectionDimensions } from './canvas-workflow-shortcuts'
 import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
-import { deepSelectChord, doubleClickFollowUp, enterKeyEditsText } from './figma-basic-ops'
+import { deepSelectChord, doubleClickFollowUp, enterKeyEditsOutline, enterKeyEditsText } from './figma-basic-ops'
 import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { StartupPreview } from './StartupPreview'
 import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
@@ -1323,9 +1323,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (editor.selectChildren()) return
         if (editor.state.selection.length === 1) {
           const selected = editor.state.doc.nodes[editor.state.selection[0]]
-          // Figma Enter edits a selected text layer. Containers already
-          // consumed the key as Select Child. Shapes stay shapes.
-          if (enterKeyEditsText(selected, !editor.topSelection().includes(selected.id))) setTextEdit(selected.id)
+          const top = editor.topSelection()
+          // Text and containers are handled above. A plain rectangle, ellipse,
+          // polygon, star, line, or network path enters the existing outline
+          // overlay. Enter and Escape do not write the document; the first
+          // anchor edit is the one undo back to the original shape.
+          if (enterKeyEditsText(selected, !top.includes(selected.id))) setTextEdit(selected.id)
+          else if (enterKeyEditsOutline(editor.state.selection, top, selected))
+            editor.set({ tool: 'vector', editingVertex: null, editingVertices: [] })
         }
         return
       }
@@ -2838,7 +2843,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (followUp === 'instance')
           editor.notify('实例内容由主组件派生：右键“分离实例”后即可编辑子元素', { key: 'instanceDetachHint' })
         else if (followUp === 'edit-text' && id) setTextEdit(id)
-        else if (followUp === 'edit-vector') editor.set({ tool: 'vector', editingVertex: null })
+        else if (followUp === 'edit-vector') editor.set({ tool: 'vector', editingVertex: null, editingVertices: [] })
       }}
     >
       {state.tool==='eyedropper' && colorPick && <div className="canvas-color-tooltip" role="status" data-testid="color-sample-loupe"
