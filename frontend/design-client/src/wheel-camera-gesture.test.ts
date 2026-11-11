@@ -32,6 +32,20 @@ test('opposing zoom and pan runs return to the original native tile phase',()=>{
  zoom(1.7,6,true)
  expect(view).toEqual(dense)
 })
+test('unequal batches of trusted float wheel deltas restore the native camera on reversal',()=>{
+ const base={x:36.09967320261438,y:348.7826797385621,zoom:.05065359477124183}
+ const zoom=(trusted:boolean,residual=0)=>{
+  const gesture=new WheelCameraGesture()
+  const input=(deltaY:number)=>({deltaX:0,deltaY,deltaMode:0,ctrlKey:true,isTrusted:trusted})
+  let view=base
+  for(let i=0;i<12;i++)view=gesture.update(view,input(-179.1244659423828),size,anchor)
+  for(let i=0;i<10;i++)view=gesture.update(view,input(Math.fround(214.94937133789062+(i===9?residual:0))),size,anchor)
+  return view
+ }
+ expect(zoom(true)).toEqual(base)
+ expect(zoom(false)).not.toEqual(base)
+ expect(zoom(true,.001)).not.toEqual(base)
+})
 test('changed anchor, pan, external camera and modifier semantics restart from the current camera',()=>{
  const gesture=new WheelCameraGesture(),event={deltaX:0,deltaY:-120,deltaMode:0,ctrlKey:true}
  let view=gesture.update(initial,event,size,anchor)

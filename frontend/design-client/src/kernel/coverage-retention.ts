@@ -1,6 +1,8 @@
 import type { Bounds } from '../model'
+import type { CanvasCamera } from '../canvas-camera'
 
-type Frame = { revision: number; bounds: Bounds; keys: ReadonlySet<string>; bytes: number }
+type Viewport = { view: CanvasCamera; width: number; height: number; dpr: number }
+type Frame = { revision: number; bounds: Bounds; keys: ReadonlySet<string>; bytes: number; native?: Viewport }
 
 /** Keep the widest completed view as a bounded coverage layer. Ordinary LRU
  * favours recently magnified tiles, which can evict every pixel needed by the
@@ -22,5 +24,11 @@ export class CoverageRetention {
   }
 
   has(key: string) { return this.frame?.keys.has(key) === true }
+  nativeKeys(revision: number, view: CanvasCamera, width: number, height: number, dpr: number) {
+    const frame = this.frame, native = frame?.native
+    if (frame?.revision === revision && native?.width === width && native.height === height &&
+        native.dpr === dpr && native.view.x === view.x && native.view.y === view.y && native.view.zoom === view.zoom)
+      return frame.keys
+  }
   clear() { this.frame = undefined }
 }

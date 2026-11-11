@@ -36,3 +36,16 @@ test('coverage never pins another revision or exceeds its share of a resized dis
   coverage.trim(2, 30)
   expect(coverage.has('new-page')).toBe(false)
 })
+
+test('only the retained native camera, revision and physical viewport can skip the preview wait', () => {
+  const coverage = new CoverageRetention()
+  const view = { x: 36.099673, y: 348.782679, zoom: .050653594 }
+  coverage.retain({ ...frame('exact', 10000), native: { view, width: 855, height: 928, dpr: 2 } }, 120)
+  expect(coverage.nativeKeys(1, { ...view }, 855, 928, 2)).toEqual(new Set(['exact']))
+  expect(coverage.nativeKeys(2, view, 855, 928, 2)).toBeUndefined()
+  expect(coverage.nativeKeys(1, { ...view, zoom: view.zoom + 1e-10 }, 855, 928, 2)).toBeUndefined()
+  expect(coverage.nativeKeys(1, view, 855, 928, 1)).toBeUndefined()
+  expect(coverage.nativeKeys(1, view, 854, 928, 2)).toBeUndefined()
+  coverage.clear()
+  expect(coverage.nativeKeys(1, view, 855, 928, 2)).toBeUndefined()
+})

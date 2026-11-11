@@ -555,6 +555,9 @@ export function ProgressiveSurfaceImpl(
         bounds: { x: -plan.view.x / plan.view.zoom, y: -plan.view.y / plan.view.zoom,
           width: plan.width / plan.view.zoom, height: plan.height / plan.view.zoom },
         keys: plan.ids, bytes: estimatedTileResidencyBytes(residents.values()),
+        native: residentDisplay && plan.samplingMode === 'native' &&
+          plan.rasterScale === plan.view.zoom * plan.dpr && [...residents.values()].every(tile => !tile.viewportPreview)
+          ? { view: plan.view, width: plan.width, height: plan.height, dpr: plan.dpr } : undefined,
       }, budget)
       const used = estimatedTileResidencyBytes(tileRef.current.values()) > budget ? compositeCacheUse() : new Set<PaintedTile>()
       if (used.size) tileRef.current = touchCompositeContributors(tileRef.current, used)
@@ -605,12 +608,10 @@ export function ProgressiveSurfaceImpl(
     !nativeNavigation && !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles)
   const latestNativeNavigation = useRef(nativeNavigation)
   latestNativeNavigation.current = nativeNavigation
-  const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
+  const navigationGesture = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
     !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
     residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation,
     import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay && !filteredContent)
-  const latestNavigationZoom = useRef(navigationZoom)
-  latestNavigationZoom.current = navigationZoom
   const frameZooming=useZoomActivity(view.zoom,identity)
   const sharpZooming=useSharpZoomActivity(sharpNavigation?view.zoom:1,sharpNavigation?identity:'sharp-disabled')
   const zooming=sharpNavigation?sharpZooming:frameZooming
@@ -640,6 +641,23 @@ export function ProgressiveSurfaceImpl(
   }, [contract.revision, lodSnapshots])
   const dpr = useDevicePixelRatio()
   const detailLevel = view.zoom * dpr
+  const requestedView = props.requestedView || view
+  // The retained viewport has already passed the presenter at this exact
+  // camera. Recheck every live tile before skipping the preview-only wait.
+  const retainedNativeKeys = navigationGesture.active && residentDisplay && filteredContent &&
+    !nativeNavigation && !cameraDependent && !props.panGestureActive && !props.animation &&
+    syncedDoc.current === doc && view.x === requestedView.x && view.y === requestedView.y && view.zoom === requestedView.zoom
+    ? coverageRetention.current.nativeKeys(contract.revision, view, width, height, dpr) : undefined
+  const nativeReturnReady = !!retainedNativeKeys && previewDevice.current.client === rasterClient &&
+    !!previewDevice.current.key && [...retainedNativeKeys].every(key => {
+      const tile = tileRef.current.get(key)
+      return tile?.document === doc && tile.revision === contract.revision && tile.zoom === detailLevel &&
+        ready.current.has(key) && !!tile.gpuTile && tile.residentDevice?.client === rasterClient &&
+        tile.residentDevice.key === previewDevice.current.key
+    })
+  const navigationZoom = nativeReturnReady ? { ...navigationGesture, active: false, sample: undefined } : navigationGesture
+  const latestNavigationZoom = useRef(navigationZoom)
+  latestNavigationZoom.current = navigationZoom
   const stableDensity = useRasterDensity(detailLevel, identity)
   // Camera motion starts useful raster work now. During zoom, a small density
   // headroom keeps completed work sharp across adjacent input frames. The
@@ -675,7 +693,7 @@ export function ProgressiveSurfaceImpl(
     samplingScale: nativeSampling ? undefined : samplingScale,
     // Pointer release already carries the flushed final camera. The separate
     // two-frame activity signal must not insert a provisional phase before it.
-    exactPhase: (!cameraMoving && !zooming) || retainNativePanPhase ||
+    exactPhase: nativeReturnReady || (!cameraMoving && !zooming) || retainNativePanPhase ||
       (navigationZoom.panEnabled && !navigationZoom.active),
   })
   const renderScale = rasterPlan.scale
@@ -727,7 +745,6 @@ export function ProgressiveSurfaceImpl(
   sequentialGoal.current = JSON.stringify([frameKey, zooming])
   if (navigationTiming.current.key !== frameKey)
     navigationTiming.current = { key: frameKey, started: performance.now() }
-  const requestedView = props.requestedView || view
   const compositeOwner: CompositeCacheOwner & { displayBudget: number; residencyBudget: number; displayed: DisplayFrame | null } = {
     document: doc, revision: contract.revision, pageId,
     epoch: props.presentationEpoch || 0, backend, client: client.current, resident: residentDisplay,
@@ -1637,7 +1654,7 @@ export function ProgressiveSurfaceImpl(
         // Seed bounded local coverage before capture/viewport-cache early returns,
         // including the latest zoom-out target. Edits retain the settle lane and
         // do not pay for a page overview on pointer release.
-        if (residentDisplay && !coveredHighZoomOut && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
+        if (residentDisplay && !nativeReturnReady && !coveredHighZoomOut && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
             !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && (!navigationZoom.active || zoomOutCoverage) &&
             (!displayed || (displayed.document === doc && displayed.revision === contract.revision && previousView &&
               (previousView.x !== view.x || previousView.y !== view.y || previousView.zoom !== view.zoom)))) {
@@ -2342,6 +2359,7 @@ export function ProgressiveSurfaceImpl(
     renderScale,
     renderPhase.x,
     renderPhase.y,
+    nativeReturnReady,
     navigationZoom.active,
     navigationZoom.sample?.sequence,
     navigationZoom.suspended,
