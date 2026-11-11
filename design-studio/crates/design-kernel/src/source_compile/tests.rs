@@ -118,6 +118,29 @@ fn default_source_compiler_uses_subset_and_reuses_it_across_cameras() {
     assert_eq!(actual.doc.as_ref().unwrap().nodes.len(), 4);
 }
 #[test]
+fn analytic_overview_tiles_match_complete_packets_at_adjacent_crops() {
+    let mut d = document();
+    d.color_management = None;
+    d.nodes.get_mut("c").unwrap().effects =
+        serde_json::from_value(json!([{"kind":"background-blur","radius":8,"color":"#000000"}]))
+            .unwrap();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "analytic-complete");
+    let mut actual = owner(d, "analytic-overview");
+    let mut runtime = Runtime::default();
+    let mut r = request(-240.25, -240.375, 0.5);
+    r["rasterProfile"] = json!("analytic");
+    for x in [0, 64] {
+        r["gpuViewport"]["x"] = json!(x);
+        compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+        assert_eq!(runtime.stats["mode"], "demand");
+    }
+    r["view"]["zoom"] = json!(2.0);
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(runtime.stats["reason"], "request-contract");
+}
+
+#[test]
 fn maximum_ui_zoom_compiles_at_native_dpr_without_relaxing_pixel_budgets() {
     let d=document();let desc=descriptor(&d);
     let mut actual=owner(d.clone(),"high-zoom");let mut expected=owner(d,"high-zoom-reference");

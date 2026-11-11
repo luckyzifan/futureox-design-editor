@@ -102,9 +102,19 @@ impl Query {
         object.remove("gpuPainterSupport");
         object.remove("gpuPainterCaptureReads");
         let options = owner.parse_options(value)?;
+        // Unmanaged native overviews use analytic sampling. Their ordinary
+        // display tiles use the same conservative world support and margins.
+        // Keep other analytic requests on the complete compiler.
+        let analytic_overview = options.raster_profile == crate::fidelity::RasterProfile::Analytic
+            && options.view.zoom <= 1.0
+            && header.or(owner.doc.as_deref()).is_some_and(|doc| doc.color_management.is_none())
+            && background == Some(Value::Bool(true))
+            && !is_capture
+            && !options.grid
+            && !options.checkerboard;
         if options.animation.is_some()
             || options.pixel_preview.is_some()
-            || options.raster_profile != crate::fidelity::RasterProfile::FigmaSubpixel
+            || (options.raster_profile != crate::fidelity::RasterProfile::FigmaSubpixel && !analytic_overview)
             || options.interactive_effects
         {
             return Ok(None);
@@ -374,9 +384,8 @@ impl Runtime {
             crate::render_cancellation::checkpoint()?;
             bounds.map(|bounds|bounds.into_iter().map(|b|[b[0]+view.x,b[1]+view.y,b[2]+view.x,b[3]+view.y]).collect::<Vec<_>>())
         } else {None};
-        let mut demand = plan.catalog.viewport_for_compile(
-            camera, query.prepare.expand(4), &AtomicBool::new(false),
-        )?;
+        let mut guard = query.prepare.expand(4);
+        let mut demand = plan.catalog.viewport_for_compile(camera, guard, &AtomicBool::new(false))?;
         let demand_stats=demand.stats();
         // A complete demand stays on the old compiler without destroying its
         // warm geometry on every tile. Only an actual subset needs the handoff.
@@ -493,29 +502,33 @@ impl Runtime {
             // minting transfer IDs or exposing a packet to the renderer.
             std::mem::swap(&mut compiler.frame_scene, &mut owner.frame_scene);
             let result = compiler.compile_gpu_packet_request_checked(request, |scene| {
+                let extent_guard = query.prepare.union(scene.extent).expand(4);
+                if extent_guard == guard {
+                    // This identical guard was already closed by the catalogue.
+                    return Ok(());
+                }
                 let next = catalog.viewport_for_compile(
-                    camera,
-                    query.prepare.union(scene.extent).expand(4),
-                    &AtomicBool::new(false),
+                    camera, extent_guard, &AtomicBool::new(false),
                 )?;
                 if next
                     .unit_key()
                     .iter()
                     .any(|u| active_units.binary_search(u).is_err())
                 {
-                    expanded = Some(next);
+                    expanded = Some((extent_guard, next));
                     return Err("SOURCE_DEMAND_REPLAN".into());
                 }
                 Ok(())
             });
             let cache = compiler.gpu_compile_cache_stats();
             std::mem::swap(&mut compiler.frame_scene, &mut owner.frame_scene);
-            if let Some(next) = expanded {
+            if let Some((extent_guard, next)) = expanded {
                 expansions += 1;
                 if expansions > 1 {
                     drop(margin);
                     return self.full(owner, request, "scope-convergence", started);
                 }
+                guard = extent_guard;
                 demand = next;
                 continue;
             }
