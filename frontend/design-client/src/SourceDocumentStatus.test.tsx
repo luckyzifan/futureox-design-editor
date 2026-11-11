@@ -37,6 +37,29 @@ test('native rendering progress is not labelled as a ready file',()=>{
  expect(html).toContain('正在绘制');expect(html).not.toContain('文件已就绪')
 })
 
+test('a conversion-window reject names the fixed limit, keeps the original text, and offers the smaller-subtree entry',()=>{
+ const error='大型文档：Source subtree exceeds the bounded conversion window; select a smaller subtree'
+ const html=renderToStaticMarkup(<SourceDocumentStatus source={{error,notice:'',busy:false,warnings:[],failureStage:'refine',stageReport:{
+  directory:{status:'ready',detail:'目录：2 页 / 3 个素材'},
+  preview:{status:'ready',detail:'预览：3/3 张缩略图'},
+  refine:{status:'rejected',detail:'完整精修：超过固定转换窗口，尚未完成'},
+  edit:{status:'idle',detail:'编辑尚未开始'},
+ }} as unknown as SourceWorkspace}/>)
+ expect(html).toContain('完整精修未完成')
+ expect(html).toContain('固定转换窗口')
+ expect(html).toContain('选择较小页面、素材或子树')
+ expect(html).toContain('无需退出其他应用')
+ expect(html).not.toContain('可释放其他应用的内存后重试')
+ expect(html).toContain(error)
+ expect(html).toContain('data-stage="directory"')
+ expect(html).toContain('data-status="ready"')
+ expect(html).toContain('data-stage="refine"')
+ expect(html).toContain('data-status="rejected"')
+ expect(html).toContain('data-stage="edit"')
+ expect(html).toContain('data-status="idle"')
+ expect(html).toContain('技术详情')
+})
+
 test('background viewport refinement does not reopen the file loading card',()=>{
  const source={error:'',notice:'正在准备画板',busy:true,warnings:[],navigatingMaterials:true} as unknown as SourceWorkspace
  expect(renderToStaticMarkup(<SourceDocumentStatus source={source}/>)).not.toContain('source-status-card')

@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { AlertCircle, CheckCircle2, LoaderCircle, X } from 'lucide-react'
 import { importWarningText } from './ImportNotice'
 import type { SourceWorkspace } from './LargeDocumentWorkspace'
-import { sourceErrorSummary } from './source-error-text'
+import { focusSmallerSourceEntry, sourceErrorKind, sourceErrorSummary } from './source-error-text'
 export { sourceErrorSummary }
 
 /** Compact status uses the existing workbench tokens; native details stay available. */
@@ -26,10 +26,21 @@ export function SourceDocumentStatus({source}:{source:SourceWorkspace}) {
   // file operation card available for initial loading and genuine errors.
   const showStatus=identity!==dismissed&&(source.error||!source.navigatingMaterials&&(source.notice||pending))
   if(!showStatus&&!source.warnings.length)return null
+  const kind=source.error?sourceErrorKind(source.error):undefined
+  const title=source.error
+    ? source.failureStage==='directory'?'目录未完成'
+      : source.failureStage==='preview'?'预览未完成'
+      : source.failureStage==='refine'?'完整精修未完成'
+      : source.failureStage==='edit'?'编辑未完成'
+      : '操作未完成'
+    : source.openingPreview&&(!source.nativeCanvas||source.hideNative)?'素材预览':source.busy?'正在载入':rendering?'正在绘制':'文件已就绪'
+  const stages=source.stageReport
   return <aside className="source-canvas-status" aria-label="源文件状态">
-    {showStatus&&<section className={`source-status-card${pending?' is-pending':''}`} data-error={!!source.error}>
-      <div className="source-status-title">{source.error?<AlertCircle size={15}/>:pending?<LoaderCircle size={15}/>:<CheckCircle2 size={15}/>}<strong>{source.error?'操作未完成':source.openingPreview&&(!source.nativeCanvas||source.hideNative)?'素材预览':source.busy?'正在载入':rendering?'正在绘制':'文件已就绪'}</strong><button aria-label="关闭状态提示" onClick={()=>{setDismissed(identity);if(source.error)source.dismissError?.()}}><X size={14}/></button></div>
+    {showStatus&&<section className={`source-status-card${pending?' is-pending':''}`} data-error={!!source.error} data-failure-stage={source.failureStage||undefined}>
+      <div className="source-status-title">{source.error?<AlertCircle size={15}/>:pending?<LoaderCircle size={15}/>:<CheckCircle2 size={15}/>}<strong>{title}</strong><button aria-label="关闭状态提示" onClick={()=>{setDismissed(identity);if(source.error)source.dismissError?.()}}><X size={14}/></button></div>
       <p role={source.error?'alert':'status'}>{source.error?sourceErrorSummary(source.error):source.notice||'正在准备页面…'}</p>
+      {kind==='window'&&<button type="button" className="source-window-action" onClick={()=>focusSmallerSourceEntry()}>选择较小页面、素材或子树</button>}
+      {source.error&&stages&&<ul className="source-stage-report" aria-label="阶段结果">{(['directory','preview','refine','edit'] as const).map(stage=><li key={stage} data-stage={stage} data-status={stages[stage].status}>{stages[stage].detail}</li>)}</ul>}
       {source.error&&<details><summary>技术详情</summary><pre>{source.error}</pre></details>}
       {pending&&<span className="activity-track" aria-hidden="true" data-determinate={ratio!==undefined?'':undefined} style={ratio!==undefined?{ '--activity-progress': `${Math.round(ratio*100)}%` } as CSSProperties:undefined}><i/></span>}
     </section>}

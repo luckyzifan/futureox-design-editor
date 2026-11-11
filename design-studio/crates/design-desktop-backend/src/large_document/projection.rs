@@ -71,6 +71,10 @@ fn read_span(s: &Session, p: usize, span: Span) -> Result<Vec<u8>> {
         .fragment(&mut file, span, s.parts[p].base_bytes)
         .map_err(issue)
 }
+/// Fixed admit limit for one source subtree or conversion batch. `read_window`
+/// rejects a longer span before it allocates the read buffer. This is not a
+/// process memory measurement and must not be raised to hide a diagnostic.
+pub(super) const CONVERSION_WINDOW_LIMIT: u64 = 64 * 1024 * 1024;
 pub(super) fn read_window(s: &Session, p: usize, span: Span, limit: u64) -> Result<Vec<u8>> {
     if span.len() > limit {
         return Err(issue(
@@ -1203,6 +1207,51 @@ pub(super) fn commit_canvas(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn empty_session() -> Session {
+        Session {
+            version: 1,
+            owner: Owner { document_id: "synthetic".into(), session_epoch: 1 },
+            name: "synthetic-over-limit.sketch".into(),
+            format: "sketch".into(),
+            source_hash: "00".into(),
+            revision: 0,
+            saved_revision: 0,
+            expanded_bytes: 0,
+            max_expanded_bytes: 0,
+            parts: Vec::new(),
+            state: State::default(),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            directory: PathBuf::new(),
+            projection: None,
+            scene: None,
+            canvas_layout: None,
+            canvas_snapshot: None,
+            recent_materials: canvas_snapshot::RecentMaterials::default(),
+            converted_windows: std::sync::Mutex::new(window_cache::Windows::default()),
+            snapshot_account: canvas_snapshot::Account::default(),
+        }
+    }
+    #[test]
+    fn over_limit_span_is_rejected_before_the_read_buffer_and_keeps_the_64_mib_window() {
+        assert_eq!(CONVERSION_WINDOW_LIMIT, 64 * 1024 * 1024);
+        let cache = include_str!("window_cache.rs");
+        let snapshot = include_str!("canvas_snapshot.rs");
+        assert!(cache.contains("sketch_window_in(s, p, n, projection::CONVERSION_WINDOW_LIMIT, context,cancel)"));
+        assert!(snapshot.contains("sketch_batch_in(s,batch,projection::CONVERSION_WINDOW_LIMIT,cancel,context)"));
+        assert!(!cache.contains("sketch_window_in(s, p, n, 64 * 1024 * 1024"));
+        let session = empty_session();
+        let message = "Source subtree exceeds the bounded conversion window; select a smaller subtree";
+        for (span, limit) in [
+            (Span { start: 0, end: 1 }, 0),
+            (Span { start: 4, end: 4 + CONVERSION_WINDOW_LIMIT + 1 }, CONVERSION_WINDOW_LIMIT),
+        ] {
+            let error = read_window(&session, 0, span, limit).unwrap_err();
+            assert_eq!(error.code, "LARGE_DOCUMENT_ERROR");
+            assert_eq!(error.message, message);
+            assert!(span.len() > limit);
+        }
+    }
     #[test]
     fn single_root_scan_preserves_reference_and_layer_only_policy_scopes() {
         fn refs(value: &Value, symbols: &mut HashSet<String>, images: &mut HashSet<String>) {
