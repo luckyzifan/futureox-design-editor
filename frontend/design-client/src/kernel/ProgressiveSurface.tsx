@@ -611,7 +611,8 @@ export function ProgressiveSurfaceImpl(
   const navigationGesture = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
     !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
     residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation,
-    import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay && !filteredContent)
+    import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay &&
+      (!filteredContent || (progressiveNativeRepair && !cameraDependent ? 'outward-pan' : false)))
   const frameZooming=useZoomActivity(view.zoom,identity)
   const sharpZooming=useSharpZoomActivity(sharpNavigation?view.zoom:1,sharpNavigation?identity:'sharp-disabled')
   const zooming=sharpNavigation?sharpZooming:frameZooming
@@ -2403,6 +2404,12 @@ export function ProgressiveSurfaceImpl(
     plan.pageId === pageId && plan.epoch === (props.presentationEpoch || 0)
   // Publish the target lattice together, including on camera-only changes.
   const fullPlanReady = currentPlan && !!plan?.ids.size && [...plan.ids].every(key=>ready.current.has(key)) && syncedDoc.current===doc
+  // A clipped edit replaces only part of the viewport. Its unaffected pixels
+  // still belong to the last exact frame at this camera, even when a cached
+  // continuity image also covers the screen.
+  const keepEditBase = residentDisplay && (props.interaction?.active || props.interactionPreview) &&
+    displayed && !displayed.preview && (reusableFrame || retainedEditViewport) &&
+    displayed.view.x === requestedView.x && displayed.view.y === requestedView.y && displayed.view.zoom === requestedView.zoom
   // A viewport preview is an atomic replacement only when it is the first
   // picture or the previous picture is another revision. Same-revision
   // residents and partial sharp regions stay in this composite. An exact
@@ -2411,7 +2418,7 @@ export function ProgressiveSurfaceImpl(
   // coverage is not quality.
   const previewCandidate = (tile: PaintedTile, exact: boolean) => {
     const capture = tile.previewSource, device = previewDevice.current
-    if (!(residentDisplay && !hdrCompositing && !fullPlanReady &&
+    if (!(residentDisplay && !hdrCompositing && !fullPlanReady && !keepEditBase &&
       (!displayed || !reusableFrame || navigationZoom.active) && props.visible !== false && !props.paused && !navigationZoom.suspended)) return false
     if (!(tile.viewportPreview && tile.backend === 'webgpu' && tileRef.current.get(tile.key) === tile &&
       tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
@@ -2459,13 +2466,13 @@ export function ProgressiveSurfaceImpl(
     (syncedDoc.current === doc || tile.document === doc)
   // A lower-density preview may also hand off as a whole viewport. A cache
   // hit or a single LOD tile does not authorize a patchwork over the backing.
-  const coarse = !fullPlanReady && canRefine && lodActive ? visible.filter(tile =>
+  const coarse = !fullPlanReady && !keepEditBase && canRefine && lodActive ? visible.filter(tile =>
     !inactiveSet.has(tile) && tileRef.current.get(tile.key) === tile && tile.lod === true &&
     tile.document === doc && tile.revision === contract.revision && tile.zoom === lodScale &&
     ready.current.has(tile.key) && tileIntersectsView(tile,requestedView,{width,height})) : []
   const coarseCohort = coarse.length && navigationHasCoverage(coarse, requestedView, width, height)
     ? new Set(coarse) : undefined
-  const previews = !fullPlanReady && !coarseCohort && canRefine ? visible.filter(tile =>
+  const previews = !fullPlanReady && !keepEditBase && !coarseCohort && canRefine ? visible.filter(tile =>
     !inactiveSet.has(tile) && (!plan?.ids.has(tile.key) || tile.viewportPreview) && tileRef.current.get(tile.key) === tile &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
     tileIntersectsView(tile, requestedView, { width, height })).reverse() : []

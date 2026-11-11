@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { CanvasCamera } from '../canvas-camera'
-import { NavigationZoom, type NavigationZoomSample } from './navigation-zoom'
+import { NavigationZoom, type NavigationZoomOptions, type NavigationZoomSample } from './navigation-zoom'
 
 export function useNavigationZoom(view: CanvasCamera, identity: string, enabled: boolean,
-  includeTranslation = false, pointerHeld = false, sampleOnFrame = false, adaptiveQuiet = false) {
+  includeTranslation = false, pointerHeld = false, sampleOnFrame = false, adaptiveQuiet: NavigationZoomOptions['adaptiveQuiet'] = false) {
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return

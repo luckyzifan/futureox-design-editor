@@ -211,6 +211,8 @@ export type KernelOptions = {
   interactionNative?: boolean
   /** Full-viewport native affine capture; never a cached-pixel warp. */
   interactionAffine?: boolean
+  /** Verify that this fixed native window encloses a stationary Sketch mask. */
+  interactionFixedMask?: boolean
   /** A local interaction capture may need different pixels at final tile boundaries. */
   interactionLocalFootprint?: boolean
   /** Ancestors of a moving nested object must remain live compositions. */

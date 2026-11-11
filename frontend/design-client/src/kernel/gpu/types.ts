@@ -165,6 +165,8 @@ export type GpuScene = {
   /** Worker-owned quality of a transient selected-object capture. */
   gestureSoftEffects?: boolean
   interactionLocalFootprint?: boolean
+  /** Native worker verified the stationary mask and its output window. */
+  interactionFixedMask?: boolean
   disableSparseGlass?: boolean
   /** Worker-local proof owner for transform-only recompiles; never a document field. */
   interactionLease?: object

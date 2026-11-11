@@ -38,8 +38,8 @@ function fixture() {
       driver.completedResourceEpoch = Math.max(driver.completedResourceEpoch, driver.resourceEpoch - 1)
     }) }
   const renderer = new GpuRenderer(driver as unknown as Driver, true, false, load) as any
-  const region = async (uris: string[]) => {
-    renderer.scene = scene(uris); renderer.used.clear(); await renderer.loadImages(renderer.scene)
+  const region = async (uris: string[], interactionFixedMask = false) => {
+    renderer.scene = {...scene(uris),interactionFixedMask}; renderer.used.clear(); await renderer.loadImages(renderer.scene)
   }
   return { renderer, driver, kernel, load, uploaded, region,
     get context() { return context }, set context(value: ImageContext) { context = value },
@@ -47,14 +47,16 @@ function fixture() {
     setRequest(value: boolean) { requestCurrent = value } }
 }
 
-test('native pose ownership reuses needed images without retaining unused region assets',async()=>{
+test.each([false,true])('native pose retains unused same-owner images only for a verified mask window (%s)',async fixedMask=>{
  const f=fixture();vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY','0')
  f.renderer.residentImageRequest=true
  await f.region([A,B]);const a=f.renderer.imageFor(A),b=f.renderer.imageFor(B)
  f.renderer.residentImageRequest=false;f.renderer.frameImageReuse=true
- await f.region([A])
- expect(f.renderer.imageFor(A)).toBe(a);expect(f.renderer.images.has(B)).toBe(false)
- expect(f.driver.destroy).toHaveBeenCalledWith(b.texture);expect(f.driver.uploadLinear).toHaveBeenCalledTimes(2)
+ await f.region([A],fixedMask)
+ expect(f.renderer.imageFor(A)).toBe(a);expect(f.renderer.images.has(B)).toBe(fixedMask)
+ if(fixedMask)expect(f.driver.destroy).not.toHaveBeenCalled()
+ else expect(f.driver.destroy).toHaveBeenCalledWith(b.texture)
+ expect(f.driver.uploadLinear).toHaveBeenCalledTimes(2)
  expect(f.renderer.imageAssetCounters.scopeRetiredTextures).toBe(0)
  f.context={...f.context,scope:'replacement'};f.setPixels(.75)
  await f.region([A]);expect(f.renderer.imageFor(A).texture).not.toBe(a.texture)

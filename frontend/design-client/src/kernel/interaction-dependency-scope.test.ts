@@ -6,6 +6,27 @@ import { pageBackdropPadding, planInteractionLayers } from './interaction-layers
 import { allowsReducedSampling } from './render-quality'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
 
+test('a stationary Sketch shape mask bounds the rotation of its bitmap sibling', () => {
+  const document = blank(), page = document.pages[0]
+  const group = node('group', 60, 90, 120, 80)
+  const mask = node('rectangle', 0, 0, 120, 80)
+  mask.mask = true
+  mask.maskType = 'shape'
+  const image = node('rectangle', -100, -100, 400, 250)
+  image.fills = [paint('#ffffff', 'image')]
+  group.children = [mask.id, image.id]
+  page.children = [group.id]
+  document.nodes = { [group.id]: group, [mask.id]: mask, [image.id]: image }
+  const bounds = () => buildInteractionDependencyScope(document, page.id, scene(document, page.id),
+    [image.id], { zoom: 1, dpr: 2, allowFixedBackdrop: false }).maskedRotationBounds
+  expect(bounds()).toEqual({ x: 60, y: 90, width: 120, height: 80 })
+  image.maskChain = 'break'
+  expect(bounds()).toBeUndefined()
+  image.maskChain = undefined
+  group.effects = [effect('blur')]
+  expect(bounds()).toBeUndefined()
+})
+
 // Frozen inline localization logic from the tested pre-refactor renderer.
 function reference(document: DesignDocument, selection: string[], zoom: number, dpr: number, allowFixedBackdrop: boolean) {
   const pageId = document.pages[0].id, entries = scene(document, pageId)

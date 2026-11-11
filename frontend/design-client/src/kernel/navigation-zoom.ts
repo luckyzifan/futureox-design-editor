@@ -20,7 +20,7 @@ const CADENCE_REQUIRED_INTERVALS = CADENCE_INTERVALS
 const CADENCE_QUIET_MULTIPLIER = 3
 /** Experimental only: the normal React hook deliberately uses conservative
  * settling until hardware-backed input/display measurements justify a change. */
-export type NavigationZoomOptions = { adaptiveQuiet?: boolean; includeTranslation?: boolean; sampleOnFrame?: boolean }
+export type NavigationZoomOptions = { adaptiveQuiet?: boolean | 'outward-pan'; includeTranslation?: boolean; sampleOnFrame?: boolean }
 export type NavigationZoomSample = { active: boolean; view: CanvasCamera; sequence: number }
 export class NavigationZoom {
   private target: CanvasCamera
@@ -29,6 +29,8 @@ export class NavigationZoom {
   private stableFrames = 0
   private intervals: number[] = []
   private resumedBeforeQuiet = false
+  private zoomingOut = false
+  private panning = false
   private held = false
   sample: NavigationZoomSample
   constructor(view: CanvasCamera, private readonly options: NavigationZoomOptions = {}) {
@@ -50,11 +52,18 @@ export class NavigationZoom {
     const held = !!this.options.includeTranslation && pointerHeld
     const released = this.held && !held
     const changed = this.inputChanged(view) || held && !this.held
+    if (view.zoom !== this.target.zoom) {
+      this.zoomingOut = view.zoom < this.target.zoom
+      this.panning = false
+    } else if (changed) {
+      this.panning = !held && (view.x !== this.target.x || view.y !== this.target.y)
+    }
     this.held = held
     this.target = { ...view }
     // Canvas flushes the final pointer position before releasing its gesture.
     // A known release needs no guessed quiet interval before exact refinement.
     if (released) {
+      this.zoomingOut = false
       this.changedAt = now; this.stableFrames = 0
       return this.publish(false, now)
     }
@@ -83,10 +92,19 @@ export class NavigationZoom {
     // Observe stability during the quiet interval, rather than adding another
     // frame after it. A zoom update resets this counter, including reversals.
     if (now > this.changedAt) this.stableFrames++
-    const quiet = !this.options.adaptiveQuiet || this.resumedBeforeQuiet || this.intervals.length < CADENCE_REQUIRED_INTERVALS ? NAVIGATION_ZOOM_QUIET_MS :
+    // A wheel pan after zoom-out has one sampling density and can reuse its
+    // accepted backing. Let two missing input intervals start native repair.
+    // Zoom ticks and a burst that already resumed early keep the full guard.
+    const outwardPan = this.options.adaptiveQuiet === 'outward-pan' && this.zoomingOut && this.panning
+    const adaptive = this.options.adaptiveQuiet === true || outwardPan
+    const quiet = !adaptive || this.resumedBeforeQuiet || this.intervals.length < CADENCE_REQUIRED_INTERVALS ? NAVIGATION_ZOOM_QUIET_MS :
       Math.min(NAVIGATION_ZOOM_QUIET_MS,
-        Math.max(NAVIGATION_ZOOM_DENSE_QUIET_MS, ...this.intervals.map(interval => interval * CADENCE_QUIET_MULTIPLIER)))
-    if (!this.held && this.stableFrames >= 2 && now - this.changedAt >= quiet) return this.publish(false, now)
+        Math.max(NAVIGATION_ZOOM_DENSE_QUIET_MS, ...this.intervals.map(interval =>
+          outwardPan ? interval * 2 + 8 : interval * CADENCE_QUIET_MULTIPLIER)))
+    if (!this.held && this.stableFrames >= 2 && now - this.changedAt >= quiet) {
+      this.zoomingOut = false
+      return this.publish(false, now)
+    }
     if ((this.options.sampleOnFrame || now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS) && this.hasUnsampledView())
       return this.publish(true, now)
     return this.sample

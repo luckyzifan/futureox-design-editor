@@ -86,6 +86,7 @@ import { loadKernelResources } from './kernel-resources'
 import { preparedTileCanFill, preparedTileContinuation } from './prepared-tile-fallback'
 import { reuseExactSceneSources } from './gpu/exact-scene-reuse'
 import { PrepareAhead } from './prepare-ahead'
+import { fixedSketchMaskWindow } from './interaction-scene-bounds'
 import { withResidentPose } from './gpu/resident-pose-frame'
 import { TranslationPatchSession } from './gpu/translation-patch-session'
 import { DisplayCommandOrder } from './display-command-order'
@@ -379,7 +380,7 @@ function yieldPreviewTask() {
 }
 const queue = new RenderWorkQueue()
 type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
-type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;reuse?:ResidentPoseReuse;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
@@ -523,18 +524,22 @@ function schedulePose(){
           right=Math.min(right,displayRight);bottom=Math.min(bottom,displayBottom)
         }
         if(right<=x||bottom<=y){rebasePose(pose);break}
-        const viewportPatch=session.native===true&&!session.patch&&coversDisplay&&!session.scene.interactionLocalFootprint&&
-          ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
-        // A full-viewport patch consumes absolute poses. The committed pose
-        // can supersede stale GPU work without losing the displayed frame.
-        terminalMaySupersede||=viewportPatch
+        const ownsSelection = ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
+        const fullNativeAffine = session.native===true && session.affine===true && coversDisplay && ownsSelection &&
+          !session.scene.interactionLocalFootprint
+        const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
+          !session.scene.interactionLocalFootprint&&ownsSelection
+        // A native absolute pose can replace queued work while the previous
+        // accepted viewport remains visible. Submitted GPU work still fences.
+        terminalMaySupersede||=fullNativeAffine||viewportPatch
         const window={x,y,w:right-x,h:bottom-y}
         const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
         const texture=gpu.driver.presentedContentToken?.(session.slot)
         // A terminal receipt can reuse a full-quality frame. A soft preview
         // of that same transform still owes the canvas its full filter.
-        if((!pose.terminal || !session.scene.gestureSoftEffects) && session.native&&session.bounds&&session.reuse?.matches({scene:session.scene,driver:gpu.driver,texture,window,transforms:pose.transforms})){
+        if((!pose.terminal || !session.scene.gestureSoftEffects) && session.native&&!session.nativePosePending&&
+            session.bounds&&session.reuse?.matches({scene:session.scene,driver:gpu.driver,texture,window,transforms:pose.transforms})){
           // This newer input requests the exact already-rendered pixels. Only
           // advance its presentation cohort; no new native mutation, packet,
           // upload or raster is necessary. Resource completion fences remain.
@@ -562,6 +567,10 @@ function schedulePose(){
           const capture=session.scene.output||{x:0,y:0,w:session.scene.width,h:session.scene.height}
           if(x<capture.x||y<capture.y||right>capture.x+capture.w||bottom>capture.y+capture.h){rebasePose(pose,true);break}
           const kernel=poseKernel=await engine()
+          // The compiler can be ahead of the last accepted texture when a
+          // terminal pose preempts this sample. Reapply the absolute pose
+          // before reusing displayed pixels from a different compiler state.
+          session.nativePosePending = true
           let packet:CompiledScenePacket
           if (advance?.pose===pose && advance.session===session) {
             const prepared=await ahead.take(advance.sequence)
@@ -580,7 +589,7 @@ function schedulePose(){
               if(!current())continue
               // A Sketch mask or derived ancestor can reject the transform
               // fast path for a move or a rotation. Rebuild through the normal
-              // validated patch in this full-viewport lease.
+              // validated patch in the full viewport or the proven mask window.
               const patch:DocumentPatch={fields:{},nodes:Object.fromEntries(ids.map(id=>
                 [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}
               // If compilation or GPU work fails, the next capture must
@@ -604,6 +613,7 @@ function schedulePose(){
           compileStats=kernel.compileStats
           next={...preparePreviewSelection(compiled,session.scene.interactionSelection||[]),
             interactionLocalFootprint:session.scene.interactionLocalFootprint,
+            interactionFixedMask:session.scene.interactionFixedMask,
             gestureSoftEffects:session.softEffectPreview === true && !pose.terminal,
             interactionSelection:session.scene.interactionSelection,interactionRetained:true,nativeInteraction:true,interactionLease:session.scene.interactionLease,interactionWindow:window,
             floatCompositing:session.scene.floatCompositing,pairedDisplayFilters:session.scene.pairedDisplayFilters,
@@ -634,8 +644,10 @@ function schedulePose(){
           await hydrateImages(next)
           if(!current())continue
           prepareDisplay()
-          const onFinishStarted = poseKernel && session.affine && session.canvasOwner && !pose.terminal &&
-            next.interactionLocalFootprint && !next.gestureSoftEffects && ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
+          const localTerminal = session.canvasOwner && next.interactionLocalFootprint && !next.gestureSoftEffects &&
+            ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
+          const onFinishStarted = poseKernel && session.affine && !pose.terminal &&
+            (localTerminal || fullNativeAffine && session.patch)
             ? () => {
               const kernel=poseKernel!
               beginTerminalPreparation=terminal=>{
@@ -667,6 +679,7 @@ function schedulePose(){
           // slot. Small/unsupported effects can be admitted as exact pixels.
           next.gestureSoftEffects = result.gestureBlurPixels > 0
           session.scene=next
+          if (session.native) session.nativePosePending = false
           if(session.patch)session.patch.accept(next,pose.transforms)
           else if(document){
             session.document=laneState.interactionDocument=document
@@ -975,7 +988,7 @@ self.onmessage = (e) => {
       const retainInteraction = request.options?.retainInteractionGraph === true && request.options?.renderIntent === 'preview' && request.options?.livePreview === true &&
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
+      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionFixedMask, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
@@ -2027,6 +2040,10 @@ self.onmessage = (e) => {
             !!scene!.interactionSelection?.some(id => scene!.nodes[id]?.effects.some(fx =>
               fx.visible && !fx.gradientBlur && ['inner-shadow', 'shadow', 'blur', 'gaussian-blur'].includes(fx.kind)))
           scene!.interactionLocalFootprint = retainedScene && interactionLocalFootprint === true
+          scene!.interactionFixedMask = retainedScene && channel === 'interaction' && interactionFixedMask === true &&
+            interactionNative === true && interactionAffine === true && interactionWindowFixed === true &&
+            !!interactionWindow && interactionSelection?.length === 1 && !!laneState.interactionDocument &&
+            fixedSketchMaskWindow(laneState.interactionDocument, renderOptions.pageId, interactionSelection[0], scene!.view, interactionWindow)
           scene!.interactionLease = retainedScene ? {} : undefined
           scene!.interactionWindow = retainedScene ? interactionWindow : undefined
           scene!.pairedDisplayFilters = request.debug?.pairedDisplayFilters

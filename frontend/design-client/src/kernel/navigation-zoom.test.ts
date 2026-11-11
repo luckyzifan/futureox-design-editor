@@ -134,6 +134,21 @@ test('opted-in wheel translation waits for the existing quiet boundary and emits
   expect(finals[0].value.view).toEqual(camera(32, 641, -640))
 })
 
+test('dense wheel pan after zoom-out starts exact repair after its measured cadence', () => {
+  const owner = new NavigationZoom(camera(8), { includeTranslation: true, adaptiveQuiet: 'outward-pan' })
+  owner.update(camera(.5), 0)
+  for (let n = 1; n <= 9; n++) owner.update(camera(.5, n * 12), n * 32)
+  const at = 9 * 32
+  expect(owner.frame(at + 16).active).toBe(true)
+  expect(owner.frame(at + 71).active).toBe(true)
+  expect(owner.frame(at + 72)).toMatchObject({ active: false, view: camera(.5, 108) })
+
+  const resumedAt = at + 80
+  owner.update(camera(.5, 120), resumedAt)
+  expect(owner.frame(resumedAt + 72).active).toBe(true)
+  expect(owner.frame(resumedAt + NAVIGATION_ZOOM_QUIET_MS).active).toBe(false)
+})
+
 test('a pan during zoom retains the most recent camera for the exact final sample', () => {
   const owner = new NavigationZoom(camera(1))
   owner.update(camera(32), 0)

@@ -3,7 +3,7 @@ import { allowsReducedSampling } from './render-quality'
 import { pageBackdropPadding } from './interaction-layers'
 import { boundedBackdropRead, guardedForegroundSafe } from './guarded-foreground'
 import type { Bounds, DesignDocument, DesignNode, Matrix } from '../model'
-import { unionBounds, type SceneEntry } from '../geometry'
+import { scene, unionBounds, type SceneEntry } from '../geometry'
 
 /** Keep the existing world-space effect/stroke envelope exactly. Grouping
  * changes only membership lookup, never the arithmetic or union order. */
@@ -50,6 +50,58 @@ export type InteractionDependencyScope = {
   finalForeground: boolean
   containedForeground?: boolean
   foregroundExclusions?: Bounds[]
+  maskedRotationBounds?: Bounds
+}
+
+const derived = (node: DesignNode) => !!node.repeat || !!node.booleanOperation ||
+  !!node.instance || !!node.instanceOrigin || !!node.component || !!node.componentSet || !!node.componentKey ||
+  Object.keys(node.bindings || {}).length > 0 || Object.keys(node.variableModes || {}).length > 0 ||
+  Object.keys(node.styleRefs || {}).length > 0 || !!node.layout && node.layout.mode !== 'none'
+const hugs = (node: DesignNode) => node.sizing?.width === 'hug' || node.sizing?.height === 'hug'
+
+/** Sketch projects a shape mask and its following siblings into a private
+ * clipped group. With one moving image leaf, neither pose can change pixels
+ * outside the stationary mask, even when the bitmap extends beyond it. */
+function maskedImageBounds(document: DesignDocument, entry: SceneEntry | undefined, byId: Map<string, SceneEntry>) {
+  if (!entry || !entry.ancestors.length || document.animations?.length ||
+      Object.values(document.nodes).some(node => node.connector || node.textPath)) return
+  const image = document.nodes[entry.id], group = document.nodes[entry.parent]
+  if (!image || image.mask || image.maskChain === 'break' || image.children.length || derived(image) || hugs(image) ||
+      image.blend !== 'normal' || !image.fills.some(fill => fill.visible && fill.kind === 'image') ||
+      image.effects.some(effect => effect.visible && effect.kind !== 'color-controls') ||
+      group?.kind !== 'group' || group.children.length !== 2 || group.children[1] !== entry.id) return
+  if (entry.ancestors.some(id => {
+    const node = document.nodes[id]
+    return !node || node.mask || derived(node) || hugs(node) || node.effects.some(effect => effect.visible)
+  })) return
+  const mask = document.nodes[group.children[0]], maskEntry = mask && byId.get(mask.id)
+  if (!maskEntry || !mask.mask || mask.maskType !== 'shape' || mask.kind !== 'rectangle' ||
+      mask.children.length || mask.network || mask.vectorGeometry || derived(mask) || hugs(mask) ||
+      mask.strokes.some(stroke => stroke.visible) || mask.effects.some(effect => effect.visible)) return
+  for (const node of [image, mask, ...entry.ancestors.map(id => document.nodes[id])]) {
+    const parent = document.nodes[byId.get(node.id)?.parent || '']
+    if (parent && ((node.constraints?.referenceWidth ?? parent.width) !== parent.width ||
+        (node.constraints?.referenceHeight ?? parent.height) !== parent.height)) return
+  }
+  const box = maskEntry.bounds
+  if (box.width > 0 && box.height > 0 && Object.values(box).every(Number.isFinite)) return box
+}
+
+/** Verify the worker's retained window against the synchronized source. */
+export function fixedSketchMaskWindow(document: DesignDocument, pageId: string, imageId: string,
+  view: { x: number; y: number; zoom: number }, window: { x: number; y: number; w: number; h: number }) {
+  const entries = scene(document, pageId)
+  if (entries.some(entry => {
+    const effects = document.nodes[entry.id].effects
+    return !effectsAreKnown(effects) || effects.some(effect => effect.visible && ['background-blur', 'glass'].includes(effect.kind))
+  })) return false
+  const byId = new Map(entries.map(entry => [entry.id, entry]))
+  const box = maskedImageBounds(document, byId.get(imageId), byId)
+  if (!box) return false
+  const x = box.x * view.zoom + view.x, y = box.y * view.zoom + view.y
+  const right = (box.x + box.width) * view.zoom + view.x
+  const bottom = (box.y + box.height) * view.zoom + view.y
+  return x >= window.x && y >= window.y && right <= window.x + window.w && bottom <= window.y + window.h
 }
 
 // Inner shadows are multiplied by the sharp source alpha, and color controls
@@ -72,11 +124,6 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
   const page = document.pages.find(page => page.id === pageId)
   if (!page || !entry?.ancestors.length || document.animations?.length ||
       Object.values(document.nodes).some(node => node.connector || node.textPath)) return false
-  const derived = (node: DesignNode) => !!node.repeat || !!node.booleanOperation ||
-    !!node.instance || !!node.instanceOrigin || !!node.component || !!node.componentSet || !!node.componentKey ||
-    Object.keys(node.bindings || {}).length > 0 || Object.keys(node.variableModes || {}).length > 0 ||
-    Object.keys(node.styleRefs || {}).length > 0 || !!node.layout && node.layout.mode !== 'none'
-  const hugs = (node: DesignNode) => node.sizing?.width === 'hug' || node.sizing?.height === 'hug'
   // Inner-shadow/color-control chains cannot grow source output alpha. Their
   // internal reads still belong to the compiler; nested/spatially varying
   // filters and chains that grow output retain the full dependency path.
@@ -174,6 +221,8 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   const knownEffects = entries.every(entry => effectsAreKnown(document.nodes[entry.id].effects))
   const noBackdrop = knownEffects && entries.every(entry => !document.nodes[entry.id].effects.some(e =>
     e.visible && ['background-blur', 'glass'].includes(e.kind)))
+  scope.maskedRotationBounds = noBackdrop && selection.length === 1
+    ? maskedImageBounds(document, byId.get(selection[0]), byId) : undefined
   const selectedEffects=selection.length===1?document.nodes[selection[0]]?.effects.filter(effect=>effect.visible)||[]:[]
   const selectedNode = selection.length === 1 ? document.nodes[selection[0]] : undefined
   const containedRoot = !!selectedNode && containedLeafEffects(selectedNode, selectedEffects)

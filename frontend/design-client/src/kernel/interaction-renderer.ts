@@ -54,6 +54,7 @@ type ResidentInteraction = {
   finalForeground?: boolean
   containedForeground?: boolean
   foregroundExclusions?: Bounds[]
+  maskedRotationBounds?: Bounds
   foregroundCapture?: boolean
   foregroundCaptureBounds?: boolean
   captureBounds?: Bounds
@@ -1367,8 +1368,10 @@ export class InteractionRenderer {
             : unionBounds(scene(document, resident.plan.pageId).map(e => e.bounds))
           const pad = this.viewport ? 16 : Math.max(16, ...Object.values(document.nodes).flatMap(n => n.effects.filter(e => e.visible)
             .map(e => e.radius * 3 + Math.abs(e.x || 0) + Math.abs(e.y || 0) + Math.abs(e.spread || 0))))
-          const rotationBounds=this.viewport&&resident.affine&&(!resident.foregroundExclusions||import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')?rigidInteractionCapture(resident.plan,transforms,roots,
-            resident.localizedBounds,resident.fixedBounds,resident.parentMatrices,resident.scale,resident.foregroundExclusions):undefined
+          const maskedRotation = this.viewport && resident.affine && resident.maskedRotationBounds &&
+            this.settledViewportMatches(resident.plan.document, this.viewport.view) ? resident.maskedRotationBounds : undefined
+          const rotationBounds=maskedRotation ?? (this.viewport&&resident.affine&&(!resident.foregroundExclusions||import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')?rigidInteractionCapture(resident.plan,transforms,roots,
+            resident.localizedBounds,resident.fixedBounds,resident.parentMatrices,resident.scale,resident.foregroundExclusions):undefined)
           if(rotationBounds){
             const x=Math.max(bounds.x,rotationBounds.x-pad),y=Math.max(bounds.y,rotationBounds.y-pad)
             const right=Math.min(bounds.x+bounds.width,rotationBounds.x+rotationBounds.width+pad)
@@ -1415,7 +1418,8 @@ export class InteractionRenderer {
             const localizedDesktop = !!(this.viewport && this.allowIdleWarm && this.sharedClient &&
               this.profile === 'figmaSubpixel' && resident.plan.ids.every(id => resident.localizedBounds?.has(id) && !resident.fixedBounds?.has(id)))
             const shortTravel = this.profile === 'analytic' && resident.plan.ids.every(id => resident.shortTravelBounds?.has(id))
-            let guard = shortTravel && this.viewport ? pad + Math.max(16 / this.viewport.view.zoom, bounds.width * .05, bounds.height * .05) :
+            let guard = maskedRotation ? pad :
+              shortTravel && this.viewport ? pad + Math.max(16 / this.viewport.view.zoom, bounds.width * .05, bounds.height * .05) :
               finalForeground ? pad + Math.max(32 / this.viewport!.view.zoom, bounds.width * .05) :
               localizedDesktop ? pad + Math.max(48 / this.viewport!.view.zoom, bounds.width * .05, bounds.height * .05) :
               pad + Math.max(64, this.viewport ? 96 / this.viewport.view.zoom : 0, bounds.width * .05, bounds.height * .05)
@@ -1501,7 +1505,8 @@ export class InteractionRenderer {
                 this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:nativeDensity}):undefined
               const worldCapture=!!this.sharedClient && !reduced && this.profile!=='figma' && this.profile!=='figmaSoftware' &&
                 canonical?.camera.x===0 && canonical?.camera.y===0
-              const canonicalCapture=(import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||exactInnerShadowGesture(resident)||!!resident.foregroundExclusions&&foregroundSafe&&!resident.affine)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
+              const canonicalCapture = !!(maskedRotation && nativeDensity && canonical) ||
+                (import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||exactInnerShadowGesture(resident)||!!resident.foregroundExclusions&&foregroundSafe&&!resident.affine)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
                 this.profile==='figmaSubpixel'&&!!canonical
               phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0
               const captureCamera=canonicalCapture?canonical!.camera:{x:worldCapture?0:-originX+phaseX,y:worldCapture?0:-originY+phaseY,zoom:scale}
@@ -1523,6 +1528,7 @@ export class InteractionRenderer {
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
                 interactionNative: !!resident.affine || !reduced || localNativePose,
                 interactionAffine: !!resident.affine, interactionLocalFootprint: resident.containedForeground,
+                ...(maskedRotation && nativeDensity ? { interactionFixedMask: true } : {}),
                 ...(exactInnerShadowGesture(resident)&&roots?.get(resident.plan.ids[0])&&!resident.repairBounds?{interactionBaseFill:roots.get(resident.plan.ids[0])}:{}),
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,
                 interactionWindowFixed: !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),

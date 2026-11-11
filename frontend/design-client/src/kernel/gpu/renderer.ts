@@ -2629,9 +2629,12 @@ export class GpuRenderer {
     const needed = sceneIndex(scene).images
     const next = this.currentImageResidency(scene)
     // Required images may survive native pose samples under their private owner.
-    // This does not retain unused assets from other regions.
+    // A verified mask window temporarily omits exact backdrop assets. Keep
+    // same-owner uploads until the normal working-set eviction boundary so
+    // that release and undo do not have to decode and upload those images.
     if (!next) this.frameImageReuse = false
-    const retainUnused = !!next && (this.residentImageRequest || import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
+    const retainUnused = !!next && (this.residentImageRequest || this.frameImageReuse && scene.interactionFixedMask === true ||
+      import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
       import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY === '1')
     const changed = this.imageResidencyOwner !== next?.owner || this.imageResidencyPolicy !== next?.policy
     if (changed && (this.imageResidencyOwner || next)) this.retireImageResidency()

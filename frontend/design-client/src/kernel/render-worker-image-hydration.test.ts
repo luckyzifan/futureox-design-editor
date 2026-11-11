@@ -525,7 +525,7 @@ test('request-scoped cancellation applies its ordered patch but leaves independe
 
 // Real worker/native scene path; GPU transport deliberately mocked. These
 // assertions certify queue/pose ownership, not physical display or GPU pixels.
-async function affineWorker(affine=true,masked=false) {
+async function affineWorker(affine=true,masked=false,fixedMaskWidth?:number) {
   const f = fixture(1), w = await worker(); state.poseTiles = true
   if(masked){
     const group=node('group',0,0,48,16),mask=node('rectangle',0,0,48,16)
@@ -536,8 +536,9 @@ async function affineWorker(affine=true,masked=false) {
   }
   const options = { ...f.options, renderIntent: 'preview', livePreview: true,
     retainInteractionGraph: true, interactionNative: true, interactionAffine: affine,
+    interactionFixedMask: fixedMaskWidth !== undefined,
     interactionSelection: ['image-0'], interactionWindowFixed: true,
-    interactionWindow: { x: 0, y: 0, w: 48, h: 16 } }
+    interactionWindow: { x: 0, y: 0, w: fixedMaskWidth ?? 48, h: 16 } }
   w.send({ id: 980, channel: 'interaction', document: JSON.stringify(f.doc), documentRevision: 1, options })
   const capture=await w.finish(980)
   expect(capture.error).toBeUndefined()
@@ -556,6 +557,37 @@ test('affine worker compiles the latest absolute pose and never acknowledges ski
   expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(3).transforms['image-0'])
   expect(state.replacements.length).toBeLessThanOrEqual(2)
 })
+
+test('a full native viewport prepares the released affine pose while the obsolete GPU work drains', async () => {
+  const w = await affineWorker()
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: { x: 0, y: 0, zoom: 1 }, width: 48, height: 16, dpr: 1, items: [],
+  } })
+  const sample = (sequence: number) => w.messages.find(m => m.presentation?.residentSample?.sequence === sequence)?.presentation.residentSample
+  w.send(w.pose(1))
+  await vi.waitFor(() => expect(sample(1)?.nativePose).toBe(true))
+  const compile = vi.spyOn(w.kernel.VectorEngine.prototype, 'compile_gpu_packet')
+  let release!: () => void
+  state.renderGate = new Promise<void>(resolve => { release = resolve })
+  try {
+    w.send(w.pose(2))
+    await vi.waitFor(() => expect(state.renderBlocked).toBe(true))
+    const terminal = { ...w.pose(1), input: w.pose(3).input, terminal: true }
+    w.send(terminal)
+    await vi.waitFor(() => expect(compile).toHaveBeenCalledTimes(2))
+    expect(state.replacements).toHaveLength(1)
+    state.renderGate = undefined
+    release()
+    await vi.waitFor(() => expect(sample(3)?.nativePose).toBe(true))
+    expect(sample(2)).toBeUndefined()
+    expect(compile).toHaveBeenCalledTimes(2)
+    expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(terminal.transforms['image-0'])
+  } finally {
+    state.renderGate = undefined
+    release()
+    compile.mockRestore()
+  }
+})
 test.each([[true, true], [true, false], [false, true], [false, false]])(
   'a declined native pose keeps its lease only when it covers the display (affine=%s, full=%s)', async (affine, coversDisplay) => {
   const w = await affineWorker(affine,true)
@@ -569,6 +601,18 @@ test.each([[true, true], [true, false], [false, true], [false, false]])(
   expect(!!sample.needsRebase).toBe(!coversDisplay)
   expect(state.replacements).toHaveLength(coversDisplay ? 1 : 0)
   if(coversDisplay)expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(1).transforms['image-0'])
+})
+test.each([true, false])('a partial viewport reuses a native pose only when the window encloses its fixed mask (%s)', async coversMask => {
+  const w = await affineWorker(true, true, coversMask ? 48 : 47)
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: { x: 0, y: 0, zoom: 1 }, width: 56, height: 16, dpr: 1, items: [],
+  } })
+  w.send(w.pose(1))
+  await vi.waitFor(() => expect(w.messages.some(m => m.presentation?.residentSample?.sequence === 1)).toBe(true))
+  const sample = w.messages.find(m => m.presentation?.residentSample?.sequence === 1).presentation.residentSample
+  expect(!!sample.needsRebase).toBe(!coversMask)
+  expect(state.replacements).toHaveLength(coversMask ? 1 : 0)
+  if (coversMask) expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(1).transforms['image-0'])
 })
 test.each([true, false])('a stopped masked pose restores the displayed document before a new capture (affine=%s)', async affine => {
   const w = await affineWorker(affine,true)
