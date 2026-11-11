@@ -525,15 +525,24 @@ test('request-scoped cancellation applies its ordered patch but leaves independe
 
 // Real worker/native scene path; GPU transport deliberately mocked. These
 // assertions certify queue/pose ownership, not physical display or GPU pixels.
-async function affineWorker(affine=true) {
+async function affineWorker(affine=true,masked=false) {
   const f = fixture(1), w = await worker(); state.poseTiles = true
+  if(masked){
+    const group=node('group',0,0,48,16),mask=node('rectangle',0,0,48,16)
+    f.doc.schemaVersion=20
+    mask.mask=true;mask.maskType='shape'
+    group.children=[mask.id,'image-0']
+    f.doc.nodes[group.id]=group;f.doc.nodes[mask.id]=mask;f.doc.pages[0].children=[group.id]
+  }
   const options = { ...f.options, renderIntent: 'preview', livePreview: true,
     retainInteractionGraph: true, interactionNative: true, interactionAffine: affine,
     interactionSelection: ['image-0'], interactionWindowFixed: true,
     interactionWindow: { x: 0, y: 0, w: 48, h: 16 } }
   w.send({ id: 980, channel: 'interaction', document: JSON.stringify(f.doc), documentRevision: 1, options })
-  expect((await w.finish(980)).residentInteraction).toBe(true)
-  const pose = (sequence: number) => ({ command: 'interaction-pose', slot: 77, input: { owner: 9, sequence, at: 0 },
+  const capture=await w.finish(980)
+  expect(capture.error).toBeUndefined()
+  expect(capture.residentInteraction).toBe(true)
+  const pose = (sequence: number) => ({ command: 'interaction-pose', slot: 77, input: { owner: 'affine-test', sequence, at: 0 },
     transforms: { 'image-0': [Math.cos(sequence / 10), Math.sin(sequence / 10), -Math.sin(sequence / 10), Math.cos(sequence / 10), 4, 2] } })
   return { ...w, f, options, pose }
 }
@@ -544,6 +553,53 @@ test('affine worker compiles the latest absolute pose and never acknowledges ski
   expect(w.messages.some(m => m.presentation?.residentSample?.sequence === 2)).toBe(false)
   expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(3).transforms['image-0'])
   expect(state.replacements.length).toBeLessThanOrEqual(2)
+})
+test.each([true,false])('a declined native pose keeps its lease only when it covers the display (%s)', async coversDisplay => {
+  const w = await affineWorker(true,true)
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: { x: 0, y: 0, zoom: 1 }, width: coversDisplay ? 48 : 56, height: 16,
+    dpr: 1, items: [],
+  } })
+  w.send(w.pose(1))
+  await vi.waitFor(() => expect(w.messages.some(m => m.presentation?.residentSample?.sequence === 1)).toBe(true))
+  const sample=w.messages.find(m=>m.presentation?.residentSample?.sequence===1).presentation.residentSample
+  expect(!!sample.needsRebase).toBe(!coversDisplay)
+  expect(state.replacements).toHaveLength(coversDisplay ? 1 : 0)
+  if(coversDisplay)expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(1).transforms['image-0'])
+})
+test('a stopped masked pose restores the last displayed document before a new capture', async () => {
+  const w = await affineWorker(true,true)
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: { x: 0, y: 0, zoom: 1 }, width: 48, height: 16, dpr: 1, items: [],
+  } })
+  let release!:()=>void
+  state.renderGate=new Promise(resolve=>{release=resolve})
+  w.send(w.pose(1))
+  await vi.waitFor(()=>expect(state.renderBlocked).toBe(true))
+  w.send({command:'interaction-pose-stop',slot:77})
+  state.renderGate=undefined
+  release()
+  w.send({id:981,channel:'interaction',documentRevision:1,options:w.options})
+  expect((await w.finish(981)).error).toBeUndefined()
+  expect(state.replacements).toHaveLength(0)
+  expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.f.doc.nodes['image-0'].transform)
+})
+test('a committed masked pose supersedes obsolete GPU work in the same viewport', async () => {
+  const w = await affineWorker(true,true)
+  w.send({command:'display-frame',sequence:1,frame:{
+    view:{x:0,y:0,zoom:1},width:48,height:16,dpr:1,items:[],
+  }})
+  let release!:()=>void
+  state.renderGate=new Promise(resolve=>{release=resolve})
+  w.send(w.pose(1))
+  await vi.waitFor(()=>expect(state.renderBlocked).toBe(true))
+  w.send({...w.pose(2),terminal:true})
+  state.renderGate=undefined
+  release()
+  await vi.waitFor(()=>expect(w.messages.some(m=>m.presentation?.residentSample?.sequence===2)).toBe(true))
+  expect(w.messages.some(m=>m.presentation?.residentSample?.sequence===1)).toBe(false)
+  expect(state.replacements).toEqual([77])
+  expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(2).transforms['image-0'])
 })
 test('native pose preparation failure retires the lease and leaves the next capture and input usable', async () => {
   const w = await affineWorker(), warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

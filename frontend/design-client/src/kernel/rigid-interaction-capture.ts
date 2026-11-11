@@ -1,17 +1,17 @@
-import type { Bounds, DesignDocument, Matrix } from '../model'
+import type { Bounds, Matrix } from '../model'
 import { apply, bounds, boxPoints, unionBounds } from '../geometry'
 import { interactionPoseMatrices, type InteractionPlan } from './interaction-layers'
 
 /** Restrict a freshly native-rendered rotation to its proven output footprint.
  * This never rotates cached pixels. Non-rigid transforms and dependencies whose
  * output support cannot be bounded locally retain the full viewport capture. */
-export function rigidInteractionCapture(plan:InteractionPlan,current:DesignDocument,
+export function rigidInteractionCapture(plan:InteractionPlan,transforms:Readonly<Record<string,Matrix>>,
   roots:ReadonlyMap<string,Bounds>|undefined,localized:ReadonlySet<string>|undefined,
   fixed:ReadonlySet<string>|undefined,parents:ReadonlyMap<string,Matrix>|undefined,scale:number,
   exclusions?:readonly Bounds[]):Bounds|undefined {
   if(import.meta.env.VITE_DESIGN_LOCAL_ROTATION_CAPTURE==='0'||!roots||!localized||!Number.isFinite(scale)||scale<=0)return
   if(!plan.ids.every(id=>localized.has(id)&&!fixed?.has(id)&&roots.has(id)))return
-  if(plan.ids.some(id=>!plan.document.nodes[id]||!current.nodes[id]))return
+  if(plan.ids.some(id=>!plan.document.nodes[id]||!transforms[id]))return
   for(const id of plan.ids){
     const pending=[id],seen=new Set<string>()
     while(pending.length){
@@ -25,8 +25,7 @@ export function rigidInteractionCapture(plan:InteractionPlan,current:DesignDocum
       pending.push(...node.children)
     }
   }
-  const poses=interactionPoseMatrices(Object.fromEntries(plan.ids.map(id=>[id,plan.document.nodes[id].transform])),
-    Object.fromEntries(plan.ids.map(id=>[id,current.nodes[id]?.transform])),parents)
+  const poses=interactionPoseMatrices(Object.fromEntries(plan.ids.map(id=>[id,plan.document.nodes[id].transform])),transforms,parents)
   if(!poses)return
   const output:Bounds[]=[]
   for(const id of plan.ids){

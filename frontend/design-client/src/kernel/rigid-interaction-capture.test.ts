@@ -12,8 +12,7 @@ function fixture(){
 }
 test('rigid capture encloses old and rotated support while avoiding a full viewport',()=>{
  const f=fixture(),c=Math.cos(.7),s=Math.sin(.7),pose:Matrix=[c,s,-s,c,350,240]
- const current={...f.document,nodes:{...f.document.nodes,[f.selected.id]:{...f.selected,transform:pose}}}
- const b=rigidInteractionCapture(f.plan,current,f.scope.rootBounds,f.scope.localizedBounds,f.scope.fixedBounds,f.scope.parentMatrices,2)!
+ const b=rigidInteractionCapture(f.plan,{[f.selected.id]:pose},f.scope.rootBounds,f.scope.localizedBounds,f.scope.fixedBounds,f.scope.parentMatrices,2)!
  expect(b.width*b.height).toBeLessThan(1600*1200/20)
  const source=f.scope.rootBounds.get(f.selected.id)!,delta=multiply(pose,inverse(f.selected.transform))
  for(const point of [...boxPoints(source),...boxPoints(source).map(p=>apply(delta,p))]){
@@ -23,8 +22,7 @@ test('rigid capture encloses old and rotated support while avoiding a full viewp
 })
 test('guarded rotation excludes both old/new support, including touching and invalid backdrop envelopes',()=>{
  const f=fixture(),pose:Matrix=[0,1,-1,0,380,260]
- const current={...f.document,nodes:{...f.document.nodes,[f.selected.id]:{...f.selected,transform:pose}}}
- const capture=(exclusions:import('../model').Bounds[])=>rigidInteractionCapture(f.plan,current,
+ const capture=(exclusions:import('../model').Bounds[])=>rigidInteractionCapture(f.plan,{[f.selected.id]:pose},
   f.scope.rootBounds,f.scope.localizedBounds,f.scope.fixedBounds,f.scope.parentMatrices,2,exclusions)
  const far={x:900,y:800,width:100,height:100},local=capture([far])!
  expect(local).toBeDefined()
@@ -41,7 +39,6 @@ test.each(['scale','shear','missing','fixed','nested-effect','radial'])('unsuppo
  if(kind==='fixed')f.scope.fixedBounds.add(f.selected.id)
  if(kind==='radial')f.selected.effects=[effect('zoom-blur')]
  if(kind==='nested-effect'){const child=node('rectangle',0,0,10,10);child.effects=[effect('blur')];f.document.nodes[child.id]=child;f.selected.children=[child.id]}
- const current={...f.document,nodes:{...f.document.nodes,[f.selected.id]:{...f.selected,transform:pose}}}
- if(kind==='missing')delete current.nodes[f.selected.id]
- expect(rigidInteractionCapture(f.plan,current,f.scope.rootBounds,f.scope.localizedBounds,f.scope.fixedBounds,f.scope.parentMatrices,2)).toBeUndefined()
+ const transforms=kind==='missing'?{}:{[f.selected.id]:pose}
+ expect(rigidInteractionCapture(f.plan,transforms,f.scope.rootBounds,f.scope.localizedBounds,f.scope.fixedBounds,f.scope.parentMatrices,2)).toBeUndefined()
 })

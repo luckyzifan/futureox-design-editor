@@ -479,8 +479,9 @@ function schedulePose(){
         const session=poseSession
         if (advance && (advance.pose!==pose || advance.session!==session || session?.stopped)) await discardAdvance()
         if(!session||session!==poseSession||session.stopped||session.slot!==pose.slot||!gpu?.driver.replacePresented)continue
+        let terminalMaySupersede=!!session.scene.interactionLocalFootprint
         const current=()=>poseSession===session&&!session.stopped&&!session.controller.signal.aborted &&
-          !(session.native && session.scene.interactionLocalFootprint && latestPendingPose()?.terminal &&
+          !(session.native && terminalMaySupersede && latestPendingPose()?.terminal &&
             terminalPoseDisposition(pose,latestPendingPose())==='changed')
         const started=performance.now()
         selectLane('interaction')
@@ -488,7 +489,7 @@ function schedulePose(){
         if(!ids.length||ids.length>16||ids.some(id=>!session.scene.nodes[id]||!session.document.nodes[id]||!Array.isArray(pose.transforms[id])||
           pose.transforms[id].length!==6||!Array.from(pose.transforms[id]).every(Number.isFinite))){rebasePose(pose);break}
         const documentStarted=performance.now()
-        const document=session.patch||session.native&&!pose.terminal?undefined:{...session.document,nodes:{...session.document.nodes,...Object.fromEntries(ids.map(id=>
+        let document=session.patch||session.native&&!pose.terminal?undefined:{...session.document,nodes:{...session.document.nodes,...Object.fromEntries(ids.map(id=>
           [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}}
         const documentMs=performance.now()-documentStarted
         const scale=session.scene.view.zoom,base=session.window
@@ -508,13 +509,25 @@ function schedulePose(){
         if(shifts.some(shift=>!shift)){rebasePose(pose);break}
         let x=base.x+Math.min(0,...shifts.map(p=>p!.x)),y=base.y+Math.min(0,...shifts.map(p=>p!.y))
         let right=base.x+base.w+Math.max(0,...shifts.map(p=>p!.x)),bottom=base.y+base.h+Math.max(0,...shifts.map(p=>p!.y))
+        let coversDisplay=false
         if(displayFrame){
           const view=displayFrame.view,camera=session.scene.view
           const left=-view.x/view.zoom*scale+camera.x,top=-view.y/view.zoom*scale+camera.y
+          const displayRight=left+displayFrame.width/view.zoom*scale,displayBottom=top+displayFrame.height/view.zoom*scale
+          // Window coordinates use the same lattice, but converting to
+          // world space and back can introduce a rounding error.
+          const epsilon=1e-7
+          coversDisplay=scale===view.zoom*displayFrame.dpr&&
+            x<=left+epsilon&&y<=top+epsilon&&right>=displayRight-epsilon&&bottom>=displayBottom-epsilon
           x=Math.max(x,left);y=Math.max(y,top)
-          right=Math.min(right,left+displayFrame.width/view.zoom*scale);bottom=Math.min(bottom,top+displayFrame.height/view.zoom*scale)
+          right=Math.min(right,displayRight);bottom=Math.min(bottom,displayBottom)
         }
         if(right<=x||bottom<=y){rebasePose(pose);break}
+        const viewportPatch=!session.patch&&session.affine===true&&coversDisplay&&!session.scene.interactionLocalFootprint&&
+          ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
+        // A full-viewport patch consumes absolute poses. The committed pose
+        // can supersede stale GPU work without losing the displayed frame.
+        terminalMaySupersede||=viewportPatch
         const window={x,y,w:right-x,h:bottom-y}
         const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
@@ -542,6 +555,7 @@ function schedulePose(){
         }
         const translationStarted=performance.now()
         let poseCompileMs=0, sceneUpdateBytes=0
+        let patchedPose=false
         let compileStats:Record<string,unknown>|undefined
         let next: GpuScene | null, poseKernel: RenderKernel | undefined
         if(session.native){
@@ -561,7 +575,23 @@ function schedulePose(){
             const direct=preparation && session.affine && session.canvasOwner && session.scene.interactionLocalFootprint &&
               !session.softEffectPreview && ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]]) ? preparation : undefined
             const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))
-            if(!await (direct?direct.withPoseTransport(apply):apply())){rebasePose(pose);break}
+            if(!await (direct?direct.withPoseTransport(apply):apply())){
+              if(!viewportPatch){rebasePose(pose);break}
+              if(!current())continue
+              // A Sketch mask or derived ancestor can reject the transform
+              // fast path. Rebuild it through the normal validated patch in
+              // this full-viewport lease, preserving its resource owner.
+              const patch:DocumentPatch={fields:{},nodes:Object.fromEntries(ids.map(id=>
+                [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}
+              // If compilation or GPU work fails, the next capture must
+              // resynchronize from the last displayed document.
+              laneState.deferredInteractionDocument=session.document
+              laneState.synchronizedInteractionDocument=undefined
+              laneState.compiledScene=undefined
+              await kernel.apply_document_patch_with_damage(JSON.stringify(patch))
+              patchedPose=true
+              document=applyDocumentPatch(session.document,patch)
+            }
             if(!current())continue
             const compileStarted=performance.now()
             const compile=()=>compilePacket(kernel,session.options,session.controller.signal)
@@ -586,7 +616,7 @@ function schedulePose(){
           translatePreviewScene({...session.scene,interactionWindow:window},session.document,document!)
         const sameDisplay=displayGeometry?!!displayFrame&&[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr].every((value,i)=>Object.is(value,displayGeometry[i])):!displayFrame
-        if(session.native&&(!session.affine||session.scene.interactionLocalFootprint)&&current()&&sameDisplay){
+        if(session.native&&(!session.affine||terminalMaySupersede)&&current()&&sameDisplay){
           const ending=latestPendingPose(),disposition=terminalPoseDisposition(pose,ending)
           // Only a release hint can discard an obsolete preparation; moving
           // pointers keep normal sampling progress and cannot starve rendering.
@@ -638,7 +668,11 @@ function schedulePose(){
           next.gestureSoftEffects = result.gestureBlurPixels > 0
           session.scene=next
           if(session.patch)session.patch.accept(next,pose.transforms)
-          else if(!session.native||pose.terminal){session.document=document!;laneState.interactionDocument=document;laneState.deferredInteractionDocument=document}
+          else if(document){
+            session.document=laneState.interactionDocument=document
+            if(patchedPose)laneState.synchronizedInteractionDocument=document
+            laneState.deferredInteractionDocument=patchedPose?undefined:document
+          }
           laneState.compiledScene={revision:laneState.loadedRevision,options:session.options,scene:next}
           const content=visible??window
           const bounds={x:(content.x-next.view.x)/scale,y:(content.y-next.view.y)/scale,width:content.w/scale,height:content.h/scale}

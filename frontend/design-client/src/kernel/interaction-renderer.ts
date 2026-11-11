@@ -326,9 +326,9 @@ export class InteractionRenderer {
         }
         // The warm worker knows the fixed capture, not later backdrop readers.
         // Check this input's complete old/new support before forwarding a pose.
-        const guardedCandidate=r.affine&&r.foregroundExclusions&&import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0'
-          ?interactionPatchedDocument(document,patches):undefined
-        const foregroundSafe=this.foregroundSafeFor(r,guardedCandidate||document,offsets)
+        // The overlap proof needs only the selected transforms. Materialize
+        // the patched document once the raster owner can consume the sample.
+        const foregroundSafe=this.foregroundSafeFor(r,poses,offsets)
         const capture=this.liveCapture
         if(r.foregroundExclusions&&foregroundSafe&&this.liveRunning&&capture?.resident===r&&
             capture.generation===this.generation&&!capture.foreground){
@@ -357,7 +357,7 @@ export class InteractionRenderer {
         }
         this.liveAuthored=document
         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
-        this.latestCandidate=guardedCandidate||(fast?undefined:interactionPatchedDocument(document,patches))
+        this.latestCandidate=fast?undefined:interactionPatchedDocument(document,patches)
         const wasActive = r.active
         const newGesture=!wasActive||committedHandoff
         if(newGesture)r.inputPriority=false
@@ -585,9 +585,9 @@ export class InteractionRenderer {
     this.renderLive(document)
   }
 
-  private foregroundSafeFor(r:ResidentInteraction,document:DesignDocument,offsets:ReturnType<typeof interactionOffsets>) {
+  private foregroundSafeFor(r:ResidentInteraction,transforms:Readonly<Record<string,Matrix>>,offsets:ReturnType<typeof interactionOffsets>) {
     if(r.foregroundExclusions&&r.affine&&import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')
-      return !!rigidInteractionCapture(r.plan,document,r.rootBounds,r.localizedBounds,r.fixedBounds,r.parentMatrices,r.scale,r.foregroundExclusions)
+      return !!rigidInteractionCapture(r.plan,transforms,r.rootBounds,r.localizedBounds,r.fixedBounds,r.parentMatrices,r.scale,r.foregroundExclusions)
     return guardedForegroundSafe(r.foregroundExclusions,r.rootBounds,r.plan.ids,offsets,r.parentLinear,r.scale)
   }
 
@@ -1351,7 +1351,10 @@ export class InteractionRenderer {
           const offsets = interactionOffsets(resident.plan, document)
           const capturedCommands=this.captureMoveOverlay(document,resident,offsets)
           const roots = resident.rootBounds
-          const foregroundSafe = this.foregroundSafeFor(resident,document,offsets)
+          const transforms=resident.affine
+            ? Object.fromEntries(resident.plan.ids.map(id=>[id,document.nodes[id]?.transform]))
+            : {}
+          const foregroundSafe = this.foregroundSafeFor(resident,transforms,offsets)
           this.liveCapture={resident,generation:token,foreground:foregroundSafe}
           if (resident.foregroundExclusions && foregroundSafe !== resident.foregroundCaptureBounds) {
             resident.captureBounds = undefined; resident.foregroundCaptureBounds = foregroundSafe
@@ -1363,7 +1366,7 @@ export class InteractionRenderer {
             : unionBounds(scene(document, resident.plan.pageId).map(e => e.bounds))
           const pad = this.viewport ? 16 : Math.max(16, ...Object.values(document.nodes).flatMap(n => n.effects.filter(e => e.visible)
             .map(e => e.radius * 3 + Math.abs(e.x || 0) + Math.abs(e.y || 0) + Math.abs(e.spread || 0))))
-          const rotationBounds=this.viewport&&resident.affine&&(!resident.foregroundExclusions||import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')?rigidInteractionCapture(resident.plan,document,roots,
+          const rotationBounds=this.viewport&&resident.affine&&(!resident.foregroundExclusions||import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')?rigidInteractionCapture(resident.plan,transforms,roots,
             resident.localizedBounds,resident.fixedBounds,resident.parentMatrices,resident.scale,resident.foregroundExclusions):undefined
           if(rotationBounds){
             const x=Math.max(bounds.x,rotationBounds.x-pad),y=Math.max(bounds.y,rotationBounds.y-pad)
@@ -1616,16 +1619,14 @@ export class InteractionRenderer {
               pendingInput.sequence > input.sequence && current() &&
               this.viewportRevision === viewportRevision && resident.workerPoses &&
               !this.inlineDisabled && this.sharedClient && result.gpuTile &&
-              this.foregroundSafeFor(resident,pending,interactionOffsets(resident.plan,pending)) === foregroundSafe &&
               interactionTransformsOnly({ ...resident.plan, document }, pending)) {
-            // Inputs arriving during the first capture already belong to its
-            // warmed worker session. Send their absolute transforms there;
-            // another whole capture would discard the lease and static prefix.
-            // Only this pending snapshot's input may be acknowledged. Camera
-            // or content changes keep the ordinary capture/rebase path.
-            this.livePending = undefined
-            this.sharedClient.moveResidentInteraction(result.gpuTile,
-              Object.fromEntries(resident.plan.ids.map(id => [id, pending.nodes[id].transform])), pendingInput)
+            const poses=Object.fromEntries(resident.plan.ids.map(id=>[id,pending.nodes[id].transform]))
+            if(this.foregroundSafeFor(resident,poses,interactionOffsets(resident.plan,pending))===foregroundSafe){
+              // Inputs arriving during the first capture can use its warmed
+              // worker lease when they still have the same backdrop scope.
+              this.livePending = undefined
+              this.sharedClient.moveResidentInteraction(result.gpuTile,poses,pendingInput)
+            }
           }
           causePhase=4
           this.props?.onReady(); this.changed()
