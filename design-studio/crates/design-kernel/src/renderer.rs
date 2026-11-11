@@ -3198,6 +3198,29 @@ impl Painter<'_> {
             self.sample = None;
             return Ok(());
         }
+        // A partial-opacity measured gradient is one source-over onto the
+        // backdrop. Isolating the leaf quantizes the premultiplied fill, then
+        // quantizes that composite again; the second UNORM step moves the
+        // frozen Chrome export by one code. Paint it directly so the existing
+        // blend quantizes once. Authored opacity is unchanged.
+        if mask_id.is_none() && self.direct_partial_gradient(n, m) {
+            for sample in 0..4 {
+                self.sample = Some(sample);
+                for paint in n.fills.iter().filter(|paint| paint.visible) {
+                    self.paint(
+                        n,
+                        paint,
+                        m,
+                        &fill.plane(sample),
+                        &mut targets[sample],
+                        false,
+                        |x, y| clip.map_or(1., |mask| mask.at(sample, x, y)),
+                    )?;
+                }
+            }
+            self.sample = None;
+            return Ok(());
+        }
         if self.paint_group_directly(n, full) {
             for sample in 0..4 {
                 self.sample = Some(sample);
@@ -4090,6 +4113,34 @@ impl Painter<'_> {
     }
     /// A normal, unclipped group composites with source-over. Painting it onto
     /// the page targets avoids four copies of a child shadow's padded bounds.
+    /// Rectangle leaf whose only visible paint is a partial-opacity measured
+    /// linear gradient. Group opacity, software export, and opaque gradients
+    /// keep the isolated path.
+    fn direct_partial_gradient(&self, n: &Node, matrix: Transform) -> bool {
+        if !self.compatible || self.profile != crate::fidelity::RasterProfile::Figma {
+            return false;
+        }
+        if n.kind != "rectangle"
+            || n.opacity != 1.
+            || n.blend != "normal"
+            || n.mask
+            || n.boolean_operation.is_some()
+            || !n.children.is_empty()
+            || n.effects.iter().any(|effect| effect.visible)
+            || n.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+        {
+            return false;
+        }
+        let mut visible = n.fills.iter().filter(|paint| paint.visible);
+        let Some(paint) = visible.next() else {
+            return false;
+        };
+        visible.next().is_none()
+            && paint.blend == "normal"
+            && paint.opacity > 0.
+            && paint.opacity < 1.
+            && crate::figma_gradient::supported(paint, matrix)
+    }
     fn paint_group_directly(&self, n: &Node, layer: Rect) -> bool {
         let bytes = layer
             .pixels()
