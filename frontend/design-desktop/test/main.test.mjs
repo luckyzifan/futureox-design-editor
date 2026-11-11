@@ -11,13 +11,14 @@ import { fileURLToPath } from 'node:url'
 
 // Exercise the real main module's registered handlers. Only OS/Electron/stdio boundaries
 // are replaced; no production test hooks or renderer privilege exceptions are shipped.
-async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWorkingBudget, prepare } = {}) {
+async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWorkingBudget, gpuStartupMemory = {}, prepare } = {}) {
   // macOS tmpdir is a /var -> /private/var symlink; resolved grant paths use it.
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'forma-host-')))
   const key = `__formaHost_${randomUUID()}`
   const state = {
     root,
     gpuWorkingBudget,
+    gpuStartupMemory,
     handlers: new Map(),
     open: [],
     save: [],
@@ -249,6 +250,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './document-capacity.mjs'", `from ${JSON.stringify(new URL('../src/document-capacity.mjs', import.meta.url).href)}`)
   source = source.replace("from './gpu-working-budget.mjs'", `from ${JSON.stringify(new URL('../src/gpu-working-budget.mjs', import.meta.url).href)}`)
   source = source.replace('process.env.CORE_GPU_WORKING_BUDGET_MIB', `globalThis[${JSON.stringify(key)}].gpuWorkingBudget`)
+  source = source.replace('arch: process.arch, ...STARTUP_MEMORY', `arch: 'arm64', ...globalThis[${JSON.stringify(key)}].gpuStartupMemory`)
   source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
   source = source.replace("from './figma-mcp-host.mjs'", `from ${JSON.stringify(new URL('../src/figma-mcp-host.mjs', import.meta.url).href)}`)
   source = source.replace("import { registerAutomationBridge } from './automation-bridge.mjs'",
@@ -337,7 +339,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   return state
 }
 
-test('host forwards only an explicit validated GPU working budget and keeps auto launch unchanged', async () => {
+test('host forwards a validated GPU working budget and leaves the lower-memory default implicit', async () => {
   for (const value of [undefined, 'auto', '256', '4096']) {
     const state = await host({ gpuWorkingBudget: value })
     try {
@@ -346,6 +348,13 @@ test('host forwards only an explicit validated GPU working budget and keeps auto
       assert.equal(arguments_.includes('--core-cpu-only'), false)
     } finally { await state.dispose() }
   }
+})
+
+test('host forwards the automatic ceiling for a Mac with sufficient unified memory', async () => {
+  const state = await host({ gpuWorkingBudget: 'auto', gpuStartupMemory: { total: 16 * 1024 ** 3, available: 4 * 1024 ** 3 } })
+  try {
+    assert.ok(state.window.options.webPreferences.additionalArguments.includes('--core-gpu-working-budget-mib=2048'))
+  } finally { await state.dispose() }
 })
 
 test('invalid explicit GPU launch configuration rejects instead of creating a silently clamped window', async () => {

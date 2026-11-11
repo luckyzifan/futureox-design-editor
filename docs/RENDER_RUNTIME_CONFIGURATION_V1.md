@@ -19,7 +19,7 @@ GpuRenderer.renderAttempt 在选定实际 frameBudget 后，从本次局部、�
 - runtimeCompactImageFields、runtimeImageAxesEnabled、runtimeImageAxesEligible、runtimeStreamImageFields：紧凑字段和axes/stream开关的有效布尔值；eligible按当前driver/scene/flag规则计算，不表示某个图片实际生成了轴字段。已有结果里的imageAxisFields、imageFieldBytes也作为有界数值保留，不新增逐像素日志。
 - runtimeReadback、runtimePresent：实际 render 调用的布尔输出意图，不代表结果已成功读回或呈现。
 - runtimeWorkingBudgetBytes：本次有效工作资源准入上限，256 MiB 至 4 GiB；不是已用显存、总进程显存上限或预分配量。
-- runtimeBudgetSource：1 默认策略、2 显式构造参数覆盖。runtimeConfiguredBudgetMiB：默认时 0，否则 256..4096。显式 1024 与默认 1024 因此可以区分，不输出原始环境变量或设置来源字符串。
+- runtimeBudgetSource 取 1 时使用 1024 MiB 默认值，取 2 时使用受信任的主进程策略值。runtimeConfiguredBudgetMiB 记录该策略值（256..4096），默认时为 0。Apple 芯片的 Mac 有至少 16 GiB 统一内存且启动时可用至少 4 GiB 时，主进程在自动模式下选择 2048 MiB。显式启动配置优先。
 
 imageAtlas=1 仅表示开启，不能证明某个失败图片实际走了图集路径。部分调用会传入 intoAtlas=false；图片尺寸也决定是否使用图集，而现有浮点图片预算检查位于该分支之前。imageMips=1 同样不证明实际选择了非零 mip。
 

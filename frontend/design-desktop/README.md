@@ -77,12 +77,12 @@ For an existing build, launch from the repository's `frontend/design-desktop` di
 CORE_GPU_WORKING_BUDGET_MIB=4096 npm start
 ```
 
-This explicit host-only setting accepts a decimal integer from 256 through 4096 MiB.
-Omitting it, or setting it to `auto`, preserves the existing defaults: the ordinary
-WebGPU working-set policy keeps its 256 MiB default and the separate native path
-retains its existing automatic policy. Invalid explicit values fail with a clear
-launch error; documents, renderer settings and MCP cannot set this option. The
-CPU-only launch policy is unchanged.
+This host-only setting accepts a decimal integer from 256 through 4096 MiB.
+Omitting it or setting it to `auto` selects 2048 MiB on Apple silicon Macs
+with at least 16 GiB of unified memory and 4 GiB available at startup. The
+other configurations use the 1024 MiB WebGPU default. An explicit value
+takes precedence. Invalid values fail with a clear launch error. Documents,
+renderer settings and MCP cannot set this option.
 
 4096 MiB is an optional **4 GiB admission ceiling**, not a preallocation or a cap on
 the application's total GPU/process memory. It changes no single-texture/buffer

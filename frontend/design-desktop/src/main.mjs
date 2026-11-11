@@ -34,7 +34,7 @@ import {
 } from './security.mjs'
 import { Sidecar } from './sidecar.mjs'
 import { createWorkspaceSqliteCodec, SQLITE_OFFTHREAD_BYTES } from './workspace-sqlite-worker-host.mjs'
-import { DOCUMENT_BYTE_LIMIT, DOCUMENT_MEMORY_BYTES } from './document-capacity.mjs'
+import { DOCUMENT_BYTE_LIMIT, DOCUMENT_MEMORY_BYTES, STARTUP_MEMORY } from './document-capacity.mjs'
 import {
   FD_EXPORT_BYTE_LIMIT,
   HTML_ZIP_BYTE_LIMIT,
@@ -52,7 +52,7 @@ import { fitWindowState, readWindowState, writeWindowState, constrainWindowToDis
 import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legacy-user-data.mjs'
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
-import { parseGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
+import { selectGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
 import { createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
 import { createPluginUiHost } from './plugin-ui.mjs'
 
@@ -63,7 +63,8 @@ const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(proc
 const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
 const smoke = process.argv.includes('--desktop-smoke')
 const cpuOnly = process.argv.includes('--core-cpu-only') || smoke
-const gpuWorkingBudgetMiB = parseGpuWorkingBudgetMiB(process.env.CORE_GPU_WORKING_BUDGET_MIB)
+const gpuWorkingBudgetMiB = selectGpuWorkingBudgetMiB(process.env.CORE_GPU_WORKING_BUDGET_MIB,
+  { platform: process.platform, arch: process.arch, ...STARTUP_MEMORY })
 const guiTest = process.argv.includes('--desktop-gui-test')
 // Manual/native UI validation uses its own catalog/recovery without running
 // the scripted GUI test menu or touching a developer's regular profile.

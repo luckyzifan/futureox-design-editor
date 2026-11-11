@@ -51,9 +51,14 @@ function availableMemory() {
 const inherited = process.env.CORE_DOCUMENT_MEMORY_INHERITED === '1'
 const inheritedBytes = Number(process.env.CORE_DOCUMENT_MEMORY_BYTES)
 if (inherited && (!Number.isSafeInteger(inheritedBytes) || inheritedBytes < MIB || inheritedBytes > WASM_ADDRESS_BYTES)) throw new TypeError('Invalid inherited document memory policy')
-export const DOCUMENT_MEMORY_BYTES = inherited ? inheritedBytes : selectDocumentMemoryBytes({ total: totalmem(), available: availableMemory(),
+export const STARTUP_MEMORY = Object.freeze(inherited ? {} : {
+  total: totalmem(),
+  available: availableMemory(),
   constrained: typeof process.constrainedMemory === 'function' ? process.constrainedMemory() : 0,
-  configured: process.env.CORE_DOCUMENT_MEMORY_BYTES })
+})
+export const DOCUMENT_MEMORY_BYTES = inherited ? inheritedBytes : selectDocumentMemoryBytes({
+  ...STARTUP_MEMORY, configured: process.env.CORE_DOCUMENT_MEMORY_BYTES,
+})
 export const DOCUMENT_BYTE_LIMIT = Math.floor(DOCUMENT_MEMORY_BYTES / 16)
 export const DOCUMENT_TRANSFER_BYTES = DOCUMENT_BYTE_LIMIT * 2 + 64 * 1024
 // Children inherit this exact admission, rather than independently resampling.
