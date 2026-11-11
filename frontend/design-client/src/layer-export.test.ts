@@ -91,6 +91,23 @@ test('Sketch export settings accept source-only formats and zero scale without a
   expect(()=>validateDocument(d)).toThrow('图层导出设置无效')
  }
 })
+test('TIFF is an executable layer preset while EPS stays round-trip only', () => {
+  const d = blank(), shape = node('rectangle', 0, 0, 120, 90)
+  shape.exportSettings = [
+    { id: uid(), format: 'tiff', scale: 2, suffix: '@2x' },
+    { id: uid(), format: 'eps', scale: 1, suffix: '' },
+  ]
+  d.nodes[shape.id] = shape
+  d.pages[0].children = [shape.id]
+  const editor = new Editor(d); editors.push(editor)
+  const layer = renderToStaticMarkup(createElement(NodeExportPanel, { editor, node: editor.state.doc.nodes[shape.id] }))
+  expect(layer).toContain('value="tiff"')
+  expect(layer).not.toContain('TIFF（仅 Sketch 往返）')
+  expect(layer).toContain('EPS（仅 Sketch 往返）')
+  expect(layer).toContain('8 位未压缩')
+  expect(layer).toContain('非关联 alpha')
+  expect(layer).not.toContain('HEIC')
+})
 test('ordinary sRGB layer presets use the top bar sRGB encoding and HDR still requires a choice', () => {
   const d = blank(), shape = node('rectangle', 80, 88, 96, 64), child = node('rectangle', 4, 4, 8, 8)
   d.schemaVersion = 4

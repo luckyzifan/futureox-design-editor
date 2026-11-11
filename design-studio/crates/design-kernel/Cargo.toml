@@ -101,3 +101,5 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tiny-skia = { version = "=0.12.0", default-features = false, features = ["std"] }
+# Independent TIFF decoder for export tests. The encoder does not use this crate.
+tiff = "=0.9.1"

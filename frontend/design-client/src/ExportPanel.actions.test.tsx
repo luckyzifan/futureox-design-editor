@@ -9,6 +9,24 @@ import { ExportPanel } from './ExportPanel'
 import { canvasActions, CanvasAction, ActionOutcome } from './canvas-action-diagnostics'
 const exporter = vi.hoisted(() => ({ run: vi.fn() }))
 vi.mock('./export', () => ({ exportRasterBatch: (...args: unknown[]) => exporter.run(...args) }))
+test('the top export offers TIFF and describes the 8-bit big-endian encoder', async () => {
+  const dom = new JSDOM('<html><body><div id="root"></div></body></html>', { url: 'https://design.invalid' })
+  for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'Event', 'KeyboardEvent']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const editor = new Editor(blank())
+  const root = createRoot(document.getElementById('root')!)
+  try {
+    await act(async () => root.render(<ExportPanel editor={editor} onClose={() => {}} />))
+    const select = document.querySelector<HTMLSelectElement>('[aria-label="导出图像格式"]')!
+    expect([...select.options].map(option => option.value)).toEqual(['sketch', 'svg', 'png', 'jpeg', 'webp', 'tiff', 'pdf', 'pdf-vector'])
+    expect(select.querySelector('option[value="tiff"]')?.textContent).toBe('TIFF')
+    expect(document.body.textContent).not.toContain('HEIC')
+    await act(async () => { select.value = 'tiff'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(document.body.textContent).toContain('MM 00 2A')
+    expect(document.body.textContent).toContain('非关联 alpha')
+    expect(document.body.textContent).not.toContain('HEIC')
+  } finally { await act(async () => root.unmount()); editor.dispose(); vi.restoreAllMocks(); vi.unstubAllGlobals(); dom.window.close() }
+})
 test('an awaited export reports generation, not an unrelated concurrent document commit', async () => {
   const dom = new JSDOM('<html><body><div id="root"></div></body></html>', { url: 'https://design.invalid' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'Event', 'KeyboardEvent']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
