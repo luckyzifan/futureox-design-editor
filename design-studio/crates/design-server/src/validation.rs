@@ -24,13 +24,7 @@ fn blend(v: Option<&Value>, layer: bool) -> bool {
 fn paint(v: &Value) -> bool {
     let image = v.get("image").filter(|v| !v.is_null()).is_none_or(|s| {
         s.as_str().is_some_and(|s| {
-            let valid_prefix = [
-                "data:image/png;base64,",
-                "data:image/jpeg;base64,",
-                "data:image/webp;base64,",
-            ]
-            .iter()
-            .any(|p| s.starts_with(p));
+            let valid_prefix = futureox_design_kernel::paint::has_raster_data_prefix(s);
             valid_prefix
                 && s.len() <= 12 * 1024 * 1024
                 && s.split_once(',').is_some_and(|(_, data)| {

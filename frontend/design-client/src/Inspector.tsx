@@ -53,6 +53,7 @@ import {
   defaultPatternTile,
 } from './model'
 import { imageData } from './persistence'
+import { RASTER_MIME_ACCEPT } from './image-import'
 import { kernelNoiseFillPreset } from './kernel/picking'
 const blends: Blend[] = [
   'normal',
@@ -254,7 +255,7 @@ function PaintEditor({
           <input
             ref={file}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
+            accept={RASTER_MIME_ACCEPT}
             hidden
             onChange={async (e) => {
               const f = e.target.files?.[0]

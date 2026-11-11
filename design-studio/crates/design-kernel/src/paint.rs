@@ -230,6 +230,22 @@ impl Images {
     }
 }
 
+/// Codecs the raster decoder admits. GIF is decoded as its first frame only.
+/// TIFF must be a single page. Callers keep the original encoded bytes.
+pub const RASTER_DATA_PREFIXES: [&str; 5] = [
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/webp;base64,",
+    "data:image/gif;base64,",
+    "data:image/tiff;base64,",
+];
+
+pub fn has_raster_data_prefix(uri: &str) -> bool {
+    RASTER_DATA_PREFIXES
+        .iter()
+        .any(|prefix| uri.starts_with(prefix))
+}
+
 /// Decode an asset to its resident surface, applying the same admission and
 /// allocation limits the inline decode historically enforced. Returns the
 /// surface and the pixel count to charge against the resident budget.
@@ -242,14 +258,7 @@ fn decode(
         return Err("Image exceeds 12 MB encoded limit".into());
     }
     let (_, b64) = data.split_once(',').ok_or("Invalid image URI")?;
-    if ![
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/webp;base64,",
-    ]
-    .iter()
-    .any(|p| data.starts_with(p))
-    {
+    if !has_raster_data_prefix(data) {
         return Err("Unsupported image URI".into());
     }
     let bytes = base64::engine::general_purpose::STANDARD
@@ -258,6 +267,10 @@ fn decode(
     decode_bytes(bytes,settings,resident)
 }
 fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resident:usize)->Result<(Surface,usize),String>{
+    // TIFF page count and orientation are admitted before pixels are allocated.
+    // GIF uses ImageDecoder::read_image below, which consumes only the first
+    // frame and does not composite later animation frames.
+    let tiff_orientation = crate::image_color::admit_single_page_tiff(&bytes)?;
     let space = crate::image_color::png_space(&bytes)?;
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
@@ -283,7 +296,10 @@ fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resid
     } else {
         None
     };
-    let orientation = crate::image_color::orientation(&mut decoder)?;
+    let orientation = match tiff_orientation {
+        Some(orientation) => orientation,
+        None => crate::image_color::orientation(&mut decoder)?,
+    };
     let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     decoded.apply_orientation(orientation);
     // Orientation can swap dimensions but cannot change the admitted count.

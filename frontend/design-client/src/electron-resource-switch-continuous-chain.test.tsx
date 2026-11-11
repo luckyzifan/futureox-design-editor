@@ -158,7 +158,7 @@ async function mountFixture() {
 function fileInput() {
   const inputs = [...mount.querySelectorAll<HTMLInputElement>('.paint-editor input[type="file"]')]
   expect(inputs).toHaveLength(1)
-  expect(inputs[0].accept).toBe('image/png,image/jpeg,image/webp')
+  expect(inputs[0].accept).toBe('image/png,image/jpeg,image/webp,image/gif,image/tiff')
   return inputs[0]
 }
 async function chooseImage(name: string) {

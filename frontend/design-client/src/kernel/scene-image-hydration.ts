@@ -248,7 +248,7 @@ export class SceneImageHydration {
       if (this.cache.get(scope, key) || this.attempted.has(key) || uploaded?.(uri)) continue
       // Long/invalid sources are still validated by the renderer. Skipping
       // optional acceleration must not become a different source-error policy.
-      if (uri.length >= 2_000_000 || !/^data:image\/(png|jpeg|webp);base64,/.test(uri)) continue
+      if (uri.length >= 2_000_000 || !/^data:image\/(png|jpeg|webp|gif|tiff);base64,/.test(uri)) continue
       const bytes = key.length * 2 + 128
       if (this.attempted.size >= this.limits.entries || bytes > this.limits.keyBytes - this.keyBytes ||
           this.readBytes >= this.limits.readBytes) return

@@ -1,29 +1,20 @@
 import { ImportStage, type ImportDiagnostic } from './import-diagnostics'
 import { assertImportInputBytes } from './import-input-policy'
 import type { Editor } from './engine'
+import { GIF_FIRST_FRAME_NOTICE, imageData } from './image-import'
 import { node, paint, type Point } from './model'
 import { screenToWorld, type CanvasSize } from './canvas-camera'
 export type DecodedImportImage = { uri: string; width: number; height: number }
 export class StaleImageImport extends Error { constructor() { super('图片导入期间画布已变化，请重新导入'); this.name = 'StaleImageImport' } }
 export type DecodeImportImage = (file: File) => Promise<DecodedImportImage>
-async function readImportImage(file: File, diagnostic?: ImportDiagnostic): Promise<DecodedImportImage> {
+async function admitImportImage(file: File, diagnostic: ImportDiagnostic | undefined, maxPixels: number): Promise<DecodedImportImage> {
   diagnostic?.stage(ImportStage.read)
-  const uri = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error(`读取图片失败: ${file.name}`))
-    reader.readAsDataURL(file)
-  })
+  const image = await imageData(file, maxPixels)
   diagnostic?.stage(ImportStage.decode)
-  // Get image dimensions
-  const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve({ width: img.width, height: img.height })
-    img.onerror = () => reject(new Error(`解码图片失败: ${file.name}`))
-    img.src = uri
-  })
-
-  return { uri, width: dims.width, height: dims.height }
+  return { uri: image.data, width: image.width, height: image.height }
+}
+async function readImportImage(file: File): Promise<DecodedImportImage> {
+  return admitImportImage(file, undefined, 16_777_216)
 }
 
 /** Capture the actual visible canvas center before decoding. No fabricated viewport. */
@@ -59,11 +50,12 @@ export async function appendImageFiles(editor: Editor, files: File[], anchor: Po
     else assertImportInputBytes(files[index].size)
   }
   const images: { uri: string; width: number; height: number }[] = []
+  const maxPixels = editor.state.doc.colorManagement ? 8_388_608 : 16_777_216
   for (let index = 0; index < files.length; index++) {
     activeIndex = index
     const file = files[index], diagnostic = diagnostics[index]
     diagnostic?.stage(ImportStage.decode)
-    const { uri, width, height } = await (decode === readImportImage ? readImportImage(file, diagnostic) : decode(file))
+    const { uri, width, height } = await (decode === readImportImage ? admitImportImage(file, diagnostic, maxPixels) : decode(file))
     assertCurrent()
     images.push({ uri, width, height })
   }
@@ -90,7 +82,8 @@ export async function appendImageFiles(editor: Editor, files: File[], anchor: Po
       offsetY += height + spacing
     }
   })
-  if (result?.status === 'committed') editor.notify(`已导入 ${images.length} 张图片`)
+  const gif = files.some(file => file.type === 'image/gif' || /\.gif$/i.test(file.name))
+  if (result?.status === 'committed') editor.notify(gif ? `已导入 ${images.length} 张图片。${GIF_FIRST_FRAME_NOTICE}` : `已导入 ${images.length} 张图片`)
   const status = result?.status ?? 'unchanged'
   for (const diagnostic of diagnostics) diagnostic?.result(status === 'committed' ? 1 : status === 'rejected' ? 3 : 2, status === 'committed' ? 1 : 0)
   return { count: images.length, status }

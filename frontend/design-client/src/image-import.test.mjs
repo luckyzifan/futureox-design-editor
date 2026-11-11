@@ -57,7 +57,7 @@ test('rejects invalid budgets before browser decoding', async t => {
 })
 test('rejects unsupported type and oversized encoded files', async t => {
   const env = browser(t)
-  await assert.rejects(imageData(file('image/svg+xml')), /PNG、JPEG 或 WebP/)
+  await assert.rejects(imageData(file('image/svg+xml')), /PNG、JPEG、WebP、GIF 或 TIFF/)
   await assert.rejects(imageData(file('image/png', 8 * 1024 * 1024 + 1)), /8 MB/)
   assert.equal(env.decodes(), 0)
 })

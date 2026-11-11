@@ -2183,7 +2183,7 @@ export class GpuRenderer {
     return policy ? { uri, policy } : undefined
   }
   private uploadImage(uri: string, level: number, intoAtlas: boolean, adjust?: ImageAdjust): Surface {
-    if (!sourceBitmap(uri) && !/^data:image\/(png|jpeg|webp);base64,/.test(uri))
+    if (!sourceBitmap(uri) && !/^data:image\/(png|jpeg|webp|gif|tiff);base64,/.test(uri))
       throw new Error('无效的 GPU 图片资源')
     // Image adjustments (image-adjust math, ported in image-adjust.ts) run on the
     // decoded texels at upload time: premultiplied storage in and out, so no
@@ -2657,7 +2657,7 @@ export class GpuRenderer {
     // defeating the shared-budget working set this ledger provides.
     for (const uri of needed) {
       if (this.images.keysFor(uri).size || this.images.has(uri))continue
-      if (!sourceBitmap(uri) && !/^data:image\/(png|jpeg|webp);base64,/.test(uri))
+      if (!sourceBitmap(uri) && !/^data:image\/(png|jpeg|webp|gif|tiff);base64,/.test(uri))
         throw new Error('无效的 GPU 图片资源')
       if ((scene.floatCompositing || scene.colorManagement) &&
         (!this.managedImageLoader || !this.driver.uploadLinear))

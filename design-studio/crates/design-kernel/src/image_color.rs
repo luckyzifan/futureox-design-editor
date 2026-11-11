@@ -134,6 +134,47 @@ pub(crate) fn exif_orientation(bytes: &[u8]) -> Result<image::metadata::Orientat
     Ok(orientation.unwrap_or(Orientation::NoTransforms))
 }
 
+fn tiff_magic(bytes: &[u8]) -> bool {
+    matches!(
+        bytes.get(..4),
+        Some(b"II*\0" | b"MM\0*" | b"II+\0" | b"MM\0+")
+    )
+}
+
+/// Single-page TIFF admission before pixel decode. `Ok(None)` means the bytes
+/// are not TIFF. A later IFD is rejected; GIF frames are not decided here.
+/// Invalid orientation fails closed, matching the EXIF directory rules.
+pub fn admit_single_page_tiff(
+    bytes: &[u8],
+) -> Result<Option<image::metadata::Orientation>, String> {
+    if !tiff_magic(bytes) {
+        return Ok(None);
+    }
+    let mut limits = tiff::decoder::Limits::default();
+    // The directory walk must not become a pixel allocation. Encoded size is
+    // already capped by the caller; keep tag payloads inside the ICC bound.
+    limits.decoding_buffer_size = 1024 * 1024;
+    limits.intermediate_buffer_size = 1024 * 1024;
+    limits.ifd_value_size = 4 * 1024 * 1024;
+    let mut decoder = tiff::decoder::Decoder::new(std::io::Cursor::new(bytes))
+        .map_err(|error| format!("TIFF codec: {error}"))?
+        .with_limits(limits);
+    if decoder.more_images() {
+        return Err("Multi-page TIFF is not supported; only a single page can be imported".into());
+    }
+    let orientation = match decoder.find_tag_unsigned::<u16>(tiff::tags::Tag::Orientation) {
+        Ok(None) => image::metadata::Orientation::NoTransforms,
+        Ok(Some(value)) => u8::try_from(value)
+            .ok()
+            .and_then(image::metadata::Orientation::from_exif)
+            .ok_or_else(|| "Invalid TIFF orientation value (expected 1 through 8)".to_string())?,
+        Err(error) => {
+            return Err(format!("Invalid TIFF orientation type or count: {error}"));
+        }
+    };
+    Ok(Some(orientation))
+}
+
 /// Immutable source colour policy plus reusable per-row transform scratch.
 /// One instance belongs to one decoder; no profile or global cache authority
 /// is inferred from an image name or a document-controlled identifier.

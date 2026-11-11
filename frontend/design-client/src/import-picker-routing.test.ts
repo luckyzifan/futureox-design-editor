@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, vi } from 'vitest'
+import { isImportedRasterFile } from './image-import'
 
 /** Execute the actual checked-in App input handler, not a duplicate routing
  * implementation. This is a handler test, not mounted React/Electron coverage. */
@@ -9,9 +10,9 @@ function handler(showHome = false, mode = 'open', design = vi.fn(async (_file: F
   const body = input.match(/onChange=\{async \(e\) => \{([\s\S]*?)\n        \}\}/)?.[1]
   if (!body) throw Error('Actual file input handler not found')
   const notices = vi.fn()
-  return { design, images, notices, change: new Function('importDesignFile', 'importImageFiles', 'importMode', 'showHome', 'editor', `return async function(e) {${body}}`)(design, images, { current: mode }, showHome, { notify: notices }) as (event: {currentTarget: {files: File[]; value: string}}) => Promise<void> }
+  return { design, images, notices, change: new Function('importDesignFile', 'importImageFiles', 'importMode', 'showHome', 'editor', 'isImportedRasterFile', `return async function(e) {${body}}`)(design, images, { current: mode }, showHome, { notify: notices }, isImportedRasterFile) as (event: {currentTarget: {files: File[]; value: string}}) => Promise<void> }
 }
-test.each(['png','PNG','jpg','jpeg','WEBP'])('actual picker dispatches %s image to image import', async ext => {
+test.each(['png','PNG','jpg','jpeg','WEBP','gif','GIF','tif','tiff','TIF'])('actual picker dispatches %s image to image import', async ext => {
   const h = handler(), f = new File(['opaque'], `input.${ext}`, {type:'image/png'})
   const target = {files:[f],value:'selected'}
   await h.change({currentTarget:target})
@@ -38,6 +39,43 @@ test('home gives explicit feedback without opening or mutating a hidden document
  expect(h.images).not.toHaveBeenCalled();expect(h.design).not.toHaveBeenCalled()
  expect(h.notices).toHaveBeenCalledExactlyOnceWith('请先打开画布，再导入图片', { key: 'openCanvasBeforeImageImport' })
 })
+function drop(showHome = false, design = vi.fn(async () => {}), images = vi.fn(async () => {})) {
+  const start = app.indexOf('onDropCapture={e=>{')
+  const end = app.indexOf('\n      }}', start)
+  const body = app.slice(start + 'onDropCapture={'.length, end) + '\n      }'
+  if (!body.includes('isImportedRasterFile')) throw Error('Actual drop router not found')
+  const notices = vi.fn()
+  const prevented = { default: false, stopped: false }
+  const run = new Function('importDesignFile', 'importImageFiles', 'showHome', 'editor', 'isImportedRasterFile', `return ${body}`)(
+    design, images, showHome, { notify: notices }, isImportedRasterFile,
+  ) as (event: { dataTransfer: { files: File[] }; preventDefault(): void; stopPropagation(): void }) => void
+  return { design, images, notices, prevented, run(files: File[]) {
+    const event = { dataTransfer: { files }, preventDefault() { prevented.default = true }, stopPropagation() { prevented.stopped = true } }
+    run(event)
+    return event
+  } }
+}
+test.each(['gif', 'tif', 'tiff', 'png', 'jpg', 'webp'])('actual drop routes %s through image import', ext => {
+  const h = drop(), file = new File(['opaque'], `board.${ext}`)
+  h.run([file])
+  expect(h.images).toHaveBeenCalledExactlyOnceWith([file])
+  expect(h.design).not.toHaveBeenCalled()
+  expect(h.prevented).toEqual({ default: true, stopped: true })
+})
+test('drop of an unknown extension does not import or claim the event', () => {
+  const h = drop()
+  h.run([new File(['opaque'], 'notes.txt')])
+  expect(h.images).not.toHaveBeenCalled()
+  expect(h.design).not.toHaveBeenCalled()
+  expect(h.prevented).toEqual({ default: false, stopped: false })
+})
+test('home drop of a gif does not open a hidden document', () => {
+  const h = drop(true)
+  h.run([new File(['opaque'], 'anim.gif', { type: 'image/gif' })])
+  expect(h.images).not.toHaveBeenCalled()
+  expect(h.design).not.toHaveBeenCalled()
+})
+
 test('picker does not retry or switch route on downstream failure',async()=>{
  const error=new Error('opaque read failure'), images=vi.fn(async()=>{throw error}),h=handler(false,'open',vi.fn(),images)
  await expect(h.change({currentTarget:{files:[new File(['opaque'],'a.png')],value:'selected'}})).rejects.toBe(error)

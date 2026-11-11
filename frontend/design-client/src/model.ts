@@ -8,6 +8,7 @@ import { validateVectorBrush } from './vector-brush'
 import { validStroke, validProfiles } from './stroke-profile'
 import type { AnimationClip } from './animation'
 import { validColor, validColorSettings, type ColorSettings } from './color'
+import { EMBEDDED_RASTER_URI } from './embedded-raster'
 export const MAX_GRADIENT_STOPS = 64
 export type Point = { x: number; y: number }
 export type Matrix = [number, number, number, number, number, number]
@@ -944,7 +945,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     (!['linear', 'radial', 'angular', 'diamond'].includes(p.kind) || p.stops.length >= 2) &&
     p.stops.length <= MAX_GRADIENT_STOPS &&
     p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
-    (!p.image || !!sourceBitmap(p.image) || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image))
+    (!p.image || !!sourceBitmap(p.image) || EMBEDDED_RASTER_URI.test(p.image))
   const paints = (list: Paint[]) => Array.isArray(list) && list.length <= 16 && list.every(validPaint)
   const defaultStyle = defaultTextStyle()
   let segmenter: Intl.Segmenter | undefined

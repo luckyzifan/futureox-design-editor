@@ -40,12 +40,7 @@ use std::{collections::BTreeMap, fmt::Write as _};
 
 /// Acrobat's 14400-unit default user-space bound still applies to pages.
 const MAX_SIDE_POINTS: f64 = 14400.;
-/// Kernel images admit three URI schemes; anything else is rejected here too.
-const IMAGE_URI_PREFIXES: [&str; 3] = [
-    "data:image/png;base64,",
-    "data:image/jpeg;base64,",
-    "data:image/webp;base64,",
-];
+/// Same raster schemes as the paint codec. GIF is the first frame; TIFF is one page.
 
 pub fn encode_pdf_vector(
     doc: &Document,
@@ -1190,10 +1185,7 @@ fn embed_image(pdf: &mut Pdf, uri: &str) -> Result<(usize, u32, u32), String> {
     if uri.len() > 12 * 1024 * 1024 {
         return Err("Image exceeds 12 MB encoded limit".into());
     }
-    if !IMAGE_URI_PREFIXES
-        .iter()
-        .any(|prefix| uri.starts_with(prefix))
-    {
+    if !crate::paint::has_raster_data_prefix(uri) {
         return Err("Unsupported image URI".into());
     }
     use base64::Engine as _;
@@ -1329,6 +1321,7 @@ fn jpeg_icc(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
 /// Untagged samples stay byte-for-byte and are declared sRGB. A cICP space
 /// other than sRGB, or an ICC profile, is converted before that declaration.
 fn decode_image_srgb(bytes: &[u8]) -> Result<image::RgbaImage, String> {
+    let tiff_orientation = crate::image_color::admit_single_page_tiff(bytes)?;
     let space = crate::image_color::png_space(bytes)?;
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
@@ -1344,7 +1337,10 @@ fn decode_image_srgb(bytes: &[u8]) -> Result<image::RgbaImage, String> {
     } else {
         None
     };
-    let orientation = crate::image_color::orientation(&mut decoder)?;
+    let orientation = match tiff_orientation {
+        Some(orientation) => orientation,
+        None => crate::image_color::orientation(&mut decoder)?,
+    };
     let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     decoded.apply_orientation(orientation);
     let convert = match space {

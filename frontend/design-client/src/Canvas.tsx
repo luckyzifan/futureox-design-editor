@@ -115,6 +115,7 @@ import {
 } from './geometry'
 import { splitEdge } from './vector'
 import { imageData } from './persistence'
+import { GIF_FIRST_FRAME_NOTICE } from './image-import'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
 import { NumberField } from './fields'
@@ -2708,6 +2709,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           { name: file.name, fills: [{ ...paint('#ffffff', 'image'), image: image.data }] },
           '导入图片',
         )
+        if (file.type === 'image/gif' || /\.gif$/i.test(file.name)) editor.notify(GIF_FIRST_FRAME_NOTICE)
       }
     } catch (error) {
       if (current()) editor.notify(String(error))

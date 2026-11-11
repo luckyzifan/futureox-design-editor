@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from 'react'
+import { isImportedRasterFile } from './image-import'
 
 export type GlyphIcon = ComponentType<{ size?: number }>
 export type FileKind = 'fd' | 'sketch' | 'fig' | 'svg' | 'pdf' | 'image'
@@ -11,7 +12,7 @@ export function fileKind(name: string): FileKind {
   if (ext === 'fig') return 'fig'
   if (ext === 'svg' || ext === 'svgz') return 'svg'
   if (ext === 'pdf') return 'pdf'
-  if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') return 'image'
+  if (isImportedRasterFile(name)) return 'image'
   return 'fd'
 }
 

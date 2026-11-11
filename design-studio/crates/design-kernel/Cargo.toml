@@ -21,6 +21,7 @@ zmij = "1.0.23"
 bytemuck = "1.25.2"
 thin-vec = { version = "=0.2.19", features = ["serde"], optional = true }
 image.workspace = true
+tiff.workspace = true
 png.workspace = true
 half.workspace = true
 flo_curves.workspace = true

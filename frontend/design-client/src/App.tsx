@@ -9,6 +9,7 @@ import { libraryHostKind, libraryRailVisible } from './library-chrome'
 import { ownedPropertyPreviewTarget } from './property-preview'
 import { hasCanvasColorPicker } from './canvas-color-picker'
 import { appendImageFiles, captureImageImportAnchor, StaleImageImport } from './append-image-files'
+import { isImportedRasterFile, RASTER_FILE_ACCEPT } from './image-import'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
@@ -928,7 +929,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       onDropCapture={e=>{
         const files=[...e.dataTransfer.files]
         const designFiles=files.filter(f=>/\.(fd|json|svg|svgz|fig|sketch|pdf)$/i.test(f.name))
-        const imageFiles=files.filter(f=>/\.(png|jpe?g|webp)$/i.test(f.name))
+        const imageFiles=files.filter(f=>isImportedRasterFile(f.name))
         if(!designFiles.length&&!imageFiles.length)return
         e.preventDefault();e.stopPropagation()
         // A design file dropped onto the home screen opens as a document via
@@ -1246,13 +1247,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       <input
         ref={file}
         type="file"
-        accept=".fd,.json,.svg,.svgz,.fig,.sketch,.pdf,.png,.jpg,.jpeg,.webp"
+        accept={`.fd,.json,.svg,.svgz,.fig,.sketch,.pdf,${RASTER_FILE_ACCEPT}`}
         hidden
         onChange={async (e) => {
           const f = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
           if (!f) return
-          if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
+          if (isImportedRasterFile(f.name)) {
             if (showHome) editor.notify('请先打开画布，再导入图片', { key: 'openCanvasBeforeImageImport' })
             else await importImageFiles([f])
           } else await importDesignFile(f, importMode.current)

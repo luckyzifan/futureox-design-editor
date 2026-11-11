@@ -4,7 +4,7 @@
 export function canRebuildImageDecoder(error:unknown,uri:string):boolean {
   const message=typeof error==='string'?error:error instanceof Error?error.message:''
   if(message!=='Invalid image data'||uri.length>12*1024*1024)return false
-  const prefix=['data:image/png;base64,','data:image/jpeg;base64,','data:image/webp;base64,'].find(p=>uri.startsWith(p))
+  const prefix=['data:image/png;base64,','data:image/jpeg;base64,','data:image/webp;base64,','data:image/gif;base64,','data:image/tiff;base64,'].find(p=>uri.startsWith(p))
   if(!prefix)return false
   const length=uri.length-prefix.length
   if(length<4||length%4)return false
