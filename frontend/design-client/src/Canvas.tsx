@@ -48,6 +48,7 @@ import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
 import { resolveShortcut, shortcutPlatform } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
+import { requestCommandSearch } from './command-search-session'
 import { dispatchEditorShortcut, shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { createPortal, flushSync } from 'react-dom'
 import { scheduleCanvasView } from './canvas-view-schedule'
@@ -1343,6 +1344,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         else { penRef.current = next; setPen(next) }
         if (drag.current?.kind === 'vertex' && !drag.current.node) drag.current = null
         pendingEditsChanged(editor)
+        return
+      }
+      // Open command search before any pen commit. The chord itself must not edit the document.
+      if (shortcut?.command === 'open-command-search') {
+        e.preventDefault()
+        if (!e.repeat && !editor.interactionActive && !drag.current && !pencil.current) requestCommandSearch(e.target)
         return
       }
       if (penRef.current && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && e.code !== 'Space') finishPen()

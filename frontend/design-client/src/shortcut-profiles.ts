@@ -3,7 +3,7 @@ import { TOOL_COMMANDS } from './tool-registry'
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility'
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -84,6 +84,8 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
   bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
+  // Sketch's command bar. S stays the slice tool in the Figma profile.
+  if (profile === 'sketch-like') bindings.push({ command: 'open-command-search', combo: 'Mod+K' }, { command: 'open-command-search', combo: 'S' })
   if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
   if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
   const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))

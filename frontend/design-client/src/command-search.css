@@ -1,0 +1,94 @@
+.command-search-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 16px 16px;
+  background: #1c19173d;
+}
+.command-search-dialog {
+  width: min(560px, 100%);
+  max-height: min(640px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--workspace-border);
+  border-radius: 14px;
+  background: var(--workspace-panel);
+  color: var(--workspace-text);
+  box-shadow: 0 24px 64px #1c191724;
+  font-size: 13px;
+}
+.command-search-dialog header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 0;
+}
+.command-search-dialog h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.command-search-dialog header button {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+.command-search-dialog input {
+  width: calc(100% - 28px);
+  margin: 10px 14px 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 8px;
+  background: var(--workspace-field);
+  color: var(--workspace-text);
+}
+.command-search-list {
+  overflow: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+.command-search-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  text-align: left;
+  color: inherit;
+}
+.command-search-option[aria-selected="true"] {
+  background: var(--workspace-selected);
+}
+.command-search-option[aria-disabled="true"] {
+  color: var(--workspace-muted);
+}
+.command-search-option b {
+  font-weight: 550;
+}
+.command-search-option kbd,
+.command-search-reason {
+  color: var(--workspace-muted);
+  font-size: 11px;
+}
+.command-search-reason {
+  grid-column: 1 / -1;
+}
+.command-search-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--workspace-muted);
+}
+.command-search-dialog button:focus-visible,
+.command-search-dialog input:focus-visible {
+  outline: 2px solid var(--workspace-accent);
+  outline-offset: 2px;
+}

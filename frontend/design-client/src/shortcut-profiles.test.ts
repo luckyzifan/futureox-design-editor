@@ -3,12 +3,13 @@ import { Editor } from './engine'
 import { screenToWorld } from './canvas-camera'
 import { blank, node } from './model'
 import { editorCommands } from './editor-commands'
+import { closeCommandSearch, commandSearchSnapshot } from './command-search-session'
 import { dispatchEditorShortcut } from './editor-shortcuts'
 import { canvasMenuItems } from './canvas-menu-model'
 import { createShortcutPreference, SHORTCUT_PROFILE_KEY } from './shortcut-preference'
 import { resolveShortcut, shortcutBindings, shortcutLabel, shortcutPlatform, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 const editors: Editor[] = []
-afterEach(() => { editors.splice(0).forEach(editor => editor.dispose()); vi.unstubAllGlobals() })
+afterEach(() => { closeCommandSearch(); editors.splice(0).forEach(editor => editor.dispose()); vi.unstubAllGlobals() })
 function fixture() {
   const doc = blank('Shortcuts'), a = node('rectangle', 10, 20, 30, 40), b = node('rectangle', 100, 90, 50, 60)
   doc.nodes[a.id] = a; doc.nodes[b.id] = b; doc.pages[0].children = [a.id, b.id]
@@ -24,7 +25,10 @@ describe('bounded keyboard presets', () => {
   test.each(contexts)('$profile $platform desktop=$desktop has unique chords and existing commands only', context => {
     const bindings = shortcutBindings(context)
     expect(new Set(bindings.map(binding => binding.combo)).size).toBe(bindings.length)
-    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility']).toContain(binding.command)
+    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search']).toContain(binding.command)
+    const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()
+    expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : [])
+    expect(bindings.some(binding => binding.command === 'set-tool-slice' && binding.combo === (context.profile === 'figma-like' ? 'S' : 'E'))).toBe(true)
   })
   test.each(contexts)('$profile $platform desktop=$desktop dispatches real tool, duplicate, undo, group and visibility state', async context => {
     const { editor, a, b } = fixture(), before = editor.state.doc
@@ -232,6 +236,46 @@ describe('bounded keyboard presets', () => {
     editor.addPage()
     await dispatchEditorShortcut(editor, key('PageUp', { code: 'PageUp' }), context)
     expect(editor.state.page).toBe(first)
+  })
+  test('sketch command search chords do not edit; figma S remains slice', async () => {
+    const { editor } = fixture(), before = editor.state.doc
+    const sketch: ShortcutContext = { profile: 'sketch-like', platform: 'mac', desktop: true }
+    const figma: ShortcutContext = { profile: 'figma-like', platform: 'mac', desktop: true }
+    expect(resolveShortcut(key('s'), sketch)?.command).toBe('open-command-search')
+    expect(resolveShortcut(key('k', { metaKey: true }), sketch)?.command).toBe('open-command-search')
+    expect(resolveShortcut(key('s', { shiftKey: true }), sketch)?.command).toBe('auto-layout')
+    expect(resolveShortcut(key('s', { metaKey: true }), sketch)).toBeNull()
+    expect(resolveShortcut(key('s'), figma)?.command).toBe('set-tool-slice')
+    expect(resolveShortcut(key('k', { metaKey: true }), figma)).toBeNull()
+    await dispatchEditorShortcut(editor, key('s'), sketch)
+    expect(editor.state.doc).toBe(before)
+    expect(editor.state.tool).toBe('select')
+    expect(commandSearchSnapshot()).toBeGreaterThan(0)
+    const held = key('s', { repeat: true })
+    expect(await dispatchEditorShortcut(editor, held, sketch)).toBe(true)
+    expect(held.preventDefault).toHaveBeenCalledOnce()
+    expect(editor.state.doc).toBe(before)
+    closeCommandSearch()
+    expect(commandSearchSnapshot()).toBe(0)
+    for (const event of [key('s', { isComposing: true }), key('s', { keyCode: 229 })]) {
+      expect(await dispatchEditorShortcut(editor, event, sketch)).toBe(false)
+      expect(editor.state.doc).toBe(before)
+    }
+    editor.set({ busy: true })
+    await dispatchEditorShortcut(editor, key('k', { metaKey: true }), sketch)
+    expect(editor.state.doc).toBe(before)
+    expect(commandSearchSnapshot()).toBeGreaterThan(0)
+    closeCommandSearch()
+    editor.set({ busy: false })
+    editor.begin('pointer gesture')
+    await dispatchEditorShortcut(editor, key('s'), sketch)
+    expect(commandSearchSnapshot()).toBe(0)
+    expect(editor.state.doc).toBe(before)
+    editor.cancel()
+    await dispatchEditorShortcut(editor, key('s'), figma)
+    expect(editor.state.tool).toBe('slice')
+    expect(editor.state.doc).toBe(before)
+    expect(commandSearchSnapshot()).toBe(0)
   })
   test('platform identification uses the OS, not a Mac-only assumption', () => {
     expect(shortcutPlatform('MacIntel')).toBe('mac'); expect(shortcutPlatform('Win32')).toBe('windows'); expect(shortcutPlatform('Linux x86_64')).toBe('linux')
