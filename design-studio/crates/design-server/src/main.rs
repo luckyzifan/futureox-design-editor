@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use std::{net::SocketAddr, sync::Arc};
+use tower_http::services::ServeDir;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
@@ -329,12 +330,21 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .route("/documents", get(list))
         .route("/documents/{id}", get(read).put(save))
         .layer(middleware::from_fn_with_state(state.clone(), authenticate));
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/health", get(health))
         .nest("/api/design", protected)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", Api::openapi()))
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
         .with_state(state);
+    if let Some(root) = std::env::var_os("DESIGN_WEB_ROOT") {
+        let root = std::path::PathBuf::from(root);
+        for file in ["index.html", "kernel/design_kernel_bg.wasm"] {
+            if !tokio::fs::metadata(root.join(file)).await?.is_file() {
+                return Err(format!("DESIGN_WEB_ROOT requires {file}").into());
+            }
+        }
+        app = app.fallback_service(ServeDir::new(root));
+    }
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(%bind,"design studio ready");
     axum::serve(listener, app)

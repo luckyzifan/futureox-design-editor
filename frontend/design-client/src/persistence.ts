@@ -6,6 +6,7 @@ import { initializeKernelModule } from './kernel/module'
 import { desktopBridge } from './desktop'
 import { importFileInWorker } from './import-file-worker'
 import { type DesignDocument, validateDocument } from './model'
+import { immutableDocument } from './immutable-document'
 export { localSave } from './local-store'
 import { localOpen, localTransaction, localRequest } from './local-store'
 export async function localRead(): Promise<DesignDocument | null> {
@@ -66,7 +67,7 @@ export type RemoteDocument = {
   document: DesignDocument
   updatedAt: string
 }
-type PendingSave = { document: DesignDocument; revision: number; requestId: string }
+type PendingSave = { document: DesignDocument; revision: number; requestId: string; owner?: string }
 export class BackendError extends Error {
   constructor(
     readonly status: number,
@@ -77,6 +78,7 @@ export class BackendError extends Error {
 }
 export class Backend {
   token = ''
+  private readonly outboxOwner = crypto.randomUUID()
   private async scope(id: string, token: string) {
     if (!token) throw new Error('请输入工作空间访问令牌')
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
@@ -91,7 +93,7 @@ export class Backend {
         authorization: `Bearer ${this.token}`,
         ...options.headers,
       },
-      signal: AbortSignal.timeout(15000),
+      signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
     })
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
@@ -104,47 +106,63 @@ export class Backend {
     }
     return response.status === 204 ? null : response.json()
   }
-  list(): Promise<Omit<RemoteDocument, 'document'>[]> {
-    return this.request('/documents')
+  list(signal?: AbortSignal): Promise<Omit<RemoteDocument, 'document'>[]> {
+    return this.request('/documents', { signal })
   }
-  async get(id: string): Promise<RemoteDocument> {
+  async get(id: string, signal?: AbortSignal): Promise<RemoteDocument> {
     const token = this.token,
       key = await this.scope(id, token)
-    const result: RemoteDocument = await this.request(`/documents/${id}`, {
+    const result: RemoteDocument = await this.request(`/documents/${encodeURIComponent(id)}`, {
       headers: { authorization: `Bearer ${token}` },
+      signal,
     })
+    if (result.id !== id || result.document?.id !== id || !Number.isSafeInteger(result.revision) || result.revision < 1)
+      throw new Error('服务器文档响应无效')
     await localTransaction(['remote'], 'readwrite', async (tx) => {
       tx.objectStore('remote').put({ revision: result.revision }, key)
     })
     return result
   }
-  async save(doc: DesignDocument, revision: number): Promise<RemoteDocument> {
+  async save(doc: DesignDocument, revision: number, options: { signal?: AbortSignal; exactRevision?: boolean } = {}): Promise<RemoteDocument> {
+    if (!immutableDocument(doc)) doc = structuredClone(doc)
     validateDocument(doc)
+    const { signal, exactRevision } = options
     const token = this.token,
       key = await this.scope(doc.id, token)
-    const pending = await localTransaction(['outbox', 'remote'], 'readwrite', async (tx) => {
-      const store = tx.objectStore('outbox')
-      const existing = (await localRequest(store.get(key))) as PendingSave | undefined
-      if (existing) return existing
-      const confirmed = (await localRequest(tx.objectStore('remote').get(key))) as
-        | { revision: number }
-        | undefined
-      const next = {
-        document: doc,
-        revision: revision || confirmed?.revision || 0,
-        requestId: crypto.randomUUID(),
-      }
-      store.put(next, key)
-      return next
-    })
+    for (let attempt = 0; attempt < 2; attempt++) {
+      signal?.throwIfAborted()
+      const pending = await localTransaction(exactRevision ? ['outbox'] : ['outbox', 'remote'], 'readwrite', async (tx) => {
+        const store = tx.objectStore('outbox')
+        const existing = (await localRequest(store.get(key))) as PendingSave | undefined
+        if (existing) return existing
+        const confirmed = exactRevision || revision ? undefined :
+          await localRequest(tx.objectStore('remote').get(key)) as { revision: number } | undefined
+        const next = { document: doc, revision: confirmed?.revision ?? revision, requestId: crypto.randomUUID(), owner: this.outboxOwner }
+        store.put(next, key)
+        return next
+      })
+      const result = await this.sendPending(doc.id, key, token, pending, signal)
+      if (!exactRevision) return result
+      const sameRevision = revision === pending.revision || revision === result.revision
+      const sameDocument = pending.document === doc || JSON.stringify(pending.document) === JSON.stringify(doc)
+      if (sameRevision && sameDocument) return result
+      // A retry may acknowledge this editor's earlier snapshot first. A
+      // different tab's receipt cannot advance this editor's CAS base.
+      if (revision !== result.revision && !(revision === pending.revision && pending.owner === this.outboxOwner)) break
+      revision = result.revision
+    }
+    throw new BackendError(409, '服务器版本已变化，请先打开最新版本或保存为副本')
+  }
+  private async sendPending(id: string, key: string, token: string, pending: PendingSave, signal?: AbortSignal): Promise<RemoteDocument> {
     // Persist before sending. A timeout leaves this immutable request intact;
     // the next explicit save recovers its receipt using the same operation ID.
     let result: RemoteDocument
     try {
-      result = await this.request(`/documents/${doc.id}`, {
+      result = await this.request(`/documents/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        body: JSON.stringify(pending),
+        body: JSON.stringify({ document: pending.document, revision: pending.revision, requestId: pending.requestId }),
         headers: { authorization: `Bearer ${token}` },
+        signal,
       })
     } catch (error) {
       if (error instanceof BackendError && [409, 422].includes(error.status)) {
@@ -158,6 +176,8 @@ export class Backend {
       }
       throw error
     }
+    if (result.id !== id || result.document?.id !== id || result.revision !== pending.revision + 1)
+      throw new Error('服务器保存回执无效')
     await localTransaction(['outbox', 'remote'], 'readwrite', async (tx) => {
       const outbox = tx.objectStore('outbox')
       const current = (await localRequest(outbox.get(key))) as PendingSave | undefined

@@ -315,6 +315,7 @@ export class SaveCoordinator {
   constructor(
     private commit = localSave,
     private publish: (status: SaveStatus) => void = () => {},
+    private onDurable: (record: LocalRecord, version: number) => void = () => {},
   ) {}
   expectRevision(id: string, revision: number) {
     this.revisions.set(id, revision)
@@ -361,6 +362,7 @@ export class SaveCoordinator {
         this.revisions.set(documentId, record.revision)
         this.durable.set(documentId, version)
         this.emit()
+        this.onDurable(record, version)
       })
       .catch((error) => {
         if (this.current?.document.id === documentId) this.emit(String(error))

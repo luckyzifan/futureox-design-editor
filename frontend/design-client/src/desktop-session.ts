@@ -15,6 +15,7 @@ import { blank, type DesignDocument } from './model'
 import { consumeDocumentJsonSyntaxFailure } from './document-admission'
 import { consumeDocumentPreparationSourceFailure } from './document-preparation-worker-client'
 import { documentPreparationRuntime } from './document-preparation-identity'
+import { AUTOSAVE_IDLE_MS, BufferedAutosave } from './buffered-autosave'
 import type { DesktopBridge, DesktopFile, DesktopResult, WorkspaceDocument, WorkspaceOpened } from './desktop'
 
 export type LeaveDecision = 'save' | 'discard' | 'cancel'
@@ -318,7 +319,19 @@ export class DesktopSession {
   private disposed = false
   private readonly documentPreparations = new Set<AbortController>()
   private suppressObservation = false
-  private recoveryTimer?: ReturnType<typeof setTimeout>
+  private recoveryWaitingForInput = false
+  private recoverySave = new BufferedAutosave(
+    async () => {
+      if (this.editor.interactionActive || this.editor.state.busy || hasPendingEdits(this.editor)) {
+        if (this.workspaceBusyRetries) this.scheduleWorkspaceBusyRetry()
+        else this.recoveryWaitingForInput = true
+        return
+      }
+      this.recoveryWaitingForInput = false
+      await this.updateRecovery()
+    },
+    error => this.editor.notify(`自动保存失败，当前修改已保留：${String(error)}`),
+  )
   private recoveryQueue: Promise<void> = Promise.resolve()
   private recoveryError?: string
   private recoveryWarning?: string
@@ -352,6 +365,7 @@ export class DesktopSession {
       if (pending || this.hadPending) this.advanceGeneration()
       this.hadPending = pending
       this.publish()
+      this.resumeRecoveryAfterInput()
       // Cancellation may restore the exact saved object without a new revision.
       // Reconcile its dirty badge/recovery state without ever saving draft pixels.
       if (propertyEnded && this.started && !this.recoveryPaused && this.operation === 'idle') this.scheduleRecovery()
@@ -488,7 +502,7 @@ export class DesktopSession {
       if (method !== 'workspace.save' && this.dirty) fail('DIRTY_DOCUMENT', 'Save the current document before navigation or restoration')
     }
     try { check() } catch (error) { return Promise.reject(error) }
-    clearTimeout(this.recoveryTimer)
+    this.recoverySave.cancel()
     this.operation = method === 'workspace.save' ? 'save' : 'open'
     this.publish()
     const unwrap = <T extends WorkspaceDocument>(result: DesktopResult<T>): T => {
@@ -702,7 +716,7 @@ export class DesktopSession {
     for (const controller of this.documentPreparations) controller.abort()
     this.documentPreparations.clear()
     cancelPendingOperations(this.editor)
-    clearTimeout(this.recoveryTimer)
+    this.recoverySave.cancel()
     this.unsubscribe()
     this.unsubscribeDrafts()
   }
@@ -710,6 +724,7 @@ export class DesktopSession {
   private observe() {
     const authored = this.editor.authoredDocument ?? this.editor.state.doc
     if (this.suppressObservation) return
+    this.resumeRecoveryAfterInput()
     // Pointer previews publish a replacement root at the existing revision.
     // Storage owns the last committed root until commit or cancel. Otherwise
     // committing that same preview looks like an in-place authored mutation
@@ -756,7 +771,7 @@ export class DesktopSession {
     const trace = beginEditorAction(this.editor, operation === 'save' ? CanvasAction.save : operation === 'new' ? CanvasAction.newDocument : CanvasAction.import, ActionSource.lifecycle, 300 + ['save','new','open','recover','close'].indexOf(operation))
     if (this.active || this.disposed || this.closeSnapshot !== undefined) { trace.result(ActionOutcome.blocked, ActionReason.busy); trace.finish(); return Promise.resolve(false) }
     if (operation !== 'save') cancelPendingOperations(this.editor)
-    clearTimeout(this.recoveryTimer)
+    this.recoverySave.cancel()
     this.operation = operation
     this.error = undefined
     this.conflict = false
@@ -1075,7 +1090,7 @@ export class DesktopSession {
   private async restore(document: PreparedDocument, recovery: { displayName: string; recoveryHandle: string }, confirmedSnapshot: number) {
     if (!recovery.recoveryHandle) throw new Error('恢复副本响应无效')
     this.recoveryPaused = true
-    clearTimeout(this.recoveryTimer)
+    this.recoverySave.cancel()
     try {
       await this.recoveryQueue
       if (this.generation !== confirmedSnapshot) return false
@@ -1130,14 +1145,19 @@ export class DesktopSession {
     this.scheduleRecovery(delay)
   }
 
-  private scheduleRecovery(delay = 600) {
-    clearTimeout(this.recoveryTimer)
-    if (this.pristineBlankGeneration === this.generation) return
-    this.recoveryTimer = setTimeout(() => { void this.updateRecovery() }, delay)
+  private scheduleRecovery(delay = AUTOSAVE_IDLE_MS) {
+    if (this.pristineBlankGeneration === this.generation) { this.recoverySave.cancel(); return }
+    this.recoverySave.schedule(delay)
+  }
+
+  private resumeRecoveryAfterInput() {
+    if (!this.recoveryWaitingForInput || this.editor.interactionActive || this.editor.state.busy || hasPendingEdits(this.editor)) return
+    this.recoveryWaitingForInput = false
+    if (this.started && !this.recoveryPaused && this.operation === 'idle' && this.dirty) this.scheduleRecovery()
   }
 
   private updateRecovery(discardSnapshot?: number) {
-    clearTimeout(this.recoveryTimer)
+    this.recoverySave.cancel()
     // Compute the snapshot when this queued operation starts, not before an older write finishes.
     const next = this.recoveryQueue.then(() => documentStageAsync(DocumentStage.recovery, async () => {
       if (this.disposed || this.recoveryPaused) return

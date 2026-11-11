@@ -65,6 +65,20 @@ bun run dev
 
 Open the local address printed by Vite, normally `http://127.0.0.1:1430`. `bun run dev` builds the Rust/WASM kernel first; the initial compilation takes time.
 
+### Connect the web app to its backend
+
+Create a PostgreSQL database, then build and start the same-origin web service from the repository root. The server runs migrations at startup and listens on `127.0.0.1:9430` by default.
+
+```bash
+(cd frontend/design-client && bun install --frozen-lockfile && bun run build)
+export DESIGN_DATABASE_URL='postgresql://USER@127.0.0.1/DATABASE'
+export DESIGN_API_TOKEN="$(openssl rand -hex 32)"
+DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
+  cargo run --locked --manifest-path design-studio/Cargo.toml -p futureox-design-server
+```
+
+Open **Server workspace** on the web home screen and enter the access token. Open a server design or link the current design from the editor. Subsequent edits are batched locally and sent to the server after local storage commits them. Vite proxies to the default backend in development and accepts `DESIGN_BACKEND_URL` as a proxy target.
+
 | Goal | Start here |
 | --- | --- |
 | Run the Electron desktop app | [Desktop development and builds](frontend/design-desktop/README.md#develop-and-test) |

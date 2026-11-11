@@ -1,3 +1,4 @@
+import { AUTOSAVE_IDLE_MS } from './buffered-autosave'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank, node } from './model'
@@ -60,11 +61,42 @@ describe('Rust workspace persistence session',()=>{
   it('autosaves committed edits but never a drag preview',async()=>{
     vi.useFakeTimers();const doc=blank('Gesture'),n=node('rectangle',10,10,20,20);doc.nodes[n.id]=n;doc.pages[0].children=[n.id]
     const f=fixture(doc);await f.session.start();f.editor.begin('Move');f.editor.preview({[n.id]:{transform:[1,0,0,1,300,200]}})
-    await vi.advanceTimersByTimeAsync(650)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(f.store.commit).not.toHaveBeenCalled()
-    f.editor.commit();await vi.advanceTimersByTimeAsync(650)
+    f.editor.commit();await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(f.store.commit).toHaveBeenCalledTimes(1)
     expect(JSON.parse(f.rows.get(doc.id)!.documentJson).nodes[n.id].transform[4]).toBe(300)
+  })
+  it('coalesces an edit burst and flushes the last edit when closing', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    await f.session.start()
+    await f.session.save()
+    for (const name of ['First edit', 'Second edit', 'Third edit']) {
+      f.rename(name)
+      await vi.advanceTimersByTimeAsync(900)
+    }
+    expect(f.store.commit).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
+    expect(f.store.commit).toHaveBeenCalledTimes(2)
+    expect(f.rows.get(f.editor.state.doc.id)?.name).toBe('Third edit')
+    f.rename('Close immediately')
+    expect(await f.session.requestClose()).toBe(true)
+    expect(f.store.commit).toHaveBeenCalledTimes(3)
+    expect(f.rows.get(f.editor.state.doc.id)?.name).toBe('Close immediately')
+  })
+  it('resumes a buffered commit after a gesture cancels without a new edit', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    await f.session.start()
+    f.rename('Keep this edit')
+    f.editor.begin('Cancelled preview')
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
+    expect(f.store.commit).not.toHaveBeenCalled()
+    expect(f.bridge.writeRecovery).not.toHaveBeenCalled()
+    f.editor.cancel()
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
+    expect(f.rows.get(f.editor.state.doc.id)?.name).toBe('Keep this edit')
   })
   it('a full library reports the write was not stored and accepts a later snapshot', async () => {
     vi.useFakeTimers()
@@ -73,12 +105,12 @@ describe('Rust workspace persistence session',()=>{
     const stored = f.rows.get(id)!.revision
     vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'WORKSPACE_STORAGE_FULL', message: 'full' })
     f.rename('Not written')
-    await vi.advanceTimersByTimeAsync(650)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(f.session.dirty).toBe(true)
     expect(f.rows.get(id)!.revision).toBe(stored)
     expect(f.session.status.error).toBe('full')
     f.rename('After space returns')
-    await vi.advanceTimersByTimeAsync(650)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(f.rows.get(id)!.name).toBe('After space returns')
     expect(f.session.dirty).toBe(false)
   })
@@ -89,11 +121,11 @@ describe('Rust workspace persistence session',()=>{
     const f = fixture(doc); await f.session.start(); await f.session.save()
     const original = f.rows.get(doc.id)!.documentJson
     f.editor.change('X', d => { d.nodes[text.id].transform[4] = 99.86 })
-    await vi.advanceTimersByTimeAsync(650)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(JSON.parse(f.rows.get(doc.id)!.documentJson).nodes[text.id].transform[4]).toBe(99.86)
     vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code, message: 'Native workspace read owns the gate' })
     f.editor.undo(); expect(JSON.stringify(f.editor.state.doc)).toBe(original)
-    await vi.advanceTimersByTimeAsync(650)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(f.session.dirty).toBe(true)
     expect(JSON.parse(f.rows.get(doc.id)!.documentJson).nodes[text.id].transform[4]).toBe(99.86)
     const rejected = vi.mocked(f.store.commit).mock.calls.at(-1)![0]
@@ -106,13 +138,13 @@ describe('Rust workspace persistence session',()=>{
     vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
     const busy = { status: 'error', code: 'BUSY', message: 'busy' } as const
     vi.mocked(f.store.commit).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy)
-    f.rename('First pending'); await vi.advanceTimersByTimeAsync(600)
+    f.rename('First pending'); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
     const submitted = vi.mocked(f.store.commit).mock.calls.at(-1)![0]
     await vi.advanceTimersByTimeAsync(599); expect(f.store.commit).toHaveBeenCalledTimes(2)
     await vi.advanceTimersByTimeAsync(1); expect(f.store.commit).toHaveBeenCalledTimes(3)
     await vi.advanceTimersByTimeAsync(1199); expect(f.store.commit).toHaveBeenCalledTimes(3)
     f.rename('Latest authored')
-    await vi.advanceTimersByTimeAsync(650)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     const calls = vi.mocked(f.store.commit).mock.calls.map(call => call[0])
     expect(calls[2]).toEqual(submitted); expect(calls[3]).toEqual(submitted)
     expect(calls[4].mutationId).not.toBe(submitted.mutationId)
@@ -129,14 +161,14 @@ describe('Rust workspace persistence session',()=>{
   it('disposal stops a pending busy autosave retry', async () => {
     vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
     vi.mocked(f.store.commit).mockResolvedValue({ status: 'error', code: 'BUSY', message: 'busy' })
-    f.rename('Keep dirty'); await vi.advanceTimersByTimeAsync(600)
+    f.rename('Keep dirty'); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
     f.session.dispose(); await vi.advanceTimersByTimeAsync(60_000)
     expect(f.store.commit).toHaveBeenCalledTimes(2)
   })
   it.each(['interaction', 'busy', 'pending'] as const)('known busy retry survives a temporary %s gate with no authored revision change', async gate => {
     vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
     vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'BUSY', message: 'busy' })
-    f.rename('Persist after gate'); await vi.advanceTimersByTimeAsync(600)
+    f.rename('Persist after gate'); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
     let pending = false
     const unregister = registerPendingEdit(f.editor, { dirty: () => pending, commit: () => false })
     try {
@@ -158,7 +190,7 @@ describe('Rust workspace persistence session',()=>{
   it('close flushes a known busy autosave and never prompts to discard edits', async () => {
     vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
     vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'BUSY', message: 'busy' })
-    f.rename('Keep on close'); await vi.advanceTimersByTimeAsync(600)
+    f.rename('Keep on close'); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
     expect(await f.session.requestClose()).toBe(true)
     await vi.advanceTimersByTimeAsync(60_000)
     expect(f.store.commit).toHaveBeenCalledTimes(3)
@@ -170,7 +202,7 @@ describe('Rust workspace persistence session',()=>{
     vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'BUSY', message: 'busy' })
     if (failure === 'transport') vi.mocked(f.store.commit).mockRejectedValueOnce(Error('transport lost'))
     else vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'ok', id: 'wrong-owner', name: 'bad ack', revision: 0, hash: 'bad', updatedAt: 0, deleted: false })
-    f.rename('Keep pending'); await vi.advanceTimersByTimeAsync(600)
+    f.rename('Keep pending'); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
     const pending = (f.session as any).workspacePending
     await vi.advanceTimersByTimeAsync(60_000)
     expect(f.store.commit).toHaveBeenCalledTimes(3)

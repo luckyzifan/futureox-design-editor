@@ -65,6 +65,20 @@ bun run dev
 
 打开终端中 Vite 输出的本地地址，默认是 `http://127.0.0.1:1430`。`bun run dev` 会先构建 Rust／WASM 内核；首次编译需要等待。
 
+### Web 连接后端
+
+准备 PostgreSQL 数据库，在仓库根目录构建并启动同源 Web 服务。服务启动时应用数据库迁移，默认监听 `127.0.0.1:9430`。
+
+```bash
+(cd frontend/design-client && bun install --frozen-lockfile && bun run build)
+export DESIGN_DATABASE_URL='postgresql://用户@127.0.0.1/数据库'
+export DESIGN_API_TOKEN="$(openssl rand -hex 32)"
+DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
+  cargo run --locked --manifest-path design-studio/Cargo.toml -p futureox-design-server
+```
+
+在 Web 首页打开「服务器工作区」并输入 `DESIGN_API_TOKEN`，可以打开服务端设计，也可以在编辑器内将当前设计接入同步。之后的编辑先在本地合并保存，再把已保存的版本送到服务器。开发模式的 Vite 默认代理到同一个后端端口，也可用 `DESIGN_BACKEND_URL` 指定代理目标。
+
 | 想做什么 | 从哪里进入 |
 | --- | --- |
 | 启动 Electron 桌面应用 | [桌面开发与构建](frontend/design-desktop/README.md#develop-and-test) |

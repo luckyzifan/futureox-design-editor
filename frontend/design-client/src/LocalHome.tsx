@@ -13,9 +13,9 @@ export function HomeCanvasGate({home,children}:{home:boolean;children:ReactNode}
  return !home||admitted?children:null
 }
 
-export function LocalHome({source,ready,busy=false,startupError,importError,currentName,onResume,onNew,onOpenFile,onSettings}: {
+export function LocalHome({source,ready,busy=false,startupError,importError,currentName,onResume,onNew,onOpenFile,onSettings,onServerWorkspace}: {
  source:HomeSource;ready:boolean;busy?:boolean;startupError?:string;importError?:string;currentName:string
- onResume:()=>void;onNew:()=>Promise<boolean>;onOpenFile:()=>Promise<boolean|'pending'>;onSettings:()=>void
+ onResume:()=>void;onNew:()=>Promise<boolean>;onOpenFile:()=>Promise<boolean|'pending'>;onSettings:()=>void;onServerWorkspace?:()=>void
 }) {
  const { locale } = useInterfacePreferences()
  const text = useInterfaceText()
@@ -60,7 +60,9 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
  const savedWhere = source.kind === 'web-local' ? text.savedInBrowser : text.savedOnComputer
  return <section ref={root} className="local-home" aria-label={text.localDesignHome} aria-busy={loading||working||!ready} onKeyUp={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'&&!disabled){e.preventDefault();onResume()}}}>
   <aside className="local-home-sidebar"><div className="local-home-brand"><img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" /><strong>Futureox Design</strong></div><div className="local-home-identity"><span aria-hidden="true">a</span><div><strong>admin</strong><small>{text.localWorkspace}</small></div></div>
-   <nav aria-label={text.homeSections}><button type="button" aria-current="page"><File size={16}/>{text.designRecentFiles}</button><button type="button" disabled={working || (ready && busy)} onClick={onSettings}><Settings size={16}/>{text.settingsTitle}</button></nav>
+   <nav aria-label={text.homeSections}><button type="button" aria-current="page"><File size={16}/>{text.designRecentFiles}</button>
+    {onServerWorkspace&&<button type="button" disabled={disabled} onClick={onServerWorkspace}><FolderOpen size={16}/>{locale==='en'?'Server workspace':'服务器工作区'}</button>}
+    <button type="button" disabled={working || (ready && busy)} onClick={onSettings}><Settings size={16}/>{text.settingsTitle}</button></nav>
    <p>{text.localIdentityNote}</p>
   </aside>
   <div className="local-home-content"><header><div><h1>{text.recentDesignsTitle}</h1><p>{savedWhere}</p></div><button type="button" disabled={disabled} onClick={onResume}>{continueLabel}</button></header>

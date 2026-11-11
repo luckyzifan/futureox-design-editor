@@ -1,3 +1,4 @@
+import { AUTOSAVE_IDLE_MS } from './buffered-autosave'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank, node } from './model'
@@ -577,7 +578,7 @@ describe('native document lifecycle', () => {
     vi.useFakeTimers()
     const f = fixture(); await f.session.start()
     const pending = deferred<DesktopResult>(); f.bridge.writeRecovery.mockReturnValueOnce(pending.promise)
-    f.edit('Journal'); await vi.advanceTimersByTimeAsync(650)
+    f.edit('Journal'); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(f.bridge.writeRecovery).toHaveBeenCalledTimes(1)
     const saving = f.session.save(); await turn()
     expect(f.bridge.clearRecovery).not.toHaveBeenCalled()
@@ -594,7 +595,7 @@ describe('native document lifecycle', () => {
     await vi.advanceTimersByTimeAsync(1500)
     expect(f.bridge.writeRecovery).not.toHaveBeenCalled()
     pending.resolve(cancelled); await opening
-    await vi.advanceTimersByTimeAsync(650)
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(JSON.parse(f.bridge.writeRecovery.mock.calls.at(-1)?.[0].documentJson || '{}').name).toBe('Before cancelled dialog')
   })
   test('document grant is accepted only after validation and confirmed replacement', async () => {
@@ -619,7 +620,7 @@ describe('native document lifecycle', () => {
     vi.useFakeTimers()
     const f = fixture(); await f.session.start()
     f.bridge.writeRecovery.mockResolvedValueOnce({ status: 'ok', warning: 'recovery directory sync unavailable' })
-    f.edit('Warning'); await vi.advanceTimersByTimeAsync(650)
+    f.edit('Warning'); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50)
     expect(f.session.dirty).toBe(true)
     expect(f.session.status.recoveryWarning).toBe('recovery directory sync unavailable')
     expect(f.editor.state.message).toContain('recovery directory sync unavailable')

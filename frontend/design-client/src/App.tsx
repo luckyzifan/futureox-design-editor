@@ -56,12 +56,16 @@ import { ReviewsPanel } from './ReviewsPanel'
 import { utilityToolNames } from './utility-tools'
 import { WorkspaceTabs } from './WorkspaceTabs'
 import { PendingEditContext } from './pending-edit-context'
-import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit } from './pending-edits'
+import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit, subscribePendingEdits } from './pending-edits'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesignTools } from './DesignTools'
 import { WorkspaceRail, DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import { PrototypePlayer } from './PrototypePlayer'
 import { WorkspaceLibrary } from './WorkspaceLibrary'
+import { WebWorkspacePanel } from './WebWorkspacePanel'
+import { WebWorkspace, type WebWorkspaceStatus } from './web-workspace'
+import { BackgroundLocalSave } from './background-local-save'
+import { BufferedAutosave } from './buffered-autosave'
 import { DocumentHistoryDialog } from './DocumentHistoryDialog'
 import { ImportNotice } from './ImportNotice'
 import { dispatchEditorCommand, resolveDesktopEditorCommand, type EditorCommand } from './editor-commands'
@@ -418,6 +422,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [ready, setReady] = useState(false),
     [saved, setSaved] = useState('载入中'),
     [menu, setMenu] = useState(false)
+  const [showWebWorkspace, setShowWebWorkspace] = useState(false)
+  const webWorkspaceLabel = locale === 'en' ? 'Server workspace' : '服务器工作区'
+  const [webStatus, setWebStatus] = useState<WebWorkspaceStatus>({ connected: false })
+  const [webWorkspace] = useState(() => !desktop && !source ? new WebWorkspace(status => {
+    setWebStatus(status)
+    if (status.error && status.documentId === editor.authoredDocument.id) editor.notify(status.error)
+  }) : undefined)
+  const [backgroundLocalSave] = useState(() => new BackgroundLocalSave())
+  useEffect(() => () => { backgroundLocalSave.dispose(); webWorkspace?.disconnect() }, [backgroundLocalSave, webWorkspace])
   useEffect(() => {
     const open = (event: Event) => {
       if (largeDocument || source) return
@@ -502,11 +515,20 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     // write state after focus, which can synchronously publish a new owner.
     recovery.focus.element.focus()
   }, [showLayers, showInspector, editor, ready, showHome, uiMinimized, switching, desktopStatus.busy, desktopStatus.transitioning])
+  const deferredPreview = useRef<{ document: DesignDocument; version: number; pixels: PreviewPixels } | undefined>(undefined)
   const [saver] = useState(
     () =>
-      new SaveCoordinator(undefined, (status) => {
+      new SaveCoordinator(backgroundLocalSave.save, (status) => {
         setSaved(status.error ? '自动保存失败' : status.dirty ? '自动保存中…' : '已自动保存到工作副本')
         if (status.error) { const detail = status.error; editor.notify(`保存失败，当前画布已保留：${detail}`, { key: 'saveFailedCanvasRetained', error: detail }) }
+      }, (record, version) => {
+        webWorkspace?.localSaved(record.document)
+        const preview = deferredPreview.current
+        if (preview?.document.id !== record.document.id || preview.version !== version) return
+        deferredPreview.current = undefined
+        if (editor.authoredDocument !== preview.document || editor.propertyPreviewActive) return
+        void writeStartupPreview({ ...preview.pixels, documentId: record.document.id, revision: record.revision })
+          .catch(error => recordLocalError('storage', error, 'STORAGE_ERROR'))
       }),
   )
   const file = useRef<HTMLInputElement>(null)
@@ -515,9 +537,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     // Do not label its pixels as a durable authored revision or startup preview.
     const authored = () => !editor.propertyPreviewActive && editor.authoredDocument === document && editor.state.version === version
     if (source || !authored()) return
-    if (saver.durableRevision(document.id, version) === undefined) await saver.save(document, version)
     const revision = saver.durableRevision(document.id, version)
-    if (revision !== undefined && authored()) await writeStartupPreview({ ...pixels, documentId: document.id, revision })
+    if (revision === undefined) deferredPreview.current = { document, version, pixels }
+    else await writeStartupPreview({ ...pixels, documentId: document.id, revision })
   }, [saver, editor])
   const localWindows=useLocalWindows(editor,desktopSession,ready&&!source&&!largeDocument)
   useEffect(() => {
@@ -564,6 +586,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             saver.open(record, editor.state.version)
           }
         }
+        if (!record) setSaved('无待保存修改')
         setReady(true)
       })
       .catch((e) => {
@@ -580,19 +603,33 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   }, [editor, desktopSession, saver])
   useEffect(() => {
     if (!ready || desktopSession || source) return
-    const snapshot = editor.authoredDocument
-    saver.observe(snapshot, s.version)
-    if (!saver.dirty) return
-    const timer = setTimeout(() => {
-      void saver
-        .save(snapshot, s.version)
-        .then(async () => {
-          if (editor.state.doc.id === snapshot.id) await localSelect(snapshot.id)
-        })
-        .catch((e) => { recordLocalError('workspace', e, 'STORAGE_ERROR'); editor.notify(String(e)) })
-    }, 350)
-    return () => clearTimeout(timer)
-  }, [s.version, ready, desktopSession])
+    const editing = () => hasPendingEdits(editor) || editor.interactionActive || editor.state.busy
+    let wasEditing = editing()
+    let selectedId = saver.durableRevision(editor.authoredDocument.id, editor.state.version) !== undefined ? editor.authoredDocument.id : undefined
+    const buffer = new BufferedAutosave(async () => {
+      if (editing() || !saver.dirty) return
+      const snapshot = editor.authoredDocument, version = editor.state.version
+      await saver.save(snapshot, version)
+      if (selectedId !== snapshot.id && editor.authoredDocument.id === snapshot.id) {
+        await localSelect(snapshot.id)
+        selectedId = snapshot.id
+      }
+    }, error => { recordLocalError('workspace', error, 'STORAGE_ERROR'); editor.notify(String(error)) })
+    const activity = () => {
+      const current = editing()
+      if (wasEditing && !current && saver.dirty) buffer.schedule()
+      wasEditing = current
+    }
+    const offEdits = editor.subscribeEdits(event => {
+      const snapshot = editor.authoredDocument
+      if (event.documentId !== snapshot.id || event.session !== editor.sessionGeneration || event.revision !== editor.state.version) return
+      if (deferredPreview.current?.document !== snapshot) deferredPreview.current = undefined
+      saver.observe(snapshot, event.revision)
+      if (saver.dirty) buffer.schedule()
+    })
+    const offActivity = editor.subscribe(activity), offDrafts = subscribePendingEdits(editor, activity)
+    return () => { buffer.cancel(); offEdits(); offActivity(); offDrafts() }
+  }, [ready, desktopSession, source, saver, editor])
   useEffect(() => {
     if (desktopSession || source) return
     const unload = (e: BeforeUnloadEvent) => {
@@ -638,7 +675,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (!adoption.isCurrent()) return false
       const current = editor.state
       const generation = editor.sessionGeneration
-      if (ready && preserveCurrent) await saver.save(current.doc, current.version)
+      if (ready && preserveCurrent && saver.dirty) await saver.save(current.doc, current.version)
       if (!adoption.isCurrent()) return false
       if (editor.state.doc !== current.doc)
         throw new Error('保存期间内容已变化，请再次打开；当前修改已保留')
@@ -692,6 +729,17 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     try { await localTrash(id, deleted); trace.result(ActionOutcome.observed); await openLocalFiles() }
     catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); recordLocalError('workspace', error, 'STORAGE_ERROR'); editor.notify(String(error)) }
     finally { trace.finish() }
+  }
+  async function syncCurrentDesign() {
+    if (!webWorkspace || !ready || switching || switchGate.current || editor.interactionActive ||
+      !editor.settleOwnedPropertyPreview('save') || !commitPendingEdits(editor))
+      throw new Error(locale === 'en' ? 'Finish the current edit before syncing.' : '请先完成当前编辑再同步')
+    const document = editor.authoredDocument, version = editor.state.version, session = editor.sessionGeneration
+    saver.observe(document, version)
+    await saver.save(document, version)
+    if (editor.authoredDocument !== document || editor.state.version !== version || editor.sessionGeneration !== session)
+      throw new Error(locale === 'en' ? 'The design changed. Sync again to send the latest edit.' : '设计已变化，请再次同步最新修改')
+    webWorkspace.sync(document)
   }
   async function openLocalFiles() {
     if(source){await source.leave();return}
@@ -1009,6 +1057,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       }} />}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
+        onServerWorkspace={webWorkspace ? () => setShowWebWorkspace(true) : undefined}
         onOpenFile={openHomeFile} onSettings={() => {
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
           openSettings()
@@ -1149,6 +1198,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </> : <button onClick={() => void openLocalFiles()}>
               <FolderOpen size={15} />{menuText.localFilesTrash}
             </button>}
+            {webWorkspace && <button type="button" disabled={!ready || switching} onClick={() => { setMenu(false); setShowWebWorkspace(true) }}>{webWorkspaceLabel}</button>}
             <div className="render-quality" role="group" aria-label={menuText.renderQuality}>
               <span>{menuText.renderQualityShort}</span>
               <button
@@ -1280,6 +1330,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
+      {showWebWorkspace && webWorkspace && <WebWorkspacePanel workspace={webWorkspace} status={webStatus} documentId={s.doc.id}
+        canSync={ready && !showHome && !switching} locale={locale}
+        onOpen={async record => {
+          const opened = await switchDocument(record.document)
+          if (opened) webWorkspace.link(record)
+          return opened
+        }}
+        onSync={syncCurrentDesign} onClose={() => setShowWebWorkspace(false)} />}
       {showFramePresets && <FramePresetPanel editor={editor} onClose={() => setShowFramePresets(false)} />}
       {showHistory && !source && (
         <DocumentHistoryDialog

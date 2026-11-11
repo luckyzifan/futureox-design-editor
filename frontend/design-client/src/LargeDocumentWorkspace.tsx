@@ -20,6 +20,7 @@ import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
 import { sourceErrorKind, sourceErrorSummary } from './source-error-text'
 import { validSourceObjectKey } from './source-object-key'
 import { peekChangedNodes } from './document-patch'
+import { BufferedAutosave } from './buffered-autosave'
 
 const admitted=<T,>(result:DesktopResult<T>):T=>{if(result.status!=='ok')throw Error(result.status==='cancelled'?'操作已取消':result.message);return result as T}
 const PREPARING_NOTICE='正在准备这个素材的原始图层…'
@@ -515,9 +516,18 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   },[status,parents,offset,filter,busy,nativeSnapshot,opening?.owner.documentId])
   useEffect(()=>{const timer=setTimeout(()=>{setFilter(query.trim());setOffset(0)},180);return()=>clearTimeout(timer)},[query])
   useEffect(()=>{
-    let timer:ReturnType<typeof setTimeout>|undefined
+    const editing=()=>hasPendingEdits(editor)||editor.interactionActive||editor.state.busy
+    const buffer=new BufferedAutosave(async()=>{
+      if(!alive.current||busyRef.current||editing()||editor.authoredDocument===baseline.current)return
+      const snapshot=editor.authoredDocument
+      const writing=run(async()=>{
+        try{await save(true);rejectedAutosave.current=undefined}
+        catch(error){rejectedAutosave.current=snapshot;throw error}
+      })
+      autosave.current=writing
+      try{await writing}finally{if(autosave.current===writing)autosave.current=undefined}
+    },value=>{if(alive.current)setError(value instanceof Error?value.message:String(value))})
     const schedule=()=>{
-      clearTimeout(timer)
       if(!alive.current||!activeRef.current||busyRef.current)return
       if(error){
         // Do not repeatedly retry a rejected snapshot. A corrected edit or
@@ -527,24 +537,18 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         }
         return
       }
-      if(editor.authoredDocument===baseline.current)return
-      timer=setTimeout(()=>{
-        if(!alive.current||busyRef.current||editor.authoredDocument===baseline.current)return
-        // Drafts and live gestures are never persisted as committed edits.
-        // Their release/cancellation publishes another editor/draft event.
-        if(hasPendingEdits(editor)||editor.interactionActive||editor.state.busy)return
-        const snapshot=editor.authoredDocument
-        const writing=run(async()=>{
-          try{await save(true);rejectedAutosave.current=undefined}
-          catch(error){rejectedAutosave.current=snapshot;throw error}
-        });autosave.current=writing
-        void writing.finally(()=>{if(autosave.current===writing)autosave.current=undefined})
-      },600)
+      if(editor.authoredDocument!==baseline.current)buffer.schedule()
     }
-    const off=editor.subscribe(schedule),offDrafts=subscribePendingEdits(editor,schedule)
+    let wasEditing=editing()
+    const activity=()=>{
+      const current=editing()
+      if(wasEditing&&!current)schedule()
+      wasEditing=current
+    }
+    const off=editor.subscribeEdits(schedule),offActivity=editor.subscribe(activity),offDrafts=subscribePendingEdits(editor,activity)
     schedule()
-    return()=>{clearTimeout(timer);off();offDrafts()}
-  },[editor,bridge,active,busy,error,state.version])
+    return()=>{buffer.cancel();off();offActivity();offDrafts()}
+  },[editor,bridge,active,busy,error])
   useEffect(()=>{const release=registerPendingEdit(parentEditor,{dirty:()=>true,commit:()=>false});pendingEditsChanged(parentEditor);return release},[parentEditor])
   const leave=()=>afterAutosave(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));onExit()},true)
   const exportFile=()=>afterAutosave(async()=>{await save();const result=await bridge.export(request());if(result.status==='cancelled')return;const next=admitted(result);updateStatus(next);setNotice(`完整文件已导出：${next.displayName}`)})

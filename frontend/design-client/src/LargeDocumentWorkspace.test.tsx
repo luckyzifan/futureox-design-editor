@@ -1,3 +1,4 @@
+import { AUTOSAVE_IDLE_MS } from './buffered-autosave'
 // Shared Editor/WASM and storage routing; native I/O and GPU are test doubles.
 // @ts-expect-error jsdom runtime dependency
 import { JSDOM } from 'jsdom'
@@ -145,12 +146,12 @@ test('source edits and undo are saved automatically without a save button or exp
  vi.useFakeTimers()
  try {
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(f.sceneCommit).toHaveBeenCalledTimes(1)
   expect(JSON.parse(f.sceneCommit.mock.calls[0][0].json)[f.layer.id].patch.width).toBe(180)
   expect(binding.source!.dirty).toBe(false)
   await act(async()=>editor.undo())
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(f.sceneCommit).toHaveBeenCalledTimes(2)
   expect(JSON.parse(f.sceneCommit.mock.calls[1][0].json)[f.layer.id].patch.width).toBe(f.layer.width)
   expect(binding.source!.dirty).toBe(false)
@@ -164,12 +165,12 @@ test('a source edit arriving during autosave follows the acknowledged revision i
  vi.useFakeTimers()
  try {
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(f.sceneCommit).toHaveBeenCalledOnce()
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=210}))
   await act(async()=>finish({status:'ok',...f.live,revision:++f.live.revision,key:'1:9'}))
   expect(binding.source!.dirty).toBe(true)
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(f.sceneCommit).toHaveBeenCalledTimes(2)
   const next=f.sceneCommit.mock.calls[1][0]
   expect(next.expectedRevision).toBe(2)
@@ -187,10 +188,10 @@ test('source autosave waits for a draft to end without committing the input itse
  vi.useFakeTimers()
  try {
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(f.sceneCommit).not.toHaveBeenCalled();expect(commit).not.toHaveBeenCalled()
   await act(async()=>{pending=false;pendingEditsChanged(editor)})
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(f.sceneCommit).toHaveBeenCalledOnce()
   expect(binding.source!.dirty).toBe(false)
  } finally { off();vi.useRealTimers() }
@@ -203,7 +204,7 @@ test('leaving while source autosave is writing waits for its receipt and preserv
  vi.useFakeTimers()
  try {
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=210}))
   let leaving!:Promise<void>
   await act(async()=>{leaving=binding.source!.leave()})
@@ -221,16 +222,16 @@ test('correcting a rejected source edit resumes autosave without a manual save o
  vi.useFakeTimers()
  try {
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(binding.source!.dirty).toBe(true)
   expect(binding.source!.error).toContain('edited geometry')
   await act(async()=>vi.advanceTimersByTimeAsync(5000))
   expect(f.sceneCommit).toHaveBeenCalledOnce()
   await act(async()=>editor.undo())
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(binding.source!.error).toBe('')
   await act(async()=>editor.updateProperties([f.layer.id],n=>{n.transform[4]+=1}))
-  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS + 50))
   expect(f.sceneCommit).toHaveBeenCalledTimes(2)
   expect(binding.source!.dirty).toBe(false)
  } finally {vi.useRealTimers()}
