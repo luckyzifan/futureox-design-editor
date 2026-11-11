@@ -2596,7 +2596,9 @@ impl<'a> Importer<'a> {
                     .unwrap_or("png")
                     .to_lowercase();
                 let scale = f.get("scale").and_then(Value::as_f64).unwrap_or(1.);
-                if matches!(format.as_str(), "tiff" | "eps") || scale == 0. {
+                // Positive-scale TIFF is an executable 8-bit export. EPS and the
+                // Sketch absolute-size sentinel (scale 0) stay source-only.
+                if format == "eps" || scale == 0. {
                     import_lossy.push("export-setting-preserved-without-local-render-support".into());
                 }
                 node.export_settings.push(ExportSetting {
@@ -10505,6 +10507,56 @@ mod tests {
             ),
         ]);
         write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn positive_scale_tiff_is_executable_while_eps_and_zero_scale_stay_preserved() {
+        let encoded = gap_test_files(
+            json!([{
+                "_class": "rectangle",
+                "do_objectID": "n1",
+                "name": "R",
+                "frame": {"_class": "rect", "x": 0, "y": 0, "width": 120, "height": 90},
+                "exportOptions": {"_class": "exportOptions", "exportFormats": [
+                    {"_class": "exportFormat", "fileFormat": "tiff", "scale": 2, "name": "@2x", "namingScheme": 1},
+                    {"_class": "exportFormat", "fileFormat": "eps", "scale": 1, "name": ""},
+                    {"_class": "exportFormat", "fileFormat": "tiff", "scale": 0, "name": "", "absoluteSize": 100, "visibleScaleType": 1},
+                    {"_class": "exportFormat", "fileFormat": "png", "scale": 1, "name": ""}
+                ]}
+            }]),
+            json!({}),
+        );
+        let back = import_sketch(&encoded).unwrap();
+        let node = &back.nodes["n1"];
+        let formats: Vec<_> = node
+            .export_settings
+            .iter()
+            .map(|setting| (setting.format.as_str(), setting.scale, setting.suffix.as_str()))
+            .collect();
+        assert_eq!(
+            formats,
+            vec![("tiff", 2., "@2x"), ("eps", 1., ""), ("tiff", 0., ""), ("png", 1., "")]
+        );
+        let lossy = import_lossy_of(node);
+        let preserved = lossy
+            .iter()
+            .filter(|note| note.as_str() == "export-setting-preserved-without-local-render-support")
+            .count();
+        assert_eq!(preserved, 2, "eps and zero-scale tiff only, got {lossy:?}");
+        let again = import_sketch(&export_sketch(&back).unwrap()).unwrap();
+        let round_trip: Vec<_> = again.nodes["n1"]
+            .export_settings
+            .iter()
+            .map(|setting| (setting.format.as_str(), setting.scale))
+            .collect();
+        assert_eq!(round_trip, vec![("tiff", 2.), ("eps", 1.), ("tiff", 0.), ("png", 1.)]);
+        let fields = again.nodes["n1"]
+            .bindings
+            .get("sketchExportFormatFields")
+            .cloned()
+            .unwrap_or_default();
+        assert!(fields.contains("namingScheme"), "{fields}");
+        assert!(fields.contains("absoluteSize"), "{fields}");
     }
 
     /// Import-side degradation ledger for the gap-closure tests (the

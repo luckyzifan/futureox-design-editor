@@ -5468,7 +5468,8 @@
                             "jpeg",
                             "webp",
                             "pdf",
-                            "pdf-vector"
+                            "pdf-vector",
+                            "tiff"
                           ]
                         },
                         "scale": {
@@ -10019,7 +10020,8 @@
                             "jpeg",
                             "webp",
                             "pdf",
-                            "pdf-vector"
+                            "pdf-vector",
+                            "tiff"
                           ]
                         },
                         "scale": {

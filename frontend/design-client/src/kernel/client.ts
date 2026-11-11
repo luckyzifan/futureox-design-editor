@@ -197,7 +197,7 @@ export type KernelOptions = {
   /** Worker-derived quality bit; overwritten from renderIntent on receipt. */
   interactiveEffects?: boolean
   checkerboard?: boolean
-  exportFormat?: 'jpeg' | 'webp' | 'pdf'
+  exportFormat?: 'jpeg' | 'webp' | 'pdf' | 'tiff'
   /** Exact interactive presentation may tile an oversized target without reducing density. */
   livePreview?: boolean
   /** Optional bounded four-sample viewport; unsupported scenes retain tiles. */

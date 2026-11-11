@@ -1101,4 +1101,72 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn clipped_blurred_rectangle_tiff_matches_the_cpu_png_at_two_scales() {
+        let doc = json!({
+            "schemaVersion": 1,
+            "id": "d",
+            "name": "tiff-scene",
+            "pages": [{"id": "p", "name": "p", "children": ["frame"], "background": "#ffffff"}],
+            "nodes": {
+                "frame": {"id": "frame", "kind": "frame", "width": 60, "height": 40, "transform": [1, 0, 0, 1, 30, 20], "clip": true, "children": ["ink", "spill"]},
+                "ink": {"id": "ink", "kind": "rectangle", "width": 36, "height": 24, "transform": [1, 0, 0, 1, 8, 8],
+                    "fills": [{"kind": "solid", "color": "color(srgb 0.15 0.45 0.9 / 0.45)"}],
+                    "effects": [{"kind": "blur", "radius": 3, "color": "#000000"}]},
+                "spill": {"id": "spill", "kind": "rectangle", "width": 40, "height": 30, "transform": [1, 0, 0, 1, -20, -10],
+                    "fills": [{"kind": "solid", "color": "#cc2200"}],
+                    "effects": [{"kind": "blur", "radius": 4, "color": "#000000"}]}
+            }
+        });
+        let saved = doc.to_string();
+        let mut unclipped = doc.clone();
+        unclipped["nodes"]["frame"]["clip"] = json!(false);
+        let mut clipped = Engine::new();
+        let mut open = Engine::new();
+        clipped.load_document(&saved).unwrap();
+        open.load_document(&unclipped.to_string()).unwrap();
+        let decode = |png: &[u8]| {
+            let decoder = png::Decoder::new(std::io::Cursor::new(png));
+            let mut reader = decoder.read_info().unwrap();
+            let mut buffer = vec![0; reader.output_buffer_size().expect("png size")];
+            let frame = reader.next_frame(&mut buffer).unwrap();
+            buffer.truncate(frame.buffer_size());
+            buffer
+        };
+        for scale in [1., 2.] {
+            let request = RegionRequest {
+                page_id: "p".into(),
+                bounds: ExportBounds { x: 0., y: 0., width: 120., height: 90. },
+                scale,
+                node_ids: Some(vec!["frame".into()]),
+                raster_profile: Some(RasterProfile::Analytic),
+                color_output: None,
+            };
+            let png = clipped.render_region_png(&request).unwrap();
+            let without_clip = open.render_region_png(&request).unwrap();
+            assert!(png.windows(4).any(|window| window == b"sRGB"));
+            assert!(png.windows(4).any(|window| window == b"iCCP"));
+            let png_pixels = decode(&png);
+            assert_ne!(png_pixels, decode(&without_clip), "clip changes the CPU export");
+            assert!(png_pixels.chunks_exact(4).any(|pixel| (1..255).contains(&pixel[3])));
+            let tiff = crate::export_formats::transcode(&png, "tiff", scale).unwrap();
+            assert_eq!(&tiff[..4], b"MM\x00\x2A");
+            assert!(!tiff.starts_with(b"\x89PNG"));
+            let mut decoder = tiff::decoder::Decoder::new(std::io::Cursor::new(&tiff)).unwrap();
+            let (width, height) = decoder.dimensions().unwrap();
+            assert_eq!(
+                (width, height),
+                ((120. * scale) as u32, (90. * scale) as u32)
+            );
+            let samples = match decoder.read_image().unwrap() {
+                tiff::decoder::DecodingResult::U8(samples) => samples,
+                _ => panic!("expected 8-bit TIFF samples"),
+            };
+            assert_eq!(samples, png_pixels);
+            let profile = srgb_icc_profile().unwrap();
+            assert!(tiff.windows(profile.len()).any(|window| window == profile.as_slice()));
+        }
+        assert_eq!(doc.to_string(), saved);
+    }
 }

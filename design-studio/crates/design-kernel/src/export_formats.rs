@@ -1,11 +1,16 @@
 //! Encoders consume the exact CPU PNG result. They never change live preview.
 //! WebP is lossless RGBA; JPEG explicitly flattens to white at quality 100;
 //! PDF embeds the raster at its authored size with a separate alpha mask.
-//! JPEG, WebP and PDF tag those sRGB samples. They do not leave DeviceRGB
+//! TIFF is classic big-endian, 8-bit, uncompressed, chunky RGBA with
+//! unassociated alpha and the same sRGB or Display P3 ICC profile.
+//! JPEG, WebP, PDF and TIFF tag those samples. They do not leave DeviceRGB
 //! or an untagged bitmap for a viewer to assign another profile.
+//! HEIC is rejected: this build has no HEVC encoder, and a renamed PNG is not HEIC.
 use image::ImageEncoder;
 
 const MAX_PIXELS: u64 = 16_777_216;
+const COLOR_TAG_ERROR: &str =
+    "JPEG/WebP/PDF/TIFF can tag sRGB or Display P3. Export PNG for other color spaces.";
 
 pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String> {
     if png.len() > 64 * 1024 * 1024 || !png.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -14,8 +19,24 @@ pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String
     if !scale.is_finite() || !(0.001..=128.).contains(&scale) {
         return Err("Invalid export scale".into());
     }
-    if !matches!(format, "jpeg" | "webp" | "pdf") {
+    if matches!(format, "heic" | "heif") {
+        return Err(
+            "HEIC export is not available in this build: no HEVC encoder is linked, and a renamed PNG is not HEIC"
+                .into(),
+        );
+    }
+    if !matches!(format, "jpeg" | "webp" | "pdf" | "tiff") {
         return Err("Unsupported export encoder".into());
+    }
+    let space = tagged_space(png)?;
+    let profile = match space {
+        crate::color::ColorSpace::DisplayP3 => crate::export::display_p3_icc_profile()?,
+        crate::color::ColorSpace::Srgb => crate::export::srgb_icc_profile()?,
+        _ => return Err(COLOR_TAG_ERROR.into()),
+    };
+    if format == "tiff" {
+        let (w, h, rgba) = png_straight_rgba8(png)?;
+        return encode_baseline_tiff(&rgba, w, h, &profile);
     }
     let reader =
         image::ImageReader::with_format(std::io::Cursor::new(png), image::ImageFormat::Png);
@@ -28,17 +49,6 @@ pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String
     let rgba = image::load_from_memory_with_format(png, image::ImageFormat::Png)
         .map_err(|e| e.to_string())?
         .to_rgba8();
-    let space = tagged_space(png)?;
-    let profile = match space {
-        crate::color::ColorSpace::DisplayP3 => crate::export::display_p3_icc_profile()?,
-        crate::color::ColorSpace::Srgb => crate::export::srgb_icc_profile()?,
-        _ => {
-            return Err(
-                "JPEG/WebP/PDF can tag sRGB or Display P3. Export PNG for other color spaces."
-                    .into(),
-            )
-        }
-    };
     let mut bytes = Vec::new();
     match format {
         "webp" => {
@@ -84,10 +94,7 @@ fn tagged_space(png: &[u8]) -> Result<crate::color::ColorSpace, String> {
         return match (code.color_primaries, code.transfer_function) {
             (12, 13) => Ok(ColorSpace::DisplayP3),
             (1, 13) => Ok(ColorSpace::Srgb),
-            _ => Err(
-                "JPEG/WebP/PDF can tag sRGB or Display P3. Export PNG for other color spaces."
-                    .into(),
-            ),
+            _ => Err(COLOR_TAG_ERROR.into()),
         };
     }
     Ok(ColorSpace::Srgb)
@@ -208,6 +215,199 @@ fn tag_webp_srgb(
     Ok(out)
 }
 
+/// Straight 8-bit RGBA, or 16-bit RGBA quantized to 8-bit. No color transform:
+/// the samples are already in the space `tagged_space` reported.
+fn png_straight_rgba8(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(png));
+    decoder.set_transformations(png::Transformations::IDENTITY);
+    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let (width, height, color_type, bit_depth, interlaced) = {
+        let info = reader.info();
+        (
+            info.width,
+            info.height,
+            info.color_type,
+            info.bit_depth,
+            info.interlaced,
+        )
+    };
+    if interlaced {
+        return Err("TIFF export expects a non-interlaced PNG".into());
+    }
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_PIXELS {
+        return Err(
+            "TIFF export exceeds 16 million pixels; choose a smaller export scale".into(),
+        );
+    }
+    let size = reader
+        .output_buffer_size()
+        .ok_or("PNG frame has no output buffer")?;
+    let mut buffer = vec![0; size];
+    let frame = reader.next_frame(&mut buffer).map_err(|e| e.to_string())?;
+    buffer.truncate(frame.buffer_size());
+    let rgba = match (color_type, bit_depth) {
+        (png::ColorType::Rgba, png::BitDepth::Eight) => buffer,
+        (png::ColorType::Rgba, png::BitDepth::Sixteen) => quantize_be_u16(&buffer)?,
+        _ => {
+            return Err(
+                "TIFF export expects 8-bit or 16-bit straight RGBA PNG samples".into(),
+            )
+        }
+    };
+    if rgba.len() as u64 != u64::from(width) * u64::from(height) * 4 {
+        return Err("TIFF RGBA sample count differs from PNG dimensions".into());
+    }
+    Ok((width, height, rgba))
+}
+
+/// Round a big-endian 16-bit sample to 8-bit: `(v * 255 + 32767) / 65535`.
+/// Alpha is coverage and uses the same integer map, not a transfer curve.
+fn quantize_be_u16(samples: &[u8]) -> Result<Vec<u8>, String> {
+    if samples.len() % 2 != 0 {
+        return Err("Truncated 16-bit PNG samples".into());
+    }
+    let mut out = Vec::with_capacity(samples.len() / 2);
+    for pair in samples.chunks_exact(2) {
+        let value = u16::from_be_bytes([pair[0], pair[1]]);
+        out.push(((u32::from(value) * 255 + 32767) / 65535) as u8);
+    }
+    Ok(out)
+}
+
+/// Classic TIFF (not BigTIFF): big-endian `MM 00 2A`, one strip, Compression 1,
+/// Photometric RGB, SamplesPerPixel 4, ExtraSamples 2 (unassociated alpha),
+/// 8 bits, and an RGB ICC profile (tag 34675).
+fn encode_baseline_tiff(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    icc: &[u8],
+) -> Result<Vec<u8>, String> {
+    if icc.len() < 128 || &icc[36..40] != b"acsp" || &icc[16..20] != b"RGB " {
+        return Err("TIFF ICC profile is missing or not an RGB profile".into());
+    }
+    if icc.len() > 8 * 1024 * 1024 {
+        return Err("TIFF ICC profile is too large".into());
+    }
+    let pixel_count = u64::from(width)
+        .checked_mul(u64::from(height))
+        .ok_or("TIFF dimensions overflow")?;
+    if pixel_count == 0 || pixel_count > MAX_PIXELS || pixel_count * 4 != rgba.len() as u64 {
+        return Err("TIFF RGBA buffer does not match dimensions".into());
+    }
+    let mut bits_per_sample = Vec::with_capacity(8);
+    for _ in 0..4 {
+        bits_per_sample.extend_from_slice(&8u16.to_be_bytes());
+    }
+    let mut resolution = [0u8; 8];
+    resolution[..4].copy_from_slice(&72u32.to_be_bytes());
+    resolution[4..].copy_from_slice(&1u32.to_be_bytes());
+
+    const ENTRIES: usize = 17;
+    let ifd_bytes = 2 + ENTRIES * 12 + 4;
+    let mut cursor = 8 + ifd_bytes;
+    if cursor % 2 == 1 {
+        cursor += 1;
+    }
+    let bits_at = cursor;
+    cursor += bits_per_sample.len();
+    let x_at = cursor;
+    cursor += resolution.len();
+    let y_at = cursor;
+    cursor += resolution.len();
+    if cursor % 2 == 1 {
+        cursor += 1;
+    }
+    let icc_at = cursor;
+    cursor += icc.len();
+    if cursor % 2 == 1 {
+        cursor += 1;
+    }
+    let strip_at = cursor;
+    let end = cursor
+        .checked_add(rgba.len())
+        .ok_or("TIFF layout overflow")?;
+    if strip_at > u32::MAX as usize || icc.len() > u32::MAX as usize {
+        return Err("TIFF layout exceeds classic 32-bit offsets".into());
+    }
+
+    let short = |tag: u16, value: u16| -> [u8; 12] {
+        let mut entry = [0u8; 12];
+        entry[0..2].copy_from_slice(&tag.to_be_bytes());
+        entry[2..4].copy_from_slice(&3u16.to_be_bytes());
+        entry[4..8].copy_from_slice(&1u32.to_be_bytes());
+        entry[8..10].copy_from_slice(&value.to_be_bytes());
+        entry
+    };
+    let long = |tag: u16, value: u32| -> [u8; 12] {
+        let mut entry = [0u8; 12];
+        entry[0..2].copy_from_slice(&tag.to_be_bytes());
+        entry[2..4].copy_from_slice(&4u16.to_be_bytes());
+        entry[4..8].copy_from_slice(&1u32.to_be_bytes());
+        entry[8..12].copy_from_slice(&value.to_be_bytes());
+        entry
+    };
+    let pointed = |tag: u16, kind: u16, count: u32, at: usize| -> [u8; 12] {
+        let mut entry = [0u8; 12];
+        entry[0..2].copy_from_slice(&tag.to_be_bytes());
+        entry[2..4].copy_from_slice(&kind.to_be_bytes());
+        entry[4..8].copy_from_slice(&count.to_be_bytes());
+        entry[8..12].copy_from_slice(&(at as u32).to_be_bytes());
+        entry
+    };
+    let entries = [
+        long(256, width),
+        long(257, height),
+        pointed(258, 3, 4, bits_at),
+        short(259, 1),
+        short(262, 2),
+        long(273, strip_at as u32),
+        short(274, 1),
+        short(277, 4),
+        long(278, height),
+        long(279, rgba.len() as u32),
+        pointed(282, 5, 1, x_at),
+        pointed(283, 5, 1, y_at),
+        short(284, 1),
+        short(296, 2),
+        short(338, 2),
+        short(339, 1),
+        pointed(34675, 7, icc.len() as u32, icc_at),
+    ];
+    let mut previous = 0u16;
+    for entry in &entries {
+        let tag = u16::from_be_bytes([entry[0], entry[1]]);
+        if tag <= previous {
+            return Err("TIFF tags must be sorted".into());
+        }
+        previous = tag;
+    }
+
+    let mut out = Vec::with_capacity(end);
+    out.extend_from_slice(b"MM\x00\x2A");
+    out.extend_from_slice(&8u32.to_be_bytes());
+    out.extend_from_slice(&(ENTRIES as u16).to_be_bytes());
+    for entry in entries {
+        out.extend_from_slice(&entry);
+    }
+    out.extend_from_slice(&0u32.to_be_bytes());
+    if out.len() != 8 + ifd_bytes {
+        return Err("TIFF IFD size changed".into());
+    }
+    out.resize(bits_at, 0);
+    out.extend_from_slice(&bits_per_sample);
+    out.extend_from_slice(&resolution);
+    out.extend_from_slice(&resolution);
+    out.resize(icc_at, 0);
+    out.extend_from_slice(icc);
+    out.resize(strip_at, 0);
+    out.extend_from_slice(rgba);
+    if out.len() != end || &out[..4] != b"MM\x00\x2A" {
+        return Err("TIFF file layout was not written".into());
+    }
+    Ok(out)
+}
+
 fn pdf(
     rgba: &[u8],
     width: u32,
@@ -304,5 +504,188 @@ mod tests {
         assert!(transcode(&png, "jpeg", f64::NAN).is_err());
         assert!(transcode(&png, "fig", 1.).is_err());
         assert!(transcode(b"bad", "pdf", 1.).is_err());
+    }
+
+    #[test]
+    fn tiff_is_big_endian_uncompressed_rgba_and_round_trips_exact_pixels() {
+        let mut pixels = vec![0u8; 120 * 90 * 4];
+        for (index, pixel) in pixels.chunks_exact_mut(4).enumerate() {
+            pixel[0] = (index % 251) as u8;
+            pixel[1] = ((index / 3) % 251) as u8;
+            pixel[2] = ((index / 7) % 251) as u8;
+            pixel[3] = if index % 11 == 0 { 0 } else { 200 };
+        }
+        let png = crate::export::encode_rgba(120, 90, &pixels).unwrap();
+        assert!(png.windows(4).any(|window| window == b"sRGB"));
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let tiff = transcode(&png, "tiff", 1.).unwrap();
+        assert_eq!(&tiff[..4], b"MM\x00\x2A");
+        assert!(!tiff.starts_with(b"\x89PNG"));
+        assert_ne!(tiff, png);
+        let profile = crate::export::srgb_icc_profile().unwrap();
+        assert_tiff_contract(&tiff, 120, 90, &pixels, &profile);
+        let decoded = decode_tiff_crate(&tiff);
+        assert_eq!(decoded, (120, 90, pixels));
+        assert!(transcode(&tiff, "tiff", 1.).is_err(), "TIFF bytes are not a PNG");
+        assert!(transcode(&png, "heic", 1.)
+            .unwrap_err()
+            .contains("HEIC"));
+        assert!(transcode(&png, "heif", 2.).is_err());
+        assert!(transcode(&png, "eps", 1.).is_err());
+        if let Ok(path) = std::env::var("TIFF_FIXTURE") {
+            std::fs::write(path, &tiff).unwrap();
+        }
+    }
+
+    #[test]
+    fn tiff_keeps_display_p3_samples_and_refuses_linear_and_sixteen_bit_mislabel() {
+        let source = [10u8, 20, 30, 128, 255, 0, 0, 255];
+        let png = crate::export::encode_tagged_rgba(
+            2,
+            1,
+            &source,
+            crate::color::ColorSpace::DisplayP3,
+        )
+        .unwrap();
+        assert!(!png.windows(8).any(|window| window == [0, 0, 0, 1, b's', b'R', b'G', b'B']));
+        let expected = png_samples(&png);
+        assert_ne!(expected, source);
+        let tiff = transcode(&png, "tiff", 2.).unwrap();
+        let profile = crate::export::display_p3_icc_profile().unwrap();
+        assert_tiff_contract(&tiff, 2, 1, &expected, &profile);
+        assert_eq!(decode_tiff_crate(&tiff).2, expected);
+        assert!(!tiff.windows(profile.len()).any(|window| {
+            window == crate::export::srgb_icc_profile().unwrap().as_slice()
+        }));
+
+        let linear = crate::export::encode_color_png(
+            1,
+            1,
+            &[crate::blend::Pixel::rgba(0.5, 0.25, 0.125, 1.)],
+            crate::color::ColorSettings::default(),
+            crate::color::ColorOutput {
+                space: crate::color::ColorSpace::LinearSrgb,
+                tone_map: crate::color::ToneMap::Clip,
+            },
+        )
+        .unwrap();
+        let rejected = transcode(&linear, "tiff", 1.).unwrap_err();
+        assert!(rejected.contains("sRGB") || rejected.contains("Display P3"), "{rejected}");
+        assert!(!rejected.contains("MM"));
+
+        let wide = crate::export::encode_color_png(
+            1,
+            1,
+            &[crate::blend::Pixel::rgba(0.5, 0.25, 0.125, 0.5)],
+            crate::color::ColorSettings::default(),
+            crate::color::ColorOutput::default(),
+        )
+        .unwrap();
+        let raw = png_samples_raw(&wide);
+        assert_eq!(raw.len(), 8, "16-bit RGBA is four big-endian channels");
+        let mut quantized = Vec::new();
+        for pair in raw.chunks_exact(2) {
+            let value = u16::from_be_bytes([pair[0], pair[1]]);
+            quantized.push(((u32::from(value) * 255 + 32767) / 65535) as u8);
+        }
+        let tiff = transcode(&wide, "tiff", 1.).unwrap();
+        assert_eq!(&tiff[..4], b"MM\x00\x2A");
+        assert_tiff_contract(
+            &tiff,
+            1,
+            1,
+            &quantized,
+            &crate::export::srgb_icc_profile().unwrap(),
+        );
+        assert_eq!(decode_tiff_crate(&tiff).2, quantized);
+        assert_ne!(quantized.len(), raw.len());
+    }
+
+    fn png_samples(png: &[u8]) -> Vec<u8> {
+        let samples = png_samples_raw(png);
+        assert_eq!(samples.len() % 4, 0);
+        samples
+    }
+
+    fn png_samples_raw(png: &[u8]) -> Vec<u8> {
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(png));
+        decoder.set_transformations(png::Transformations::IDENTITY);
+        let mut reader = decoder.read_info().unwrap();
+        let mut buffer = vec![0; reader.output_buffer_size().unwrap()];
+        let frame = reader.next_frame(&mut buffer).unwrap();
+        buffer.truncate(frame.buffer_size());
+        buffer
+    }
+
+    fn assert_tiff_contract(bytes: &[u8], width: u32, height: u32, pixels: &[u8], icc: &[u8]) {
+        assert_eq!(&bytes[..4], b"MM\x00\x2A");
+        let ifd = u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        let count = u16::from_be_bytes(bytes[ifd..ifd + 2].try_into().unwrap()) as usize;
+        let mut tags = std::collections::BTreeMap::new();
+        let mut previous = 0u16;
+        for index in 0..count {
+            let at = ifd + 2 + index * 12;
+            let tag = u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap());
+            assert!(tag > previous, "IFD tags are sorted");
+            previous = tag;
+            let kind = u16::from_be_bytes(bytes[at + 2..at + 4].try_into().unwrap());
+            let n = u32::from_be_bytes(bytes[at + 4..at + 8].try_into().unwrap());
+            let raw = bytes[at + 8..at + 12].to_vec();
+            tags.insert(tag, (kind, n, raw));
+        }
+        assert_eq!(
+            u32::from_be_bytes(bytes[ifd + 2 + count * 12..ifd + 6 + count * 12].try_into().unwrap()),
+            0
+        );
+        let value = |tag: u16| -> Vec<u8> {
+            let (kind, n, raw) = &tags[&tag];
+            let unit = match *kind {
+                3 => 2,
+                4 => 4,
+                5 => 8,
+                7 => 1,
+                other => panic!("tag {tag} type {other}"),
+            };
+            let len = unit * *n as usize;
+            if len <= 4 {
+                raw[..len].to_vec()
+            } else {
+                let offset = u32::from_be_bytes(raw.as_slice().try_into().unwrap()) as usize;
+                bytes[offset..offset + len].to_vec()
+            }
+        };
+        let short = |tag: u16| u16::from_be_bytes(value(tag).as_slice().try_into().unwrap());
+        let long = |tag: u16| u32::from_be_bytes(value(tag).as_slice().try_into().unwrap());
+        assert_eq!(long(256), width);
+        assert_eq!(long(257), height);
+        assert_eq!(value(258), [0, 8, 0, 8, 0, 8, 0, 8]);
+        assert_eq!(short(259), 1, "uncompressed");
+        assert_eq!(short(262), 2, "RGB");
+        assert_eq!(short(274), 1, "top-left");
+        assert_eq!(short(277), 4);
+        assert_eq!(long(278), height);
+        assert_eq!(long(279), pixels.len() as u32);
+        assert_eq!(short(284), 1, "chunky");
+        assert_eq!(short(296), 2, "inch");
+        assert_eq!(short(338), 2, "unassociated alpha");
+        assert_eq!(short(339), 1, "unsigned integer");
+        assert_eq!(value(282), 72u32.to_be_bytes().into_iter().chain(1u32.to_be_bytes()).collect::<Vec<_>>());
+        assert_eq!(value(283), value(282));
+        assert_eq!(value(34675), icc);
+        let strip = long(273) as usize;
+        assert_eq!(&bytes[strip..strip + pixels.len()], pixels);
+    }
+
+    fn decode_tiff_crate(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
+        let mut decoder = tiff::decoder::Decoder::new(std::io::Cursor::new(bytes)).unwrap();
+        let (width, height) = decoder.dimensions().unwrap();
+        assert_eq!(
+            decoder.colortype().unwrap(),
+            tiff::ColorType::RGBA(8)
+        );
+        match decoder.read_image().unwrap() {
+            tiff::decoder::DecodingResult::U8(samples) => (width, height, samples),
+            _ => panic!("TIFF decoder did not return 8-bit samples"),
+        }
     }
 }

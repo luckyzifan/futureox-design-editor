@@ -100,6 +100,22 @@ test('retained baseline is hash-verified and only declared repeat, SVG option an
     "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb') throw new Error('JPEG/WebP/PDF 当前使用 sRGB；广色域请导出 PNG')\n",
     "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
   ])
+  deltas.push([
+    "  format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector',\n",
+    "  format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff',\n",
+  ])
+  deltas.push([
+    "  if (!['png','svg','jpeg','webp','pdf','pdf-vector'].includes(format)) throw new Error(`不支持的导出格式 ${String(format)}`)\n",
+    "  if (!['png','svg','jpeg','webp','pdf','pdf-vector','tiff'].includes(format)) throw new Error(`不支持的导出格式 ${String(format)}`)\n",
+  ])
+  deltas.push([
+    "  format: 'png' | 'jpeg' | 'webp' | 'pdf' = 'png',\n",
+    "  format: 'png' | 'jpeg' | 'webp' | 'pdf' | 'tiff' = 'png',\n",
+  ])
+  deltas.push([
+    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
+    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP、TIFF 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
+  ])
   let approved = retained
   for (const [before, after] of deltas) {
     expect(approved.split(before)).toHaveLength(2)

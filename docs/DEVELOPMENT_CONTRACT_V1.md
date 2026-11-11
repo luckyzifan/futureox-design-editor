@@ -228,7 +228,7 @@ Native schema fixtures, actual Sketch re-rendering, shared-model execution and p
 
 ## Official Sketch fixture adaptation
 
-Official Sketch fixtures pin their upstream repositories and commits; exercise them through the production Rust/WASM round trip and shared-model admission. Export settings retain source-only metadata by index. TIFF/EPS and zero scale are preservation contracts, not executable export claims; JPG may use the existing JPEG writer. Scoped round trips do not establish complete Sketch semantics or native pixel parity.
+Official Sketch fixtures pin their upstream repositories and commits; exercise them through the production Rust/WASM round trip and shared-model admission. Export settings retain source-only metadata by index. EPS and zero scale are preservation contracts, not executable export claims. TIFF is an executable 8-bit uncompressed RGBA export (big-endian, unassociated alpha, the PNG's sRGB or Display P3 ICC); HEIC is not an encoder in this build. JPG may use the existing JPEG writer. Scoped round trips do not establish complete Sketch semantics or native pixel parity.
 
 ## Local filter drag and exact source revisits
 
