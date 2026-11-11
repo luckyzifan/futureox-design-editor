@@ -6,6 +6,7 @@ export type ResidentAcknowledgement = {
   presentationId?: string
   presentationToken?: number
   gpuOverlay?: boolean
+  gpuSelection?: boolean
   gpuPixelGrid?: boolean
   view: CanvasCamera
   width: number
@@ -26,7 +27,9 @@ function captureMatches(source: PresentedFrame, actual: ResidentAcknowledgement)
 }
 
 function capturedFrame(source: PresentedFrame, actual: ResidentAcknowledgement): PresentedFrame {
-  const frame = { ...source, gpuOverlay: actual.gpuOverlay, gpuPixelGrid:actual.gpuPixelGrid, view: actual.view, width: actual.width, height: actual.height, pixelRatio: actual.dpr }
+  const frame = { ...source, gpuOverlay: actual.gpuOverlay,
+    gpuSelectionIdentity: actual.gpuSelection ? source.gpuSelectionIdentity : undefined,
+    gpuPixelGrid:actual.gpuPixelGrid, view: actual.view, width: actual.width, height: actual.height, pixelRatio: actual.dpr }
   return { ...frame, preview: !!source.preview || !!actual.preview || actual.interaction || !presentationMatches(source, frame) }
 }
 
@@ -44,6 +47,7 @@ export class ResidentPresentation {
     const previous = this.current
     if (previous && !!previous.frame.preview === !!frame.preview && previous.frame.managed === frame.managed &&
       previous.frame.gpuOverlay === frame.gpuOverlay &&
+      previous.frame.gpuSelectionIdentity === frame.gpuSelectionIdentity &&
       previous.frame.gpuOverlayIdentity === frame.gpuOverlayIdentity &&
       previous.frame.gpuOverlayCapture === frame.gpuOverlayCapture &&
       previous.frame.computeBackend === frame.computeBackend &&

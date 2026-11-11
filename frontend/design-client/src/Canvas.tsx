@@ -254,6 +254,7 @@ class PresentedSignal {
       previous.pageId === frame.pageId &&
       previous.epoch === frame.epoch &&
       previous.gpuOverlay === frame.gpuOverlay &&
+      previous.gpuSelectionIdentity === frame.gpuSelectionIdentity &&
       previous.gpuOverlayIdentity === frame.gpuOverlayIdentity &&
       previous.gpuOverlayCapture === frame.gpuOverlayCapture &&
       !!previous.preview === !!frame.preview
@@ -322,6 +323,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       restoreGpuOverlays()
     }
     noteSourceRotation(false)
+  }
+  const keepGpuGesture = (gesture: Drag | null) => {
+    if (gesture?.kind === 'rotate') gesture.rotationSourceRejected = true
+    else if (gesture) gesture.followPlan = null
+    dropGestureFollow()
   }
   const [gpuReadyRevision, gpuReadyChanged] = useState(0)
   const interactionReady = useMemo(() => () => gpuReadyChanged(value => value + 1), [])
@@ -412,7 +418,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useLayoutEffect(() => {
     // A render can recreate selection nodes and drop the hidden flag. Keep the
     // stale outline from painting above the snapshot that is already following.
-    if (gestureFollow.current && !gestureFollow.current.holding && host.current)
+    if (gestureFollow.current && host.current)
       gestureFollow.current.reconceal(host.current)
   })
   useEffect(() => editor.subscribe(() => {
@@ -1051,9 +1057,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
     id => !!state.doc.nodes[id] && presented?.document === state.doc)
   const gpuOverlay = canvasGpuOverlayOwnsUi(presented,overlay,presentationScopeMatches)
+  // Angle, size and other chrome can change before the new pixels arrive.
+  // Keep the acknowledged outline with its pixels while its selection and
+  // handles are still current.
+  const gpuSelectionOwnsOutline = presentationScopeMatches && overlay.selectionIdentity !== undefined &&
+    presented.gpuSelectionIdentity === overlay.selectionIdentity
+  useLayoutEffect(() => {
+    if (gpuSelectionOwnsOutline && gestureFollow.current) keepGpuGesture(ownedDrag)
+  }, [gpuSelectionOwnsOutline, ownedDrag])
   const documentChromeOpacity = rotationDocumentChromeSuppressed({
     kind: ownedDrag?.kind, sourcePaint: sourceRotationPaint, holding: !!gestureFollow.current?.holding,
-  }) || (gpuOverlay && !(ownedDrag && ['move', 'rotate', 'resize', 'scale'].includes(ownedDrag.kind))) ? 0 : 1
+  }) || gpuSelectionOwnsOutline ? 0 : 1
   const pixelGridPath = useMemo(
     () => pixelGridPathData(displayView, size.width, size.height, state.pixelGrid),
     [state.pixelGrid, displayView.x, displayView.y, displayView.zoom, size.width, size.height],
@@ -2056,6 +2070,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     layer.place(matrix, screen, degrees)
   }
   function placeGestureFollow(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
+    if (gpuSelectionOwnsOutline) {
+      // A local snapshot cannot erase the outline baked into the visible
+      // bitmap. Keep the same renderer through this captured gesture.
+      keepGpuGesture(d)
+      return
+    }
     // Rotation follows from the node's own paint. A framebuffer crop bakes
     // encoded alpha and drops pixels that sit outside the viewport.
     if (d.kind === 'rotate') { placeRotationSource(d, matrix, screen, degrees); return }
@@ -2082,7 +2102,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const mounted = mountGestureFollow(host.current, {
         box: fitted, view:d.view, corners:selectionCorners,
         hole:d.followPlan.source.pages.find(page=>page.id===state.page)!.background,
-        drawSelection: !gpuOverlay, ids: d.ids,
+        drawSelection: true, ids: d.ids,
         onDestroy: () => {
           if (gestureFollow.current === mounted) gestureFollow.current = null
           restoreGpuOverlays()
@@ -2412,7 +2432,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       const offset = gpuMove.current?.apply(editor.state.doc, movePreview?.patches||patches, d.actionToken ? actionTrace.token(d.actionToken) : undefined,
-        [moveGuides.x,moveGuides.y].filter((guide):guide is SmartGuideSegment=>!!guide))
+        [moveGuides.x,moveGuides.y].filter((guide):guide is SmartGuideSegment=>!!guide), d.kind === 'rotate' ? transform : undefined)
       if (offset) {
         clearFallbackMove(); retainedMove.current?.restore()
         moveGuides = { ...moveGuides, surface:gpuMove.current?.guidesInSurface?.() === true }

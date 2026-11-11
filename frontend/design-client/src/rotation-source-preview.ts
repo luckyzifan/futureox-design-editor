@@ -429,7 +429,6 @@ export function mountRotationSource(host: HTMLElement, options: {
     },
     holdForCommit() {
       holding = true
-      polygon?.remove()
       hint.style.display = 'none'
     },
     waitFor(next) {

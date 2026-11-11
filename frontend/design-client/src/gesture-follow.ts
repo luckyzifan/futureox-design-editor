@@ -179,7 +179,6 @@ export function mountGestureFollow(host: HTMLElement, options: {
     },
     holdForCommit() {
       holding = true
-      polygon?.remove()
       hint.style.display = 'none'
     },
     waitFor(document) {

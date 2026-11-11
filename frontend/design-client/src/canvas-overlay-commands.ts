@@ -13,6 +13,7 @@ export type CanvasOverlayContext = {
   epoch: number
   /** UI render dependencies, not a document/geometry revision. */
   uiIdentity: string
+  selectionIdentity?: string
   commands: Omit<CanvasOverlay,'measurements' | 'labels'> & { measurements: Measurement[]; labels: CanvasLabel[] }
 }
 export type CanvasOverlayInputs = {
@@ -79,7 +80,9 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
     labels.push({ anchor: pill.anchor, offset: pill.offset, text: pill.text,
       size: 11, color: DISTANCE_PILL_TEXT, centered: true, kind: 'measurement', frame: 'measure' })
   }
-  return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,commands:{pixelGrid:input.pixelGrid,labels,measurements,
+  return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,
+    selectionIdentity:selectionIdentity ? JSON.stringify(selectionIdentity) : undefined,
+    commands:{pixelGrid:input.pixelGrid,labels,measurements,
     transforms:Object.fromEntries(owners.map(id=>[id,document.nodes[id].transform])),
     selection:showSelection?{corners:selectionCorners,handles:input.canTransform,owners}:undefined}}
 }

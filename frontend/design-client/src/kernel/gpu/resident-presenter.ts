@@ -894,6 +894,7 @@ export class ResidentPresenter {
         ...(this.atomic && preview && preview.gaps.length <= MAX_NAVIGATION_GAPS ? {previewGaps: preview.gaps} : {}),
         preview: !!preview,
         gpuOverlay: !!frame.overlay,
+        gpuSelection: !!frame.overlay?.selection,
         gpuPixelGrid: !this.atomic && !!frame.overlay?.pixelGrid && view.zoom>=4,
         view,
         width,

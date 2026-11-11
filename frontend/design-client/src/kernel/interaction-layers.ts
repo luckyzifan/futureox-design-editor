@@ -11,7 +11,7 @@ import { TranslationPreviewPlan } from './translation-preview'
 
 export type InteractionLayer = { document: DesignDocument; roots: string[]; bounds: Bounds; moving?: string }
 export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds; parentLinear?: Map<string, number[]> }
-export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
+export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix; rotationFromStart?: Matrix }
 export type InteractionInput = { sequence:number; at:number; guides?:readonly import('./gpu/canvas-overlay').CanvasGuide[] }
 export type GpuMoveControl = {
   /** Release coordinates are flushed; this is only a preview priority hint. */
@@ -20,7 +20,8 @@ export type GpuMoveControl = {
   /** Private complete-layer authority; structural eligibility alone is not
    * enough to suspend an ordinary viewport repair. */
   blocksCanvasRefinement?(document:DesignDocument,ids:string[],view:CanvasCamera):boolean
-  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>, trace?: PoseActionToken, guides?:InteractionInput['guides']): InteractionPoseFeedback | null
+  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>, trace?: PoseActionToken,
+    guides?: InteractionInput['guides'], rotationFromStart?: Matrix): InteractionPoseFeedback | null
   /** Guides are drawn with the sampled pixels, outside the content backbuffer. */
   guidesInSurface?(): boolean
   covers(document: DesignDocument, ids: string[], view: CanvasCamera): boolean

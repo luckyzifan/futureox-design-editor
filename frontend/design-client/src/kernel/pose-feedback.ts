@@ -6,7 +6,9 @@ export class PoseFeedback {
   private pending = new Map<number, { offset: InteractionPoseFeedback; owner?: object }>()
   private accepted = 0
   submit(sequence: number, offset: InteractionPoseFeedback, owner?: object) {
-    this.pending.set(sequence, { offset: { ...offset, ...(offset.matrix ? { matrix: [...offset.matrix] as typeof offset.matrix } : {}) }, owner })
+    const { matrix, rotationFromStart } = offset
+    this.pending.set(sequence, { offset: { ...offset, ...(matrix ? { matrix: [...matrix] as typeof matrix } : {}),
+      ...(rotationFromStart ? { rotationFromStart: [...rotationFromStart] as typeof rotationFromStart } : {}) }, owner })
     while (this.pending.size > 180) this.pending.delete(this.pending.keys().next().value!)
   }
   status(sequence:number,owner?:object) {

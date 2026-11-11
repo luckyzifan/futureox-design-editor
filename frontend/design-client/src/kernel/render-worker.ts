@@ -523,7 +523,7 @@ function schedulePose(){
           right=Math.min(right,displayRight);bottom=Math.min(bottom,displayBottom)
         }
         if(right<=x||bottom<=y){rebasePose(pose);break}
-        const viewportPatch=!session.patch&&session.affine===true&&coversDisplay&&!session.scene.interactionLocalFootprint&&
+        const viewportPatch=session.native===true&&!session.patch&&coversDisplay&&!session.scene.interactionLocalFootprint&&
           ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
         // A full-viewport patch consumes absolute poses. The committed pose
         // can supersede stale GPU work without losing the displayed frame.
@@ -579,8 +579,8 @@ function schedulePose(){
               if(!viewportPatch){rebasePose(pose);break}
               if(!current())continue
               // A Sketch mask or derived ancestor can reject the transform
-              // fast path. Rebuild it through the normal validated patch in
-              // this full-viewport lease, preserving its resource owner.
+              // fast path for a move or a rotation. Rebuild through the normal
+              // validated patch in this full-viewport lease.
               const patch:DocumentPatch={fields:{},nodes:Object.fromEntries(ids.map(id=>
                 [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}
               // If compilation or GPU work fails, the next capture must

@@ -297,7 +297,7 @@ export class InteractionRenderer {
           r.tiles.length===r.plan.layers.length&&r.tiles.length>0&&r.tiles.every(tile=>!!tile.gpuTile&&tile.zoom>=view.zoom*v.dpr)&&
           this.sameIds(ids)&&!!this.baseOffsets(r.plan,document)
       },
-      apply: (document, patches, trace, guides) => {
+      apply: (document, patches, trace, guides, rotationFromStart) => {
         const inputStarted=performance.now()
         const committedHandoff=!!this.endedDocument||!!this.handoff
         this.endedDocument = undefined
@@ -407,7 +407,8 @@ export class InteractionRenderer {
         if(import.meta.env.DEV){this.inputPreparationTrace.push(performance.now()-inputStarted);if(this.inputPreparationTrace.length>180)this.inputPreparationTrace.shift()}
         const matrix = affine ? interactionPoseMatrices(Object.fromEntries(r.plan.ids.map(id => [id, document.nodes[id].transform])),
           transforms, r.parentMatrices)?.get(id) : undefined
-        const offset = { x: m[0] * dx + m[2] * dy, y: m[1] * dx + m[3] * dy, ...(matrix ? { matrix } : {}) }
+        const offset = { x: m[0] * dx + m[2] * dy, y: m[1] * dx + m[3] * dy,
+          ...(matrix ? { matrix } : {}), ...(rotationFromStart ? { rotationFromStart } : {}) }
         // Even an integer retained move crosses the compositor queue. Chrome
         // must follow the accepted draw, not the requested pointer position.
         this.poseFeedback.submit(this.lastInput.sequence, offset, this.feedbackOwner(document))

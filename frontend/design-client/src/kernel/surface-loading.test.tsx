@@ -6,8 +6,9 @@ import { ProgressiveSurface } from './ProgressiveSurface'
 
 // Actual JSX/state boundary, with no browser, canvas context, workers or GPU.
 // These checks cover presentation semantics, not a rendered-pixel oracle.
-function harness() {
+function harness(runLayoutEffects = false) {
   const slots: any[] = []
+  const effects: Array<() => void> = []
   let cursor = 0
   const hooks = {
     useState(init: any) { const i = cursor++; if (!(i in slots)) slots[i] = typeof init === 'function' ? init() : init; return [slots[i], (value: any) => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }] },
@@ -15,14 +16,17 @@ function harness() {
     useMemo(fn: any, deps: any[]) { const i = cursor++; const old = slots[i]; if (!old || deps.some((v, j) => !Object.is(v, old.deps[j]))) slots[i] = { deps, value: fn() }; return slots[i].value },
     useCallback(fn: any) { const i = cursor++; return slots[i] ??= fn },
     useSyncExternalStore(_: any, snapshot: () => any) { cursor++; return snapshot() },
-    useLayoutEffect() { cursor++ },
+    useLayoutEffect(effect: () => void) { cursor++; if (runLayoutEffects) effects.push(effect) },
   }
   const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
   return (props: SurfaceProps) => {
     cursor = 0
     const previous = internals.H
     internals.H = hooks
-    try { return KernelSurface(props) } finally { internals.H = previous }
+    let tree
+    try { tree = KernelSurface(props) } finally { internals.H = previous }
+    for (const effect of effects.splice(0)) effect()
+    return tree
   }
 }
 function child(tree: any, type: unknown) {
@@ -92,6 +96,23 @@ test('whole-viewport preview retires the placeholder without certifying exact de
   tree = render(props)
   expect(tree.props['data-presentation-ready']).toBe('true')
   expect(tree.props['aria-busy']).toBe(false)
+})
+
+test('an accepted interaction frame can clear selection chrome during exact refinement', () => {
+  vi.stubGlobal('window', { devicePixelRatio: 2 })
+  const onPresentation = vi.fn(), props = fixture({ onPresentation }), render = harness(true)
+  const initial = { ...exact(props), gpuSelectionIdentity: 'selection-with-handles' }
+  child(render(props), ProgressiveSurface).props.onPresentation(initial)
+  expect(render(props).props['data-presentation-ready']).toBe('true')
+  expect(onPresentation.mock.lastCall?.[0]?.gpuSelectionIdentity).toBe(initial.gpuSelectionIdentity)
+
+  const committed = { ...props, document: { ...props.document, name: 'After edit' } }
+  child(render(committed), ProgressiveSurface).props.onPresentation({
+    ...initial, preview: true, gpuSelectionIdentity: undefined,
+  })
+  expect(render(committed).props['data-presentation-ready']).toBe('false')
+  expect(onPresentation.mock.lastCall?.[0]?.document).toBe(props.document)
+  expect(onPresentation.mock.lastCall?.[0]?.gpuSelectionIdentity).toBeUndefined()
 })
 
 test('cold failure is reported without promising ongoing progress and successful retry clears it', () => {

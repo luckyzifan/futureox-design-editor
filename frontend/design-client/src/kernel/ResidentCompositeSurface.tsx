@@ -207,6 +207,7 @@ export function ResidentCompositeSurface(props: {
       return
     }
     try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay, gpuOverlayIdentity: overlay ? scopedOverlay?.uiIdentity : undefined,
+      gpuSelectionIdentity: overlay?.selection ? scopedOverlay?.selectionIdentity : undefined,
       gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
     catch (error) { p.onFailure(String(error)); return }
     // The white camera-preview fill is a same-zoom pan strip. Using it while

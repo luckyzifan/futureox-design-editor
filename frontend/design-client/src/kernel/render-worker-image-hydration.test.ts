@@ -543,7 +543,9 @@ async function affineWorker(affine=true,masked=false) {
   expect(capture.error).toBeUndefined()
   expect(capture.residentInteraction).toBe(true)
   const pose = (sequence: number) => ({ command: 'interaction-pose', slot: 77, input: { owner: 'affine-test', sequence, at: 0 },
-    transforms: { 'image-0': [Math.cos(sequence / 10), Math.sin(sequence / 10), -Math.sin(sequence / 10), Math.cos(sequence / 10), 4, 2] } })
+    transforms: { 'image-0': affine
+      ? [Math.cos(sequence / 10), Math.sin(sequence / 10), -Math.sin(sequence / 10), Math.cos(sequence / 10), 4, 2]
+      : [1, 0, 0, 1, sequence * 4, 2] } })
   return { ...w, f, options, pose }
 }
 test('affine worker compiles the latest absolute pose and never acknowledges skipped queued inputs', async () => {
@@ -554,8 +556,9 @@ test('affine worker compiles the latest absolute pose and never acknowledges ski
   expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(3).transforms['image-0'])
   expect(state.replacements.length).toBeLessThanOrEqual(2)
 })
-test.each([true,false])('a declined native pose keeps its lease only when it covers the display (%s)', async coversDisplay => {
-  const w = await affineWorker(true,true)
+test.each([[true, true], [true, false], [false, true], [false, false]])(
+  'a declined native pose keeps its lease only when it covers the display (affine=%s, full=%s)', async (affine, coversDisplay) => {
+  const w = await affineWorker(affine,true)
   w.send({ command: 'display-frame', sequence: 1, frame: {
     view: { x: 0, y: 0, zoom: 1 }, width: coversDisplay ? 48 : 56, height: 16,
     dpr: 1, items: [],
@@ -567,8 +570,8 @@ test.each([true,false])('a declined native pose keeps its lease only when it cov
   expect(state.replacements).toHaveLength(coversDisplay ? 1 : 0)
   if(coversDisplay)expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(1).transforms['image-0'])
 })
-test('a stopped masked pose restores the last displayed document before a new capture', async () => {
-  const w = await affineWorker(true,true)
+test.each([true, false])('a stopped masked pose restores the displayed document before a new capture (affine=%s)', async affine => {
+  const w = await affineWorker(affine,true)
   w.send({ command: 'display-frame', sequence: 1, frame: {
     view: { x: 0, y: 0, zoom: 1 }, width: 48, height: 16, dpr: 1, items: [],
   } })

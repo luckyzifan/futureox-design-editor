@@ -48,6 +48,7 @@ type DisplayedFrame = {
 export type OverlayCaptureCohort = { readonly slots: readonly number[] }
 export type PresentedFrame = ExactPresentation & {
   gpuOverlay?: boolean
+  gpuSelectionIdentity?: string
   gpuPixelGrid?: boolean
   gpuOverlayIdentity?: string
   gpuOverlayCapture?: OverlayCaptureCohort
@@ -63,7 +64,7 @@ export type SurfaceProps = {
   navigationInputOwner?: object
   /** Explicit hand/space/middle-button pan ownership; never object editing. */
   panGestureActive?: boolean
-  overlay?: { document: DesignDocument; pageId: string; epoch: number; uiIdentity?: string; commands: import('./gpu/canvas-overlay').CanvasOverlay }
+  overlay?: { document: DesignDocument; pageId: string; epoch: number; uiIdentity?: string; selectionIdentity?: string; commands: import('./gpu/canvas-overlay').CanvasOverlay }
   interaction?: import('./interaction-layers').InteractionProps
   interactionPreview?: boolean
   onRenderFailure?: () => void
@@ -594,6 +595,9 @@ export function KernelSurface(props: SurfaceProps) {
   } | null>(null)
   const [presented, setPresented] = useState<{ frame: PresentedFrame; backend: 'gpu' | 'cpu'; computeBackend: BackendPreference } | null>(null)
   const [previewed, setPreviewed] = useState<PresentedFrame | null>(null)
+  const [gpuSelection, setGpuSelection] = useState<{
+    identity: string; documentId: string; pageId: string; epoch: number
+  }>()
   const dpr = useDevicePixelRatio()
   const capability = useDisplayCapability()
   const directReference = effectiveBackend(renderExecutionPolicy, backend) === 'cpu' ||
@@ -645,6 +649,15 @@ export function KernelSurface(props: SurfaceProps) {
   const onGpuPresentation = useCallback((frame: PresentedFrame | null) => {
     const current = latest.current
     if (current.target !== 'gpu' || (frame?.computeBackend && frame.computeBackend !== current.backend)) return
+    // A displayed interaction bitmap can replace its chrome while the exact
+    // content receipt still describes the previous document revision.
+    if (frame && frame.document.id === current.props.document.id && frame.pageId === current.props.pageId &&
+        frame.epoch === (current.props.presentationEpoch || 0)) {
+      const { gpuSelectionIdentity: identity, document: { id: documentId }, pageId, epoch } = frame
+      setGpuSelection(previous => !identity ? undefined :
+        previous?.identity === identity && previous.documentId === documentId &&
+        previous.pageId === pageId && previous.epoch === epoch ? previous : { identity, documentId, pageId, epoch })
+    }
     if (frame?.preview) {
       const requested = { ...current.props, epoch: current.props.presentationEpoch || 0,
         pixelRatio: current.dpr, displayCapability: current.displayCapability }
@@ -693,15 +706,20 @@ export function KernelSurface(props: SurfaceProps) {
     frame.epoch === (props.presentationEpoch || 0)
   const visualFrame = previewed && previewed.computeBackend === (fallback ? 'cpu' : backend) && presentationContentMatches(previewed, requested)
     ? previewed : sameIdentity ? frame : null
-  useLayoutEffect(() => {
-    props.onPresentation?.(visualFrame || null)
-  }, [visualFrame, props.onPresentation])
   const targetCompute = fallback ? 'cpu' : backend
   const holding = sameIdentity && (presented?.backend !== target || presented.computeBackend !== targetCompute)
   const renderProps: SurfaceProps = { ...props, view: renderView, requestedView: props.view, onRenderFailure }
   const heldProps: SurfaceProps = frame ? { ...props, ...frame, presentationEpoch: frame.epoch, grid: !!frame.grid, checkerboard: !!frame.checkerboard } : props
   const holdGpu = !!holding && presented?.backend === 'gpu'
   const holdReference = !!holding && presented?.backend === 'cpu'
+  const gpuSelectionIdentity = visualFrame && (holdGpu || target === 'gpu' && !holdReference) && gpuSelection &&
+    gpuSelection.documentId === visualFrame.document.id && gpuSelection.pageId === visualFrame.pageId &&
+    gpuSelection.epoch === visualFrame.epoch ? gpuSelection.identity : undefined
+  const publishedFrame = useMemo(() => !visualFrame || visualFrame.gpuSelectionIdentity === gpuSelectionIdentity
+    ? visualFrame : { ...visualFrame, gpuSelectionIdentity }, [visualFrame, gpuSelectionIdentity])
+  useLayoutEffect(() => {
+    props.onPresentation?.(publishedFrame || null)
+  }, [publishedFrame, props.onPresentation])
   const renderFailed = failedPresentation?.contract === contract &&
     failedPresentation.view.x === props.view.x && failedPresentation.view.y === props.view.y &&
     failedPresentation.view.zoom === props.view.zoom

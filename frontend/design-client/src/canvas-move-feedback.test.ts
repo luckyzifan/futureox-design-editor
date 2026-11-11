@@ -17,6 +17,18 @@ test('cached board movement translates its title and selection together without 
   expect(selection.style.transform).toBe('')
 })
 
+test('a sampled rotation projects held corners from the gesture start and labels from the live pose', () => {
+  const element = (id: string) => ({ style: { transform: '' },
+    getAttribute: (attribute: string) => attribute === 'data-testid' ? id : null }) as unknown as SVGElement
+  const outline = element('canvas-selection-outline'), handle = element('resize-0'), label = element('canvas-selection-name')
+  const host = { querySelector: () => outline, querySelectorAll: () => [outline, handle, label] } as unknown as ParentNode
+  moveCanvasFeedback(host, ['selected'], { x: 0, y: 0, matrix: [1, 0, 0, 1, 4, 2],
+    rotationFromStart: [0, 1, -1, 0, 30, 20] }, new Map())
+  expect(outline.style.transform).toBe('matrix(0,1,-1,0,30,20)')
+  expect(handle.style.transform).toBe(outline.style.transform)
+  expect(label.style.transform).toBe('matrix(1,0,0,1,4,2)')
+})
+
 test('fallback concealment preserves original visibility and ignores unrelated titles', () => {
   const element = (owner: string | null, visibility = '') => ({ style: { visibility },
     getAttribute: () => owner }) as unknown as SVGElement

@@ -85,17 +85,18 @@ function unchanged(doc: typeof editor.state.doc) {
 }
 
 async function flushFrames(){await act(async()=>{for(const [id,fn] of [...frames]){frames.delete(id);fn(performance.now())}})}
-async function present(overlay=boundary.props.overlay,document=overlay.document,gpuOverlay=true){
+async function present(overlay=boundary.props.overlay,document=overlay.document,gpuOverlay=true,gpuSelection=gpuOverlay&&!!overlay.commands.selection){
  const p=boundary.props
  await act(async()=>p.onPresentation({...p,document,epoch:p.presentationEpoch,pixelRatio:1,managed:true,
-  gpuOverlay,gpuOverlayIdentity:gpuOverlay?overlay.uiIdentity:undefined,preview:true}))
+  gpuOverlay,gpuSelectionIdentity:gpuSelection?overlay.selectionIdentity:undefined,
+  gpuOverlayIdentity:gpuOverlay?overlay.uiIdentity:undefined,preview:true}))
 }
 async function retained(){
  const selected=node('frame',20,20,40,40),target=node('rectangle',100,20,30,40),other=node('rectangle',180,20,30,40)
  await render([selected,target,other]);await act(async()=>editor.select([selected.id]))
  const original=editor.state.doc,overlay=boundary.props.overlay
  await present(overlay)
- await act(async()=>editor.update([selected.id],{transform:[Math.cos(.4),Math.sin(.4),-Math.sin(.4),Math.cos(.4),20,20]},'Rotate'))
+ await act(async()=>editor.update([selected.id],{transform:[1,0,0,1,24,20]},'Move'))
  const committed=editor.state.doc
  expect(committed).not.toBe(original)
  expect(boundary.props.overlay.uiIdentity).toBe(overlay.uiIdentity)
@@ -161,4 +162,80 @@ test('actual Canvas does not trust a legacy GPU overlay ACK lacking UI identity'
  const p=boundary.props
  await act(async()=>p.onPresentation({...p,epoch:p.presentationEpoch,pixelRatio:1,managed:true,gpuOverlay:true,preview:true}))
  expect(mount.querySelector('[data-frame-title]')?.getAttribute('opacity')).toBe('1')
+})
+
+test('the acknowledged outline keeps its owner when a transform begins or a frame has only other chrome', async () => {
+  const selected = node('frame', 20, 20, 40, 40)
+  const original = await render([selected])
+  await act(async () => editor.select([selected.id]))
+  await present()
+
+  const opacity = (testId: string) => mount.querySelector(`[data-testid="${testId}"]`)?.getAttribute('opacity')
+  expect(opacity('canvas-selection-outline')).toBe('0')
+  const rotate = mount.querySelector('[data-testid="rotate-corner-0"]')!
+  await act(async () => pointer('pointerdown', 76, 76, {}, rotate))
+  expect(editor.interactionActive).toBe(true)
+  expect(opacity('canvas-selection-outline')).toBe('0')
+  expect(opacity('resize-0')).toBe('0')
+
+  await present(boundary.props.overlay, original, true, false)
+  expect(opacity('canvas-selection-outline')).toBe('1')
+  expect(opacity('resize-0')).toBe('1')
+  expect(mount.querySelector('[data-frame-title]')?.getAttribute('opacity')).toBe('0')
+  await present()
+  expect(opacity('canvas-selection-outline')).toBe('0')
+
+  await act(async () => pointer('pointercancel', 76, 76))
+  expect(editor.interactionActive).toBe(false)
+  unchanged(original)
+  expect(opacity('canvas-selection-outline')).toBe('0')
+})
+
+test('an angle change keeps the acknowledged outline until its pixels are replaced', async () => {
+  const selected = node('frame', 20, 20, 40, 40)
+  const original = await render([selected])
+  await act(async () => editor.select([selected.id]))
+  const before = boundary.props.overlay
+  await present()
+
+  await act(async () => editor.update([selected.id], { transform: [0, 1, -1, 0, 60, 20] }, 'Rotate'))
+  expect(boundary.props.overlay.uiIdentity).not.toBe(before.uiIdentity)
+  expect(boundary.props.overlay.selectionIdentity).toBe(before.selectionIdentity)
+  const outline = () => mount.querySelector('[data-testid="canvas-selection-outline"]')?.getAttribute('opacity')
+  expect(outline()).toBe('0')
+
+  await present(before, original, true, false)
+  expect(outline()).toBe('1')
+  await present()
+  expect(outline()).toBe('0')
+
+  await act(async () => key(' ', { code: 'Space' }))
+  expect(boundary.props.overlay.selectionIdentity).not.toBe(before.selectionIdentity)
+  expect(outline()).toBe('1')
+})
+
+test('local rotation keeps its outline through the exact frame handoff', async () => {
+  const selected = node('rectangle', 20, 20, 40, 40)
+  await render([selected])
+  await act(async () => editor.select([selected.id]))
+  const rotate = mount.querySelector('[data-testid="rotate-corner-0"]')!
+  await act(async () => pointer('pointerdown', 76, 76, {}, rotate))
+  await act(async () => pointer('pointermove', 111, 61))
+
+  const local = mount.querySelector('[data-testid="rotation-source-preview"] svg polygon')
+  const outline = () => mount.querySelector<SVGElement>('[data-testid="canvas-selection-outline"]')!
+  expect(local).not.toBeNull()
+  expect(outline().style.visibility).toBe('hidden')
+  await act(async () => pointer('pointerup', 111, 61))
+  expect(editor.interactionActive).toBe(false)
+  expect(editor.canUndo).toBe(true)
+  expect(local?.isConnected).toBe(true)
+  expect(outline().style.visibility).toBe('hidden')
+
+  const p = boundary.props
+  await act(async () => p.onPresentation({
+    ...p, document: editor.state.doc, epoch: p.presentationEpoch, pixelRatio: 1, managed: true,
+  }))
+  expect(local?.isConnected).toBe(false)
+  expect(outline().style.visibility).toBe('')
 })
