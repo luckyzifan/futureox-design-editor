@@ -1,17 +1,22 @@
-//! Bundled ABeeZee is the Regular file only. An italic or other missing face
-//! stays on the fallback font and is diagnosed by name. Regular is pinned to
-//! that file, then its line count, breaks and text box are compared with the
-//! Sketch frame. The receipt is that measurement. It is not catalog recognition
-//! and it is not an import-warning claim of glyph pixels.
+//! Bundled ABeeZee Regular and Italic retain their exact face identities.
+//! Missing cuts stay on the fallback font and are diagnosed by name.
+//! The import receipt records line breaks and text-box measurements for a
+//! single pinned face used by the Sketch node.
 use crate::{font::Fonts, scene::Document};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const UNEMBEDDED_FONT_WARNING: &str = "Sketch: fonts without embedded resources use the default font; source font names remain in metadata.";
 pub const ABEEZEE_REGULAR_SHA256: &str =
     "2901c8df256648cc2bb2e3afb381cb8d28e65ed3dbe11de20695ae4d5ffdeda9";
+pub const ABEEZEE_ITALIC_SHA256: &str =
+    "3892bb74578207ed6edae040a0869e54dcae13a466d005460570947062137dd8";
+const BUNDLED_ITALIC: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../frontend/design-client/public/fonts/abeezee/ABeeZee-Italic.ttf"
+));
 const BUNDLED_REGULAR: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../frontend/design-client/public/fonts/abeezee/ABeeZee-Regular.ttf"
@@ -32,20 +37,50 @@ fn compact(name: &str) -> String {
         .collect()
 }
 
-fn regular_request(name: &str) -> bool {
-    matches!(
-        compact(name).as_str(),
-        "abeezee" | "abeezeeregular" | "abeezeenormal" | "abeezeeroman"
-    )
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Cut {
+    Regular,
+    Italic,
+}
+
+impl Cut {
+    fn postscript(self) -> &'static str {
+        match self {
+            Self::Regular => "ABeeZee-Regular",
+            Self::Italic => "ABeeZee-Italic",
+        }
+    }
+
+    fn bundled(self) -> (&'static [u8], &'static str) {
+        match self {
+            Self::Regular => (BUNDLED_REGULAR, ABEEZEE_REGULAR_SHA256),
+            Self::Italic => (BUNDLED_ITALIC, ABEEZEE_ITALIC_SHA256),
+        }
+    }
+}
+
+fn requested_cut(name: &str) -> Option<Cut> {
+    match compact(name).as_str() {
+        "abeezee" | "abeezeeregular" | "abeezeenormal" | "abeezeeroman" => Some(Cut::Regular),
+        "abeezeeitalic" => Some(Cut::Italic),
+        _ => None,
+    }
+}
+
+fn postscript_cut(postscript: &str) -> Option<Cut> {
+    match postscript {
+        "ABeeZee-Regular" => Some(Cut::Regular),
+        "ABeeZee-Italic" => Some(Cut::Italic),
+        _ => None,
+    }
 }
 
 pub fn absent_abeezee_diagnosis(name: &str) -> Option<String> {
-    let compact = compact(name);
-    if !compact.starts_with("abeezee") || regular_request(name) {
+    if !compact(name).starts_with("abeezee") || requested_cut(name).is_some() {
         return None;
     }
     Some(format!(
-        "字体 {name} 没有同名随包文件。ABeeZee 只随包 Regular，不能把 Regular 的换行当成这个请求的结果。文字已保留，显示用当前回退。"
+        "字体 {name} 没有同名随包文件。不能把 Regular 或 Italic 的换行当成这个请求的结果。文字已保留，显示用当前回退。"
     ))
 }
 
@@ -141,20 +176,18 @@ fn font_label_matches(document: &Document, id: &str) -> bool {
     mentions(&font.family) || font.postscript.as_deref().is_some_and(mentions)
 }
 
-fn is_regular_resource(document: &Document, id: &str) -> bool {
-    let Some(font) = document.fonts.get(id) else {
-        return false;
-    };
-    if font.postscript.as_deref() == Some("ABeeZee-Regular") {
-        return true;
+fn resource_cut(document: &Document, id: &str) -> Option<Cut> {
+    let font = document.fonts.get(id)?;
+    if let Some(cut) = font.postscript.as_deref().and_then(postscript_cut) {
+        return Some(cut);
     }
     if !font_label_matches(document, id) {
-        return false;
+        return None;
     }
     decode_font(&font.data)
         .and_then(|bytes| face_postscript(&bytes, font.index))
         .as_deref()
-        == Some("ABeeZee-Regular")
+        .and_then(postscript_cut)
 }
 
 fn document_mentions_abeezee(document: &Document) -> bool {
@@ -179,46 +212,46 @@ fn document_mentions_abeezee(document: &Document) -> bool {
     })
 }
 
-struct RegularFace {
+struct PinnedFace {
     id: String,
     sha256: String,
 }
 
-fn install_regular(document: &mut Document) -> Option<RegularFace> {
+fn install_cut(document: &mut Document, cut: Cut) -> Option<PinnedFace> {
+    let requested = cut.postscript();
     if let Some(found) = document.fonts.iter().find_map(|(id, font)| {
         let bytes = decode_font(&font.data)?;
         let postscript = face_postscript(&bytes, font.index)?;
-        if postscript != "ABeeZee-Regular" {
+        if postscript != requested {
             return None;
         }
-        Some(RegularFace {
+        Some(PinnedFace {
             id: id.clone(),
             sha256: sha256_hex(&bytes),
         })
     }) {
         return Some(found);
     }
-    let sha = sha256_hex(BUNDLED_REGULAR);
-    if sha != ABEEZEE_REGULAR_SHA256
-        || face_postscript(BUNDLED_REGULAR, 0).as_deref() != Some("ABeeZee-Regular")
-    {
+    let (bytes, expected_sha) = cut.bundled();
+    let sha = sha256_hex(bytes);
+    if sha != expected_sha || face_postscript(bytes, 0).as_deref() != Some(requested) {
         return None;
     }
     let id = format!("{sha}-0");
     if document.fonts.contains_key(&id) || document.fonts.len() >= 32 {
         return None;
     }
-    let family = face_family(BUNDLED_REGULAR, 0).unwrap_or_else(|| "ABeeZee".into());
+    let family = face_family(bytes, 0).unwrap_or_else(|| "ABeeZee".into());
     document.fonts.insert(
         id.clone(),
         crate::font::FontResource {
             family,
-            data: STANDARD.encode(BUNDLED_REGULAR).into(),
+            data: STANDARD.encode(bytes).into(),
             index: 0,
-            postscript: Some("ABeeZee-Regular".into()),
+            postscript: Some(requested.into()),
         },
     );
-    Some(RegularFace { id, sha256: sha })
+    Some(PinnedFace { id, sha256: sha })
 }
 
 fn unembedded_source_remains(document: &Document) -> bool {
@@ -297,7 +330,9 @@ pub(crate) fn exported_absent_face(
     let mut names: Vec<String> = entries
         .iter()
         .filter_map(|entry| entry.get("name").and_then(Value::as_str).map(str::to_owned))
-        .filter(|name| absent_abeezee_diagnosis(name).is_some())
+        .filter(|name| {
+            compact(name).starts_with("abeezee") && requested_cut(name) != Some(Cut::Regular)
+        })
         .collect();
     names.sort();
     names.dedup();
@@ -322,105 +357,95 @@ pub(crate) fn pin_imported_faces(document: &mut Document) -> PinnedAbeezee {
         .filter(|(_, node)| node.kind == "text")
         .map(|(id, _)| id.clone())
         .collect();
-    let mut needs_regular = false;
+    let mut needed = BTreeSet::new();
     let mut plans = Vec::new();
     for id in &node_ids {
         let source = source_fonts(document, id);
+        let node = &document.nodes[id];
         let mut diagnoses = Vec::new();
-        let mut pin_style = false;
+        let mut pin_style = None;
         let mut pin_runs = Vec::new();
-        if let Some(name) = source.style.clone() {
+        if let Some(name) = source.style {
             if let Some(message) = absent_abeezee_diagnosis(&name) {
                 diagnoses.push((name, message));
-            } else if regular_request(&name)
-                && document.nodes[id]
-                    .text_style
-                    .as_ref()
-                    .is_some_and(|style| style.font_id == "default")
+            } else if node
+                .text_style
+                .as_ref()
+                .is_some_and(|style| style.font_id == "default")
             {
-                pin_style = true;
+                pin_style = requested_cut(&name);
             }
         }
-        for (index, name) in &source.runs {
-            if let Some(message) = absent_abeezee_diagnosis(name) {
-                diagnoses.push((name.clone(), message));
-            } else if regular_request(name) {
-                let font_id = document.nodes[id]
+        for (index, name) in source.runs {
+            if let Some(message) = absent_abeezee_diagnosis(&name) {
+                diagnoses.push((name, message));
+            } else if let Some(cut) = requested_cut(&name)
+                && node
                     .text_runs
-                    .get(*index)
-                    .and_then(|run| run.font_id.as_deref())
-                    .unwrap_or("default");
-                if font_id == "default" {
-                    pin_runs.push(*index);
-                }
+                    .get(index)
+                    .is_some_and(|run| run.font_id.as_deref().unwrap_or("default") == "default")
+            {
+                pin_runs.push((index, cut));
             }
         }
-        if pin_style || !pin_runs.is_empty() {
-            needs_regular = true;
-        }
-        let already = document.nodes[id].text_style.as_ref().is_some_and(|style| {
-            style.font_id != "default" && is_regular_resource(document, &style.font_id)
-        }) || document.nodes[id].text_runs.iter().any(|run| {
-            run.font_id.as_deref().is_some_and(|font_id| {
-                font_id != "default" && is_regular_resource(document, font_id)
-            })
-        });
-        plans.push((id.clone(), pin_style, pin_runs, diagnoses, already));
+        needed.extend(pin_style);
+        needed.extend(pin_runs.iter().map(|(_, cut)| *cut));
+        needed.extend(
+            node.text_style
+                .iter()
+                .map(|style| style.font_id.as_str())
+                .chain(
+                    node.text_runs
+                        .iter()
+                        .filter_map(|run| run.font_id.as_deref()),
+                )
+                .filter_map(|id| resource_cut(document, id)),
+        );
+        plans.push((id.clone(), pin_style, pin_runs, diagnoses));
     }
-    let regular = if needs_regular || plans.iter().any(|(_, _, _, _, already)| *already) {
-        install_regular(document)
-    } else {
-        None
-    };
-    for (id, pin_style, pin_runs, diagnoses, already) in plans {
+    let faces: BTreeMap<_, _> = needed
+        .into_iter()
+        .filter_map(|cut| install_cut(document, cut).map(|face| (cut, face)))
+        .collect();
+    for (id, pin_style, pin_runs, diagnoses) in plans {
         if !diagnoses.is_empty() {
-            for (_, message) in &diagnoses {
-                warnings.insert(message.clone());
-            }
+            warnings.extend(diagnoses.iter().map(|(_, message)| message.clone()));
             absent_ids.push((id.clone(), diagnoses));
         }
-        let Some(face) = regular.as_ref() else {
-            continue;
-        };
-        let mut assigned = false;
-        if pin_style
-            && let Some(style) = document
-                .nodes
-                .get_mut(&id)
-                .and_then(|node| node.text_style.as_mut())
+        let node = document.nodes.get_mut(&id).unwrap();
+        if let Some(face) = pin_style.and_then(|cut| faces.get(&cut))
+            && let Some(style) = &mut node.text_style
         {
             style.font_id = face.id.clone();
-            assigned = true;
-        }
-        if let Some(node) = document.nodes.get_mut(&id) {
-            for index in pin_runs {
-                if let Some(run) = node.text_runs.get_mut(index) {
-                    run.font_id = Some(face.id.clone());
-                    assigned = true;
-                }
-            }
-        }
-        if assigned {
             changed.insert(id.clone());
         }
-        let uses_regular = document.nodes[&id]
-            .text_style
-            .as_ref()
-            .is_some_and(|style| style.font_id == face.id)
-            || document.nodes[&id]
-                .text_runs
-                .iter()
-                .any(|run| run.font_id.as_deref() == Some(face.id.as_str()));
-        if uses_regular && (assigned || already) {
-            measure_ids.push(id);
+        for (index, cut) in pin_runs {
+            if let Some(face) = faces.get(&cut) {
+                node.text_runs[index].font_id = Some(face.id.clone());
+                changed.insert(id.clone());
+            }
+        }
+        let mut used = faces.iter().filter(|(_, face)| {
+            node.text_style
+                .as_ref()
+                .is_some_and(|style| style.font_id == face.id)
+                || node
+                    .text_runs
+                    .iter()
+                    .any(|run| run.font_id.as_deref() == Some(face.id.as_str()))
+        });
+        if let Some((&cut, _)) = used.next()
+            && used.next().is_none()
+        {
+            measure_ids.push((id, cut));
         }
     }
     let mut receipts = Vec::new();
     if !measure_ids.is_empty()
-        && let Some(face) = regular.as_ref()
         && let Ok(fonts) = Fonts::new().with_resources(&document.fonts)
     {
-        for id in measure_ids {
+        for (id, cut) in measure_ids {
+            let face = &faces[&cut];
             let Some(node) = document.nodes.get(&id) else {
                 continue;
             };
@@ -436,7 +461,7 @@ pub(crate) fn pin_imported_faces(document: &mut Document) -> PinnedAbeezee {
             let receipt = json!({
                 "kind": "pinned-font-file",
                 "basis": "pinned-font-file",
-                "postscript": "ABeeZee-Regular",
+                "postscript": cut.postscript(),
                 "sha256": face.sha256,
                 "lineCount": layout.lines.len(),
                 "breaks": layout.lines.iter().map(|line| json!({"start": line.start, "end": line.end})).collect::<Vec<_>>(),

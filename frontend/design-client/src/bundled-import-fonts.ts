@@ -31,6 +31,7 @@ export const bundledImportFonts: readonly ImportFace[] = [
   {family:'Inter',style:'SemiBold',postscript:'Inter-SemiBold',sha:'78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3',sha1:'b4bdaf6bdd6a479b46c452a7bbae13f5cb2079bf'},
   {family:'Inter',style:'Bold',postscript:'Inter-Bold',sha:'288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f',sha1:'9461e7c083137c2abe6d198f784fb0d341a527a1'},
   {family:'ABeeZee',style:'Regular',postscript:'ABeeZee-Regular',sha:'2901c8df256648cc2bb2e3afb381cb8d28e65ed3dbe11de20695ae4d5ffdeda9',sha1:'27a9e143d0a2f245006abdc4e1c644f6c6c50233'},
+  {family:'ABeeZee',style:'Italic',postscript:'ABeeZee-Italic',sha:'3892bb74578207ed6edae040a0869e54dcae13a466d005460570947062137dd8',sha1:'6c31f36044a58b0f2129c79ac74eafa5e7919888'},
   {family:'DejaVu Sans',style:'Regular',postscript:'DejaVuSans',sha:'ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280',sha1:'3061cf7af25793a655a1ff5a509385f3620f3eb3'},
 ]
 /** Poppins 2.000. Same family names as the version above, different bytes.
@@ -69,10 +70,12 @@ function nearestBundled(name: string): Face | undefined {
     : ''
   if (!family) return
   const italic = compact.includes('italic') || compact.includes('oblique')
-  // ABeeZee and DejaVu ship only Regular. Another weight or italic must stay
-  // unmatched. Mapping it onto Regular would make those advances look like the
-  // requested face's line breaks.
-  if (family === 'ABeeZee' || family === 'DejaVu Sans') {
+  if (family === 'ABeeZee') {
+    const style = compact === 'abeezeeitalic' ? 'Italic'
+      : ['abeezee','abeezeeregular','abeezeenormal','abeezeeroman'].includes(compact) ? 'Regular' : undefined
+    return bundledImportFonts.find(face => face.family === family && face.style === style)
+  }
+  if (family === 'DejaVu Sans') {
     if (italic || /bold|medium|semibold|demibold|light|thin|black|heavy|condensed/.test(compact)) return
     return bundledImportFonts.find(face => face.family === family && face.style === 'Regular')
   }
@@ -85,14 +88,14 @@ function nearestBundled(name: string): Face | undefined {
 }
 
 /** A requested ABeeZee face this package does not ship. Undefined for the
- * Regular face and for every other family. */
+ * Regular and Italic and for every other family. */
 export function abeezeeLineBreakDiagnostic(name: string) {
   return abeezeeAbsentFaceDiagnosis(name)
 }
 
 /** Exact bundled face, or a nearest face that is actually shipped. A digest
  * selects only the file with that SHA-1. A different cut of the same family
- * is not a match. ABeeZee italic and other unshipped weights return undefined. */
+ * is not a match. Unshipped ABeeZee cuts return undefined. */
 export function selectBundledImportFace(name: string, digest?: string): Face | undefined {
   if (digest) return digestFaces.find(face => face.sha1 === digest)
   return matchFont(name, [...bundledImportFonts]) || nearestBundled(name)

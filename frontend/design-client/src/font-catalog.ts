@@ -329,16 +329,17 @@ export type FontSuggestion<T> = { face?: T; fontId?: string; kind: SuggestionKin
 
 const compactFontName = (value: string) => value.normalize('NFKC').replace(/[\s_-]+/g, '').toLowerCase()
 
-/** The package ships ABeeZee Regular only. Another face must not inherit that file's line breaks. */
+/** The package ships ABeeZee Regular and Italic. Keep other cuts unmatched. */
 export function unshippedAbeezeeFace(name: string): boolean {
   const compact = compactFontName(name)
   if (!compact.startsWith('abeezee')) return false
-  return compact !== 'abeezee' && compact !== 'abeezeeregular' && compact !== 'abeezeenormal' && compact !== 'abeezeeroman'
+  return compact !== 'abeezee' && compact !== 'abeezeeregular' && compact !== 'abeezeenormal' &&
+    compact !== 'abeezeeroman' && compact !== 'abeezeeitalic'
 }
 
 export function abeezeeAbsentFaceDiagnosis(name: string): string | undefined {
   if (!unshippedAbeezeeFace(name)) return
-  return `字体 ${name} 没有同名随包文件。ABeeZee 只随包 Regular，不能把 Regular 的换行当成这个请求的结果。文字已保留，显示用当前回退。`
+  return `字体 ${name} 没有同名随包文件。不能把 Regular 或 Italic 的换行当成这个请求的结果。文字已保留，显示用当前回退。`
 }
 
 export function suggestFontFace<T extends FontFaceInfo & { id?: string }>(name: string, fonts: readonly T[]): FontSuggestion<T> {

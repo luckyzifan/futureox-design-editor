@@ -80,12 +80,13 @@ test('a FIG digest selects that file and a different cut stays unmatched', async
   expect(bold.textStyle?.fontId ?? 'default').toBe('default')
 })
 
-test('ABeeZee italic stays unmatched instead of borrowing Regular line breaks', async () => {
+test('ABeeZee Italic attaches its exact file and missing cuts stay unmatched', async () => {
   expect(selectBundledImportFace('ABeeZee')?.postscript).toBe('ABeeZee-Regular')
   expect(selectBundledImportFace('ABeeZee Regular')?.style).toBe('Regular')
-  expect(selectBundledImportFace('ABeeZee Italic')).toBeUndefined()
-  expect(selectBundledImportFace('ABeeZee-Italic')).toBeUndefined()
-  expect(abeezeeLineBreakDiagnostic('ABeeZee Italic')).toContain('不能把 Regular 的换行')
+  expect(selectBundledImportFace('ABeeZee Italic')?.postscript).toBe('ABeeZee-Italic')
+  expect(selectBundledImportFace('ABeeZee-Italic')?.style).toBe('Italic')
+  expect(abeezeeLineBreakDiagnostic('ABeeZee Italic')).toBeUndefined()
+  expect(abeezeeLineBreakDiagnostic('ABeeZee Bold Italic')).toContain('没有同名随包文件')
   expect(abeezeeLineBreakDiagnostic('ABeeZee')).toBeUndefined()
   const doc = blank('斜体')
   const text = node('text', 0, 0, 200, 80)
@@ -95,8 +96,8 @@ test('ABeeZee italic stays unmatched instead of borrowing Regular line breaks', 
   doc.designSystem = { ...emptySystem(), fontSources: { [text.id]: { style: 'ABeeZee Italic' } } }
   const matched = await matchBundledImportFonts(doc)
   expect(matched.substitutions).toEqual([])
-  expect(matched.missing).toContain('ABeeZee Italic')
-  expect(doc.nodes[text.id].textStyle?.fontId ?? 'default').toBe('default')
+  expect(matched.missing).toEqual([])
+  expect(doc.fonts?.[doc.nodes[text.id].textStyle!.fontId]?.postscript).toBe('ABeeZee-Italic')
 })
 
 test('a matched family warning is case-insensitive, and a missing face keeps it', () => {

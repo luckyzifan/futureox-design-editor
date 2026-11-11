@@ -47,12 +47,15 @@ test('aliases and variable axes match a face, and a different weight stays a sug
 
 test('an unshipped ABeeZee face is not offered as Regular line breaks', () => {
   const regular = face('ABeeZee', 'Regular', { weight: 400, id: 'abeezee' })
-  expect(unshippedAbeezeeFace('ABeeZee Italic')).toBe(true)
+  expect(unshippedAbeezeeFace('ABeeZee Italic')).toBe(false)
   expect(unshippedAbeezeeFace('ABeeZee-Bold')).toBe(true)
   expect(unshippedAbeezeeFace('ABeeZee Regular')).toBe(false)
-  expect(abeezeeAbsentFaceDiagnosis('ABeeZee Italic')).toContain('不能把 Regular 的换行')
+  expect(abeezeeAbsentFaceDiagnosis('ABeeZee-Bold')).toContain('没有同名随包文件')
+  expect(abeezeeAbsentFaceDiagnosis('ABeeZee Italic')).toBeUndefined()
   expect(abeezeeAbsentFaceDiagnosis('ABeeZee')).toBeUndefined()
+  const italic = face('ABeeZee', 'Italic', { weight: 400, id: 'abeezee-italic' })
   expect(resolveListedFace('ABeeZee Italic', [regular])).toBeUndefined()
+  expect(resolveListedFace('ABeeZee Italic', [regular, italic])).toBe(italic)
   expect(resolveListedFace('ABeeZee Bold', [regular])).toBeUndefined()
   expect(suggestFontFace('ABeeZee Italic', [regular]).face).toBeUndefined()
   expect(suggestFontFace('ABeeZee Bold', [regular]).kind).toBe('builtin')

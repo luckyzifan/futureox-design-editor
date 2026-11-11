@@ -221,22 +221,22 @@ fn absent_binding(document: &futureox_design_kernel::scene::Document, id: &str) 
 }
 
 #[test]
-fn absent_abeezee_names_are_diagnosed_and_regular_is_not() {
-    for name in [
-        "ABeeZee Italic",
-        "ABeeZee-Italic",
-        "ABeeZee Oblique",
-        "ABeeZee Bold",
-    ] {
+fn absent_abeezee_names_are_diagnosed_and_shipped_faces_are_not() {
+    for name in ["ABeeZee-BoldItalic", "ABeeZee Oblique", "ABeeZee Bold"] {
         let message = futureox_design_kernel::abeezee_font::absent_abeezee_diagnosis(name)
             .unwrap_or_else(|| panic!("{name} was treated as a shipped face"));
         assert!(message.contains("没有同名"), "{message}");
-        assert!(message.contains("不能把 Regular 的换行"), "{message}");
+        assert!(
+            message.contains("不能把 Regular 或 Italic 的换行"),
+            "{message}"
+        );
     }
     for name in [
         "ABeeZee",
         "ABeeZee Regular",
         "ABeeZee-Regular",
+        "ABeeZee Italic",
+        "ABeeZee-Italic",
         "Inter Italic",
     ] {
         assert!(
@@ -247,7 +247,7 @@ fn absent_abeezee_names_are_diagnosed_and_regular_is_not() {
 }
 
 #[test]
-fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
+fn pinned_regular_matches_the_file_and_missing_bold_italic_does_not_borrow_it() {
     let abeezee = std::fs::read(font_path("abeezee/ABeeZee-Regular.ttf")).unwrap();
     let noto = std::fs::read(font_path("NotoSansSC.ttf")).unwrap();
     assert_eq!(
@@ -269,10 +269,15 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
         chosen.expect("no width where ABeeZee line breaks differ from Noto and match raw advances");
     let reference_layout = measure_file(&abeezee, "abeezee", width, false);
     let face = ttf_parser::Face::parse(&abeezee, 0).unwrap();
-    let natural_height = (f64::from(face.ascender()) - f64::from(face.descender()) + f64::from(face.line_gap()))
-        * SIZE / f64::from(face.units_per_em()) * raw_lines.len() as f64;
-    assert!((reference_layout.height - natural_height).abs() < 1e-9,
-        "automatic Sketch line box must use the pinned font's independent vertical metrics");
+    let natural_height = (f64::from(face.ascender()) - f64::from(face.descender())
+        + f64::from(face.line_gap()))
+        * SIZE
+        / f64::from(face.units_per_em())
+        * raw_lines.len() as f64;
+    assert!(
+        (reference_layout.height - natural_height).abs() < 1e-9,
+        "automatic Sketch line box must use the pinned font's independent vertical metrics"
+    );
     let archive = sketch(vec![
         text_layer(
             "regular",
@@ -283,7 +288,7 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
         ),
         text_layer(
             "italic",
-            "ABeeZee-Italic",
+            "ABeeZee-BoldItalic",
             width,
             reference_layout.height,
             400.,
@@ -389,15 +394,15 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
             .is_none()
     );
     let diagnosis = absent_binding(document, "italic");
-    assert!(diagnosis.contains("ABeeZee-Italic"), "{diagnosis}");
-    assert!(diagnosis.contains("不能把 Regular 的换行"), "{diagnosis}");
+    assert!(diagnosis.contains("ABeeZee-BoldItalic"), "{diagnosis}");
     assert!(
-        report
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("不能把 Regular 的换行")
-                && warning.contains("ABeeZee-Italic"))
+        diagnosis.contains("不能把 Regular 或 Italic 的换行"),
+        "{diagnosis}"
     );
+    assert!(report.warnings.iter().any(
+        |warning| warning.contains("不能把 Regular 或 Italic 的换行")
+            && warning.contains("ABeeZee-BoldItalic")
+    ));
     assert!(
         italic_versus_regular > 0,
         "italic request silently used Regular breaks"
@@ -423,7 +428,7 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
         receipt(&reopened, "regular")["lineCount"],
         reference_lines.len()
     );
-    assert!(absent_binding(&reopened, "italic").contains("不能把 Regular 的换行"));
+    assert!(absent_binding(&reopened, "italic").contains("不能把 Regular 或 Italic 的换行"));
     assert_eq!(
         reopened.nodes["italic"]
             .text_style
@@ -482,7 +487,7 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
     assert_eq!(
         exported_italic["attributedString"]["attributes"][0]["attributes"]["MSAttributedStringFontAttribute"]
             ["attributes"]["name"],
-        "ABeeZee-Italic",
+        "ABeeZee-BoldItalic",
         "exported italic layer {}",
         exported_italic
     );
@@ -497,7 +502,7 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
         Some(reference_layout.height)
     );
     assert!(
-        absent_binding(&again.document, "italic").contains("ABeeZee-Italic"),
+        absent_binding(&again.document, "italic").contains("ABeeZee-BoldItalic"),
         "warnings {:?}\nbinding {}\nnode {}",
         again.warnings,
         absent_binding(&again.document, "italic"),
@@ -507,6 +512,56 @@ fn pinned_regular_matches_the_font_file_and_italic_does_not_borrow_it() {
         again
             .warnings
             .iter()
-            .any(|warning| warning.contains("不能把 Regular 的换行"))
+            .any(|warning| warning.contains("不能把 Regular 或 Italic 的换行"))
     );
+}
+
+#[test]
+fn bundled_italic_retains_its_own_line_breaks_and_box_on_reopen() {
+    let italic = std::fs::read(font_path("abeezee/ABeeZee-Italic.ttf")).unwrap();
+    let regular = std::fs::read(font_path("abeezee/ABeeZee-Regular.ttf")).unwrap();
+    assert_eq!(
+        sha256_hex(&italic),
+        futureox_design_kernel::abeezee_font::ABEEZEE_ITALIC_SHA256
+    );
+    let (width, oracle) = (140..=360)
+        .map(f64::from)
+        .find_map(|width| {
+            let lines = raw_lines(&italic, width);
+            let layout = measure_file(&italic, "italic", width, false);
+            (line_text(&layout) == lines && lines != raw_lines(&regular, width))
+                .then_some((width, layout))
+        })
+        .expect("find an independently measured width that distinguishes Italic");
+    let fixture = sketch(vec![text_layer(
+        "italic",
+        "ABeeZee-Italic",
+        width,
+        oracle.height,
+        0.,
+    )]);
+    let report = interop::import_sketch_report(&fixture).unwrap();
+    let mut document = report.document;
+    let node = document.nodes.get_mut("italic").unwrap();
+    assert_eq!((node.width, node.height), (width, oracle.height));
+    node.opacity = 0.7;
+    let id = &node.text_style.as_ref().unwrap().font_id;
+    assert_eq!(
+        document.fonts[id].postscript.as_deref(),
+        Some("ABeeZee-Italic")
+    );
+    assert_eq!(receipt(&document, "italic")["postscript"], "ABeeZee-Italic");
+    assert_eq!(receipt(&document, "italic")["sha256"], sha256_hex(&italic));
+    assert!(absent_binding(&document, "italic").is_empty());
+    let reopened = binfmt::decode(&binfmt::encode(&document)).unwrap();
+    let sketch = interop::export_sketch(&reopened).unwrap();
+    let reimported = interop::import_sketch_report(&sketch).unwrap().document;
+    for candidate in [&document, &reopened, &reimported] {
+        let n = &candidate.nodes["italic"];
+        assert_eq!((n.width, n.height, n.opacity), (width, oracle.height, 0.7));
+        let measured = measure_document(candidate, "italic");
+        assert_eq!(line_text(&measured), raw_lines(&italic, width));
+        assert_eq!(breaks(&measured), breaks(&oracle));
+        assert_eq!(measured.height, oracle.height);
+    }
 }
