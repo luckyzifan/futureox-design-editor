@@ -1116,7 +1116,7 @@ async function buildWindow() {
       .slice(0, 200)
       const extension = path.extname(name).toLowerCase()
       // .fd and .zip stay off this list. Those two panel exports use export-product-file.
-      const allowed = ['.png', '.svg', '.svgz', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
+      const allowed = ['.png', '.svg', '.svgz', '.jpg', '.jpeg', '.webp', '.tiff', '.tif', '.pdf', '.json', '.fdlib', '.sketch'].includes(
       extension,
     )
     if (

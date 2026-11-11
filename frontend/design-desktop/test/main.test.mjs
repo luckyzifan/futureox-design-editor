@@ -1646,3 +1646,16 @@ test('product export channel writes validated FD and HTML ZIP only at the dialog
     assert.equal(downloadProbe(state, 'design-html.zip').blocked, 1)
   } finally { await state.dispose() }
 })
+
+test('TIFF Blob exports reach the owned native save dialog while FD and ZIP stay rejected', async () => {
+  const state = await host()
+  try {
+    for (const filename of ['drawing.tiff', 'drawing.tif']) {
+      const result = downloadProbe(state, filename)
+      assert.equal(result.blocked, 0, filename)
+      assert.equal(result.options.defaultPath, filename)
+      assert.deepEqual(result.options.properties, ['showOverwriteConfirmation'])
+    }
+    for (const filename of ['drawing.fd', 'drawing.zip']) assert.equal(downloadProbe(state, filename).blocked, 1)
+  } finally { await state.dispose() }
+})
