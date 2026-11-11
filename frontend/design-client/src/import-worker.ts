@@ -82,9 +82,9 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       self.postMessage({ result })
     } else if (event.data.format === 'pdf') {
       await initializeKernelModule()
-      const { import_pdf_json } = await import('./generated/design-kernel/design_kernel')
+      const { import_pdf_report_json } = await import('./generated/design-kernel/design_kernel')
       importStage = 233 // decode
-      const document = JSON.parse(import_pdf_json(bytes))
+      const {document, warnings} = JSON.parse(import_pdf_report_json(bytes)) as { document: DesignDocument; warnings: string[] }
       document.id = uid()
       // The PDF codec uses local sequential identifiers. Give the imported
       // tree host-independent UUIDs before shared document admission.
@@ -97,8 +97,14 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       document.pages = document.pages.map((page: DesignDocument['pages'][number]) => ({
         ...page, id: uid(), children: page.children.map(child => ids.get(child)!),
       }))
+      const containers = document.designSystem?.sketchContainers
+      if (containers?.nodeMetadata && typeof containers.nodeMetadata === 'object') {
+        containers.nodeMetadata = Object.fromEntries(
+          Object.entries(containers.nodeMetadata).map(([id, metadata]) => [ids.get(id)!, metadata]),
+        )
+      }
       document.name = event.data.name || document.name
-      self.postMessage({ result: { document, warnings: ['PDF 文本内容未导入；矢量路径与图像已转换为可编辑图层'] } })
+      self.postMessage({ result: { document, warnings } })
     } else if (event.data.format === 'fig') {
       await initializeKernelModule()
       importStage = 233 // decode

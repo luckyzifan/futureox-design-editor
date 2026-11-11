@@ -543,10 +543,8 @@ fn gradient_solid(
     Ok(None)
 }
 
-/// Image XObject placement in node-local design space, before the top-row
-/// flip applied by the caller. Mirrors `paint::ImageCoordinates`: a paint
-/// transform maps the unit square directly, otherwise cover/contain center
-/// the scaled asset and stretch spans the node.
+/// Place the PDF image unit square in node-local design space before the
+/// top-row flip. The asset dimensions determine the aspect ratio for fit.
 fn image_placement(
     paint: &Paint,
     width: f64,
@@ -559,7 +557,7 @@ fn image_placement(
         return Transform([width, 0., 0., height, 0., 0.]).concat(transform);
     }
     if paint.fit == "stretch" {
-        return Transform([width / iw, 0., 0., height / ih, 0., 0.]);
+        return Transform([width, 0., 0., height, 0., 0.]);
     }
     let ratio = if paint.fit == "contain" {
         (width / iw).min(height / ih)
@@ -567,10 +565,10 @@ fn image_placement(
         (width / iw).max(height / ih)
     };
     Transform([
-        ratio,
+        iw * ratio,
         0.,
         0.,
-        ratio,
+        ih * ratio,
         (width - iw * ratio) / 2.,
         (height - ih * ratio) / 2.,
     ])
@@ -1672,7 +1670,7 @@ mod tests {
         let doc = document(
             json!({
                 "png": {"id":"png","kind":"rectangle","width":60.,"height":40.,
-                        "fills":[{"kind":"image","color":"#000000","image":uri(&png, "png")}]},
+                        "fills":[{"kind":"image","color":"#000000","fit":"stretch","image":uri(&png, "png")}]},
                 "jpeg": {"id":"jpeg","kind":"rectangle","width":60.,"height":40.,
                          "transform":[1.,0.,0.,1.,0.,50.],
                          "fills":[{"kind":"image","color":"#000000","image":uri(&jpeg, "jpeg")}]}
@@ -1690,8 +1688,8 @@ mod tests {
         assert!(text.contains("/DefaultRGB"));
         assert!(!text.contains("/ColorSpace /DeviceRGB"));
         let content = content_stream(&pdf);
-        assert!(content.contains("/Im0 Do"));
-        assert!(content.contains("/Im1 Do"));
+        assert!(content.contains("60 0 0 -40 0 40 cm\n/Im0 Do"), "{content}");
+        assert!(content.contains("60 0 0 -60 0 50 cm\n/Im1 Do"), "{content}");
         assert_eq!(content.matches('q').count(), content.matches('Q').count());
     }
 

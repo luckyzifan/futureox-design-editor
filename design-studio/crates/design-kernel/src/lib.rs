@@ -2469,6 +2469,12 @@ mod wasm {
     }
 
     #[wasm_bindgen]
+    pub fn import_pdf_report_json(bytes: &[u8]) -> Result<String, JsValue> {
+        let report = crate::pdf_import::import_pdf_report(bytes).map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&report).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen]
     pub fn lod_bucket_scale(scale: f64) -> f64 {
         tile_stack::lod_bucket_scale(scale)
     }

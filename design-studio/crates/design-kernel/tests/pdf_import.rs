@@ -1,7 +1,7 @@
 //! Integration tests for the vector PDF importer. Every fixture is built
 //! in-test: minimal classic-xref PDFs plus a stored-block zlib encoder, so
 //! the tests never depend on external files or the export side.
-use futureox_design_kernel::pdf_import::{import_pdf, is_pdf_file};
+use futureox_design_kernel::pdf_import::{import_pdf, import_pdf_report, is_pdf_file};
 use futureox_design_kernel::scene::{Document, Node};
 use std::collections::BTreeMap;
 
@@ -111,7 +111,12 @@ mod pdf_import {
     }
 
     fn page_children(doc: &Document) -> &[String] {
-        &doc.pages[0].children
+        let page = &doc.pages[0];
+        assert_eq!(page.children.len(), 1);
+        let frame = &doc.nodes[&page.children[0]];
+        assert_eq!(frame.kind, "frame");
+        assert!(frame.clip);
+        &frame.children
     }
 
     fn only_node(doc: &Document) -> &Node {
@@ -220,7 +225,14 @@ mod pdf_import {
             "/Font << /F1 9 0 R >>",
             false,
         );
-        let doc = import_pdf(&bytes).unwrap();
+        let report = import_pdf_report(&bytes).unwrap();
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("文字未转换"))
+        );
+        let doc = report.document;
         doc.validate().unwrap();
         let children = page_children(&doc);
         assert_eq!(children.len(), 1);
@@ -302,6 +314,32 @@ mod pdf_import {
     }
 
     #[test]
+    fn filled_cubic_ring_closes_at_its_existing_start_vertex() {
+        use futureox_design_kernel::path::Command;
+        let bytes = single_page(
+            "0.1 0.2 0.8 rg 90 50 m \
+             90 63.80712 78.80712 75 65 75 c 51.19288 75 40 63.80712 40 50 c \
+             40 36.19288 51.19288 25 65 25 c 78.80712 25 90 36.19288 90 50 c f*",
+            "",
+            false,
+        );
+        let doc = import_pdf(&bytes).unwrap();
+        let node = only_node(&doc);
+        let network = node.network.as_ref().unwrap();
+        assert_eq!((network.vertices.len(), network.edges.len()), (4, 4));
+        assert_eq!(network.edges[3].to, network.edges[0].from);
+        let (fill, _) = node.paths().unwrap();
+        assert_eq!(
+            fill.commands
+                .iter()
+                .filter(|c| matches!(c, Command::Cubic(..)))
+                .count(),
+            4
+        );
+        assert_eq!(fill.commands.last(), Some(&Command::Close));
+    }
+
+    #[test]
     fn extgstate_ca_and_ca_map_into_opacity() {
         let content = "q /Half gs 0 0 10 10 re f Q /Both gs 0 20 10 10 re B";
         let objects = vec![
@@ -361,13 +399,92 @@ mod pdf_import {
         assert_eq!(doc.pages.len(), 2);
         assert_eq!(doc.pages[0].name, "Page 1");
         assert_eq!(doc.pages[1].name, "Page 2");
-        let first = &doc.nodes[&doc.pages[0].children[0]];
+        let first_frame = &doc.nodes[&doc.pages[0].children[0]];
+        assert_eq!((first_frame.width, first_frame.height), (300., 400.));
+        let first = &doc.nodes[&first_frame.children[0]];
         assert_eq!(first.fills[0].color, "#0000ff");
         // Second page: height 100 → y flip puts user y=20 at 100 - 20 = 80.
-        let second = &doc.nodes[&doc.pages[1].children[0]];
+        let second_frame = &doc.nodes[&doc.pages[1].children[0]];
+        assert_eq!((second_frame.width, second_frame.height), (200., 100.));
+        let second = &doc.nodes[&second_frame.children[0]];
         assert_transform(second, [1., 0., 0., -1., 10., 80.]);
         assert_close(second.width, 30.);
         assert_close(second.height, 40.);
+    }
+
+    #[test]
+    fn text_and_rotated_crop_keep_the_page_and_baseline() {
+        let objects = vec![
+            (1, text_object("<< /Type /Catalog /Pages 2 0 R >>")),
+            (
+                2,
+                text_object(
+                    "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 /MediaBox [10 15 170 135] /CropBox [20 25 150 115] /Rotate 90 >>",
+                ),
+            ),
+            (
+                3,
+                text_object(
+                    "<< /Type /Page /Parent 2 0 R /Contents 4 0 R /Resources << /Font << /F1 7 0 R >> >> >>",
+                ),
+            ),
+            (
+                4,
+                content_stream(
+                    "BT /F1 12 Tf 1 0 0 1 30 90 Tm (PAGE_A_TEXT) Tj ET 1 0 0 rg 20 25 20 40 re f",
+                ),
+            ),
+            (
+                5,
+                text_object(
+                    "<< /Type /Page /Parent 2 0 R /CropBox [10 15 170 135] /Rotate 0 /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>",
+                ),
+            ),
+            (
+                6,
+                content_stream("BT /F1 12 Tf 30 90 Td (PAGE_B_TEXT) Tj ET"),
+            ),
+            (
+                7,
+                text_object(
+                    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+                ),
+            ),
+        ];
+        let report = import_pdf_report(&build_pdf(&objects, 1)).unwrap();
+        let doc = &report.document;
+        assert_eq!(report.warnings.len(), 1);
+        assert!(report.warnings[0].contains("替代字体"));
+        let frame = &doc.nodes[&doc.pages[0].children[0]];
+        assert_eq!((frame.width, frame.height), (90., 130.));
+        assert!(frame.clip);
+        let text = &doc.nodes[&frame.children[0]];
+        assert_eq!(text.kind, "text");
+        assert_eq!(text.text, "PAGE_A_TEXT");
+        let layout = futureox_design_kernel::font::Fonts::new()
+            .with_resources(&doc.fonts)
+            .unwrap()
+            .node_measure(text, None)
+            .unwrap();
+        let baseline = text
+            .transform
+            .point(futureox_design_kernel::math::Point::new(
+                0.,
+                layout.glyphs[0].y,
+            ));
+        assert_close(baseline.x, 65.);
+        assert_close(baseline.y, 10.);
+        let path = &doc.nodes[&frame.children[1]];
+        assert_transform(path, [0., 1., 1., 0., 0., 0.]);
+        let meta = &doc.design_system.as_ref().unwrap().sketch_containers["nodeMetadata"]
+            [&frame.id]["bindings"]["pdfPageBoxes"];
+        let boxes: serde_json::Value = serde_json::from_str(meta.as_str().unwrap()).unwrap();
+        assert_eq!(boxes["rotate"], 90);
+        assert_eq!(boxes["mediaBox"], serde_json::json!([10., 15., 170., 135.]));
+        assert_eq!(boxes["cropBox"], serde_json::json!([20., 25., 150., 115.]));
+        let second = &doc.nodes[&doc.pages[1].children[0]];
+        assert_eq!((second.width, second.height), (160., 120.));
+        assert_eq!(doc.nodes[&second.children[0]].text, "PAGE_B_TEXT");
     }
 
     #[test]
@@ -407,7 +524,7 @@ mod pdf_import {
         let children = page_children(&doc);
         assert_eq!(children.len(), 2);
         let flate_node = &doc.nodes[&children[0]];
-        assert_eq!(flate_node.kind, "image");
+        assert_eq!(flate_node.kind, "rectangle");
         assert_close(flate_node.width, 100.);
         assert_close(flate_node.height, 50.);
         // Unit square under cm (100x50 at 10,20) → design y 792-20-50 = 722.
@@ -423,7 +540,7 @@ mod pdf_import {
                 .starts_with("data:image/png;base64,")
         );
         let jpeg_node = &doc.nodes[&children[1]];
-        assert_eq!(jpeg_node.kind, "image");
+        assert_eq!(jpeg_node.kind, "rectangle");
         assert!(
             jpeg_node.fills[0]
                 .image

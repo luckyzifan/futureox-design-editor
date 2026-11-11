@@ -1,15 +1,14 @@
 //! Vector PDF import: parse a PDF file's cross-reference structure and page
-//! content streams, and rebuild the painted geometry as editable design
-//! documents (one `vector` node per painted path, `image` nodes for image
-//! XObjects). The parser is written in-tree — no external PDF crate.
+//! content streams and rebuild editable paths, images and simple text inside
+//! a clipped frame for each page. The parser is written in-tree.
 //!
 //! v1 scope (explicit degradations, never silent masquerades):
-//! - text content is not imported (BT/ET, Tj/TJ glyph runs are skipped);
+//! - filled printable ASCII in standard Helvetica becomes editable text
+//!   with the bundled substitute; other text encodings and modes are reported;
 //! - W/W* clipping is parsed as a no-op: clip geometry is dropped;
 //! - sh shadings and form XObjects are skipped; only image XObjects run;
 //! - ExtGState blend modes and soft masks are dropped; ca/CA map into
 //!   node/paint opacity (when ca != CA the higher alpha is clamped);
-//! - page /Rotate is not applied;
 //! - image XObjects: DCTDecode JPEG passes through as a data URI,
 //!   FlateDecode 8-bit DeviceRGB/DeviceGray becomes PNG; anything else
 //!   (other filters, CMYK, non-8-bit, SMask) is skipped.
@@ -17,9 +16,10 @@
 //! Budgets: 64 MB decompressed per stream, 2,000,000 path commands and
 //! 40,000 nodes per document — past those the import errors out.
 use crate::export::encode_rgba;
+use crate::font::{FontResource, Fonts, TextStyle};
 use crate::math::{Point, Transform};
 use crate::scene::{Document, Edge, Network, Node, Page, Paint, Stroke, Vertex};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
@@ -51,12 +51,10 @@ pub fn is_pdf_file(bytes: &[u8]) -> bool {
 #[derive(Clone, Debug)]
 enum Obj {
     Null,
-    /// Parsed for token correctness; never read (text content is skipped).
+    /// Parsed for token correctness.
     Bool(#[allow(dead_code)] bool),
     Num(f64),
-    /// Literal/hex strings are tokenized so operands stay in sync; the
-    /// payload is unused because text content is not imported (v1).
-    Str(#[allow(dead_code)] Vec<u8>),
+    Str(Vec<u8>),
     Name(String),
     Array(Vec<Obj>),
     Dict(Vec<(String, Obj)>),
@@ -396,8 +394,16 @@ enum PdfObject {
 /// Cached decode result: (stream dict, decoded payload).
 type DecodedStream = Rc<(Obj, Rc<Vec<u8>>)>;
 
+#[derive(Clone, Copy, Default)]
+struct PageGeometry {
+    media: Option<[f64; 4]>,
+    crop: Option<[f64; 4]>,
+    rotation: i64,
+}
+
 struct PageSpec {
-    media: [f64; 4],
+    geometry: PageGeometry,
+    unit: f64,
     contents: Vec<u32>,
     resources: Obj,
 }
@@ -789,7 +795,7 @@ impl<'a> PdfFile<'a> {
     fn collect_pages(
         &mut self,
         node: &Obj,
-        media: Option<[f64; 4]>,
+        mut geometry: PageGeometry,
         resources: Option<Obj>,
         out: &mut Vec<PageSpec>,
         depth: usize,
@@ -802,13 +808,19 @@ impl<'a> PdfFile<'a> {
         if !matches!(node, Obj::Dict(_)) {
             return Err("pdf page tree node must be a dictionary".into());
         }
-        let media = match node.get("MediaBox").cloned() {
-            Some(value) => {
-                let resolved = self.resolve(&value)?;
-                Some(parse_media_box(&resolved)?)
-            }
-            None => media,
-        };
+        if let Some(value) = node.get("MediaBox") {
+            geometry.media = Some(parse_page_box(&self.resolve(value)?)?);
+        }
+        if let Some(value) = node.get("CropBox") {
+            geometry.crop = Some(parse_page_box(&self.resolve(value)?)?);
+        }
+        if let Some(value) = node.get("Rotate") {
+            geometry.rotation = self
+                .resolve(value)?
+                .integer()
+                .filter(|angle| angle % 90 == 0)
+                .ok_or("invalid pdf page rotation")?;
+        }
         let resources = match node.get("Resources").cloned() {
             Some(value) => Some(self.resolve(&value)?),
             None => resources,
@@ -820,11 +832,18 @@ impl<'a> PdfFile<'a> {
                 {
                     return Err("cyclic pdf page tree".into());
                 }
-                self.collect_pages(kid, media, resources.clone(), out, depth + 1, seen)?;
+                self.collect_pages(kid, geometry, resources.clone(), out, depth + 1, seen)?;
             }
             return Ok(());
         }
-        let media = media.ok_or("pdf page missing media box")?;
+        let unit = match node.get("UserUnit") {
+            Some(value) => self
+                .resolve(value)?
+                .number()
+                .filter(|unit| unit.is_finite() && *unit > 0. && *unit <= 75_000.)
+                .ok_or("invalid pdf user unit")?,
+            None => 1.,
+        };
         let mut contents = Vec::new();
         match node.get("Contents") {
             Some(Obj::Ref(n, _)) => contents.push(*n),
@@ -838,7 +857,8 @@ impl<'a> PdfFile<'a> {
             _ => {}
         }
         out.push(PageSpec {
-            media,
+            geometry,
+            unit,
             contents,
             resources: resources.unwrap_or(Obj::Null),
         });
@@ -854,7 +874,7 @@ fn stream_ends_at(bytes: &[u8], pos: usize) -> bool {
     bytes[p..].starts_with(b"endstream")
 }
 
-fn parse_media_box(obj: &Obj) -> Result<[f64; 4], String> {
+fn parse_page_box(obj: &Obj) -> Result<[f64; 4], String> {
     let values = obj
         .array()
         .and_then(|a| {
@@ -863,13 +883,13 @@ fn parse_media_box(obj: &Obj) -> Result<[f64; 4], String> {
                 .collect::<Option<Vec<f64>>>()
                 .filter(|v| v.len() == 4)
         })
-        .ok_or("invalid pdf media box")?;
+        .ok_or("invalid pdf page box")?;
     if values.iter().any(|v| !v.is_finite())
         || values[2] <= values[0]
         || values[3] <= values[1]
         || values.iter().any(|v| v.abs() > SCENE_LIMIT)
     {
-        return Err("invalid pdf media box".into());
+        return Err("invalid pdf page box".into());
     }
     Ok([values[0], values[1], values[2], values[3]])
 }
@@ -1003,6 +1023,7 @@ struct GraphicsState {
     line_width: f64,
     fill_alpha: f64,
     stroke_alpha: f64,
+    text: TextState,
 }
 
 impl Default for GraphicsState {
@@ -1017,6 +1038,48 @@ impl Default for GraphicsState {
             line_width: 1.,
             fill_alpha: 1.,
             stroke_alpha: 1.,
+            text: TextState::default(),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TextState {
+    helvetica: bool,
+    size: f64,
+    scale: f64,
+    leading: f64,
+    tracking: f64,
+    word_spacing: f64,
+    rise: f64,
+    render_mode: i64,
+}
+
+impl Default for TextState {
+    fn default() -> Self {
+        Self {
+            helvetica: false,
+            size: 0.,
+            scale: 1.,
+            leading: 0.,
+            tracking: 0.,
+            word_spacing: 0.,
+            rise: 0.,
+            render_mode: 0,
+        }
+    }
+}
+
+struct TextObject {
+    matrix: Option<Transform>,
+    line_matrix: Transform,
+}
+
+impl Default for TextObject {
+    fn default() -> Self {
+        Self {
+            matrix: Some(Transform::default()),
+            line_matrix: Transform::default(),
         }
     }
 }
@@ -1045,6 +1108,8 @@ struct PaintOp {
 enum Operand {
     Num(f64),
     Name(String),
+    Text(Vec<u8>),
+    Array(Vec<Obj>),
     Other,
 }
 
@@ -1052,6 +1117,8 @@ fn to_operand(obj: Obj) -> Operand {
     match obj {
         Obj::Num(n) => Operand::Num(n),
         Obj::Name(s) => Operand::Name(s),
+        Obj::Str(s) => Operand::Text(s),
+        Obj::Array(a) => Operand::Array(a),
         _ => Operand::Other,
     }
 }
@@ -1122,6 +1189,9 @@ struct Builder {
     nodes: BTreeMap<String, Node>,
     next_id: u64,
     commands: usize,
+    fonts: Option<Fonts>,
+    font_resources: BTreeMap<String, FontResource>,
+    warnings: BTreeSet<&'static str>,
 }
 
 impl Builder {
@@ -1132,7 +1202,36 @@ impl Builder {
         self.next_id += 1;
         Ok(format!("pdf-{}", self.next_id))
     }
+
+    fn text_fonts(&mut self) -> Result<&Fonts, String> {
+        if self.fonts.is_none() {
+            use base64::Engine;
+            let bytes = include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../frontend/design-client/public/fonts/inter/Inter-Regular.ttf"
+            ));
+            self.font_resources.insert(
+                HELVETICA_SUBSTITUTE.into(),
+                FontResource {
+                    family: "Inter".into(),
+                    postscript: Some("Inter-Regular".into()),
+                    data: base64::engine::general_purpose::STANDARD
+                        .encode(bytes)
+                        .into(),
+                    index: 0,
+                },
+            );
+            self.fonts = Some(Fonts::new().with_resources(&self.font_resources)?);
+        }
+        Ok(self.fonts.as_ref().unwrap())
+    }
 }
+
+const HELVETICA_SUBSTITUTE: &str = "pdf-helvetica-inter";
+const TEXT_SUBSTITUTION: &str =
+    "PDF Helvetica 文字已转为可编辑文字，使用随包替代字体 Inter，字形和字距可能有差异";
+const TEXT_UNSUPPORTED: &str = "PDF 中使用未支持字体、编码或绘制模式的文字未转换";
+const GRAPHICS_UNSUPPORTED: &str = "PDF 中未支持的剪裁、透明度模式、图形或图像指令未完整转换";
 
 struct Runner<'a, 'f> {
     file: &'f mut PdfFile<'a>,
@@ -1143,6 +1242,8 @@ struct Runner<'a, 'f> {
     children: &'f mut Vec<String>,
     state: GraphicsState,
     stack: Vec<GraphicsState>,
+    text: Option<TextObject>,
+    helvetica_fonts: HashMap<String, bool>,
     path: Vec<Subpath>,
     pen: Option<Point>,
     last_c2: Option<Point>,
@@ -1152,18 +1253,20 @@ impl<'a, 'f> Runner<'a, 'f> {
     fn new(
         file: &'f mut PdfFile<'a>,
         resources: Obj,
-        media: [f64; 4],
+        flip: Transform,
         builder: &'f mut Builder,
         children: &'f mut Vec<String>,
     ) -> Self {
         Self {
             file,
             resources,
-            flip: Transform([1., 0., 0., -1., -media[0], media[3]]),
+            flip,
             builder,
             children,
             state: GraphicsState::default(),
             stack: Vec::new(),
+            text: None,
+            helvetica_fonts: HashMap::new(),
             path: Vec::new(),
             pen: None,
             last_c2: None,
@@ -1183,6 +1286,7 @@ impl<'a, 'f> Runner<'a, 'f> {
             match token {
                 Obj::Keyword(op) => {
                     if op == "BI" {
+                        self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
                         skip_inline_image(&mut parser)?;
                     } else {
                         self.execute(&op, &operands)?;
@@ -1364,23 +1468,215 @@ impl<'a, 'f> Runner<'a, 'f> {
                 evenodd: false,
             })?,
             "n" => self.path.clear(),
-            // W/W* set a clip that v1 drops (see module docs); sh (shading),
-            // text state/show operators and marked content are skipped.
-            "W" | "W*" | "sh" | "BT" | "ET" | "Tj" | "TJ" | "Tf" | "Td" | "TD" | "Tm" | "T*"
-            | "TL" | "Tc" | "Tw" | "Tz" | "Ts" | "Tr" | "'" | "\"" | "MP" | "DP" | "BMC"
-            | "BDC" | "EMC" | "BX" | "EX" | "j" | "J" | "M" | "d" | "ri" | "i" => {}
+            "BT" => self.text = Some(TextObject::default()),
+            "ET" => self.text = None,
+            "Tf" => {
+                if let [.., Operand::Name(name), Operand::Num(size)] = operands {
+                    self.state.text.size = *size;
+                    self.state.text.helvetica = self.uses_standard_helvetica(name);
+                }
+            }
+            "Tm" => {
+                if let (Some(text), Some(n)) = (&mut self.text, trailing_numbers(operands, 6)) {
+                    text.line_matrix = Transform([n[0], n[1], n[2], n[3], n[4], n[5]]);
+                    text.matrix = Some(text.line_matrix);
+                }
+            }
+            "Td" | "TD" => {
+                if let Some(n) = trailing_numbers(operands, 2) {
+                    if op == "TD" {
+                        self.state.text.leading = -n[1];
+                    }
+                    self.text_move(n[0], n[1]);
+                }
+            }
+            "T*" => self.text_move(0., -self.state.text.leading),
+            "TL" | "Tc" | "Tw" | "Tz" | "Ts" | "Tr" => {
+                if let [.., Operand::Num(value)] = operands {
+                    let text = &mut self.state.text;
+                    match op {
+                        "TL" => text.leading = *value,
+                        "Tc" => text.tracking = *value,
+                        "Tw" => text.word_spacing = *value,
+                        "Tz" => text.scale = value / 100.,
+                        "Ts" => text.rise = *value,
+                        "Tr" => {
+                            text.render_mode = if value.fract() == 0. && (0. ..=7.).contains(value)
+                            {
+                                *value as i64
+                            } else {
+                                -1
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            "Tj" | "'" | "\"" => {
+                if op == "\""
+                    && let [
+                        ..,
+                        Operand::Num(word),
+                        Operand::Num(tracking),
+                        Operand::Text(_),
+                    ] = operands
+                {
+                    self.state.text.word_spacing = *word;
+                    self.state.text.tracking = *tracking;
+                }
+                if op != "Tj" {
+                    self.text_move(0., -self.state.text.leading);
+                }
+                if let [.., Operand::Text(bytes)] = operands {
+                    self.show_text(bytes)?;
+                }
+            }
+            "TJ" => {
+                if let [.., Operand::Array(items)] = operands {
+                    for item in items {
+                        match item {
+                            Obj::Str(bytes) => self.show_text(bytes)?,
+                            Obj::Num(n) => self.advance_text(-n / 1000. * self.state.text.size),
+                            _ => {
+                                self.builder.warnings.insert(TEXT_UNSUPPORTED);
+                            }
+                        }
+                    }
+                }
+            }
+            "MP" | "DP" | "BMC" | "BDC" | "EMC" | "BX" | "EX" | "ri" | "i" => {}
             "Do" => {
                 if let [.., Operand::Name(name)] = operands {
                     self.draw_xobject(name)?;
                 }
             }
-            _ => {}
+            _ => {
+                self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
+            }
         }
         Ok(())
     }
 
     fn resource_entry(&self, category: &str, name: &str) -> Option<Obj> {
         self.resources.get(category)?.get(name).cloned()
+    }
+
+    fn uses_standard_helvetica(&mut self, name: &str) -> bool {
+        if let Some(&supported) = self.helvetica_fonts.get(name) {
+            return supported;
+        }
+        let supported = self
+            .resources
+            .get("Font")
+            .and_then(|fonts| self.file.resolve(fonts).ok())
+            .and_then(|fonts| self.file.resolve(fonts.get(name)?).ok())
+            .is_some_and(|font| {
+                font.get("Subtype")
+                    .is_some_and(|value| value.is_name("Type1"))
+                    && font
+                        .get("BaseFont")
+                        .is_some_and(|value| value.is_name("Helvetica"))
+                    && font
+                        .get("Encoding")
+                        .is_none_or(|value| value.is_name("WinAnsiEncoding"))
+                    && ["FontDescriptor", "Widths", "ToUnicode"]
+                        .iter()
+                        .all(|key| font.get(key).is_none())
+            });
+        self.helvetica_fonts.insert(name.into(), supported);
+        supported
+    }
+
+    fn text_move(&mut self, x: f64, y: f64) {
+        if let Some(text) = &mut self.text {
+            text.line_matrix = text.line_matrix.concat(Transform([1., 0., 0., 1., x, y]));
+            text.matrix = Some(text.line_matrix);
+        }
+    }
+
+    fn advance_text(&mut self, width: f64) {
+        if let Some(matrix) = self.text.as_mut().and_then(|text| text.matrix.as_mut()) {
+            let x = width * self.state.text.scale;
+            *matrix = matrix.concat(Transform([1., 0., 0., 1., x, 0.]));
+        }
+    }
+
+    fn show_text(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let Some(matrix) = self.text.as_ref().and_then(|text| text.matrix) else {
+            return Ok(());
+        };
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        self.builder.commands = self.builder.commands.saturating_add(bytes.len());
+        if self.builder.commands > MAX_PATH_COMMANDS {
+            return Err("pdf content command budget exceeded".into());
+        }
+        let state = &self.state.text;
+        if !state.helvetica
+            || !matches!(state.render_mode, 0 | 3)
+            || !(1. ..=4096.).contains(&state.size)
+            || state.tracking.abs() > 1000.
+            || (state.word_spacing != 0. && bytes.contains(&b' '))
+            || !bytes.iter().all(|byte| (b' '..=b'~').contains(byte))
+        {
+            self.builder.warnings.insert(TEXT_UNSUPPORTED);
+            if let Some(text) = &mut self.text {
+                text.matrix = None;
+            }
+            return Ok(());
+        }
+        let mut node = crate::facet::sample_node("", "text");
+        node.text = String::from_utf8(bytes.to_vec()).expect("ASCII checked");
+        node.font_size = state.size;
+        node.text_style = Some(Box::new(TextStyle {
+            font_id: HELVETICA_SUBSTITUTE.into(),
+            letter_spacing: state.tracking,
+            direction: "ltr".into(),
+            features: vec!["kern=0".into(), "liga=0".into(), "clig=0".into()],
+            ..Default::default()
+        }));
+        let fonts = self.builder.text_fonts()?;
+        let layout = fonts.node_measure(&node, None)?;
+        let Some(first) = layout.glyphs.first() else {
+            return Ok(());
+        };
+        let transform = self
+            .flip
+            .concat(self.state.ctm)
+            .concat(matrix)
+            .concat(Transform([
+                state.scale,
+                0.,
+                0.,
+                -1.,
+                0.,
+                state.rise + first.y,
+            ]));
+        if transform
+            .0
+            .iter()
+            .any(|n| !n.is_finite() || n.abs() > SCENE_LIMIT)
+        {
+            return Err("pdf text transform exceeds scene limits".into());
+        }
+        let visible = state.render_mode == 0 && transform.inverse().is_ok();
+        let advance = layout.glyphs.iter().map(|glyph| glyph.advance).sum();
+        self.advance_text(advance);
+        if !visible {
+            return Ok(());
+        }
+        node.id = self.builder.fresh_id()?;
+        node.name = node.text.chars().take(80).collect();
+        node.width = layout.width.max(1e-3);
+        node.height = layout.height.max(1e-3);
+        node.transform = transform;
+        node.fills
+            .push(solid_paint(self.state.fill, self.state.fill_alpha));
+        self.builder.warnings.insert(TEXT_SUBSTITUTION);
+        self.children.push(node.id.clone());
+        self.builder.nodes.insert(node.id.clone(), node);
+        Ok(())
     }
 
     fn apply_extgstate(&mut self, name: &str) -> Result<(), String> {
@@ -1394,7 +1690,13 @@ impl<'a, 'f> Runner<'a, 'f> {
         if let Some(ca) = dict.get("CA").and_then(Obj::number) {
             self.state.stroke_alpha = clamp_unit(ca);
         }
-        // Blend modes, soft masks and transfer functions are dropped (v1).
+        if dict.get("BM").is_some_and(|mode| !mode.is_name("Normal"))
+            || dict.get("SMask").is_some_and(|mask| !mask.is_name("None"))
+            || dict.get("TR").is_some()
+            || dict.get("TR2").is_some()
+        {
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
+        }
         Ok(())
     }
 
@@ -1677,8 +1979,7 @@ impl<'a, 'f> Runner<'a, 'f> {
                 y: start.y,
             });
             let mut previous = start_id.clone();
-            let mut last_point = subpath.start;
-            for segment in &subpath.segments {
+            for (index, segment) in subpath.segments.iter().enumerate() {
                 let (to, c1, c2) = match segment {
                     Segment::Line(p) => (local(*p)?, None, None),
                     Segment::Cubic { c1, c2, to } => {
@@ -1686,27 +1987,32 @@ impl<'a, 'f> Runner<'a, 'f> {
                         (local(*to)?, Some(c1), Some(c2))
                     }
                 };
-                let id = format!("v{next_vertex}");
-                next_vertex += 1;
-                vertices.push(Vertex {
-                    id: id.clone(),
-                    x: to.x,
-                    y: to.y,
-                });
-                edges.push(Edge {
-                    id: format!("e{}", edges.len()),
-                    from: previous,
-                    to: id.clone(),
-                    c1,
-                    c2,
-                });
-                previous = id;
-                last_point = match segment {
-                    Segment::Line(p) => *p,
-                    Segment::Cubic { to, .. } => *to,
+                // PDF circles often return to the start with the final
+                // cubic. A second vertex at that point leaves the fill open.
+                let id = if subpath.closed && index + 1 == subpath.segments.len() && to == start {
+                    start_id.clone()
+                } else {
+                    let id = format!("v{next_vertex}");
+                    next_vertex += 1;
+                    vertices.push(Vertex {
+                        id: id.clone(),
+                        x: to.x,
+                        y: to.y,
+                    });
+                    id
                 };
+                if previous != id || c1.is_some() || c2.is_some() {
+                    edges.push(Edge {
+                        id: format!("e{}", edges.len()),
+                        from: previous,
+                        to: id.clone(),
+                        c1,
+                        c2,
+                    });
+                }
+                previous = id;
             }
-            if subpath.closed && (last_point - subpath.start).length() > 1e-12 {
+            if subpath.closed && previous != start_id {
                 edges.push(Edge {
                     id: format!("e{}", edges.len()),
                     from: previous,
@@ -1766,12 +2072,15 @@ impl<'a, 'f> Runner<'a, 'f> {
                 width_profile: Vec::new(),
             });
         }
-        node.network = Some((Network {
-            filled_faces: None,
-            vertices,
-            edges,
-            fill_rule: if op.evenodd { "evenodd" } else { "nonzero" }.into(),
-        }).into());
+        node.network = Some(
+            (Network {
+                filled_faces: None,
+                vertices,
+                edges,
+                fill_rule: if op.evenodd { "evenodd" } else { "nonzero" }.into(),
+            })
+            .into(),
+        );
         self.builder.nodes.insert(id.clone(), node);
         self.children.push(id);
         Ok(())
@@ -1779,6 +2088,7 @@ impl<'a, 'f> Runner<'a, 'f> {
 
     fn draw_xobject(&mut self, name: &str) -> Result<(), String> {
         let Some(entry) = self.resource_entry("XObject", name) else {
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
             return Ok(());
         };
         let Some((num, _)) = entry.reference() else {
@@ -1786,20 +2096,29 @@ impl<'a, 'f> Runner<'a, 'f> {
         };
         let object = self.file.object(num)?;
         let PdfObject::Stream { dict, data } = &*object else {
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
             return Ok(());
         };
         if !dict.get("Subtype").is_some_and(|s| s.is_name("Image")) {
-            // Form and PostScript XObjects are not executed (v1).
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
             return Ok(());
         }
         let (Some(width), Some(height)) = (
             dict.get("Width").and_then(Obj::integer),
             dict.get("Height").and_then(Obj::integer),
         ) else {
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
             return Ok(());
         };
         if width <= 0 || height <= 0 || width as u64 * height as u64 > 16_777_216 {
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
             return Ok(());
+        }
+        if ["SMask", "Mask", "ImageMask", "Decode"]
+            .iter()
+            .any(|key| dict.get(key).is_some())
+        {
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
         }
         let filter: Vec<String> = match dict.get("Filter") {
             Some(Obj::Name(n)) => vec![n.clone()],
@@ -1817,33 +2136,33 @@ impl<'a, 'f> Runner<'a, 'f> {
             _ => None, // other filters are skipped
         };
         let Some(uri) = uri else {
+            self.builder.warnings.insert(GRAPHICS_UNSUPPORTED);
             return Ok(());
         };
-        // The image fills the CTM-mapped unit square (axis-aligned bounds).
-        let total = self.flip.concat(self.state.ctm);
-        let corners = [
-            total.point(Point::new(0., 0.)),
-            total.point(Point::new(1., 0.)),
-            total.point(Point::new(1., 1.)),
-            total.point(Point::new(0., 1.)),
-        ];
-        if corners.iter().any(|p| !p.finite()) {
+        // The top image row starts at the top of the PDF image unit square.
+        // Keep its axes through page rotation, reflections and image CTMs.
+        let total = self
+            .flip
+            .concat(self.state.ctm)
+            .concat(Transform([1., 0., 0., -1., 0., 1.]));
+        if total
+            .0
+            .iter()
+            .any(|n| !n.is_finite() || n.abs() > SCENE_LIMIT)
+        {
             return Err("non-finite pdf transform".into());
         }
-        let mut min = Point::new(f64::INFINITY, f64::INFINITY);
-        let mut max = Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for corner in corners {
-            min.x = min.x.min(corner.x);
-            min.y = min.y.min(corner.y);
-            max.x = max.x.max(corner.x);
-            max.y = max.y.max(corner.y);
+        if total.inverse().is_err() {
+            return Ok(());
         }
+        let width = total.0[0].hypot(total.0[1]).max(1e-3);
+        let height = total.0[2].hypot(total.0[3]).max(1e-3);
         let id = self.builder.fresh_id()?;
-        let mut node = crate::facet::sample_node(&id, "image");
+        let mut node = crate::facet::sample_node(&id, "rectangle");
         node.name = "image".into();
-        node.width = (max.x - min.x).max(1e-3);
-        node.height = (max.y - min.y).max(1e-3);
-        node.transform = Transform([1., 0., 0., 1., min.x, min.y]);
+        node.width = width;
+        node.height = height;
+        node.transform = total.concat(Transform([1. / width, 0., 0., 1. / height, 0., 0.]));
         node.fills.push(Paint {
             transform: None,
             id: String::new(),
@@ -1941,9 +2260,51 @@ fn skip_inline_image(parser: &mut Parser<'_>) -> Result<(), String> {
 // document assembly
 // ---------------------------------------------------------------------------
 
-/// Import a vector PDF as an editable design document. See the module docs
-/// for the v1 degradations (text, clipping, shadings are not imported).
+#[derive(serde::Serialize)]
+pub struct PdfImportReport {
+    pub document: Document,
+    pub warnings: Vec<&'static str>,
+}
+
+impl PageSpec {
+    fn viewport(&self, media: [f64; 4]) -> Result<(f64, f64, Transform), String> {
+        let crop = self.geometry.crop.unwrap_or(media);
+        let [left, bottom, right, top] = [
+            crop[0].max(media[0]),
+            crop[1].max(media[1]),
+            crop[2].min(media[2]),
+            crop[3].min(media[3]),
+        ];
+        let width = right - left;
+        let height = top - bottom;
+        let (width, height, flip) = match self.geometry.rotation.rem_euclid(360) {
+            0 => (width, height, [1., 0., 0., -1., -left, top]),
+            90 => (height, width, [0., 1., 1., 0., -bottom, -left]),
+            180 => (width, height, [-1., 0., 0., 1., right, -bottom]),
+            270 => (height, width, [0., -1., -1., 0., top, right]),
+            _ => unreachable!("validated page rotation"),
+        };
+        let width = width * self.unit;
+        let height = height * self.unit;
+        let flip = flip.map(|value| value * self.unit);
+        if width <= 0.
+            || height <= 0.
+            || width > SCENE_LIMIT
+            || height > SCENE_LIMIT
+            || flip.iter().any(|value| value.abs() > SCENE_LIMIT)
+        {
+            return Err("pdf page viewport exceeds scene limits or is empty".into());
+        }
+        Ok((width, height, Transform(flip)))
+    }
+}
+
+/// Import the supported PDF content and report conversion limits to the caller.
 pub fn import_pdf(bytes: &[u8]) -> Result<Document, String> {
+    import_pdf_report(bytes).map(|report| report.document)
+}
+
+pub fn import_pdf_report(bytes: &[u8]) -> Result<PdfImportReport, String> {
     if !is_pdf_file(bytes) {
         return Err("missing pdf header".into());
     }
@@ -1956,7 +2317,14 @@ pub fn import_pdf(bytes: &[u8]) -> Result<Document, String> {
         return Err("pdf catalog missing /Pages".into());
     };
     let mut specs = Vec::new();
-    file.collect_pages(&pages_node, None, None, &mut specs, 0, &mut HashSet::new())?;
+    file.collect_pages(
+        &pages_node,
+        PageGeometry::default(),
+        None,
+        &mut specs,
+        0,
+        &mut HashSet::new(),
+    )?;
     if specs.is_empty() {
         return Err("pdf has no pages".into());
     }
@@ -1967,7 +2335,7 @@ pub fn import_pdf(bytes: &[u8]) -> Result<Document, String> {
         design_system: None,
         prototype: None,
         fd_compatibility: None,
-        schema_version: 1,
+        schema_version: 4,
         color_management: None,
         raster_profile: None,
         id: "imported-pdf".into(),
@@ -1977,14 +2345,17 @@ pub fn import_pdf(bytes: &[u8]) -> Result<Document, String> {
         fonts: BTreeMap::new(),
         animations: Vec::new(),
     };
+    let mut metadata = serde_json::Map::new();
     for (index, spec) in specs.iter().enumerate() {
         let page_name = format!("Page {}", index + 1);
+        let media = spec.geometry.media.ok_or("pdf page missing media box")?;
+        let (width, height, flip) = spec.viewport(media)?;
         let mut children = Vec::new();
         {
             let mut runner = Runner::new(
                 &mut file,
                 spec.resources.clone(),
-                spec.media,
+                flip,
                 &mut builder,
                 &mut children,
             );
@@ -1992,16 +2363,46 @@ pub fn import_pdf(bytes: &[u8]) -> Result<Document, String> {
                 runner.run_stream(*content)?;
             }
         }
-        // Authored documents keep pages only in `pages`: no page node joins
-        // the nodes map (validation treats such a node as unreachable).
+        let frame_id = builder.fresh_id()?;
+        let mut frame = crate::facet::sample_node(&frame_id, "frame");
+        frame.name = page_name.clone();
+        frame.width = width;
+        frame.height = height;
+        frame.children = children;
+        frame.clip = true;
+        frame.fills.push(solid_paint([1.; 3], 1.));
+        builder.nodes.insert(frame_id.clone(), frame);
+        let boxes = serde_json::json!({
+            "mediaBox": media,
+            "cropBox": spec.geometry.crop,
+            "rotate": spec.geometry.rotation,
+            "userUnit": spec.unit,
+        });
+        metadata.insert(
+            frame_id.clone(),
+            serde_json::json!({
+                "bindings": { "pdfPageBoxes": boxes.to_string() },
+            }),
+        );
         doc.pages.push(Page {
             guides: vec![],
             id: format!("pdf-page-{}", index + 1),
             name: page_name,
-            children,
+            children: vec![frame_id],
             background: "#ffffff".into(),
         });
     }
     doc.nodes = builder.nodes.into();
-    Ok(doc)
+    if builder.warnings.contains(TEXT_SUBSTITUTION) {
+        doc.fonts = builder.font_resources;
+    }
+    doc.design_system = Some(crate::design_system::DesignSystem {
+        sketch_containers: BTreeMap::from([("nodeMetadata".into(), metadata.into())]),
+        ..Default::default()
+    });
+    doc.validate()?;
+    Ok(PdfImportReport {
+        document: doc,
+        warnings: builder.warnings.into_iter().collect(),
+    })
 }
