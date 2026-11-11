@@ -86,8 +86,8 @@ function assertFixed(data) {
     if (shot.tabTrace) {
       assert.equal(shot.tabTrace.length, 18)
       assert.equal(shot.shiftTrace.length, 18)
-      assert.equal(shot.tabTrace[0].label, '刷新', shot.phase)
-      assert.equal(shot.shiftTrace[0].label, '打开设计文件', shot.phase)
+      assert.equal(shot.tabTrace[0].label, shot.locale === 'en' ? 'Refresh' : '刷新', shot.phase)
+      assert.equal(shot.shiftTrace[0].label, shot.locale === 'en' ? 'Open design file' : '打开设计文件', shot.phase)
       for (const step of [...shot.tabTrace, ...shot.shiftTrace]) {
         assert.equal(step.inWorkspaceTabs, false, JSON.stringify(step))
         assert.notEqual(step.label, 'New document tab')
@@ -113,7 +113,7 @@ function assertFixed(data) {
     same(shot.navWidth, shot.innerWidth, `saved ${shot.mode} ${shot.locale}`)
     assert.equal(shot.inert, true)
     assert.equal(shot.visibility, 'hidden')
-    assert.equal(shot.tabTrace[0].label, '刷新')
+    assert.equal(shot.tabTrace[0].label, shot.locale === 'en' ? 'Refresh' : '刷新')
     for (const step of shot.tabTrace) {
       assert.equal(step.inWorkspaceTabs, false, JSON.stringify(step))
       assert.notEqual(step.label, newLabels[shot.locale])
@@ -346,7 +346,7 @@ async function sourceText() {
 }
 
 async function traceTabs(client, shift) {
-  await evaluate(client, `document.querySelector('[aria-label="搜索最近设计"]').focus()`)
+  await evaluate(client, `document.querySelector('.local-home-filter input').focus()`)
   const trace = []
   for (let step = 0; step < 18; step += 1) {
     await keyTab(client, shift)

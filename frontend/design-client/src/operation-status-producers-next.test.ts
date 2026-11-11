@@ -35,5 +35,5 @@ test('raw failure/author boundaries stay explicit and errors are never globally 
  expect(app).toContain('setStartupError(`设计内核载入失败：${String(e)}`)')
  expect(fonts).toContain('return emptyResult(editor.state.message)')
  expect(commands).toContain('未知工具命令 ${command}')
- expect(app).toContain('{operationStatusText(s.message, s.messagePresentation, locale)}')
+ expect(app).toContain('{translateProfessional(canvasStatusLabel(operationStatusText(s.message, s.messagePresentation, locale)), locale)}')
 })

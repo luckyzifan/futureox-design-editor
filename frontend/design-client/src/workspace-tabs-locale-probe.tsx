@@ -110,7 +110,7 @@ function read() {
       nav: placed('nav[data-workspace-tabs]'),
       footer: placed('footer'),
     },
-    searchFocused: document.activeElement === document.querySelector('[aria-label="搜索最近设计"]'),
+    searchFocused: document.activeElement === document.querySelector('.local-home-filter input'),
     focus: focusSnapshot(),
     actions: [...actions],
     tabNames: [...(nav?.querySelectorAll<HTMLButtonElement>('[role=tab]') ?? [])].map(button => ({
@@ -210,7 +210,7 @@ function Probe() {
         return read()
       },
       resumeButton() {
-        const button = [...document.querySelectorAll<HTMLButtonElement>('.local-home button')].find(item => item.textContent?.includes('继续编辑'))
+        const button = document.querySelector<HTMLButtonElement>('.local-home-content > header > button')
         if (!button) return null
         const box = button.getBoundingClientRect()
         const x = box.x + box.width / 2

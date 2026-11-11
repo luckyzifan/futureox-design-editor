@@ -79,6 +79,8 @@ fn compile_grid(descriptor: &Value, cam_x: f64, cam_y: f64, cols: i32, rows: i32
         }
         let ms = started.elapsed().as_secs_f64() * 1000.;
         let demand = reply.metadata["compileStats"]["sourceDemand"].clone();
+        let source_stats = native.request("canvas", "stats", &[]).expect("source stats");
+        let source_stats: Value = serde_json::from_str(source_stats.metadata["value"].as_str().expect("source stats JSON")).expect("source stats value");
         let record = json!({
             "x": x, "y": y, "compileMs": ms, "packetBytes": reply.bytes.len(),
             "packetSha256": hash_bytes(&reply.bytes),
@@ -88,6 +90,8 @@ fn compile_grid(descriptor: &Value, cam_x: f64, cam_y: f64, cols: i32, rows: i32
             "projectionRebuilds": demand["projectionRebuilds"],
             "projectionReuses": demand["projectionReuses"],
             "sourceNodes": demand["sourceNodes"],
+            "compileStats": reply.metadata["compileStats"],
+            "sourceStats": source_stats,
         });
         eprintln!("{}", record);
         tiles_out.push(record);
@@ -202,6 +206,7 @@ fn main() -> Result<(), String> {
             descriptor["documentId"] = json!(id);
         }
     }
+    let source_metadata = descriptor.clone();
     descriptor = json!({
         "path": descriptor["path"],
         "store": descriptor["store"],
@@ -226,8 +231,8 @@ fn main() -> Result<(), String> {
     println!("{}", serde_json::to_string_pretty(&json!({
         "scope": "Real LFS topology Sketch imported by import_sketch_report, then native Preparation compile_gpu_packet for a 4x4 fixed viewport and an adjacent pan. Not Electron, Metal, or GUI scanout.",
         "descriptor": {
-            "nodes": descriptor["nodes"], "roots": descriptor["roots"],
-            "sourceSha256": descriptor["sourceSha256"], "documentId": descriptor["documentId"],
+            "nodes": source_metadata["nodes"], "roots": source_metadata["roots"],
+            "sourceSha256": source_metadata["sourceSha256"], "documentId": descriptor["documentId"],
         },
         "fixed": fixed,
         "adjacent": adjacent,
