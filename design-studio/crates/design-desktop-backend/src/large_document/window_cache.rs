@@ -71,7 +71,7 @@ pub(super) fn convert(s: &Session, p: usize, n: usize, cancel: &AtomicBool, cont
             }
         }
     }
-    let (document, warnings) = projection::sketch_window_in(s, p, n, 64 * 1024 * 1024, context,cancel)?;
+    let (document, warnings) = projection::sketch_window_in(s, p, n, projection::CONVERSION_WINDOW_LIMIT, context,cancel)?;
     check_cancel(cancel).map_err(issue)?;
     s.converted_windows.lock().map_err(issue)?.conversions += 1;
     let path = {

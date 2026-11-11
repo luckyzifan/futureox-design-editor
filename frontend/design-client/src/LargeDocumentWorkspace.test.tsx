@@ -5,6 +5,7 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
+import { SourceDocumentStatus } from './SourceDocumentStatus'
 import { Editor } from './engine'
 import { blank, node } from './model'
 import type { LargeDocumentBridge } from './desktop'
@@ -453,4 +454,105 @@ test('a failed open rebinds the host document so refine can show a native frame'
  await act(async()=>binding.source!.nativeCanvas!.onStatus({phase:'ready',done:1,total:1}))
  expect(binding.source!.hideNative).toBe(false)
  expect(document.querySelector('.source-row-name')!.textContent).toBe('140x140pt 30个（黑色）')
+})
+
+test('a conversion-window reject stays distinct from directory, preview and a smaller editable subtree',async()=>{
+ const owner={documentId:'source-window',sessionEpoch:1}
+ const status={owner,revision:0,name:'synthetic-over-limit.sketch',format:'sketch' as const,expandedBytes:93412322,maxExpandedBytes:2**42,indexedObjects:3,dirty:false,undoCount:0,redoCount:0}
+ const bounds={x:0,y:0,width:400,height:80}
+ const rect={x:0,y:0,width:80,height:80}
+ const catalogue=[
+  {id:'wide',name:'整页图表',kind:'artboard',pageId:'p1',pageName:'数据',source:rect,placed:{...rect,x:0},key:'1:0',bytes:80_000_000},
+  {id:'small',name:'图例',kind:'artboard',pageId:'p1',pageName:'数据',source:rect,placed:{...rect,x:160},key:'1:1',bytes:1024},
+  {id:'swatch',name:'色板',kind:'artboard',pageId:'p2',pageName:'图表',source:rect,placed:{...rect,x:320},key:'1:2',bytes:1024},
+ ]
+ const windowError='大型文档：Source subtree exceeds the bounded conversion window; select a smaller subtree'
+ const doc=blank('Material'),layer=node('rectangle',0,0,40,40)
+ doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
+ let finish!:(value:unknown)=>void
+ const canvasSnapshot=vi.fn(async(request:{materialKeys?:string[]})=>request.materialKeys
+  ?{status:'ok' as const,owner,revision:0,token:`detail-${request.materialKeys.join(',')}`,materialKeys:request.materialKeys,bytes:10,nodes:1,roots:request.materialKeys.length,pageId:'p1',stageId:'s',bounds,warnings:[],rasterProfile:'figma' as const,colorManaged:true}
+  :{status:'error' as const,message:windowError})
+ const scene=vi.fn(async(request:{key:string})=>request.key==='1:0'
+  ?{status:'error' as const,message:windowError}
+  :{status:'ok' as const,json:JSON.stringify(doc),warnings:[],nodes:1,bytes:100})
+ const bridge={cancel:async()=>({status:'ok' as const}),open:()=>new Promise(resolve=>{finish=resolve}),openingView:async()=>({status:'ok' as const,phase:'available' as const,owner,bounds,revision:0 as const,total:3,
+  items:catalogue.map((item,i)=>({...item,key:`preview-${i}`})),pages:[['p1','数据',2],['p2','图表',1]] as [string,string,number][],offset:0,nextOffset:3,cursor:3,
+  images:catalogue.map((_,index)=>({index,png:'a'})),moreImages:false,finished:true,rendered:0,cacheHit:true}),
+  canvasLayout:async()=>({status:'ok' as const,items:catalogue,total:3,hasMore:false,boundsAreLayoutHints:true as const,bounds}),canvasSnapshot,scene,
+  children:async()=>({status:'ok' as const,items:[],total:0,hasMore:false})} as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=>{binding.source=s;return <div ref={s.canvas}>{s.navigation}<SourceDocumentStatus source={s}/></div>}} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(document.querySelectorAll('.source-page-entry')).toHaveLength(3)
+ expect(binding.source!.stageReport).toMatchObject({
+  directory:{status:'ready',detail:'目录：2 页 / 3 个素材'},
+  preview:{status:'ready',detail:'预览：3/3 张缩略图'},
+  refine:{status:'idle'},
+  edit:{status:'idle'},
+ })
+ expect(canvasSnapshot).not.toHaveBeenCalled()
+ await act(async()=>finish({status:'ok',...status}))
+ expect(canvasSnapshot).not.toHaveBeenCalled()
+ expect(binding.source!.stageReport!.refine.status).toBe('idle')
+ const fullRefines=()=>canvasSnapshot.mock.calls.filter(([request])=>!request.materialKeys).length
+ await act(async()=>button('精修完整画板').click())
+ expect(fullRefines()).toBe(1)
+ expect(binding.source!.busy).toBe(false)
+ expect(binding.source!.error).toBe(windowError)
+ expect(binding.source!.failureStage).toBe('refine')
+ expect(binding.source!.stageReport).toMatchObject({
+  directory:{status:'ready',detail:'目录：2 页 / 3 个素材'},
+  preview:{status:'ready',detail:'预览：3/3 张缩略图'},
+  refine:{status:'rejected',detail:'完整精修：超过固定转换窗口，尚未完成'},
+  edit:{status:'idle',detail:'编辑尚未开始'},
+ })
+ const card=document.querySelector('[data-failure-stage="refine"]')!
+ expect(card.querySelector('[role="alert"]')!.textContent).toContain('固定转换窗口')
+ expect(card.querySelector('[role="alert"]')!.textContent).not.toContain('可释放其他应用的内存后重试')
+ expect(card.querySelector('pre')!.textContent).toBe(windowError)
+ expect(card.querySelector('[data-stage="directory"]')!.getAttribute('data-status')).toBe('ready')
+ expect(card.querySelector('[data-stage="preview"]')!.getAttribute('data-status')).toBe('ready')
+ expect(card.querySelector('[data-stage="refine"]')!.getAttribute('data-status')).toBe('rejected')
+ expect(card.querySelector('[data-stage="edit"]')!.getAttribute('data-status')).toBe('idle')
+ const refine=button('精修完整画板')
+ expect(refine.disabled).toBe(false)
+ await act(async()=>refine.click())
+ expect(fullRefines()).toBe(2)
+ expect(binding.source!.busy).toBe(false)
+ expect(binding.source!.stageReport!.refine.status).toBe('rejected')
+ const picker=document.querySelector('select[aria-label="素材页面"]') as HTMLSelectElement
+ await act(async()=>(card.querySelector('.source-window-action') as HTMLButtonElement).click())
+ expect(document.activeElement).toBe(picker)
+ await act(async()=>document.querySelector<HTMLButtonElement>('[data-source-material-id="small"]')!.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})))
+ expect(scene.mock.calls.map(([request])=>request.key)).toContain('1:1')
+ expect(binding.source!.error).toBe('')
+ expect(binding.source!.busy).toBe(false)
+ expect(binding.source!.stageReport).toMatchObject({
+  directory:{status:'ready'},
+  preview:{status:'ready'},
+  refine:{status:'rejected'},
+  edit:{status:'ready',detail:'编辑：已载入 图例'},
+ })
+ await act(async()=>document.querySelector<HTMLButtonElement>('[data-source-material-id="wide"]')!.click())
+ expect(scene.mock.calls.some(([request])=>request.key==='1:0')).toBe(true)
+ expect(binding.source!.busy).toBe(false)
+ expect(binding.source!.failureStage).toBe('edit')
+ expect(binding.source!.error).toBe(windowError)
+ expect(binding.source!.stageReport).toMatchObject({
+  directory:{status:'ready',detail:'目录：2 页 / 3 个素材'},
+  preview:{status:'ready',detail:'预览：3/3 张缩略图'},
+  refine:{status:'rejected',detail:'完整精修：超过固定转换窗口，尚未完成'},
+  edit:{status:'rejected',detail:'编辑：超过固定转换窗口，尚未完成'},
+ })
+ expect(document.querySelector('[data-failure-stage="edit"] [role="alert"]')!.textContent).not.toContain('可释放其他应用的内存后重试')
+ expect((document.querySelector('[data-source-material-id="small"]') as HTMLButtonElement).disabled).toBe(false)
+ expect(button('返回完整画板').disabled).toBe(false)
+ const retried=fullRefines()
+ await act(async()=>button('返回完整画板').click())
+ expect(binding.source!.busy).toBe(false)
+ expect(binding.source!.stageReport!.refine.status).toBe('rejected')
+ await act(async()=>button('精修完整画板').click())
+ expect(fullRefines()).toBe(retried+1)
+ expect(binding.source!.busy).toBe(false)
+ expect(binding.source!.failureStage).toBe('refine')
+ expect(binding.source!.stageReport!.edit.status).not.toBe('ready')
 })

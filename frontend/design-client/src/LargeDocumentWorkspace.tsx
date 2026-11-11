@@ -17,6 +17,7 @@ import { dispatchEditorCommand, resolveDesktopEditorCommand } from './editor-com
 import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type LargeDocumentPageRange, type LargeDocumentStatus, type DesktopResult } from './desktop'
 import { apply, bounds, boxPoints, SpatialIndex, unionBounds } from './geometry'
 import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
+import { sourceErrorKind, sourceErrorSummary } from './source-error-text'
 import { validSourceObjectKey } from './source-object-key'
 import { peekChangedNodes } from './document-patch'
 
@@ -25,8 +26,18 @@ const PREPARING_NOTICE='正在准备这个素材的原始图层…'
 const sameSource=(a:LargeDocumentStatus|null,b:LargeDocumentStatus|null)=>!!a&&!!b&&a.owner.documentId===b.owner.documentId&&a.owner.sessionEpoch===b.owner.sessionEpoch&&a.revision===b.revision
 type CanvasSelection=LargeDocumentRow&{afterLoad?:(id:string)=>void;catalogueMaterial?:boolean;sceneOffset?:number;sceneLimit?:number;previousRanges?:{offset:number;limit:number}[];pageId?:string}
 const sceneRequest=(row:CanvasSelection)=>({key:row.key,...(row.sceneOffset?{offset:row.sceneOffset}:{}),...(row.sceneLimit===undefined?{}:{limit:row.sceneLimit})})
+export type SourceFailureStage = 'directory' | 'preview' | 'refine' | 'edit'
+export type SourceStageStatus = 'idle' | 'ready' | 'partial' | 'rejected'
+export type SourceStageSnapshot = Readonly<{ status: SourceStageStatus; detail: string }>
+export type SourceStageReport = Readonly<Record<SourceFailureStage, SourceStageSnapshot>>
+function stageRejectionDetail(label: string, message: string) {
+  return sourceErrorKind(message) === 'window'
+    ? `${label}：超过固定转换窗口，尚未完成`
+    : `${label}：${sourceErrorSummary(message)}`
+}
 export type SourceWorkspace = {
   editor:Editor; ready:boolean; busy:boolean; locked:boolean; dirty:boolean; name:string; notice:string; error:string
+  failureStage?:SourceFailureStage; stageReport?:SourceStageReport
   canvas:RefObject<HTMLDivElement|null>; navigation:ReactNode; showLayers:boolean; warnings:string[]
   dismissWarnings():void; dismissError?():void; cancel():void; save():Promise<void>; exportFile():Promise<void>; leave():Promise<void>; openFile(file:File):Promise<void>
   prepareExport(open:()=>void):void
@@ -101,6 +112,9 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const itemsForSnapshot=useRef<SourceCanvasItem[]>([]),catalogueStatus=useRef<LargeDocumentStatus|null>(null);
   const nativeSnapshotRef=useRef(nativeSnapshot);nativeSnapshotRef.current=nativeSnapshot
   const [busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
+  const [failureStage,setFailureStage]=useState<SourceFailureStage>()
+  const failureStageRef=useRef<SourceFailureStage|undefined>(undefined)
+  const [stageRejection,setStageRejection]=useState<Partial<Record<SourceFailureStage,string>>>({})
   const autosave=useRef<Promise<void>|undefined>(undefined)
   const rejectedAutosave=useRef<DesignDocument|undefined>(undefined)
   const [viewTab,setViewTab]=useState<'source'|'layers'>('source')
@@ -140,8 +154,14 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   },[opening,editor])
   const request=()=>{const value=statusRef.current;if(!value)throw Error('源文件尚未打开');return {owner:value.owner,expectedRevision:value.revision}}
   const run=async(work:()=>Promise<void>,lockEditor=false)=>{
-    if(busyRef.current)return;busyRef.current=true;setBusy(true);setEditorLocked(lockEditor);setError('')
-    try{await work()}catch(error){if(alive.current&&!(queuedLoad.current&&(/取消|cancel|abort/i.test(String(error))))){setError(error instanceof Error?error.message:String(error));setNotice(current=>current===PREPARING_NOTICE?'':current)}}
+    if(busyRef.current)return;busyRef.current=true;setBusy(true);setEditorLocked(lockEditor);setError('');failureStageRef.current=undefined
+    try{await work()}catch(error){if(alive.current&&!(queuedLoad.current&&(/取消|cancel|abort/i.test(String(error))))){
+      const message=error instanceof Error?error.message:String(error)
+      const stage=failureStageRef.current
+      setError(message);setFailureStage(stage)
+      if(stage)setStageRejection(current=>({...current,[stage]:message}))
+      setNotice(current=>current===PREPARING_NOTICE?'':current)
+    }}
     finally{busyRef.current=false;if(alive.current){setBusy(false);setEditorLocked(false);if(queuedLoad.current&&!drainingLoads.current)queueMicrotask(()=>void drainLoads())}else queueMicrotask(()=>{if(alive.current)setBusy(false)})}
   }
   const afterAutosave=async(work:()=>Promise<void>,lockEditor=false)=>{
@@ -262,13 +282,15 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     baseline.current=editor.authoredDocument;activeRef.current=loaded;setActive(loaded);setViewTab('source')
     setPageRange(result.pageRange??null)
     const range=result.pageRange,partial=range&&(range.offset>0||range.end<range.totalRoots)
-    setWarnings(result.warnings);setNotice(partial?`${row.name}：已载入第 ${range.offset+1}–${range.end} 个画板 / 对象，共 ${range.totalRoots} 个。可切换上一部分 / 下一部分；完整导出包含全部内容。`:`${row.kind==='page'?'完整页面':'当前画板 / 对象'}已载入：${result.nodes.toLocaleString()} 个场景节点。`)
+    setWarnings(result.warnings);setStageRejection(current=>({...current,edit:undefined}));setFailureStage(stage=>stage==='edit'?undefined:stage);setNotice(partial?`${row.name}：已载入第 ${range.offset+1}–${range.end} 个画板 / 对象，共 ${range.totalRoots} 个。可切换上一部分 / 下一部分；完整导出包含全部内容。`:`${row.kind==='page'?'完整页面':'当前画板 / 对象'}已载入：${result.nodes.toLocaleString()} 个场景节点。`)
     requestAnimationFrame(fit)
     afterLoad?.(row.id)
     break
     }
     } catch(error) {
       preparingSource.current=false
+      const failed=error instanceof Error?error.message:String(error)
+      if(!/取消|cancel|abort/i.test(failed))failureStageRef.current='edit'
       // Native preparation stages its source baseline before the WASM/UI gate.
       // A failed admission must leave the displayed canvas saveable as well.
       if(previousRow&&alive.current&&statusRef.current?.owner===owner.owner&&statusRef.current.revision===owner.expectedRevision){
@@ -312,10 +334,12 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         snapshot.owner.sessionEpoch!==owner.owner.sessionEpoch || snapshot.revision!==owner.expectedRevision){
       preparingOverview.current=true
       try{snapshot=admitted(await bridge.canvasSnapshot({...owner,navigationPreview:!canBrowse && !renderExecutionPolicy.cpuOnly && !renderExecutionPolicy.hdrCompositing}))}
+      catch(error){failureStageRef.current='refine';throw error}
       finally{preparingOverview.current=false}
       if(queuedLoad.current||!alive.current||!sameSource(current,statusRef.current))return
-      if(items.length!==snapshot.roots)throw Error('完整画板目录与源内容不一致')
+      if(items.length!==snapshot.roots){failureStageRef.current='refine';throw Error('完整画板目录与源内容不一致')}
       nativeSnapshotRef.current=snapshot;setNativeSnapshot(snapshot)
+      setStageRejection(current=>({...current,refine:undefined}));setFailureStage(stage=>stage==='refine'?undefined:stage)
     }
     const keepView=canBrowse && !activeRef.current?editor.effectiveView():undefined
     editor.setMutationRestriction(undefined)
@@ -478,7 +502,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     let current=true
     const listedSource=status
     setRows([])
-    void bridge.children({...request(),key:parents.at(-1)?.key,offset,limit:100,canvasOnly:true,...(filter?{query:filter}:{})}).then(result=>{if(current&&alive.current&&sameSource(listedSource,statusRef.current)){const value=admitted(result);setRows(value.items);setTotal(value.total)}}).catch(error=>{if(current&&alive.current)setError(String(error))})
+    void bridge.children({...request(),key:parents.at(-1)?.key,offset,limit:100,canvasOnly:true,...(filter?{query:filter}:{})}).then(result=>{if(current&&alive.current&&sameSource(listedSource,statusRef.current)){const value=admitted(result);setRows(value.items);setTotal(value.total);setStageRejection(map=>({...map,directory:undefined}))}}).catch(error=>{if(current&&alive.current){const message=error instanceof Error?error.message:String(error);failureStageRef.current='directory';setFailureStage('directory');setError(message);setStageRejection(map=>({...map,directory:message}))}})
     return()=>{current=false}
   },[status,parents,offset,filter,busy,nativeSnapshot,opening?.owner.documentId])
   useEffect(()=>{const timer=setTimeout(()=>{setFilter(query.trim());setOffset(0)},180);return()=>clearTimeout(timer)},[query])
@@ -542,7 +566,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     admittedOpen.current=null;openOutcome.current='pending';rebindTried.current=false
     baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);itemsForSnapshot.current=[]
     editor.setMutationRestriction(undefined);editor.load(blank(),true);editor.setMutationRestriction('正在准备源文件，暂时只能浏览。');editor.set({tool:'hand',selection:[]})
-    openingRef.current=undefined;statusRef.current=null;setStatus(null)
+    openingRef.current=undefined;statusRef.current=null;setStatus(null);setFailureStage(undefined);failureStageRef.current=undefined;setStageRejection({})
     nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);setSourcePage('')
     nativePresentedToken.current=undefined
     pageDetailIntent.current=undefined;setFocusedMaterial(undefined);setSelectedMaterialId(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
@@ -571,6 +595,34 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     for(const row of materialRows){const page=groups.get(row.pageId);if(page)page[2]++;else groups.set(row.pageId,[row.pageId,row.pageName,1])}
     return [...groups.values()]
   },[opening?.pages,materialRows])
+  const stageReport=useMemo<SourceStageReport>(()=>{
+    const images=opening?.images.size??0
+    const previewTotal=opening?.items.length??0
+    return {
+      directory:stageRejection.directory
+        ?{status:'rejected',detail:stageRejectionDetail('目录',stageRejection.directory)}
+        :pages.length||materialRows.length
+          ?{status:'ready',detail:`目录：${pages.length} 页 / ${materialRows.length} 个素材`}
+          :{status:'idle',detail:'目录尚未读取'},
+      preview:stageRejection.preview
+        ?{status:'rejected',detail:stageRejectionDetail('预览',stageRejection.preview)}
+        :opening
+          ?{status:opening.finished&&previewTotal>0&&images===previewTotal?'ready':'partial',detail:`预览：${images}/${previewTotal} 张缩略图`}
+          :{status:'idle',detail:'预览尚未开始'},
+      refine:stageRejection.refine
+        ?{status:'rejected',detail:stageRejectionDetail('完整精修',stageRejection.refine)}
+        :nativeSnapshot&&!nativeSnapshot.materialKeys
+          ?{status:'ready',detail:`完整精修：已显示 ${nativeSnapshot.roots} 个素材`}
+          :nativeSnapshot?.materialKeys
+            ?{status:'partial',detail:`素材精修：${nativeSnapshot.roots} 个，不是完整画板`}
+            :{status:'idle',detail:'完整精修尚未完成'},
+      edit:stageRejection.edit
+        ?{status:'rejected',detail:stageRejectionDetail('编辑',stageRejection.edit)}
+        :active
+          ?{status:'ready',detail:`编辑：已载入 ${active.name}`}
+          :{status:'idle',detail:'编辑尚未开始'},
+    }
+  },[pages,materialRows.length,opening,nativeSnapshot,active,stageRejection])
   const pageBoxes=useMemo(()=>sourcePage?materialRows.filter(row=>row.pageId===sourcePage).map(row=>row.placed):undefined,[materialRows,sourcePage])
   const navigate=(pageId:string,item?:SourceCanvasItem)=>{
     const host=canvas.current;if(!host)return
@@ -697,7 +749,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const missingScope=!!knownKeys&&neededKeys.length>0&&
     !(nativeSnapshot?.viewportSubset?shared:includesMaterials(knownKeys,neededKeys))
   return renderWorkbench({editor,ready:!!active||overview||!!opening,busy,locked:editorLocked,dirty:!!active&&editor.authoredDocument!==baseline.current,
-    name:status?.name||initialFile?.name||'正在打开文件',notice:opening&&busy&&!active?`${pages.length} 页，素材预览 ${opening.images.size}/${materialRows.length}。可切页、平移和缩放，原始图层正在后台准备。`:notice,error,canvas,navigation,showLayers:!!active&&!overview,warnings,
+    name:status?.name||initialFile?.name||'正在打开文件',notice:opening&&busy&&!active?`${pages.length} 页，素材预览 ${opening.images.size}/${materialRows.length}。可切页、平移和缩放，原始图层正在后台准备。`:notice,error,failureStage,stageReport,canvas,navigation,showLayers:!!active&&!overview,warnings,
     prepareExport,exportSelectedSketch:status?.format==='sketch'?exportSelectedSketch:undefined,
     selectMaterialAt:browsing?point=>setSelectedMaterialId(pickMaterial(point)?.id):undefined,
     selectedMaterialBox:browsing?chosenMaterial?.placed:undefined,

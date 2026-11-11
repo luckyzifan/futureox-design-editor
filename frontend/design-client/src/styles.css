@@ -2127,6 +2127,11 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .source-status-title>svg { flex:none; color:var(--workspace-accent); }
 .source-status-title strong { flex:1; font-size:11px; font-weight:600; }
 .source-status-card button,.source-compatibility-card button { display:flex; align-items:center; justify-content:center; width:22px; height:22px; flex:none; color:var(--workspace-muted); border-radius:4px; }
+.source-status-card button.source-window-action { width:auto; height:auto; margin-top:8px; padding:6px 10px; color:var(--workspace-text); border:1px solid var(--workspace-border); border-radius:6px; background:var(--workspace-field); }
+.source-stage-report { margin:8px 0 0; padding:0; list-style:none; display:grid; gap:2px; }
+.source-stage-report li { color:var(--workspace-muted); font-size:10px; line-height:1.5; }
+.source-stage-report li[data-status="rejected"] { color:var(--workspace-danger); }
+.source-stage-report li[data-status="ready"] { color:var(--workspace-text); }
 .source-status-card p { margin:5px 0 0; font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
 .source-status-card[data-error="true"] .source-status-title>svg { color:var(--workspace-danger); }
 .source-status-card summary { margin-top:8px; color:var(--workspace-muted); cursor:pointer; font-size:10px; }

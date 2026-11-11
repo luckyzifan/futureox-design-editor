@@ -57,7 +57,7 @@ fn stage_id(document_id: &str, document: &Document) -> String {
 fn append_batch(s:&Session,batch:&[(usize,usize)],cancel:&AtomicBool,context:&projection::SketchContext,
     full:&mut Option<Document>,warnings:&mut std::collections::BTreeSet<String>,render_only:bool)->Result<()> {
     check_cancel(cancel).map_err(issue)?;
-    match projection::sketch_batch_in(s,batch,64*1024*1024,cancel,context) {
+    match projection::sketch_batch_in(s,batch,projection::CONVERSION_WINDOW_LIMIT,cancel,context) {
         Ok((mut doc,notes))=>{
             // Export provenance stays in the immutable source and editable
             // windows. The full-source display store never exports or edits
