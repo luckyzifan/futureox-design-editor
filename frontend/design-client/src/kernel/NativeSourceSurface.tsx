@@ -135,7 +135,7 @@ export function NativeSourceSurface(props:Props){
     const prefix=crypto.randomUUID(),cache=new Map<string,Tile>(),retired=new Map<number,number>()
     // A displayed bitmap can outlive evicted GPU tiles. Its geometry remains
     // needed to prove the next zoom frame preserves all visible detail.
-    const submittedPlacements=new Map<number,{tiles:Placement[];wheel:boolean;outward:boolean;mixed:boolean;regions?:OverviewMaterial[];view:CanvasCamera;width:number;height:number;dpr:number}>()
+    const submittedPlacements=new Map<number,{tiles:Placement[];wheel:boolean;outward:boolean;progressive:boolean;mixed:boolean;regions?:OverviewMaterial[];view:CanvasCamera;width:number;height:number;dpr:number}>()
     const recentNative=new Map<number,Set<string>>()
     let zoomReturn: {scale:number;keys:ReadonlySet<string>}|undefined
     const returnReuse=import.meta.env.VITE_DESIGN_SOURCE_RETURN_REUSE!=='0'
@@ -461,7 +461,11 @@ export function NativeSourceSurface(props:Props){
         // still not the current camera: keep a finer resident in the same
         // frame instead of publishing only the coarse plan. A lattice that
         // already certifies native density is left alone.
-        const wantSharper=moving&&continuousZoom&&zoomingIn&&backing&&bitmapContext&&!focal&&!planIsNative
+        // A full-source viewport can take seconds to finish its exact tiles.
+        // After input stops, keep replacing the coarse backing region by
+        // region wherever the still-resident tiles cover the whole viewport.
+        const settledDetail=!moving&&exact&&refining&&zoomingIn&&!source.materialKeys&&!source.viewportSubset
+        const wantSharper=(moving&&continuousZoom&&zoomingIn||settledDetail)&&backing&&bitmapContext&&!focal&&!planIsNative
         const promoted=wantSharper?(refining?sharperCoverageFrame(cache.values(),backingTiles,p.view,p):zoomInFramePastPlan(cache.values(),backingTiles,p.view,p,raster.scale)):undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
         if(!promoted&&!stored&&(refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
@@ -506,7 +510,8 @@ export function NativeSourceSurface(props:Props){
             previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile)))return
         const sequence=++submission,id=`${prefix}:${sequence}`
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
-        submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:continuity,mixed,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
+        submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:continuity,
+          progressive:!!promoted&&settledDetail,mixed,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
         if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:promoted?1:(exact&&keys.has(tile.key)?4:1),
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
@@ -774,6 +779,7 @@ export function NativeSourceSurface(props:Props){
         improvesSourceZoom(backing,actual,p,shownTiles,backingTiles) &&
         (moving&&continuousZoom&&zoomingIn || overviewMode&&current || finerThanBacking)
       const outwardAdvance=sent?.outward && current && allIds && bitmap && bitmapContext && sent.tiles.length===shownTiles.length
+      const progressiveAdvance=sent?.progressive && allIds && submittedMatch && bitmap && bitmapContext
       // The pointer can pan again before this GPU frame is acknowledged.
       // Keeping the frame still fills the strip it was built for; project()
       // then follows the newer camera. A zoom change is not this frame.
@@ -789,7 +795,7 @@ export function NativeSourceSurface(props:Props){
       const accepted=planned&&current&&bitmap&&bitmapContext&&(!actual.preview||actual.previewGaps)&&
         completeMaterialRegions(materialRegions(planned,p,actual.dpr),shownTiles,actual.view.zoom*actual.dpr,actual.previewGaps)
       const regional=!!(accepted&&accepted.length===planned?.length&&retainsVisibleMaterials(partialMaterials,accepted,p,actual.dpr))
-      if((actual.preview&&!regional) || ((sent?.mixed || !current || !allIds) && !wheelAdvance && !outwardAdvance && !translationAdvance && !regional)){
+      if((actual.preview&&!regional) || ((sent?.mixed || !current || !allIds) && !wheelAdvance && !outwardAdvance && !progressiveAdvance && !translationAdvance && !regional)){
         if(wanted?.id===actual.presentationId)wanted=undefined
         return
       }

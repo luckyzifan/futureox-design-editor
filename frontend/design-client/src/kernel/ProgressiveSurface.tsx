@@ -1536,8 +1536,14 @@ export function ProgressiveSurfaceImpl(
     if (movingDetailAvailable && (filteredContent || detailInsteadOfPreview) && navigationZoom.sample) {
       const refinementScope = JSON.stringify([contract.revision, width, height, dpr, generation,
         previewDevice.current.client === c ? previewDevice.current.key : undefined])
+      // Once the stretched preview has yielded, there is no whole-frame
+      // capture to pace. A new inward camera can use the idle raster turn
+      // without waiting for the next 160 ms preview sample.
+      const refinementSequence = detailInsteadOfPreview && filteredContent && !zoomOutCoverage
+        ? [navigationZoom.sample.sequence, requestedView.x, requestedView.y, requestedView.zoom].join('/')
+        : navigationZoom.sample.sequence
       navigationCost.reset(refinementScope)
-      navigationRefinement.update({ continuous: true, budgetMs: 16, scope: refinementScope, sequence: navigationZoom.sample.sequence,
+      navigationRefinement.update({ continuous: true, budgetMs: 16, scope: refinementScope, sequence: refinementSequence,
         current: () => current() && latestNavigationZoom.current.active && !latestNavigationZoom.current.suspended &&
           latestContext.current.visible !== false && coverageGeneration.current === generation,
         failed,

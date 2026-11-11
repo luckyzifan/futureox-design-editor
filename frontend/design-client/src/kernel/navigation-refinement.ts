@@ -3,8 +3,8 @@ import type { RenderMailbox } from './render-mailbox'
 export type NavigationRefinementGoal = {
   /** Includes content/session, viewport, DPR and presenter-device ownership. */
   scope: string
-  /** One credit per sampled navigation camera, not per raw pointer event. */
-  sequence: number
+  /** Identifies a useful demand for this single raster turn. */
+  sequence: number | string
   continuous?: boolean
   budgetMs?: number
   current(): boolean
@@ -20,7 +20,7 @@ export type NavigationRefinementGoal = {
 export class NavigationRefinementScheduler {
   private goal?: NavigationRefinementGoal
   private busy = false
-  private credit?: { scope: string; sequence: number }
+  private credit?: { scope: string; sequence: NavigationRefinementGoal['sequence'] }
 
   constructor(private readonly mailbox: Pick<RenderMailbox, 'run'>) {}
 
