@@ -485,11 +485,10 @@ pub fn sample_with_raster(input: &Surface, p: [f32; 2], software: bool) -> Pixel
             .0
             .map(|v| (v * 255.).round_ties_even() as u8)
     };
-    let sampler = if software {
-        crate::software_raster::sample_q8
-    } else {
-        crate::figma_sampling::sample_q8
-    };
+    // The separable software sample was a code off the Chrome export on the
+    // finished capture. Both profiles read that texture with the joint Q4 sampler.
+    let _ = software;
+    let sampler = crate::figma_sampling::sample_q8;
     Pixel(sampler([at(0, 0), at(1, 0), at(0, 1), at(1, 1)], wx, wy))
 }
 fn encoded(pixel: [f32; 4]) -> [u8; 4] {
@@ -627,11 +626,11 @@ fn sample_axis<const SOFTWARE: bool>(
     let a = pixels[base + at.low * stride];
     let b = pixels[base + at.high * stride];
     std::array::from_fn(|c| {
-        if SOFTWARE {
-            return crate::software_raster::normalize_byte(crate::software_raster::lerp_byte(
-                a[c], b[c], at.weight,
-            ));
-        }
+        let _ = SOFTWARE;
+        // Both export profiles sample the filter axis with the joint Q4 weight.
+        // The separable byte lerp was a code high against the Chrome glass
+        // export that this reduction already matches. Downsample and the
+        // filter store stay on the software byte contract when SOFTWARE is set.
         // The other axis is exactly at its texel centre. Reducing the full
         // Q8xQ8 numerator cancels a factor256 before the Q4 rounding step.
         normal[((u32::from(a[c]) * (256 - at.weight) + u32::from(b[c]) * at.weight + 8) >> 4)
