@@ -15,6 +15,7 @@ import { recordRenderDiagnostic, renderBudgetDiagnostic, renderErrorWithBudget }
 import type { RasterTile } from './tile-cache'
 import type { DesignDocument } from '../model'
 import type { BackendPreference } from './gpu/types'
+import type { TextureAttribution } from './gpu/resource-ledger'
 import { hostRenderPolicy, effectiveBackend, allowsResidentSdr } from './render-policy'
 import {residentFrameMessage} from './gpu/resident-frame'
 import { recordRenderProfile } from './render-profile'
@@ -161,6 +162,8 @@ export type GpuDriverMemoryStats = {
 /** Debug snapshot from the worker that owns the live engine and GPU device. */
 export type GpuMemorySnapshot = {
   rendererPolicy?: { workingBudgetBytes: number; interactionBudgetBytes: number } | null
+  /** The renderer's charged texture classes and observed completion epochs. */
+  rendererTextures?: TextureAttribution | null
   displayMath?: boolean
   /** VectorEngine.gpu_memory_breakdown() JSON; null until the worker engine
    * finished its one-time wasm/font load. Zeros on web — the kernel itself
@@ -1050,7 +1053,7 @@ export class KernelClient {
     return permit?permit.then(submit):submit()
   }
   /** Debug snapshot from the worker that owns the live engine and GPU device:
-   * the kernel four-bucket ledger plus the driver's byte accounting. Control
+   * the renderer texture ledger, kernel buckets and driver's byte accounting. Control
    * traffic only — no GPU permit is taken and no render state changes. */
   async gpuMemorySnapshot(): Promise<GpuMemorySnapshot> {
     const response = (await this.request({ command: 'gpu-memory' })) as KernelResult & {

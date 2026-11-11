@@ -923,7 +923,7 @@ self.onmessage = (e) => {
         return
       }
       if (request.command === 'gpu-memory') {
-        // Debug snapshot: the kernel ledger plus live driver accounting. A
+        // Debug snapshot: the texture ledger plus kernel and driver accounting. A
         // worker whose engine never finished loading reports a null breakdown
         // rather than triggering the wasm/font load for a poll.
         const kernel = laneState.enginePromise ? await engine() : undefined
@@ -933,6 +933,7 @@ self.onmessage = (e) => {
           gpuMemory: {
             kernelBreakdown: kernel ? await kernel.gpu_memory_breakdown() : null,
             rendererPolicy: gpu?.memoryPolicy() ?? null,
+            rendererTextures: gpu?.texturePeakAttribution() ?? null,
             backend: gpu?.driver.name ?? null,
           displayMath: gpu?.driver.displayMath === true,
             driverStats,
