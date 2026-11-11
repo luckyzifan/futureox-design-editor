@@ -10,6 +10,16 @@ type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pd
   | { name: string; format: 'sketch-with-libraries'; project: ArrayBuffer | File; libraries: Array<ArrayBuffer | File> }
 
 const SKETCH_LIBRARY_COUNT_MESSAGE = '打开前请附上 1 到 8 个本地 .sketch 库'
+const PDF_TEXT_NOT_IMPORTED = 'PDF 文本内容未导入；矢量路径与图像已转换为可编辑图层'
+
+/** Kernel reports live on the imported document. An older kernel has no report and still drops text. */
+function pdfImportWarnings(document: DesignDocument): string[] {
+  const report = document.fdCompatibility?.extensions?.['design.futureox/pdf-pages'] as { warnings?: unknown } | undefined
+  if (report && Array.isArray(report.warnings) && report.warnings.every(item => typeof item === 'string')) {
+    return report.warnings as string[]
+  }
+  return [PDF_TEXT_NOT_IMPORTED]
+}
 
 function sketchByteSource(value: unknown): { size: number; read?: () => Promise<ArrayBuffer>; buffer?: ArrayBuffer } {
   if (value instanceof ArrayBuffer) return { size: value.byteLength, buffer: value }
@@ -98,7 +108,7 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
         ...page, id: uid(), children: page.children.map(child => ids.get(child)!),
       }))
       document.name = event.data.name || document.name
-      self.postMessage({ result: { document, warnings: ['PDF 文本内容未导入；矢量路径与图像已转换为可编辑图层'] } })
+      self.postMessage({ result: { document, warnings: pdfImportWarnings(document) } })
     } else if (event.data.format === 'fig') {
       await initializeKernelModule()
       importStage = 233 // decode

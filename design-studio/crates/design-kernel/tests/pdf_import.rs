@@ -114,10 +114,41 @@ mod pdf_import {
         &doc.pages[0].children
     }
 
+    fn page_frame<'a>(doc: &'a Document, page: usize) -> &'a Node {
+        let children = &doc.pages[page].children;
+        assert_eq!(children.len(), 1, "each pdf page is one frame");
+        let frame = &doc.nodes[&children[0]];
+        assert_eq!(frame.kind, "frame", "pdf page {} is a frame", page + 1);
+        frame
+    }
+
+    fn page_content<'a>(doc: &'a Document, page: usize) -> Vec<&'a Node> {
+        page_frame(doc, page)
+            .children
+            .iter()
+            .map(|id| &doc.nodes[id])
+            .collect()
+    }
+
     fn only_node(doc: &Document) -> &Node {
-        let children = page_children(doc);
-        assert_eq!(children.len(), 1, "expected one imported node");
-        &doc.nodes[&children[0]]
+        let nodes = page_content(doc, 0);
+        assert_eq!(nodes.len(), 1, "expected one imported content node");
+        nodes[0]
+    }
+
+    fn pdf_warnings(doc: &Document) -> Vec<String> {
+        doc.fd_compatibility
+            .as_ref()
+            .and_then(|meta| meta.extensions.get("design.futureox/pdf-pages"))
+            .and_then(|value| value.get("warnings"))
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     fn assert_close(actual: f64, expected: f64) {
@@ -214,7 +245,7 @@ mod pdf_import {
     }
 
     #[test]
-    fn text_operators_are_safely_skipped() {
+    fn text_operators_become_editable_text() {
         let bytes = single_page(
             "BT /F1 12 Tf 72 720 Td [(H) 120 (i)] TJ (x) Tj 0 0 1 rg 10 20 30 40 re f ET 5 5 Td (lost) Tj",
             "/Font << /F1 9 0 R >>",
@@ -222,10 +253,30 @@ mod pdf_import {
         );
         let doc = import_pdf(&bytes).unwrap();
         doc.validate().unwrap();
-        let children = page_children(&doc);
-        assert_eq!(children.len(), 1);
-        assert!(doc.nodes.values().all(|n| n.kind != "text"));
-        assert!(doc.nodes.values().all(|n| n.text.is_empty()));
+        let frame = page_frame(&doc, 0);
+        assert_close(frame.width, 612.);
+        assert_close(frame.height, 792.);
+        let nodes = page_content(&doc, 0);
+        let texts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == "text")
+            .map(|n| n.text.as_str())
+            .collect();
+        assert_eq!(texts, ["H", "i", "x", "lost"]);
+        let rect = nodes.iter().find(|n| n.kind == "vector").unwrap();
+        assert_eq!(rect.fills[0].color, "#0000ff");
+        assert_close(rect.width, 30.);
+        assert_close(rect.height, 40.);
+        let h = nodes.iter().find(|n| n.text == "H").unwrap();
+        assert_close(h.font_size, 12.);
+        // Baseline is PDF y=720 on a 792-pt page; Helvetica ascent is 0.718 em.
+        assert_close(h.transform.0[4], 72.);
+        assert_close(h.transform.0[5], 72. - 12. * 0.718);
+        let warnings = pdf_warnings(&doc);
+        assert!(
+            warnings.iter().any(|warning| warning.contains("字体")),
+            "{warnings:?}"
+        );
     }
 
     #[test]
@@ -320,12 +371,12 @@ mod pdf_import {
         let bytes = build_pdf(&objects, 1);
         let doc = import_pdf(&bytes).unwrap();
         doc.validate().unwrap();
-        let children = page_children(&doc);
+        let children = page_content(&doc, 0);
         assert_eq!(children.len(), 2);
-        let fill_only = &doc.nodes[&children[0]];
+        let fill_only = children[0];
         assert_close(fill_only.opacity, 0.5);
         assert_close(fill_only.fills[0].opacity, 1.);
-        let fill_and_stroke = &doc.nodes[&children[1]];
+        let fill_and_stroke = children[1];
         // min(ca, CA) lands on the node; the stroke keeps its exact share.
         assert_close(fill_and_stroke.opacity, 0.25);
         assert_close(fill_and_stroke.fills[0].opacity, 1.);
@@ -361,10 +412,14 @@ mod pdf_import {
         assert_eq!(doc.pages.len(), 2);
         assert_eq!(doc.pages[0].name, "Page 1");
         assert_eq!(doc.pages[1].name, "Page 2");
-        let first = &doc.nodes[&doc.pages[0].children[0]];
+        assert_close(page_frame(&doc, 0).width, 300.);
+        assert_close(page_frame(&doc, 0).height, 400.);
+        assert_close(page_frame(&doc, 1).width, 200.);
+        assert_close(page_frame(&doc, 1).height, 100.);
+        let first = page_content(&doc, 0)[0];
         assert_eq!(first.fills[0].color, "#0000ff");
         // Second page: height 100 → y flip puts user y=20 at 100 - 20 = 80.
-        let second = &doc.nodes[&doc.pages[1].children[0]];
+        let second = page_content(&doc, 1)[0];
         assert_transform(second, [1., 0., 0., -1., 10., 80.]);
         assert_close(second.width, 30.);
         assert_close(second.height, 40.);
@@ -404,9 +459,9 @@ mod pdf_import {
         let bytes = build_pdf(&objects, 1);
         let doc = import_pdf(&bytes).unwrap();
         doc.validate().unwrap();
-        let children = page_children(&doc);
+        let children = page_content(&doc, 0);
         assert_eq!(children.len(), 2);
-        let flate_node = &doc.nodes[&children[0]];
+        let flate_node = children[0];
         assert_eq!(flate_node.kind, "image");
         assert_close(flate_node.width, 100.);
         assert_close(flate_node.height, 50.);
@@ -422,7 +477,7 @@ mod pdf_import {
                 .unwrap()
                 .starts_with("data:image/png;base64,")
         );
-        let jpeg_node = &doc.nodes[&children[1]];
+        let jpeg_node = children[1];
         assert_eq!(jpeg_node.kind, "image");
         assert!(
             jpeg_node.fills[0]
@@ -569,6 +624,434 @@ mod pdf_import {
         let node = only_node(&doc);
         assert_eq!(node.fills[0].color, "#00ff00");
         assert_transform(node, [1., 0., 0., -1., 10., 80.]);
+    }
+
+    fn mapped_bbox(node: &Node) -> (f64, f64, f64, f64) {
+        let corners = [
+            futureox_design_kernel::math::Point::new(0., 0.),
+            futureox_design_kernel::math::Point::new(node.width, 0.),
+            futureox_design_kernel::math::Point::new(node.width, node.height),
+            futureox_design_kernel::math::Point::new(0., node.height),
+        ];
+        let mapped: Vec<_> = corners
+            .into_iter()
+            .map(|point| node.transform.point(point))
+            .collect();
+        let min_x = mapped
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::INFINITY, f64::min);
+        let min_y = mapped
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::INFINITY, f64::min);
+        let max_x = mapped
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let max_y = mapped
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        (min_x, min_y, max_x, max_y)
+    }
+
+    #[test]
+    fn reportlab_two_page_text_and_page_frames_are_preserved() {
+        let bytes = include_bytes!("fixtures/pdf-two-pages.pdf");
+        let doc = import_pdf(bytes).expect("reportlab fixture imports");
+        doc.validate().unwrap();
+        assert_eq!(doc.pages.len(), 2);
+        assert!(pdf_warnings(&doc).is_empty(), "{:?}", pdf_warnings(&doc));
+        let meta = doc
+            .fd_compatibility
+            .as_ref()
+            .unwrap()
+            .extensions
+            .get("design.futureox/pdf-pages")
+            .unwrap();
+        assert_eq!(meta["strategy"], "editable-text");
+        for page in 0..2 {
+            let frame = page_frame(&doc, page);
+            assert_close(frame.width, 160.);
+            assert_close(frame.height, 120.);
+            assert!(frame.clip);
+            assert_eq!(
+                meta["pages"][page]["mediaBox"],
+                serde_json::json!([0.0, 0.0, 160.0, 120.0])
+            );
+            assert_eq!(
+                meta["pages"][page]["cropBox"],
+                serde_json::json!([0.0, 0.0, 160.0, 120.0])
+            );
+            assert_eq!(meta["pages"][page]["rotate"], serde_json::json!(0));
+            assert_eq!(meta["pages"][page]["layoutWidth"], serde_json::json!(160.0));
+            assert_eq!(
+                meta["pages"][page]["layoutHeight"],
+                serde_json::json!(120.0)
+            );
+        }
+        let page_a = page_content(&doc, 0);
+        let rect = page_a.iter().find(|node| node.kind == "vector").unwrap();
+        assert_eq!(rect.fills[0].color, "#cc1a1a");
+        assert_close(rect.width, 50.);
+        assert_close(rect.height, 40.);
+        let text = page_a.iter().find(|node| node.kind == "text").unwrap();
+        assert_eq!(text.text, "PAGE_A_TEXT");
+        assert_close(text.font_size, 12.);
+        assert_close(text.transform.0[4], 20.);
+        assert_close(text.transform.0[5], 30. - 12. * 0.718);
+        assert!(
+            (text.width - 7114.0 / 1000.0 * 12.0).abs() < 1e-6,
+            "text width {}",
+            text.width
+        );
+        assert_eq!(text.fills[0].color, "#000000");
+        let page_b = page_content(&doc, 1);
+        let circle = page_b.iter().find(|node| node.kind == "vector").unwrap();
+        assert_eq!(circle.fills[0].color, "#1a33cc");
+        assert_close(circle.width, 50.);
+        assert_close(circle.height, 50.);
+        let text = page_b.iter().find(|node| node.kind == "text").unwrap();
+        assert_eq!(text.text, "PAGE_B_TEXT");
+        assert_close(text.transform.0[4], 20.);
+
+        let saved = serde_json::to_string(&doc).unwrap();
+        let reopened: Document = serde_json::from_str(&saved).unwrap();
+        reopened.validate().unwrap();
+        assert_eq!(reopened, doc);
+
+        let mut editor = futureox_design_kernel::editing::DocumentEditor::new(doc.clone()).unwrap();
+        let text_id = page_content(editor.document(), 0)
+            .into_iter()
+            .find(|node| node.text == "PAGE_A_TEXT")
+            .unwrap()
+            .id
+            .clone();
+        let mut edited = editor.document().clone();
+        edited.nodes.get_mut(&text_id).unwrap().text = "CHANGED".into();
+        let patch =
+            futureox_design_kernel::editing::DocumentPatch::between(editor.document(), &edited)
+                .unwrap();
+        editor.apply(editor.revision(), patch).unwrap();
+        assert_eq!(editor.document().nodes[&text_id].text, "CHANGED");
+        editor.undo().unwrap();
+        assert_eq!(editor.document().nodes[&text_id].text, "PAGE_A_TEXT");
+
+        let dir = std::env::temp_dir().join(format!(
+            "pdf-page-import-{}-{}",
+            std::process::id(),
+            page_frame(&doc, 0).id
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("reopen.fd");
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let receipt =
+            futureox_design_kernel::scene_store::write(&path, "pdf-pages", &doc, &[], &cancel)
+                .unwrap();
+        let (stored, stored_warnings) =
+            futureox_design_kernel::scene_store::Reader::open(&path, &receipt, &cancel)
+                .unwrap()
+                .into_document(&cancel)
+                .unwrap();
+        assert!(stored_warnings.is_empty());
+        assert_eq!(stored.nodes[&text_id].text, "PAGE_A_TEXT");
+        assert_close(page_frame(&stored, 0).width, 160.);
+        assert_close(page_frame(&stored, 1).height, 120.);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut engine = futureox_design_kernel::Engine::new();
+        let font = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+        ))
+        .unwrap();
+        engine.load_font(&font).unwrap();
+        engine.load_document(&saved).unwrap();
+        let options = futureox_design_kernel::RenderOptions {
+            page_id: doc.pages[0].id.clone(),
+            width: 160,
+            height: 120,
+            view: futureox_design_kernel::View {
+                x: 0.,
+                y: 0.,
+                zoom: 1.,
+            },
+            transparent: false,
+            grid: false,
+            pixel_preview: None,
+            animation: None,
+            raster_profile: futureox_design_kernel::fidelity::RasterProfile::Analytic,
+            interactive_effects: false,
+            checkerboard: false,
+        };
+        let pixels = engine.render(&options).unwrap();
+        let (red, dark) = count_rgba(&pixels, 160, 120);
+        assert!(red > 100, "red rect pixels {red}");
+        assert!(dark > 20, "text pixels {dark}");
+        let pdf = engine.export_pdf_vector(&options).unwrap();
+        let exported = String::from_utf8_lossy(&pdf);
+        assert!(
+            exported.contains("/MediaBox [0 0 160 120]"),
+            "re-export must keep the page size, not the artwork bbox"
+        );
+        assert!(exported.contains(" Tj"), "re-exported text operators");
+        let (red, text_ink) = poppler_pixels(&pdf);
+        assert!(red > 100, "poppler red {red}");
+        // Poppler antialiases the substituted host font, so the ink is gray
+        // rather than a solid black fill. It still sits in the source text band.
+        assert!(text_ink > 80, "poppler text ink {text_ink}");
+    }
+
+    fn count_rgba(bytes: &[u8], width: u32, height: u32) -> (u32, u32) {
+        assert_eq!(bytes.len(), width as usize * height as usize * 4);
+        let mut red = 0u32;
+        let mut dark = 0u32;
+        for pixel in bytes.chunks_exact(4) {
+            let (r, g, b) = (pixel[0], pixel[1], pixel[2]);
+            if r > 180 && g < 80 && b < 80 {
+                red += 1;
+            } else if r < 80 && g < 80 && b < 80 {
+                dark += 1;
+            }
+        }
+        (red, dark)
+    }
+
+    fn poppler_pixels(pdf: &[u8]) -> (u32, u32) {
+        let dir = std::env::temp_dir().join(format!("pdf-import-poppler-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("page.pdf");
+        std::fs::write(&path, pdf).unwrap();
+        let status = std::process::Command::new("pdftoppm")
+            .args([
+                "-r",
+                "72",
+                "-png",
+                path.to_str().unwrap(),
+                dir.join("page").to_str().unwrap(),
+            ])
+            .status()
+            .expect("pdftoppm");
+        assert!(status.success());
+        let png = std::fs::read(dir.join("page-1.png")).unwrap();
+        let counts = count_png_regions(&png);
+        let _ = std::fs::remove_dir_all(&dir);
+        counts
+    }
+
+    fn count_png_regions(png: &[u8]) -> (u32, u32) {
+        let path =
+            std::env::temp_dir().join(format!("pdf-import-poppler-{}.png", std::process::id()));
+        std::fs::write(&path, png).unwrap();
+        let output = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(format!(
+                "from PIL import Image\nim=Image.open({:?})\npx=im.load(); w,h=im.size\nred=ink=0\nfor y in range(h):\n  for x in range(w):\n    r,g,b=px[x,y][:3]\n    if r>180 and g<80 and b<80: red+=1\n    if y<50 and max(r,g,b)<230: ink+=1\nprint(red, ink)",
+                path
+            ))
+            .output()
+            .expect("python pixel count");
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8(output.stdout).unwrap();
+        let mut parts = text.split_whitespace();
+        (
+            parts.next().unwrap().parse().unwrap(),
+            parts.next().unwrap().parse().unwrap(),
+        )
+    }
+
+    #[test]
+    fn page_rotation_and_crop_box_set_the_frame() {
+        let content = "1 0 0 rg 10 10 20 20 re f BT /F1 12 Tf 1 0 0 1 40 80 Tm (MARK) Tj ET";
+        let bytes = page_with_box("[0 0 200 100]", "/Rotate 90", content);
+        let doc = import_pdf(&bytes).unwrap();
+        doc.validate().unwrap();
+        let frame = page_frame(&doc, 0);
+        assert_close(frame.width, 100.);
+        assert_close(frame.height, 200.);
+        let rect = page_content(&doc, 0)
+            .into_iter()
+            .find(|node| node.kind == "vector")
+            .unwrap();
+        let (x0, y0, x1, y1) = mapped_bbox(rect);
+        assert_close(x0, 10.);
+        assert_close(y0, 10.);
+        assert_close(x1, 30.);
+        assert_close(y1, 30.);
+        let text = page_content(&doc, 0)
+            .into_iter()
+            .find(|node| node.kind == "text")
+            .unwrap();
+        assert_eq!(text.text, "MARK");
+        let baseline = text
+            .transform
+            .point(futureox_design_kernel::math::Point::new(0., 12. * 0.718));
+        assert_close(baseline.x, 80.);
+        assert_close(baseline.y, 40.);
+
+        let cropped = page_with_box(
+            "[0 0 200 100]",
+            "/CropBox [20 10 120 80] /Rotate 0",
+            content,
+        );
+        let doc = import_pdf(&cropped).unwrap();
+        doc.validate().unwrap();
+        let frame = page_frame(&doc, 0);
+        assert_close(frame.width, 100.);
+        assert_close(frame.height, 70.);
+        assert!(frame.clip);
+        let rect = page_content(&doc, 0)
+            .into_iter()
+            .find(|node| node.kind == "vector")
+            .unwrap();
+        let (x0, y0, x1, y1) = mapped_bbox(rect);
+        assert_close(x0, -10.);
+        assert_close(y0, 50.);
+        assert_close(x1, 10.);
+        assert_close(y1, 70.);
+        let meta =
+            doc.fd_compatibility.as_ref().unwrap().extensions["design.futureox/pdf-pages"].clone();
+        assert_eq!(
+            meta["pages"][0]["mediaBox"],
+            serde_json::json!([0.0, 0.0, 200.0, 100.0])
+        );
+        assert_eq!(
+            meta["pages"][0]["cropBox"],
+            serde_json::json!([20.0, 10.0, 120.0, 80.0])
+        );
+    }
+
+    fn page_with_box(media: &str, extra: &str, content: &str) -> Vec<u8> {
+        let font = text_object(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        );
+        let objects = vec![
+            (1, text_object("<< /Type /Catalog /Pages 2 0 R >>")),
+            (2, text_object("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")),
+            (
+                3,
+                text_object(&format!(
+                    "<< /Type /Page /Parent 2 0 R /MediaBox {media} {extra} /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
+                )),
+            ),
+            (4, content_stream(content)),
+            (5, font),
+        ];
+        build_pdf(&objects, 1)
+    }
+
+    #[test]
+    fn unknown_text_encoding_fails_instead_of_dropping_bytes() {
+        let bytes = page_font(
+            "BT /F1 12 Tf <80> Tj ET 0 0 1 rg 1 1 8 8 re f",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /NoSuchEncoding >>",
+        );
+        let error = import_pdf(&bytes).unwrap_err();
+        assert!(
+            error.contains("0x80") || error.contains("not defined"),
+            "{error}"
+        );
+        let ascii = page_font(
+            "BT /F1 12 Tf (Hi) Tj ET",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /NoSuchEncoding >>",
+        );
+        let doc = import_pdf(&ascii).unwrap();
+        assert_eq!(
+            page_content(&doc, 0)
+                .iter()
+                .find(|n| n.kind == "text")
+                .unwrap()
+                .text,
+            "Hi"
+        );
+        assert!(
+            pdf_warnings(&doc)
+                .iter()
+                .any(|warning| warning.contains("编码"))
+        );
+        let composite = page_font(
+            "BT /F1 12 Tf (A) Tj ET",
+            "<< /Type /Font /Subtype /Type0 /BaseFont /Custom /Encoding /Identity-H >>",
+        );
+        let error = import_pdf(&composite).unwrap_err();
+        assert!(error.contains("ToUnicode"), "{error}");
+    }
+
+    fn page_font(content: &str, font: &str) -> Vec<u8> {
+        let objects = vec![
+            (1, text_object("<< /Type /Catalog /Pages 2 0 R >>")),
+            (2, text_object("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")),
+            (
+                3,
+                text_object(
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+                ),
+            ),
+            (4, content_stream(content)),
+            (5, text_object(font)),
+        ];
+        build_pdf(&objects, 1)
+    }
+
+    #[test]
+    fn to_unicode_cmap_decodes_glyph_bytes() {
+        let cmap = b"\
+            /CIDInit /ProcSet findresource begin\n\
+            12 dict begin begincmap\n\
+            /CMapName /Adobe-Identity-UCS def\n\
+            /CMapType 2 def\n\
+            1 begincodespacerange\n<00> <FF>\nendcodespacerange\n\
+            2 beginbfchar\n<41> <0041>\n<42> <0042>\nendbfchar\n\
+            endcmap\nCMapName currentdict /CMap defineresource pop\nend end\n";
+        let objects = vec![
+            (1, text_object("<< /Type /Catalog /Pages 2 0 R >>")),
+            (2, text_object("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")),
+            (
+                3,
+                text_object(
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 80] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+                ),
+            ),
+            (4, content_stream("BT /F1 10 Tf 12 40 Td (AB) Tj ET")),
+            (
+                5,
+                text_object(
+                    "<< /Type /Font /Subtype /Type0 /BaseFont /Custom /Encoding /Identity-H /ToUnicode 6 0 R >>",
+                ),
+            ),
+            (6, stream_object("", cmap)),
+        ];
+        let doc = import_pdf(&build_pdf(&objects, 1)).unwrap();
+        doc.validate().unwrap();
+        let text = page_content(&doc, 0)
+            .into_iter()
+            .find(|node| node.kind == "text")
+            .unwrap();
+        assert_eq!(text.text, "AB");
+        assert_close(text.font_size, 10.);
+        assert_close(page_frame(&doc, 0).width, 200.);
+        assert_close(page_frame(&doc, 0).height, 80.);
+    }
+
+    #[test]
+    fn unknown_operator_warns_without_dropping_the_path() {
+        let bytes = single_page("0 0 1 rg 0 0 10 10 re f XYZ", "", false);
+        let doc = import_pdf(&bytes).unwrap();
+        doc.validate().unwrap();
+        assert_eq!(only_node(&doc).kind, "vector");
+        let warnings = pdf_warnings(&doc);
+        assert!(
+            warnings.iter().any(|warning| warning.contains("XYZ")),
+            "{warnings:?}"
+        );
     }
 
     #[test]

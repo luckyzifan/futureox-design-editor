@@ -100,6 +100,8 @@ pub mod paint;
 pub mod path;
 pub mod pattern_fill;
 pub mod pdf_export;
+mod pdf_glyphs;
+mod pdf_text;
 pub mod pdf_import;
 pub mod preview;
 pub mod preparation;
