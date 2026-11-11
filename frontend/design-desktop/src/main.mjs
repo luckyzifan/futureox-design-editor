@@ -43,6 +43,13 @@ import {
   publishProductExport,
   validateProductExport,
 } from './product-export.mjs'
+import {
+  admitAssetBatch,
+  assetZipDialogName,
+  normalizeAssetZipChoice,
+  publishAssetDirectory,
+  publishAssetZip,
+} from './asset-directory.mjs'
 import { registerVideoEncode } from './ffmpeg-encode.mjs'
 import { registerNativeRender } from './native-render.mjs'
 import { registerNativePreparation } from './preparation.mjs'
@@ -893,6 +900,52 @@ register('export-product-file', async value => {
     throw error
   }
   return { status: 'ok', displayName: choice.basename }
+})
+function assetExportError(error) {
+  if (error?.code !== 'ASSET_EXPORT_REJECTED') return null
+  return { status: 'error', code: 'ASSET_EXPORT_REJECTED', message: desktopText[interfaceLocale].assetExportRejected }
+}
+register('export-asset-directory', async value => {
+  let batch
+  try {
+    const params = record(value, ['files', 'manifest'])
+    batch = admitAssetBatch(params.files, params.manifest)
+  } catch (error) { const rejected = assetExportError(error); if (rejected) return rejected; throw error }
+  const selection = await dialog.showOpenDialog(window, {
+    title: desktopText[interfaceLocale].exportAssetsDirectory,
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (selection.canceled || selection.filePaths?.length !== 1) return cancelled()
+  try {
+    const published = await publishAssetDirectory(selection.filePaths[0], batch)
+    return {
+      status: 'ok',
+      fileCount: published.fileCount,
+      complete: published.complete,
+      ...(published.manifestName ? { manifestName: published.manifestName } : {}),
+      results: published.results,
+    }
+  } catch (error) { const rejected = assetExportError(error); if (rejected) return rejected; throw error }
+})
+register('export-asset-zip', async value => {
+  const params = record(value, ['filename', 'files', 'manifest'])
+  let batch
+  try { batch = admitAssetBatch(params.files, params.manifest) }
+  catch (error) { const rejected = assetExportError(error); if (rejected) return rejected; throw error }
+  const selection = await dialog.showSaveDialog(window, {
+    title: desktopText[interfaceLocale].exportAssetsZip,
+    defaultPath: assetZipDialogName(params.filename),
+    filters: [{ name: desktopText[interfaceLocale].exportFileFilter, extensions: ['zip'] }],
+    properties: ['showOverwriteConfirmation', 'createDirectory'],
+  })
+  if (selection.canceled || !selection.filePath) return cancelled()
+  let choice
+  try { choice = normalizeAssetZipChoice(selection.filePath) }
+  catch (error) { const rejected = assetExportError(error); if (rejected) return rejected; throw error }
+  try {
+    const published = await publishAssetZip(choice, batch)
+    return { status: 'ok', fileCount: published.fileCount, complete: published.complete, displayName: choice.basename }
+  } catch (error) { const rejected = assetExportError(error); if (rejected) return rejected; throw error }
 })
 register('recovery-write', async (value) => {
   const params = record(value, ['handle', 'documentJson', 'displayName'])

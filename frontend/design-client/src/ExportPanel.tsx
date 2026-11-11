@@ -24,7 +24,7 @@ import {
 
 type Asset = { name: string; url: string; width: number; height: number; scale: number; pdf: boolean; pdfVector: boolean }
 
-export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor: Editor; onClose: () => void; exportSelectedSketch?:()=>Promise<string|undefined> }) {
+export function ExportPanel({ editor, onClose, exportSelectedSketch, onOpenAssets }: { editor: Editor; onClose: () => void; exportSelectedSketch?:()=>Promise<string|undefined>; onOpenAssets?: () => void }) {
   const s = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale } = useInterfacePreferences()
   const tx = (zh: string, en: string) => locale === 'en' ? en : zh
@@ -96,7 +96,7 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
     const previous = document.activeElement
     dialog.current?.focus()
     const keydown = (event: KeyboardEvent) => {
-      if(picking.current)return
+      if(picking.current || document.querySelector('.asset-export-backdrop'))return
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
@@ -362,6 +362,7 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
       >
         <header>
           <strong>{tx('导出图像', 'Export')}</strong>
+          {onOpenAssets && <button type="button" onClick={onOpenAssets}>{tx('全部资源…', 'All assets…')}</button>}
           <button type="button" onClick={onClose} aria-label={tx('关闭切图', 'Close export')}>
             {tx('关闭', 'Close')}
           </button>

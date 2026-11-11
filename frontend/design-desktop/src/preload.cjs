@@ -231,6 +231,8 @@ contextBridge.exposeInMainWorld(
     saveDocument: (value) => invoke('save', value),
     // FD and HTML/asset ZIP only. The main process checks the bytes and shows the save dialog.
     exportProductFile: value => invoke('export-product-file', value),
+    exportAssetDirectory: value => invoke('export-asset-directory', value),
+    exportAssetZip: value => invoke('export-asset-zip', value),
     readRecovery: () => invoke('recovery-read'),
     acceptRecovery: (value) => invoke('recovery-accept', value),
     writeRecovery: (value) => invoke('recovery-write', value),

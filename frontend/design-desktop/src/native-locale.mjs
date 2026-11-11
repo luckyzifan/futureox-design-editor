@@ -67,6 +67,9 @@ const en = {
   exportUnknownSize: 'The export has an unknown size or exceeds the 64 MiB desktop limit.',
   exportInterrupted: 'The export was interrupted and was not completed. Please export again.',
   exportTooLarge: 'The export exceeds the 64 MiB desktop limit.',
+  exportAssetsDirectory: 'Export layer presets to a folder',
+  exportAssetsZip: 'Export layer presets as a ZIP',
+  assetExportRejected: 'The layer-preset batch failed validation and was not written.',
   tooManyPendingFiles: 'At most 16 design files can wait to open. Process the current files before opening more.',
   openPlugin: 'Open a Figma plugin folder',
 }
@@ -107,6 +110,9 @@ const zhCN = {
   exportUnknownSize: '导出大小未知，或超过桌面端 64 MiB 的限制。',
   exportInterrupted: '导出中断，尚未完成。请重新导出。',
   exportTooLarge: '导出超过桌面端 64 MiB 的限制。',
+  exportAssetsDirectory: '把图层预设导出到文件夹',
+  exportAssetsZip: '把图层预设导出为 ZIP',
+  assetExportRejected: '图层预设批量导出未通过校验，没有写入。',
   tooManyPendingFiles: '最多同时等待打开 16 个设计文件，请先处理当前文件后再打开。',
   openPlugin: '打开 Figma 插件文件夹',
 }

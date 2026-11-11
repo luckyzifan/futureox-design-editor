@@ -214,6 +214,17 @@ export interface DesktopBridge {
     filename: string
     bytes: Uint8Array
   }): Promise<DesktopResult<{ displayName: string }>>
+  /** Writes rendered layer presets into a folder the host dialog selects. No renderer path. */
+  exportAssetDirectory?(request: {
+    files: { name: string; bytes: Uint8Array }[]
+    manifest: unknown
+  }): Promise<DesktopResult<{ fileCount: number; complete: boolean; manifestName?: string; results: { name: string; written: boolean; reason?: string }[] }>>
+  /** Writes one validated preset ZIP. The host chooses the file. No renderer path. */
+  exportAssetZip?(request: {
+    filename: string
+    files: { name: string; bytes: Uint8Array }[]
+    manifest: unknown
+  }): Promise<DesktopResult<{ fileCount: number; complete: boolean; displayName: string }>>
   readRecovery(): Promise<DesktopResult<{ documentJson: string; displayName: string; recoveryHandle: string }>>
   acceptRecovery(request: { recoveryHandle: string }): Promise<DesktopResult>
   writeRecovery(request: {

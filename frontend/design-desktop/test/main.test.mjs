@@ -1646,3 +1646,30 @@ test('product export channel writes validated FD and HTML ZIP only at the dialog
     assert.equal(downloadProbe(state, 'design-html.zip').blocked, 1)
   } finally { await state.dispose() }
 })
+
+test('asset batch channel writes only inside the chosen directory and does not return its path', async () => {
+  const state = await host()
+  try {
+    const dir = path.join(state.root, 'presets')
+    await mkdir(dir)
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+    const task = { taskId: 'rect-png', nodeId: 'rect', settingId: 'one', revision: 2, format: 'png', scale: 1, suffix: '@one', path: 'Rect@one.png', status: 'succeeded', byteLength: png.length }
+    const payload = { files: [{ name: 'Rect@one.png', bytes: png }], manifest: { format: 'futureox.asset-batch.v1', documentId: 'doc', pageId: 'page', revision: 2, complete: true, fileCount: 1, tasks: [task] } }
+    state.open.push({ canceled: false, filePaths: [dir] })
+    const written = await state.invoke('export-asset-directory', payload)
+    assert.equal(written.status, 'ok')
+    assert.equal(written.fileCount, 1)
+    assert.equal(written.complete, true)
+    assert.equal(JSON.stringify(written).includes(dir), false)
+    assert.deepEqual(await readFile(path.join(dir, 'Rect@one.png')), png)
+    const manifest = JSON.parse(await readFile(path.join(dir, 'asset-manifest.json'), 'utf8'))
+    assert.equal(manifest.fileCount, 1)
+    assert.equal(manifest.complete, true)
+    const outside = await state.invoke('export-asset-directory', { files: [{ name: '../escape.png', bytes: png }], manifest: payload.manifest })
+    assert.equal(outside.status, 'error')
+    assert.equal(outside.code, 'ASSET_EXPORT_REJECTED')
+    await assert.rejects(readFile(path.join(state.root, 'escape.png')), /ENOENT/)
+    state.open.push({ canceled: true, filePaths: [] })
+    assert.equal((await state.invoke('export-asset-directory', payload)).status, 'cancelled')
+  } finally { await state.dispose() }
+})

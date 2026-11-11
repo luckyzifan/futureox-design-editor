@@ -121,6 +121,7 @@ import { Inspector } from './Inspector'
 import { AnimationPanel } from './AnimationPanel'
 import { ColorPanel } from './ColorPanel'
 import { ExportPanel } from './ExportPanel'
+import { AssetExportDialog } from './AssetExportDialog'
 import { download, exportDocument, readDesignFile } from './persistence'
 import { createImportedCopy } from './import-identity'
 import { exportSketchInWorker } from './import-file-worker'
@@ -214,6 +215,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [lastUtilityTool, setLastUtilityTool] = useState<Tool>('eraser')
   const [showColor, setShowColor] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showAssets, setShowAssets] = useState(false)
   const [showAnimation, setShowAnimation] = useState(false)
   const adaptivePanels = useAdaptivePanels()
   const showLayers = adaptivePanels.leftOpen
@@ -1227,6 +1229,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               title={menuText.exportSketchTitle}
               onClick={() => void generateSketchExport()}>{menuText.exportSketch}</button>
             <button onClick={() => { openExportPanel(); setMenu(false) }}>{menuText.exportImages}</button>
+            <button type="button" onClick={() => { setShowAssets(true); setMenu(false) }}>{menuText.exportAllAssets}</button>
             {(['svg', 'png'] as const).map((format) => (
               <button
                 key={format}
@@ -1267,7 +1270,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <button type="button" disabled={desktopStatus.busy} onClick={() => void (desktopSession?.supportsWorkspace ? desktopSession.saveCopy() : desktopSession?.save(true))}>{translateProfessional(desktopSession?.supportsWorkspace ? '保存本机副本' : '另存为', locale)}</button>
         <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{translateProfessional(desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件', locale)}</button>
       </div>}
-      {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} onClose={() => setShowExport(false)} />}
+      {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} onOpenAssets={() => setShowAssets(true)} onClose={() => setShowExport(false)} />}
+      {showAssets && <AssetExportDialog editor={editor} onClose={() => setShowAssets(false)} />}
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}

@@ -76,6 +76,8 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'acceptDocument',
       'saveDocument',
       'exportProductFile',
+      'exportAssetDirectory',
+      'exportAssetZip',
       'readRecovery',
       'acceptRecovery',
       'writeRecovery',
@@ -123,6 +125,8 @@ test('preload request methods map only to the fixed desktop IPC allowlist', asyn
     ['acceptDocument', 'document-accept', { handle: '10000000-0000-0000-0000-000000000001' }],
     ['saveDocument', 'save', { documentJson: '{"test":true}', saveAs: true }],
     ['exportProductFile', 'export-product-file', { kind: 'fd', filename: 'design.fd', bytes: Uint8Array.of(70, 88) }],
+    ['exportAssetDirectory', 'export-asset-directory', { files: [], manifest: { format: 'futureox.asset-batch.v1' } }],
+    ['exportAssetZip', 'export-asset-zip', { filename: 'assets.zip', files: [], manifest: { format: 'futureox.asset-batch.v1' } }],
     ['readRecovery', 'recovery-read', undefined],
     [
       'acceptRecovery',
