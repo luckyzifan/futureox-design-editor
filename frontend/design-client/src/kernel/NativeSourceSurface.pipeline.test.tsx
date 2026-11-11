@@ -370,24 +370,27 @@ test('a seeded zoom-out still presents an already resident sharper viewport befo
  seed.mockRestore()
 })
 
-test('a large pan after zoom-out aborts the stale refine and asks for one coarse strip',async()=>{
+test.each([20, 4000])('a large pan after zoom-out replaces stale work for a source with %i nodes',async nodes=>{
   vi.stubGlobal('OffscreenCanvas',class {})
   vi.stubGlobal('ImageBitmapRenderingContext',class {})
   Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
-  await draw()
+  const snapshot={...source,nodes}
+  await draw(undefined,snapshot)
   const first=state.jobs[0]
   await act(async()=>{deliver(first,0,11);deliver(first,1,12);first.finish();await pause()})
   const second=state.jobs[1]
   await act(async()=>{deliver(second,0,13);deliver(second,1,14);second.finish();await pause();paint()})
   expect(statuses.some(value=>value.phase==='ready')).toBe(true)
-  await draw({x:0,y:0,zoom:.5})
+  await draw({x:0,y:0,zoom:.5},snapshot)
   const refine=state.jobs.at(-1)!
   expect(refine.options.tileViewport?.[0].key.startsWith('navigation-overview:')).toBe(false)
-  await draw({x:-1200,y:0,zoom:.5})
+  await draw({x:-1200,y:0,zoom:.5},snapshot)
   await act(async()=>{paint();await pause()})
   expect(refine.signal?.aborted).toBe(true)
-  const strip=state.jobs.find(job=>job.active&&job.options.tileViewport?.[0].key.startsWith('navigation-overview:'))
-  expect(strip?.options.tileViewport).toHaveLength(1)
+  const next=state.jobs.find(job=>job.active)
+  expect(next?.options.tileViewport).toHaveLength(1)
+  expect(next?.options.tileViewport?.[0].key.startsWith('navigation-overview:')).toBe(nodes===20)
+  if(nodes>20)expect(next?.options.view).toEqual({x:-1200,y:0,zoom:.5})
   expect(state.maxActive).toBe(1)
   expect(statuses.some(value=>value.phase==='error')).toBe(false)
 })

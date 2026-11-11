@@ -170,6 +170,10 @@ export function NativeSourceSurface(props:Props){
         generation:0,acceptedGeneration:0,
       })
     const pipelineFullSource=!!bitmapContext&&!source.materialKeys&&source.nodes>=3000
+    // A coarse strip can contain the entire source and monopolize the raster
+    // owner even at thumbnail density. Once large sources have visible
+    // backing, use resident coverage and request the newly exposed tiles.
+    const allowsCoarsePanCover=()=>!zoomingIn && (!pipelineFullSource||!backing)
     const workQueue=new SourceRenderWork<RasterTile>(overviewMode||pipelineFullSource?SETTLED_SOURCE_PIPELINE_TILES:SOURCE_PIPELINE_TILES)
     let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
     const hover=latest.current.hover
@@ -464,7 +468,8 @@ export function NativeSourceSurface(props:Props){
         // A full-source viewport can take seconds to finish its exact tiles.
         // After input stops, keep replacing the coarse backing region by
         // region wherever the still-resident tiles cover the whole viewport.
-        const settledDetail=!moving&&exact&&refining&&zoomingIn&&!source.materialKeys&&!source.viewportSubset
+        const settledDetail=!moving&&exact&&refining&&!source.materialKeys&&!source.viewportSubset &&
+          (zoomingIn||pipelineFullSource&&translationFollow)
         const wantSharper=(moving&&continuousZoom&&zoomingIn||settledDetail)&&backing&&bitmapContext&&!focal&&!planIsNative
         const promoted=wantSharper?(refining?sharperCoverageFrame(cache.values(),backingTiles,p.view,p):zoomInFramePastPlan(cache.values(),backingTiles,p.view,p,raster.scale)):undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
@@ -553,7 +558,7 @@ export function NativeSourceSurface(props:Props){
     }
     const tileStillNeeded=(tile:RasterTile,next:ReturnType<typeof plan>,settling:boolean,keepPlanned:boolean)=>{
       const missing=next.tiles.some(item=>!cache.has(item.key))
-      if(stripOverview?.tiles.some(base=>base.key===tile.key))return !zoomingIn
+      if(stripOverview?.tiles.some(base=>base.key===tile.key))return allowsCoarsePanCover()
       if(overview?.tiles.some(base=>base.key===tile.key))return !moving
       if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
       if(releaseInFlightForDemand(tile,{scale:next.raster.scale,keys:next.keys,tiles:next.tiles,missing}))return false
@@ -584,7 +589,7 @@ export function NativeSourceSurface(props:Props){
         while(alive&&!failed&&!suspended&&!latest.current.parked){
           const {p,ratio,raster,tiles,prefetch,exact}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key)||cpuRepairs.has(tile.key))
           const optional=missing.length===0
-          const strip=(bitmapContext||renderExecutionPolicy.cpuOnly)&&!zoomingIn?panStripOverview(source.bounds,p.view,p):undefined
+          const strip=(bitmapContext||renderExecutionPolicy.cpuOnly)&&allowsCoarsePanCover()?panStripOverview(source.bounds,p.view,p):undefined
           stripOverview=strip
           const stripTile=strip?.tiles[0]
           const pasteboard=!!stripTile&&viewportExtendsPastPage(source.bounds,p.view,p)
@@ -1030,7 +1035,7 @@ export function NativeSourceSurface(props:Props){
         }
       }
       updateWorkDemand()
-      if(translationFollow&&cache.size&&!zoomingIn){
+      if(translationFollow&&cache.size&&allowsCoarsePanCover()){
         const p=latest.current
         const strip=panStripOverview(source.bounds,p.view,p)
         const stripKey=strip?.tiles[0]?.key
@@ -1042,6 +1047,12 @@ export function NativeSourceSurface(props:Props){
         if(stripKey&&!cache.has(stripKey)&&!(residents.length>0&&tilesCoverBounds(residents,world)))
           workQueue.demand(false,tile=>tile.key===stripKey||retainPannedTile(tile,p.view,p))
       }
+      // Wheel pans have no explicit release. Keep their existing motion
+      // lattice between events on a large source so a brief gap cannot start
+      // an exact batch for an intermediate camera.
+      const quietMs=continuousZoom&&lastInputAt-lastZoomAt<180
+        ? Math.min(SOURCE_WHEEL_QUIET_MS,Math.max(56,wheelInterval*2+8))
+        : pipelineFullSource&&backing&&panned&&!zoomChanged ? SOURCE_WHEEL_QUIET_MS : SOURCE_QUIET_MS
       idleTimer=moving&&!panHeld?setTimeout(()=>{
         if(!alive||failed||suspended)return
         moving=false
@@ -1063,7 +1074,7 @@ export function NativeSourceSurface(props:Props){
             tileStillNeeded(tile,native,true,true))
           schedulePaint();void run()
         }catch(error){fail(error)}
-      },continuousZoom&&lastInputAt-lastZoomAt<180?Math.min(SOURCE_WHEEL_QUIET_MS,Math.max(56,wheelInterval*2+8)):SOURCE_QUIET_MS):undefined
+      },quietMs):undefined
       schedulePaint();void run()
       }catch(error){fail(error)}
     }
