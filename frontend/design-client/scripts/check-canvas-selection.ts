@@ -3,30 +3,27 @@
  * IndexedDB and DOM are read only as evidence. A frozen source copy avoids HMR
  * changes from other work during the run. */
 import { chromium, expect, type Page } from '@playwright/test'
-import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { apply, worldMatrix } from '../src/geometry'
 import { blank, node, uid, type DesignDocument } from '../src/model'
+import { acceptanceCounts, enterOwnedEditor, freezeAcceptanceSnapshot, installGuiLayoutPreference, spawnOwnedVite, stopOwnedProcess, type OwnedWorkspace } from './gui-acceptance-entry.ts'
 
 const project = fileURLToPath(new URL('..', import.meta.url))
 const output = process.env.DESIGN_TEST_OUTPUT || await mkdtemp(join(tmpdir(), 'forma-canvas-selection-'))
-const snapshot = join(output, 'client')
-await mkdir(snapshot, { recursive: true })
-for (const name of ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'tsconfig.json'])
-  await cp(join(project, name), join(snapshot, name), { recursive: true })
-await symlink(join(project, 'node_modules'), join(snapshot, 'node_modules'), 'dir')
+const frozen = await freezeAcceptanceSnapshot(project, output)
+const snapshot = frozen.clientRoot
 const sourceHashes: Record<string, string> = {}
 for (const name of ['Canvas.tsx', 'engine.ts', 'Layers.tsx', 'App.tsx', 'modal-keyboard.ts', 'canvas-pointer-intent.ts', 'selection-hierarchy.ts', 'styles.css'])
   sourceHashes[name] = createHash('sha256').update(await readFile(join(snapshot, 'src', name))).digest('hex')
+Object.assign(sourceHashes, frozen.dependencyHashes)
 await writeFile(join(output, 'source-hashes.json'), JSON.stringify(sourceHashes, null, 2))
-const server = spawn('bun', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '0', '--strictPort'], {
-  cwd: snapshot, stdio: ['ignore', 'pipe', 'pipe'],
-})
+const server = spawnOwnedVite(snapshot)
 let log = '', browser: Awaited<ReturnType<typeof chromium.launch>> | undefined, page: Page | undefined
+let entry: OwnedWorkspace | undefined, failure: unknown
 const errors: string[] = [], checks: { name: string; evidence?: unknown }[] = []
 server.stdout.on('data', chunk => { log += String(chunk) }); server.stderr.on('data', chunk => { log += String(chunk) })
 const scope = [
@@ -49,8 +46,9 @@ try {
   const p = page, canvas = p.getByTestId('canvas'), surface = p.locator('.kernel-reference'), mod = process.platform === 'darwin' ? 'Meta' : 'Control'
   await p.addInitScript(() => localStorage.setItem('forma-render-backend', 'cpu'))
   p.on('pageerror', error => errors.push(String(error)))
+  await installGuiLayoutPreference(p)
   await p.goto(base)
-  await expect(p.locator('.save-status')).toHaveText('已保存到本机', { timeout: 30_000 })
+  entry = await enterOwnedEditor(p, 'new', 'check-canvas-selection')
   const record = () => p.evaluate(async () => { const { localOpen } = await import('/src/local-store.ts'); return (await localOpen())! })
   const stored = async () => (await record()).document as DesignDocument
   const settle = async () => {
@@ -239,7 +237,12 @@ try {
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'passed', scope, sourceHashes, checks, errors, output }, null, 2))
   console.log(JSON.stringify({ status: 'passed', checks: checks.length, output }))
 } catch (error) {
+  failure = error
   await page?.screenshot({ path: join(output, 'failure.png') }).catch(() => {})
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'failed', scope, sourceHashes, checks, errors, error: String(error), output }, null, 2))
   console.error(JSON.stringify({ status: 'failed', error: String(error), output })); throw error
-} finally { await writeFile(join(output, 'vite.log'), log); await browser?.close(); server.kill('SIGTERM') }
+} finally {
+  await writeFile(join(output, 'vite.log'), log)
+  console.log(`ACCEPTANCE_COUNTS ${JSON.stringify(acceptanceCounts('check-canvas-selection', checks, failure, !!entry))}`)
+  await browser?.close(); await stopOwnedProcess(server)
+}

@@ -2,18 +2,16 @@
  * input events, geometry, persistence and returned pixels are never replaced. */
 import { chromium, expect, type Page } from '@playwright/test'
 import { createServer, type Plugin } from 'vite'
-import { cp, mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { blank, node, uid, defaultLayout, type DesignDocument } from '../src/model'
+import { acceptanceCounts, enterOwnedEditor, freezeAcceptanceSnapshot, installGuiLayoutPreference, type OwnedWorkspace } from './gui-acceptance-entry.ts'
 
-const project = resolve(import.meta.dir, '..'), output = await realpath(await mkdtemp(join(tmpdir(), 'forma-pending-input-'))), root = join(output, 'client')
-await mkdir(root)
-for (const name of ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'tsconfig.json'])
-  await cp(join(project, name), join(root, name), { recursive: true })
-await symlink(join(project, 'node_modules'), join(root, 'node_modules'), 'dir')
+const project = resolve(import.meta.dir, '..'), output = await realpath(await mkdtemp(join(tmpdir(), 'forma-pending-input-')))
+const frozen = await freezeAcceptanceSnapshot(project, output), root = frozen.clientRoot
 const baseline = process.env.DESIGN_INPUT_BASELINE
 const reviewCase = process.env.DESIGN_INPUT_REVIEW_CASE
 const sourceOverride = process.env.DESIGN_INPUT_SOURCE_DIR
@@ -24,6 +22,7 @@ if (sourceOverride) for (const name of ['Canvas.tsx', 'engine.ts'])
   await cp(join(sourceOverride, name), join(root, 'src', name))
 const hashes = Object.fromEntries(await Promise.all(['Canvas.tsx', 'engine.ts', 'canvas-published-input.ts', 'kernel/Surface.tsx', 'kernel/client.ts'].map(async name =>
   [name, createHash('sha256').update(await readFile(join(root, 'src', name))).digest('hex')])) )
+Object.assign(hashes, frozen.dependencyHashes)
 await writeFile(join(output, 'source-hashes.json'), JSON.stringify(hashes, null, 2))
 const wrapper = `
 const __realInputRender = KernelClient.prototype.render;
@@ -40,6 +39,7 @@ const injection: Plugin = { name: 'private-render-dispatch-gate', enforce: 'pre'
 } }
 const server = await createServer({ root, cacheDir: join(root, '.vite-cache'), plugins: [injection], server: { host: '127.0.0.1', port: 0, strictPort: true } })
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined, page: Page | undefined
+let entry: OwnedWorkspace | undefined, failure: unknown
 const checks: unknown[] = [], errors: string[] = []
 const passed = (name: string, data?: unknown) => { checks.push({ name, data }); console.log(`PENDING_INPUT ${name}`) }
 try {
@@ -53,6 +53,7 @@ try {
       release() { this.enabled = false; for (const release of this.gates.splice(0)) release() } }
   })
   p.on('pageerror', error => errors.push(String(error)))
+  await installGuiLayoutPreference(p)
   await p.goto(server.resolvedUrls!.local[0])
   const stored = () => p.evaluate(async () => { const { localOpen } = await import('/src/local-store.ts'); return (await localOpen())! })
   const doc = async () => (await stored()).document as DesignDocument
@@ -89,7 +90,7 @@ try {
     await expect(presentation).toHaveAttribute('data-presentation-ready', 'false')
     return pixels
   }
-  await expect(p.locator('.save-status')).toHaveText('已保存到本机', { timeout: 30000 }); await settle()
+  entry = await enterOwnedEditor(p, 'new', 'check-pending-input'); await settle()
   if (!reviewCase) {
   await fresh(); const oldPixels = await holdAfterRename(), view = await camera()
   const a = await point(100, 150), z = await point(200, 210)
@@ -241,7 +242,11 @@ try {
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'passed', baseline, reviewCase, sourceOverride, checks, errors, output, injection: 'Only CPU render dispatch is delayed; actual pixels, WASM and UI events unchanged' }, null, 2))
   console.log(JSON.stringify({ status: 'passed', checks: checks.length, output }))
 } catch (error) {
+  failure = error
   await page?.screenshot({ path: join(output, 'failure.png') }).catch(() => {})
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'failed', baseline, reviewCase, sourceOverride, checks, errors, error: String(error), output }, null, 2))
   console.error(JSON.stringify({ status: 'failed', error: String(error), output })); process.exitCode = 1
-} finally { await browser?.close(); await server.close() }
+} finally {
+  console.log(`ACCEPTANCE_COUNTS ${JSON.stringify(acceptanceCounts('check-pending-input', checks, failure, !!entry))}`)
+  await browser?.close(); await server.close()
+}

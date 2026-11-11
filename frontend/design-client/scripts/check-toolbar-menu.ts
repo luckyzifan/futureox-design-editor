@@ -1,16 +1,17 @@
 /** Owned WebGPU browser regression for toolbar focus, keyboard ownership and bounds. */
 import { chromium, expect, type Page } from '@playwright/test'
-import { spawn } from 'node:child_process'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { blank, node } from '../src/model'
+import { acceptanceCounts, enterOwnedEditor, installGuiLayoutPreference, spawnOwnedVite, stopOwnedProcess, type OwnedWorkspace } from './gui-acceptance-entry.ts'
 
 const output = await mkdtemp(join(tmpdir(), 'forma-toolbar-menu-'))
-const server = spawn('bun', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '0', '--strictPort'], { cwd: new URL('..', import.meta.url), stdio: ['ignore', 'pipe', 'pipe'] })
+const server = spawnOwnedVite(new URL('..', import.meta.url))
 let log = '', browser: Awaited<ReturnType<typeof chromium.launch>> | undefined, page: Page | undefined
 server.stdout.on('data', c => { log += String(c) }); server.stderr.on('data', c => { log += String(c) })
 const errors: string[] = [], checks: unknown[] = [], failures: string[] = []
+let entry: OwnedWorkspace | undefined, failure: unknown
 try {
   const base = await new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Owned Vite timeout')), 20_000)
@@ -22,8 +23,9 @@ try {
   page = await browser.newPage({ viewport: { width: 1280, height: 820 } })
   const p = page
   p.on('pageerror', error => errors.push(String(error)))
+  await installGuiLayoutPreference(p)
   await p.goto(base)
-  await expect(p.locator('.save-status')).toHaveText('已保存到本机', { timeout: 30_000 })
+  entry = await enterOwnedEditor(p, 'new', 'check-toolbar-menu')
   const read = () => p.evaluate(async () => { const { localOpen } = await import('/src/local-store.ts'); return (await localOpen())!.document })
   let sequence = 0
   const fresh = async (second = false) => {
@@ -274,7 +276,12 @@ try {
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'passed', checks, errors, output }, null, 2))
   console.log(JSON.stringify({ status: 'passed', output, checks: checks.length }))
 } catch (error) {
+  failure = error
   await page?.screenshot({ path: join(output, 'failure.png') }).catch(() => {})
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'failed', checks, failures, errors, error: String(error), output }, null, 2))
   console.error(JSON.stringify({ status: 'failed', error: String(error), output })); throw error
-} finally { await writeFile(join(output, 'vite.log'), log); await browser?.close(); server.kill('SIGTERM') }
+} finally {
+  await writeFile(join(output, 'vite.log'), log)
+  console.log(`ACCEPTANCE_COUNTS ${JSON.stringify(acceptanceCounts('check-toolbar-menu', checks, failure, !!entry))}`)
+  await browser?.close(); await stopOwnedProcess(server)
+}

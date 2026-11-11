@@ -1,20 +1,21 @@
 /** Owned browser input and actual WebGPU; no user browser/profile attached. */
 import { chromium, expect } from '@playwright/test'
-import { spawn } from 'node:child_process'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { blank, node, uid } from '../src/model'
+import { acceptanceCounts, enterOwnedEditor, installGuiLayoutPreference, spawnOwnedVite, stopOwnedProcess } from './gui-acceptance-entry.ts'
 const output = await mkdtemp(join(tmpdir(), 'forma-scale-tools-'))
-const server = spawn('bun', ['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','0','--strictPort'], {cwd:new URL('..',import.meta.url),stdio:['ignore','pipe','pipe']})
+const server = spawnOwnedVite(new URL('..',import.meta.url))
 let log='', browser:any, page:any; const checks:any[]=[]
+let entry:any, failure:unknown
 server.stdout.on('data',d=>log+=d);server.stderr.on('data',d=>log+=d)
 try {
  const base=await new Promise<string>((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Vite timeout')),20000);server.stdout.on('data',()=>{const m=log.match(/http:\/\/127\.0\.0\.1:\d+/);if(m){clearTimeout(timer);resolve(m[0])}})})
  browser=await chromium.launch({headless:true,chromiumSandbox:true,args:process.platform==='darwin'?['--use-angle=metal']:[]})
  page=await browser.newPage({viewport:{width:1440,height:940},deviceScaleFactor:2})
  if(!process.env.DESIGN_SCALE_MATERIALS_ONLY){
- await page.goto(base);await expect(page.locator('.save-status')).toHaveText('已保存到本机',{timeout:30000})
+ await installGuiLayoutPreference(page);await page.goto(base);entry=await enterOwnedEditor(page,'new','check-scale-tools')
  const d=blank('Scale real input'),n=node('rectangle',100,100,100,80);d.nodes[n.id]=n;d.pages[0].children=[n.id];const secondPage=uid();d.pages.push({id:secondPage,name:'移动目标',background:'#ffffff',children:[]})
  const fixture=join(output,'input.fd');await writeFile(fixture,JSON.stringify(d));await page.locator('input[type=file][accept*=".fd"]').setInputFiles(fixture)
  const read=()=>page.evaluate(async()=>{const {localOpen}=await import('/src/local-store.ts');return (await localOpen())!.document})
@@ -113,4 +114,4 @@ try {
  })
  checks.push({name:'Actual hardware WebGPU SDR bytes and HDR float bits match equivalent camera transform',...materials})
  await writeFile(join(output,'results.json'),JSON.stringify({status:'passed',checks},null,2));console.log(JSON.stringify({status:'passed',output,checks},null,2))
-}catch(error){await writeFile(join(output,'failure.json'),JSON.stringify({error:String(error),checks},null,2));await page?.screenshot({path:join(output,'failure.png')});console.log(JSON.stringify({status:'failed',output,error:String(error)}));throw error}finally{await browser?.close();server.kill('SIGTERM')}
+}catch(error){failure=error;await writeFile(join(output,'failure.json'),JSON.stringify({error:String(error),checks},null,2));await page?.screenshot({path:join(output,'failure.png')});console.log(JSON.stringify({status:'failed',output,error:String(error)}));throw error}finally{console.log(`ACCEPTANCE_COUNTS ${JSON.stringify(acceptanceCounts('check-scale-tools',checks,failure,!!entry))}`);await browser?.close();await stopOwnedProcess(server)}

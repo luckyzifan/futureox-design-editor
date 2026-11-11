@@ -2,20 +2,19 @@
  * object is injected. Synthetic events are limited to explicitly labelled
  * non-owner pointer up/cancel checks, with a real mouse-owned gesture active. */
 import { chromium, expect, type Page } from '@playwright/test'
-import { spawn } from 'node:child_process'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { blank, node, type DesignDocument, type DesignNode } from '../src/model'
+import { acceptanceCounts, enterOwnedEditor, installGuiLayoutPreference, readOwnedWorkspace, spawnOwnedVite, stopOwnedProcess, type OwnedWorkspace } from './gui-acceptance-entry.ts'
 
 const output = process.env.DESIGN_TEST_OUTPUT || await mkdtemp(join(tmpdir(), 'forma-canvas-tools-'))
 await mkdir(output, { recursive: true })
-const server = spawn('bun', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '0', '--strictPort'], {
-  cwd: new URL('..', import.meta.url), stdio: ['ignore', 'pipe', 'pipe'],
-})
+const server = spawnOwnedVite(new URL('..', import.meta.url))
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined, page: Page | undefined
 let serverLog = '', sequence = 0
 const checks: { name: string; scope?: string }[] = [], errors: string[] = []
+let entry: OwnedWorkspace | undefined, failure: unknown
 server.stdout.on('data', chunk => { serverLog = (serverLog + String(chunk)).slice(-128 * 1024) })
 server.stderr.on('data', chunk => { serverLog = (serverLog + String(chunk)).slice(-128 * 1024) })
 const manual = [
@@ -35,8 +34,9 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 940 }, deviceScaleFactor: 2, permissions: ['clipboard-read', 'clipboard-write'] })
   const p = page, canvas = p.getByTestId('canvas'), surface = p.locator('.kernel-tiles')
   p.on('pageerror', error => errors.push(String(error)))
+  await installGuiLayoutPreference(p)
   await p.goto(url)
-  await expect(p.locator('.save-status')).toHaveText('已保存到本机', { timeout: 30_000 })
+  entry = await enterOwnedEditor(p, 'new', 'check-canvas-tools')
   const record = () => p.evaluate(async () => { const { localOpen } = await import('/src/local-store.ts'); return await localOpen() })
   const document = async () => (await record())!.document as DesignDocument
   const settle = async () => {
@@ -285,7 +285,7 @@ try {
   await finish(); await settle()
   expect((await record())!.revision).toBe(fractionalBefore!.revision)
   expect(await document()).toEqual(fractionalBefore!.document)
-  await expect(p.locator('.save-status')).toHaveText('已保存到本机')
+  await readOwnedWorkspace(p)
   fractionalAnchor = (await p.getByTestId('vector-anchor').first().boundingBox())!
   nativeDown = await observedDown({ x: fractionalAnchor.x + fractionalAnchor.width / 2, y: fractionalAnchor.y + fractionalAnchor.height / 2 })
   await p.mouse.move(nativeDown.clientX + 23, nativeDown.clientY + 17, { steps: 4 })
@@ -380,11 +380,13 @@ try {
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'passed', checks, errors, manual, output, browser: browser.version(), platform: process.platform }, null, 2))
   console.log(JSON.stringify({ status: 'passed', checks, output }))
 } catch (error) {
+  failure = error
   await page?.screenshot({ path: join(output, 'failure.png') }).catch(() => {})
   if (page) await writeFile(join(output, 'failure-ui.txt'), await page.locator('body').innerText().catch(() => 'unavailable'))
   await writeFile(join(output, 'results.json'), JSON.stringify({ status: 'failed', checks, errors, manual, error: String(error), output }, null, 2))
   console.error(JSON.stringify({ status: 'failed', error: String(error), output })); throw error
 } finally {
   await writeFile(join(output, 'vite.log'), serverLog)
-  await browser?.close(); server.kill('SIGTERM')
+  console.log(`ACCEPTANCE_COUNTS ${JSON.stringify(acceptanceCounts('check-canvas-tools', checks, failure, !!entry))}`)
+  await browser?.close(); await stopOwnedProcess(server)
 }

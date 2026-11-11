@@ -1,10 +1,10 @@
 /** Real owned browser: scale units, UI chrome, document persistence and input. */
 import { chromium, expect } from '@playwright/test'
-import { spawn } from 'node:child_process'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { blank, node, paint, stroke, effect, validateDocument, defaultTextStyle } from '../src/model'
+import { acceptanceCounts, enterOwnedEditor, installGuiLayoutPreference, spawnOwnedVite, stopOwnedProcess } from './gui-acceptance-entry.ts'
 const output=await mkdtemp(join(tmpdir(),'forma-property-layout-'))
 const doc=blank('Scale child properties'), frame=node('frame',100,100,256,256), lens=node('rectangle',16,16,96,96), text=node('text',16,132,120,30), other=node('rectangle',410,16,192,96)
 frame.children=[lens.id,text.id];lens.radii=[16,16,16,16];lens.strokes=[{...stroke(),width:2,dash:'4 2'}]
@@ -12,14 +12,15 @@ lens.fills=[{...paint('#ffffff'),opacity:.15}];lens.effects=[{...effect('glass')
 text.text='Scale child';text.fontSize=12;text.textStyle={...defaultTextStyle(),letterSpacing:2,paragraphSpacing:3,paragraphIndent:4}
 doc.schemaVersion=5;doc.nodes={[frame.id]:frame,[lens.id]:lens,[text.id]:text,[other.id]:other};doc.pages[0].children=[frame.id,other.id];validateDocument(doc)
 const input=join(output,'input.fd');await writeFile(input,JSON.stringify(doc))
-const server=spawn('bun',['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','0','--strictPort'],{cwd:new URL('..',import.meta.url),stdio:['ignore','pipe','pipe']})
+const server=spawnOwnedVite(new URL('..',import.meta.url))
 let log='',browser:any,page:any;const checks:any[]=[],errors:string[]=[]
+let entry:any,failure:unknown
 server.stdout.on('data',d=>log+=d);server.stderr.on('data',d=>log+=d)
 try{
  const base=await new Promise<string>((resolve,reject)=>{const t=setTimeout(()=>reject(Error('Vite timeout')),20000);server.stdout.on('data',()=>{const m=log.match(/http:\/\/127\.0\.0\.1:\d+/);if(m){clearTimeout(t);resolve(m[0])}})})
  browser=await chromium.launch({headless:true,chromiumSandbox:true,args:process.platform==='darwin'?['--use-angle=metal']:[]});page=await browser.newPage({viewport:{width:1440,height:940},deviceScaleFactor:2})
- page.on('pageerror',e=>errors.push(String(e)));await page.addInitScript(()=>localStorage.setItem('forma-render-backend','webgpu'));await page.goto(base)
- await expect(page.locator('.save-status')).toHaveText('已保存到本机',{timeout:30000})
+ page.on('pageerror',e=>errors.push(String(e)));await page.addInitScript(()=>localStorage.setItem('forma-render-backend','webgpu'));await installGuiLayoutPreference(page);await page.goto(base)
+ entry=await enterOwnedEditor(page,'new','check-property-layout')
  await page.locator('input[type=file][accept*=".fd"]').setInputFiles(input);await expect(page.getByLabel('文档名称')).toHaveValue(doc.name)
  const canvas=page.getByTestId('canvas'), settle=()=>expect(page.locator('.kernel-presentation')).toHaveAttribute('data-presentation-ready','true',{timeout:30000})
  const read=()=>page.evaluate(async()=>{const{localOpen}=await import('/src/local-store.ts');return(await localOpen())!.document})
@@ -47,7 +48,7 @@ try{
  for(const[label,value]of [['字号','24'],['字间距','4'],['段落间距','6'],['首行缩进','8']])await expect(page.getByLabel(label,{exact:true})).toHaveValue(value)
  await page.getByLabel('字号',{exact:true}).fill('30');await page.getByLabel('字号',{exact:true}).press('Enter')
  await expect.poll(async()=>(await read()).nodes[text.id].fontSize).toBe(15)
- const saved=await read();await page.reload();await expect(page.getByLabel('文档名称')).toHaveValue(doc.name);await settle();expect((await read()).nodes).toEqual(saved.nodes)
+ const saved=await read();await page.reload();await enterOwnedEditor(page,'resume','check-property-layout');await expect(page.getByLabel('文档名称')).toHaveValue(doc.name);await settle();expect((await read()).nodes).toEqual(saved.nodes)
  checks.push({name:'Effective physical X/stroke/dash/glass/text edits persist as precise native units and survive reload'})
  await page.getByTestId(`layer-${frame.id}`).click();await page.getByRole('radio',{name:'横向布局',exact:true}).click()
  await expect(page.getByLabel('项目间距',{exact:true})).toHaveValue('24');await expect(page.getByLabel('上内边距',{exact:true})).toHaveValue('32')
@@ -76,4 +77,4 @@ try{
  expect((await page.locator('.layers-panel').boundingBox()).width).toBe(250);expect((await page.locator('.document-title').boundingBox()).width).toBe(250)
  await page.screenshot({path:join(output,'03-narrow-shell.png')});checks.push({name:'HDR action remains reachable, minimize/restore works, and title tracks resized left panel at 1000px'})
  expect(errors).toEqual([]);await writeFile(join(output,'results.json'),JSON.stringify({status:'passed',checks,errors},null,2));console.log(JSON.stringify({status:'passed',output,checks:checks.length}))
-}catch(error){await page?.screenshot({path:join(output,'failure.png')});await writeFile(join(output,'failure.json'),JSON.stringify({error:String(error),checks,errors},null,2));console.log(JSON.stringify({status:'failed',output,error:String(error)}));throw error}finally{await browser?.close();server.kill('SIGTERM')}
+}catch(error){failure=error;await page?.screenshot({path:join(output,'failure.png')});await writeFile(join(output,'failure.json'),JSON.stringify({error:String(error),checks,errors},null,2));console.log(JSON.stringify({status:'failed',output,error:String(error)}));throw error}finally{console.log(`ACCEPTANCE_COUNTS ${JSON.stringify(acceptanceCounts('check-property-layout',checks,failure,!!entry))}`);await browser?.close();await stopOwnedProcess(server)}
