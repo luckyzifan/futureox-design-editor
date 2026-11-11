@@ -2,11 +2,11 @@
 
 The editable document does not have a fixed 32 MiB product quota. It still needs
 finite resources. Desktop main samples available memory, physical memory and a
-reported process/cgroup constraint once at startup, reserves half of that budget,
-and pins the result across preload, codec/preparation workers, the Rust sidecar
-and WASM. The wasm32 address space is an independent architectural ceiling, not
-evidence that the machine has that much free memory. Unknown runtimes use a
-conservative fallback and must not describe it as detected availability.
+reported process/cgroup constraint once at startup. It reserves half when the
+smallest reading is at most 2 GiB. Above that, it reserves the larger of 1 GiB
+and one third of the reading. It caps the remaining working allowance at 4 GiB
+for wasm32 and pins it across preload, codec/preparation workers, the Rust
+sidecar and WASM. Unknown runtimes use a conservative fallback.
 
 `CORE_DOCUMENT_MEMORY_BYTES` is trusted launch policy, not authored metadata or
 an MCP/renderer operation. The host forwards its exact admitted value to owned

@@ -3,6 +3,7 @@ import { totalmem, freemem } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 const MIB = 1024 * 1024
+const WASM_ADDRESS_BYTES = 4 * 1024 * MIB
 export function macosAvailableMemoryBytes(text) {
   const size=/page size of ([0-9]+) bytes/.exec(text.split('\n')[0])?.[1]
   if(!size)return undefined
@@ -16,11 +17,15 @@ export function macosAvailableMemoryBytes(text) {
 }
 export function selectDocumentMemoryBytes({ total, available, constrained = 0, configured } = {}) {
   const usable = [total, available, constrained].filter(value => Number.isSafeInteger(value) && value > 0)
-  // This application shares documents with wasm32. Its address space is a
-  // separate architectural ceiling, not evidence of available machine memory.
-  const detected = Math.floor(Math.min(4 * 1024 * MIB, ...usable) / 2)
-  const fallback = 512 * MIB
-  const ceiling = usable.length ? detected : fallback
+  let ceiling = 512 * MIB
+  if (usable.length) {
+    const availableBytes = Math.min(...usable)
+    // Keep half on constrained hosts. As availability grows, reserve at
+    // least 1 GiB and a third of the available memory for other work.
+    const reserve = Math.max(Math.ceil(availableBytes / 3), Math.min(1024 * MIB, Math.ceil(availableBytes / 2)))
+    // Apply the wasm32 address ceiling to the working allowance itself.
+    ceiling = Math.min(WASM_ADDRESS_BYTES, availableBytes - reserve)
+  }
   if (configured === undefined || configured === '') return ceiling
   if (!/^[1-9][0-9]*$/.test(configured)) throw new TypeError('CORE_DOCUMENT_MEMORY_BYTES must be a positive decimal integer')
   const value = Number(configured)
@@ -45,7 +50,7 @@ function availableMemory() {
 // capacity halfway through an atomic edit/save/reopen operation.
 const inherited = process.env.CORE_DOCUMENT_MEMORY_INHERITED === '1'
 const inheritedBytes = Number(process.env.CORE_DOCUMENT_MEMORY_BYTES)
-if (inherited && (!Number.isSafeInteger(inheritedBytes) || inheritedBytes < MIB || inheritedBytes > 4 * 1024 * MIB)) throw new TypeError('Invalid inherited document memory policy')
+if (inherited && (!Number.isSafeInteger(inheritedBytes) || inheritedBytes < MIB || inheritedBytes > WASM_ADDRESS_BYTES)) throw new TypeError('Invalid inherited document memory policy')
 export const DOCUMENT_MEMORY_BYTES = inherited ? inheritedBytes : selectDocumentMemoryBytes({ total: totalmem(), available: availableMemory(),
   constrained: typeof process.constrainedMemory === 'function' ? process.constrainedMemory() : 0,
   configured: process.env.CORE_DOCUMENT_MEMORY_BYTES })

@@ -27,8 +27,12 @@ test('stream writes keep multipart wire bytes and sequence unchanged beyond the 
  assert.deepEqual([...documentWrites(bytes,'chunked',MIB)],[...documentFrames(bytes,'chunked',MIB)])
 })
 test('startup capacity reflects available memory and cgroup constraints, not a document business quota',()=>{
- assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:3*1024*MIB}),1536*MIB)
+ assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:3*1024*MIB}),2048*MIB)
+ assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:2560*MIB}),1536*MIB)
+ assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:8*1024*MIB}),4096*MIB)
+ assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:8*1024*MIB,configured:String(3072*MIB)}),3072*MIB)
  assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:3*1024*MIB,constrained:1024*MIB}),512*MIB)
+ assert.throws(()=>selectDocumentMemoryBytes({total:16*1024*MIB,available:8*1024*MIB,configured:String(4096*MIB+1)}))
  assert.equal(selectDocumentMemoryBytes({}),512*MIB)
  assert.throws(()=>selectDocumentMemoryBytes({total:1024*MIB,available:512*MIB,configured:String(512*MIB)}))
  assert.throws(()=>selectDocumentMemoryBytes({configured:'Infinity'}))
