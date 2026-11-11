@@ -3054,12 +3054,6 @@ export class GpuRenderer {
     const phase=this.prepareGradientPhase(n,p)
     if(phase)return phase.then(()=>this.paintWithBoundedImageFields(n,p,mask))
     const source = n.previewSource || n
-    if(this.scene.sourceDetailTile && this.driver.name==='webgpu' && this.driver.managed &&
-        ['linear','radial','angular','diamond'].includes(p.kind) && n.rect.w*n.rect.h>4_194_304 &&
-        source.rect.w===n.rect.w && source.rect.h===n.rect.h){
-      if(this.imageGrids.get(p)?.has(this.sampleIndex??4)||this.gradientAxisGrid(n,p))return this.paint(n,p,mask,undefined,true)
-      return this.paintSourceGradientBands(n,p,mask)
-    }
     if(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'&&this.driver.windowedGradientFields&&this.driver.captureDisplay&&
         this.scene.nativeInteraction&&this.scene.interactionRetained&&!this.interactionCapturing&&!this.scene.softwareRaster&&
         ['linear','radial','angular','diamond'].includes(p.kind)&&n.rect.w*n.rect.h<=4_194_304&&
@@ -3275,6 +3269,18 @@ export class GpuRenderer {
   private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface): Surface
   private paint(n: GpuNode, p: GpuPaint, mask: Surface, material: Surface | undefined, admit: true, parameterField?:Surface): Surface | Promise<Surface>
   private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface, admit = false, parameterField?:Surface): Surface | Promise<Surface> {
+    const source = n.previewSource || n
+    if (admit && !parameterField && this.driver.name === 'webgpu' && this.driver.managed &&
+        n.rect.w*n.rect.h > SAMPLING_DENSE_PIXEL_LIMIT && ['linear','radial','angular','diamond'].includes(p.kind) &&
+        source.rect.w === n.rect.w && source.rect.h === n.rect.h &&
+        (this.scene.sourceDetailTile || this.outputFrame?.present && !this.outputFrame.readback &&
+          !this.driver.hdr && !this.driver.displayMath && !this.scene.softwareRaster &&
+          exactBlendLattice([n.rect,source.rect])) &&
+        !this.fixedUnitGradient(n,p) && !this.imageGrids.get(p)?.has(this.sampleIndex??4) && !this.gradientAxisGrid(n,p)) {
+      // Both analytic and coherent display paths can exceed the dense field
+      // cap. The bands keep the original paint domain and sample coordinates.
+      return this.paintSourceGradientBands(n,p,mask)
+    }
     let image: Surface | undefined
     let imageLevel = 0
     let imageOrigin: [number, number] = [0, 0]

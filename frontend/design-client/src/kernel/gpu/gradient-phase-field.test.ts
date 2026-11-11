@@ -89,6 +89,43 @@ test('source display interpolates a single linear stop interval at each original
    expect(r.linearGradientCorners(crossing,{...p,transform:[1,0,0,1,0,0]},0)).toBeUndefined()
  }finally{r.dispose()}
 })
+test('analytic display renders an oversized gradient in exact bands at the original sample phase',async()=>{
+ const {driver,renderer:r}=fixture()
+ Object.assign(driver,{uploadParameters:driver.uploadLinear})
+ const n={id:'oversized-gradient',rect:{x:-64,y:20,w:2049,h:2048},size:[170,200],
+  matrix:[7,2,-1,8,-16,20],inverse:[8/58,-2/58,1/58,7/58,108/58,-172/58]}
+ const p={...paint('#123456','angular'),stops:[{offset:0,color:'#123456'},{offset:1,color:'#90aabb'}]}
+ const mask={texture:driver.create(n.rect.w,n.rect.h),rect:n.rect}
+ r.busy.add(mask.texture)
+ r.used.add(mask.texture)
+ r.bytes=mask.texture.bytes
+ r.frameBudget=256*1024*1024
+ r.scene.interactionWindow={x:37,y:70,w:233,h:278}
+ r.scene.sourceDetailTile=false
+ r.outputFrame={present:true,readback:false}
+ r.gradientPhaseRequest=false
+ r.sampleIndex=2
+ try{
+  const output=await r.paint(n,p,mask,undefined,true)
+  expect(output.rect).toEqual(n.rect)
+  const draws=driver.pass.mock.calls as unknown as [Texture,Float32Array,Texture[],{x:number;y:number;w:number;h:number}][]
+  expect(draws.length).toBeGreaterThan(1)
+  expect(driver.uploadLinear).toHaveBeenCalledTimes(draws.length)
+  const expectedRegion=r.drawRegion(n.rect)
+  expect(draws.reduce((total,draw)=>total+draw[3].w*draw[3].h,0)).toBe(expectedRegion.w*expectedRegion.h)
+  for(const [index,[texture,uniforms,,band]] of draws.entries()){
+   const [values,w,h]=driver.uploadLinear.mock.calls[index]
+   expect(texture).toBe(output.texture)
+   expect(Array.from(uniforms.slice(188,192))).toEqual([1,band.x,band.y,0])
+   expect([w,h]).toEqual([band.w,band.h])
+   expect(values.byteLength).toBeLessThanOrEqual(2*1024*1024)
+   const region={...band,x:n.rect.x+band.x,y:n.rect.y+band.y}
+   const expected=gradient_sampling_grid_region(JSON.stringify(n.rect),JSON.stringify(region),
+    new Float64Array(n.matrix),new Float64Array(n.size),JSON.stringify(p),r.sampleIndex)
+   expect(new Uint32Array(values.buffer)).toEqual(new Uint32Array(expected.buffer))
+  }
+ }finally{r.dispose()}
+})
 test('field containers reject foreign dimensions, shared buffers and invalid block pointers',()=>{
  const p={...paint('#123456'),kind:'radial'},builder=new GradientPhaseFieldBuilder(JSON.stringify({x:0,y:0,w:17,h:19}),new Float64Array([1,0,0,1,0,0]),new Float64Array([20,20]),JSON.stringify(p))
  let words:Uint32Array

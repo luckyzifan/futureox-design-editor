@@ -40,6 +40,11 @@ type Tile=TileResult&{serial:number;used:number;lastSubmission:number;placement?
 // worker. A larger batch is unnecessary and would extend cancellation work.
 const SOURCE_PIPELINE_TILES=2
 const SOURCE_QUIET_MS=32
+const SOURCE_PASTEBOARD = {
+  backgroundColor:'#e6e8ec',
+  backgroundImage:'repeating-conic-gradient(#dde0e6 0% 25%, #e6e8ec 0% 50%)',
+  backgroundSize:'8px 8px',
+}
 // Wheel events can arrive several display frames apart. Keep advancing the
 // active zoom ladder between events instead of repeatedly settling a gesture.
 const SOURCE_WHEEL_QUIET_MS=100
@@ -95,6 +100,8 @@ export function NativeSourceSurface(props:Props){
     let shownMaterials:readonly OverviewMaterial[]|undefined
     let partialMaterials:readonly OverviewMaterial[]|undefined
     let startupPreview: {scale:number} | undefined
+    const surface=outer.current!
+    let underlayCovers=false
     const project=()=>{
       const p=latest.current
       if (startupPreview && !backing) {
@@ -112,8 +119,15 @@ export function NativeSourceSurface(props:Props){
         element.style.transform='translate('+(p.view.x+source.bounds.x*p.view.zoom)+'px,'+(p.view.y+source.bounds.y*p.view.zoom)+'px)'
         return {active:true,changed:true}
       }
-      return projection.update(backing,p.view,p.width,p.height,!!bitmapContext,source.bounds,
-        !!backing && !!p.underlay?.current?.(p.view,p.width,p.height))
+      const covers=!!backing && !!p.underlay?.current?.(p.view,p.width,p.height)
+      if(covers!==underlayCovers){
+        // The opening layer can sit below this surface. Its decoded pixels
+        // must be visible when the native canvas gives way to that layer.
+        underlayCovers=covers
+        surface.style.backgroundColor=covers?'transparent':SOURCE_PASTEBOARD.backgroundColor
+        surface.style.backgroundImage=covers?'none':SOURCE_PASTEBOARD.backgroundImage
+      }
+      return projection.update(backing,p.view,p.width,p.height,!!bitmapContext,source.bounds,covers)
     }
     badge.className='kernel-status';badge.setAttribute('role','status');badge.setAttribute('aria-label','完整画板显示状态')
     Object.assign(badge.style,{position:'absolute',right:'14px',top:'var(--kernel-status-top, 12px)',fontSize:'11px',color:'#7b8190',zIndex:'5'})
@@ -1055,6 +1069,7 @@ export function NativeSourceSurface(props:Props){
     })()
     return()=>{
       alive=false;wake.current=()=>{}
+      if(underlayCovers)Object.assign(surface.style,SOURCE_PASTEBOARD)
       if(hover&&hover.pick===pick){delete hover.pick;hover.refresh?.()}
       const settled=mounted.current&&!!bitmapContext&&!!source.materialKeys&&initialized&&!failed&&
         !workQueue.current?.pending.size&&acknowledged===submission&&lastStatus.startsWith('ready/')
@@ -1080,7 +1095,7 @@ export function NativeSourceSurface(props:Props){
   useLayoutEffect(()=>{props.hover?.refresh?.()},[props.hover,props.hidden,park,props.source?.token,props.panGestureActive])
   useLayoutEffect(()=>wake.current(),[props.view.x,props.view.y,props.view.zoom,props.width,props.height,props.panGestureActive,park,crop?.x,crop?.y,crop?.width,crop?.height,dpr])
   useLayoutEffect(()=>{handoff.project(props.source,props.overviewBoxes,props.view,props.width,props.height,dpr)},[props.source,props.overviewBoxes,props.view,props.width,props.height,dpr,handoff])
-  return <div ref={outer} className="native-source-surface" style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',overflow:'hidden',visibility:props.hidden||outsideScope?'hidden':undefined,clipPath:props.clipPath,backgroundColor:'#e6e8ec',backgroundImage:'repeating-conic-gradient(#dde0e6 0% 25%, #e6e8ec 0% 50%)',backgroundSize:'8px 8px'}}>
+  return <div ref={outer} className="native-source-surface" style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',overflow:'hidden',visibility:props.hidden||outsideScope?'hidden':undefined,clipPath:props.clipPath,...SOURCE_PASTEBOARD}}>
     <div ref={host} style={{position:'absolute',inset:0,overflow:'hidden'}}/>
   </div>
 }
