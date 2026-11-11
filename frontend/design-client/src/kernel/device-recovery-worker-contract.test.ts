@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { beginDeviceRecovery, deviceDiagnosticFields, deviceLifecyclePhase, registerDeviceDiagnosticOwner } from './gpu/device-lifecycle-diagnostics'
 import { setGpuDiagnosticSink } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { recoverFailedTileRenderer } from './tile-failure'
 import { recoverPreviewBudget } from './preview-budget-recovery'
+import { DisplayCommandOrder } from './display-command-order'
+import { transformSync } from 'esbuild'
 const source = readFileSync(new URL('./render-worker.ts', import.meta.url), 'utf8')
 afterEach(() => setGpuDiagnosticSink(undefined))
 // Execute the actual worker recovery boundaries with the actual recovery helpers;
@@ -41,4 +43,44 @@ for (const kind of ['tile', 'preview'] as const) test(`${kind} recovery failure 
   expect(rows.find(row => row.deviceRecoveryKind === 1)).toMatchObject({
     requestId: 75, devicePreviousIncarnation: identity.deviceIncarnation, devicePhase: deviceLifecyclePhase.recoveryStart,
   })
+})
+
+test('a parked raster driver still receives the displayed bitmap receipt and the latest camera', () => {
+  const presentFrame = vi.fn()
+  const acceptPresentation = vi.fn()
+  const driver = { attachPresenter: vi.fn(), presentFrame, acceptPresentation }
+  const scheduled: Array<() => void> = []
+  class TestMessageChannel {
+    port1 = { onmessage: () => {} }
+    port2 = { postMessage: () => scheduled.push(() => this.port1.onmessage()) }
+  }
+  const displayState = source.slice(source.indexOf('let displayCanvas:'), source.indexOf('const navigationJournal ='))
+  const attach = source.slice(source.indexOf('let reportedResidentAttachment'), source.indexOf('async function recoverTileFailure'))
+  const commands = source.slice(source.indexOf("  if(request.command==='display-accept')"), source.indexOf("  if(request.command==='display-read-pixel'"))
+  const { code } = transformSync(`function createControl(driver, MessageChannel, DisplayCommandOrder, reportDisplay) {
+    let gpu = { driver }
+    const navigationJournal = { recording: false }
+    const displayedOverlayAffines = () => undefined
+    let poseSession
+    ${displayState}
+    ${attach}
+    displayCanvas = {}
+    prepareDisplay()
+    return { parkRaster: () => { gpu = undefined }, dispatch: request => { ${commands} } }
+  }`, { loader: 'ts', target: 'es2022' })
+  const createControl = new Function(`${code}\nreturn createControl`)()
+  const control = createControl(driver, TestMessageChannel, DisplayCommandOrder, vi.fn())
+
+  const previous = { view: { x: 0, y: 0, zoom: .56 } }
+  control.dispatch({ command: 'display-frame', sequence: 1, frame: previous })
+  scheduled.shift()?.()
+  expect(presentFrame).toHaveBeenCalledWith(previous)
+
+  control.parkRaster()
+  control.dispatch({ command: 'display-accept', token: 103, accepted: true })
+  expect(acceptPresentation).toHaveBeenCalledExactlyOnceWith(103, true)
+  const current = { view: { x: -10, y: -20, zoom: 1 } }
+  control.dispatch({ command: 'display-frame', sequence: 2, frame: current })
+  scheduled.shift()?.()
+  expect(presentFrame).toHaveBeenLastCalledWith(current)
 })

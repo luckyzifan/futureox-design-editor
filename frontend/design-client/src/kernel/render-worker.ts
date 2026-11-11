@@ -142,9 +142,22 @@ let displayFramePending = false
 let displayOrderSequence = 0
 const displayOrder = new DisplayCommandOrder()
 const displayTasks = new MessageChannel()
+// A parked raster driver can keep its presenter, visible bitmap and tiles.
+// Route the display handoff to that owner even while raster recovery clears gpu.
+let displayAttachment: { driver: Driver; canvas: OffscreenCanvas } | undefined
+function scheduleDisplayFrame() {
+  if (!displayFrame || displayFramePending) return
+  displayFramePending = true
+  // Input already follows the window animation clock. Coalesce worker commands
+  // at a task boundary to avoid a second, independently throttled rAF.
+  displayTasks.port2.postMessage(0)
+}
 displayTasks.port1.onmessage=()=>{
   displayFramePending=false
-  try{if(displayFrame)gpu?.driver.presentFrame?.(displayFrame)}catch(error){reportDisplay({error:String(error)})}
+  const attachment = displayAttachment
+  try {
+    if (displayFrame && attachment && attachment.canvas === displayCanvas) attachment.driver.presentFrame?.(displayFrame)
+  } catch (error) { reportDisplay({ error: String(error) }) }
 }
 const navigationJournal = new NavigationJournal()
 let navigationCompileSequence = 0, navigationCaptureGeneration = 0
@@ -209,8 +222,16 @@ let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
   if (!gpu) return
   if (displayCanvas) {
-    gpu.driver.attachPresenter?.(displayCanvas, reportDisplay, atomicDisplay)
-    const reason = gpu.driver.attachPresenter ? 'attached' : 'driver-unavailable'
+    const driver = gpu.driver
+    const previous = displayAttachment
+    driver.attachPresenter?.(displayCanvas, reportDisplay, atomicDisplay)
+    if (!driver.attachPresenter) displayAttachment = undefined
+    else if (previous?.driver !== driver || previous.canvas !== displayCanvas) {
+      displayAttachment = { driver, canvas: displayCanvas }
+      // The current frame may have arrived before the presenter was attached.
+      scheduleDisplayFrame()
+    }
+    const reason = driver.attachPresenter ? 'attached' : 'driver-unavailable'
     if (reportedResidentAttachment !== reason) {
       reportedResidentAttachment = reason
       reportDisplay({residentAttached:reason === 'attached',residentAttachmentReason:reason})
@@ -717,7 +738,7 @@ self.onmessage = (e) => {
     return
   }
   if(request.command==='display-accept'){
-    try{if(Number.isSafeInteger(request.token)&&request.token>0)gpu?.driver.acceptPresentation?.(request.token,request.accepted===true)}catch(error){reportDisplay({error:String(error)})}
+    try{if(Number.isSafeInteger(request.token)&&request.token>0)displayAttachment?.driver.acceptPresentation?.(request.token,request.accepted===true)}catch(error){reportDisplay({error:String(error)})}
     return
   }
   if (request.command === 'display-frame') {
@@ -732,26 +753,23 @@ self.onmessage = (e) => {
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
     if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
-    if (!displayFramePending) {
-      displayFramePending=true
-      // Input is already coalesced on the window's animation clock. A second
-      // worker rAF can be throttled independently; use a task boundary here.
-      displayTasks.port2.postMessage(0)
-    }
+    scheduleDisplayFrame()
     return
   }
   if (request.command === 'display-navigation-release') {
-    gpu?.driver.releaseNavigationTransfer?.(request.token)
+    displayAttachment?.driver.releaseNavigationTransfer?.(request.token)
     return
   }
   if(request.command==='display-read-pixel'||request.command==='display-capture-content'||request.command==='display-navigation-tile'){
+    const attachment = displayAttachment
+    const driver = attachment?.canvas === displayCanvas ? attachment?.driver : undefined
     void (async()=>{
       try{
-        const result=request.command==='display-navigation-tile'?await gpu?.driver.captureNavigationTile?.(request.tile,request.id):
-          request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
+        const result=request.command==='display-navigation-tile'?await driver?.captureNavigationTile?.(request.tile,request.id):
+          request.command==='display-read-pixel'?await driver?.readContentPixel?.(request.u,request.v,request.expected):await driver?.captureContentBitmap?.()
         if(!result)throw Error('No displayed document content')
         try { self.postMessage({id:request.id,...result},{transfer:'bitmap' in result?[result.bitmap]:[]}) }
-        catch (error) { if ('bitmap' in result) result.bitmap.close(); if ('navigationToken' in result) gpu?.driver.releaseNavigationTransfer?.(result.navigationToken); throw error }
+        catch (error) { if ('bitmap' in result) result.bitmap.close(); if ('navigationToken' in result) driver?.releaseNavigationTransfer?.(result.navigationToken); throw error }
       }catch(error){self.postMessage({id:request.id,error:String(error)})}
     })()
     return
@@ -786,7 +804,7 @@ self.onmessage = (e) => {
   if (request.command === 'display-release') {
     frozenOverlayPoses.release(request.ids)
     if(poseSession&&request.ids.includes(poseSession.slot)){poseSession?.controller.abort();poseSession=undefined;pendingPose=undefined}
-    gpu?.driver.releasePresented?.(request.ids); return
+    displayAttachment?.driver.releasePresented?.(request.ids); return
   }
   if (request.command === 'cancel-request') {
     if (!Number.isSafeInteger(request.requestId)) return
