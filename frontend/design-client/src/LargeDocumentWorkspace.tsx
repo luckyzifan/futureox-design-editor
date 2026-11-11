@@ -80,9 +80,17 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const requestDetail=useCallback((indices:number[],retry=false,fromViewport=false)=>{
     const key=indices.join(',')
     if(key===demand.current && !(retry && key===declinedDemand.current))return
+    const previousViewportDemand=viewportDemand.current
     demandGeneration.current++;demand.current=key;declinedDemand.current='';viewportDemand.current=fromViewport;requestedIndices.current=indices;setDetailIndices(indices)
-    if(!indices.length)setShowOpening(true)
-    if(detailRunning.current && preparingKeys.current.length && indices.length){
+    if(!indices.length){
+      setShowOpening(true)
+      // The user has panned past the detail scope. Releasing its conversion
+      // lets a returning viewport recall its displayed scope immediately.
+      if(fromViewport&&previousViewportDemand&&detailRunning.current&&preparingKeys.current.length)
+        void bridge.cancel().catch(()=>{})
+      return
+    }
+    if(detailRunning.current && preparingKeys.current.length){
       const items=itemsForSnapshot.current,wanted=indices.map(i=>items[i]?.key)
       const current=nativeSnapshotRef.current
       const active=current&&current.token===lastMaterialToken.current&&!current.viewportSubset?current:undefined

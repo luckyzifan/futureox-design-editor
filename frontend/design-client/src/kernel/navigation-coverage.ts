@@ -125,6 +125,8 @@ export type NavigationCoverageFlight<T> = {
   contract: object; generation: number; tile?: T; done: Promise<void>; finish: () => void
   /** Intent revocation only, not worker completion or payload release. */
   readonly cancellationRequested: boolean
+  /** Can the running capture fill the current view's holes if it finishes? */
+  coversViewport(view: CanvasCamera, width: number, height: number): boolean
   /** Yield an undelivered optional capture to settled native work. Its owner
    * still controls the completion fence and any late payload retirement. */
   cancelForNative(): boolean
@@ -157,6 +159,15 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
   }
   const flight: NavigationCoverageFlight<T> = { contract, generation, done,
     get cancellationRequested() { return cancellationRequested },
+    coversViewport: (view, width, height) => {
+      if (!pending) return false
+      const target = navigationCoverageBounds(view, width, height)
+      const source = pending.bounds
+      return target.width > 0 && target.height > 0 &&
+        source.x <= target.x && source.y <= target.y &&
+        source.x + source.width >= target.x + target.width &&
+        source.y + source.height >= target.y + target.height
+    },
     finish: () => { pending = undefined; finish() },
     cancelForNative: () => flight.tile === undefined && cancelPending(),
     cancelStaleZoomIn: (view, maximumRatio = MAX_PREVIEW_SCALE_RATIO) => {

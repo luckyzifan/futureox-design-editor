@@ -411,6 +411,10 @@ test('an admitted thumbnail catalogue avoids a full scene and only refines the r
  await act(async()=>binding.source!.onDetail!([0]))
  expect(binding.source!.parkNative).toBe(true)
  expect(binding.source!.hideNative).toBe(true)
+ const beforeBlank=vi.mocked(bridge.cancel).mock.calls.length
+ await act(async()=>binding.source!.onDetail!([]))
+ expect(bridge.cancel).toHaveBeenCalledTimes(beforeBlank+1)
+ expect(binding.source!.nativeCanvas!.snapshot).toBe(parked)
  await act(async()=>binding.source!.onDetail!([2]))
  await act(async()=>binding.source!.onDetail!([0]))
  await act(async()=>rejectPending())

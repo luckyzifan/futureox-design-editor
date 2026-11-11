@@ -1044,6 +1044,13 @@ export function ProgressiveSurfaceImpl(
     })
     const hasReadyCoverage = () => navigationHasCoverage(validCoverage(), requestedView, width, height,
       navigationReadyDensity(requestedView.zoom, dpr, width, height, nativeNavigation))
+    const hasContinuityBacking = () => navigationHasCoverage(validCoverage(), requestedView, width, height)
+    const movingDetailAvailable = navigationZoom.active && view.zoom >= 1 && residentDisplay && !nativeNavigation &&
+      dpr > navigationPreviewDensity(dpr, width, height) &&
+      !hdrCompositing && !props.interaction?.active && !!navigationZoom.sample
+    const detailInsteadOfPreview = movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
+      navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
+    }) && hasContinuityBacking()
     // At quiet, a same-owner coarse image already supplies continuity. Spend
     // the next turn on exact detail, not a second intermediate-resolution copy.
     // This does not authorize skipping the sharper moving-camera preview.
@@ -1062,9 +1069,12 @@ export function ProgressiveSurfaceImpl(
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
         // A zoom-in capture more than the preview ratio behind the live camera
         // can only be stretched. Yield the raster channel to closer tiles.
-        if (!zoomOutCoverage) flight.cancelStaleZoomIn(requestedView, inFlightPreviewCancelRatio({
-          navigating: navigationZoom.active, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
-        }))
+        // A reverse tick can still need a wider capture to fill uncovered
+        // pixels. Let that capture finish before promoting finer detail.
+        if (!zoomOutCoverage && (hasContinuityBacking() || !flight.coversViewport(requestedView, width, height)))
+          flight.cancelStaleZoomIn(requestedView, inFlightPreviewCancelRatio({
+            navigating: detailInsteadOfPreview, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
+          }))
         // A small pan keeps the running capture. A same-zoom pan that leaves
         // most of the newest viewport outside it yields while the gesture is
         // still active; waiting for quiet left the picture on the pre-pan camera.
@@ -1500,12 +1510,7 @@ export function ProgressiveSurfaceImpl(
     // Filtered navigation used to return after CSS-density continuity for the
     // entire held gesture. Give actual screen-density work a bounded turn,
     // without turning every intermediate camera into an unbounded tile fill.
-    const detailInsteadOfPreview = zoomDetailInsteadOfViewportPreview({
-      navigating: navigationZoom.active, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
-    })
-    if (navigationZoom.active && view.zoom >= 1 && residentDisplay && (filteredContent || detailInsteadOfPreview) && !nativeNavigation &&
-        dpr > navigationPreviewDensity(dpr, width, height) &&
-        !hdrCompositing && !props.interaction?.active && navigationZoom.sample) {
+    if (movingDetailAvailable && (filteredContent || detailInsteadOfPreview) && navigationZoom.sample) {
       const refinementScope = JSON.stringify([contract.revision, width, height, dpr, generation,
         previewDevice.current.client === c ? previewDevice.current.key : undefined])
       navigationCost.reset(refinementScope)
@@ -1652,9 +1657,7 @@ export function ProgressiveSurfaceImpl(
         if (navigationZoom.active&&!nativePanRepair) {
           const sample = navigationZoom.sample
           if (!sample) return
-          if (zoomDetailInsteadOfViewportPreview({
-            navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
-          })) {
+          if (detailInsteadOfPreview) {
             // The stale whole-frame capture was already yielded. A capture that
             // is still inside the preview ratio keeps the channel until it
             // lands; another full-viewport preview would only restart it.
