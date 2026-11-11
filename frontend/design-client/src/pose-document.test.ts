@@ -73,7 +73,7 @@ test('a Boolean operand can reuse validation only after fresh local kernel resol
   const group=node('vector',0,0,60,40), outer=node('rectangle',0,0,35,26), inner=node('rectangle',5,6,6,8)
   group.booleanOperation='union';group.children=[outer.id,inner.id];d.nodes={[group.id]:group,[outer.id]:outer,[inner.id]:inner};d.pages[0].children=[group.id]
   const owned=takePreparedDocument(prepareDocument(d))!
-  const plan=new TranslationPreviewPlan(owned,[inner.id],'document-pose')
+  const plan=new TranslationPreviewPlan(owned,[inner.id],undefined,'document-pose')
   const patch=(x:number)=>({[inner.id]:{transform:[1,0,0,1,x,6] as typeof inner.transform}})
   expect(new TranslationPreviewPlan(owned,[inner.id]).acceptsAffine(patch(9))).toBe(false)
   expect(plan.acceptsAffine(patch(9))).toBe(true)

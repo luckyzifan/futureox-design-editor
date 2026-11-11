@@ -995,7 +995,7 @@ export class Editor {
     if (!ids.length || ids.length>16 || ids.some(id=>!base.nodes[id] || base.nodes[id].mask || Object.keys(patches[id]).length!==1 || !Object.hasOwn(patches[id],'transform'))) return
     const key=JSON.stringify(ids),epoch=pickingGeometryEpoch()
     if(this.posePreview?.base!==base || this.posePreview.epoch!==epoch || this.posePreview.key!==key)
-      this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids,'document-pose'),
+      this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids,this.pickContext(base).parents,'document-pose'),
         allowed:!base.prototype && !base.reviews?.length && !Object.values(base.nodes).some(node=>!!node.repeat || !!node.textPath || Object.keys(node.instance?.slotContents || {}).length>0)}
     if(this.posePreview.allowed && this.posePreview.plan.acceptsAffine(patches) &&
         booleanPoseUnchanged(base,this.posePreview.plan.booleanRoots,patches)) return this.posePublication(base,patches)

@@ -138,12 +138,12 @@ test('a connector aimed at a descendant of the rotated parent is outside the pos
   const translated: DesignDocument = { ...document, nodes: { ...document.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 40, 28] } } }
   connect(outside.id)
   expect(new PoseTopology(document).permitsPose).toBe(true)
-  expect(new TranslationPreviewPlan(document, [board.id], 'document-pose').acceptsAffine(rotation)).toBe(true)
+  expect(new TranslationPreviewPlan(document, [board.id], undefined, 'document-pose').acceptsAffine(rotation)).toBe(true)
   expect(translationOnlyChanges(document, translated)).toEqual([board.id])
   for (const nodeId of [child.id, leaf.id]) {
     connect(nodeId)
     const aimed = { ...document, nodes: { ...document.nodes, [wire.id]: { ...wire } } }
-    expect(new TranslationPreviewPlan(aimed, [board.id], 'document-pose').acceptsAffine(rotation)).toBe(false)
+    expect(new TranslationPreviewPlan(aimed, [board.id], undefined, 'document-pose').acceptsAffine(rotation)).toBe(false)
     const moved: DesignDocument = { ...aimed, nodes: { ...aimed.nodes, [board.id]: { ...board, transform: [1, 0, 0, 1, 40, 28] } } }
     expect(translationOnlyChanges(aimed, moved)).toBeNull()
   }

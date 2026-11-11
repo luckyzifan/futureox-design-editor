@@ -116,6 +116,7 @@ import {
 } from './geometry'
 import { splitEdge } from './vector'
 import { imageData } from './persistence'
+import { currentPreparedDocumentJson } from './prepared-document'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
 import { NumberField } from './fields'
@@ -473,8 +474,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   const exactCurrent = presentationScopeMatches && presented.document === state.doc && !presented.preview && !editPreviewVisible
   useEffect(() => {
-    if (!exactCurrent || editor.historyBackend !== 'uninitialized') return
+    if (loading || editor.historyBackend !== 'uninitialized') return
     const document = state.doc, session = editor.sessionGeneration
+    // A freshly adopted import already owns its serialized document. Open
+    // history while the worker renders the first viewport, before a gesture
+    // can retire those bytes and serialize the whole graph on pointer release.
+    const preparedImport=renderExecutionPolicy.desktopDisplay&&!nativeSource&&!openingSource&&
+      currentPreparedDocumentJson(document)!==undefined
+    if (!exactCurrent && !preparedImport) return
     let cancelled = false
     let settled = editor.effectiveView()
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -493,7 +500,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     timer = setTimeout(warm, 200)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [exactCurrent, state.doc, editor, editor.sessionGeneration])
+  }, [exactCurrent, loading, !!nativeSource, !!openingSource, state.doc, editor, editor.sessionGeneration])
   useEffect(() => { if (sameStartup && exactCurrent) setStartupConsumed(true) }, [sameStartup, exactCurrent])
   const untouchedStartup = state.doc === startupOwner.current.document && state.page === startupOwner.current.pageId &&
     editor.sessionGeneration === startupOwner.current.session
