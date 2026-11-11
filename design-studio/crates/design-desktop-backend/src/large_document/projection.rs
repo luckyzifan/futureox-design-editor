@@ -626,7 +626,28 @@ fn curve_coordinate(value: &Value) -> Result<[f64; 2]> {
     }
     Ok(xy)
 }
+fn points_already_frame_normalized(layer: &Value) -> bool {
+    layer
+        .pointer("/userInfo/com.futureox.design-kernel/geometryUnits")
+        .and_then(Value::as_str)
+        == Some("normalized")
+        && layer
+            .get("points")
+            .and_then(Value::as_array)
+            .is_some_and(|points| {
+                points.iter().all(|point| {
+                    point
+                        .get("point")
+                        .is_none_or(|value| value.as_str().is_some())
+                })
+            })
+}
 fn source_curve_points(layer: &Value, normalized: bool) -> Result<Vec<Value>> {
+    // The kernel exporter now writes frame-normalized strings and marks them.
+    // Dividing those strings again would move a source edit off the geometry
+    // the file already stores.
+    let already = points_already_frame_normalized(layer);
+    let divide = normalized && !already;
     let width = layer
         .pointer("/frame/width")
         .and_then(Value::as_f64)
@@ -635,7 +656,7 @@ fn source_curve_points(layer: &Value, normalized: bool) -> Result<Vec<Value>> {
         .pointer("/frame/height")
         .and_then(Value::as_f64)
         .ok_or_else(|| issue("Source curve frame missing"))?;
-    if normalized && (width <= 0. || height <= 0.) {
+    if divide && (width <= 0. || height <= 0.) {
         return Err(issue(
             "Set a nonzero source path extent before editing its points",
         ));
@@ -655,11 +676,14 @@ fn source_curve_points(layer: &Value, normalized: bool) -> Result<Vec<Value>> {
                 continue;
             }
             if let Some(value) = point.get(key) {
+                if already && value.as_str().is_some() {
+                    continue;
+                }
                 let xy = curve_coordinate(value)?;
                 point[key] = json!(format!(
                     "{{{}, {}}}",
-                    if normalized { xy[0] / width } else { xy[0] },
-                    if normalized { xy[1] / height } else { xy[1] }
+                    if divide { xy[0] / width } else { xy[0] },
+                    if divide { xy[1] / height } else { xy[1] }
                 ));
             }
         }
@@ -762,9 +786,9 @@ pub(super) fn raw_object_units(
     }
     let mut fields: BTreeMap<String, Box<RawValue>> =
         serde_json::from_slice(original).map_err(issue)?;
-    // Ordinary Sketch curve points are normalized to the frame. The existing
-    // compatibility encoder exposes pixel coordinates with its own identity
-    // marker; source edits must return to the original coordinate convention.
+    // Ordinary Sketch curve points are normalized to the frame. A kernel
+    // export marks that convention with geometryUnits; older exports stored
+    // pixel coordinates beside originalId and still take the pixel path.
     let normalized_source = units.unwrap_or_else(|| {
         fields
             .get("userInfo")
@@ -1295,6 +1319,29 @@ mod tests {
         );
         after["points"].as_array_mut().unwrap().pop();
         assert!(raw_object(original, &before, &after).is_err());
+    }
+    #[test]
+    fn already_normalized_curve_strings_are_not_divided_again() {
+        let original = br#"{"_class":"shapePath","do_objectID":"n","frame":{"width":20,"height":10},"points":[{"_class":"curvePoint","point":"{0, 0}","hasCurveFrom":false,"hasCurveTo":false},{"_class":"curvePoint","point":"{1, 0}","hasCurveFrom":false,"hasCurveTo":false}]}"#;
+        let before = json!({
+            "_class":"shapePath","do_objectID":"n","frame":{"width":20,"height":10},
+            "points":[
+                {"_class":"curvePoint","point":"{0, 0}","hasCurveFrom":false,"hasCurveTo":false},
+                {"_class":"curvePoint","point":"{1, 0}","hasCurveFrom":false,"hasCurveTo":false}
+            ],
+            "userInfo":{"com.futureox.design-kernel":{"originalId":"n","geometryUnits":"normalized"}}
+        });
+        let mut after = before.clone();
+        after["points"][1]["point"] = json!("{0.75, 0}");
+        let merged = raw_object_units(original, &before, &after, Some(true)).unwrap();
+        let value: Value = serde_json::from_slice(&merged).unwrap();
+        assert_eq!(value["points"][1]["point"], "{0.75, 0}");
+        let added = source_new_layer(&after).unwrap();
+        assert_eq!(added["points"][1]["point"], "{0.75, 0}");
+        assert_eq!(
+            added.pointer("/userInfo/com.futureox.design-kernel/geometryUnits"),
+            Some(&json!("normalized"))
+        );
     }
     #[test]
     fn js_numeric_normalization_keeps_original_metadata_and_raw_float_bits() {
