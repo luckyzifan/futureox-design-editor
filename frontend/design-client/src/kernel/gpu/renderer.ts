@@ -6,6 +6,7 @@ import { ResourceLedger, type ResourceClass } from './resource-ledger'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
+import {boxPrefixBandLines} from './box-prefix'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
 import {sourceBitmapDimensions} from '../image-row-source'
 import { canvasBlurSceneEligible } from './canvas-blur-filter'
@@ -5854,6 +5855,10 @@ export class GpuRenderer {
     try{
       await this.reclaimForSurface(regions[1]);this.checkFrameCurrent();current=this.acquire(regions[1])
       const source=regions[0]
+      // Wide float boxes require the prefix. Fit each painted band into one
+      // dispatch instead of running a second scan for its last few rows.
+      const bandRows=!byteBox&&plan.factor===undefined&&plan.radii[0]>512
+        ?Math.min(64,boxPrefixBandLines(source.w)):64
       const reusable=plan.factor===undefined&&this.gaussianHorizontalSource(n,source,regions[1],plan.radii[0])
       const cached=reusable&&this.horizontalFilters.get(reusable.lease,reusable.key,reusable.image,regions[1])
       let reusedTop=0,reusedBottom=0
@@ -5861,8 +5866,8 @@ export class GpuRenderer {
         // Use whole original strips only. This also preserves the last
         // partial strip and all existing H/V filter boundaries.
         const {plane,overlap}=cached
-        reusedTop=source.y+Math.ceil((overlap.y-source.y)/64)*64
-        reusedBottom=source.y+Math.floor((overlap.y+overlap.h-source.y)/64)*64
+        reusedTop=source.y+Math.ceil((overlap.y-source.y)/bandRows)*bandRows
+        reusedBottom=source.y+Math.floor((overlap.y+overlap.h-source.y)/bandRows)*bandRows
         if(reusedBottom>reusedTop){
           const rows=reusedBottom-reusedTop
           this.used.add(plane.texture);this.touch(plane.texture)
@@ -5871,10 +5876,10 @@ export class GpuRenderer {
           this.horizontalFilters.clear()
         }
       }
-      for(let y=source.y;y<source.y+source.h;y+=64){
+      for(let y=source.y;y<source.y+source.h;y+=bandRows){
         if(y>=reusedTop&&y<reusedBottom)continue
         await this.yieldEncoding();this.checkFrameCurrent()
-        const band={x:source.x,y,w:source.w,h:Math.min(64,source.y+source.h-y)},output={x:regions[1].x,y,w:regions[1].w,h:band.h}
+        const band={x:source.x,y,w:source.w,h:Math.min(bandRows,source.y+source.h-y)},output={x:regions[1].x,y,w:regions[1].w,h:band.h}
         // Image coordinate fields are keyed by paint identity and sample.
         // Each band owns its own fields; sharing the first band's paint would
         // incorrectly bind that band's coordinates to later source rows.
@@ -5900,8 +5905,8 @@ export class GpuRenderer {
       }
       if(reusable){
         const first=regions[1],rowBytes=first.w*16
-        const rows=Math.floor(Math.min(first.h,HORIZONTAL_FILTER_CACHE_BYTES/rowBytes)/64)*64
-        const start=Math.floor((first.h-rows)/128)*64
+        const rows=Math.floor(Math.min(first.h,HORIZONTAL_FILTER_CACHE_BYTES/rowBytes)/bandRows)*bandRows
+        const start=Math.floor((first.h-rows)/(2*bandRows))*bandRows
         const band={...first,y:first.y+start,h:rows}
         const next=regions[2]
         // Prefer the current tile over optional reuse. Leave room for the

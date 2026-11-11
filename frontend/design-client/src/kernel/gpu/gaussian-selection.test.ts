@@ -1,7 +1,7 @@
 import {afterEach,expect,test,vi} from 'vitest'
 import {gaussianPrefixDemand,gaussianPrefixWorthwhile} from './gaussian-selection'
 import {WebGpuDriver} from './webgpu'
-import {BoxPrefix,BOX_PREFIX_BYTES} from './box-prefix'
+import {BoxPrefix,BOX_PREFIX_BYTES,boxPrefixBandLines} from './box-prefix'
 import {parameters} from './types'
 
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();vi.restoreAllMocks()})
@@ -13,6 +13,11 @@ test('automatic selection stays within ordinary Gaussian support and avoids tiny
   expect(gaussianPrefixWorthwhile(32,16384,8,65536)).toBe(false)
   expect(gaussianPrefixWorthwhile(32,32,32,1024)).toBe(false)
   expect(gaussianPrefixWorthwhile(32,16385,16385,65536)).toBe(false)
+})
+
+test('the original 4 MiB prefix scratch fits 62 rows of the wide 117 Gaussian input',()=>{
+  expect(boxPrefixBandLines(4188)).toBe(62)
+  expect(boxPrefixBandLines(4093)).toBe(64)
 })
 
 test('pipeline preparation uses transformed Gaussian demand without treating tent or small effects as Gaussian',()=>{
