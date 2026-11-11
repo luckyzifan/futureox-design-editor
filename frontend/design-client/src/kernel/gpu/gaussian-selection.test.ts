@@ -44,6 +44,22 @@ function fixture(){
   return {driver,raw,source,target,kernel,u,reserve}
 }
 
+test('the direct small box requires the live uniform kernel and an integral transparent lattice',()=>{
+  const f=fixture()
+  f.u[36]=9
+  f.raw.boxKernels.set(f.kernel,{radius:9,resource:f.kernel.resource,width:f.kernel.width,height:f.kernel.height})
+  const eligible=()=>f.raw.canvasUniformBoxEligible(f.target,f.u,[f.source,f.kernel])
+  expect(eligible()).toBe(true)
+  f.u[0]=0.25
+  expect(eligible()).toBe(false)
+  f.u[0]=0
+  f.u[38]=1
+  expect(eligible()).toBe(false)
+  f.u[38]=0
+  f.raw.boxKernels.delete(f.kernel)
+  expect(eligible()).toBe(false)
+})
+
 test('actual allocation requires private live coefficient proof and remaining original scratch budget',()=>{
   const f=fixture(),inputs=[f.source,f.kernel]
   f.driver.prepareCanvasBoxPass(f.target,f.u,inputs,15,BOX_PREFIX_BYTES-1);expect(f.reserve).not.toHaveBeenCalled()

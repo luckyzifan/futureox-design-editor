@@ -117,6 +117,8 @@ export class WebGpuDriver implements Driver {
   private fullDensityRegionalGaussian=false
   canvasGaussianPrefixPasses=0
   private canvasBlurRequested = false
+  private canvasUniformBoxPipeline?: GPURenderPipeline
+  private canvasUniformBoxFailed = false
   private canvasBlurPipelines: GPURenderPipeline[] = []
   private canvasBlurScalarPipeline?: GPURenderPipeline
   private canvasBlurAlphaPipeline?: GPURenderPipeline
@@ -1543,6 +1545,34 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
         console.warn('Canvas blur arithmetic unavailable; using exact filters', error)
       }
     }
+    if (import.meta.env.VITE_DESIGN_CANVAS_UNIFORM_BOX !== '0' && this.canvasBlurRequested && this.requiresExactBoxFilters &&
+        this.canvasBlurRgbaPipeline && !this.canvasUniformBoxPipeline && !this.canvasUniformBoxFailed) {
+      const device = this.device
+      device.pushErrorScope('validation')
+      let pending: Promise<GPURenderPipeline>
+      try {
+        const module = device.createShaderModule({
+          code: exactFilterWgsl(this.certifiedFilter, true, true, true),
+          label: 'Canvas uniform Gaussian box',
+        })
+        pending = device.createRenderPipelineAsync({
+          layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+          vertex: { module, entryPoint: 'quad' },
+          fragment: { module, entryPoint: 'fragmentRgba', targets: [{ format: this.layerFormat }] },
+          primitive: { topology: 'triangle-list' },
+        })
+      } catch (error) { pending = Promise.reject(error) }
+      const validation = device.popErrorScope()
+      try {
+        const [pipeline, error] = await Promise.all([pending, validation])
+        if (error) throw error
+        this.assertPipelinePublicationOwner(device)
+        this.canvasUniformBoxPipeline = pipeline
+      } catch (error) {
+        this.canvasUniformBoxFailed = true
+        console.warn('Canvas uniform box unavailable; using the general RGBA filter', error)
+      }
+    }
     if (this.displayFilters && !bounded) return
     if (this.prefixEnabled && prefixUseful && !this.prefix)
       this.prefix = await TexturePrefix.create(this.device, (u) => this.uniform(u), prefixModule(this.certifiedFilter), false,
@@ -1695,6 +1725,19 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       u.subarray(0,8).every(v=>Number.isSafeInteger(v)&&Math.abs(v)<=1048576)&&
       source.width===u[6]&&source.height===u[7]&&target.width===u[2]&&target.height===u[3]&&
       source.width<=16384&&source.height<=16384&&target!==source)
+  }
+  private canvasUniformBoxEligible(target: Texture, u: Float32Array, inputs: Texture[]) {
+    const [source, kernel] = inputs
+    const proof = kernel && this.boxKernels.get(kernel)
+    return u[39] === 2 && u[38] === 0 && (u[37] === 0 || u[37] === 1) &&
+      Number.isInteger(u[36]) && u[36] >= 1 && u[36] <= 24 &&
+      !!proof && proof.radius === u[36] && proof.resource === kernel.resource &&
+      proof.width === kernel.width && proof.height === kernel.height && this.textures.has(kernel) &&
+      !!source && !source.scalarCoverage && !source.binaryCoverage &&
+      this.textures.has(source) && this.textures.has(target) &&
+      (source.resource as GPUTexture).format === 'rgba32float' && (target.resource as GPUTexture).format === 'rgba32float' &&
+      u.subarray(0, 8).every(Number.isSafeInteger) &&
+      source.width === u[6] && source.height === u[7] && target.width === u[2] && target.height === u[3]
   }
   supportsGaussianReduction(){
     return import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX === '1' && this.supportsGaussianRegions() &&
@@ -3016,7 +3059,9 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     const canvasSpatial = this.canvasBlurRequested && !sourceWindow && !target.scalarCoverage && !target.binaryCoverage &&
       channels === 15 && canvasBlurGeometry(u) && this.canvasSpatialPipelines.has(u[16])
     const rgbaBlur=canvasBlur&&!target.scalarCoverage&&channels===15&&!!this.canvasBlurRgbaPipeline
-    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [this.canvasBlurRgbaPipeline!] : channels===8 ? [this.canvasBlurAlphaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
+    const uniformBox = rgbaBlur && this.canvasUniformBoxPipeline && this.canvasUniformBoxEligible(target, u, inputs)
+    const rgbaPipeline = uniformBox ? this.canvasUniformBoxPipeline : this.canvasBlurRgbaPipeline
+    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [rgbaPipeline!] : channels===8 ? [this.canvasBlurAlphaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
       ? [u[16] === 31 ? (sampleOnly?this.sampleOnlyBytePipeline!:this.binaryAreaPipeline!) : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
       u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0

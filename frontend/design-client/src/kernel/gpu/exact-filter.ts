@@ -9,7 +9,7 @@ import certifiedGlsl from './certified-rational.glsl?raw'
 import { canvasBlurChannelWgsl, canvasBlurRgbaWgsl } from './canvas-blur-filter'
 export const rationalStubWgsl = 'fn rationalBlur(point:vec2<f32>,axis:vec2<f32>)->vec4<f32>{return vec4<f32>(0);}'
 export const rationalStubGlsl = 'vec4 rationalBlur(vec2 point,vec2 axis){return vec4(0);}'
-export function exactFilterWgsl(certified: boolean, canvasBlur = false, rgba = false) {
+export function exactFilterWgsl(certified: boolean, canvasBlur = false, rgba = false, uniformBox = false) {
   const source = `struct Params {values:array<vec4<f32>,64>}
 @group(0) @binding(0) var<uniform> params:Params;
 @group(0) @binding(1) var sourceA:texture_2d<f32>;
@@ -27,7 +27,7 @@ ${certified ? 'let result=rfCertifiedChannel(p,axis,channel);if(result.y!=0u){re
 return rfChannel(p,axis,channel);
 }
 ${canvasBlur ? canvasBlurChannelWgsl : ''}
-${canvasBlur && rgba ? canvasBlurRgbaWgsl : ''}
+${canvasBlur && rgba ? canvasBlurRgbaWgsl(uniformBox) : ''}
 override FILTER_CHANNEL:u32=0u;
 @vertex fn quad(@builtin(vertex_index) i:u32)->@builtin(position) vec4<f32>{let x=f32((i<<1u)&2u);let y=f32(i&2u);return vec4<f32>(x*2.-1.,1.-y*2.,0.,1.);}
 @fragment fn fragment(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
