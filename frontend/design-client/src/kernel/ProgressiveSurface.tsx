@@ -1048,7 +1048,12 @@ export function ProgressiveSurfaceImpl(
     const movingDetailAvailable = navigationZoom.active && view.zoom >= 1 && residentDisplay && !nativeNavigation &&
       dpr > navigationPreviewDensity(dpr, width, height) &&
       !hdrCompositing && !props.interaction?.active && !!navigationZoom.sample
-    const detailInsteadOfPreview = movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
+    // An outward high-zoom gesture can already be covered by its wider
+    // same-revision residents. Give exact tiles the raster turn instead of
+    // starting a large filter graph for each intermediate viewport.
+    const coveredHighZoomOut = movingDetailAvailable && zoomOutCoverage && filteredContent &&
+      requestedView.zoom >= 8 && hasContinuityBacking()
+    const detailInsteadOfPreview = coveredHighZoomOut || movingDetailAvailable && zoomDetailInsteadOfViewportPreview({
       navigating: true, displayedZoom: displayed?.view.zoom, requestedZoom: requestedView.zoom,
     }) && hasContinuityBacking()
     // At quiet, a same-owner coarse image already supplies continuity. Spend
@@ -1065,7 +1070,8 @@ export function ProgressiveSurfaceImpl(
     {
       const flight = coverageFlight.current
       if (flight?.contract === contract && flight.generation === generation) {
-        if (navigationZoom.active && zoomOutCoverage)
+        if (coveredHighZoomOut) flight.cancelForNative()
+        else if (navigationZoom.active && zoomOutCoverage)
           flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
         // A zoom-in capture more than the preview ratio behind the live camera
         // can only be stretched. Yield the raster channel to closer tiles.
@@ -1631,7 +1637,7 @@ export function ProgressiveSurfaceImpl(
         // Seed bounded local coverage before capture/viewport-cache early returns,
         // including the latest zoom-out target. Edits retain the settle lane and
         // do not pay for a page overview on pointer release.
-        if (residentDisplay && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
+        if (residentDisplay && !coveredHighZoomOut && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
             !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && (!navigationZoom.active || zoomOutCoverage) &&
             (!displayed || (displayed.document === doc && displayed.revision === contract.revision && previousView &&
               (previousView.x !== view.x || previousView.y !== view.y || previousView.zoom !== view.zoom)))) {

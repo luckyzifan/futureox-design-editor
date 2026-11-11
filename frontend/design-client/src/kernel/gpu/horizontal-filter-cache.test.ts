@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache, HORIZONTAL_FILTER_CACHE_BYTES } from './horizontal-filter-cache'
+import { exactFilterKey, fullAnalyticCoverage, fullSampleCoverage, HorizontalFilterCache, HORIZONTAL_FILTER_CACHE_BYTES } from './horizontal-filter-cache'
 import { GpuRenderer, type Surface } from './renderer'
 import type { Driver, GpuNode, GpuPaint, GpuScene, PathMesh, Rect, Texture } from './types'
 
@@ -35,6 +35,21 @@ test('partial coverage, holes, multiple intervals, corrupt offsets and non-sampl
   ]) { const c = coverage({ x: -2, y: 5, w: 8, h: 9 }); change(c); expect(fullSampleCoverage(c.path, c.curves, c.path.rect)).toBe(false) }
   const c = coverage({ x: 0, y: 0, w: 8, h: 9 })
   for (const r of [{ x: -.5, y: 0, w: 8, h: 9 }, { x: 0, y: -1, w: 8, h: 9 }, { x: 0, y: 0, w: 9, h: 9 }]) expect(fullSampleCoverage(c.path, c.curves, r)).toBe(false)
+})
+test('analytic Gaussian reuse requires each of the eight source scanlines to cover the row exactly', () => {
+  const rect={x:-3,y:-5,w:8,h:2},rows=rect.h*8,header=1+rows
+  const curves=new Float32Array((header+rows*3)*4)
+  curves.set([0,1,rect.w,rect.h])
+  for(let row=0;row<rows;row++){
+    curves.set([header+row*3,1,0,0],4+row*4)
+    curves.set([0,rect.w,0,0],(header+row*3)*4)
+  }
+  const path={rect,count:3,first:0,rule:'nonzero',area:{first:0,count:curves.length/4}} as PathMesh
+  expect(fullAnalyticCoverage(path,curves,rect)).toBe(true)
+  curves[(header+8*3)*4+4]=1
+  expect(fullAnalyticCoverage(path,curves,rect)).toBe(false)
+  expect(fullAnalyticCoverage(path,curves,{...rect,h:1})).toBe(true)
+  expect(fullAnalyticCoverage(path,curves,{...rect,w:9})).toBe(false)
 })
 test('keys retain f64 bits, value types and nested adjustments; nonfinite values decline', () => {
   const keys = [0, -0, 1, 1 + 2 ** -52, '0', ['number', 0, 0], { negativeZero: true }].map(v => exactFilterKey([v]))

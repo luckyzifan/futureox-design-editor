@@ -11,6 +11,15 @@ export type FilterColumnSupport = { sourceScale: number; sourceRows: number }
  * AABB guess. This does not certify a cache hit: final upload finiteness,
  * memory admission and exact source identity remain renderer decisions. */
 export function compiledFilterColumnSupport(scene: GpuScene, tile: RasterTile): FilterColumnSupport | undefined {
+  if(scene.floatCompositing&&scene.coherentSamples===false&&!scene.colorManagement&&
+      !scene.interactionRetained&&!scene.softwareRaster&&!scene.resolve&&!scene.presentation&&
+      scene.view.zoom===tile.zoom){
+    for(const node of Object.values(scene.nodes)){
+      const gaussian=node.gaussianRegion
+      if(gaussian&&gaussian.factor===undefined&&gaussian.radii[0]>512&&node.fills.length===1&&node.fills[0].kind==='image')
+        return {sourceScale:1,sourceRows:gaussian.source.h}
+    }
+  }
   const bounded = typeof scene.displayFilterRadiusLimit === 'number' &&
     Number.isFinite(scene.displayFilterRadiusLimit) && scene.displayFilterRadiusLimit > 0 && scene.displayFilterRadiusLimit <= 32
   if (!scene.floatCompositing || !scene.coherentSamples || !scene.integratedBlur || scene.displayFilters && !bounded ||

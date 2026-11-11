@@ -31,7 +31,7 @@ import { prefixSamplingGeometry } from './prefix-sampling-geometry'
 import { imageLoaderResidencyOwner, imageResidencyOwnerCurrent, type ImageResidencyOwner } from '../scene-image-hydration'
 import type { ByteTentPlan } from './byte-tent-prefix-plan'
 import { IMAGE_RESOLVE_STEP_MODE } from './image-resolve-step'
-import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache } from './horizontal-filter-cache'
+import { exactFilterKey, fullAnalyticCoverage, fullSampleCoverage, HorizontalFilterCache, HORIZONTAL_FILTER_CACHE_BYTES } from './horizontal-filter-cache'
 import { StaticImageBlurCache, largeStaticImageBlurWindow, type StaticImageBlurSource } from './static-image-blur-cache'
 import { planNestedPrefix, type NestedPrefixPlan } from './nested-prefix-plan'
 import { planDisplayMaterialSource } from './display-material-source'
@@ -5806,6 +5806,27 @@ export class GpuRenderer {
     const matrix = color_controls_uniforms(JSON.stringify(controls), !!this.scene.colorManagement)
     return this.run(60, input.rect, [input], u => u.set(matrix, 36))
   }
+  private gaussianHorizontalSource(n:GpuNode,input:Rect,output:Rect,radius:number){
+    const scene=this.scene,lease=scene.filterBatchLease,paint=n.fills[0]
+    if(!lease||!(radius>512&&radius<=1024)||!this.optimized||!this.driver.copyRegion||this.driver.name!=='webgpu'||
+        !this.driver.managed||!this.driver.captureDisplay||this.driver.displayMath||this.driver.hdr||
+        !this.outputFrame?.present||this.outputFrame.readback||scene.coherentSamples!==false||
+        scene.interactionRetained||scene.softwareRaster||scene.resolve||scene.presentation||
+        scene.colorManagement||scene.displayImageSource||scene.displayMaterialSource||scene.sourceImageDisplay||
+        this.imageMips||this.imageAtlas||n.previewSource||paint.kind!=='image'||!paint.image||!paint.visible||
+        paint.blend!=='normal'||paint.opacity!==1||
+        import.meta.env.VITE_DESIGN_HORIZONTAL_FILTER_REUSE==='0'||
+        !exactBlendLattice([input,output])||!fullAnalyticCoverage(n.fill,scene.curves,input))return
+    const image=this.images.get(this.imageKey(paint.image,0,false,paint.adjust))
+    if(!image||image.texture.finitePixels!==true)return
+    // Horizontal sums depend on their exact x range, source texels and
+    // pixel phase, but each y row is independent. Image identity is the
+    // private uploaded texture, so the key need not retain its encoded URI.
+    const key=exactFilterKey(['regional-gaussian-horizontal',n.id,n.matrix,n.inverse,n.size,n.opacity,
+      {...paint,image:undefined},this.baseDims(paint.image),image.rect,scene.view,radius,input.x,input.w,output.x,output.w])
+    if(key===undefined)return
+    return {lease,key,image:image.texture}
+  }
   private async streamedGaussian(n:GpuNode):Promise<Surface>{
     const plan=n.gaussianRegion,regions=plan&&gaussianRegionRects(plan)
     const header=n.fill.area&&new Float32Array(this.curveBits.buffer,this.curveBits.byteOffset+n.fill.area.first*16,1)[0]
@@ -5827,7 +5848,25 @@ export class GpuRenderer {
     try{
       await this.reclaimForSurface(regions[1]);this.checkFrameCurrent();current=this.acquire(regions[1])
       const source=regions[0]
+      const reusable=plan.factor===undefined&&this.gaussianHorizontalSource(n,source,regions[1],plan.radii[0])
+      const cached=reusable&&this.horizontalFilters.get(reusable.lease,reusable.key,reusable.image,regions[1])
+      let reusedTop=0,reusedBottom=0
+      if(cached){
+        // Use whole original strips only. This also preserves the last
+        // partial strip and all existing H/V filter boundaries.
+        const {plane,overlap}=cached
+        reusedTop=source.y+Math.ceil((overlap.y-source.y)/64)*64
+        reusedBottom=source.y+Math.floor((overlap.y+overlap.h-source.y)/64)*64
+        if(reusedBottom>reusedTop){
+          const rows=reusedBottom-reusedTop
+          this.used.add(plane.texture);this.touch(plane.texture)
+          this.driver.copyRegion(current.texture,plane.texture,{x:0,y:reusedTop-plane.rect.y,w:overlap.w,h:rows},[0,reusedTop-source.y])
+          this.horizontalFilterHits++;this.horizontalFilterPixels+=overlap.w*rows;this.horizontalFilterRows+=rows
+          this.horizontalFilters.clear()
+        }
+      }
       for(let y=source.y;y<source.y+source.h;y+=64){
+        if(y>=reusedTop&&y<reusedBottom)continue
         await this.yieldEncoding();this.checkFrameCurrent()
         const band={x:source.x,y,w:source.w,h:Math.min(64,source.y+source.h-y)},output={x:regions[1].x,y,w:regions[1].w,h:band.h}
         // Image coordinate fields are keyed by paint identity and sample.
@@ -5852,6 +5891,22 @@ export class GpuRenderer {
           filtered=this.run(22,output,[resolved!,kernels[0]],u=>u.set([plan.radii[0],0,0,2],36))
           this.driver.copyRegion(current.texture,filtered.texture,{x:0,y:0,w:output.w,h:output.h},[0,y-regions[1].y])
         }finally{this.release(mask,layer,resolved,filtered);if(paint!==n.fills[0])this.imageGrids.delete(paint)}
+      }
+      if(reusable){
+        const first=regions[1],rowBytes=first.w*16
+        const rows=Math.floor(Math.min(first.h,HORIZONTAL_FILTER_CACHE_BYTES/rowBytes)/64)*64
+        const start=Math.floor((first.h-rows)/128)*64
+        const band={...first,y:first.y+start,h:rows}
+        const next=regions[2]
+        // Prefer the current tile over optional reuse. Leave room for the
+        // following vertical pass in the same working set.
+        if(rows>0&&this.workingBytes+(rows*first.w+next.w*next.h)*16<=this.frameBudget){
+          const saved=this.acquire(band)
+          try{
+            this.driver.copyRegion(saved.texture,current.texture,{x:0,y:start,w:first.w,h:rows},[0,0])
+            if(!this.horizontalFilters.stage(reusable.lease,reusable.key,reusable.image,saved))this.release(saved)
+          }catch(error){this.release(saved);throw error}
+        }
       }
       for(let pass=1;pass<6;pass++){
         await this.yieldEncoding();await this.reclaimForSurface(regions[pass+1]);this.checkFrameCurrent()

@@ -34,6 +34,30 @@ export function fullSampleCoverage(path: PathMesh, curves: number[] | Float32Arr
   return true
 }
 
+/** Analytic area programs integrate eight scanlines per pixel. Only a single
+ * integral span covering the requested width on every scanline certifies a
+ * fully covered input. Check the program words, including endpoint bits. */
+export function fullAnalyticCoverage(path: PathMesh, curves: number[] | Float32Array | undefined, region: Rect): boolean {
+  const {area,rect}=path
+  if(!area||!curves||!path.count||!exactBlendLattice([rect,region])||
+      region.w<=0||region.h<=0||region.x<rect.x||region.y<rect.y||
+      region.x+region.w>rect.x+rect.w||region.y+region.h>rect.y+rect.h)return false
+  const start=area.first*4,end=start+area.count*4,headers=1+rect.h*8
+  if(!Number.isSafeInteger(area.first)||area.first<0||!Number.isSafeInteger(area.count)||end>curves.length||
+      curves[start]!==0||curves[start+1]!==1||curves[start+2]!==rect.w||curves[start+3]!==rect.h||
+      area.count<headers)return false
+  const left=region.x-rect.x,right=left+region.w
+  const from=(region.y-rect.y)*8,to=from+region.h*8
+  for(let row=from;row<to;row++){
+    const header=start+4+row*4,span=curves[header],at=start+span*4
+    if(curves[header+1]!==1||!Number.isSafeInteger(span)||span<headers||at+12>end||
+        !Number.isSafeInteger(curves[at])||!Number.isSafeInteger(curves[at+1])||
+        curves[at]>left||curves[at+1]<right)return false
+    for(let word=2;word<12;word++)if(curves[at+word]!==0)return false
+  }
+  return true
+}
+
 /** Type-tag every value and encode numbers as their original binary64 words.
  * Neither -0 nor a string/object resembling an encoded number can collide. */
 export function exactFilterKey(values: unknown[]): string | undefined {
