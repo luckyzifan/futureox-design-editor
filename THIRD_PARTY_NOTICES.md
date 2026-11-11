@@ -11,6 +11,7 @@ versions and notice hashes. Keep these texts with distributed copies.
 ## UI runtime
 
 - Poppins Regular, Medium, SemiBold and Bold: Copyright 2020 The Poppins Project Authors; SIL Open Font License 1.1. Unmodified font bytes, license and download hashes are shipped in `fonts/poppins/`. Only explicitly matching imported FIG font identities use these faces.
+- Inter 3.19 variable font: Copyright 2016–2020 The Inter Project Authors; SIL Open Font License 1.1. The unmodified upstream font and notice ship in `fonts/inter/v3.19/`, with source hashes in `fonts/inter/sources.json`. FIG imports select it by source digest.
 
 - fflate 0.8.3: MIT; `licenses/fflate-LICENSE.txt`.
 - fzstd 0.1.1: MIT; `licenses/fzstd-LICENSE.txt`.

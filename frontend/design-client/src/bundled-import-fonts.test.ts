@@ -48,7 +48,11 @@ test('a FIG digest selects that file and a different cut stays unmatched', async
   expect(selectBundledImportFace('Poppins Bold', v2)?.sha.startsWith('b8b92424')).toBe(true)
   expect(selectBundledImportFace('Poppins Bold', v4)?.postscript).toBe('Poppins-Bold')
   expect(selectBundledImportFace('Poppins Bold')?.sha1).toBe(v4)
-  expect(selectBundledImportFace('Inter Regular', 'd483e2c7f8032c6638d047167efbeba0030f0649')).toBeUndefined()
+  const interDigest = 'd483e2c7f8032c6638d047167efbeba0030f0649'
+  const unknownDigest = '0'.repeat(40)
+  expect(selectBundledImportFace('Inter Regular', interDigest)?.file).toBe('inter/v3.19/Inter.ttf')
+  expect(selectBundledImportFace('Inter Regular')?.postscript).toBe('Inter-Regular')
+  expect(selectBundledImportFace('Inter Regular', unknownDigest)).toBeUndefined()
   const doc = blank('摘要')
   const text = node('text', 0, 0, 120, 32)
   text.text = 'Back to Home'
@@ -64,12 +68,12 @@ test('a FIG digest selects that file and a different cut stays unmatched', async
   inter.text = 'ABC'
   inter.textStyle = defaultTextStyle()
   unknown.nodes = { [inter.id]: inter }
-  unknown.designSystem = { ...emptySystem(), fontSources: { [inter.id]: { style: 'Inter Regular', digest: 'd483e2c7f8032c6638d047167efbeba0030f0649' } } }
+  unknown.designSystem = { ...emptySystem(), fontSources: { [inter.id]: { style: 'Inter Regular', digest: unknownDigest } } }
   const missed = await matchBundledImportFonts(unknown)
-  expect(missed.digestMismatches).toEqual([{ name: 'Inter Regular', digest: 'd483e2c7f8032c6638d047167efbeba0030f0649' }])
+  expect(missed.digestMismatches).toEqual([{ name: 'Inter Regular', digest: unknownDigest }])
   expect(inter.textStyle?.fontId ?? 'default').toBe('default')
   expect(Object.values(unknown.fonts || {}).some(face => face.postscript === 'Inter-Regular')).toBe(false)
-  expect(fontDigestDiagnostic('Inter Regular', 'd483e2c7f8032c6638d047167efbeba0030f0649')).toContain('不能把同名的另一个文件')
+  expect(fontDigestDiagnostic('Inter Regular', unknownDigest)).toContain('不能把同名的另一个文件')
   const blocked = blank('同名')
   const bold = node('text', 0, 0, 80, 24)
   bold.text = 'B'

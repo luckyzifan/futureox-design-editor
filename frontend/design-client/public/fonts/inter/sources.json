@@ -1,0 +1,18 @@
+[
+  {
+    "name": "v3.19/Inter.ttf",
+    "url": "https://github.com/rsms/inter/releases/download/v3.19/Inter-3.19.zip",
+    "archiveMember": "Inter Variable/Inter.ttf",
+    "bytes": 805360,
+    "sha1": "d483e2c7f8032c6638d047167efbeba0030f0649",
+    "sha256": "9ee35efa458e90e993897c32c5101bd9e0b14d6d40716798aa8ce426216e72a9"
+  },
+  {
+    "name": "v3.19/LICENSE.txt",
+    "url": "https://github.com/rsms/inter/releases/download/v3.19/Inter-3.19.zip",
+    "archiveMember": "LICENSE.txt",
+    "bytes": 4426,
+    "sha1": "f467b698d3d9c9e4ebb4a1bb043e924343f52a44",
+    "sha256": "4d7d9c95e7d7f2f0ebf76d5e0b344826b74e903a34028ee18ab54bb639e45906"
+  }
+]

@@ -34,12 +34,13 @@ export const bundledImportFonts: readonly ImportFace[] = [
   {family:'ABeeZee',style:'Italic',postscript:'ABeeZee-Italic',sha:'3892bb74578207ed6edae040a0869e54dcae13a466d005460570947062137dd8',sha1:'6c31f36044a58b0f2129c79ac74eafa5e7919888'},
   {family:'DejaVu Sans',style:'Regular',postscript:'DejaVuSans',sha:'ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280',sha1:'3061cf7af25793a655a1ff5a509385f3620f3eb3'},
 ]
-/** Poppins 2.000. Same family names as the version above, different bytes.
- * Chosen only when the FIG digest is this file's SHA-1. See sources.json. */
+/** Older upstream versions selected only by the FIG source digest.
+ * Name-only matches keep using the faces above. See sources.json. */
 export const digestSourceFonts: readonly ImportFace[] = [
   {family:'Poppins',style:'Regular',postscript:'Poppins-Regular',sha:'4554cfac77e8cefa48f89ffcd4f1705f7c02ee34bd9b25415d1208065e4edb52',sha1:'58ca484f2ec5b8817a63136af362e1db1d29d49e',file:'poppins/v2.000/Poppins-Regular.ttf'},
   {family:'Poppins',style:'Medium',postscript:'Poppins-Medium',sha:'2f0180fd06a508c270696893eec11bb01fe595be9cb88cd2122bc33e638f6f6f',sha1:'01be8feaed323d19eeccf16fd79ea3b74206cfdb',file:'poppins/v2.000/Poppins-Medium.ttf'},
   {family:'Poppins',style:'Bold',postscript:'Poppins',sha:'b8b92424acfd9581c9dd74723a5627b6a5882a643b2148bd0463e9cd077d3728',sha1:'45dc28c425c3ee2237440bf9cb926753c5aa3b5c',file:'poppins/v2.000/Poppins-Bold.ttf'},
+  {family:'Inter',style:'Regular',postscript:'Inter',sha:'9ee35efa458e90e993897c32c5101bd9e0b14d6d40716798aa8ce426216e72a9',sha1:'d483e2c7f8032c6638d047167efbeba0030f0649',file:'inter/v3.19/Inter.ttf'},
 ]
 type Face = ImportFace
 const digestFaces: readonly Face[] = [...digestSourceFonts, ...bundledImportFonts]

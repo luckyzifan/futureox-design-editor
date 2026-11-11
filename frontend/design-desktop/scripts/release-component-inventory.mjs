@@ -406,6 +406,7 @@ function buildJavaScript(root) {
 
 function fontLicense(relative) {
   if (relative.startsWith('fonts/poppins/')) return { license: 'OFL-1.1', notice: 'frontend/design-client/public/fonts/poppins/OFL.txt' }
+  if (relative.startsWith('fonts/inter/v3.19/')) return { license: 'OFL-1.1', notice: 'frontend/design-client/public/fonts/inter/v3.19/LICENSE.txt' }
   if (relative.startsWith('fonts/inter/')) return { license: 'OFL-1.1', notice: 'frontend/design-client/public/fonts/inter/LICENSE.txt' }
   if (relative.startsWith('fonts/dejavu/')) return { license: 'Bitstream Vera', notice: 'frontend/design-client/public/fonts/dejavu/COPYRIGHT.txt' }
   if (relative.startsWith('fonts/abeezee/')) return { license: 'OFL-1.1', notice: 'frontend/design-client/public/fonts/abeezee/OFL.txt' }
@@ -417,8 +418,10 @@ function fontLicense(relative) {
 
 function sourceHashes(root) {
   const expected = new Map()
-  const poppins = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/fonts/poppins/sources.json'), 'utf8'))
-  for (const item of poppins) expected.set(`fonts/poppins/${item.name}`, item.sha256)
+  for (const family of ['poppins', 'inter']) {
+    const sources = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/fonts', family, 'sources.json'), 'utf8'))
+    for (const item of sources) expected.set(`fonts/${family}/${item.name}`, item.sha256)
+  }
   const noto = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/fonts/source.json'), 'utf8'))
   if (noto.sha256) expected.set('fonts/NotoSansSC.ttf', noto.sha256)
   return expected

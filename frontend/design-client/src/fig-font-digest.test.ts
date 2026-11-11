@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import { matchBundledImportFonts } from './bundled-import-fonts'
 import { emptySystem } from './design-system'
-import { importFig } from './import-fig'
+import { decodeFig, importFig } from './import-fig'
 import { VectorEngine } from './generated/design-kernel/design_kernel'
 import { blank, defaultTextStyle, node, validateDocument, type DesignNode } from './model'
 
@@ -83,15 +83,23 @@ function realFig(relative: string) {
   return new Uint8Array(bytes)
 }
 
-test('structure.fig Inter digest is diagnosed instead of using the bundled v4 file', async () => {
+test('structure.fig uses its exact Inter version and reproduces the stored glyph advances', async () => {
   const bytes = realFig('../../../testing/fixtures/fig-tools-public-20261106/fig2sketch/tests/data/structure.fig')
   expect(bytes, 'structure.fig bytes').toBeTruthy()
+  const source = decodeFig(bytes!).data.nodeChanges.find((change: any) => change.type === 'TEXT' && change.textData?.characters === 'ABC')
+  const advances = source.textData.glyphs.map((glyph: { advance: number }) => glyph.advance)
   const imported = importFig(bytes!, 'structure.fig')
   const fonts = await matchBundledImportFonts(imported.document)
-  expect(fonts.digestMismatches).toEqual([{ name: 'Inter Regular', digest: 'd483e2c7f8032c6638d047167efbeba0030f0649' }])
-  const text = Object.values(imported.document.nodes).find(node => node.kind === 'text' && node.text === 'ABC')
-  expect(text?.textStyle?.fontId ?? 'default').toBe('default')
-  expect(Object.values(imported.document.fonts || {}).some(face => String(face.postscript).startsWith('Inter'))).toBe(false)
+  expect(fonts.digestMismatches).toEqual([])
+  const text = Object.values(imported.document.nodes).find(node => node.kind === 'text' && node.text === 'ABC')!
+  expect(text.textStyle?.fontId).toBe('9ee35efa458e90e993897c32c5101bd9e0b14d6d40716798aa8ce426216e72a9-0')
+  const engine = new VectorEngine()
+  try {
+    engine.load_document_fonts(JSON.stringify(imported.document.fonts))
+    const actual = emAdvances(engine, text)
+    expect(actual).toHaveLength(advances.length)
+    actual.forEach((advance, index) => expect(Math.abs(advance - advances[index])).toBeLessThanOrEqual(0.001))
+  } finally { engine.free() }
 })
 
 const youliao = realFig('../../../testing/fixtures/user-regression-20261109/01有料素材.fig')
