@@ -17,6 +17,21 @@ test('reversing wheel and pinch zoom returns the original density and fractional
   expect(view).toEqual(initial)
  }
 })
+test('opposing zoom and pan runs return to the original native tile phase',()=>{
+ const gesture=new WheelCameraGesture()
+ const dense={x:30.635252184381557,y:-1212.8690463838036,zoom:.09855276255057685}
+ let view=dense
+ const zoom=(factor:number,steps:number,reverse=false)=>{
+  const dy=Math.fround(Math.log(factor)/(.003*steps))*(reverse?1:-1)
+  for(let i=0;i<steps;i++)view=gesture.update(view,{deltaX:0,deltaY:dy,deltaMode:0,ctrlKey:true},size,anchor)
+ }
+ zoom(1.7,6)
+ view=gesture.update(view,{deltaX:-280,deltaY:95,deltaMode:0},size,anchor)
+ zoom(1.18,4);zoom(1.18,4,true)
+ view=gesture.update(view,{deltaX:280,deltaY:-95,deltaMode:0},size,anchor)
+ zoom(1.7,6,true)
+ expect(view).toEqual(dense)
+})
 test('changed anchor, pan, external camera and modifier semantics restart from the current camera',()=>{
  const gesture=new WheelCameraGesture(),event={deltaX:0,deltaY:-120,deltaMode:0,ctrlKey:true}
  let view=gesture.update(initial,event,size,anchor)
