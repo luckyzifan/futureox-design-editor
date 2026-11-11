@@ -4,6 +4,7 @@ import type { Editor } from './engine'
 import type { DesignNode, ComponentProperty } from './model'
 import { container } from './model'
 import { definitionOwner, instanceOwner, family } from './components'
+import { usePropertyText } from './property-interface-messages'
 function ValueInput({
   label,
   kind,
@@ -64,6 +65,7 @@ export function ComponentPanel({
     target = n.instance ? n : d.nodes[owner || ''],
     source = d.nodes[target?.instance?.componentId || ''],
     set = source ? family(d, source.id) : undefined
+  const { locale, tr } = usePropertyText()
   const [propertyName, setPropertyName] = useState(''),
     [axisName, setAxisName] = useState('')
   const variants = n.component?.variants || {},
@@ -71,12 +73,12 @@ export function ComponentPanel({
   if (!n.component && !n.componentSet && !owner && !definition)
     return (
       <section>
-        <h3>组件</h3>
+        <h3>{tr('组件')}</h3>
         <button className="text-button" onClick={() => editor.createComponent()}>
-          ◇ 创建组件
+          {tr('◇ 创建组件')}
         </button>
         {ids.length > 1 && ids.every((id) => d.nodes[id].component) && (
-          <button onClick={() => editor.combineVariants()}>组合为变体</button>
+          <button onClick={() => editor.combineVariants()}>{tr('组合为变体')}</button>
         )}
       </section>
     )
@@ -84,32 +86,32 @@ export function ComponentPanel({
   return (
     <section className="component-panel">
       <h3>
-        {n.componentSet ? '组件集' : n.component ? '主组件' : owner ? '组件实例' : '组件图层'}
+        {tr(n.componentSet ? '组件集' : n.component ? '主组件' : owner ? '组件实例' : '组件图层')}
       </h3>
       {n.component && (
         <>
           <div className="component-actions">
-            <button onClick={() => editor.insertComponent(n.id)}>创建实例</button>
-            <button onClick={() => editor.addVariant(n.id)}>添加变体</button>
+            <button onClick={() => editor.insertComponent(n.id)}>{tr('创建实例')}</button>
+            <button onClick={() => editor.addVariant(n.id)}>{tr('添加变体')}</button>
             {ids.length > 1 && ids.every((id) => d.nodes[id].component) && (
-              <button onClick={() => editor.combineVariants()}>组合为变体</button>
+              <button onClick={() => editor.combineVariants()}>{tr('组合为变体')}</button>
             )}
           </div>
           {Object.entries(variants).map(([axis, value]) => (
             <label key={axis} className="component-text">
               {axis}
               <DraftInput
-                aria-label={`变体值 ${axis}`}
+                aria-label={locale === 'en' ? `Variant value ${axis}` : `变体值 ${axis}`}
                 value={value}
                 onCommit={(value) => editor.updateProperties([n.id], (node) => { node.component!.variants[axis] = value }, '修改变体值')}
               />
             </label>
           ))}
-          {Object.entries(n.component.slots || {}).map(([id, slot]) => <div className="component-property" key={id}><span>内容插槽：{slot.name}</span><button onClick={() => editor.removeComponentSlot(n.id, id)}>移除插槽</button></div>)}
+          {Object.entries(n.component.slots || {}).map(([id, slot]) => <div className="component-property" key={id}><span>{locale === 'en' ? `Content slot: ${slot.name}` : `内容插槽：${slot.name}`}</span><button onClick={() => editor.removeComponentSlot(n.id, id)}>{tr('移除插槽')}</button></div>)}
           {Object.entries(n.component.properties).map(([id, p]) => (
             <div className="component-property" key={id}>
               <ValueInput
-                label={`默认 ${p.name}`}
+                label={locale === 'en' ? `Default ${p.name}` : `默认 ${p.name}`}
                 kind={p.kind}
                 value={p.defaultValue}
                 components={masters}
@@ -124,7 +126,7 @@ export function ComponentPanel({
                 }
               />
               <button
-                title={`删除属性 ${p.name}`}
+                title={locale === 'en' ? `Delete property ${p.name}` : `删除属性 ${p.name}`}
                 onClick={() =>
                   editor.updateProperties(
                     [n.id],
@@ -135,28 +137,28 @@ export function ComponentPanel({
                   )
                 }
               >
-                移除属性
+                {tr('移除属性')}
               </button>
             </div>
           ))}
           {!Object.keys(n.component.properties).length && (
-            <p className="muted">进入组件，选择文字、图层或嵌套实例以定义公开属性。</p>
+            <p className="muted">{tr('进入组件，选择文字、图层或嵌套实例以定义公开属性。')}</p>
           )}
         </>
       )}
       {definition && definition !== n.id && container(n) && !n.instance && (
         <div className="component-actions">
-          <input aria-label="内容插槽名称" placeholder="内容插槽名称" value={propertyName} onChange={e => setPropertyName(e.target.value)} />
-          <button disabled={!propertyName.trim()} onClick={() => editor.declareComponentSlot(n.id, propertyName.trim())}>声明内容插槽</button>
+          <input aria-label={tr('内容插槽名称')} placeholder={tr('内容插槽名称')} value={propertyName} onChange={e => setPropertyName(e.target.value)} />
+          <button disabled={!propertyName.trim()} onClick={() => editor.declareComponentSlot(n.id, propertyName.trim())}>{tr('声明内容插槽')}</button>
         </div>
       )}
       {n.componentSet && (
         <>
-          <p className="muted">{n.children.length} 个变体</p>
+          <p className="muted">{locale === 'en' ? `${n.children.length} ${n.children.length === 1 ? 'variant' : 'variants'}` : `${n.children.length} 个变体`}</p>
           <div className="component-actions">
             <input
-              aria-label="新增变体属性名"
-              placeholder="例如：尺寸"
+              aria-label={tr('新增变体属性名')}
+              placeholder={tr('例如：尺寸')}
               value={axisName}
               onChange={(e) => setAxisName(e.target.value)}
             />
@@ -167,7 +169,7 @@ export function ComponentPanel({
                 setAxisName('')
               }}
             >
-              添加属性
+              {tr('添加属性')}
             </button>
           </div>
           {n.children.map((id) => (
@@ -181,23 +183,23 @@ export function ComponentPanel({
         <>
           {Object.entries(source?.component?.slots || {}).map(([id, slot]) => (
             <div className="component-property" key={id}>
-              <span>{slot.name} · {target.instance?.slotContents?.[id]?.length ?? '默认'} 个内容根</span>
-              <select aria-label={`向插槽 ${slot.name} 添加内容`} value="" onChange={event => {
+              <span>{locale === 'en' ? `${slot.name} · ${target.instance?.slotContents?.[id]?.length ?? 'default'} ${target.instance?.slotContents?.[id]?.length === 1 ? 'content root' : 'content roots'}` : `${slot.name} · ${target.instance?.slotContents?.[id]?.length ?? '默认'} 个内容根`}</span>
+              <select aria-label={locale === 'en' ? `Add content to slot ${slot.name}` : `向插槽 ${slot.name} 添加内容`} value="" onChange={event => {
                 if (event.target.value) editor.assignComponentSlot(target.id, id, [...(target.instance?.slotContents?.[id] || []), event.target.value])
               }}>
-                <option value="">选择现有内容子树…</option>
+                <option value="">{tr('选择现有内容子树…')}</option>
                 {Object.values(d.nodes).filter(candidate => candidate.id !== target.id && !candidate.instanceOrigin && !candidate.component && !candidate.componentSet && !candidate.locked && !definitionOwner(d, candidate.id) && !(target.instance?.slotContents?.[id] || []).includes(candidate.id)).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
               </select>
-              {!!target.instance?.slotContents?.[id]?.length && <button onClick={() => editor.select(target.instance!.slotContents![id])}>选择插槽内容</button>}
-              <button onClick={() => editor.assignComponentSlot(target.id, id, [])}>清空</button>
-              <button onClick={() => editor.assignComponentSlot(target.id, id, null)}>恢复默认</button>
+              {!!target.instance?.slotContents?.[id]?.length && <button onClick={() => editor.select(target.instance!.slotContents![id])}>{tr('选择插槽内容')}</button>}
+              <button onClick={() => editor.assignComponentSlot(target.id, id, [])}>{tr('清空')}</button>
+              <button onClick={() => editor.assignComponentSlot(target.id, id, null)}>{tr('恢复默认')}</button>
             </div>
           ))}
-          <p className="component-source">{source?.name || '主组件缺失'}</p>
+          <p className="component-source">{source?.name || tr('主组件缺失')}</p>
           <label className="labeled-select">
-            替换组件
+            {tr('替换组件')}
             <select
-              aria-label="替换组件"
+              aria-label={tr('替换组件')}
               value={target.instance.componentId}
               onChange={(e) => editor.swapInstance(target.id, e.target.value)}
             >
@@ -213,7 +215,7 @@ export function ComponentPanel({
               <label className="labeled-select" key={axis}>
                 {axis}
                 <select
-                  aria-label={`变体 ${axis}`}
+                  aria-label={locale === 'en' ? `Variant ${axis}` : `变体 ${axis}`}
                   value={source.component!.variants[axis]}
                   onChange={(e) => editor.switchVariant(target.id, axis, e.target.value)}
                 >
@@ -230,7 +232,7 @@ export function ComponentPanel({
           {Object.entries(sourceProps).map(([id, p]) => (
             <div className="component-property" key={id}>
               <ValueInput
-                label={`实例 ${p.name}`}
+                label={locale === 'en' ? `Instance ${p.name}` : `实例 ${p.name}`}
                 kind={p.kind}
                 value={target.instance!.propertyValues[id] ?? p.defaultValue}
                 components={masters}
@@ -239,21 +241,21 @@ export function ComponentPanel({
             </div>
           ))}
           <div className="component-actions">
-            <button onClick={() => editor.goToMain(target.id)}>定位主组件</button>
+            <button onClick={() => editor.goToMain(target.id)}>{tr('定位主组件')}</button>
             <button onClick={() => editor.resetInstance(n.id)}>
-              {n.id === owner ? '重置全部覆盖' : '重置当前覆盖'}
+              {tr(n.id === owner ? '重置全部覆盖' : '重置当前覆盖')}
             </button>
             <button onClick={() => editor.detachInstance(n.id)}>
-              {n.instanceOrigin ? '分离最外层实例' : '分离实例'}
+              {tr(n.instanceOrigin ? '分离最外层实例' : '分离实例')}
             </button>
           </div>
         </>
       )}
       {definition && definition !== n.id && !n.instanceOrigin && (
         <>
-          <h4>公开组件属性</h4>
+          <h4>{tr('公开组件属性')}</h4>
           <input
-            aria-label="组件属性名"
+            aria-label={tr('组件属性名')}
             placeholder={n.name}
             value={propertyName}
             onChange={(e) => setPropertyName(e.target.value)}
@@ -263,7 +265,7 @@ export function ComponentPanel({
               <button
                 onClick={() => editor.exposeComponentProperty(n.id, 'text', propertyName || n.name)}
               >
-                公开文本
+                {tr('公开文本')}
               </button>
             )}
             <button
@@ -271,7 +273,7 @@ export function ComponentPanel({
                 editor.exposeComponentProperty(n.id, 'boolean', propertyName || `显示${n.name}`)
               }
             >
-              公开显示开关
+              {tr('公开显示开关')}
             </button>
             {n.instance && (
               <button
@@ -283,7 +285,7 @@ export function ComponentPanel({
                   )
                 }
               >
-                公开实例替换
+                {tr('公开实例替换')}
               </button>
             )}
           </div>

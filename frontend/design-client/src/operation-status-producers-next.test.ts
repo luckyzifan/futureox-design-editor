@@ -10,6 +10,7 @@ const sources: Record<OperationStatus['key'], string> = {
  exportPreviewGenerating: app, exportFileReady: app, sketchExportGenerating: app, sketchExportReadyCompatibility: app,
  openBlockedActiveOperation: app, imageImportBlockedActiveOperation: app, singleDesignFileRequired: app, importedGroupsAppended: app, designImportComplete: app,
  imageImportFailed: app, saveFailedCanvasRetained: app, kernelStartupFailed: app, recoveryFailedAutosavePaused: app, closeFailedDocumentRetained: app, workspaceSwitchFailedDocumentRetained: app,
+ operationFailedCanvasRetained: readFileSync(new URL('./desktop-session.ts', import.meta.url), 'utf8'),
  finishOrCancelDrag: commands, propertiesCopied: commands, toolUnavailable: commands, unknownToolCommand: commands, sharedFontStyleNeedsLocalOverride: fonts,
  importInputTooLarge: readFileSync(new URL('./import-input-policy.ts', import.meta.url), 'utf8'),
  importInputInvalid: readFileSync(new URL('./import-input-policy.ts', import.meta.url), 'utf8'),
@@ -26,7 +27,7 @@ test.each(Object.keys(sources) as OperationStatus['key'][])('explicit producer %
  const translated = operationStatusText(raw, tagged, 'en')
  if (key === 'toolUnavailable') expect(translated).toBe(raw) // Unknown registry entry is not invented.
  else expect(translated).not.toBe(raw)
- if (key.endsWith('Failed') || ['saveFailedCanvasRetained','kernelStartupFailed','recoveryFailedAutosavePaused','closeFailedDocumentRetained','workspaceSwitchFailedDocumentRetained'].includes(key)) expect(translated).toContain(error)
+ if (key.endsWith('Failed') || ['saveFailedCanvasRetained','kernelStartupFailed','recoveryFailedAutosavePaused','closeFailedDocumentRetained','workspaceSwitchFailedDocumentRetained','operationFailedCanvasRetained'].includes(key)) expect(translated).toContain(error)
 })
 test('raw failure/author boundaries stay explicit and errors are never globally translated', () => {
  expect(app).toContain("if (cancelled) editor.notify('图片导入期间画布已变化，请重新导入')")

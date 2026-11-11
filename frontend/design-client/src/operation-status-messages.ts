@@ -4,7 +4,7 @@ import { localizedToolCommands, unavailableReason } from './tool-registry'
 export type OperationStatus =
   | { key: 'exportPreviewGenerating' | 'exportFileReady' | 'sketchExportGenerating' | 'sketchExportReadyCompatibility' | 'openBlockedActiveOperation' | 'imageImportBlockedActiveOperation' | 'singleDesignFileRequired' | 'designImportComplete' | 'finishOrCancelDrag' | 'propertiesCopied' | 'sharedFontStyleNeedsLocalOverride' | 'instanceDetachHint' | 'importInputTooLarge' | 'importInputInvalid' | 'openCanvasBeforeImageImport' }
   | { key: 'importedGroupsAppended'; count: number }
-  | { key: 'imageImportFailed' | 'saveFailedCanvasRetained' | 'kernelStartupFailed' | 'recoveryFailedAutosavePaused' | 'closeFailedDocumentRetained' | 'workspaceSwitchFailedDocumentRetained'; error: string }
+  | { key: 'imageImportFailed' | 'saveFailedCanvasRetained' | 'kernelStartupFailed' | 'recoveryFailedAutosavePaused' | 'closeFailedDocumentRetained' | 'workspaceSwitchFailedDocumentRetained' | 'operationFailedCanvasRetained'; error: string }
   | { key: 'toolUnavailable' | 'unknownToolCommand'; commandId: string }
 export type MessagePresentation = Readonly<{ raw: string; status: OperationStatus }>
 /** Only explicitly tagged producers localize; arbitrary text is never interpreted. */
@@ -26,6 +26,7 @@ export function operationStatusText(raw: string, presentation: MessagePresentati
     case 'importInputInvalid': return 'Invalid import file byte count'
     case 'imageImportFailed': return `Image import failed: ${status.error}`
     case 'saveFailedCanvasRetained': return `Save failed; the current canvas was retained: ${status.error}`
+    case 'operationFailedCanvasRetained': return `Operation failed; the current canvas was retained: ${status.error}`
     case 'kernelStartupFailed': return `Design kernel failed to load: ${status.error}`
     case 'recoveryFailedAutosavePaused': return `Local recovery failed; autosave is paused: ${status.error}`
     case 'closeFailedDocumentRetained': return `Close request failed; the design was retained: ${status.error}`
