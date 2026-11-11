@@ -115,6 +115,18 @@ test('capped panel keyboard resize starts from visible geometry and keeps cancel
   await pointer(handle, 'pointerdown', 260); await pointer(handle, 'pointermove', 230); await pointer(handle, 'pointercancel', 230)
   expect(interfacePreference.getSnapshot().leftWidth).toBe(480)
 })
+test('left resize handle is outside the clipped layers content', () => {
+  const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
+  const shell = css.match(/\.editor-shell \.adaptive-layers-shell \{ overflow: [^}]+\}/)?.[0]
+  expect(shell).toContain('overflow: visible')
+  expect(shell).toContain('min-width: 0')
+  expect(css).toContain('.editor-shell .adaptive-layers-shell > :not(.panel-resize-handle) { min-width: 0; max-width: 100%; overflow: hidden; }')
+  expect(css).toContain('.editor-shell .adaptive-layers-shell .layers-panel { width: 100%; height: 100%; min-width: 0; max-width: none; overflow: hidden; }')
+  expect(css).toContain('.panel-resize-left { right: -4px; }')
+  expect(css).toContain('.editor-shell[data-source-document="true"] .adaptive-layers-shell { flex-direction:column; overflow:visible; background:var(--workspace-panel); }')
+  expect(css).toContain('.editor-shell .panel-resize-handle { display: none; }')
+  expect(css).toContain('height: calc((100% - 8px) / 2); min-height: 0; overflow: auto;')
+})
 test('compact simultaneous panels have separate vertical slots without hiding either descendant', () => {
   const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
   expect(css).toContain('.editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .adaptive-layers-shell')

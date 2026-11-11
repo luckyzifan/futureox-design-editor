@@ -2135,7 +2135,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .source-compatibility-card details { flex:1; min-width:0; padding-top:4px; }
 .source-compatibility-card summary { color:var(--workspace-muted); cursor:pointer; }
 .source-compatibility-card ul { padding-left:16px; margin:8px 0; max-height:180px; overflow:auto; line-height:1.6; }
-.editor-shell[data-source-document="true"] .adaptive-layers-shell { flex-direction:column; overflow:hidden; background:var(--workspace-panel); }
+.editor-shell[data-source-document="true"] .adaptive-layers-shell { flex-direction:column; overflow:visible; background:var(--workspace-panel); }
 @media (min-width: 901px) {
   .editor-shell[data-source-document="true"] .adaptive-layers-shell { width:max(300px, var(--workspace-layers-width, 248px)); }
 }
@@ -2311,9 +2311,13 @@ html[data-reduced-motion=true] .animation-modal * {
 .export-region-prompt button {color:inherit;text-decoration:underline;}
 .export-region-outline {position:absolute;pointer-events:none;box-sizing:border-box;border:1px solid #4597f7;background:#4597f71c;}
 
-/* Left column keeps its chrome inside the grid cell. The active list scrolls; the footer does not. */
-.editor-shell .adaptive-layers-shell { overflow: hidden; min-width: 0; height: 100%; }
+/* The layers shell stays a fixed grid track. Its content clips in its own box.
+   The resize handle is an 8px sibling centered on the edge (`right: -4px`).
+   Clipping that sibling with the shell hides the geometric center and the outer
+   half, so a drag that starts on the divider hits the canvas instead. */
+.editor-shell .adaptive-layers-shell { overflow: visible; min-width: 0; height: 100%; }
 .editor-shell .adaptive-layers-shell .layers-panel { width: 100%; height: 100%; min-width: 0; max-width: none; overflow: hidden; }
+.editor-shell .adaptive-layers-shell > :not(.panel-resize-handle) { min-width: 0; max-width: 100%; overflow: hidden; }
 .layers-pages { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 34%; overflow: hidden; }
 .layers-pages .pages { flex: 1 1 auto; min-height: 0; max-height: none; }
 .pages-actions { flex: none; }
