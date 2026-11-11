@@ -2,6 +2,7 @@
  * The GPU submission endpoint is observed; no GPU or timing claim is made. */
 import { afterEach, expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
+import { RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
 import type { EncodeYield } from './encode-yield'
 import type { Driver } from './types'
 
@@ -78,7 +79,9 @@ test('a full display command slice yields even when the CPU time window has not 
   vi.spyOn(performance, 'now').mockReturnValue(100)
   f.internal.encodeYield.begin()
   f.driver.rasterPacing = true
-  f.driver.drawCalls = 64
+  f.driver.drawCalls = RASTER_SLICE_COMMANDS - 1
+  expect(f.internal.yieldEncoding()).toBeUndefined()
+  f.driver.drawCalls = RASTER_SLICE_COMMANDS
   const pending = f.internal.yieldEncoding()
   expect(pending).toBeInstanceOf(Promise)
   await pending

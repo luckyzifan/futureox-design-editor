@@ -36,9 +36,8 @@ type Props={hover?:import('../source-hover-detail').SourceHoverHub;overviewBoxes
   onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean,regions?:readonly OverviewMaterial[])=>void}
 type Placement=RasterTile & {gpuTile:number}
 type Tile=TileResult&{serial:number;used:number;lastSubmission:number;placement?:Placement}
-// One raster owner plus at most one speculative preparation in the existing
-// worker. A larger batch is unnecessary and would extend cancellation work.
 const SOURCE_PIPELINE_TILES=2
+const SETTLED_SOURCE_PIPELINE_TILES=8
 const SOURCE_QUIET_MS=32
 const SOURCE_PASTEBOARD = {
   backgroundColor:'#e6e8ec',
@@ -170,7 +169,8 @@ export function NativeSourceSurface(props:Props){
         nativeDensity,nativePhase,coverage,
         generation:0,acceptedGeneration:0,
       })
-    const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
+    const pipelineFullSource=!!bitmapContext&&!source.materialKeys&&source.nodes>=3000
+    const workQueue=new SourceRenderWork<RasterTile>(overviewMode||pipelineFullSource?SETTLED_SOURCE_PIPELINE_TILES:SOURCE_PIPELINE_TILES)
     let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
     const hover=latest.current.hover
     const pick:NonNullable<import('../source-hover-detail').SourceHoverHub['pick']>=(item,point,zoom,deep)=>{
@@ -582,7 +582,7 @@ export function NativeSourceSurface(props:Props){
       running=true
       try{
         while(alive&&!failed&&!suspended&&!latest.current.parked){
-          const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key)||cpuRepairs.has(tile.key))
+          const {p,ratio,raster,tiles,prefetch,exact}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key)||cpuRepairs.has(tile.key))
           const optional=missing.length===0
           const strip=(bitmapContext||renderExecutionPolicy.cpuOnly)&&!zoomingIn?panStripOverview(source.bounds,p.view,p):undefined
           stripOverview=strip
@@ -658,9 +658,11 @@ export function NativeSourceSurface(props:Props){
           const holeFirst=!optional&&moving&&!zoomingIn
             ?prioritizeUncoveredTiles(ordered,[...cache.values()],{x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom})
             :ordered
-          // A settled overview can stream its visible cohort in one request.
-          // The worker still prepares just one tile ahead of its GPU raster.
-          const limit=overviewMode&&!optional&&!moving&&raster.scale<=1?8:SOURCE_PIPELINE_TILES
+          // Keep preparation running between settled visible tiles. The worker
+          // still rasterizes one tile at a time and prepares just one ahead.
+          const settledPipeline=!optional&&!moving&&
+            (overviewMode&&raster.scale<=1||pipelineFullSource&&exact&&raster.scale<=.5)
+          const limit=settledPipeline?SETTLED_SOURCE_PIPELINE_TILES:SOURCE_PIPELINE_TILES
           const coverMotion=moving&&!zoomingIn&&(continuousZoom||panned)
           const batch=holeFirst.slice(0,wantStrip||coverMotion||(source.materialKeys && moving && zoomingIn && continuousZoom && backing)?1:limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})

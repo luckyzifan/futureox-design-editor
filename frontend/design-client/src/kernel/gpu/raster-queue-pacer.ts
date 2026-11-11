@@ -32,4 +32,4 @@ export class RasterQueuePacer {
   }
 }
 
-export const RASTER_SLICE_COMMANDS = 64
+export const RASTER_SLICE_COMMANDS = 256
