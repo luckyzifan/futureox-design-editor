@@ -1,5 +1,8 @@
+import { pruneAnimations } from './animation'
+import { cloneValue } from './draft'
 import { svgEmbeddedFonts } from './svg-font-embedding'
 import { expandRepeats, repeatSourceId, hasRepeats } from './repeat-transforms'
+import { prunePrototypeReferences } from './prototype'
 import { roundSvgCoordinates } from './export-options'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Scene } from './Renderer'
@@ -37,6 +40,74 @@ function repeatExport(doc: DesignDocument, target: ExportTarget): {doc: DesignDo
     return [id,n]
   }))
   return {doc:{...expanded,nodes},target}
+}
+/** The vector writer admits one page only. Re-rooting a selection or the
+ * current page leaves every other node in the copied map, and native
+ * validation rejects that as an unreachable node. Drop those nodes from this
+ * disposable snapshot, then drop metadata that named them. The authored
+ * document, its history and its references are not modified. */
+function closeVectorExportSnapshot(shifted: DesignDocument, repeatedVisual: boolean) {
+  const reachable = new Set<string>()
+  const pending = [...shifted.pages[0].children]
+  while (pending.length) {
+    const id = pending.pop()!
+    if (reachable.has(id)) continue
+    reachable.add(id)
+    pending.push(...shifted.nodes[id].children)
+  }
+  const previousNodes = shifted.nodes
+  const dropped = Object.keys(previousNodes).some((id) => !reachable.has(id))
+  if (repeatedVisual || dropped)
+    shifted.nodes = Object.fromEntries(Object.entries(previousNodes).filter(([id]) => reachable.has(id)))
+  if (repeatedVisual) {
+    delete shifted.prototype
+    delete shifted.reviews
+    shifted.animations = []
+    return
+  }
+  if (!dropped) return
+  const pageIds = new Set(shifted.pages.map((page) => page.id))
+  if (shifted.reviews?.some((review) => !pageIds.has(review.pageId) || (review.nodeId !== undefined && !reachable.has(review.nodeId))))
+    shifted.reviews = shifted.reviews.filter((review) => pageIds.has(review.pageId) && (review.nodeId === undefined || reachable.has(review.nodeId)))
+  if (shifted.prototype) {
+    shifted.prototype = cloneValue(shifted.prototype)
+    prunePrototypeReferences({ ...shifted, nodes: previousNodes }, shifted)
+    if (!shifted.prototype.startNode && Object.keys(shifted.prototype.interactions).length === 0) delete shifted.prototype
+  }
+  if (shifted.animations?.length) {
+    const animations = cloneValue(shifted.animations)
+    const holder = { ...shifted, animations }
+    pruneAnimations(holder)
+    shifted.animations = holder.animations
+  }
+  for (const [id, node] of Object.entries(shifted.nodes)) {
+    const connector = node.connector
+    if (!connector) continue
+    const detach = (end: typeof connector.from) => (end.nodeId && !reachable.has(end.nodeId) ? { point: end.point } : end)
+    const from = detach(connector.from)
+    const to = detach(connector.to)
+    if (from !== connector.from || to !== connector.to)
+      shifted.nodes[id] = { ...node, connector: { ...connector, from, to } }
+  }
+  const next = { ...shifted.nodes }
+  let rewritten = false
+  for (const [id, node] of Object.entries(next)) {
+    if (node.instance && !next[node.instance.componentId]?.component) {
+      const copy = { ...node }
+      delete copy.instance
+      next[id] = copy
+      rewritten = true
+    }
+  }
+  for (const [id, node] of Object.entries(next)) {
+    if (node.instanceOrigin && !next[node.instanceOrigin.owner]?.instance) {
+      const copy = { ...node }
+      delete copy.instanceOrigin
+      next[id] = copy
+      rewritten = true
+    }
+  }
+  if (rewritten) shifted.nodes = next
 }
 function projectSlice(doc: DesignDocument, pageId: string, target: ExportTarget): DesignDocument {
   if(target.kind!=='slice'||!target.transform)return doc
@@ -331,12 +402,7 @@ export async function exportPdfVector(
       ...shifted.nodes[entry.id],
       transform: multiply(translate(-box.x, -box.y), entry.matrix),
     }
-  if (repeatedVisual) {
-    const reachable = new Set<string>(), pending = [...shifted.pages[0].children]
-    while (pending.length) {const id=pending.pop()!;if(reachable.has(id))continue;reachable.add(id);pending.push(...shifted.nodes[id].children)}
-    shifted.nodes = Object.fromEntries(Object.entries(shifted.nodes).filter(([id])=>reachable.has(id)))
-    delete shifted.prototype;delete shifted.reviews;shifted.animations=[]
-  }
+  closeVectorExportSnapshot(shifted, repeatedVisual)
   const bytes = kernelPdfVector(shifted, pageId, width, height, true)
   return {
     name: `${filename(targetName(doc, target))}.pdf`,
