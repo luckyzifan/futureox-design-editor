@@ -73,6 +73,44 @@ test('a native trailing mask cannot erase content painted before it',()=>{
  }finally{engine.free()}
 })
 
+test('FIG brush assets and baked strokes keep the ordinary page and the visible paint order', () => {
+  const rectPath = (left: number, right: number) => {
+    const points = [[left, 2], [right, 2], [right, 18], [left, 18]]
+    const bytes = new Uint8Array(points.length * 9 + 1)
+    const view = new DataView(bytes.buffer)
+    points.forEach(([x, y], i) => {
+      bytes[i * 9] = i ? 2 : 1
+      view.setFloat32(i * 9 + 1, x, true)
+      view.setFloat32(i * 9 + 5, y, true)
+    })
+    return bytes
+  }
+  const outline = (commandsBlob: number) => [{ commandsBlob, windingRule: 'NONZERO', styleID: 0 }]
+  const solid = (r: number, g: number, b: number) => ({ type: 'SOLID', color: { r, g, b, a: 1 } })
+  const { document, warnings } = importFig(encoded({}, {}, [rectPath(2, 20), rectPath(12, 32)], [
+    { guid: guid(4), type: 'CANVAS', name: 'Internal canvas', internalOnly: true, parentIndex: { guid: guid(1), position: 'b' } },
+    { guid: guid(5), type: 'BRUSH', name: 'Preset', brushType: 'STRETCH', fillGeometry: outline(0), fillPaints: [solid(0, 0, 1)], parentIndex: { guid: guid(4), position: 'a' } },
+    { guid: guid(6), type: 'CANVAS', name: 'Artwork', parentIndex: { guid: guid(1), position: 'c' } },
+    { guid: guid(7), type: 'VECTOR', name: 'Brush and fill', size: { x: 40, y: 24 }, fillGeometry: outline(0), fillPaints: [solid(1, 0, 0)], strokeGeometry: outline(1), strokeBrushGuid: guid(5), strokeWeight: 9, strokePaints: [solid(0, 0, 1)], parentIndex: { guid: guid(6), position: 'a' } },
+    { guid: guid(8), type: 'VECTOR', name: 'Missing outline', strokeBrushGuid: guid(5), strokePaints: [solid(0, 0, 1)], parentIndex: { guid: guid(6), position: 'b' } },
+  ]))
+  validateDocument(document)
+  expect(warnings).toContain('FIG 笔刷图层「Missing outline」的笔刷外观无法保留，其他图层和该图层的原有填充已导入')
+  expect(Object.values(document.nodes).find(n => n.name === 'Preset')?.vectorGeometry?.fill).toHaveLength(5)
+  const engine = new VectorEngine()
+  try {
+    engine.load_document(JSON.stringify(document))
+    const render = (name: string) => engine.render_rgba(JSON.stringify({ pageId: document.pages.find(p => p.name === name)!.id, width: 40, height: 24, view: { x: 0, y: 0, zoom: 1 }, transparent: true }))
+    const sample = (rgba: Uint8Array, x: number) => [...rgba.subarray((8 * 40 + x) * 4, (8 * 40 + x) * 4 + 4)]
+    expect(sample(render('Page'), 15)).toEqual([255, 0, 0, 255])
+    const pixels = render('Artwork')
+    expect(sample(pixels, 5)).toEqual([255, 0, 0, 255])
+    expect(sample(pixels, 15)).toEqual([0, 0, 255, 255])
+    expect(sample(pixels, 28)).toEqual([0, 0, 255, 255])
+    expect(sample(pixels, 36)).toEqual([0, 0, 0, 0])
+  } finally { engine.free() }
+})
+
 test('FIG automatic-width text stays on its authored line; fixed-width text retains wrapping',()=>{
  for(const textAutoResize of ['WIDTH_AND_HEIGHT','HEIGHT','NONE']){
   const {node}=subject({type:'TEXT',textAutoResize,textData:{characters:'Completed Tasks'},fontSize:14,size:{x:123,y:20}})

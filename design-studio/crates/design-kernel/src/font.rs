@@ -197,6 +197,11 @@ impl Default for TextParagraph {
     }
 }
 impl TextParagraph {
+    pub(crate) fn fixed_line_height(&self) -> Option<f64> {
+        (self.minimum_line_height > 0. && (self.minimum_line_height - self.maximum_line_height).abs() <= 1e-9)
+            .then_some(self.minimum_line_height)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !["start", "center", "end", "justify"].contains(&self.align.as_str())
             || [
@@ -1555,11 +1560,36 @@ impl Fonts {
             }
         }
         paragraphs.push(start..text.len());
-        for paragraph in paragraphs {
-            let attributes = runs
-                .iter()
-                .find(|r| r.start <= utf16[paragraph.start] && utf16[paragraph.start] < r.end)
-                .and_then(|r| r.paragraph.as_ref());
+        let paragraph_at = |start: usize| run_covering(runs, utf16[start]).and_then(|run| run.paragraph.as_ref());
+        let sketch_baseline = if paragraphs.len() > 1 && style.line_box_baseline == "nearest-point" && style.writing_mode != "vertical" {
+            let mut heights = paragraphs.iter().map_while(|range| paragraph_at(range.start)?.fixed_line_height());
+            heights.next().and_then(|first| {
+                let (count, minimum) = heights.fold((1, first), |(count, min), h| (count + 1, min.min(h)));
+                if count < 2 { return None; }
+                let last = utf16[paragraphs[count - 1].end];
+                let cap_height = |font: &str, weight, size| {
+                    let parsed = self.face(font, weight).ok()?;
+                    let face = parsed.borrow_face();
+                    let cap = face.capital_height().or_else(|| {
+                        face.glyph_bounding_box(face.glyph_index('H')?).map(|rect| rect.y_max)
+                    })?;
+                    Some(f64::from(cap) * size / f64::from(face.units_per_em()))
+                };
+                let mut cap = cap_height(&style.font_id, style.weight, size)?;
+                for run in runs.iter().take_while(|run| run.start < last) {
+                    cap = cap.max(cap_height(run.font_id.as_deref().unwrap_or(&style.font_id),
+                        run.weight.unwrap_or(style.weight), run.font_size.unwrap_or(size))?);
+                }
+                // Sketch anchors consecutive fixed line boxes to one baseline.
+                // The smallest box and largest cap in that range determine the
+                // whole-point space below the cap; advances keep their own
+                // line heights and paragraph gaps, including blank paragraphs.
+                let below_cap = ((minimum - cap) / 2.).floor().max(0.);
+                Some((count, first - below_cap))
+            })
+        } else { None };
+        for (paragraph_index, paragraph) in paragraphs.into_iter().enumerate() {
+            let attributes = paragraph_at(paragraph.start);
             let mut paragraph_style;
             let style = if let Some(p) = attributes {
                 p.validate()?;
@@ -1807,10 +1837,9 @@ impl Fonts {
                     // (equal minimum and maximum) uses the nearest document point,
                     // which is where native text-preview matrices draw the baseline.
                     ascent += (height - natural) / 2.;
-                    if style.line_box_baseline == "nearest-point"
-                        && p.minimum_line_height > 0.
-                        && (p.minimum_line_height - p.maximum_line_height).abs() <= 1e-9
-                    {
+                    if let Some((_, baseline)) = sketch_baseline.filter(|(count, _)| paragraph_index < *count) {
+                        ascent = baseline;
+                    } else if style.line_box_baseline == "nearest-point" && (p.fixed_line_height().is_some() || sketch_baseline.is_some()) {
                         ascent = ascent.round_ties_even();
                     }
                 }

@@ -22,6 +22,41 @@ fn rectangle_is_renderable_and_native_fixture_passes_admission() {
     let doc=fig::import_fig_native(bytes).unwrap(); doc.validate().unwrap();
     assert_eq!(doc.nodes.len(),381);assert!(doc.nodes.values().all(|n| !matches!(n.kind.as_str(),"rect"|"path")));
 }
+
+#[test]
+fn brush_definitions_and_baked_stroke_contours_use_separate_paints() {
+    let commands = |left: f32, right: f32| {
+        let mut bytes = Vec::new();
+        for (op, x, y) in [(1, left, 2f32), (2, right, 2.), (2, right, 18.), (2, left, 18.)] {
+            bytes.push(op);
+            bytes.extend(x.to_le_bytes());
+            bytes.extend(y.to_le_bytes());
+        }
+        bytes.push(0);
+        bytes
+    };
+    let outline = |index| json!([{"commandsBlob":index,"windingRule":"NONZERO","styleID":0}]);
+    let mut input = tree(json!({"type":"VECTOR","fillGeometry":outline(0),"strokeBrushGuid":{"sessionID":1,"localID":5},
+        "strokeGeometry":outline(1),"strokeWeight":9,"strokePaints":[{"type":"SOLID","color":{"r":0,"g":0,"b":1,"a":1}}]}));
+    input["nodeChanges"].as_array_mut().unwrap().extend([
+        json!({"guid":{"sessionID":1,"localID":4},"type":"CANVAS","internalOnly":true,
+            "parentIndex":{"guid":{"sessionID":1,"localID":1},"position":"b"}}),
+        json!({"guid":{"sessionID":1,"localID":5},"type":"BRUSH","brushType":"STRETCH","fillGeometry":outline(0),
+            "parentIndex":{"guid":{"sessionID":1,"localID":4},"position":"a"}}),
+    ]);
+    let doc = fig::document_from_canvas(&input, BTreeMap::new(), vec![commands(2., 20.), commands(12., 32.)]).unwrap();
+    doc.validate().unwrap();
+    let group = &doc.nodes["fig-1-3"];
+    assert_eq!(group.kind, "group");
+    assert_eq!(group.children.len(), 2);
+    let fill = &doc.nodes[&group.children[0]];
+    let brush = &doc.nodes[&group.children[1]];
+    assert_eq!(fill.fills[0].color, "#ff0000");
+    assert_eq!(brush.fills[0].color, "#0000ff");
+    assert!(brush.strokes.is_empty());
+    assert_ne!(fill.vector_geometry, brush.vector_geometry);
+    assert_eq!(doc.nodes["fig-1-5"].vector_geometry.as_ref().unwrap().fill.len(), 5);
+}
 #[test]
 fn disabled_paint_blend_and_stop_alpha_are_authored_data() {
     let doc=import(json!({"blendMode":"PASS_THROUGH","fillPaints":[{"type":"GRADIENT_LINEAR","visible":false,"blendMode":"LINEAR_BURN","opacity":0.4,

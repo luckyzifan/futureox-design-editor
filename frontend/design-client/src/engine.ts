@@ -70,6 +70,7 @@ import {
   hasSchema19Features,
   hasSchema20Features,
   hasSchema21Features,
+  hasSchema22Features,
   hasLocalVariableModes,
   hasStrokeMarkers,
   hasLayerExports,
@@ -707,6 +708,7 @@ export class Editor {
         if(draft.schemaVersion < 18 && hasSchema18Features(featureDocOf(authored)))draft.schemaVersion=18
         if(draft.schemaVersion < 20 && hasSchema20Features(featureDocOf(authored)))draft.schemaVersion=20
         if(draft.schemaVersion < 21 && hasSchema21Features(featureDocOf(authored)))draft.schemaVersion=21
+        if(draft.schemaVersion < 22 && hasSchema22Features(featureDocOf(authored)))draft.schemaVersion=22
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
@@ -1106,6 +1108,7 @@ export class Editor {
         if (candidate.schemaVersion < 7 && featureNodes.some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
         if (candidate.schemaVersion < 9 && hasGradientBlur(featureDoc)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
         if(candidate.schemaVersion < 10 && hasLocalTools(featureDoc))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(featureDoc))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(featureDoc))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(featureDoc))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(featureDoc))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(featureDoc))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && featureNodes.some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(featureDoc))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(featureDoc))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(featureDoc))candidate.schemaVersion=20;if(candidate.schemaVersion < 21 && hasSchema21Features(featureDoc))candidate.schemaVersion=21;if(candidate.schemaVersion < 19 && hasSchema19Features(featureDoc))candidate.schemaVersion=19
+        if (candidate.schemaVersion < 22 && hasSchema22Features(featureDoc)) candidate.schemaVersion = 22
         if (candidate.schemaVersion < 8 && (hasStrokeMarkers(featureDoc) || hasLayerExports(featureDoc))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
         const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
         if (visible !== candidate) validateStructure(visible)
@@ -1698,9 +1701,11 @@ export class Editor {
     if (!p?.layout || p.layout.mode === 'none' || n.sizing?.absolute) return false
     const cursor = apply(inverse(worldMatrix(base, p.id, parents)), point),
       axis = p.layout.mode === 'vertical' ? 1 : 0
+    const reverse = p.layout.reverseFlow && p.layout.mode !== 'grid'
     const flow = p.children.filter(
       (child) => child !== id && base.nodes[child].visible && !base.nodes[child].sizing?.absolute,
     )
+    if (reverse) flow.reverse()
     let before: string | undefined
     if (p.layout.mode === 'grid' || p.layout.wrap)
       before = wrappedInsertion(this.state.doc.nodes, flow, cursor, axis)
@@ -1712,7 +1717,7 @@ export class Editor {
         )
       })
     const children = p.children.filter((child) => child !== id)
-    const at = before ? children.indexOf(before) : children.length
+    const at = before ? children.indexOf(before) + Number(!!reverse) : reverse ? 0 : children.length
     children.splice(at, 0, id)
     try {
       const candidate = { ...base, nodes: { ...base.nodes, [p.id]: { ...p, children } } }
@@ -1721,6 +1726,7 @@ export class Editor {
       if (candidate.schemaVersion < 7 && Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
       if (candidate.schemaVersion < 9 && hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
       if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(candidate))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(candidate))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(candidate))candidate.schemaVersion=20;if(candidate.schemaVersion < 21 && hasSchema21Features(candidate))candidate.schemaVersion=21;if(candidate.schemaVersion < 19 && hasSchema19Features(candidate))candidate.schemaVersion=19
+      if (candidate.schemaVersion < 22 && hasSchema22Features(candidate)) candidate.schemaVersion = 22
       if (candidate.schemaVersion < 8 && (hasStrokeMarkers(candidate) || hasLayerExports(candidate))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
       this.set({ doc: kernelLayout(candidate) })
     } catch (error) {

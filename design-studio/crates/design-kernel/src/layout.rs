@@ -77,6 +77,9 @@ pub struct Layout {
     pub line_gap: f64,
     pub padding: [f64; 4],
     pub wrap: bool,
+    /// Storage remains in painter order even when the flow runs in reverse.
+    #[serde(skip_serializing_if = "crate::components::is_false")]
+    pub reverse_flow: bool,
     pub justify: Align,
     pub align: Align,
     pub columns: usize,
@@ -90,6 +93,7 @@ impl Default for Layout {
             line_gap: 8.,
             padding: [16.; 4],
             wrap: false,
+            reverse_flow: false,
             justify: Align::Start,
             align: Align::Start,
             columns: 3,
@@ -397,7 +401,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     let axis = usize::from(l.mode == Flow::Vertical);
     let cross = 1 - axis;
     let mut sizing = n.sizing_value();
-    let ids: Vec<_> = n
+    let mut ids: Vec<_> = n
         .children
         .iter()
         .filter(|id| {
@@ -406,6 +410,9 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         })
         .cloned()
         .collect();
+    if l.reverse_flow {
+        ids.reverse();
+    }
     // Resolve the hug/fill dependency explicitly, as a fixed parent axis.
     for a in 0..2 {
         if mode(&sizing, a) == SizeMode::Hug

@@ -839,6 +839,7 @@ const KNOWN_KINDS: &[(&str, &str)] = &[
     ("GROUP", "group"),
     ("BOOLEAN_OPERATION", "vector"),
     ("VECTOR", "vector"),
+    ("BRUSH", "vector"),
     ("LINE", "line"),
     ("ELLIPSE", "ellipse"),
     ("RECTANGLE", "rectangle"),
@@ -1855,7 +1856,7 @@ impl FigImporter {
             _ => {}
         }
         // vector networks: blob index → binary network → kernel geometry
-        if fig_type == "VECTOR"
+        if matches!(fig_type, "VECTOR" | "BRUSH")
             && let Some(vd) = change.get("vectorData")
             && let Some(blob_id) = vd.get("vectorNetworkBlob").and_then(Value::as_u64)
         {
@@ -1910,41 +1911,18 @@ impl FigImporter {
                 }
             }
         }
-        if fig_type == "VECTOR"
+        if matches!(fig_type, "VECTOR" | "BRUSH")
             && let Some(entries) = change
                 .get("fillGeometry")
                 .and_then(Value::as_array)
                 .filter(|v| !v.is_empty())
         {
-            let mut fill = crate::path::Path::default();
-            let mut rule = None;
-            for entry in entries {
-                let index = entry
-                    .get("commandsBlob")
-                    .and_then(Value::as_u64)
-                    .ok_or_else(|| Error::Malformed("FIG fill geometry blob missing".into()))?;
-                let blob = self
-                    .kiwi_blobs
-                    .get(index as usize)
-                    .ok_or_else(|| Error::Malformed("FIG fill geometry blob unavailable".into()))?;
-                let current = if matches!(str_of(entry, "windingRule"), Some("ODD" | "EVENODD")) {
-                    "evenodd"
-                } else {
-                    "nonzero"
-                };
-                if rule.is_some_and(|r| r != current) {
-                    return Err(Error::Unsupported(
-                        "Mixed FIG fill winding requires separate paint geometry".into(),
-                    ));
-                }
-                rule = Some(current);
-                fill.commands.extend(
-                    crate::fig_geometry::decode_fill_commands(blob)
-                        .map_err(Error::Malformed)?
-                        .commands,
-                );
-            }
-            let stroke = if let Some(geometry) = &node.vector_geometry {
+            let (fill, rule) = self.baked_geometry(entries)?;
+            let stroke = if change.get("strokeBrushGuid").is_some()
+                || fig_type == "BRUSH" && node.strokes.is_empty()
+            {
+                fill.clone()
+            } else if let Some(geometry) = &node.vector_geometry {
                 geometry.paths().map_err(Error::Malformed)?.1
             } else if let Some(network) = &node.network {
                 network.paths().map_err(Error::Malformed)?.1
@@ -1956,12 +1934,89 @@ impl FigImporter {
                 fill.clone()
             };
             node.vector_geometry = Some(
-                crate::vector_geometry::VectorGeometry::from_paths(&fill, &stroke, rule.unwrap())
+                crate::vector_geometry::VectorGeometry::from_paths(&fill, &stroke, rule)
                     .map_err(Error::Malformed)?.into(),
             );
             node.network = None;
         }
+        if fig_type == "BRUSH" {
+            untranslated.push(format!("brushType={}", str_of(change, "brushType").unwrap_or("unknown")));
+            if node.vector_geometry.is_none() && node.network.is_none() {
+                untranslated.push(format!("Brush preset {:?} has no usable outline", node.name));
+            }
+        }
         Ok(node)
+    }
+
+    fn baked_geometry(&self, entries: &[Value]) -> Result<(crate::path::Path, &'static str), Error> {
+        let winding = |entry: &Value| match str_of(entry, "windingRule") {
+            Some("ODD" | "EVENODD") => "evenodd",
+            _ => "nonzero",
+        };
+        let rule = entries.first().map_or("nonzero", winding);
+        let mut fill = crate::path::Path::default();
+        for entry in entries {
+            if winding(entry) != rule {
+                return Err(Error::Unsupported("Mixed FIG fill winding requires separate paint geometry".into()));
+            }
+            let blob = entry.get("commandsBlob").and_then(Value::as_u64)
+                .and_then(|index| usize::try_from(index).ok())
+                .and_then(|index| self.kiwi_blobs.get(index))
+                .ok_or_else(|| Error::Malformed("FIG baked geometry blob unavailable".into()))?;
+            let path = crate::fig_geometry::decode_fill_commands(blob).map_err(Error::Malformed)?;
+            if fill.commands.len() + path.commands.len() > crate::vector_geometry::MAX_COMMANDS {
+                return Err(Error::Malformed("FIG baked geometry exceeds its command allowance".into()));
+            }
+            fill.commands.extend(path.commands);
+        }
+        Ok((fill, rule))
+    }
+
+    fn bake_brush_stroke(&self, node: &mut Node, change: &Value, notes: &mut Vec<String>) -> Option<(Option<Node>, Node)> {
+        let reference = guid_string(change.get("strokeBrushGuid")?);
+        if node.strokes.is_empty() {
+            return None;
+        }
+        let paints: Vec<_> = std::mem::take(&mut node.strokes).into_iter().map(|s| s.paint).collect();
+        let outline = change.get("strokeGeometry").and_then(Value::as_array)
+            .filter(|entries| entries.iter().all(|entry| entry.get("styleID").and_then(Value::as_u64).unwrap_or(0) == 0))
+            .and_then(|entries| self.baked_geometry(entries).ok())
+            .filter(|(fill, _)| !fill.commands.is_empty())
+            .and_then(|(fill, rule)| crate::vector_geometry::VectorGeometry::from_paths(&fill, &fill, rule).ok());
+        let vector_leaf = node.kind == "vector" && node.children.is_empty() && change.get("inheritFillStyleID").is_none();
+        let container = matches!(node.kind.as_str(), "frame" | "group" | "section")
+            && node.layout.as_ref().is_none_or(|layout| layout.mode == crate::layout::Flow::None);
+        let Some(outline) = outline.filter(|_| (vector_leaf || container) && !node.clip && !(node.mask && node.mask_type.as_deref() == Some("outline"))) else {
+            notes.push(format!("Brush on {:?} ({reference}) has no usable outline; ordinary fills were kept", node.name));
+            return None;
+        };
+        notes.push(format!("Brush on {:?} ({reference}) was imported as its editable outline", node.name));
+        if vector_leaf && node.fills.is_empty() {
+            node.fills = paints;
+            node.vector_geometry = Some(outline.into());
+            node.network = None;
+            return None;
+        }
+        let fill = vector_leaf.then(|| {
+            let mut fill = crate::facet::sample_node(&format!("{}:brush-fill", node.id), "vector");
+            fill.name = "Original fill".into();
+            fill.width = node.width;
+            fill.height = node.height;
+            fill.fills = std::mem::take(&mut node.fills);
+            fill.network = node.network.take();
+            fill.vector_geometry = node.vector_geometry.take();
+            node.kind = "group".into();
+            node.children.push(fill.id.clone());
+            fill
+        });
+        let mut child = crate::facet::sample_node(&format!("{}:brush-outline", node.id), "vector");
+        child.name = "Brush outline".into();
+        child.width = node.width;
+        child.height = node.height;
+        child.fills = paints;
+        child.vector_geometry = Some(outline.into());
+        node.children.push(child.id.clone());
+        Some((fill, child))
     }
 
     /// Text: node-level style plus per-segment runs recovered from
@@ -2878,6 +2933,16 @@ pub fn document_from_canvas(
     for node in nodes.values_mut() {
         if node.bindings.contains_key("figStackReverseZIndex") {
             node.children.reverse();
+        }
+    }
+    for (id, record) in records.iter().filter(|(_, record)| record.get("strokeBrushGuid").is_some()) {
+        if let Some(node) = nodes.get_mut(id)
+            && let Some((fill, outline)) = importer.bake_brush_stroke(node, record, untranslated_by_id.entry(id.clone()).or_default())
+        {
+            if let Some(fill) = fill {
+                nodes.insert(fill.id.clone(), fill);
+            }
+            nodes.insert(outline.id.clone(), outline);
         }
     }
     // keep dropped-but-reported semantics visible on the node itself

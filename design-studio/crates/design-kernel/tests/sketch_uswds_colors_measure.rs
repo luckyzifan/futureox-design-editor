@@ -123,6 +123,36 @@ fn fixed_line_box_baseline_matches_sketch_text_preview_and_keeps_fractional_x() 
     }
 }
 
+#[test]
+fn sketch_fixed_paragraphs_share_a_baseline_with_variable_heights_and_blank_lines() {
+    let source = include_bytes!("../../../../testing/fixtures/design/sketch-text-layout-flow.sketch");
+    let doc = import_sketch_report(source).unwrap().document;
+    let fonts = Fonts::new().with_resources(&doc.fonts).unwrap();
+    let node = doc.nodes.values().find(|node| node.name == "text-paragraphs").unwrap();
+    let baselines = |node: &Node| {
+        let layout = fonts.node_layout(node, Some(node.width)).unwrap();
+        layout.lines.iter().filter_map(|line| {
+            layout.glyphs.iter().find(|glyph| glyph.cluster == line.start).map(|glyph| glyph.y)
+        }).collect::<Vec<_>>()
+    };
+    // Text matrices from Sketch's native PDF export at 1×, in node coordinates.
+    assert_eq!(baselines(node), [23., 57., 99.]);
+    let mut blank = node.clone();
+    blank.text = "One\n\nThree".into();
+    blank.text_runs[1].end = 5;
+    blank.text_runs[2].start = 5;
+    blank.text_runs[2].end = 10;
+    assert_eq!(baselines(&blank), [23., 99.]);
+    let mut descending = node.clone();
+    for (run, height) in descending.text_runs.iter_mut().zip([40., 30., 20.]) {
+        let paragraph = run.paragraph.as_mut().unwrap();
+        paragraph.minimum_line_height = height;
+        paragraph.maximum_line_height = height;
+        paragraph.spacing = 0.;
+    }
+    assert_eq!(baselines(&descending), [38., 78., 108.]);
+}
+
 fn archive(layer: Value) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default();

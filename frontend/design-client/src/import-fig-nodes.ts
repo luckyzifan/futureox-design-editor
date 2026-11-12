@@ -9,6 +9,7 @@ const FIG_KINDS: Record<string, Kind> = {
   GROUP: 'group',
   BOOLEAN_OPERATION: 'vector',
   VECTOR: 'vector',
+  BRUSH: 'vector',
   LINE: 'line',
   ELLIPSE: 'ellipse',
   RECTANGLE: 'rectangle',

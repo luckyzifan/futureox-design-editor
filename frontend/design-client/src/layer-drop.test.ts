@@ -49,6 +49,22 @@ test('auto-layout rows follow flow order and above inserts earlier in that order
   expect(layerTreeRows(free.doc, free.page, new Set(), '').slice(1).map(row => row.id)).toEqual([free.c.id, free.b.id, free.a.id])
 })
 
+test('Sketch reverse flow uses the visual order for canvas and layer drops', () => {
+  const f = fixture()
+  f.doc.schemaVersion = 22
+  f.frame.layout = { ...defaultLayout(), mode: 'horizontal', reverseFlow: true }
+  f.frame.children = [f.a.id, f.b.id, f.c.id]
+  f.doc.pages[0].children = [f.frame.id]
+  const editor = new Editor(f.doc)
+  try {
+    expect(layerTreeRows(editor.state.doc, f.page, new Set(), '').map(row => row.id)).toEqual([f.frame.id, f.c.id, f.b.id, f.a.id])
+    expect(layerDropPlan(editor.state.doc, f.page, [f.a.id], f.c.id, 'above')).toEqual({ parent: f.frame.id, before: undefined })
+    expect(editor.previewLayoutOrder(f.a.id, { x: 101, y: 120 })).toBe(true)
+    expect(editor.state.doc.nodes[f.frame.id].children).toEqual([f.b.id, f.c.id, f.a.id])
+    expect(editor.state.doc.nodes[f.a.id].transform[4]).toBeLessThan(editor.state.doc.nodes[f.c.id].transform[4])
+  } finally { editor.dispose() }
+})
+
 test('multi-drag order is independent of click sequence and root drop can exit a frame', () => {
   const f = fixture(), editor = new Editor(f.doc), ordered = orderedLayerRoots(f.doc, f.page, [f.c.id, f.b.id])
   expect(ordered).toEqual([f.b.id, f.c.id])

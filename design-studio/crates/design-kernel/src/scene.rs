@@ -1392,6 +1392,9 @@ impl Document {
                     return Err(format!("Missing font resource: {font}"));
                 }
             }
+            if self.schema_version < 22 && n.layout.as_ref().is_some_and(|layout| layout.reverse_flow) {
+                return Err("Reverse stack flow requires schema 22".into());
+            }
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1515,6 +1518,9 @@ impl Document {
     pub(crate) fn validate_scoped_edit(&self, nodes:&std::collections::BTreeSet<String>) -> Result<(),String> {
         self.validate_edit_scope(Some(nodes))
     }
+    pub fn requires_schema22(&self) -> bool {
+        self.nodes.values().any(|node| node.layout.as_ref().is_some_and(|layout| layout.reverse_flow))
+    }
     fn validate_edit_scope(&self, changed:Option<&std::collections::BTreeSet<String>>) -> Result<(),String> {
         if self.schema_version<21 && self.requires_schema21() {return Err("Per-run letter spacing and line height require schema 21".into());}
         if self.schema_version<20 && self.requires_schema20() {return Err("Paragraph and vertical text layout require schema 20".into());}
@@ -1606,7 +1612,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].contains(&self.schema_version)
+        if !(1..=22).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

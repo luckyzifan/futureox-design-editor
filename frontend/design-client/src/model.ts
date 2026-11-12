@@ -176,6 +176,9 @@ export function hasSchema21Features(d: DesignDocument): boolean {
   const runs = (r: any) => Array.isArray(r) && r.some(run => run && (run.letterSpacing !== undefined || run.lineHeight !== undefined))
   return Object.values(d.nodes).some(n => runs(n.textRuns) || Object.values(n.instance?.overrides || {}).some(o => runs(o.textRuns)))
 }
+export function hasSchema22Features(d: DesignDocument): boolean {
+  return Object.values(d.nodes).some(node => node.layout?.reverseFlow === true)
+}
 export function hasSchema20Features(d: DesignDocument, nodes = Object.values(d.nodes)): boolean {
   const action = (a: import('./prototype').PrototypeAction): boolean => a.transitionStyle !== undefined || !!a.thenActions?.some(action) || !!a.elseActions?.some(action)
   if (Object.values(d.prototype?.interactions||{}).some(es=>es.some(e=>e.actions.some(action)))) return true
@@ -238,6 +241,7 @@ export type AutoLayout = {
   lineGap: number
   padding: [number, number, number, number]
   wrap: boolean
+  reverseFlow?: boolean
   justify: LayoutAlign
   align: LayoutAlign
   columns: number
@@ -459,7 +463,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22
   id: string
   name: string
   pages: Page[]
@@ -784,7 +788,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1155,6 +1159,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     if (n.layout !== undefined) {
       if (!isObject(n.layout) || !container(n)) throw new Error('自动布局只能应用于容器')
       const l = { ...defaultLayout(), ...n.layout }
+      if (l.reverseFlow === true && d.schemaVersion < 22) throw new Error('反向堆栈流需要设计文件版本 22')
       if (
         !['none', 'horizontal', 'vertical', 'grid'].includes(l.mode) ||
         !finite(l.gap, -1e5, 1e5) ||
@@ -1163,6 +1168,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
         l.padding.length !== 4 ||
         !l.padding.every((v) => finite(v, 0, 1e5)) ||
         typeof l.wrap !== 'boolean' ||
+        (l.reverseFlow !== undefined && typeof l.reverseFlow !== 'boolean') ||
         typeof l.fillRows !== 'boolean' ||
         !Number.isInteger(l.columns) ||
         !finite(l.columns, 1, 64) ||

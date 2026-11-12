@@ -8,6 +8,7 @@ import { Decompress } from 'fzstd'
 import { ByteBuffer, decodeBinarySchema, type Definition, type Schema } from 'kiwi-schema'
 import {
   blank,
+  container,
   node,
   paint,
   stroke,
@@ -468,6 +469,19 @@ function figStrokeCap(cap: unknown, warnings: { add(message: string): unknown })
       return { cap: 'butt' }
   }
 }
+function figBakedGeometry(entries: any[], getBlob: (index: number) => Uint8Array): NonNullable<DesignNode['vectorGeometry']> {
+  const rule = (entry: any) => entry.windingRule === 'ODD' || entry.windingRule === 'EVENODD' ? 'evenodd' : 'nonzero'
+  const fillRule = rule(entries[0])
+  const fill: NonNullable<DesignNode['vectorGeometry']>['fill'] = []
+  for (const entry of entries) {
+    if (rule(entry) !== fillRule) throw new Error('FIG 混合区域填充规则需要独立几何工作集')
+    const commands: typeof fill = JSON.parse(decode_fig_fill_commands_json(getBlob(entry.commandsBlob)))
+    if (fill.length + commands.length > 131072) throw new Error('FIG 矢量路径超出命令预算')
+    for (const command of commands) fill.push(command)
+  }
+  return { fillRule, fill }
+}
+
 export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign & { backend: 'typescript-fig' } {
   const { data, files } = decodeFig(bytes),
     doc = blank(name),
@@ -780,13 +794,20 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       }
       catch(error){warnings.add(`FIG 矢量 ${n.name||n.id} 的网络几何未能解码，已保留包围盒：${error instanceof Error?error.message:error}`)}
     }
-    if(r.type==='VECTOR'&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
-      const paths=r.fillGeometry.map((entry:any)=>({rule:entry.windingRule==='ODD'||entry.windingRule==='EVENODD'?'evenodd':'nonzero',commands:JSON.parse(decode_fig_fill_commands_json(getBlob(entry.commandsBlob))) as import('./model').CurveCommand[]}))
-      if(paths.some((p:any)=>p.rule!==paths[0].rule))throw Error('FIG 混合区域填充规则需要独立几何工作集')
+    if((r.type==='VECTOR'||r.type==='BRUSH')&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
+      const outline = figBakedGeometry(r.fillGeometry, getBlob)
       const source=n.vectorGeometry??(n.network?JSON.parse(network_geometry_json(JSON.stringify(n.network))) as NonNullable<DesignNode['vectorGeometry']>:undefined)
-      if(!source&&n.strokes.some(s=>s.visible&&s.width>0))throw Error('FIG 仅提供填充轮廓，缺少可精确保留描边的路径')
-      n.vectorGeometry={fillRule:paths[0].rule,fill:paths.flatMap((p:any)=>p.commands),...(source?{stroke:source.stroke??source.fill}:{})}
+      if(!source&&!r.strokeBrushGuid&&n.strokes.some(s=>s.visible&&s.width>0))throw Error('FIG 仅提供填充轮廓，缺少可精确保留描边的路径')
+      // Ordinary vectors retain their separate edit/stroke path even when the
+      // current file has no stroke paint yet.
+      const strokePath = source && !r.strokeBrushGuid && (r.type === 'VECTOR' || n.strokes.length)
+        ? { stroke: source.stroke ?? source.fill } : {}
+      n.vectorGeometry = { ...outline, ...strokePath }
       delete n.network
+    }
+    if (r.type === 'BRUSH') {
+      figNote(receipts, n.id, `brushType=${r.brushType ?? 'unknown'}`)
+      if (!n.vectorGeometry && !n.network) warnings.add(`FIG 笔刷预设「${n.name}」缺少可用轮廓`)
     }
     applyFigFacet(n, r, resolveLayer, receipts, warnings)
     if (r.type === 'STICKY' || r.type === 'CODE_BLOCK' || r.type === 'SHAPE_WITH_TEXT') {
@@ -869,6 +890,59 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     const bindings = receipts.get(id) ?? {}
     bindings.figStackReverseZIndex = 'true'
     receipts.set(id, bindings)
+  }
+  for (const [key, record] of records) {
+    if (!record.strokeBrushGuid) continue
+    const layer = doc.nodes[ids.get(key)!]
+    if (!layer?.strokes.length) continue
+    const paints = layer.strokes.map(stroke => stroke.paint)
+    layer.strokes = []
+    const label = `FIG 笔刷图层「${layer.name}」`
+    const entries = record.strokeGeometry
+    let outline: DesignNode['vectorGeometry']
+    if (Array.isArray(entries) && entries.length && entries.every(entry => (entry.styleID ?? 0) === 0)) {
+      try { outline = figBakedGeometry(entries, getBlob) }
+      catch (error) { warnings.add(`${label}轮廓未能解码：${error instanceof Error ? error.message : error}`) }
+    }
+    const vectorLeaf = layer.kind === 'vector' && !layer.children.length && !record.inheritFillStyleID
+    const plainContainer = container(layer) && (!layer.layout || layer.layout.mode === 'none')
+    if (!outline?.fill.length || !(vectorLeaf || plainContainer) || layer.clip || layer.mask && layer.maskType === 'outline') {
+      figNote(receipts, layer.id, `strokeBrushGuid=${guid(record.strokeBrushGuid)}; outline unavailable`)
+      warnings.add(`${label}的笔刷外观无法保留，其他图层和该图层的原有填充已导入`)
+      continue
+    }
+    // The baked outline is already an area. Applying stroke width to it
+    // would draw a second stroke. Keep the source layer's opacity, effects
+    // and order, and separate the two geometries when it also has a fill.
+    if (vectorLeaf && !layer.fills.length) {
+      layer.fills = paints
+      layer.vectorGeometry = outline
+      delete layer.network
+    } else {
+      if (vectorLeaf) {
+        const fill = node('vector', 0, 0, layer.width, layer.height)
+        fill.name = '原有填充'
+        fill.fills = layer.fills
+        fill.strokes = []
+        fill.network = layer.network
+        fill.vectorGeometry = layer.vectorGeometry
+        layer.kind = 'group'
+        layer.fills = []
+        delete layer.network
+        delete layer.vectorGeometry
+        doc.nodes[fill.id] = fill
+        layer.children.push(fill.id)
+      }
+      const child = node('vector', 0, 0, layer.width, layer.height)
+      child.name = '笔刷轮廓'
+      child.fills = paints
+      child.strokes = []
+      child.vectorGeometry = outline
+      doc.nodes[child.id] = child
+      layer.children.push(child.id)
+    }
+    figNote(receipts, layer.id, `strokeBrushGuid=${guid(record.strokeBrushGuid)}; baked outline`)
+    warnings.add(`${label}已按原文件的轮廓导入，可编辑矢量外形`)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
   importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts, effectsOf)

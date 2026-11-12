@@ -1490,8 +1490,21 @@ impl<'a> Importer<'a> {
                     .map(str::to_string)
             })
             .unwrap_or_else(|| format!("sketch-{}/{}", class, self.nodes.len()));
-        let kind = kind_for_class(class);
+        let clipping = layer.get("clippingBehavior").and_then(Value::as_i64);
+        let modern_frame = class == "group"
+            && (matches!(layer.get("groupBehavior").and_then(Value::as_i64), Some(1 | 2))
+                || clipping == Some(1));
+        let kind = if modern_frame { "frame" } else { kind_for_class(class) };
         let mut node = crate::facet::sample_node(&id, kind);
+        if kind == "frame" {
+            // Artboards and Frames clip by default. Symbol masters only clip
+            // when explicitly enabled. This is separate from sibling masks.
+            node.clip = match clipping {
+                Some(1) => true,
+                Some(2) => false,
+                _ => class != "symbolMaster",
+            };
+        }
         // Import-side degradation ledger (mirror of the exporter's userInfo
         // lossy list, surfaced through bindings like figUntranslated).
         let mut import_lossy: Vec<String> = Vec::new();
@@ -1812,6 +1825,9 @@ impl<'a> Importer<'a> {
                     f64_at(layer, "leftPadding"),
                 ],
                 wrap,
+                // Sketch 2025 stores the modern Stack's first item last in
+                // its layer array. Keep that array for painting and masking.
+                reverse_flow: layer.get("groupBehavior").and_then(Value::as_i64).is_some(),
                 justify: axis(justify(f64_at(group_layout, "justifyContent") as i64), "justify"),
                 align: axis(align(f64_at(group_layout, "alignItems") as i64), "align"),
                 ..crate::layout::Layout::default()
@@ -2233,11 +2249,7 @@ impl<'a> Importer<'a> {
                     }
                 }
                 if node.text_runs.iter().any(|run| {
-                    run.paragraph.as_ref().is_some_and(|paragraph| {
-                        paragraph.minimum_line_height > 0.
-                            && (paragraph.minimum_line_height - paragraph.maximum_line_height).abs()
-                                <= 1e-9
-                    })
+                    run.paragraph.as_ref().and_then(crate::font::TextParagraph::fixed_line_height).is_some()
                 }) {
                     style.line_box_baseline = "nearest-point".into();
                 }
@@ -3534,6 +3546,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if doc.requires_schema18() { version=version.max(18); }
     if doc.requires_schema20() { version=version.max(20); }
     if doc.requires_schema19() { version=version.max(19); }
+    if doc.requires_schema22() { version=version.max(22); }
     doc.schema_version = version;
     Ok(doc)
 }
@@ -6404,6 +6417,7 @@ fn export_layer_impl(
                 layer.insert("needsConversion".into(), json!(false));
             }
             "artboard" | "symbolMaster" => {
+                layer.insert("clippingBehavior".into(), json!(if n.clip { 1 } else { 2 }));
                 layer.insert("hasBackgroundColor".into(), json!(false));
                 layer.insert("includeBackgroundColorInExport".into(), json!(true));
                 layer.insert(
@@ -7017,6 +7031,9 @@ fn export_layer_impl(
             layer.insert("rightPadding".into(), json!(l.padding[1]));
             layer.insert("bottomPadding".into(), json!(l.padding[2]));
             layer.insert("leftPadding".into(), json!(l.padding[3]));
+            if l.reverse_flow {
+                layer.insert("groupBehavior".into(), json!(u8::from(class == "artboard" || class == "canvasFrame")));
+            }
             // converter logic: asymmetric padding selects INDIVIDUAL (2),
             // anything else PAIRED (1)
             layer.insert(
@@ -7468,8 +7485,8 @@ pub fn validate_sketch_new_layer_for_source_save(node: &Node) -> Result<()> {
         // Preserve authored smoothing even with zero radii or no visible pixels.
         Some("smoothing")
     } else if node.clip {
-        // The editing importer initializes clip=false, including artboards.
-        // UI frame clip=true is not a safe default-equivalent substitution.
+        // New source-layer admission is intentionally stricter than full
+        // archive export; the source mutation codec does not project clipping.
         Some("clip")
     } else if node.arc.is_some() && node.kind == "ellipse" {
         // Even an explicit full-circle arc is authored state, unlike None.
@@ -9102,6 +9119,70 @@ mod tests {
     }
 
     #[test]
+    fn sketch_artboard_and_modern_frame_clipping_are_separate_from_masks() {
+        let layers = json!([
+            {"_class":"artboard","do_objectID":"legacy","frame":{"width":128,"height":128}},
+            {"_class":"artboard","do_objectID":"legacy-open","frame":{"width":128,"height":128},"clippingBehavior":2},
+            {"_class":"group","do_objectID":"frame","groupBehavior":1,"clippingBehavior":0,"frame":{"width":128,"height":128},"layers":[
+                {"_class":"group","do_objectID":"nested","groupBehavior":1,"clippingBehavior":2,"frame":{"width":32,"height":32}},
+                {"_class":"rectangle","do_objectID":"mask","hasClippingMask":true,"clippingMaskMode":0,"frame":{"width":32,"height":32}}
+            ]},
+            {"_class":"group","do_objectID":"plain","groupBehavior":0,"frame":{"width":128,"height":128}},
+            {"_class":"symbolMaster","do_objectID":"master","clippingBehavior":0,"frame":{"width":128,"height":128}}
+        ]);
+        let files = BTreeMap::from([
+            ("meta.json".into(), br#"{"version":168}"#.to_vec()),
+            ("document.json".into(), br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),
+            ("pages/p.json".into(), serde_json::to_vec(&json!({"_class":"page","layers":layers})).unwrap()),
+        ]);
+        let doc = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap().document;
+        assert!(doc.nodes["legacy"].clip);
+        assert!(!doc.nodes["legacy-open"].clip);
+        assert_eq!(doc.nodes["frame"].kind, "frame");
+        assert!(doc.nodes["frame"].clip);
+        assert_eq!(doc.nodes["nested"].kind, "frame");
+        assert!(!doc.nodes["nested"].clip);
+        assert!(!doc.nodes["plain"].clip);
+        assert!(!doc.nodes["master"].clip);
+        assert!(doc.nodes["mask"].mask);
+        let reopened = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
+        assert!(reopened.nodes["legacy"].clip);
+        assert!(!reopened.nodes["legacy-open"].clip);
+    }
+
+    #[test]
+    fn modern_sketch_stack_flows_in_reverse_without_reordering_paint() {
+        for vertical in [false, true] {
+            let frame = json!({"_class":"group","groupBehavior":1,"do_objectID":"stack",
+                "frame":{"width":240,"height":240},"topPadding":16,"rightPadding":16,"bottomPadding":16,"leftPadding":16,
+                "groupLayout":{"_class":"MSImmutableFlexGroupLayout","flexDirection":u8::from(vertical),"allGuttersGap":10},
+                "layers":[
+                    {"_class":"rectangle","do_objectID":"fixed","frame":{"width":40,"height":40}},
+                    {"_class":"rectangle","do_objectID":"fill","frame":{"width":40,"height":40},
+                     "horizontalSizing":if vertical {0} else {2},"verticalSizing":if vertical {2} else {0}}
+                ]});
+            let files = BTreeMap::from([
+                ("meta.json".into(), br#"{"version":168}"#.to_vec()),
+                ("document.json".into(), br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),
+                ("pages/p.json".into(), serde_json::to_vec(&json!({"_class":"page","layers":[frame]})).unwrap()),
+            ]);
+            let mut doc = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap().document;
+            assert_eq!(doc.schema_version, 22);
+            assert!(doc.nodes["stack"].layout.as_ref().unwrap().reverse_flow);
+            let axis = 4 + usize::from(vertical);
+            for gap in [10., 24.] {
+                doc.nodes.get_mut("stack").unwrap().layout.as_mut().unwrap().gap = gap;
+                crate::layout::resolve(&mut doc, &crate::font::Fonts::new()).unwrap();
+                assert_eq!(doc.nodes["stack"].children, ["fixed", "fill"]);
+                assert_eq!(doc.nodes["fill"].transform.0[axis], 16.);
+                assert_eq!(doc.nodes["fixed"].transform.0[axis], 184.);
+                let size = if vertical { doc.nodes["fill"].height } else { doc.nodes["fill"].width };
+                assert_eq!(size, 168. - gap);
+            }
+        }
+    }
+
+    #[test]
     fn sketch_roundtrip_keeps_structure_and_paint() {
         let doc = sample_document();
         let bytes = export_sketch(&doc).unwrap();
@@ -10089,6 +10170,7 @@ mod tests {
             line_gap: 0.,
             padding: [8., 4., 6., 2.],
             wrap: false,
+            reverse_flow: false,
             justify: crate::layout::Align::SpaceBetween,
             align: crate::layout::Align::Center,
             columns: 0,
