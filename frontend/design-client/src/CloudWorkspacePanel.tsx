@@ -1,11 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { modalKeyDown } from './modal-keyboard'
 import type { RemoteDocument } from './persistence'
-import type { WebWorkspace, WebWorkspaceStatus } from './web-workspace'
+import type { CloudWorkspace, CloudWorkspaceStatus } from './cloud-workspace'
 
-export function WebWorkspacePanel({ workspace, status, documentId, canSync, locale, onOpen, onSync, onClose, onDisconnect }: {
-  workspace: WebWorkspace
-  status: WebWorkspaceStatus
+export function CloudWorkspacePanel({ workspace, status, documentId, canSync, locale, onOpen, onSync, onClose, onDisconnect }: {
+  workspace: CloudWorkspace
+  status: CloudWorkspaceStatus
   documentId: string
   canSync: boolean
   locale: 'zh-CN' | 'en'
@@ -15,9 +15,9 @@ export function WebWorkspacePanel({ workspace, status, documentId, canSync, loca
   onDisconnect?: () => Promise<void>
 }) {
   const english = locale === 'en'
-  const heading = useId(), panel = useRef<HTMLElement>(null), tokenInput = useRef<HTMLInputElement>(null)
+  const heading = useId(), panel = useRef<HTMLElement>(null)
   const [files, setFiles] = useState<Omit<RemoteDocument, 'document'>[]>([])
-  const [token, setToken] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [lifetime] = useState(() => new AbortController())
   const working = useRef(false)
   const title = english ? 'Server workspace' : '服务器工作区'
@@ -25,7 +25,7 @@ export function WebWorkspacePanel({ workspace, status, documentId, canSync, loca
 
   useLayoutEffect(() => {
     const previous = document.activeElement, dialog = panel.current
-    ;(tokenInput.current ?? dialog)?.focus()
+    ;dialog?.focus()
     return () => {
       if (dialog?.contains(document.activeElement) && previous instanceof HTMLElement && previous.isConnected) previous.focus()
     }
@@ -47,13 +47,7 @@ export function WebWorkspacePanel({ workspace, status, documentId, canSync, loca
     <section ref={panel} className="remote-modal workspace-library" role="dialog" aria-modal="true" aria-labelledby={heading}
       aria-busy={busy} tabIndex={-1} onKeyDown={event => modalKeyDown(event, () => { if (!busy) onClose() })}>
       <h2><span id={heading}>{title}</span><button type="button" aria-label={english ? 'Close server workspace' : '关闭服务器工作区'} disabled={busy} onClick={onClose}>×</button></h2>
-      {!status.connected ? <form className="remote-actions" onSubmit={event => {
-        event.preventDefault()
-        void action(async () => { setFiles(await workspace.connect(token, lifetime.signal)); setToken('') })
-      }}>
-        <label>{english ? 'Access token' : '访问令牌'} <input ref={tokenInput} type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} /></label>
-        <button type="submit" disabled={busy || !token.trim()}>{english ? 'Connect' : '连接'}</button>
-      </form> : <>
+      {status.connected && <>
         <div className="remote-actions">
           <button type="button" disabled={busy || !canSync} onClick={() => void action(onSync)}>{english ? 'Sync current design' : '同步当前设计'}</button>
           <button type="button" className="secondary" disabled={busy} onClick={() => void action(async () => { setFiles(await workspace.list(lifetime.signal)) })}>{english ? 'Refresh' : '刷新'}</button>

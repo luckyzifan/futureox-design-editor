@@ -79,7 +79,7 @@ try:
     run('generated-shaders', ['python3', 'design-studio/scripts/generate-rational-glsl.py', '--check'])
     if 'kernel' in stages:
         run('kernel', ['cargo', 'test', '--locked', '--manifest-path', 'design-studio/Cargo.toml',
-                       '-p', 'futureox-design-kernel', '-p', 'futureox-design-server', '--no-fail-fast', '--', '--test-threads=2'])
+                       '-p', 'futureox-design-kernel', '--no-fail-fast', '--', '--test-threads=2'])
     if 'native' in stages:
         run('arithmetic', ['cargo', 'test', '--locked', '--manifest-path', 'design-studio/Cargo.toml',
                           '-p', 'futureox-design-gpu', '--features', 'hardware-tests', '--test', 'arithmetic', '--test', 'sampling', '--test', 'rational_filter', '--test', 'coverage64', '--test', 'area', '--test', 'texture_clip',

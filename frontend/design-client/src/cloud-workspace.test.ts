@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node, type DesignDocument } from './model'
 import { Backend, BackendError, type RemoteEditReceipt } from './persistence'
-import { WebWorkspace } from './web-workspace'
+import { CloudWorkspace } from './cloud-workspace'
 import { applyWorkspacePatch, workspacePatch } from './workspace-patch'
 
 const api = vi.hoisted(() => ({
@@ -38,14 +38,14 @@ async function fixture() {
   for (const layer of layers) base.nodes[layer.id] = layer
   base.pages[0].children = layers.map(layer => layer.id)
   let document = base, busy = false
-  const publish = vi.fn(), workspace = new WebWorkspace(publish)
+  const publish = vi.fn(), workspace = new CloudWorkspace(publish)
   const install = vi.fn(async (expected: DesignDocument, next: DesignDocument, signal: AbortSignal) => {
     if (signal.aborted || busy || document !== expected) return
     document = next
     workspace.localSaved(next)
     return next
   })
-  await workspace.connect('workspace-token', new AbortController().signal)
+  workspace.attach(new Backend())
   const stop = workspace.watch(base.id, { read: () => busy ? undefined : document, install })
   close.push(stop, () => workspace.disconnect())
   workspace.link({ id: base.id, name: base.name, revision: 1, document: base, updatedAt: '' }, base)

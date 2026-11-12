@@ -22,7 +22,7 @@
 
 ## 3. 平台、文件与存储
 
-- [桌面应用](../frontend/design-desktop/README.md)与[网页支持边界](WEB_SUPPORT_BOUNDARIES_2026-10-24.md)。
+- [桌面应用](../frontend/design-desktop/README.md)与[独立 Web 和协作服务](https://github.com/luckyzifan/futureox-desgin-server)。
 - [大源文件工作集](LARGE_DOCUMENT_SOURCE_WORKSETS.zh-CN.md)与[全源画布容量](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)。
 - [导入与本地操作](IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md)、[自动化存储](DESIGN_AUTOMATION_STORAGE.zh-CN.md)与[工作区接口](workspace-mcp.md)。
 - [SVG 兼容性](SVG_COMPATIBILITY_AUDIT.zh-CN.md)与[格式及本地操作契约](IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md)。

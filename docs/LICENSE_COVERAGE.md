@@ -9,7 +9,6 @@ files themselves show.
 
 - `design-studio/Cargo.toml` sets `license = "MIT"` for the workspace.
 - These crates inherit it with `license.workspace = true` and do not set a second license:
-  - `crates/design-server`
   - `crates/design-kernel`
   - `crates/design-gpu`
   - `crates/design-desktop-backend`

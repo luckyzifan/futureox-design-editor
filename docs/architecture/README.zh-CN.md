@@ -2,7 +2,7 @@
 
 ## 1. 客户端与交互层
 
-[`frontend/design-client/src/`](../../frontend/design-client/src/) 为网页与 Electron 共用界面。组件负责输入、选择、手势、面板和短期展示状态；[`engine.ts`](../../frontend/design-client/src/engine.ts) 的 Editor 组织文档修改、发布与历史边界。
+[`frontend/design-client/src/`](../../frontend/design-client/src/) 为 Electron 渲染器。组件负责输入、选择、手势、面板和短期展示状态；[`engine.ts`](../../frontend/design-client/src/engine.ts) 的 Editor 组织文档修改、发布与历史边界。
 
 [`commands/`](../../frontend/design-client/src/commands/) 组织编辑命令，[`automation/`](../../frontend/design-client/src/automation/) 组织受权限与版本约束的自动化入口。两者使用现有 Editor 事务，保留校验、失败原子性和一次撤销的边界。
 
@@ -24,12 +24,11 @@
 | --- | --- |
 | `design-kernel` | 文档模型、几何、布局、约束、编辑操作与历史、格式编码、材质及 CPU 渲染 |
 | `design-desktop-backend` | 本地工作区、SQLite、恢复、源文件索引、源文档会话与持久化 |
-| `design-server` | 独立 HTTP 进程、PostgreSQL、共享文档与协作版本 |
 | `design-agent` | Agent 服务接口与工具适配 |
 
 领域修改经既有 Rust/WASM/native 接口校验。普通编辑撤销、持久化历史和存储 CAS 分别维护；文件中的扩展数据不赋予执行或宿主访问权限。
 
-桌面应用通过 Electron IPC 使用本地后端。Web 客户端通过同源 HTTP 使用协作服务，提交前先保存在浏览器本地。共享文档的快照、增量和幂等回执在同一 PostgreSQL 事务中提交。全量快照用 `PUT /api/design/documents/{id}`，协作编辑用 `PATCH`。服务端以提交的基线版本比对变更图层和文档字段，再校验合并后的完整文档。客户端定期请求 `GET /api/design/documents/{id}/changes?after=版本`，按版本接收增量，落后较多时重新读取快照。编辑器在本地手势、属性草稿或保存完成后接纳远端版本。
+桌面应用通过 Electron IPC 使用本地后端。用户开启云端协作后，桌面从已提交的 SQLite 版本发送增量。独立 HTTP 服务、PostgreSQL 和 Web 客户端由 [futureox-desgin-server](https://github.com/luckyzifan/futureox-desgin-server) 管理。
 
 ## 4. 渲染执行层
 

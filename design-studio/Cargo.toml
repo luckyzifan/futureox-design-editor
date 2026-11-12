@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/design-server", "crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend", "crates/design-agent"]
+members = ["crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend", "crates/design-agent"]
 
 [workspace.package]
 edition = "2024"
@@ -11,15 +11,10 @@ license = "MIT"
 [workspace.dependencies]
 axum = "0.8.9"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "fs"] }
-sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-aws-lc-rs", "json", "uuid", "migrate", "macros"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 uuid = { version = "1.29.0", features = ["v4", "serde"] }
 sha2 = "0.11"
-utoipa = { version = "6.0", features = ["uuid"] }
-utoipa-swagger-ui = { version = "10.0", features = ["axum", "vendored"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 wasm-bindgen = "=0.2.130"
 js-sys = "=0.3.107"
 im = "15.1"

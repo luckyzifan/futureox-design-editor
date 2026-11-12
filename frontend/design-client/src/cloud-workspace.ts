@@ -1,9 +1,9 @@
 import type { DesignDocument } from './model'
 import type { DesktopCloudCursor } from './desktop'
-import { Backend, BackendError, type RemoteDocument } from './persistence'
+import { type Backend, BackendError, type RemoteDocument } from './persistence'
 import { applyWorkspacePatch, hasWorkspaceChanges, workspacePatch, workspacePatchesConflict, type WorkspacePatch } from './workspace-patch'
 
-export type WebWorkspaceStatus = {
+export type CloudWorkspaceStatus = {
   connected: boolean
   documentId?: string
   revision?: number
@@ -35,7 +35,7 @@ type LinkedDocument = {
   pendingRef?: DesktopCloudCursor['pending']
   incoming?: { expected: DesignDocument; document: DesignDocument; revision: number }
   stopped?: number
-  status?: WebWorkspaceStatus
+  status?: CloudWorkspaceStatus
 }
 type Connection = {
   backend: Backend
@@ -52,22 +52,12 @@ const conflictMessage = '服务器版本有冲突。本地修改已保留，可�
 
 /** One serial network lane for the active shared document. Each host supplies
  * an already durable authored snapshot and its own local adoption boundary. */
-export class WebWorkspace {
+export class CloudWorkspace {
   private connection?: Connection
   private view?: ActiveView
   private timer?: ReturnType<typeof setTimeout>
 
-  constructor(private readonly publish: (status: WebWorkspaceStatus) => void) {}
-
-  async connect(token: string, signal: AbortSignal) {
-    const backend = new Backend()
-    backend.token = token.trim()
-    if (!backend.token) throw new Error('请输入工作空间访问令牌')
-    const list = await backend.list(signal)
-    signal.throwIfAborted()
-    this.attach(backend)
-    return list
-  }
+  constructor(private readonly publish: (status: CloudWorkspaceStatus) => void) {}
 
   attach(backend: Backend, journal?: WorkspaceJournal) {
     this.clearTimer()
@@ -186,7 +176,7 @@ export class WebWorkspace {
     this.timer = undefined
   }
 
-  private report(link: LinkedDocument, phase: NonNullable<WebWorkspaceStatus['phase']>, error?: string) {
+  private report(link: LinkedDocument, phase: NonNullable<CloudWorkspaceStatus['phase']>, error?: string) {
     const previous = link.status
     if (previous?.phase === phase && previous.error === error && previous.revision === link.revision) return
     this.publish(link.status = { connected: true, documentId: link.id, revision: link.revision, phase, error })
@@ -249,7 +239,7 @@ export class WebWorkspace {
       if (journal && !link.pendingRef) await this.recordRequest(journal, link, initial, crypto.randomUUID())
       if (!current()) return false
       this.report(link, 'saving')
-      const receipt = await backend.save(initial, 0, { signal: lifetime.signal, exactRevision: true, requestId: link.pendingRef?.requestId })
+      const receipt = await backend.save(initial, 0, { signal: lifetime.signal, requestId: link.pendingRef?.requestId })
       if (!current()) return false
       await journal?.write(link.id, { revision: receipt.revision })
       if (!current()) return false

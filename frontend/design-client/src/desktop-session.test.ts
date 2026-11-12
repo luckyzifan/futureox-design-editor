@@ -645,12 +645,12 @@ describe('browser/desktop separation', () => {
     await expect(new Backend().list()).rejects.toThrow('桌面离线模式')
     expect(fetch).not.toHaveBeenCalled()
   })
-  test('browser backend retains its explicit cloud request path', async () => {
+  test('the standalone browser cannot bypass the desktop cloud bridge', async () => {
     vi.stubGlobal('window', {})
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] })
+    const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
-    expect(await new Backend().list()).toEqual([])
-    expect(fetch).toHaveBeenCalledWith('/api/design/documents', expect.anything())
+    await expect(new Backend().list()).rejects.toThrow('桌面离线模式')
+    expect(fetch).not.toHaveBeenCalled()
   })
 })
 

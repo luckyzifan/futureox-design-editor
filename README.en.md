@@ -25,15 +25,15 @@
 
 ## A design workspace we can build together
 
-Futureox Design is an **open-source Rust vector editor** and **UI design tool** for interface design, vector graphics, and local design files. It is a developer-alpha **Figma alternative** and **Sketch alternative**, with a local-first workspace on the web and Electron desktop. We want designers to shape the workflows and developers to understand, adapt, and extend the tools they use.
+Futureox Design is an **open-source Rust vector editor** and **UI design tool** for interface design, vector graphics, and local design files. It is a developer-alpha **Figma alternative** and **Sketch alternative**, with a local-first Electron workspace. We want designers to shape the workflows and developers to understand, adapt, and extend the tools they use.
 
-A **Rust kernel** handles document and editing semantics, with **WebAssembly (WASM)** bindings for the web. A **shared React client** connects the web and Electron desktop, with **WebGPU/CPU rendering** and local **Model Context Protocol (MCP)** automation. Core editing and storage are built around working locally.
+A **Rust kernel** handles document and editing semantics, with **WebAssembly (WASM)** bindings for the **Electron React renderer**, with **WebGPU/CPU rendering** and local **Model Context Protocol (MCP)** automation. Core editing and storage are built around working locally.
 
 <p align="center">
   <img src="docs/assets/workspace.png" alt="The actual Futureox Design editor showing layers, the built-in exploration canvas, and design properties" width="100%" />
 </p>
 
-<p align="center"><sub>The built-in exploration document in the shared client. <a href="docs/assets/README.md">Screenshot provenance and reproduction</a>.</sub></p>
+<p align="center"><sub>The built-in exploration document in the desktop renderer. <a href="docs/assets/README.md">Screenshot provenance and reproduction</a>.</sub></p>
 
 ## What you can explore
 
@@ -41,7 +41,7 @@ A **Rust kernel** handles document and editing semantics, with **WebAssembly (WA
 | --- | --- | --- |
 | **Vector and interface design** | Shapes, pen and path editing, layers, text, fills, strokes, and masks | [Capability review (Chinese)](docs/LOCAL_DESIGN_FEATURE_MATRIX.zh-CN.md) |
 | **Layout and reuse** | Auto layout, components and instances, variants, local variables, and styles | [Feature documentation (Chinese)](docs/README.md#5-编辑功能) |
-| **Local workspaces** | IndexedDB on the web; a Rust/SQLite workspace, file saving, and recovery on desktop | [Desktop development](frontend/design-desktop/README.md) |
+| **Local workspaces** | Rust/SQLite workspace, file saving, and recovery | [Desktop development](frontend/design-desktop/README.md) |
 | **Design files** | Native `.fd` documents; FIG/Sketch/SVG/PDF import entry points and supported export paths | [File operation contract (Chinese)](docs/IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md) |
 | **Automation and extensions** | A local MCP adapter for querying, editing, and exporting through shared transactions | [MCP guide](frontend/design-mcp/README.md) |
 
@@ -49,65 +49,36 @@ A **Rust kernel** handles document and editing semantics, with **WebAssembly (WA
 
 ## Quick start
 
-Install Git, the [pinned Rust toolchain](rust-toolchain.toml), Bun 1.4+, Node.js 24+, and Python 3. To start the web client from source:
+Prepare Git, [the Rust toolchain](rust-toolchain.toml), Bun 1.4+, Node.js 24+ and Python 3.
 
 ```bash
 git clone https://github.com/luckyzifan/futureox-design-editor.git
 cd futureox-design-editor
-
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.130 --locked
-
-cd frontend/design-client
+(cd frontend/design-client && bun install --frozen-lockfile)
+cd frontend/design-desktop
 bun install --frozen-lockfile
 bun run dev
 ```
 
-Open the local address printed by Vite, normally `http://127.0.0.1:1430`. `bun run dev` builds the Rust/WASM kernel first; the initial compilation takes time.
+[Desktop build and development](frontend/design-desktop/README.md#develop-and-test) · [Local MCP](frontend/design-mcp/README.md)
 
-### Web and desktop collaboration
+### Cloud collaboration
 
-The desktop host uses `design-desktop-backend` for local files, SQLite, and recovery. Desktop starts in local mode. The web app and opted-in desktop clients use the independent `design-server` HTTP service for PostgreSQL, shared documents, and collaboration.
-
-Create a PostgreSQL database, then build the web app and start the service from the repository root. The server runs migrations at startup and listens on `127.0.0.1:9430` by default.
-
-```bash
-(cd frontend/design-client && bun install --frozen-lockfile && bun run build)
-export DESIGN_DATABASE_URL='postgresql://USER@127.0.0.1/DATABASE'
-export DESIGN_API_TOKEN="$(openssl rand -hex 32)"
-DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
-  cargo run --locked --manifest-path design-studio/Cargo.toml -p futureox-design-server
-```
-
-Open **Server workspace** on the web home screen and enter `DESIGN_API_TOKEN`. Open a shared design or link the current design from the editor. The browser saves edits asynchronously to local storage before sending versioned patches. Browsers on the same document automatically receive committed edits. Concurrent changes to different layers can merge. An overlapping edit preserves the local changes and lets the editor open the server version from the workspace. An incoming revision keeps the current viewport and valid selection and starts a fresh local undo history.
-
-On desktop, open **Settings → Saving and scope**, enable cloud collaboration, and enter the service address and the same workspace token. Use **Server workspace** to open or link a design. Desktop commits to SQLite before sending edits. Offline edits remain available, and restart resumes pending work from the recorded server revision. Conflicts preserve the local SQLite revisions. The app can reconnect on restart when the operating system can securely retain the token.
-
-`DESIGN_DOCUMENT_MEMORY_MIB` controls the server's per-document processing budget. It defaults to 1024 MiB and accepts 256–4096 MiB. The JSON document limit is one sixteenth of this budget, which also bounds component expansion. The current token grants read and write access to the whole server workspace.
-
-When hosting the web assets separately, proxy same-origin `/api/design` requests to `design-server`. Vite accepts `DESIGN_BACKEND_URL` as a development proxy target. Set `DESIGN_WEB_ROOT` to have the service serve the static web build.
-
-For hosting at `/desgin`, build the web app with `vite build --base /desgin/` and set `DESIGN_WEB_BASE=/desgin` on the service. Preserve the prefix in the reverse proxy. Open `/desgin/` in the browser and use the HTTPS address with `/desgin` in desktop settings.
-
-| Goal | Start here |
-| --- | --- |
-| Run the Electron desktop app | [Desktop development and builds](frontend/design-desktop/README.md#develop-and-test) |
-| Connect a local MCP client | [MCP adapter](frontend/design-mcp/README.md) |
-| Select and run relevant checks | [Contributing](CONTRIBUTING.md#english) and the [testing requirements (Chinese)](docs/TESTING_CONTRIBUTIONS.zh-CN.md) |
-| Understand web and desktop differences | [Web support boundaries](docs/WEB_SUPPORT_BOUNDARIES_2026-10-24.md) |
+Desktop starts in local SQLite mode. Use **Settings → Saving and scope** to enable collaboration, enter the service address and workspace token, then open a design from **Server workspace**. The Web app and the independent PostgreSQL service are maintained in [futureox-desgin-server](https://github.com/luckyzifan/futureox-desgin-server). The hosted service is [futureox.com/desgin](https://futureox.com/desgin/).
 
 ## Project structure
 
 ```text
 frontend/
-├── design-client/             React editor, WASM, browser rendering adapters
+├── design-client/             Electron React renderer and WASM
 ├── design-desktop/            Electron host, native bridges, packaging
 └── design-mcp/                Local MCP protocol adapter
 design-studio/
 ├── crates/design-kernel/      Documents, geometry, layout, history, formats, CPU rendering
 ├── crates/design-gpu/         Native GPU devices, resources, rendering
 ├── crates/design-desktop-backend/  Local files, SQLite, recovery
-├── crates/design-server/      Independent HTTP service, PostgreSQL, collaborative revisions
 └── scripts/                  Kernel builds and verification tools
 docs/                         Architecture, feature contracts, development records
 testing/                      Format fixtures and compatibility scans

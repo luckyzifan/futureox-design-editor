@@ -1,7 +1,7 @@
 import type { DesktopCloudBridge, DesktopResult } from './desktop'
 import type { DesktopSession } from './desktop-session'
 import { Backend } from './persistence'
-import type { WorkspaceJournal } from './web-workspace'
+import type { WorkspaceJournal } from './cloud-workspace'
 
 export function cloudResult<T>(result: DesktopResult<T>) {
   if (result.status !== 'ok') throw Error(result.status === 'cancelled' ? '云端操作已取消' : result.message)

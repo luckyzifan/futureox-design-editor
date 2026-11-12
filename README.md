@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>让设计工具更开放，让创作留在你手中。</strong><br />
-  基于 Rust 的开源矢量编辑器与 UI 设计工具，本地优先，支持 Web 和 Electron 桌面。
+  基于 Rust 的开源矢量编辑器与 UI 设计工具，本地优先的 Electron 桌面版。
 </p>
 
 <p align="center">
@@ -27,13 +27,13 @@
 
 Futureox Design 是一个基于 Rust 的开源矢量编辑器（**Rust vector editor**）与 **UI design tool（界面设计工具）**。作为开发中的 **open-source Figma alternative** 和 **Sketch alternative**，它面向界面设计、矢量绘制与本地设计文件处理。我们希望把画布、文档格式与自动化能力放在一个开放的代码库里，让设计师能够反馈真实工作流，让开发者能够理解、修改和扩展自己的工具。
 
-项目以 **Rust 内核**承载文档与编辑语义，通过 **WebAssembly（WASM）** 接入网页，**React 共享客户端**连接网页和 Electron 桌面，配合 **WebGPU／CPU 渲染**与本地 **Model Context Protocol（MCP）** 自动化接口。基础编辑围绕本地运行与本地存储展开。
+项目以 **Rust 内核**承载文档与编辑语义，通过 **WebAssembly（WASM）** 接入 Electron 的 **React 渲染器**，配合 **WebGPU／CPU 渲染**与本地 **Model Context Protocol（MCP）** 自动化接口。基础编辑围绕本地运行与本地存储展开。
 
 <p align="center">
   <img src="docs/assets/workspace.png" alt="Futureox Design 真实编辑器界面：图层面板、探索画布和设计属性面板" width="100%" />
 </p>
 
-<p align="center"><sub>共享客户端中的内置「探索画布」示例。<a href="docs/assets/README.md">截图来源与复现方式</a></sub></p>
+<p align="center"><sub>桌面端内置「探索画布」示例。<a href="docs/assets/README.md">截图来源与复现方式</a></sub></p>
 
 ## 可以从这里开始探索
 
@@ -41,7 +41,7 @@ Futureox Design 是一个基于 Rust 的开源矢量编辑器（**Rust vector ed
 | --- | --- | --- |
 | **矢量与界面设计** | 形状、钢笔与路径编辑、图层、文字、填充、描边和蒙版 | [能力核对表](docs/LOCAL_DESIGN_FEATURE_MATRIX.zh-CN.md) |
 | **布局与复用** | 自动布局、组件与实例、变体、本地变量和样式 | [功能文档](docs/README.md#5-编辑功能) |
-| **本地工作区** | 网页 IndexedDB；桌面 Rust／SQLite 工作区、文件保存与恢复 | [桌面开发](frontend/design-desktop/README.md) |
+| **本地工作区** | Rust／SQLite 工作区、文件保存与恢复 | [桌面开发](frontend/design-desktop/README.md) |
 | **设计文件互通** | `.fd` 原生文档；FIG／Sketch／SVG／PDF 等导入入口及受支持的导出路径 | [导入与本地操作契约](docs/IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md) |
 | **自动化与扩展** | 本地 MCP 适配器，通过共享编辑事务查询、修改和导出文档 | [MCP 入门](frontend/design-mcp/README.md) |
 
@@ -49,65 +49,36 @@ Futureox Design 是一个基于 Rust 的开源矢量编辑器（**Rust vector ed
 
 ## 快速开始
 
-准备 Git、[Rust 工具链](rust-toolchain.toml)、Bun 1.4+、Node.js 24+ 和 Python 3。以下命令从源码启动网页客户端：
+准备 Git、[Rust 工具链](rust-toolchain.toml)、Bun 1.4+、Node.js 24+ 和 Python 3。
 
 ```bash
 git clone https://github.com/luckyzifan/futureox-design-editor.git
 cd futureox-design-editor
-
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.130 --locked
-
-cd frontend/design-client
+(cd frontend/design-client && bun install --frozen-lockfile)
+cd frontend/design-desktop
 bun install --frozen-lockfile
 bun run dev
 ```
 
-打开终端中 Vite 输出的本地地址，默认是 `http://127.0.0.1:1430`。`bun run dev` 会先构建 Rust／WASM 内核；首次编译需要等待。
+[桌面开发与构建](frontend/design-desktop/README.md#develop-and-test) · [本地 MCP](frontend/design-mcp/README.md)
 
-### Web 和桌面协作
+### 云端协作
 
-桌面端通过 `design-desktop-backend` 管理本机文件、SQLite 和恢复。桌面默认使用本地模式，Web 和开启云端协作的桌面端都连接独立的 `design-server`。服务端管理 PostgreSQL、共享文档和协作版本。
-
-准备 PostgreSQL 数据库，在仓库根目录构建 Web 端并启动服务。服务启动时应用数据库迁移，默认监听 `127.0.0.1:9430`。
-
-```bash
-(cd frontend/design-client && bun install --frozen-lockfile && bun run build)
-export DESIGN_DATABASE_URL='postgresql://用户@127.0.0.1/数据库'
-export DESIGN_API_TOKEN="$(openssl rand -hex 32)"
-DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
-  cargo run --locked --manifest-path design-studio/Cargo.toml -p futureox-design-server
-```
-
-在 Web 首页打开「服务器工作区」，输入 `DESIGN_API_TOKEN` 后打开共享文档，也可以在编辑器内将当前设计接入同步。编辑先在本地异步保存，再发送版本化增量。打开同一文档的浏览器会自动接收已提交的修改。不同图层的并发编辑可合并，重叠冲突时保留本机修改，可从工作区打开服务端版本。接收外部版本时保留可用的视口和选择，并从新版本开始记录本地撤销。
-
-桌面端在「设置 → 保存与范围」勾选「启用云端协作」，填写服务地址和同一工作区令牌，再从「服务器工作区」打开或同步设计。桌面先提交 SQLite 再同步。断网可继续本机编辑，重启后沿用上一次云端版本重试，发生冲突时保留 SQLite 中的修改。令牌可由操作系统安全存储时，桌面会在重新启动后恢复连接。
-
-`DESIGN_DOCUMENT_MEMORY_MIB` 是独立服务的每份文档处理预算，默认 1024 MiB，可设为 256–4096 MiB。文档 JSON 字节上限按预算的十六分之一计算，组件展开也使用该预算。当前令牌授予整个服务器工作区的读写权限。
-
-独立托管 Web 静态文件时，将同源的 `/api/design` 转发到 `design-server`。开发模式下可用 `DESIGN_BACKEND_URL` 指定 Vite 代理目标。`DESIGN_WEB_ROOT` 指定由服务端直接托管的静态构建目录。
-
-挂载到 `/desgin` 时，Web 构建使用 `vite build --base /desgin/`，服务设置 `DESIGN_WEB_BASE=/desgin`。反向代理保留这段路径并转发到独立服务。Web 入口为 `/desgin/`，桌面设置使用带 `/desgin` 的 HTTPS 地址。
-
-| 想做什么 | 从哪里进入 |
-| --- | --- |
-| 启动 Electron 桌面应用 | [桌面开发与构建](frontend/design-desktop/README.md#develop-and-test) |
-| 配置本地 MCP 客户端 | [MCP 适配器](frontend/design-mcp/README.md) |
-| 选择并运行相关检查 | [贡献指南](CONTRIBUTING.md#验证你的修改)与[测试要求](docs/TESTING_CONTRIBUTIONS.zh-CN.md) |
-| 理解网页与桌面的差异 | [Web 支持边界](docs/WEB_SUPPORT_BOUNDARIES_2026-10-24.md) |
+桌面默认使用本机 SQLite。在「设置 → 保存与范围」启用云端协作，填写服务地址和工作区令牌，再从「服务器工作区」打开或同步设计。Web 和独立 PostgreSQL 服务在 [futureox-desgin-server](https://github.com/luckyzifan/futureox-desgin-server) 维护。云端入口为 [futureox.com/desgin](https://futureox.com/desgin/)。
 
 ## 项目结构
 
 ```text
 frontend/
-├── design-client/             React 编辑器、WASM 与浏览器渲染适配
+├── design-client/             Electron 的 React 渲染器和 WASM
 ├── design-desktop/            Electron 宿主、原生桥接与打包
 └── design-mcp/                本地 MCP 协议适配
 design-studio/
 ├── crates/design-kernel/      文档、几何、布局、历史、格式与 CPU 渲染
 ├── crates/design-gpu/         原生 GPU 设备、资源与渲染执行
 ├── crates/design-desktop-backend/  本地文件、SQLite 与恢复
-├── crates/design-server/      独立 HTTP 服务、PostgreSQL 与协作版本
 └── scripts/                  内核构建与验证工具
 docs/                         架构、功能契约与开发记录
 testing/                      格式夹具与兼容性扫描

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@futureox/design-client",
+      "name": "@futureox/desktop-renderer",
       "dependencies": {
         "fflate": "0.8.3",
         "fzstd": "0.1.1",
