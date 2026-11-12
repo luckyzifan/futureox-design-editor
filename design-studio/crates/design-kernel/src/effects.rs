@@ -62,6 +62,17 @@ pub fn gradient_blur_composite(
     inverse: &crate::math::Transform,
     params: &crate::scene::GradientBlurParameters,
 ) {
+    gradient_blur_composite_at(target, blurred, inverse, params, crate::math::Point::default());
+}
+
+/// Captured backdrop pixels can have a fractional world-space origin.
+pub(crate) fn gradient_blur_composite_at(
+    target: &mut Surface,
+    blurred: &Surface,
+    inverse: &crate::math::Transform,
+    params: &crate::scene::GradientBlurParameters,
+    origin: crate::math::Point,
+) {
     let field = crate::gradient_blur::CompositeField::new(inverse, params);
     for y in target.rect.y..target.rect.bottom() {
         for x in target.rect.x..target.rect.right() {
@@ -70,7 +81,8 @@ pub fn gradient_blur_composite(
                 _ => continue,
             };
             target.pixels[ti].0 = field.composite(
-                target.pixels[ti].0, blurred.pixels[bi].0, x as f32 + 0.5, y as f32 + 0.5,
+                target.pixels[ti].0, blurred.pixels[bi].0,
+                (x as f32 + 0.5) + origin.x as f32, (y as f32 + 0.5) + origin.y as f32,
             );
         }
     }

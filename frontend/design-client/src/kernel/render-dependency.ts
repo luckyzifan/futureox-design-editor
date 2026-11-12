@@ -25,7 +25,8 @@ export function backdropEffect(effects: Effect[]) {
     : undefined
 }
 export function backdropRadius(effect: Effect) {
-  return effect.kind === 'glass' && effect.glass ? Math.max(1, effect.radius) : effect.radius
+  if (effect.kind === 'glass' && effect.glass) return Math.max(1, effect.radius)
+  return effect.radius * Math.max(1, effect.gradientBlur?.startCount ?? 1, effect.gradientBlur?.endCount ?? 1)
 }
 
 export type SourceReuseReason = 'isolated' | 'missing' | 'dynamic' | 'mask' |

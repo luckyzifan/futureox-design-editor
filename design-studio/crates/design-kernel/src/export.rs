@@ -240,6 +240,7 @@ fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize) ->
         id: &str,
         count: &mut usize,
         backdrop: &mut bool,
+        progressive_backdrop: &mut bool,
     ) -> bool {
         let node = &doc.nodes[id];
         if !node.visible || node.opacity <= 0. {
@@ -256,24 +257,31 @@ fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize) ->
                 .filter(|s| s.visible && s.width > 0.)
                 .count()
             + usize::from(node.clip && !node.children.is_empty());
-        *backdrop |= node.backdrop_effect().is_some();
-        node.effects.iter().all(|effect| {
+        let effect = node.backdrop_effect();
+        *backdrop |= effect.is_some();
+        *progressive_backdrop |= effect.is_some_and(|effect| effect.gradient_blur.is_some());
+        let mut supported = node.effects.iter().all(|effect| {
             !effect.visible
                 || matches!(
                     effect.kind.as_str(),
                     "blur" | "shadow" | "inner-shadow" | "background-blur" | "glass"
                 )
-        }) && node
-            .children
-            .iter()
-            .all(|child| visit(doc, child, count, backdrop))
+        });
+        for child in &node.children {
+            supported &= visit(doc, child, count, backdrop, progressive_backdrop);
+        }
+        supported
     }
-    let (mut count, mut backdrop) = (0, false);
+    let (mut count, mut backdrop, mut progressive_backdrop) = (0, false, false);
     let supported = doc.pages[page_index]
         .children
         .iter()
-        .all(|id| visit(doc, id, &mut count, &mut backdrop));
-    supported && (count > 1 || backdrop)
+        .fold(true, |supported, id| {
+            visit(doc, id, &mut count, &mut backdrop, &mut progressive_backdrop) && supported
+        });
+    // A progressive backdrop consumes the same four correlated samples as
+    // the Figma canvas, including when the export contains a zoom/motion blur.
+    progressive_backdrop || supported && (count > 1 || backdrop)
 }
 
 #[derive(serde::Serialize)]
@@ -917,6 +925,63 @@ fn write_export_tile(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn progressive_backdrop_filters_background_before_paint_and_preserves_fd() {
+        let scene = json!({
+            "schemaVersion":19,"id":"d","name":"Progressive backdrop","rasterProfile":"figma",
+            "pages":[{"id":"p","name":"Page","children":["left","stripe","lens","foreground"],"background":"#ffffff"}],
+            "nodes":{
+                "left":{"id":"left","kind":"rectangle","width":96,"height":64,"fills":[{"kind":"solid","color":"#db286c"}]},
+                "stripe":{"id":"stripe","kind":"rectangle","width":44,"height":64,"transform":[1,0,0,1,52,0],
+                    "fills":[{"kind":"solid","color":"#236ac4"}]},
+                "lens":{"id":"lens","kind":"rectangle","width":72,"height":48,"transform":[1,0,0,1,12,8],
+                    "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+                    "effects":[{"kind":"background-blur","radius":4,"color":"#000000",
+                        "gradientBlur":{"start":[24,24],"end":[40,24],"startCount":0,"endCount":4,"smooth":true}}]},
+                "foreground":{"id":"foreground","kind":"rectangle","width":6,"height":8,"transform":[1,0,0,1,62,28],
+                    "fills":[{"kind":"solid","color":"#22bb44"}]}
+            }
+        });
+        let request = RegionRequest {
+            page_id: "p".into(),
+            bounds: ExportBounds { x: 0., y: 0., width: 96., height: 64. },
+            scale: 1.,
+            node_ids: None,
+            raster_profile: None,
+            color_output: None,
+        };
+        let bytes = crate::binfmt::encode_value(&scene).unwrap();
+        assert_eq!(crate::binfmt::decode_value(&bytes).unwrap(), scene);
+        let render = |document: &serde_json::Value| {
+            let mut engine = Engine::new();
+            engine.load_document(&document.to_string()).unwrap();
+            image::load_from_memory(&engine.render_region_png(&request).unwrap()).unwrap().into_rgba8()
+        };
+        let actual = render(&scene);
+        let mut plain = scene.clone();
+        plain["nodes"]["lens"]["effects"] = json!([]);
+        let sharp = render(&plain);
+        assert_eq!(actual.get_pixel(24, 32), sharp.get_pixel(24, 32));
+        assert_ne!(actual.get_pixel(54, 32), sharp.get_pixel(54, 32));
+        assert_eq!(actual.get_pixel(64, 32), sharp.get_pixel(64, 32));
+        let mut mixed = scene.clone();
+        mixed["nodes"]["foreground"]["effects"] = json!([{
+            "kind":"zoom-blur","radius":0,"color":"#000000","zoomBlur":{"amount":4,"center":[0.5,0.5]}
+        }]);
+        let actual_mixed = render(&mixed);
+        let mut engine = Engine::new();
+        engine.load_document(&mixed.to_string()).unwrap();
+        let options = engine.parse_options(json!({"pageId":"p","width":96,"height":64,
+            "view":{"x":0,"y":0,"zoom":1},"transparent":true})).unwrap();
+        let reference = render_tiles(&mut engine, &options, 96, 64, true, crate::color::ColorSpace::Srgb).unwrap();
+        assert_eq!(actual_mixed, image::load_from_memory(&reference).unwrap().into_rgba8());
+        let mut desaturated = scene;
+        desaturated["nodes"]["lens"]["effects"][0]["colorControls"] = json!({
+            "space":"srgb","brightness":0,"contrast":1,"saturation":0,"hue":0
+        });
+        assert_ne!(render(&desaturated).get_pixel(54, 32), actual.get_pixel(54, 32));
+    }
 
     #[test]
     fn overlapping_blur_support_exports_with_bounded_surfaces() {

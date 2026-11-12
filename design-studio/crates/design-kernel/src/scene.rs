@@ -519,11 +519,12 @@ impl Effect {
         if self.kind == "color-controls" && self.color_controls.is_none() { return Err("Color controls parameters required".into()); }
         if let Some(c) = &self.color_controls
             && (!(matches!(self.kind.as_str(), "color-controls" | "background-blur") || self.kind=="glass" && self.glass.is_some())
-                || !c.validate() || self.texture.is_some() || self.gradient_blur.is_some()) {
+                || !c.validate() || self.texture.is_some()
+                || (self.gradient_blur.is_some() && self.kind != "background-blur")) {
             return Err("Invalid color controls".into());
         }
         if let Some(g) = &self.gradient_blur
-            && (self.kind != "blur"
+            && (!matches!(self.kind.as_str(), "blur" | "background-blur")
                 || self.glass.is_some()
                 || self.texture.is_some()
                 || g.start
@@ -600,7 +601,7 @@ impl Effect {
         if self.kind == "glass" && self.glass.is_some() {
             self.radius.max(1.)
         } else {
-            self.radius
+            self.blur_radius()
         }
     }
 }

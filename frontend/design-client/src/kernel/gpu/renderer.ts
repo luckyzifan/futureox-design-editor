@@ -629,6 +629,19 @@ export class GpuRenderer {
    * original synchronous cache/filter path and its unchanged radius guard. */
   private async interactionBackdropDisplay(n: GpuNode, backdrop: Surface, sigma: number): Promise<Surface> {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
+    const effect = backdropEffect(n.effects)
+    if (effect?.gradientBlur) {
+      const support = this.scene.integratedBlur ? Math.ceil(sigma * 2) + 2 : gaussianRadii(sigma).reduce((sum, radius) => sum + radius, 2)
+      const capture = import.meta.env.VITE_DESIGN_EFFECT_REGIONS !== '0' && !this.interactionCapturing
+        ? interactionEffectRegion(this.scene, n.rect, support) : n.rect
+      await this.reclaimForSurface(capture)
+      this.checkFrameCurrent()
+      const sharp = this.copy(backdrop, capture)
+      let blurred: Surface
+      try { blurred = this.blur(sharp, sigma) }
+      catch (error) { this.release(sharp); throw error }
+      return this.consumeBackdropGradient(sharp, blurred, n, effect)
+    }
     if (!this.wideDisplayBackdropEligible(n, sigma * 2)) return this.interactionBackdrop(n, backdrop, sigma)
     const support = Math.ceil(sigma * 2) + 2
     const capture = import.meta.env.VITE_DESIGN_EFFECT_REGIONS !== '0' && !this.interactionCapturing
@@ -4684,9 +4697,10 @@ export class GpuRenderer {
           if (!background) break
           const blurred = cropped ? await this.blurBackdropRegion(background, (backdropRadius(fx) * scale(n.matrix)) / 2, n)
             : this.blur(background, (backdropRadius(fx) * scale(n.matrix)) / 2, false)
-          if (blurred !== background) this.release(background)
-          background = this.colorControls(blurred, fx.colorControls)
-          if (background !== blurred) this.release(blurred)
+          const filtered = fx.gradientBlur ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
+          if (!fx.gradientBlur && blurred !== background) this.release(background)
+          background = this.colorControls(filtered, fx.colorControls)
+          if (background !== filtered) this.release(filtered)
           if (fx.kind === 'glass' && !(n.glassShape && fx.glass)) {
             const geometry = this.run(23, n.rect, masks)
             const refracted = this.glass(background, geometry, n, fx, true)
@@ -4983,9 +4997,10 @@ export class GpuRenderer {
     let background = this.run(26, capture, opticalInputs ?? targets)
     this.backdropReads++
     const blurred = cropped ? await this.blurBackdropRegion(background, sigma, n) : this.blur(background, sigma, false)
-    if (blurred !== background) this.release(background)
-    background = this.colorControls(blurred, fx.colorControls)
-    if (background !== blurred) this.release(blurred)
+    const filtered = fx.gradientBlur ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
+    if (!fx.gradientBlur && blurred !== background) this.release(background)
+    background = this.colorControls(filtered, fx.colorControls)
+    if (background !== filtered) this.release(filtered)
     if (cropped) {
       const consumption=this.backdropConsumptionRect(n,background)
       if(this.surfaceNeedsAdmission(consumption))await this.reclaimForSurface(consumption)
@@ -6778,7 +6793,7 @@ export class GpuRenderer {
     const backdrop = node.blend === 'normal' ? backdropEffect(node.effects || []) : undefined
     const displayEligible = backdrop?.kind === 'background-blur' && !backdrop.gradientBlur &&
       !node.effects.some(effect => effect.visible && effect.gradientBlur)
-    const output = import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' && this.optimized &&
+    const output = !backdrop?.gradientBlur && import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' && this.optimized &&
       this.driver.name === 'webgpu' && this.driver.managed && this.driver.copyRegion &&
       this.scene.integratedBlur && !this.displayFilterActive(radius) && radius > 0 && radius <= 2048 &&
       !this.scene.interactionRetained && !this.interactionCapturing && backdropFilterRegion(input.rect, node.backdropOutputBox)
@@ -7061,13 +7076,23 @@ export class GpuRenderer {
   }
   private async gradientBlur(sharp:Surface, blurred:Surface, n:GpuNode, fx:Effect):Promise<Surface> {
     if(!fx.gradientBlur)return blurred
+    // The inverse guard uses integer bounds. The shader keeps the capture's
+    // actual origin, including the fractional offset of a backdrop.
+    const bounds = fx.kind === 'background-blur' ? guardedPixelWindow(sharp.rect) : sharp.rect
     const values = gradient_blur_composite_uniforms(
-      JSON.stringify(sharp.rect), new Float64Array(n.matrix), JSON.stringify(fx.gradientBlur),
+      JSON.stringify(bounds), new Float64Array(n.matrix), JSON.stringify(fx.gradientBlur),
     )
     return this.run(46, sharp.rect, [sharp, blurred], u => {
       u.set(values.subarray(0, 4), 36)
       u.set(values.subarray(4, 6), 40)
     })
+  }
+  private async consumeBackdropGradient(sharp: Surface, blurred: Surface, n: GpuNode, fx: Effect) {
+    try {
+      return await this.gradientBlur(sharp, blurred, n, fx)
+    } finally {
+      this.release(sharp, blurred === sharp ? undefined : blurred)
+    }
   }
   private glass(
     backdrop: Surface,

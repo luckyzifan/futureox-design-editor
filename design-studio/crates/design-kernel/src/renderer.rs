@@ -3405,14 +3405,21 @@ impl Painter<'_> {
                 None
             };
             if replay.is_none() {
-                background = if cropped && !self.compatible {
-                    effects::linear_tent_blur(&background, fx.radius * scale, true)?
+                let radius = fx.backdrop_radius() * scale;
+                let blurred = if cropped && !self.compatible {
+                    effects::linear_tent_blur(&background, radius, true)?
                 } else if cropped {
-                    effects::portable_tent_blur_edge(&background, fx.radius * scale, true)?
+                    effects::portable_tent_blur_edge(&background, radius, true)?
                 } else {
-                    self.blur_filter(fx.backdrop_radius() * scale)
-                        .apply(&background)?
+                    self.blur_filter(radius).apply(&background)?
                 };
+                if let Some(gradient) = &fx.gradient_blur {
+                    let inverse = m.inverse_composed(r)?;
+                    effects::gradient_blur_composite_at(&mut background, &blurred, &inverse, gradient, origin);
+                    if self.compatible { background.quantize_rgba8(); }
+                } else {
+                    background = blurred;
+                }
                 if let Some(controls) = &fx.color_controls { controls.apply(&mut background, self.doc.color_management.is_some()); }
                 if legacy_glass {
                     let geometry = self.resolve_effect_planes(masks.as_ref().expect("legacy glass coverage"))?;
@@ -4437,6 +4444,13 @@ impl Painter<'_> {
                 let copy = effects::copy_region(target, r)?;
                 self.blur_filter(fx.backdrop_radius() * scale).apply(&copy)?
             };
+            if let Some(gradient) = &fx.gradient_blur {
+                let mut sharp = effects::copy_region(target, blurred.rect)?;
+                let inverse = m.inverse_composed(sharp.rect)?;
+                effects::gradient_blur_composite(&mut sharp, &blurred, &inverse, gradient);
+                if self.compatible { sharp.quantize_rgba8(); }
+                blurred = sharp;
+            }
             if let Some(controls) = &fx.color_controls { controls.apply(&mut blurred, self.doc.color_management.is_some()); }
             let background = if let Some((shape, glass)) =
                 crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref())

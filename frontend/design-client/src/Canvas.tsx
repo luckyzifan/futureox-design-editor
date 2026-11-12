@@ -199,9 +199,10 @@ type Drag = {
   layoutPointerOrigin?: Point
   creationSeed?: ShapeCreationSeed
   creationTool?: Tool
-  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop'
+  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'zoomBlurCenter'
   materialFill?: number
   materialStop?: number
+  blurEndpoint?: 'start' | 'end'
   pointer?: Point
   sourceTap?: boolean
   screenDistance?: number
@@ -280,8 +281,9 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   </g>
 }
 
-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox }: {
+export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, onExitBlurEdit }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
+  blurEffectIndex?: number; onExitBlurEdit?: () => void
   startupPreview?: StartupPixels; loading?: boolean
   focusedMaterial?:number;onSourceDetail?:(roots:number[])=>void;onSourceViewport?:(box:import('./desktop').SourceCanvasBox,anchor?:Point,density?:number)=>void;hideNative?:boolean;parkNative?:boolean
   openingPage?:string
@@ -301,6 +303,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale } = useInterfacePreferences()
   const chromeCopy = canvasText[locale]
+  const blurEditActive = useRef(false)
+  const exitBlurEditor = useRef(onExitBlurEdit)
+  blurEditActive.current = blurEffectIndex !== undefined
+  exitBlurEditor.current = onExitBlurEdit
   const retainedMove = useRef<RetainedMoveControl|null>(null)
   const thumbnailCoverage=useRef<((view:CanvasCamera,width:number,height:number)=>boolean)|undefined>(undefined)
   const [sourceNativeCoverage,setSourceNativeCoverage]=useState<SourceNativeCoverage>()
@@ -1303,12 +1309,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         cancelQueuedMove()
         marqueeHeld.current = false; setMarqueeKeyHeld(false)
         const cancelOnly = !!drag.current || !!pencil.current || !!penRef.current || editor.state.tool !== 'select'
+          || blurEditActive.current
         flushView()
         cancelPencil()
         setShapePreview(null)
         if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
         const cancelledDraft = drag.current
         editor.cancel()
+        if (blurEditActive.current) exitBlurEditor.current?.()
         finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.escape)
         drag.current = null
         setPanning(false)
@@ -2199,6 +2207,23 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           glass.lightAngle = glassLightAngle(local.x - d.node.width / 2, local.y - d.node.height / 2, e.shiftKey, glass.lightAngle)
           editor.preview({ [d.node.id]: { effects } })
         }
+        return
+      }
+      if ((d.parameter === 'blurEndpoint' || d.parameter === 'zoomBlurCenter') && d.handle !== undefined) {
+        const inverseMatrix = inverse(d.matrices[d.node.id])
+        const at = apply(inverseMatrix, p), start = apply(inverseMatrix, d.start)
+        const dx = at.x - start.x, dy = at.y - start.y
+        const effects = structuredClone(d.node.effects)
+        const effect = effects[d.handle]
+        const bound = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value))
+        if (d.parameter === 'blurEndpoint' && d.blurEndpoint && effect?.gradientBlur) {
+          const [x, y] = effect.gradientBlur[d.blurEndpoint]
+          effect.gradientBlur[d.blurEndpoint] = [bound(x + dx, 1e7), bound(y + dy, 1e7)]
+        } else if (d.parameter === 'zoomBlurCenter' && effect?.zoomBlur) {
+          const [x, y] = effect.zoomBlur.center
+          effect.zoomBlur.center = [bound(x + dx / d.node.width, 1e6), bound(y + dy / d.node.height, 1e6)]
+        } else return
+        editor.preview({ [d.node.id]: { effects } })
         return
       }
       if ((d.parameter === 'gradientAngle' || d.parameter === 'gradientStop') && d.materialFill !== undefined) {
@@ -3284,6 +3309,35 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     drag.current.materialStop = stop
                     editor.begin(history)
                   }
+                }
+                const activeBlur = blurEffectIndex === undefined ? undefined : n.effects[blurEffectIndex]
+                if (activeBlur?.visible && (activeBlur.gradientBlur || activeBlur.zoomBlur)) {
+                  const gradient = activeBlur.gradientBlur
+                  if (gradient) {
+                    const a = worldPoint({ x: gradient.start[0], y: gradient.start[1] })
+                    const b = worldPoint({ x: gradient.end[0], y: gradient.end[1] })
+                    return <g data-testid="blur-edit-handles">
+                      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#0d99ff" strokeWidth={1 / zoom} pointerEvents="none" />
+                      {([['start', a], ['end', b]] as const).map(([endpoint, point]) =>
+                        <circle key={endpoint} data-testid={`blur-${endpoint}-handle`}
+                          cx={point.x} cy={point.y} r={6 / zoom} fill="white" stroke="#0d99ff" strokeWidth={1 / zoom}
+                          style={{ cursor: 'crosshair' }} onPointerDown={(event) => {
+                            beginMaterial(event, 'blurEndpoint', blurEffectIndex, '调整模糊端点')
+                            if (drag.current?.kind === 'parameter') drag.current.blurEndpoint = endpoint
+                          }}>
+                          <title>{locale === 'en' ? (endpoint === 'start' ? 'Blur start' : 'Blur end') : (endpoint === 'start' ? '模糊起点' : '模糊终点')}</title>
+                        </circle>)}
+                    </g>
+                  }
+                  const [x, y] = activeBlur.zoomBlur!.center
+                  const origin = worldPoint({ x: x * n.width, y: y * n.height })
+                  return <g data-testid="blur-edit-handles">
+                    <circle data-testid="zoom-blur-origin-handle" cx={origin.x} cy={origin.y} r={7 / zoom}
+                      fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
+                      onPointerDown={(event) => beginMaterial(event, 'zoomBlurCenter', blurEffectIndex, '调整缩放模糊焦点')}>
+                      <title>{locale === 'en' ? 'Zoom blur origin' : '缩放模糊焦点'}</title>
+                    </circle>
+                  </g>
                 }
                 const marks: React.ReactNode[] = []
                 // Zero-radius rectangles must still support direct corner rounding.

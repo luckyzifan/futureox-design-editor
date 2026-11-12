@@ -15,9 +15,10 @@ type KindPatch = { color: string; opacity: number }
 
 /** Transactional solid-fill entry point; ordinary controls must opt in with a
  * semantic target. A callback alone is never enough to claim document ownership. */
-export function SolidFillColorInput({ target, value, label, opacity = false, kind, onKind, channel = 'fill' }: {
+export function SolidFillColorInput({ target, value, label, opacity = false, kind, onKind, channel = 'fill', buttonText }: {
   target: SolidFillTarget; value: string; label: string; opacity?: boolean
   kind?: Paint['kind']; onKind?: (kind: KindChoice, patch?: KindPatch) => void; channel?: PaintChannel
+  buttonText?: string
 }) {
   const { tr } = usePropertyText()
   const editor = useContext(PendingEditContext), trigger = useRef<HTMLButtonElement>(null)
@@ -35,7 +36,7 @@ export function SolidFillColorInput({ target, value, label, opacity = false, kin
     <button ref={trigger} type="button" className={opacity ? 'paint-opacity-trigger' : 'color-swatch-trigger'}
       aria-label={label} aria-haspopup="dialog" aria-expanded={!!session?.active}
       style={opacity ? undefined : { background: value }} onClick={open}>
-      {opacity ? `${value} %` : <span className="sr-only">{label}</span>}
+      {buttonText ?? (opacity ? `${value} %` : <span className="sr-only">{label}</span>)}
     </button>
     {error && <span role="alert">{tr(error)}</span>}
     {session && <ColorPickerPopover session={session} trigger={trigger} focusOpacity={opacity} kind={kind} onKind={onKind} onClose={() => setSession(null)} />}

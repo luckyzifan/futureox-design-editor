@@ -4635,7 +4635,7 @@
                             "smooth"
                           ],
                           "additionalProperties": false,
-                          "description": "Blur kind only; mutually exclusive with glass/texture."
+                          "description": "Layer or background blur only, with node-local endpoints. Mutually exclusive with glass and texture."
                         },
                         {
                           "type": "null"
@@ -9187,7 +9187,7 @@
                             "smooth"
                           ],
                           "additionalProperties": false,
-                          "description": "Blur kind only; mutually exclusive with glass/texture."
+                          "description": "Layer or background blur only, with node-local endpoints. Mutually exclusive with glass and texture."
                         },
                         {
                           "type": "null"

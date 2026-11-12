@@ -54,6 +54,7 @@ import {
 } from './model'
 import { imageData } from './persistence'
 import { kernelNoiseFillPreset } from './kernel/picking'
+import { backdropEffect } from './kernel/render-dependency'
 const blends: Blend[] = [
   'normal',
   'multiply',
@@ -400,7 +401,11 @@ function PaintEditor({
 }
 // Camera presentation updates re-render the parent shell. The controls consume
 // the editor's independent panel snapshot and must not rebuild for those frames.
-export const Inspector = memo(function Inspector({ editor }: { editor: Editor }) {
+export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEditBlur }: {
+  editor: Editor
+  blurEffectIndex?: number
+  onEditBlur?: (index: number | null) => void
+}) {
   const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
@@ -451,6 +456,12 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
       </aside>
     )
   const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
+  const authoredFills = editor.authoredDocument.nodes[n.id]?.fills ?? n.fills
+  const visibleFills = authoredFills.filter(paint => paint.visible && paint.opacity > 0)
+  const opaqueFill = visibleFills.length === 1 && visibleFills[0].kind === 'solid'
+    && visibleFills[0].blend === 'normal' && visibleFills[0].opacity === 1
+    && /^#[0-9a-f]{6}$/i.test(visibleFills[0].color) ? visibleFills[0] : undefined
+  const activeBackdrop = opaqueFill && backdropEffect(n.effects)
   const styleDescription = styleUnitDescription(s.doc, [n.id], editor.parentMap(s.doc))
   const liveText = live && editor.interactionActive && live.session === editor.sessionGeneration && live.page === s.page && live.documentId === s.doc.id
     ? live.textById[n.id] : undefined
@@ -460,7 +471,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
   const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
   const showConstraints = !!constraintParent && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
-    <div className="mini-actions">
+    <div className="mini-actions" onClickCapture={field === 'effects' ? () => onEditBlur?.(null) : undefined}>
       <button
         title={tr("上移")}
         disabled={!i}
@@ -943,7 +954,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 <b>{tr(effects[fx.kind])}</b>
                 {listControls('effects', i)}
               </div>
-              <div className="field-grid">
+              <div className="field-grid effect-fields">
                 {(['radius', 'x', 'y', 'spread', 'opacity', 'amount'] as const)
                   .filter((k) =>
                     ['color-controls','zoom-blur'].includes(fx.kind) ? false : fx.glass || fx.texture
@@ -1000,7 +1011,14 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     />
                   ))}
               </div>
-              {(fx.colorControls || fx.kind === 'background-blur') && <div className="field-grid">
+              {fx === activeBackdrop && opaqueFill && <div className="effect-fill-notice">
+                <p>{tr('不透明填充遮住了此效果')}</p>
+                <SolidFillColorInput
+                  target={{ kind: 'solid-fill', nodeId: n.id, fillId: opaqueFill.id, fillIndex: authoredFills.indexOf(opaqueFill) }}
+                  value="100" opacity label={tr('调整填充不透明度')} buttonText={tr('调整填充不透明度')}
+                />
+              </div>}
+              {(fx.colorControls || fx.kind === 'background-blur') && <div className="field-grid effect-fields">
                 {(['brightness','contrast','saturation','hue'] as const).filter(key => fx.kind !== 'background-blur' || key === 'saturation').map(key => {
                   const controls = fx.colorControls || { space:'srgb' as const, brightness:0, contrast:1, saturation:1, hue:0 }
                   const label = {brightness:'亮度',contrast:'对比度',saturation:'饱和度',hue:'色相（弧度）'}[key]
@@ -1012,23 +1030,31 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     },label)}/>
                 })}
               </div>}
-              {fx.zoomBlur && <div className="field-grid">
+              {fx.zoomBlur && <div className="field-grid effect-fields">
                 <NumberField label={tr('缩放模糊强度')} historyLabel="缩放模糊强度" unit="number" diagnosticFamily={2} min={0} max={1000} value={fx.zoomBlur.amount} onChange={v=>update(n=>{n.effects[i].zoomBlur!.amount=v})}/>
                 {([0,1] as const).map(axis=><NumberField key={axis} label={tr(axis===0?'焦点 X %':'焦点 Y %')} historyLabel="缩放模糊焦点" unit="number" diagnosticFamily={2} min={-1e8} max={1e8} value={fx.zoomBlur!.center[axis]*100} onChange={v=>update(n=>{n.effects[i].zoomBlur!.center[axis]=v/100})}/>)}
               </div>}
               {fx.kind === 'motion-blur' && <NumberField label={tr('方向 °')} historyLabel="运动模糊方向" unit="number" diagnosticFamily={2} min={-1e7} max={1e7} value={fx.motionAngle??0} onChange={v=>update(n=>{n.effects[i].motionAngle=v})}/>}
-              {fx.kind === 'blur' && <>
+              {(fx.kind === 'blur' || fx.kind === 'background-blur') && <>
                 <label className="check-row"><input aria-label={tr("渐变模糊")} type="checkbox" checked={!!fx.gradientBlur} onChange={e=>update(n=>{
-                  const effect=n.effects[i];if(e.target.checked)effect.gradientBlur={start:[0,0],end:[n.width,0],startCount:0,endCount:4,smooth:true};else delete effect.gradientBlur
+                  const effect = n.effects[i]
+                  const y = effect.kind === 'background-blur' ? n.height / 2 : 0
+                  if (e.target.checked) effect.gradientBlur = { start: [0,y], end: [n.width,y], startCount: 0, endCount: 4, smooth: true }
+                  else delete effect.gradientBlur
                 })}/>{tr("渐变模糊")}</label>
-                {fx.gradientBlur && <div className="field-grid">
+                {fx.gradientBlur && <div className="field-grid effect-fields">
                   {(['start','end'] as const).flatMap(anchor=>([0,1] as const).map(axis=><UnitNumberField historyLabel={`${anchor==='start'?'起点':'终点'} ${axis?'Y':'X'}`} unit="number" diagnosticFamily={2} key={`${anchor}:${axis}`} unitScale={axis?units.y:units.x} label={`${tr(anchor==='start'?'起点':'终点')} ${axis?'Y':'X'}`} value={fx.gradientBlur![anchor][axis]} onChange={v=>update(n=>{n.effects[i].gradientBlur![anchor][axis]=v})}/>))}
                   {(['startCount','endCount'] as const).map(key=><NumberField historyLabel={key==='startCount'?'起点强度':'终点强度'} unit="number" diagnosticFamily={2} key={key} label={tr(key==='startCount'?'起点强度':'终点强度')} min={0} max={64} step={.1} value={fx.gradientBlur![key]} onChange={v=>update(n=>{n.effects[i].gradientBlur![key]=v})}/>)}
                   <label><input aria-label={tr("平滑渐变模糊")} type="checkbox" checked={fx.gradientBlur.smooth} onChange={e=>update(n=>{n.effects[i].gradientBlur!.smooth=e.target.checked})}/>{tr("平滑权重")}</label>
                 </div>}
               </>}
+              {(fx.zoomBlur || fx.gradientBlur) && fx.visible && onEditBlur &&
+                <button type="button" className="wide-button" aria-pressed={blurEffectIndex === i}
+                  onClick={() => onEditBlur(blurEffectIndex === i ? null : i)}>
+                  {tr(blurEffectIndex === i ? '完成画布编辑' : '在画布上编辑模糊')}
+                </button>}
               {fx.glass && (
-                <div className="field-grid glass-fields">
+                <div className="field-grid glass-fields effect-fields">
                   {(
                     ['lightAngle', 'lightIntensity', 'refraction', 'depth', 'dispersion', 'bevelSize'] as const
                   ).map((key) => {

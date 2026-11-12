@@ -1110,11 +1110,11 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
           (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
           (e.motionAngle === undefined || (finite(e.motionAngle,-1e7,1e7) && (e.kind==='motion-blur'||e.motionAngle===0))) &&
           (e.kind !== 'color-controls' || e.colorControls != null) &&
-          (e.colorControls == null || (d.schemaVersion >= 17 && (['color-controls','background-blur'].includes(e.kind) || e.kind==='glass' && !!e.glass) && validColorControls(e.colorControls) && !e.texture && !e.gradientBlur)) &&
+          (e.colorControls == null || (d.schemaVersion >= 17 && (['color-controls','background-blur'].includes(e.kind) || e.kind==='glass' && !!e.glass) && validColorControls(e.colorControls) && !e.texture && (!e.gradientBlur || e.kind === 'background-blur'))) &&
           finite(e.radius, 0, 1000) &&
           [e.x, e.y, e.spread, e.amount].every((v) => finite(v)) &&
           finite(e.opacity, 0, 1) &&
-          (!e.gradientBlur || (e.kind === 'blur' && !e.glass && !e.texture &&
+          (!e.gradientBlur || (['blur','background-blur'].includes(e.kind) && !e.glass && !e.texture &&
             [e.gradientBlur.start,e.gradientBlur.end].every(a=>Array.isArray(a)&&a.length===2&&a.every(v=>finite(v,-1e7,1e7))) &&
             [e.gradientBlur.startCount,e.gradientBlur.endCount].every(v=>finite(v,0,64)) && typeof e.gradientBlur.smooth==='boolean')) &&
           (!e.glass ||

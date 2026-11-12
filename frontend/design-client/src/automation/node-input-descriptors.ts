@@ -40,7 +40,7 @@ const effect = obj({ zoomBlur: describe(obj({amount:num(0,1000),center:tuple(num
   showShadowBehindNode: describe(bool, 'Optional FIG drop-shadow flag. Preserved on import; the renderer does not yet branch shadow clipping on this value.'),
   glass: describe(obj({ bevelSize: num(0.001, 1000), depth: num(1, 1000), refraction: unit, dispersion: unit, lightAngle: num(), lightIntensity: unit }, ['depth', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity']), 'Glass kind only; mutually exclusive with texture/gradientBlur.'),
   texture: describe(obj({ noiseSize: tuple(num(0.001, 10000), 2), clipToShape: bool, noise: en('figma', 'gabor', 'perlin') }, ['noiseSize', 'clipToShape']), 'Texture kind only; mutually exclusive with glass/gradientBlur.'),
-  gradientBlur: describe(obj({ start: tuple(num(), 2), end: tuple(num(), 2), startCount: num(0, 64), endCount: num(0, 64), smooth: bool }, ['start', 'end', 'startCount', 'endCount', 'smooth']), 'Blur kind only; mutually exclusive with glass/texture.'),
+  gradientBlur: describe(obj({ start: tuple(num(), 2), end: tuple(num(), 2), startCount: num(0, 64), endCount: num(0, 64), smooth: bool }, ['start', 'end', 'startCount', 'endCount', 'smooth']), 'Layer or background blur only, with node-local endpoints. Mutually exclusive with glass and texture.'),
 }, ['kind', 'radius', 'x', 'y', 'spread', 'color', 'opacity', 'amount'])
 for (const key of ['glass', 'texture', 'gradientBlur', 'colorControls']) {
   const properties = effect.properties as Record<string, Schema>
