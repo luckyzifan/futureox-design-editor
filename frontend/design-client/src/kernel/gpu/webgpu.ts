@@ -278,6 +278,7 @@ export class WebGpuDriver implements Driver {
     else this.presenter=new ResidentPresenter(this.presentationDevice||this.device, canvas, this.format, report,atomic)
   }
   acceptPresentation(token:number,accepted=true){this.presenter?.acceptPresentation(token,accepted)}
+  hasDeferredPosePresentation(slot:number){return this.presenter?.hasDeferredPosePresentation(slot) ?? false}
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}

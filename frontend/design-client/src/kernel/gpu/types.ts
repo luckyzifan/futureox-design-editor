@@ -316,6 +316,7 @@ export interface Driver {
   retainedSampleCapture?(): boolean
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic?:boolean): void
   acceptPresentation?(token:number,accepted?:boolean):void
+  hasDeferredPosePresentation?(slot:number):boolean
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
   replacePresented?(slot:number,next:number):void

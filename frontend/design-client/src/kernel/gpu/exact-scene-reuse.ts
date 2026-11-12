@@ -22,7 +22,10 @@ export function reuseExactSceneSources(previous: GpuScene, next: GpuScene, trans
   if(previous.interactionLease!==next.interactionLease)return next
   const policy = (s: GpuScene) => {
     const { nodes: _nodes, vertices: _vertices, curves: _curves, interactionWindow: _window, ...rest } = s
-    return encode(Object.keys(rest).sort().map(key => [key, rest[key as keyof typeof rest]]))
+    return encode(Object.keys(rest).sort().flatMap(key => {
+      const value = rest[key as keyof typeof rest]
+      return value === undefined ? [] : [[key, value]]
+    }))
   }
   if (policy(previous) !== policy(next)) return next
   const old = { curves: bits(previous.curves || []), vertices: bits(previous.vertices) }

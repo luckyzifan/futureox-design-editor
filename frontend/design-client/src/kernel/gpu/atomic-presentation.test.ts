@@ -31,6 +31,25 @@ test('immutable images wait for actual GPU completion and one browser handoff bo
  last.bitmap.close();f.presenter.acceptPresentation(last.presented.presentationToken)
  expect(f.presenter.residentBytes).toBe(3*16*16*4)
 })
+test('only a pose waiting to submit its display copy holds the next raster', async () => {
+ const f=fixture()
+ const frame=f.frame(0),slot=frame.items[0].tile.gpuTile
+ f.presenter.draw({...frame,interaction:true,input:{sequence:1,at:1}})
+ expect(f.presenter.hasDeferredPosePresentation(slot)).toBe(false)
+ f.presenter.draw({...frame,interaction:true,input:{sequence:2,at:2}})
+ expect(f.presenter.hasDeferredPosePresentation(slot)).toBe(true)
+ expect(f.presenter.hasDeferredPosePresentation(slot+1)).toBe(false)
+ f.queue.completeThrough(f.queue.epoch);await flush()
+ const previous=f.reports.at(-1) as any
+ previous.bitmap.close()
+ f.presenter.acceptPresentation(previous.presented.presentationToken)
+ expect(f.presenter.hasDeferredPosePresentation(slot)).toBe(false)
+ f.queue.completeThrough(f.queue.epoch);await flush()
+ const current=f.reports.at(-1) as any
+ expect(current.input.sequence).toBe(2)
+ current.bitmap.close()
+ f.presenter.acceptPresentation(current.presented.presentationToken)
+})
 test('discarded handoffs cannot retire the image the browser is still displaying',async()=>{
  const f=fixture();f.presenter.draw(f.frame(0));f.queue.completeThrough(f.queue.epoch);await flush()
  const first=f.reports.at(-1) as any;first.bitmap.close();f.presenter.acceptPresentation(first.presented.presentationToken)

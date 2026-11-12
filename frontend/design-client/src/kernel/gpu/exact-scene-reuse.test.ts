@@ -32,6 +32,8 @@ test('exact recompilation retains unchanged source pixels but rejects changed ge
     const reused=reuseExactSceneSources(old,moved)
     expect(reused.nodes[b.id].previewSource).toBe(old.nodes[b.id])
     expect(reused.nodes[a.id].previewSource).toBeUndefined()
+    expect(reuseExactSceneSources({...old,interactionContentWindow:undefined},moved).nodes[b.id].previewSource)
+      .toBe(old.nodes[b.id])
     const changedView={...moved,view:{...moved.view,x:moved.view.x+.125}}
     expect(reuseExactSceneSources(old,changedView).nodes[b.id].previewSource).toBeUndefined()
     const bad={...moved,curves:new Float32Array(moved.curves||[])}

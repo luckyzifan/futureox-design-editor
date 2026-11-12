@@ -344,6 +344,7 @@ fn admit_image_pixels(
 struct ImageCoordinates {
     inverse: Transform,
     paint_inverse: Option<Transform>,
+    linear_placement: Option<(f64, [f64; 2])>,
     size: [f64; 2],
     image: [f64; 2],
     fit: String,
@@ -352,6 +353,27 @@ struct ImageCoordinates {
     pattern: Option<crate::pattern_fill::PatternTile>,
 }
 impl ImageCoordinates {
+    fn place_linear_image(
+        paint_inverse: Option<Transform>,
+        fit: &str,
+        size: [f64; 2],
+        image: [f64; 2],
+    ) -> Option<(f64, [f64; 2])> {
+        if paint_inverse.is_some() || fit == "stretch" {
+            return None;
+        }
+        let ratios = [size[0] / image[0], size[1] / image[1]];
+        let ratio = if fit == "contain" {
+            ratios[0].min(ratios[1])
+        } else {
+            ratios[0].max(ratios[1])
+        };
+        Some((
+            ratio,
+            [(size[0] - image[0] * ratio) / 2., (size[1] - image[1] * ratio) / 2.],
+        ))
+    }
+
     fn new(
         paint: &Paint,
         size: [f64; 2],
@@ -359,11 +381,15 @@ impl ImageCoordinates {
         bounds: Rect,
         image: [u32; 2],
     ) -> Result<Self, String> {
+        let inverse = matrix.inverse_composed(bounds)?;
+        let paint_inverse = paint.transform.map(|m| m.inverse()).transpose()?;
+        let image = image.map(f64::from);
         Ok(Self {
-            inverse: matrix.inverse_composed(bounds)?,
-            paint_inverse: paint.transform.map(|m| m.inverse()).transpose()?,
+            inverse,
+            paint_inverse,
+            linear_placement: Self::place_linear_image(paint_inverse, &paint.fit, size, image),
             size,
-            image: image.map(f64::from),
+            image,
             fit: paint.fit.clone(),
             pattern: paint.tile.clone().filter(|t| t.is_active()),
         })
@@ -497,20 +523,12 @@ impl ImageCoordinates {
     }
     fn linear_point(&self, device: Point) -> Point {
         let p = self.inverse.point(device);
+        if let Some((ratio, inset)) = self.linear_placement {
+            return Point::new((p.x - inset[0]) / ratio, (p.y - inset[1]) / ratio);
+        }
         let uv = Point::new(p.x / self.size[0], p.y / self.size[1]);
         let uv = self.paint_inverse.map_or(uv, |m| m.point(uv));
-        let (iw, ih) = (self.image[0], self.image[1]);
-        let (mut x, mut y) = (uv.x * iw, uv.y * ih);
-        if self.paint_inverse.is_none() && self.fit != "stretch" {
-            let ratio = if self.fit == "contain" {
-                (self.size[0] / iw).min(self.size[1] / ih)
-            } else {
-                (self.size[0] / iw).max(self.size[1] / ih)
-            };
-            x = (p.x - (self.size[0] - iw * ratio) / 2.) / ratio;
-            y = (p.y - (self.size[1] - ih * ratio) / 2.) / ratio;
-        }
-        Point::new(x, y)
+        Point::new(uv.x * self.image[0], uv.y * self.image[1])
     }
 }
 /// One row of the original linear mapping, with only placement constants
@@ -538,13 +556,7 @@ impl ImageAxisSample {
 impl<'a> ImageLinearAxis<'a> {
     fn new(coordinates: &'a ImageCoordinates, axis: usize) -> Self {
         let m = coordinates.inverse.0;
-        let fit_placement = if coordinates.paint_inverse.is_none() && coordinates.fit != "stretch" {
-            let ratios = [coordinates.size[0] / coordinates.image[0], coordinates.size[1] / coordinates.image[1]];
-            let ratio = if coordinates.fit == "contain" { ratios[0].min(ratios[1]) } else { ratios[0].max(ratios[1]) };
-            Some((ratio, (coordinates.size[axis] - coordinates.image[axis] * ratio) / 2.))
-        } else {
-            None
-        };
+        let fit_placement = coordinates.linear_placement.map(|(ratio, insets)| (ratio, insets[axis]));
         Self { coordinates, axis, inverse: [m[axis], m[axis + 2], m[axis + 4]], fit_placement, contain: coordinates.fit == "contain" }
     }
     #[inline]
@@ -1550,7 +1562,8 @@ mod tests {
                 for paint_inverse in [None, Some(Transform([0.7, -0., 0., -1.1, 0.2, 0.4]))] {
                     for size in [[1920., 1080.], [31., 19.], [1e-300, 1e300]] {
                         for image in [[1920., 1080.], [1., 1.], [4_294_967_295., 7.]] {
-                            let coordinates = ImageCoordinates { inverse, paint_inverse, size, image, fit: fit.into(), pattern: None };
+                            let coordinates = ImageCoordinates { inverse, paint_inverse, size, image, fit: fit.into(), pattern: None,
+                                linear_placement: ImageCoordinates::place_linear_image(paint_inverse, fit, size, image) };
                             for x in [-2_147_483_648., -0.5, -0., 0., f64::from_bits(0.5f64.to_bits() - 1), 0.5, f64::from_bits(0.5f64.to_bits() + 1), 2_147_483_646.875] {
                                 for y in [-1281.875, -0., 0.125, 0.5, 3480.875] {
                                     let point = coordinates.linear_point(Point::new(x, y));

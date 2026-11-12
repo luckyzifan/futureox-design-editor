@@ -150,21 +150,30 @@ pub(crate) fn coordinate_grid(
     source: crate::math::Rect,
     mut point: impl FnMut(i32, i32) -> Option<crate::math::Point>,
 ) -> Result<Vec<f32>, String> {
-    let count = output
-        .pixels()
-        .checked_mul(4)
+    let width = output.w as usize;
+    let count = width
+        .checked_mul(output.h as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
         .ok_or("Sampling coordinate size overflow")?;
     if count > 16_777_216 {
         return Err("Sampling coordinate field exceeds 64 MiB".into());
     }
+    let right = output.checked_right().ok_or("Invalid sampling coordinate width")?;
+    let bottom = output.checked_bottom().ok_or("Invalid sampling coordinate height")?;
     let mut values = Vec::new();
+    if count == 0 {
+        return Ok(values);
+    }
     values
         .try_reserve_exact(count)
         .map_err(|_| "Sampling coordinate allocation failed")?;
-    for y in output.y..output.bottom() {
-        for x in output.x..output.right() {
+    values.resize(count, 0.);
+    let source_origin = (f64::from(source.x), f64::from(source.y));
+    let source_size = (f64::from(source.w), f64::from(source.h));
+    for (y, row) in (output.y..bottom).zip(values.chunks_exact_mut(width * 4)) {
+        for (x, cell) in (output.x..right).zip(row.chunks_exact_mut(4)) {
             let Some(p) = point(x, y) else {
-                values.extend([-2., -2., 0., 0.]);
+                cell.copy_from_slice(&[-2., -2., 0., 0.]);
                 continue;
             };
             if !p.finite() {
@@ -174,12 +183,12 @@ pub(crate) fn coordinate_grid(
             let sy = p.y - 0.5;
             let ix = sx.floor();
             let iy = sy.floor();
-            let rx = ix - f64::from(source.x);
-            let ry = iy - f64::from(source.y);
-            if rx < -1. || ry < -1. || rx >= f64::from(source.w) || ry >= f64::from(source.h) {
-                values.extend([-2., -2., 0., 0.]);
+            let rx = ix - source_origin.0;
+            let ry = iy - source_origin.1;
+            if rx < -1. || ry < -1. || rx >= source_size.0 || ry >= source_size.1 {
+                cell.copy_from_slice(&[-2., -2., 0., 0.]);
             } else {
-                values.extend([rx as f32, ry as f32, (sx - ix) as f32, (sy - iy) as f32]);
+                cell.copy_from_slice(&[rx as f32, ry as f32, (sx - ix) as f32, (sy - iy) as f32]);
             }
         }
     }

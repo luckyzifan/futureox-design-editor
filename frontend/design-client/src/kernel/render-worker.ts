@@ -451,8 +451,12 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
 // Set only during the physical finish of the preceding native pose. The
 // actual terminal input can use the idle CPU lane; it owns one one-use packet.
 let beginTerminalPreparation: ((next:ResidentPose)=>void) | undefined
+function waitingForPoseSubmission(pose:ResidentPose) {
+  return !pose.terminal && poseSession?.slot === pose.slot && poseSession.scene.interactionFixedMask === true &&
+    gpu?.driver.hasDeferredPosePresentation?.(pose.slot) === true
+}
 function schedulePose(){
-  if(poseQueued||!pendingPose)return
+  if(poseQueued||!pendingPose||waitingForPoseSubmission(pendingPose))return
   poseQueued=true
   void queue.run(async()=>{
     let runningPose: ResidentPose | undefined
@@ -475,7 +479,9 @@ function schedulePose(){
       if (poseSession===old.session) rebasePose(old.pose)
     }
     try{
-      while(pendingPose){
+      // Keep the next raster behind a pose whose display copy has not yet
+      // reached this queue. A submitted copy can finish during preparation.
+      while(pendingPose&&!waitingForPoseSubmission(pendingPose)){
         const pose=pendingPose;pendingPose=undefined;runningPose=pose
         const session=poseSession
         if (advance && (advance.pose!==pose || advance.session!==session || session?.stopped)) await discardAdvance()
@@ -620,6 +626,8 @@ function schedulePose(){
             compactImageFields:session.scene.compactImageFields,displayFilters:session.scene.displayFilters,
             displayFilterRadiusLimit:session.scene.displayFilterRadiusLimit,
             displayImageSource:session.scene.displayImageSource,displayMaterialSource:session.scene.displayMaterialSource,
+            disableSparseGlass:session.scene.disableSparseGlass,linearRetainedCapture:session.scene.linearRetainedCapture,
+            sequentialDisplay:session.scene.sequentialDisplay,
             displayTentRadius:session.scene.displayTentRadius}
           next=reuseExactSceneSources(session.scene,next,session.patch?.changedNodes)
         }else next=session.patch?session.patch.prepare(session.scene,pose.transforms,window):
@@ -786,6 +794,7 @@ self.onmessage = (e) => {
   }
   if(request.command==='display-accept'){
     try{if(Number.isSafeInteger(request.token)&&request.token>0)displayAttachment?.driver.acceptPresentation?.(request.token,request.accepted===true)}catch(error){reportDisplay({error:String(error)})}
+    schedulePose()
     return
   }
   if (request.command === 'display-frame') {
@@ -795,11 +804,22 @@ self.onmessage = (e) => {
       reportDisplay({displayCommandsDropped:displayOrder.dropped});return
     }
     displayOrderSequence=request.sequence
+    const previous=displayFrame
     displayFrame=request.frame
-    displayCoverageVersion = {}
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
     if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
+    // A masked pose may already have requested this immutable image before
+    // the main thread reflected its sample. Keep later poses from waiting
+    // behind another transfer of the same texture, clip, and chrome.
+    if (poseSession?.scene.interactionFixedMask && !poseSession.stopped &&
+        previous?.interaction && previous.input?.sequence && displayFrame?.interaction &&
+        previous.input.sequence === displayFrame.input?.sequence &&
+        displayAttachment && displayAttachment.driver === gpu?.driver && !displayAttachment.driver.lost &&
+        residentFrameSignature(previous) === residentFrameSignature(displayFrame) &&
+        equalValue(previous.overlayAffines,displayFrame.overlayAffines) &&
+        equalValue(previous.overlayPose,displayFrame.overlayPose)) return
+    displayCoverageVersion = {}
     scheduleDisplayFrame()
     return
   }
@@ -824,7 +844,7 @@ self.onmessage = (e) => {
   if(request.command==='interaction-settle'){
     if(Number.isSafeInteger(request.sequence)&&poseSession&&!poseSession.stopped&&poseSession.slot===request.slot&&
       pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner){
-      pendingPose.terminal=true;beginTerminalPreparation?.(pendingPose)
+      pendingPose.terminal=true;beginTerminalPreparation?.(pendingPose);schedulePose()
     }
     return
   }

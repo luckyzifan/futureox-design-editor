@@ -124,6 +124,12 @@ export class ResidentPresenter {
     this.bitmapPending=undefined
     if(this.latest!==pending.frame)this.repaint()
   }
+  hasDeferredPosePresentation(slot:number) {
+    const pending = this.bitmapPending, frame = this.latest
+    return !!pending && !!frame?.interaction && frame !== pending.frame &&
+      (frame.input?.sequence ?? 0) > (pending.frame.input?.sequence ?? 0) &&
+      frame.items.some(item => item.active && item.tile.gpuTile === slot)
+  }
   private translatedProof?:{frame:ResidentFrame;source:PageBackgroundProof;offset:{x:number;y:number}}
   private translatedProofChecks=0
   private backbuffer?: { texture: GPUTexture; width: number; height: number; payload: PayloadToken }
