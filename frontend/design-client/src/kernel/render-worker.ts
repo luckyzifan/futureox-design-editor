@@ -1031,6 +1031,10 @@ self.onmessage = (e) => {
         renderOptions.rasterProfile==='figmaSubpixel'&&backend==='webgpu'&&!executionPolicy.hdrCompositing&&!request.png&&!request.readback&&
         !exportFormat&&!renderOptions.exportRegion&&!renderOptions.pixelPreview
       renderOptions.gpuPageBackground = channel === 'canvas' && !request.png && !request.readback
+      renderOptions.gpuAnalyticRegions = (import.meta.env.VITE_DESIGN_ANALYTIC_REGIONS !== '0' && backend === 'webgpu' &&
+        channel === 'canvas' && !!tileViewport && renderOptions.rasterProfile === 'analytic' && renderOptions.view.zoom >= 32 &&
+        !executionPolicy.hdrCompositing && !request.referenceGpu && !request.png && !request.readback &&
+        !exportFormat && !renderOptions.exportRegion && !renderOptions.pixelPreview) || undefined
       renderOptions.gpuPainterSupport = usesPainterSupport(import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX,
         { backend, renderIntent, livePreview, tileViewport, png: request.png, exportFormat,
           exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,

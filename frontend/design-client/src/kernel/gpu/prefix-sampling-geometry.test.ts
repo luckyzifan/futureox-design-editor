@@ -48,3 +48,13 @@ test('region addressing rejects a same-double-lattice crop when f32 bilinear wei
   const source = { x: -9280.606143, y: 0, w: 16000, h: 4 }
   expect(backdropFilterRegion(source, [-1280, 0, 64, 4])).toBeUndefined()
 })
+
+test('an exact regional box can emit zeros beyond the source only along its filtered axis', () => {
+  const source = { x: -12, y: 24, w: 16, h: 32 }
+  const output = { x: -15, y: 24, w: 21, h: 32 }
+  const u = parameters(output, source)
+  expect(prefixSamplingGeometry(u, 32)).toBeUndefined()
+  expect(prefixSamplingGeometry(u, 32, false, 2048, true)).toEqual({ length: 16, offset: -3, crossOffset: 0, padding: 0 })
+  u[37] = 1
+  expect(prefixSamplingGeometry(u, 32, false, 2048, true)).toBeUndefined()
+})

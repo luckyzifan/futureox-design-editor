@@ -552,6 +552,8 @@ fn reduced_gaussian_source(n:&Node,matrix:Transform,plan:&GaussianRegion,path:&c
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuNode {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analytic_region: Option<analytic_regions::NodeRegion>,
     #[serde(skip_serializing_if="Option::is_none")]
     pub optical_prefix_next: Option<String>,
     #[serde(skip_serializing_if="Option::is_none")]
@@ -653,6 +655,7 @@ pub struct GpuScene {
     pub vertices: Vec<f32>,
 }
 mod frame_wire;
+mod analytic_regions;
 mod packet;
 pub(crate) use packet::FrameSceneContext;
 fn halo(n: &Node, m: Transform) -> i32 {
@@ -1650,6 +1653,7 @@ struct Compiler<'a> {
     backdrop_outputs: HashMap<String, Rect>,
     shadow_outputs: HashMap<String, Rect>,
     stages: Option<PainterStages>,
+    analytic_regions: Option<HashMap<String, analytic_regions::NodeRegion>>,
     curves: Vec<f32>,
     area_paths: HashMap<ProgramIdentity, AreaPath>,
     fragments: fragments::FragmentCache,
@@ -1748,6 +1752,10 @@ impl Compiler<'_> {
         if !n.visible {
             return Ok(Rect::default());
         }
+        let analytic_region = if let Some(regions) = &self.analytic_regions {
+            let Some(region) = regions.get(id) else { return Ok(Rect::default()); };
+            Some(region.clone())
+        } else { None };
         let staged_region = if let Some(stages) = &self.stages {
             let Some(region) = stages.node_regions.get(id) else {
                 // The reverse painter proof did not demand this node in any
@@ -1823,7 +1831,8 @@ impl Compiler<'_> {
                 .fold(0_i32, i32::saturating_add)
         } else { halo(n, matrix) };
         let source_region = requested.map(|r| r.expand(own_halo.saturating_add(2)));
-        let extent = staged_region.unwrap_or_else(|| source_region.unwrap_or(self.extent));
+        let extent = analytic_region.as_ref().map(|region| region.input)
+            .or(staged_region).unwrap_or_else(|| source_region.unwrap_or(self.extent));
         // Preparation already includes this leaf's strokes and effect support.
         // Reuse its exact final rejection before rereading paths/control bounds
         // and recomputing the same margins for every offscreen tile candidate.
@@ -1890,7 +1899,7 @@ impl Compiler<'_> {
         if rect.empty() {
             return Ok(rect);
         }
-        let full_gaussian=if self.gaussian_regions&&!omit_filter&&source_filter_field.is_none() {requested.and_then(|output|gaussian_region_plan(n,matrix,output.intersect(rect)))}else{None};
+        let full_gaussian=if self.gaussian_regions&&!omit_filter&&source_filter_field.is_none()&&analytic_region.is_none() {requested.and_then(|output|gaussian_region_plan(n,matrix,output.intersect(rect)))}else{None};
         let reduced=if source_filter_field.is_none()&&self.gaussian_reduction>1&&self.doc.color_management.as_ref().is_some_and(|c|c.document_space==crate::color::ColorSpace::Srgb) {
             let candidate=if self.gaussian_regions&&!omit_filter {
                 requested.and_then(|output|gaussian_region_plan_above(n,matrix,output.intersect(rect),128.))
@@ -1953,6 +1962,7 @@ impl Compiler<'_> {
         self.nodes.insert(
             id.to_owned(),
             GpuNode {
+                analytic_region: analytic_region.clone(),
                 optical_prefix_next: None,
                 source_filter_field,
                 gaussian_region:reduced.map(|(plan,_)|plan).or(full_gaussian),
@@ -2026,8 +2036,12 @@ impl Compiler<'_> {
                 effects: n
                     .effects
                     .iter()
-                    .filter(|e| e.visible && !(opaque_coverage && e.kind == "shadow") &&
-                        !(omit_backdrop && e.kind == "background-blur") && !omit_filter)
+                    .filter(|e| e.visible && if let Some(region) = &analytic_region {
+                        !(region.omit_shadow && e.kind == "shadow")
+                    } else {
+                        !(opaque_coverage && e.kind == "shadow") &&
+                            !(omit_backdrop && e.kind == "background-blur") && !omit_filter
+                    })
                     .cloned()
                     .map(|mut e| {
                         // Normalize only the layer-blur activation here, before
@@ -2088,6 +2102,11 @@ impl Engine {
         let page_background=match object.remove("gpuPageBackground") {
             None=>false,Some(serde_json::Value::Bool(v))=>v,_=>return Err("Invalid page background policy".into()),
         };
+        let analytic_regions = match object.remove("gpuAnalyticRegions") {
+            None => false,
+            Some(serde_json::Value::Bool(value)) => value,
+            _ => return Err("Invalid analytic region policy".into()),
+        };
         let painter_support = match object.remove("gpuPainterSupport") {
             None => false,
             Some(serde_json::Value::Bool(value)) => value,
@@ -2119,9 +2138,9 @@ impl Engine {
         let capture_reads = capture_reads && !options.raster_profile.is_export() && options.pixel_preview.is_none();
         let mut scene = if let Some(capture) = capture {
             if options.pixel_preview.is_some() || options.raster_profile.is_export() { return Err("Native capture is a canvas operation".into()); }
-            self.compile_gpu_region_impl(&options,capture,prepare.or(Some(capture)),true,painter_support,capture_reads,gaussian_regions,gaussian_reduction,source_filter_fields)?
+            self.compile_gpu_region_impl(&options,capture,prepare.or(Some(capture)),true,painter_support,capture_reads,gaussian_regions,gaussian_reduction,source_filter_fields,false)?
         } else { match region {
-            Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads,gaussian_regions,gaussian_reduction,source_filter_fields),
+            Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads,gaussian_regions,gaussian_reduction,source_filter_fields,analytic_regions),
             None => self.compile_gpu(&options),
         }? };
         if page_background && !scene.transparent && !scene.grid && !scene.checkerboard &&
@@ -2162,7 +2181,7 @@ impl Engine {
         }
         if options.raster_profile.is_export() {
             let source = crate::fidelity::source(options, 0, 0, options.width, options.height)?;
-            let mut scene = self.compile_gpu_scene(&source, None, None, false, false, false,0,false)?;
+            let mut scene = self.compile_gpu_scene(&source, None, None, false, false, false,0,false,false)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: options.width,
                 height: options.height,
@@ -2181,7 +2200,7 @@ impl Engine {
             }
             return Ok(scene);
         }
-        self.compile_gpu_scene(options, None, None, false, false, false,0,false)
+        self.compile_gpu_scene(options, None, None, false, false, false,0,false,false)
     }
     /// Compile a bounded crop in the original camera's device coordinate system.
     /// Only integer allocation/coverage limits change; authored transforms,
@@ -2195,9 +2214,9 @@ impl Engine {
         region: Rect,
         prepare: Option<Rect>,
     ) -> Result<GpuScene, String> {
-        self.compile_gpu_region_impl(options, region, prepare, false, false, false, false,0,false)
+        self.compile_gpu_region_impl(options, region, prepare, false, false, false, false,0,false,false)
     }
-    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool, painter_support: bool, capture_reads: bool, gaussian_regions:bool, gaussian_reduction:u32,source_filter_fields:bool) -> Result<GpuScene, String> {
+    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool, painter_support: bool, capture_reads: bool, gaussian_regions:bool, gaussian_reduction:u32,source_filter_fields:bool,analytic_regions:bool) -> Result<GpuScene, String> {
         // The production gutter tile is TILE_SIZE + 2 pixels wide.
         if region.empty()
             || region.w > if capture {8192} else {crate::tile_stack::TILE_SIZE as u32 + 2}
@@ -2219,7 +2238,7 @@ impl Engine {
             let source = crate::fidelity::source(&cropped, 0, 0, region.w, region.h)?;
             let source_region = Rect::new(region.x * 2, region.y * 2, region.w * 2, region.h * 2);
             let source_prepare = prepare.map(|r| Rect::new(r.x * 2, r.y * 2, r.w * 2, r.h * 2));
-            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads, false,0,false)?;
+            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads, false,0,false,false)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: region.w,
                 height: region.h,
@@ -2229,7 +2248,7 @@ impl Engine {
             });
             scene
         } else {
-            self.compile_gpu_scene(&cropped, Some(region), prepare, painter_support, capture_reads, gaussian_regions,gaussian_reduction,source_filter_fields)?
+            self.compile_gpu_scene(&cropped, Some(region), prepare, painter_support, capture_reads, gaussian_regions,gaussian_reduction,source_filter_fields,analytic_regions)?
         };
         scene.output = Some(region);
         // Version 8 adds a global output rectangle. Older consumers must reject
@@ -2271,6 +2290,7 @@ impl Engine {
         gaussian_regions: bool,
         gaussian_reduction:u32,
         source_filter_fields:bool,
+        analytic_regions:bool,
     ) -> Result<GpuScene, String> {
         let mut gaussian_regions=gaussian_regions&&options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel&&options.pixel_preview.is_none()&&options.animation.is_none();
         let source_filter_fields=source_filter_fields&&gaussian_regions&&self.doc.as_ref().is_some_and(|d|
@@ -2665,7 +2685,16 @@ impl Engine {
         if unmanaged_tile {
             gaussian_regions = true;
         }
-        if extent.pixels() > 16_777_216 && unmanaged_tile && !regional_foreground {
+        let analytic = (analytic_regions && has_region && options.view.zoom >= 32. && extent.pixels() > 16_777_216
+            && options.raster_profile == crate::fidelity::RasterProfile::Analytic
+            && doc.color_management.is_none() && options.pixel_preview.is_none() && options.animation.is_none()
+            && !properties.has_zoom && metadata.noise_guard.is_none())
+            .then(|| analytic_regions::plan(doc, &page.children, viewport, extent, &prepared)).flatten();
+        if let Some(plan) = &analytic {
+            extent = plan.root;
+            painter_support = None;
+            regional_foreground = false;
+        } else if extent.pixels() > 16_777_216 && unmanaged_tile && !regional_foreground {
             let coherent = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
             let proved = page.children.iter().all(|id| foreground_region_supported(
                 doc, id, viewport, &prepared, coherent, true, true, false));
@@ -2696,7 +2725,7 @@ impl Engine {
         // non-overlapping frontier, never one duplicated snapshot per ancestor.
         // Painter-stage demand changes depend on siblings and retain full compilation.
         let retain_fragments=(self.camera_prepare.as_ref().is_some_and(|cache|cache.incremental)||self.interaction_transform_revision.as_ref().is_some_and(|(_,next,_)|*next==self.geo_revision))
-            && options.animation.is_none() && stages.is_none() && backdrop_outputs.is_empty() && shadow_outputs.is_empty();
+            && options.animation.is_none() && analytic.is_none() && stages.is_none() && backdrop_outputs.is_empty() && shadow_outputs.is_empty();
         let mut fragments=self.camera_prepare.as_mut().map(|c|std::mem::take(&mut c.fragments)).unwrap_or_default();
         let policy=serde_json::to_string(&(options,viewport,extent,regional_foreground,backdrop_chain,gaussian_regions,gaussian_reduction,source_filter_fields)).map_err(|e|e.to_string())?;
         if !retain_fragments||fragments.policy!=policy {fragments.clear();}
@@ -2705,6 +2734,7 @@ impl Engine {
             let n=&doc.nodes[id];if n.render_children().is_empty(){vec![id.clone()]}else{n.render_children().to_vec()}
         }).collect()}else{Default::default()};
         let mut compiler = Compiler {
+            analytic_regions: analytic.map(|plan| plan.nodes),
             doc,
             fonts: &self.fonts,
             paths: &mut self.paths,

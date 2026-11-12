@@ -177,6 +177,7 @@ export type GpuMemorySnapshot = {
 export type KernelOptions = {
   interactionBaseFill?: { x:number;y:number;width:number;height:number }
   gpuPageBackground?: boolean;
+  gpuAnalyticRegions?: boolean;
   /** Native render-only root visibility; authored document/receipts stay intact. */
   gpuRoots?: string[];
   gpuNeutralPageGroup?: boolean;
@@ -1106,7 +1107,10 @@ export class KernelClient {
       // compile duration. They remain cancellable, and native/worker/device
       // errors still reject them; elapsed time alone is not a failure receipt.
       const sourceWork = this.sourceCanvas && !!(payload as {sourceSnapshot?:unknown}).sourceSnapshot
-      const timer = sourceWork ? undefined : setTimeout(() => {
+      // Exact region exports run on their own cancellable worker. The kernel
+      // bounds pixels, surfaces and total compositing work for the whole job.
+      const regionExport = !preview && options?.exportRegion !== undefined && (payload as {png?: boolean}).png === true
+      const timer = sourceWork || regionExport ? undefined : setTimeout(() => {
         // Reject this attempt. A subsequent user/render request starts a fresh
         // worker and resends the document; expensive work is not blindly retried.
         this.reset(new Error(preview

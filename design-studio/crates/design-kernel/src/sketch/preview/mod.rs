@@ -502,6 +502,7 @@ fn visit(
     scene.nodes.insert(
         id.clone(),
         GpuNode {
+            analytic_region: None,
             optical_prefix_next: None,
             source_filter_field:None,
             gaussian_region:None,

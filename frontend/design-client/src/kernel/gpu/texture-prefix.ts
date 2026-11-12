@@ -4,7 +4,7 @@ import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSour
 import { prefixSamplingGeometry } from './prefix-sampling-geometry'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 /// <reference types="@webgpu/types" />
-/** Exact tent filtering, including fractional radii and cropped outputs,
+/** Exact tent and box filtering, including fractional tent radii and cropped outputs,
  * with bounded GPU scratch. Uncertified rows retain the scalar exact path. */
 export const PREFIX_SCRATCH_BYTES = 4 * 1024 * 1024
 if (PREFIX_BYTES + RESULT_BYTES + METADATA_BYTES + READBACK_BYTES !== PREFIX_SCRATCH_BYTES)
@@ -190,12 +190,14 @@ export class TexturePrefix {
     shadowCertificate?: WidePrefixCertificate,
   ): boolean {
     const shadow = import.meta.env.VITE_DESIGN_BOUNDED_SHADOW_TENT !== '0' && widePrefixBoundBits(shadowCertificate,originalRadius)>0
-    const extended = import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1'
-    const geometry = prefixSamplingGeometry(base, originalRadius, extended, shadow?4096:2048)
+    const box = kind === 'box'
+    const extended = !box && import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1'
+    const geometry = prefixSamplingGeometry(base, originalRadius, extended, shadow?4096:2048, box)
     const window = sourceWindow === undefined ? undefined : snapshotFilterSourceWindow(inputs[0], base, sourceWindow)
     if (sourceWindow !== undefined && (import.meta.env.VITE_DESIGN_FILTER_SOURCE_WINDOW !== '1' || !window)) return false
     if (
-      kind !== 'tent' ||
+      (kind !== 'tent' && !box) ||
+      (box && (!Number.isInteger(originalRadius) || originalRadius > 1024 || base[39] !== 3 || !!sourceWindow)) ||
       !Number.isFinite(originalRadius) ||
       originalRadius < 1 ||
       originalRadius > (import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT === '1' || shadow ? 4096 : 2048) ||
@@ -239,9 +241,9 @@ export class TexturePrefix {
       return false
     const axis = base[37]
     if (axis !== 0 && axis !== 1) return false
-    const length = geometry.length,
-      lineCount = axis === 0 ? rect.h : rect.w
-    const bandSize = prefixBandSize(length, maxBandLines)
+    const length = geometry.length
+    const outputLength = axis === 0 ? rect.w : rect.h
+    const bandSize = prefixBandSize(length, maxBandLines, box ? outputLength : length)
     if (!Number.isInteger(bandSize) || bandSize < 1) return false
     return true
   }
@@ -280,10 +282,12 @@ export class TexturePrefix {
     wideRational=wideRational&&(import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'||shadow)&&!certifiedTent
     const boundBits = Number.isInteger(rationalBoundBits) && rationalBoundBits >= 1 && rationalBoundBits <= (wideRational?184:120)
       ? rationalBoundBits : 0
-    if (import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' && opaqueAlpha && channels === 7 && !shadow &&
+    const box = kind === 'box'
+    if (!box && import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' && opaqueAlpha && channels === 7 && !shadow &&
         this.solveRgb && this.resolveRgb)
       return this.encodeOpaqueRgb(getEncoder, target, inputs, base, originalRadius, rect, maxBandLines, boundBits,certifiedTent,wideRational)
-    const geometry = prefixSamplingGeometry(base, originalRadius, import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1',shadow?4096:2048)!
+    const extended = !box && import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1'
+    const geometry = prefixSamplingGeometry(base, originalRadius, extended, shadow?4096:2048, box)!
     const axis = base[37],
       length = geometry.length,
       lineCount = axis === 0 ? rect.h : rect.w
@@ -291,7 +295,9 @@ export class TexturePrefix {
     const offset = geometry.offset
     const crossOffset = geometry.crossOffset
     const rational = !Number.isInteger(originalRadius) || originalRadius > 512
-    const bandSize = prefixBandSize(length, maxBandLines)
+    // A regional box can write past its source on the filtered axis. The
+    // result plane is indexed by the output length in both solve and resolve.
+    const bandSize = prefixBandSize(length, maxBandLines, box ? outputLength : length)
     let drawn = false
     for (let channel = 0; channel < 4; channel++) {
       if (!(channels & (1 << channel))) continue
@@ -299,7 +305,8 @@ export class TexturePrefix {
         const count = Math.min(bandSize, lineCount - first)
         const u = base.slice()
         u.set([length, first, count, axis], 192)
-        u.set([channel, rational||certifiedTent||wideRational ? Math.floor(originalRadius) - 1 : originalRadius, wideRational?3:certifiedTent?2:rational ? 1 : 0, boundBits], 196)
+        u.set([channel, box ? originalRadius : rational||certifiedTent||wideRational ? Math.floor(originalRadius) - 1 : originalRadius,
+          box ? 4 : wideRational?3:certifiedTent?2:rational ? 1 : 0, boundBits], 196)
         u.set([offset, outputLength, crossOffset, geometry.padding], 200)
         const group = this.device.createBindGroup({
           layout: this.sourceLayout,

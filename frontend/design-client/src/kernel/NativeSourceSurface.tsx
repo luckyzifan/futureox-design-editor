@@ -82,9 +82,12 @@ export function NativeSourceSurface(props:Props){
     const client=parked.current?.client??warming.current??new KernelClient(),element=document.createElement('canvas'),badge=document.createElement('span')
     parked.current=undefined;warming.current=undefined
     const diagnostics=createRenderDiagnostics({enabled:window.coreDesktop?.renderDiagnostics===true,session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
-    const profile=canvasSamplingProfile(renderExecutionPolicy,source.rasterProfile,backendPreference(),source.colorManaged)
+    const preference=backendPreference()
+    const profile=canvasSamplingProfile(renderExecutionPolicy,source.rasterProfile,preference,source.colorManaged)
     const overviewMode=!!latest.current.overviewBoxes
-    const planner=new SourceViewportPlanner(profile,source.colorManaged,!!source.materialKeys,overviewMode)
+    const planner=new SourceViewportPlanner(profile,source.colorManaged,!!source.materialKeys,overviewMode,
+      preference==='webgpu' && !renderExecutionPolicy.hdrCompositing && !!navigator.gpu &&
+      !source.colorManaged && !source.materialKeys && !source.viewportSubset && source.nodes>=3000)
     const quality=new SourceQualityLadder()
     let overview: ReturnType<typeof navigationOverview>
     let stripOverview: ReturnType<typeof panStripOverview>

@@ -1,4 +1,5 @@
 use crate::cpu_frame_plan::{CpuFramePlan, PageHalo};
+use crate::export::ExportPadding;
 use crate::geometry_snapshot::{Prepared, prepare_node_geometry};
 use crate::{
     blend::{Pixel, Surface, over},
@@ -1792,17 +1793,17 @@ impl Engine {
         extra_halo: i32,
         budget: Budget,
     ) -> Result<Vec<Surface>, String> {
-        self.render_surfaces_budget_plan(options, synchronized, viewport, extra_halo, budget, None)
+        self.render_surfaces_budget_plan(options, synchronized, viewport, ExportPadding::Extra(extra_halo), budget, None)
     }
     fn render_surfaces_budget_plan(
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
-        extra_halo: i32, budget: Budget, plan: Option<&mut CpuFramePlan>,
+        padding: ExportPadding, budget: Budget, plan: Option<&mut CpuFramePlan>,
     ) -> Result<Vec<Surface>, String> {
         // The ledger clone shares the budget's usage Arc, so pressure events
         // stay observable even when the render below fails and returns early.
         let ledger_budget = budget.clone();
         let result =
-            self.render_surfaces_planned(options, synchronized, viewport, extra_halo, budget, true, plan);
+            self.render_surfaces_planned(options, synchronized, viewport, padding, budget, true, plan);
         let ledger_usage = ledger_budget.usage();
         self.scene_peak_bytes = self.scene_peak_bytes.max(ledger_usage.peak_bytes);
         self.budget_rejections += ledger_usage.rejections;
@@ -1819,12 +1820,16 @@ impl Engine {
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
         extra_halo: i32, budget: Budget, regional: bool,
     ) -> Result<Vec<Surface>, String> {
-        self.render_surfaces_planned(options, synchronized, viewport, extra_halo, budget, regional, None)
+        self.render_surfaces_planned(options, synchronized, viewport, ExportPadding::Extra(extra_halo), budget, regional, None)
     }
     fn render_surfaces_planned(
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
-        extra_halo: i32, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>,
+        padding: ExportPadding, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>,
     ) -> Result<Vec<Surface>, String> {
+        let (extra_halo, required) = match padding {
+            ExportPadding::Extra(value) => (value, None),
+            ExportPadding::Required(rect) => (0, Some(rect)),
+        };
         let coverage_compatible =
             options.raster_profile != crate::fidelity::RasterProfile::Analytic;
         let compatible = coverage_compatible
@@ -1875,7 +1880,7 @@ impl Engine {
                 (&tile_halo, crate::zoom_support::scene_guard(doc, &page.children, camera, viewport.expand(extra_halo), &self.fonts), None)
             }
         };
-        let guard = viewport.expand(extra_halo + halo.pixels);
+        let guard = required.unwrap_or_else(|| viewport.expand(extra_halo + halo.pixels));
         let zoom_guard = match zoom_result {
             Ok(guard) => guard,
             Err(error) if self.display_degrade && display_pressure(&error) => None,
@@ -1925,7 +1930,7 @@ impl Engine {
             })
             .max()
             .unwrap_or(0);
-        let mut used_halo = max_halo.saturating_add(extra_halo);
+        let mut used_halo = if required.is_some() { 0 } else { max_halo.saturating_add(extra_halo) };
         if used_halo > 2048 {
             if self.display_degrade {
                 used_halo = fitted_display_halo(viewport, 2048);
@@ -1935,7 +1940,7 @@ impl Engine {
         } else if self.display_degrade {
             used_halo = fitted_display_halo(viewport, used_halo);
         }
-        let mut extent=zoom_guard.unwrap_or_else(||viewport.expand(used_halo));
+        let mut extent=required.or(zoom_guard).unwrap_or_else(||viewport.expand(used_halo));
         if zoom_guard.is_some() && [viewport.x-extent.x,viewport.y-extent.y,extent.right()-viewport.right(),extent.bottom()-viewport.bottom()].into_iter().max().unwrap_or(0)>2048 {
             if self.display_degrade {
                 extent = viewport.expand(fitted_display_halo(viewport, 2048));
@@ -1967,6 +1972,7 @@ impl Engine {
             && clipped_export_target.is_none()
             && pixels.saturating_mul(slot).saturating_mul(4) > COMPOSITING_BYTES as u64
         {
+            if required.is_some() { return Err("Compositing memory budget exceeded".into()); }
             used_halo = fitted_display_halo(viewport, used_halo);
             extent = viewport.expand(used_halo);
         }
@@ -2065,6 +2071,7 @@ impl Engine {
             interactive_effects: options.interactive_effects,
             display_degrade: self.display_degrade,
             clipped_export_target: clipped_export_target.is_some(),
+            compact_export_groups: required.is_some(),
             sample: None,
             raster_workspace: RasterWorkspace::default(),
         };
@@ -2338,7 +2345,7 @@ impl Engine {
                 self.doc.as_ref().unwrap_or_else(|| panic!("document loaded")),
                 options,
             );
-        let surfaces = self.render_surfaces_budget_plan(&source, coherent, viewport, extra * density as i32,
+        let surfaces = self.render_surfaces_budget_plan(&source, coherent, viewport, ExportPadding::Extra(extra * density as i32),
             Budget::new(COMPOSITING_BYTES), plan)?;
         let mut pixels = Vec::with_capacity((w * h) as usize);
         for ty in y..y + h {
@@ -2461,11 +2468,18 @@ impl Engine {
         w: u32,
         h: u32,
     ) -> Result<Vec<u8>, String> {
-        let extra_halo =
-            crate::export::backdrop_padding(self, options, Rect::new(x as i32, y as i32, w, h))?;
+        let tile = Rect::new(x as i32, y as i32, w, h);
+        let extra_halo = crate::export::backdrop_padding(self, options, tile)?;
+        self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(extra_halo))
+    }
+    pub(crate) fn export_tile_with_padding(
+        &mut self, options: &RenderOptions, coherent: bool, tile: Rect, padding: ExportPadding,
+    ) -> Result<Vec<u8>, String> {
+        let Rect { x, y, w, h } = tile;
         if options.raster_profile.is_export() {
+            let ExportPadding::Extra(extra_halo) = padding else { return Err("Invalid exact export extent".into()) };
             let source = crate::fidelity::source(options, 0, 0, w, h)?;
-            let viewport = Rect::new((x * 2) as i32, (y * 2) as i32, w * 2, h * 2);
+            let viewport = Rect::new(x * 2, y * 2, w * 2, h * 2);
             if coherent {
                 let planes = self.render_scene_inner_at(&source, true, viewport, extra_halo * 2)?;
                 let resolve = if options.raster_profile.is_software() {
@@ -2485,15 +2499,11 @@ impl Engine {
                 Ok(crate::fidelity::downsample(&source, w, h))
             }
         } else {
-            let mut tile = options.clone();
-            tile.width = w;
-            tile.height = h;
-            let planes = self.render_scene_inner_at(
-                &tile,
-                coherent,
-                Rect::new(x as i32, y as i32, w, h),
-                extra_halo,
-            )?;
+            let mut cropped = options.clone();
+            cropped.width = w;
+            cropped.height = h;
+            let planes: Vec<_> = self.render_surfaces_budget_plan(&cropped, coherent, tile, padding,
+                Budget::new(COMPOSITING_BYTES), None)?.iter().map(|surface| surface.rgba8(tile)).collect();
             if coherent {
                 Ok(crate::fidelity::resolve_sample_planes([
                     &planes[0], &planes[1], &planes[2], &planes[3],
@@ -2946,6 +2956,7 @@ struct Painter<'a> {
     interactive_effects: bool,
     display_degrade: bool,
     clipped_export_target: bool,
+    compact_export_groups: bool,
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
 }
@@ -4407,6 +4418,18 @@ impl Painter<'_> {
         let mut r = if bounded {
             self.regional_children(n.render_children(), basis.intersect(output.unwrap()))?.0.intersect(basis)
         } else { basis };
+        if self.compact_export_groups && !n.render_children().is_empty() && !n.passes_backdrop()
+            && !n.mask && self.doc.mask_child(n).is_none()
+            && n.fills.iter().all(|paint| !paint.visible)
+            && n.strokes.iter().all(|stroke| !stroke.visible || stroke.width <= 0.)
+            && n.effects.iter().all(|effect| !effect.visible)
+        {
+            // An unpainted isolated group is transparent outside the union
+            // of its children. Keep each child's entire old domain inside
+            // the group, including backdrop reads and the actual clip mask.
+            r = n.render_children().iter().filter_map(|id| self.prepared.get(id))
+                .fold(Rect::default(), |used, child| used.union(child.bounds.intersect(r)));
+        }
         if outline.is_none() {
             if let Some(needed) = self.shadow_composite_rect(original, prepared, scale) {
                 let needed = needed.intersect(basis);
@@ -4442,7 +4465,7 @@ impl Painter<'_> {
                 effects::gaussian_region(target, basis, samples, fx.backdrop_radius() * scale / 2.)?
             } else {
                 let copy = effects::copy_region(target, r)?;
-                self.blur_filter(fx.backdrop_radius() * scale).apply(&copy)?
+                self.blur_filter(fx.backdrop_radius() * scale).apply_owned(copy)?
             };
             if let Some(gradient) = &fx.gradient_blur {
                 let mut sharp = effects::copy_region(target, blurred.rect)?;
@@ -4562,13 +4585,15 @@ impl Painter<'_> {
             })?;
         }
         let mut shadow_basis: Option<Surface> = None;
+        let shares_shadow_basis = n.effects.iter().filter(|effect| effect.visible &&
+            matches!(effect.kind.as_str(), "shadow" | "inner-shadow")).take(2).count() == 2;
         for fx in n.effects.iter().filter(|e| apply_effects && e.visible) {
             if self.display_degrade && effect_exceeds_display_budget(fx, scale, r) {
                 continue;
             }
             match fx.kind.as_str() {
                 "zoom-blur" => { shadow_basis=None; layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
-                "gaussian-blur" => { shadow_basis=None; layer=effects::gaussian_surface(&layer,fx.radius*scale,self.compatible)?; }
+                "gaussian-blur" => { shadow_basis=None; layer=effects::gaussian_surface_owned(layer,fx.radius*scale,self.compatible)?; }
                 "motion-blur" => { shadow_basis=None; layer=crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?.apply(&layer)?; }
                 "color-controls" => {
                     shadow_basis = None;
@@ -4589,10 +4614,10 @@ impl Painter<'_> {
                     {
                         continue;
                     }
-                    if shadow_basis.is_none() {
+                    if shares_shadow_basis && shadow_basis.is_none() {
                         shadow_basis = Some(layer.try_clone()?);
                     }
-                    let basis = shadow_basis.as_ref().unwrap();
+                    let basis = shadow_basis.as_ref().unwrap_or(&layer);
                     let mut shadow = if self.compatible {
                         let inner = fx.kind == "inner-shadow";
                         let alpha = effects::shadow_alpha(
@@ -4660,7 +4685,7 @@ impl Painter<'_> {
                         self.doc.color_management.is_some(),
                         self.interactive_effects,
                     ) {
-                        layer = self.blur_filter(fx.radius * scale).apply(&layer)?;
+                        layer = self.blur_filter(fx.radius * scale).apply_owned(layer)?;
                     }
                 }
                 "texture" => {

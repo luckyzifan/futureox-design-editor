@@ -1,9 +1,35 @@
-import {beforeAll,expect,test} from 'vitest'
+import {beforeAll,expect,test,vi} from 'vitest'
 import {initializeKernelModule} from './module'
 import {SourceViewportPlanner,coveredSourceDetail} from './source-viewport-plan'
 import {tilesCoverBounds} from './tile-cache'
 import {tileIntersectsView} from './tile-preview'
 beforeAll(()=>initializeKernelModule())
+test('settled minified source crops preserve device sampling and retry on the full grid',()=>{
+ vi.stubEnv('VITE_DESIGN_SOURCE_CROP_MINIFIED','1')
+ try {
+  const view={x:30.635252184381557,y:-1212.8690463838036,zoom:.09855276255057685}
+  const width=855,height=894,ratio=2
+  const planner=new SourceViewportPlanner('analytic',false,false,false,true)
+  const original=new SourceViewportPlanner('analytic',false).plan(view,ratio,width,height,false)
+  const cropped=planner.plan(view,ratio,width,height,false)
+  const area=(tiles:typeof cropped.tiles)=>tiles.reduce((n,tile)=>n+tile.width*tile.height,0)
+  expect(cropped.raster).toEqual(original.raster)
+  expect(cropped.exact).toBe(true)
+  expect(area(cropped.tiles)).toBeLessThan(area(original.tiles)*.8)
+  expect(tilesCoverBounds(cropped.tiles,{x:-view.x/view.zoom,y:-view.y/view.zoom,
+    width:width/view.zoom,height:height/view.zoom},view.zoom*ratio)).toBe(true)
+  planner.presented(view,ratio,width,height)
+  const shifted={...view,x:view.x+16}
+  for(const moving of [true,false]){
+   const pan=planner.plan(shifted,ratio,width,height,moving)
+   expect(pan.tiles.every(tile=>cropped.keys.has(tile.key))).toBe(true)
+   expect(tilesCoverBounds(pan.tiles,{x:-shifted.x/shifted.zoom,y:-shifted.y/shifted.zoom,
+     width:width/shifted.zoom,height:height/shifted.zoom},shifted.zoom*ratio)).toBe(true)
+  }
+  expect(planner.retryNativeCoverage(view,ratio,width,height)).toBe(true)
+  expect(planner.plan(view,ratio,width,height,false).tiles).toEqual(original.tiles)
+ } finally {vi.unstubAllEnvs()}
+})
 test('long diagonal travel resumes wide bands with complete, stable world coverage',()=>{
  const planner=new SourceViewportPlanner('figmaSubpixel',true,true)
  const width=855,height=888,zoom=32

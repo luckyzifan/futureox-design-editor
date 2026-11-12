@@ -404,6 +404,7 @@ impl Compiler<'_> {
         // The buffers retain packet-global offsets and the original byte cap.
         // A separate geometry/program cache keeps the two lattices disjoint.
         let mut small = Compiler {
+            analytic_regions: None,
             doc: self.doc,
             fonts: self.fonts,
             paths: self.paths,

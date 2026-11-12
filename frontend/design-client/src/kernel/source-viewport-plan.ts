@@ -3,10 +3,11 @@ import type {CanvasCamera} from '../canvas-camera'
 import {canvasRasterPlan,canvasRasterPhaseMatches,nativeTileMotionScale} from './canvas-raster-plan'
 import {allowsReducedSampling} from './render-quality'
 import {tileLevel,tilesCoverBounds} from './tile-cache'
-import {planTilesWithPrefetchRim} from './tile-plan-aligned'
+import {clipAlignedTile,planTilesWithPrefetchRim} from './tile-plan-aligned'
 import {tileComputationDependsOnCamera,tileComputationKey,periodicComputationCamera} from './tile-computation-key'
 import {panPrefetch} from './pan-prefetch'
 import type {RasterTile} from './tile-cache'
+import type {Rect} from './gpu/types'
 import {tileIntersectsView} from './tile-preview'
 import {continuousZoomInScale} from './continuous-zoom-scale'
 import type {ResidentAcknowledgement} from './resident-presentation'
@@ -152,7 +153,9 @@ export class SourceViewportPlanner {
   private direction?:{previous:CanvasCamera;view:CanvasCamera}
   private accepted?:{view:CanvasCamera;dpr:number;raster:ReturnType<typeof canvasRasterPlan>}
   private readonly bandGrids=new Map<string,MaterialBandGrid>()
-  constructor(private readonly rasterProfile:string,private readonly colorManaged:boolean, private readonly material=false,private readonly overview=false){}
+  private minifiedWindow?:{scale:number;phase:{x:number;y:number};rect:Rect}
+  constructor(private readonly rasterProfile:string,private readonly colorManaged:boolean, private readonly material=false,
+    private readonly overview=false,private readonly minifiedFullSource=false){}
   focus(view:CanvasCamera,width:number,height:number){
     const focus=this.zoomFocus
     if(focus&&focus.x*view.zoom+view.x>=0&&focus.x*view.zoom+view.x<width&&focus.y*view.zoom+view.y>=0&&focus.y*view.zoom+view.y<height)return focus
@@ -164,6 +167,7 @@ export class SourceViewportPlanner {
     const old=this.coverageRetry
     if(old&&old.view.x===view.x&&old.view.y===view.y&&old.view.zoom===view.zoom&&old.ratio===ratio&&old.width===width&&old.height===height)return false
     this.coverageRetry={view:{...view},ratio,width,height}
+    this.minifiedWindow=undefined
     this.demands[0]=this.demands[1]=undefined
     return true
   }
@@ -273,6 +277,30 @@ export class SourceViewportPlanner {
         if(w<=2*g||h<=2*g||x===tile.x&&y===tile.y&&w===tile.width&&h===tile.height)return tile
         return {...tile,x,y,width:w,height:h,key:[tile.key,'crop',x,y,w,h].join('/')}
       })
+    }
+    if (import.meta.env.VITE_DESIGN_SOURCE_CROP_MINIFIED !== '0' && this.minifiedFullSource &&
+        !this.coverageRetry && raster.scale === native && native <= .5 && this.rasterProfile === 'analytic') {
+      // Keep the original device lattice and one-pixel gutter. Reuse the
+      // edge textures while the new viewport still fits their aligned rim.
+      const left = Math.floor(bounds.x * native + raster.phase.x)
+      const top = Math.floor(bounds.y * native + raster.phase.y)
+      const right = Math.ceil((bounds.x + bounds.width) * native + raster.phase.x)
+      const bottom = Math.ceil((bounds.y + bounds.height) * native + raster.phase.y)
+      const saved = this.minifiedWindow
+      const retained = saved?.scale === native && saved.phase.x === raster.phase.x && saved.phase.y === raster.phase.y &&
+        left >= saved.rect.x && top >= saved.rect.y &&
+        right <= saved.rect.x + saved.rect.w && bottom <= saved.rect.y + saved.rect.h ? saved.rect : undefined
+      // A moving viewport outside the retained window keeps the established
+      // full grid until it settles at its new position.
+      const unit = 64, rim = 32
+      if (retained || !moving) {
+        const x = Math.floor((left - rim) / unit) * unit
+        const y = Math.floor((top - rim) / unit) * unit
+        const rect = retained ?? {x,y,w:Math.ceil((right + rim) / unit) * unit - x,
+          h:Math.ceil((bottom + rim) / unit) * unit - y}
+        this.minifiedWindow = {scale:native,phase:raster.phase,rect}
+        viewport = viewport.map(tile => clipAlignedTile(tile, rect))
+      }
     }
     // Catalogue bounds only change order. Dropping tiles outside a material
     // window left screen-aligned holes: at 25% the art can cover less than

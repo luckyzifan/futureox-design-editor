@@ -5,7 +5,8 @@
 function halfUlp(maximum: number) {
   return maximum === 0 ? 2 ** -150 : 2 ** (Math.floor(Math.log2(maximum)) - 24)
 }
-export function prefixSamplingGeometry(base: Float32Array, radius: number, allowClamped = false, maximumRadius: 2048 | 4096 = 2048) {
+export function prefixSamplingGeometry(base: Float32Array, radius: number, allowClamped = false,
+  maximumRadius: 2048 | 4096 = 2048, extendFilteredAxis = false) {
   if ((maximumRadius!==2048&&maximumRadius!==4096) || !(base instanceof Float32Array) || !(base.buffer instanceof ArrayBuffer) || base.length !== 256 ||
       !Number.isFinite(radius) || radius < 1 || radius > (import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT === '1' ? 4096 : maximumRadius) ||
       ![base[0], base[1], base[4], base[5]].every(v => Number.isFinite(v) && Math.abs(v) <= 1048576) ||
@@ -16,7 +17,8 @@ export function prefixSamplingGeometry(base: Float32Array, radius: number, allow
     const output = base[coordinate], source = base[4 + coordinate]
     const extent = base[2 + coordinate], sourceExtent = base[6 + coordinate]
     const delta = output - source, offset = Math.round(delta)
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset + extent > sourceExtent) return
+    const mayExtend = extendFilteredAxis && base[38] === 0 && coordinate === base[37]
+    if (!Number.isSafeInteger(offset) || (!mayExtend && (offset < 0 || offset + extent > sourceExtent))) return
     // Include both tap endpoints even on the cross axis: this deliberately
     // overestimates, so one proof covers scan, scalar fallback and clamp edges.
     const global = Math.max(Math.abs(output - reach), Math.abs(output + extent + reach),

@@ -19,6 +19,13 @@ impl BlurFilter {
             Self::PortableTent(radius) => portable_tent_blur_edge(surface, radius, false),
         }
     }
+
+    pub(crate) fn apply_owned(self, surface: Surface) -> Result<Surface, String> {
+        match self {
+            Self::Gaussian(sigma) => blur_owned::<4>(surface, sigma),
+            other => other.apply(&surface),
+        }
+    }
 }
 
 // Convolve a unit-area tent with the source and destination pixel boxes.
@@ -837,7 +844,9 @@ pub fn blur(surface: &Surface, sigma: f64) -> Result<Surface, String> {
 /// Explicit layer Gaussian preserves extended linear values. The historical
 /// Gaussian helper remains bounded for existing callers and alpha masks.
 pub fn gaussian_surface(surface: &Surface, sigma: f64, byte: bool) -> Result<Surface, String> {
-    let mut out = surface.try_clone()?;
+    gaussian_surface_owned(surface.try_clone()?, sigma, byte)
+}
+pub(crate) fn gaussian_surface_owned(mut out: Surface, sigma: f64, byte: bool) -> Result<Surface, String> {
     for r in gaussian_box_radii(sigma)? {
         if r == 0 { continue; }
         for horizontal in [true, false] {

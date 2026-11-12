@@ -1,6 +1,13 @@
 //! Lossless sRGB PNG export with bounded raster working surfaces.
 use crate::{fidelity::RasterProfile, math::Rect, measurement, renderer::Stats, Engine, RenderOptions};
 use std::io::Write;
+mod backdrop_demand;
+
+#[derive(Clone, Copy)]
+pub(crate) enum ExportPadding {
+    Extra(i32),
+    Required(Rect),
+}
 
 pub const MAX_SIDE: u32 = 16384;
 pub const MAX_PIXELS: u64 = 64_000_000;
@@ -563,6 +570,65 @@ mod backdrop_budget_tests {
                 .contains("1024")
         );
     }
+
+    #[test]
+    fn analytic_png_uses_actual_backdrop_dependencies_across_output_bands() {
+        let mut nodes = serde_json::Map::new();
+        let mut roots = Vec::new();
+        for i in 0..28 {
+            let group = format!("group{i}");
+            let ink = format!("ink{i}");
+            let first = format!("first{i}");
+            let last = format!("last{i}");
+            roots.push(group.clone());
+            nodes.insert(group.clone(), json!({"id":group,"kind":"frame","width":56,"height":54,
+                "transform":[1,0,0,1,(i%4)*64,(i/4)*61],"clip":true,"children":[ink,first,last],
+                "fills":[{"kind":"solid","color":"#d1dfeb"}]}));
+            nodes.insert(ink.clone(), json!({"id":ink,"kind":"rectangle","width":25,"height":28,
+                "transform":[1,0,0,1,4,4],"fills":[{"kind":"solid","color":"#1256aa"}],
+                "effects":[{"kind":"shadow","radius":4,"x":3,"y":2,"color":"#573731"}]}));
+            for (name, x, y) in [(first, 8, 9), (last, 13, 19)] {
+                nodes.insert(name.clone(), json!({"id":name,"kind":"ellipse","width":35,"height":33,
+                    "transform":[1,0,0,1,x,y],"opacity":0.8,
+                    "effects":[{"kind":"background-blur","radius":12,"color":"#000000"}]}));
+            }
+        }
+        nodes.insert("board".into(), json!({"id":"board","kind":"frame","width":256,"height":428,
+            "clip":true,"children":roots}));
+        let doc = json!({"schemaVersion":20,"id":"isolated","name":"Isolated backdrops",
+            "pages":[{"id":"p","name":"page","children":["board"],"background":"#ffffff"}],"nodes":nodes});
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        let options = RenderOptions { width: 256, height: 428, transparent: true,
+            raster_profile: RasterProfile::Analytic, ..options() };
+        let tile = Rect::new(0, 0, 256, 256);
+        assert!(backdrop_padding(&engine, &options, tile).unwrap_err().contains("1024"));
+        let whole = engine.render(&options).unwrap();
+        let request = RegionRequest { page_id: options.page_id.clone(),
+            bounds: ExportBounds { x: 0., y: 0., width: 256., height: 428. }, scale: 1.,
+            raster_profile: Some(RasterProfile::Analytic), node_ids: None, color_output: None };
+        let png = engine.render_region_png(&request).unwrap();
+        assert_eq!(image::load_from_memory(&png).unwrap().into_rgba8().as_raw(), &whole);
+    }
+
+    #[test]
+    fn analytic_png_still_rejects_a_chain_that_reads_past_the_budget() {
+        let mut nodes = serde_json::Map::new();
+        let mut roots = Vec::new();
+        for i in 0..5 {
+            let id = format!("blur{i}");
+            roots.push(id.clone());
+            nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":5000,"height":5000,
+                "effects":[{"kind":"background-blur","radius":250,"color":"#000000"}]}));
+        }
+        let mut engine = Engine::new();
+        engine.load_document(&json!({"schemaVersion":20,"id":"chain","name":"Chain",
+            "pages":[{"id":"p","name":"page","children":roots,"background":"#ffffff"}],"nodes":nodes}).to_string()).unwrap();
+        let request = RegionRequest { page_id: "p".into(),
+            bounds: ExportBounds { x: 2000., y: 2000., width: 64., height: 64. }, scale: 1.,
+            raster_profile: Some(RasterProfile::Analytic), node_ids: None, color_output: None };
+        assert!(engine.render_region_png(&request).unwrap_err().contains("1024"));
+    }
 }
 fn begin_tagged_png<'a>(
     output: &'a mut Vec<u8>,
@@ -857,6 +923,10 @@ fn render_tiles(
     space: crate::color::ColorSpace,
 ) -> Result<Vec<u8>, String> {
     validate_size(options.width, options.height)?;
+    let mut padding = backdrop_demand::BackdropDemand::new(engine, options)?;
+    // The dependency plan bounds each tile independently. A wider large-page
+    // strip avoids re-rasterizing the same layer halos at each horizontal edge.
+    let tile_width = if padding.is_some() && options.width > 4096 { 2048 } else { tile_width };
     let mut output = Vec::new();
     let mut writer = begin_tagged_png(&mut output, options.width, options.height, space)?;
     let mut stats = Stats::default();
@@ -872,7 +942,7 @@ fn render_tiles(
             for x in (0..options.width).step_by(tile_width as usize) {
                 let w = tile_width.min(options.width - x);
                 write_export_tile(engine, options, coherent, Rect::new(x as i32, y as i32, w, h),
-                    y, &mut band, &mut stats)?;
+                    y, &mut band, &mut stats, &mut padding)?;
             }
             if space == crate::color::ColorSpace::DisplayP3 {
                 convert_srgb_straight_to_display_p3(&mut band);
@@ -889,9 +959,14 @@ fn render_tiles(
 fn write_export_tile(
     engine: &mut Engine, options: &RenderOptions, coherent: bool, tile: Rect,
     band_y: u32, band: &mut [u8], stats: &mut Stats,
+    padding: &mut Option<backdrop_demand::BackdropDemand>,
 ) -> Result<(), String> {
     crate::render_cancellation::checkpoint()?;
-    let result = engine.export_tile(options, coherent, tile.x as u32, tile.y as u32, tile.w, tile.h);
+    let result = match padding.as_mut() {
+        Some(plan) => plan.padding(engine, options, tile)
+            .and_then(|halo| engine.export_tile_with_padding(options, coherent, tile, halo)),
+        None => engine.export_tile(options, coherent, tile.x as u32, tile.y as u32, tile.w, tile.h),
+    };
     stats.accumulate(engine.stats());
     if stats.allocated_layer_pixels > 2_000_000_000 {
         return Err("PNG export compositing work budget exceeded".into());
@@ -913,8 +988,8 @@ fn write_export_tile(
                 let h = tile.h / 2;
                 [Rect::new(tile.x, tile.y, tile.w, h), Rect::new(tile.x, tile.y + h as i32, tile.w, tile.h - h)]
             };
-            write_export_tile(engine, options, coherent, a, band_y, band, stats)?;
-            write_export_tile(engine, options, coherent, b, band_y, band, stats)?;
+            write_export_tile(engine, options, coherent, a, band_y, band, stats, padding)?;
+            write_export_tile(engine, options, coherent, b, band_y, band, stats, padding)?;
         }
         Err(error) => return Err(error),
     }

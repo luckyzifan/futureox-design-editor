@@ -23,3 +23,12 @@ test('unsupported lengths preserve the bounded 64-row fallback',()=>{
   expect(prefixBandSize(length)).toBe(0);expect(prefixAlignedStrip(length)).toBe(64)
  }
 })
+
+test('an expanded regional shadow admits bands by its output length',()=>{
+  const input = 1858, output = 2343
+  expect(prefixBandSize(input) * output * 8).toBeGreaterThan(RESULT_BYTES)
+  const band = prefixBandSize(input, 255, output)
+  expect(band).toBe(48)
+  expect(band * output * 8).toBeLessThanOrEqual(RESULT_BYTES)
+  expect(band * (input + 1) * 32).toBeLessThanOrEqual(PREFIX_BYTES)
+})

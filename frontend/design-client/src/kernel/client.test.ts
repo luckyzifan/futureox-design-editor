@@ -131,6 +131,22 @@ test('a full native source can outlive the preview deadline and still cancel wit
  }finally{client.dispose()}
 })
 
+test('an exact region export can outlive the preview deadline and still cancel',async()=>{
+  vi.useFakeTimers()
+  const client=new KernelClient(),worker=WorkerStub.instances[0],doc=blank()
+  const options={pageId:doc.pages[0].id,width:3028,height:2060,view:{x:0,y:0,zoom:1},transparent:true,grid:false,
+    exportRegion:{bounds:{x:0,y:0,width:3028,height:2060},scale:1}}
+  try{
+    const job=client.render(doc,options,true,'cpu')
+    await vi.advanceTimersByTimeAsync(180000)
+    expect(WorkerStub.instances).toHaveLength(1)
+    const rejected=expect(job).rejects.toThrow('已关闭')
+    client.dispose()
+    await rejected
+    worker.reply(0)
+  }finally{client.dispose()}
+})
+
 test('completed subregions keep queued previews alive without publishing an incomplete tile', async () => {
   vi.useFakeTimers()
   const client=new KernelClient(),worker=WorkerStub.instances[0],doc=blank(),progress=vi.fn()

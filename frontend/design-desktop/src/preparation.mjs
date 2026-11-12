@@ -77,10 +77,9 @@ export class NativePreparation {
   this.sequence=id
   return new Promise((resolve,reject)=>{
    const sourceWork=sourceSnapshot||request.method!=='load_document'&&(this.sourceLanes?.has(request.lane)||request.method==='derive_document_v1'&&this.sourceLanes?.has('canvas'))
-   // Only a privately admitted source snapshot can enter this lane. Native
-   // completion, cancellation, worker exit and allocation errors end its jobs;
-   // the ordinary two-minute deadline must not become a source-size ceiling.
-   const timer=sourceWork?undefined:setTimeout(()=>this.close(Error('Native preparation timed out')),120000)
+   // Source scenes and exact region exports are bounded by their respective
+   // native work and allocation limits. Closing the owned session stops its child.
+   const timer=sourceWork||request.method==='render_region_png'?undefined:setTimeout(()=>this.close(Error('Native preparation timed out')),120000)
    const complete=reply=>{
     if(!reply.error){
      this.sourceLanes??=new Set()

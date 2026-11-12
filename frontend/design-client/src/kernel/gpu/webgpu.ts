@@ -1233,7 +1233,8 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       // Analytic sketches have no color-management block, but their display
       // driver is still the float compositor. The regional prefix is the
       // existing >512 box; uniform_box stays capped at 512.
-      if (n.gaussianRegion && !n.gaussianRegion.factor &&
+      if ((n.gaussianRegion && !n.gaussianRegion.factor || n.analyticRegion &&
+          n.effects.some(effect => effect.visible && effect.kind === 'gaussian-blur')) &&
           (scene.colorManagement?.documentSpace === 'srgb' || scene.colorManagement == null) &&
           this.gaussianAutoEnabled && this.canvasBlurRequested && !this.hdr && !this.displayMath) {
         this.fullDensityRegionalGaussian = true
@@ -1743,12 +1744,26 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       u.subarray(0, 8).every(Number.isSafeInteger) &&
       source.width === u[6] && source.height === u[7] && target.width === u[2] && target.height === u[3]
   }
+  private exactRegionalBoxPrefix(target: Texture, u: Float32Array, inputs: Texture[], channels: number) {
+    if (!this.prefix || !this.managed || this.hdr || this.displayMath || u[16] !== 22 || u[39] !== 3 ||
+        u[36] < 32 || (channels !== 8 && channels !== 15)) return
+    const [source, kernel] = inputs, proof = kernel && this.boxKernels.get(kernel)
+    if (proof?.radius === u[36] &&
+        proof.resource === kernel.resource && proof.width === kernel.width && proof.height === kernel.height &&
+        source && !source.uniformColor && !source.transparentZero && !source.scalarCoverage && !source.binaryCoverage &&
+        !target.scalarCoverage && !target.binaryCoverage && this.textures.has(source) &&
+        this.textures.has(kernel) && this.textures.has(target)) return this.prefix
+  }
   supportsGaussianReduction(){
     return import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX === '1' && this.supportsGaussianRegions() &&
       [2,4,8].includes(Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))
   }
   supportsGaussianRegions(){return !!((import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'||this.fullDensityRegionalGaussian)&&this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath)}
   prepareCanvasBoxPass(target:Texture,u:Float32Array,inputs:Texture[],channels:number,availableBytes:number){
+    const exact = this.exactRegionalBoxPrefix(target, u, inputs, channels)
+    if (exact && !exact.scratchBytes && availableBytes >= PREFIX_SCRATCH_BYTES &&
+        exact.canEncode(target.resource as GPUTexture, [inputs[0], inputs[1], this.blank].map(t => t.resource as GPUTexture),
+          u, u[36], 'box', {x:u[0],y:u[1],w:u[2],h:u[3]}, channels)) exact.reserveScratch()
     if(this.boxPrefixEligible(target,u,inputs,channels)&&!this.boxPrefix!.scratchBytes&&availableBytes>=BOX_PREFIX_BYTES)this.boxPrefix!.reserve()
   }
   prepareFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number) {
@@ -2997,6 +3012,13 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
         if(wideRational)recordGpuDiagnostic('prefix',{wideTentPasses:1,radius:filter.radius,width:target.width,height:target.height})
         if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
         this.noteDraw(22,this.prefix!.lastRenderPasses); return }
+    const regionalBox = !region && !sourceWindow && this.exactRegionalBoxPrefix(target, u, inputs, channels)
+    if (regionalBox && regionalBox.scratchBytes && regionalBox.encode(() => this.encoder, target.resource as GPUTexture,
+        [inputs[0], inputs[1], this.blank].map(t => t.resource as GPUTexture), u, u[36], 'box',
+        { x:u[0], y:u[1], w:u[2], h:u[3] }, channels)) {
+      this.noteDraw(22, regionalBox.lastRenderPasses)
+      return
+    }
     if(!region&&!sourceWindow&&this.boxPrefixEligible(target,u,inputs,channels)&&this.boxPrefix!.scratchBytes&&
         this.boxPrefix!.encode(()=>this.encoder,params=>this.uniform(params),target.resource as GPUTexture,
           inputs[0].resource as GPUTexture,inputs[1].resource as GPUTexture,this.blank.resource as GPUTexture,u)){

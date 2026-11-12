@@ -39,7 +39,7 @@ import { planDisplayMaterialSource } from './display-material-source'
 import { planSequentialDisplay, type SequentialDisplayPlan } from './sequential-display-plan'
 import { isRecoverablePreviewBudget } from '../preview-budget-recovery'
 import { planExactImageXTable } from './exact-image-x-table'
-import type { ExactImageTable } from './types'
+import type { BoxRegion, ExactImageTable } from './types'
 import { completeFilterAxisSupport } from './opaque-filter'
 import { gpuDiagnosticsEnabled, gpuDiagnosticEpoch, recordGpuDiagnostic } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { markRuntimeConfiguration } from '../../../../design-desktop/src/render-runtime-configuration.mjs'
@@ -1539,7 +1539,7 @@ export class GpuRenderer {
       this.driver.prepareFilterPass?.(out.texture, u, inputs.map((s) => s.texture), channels, filter, this.frameBudget - this.workingBytes)
       this.noteScratch(before)
     }
-    if(mode===22&&!filter&&!region&&u[39]===2&&this.driver.prepareCanvasBoxPass){
+    if(mode===22&&!filter&&!region&&(u[39]===2||u[39]===3)&&this.driver.prepareCanvasBoxPass){
       const before=this.driver.scratchBytes||0
       this.driver.prepareCanvasBoxPass(out.texture,u,inputs.map(s=>s.texture),channels,this.frameBudget-this.workingBytes)
       this.noteScratch(before)
@@ -1758,10 +1758,10 @@ export class GpuRenderer {
       coverage.normalizedCoverage = true
     return coverage
   }
-  private compose(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface) {
+  private compose(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface, output = dst.rect) {
     const blend = blends.indexOf(mode)
     if (blend < 0) throw new Error(`未知混合模式 ${mode}`)
-    return this.run(3, dst.rect, mask ? [src, dst, mask] : [src, dst], (u) => {
+    return this.run(3, output, mask ? [src, dst, mask] : [src, dst], (u) => {
       u[17] = blend
       u[18] = opacity
       u[19] = mask ? 1 : 0
@@ -7546,6 +7546,86 @@ export class GpuRenderer {
     }
     return out
   }
+  private async filterBoxRegion(input: Surface, plan: BoxRegion, kind: Effect['kind'] = 'background-blur'): Promise<Surface> {
+    if (!plan.input.w || !plan.input.h) return this.empty(plan.output)
+    if (!plan.axes.length || input.texture.transparentZero) return input
+    const gaussian = kind === 'gaussian-blur'
+    const channels = (kind === 'shadow' || kind === 'inner-shadow') && this.optimized && this.driver.managed ? 8 : 15
+    let current = input
+    try {
+      if (input.texture.uniformColor) {
+        await this.reclaimForSurface(plan.input)
+        current = this.copy(input, plan.input)
+      }
+      for (const { output, axis, radius } of plan.axes) {
+        const pause = this.yieldEncoding()
+        if (pause) await pause
+        await this.reclaimForSurface(output)
+        this.checkFrameCurrent()
+        const kernel = radius <= 512
+          ? this.filterKernel('rational-box', radius, () => rational_box_kernel_rgba(radius))
+          : this.filterKernel('rational-region-box', radius, () => rational_region_box_kernel_rgba(radius))
+        const certified = radius <= 512 ? this.certifiedKernel(radius, true) : undefined
+        // Authored Gaussians use the established full-density canvas
+        // operator. Other boxes keep the original exact rational rounding.
+        const next = this.run(22, output, certified ? [current, kernel, certified] : [current, kernel],
+          u => u.set([radius, axis, 0, gaussian ? 2 : this.prefixAllowed ? 3 : 1], 36), channels)
+        if (current !== input) this.release(current)
+        current = next
+      }
+      return current
+    } catch (error) {
+      if (current !== input) this.release(current)
+      throw error
+    }
+  }
+
+  private async analyticBackdrop(backdrop: Surface, plan: BoxRegion): Promise<Surface> {
+    if (!plan.input.w || !plan.input.h) return this.empty(plan.output)
+    await this.reclaimForSurface(plan.input)
+    const captured = this.copy(backdrop, plan.input)
+    let filtered: Surface | undefined
+    try {
+      filtered = await this.filterBoxRegion(captured, plan)
+      return filtered
+    } finally {
+      if (filtered !== captured) this.release(captured)
+    }
+  }
+
+  private async applyAnalyticEffects(n: GpuNode, layer: Surface): Promise<Surface> {
+    const plan = n.analyticRegion!
+    const effects = n.effects.filter(fx => fx.visible && fx.kind !== 'background-blur')
+    if (effects.length !== plan.effects.length) throw Error('Invalid analytic filter stages')
+    for (let index = 0; index < effects.length; index++) {
+      const fx = effects[index], { output, filter } = plan.effects[index]
+      const filtered = await this.filterBoxRegion(layer, filter, fx.kind)
+      if (fx.kind === 'shadow' || fx.kind === 'inner-shadow') {
+        const inner = fx.kind === 'inner-shadow'
+        await this.reclaimForSurface(output, 2)
+        const shadow = this.run(6, output, [layer, filtered], u => {
+          u.set([0, ...this.color(fx.color)], 28)
+          u[32] = fx.opacity * this.alpha(fx.color)
+          u.set([0, n.matrix[0] * fx.x + n.matrix[2] * fx.y,
+            n.matrix[1] * fx.x + n.matrix[3] * fx.y, inner ? 1 : 0], 36)
+        })
+        if (filtered !== layer) this.release(filtered)
+        const result = inner ? this.compose(shadow, layer, 'normal', 1, undefined, output)
+          : this.compose(layer, shadow, 'normal', 1, undefined, output)
+        this.release(layer, shadow)
+        layer = result
+      } else {
+        if (filtered !== layer) this.release(layer)
+        layer = filtered
+      }
+    }
+    if (containsRect(layer.rect, plan.output) && containsRect(plan.output, layer.rect)) return layer
+    await this.reclaimForSurface(plan.output)
+    const result = this.copy(layer, plan.output)
+    this.release(layer)
+    return result
+  }
+
   private async node(id: string, backdrop: Surface, skipEffects = false): Promise<Surface | undefined> {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const n = this.scene.nodes[id]
@@ -7577,7 +7657,8 @@ export class GpuRenderer {
     }
     if (n.fills.length || n.clip || background) fill = ((pendingSurfaceAdmission = this.fillMask(n), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
     if (background && fill && !directBackdrop) {
-      const raw = await this.interactionBackdropDisplay(n,backdrop,(backdropRadius(background) * scale(n.matrix)) / 2)
+      const raw = n.analyticRegion?.backdrop ? await this.analyticBackdrop(backdrop, n.analyticRegion.backdrop)
+        : await this.interactionBackdropDisplay(n,backdrop,(backdropRadius(background) * scale(n.matrix)) / 2)
       const blur = this.colorControls(raw, background.colorControls)
       if (blur !== raw) this.release(raw)
       const next =
@@ -7665,6 +7746,7 @@ export class GpuRenderer {
       this.release(painted, clipped)
       layer = next
     }
+    if (n.analyticRegion && !skipEffects) return this.applyAnalyticEffects(n, layer)
     const sc = scale(n.matrix)
     for (const fx of n.effects) {
       if (
@@ -7959,8 +8041,11 @@ export class GpuRenderer {
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
     const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
-    if (index.hasFilters)
-      preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized && this.driver.managed && scene.integratedBlur && index.hasPrefixFilter))))
+    if (index.hasFilters) {
+      const regionalBoxes = scene.view.zoom >= 32 && Object.values(scene.nodes).some(n => n.analyticRegion)
+      preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized &&
+        this.driver.managed && (scene.integratedBlur && index.hasPrefixFilter || regionalBoxes)))))
+    }
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)
     const prepareFailureIndex = prepared.findIndex(result => result.status === 'rejected')
