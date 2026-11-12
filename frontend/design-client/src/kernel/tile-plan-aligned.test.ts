@@ -5,10 +5,21 @@ import { prioritizeTileFill } from './tile-scheduler'
 import {
   DEFAULT_TILE_PREFETCH_RINGS,
   MAX_TILE_PREFETCH_RINGS,
+  clipAlignedTile,
   planTilesAligned,
   planTilesWithPrefetchRim,
   tilePrefetchRingsFromHost,
 } from './tile-plan-aligned'
+
+test('cold edge crops keep their fractional lattice and filtering gutter', () => {
+  const tile: RasterTile = { key: 'full', x: -513, y: 511, width: 514, height: 514,
+    zoom: .25, phaseX: .125, phaseY: .75, gutter: 1 }
+  const cropped = clipAlignedTile(tile, { x: -255, y: 576, w: 272, h: 384 })
+  expect(cropped).toMatchObject({ x: -256, y: 575, width: 257, height: 386,
+    zoom: tile.zoom, phaseX: tile.phaseX, phaseY: tile.phaseY, gutter: 1 })
+  expect(cropped.key).not.toBe(tile.key)
+  expect(clipAlignedTile(tile, { x: -512, y: 512, w: 512, h: 512 })).toBe(tile)
+})
 
 /** The production viewport planner and the kernel's open tile-frame model
  * compute the same world-aligned grid: every zoom/bounds combination must

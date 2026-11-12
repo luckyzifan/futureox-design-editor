@@ -17,7 +17,7 @@ import { recordRenderDiagnostic, renderDiagnosticError, renderDiagnostics } from
 import type { BackendPreference } from './gpu/types'
 import type { ColorPresenter } from './color-presenter'
 import { TILE_SIDE, budgetTileLimit, displayTileBudget, lodBucketScale, tilesCoverBounds, type RasterTile } from './tile-cache'
-import { planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
+import { clipAlignedTile, planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
 import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale, nativeTileMotionScale, gestureRasterScale, gestureViewportCapture } from './canvas-raster-plan'
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
@@ -470,6 +470,7 @@ export function ProgressiveSurfaceImpl(
   const [failure, setFailure] = useState('')
   const cacheAdmission = useRef({ reserveBytes: 0, admissionBudget: 0, activeHighWater: 0, totalHighWater: 0 })
   const [displayRetry, setDisplayRetry] = useState(0)
+  const rejectedEdgeCrop = useRef('')
   const [sharpHeadroomBlocked, setSharpHeadroomBlocked] = useState<object | null>(null)
   const sequentialPending = useRef<{ contract: object; key: string; tile: RasterTile;
     scopeCurrent: () => boolean; cancel: () => void } | null>(null)
@@ -1299,8 +1300,8 @@ export function ProgressiveSurfaceImpl(
         requestedDensity: view.zoom * dpr, sampledDensity: Math.min(...reused.map(tile => tile.zoom)),
         cacheHits: reused.length, cacheMisses: 0 })
     }
-    const request = async (plan: RasterTile[], prefetch: { rim: RasterTile[]; cacheLimitSkipped: number; protect?: boolean } = { rim: [], cacheLimitSkipped: 0 },
-      bootstrapCoverage?: () => Promise<void>) => {
+    const request = async (plan: RasterTile[], preparePlan: RasterTile[],
+      prefetch: { rim: RasterTile[]; cacheLimitSkipped: number; protect?: boolean }, bootstrapCoverage?: () => Promise<void>) => {
       protectedKeys.current = new Set([...plan, ...(prefetch.protect ? prefetch.rim : [])].map((t) => t.key))
       // Idle prefetch stays evictable. During pan, the bounded leading edge is
       // briefly protected too, so cache pressure cannot evict each new tile
@@ -1374,7 +1375,7 @@ export function ProgressiveSurfaceImpl(
               ...(prefetchOnly ? {} : { tileFillPriorities: ordered.map(tile => priorities.get(tile)!) }),
               tilePrepareViewport: import.meta.env.VITE_DESIGN_PREPARE_CACHE === '0' ? undefined :
                 nativeVisibleTiles ? tilePrepareViewport(ordered, renderCamera) :
-                  tileBatchPrepareViewport(plan, prefetch.rim, ordered, renderCamera),
+                  tileBatchPrepareViewport(preparePlan, prefetch.rim, ordered, renderCamera),
               renderIntent: 'canvas',
               ...(props.presentationEpoch === undefined ? {} : {
                 tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
@@ -1569,7 +1570,18 @@ export function ProgressiveSurfaceImpl(
           const native = canvasRasterPlan(target, dpr, width, height, { rasterProfile, exactPhase: false })
           const bounds = { x: -target.x / target.zoom, y: -target.y / target.zoom,
             width: width / target.zoom, height: height / target.zoom }
-          const plan = planTilesAligned(bounds, native.scale, budgetTileLimit(displayTileBudget(width, height, dpr, false), false), native.phase)
+          const fullTiles = planTilesAligned(bounds, native.scale, budgetTileLimit(displayTileBudget(width, height, dpr, false), false), native.phase)
+          // Use a smaller exact crop for one interruptible detail turn on a
+          // filtered page. The full settled tile plan keeps its own keys.
+          const candidates = filteredContent && !zoomOutCoverage && target.zoom > 1 && target.zoom < 2 && !cameraDependent ? fullTiles.flatMap(tile => {
+            const gutter = tile.gutter ?? 1
+            const side = (tile.width - 2 * gutter) / 2
+            return [0, 1].flatMap(y => [0, 1].map(x => ({
+              ...tile, key: `${tile.key}/${x}:${y}`, x: tile.x + x * side, y: tile.y + y * side,
+              width: side + 2 * gutter, height: side + 2 * gutter,
+            })))
+          }) : fullTiles
+          const plan = candidates
             .map(tile => ({ ...tile, key: tileComputationKey(tile, native.camera, cameraDependent) }))
           const resident = validCoverage()
           const missing = prioritizeTileFill(plan.filter(tile => {
@@ -1615,7 +1627,7 @@ export function ProgressiveSurfaceImpl(
               view: native.camera, transparent: false, grid: false, rasterProfile,
               tileViewport: [tile], tileFillPriorities: [priorities.get(tile)!],
               tilePrepareViewport: import.meta.env.VITE_DESIGN_PREPARE_CACHE === '0' ? undefined :
-                tileBatchPrepareViewport(plan, [], [tile], native.camera),
+                tileBatchPrepareViewport(fullTiles, [], [tile], native.camera),
               renderIntent: 'canvas',
               ...(props.presentationEpoch === undefined ? {} : {
                 tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
@@ -1637,6 +1649,7 @@ export function ProgressiveSurfaceImpl(
     let navigationRequest: string | undefined
     let navigationIntent: string | undefined
     const run = async () => {
+      let croppedVisibleTiles = false
       let navigationAdmission: typeof previewAdmission.current | undefined
       let navigationCapture: NativeNavigationCapture | undefined
       let runningCoverage: NavigationCoverageFlight<PaintedTile> | undefined
@@ -2039,7 +2052,26 @@ export function ProgressiveSurfaceImpl(
         // Stable world samples reuse pixels within a density level; native
         // pixel/chrome paths retain their explicit camera phase.
         const rekey = (tile: RasterTile) => ({ ...tile, key: tileComputationKey(tile, renderCamera, cameraDependent) })
-        const plan = planned.viewport.map(rekey)
+        // A same-content backing already follows the minified camera. Repair
+        // cold edges on its native lattice while retaining the full prepare guard.
+        const edgeViewport = view.zoom < 1 && progressiveNativeRepair && reusableFrame && residentDisplay && phaseExact &&
+          renderScale === detailLevel &&
+          rejectedEdgeCrop.current !== frameKey &&
+          !cameraDependent && !navigationZoom.active && !props.interaction?.active &&
+          !retainedEditViewport && syncedDoc.current === doc && hasContinuityBacking()
+          ? { x: -Math.floor(view.x * dpr), y: -Math.floor(view.y * dpr), w: Math.ceil(width * dpr), h: Math.ceil(height * dpr) }
+          : undefined
+        const fullPlan = planned.viewport.map(rekey)
+        const plan = fullPlan.map((full, index) => {
+          if (!edgeViewport) return full
+          const existing = tileRef.current.get(full.key)
+          if (existing?.document === doc && existing.revision === contract.revision) return full
+          const tile = planned.viewport[index]
+          const cropped = clipAlignedTile(tile, edgeViewport)
+          if (cropped === tile) return full
+          croppedVisibleTiles = true
+          return rekey(cropped)
+        })
         const rim = planned.rim.map(rekey)
         const prefetch = props.interaction?.selection.length || zooming || nativeVisibleTiles && cameraMoving ? {rim:[],cacheLimitSkipped:0} :
           cameraMoving ? { rim: cameraDependent ? [] : panPrefetch(rim, previousView, view, viewport), cacheLimitSkipped: 0, protect: true } :
@@ -2255,7 +2287,7 @@ export function ProgressiveSurfaceImpl(
               console.debug('[coverage] startup overview unavailable', String(error))
             }
           } : undefined
-        await request(plan, prefetch, bootstrap)
+        await request(plan, fullPlan, prefetch, bootstrap)
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
         // not put it behind selection warm-up and ahead of the first pose.
@@ -2269,6 +2301,14 @@ export function ProgressiveSurfaceImpl(
         }
       } catch (error) {
         if (navigationCapture) nativeNavigationHandoff.finish(navigationCapture, false)
+        if (croppedVisibleTiles && current() &&
+            (isRecoverablePreviewBudget(error) || retainedPressureError(error) || isDisplayBudgetError(error))) {
+          // A narrow crop can miss the normal filter's surface admission.
+          // Retry this camera with its original full cells at the same density.
+          rejectedEdgeCrop.current = frameKey
+          setDisplayRetry(value => value + 1)
+          return
+        }
         const headroomFailure = renderFailureFields(error)
         const speculativeLimit = headroomFailure.failureCategory === 2 &&
           [40, 41, 42].includes(headroomFailure.failureCode)

@@ -58,7 +58,8 @@ vi.mock('./client', () => ({
   },
 }))
 vi.mock('./module', () => ({ initializeKernelModule: async () => {} }))
-vi.mock('./tile-plan-aligned', () => {
+vi.mock('./tile-plan-aligned', async importOriginal => {
+  const { clipAlignedTile } = await importOriginal<typeof import('./tile-plan-aligned')>()
   const planTilesAligned = (bounds?: any, scale?: number, limit?: number, phase?: { x: number; y: number }) =>
     worker.dynamicPlan ? planTiles(bounds, scale!, limit, phase) : worker.plan ?? (worker.forceLod && scale === .125
     ? Array.from({ length: 8 }, (_, i) => ({ key: `.5:0:0:${i % 4}:${Math.floor(i / 4)}`,
@@ -67,6 +68,7 @@ vi.mock('./tile-plan-aligned', () => {
     { key: '4:0:0:1:0', x: 511, y: -1, width: 514, height: 514, zoom: 4 },
   ])
   return {
+    clipAlignedTile,
     planTilesAligned,
     // This harness pins damage/cancellation semantics, not the prefetch rim:
     // rings 0 keeps its plan identical to the pre-rim planner output.
@@ -2612,6 +2614,36 @@ test.each(['0','1',undefined])('quiet native repair does not redraw a covering c
     expect(request.options.tileViewport.every((tile:RasterTile)=>tile.zoom===16)).toBe(true)
   }else expect(request.options.livePreview).toBe(true)
   expect(surfaceParts(h.render(next)).wrapper.props['data-detail-ready']).toBe('false')
+})
+
+test('a rejected viewport crop retries the original cells at the same density', async () => {
+  nativeNavigationHost()
+  vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '0')
+  worker.dynamicPlan = true
+  const view = { x: 0, y: 0, zoom: .25 }, size = { width: 512, height: 256 }
+  const seeds = planTiles({ x: 0, y: 0, width: 2048, height: 1024 }, .5)
+    .map((tile, index) => ({ ...tile, gpuTile: 19100 + index }))
+  const h = harness(seeds), options = { ...size, view, rasterProfile: 'figmaSubpixel' }
+  h.render(options)
+  await flushRasterWork()
+  const ready = surfaceParts(h.render(options)).compositor
+  ready.props.onPresented({ view, ...size, dpr: 2, interaction: false, ids: seeds.map(tile => tile.gpuTile) }, undefined,
+    { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 })
+  h.render(options)
+  const before = worker.calls.length
+  const next = { ...options, view: { x: -17, y: -3, zoom: .5 } }
+  h.render(next)
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before))
+  const cropped = worker.calls[before]
+  expect(cropped.options.tileViewport.some((tile: RasterTile) => tile.width < 514)).toBe(true)
+  cropped.reject(Error('Gaussian sigma must be in [0,512]'))
+  await flushRasterWork()
+  h.render(next)
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
+  const retry = worker.calls[before + 1]
+  expect(retry.options.tileViewport.length).toBeGreaterThan(0)
+  expect(retry.options.tileViewport.every((tile: RasterTile) => tile.width === 514 && tile.height === 514 && tile.zoom === 1))
+    .toBe(true)
 })
 
 test('whole-page translation fills original native world misses through the bounded existing canvas owner',async()=>{

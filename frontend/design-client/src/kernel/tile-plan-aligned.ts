@@ -1,6 +1,7 @@
 import { raster_tile_addresses_json } from '../generated/design-kernel/design_kernel'
 import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { tileViewportDistance } from './tile-scheduler'
+import type { Rect } from './gpu/types'
 /** The Rust tile stack owns production addressing, including exact fractional
  * camera phase. Rendering retains the existing one-pixel gutters and order. */
 export function planTilesAligned(bounds: {x:number;y:number;width:number;height:number}, zoom:number, limit=256, phase={x:0,y:0}): RasterTile[] {
@@ -8,6 +9,19 @@ export function planTilesAligned(bounds: {x:number;y:number;width:number;height:
   const cx=(bounds.x+bounds.width/2)*zoom,cy=(bounds.y+bounds.height/2)*zoom
   const half=TILE_SIDE/2
   return addresses.map(([x,y])=>({key:`${zoom}:${phase.x}:${phase.y}:${x}:${y}`,x:x*TILE_SIDE-1,y:y*TILE_SIDE-1,width:TILE_SIDE+2,height:TILE_SIDE+2,gutter:1,zoom,phaseX:phase.x,phaseY:phase.y})).sort((a,b)=>Math.hypot(a.x+half-cx,a.y+half-cy)-Math.hypot(b.x+half-cx,b.y+half-cy))
+}
+
+/** Keep the native pixel lattice and filtering gutter when a cold tile
+ * only contributes an edge strip to this viewport. Its key owns that strip. */
+export function clipAlignedTile(tile: RasterTile, viewport: Rect): RasterTile {
+  const gutter = tile.gutter ?? 1
+  const left = Math.max(tile.x + gutter, viewport.x)
+  const top = Math.max(tile.y + gutter, viewport.y)
+  const right = Math.min(tile.x + tile.width - gutter, viewport.x + viewport.w)
+  const bottom = Math.min(tile.y + tile.height - gutter, viewport.y + viewport.h)
+  const width = right - left + 2 * gutter, height = bottom - top + 2 * gutter
+  if (right <= left || bottom <= top || width === tile.width && height === tile.height) return tile
+  return { ...tile, key: `${tile.key}/${left}:${top}:${width}:${height}`, x: left - gutter, y: top - gutter, width, height }
 }
 
 export const DEFAULT_TILE_PREFETCH_RINGS = 1
