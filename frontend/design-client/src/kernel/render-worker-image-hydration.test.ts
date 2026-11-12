@@ -530,7 +530,11 @@ async function affineWorker(affine=true,masked=false,fixedMaskWidth?:number) {
   if(masked){
     const group=node('group',0,0,48,16),mask=node('rectangle',0,0,48,16)
     f.doc.schemaVersion=20
-    mask.mask=true;mask.maskType='shape'
+    mask.mask = true
+    if (fixedMaskWidth === undefined) {
+      mask.maskType = 'alpha'
+      mask.maskChain = 'start'
+    } else mask.maskType = 'shape'
     group.children=[mask.id,'image-0']
     f.doc.nodes[group.id]=group;f.doc.nodes[mask.id]=mask;f.doc.pages[0].children=[group.id]
   }
@@ -604,6 +608,8 @@ test.each([[true, true], [true, false], [false, true], [false, false]])(
 })
 test.each([true, false])('a partial viewport reuses a native pose only when the window encloses its fixed mask (%s)', async coversMask => {
   const w = await affineWorker(true, true, coversMask ? 48 : 47)
+  const declined = vi.spyOn(w.kernel.VectorEngine.prototype, 'apply_interaction_transforms').mockReturnValue(false)
+  try {
   w.send({ command: 'display-frame', sequence: 1, frame: {
     view: { x: 0, y: 0, zoom: 1 }, width: 56, height: 16, dpr: 1, items: [],
   } })
@@ -613,6 +619,7 @@ test.each([true, false])('a partial viewport reuses a native pose only when the 
   expect(!!sample.needsRebase).toBe(!coversMask)
   expect(state.replacements).toHaveLength(coversMask ? 1 : 0)
   if (coversMask) expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(1).transforms['image-0'])
+  } finally { declined.mockRestore() }
 })
 test.each([true, false])('a stopped masked pose restores the displayed document before a new capture (affine=%s)', async affine => {
   const w = await affineWorker(affine,true)

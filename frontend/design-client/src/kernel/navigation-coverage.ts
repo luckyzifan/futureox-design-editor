@@ -119,6 +119,7 @@ export function retainedPressureError(error: unknown) {
  * Only the original optional navigation intent may supply this cancellation. */
 export type NavigationCoverageCapture = Readonly<{
   zoom: number; bounds: Readonly<{ x: number; y: number; width: number; height: number }>
+  rasterScale?: number
   cancel(): void
 }>
 export type NavigationCoverageFlight<T> = {
@@ -129,7 +130,7 @@ export type NavigationCoverageFlight<T> = {
   coversViewport(view: CanvasCamera, width: number, height: number): boolean
   /** Yield an undelivered optional capture to settled native work. Its owner
    * still controls the completion fence and any late payload retirement. */
-  cancelForNative(): boolean
+  cancelForNative(targetScale?: number): boolean
   /** Revoke only an unfinished, narrower old navigation capture after quiet.
    * Its original run still owns done and late-payload retirement. */
   cancelObsoleteZoomOut(view: CanvasCamera, width: number, height: number, minimumRatio?: number): boolean
@@ -169,7 +170,9 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
         source.y + source.height >= target.y + target.height
     },
     finish: () => { pending = undefined; finish() },
-    cancelForNative: () => flight.tile === undefined && cancelPending(),
+    cancelForNative: targetScale => flight.tile === undefined &&
+      (targetScale === undefined || Number.isFinite(targetScale) && pending?.rasterScale !== undefined &&
+        pending.rasterScale > 0 && pending.rasterScale < targetScale) && cancelPending(),
     cancelStaleZoomIn: (view, maximumRatio = MAX_PREVIEW_SCALE_RATIO) => {
       const source = pending
       if (!source || flight.tile !== undefined) return false

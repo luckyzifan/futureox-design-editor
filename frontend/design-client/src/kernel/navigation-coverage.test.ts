@@ -4,6 +4,22 @@ import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
 
+test('settled native detail can revoke only an unfinished lower-density capture', async () => {
+  let cancelled = 0, finished = false
+  const flight = navigationCoverageFlight({}, 1, { zoom: .5, rasterScale: .5,
+    bounds: { x: 0, y: 0, width: 1000, height: 640 }, cancel: () => cancelled++ })
+  void flight.done.then(() => { finished = true })
+  expect(flight.cancelForNative(.5)).toBe(false)
+  expect(flight.cancelForNative(1)).toBe(true)
+  expect(flight.cancelForNative(1)).toBe(false)
+  await Promise.resolve()
+  expect(cancelled).toBe(1)
+  expect(finished).toBe(false)
+  flight.finish()
+  await flight.done
+  expect(finished).toBe(true)
+})
+
 test('a zoom-in capture more than the preview ratio behind the live camera yields, and a nearer one stays', () => {
   let cancelled = 0
   const flight = navigationCoverageFlight({}, 1, { zoom: 0.403, bounds: { x: 0, y: 0, width: 1000, height: 640 }, cancel: () => cancelled++ })

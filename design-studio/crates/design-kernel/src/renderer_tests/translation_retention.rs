@@ -38,6 +38,43 @@ fn options() -> RenderOptions {
 }
 
 #[test]
+fn retained_bitmap_pose_invalidates_the_private_sketch_clip_and_matches_fresh_pixels() {
+    use base64::Engine as _;
+    let mut original = source();
+    original.schema_version = 20;
+    let frame = original.nodes.get_mut("frame").unwrap();
+    frame.kind = "group".into();
+    frame.clip = false;
+    frame.children.insert(0, "mask".into());
+    let mut mask = crate::facet::sample_node("mask", "rectangle");
+    mask.mask = true;
+    mask.mask_type = Some("shape".into());
+    mask.width = 28.;
+    mask.height = 24.;
+    original.nodes.insert(mask.id.clone(), mask);
+    let mut png = Vec::new();
+    {
+        let mut writer = png::Encoder::new(&mut png, 1, 1).write_header().unwrap();
+        writer.write_image_data(&[123]).unwrap();
+    }
+    let image = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png));
+    original.nodes.get_mut("child").unwrap().fills[0] =
+        serde_json::from_value(json!({"kind":"image","color":"#ffffff","image":image})).unwrap();
+    let mut engine = Engine::new();
+    engine.install_document(original).unwrap();
+    engine.compile_gpu(&options()).unwrap();
+    for transform in [Transform([0.,1.,-1.,0.,31.5,8.]), Transform([1.,0.,0.,1.,-8.,-6.]), Transform([1.,0.,0.,1.,10.,10.])] {
+        assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
+        let mut fresh = Engine::new();
+        fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+        assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),
+            fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+        assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
+    }
+    assert!(!engine.apply_interaction_transforms(&[("mask".into(), Transform([1.,0.,0.,1.,2.,1.]))].into()).unwrap());
+}
+
+#[test]
 fn local_resize_shares_unchanged_nodes_across_worker_and_rejected_revision() {
     let mut authored = source();
     for i in 0..256 {

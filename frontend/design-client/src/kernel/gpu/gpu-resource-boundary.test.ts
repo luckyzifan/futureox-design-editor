@@ -572,6 +572,28 @@ async function residentPrefixBoundary(enabled = true) {
   return { boundary, driver, prefix, finish, close }
 }
 
+test('a same-device mask pose keeps pending textures until the periodic fence', async () => {
+  vi.stubEnv('VITE_DESIGN_NATIVE_PIPELINE', '0')
+  const f = await residentPrefixBoundary(false)
+  f.prefix.scratchBytes = 0
+  try {
+    await f.driver.prepareScene({ ...empty, interactionRetained: true, nativeInteraction: true, interactionFixedMask: true })
+    for (let i = 1; i <= 3; i++) {
+      const result = await f.finish()
+      expect(result.gpuTile).toBeDefined()
+      expect(f.driver.resourceEpoch).toBe(i)
+      expect(f.driver.completedResourceEpoch).toBe(0)
+      expect(f.boundary.pending.size).toBeGreaterThan(0)
+    }
+    await f.finish()
+    expect(f.driver.completedResourceEpoch).toBe(4)
+    expect(f.driver.stats().queueWaits.reasons.periodic.completed).toBe(1)
+    expect(f.driver.stats().queueWaits.reasons.interaction.started).toBe(0)
+    await f.finish(false)
+    expect(f.driver.stats().queueWaits.reasons.interaction.completed).toBe(1)
+  } finally { await f.close() }
+})
+
 test('resident prefix scratch stays owned across submitted frames and samples counters only at periodic completion', async () => {
   const f = await residentPrefixBoundary()
   try {

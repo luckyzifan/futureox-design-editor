@@ -346,6 +346,7 @@ export class WebGpuDriver implements Driver {
   private prefixCounterDeferredFrames = 0
   private interactionPresentation = false
   private nativeInteractionPresentation = false
+  private fixedMaskInteractionPresentation = false
   private prefix?: TexturePrefix
   private byteTent?: ByteTentPrefix
   private byteTentPreparing?: Promise<boolean>
@@ -1210,6 +1211,8 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     this.displayImageRequested = displayImageRequested
     this.interactionPresentation = scene.interactionRetained === true
     this.nativeInteractionPresentation = scene.nativeInteraction === true
+    this.fixedMaskInteractionPresentation = scene.interactionRetained === true && scene.nativeInteraction === true &&
+      scene.interactionFixedMask === true && !scene.softwareRaster
     this.pairDisplayTaps = scene.pairedDisplayFilters ?? (import.meta.env.VITE_DESIGN_PAIRED_DISPLAY === '1')
     const radiusLimit = scene.displayFilterRadiusLimit
     this.displayFilterRadiusLimit = radiusLimit
@@ -3289,12 +3292,17 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     // GPU-complete or physical-presentation acknowledgement.
     const deferImageScratch = !!captured && !readback && !timingRead &&
       !this.transientTargets.length && !this.transient.length && !this.transientBytes && this.canDeferImageTables()
+    // The compositor consumes this bounded pose on the same queue. The
+    // periodic fence still paces it, and any temporary storage that needs
+    // a completion proof keeps the original interaction boundary.
+    const queuedMask = this.fixedMaskInteractionPresentation && !!captured && !transfer && !preview &&
+      !samples && !this.linearCapture && !this.transientTargets.length && !this.transient.length && !this.transientBytes
     // Keep the existing interaction/periodic backpressure. Only per-tile waits
     // whose purpose was scratch destruction or diagnostic counters disappear.
     const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' : transfer ? 'presentation-transfer' :
       this.byteTentLeases?.size ? 'prefix-scratch' :
       !retainFilterScratch && (this.prefix?.scratchBytes||this.boxPrefix?.scratchBytes) ? 'prefix-scratch' :
-      !deferImageScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
+      !deferImageScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation && !queuedMask &&
         (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
         ++this.presentationSubmissions >= 4 ? 'periodic' : undefined
     // Counters do not authorize pixels: each GPU line already selects its

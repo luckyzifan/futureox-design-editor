@@ -490,7 +490,7 @@ function schedulePose(){
         if(!ids.length||ids.length>16||ids.some(id=>!session.scene.nodes[id]||!session.document.nodes[id]||!Array.isArray(pose.transforms[id])||
           pose.transforms[id].length!==6||!Array.from(pose.transforms[id]).every(Number.isFinite))){rebasePose(pose);break}
         const documentStarted=performance.now()
-        let document=session.patch||session.native&&!pose.terminal?undefined:{...session.document,nodes:{...session.document.nodes,...Object.fromEntries(ids.map(id=>
+        let document=session.patch||session.native&&!pose.terminal&&!session.scene.interactionFixedMask?undefined:{...session.document,nodes:{...session.document.nodes,...Object.fromEntries(ids.map(id=>
           [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}}
         const documentMs=performance.now()-documentStarted
         const scale=session.scene.view.zoom,base=session.window

@@ -37,6 +37,38 @@ pub(crate) fn starts(n: &Node) -> bool {
     n.mask && (n.mask_type.as_deref() == Some("shape") || n.mask_chain.is_some())
 }
 
+/// A bitmap in this lowered two-sibling chain has one authoritative render
+/// node. Updating its transform leaves the stationary mask and its private
+/// silhouette intact. A higher mask would also have cloned this geometry.
+pub(crate) fn stable_bitmap_pose(source: &Document, resolved: &Document, parents: &crate::render_index::Parents, id: &str) -> bool {
+    let Some(image) = source.nodes.get(id) else { return false; };
+    if image.mask || image.mask_chain == Some(MaskChain::Break) || !image.children.is_empty() ||
+        !image.fills.iter().any(|paint| paint.visible && paint.kind == "image") {
+        return false;
+    }
+    let mut ancestors = parents.ancestors(id);
+    let Some(parent_id) = ancestors.next() else { return false; };
+    let parent = &source.nodes[parent_id];
+    if parent.kind != "group" || parent.mask || parent.children.len() != 2 || parent.children[1] != id ||
+        ancestors.any(|id| source.nodes[id].mask) {
+        return false;
+    }
+    let mask_id = &parent.children[0];
+    let mask = &source.nodes[mask_id];
+    if !mask.mask || mask.mask_type.as_deref() != Some("shape") ||
+        mask.kind != "rectangle" || !mask.children.is_empty() {
+        return false;
+    }
+    let group_id = crate::repeat::derived_id(&format!("sketch-mask-chain/{mask_id}"));
+    let coverage_id = crate::repeat::derived_id(&format!("sketch-coverage/{}/{mask_id}{mask_id}", mask_id.len()));
+    resolved.nodes.get(parent_id).is_some_and(|parent|
+        matches!(parent.render_children(), [first, second] if first == mask_id && second == &group_id)) &&
+        resolved.nodes.get(&group_id).is_some_and(|group|
+            group.render_children().len() == 2 && group.render_children()[0] == coverage_id &&
+            group.render_children()[1] == id) &&
+        resolved.nodes.get(&coverage_id).is_some_and(|coverage| coverage.mask)
+}
+
 /// The authored parent index cannot invalidate a private clip group. Retain
 /// local edits in unrelated branches; rebuild a chain when its inputs change.
 pub(crate) fn owners(d: &Document, parents: &crate::render_index::Parents) -> HashSet<String> {

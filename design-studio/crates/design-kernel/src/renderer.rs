@@ -911,7 +911,10 @@ impl Engine {
             || index.has_connectors || index.has_instance_slots { return false; }
         let parents = &index.parents;
         patch.nodes.iter().all(|(id, next)| {
-            if index.in_sketch_mask_chain(id) { return false; }
+            if index.in_sketch_mask_chain(id) &&
+                (patch.nodes.len() != 1 || !crate::sketch_masks::stable_bitmap_pose(source, resolved, parents, id)) {
+                return false;
+            }
             let (Some(old), Some(next), Some(derived)) = (source.nodes.get(id), next, resolved.nodes.get(id)) else { return false; };
             if !affine && old.transform.0[..4] != next.transform.0[..4] || derived.transform != old.transform { return false; }
             let mut translated = old.clone(); translated.transform = next.transform;
@@ -1011,6 +1014,12 @@ impl Engine {
             self.doc.as_ref().and_then(|doc|doc.nodes.get(id)).is_some_and(|n|same(&n.transform,transform)) &&
             self.text_base.as_ref().and_then(|doc|doc.nodes.get(id)).is_none_or(|n|same(&n.transform,transform))
         }) { return Ok(true); }
+        let index = self.render_index.as_ref().unwrap();
+        // A retained masked bitmap also dirties its private clip group.
+        // Ordinary poses continue to borrow the authored parent index.
+        let resolved_parents = transforms.keys().any(|id| index.in_sketch_mask_chain(id))
+            .then(|| crate::render_index::Parents::new(self.doc.as_ref().unwrap()));
+        let parents = resolved_parents.as_ref().unwrap_or(&index.parents);
         // All fallible checks have completed. Release the Weak receipt before
         // mutating so a sole owner need not detach only because of this cache.
         self.retained_source_size = None;
@@ -1032,13 +1041,13 @@ impl Engine {
             node.children.is_empty() && (!affine || node.effects.iter().all(|effect| !effect.visible))
         });
         if local_support_only && self.source_compile_context.is_none() {
-            if let (Some(cache),Some(index))=(&mut self.world_support,&self.render_index) {
+            if let Some(cache)=&mut self.world_support {
                 if cache.revision==previous_revision {
                     // A shared snapshot must keep its own exact certificates.
                     // A private cache can conservatively forget moved leaves
                     // without flattening every unrelated path on each input.
                     if let Some(support)=Arc::get_mut(&mut cache.index) {
-                        support.invalidate_leaf_transforms(transforms.keys(),&index.parents);
+                        support.invalidate_leaf_transforms(transforms.keys(),parents);
                         cache.revision=self.geo_revision;
                         // Translations preserve halo coefficients. An affine
                         // leaf with no visible effects is absent from
@@ -1053,9 +1062,9 @@ impl Engine {
         }
         if let Some(cache) = &mut self.camera_prepare {
             if affine {
-                cache.transformed(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+                cache.transformed(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents);
             } else {
-                cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+                cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents);
             }
         }
         Ok(true)

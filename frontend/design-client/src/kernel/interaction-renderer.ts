@@ -55,6 +55,7 @@ type ResidentInteraction = {
   containedForeground?: boolean
   foregroundExclusions?: Bounds[]
   maskedRotationBounds?: Bounds
+  maskWarmOnly?: boolean
   foregroundCapture?: boolean
   foregroundCaptureBounds?: boolean
   captureBounds?: Bounds
@@ -651,8 +652,12 @@ export class InteractionRenderer {
   }
   private scheduleIdleWarm() {
     const props = this.props, resident = this.resident, viewport = this.viewport
-    if (!this.allowIdleWarm || import.meta.env.VITE_DESIGN_NESTED_IDLE_WARM !== '1' || !this.sharedClient ||
-        this.profile !== 'figmaSubpixel' || this.backend !== 'webgpu' && this.backend !== 'auto' ||
+    const mask = resident?.maskedRotationBounds
+    const warmMask = !!mask && !!viewport && !allowsReducedSampling(viewport.view.zoom) &&
+      (mask.width + 64) * (mask.height + 64) * (viewport.view.zoom * viewport.dpr) ** 2 <= 1_048_576
+    const legacyWarm = this.allowIdleWarm && import.meta.env.VITE_DESIGN_NESTED_IDLE_WARM === '1' &&
+      this.profile === 'figmaSubpixel'
+    if ((!warmMask && !legacyWarm) || !this.sharedClient || this.backend !== 'webgpu' && this.backend !== 'auto' ||
         !props || !resident?.live || !viewport || this.disposed ||
         props.active || resident.active || this.handoff || this.error || this.liveRunning || this.livePending ||
         this.lastSettledDocument !== props.document || resident.plan.document !== props.document ||
@@ -678,6 +683,11 @@ export class InteractionRenderer {
           resident.tiles.length > 0 && !this.inlineDisabled) return
       // One attempt per stable context, including failures. This moves work to
       // an idle moment; it neither removes GPU work nor acknowledges an input.
+      if (warmMask && this.settledViewportMatches(context.document, context.view)) {
+        resident.affine = true
+        resident.maskWarmOnly = true
+      }
+      else if (!legacyWarm) return
       this.idleWarmAttempt = context; this.idleWarmCapture = context; this.idleWarmFailed = undefined
       this.renderLive(context.document)
     }, 150)
@@ -1126,7 +1136,9 @@ export class InteractionRenderer {
 
   items(view: CanvasCamera): CompositeItem[] | null {
     const r = this.resident
-    if (!r?.active || !r.tiles.length) return null
+    // Warming reproduces the original pixels. Let the accepted page keep
+    // painting until the worker produces this gesture's first sampled pose.
+    if (!r?.active || !r.tiles.length || r.maskWarmOnly) return null
     if (r.live && !r.retainedFallback && !r.held?.blend && (r.sampleOrder ?? -1) < this.completePageOrder) { this.traceHandoff(6,4,r.sampleOrder);return null }
     return r.tiles.map((tile, i) => {
       const offsets = r.held?r.held.offsets:r.retainedFallback ? r.displayedOffsets : r.offsets
@@ -1284,6 +1296,7 @@ export class InteractionRenderer {
       this.renderLive(this.candidateDocument()||this.props!.document);return
     }
     if(sample.sequence>this.lastInput.sequence||sample.sequence<=this.lastPresentedInput.sequence){this.poseEvent(4,7,sample.sequence);return}
+    resident.maskWarmOnly = false
     this.lastPresentedInput={sequence:sample.sequence,at:sample.at,guides:sample.guides}
     const sampleOrder=this.poseOrders.get(sample.sequence)
     if(sampleOrder!==undefined)resident.sampleOrder=sampleOrder
@@ -1589,6 +1602,7 @@ export class InteractionRenderer {
           // next gesture's demand computation both read resident.scale.
           if (this.viewportRevision === viewportRevision && !adaptive) resident.scale = scale
           resident.visibleBounds = this.viewport ? { ...bounds } : undefined
+          if (input.sequence > 0) resident.maskWarmOnly = false
           this.poseEvent(2,0,input.sequence,2)
           this.lastPresentedInput = input
           this.error = ''

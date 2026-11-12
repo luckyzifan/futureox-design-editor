@@ -1080,6 +1080,15 @@ export function ProgressiveSurfaceImpl(
     const hasRepairBacking = () => progressiveNativeRepair&&
       residentDisplay&&!navigationZoom.active&&syncedDoc.current===doc&&
       navigationHasCoverage(validCoverage(),requestedView,width,height)
+    // Once input has settled, already covering same-owner pixels can stay
+    // visible while the exact lattice starts. A lower-density whole-viewport
+    // capture would only delay those tiles, even at the same camera zoom.
+    if (!nativeNavigation && residentDisplay && !navigationZoom.active && syncedDoc.current === doc &&
+        !props.paused && !navigationZoom.suspended && props.visible !== false && hasContinuityBacking()) {
+      const flight = coverageFlight.current
+      if (flight?.contract === contract && flight.generation === generation)
+        flight.cancelForNative(requestedView.zoom * dpr)
+    }
     // A large reversal can leave a costly zoom-in capture occupying the sole
     // raster lane after its crop stopped covering the current view. Keep
     // accepted pixels, but revoke that optional job without waiting for quiet.
@@ -1817,7 +1826,7 @@ export function ProgressiveSurfaceImpl(
           const result = await mailbox.run(requested, async () => {
             const intent = navigationIntentOwner.begin(c, { sequence: sample.sequence }, options)!
             runningCoverage = navigationCoverageFlight<PaintedTile>(contract, generation, {
-              zoom: captureView.zoom, bounds: { x: -camera.x / scale, y: -camera.y / scale,
+              zoom: captureView.zoom, rasterScale: scale, bounds: { x: -camera.x / scale, y: -camera.y / scale,
                 width: w / scale, height: h / scale }, cancel: intent.cancel,
             })
             coverageFlight.current = runningCoverage
