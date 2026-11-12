@@ -59,7 +59,7 @@ export function WebWorkspacePanel({ workspace, status, documentId, canSync, loca
           <button type="button" className="secondary" disabled={busy} onClick={() => { workspace.disconnect(); setFiles([]); setError('') }}>{english ? 'Disconnect' : '断开'}</button>
         </div>
         {current?.phase === 'saving' && <p role="status">{english ? 'Syncing to server…' : '正在同步到服务器…'}</p>}
-        {current?.phase === 'saved' && <p role="status">{english ? 'Synced to server' : '已同步到服务器'}</p>}
+        {current?.phase === 'saved' && <p role="status">{english ? 'Synced to server' : '已同步到服务器'} · r{current.revision}</p>}
         <div className="remote-list">
           {files.map(file => <div className="local-file-row" key={file.id}>
             <button type="button" disabled={busy} onClick={() => void action(async () => {

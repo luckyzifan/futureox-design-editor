@@ -7,6 +7,7 @@ import { desktopBridge } from './desktop'
 import { importFileInWorker } from './import-file-worker'
 import { type DesignDocument, validateDocument } from './model'
 import { immutableDocument } from './immutable-document'
+import { readWorkspacePatch, type WorkspacePatch } from './workspace-patch'
 export { localSave } from './local-store'
 import { localOpen, localTransaction, localRequest } from './local-store'
 export async function localRead(): Promise<DesignDocument | null> {
@@ -67,6 +68,8 @@ export type RemoteDocument = {
   document: DesignDocument
   updatedAt: string
 }
+export type RemoteChange = { revision: number; patch: WorkspacePatch | null }
+export type RemoteEditReceipt = { revision: number; merged?: RemoteDocument }
 type PendingSave = { document: DesignDocument; revision: number; requestId: string; owner?: string }
 export class BackendError extends Error {
   constructor(
@@ -87,6 +90,7 @@ export class Backend {
   async request(path: string, options: RequestInit = {}) {
     if (desktopBridge()) throw new Error('桌面离线模式不连接云端文件服务')
     const response = await fetch(`/api/design${path}`, {
+      cache: 'no-store',
       ...options,
       headers: {
         'content-type': 'application/json',
@@ -108,6 +112,24 @@ export class Backend {
   }
   list(signal?: AbortSignal): Promise<Omit<RemoteDocument, 'document'>[]> {
     return this.request('/documents', { signal })
+  }
+  async changes(id: string, revision: number, signal: AbortSignal): Promise<RemoteChange> {
+    const next = await this.request(`/documents/${encodeURIComponent(id)}/changes?after=${revision}`, { signal })
+    if (!next || !Number.isSafeInteger(next.revision) || next.revision < revision ||
+        next.patch !== null && next.revision !== revision + 1)
+      throw Error('服务器版本更新无效')
+    return { revision: next.revision, patch: next.patch === null ? null : readWorkspacePatch(next.patch) }
+  }
+  async edit(id: string, revision: number, requestId: string, patch: WorkspacePatch,
+    signal: AbortSignal): Promise<RemoteEditReceipt> {
+    const receipt: RemoteEditReceipt = await this.request(`/documents/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ revision, requestId, patch }), signal,
+    })
+    if (!receipt || !Number.isSafeInteger(receipt.revision) || receipt.revision <= revision ||
+        (receipt.revision === revision + 1 ? !!receipt.merged :
+          receipt.merged?.id !== id || receipt.merged?.document?.id !== id || receipt.merged?.revision !== receipt.revision))
+      throw Error('服务器编辑回执无效')
+    return receipt
   }
   async get(id: string, signal?: AbortSignal): Promise<RemoteDocument> {
     const token = this.token,

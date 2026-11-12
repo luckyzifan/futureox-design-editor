@@ -24,10 +24,12 @@
 | --- | --- |
 | `design-kernel` | 文档模型、几何、布局、约束、编辑操作与历史、格式编码、材质及 CPU 渲染 |
 | `design-desktop-backend` | 本地工作区、SQLite、恢复、源文件索引、源文档会话与持久化 |
-| `design-server` | 设计服务的 HTTP 接口与服务端适配 |
+| `design-server` | 独立 HTTP 进程、PostgreSQL、共享文档与协作版本 |
 | `design-agent` | Agent 服务接口与工具适配 |
 
 领域修改经既有 Rust/WASM/native 接口校验。普通编辑撤销、持久化历史和存储 CAS 分别维护；文件中的扩展数据不赋予执行或宿主访问权限。
+
+桌面应用通过 Electron IPC 使用本地后端。Web 客户端通过同源 HTTP 使用协作服务，提交前先保存在浏览器本地。共享文档的快照、增量和幂等回执在同一 PostgreSQL 事务中提交。全量快照用 `PUT /api/design/documents/{id}`，协作编辑用 `PATCH`。服务端以提交的基线版本比对变更图层和文档字段，再校验合并后的完整文档。客户端定期请求 `GET /api/design/documents/{id}/changes?after=版本`，按版本接收增量，落后较多时重新读取快照。编辑器在本地手势、属性草稿或保存完成后接纳远端版本。
 
 ## 4. 渲染执行层
 

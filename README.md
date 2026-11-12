@@ -65,9 +65,11 @@ bun run dev
 
 打开终端中 Vite 输出的本地地址，默认是 `http://127.0.0.1:1430`。`bun run dev` 会先构建 Rust／WASM 内核；首次编译需要等待。
 
-### Web 连接后端
+### Web 协作服务
 
-准备 PostgreSQL 数据库，在仓库根目录构建并启动同源 Web 服务。服务启动时应用数据库迁移，默认监听 `127.0.0.1:9430`。
+桌面端通过 `design-desktop-backend` 管理本机文件、SQLite 和恢复。Web 端通过 HTTP 连接独立的 `design-server`，由服务端管理 PostgreSQL、共享文档和协作版本。三者共用文档模型和 Rust 内核。
+
+准备 PostgreSQL 数据库，在仓库根目录构建 Web 端并启动服务。服务启动时应用数据库迁移，默认监听 `127.0.0.1:9430`。
 
 ```bash
 (cd frontend/design-client && bun install --frozen-lockfile && bun run build)
@@ -77,7 +79,11 @@ DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
   cargo run --locked --manifest-path design-studio/Cargo.toml -p futureox-design-server
 ```
 
-在 Web 首页打开「服务器工作区」并输入 `DESIGN_API_TOKEN`，可以打开服务端设计，也可以在编辑器内将当前设计接入同步。之后的编辑先在本地合并保存，再把已保存的版本送到服务器。开发模式的 Vite 默认代理到同一个后端端口，也可用 `DESIGN_BACKEND_URL` 指定代理目标。
+在 Web 首页打开「服务器工作区」，输入 `DESIGN_API_TOKEN` 后打开共享文档，也可以在编辑器内将当前设计接入同步。编辑先在本地异步保存，再发送版本化增量。打开同一文档的浏览器会自动接收已提交的修改。不同图层的并发编辑可合并，重叠冲突时保留本机修改，可从工作区打开服务端版本。接收外部版本时保留可用的视口和选择，并从新版本开始记录本地撤销。
+
+`DESIGN_DOCUMENT_MEMORY_MIB` 是独立服务的每份文档处理预算，默认 1024 MiB，可设为 256–4096 MiB。文档 JSON 字节上限按预算的十六分之一计算，组件展开也使用该预算。当前令牌授予整个服务器工作区的读写权限。
+
+独立托管 Web 静态文件时，将同源的 `/api/design` 转发到 `design-server`。开发模式下可用 `DESIGN_BACKEND_URL` 指定 Vite 代理目标。`DESIGN_WEB_ROOT` 指定由服务端直接托管的静态构建目录。
 
 | 想做什么 | 从哪里进入 |
 | --- | --- |
@@ -97,6 +103,7 @@ design-studio/
 ├── crates/design-kernel/      文档、几何、布局、历史、格式与 CPU 渲染
 ├── crates/design-gpu/         原生 GPU 设备、资源与渲染执行
 ├── crates/design-desktop-backend/  本地文件、SQLite 与恢复
+├── crates/design-server/      独立 HTTP 服务、PostgreSQL 与协作版本
 └── scripts/                  内核构建与验证工具
 docs/                         架构、功能契约与开发记录
 testing/                      格式夹具与兼容性扫描

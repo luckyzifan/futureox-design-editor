@@ -122,7 +122,8 @@ import {
   type LocalEntry,
 } from './local-store'
 import { initializePicking } from './kernel/picking'
-import { prepareDocument } from './prepared-document'
+import { prepareDocument, prepareDocumentJsonInWorker } from './prepared-document'
+import { documentPreparationRuntime } from './document-preparation-identity'
 import { Canvas } from './Canvas'
 import { Layers } from './Layers'
 import { Inspector } from './Inspector'
@@ -531,6 +532,38 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           .catch(error => recordLocalError('storage', error, 'STORAGE_ERROR'))
       }),
   )
+  useEffect(() => {
+    if (!webWorkspace || !ready || showHome || switching) return
+    const id = s.doc.id
+    const read = () => {
+      if (editor.authoredDocument.id !== id || editor.interactionActive || editor.propertyPreviewActive ||
+          editor.state.busy || switchGate.current || hasPendingEdits(editor) ||
+          saver.durableRevision(id, editor.state.version) === undefined) return
+      return editor.authoredDocument
+    }
+    return webWorkspace.watch(id, {
+      read,
+      async install(expected, next, signal) {
+        const version = editor.state.version, session = editor.sessionGeneration
+        const current = () => !signal.aborted && read() === expected &&
+          editor.state.version === version && editor.sessionGeneration === session
+        if (!current()) return
+        try {
+          const prepared = typeof Worker !== 'undefined' && documentPreparationRuntime()
+            ? await prepareDocumentJsonInWorker(JSON.stringify(next),
+              { documentId: id, version, generation: session, session }, signal, current)
+            : prepareDocument(next)
+          if (!current() || !editor.load(prepared, true)) return
+          const document = editor.authoredDocument, adoptedVersion = editor.state.version
+          saver.observe(document, adoptedVersion)
+          void saver.save(document, adoptedVersion).catch(() => {})
+          return document
+        } catch (error) {
+          if (current()) throw error
+        }
+      },
+    })
+  }, [webWorkspace, ready, showHome, switching, s.doc.id, editor, saver])
   const file = useRef<HTMLInputElement>(null)
   const capturePreview = useCallback(async (document: DesignDocument, version: number, pixels: PreviewPixels) => {
     // A property preview may begin while the bitmap/encoding promise is pending.
@@ -1334,7 +1367,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         canSync={ready && !showHome && !switching} locale={locale}
         onOpen={async record => {
           const opened = await switchDocument(record.document)
-          if (opened) webWorkspace.link(record)
+          if (opened) webWorkspace.link(record, editor.authoredDocument)
           return opened
         }}
         onSync={syncCurrentDesign} onClose={() => setShowWebWorkspace(false)} />}

@@ -1,4 +1,5 @@
-use futureox_design_kernel::scene::MAX_GRADIENT_STOPS;
+use futureox_design_kernel::{capacity, scene::MAX_GRADIENT_STOPS};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -58,6 +59,23 @@ fn paint(v: &Value) -> bool {
         })
 }
 pub fn validate(doc: &Value, id: Uuid) -> Result<String, &'static str> {
+    // A patch can grow a snapshot beyond the HTTP request size. Enforce the
+    // complete serialized budget for both snapshot and incremental commits.
+    struct Budget(usize);
+    impl std::io::Write for Budget {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self
+                .0
+                .checked_sub(bytes.len())
+                .ok_or_else(|| std::io::Error::other("Document exceeds the service byte budget"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    serde_json::to_writer(Budget(capacity::document_byte_limit()), doc)
+        .map_err(|_| "Document exceeds the service byte budget")?;
     validate_document(doc, id, true)
 }
 fn validate_document(
@@ -72,26 +90,25 @@ fn validate_document(
         .as_str()
         .filter(|s| !s.trim().is_empty() && s.chars().count() <= 200)
         .ok_or("Document name must contain 1–200 characters")?;
-    let pages = doc["pages"]
-        .as_array()
-        .filter(|p| !p.is_empty() && p.len() <= 100)
-        .ok_or("Document must contain 1–100 pages")?;
-    let nodes = doc["nodes"]
-        .as_object()
-        .filter(|n| n.len() <= 20_000)
-        .ok_or("Document exceeds 20000 nodes")?;
-    if doc.get("animations").is_some() {
-        let scene: futureox_design_kernel::scene::Document =
-            serde_json::from_value(doc.clone()).map_err(|_| "Invalid animation document")?;
-        scene
-            .validate()
-            .map_err(|_| "Invalid animation tracks or keyframes")?;
-    }
-    let scene: futureox_design_kernel::scene::Document =
-        serde_json::from_value(doc.clone()).map_err(|_| "Invalid kernel document")?;
-    scene
-        .validate()
-        .map_err(|_| "Invalid kernel document contract")?;
+    let pages = doc["pages"].as_array().ok_or("Invalid document pages")?;
+    let nodes = doc["nodes"].as_object().ok_or("Invalid document nodes")?;
+    capacity::check_document_counts(nodes.len(), pages.len())
+        .map_err(|_| "Document exceeds the service structure budget")?;
+    let has_animations = doc.get("animations").is_some();
+    let mut scene = futureox_design_kernel::scene::Document::deserialize(doc).map_err(|_| {
+        if has_animations {
+            "Invalid animation document"
+        } else {
+            "Invalid kernel document"
+        }
+    })?;
+    scene.validate().map_err(|_| {
+        if has_animations {
+            "Invalid animation tracks or keyframes"
+        } else {
+            "Invalid kernel document contract"
+        }
+    })?;
     futureox_design_kernel::font::Fonts::new()
         .with_resources(&scene.fonts)
         .map_err(|_| "Invalid embedded font resources")?;
@@ -100,15 +117,6 @@ fn validate_document(
             return Err("Invalid node identity");
         }
         let kind = n["kind"].as_str().ok_or("Missing node kind")?;
-        if ["layout", "sizing", "constraints"]
-            .iter()
-            .any(|key| n.get(key).is_some())
-        {
-            let node: futureox_design_kernel::scene::Node = serde_json::from_value(n.clone())
-                .map_err(|_| "Invalid responsive layout fields")?;
-            node.validate_layout()
-                .map_err(|_| "Invalid responsive layout configuration")?;
-        }
         if ![
             "slice",
             "frame",
@@ -191,11 +199,6 @@ fn validate_document(
         }) {
             return Err("Invalid stroke");
         }
-        let stroke_node: futureox_design_kernel::scene::Node =
-            serde_json::from_value(n.clone()).map_err(|_| "Invalid stroke data")?;
-        stroke_node
-            .validate_strokes()
-            .map_err(|_| "Invalid stroke profile or topology")?;
         if !n["effects"].as_array().is_some_and(|es| {
             es.len() <= 16
                 && es.iter().all(|e| {
@@ -304,16 +307,8 @@ fn validate_document(
                 .any(|key| n.get(key).is_some())
         })
     {
-        let mut scene: futureox_design_kernel::scene::Document =
-            serde_json::from_value(doc.clone()).map_err(|_| "Invalid component document")?;
-        scene
-            .validate()
-            .map_err(|_| "Invalid component references or properties")?;
         futureox_design_kernel::components::resolve(&mut scene)
             .map_err(|_| "Component expansion failed")?;
-        scene
-            .validate()
-            .map_err(|_| "Invalid resolved component data")?;
         let resolved =
             serde_json::to_value(scene).map_err(|_| "Invalid resolved component document")?;
         validate_document(&resolved, id, false)?;

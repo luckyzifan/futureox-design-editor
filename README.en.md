@@ -65,9 +65,11 @@ bun run dev
 
 Open the local address printed by Vite, normally `http://127.0.0.1:1430`. `bun run dev` builds the Rust/WASM kernel first; the initial compilation takes time.
 
-### Connect the web app to its backend
+### Web collaboration service
 
-Create a PostgreSQL database, then build and start the same-origin web service from the repository root. The server runs migrations at startup and listens on `127.0.0.1:9430` by default.
+The desktop host uses `design-desktop-backend` for local files, SQLite, and recovery. The web app uses the independent `design-server` HTTP service for PostgreSQL, shared documents, and collaboration. All three use the shared document model and Rust kernel.
+
+Create a PostgreSQL database, then build the web app and start the service from the repository root. The server runs migrations at startup and listens on `127.0.0.1:9430` by default.
 
 ```bash
 (cd frontend/design-client && bun install --frozen-lockfile && bun run build)
@@ -77,7 +79,11 @@ DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
   cargo run --locked --manifest-path design-studio/Cargo.toml -p futureox-design-server
 ```
 
-Open **Server workspace** on the web home screen and enter the access token. Open a server design or link the current design from the editor. Subsequent edits are batched locally and sent to the server after local storage commits them. Vite proxies to the default backend in development and accepts `DESIGN_BACKEND_URL` as a proxy target.
+Open **Server workspace** on the web home screen and enter `DESIGN_API_TOKEN`. Open a shared design or link the current design from the editor. The browser saves edits asynchronously to local storage before sending versioned patches. Browsers on the same document automatically receive committed edits. Concurrent changes to different layers can merge. An overlapping edit preserves the local changes and lets the editor open the server version from the workspace. An incoming revision keeps the current viewport and valid selection and starts a fresh local undo history.
+
+`DESIGN_DOCUMENT_MEMORY_MIB` controls the server's per-document processing budget. It defaults to 1024 MiB and accepts 256–4096 MiB. The JSON document limit is one sixteenth of this budget, which also bounds component expansion. The current token grants read and write access to the whole server workspace.
+
+When hosting the web assets separately, proxy same-origin `/api/design` requests to `design-server`. Vite accepts `DESIGN_BACKEND_URL` as a development proxy target. Set `DESIGN_WEB_ROOT` to have the service serve the static web build.
 
 | Goal | Start here |
 | --- | --- |
@@ -97,6 +103,7 @@ design-studio/
 ├── crates/design-kernel/      Documents, geometry, layout, history, formats, CPU rendering
 ├── crates/design-gpu/         Native GPU devices, resources, rendering
 ├── crates/design-desktop-backend/  Local files, SQLite, recovery
+├── crates/design-server/      Independent HTTP service, PostgreSQL, collaborative revisions
 └── scripts/                  Kernel builds and verification tools
 docs/                         Architecture, feature contracts, development records
 testing/                      Format fixtures and compatibility scans
