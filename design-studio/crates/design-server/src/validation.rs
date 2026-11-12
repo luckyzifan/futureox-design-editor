@@ -1,3 +1,4 @@
+use futureox_design_kernel::scene::MAX_GRADIENT_STOPS;
 use serde_json::Value;
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -39,8 +40,9 @@ fn paint(v: &Value) -> bool {
                 })
         })
     });
+    let kind = v["kind"].as_str();
     matches!(
-        v["kind"].as_str(),
+        kind,
         Some("solid" | "linear" | "radial" | "image" | "angular" | "diamond")
     ) && color(&v["color"])
         && blend(v.get("blend"), false)
@@ -48,7 +50,8 @@ fn paint(v: &Value) -> bool {
         && number(&v["angle"], -1e7, 1e7)
         && image
         && v["stops"].as_array().is_some_and(|stops| {
-            (2..=32).contains(&stops.len())
+            stops.len() <= MAX_GRADIENT_STOPS
+                && (matches!(kind, Some("solid" | "image")) || stops.len() >= 2)
                 && stops
                     .iter()
                     .all(|s| number(&s["offset"], 0., 1.) && color(&s["color"]))
@@ -62,10 +65,8 @@ fn validate_document(
     id: Uuid,
     check_components: bool,
 ) -> Result<String, &'static str> {
-    if !matches!(doc["schemaVersion"].as_u64(), Some(1..=11))
-        || doc["id"].as_str().and_then(|v| v.parse::<Uuid>().ok()) != Some(id)
-    {
-        return Err("Document schema or identity is invalid");
+    if doc["id"].as_str().and_then(|v| v.parse::<Uuid>().ok()) != Some(id) {
+        return Err("Document identity is invalid");
     }
     let name = doc["name"]
         .as_str()
@@ -109,6 +110,7 @@ fn validate_document(
                 .map_err(|_| "Invalid responsive layout configuration")?;
         }
         if ![
+            "slice",
             "frame",
             "section",
             "group",
@@ -135,13 +137,16 @@ fn validate_document(
         {
             return Err("Singular transform");
         }
-        if !number(&n["width"], 0.01, 1e7)
-            || !number(&n["height"], 0.01, 1e7)
-            || !number(&n["opacity"], 0., 1.)
-            || !number(&n["smoothing"], 0., 1.)
+        let min_points = if matches!(kind, "polygon" | "star") {
+            3.
+        } else {
+            0.
+        };
+        let min_inner_radius = if kind == "star" { 0.01 } else { 0. };
+        if !number(&n["smoothing"], 0., 1.)
             || !number(&n["fontSize"], 1., 4096.)
-            || !number(&n["points"], 3., 128.)
-            || !number(&n["innerRadius"], 0.01, 1.)
+            || !number(&n["points"], min_points, 128.)
+            || !number(&n["innerRadius"], min_inner_radius, 1.)
         {
             return Err("Invalid geometry");
         }
@@ -204,6 +209,10 @@ fn validate_document(
                                 | "glass"
                                 | "noise"
                                 | "texture"
+                                | "color-controls"
+                                | "gaussian-blur"
+                                | "motion-blur"
+                                | "zoom-blur"
                         )
                     ) && color(&e["color"])
                         && number(&e["opacity"], 0., 1.)
@@ -335,9 +344,7 @@ mod tests {
         assert!(validate(&d, id).is_err());
         d["schemaVersion"] = json!(6);
         assert!(validate(&d, id).is_ok());
-        // The server already admits 1..=11. Schema 9 is not an unknown
-        // version; keep this rejection probe at the actual upper boundary.
-        d["schemaVersion"] = json!(12);
+        d["schemaVersion"] = json!(22);
         assert!(validate(&d, id).is_err());
         d["schemaVersion"] = json!(5);
         let key = d["nodes"]
@@ -349,6 +356,33 @@ mod tests {
             .clone();
         d["nodes"][&key]["effects"][0]["glass"]["dispersion"] = json!(1.5);
         assert!(validate(&d, id).is_err());
+    }
+    #[test]
+    fn imported_geometry_and_gaussian_blur_follow_the_kernel_contract() {
+        let mut d: Value = serde_json::from_str(include_str!(
+            "../../../../testing/fixtures/design/material-api-document.json"
+        ))
+        .unwrap();
+        let id = Uuid::parse_str(d["id"].as_str().unwrap()).unwrap();
+        let node = d["nodes"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+            .next()
+            .unwrap();
+        node["points"] = json!(0);
+        node["innerRadius"] = json!(0);
+        node["fills"][0]["stops"] = json!([]);
+        node["effects"] = json!([{"id":"imported","kind":"gaussian-blur","visible":true,
+            "radius":12,"x":0,"y":0,"spread":0,"color":"#000000","opacity":1,"amount":0}]);
+        for version in [18, 20, 21] {
+            d["schemaVersion"] = json!(version);
+            assert!(validate(&d, id).is_ok(), "schema {version}");
+        }
+        for version in [0, 17, 22] {
+            d["schemaVersion"] = json!(version);
+            assert!(validate(&d, id).is_err(), "schema {version}");
+        }
     }
     #[test]
     fn schema8_markers_and_layer_exports_follow_native_admission() {
@@ -429,11 +463,11 @@ mod tests {
                 .map(String::as_str),
             Some("dark")
         );
-        for version in [6, 7, 8, 9, 10, 11] {
+        for version in 6..=21 {
             d["schemaVersion"] = json!(version);
             assert!(validate(&d, id).is_ok(), "schema {version}");
         }
-        for version in [4, 5, 12] {
+        for version in [4, 5, 22] {
             d["schemaVersion"] = json!(version);
             assert!(validate(&d, id).is_err(), "schema {version}");
         }
