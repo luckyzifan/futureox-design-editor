@@ -122,14 +122,15 @@ export function coverageBeyondBacking<T extends RasterTile>(candidates: readonly
   return spills ? stack : undefined
 }
 
-/** Ready tiles that are at least twice as dense as the stretched picture under
- * them. A smaller step stays on the current bitmap so a wheel tick does not
- * swap nearly identical samples. This never supplies the sole picture: the
- * caller keeps the backing in the same stack, and the union must cover. */
+/** Ready tiles can replace lower-density pixels at the current screen density.
+ * Intermediate densities need a twofold gain to avoid swapping similar
+ * samples each wheel tick. The backing still supplies the rest of the view. */
 export function selectSharperCoverage<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
-  size: { width: number; height: number }, shown: readonly RasterTile[], limit = 24): T[] {
+  size: { width: number; height: number; dpr?: number }, shown: readonly RasterTile[], limit = 24): T[] {
   if (!shown.length || !Number.isSafeInteger(limit) || limit < 1) return []
   if (![view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite) || view.zoom <= 0) return []
+  const dpr = size.dpr ?? 0
+  const screenDensity = Number.isFinite(dpr) && dpr > 0 ? view.zoom * dpr : Infinity
   const shownSet = new Set(shown)
   const pool = candidates.filter(tile => !shownSet.has(tile) && tile.zoom > 0 && tileIntersectsView(tile, view, size))
     .sort((a, b) => b.zoom - a.zoom || a.x - b.x || a.y - b.y)
@@ -138,10 +139,8 @@ export function selectSharperCoverage<T extends RasterTile>(candidates: readonly
     if (chosen.length >= limit) break
     const rect = tileVisibleWorld(tile, view, size)
     if (!rect) continue
-    // Equality is included: a tile twice as dense as the picture under it is
-    // already enough to stop that picture dominating the sample.
-    if (tilesCoverBounds([...shown, ...chosen], rect, tile.zoom / MAX_PREVIEW_SCALE_RATIO * (1 + 1e-9))) continue
-    if (!bringsSamplingDetail(tile, view, size, [...shown, ...chosen])) continue
+    const requiredDensity = tile.zoom >= screenDensity ? tile.zoom : tile.zoom / MAX_PREVIEW_SCALE_RATIO * (1 + 1e-9)
+    if (tilesCoverBounds([...shown, ...chosen], rect, requiredDensity)) continue
     chosen.push(tile)
   }
   return chosen

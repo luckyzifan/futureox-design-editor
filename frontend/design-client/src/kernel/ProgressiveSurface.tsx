@@ -2532,18 +2532,17 @@ export function ProgressiveSurfaceImpl(
       tile.gpuTile !== undefined && (!tile.residentDevice ||
         tile.residentDevice.client === rasterClient && tile.residentDevice.key === device.key))
     const zoomingOut = !!displayed && requestedView.zoom < displayed.view.zoom
-    // Geometric cover is not sharpness. A full low-density frame still has to
-    // yield pixels to a ready tile that is at least twice as dense. A zoom-out
-    // does not punch that frame with a finer crop.
+    // Publish ready screen-density regions during zoom-in, including the first
+    // small step over a retained frame. Zoom-out keeps its coverage path.
+    const size = { width, height, dpr: progressiveNativeRepair && navigationZoom.active && !cameraDependent ? dpr : undefined }
     if (tilesCoverBounds(shown, world)) {
       if (zoomingOut) return none
-      const sharper = selectSharperCoverage(candidates, requestedView, { width, height }, shown).slice(0, 24)
+      const sharper = selectSharperCoverage(candidates, requestedView, size, shown)
       return { tiles: sharper, sharper }
     }
-    const under = selectCoverageUnderlay(candidates, requestedView, { width, height }, shown, 24, zoomingOut)
+    const under = selectCoverageUnderlay(candidates, requestedView, size, shown, 24, zoomingOut)
     if (zoomingOut) return { tiles: under, sharper: [] as PaintedTile[] }
-    const sharper = selectSharperCoverage(candidates, requestedView, { width, height }, [...shown, ...under])
-      .slice(0, Math.max(0, 24 - under.length))
+    const sharper = selectSharperCoverage(candidates, requestedView, size, [...shown, ...under], 24 - under.length)
     return { tiles: [...under, ...sharper], sharper }
   })()
   const continuityUnderlay = continuityPlan.tiles

@@ -5,7 +5,7 @@
 export function progressiveTileLayer(flags: {
   fine: boolean; cached: boolean; coarse: boolean; sameContent: boolean;
   refining: boolean; cameraDependent: boolean; nativeDensity?: boolean;nativePhase?:boolean;
-  /** Same-content sample already chosen as at least twice the retained picture. */
+  /** Same-content sample selected to improve the retained picture's density. */
   sharperThanPreview?: boolean
 }) {
   let layer: number

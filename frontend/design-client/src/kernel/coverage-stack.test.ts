@@ -131,6 +131,16 @@ test('a continuous zoom-in replaces a stretched backing where a twice-finer tile
   expect(sharperCoverageFrame([ready], [backing], view, size)).toBeUndefined()
 })
 
+test('screen-density detail can replace a preview during a small zoom-in step', () => {
+  const view = { x: 0, y: 0, zoom: 1.2 }
+  const display = { ...size, dpr: 2 }
+  const backing = tile('backing', 2, 0, 0, 2048)
+  const intermediate = tile('intermediate', 2.2, 0, 0, 512)
+  const detail = tile('detail', 2.4, 0, 0, 512)
+  expect(selectSharperCoverage([intermediate, detail], view, display, [backing])).toEqual([detail])
+  expect(selectSharperCoverage([detail], view, display, [backing, { ...detail, key: 'ready' }])).toEqual([])
+})
+
 test('zooming out from 3200% keeps the crop and fills the new viewport from a cached coarse page', () => {
   const low = { x: 0, y: 0, zoom: 1 }
   const crop = tile('crop', 32, 0, 0, 64)
