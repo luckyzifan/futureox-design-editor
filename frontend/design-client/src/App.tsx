@@ -1,3 +1,4 @@
+import { webPath } from './web-path'
 import { importInputStatus } from './import-input-policy'
 import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnostic } from './import-diagnostics'
 import { operationStatusText } from './operation-status-messages'
@@ -29,6 +30,8 @@ import { SourcePageInspector } from './SourcePageInspector'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
+import { DesktopCloudSettings } from './DesktopCloudSettings'
+import { cloudResult, desktopCloudWorkspace } from './desktop-cloud'
 import { PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
 import { interfaceText, interfacePreference, useInterfacePreferences } from './interface-preference'
 import { applyInterfaceLayout, interfaceLayoutFromShortcut } from './interface-layout'
@@ -104,7 +107,7 @@ import {
   PanelRightOpen,
 } from 'lucide-react'
 import { Editor, type Tool } from './engine'
-import { desktopBridge, type DesktopCommand } from './desktop'
+import { desktopBridge, type DesktopCloudStatus, type DesktopCommand } from './desktop'
 import { PluginPanel } from './plugins/PluginPanel'
 import { OPEN_PLUGINS_EVENT, pluginLaunchGrant } from './plugins/open-plugins'
 import { DesktopCatalog } from './DesktopCatalog'
@@ -426,10 +429,35 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showWebWorkspace, setShowWebWorkspace] = useState(false)
   const webWorkspaceLabel = locale === 'en' ? 'Server workspace' : '服务器工作区'
   const [webStatus, setWebStatus] = useState<WebWorkspaceStatus>({ connected: false })
-  const [webWorkspace] = useState(() => !desktop && !source ? new WebWorkspace(status => {
+  const [cloudStatus, setCloudStatus] = useState<DesktopCloudStatus>()
+  const [webWorkspace] = useState(() => (!desktop || desktop.cloud && desktopSession?.supportsWorkspace) && !source ? new WebWorkspace(status => {
     setWebStatus(status)
     if (status.error && status.documentId === editor.authoredDocument.id) editor.notify(status.error)
   }) : undefined)
+  const workspaceAvailable = !!webWorkspace && (!desktop || !!cloudStatus?.handle)
+  const attachDesktopCloud = useCallback((status: DesktopCloudStatus) => {
+    setCloudStatus(status)
+    if (!desktop?.cloud || !desktopSession || !webWorkspace) return
+    if (!status.enabled || !status.handle) {
+      webWorkspace.disconnect()
+      setShowWebWorkspace(false)
+      return
+    }
+    const { backend, journal } = desktopCloudWorkspace(desktop.cloud, status.handle, desktopSession)
+    webWorkspace.attach(backend, journal)
+  }, [desktop, desktopSession, webWorkspace])
+  const configureDesktopCloud = useCallback(async (request: { enabled: boolean; baseUrl?: string; token?: string }) => {
+    if (!desktop?.cloud) throw Error('云端协作不可用')
+    attachDesktopCloud(cloudResult(await desktop.cloud.configure(request)))
+  }, [desktop, attachDesktopCloud])
+  useEffect(() => {
+    if (!desktop?.cloud || !webWorkspace) return
+    let current = true
+    void desktop.cloud.status().then(value => {
+      if (current) attachDesktopCloud(cloudResult(value))
+    }).catch(error => { if (current) editor.notify(String(error)) })
+    return () => { current = false }
+  }, [desktop, editor, webWorkspace, attachDesktopCloud])
   const [backgroundLocalSave] = useState(() => new BackgroundLocalSave())
   useEffect(() => () => { backgroundLocalSave.dispose(); webWorkspace?.disconnect() }, [backgroundLocalSave, webWorkspace])
   useEffect(() => {
@@ -533,17 +561,19 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       }),
   )
   useEffect(() => {
-    if (!webWorkspace || !ready || showHome || switching) return
+    if (!webWorkspace || !ready || showHome || switching || !workspaceAvailable) return
     const id = s.doc.id
     const read = () => {
       if (editor.authoredDocument.id !== id || editor.interactionActive || editor.propertyPreviewActive ||
-          editor.state.busy || switchGate.current || hasPendingEdits(editor) ||
-          saver.durableRevision(id, editor.state.version) === undefined) return
+          editor.state.busy || switchGate.current || hasPendingEdits(editor)) return
+      if (desktopSession) return desktopSession.cloudSnapshot()
+      if (saver.durableRevision(id, editor.state.version) === undefined) return
       return editor.authoredDocument
     }
     return webWorkspace.watch(id, {
       read,
-      async install(expected, next, signal) {
+      async install(expected, next, signal, beforeCommit) {
+        if (desktopSession) return desktopSession.installCloudVersion(next, signal, beforeCommit, expected)
         const version = editor.state.version, session = editor.sessionGeneration
         const current = () => !signal.aborted && read() === expected &&
           editor.state.version === version && editor.sessionGeneration === session
@@ -563,7 +593,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         }
       },
     })
-  }, [webWorkspace, ready, showHome, switching, s.doc.id, editor, saver])
+  }, [webWorkspace, workspaceAvailable, ready, showHome, switching, s.doc.id, editor, saver, desktopSession])
+  useEffect(() => {
+    if (!webWorkspace || !workspaceAvailable || !desktopSession || desktopStatus.busy) return
+    const document = desktopSession.cloudSnapshot()
+    if (document) webWorkspace.localSaved(document)
+  }, [webWorkspace, workspaceAvailable, desktopSession, desktopStatus.busy, desktopStatus.revision, s.doc.id])
   const file = useRef<HTMLInputElement>(null)
   const capturePreview = useCallback(async (document: DesignDocument, version: number, pixels: PreviewPixels) => {
     // A property preview may begin while the bitmap/encoding promise is pending.
@@ -768,11 +803,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       !editor.settleOwnedPropertyPreview('save') || !commitPendingEdits(editor))
       throw new Error(locale === 'en' ? 'Finish the current edit before syncing.' : '请先完成当前编辑再同步')
     const document = editor.authoredDocument, version = editor.state.version, session = editor.sessionGeneration
-    saver.observe(document, version)
-    await saver.save(document, version)
+    if (desktopSession) {
+      if (!desktopSession.cloudSnapshot() && !await desktopSession.save()) throw Error('本机保存尚未完成')
+      if (desktopSession.cloudSnapshot() !== document) throw Error('当前文档仍有本机修改待保存')
+    } else {
+      saver.observe(document, version)
+      await saver.save(document, version)
+    }
     if (editor.authoredDocument !== document || editor.state.version !== version || editor.sessionGeneration !== session)
       throw new Error(locale === 'en' ? 'The design changed. Sync again to send the latest edit.' : '设计已变化，请再次同步最新修改')
-    webWorkspace.sync(document)
+    await webWorkspace.sync(document)
   }
   async function openLocalFiles() {
     if(source){await source.leave();return}
@@ -1090,14 +1130,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       }} />}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
-        onServerWorkspace={webWorkspace ? () => setShowWebWorkspace(true) : undefined}
+        onServerWorkspace={workspaceAvailable ? () => setShowWebWorkspace(true) : undefined}
         onOpenFile={openHomeFile} onSettings={() => {
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
           openSettings()
         }} />}
       <header className="editor-header">
         <button ref={fileMenuTrigger} className="brand" aria-label={panelText.fileMenu} aria-expanded={menu} onClick={() => setMenu(!menu)}>
-          <img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" aria-hidden="true" />
+          <img className="brand-mark" src={webPath('/branding/futureox-desgin.svg')} width="28" height="28" alt="" aria-hidden="true" />
           <strong>Futureox Design</strong>
           <ChevronDown size={13} />
         </button>
@@ -1231,7 +1271,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </> : <button onClick={() => void openLocalFiles()}>
               <FolderOpen size={15} />{menuText.localFilesTrash}
             </button>}
-            {webWorkspace && <button type="button" disabled={!ready || switching} onClick={() => { setMenu(false); setShowWebWorkspace(true) }}>{webWorkspaceLabel}</button>}
+            {workspaceAvailable && <button type="button" disabled={!ready || switching} onClick={() => { setMenu(false); setShowWebWorkspace(true) }}>{webWorkspaceLabel}</button>}
             <div className="render-quality" role="group" aria-label={menuText.renderQuality}>
               <span>{menuText.renderQualityShort}</span>
               <button
@@ -1365,7 +1405,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
       {showWebWorkspace && webWorkspace && <WebWorkspacePanel workspace={webWorkspace} status={webStatus} documentId={s.doc.id}
         canSync={ready && !showHome && !switching} locale={locale}
+        onDisconnect={desktopSession ? () => configureDesktopCloud({ enabled: false }) : undefined}
         onOpen={async record => {
+          if (desktopSession) {
+            const opened = await webWorkspace.adopt(record, (signal, beforeCommit) =>
+              desktopSession.installCloudVersion(record.document, signal, beforeCommit))
+            if (opened) { setMenu(false); setShowHome(false) }
+            return opened
+          }
           const opened = await switchDocument(record.document)
           if (opened) webWorkspace.link(record, editor.authoredDocument)
           return opened
@@ -1540,6 +1587,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
       {showPlugins && <PluginPanel editor={editor} desktop={desktop} launch={pluginLaunch} returnFocus={fileMenuTrigger.current} onClose={() => { setShowPlugins(false); setPluginLaunch(null) }} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}
+        cloudControls={desktop?.cloud && webWorkspace && <DesktopCloudSettings status={cloudStatus} locale={locale} configure={configureDesktopCloud} />}
         busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">设计尚未就绪，暂不能切换工作区目录。</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
           busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {
             if (workspaceRootPending.current || !ready || desktopStatus.busy || !commitPendingEdits(editor)) return

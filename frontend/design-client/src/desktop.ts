@@ -28,6 +28,20 @@ export type WorkspaceDocument = {
   id: string; name: string; revision: number; hash: string; updatedAt: number; deleted: boolean
 }
 export type WorkspaceOpened = WorkspaceDocument & { documentJson: string }
+export type DesktopCloudStatus = { enabled: boolean; baseUrl?: string; handle?: string; remembersToken: boolean }
+export type DesktopCloudCursor = {
+  revision: number
+  pending?: { localRevision: number; requestId: string }
+  applying?: { revision: number; mutationId: string }
+}
+export interface DesktopCloudBridge {
+  status(): Promise<DesktopResult<DesktopCloudStatus>>
+  configure(request: { enabled: boolean; baseUrl?: string; token?: string }): Promise<DesktopResult<DesktopCloudStatus>>
+  request(request: { handle: string; callId: string; method: string; target: string; body?: string }): Promise<DesktopResult<{ httpStatus: number; data: unknown }>>
+  cancel(request: { handle: string; callId: string }): Promise<DesktopResult>
+  readCursor(request: { handle: string; id: string }): Promise<DesktopResult<{ cursor: DesktopCloudCursor | null }>>
+  writeCursor(request: { handle: string; id: string; cursor: DesktopCloudCursor }): Promise<DesktopResult>
+}
 export type WorkspaceRootSelection = { selectionId: string; displayName: string; isDefault: boolean }
 export interface WorkspaceRootBridge {
   status(): Promise<DesktopResult<{ displayName: string; isDefault: boolean; canSwitch: boolean }>>
@@ -182,6 +196,7 @@ export interface DesktopBridge {
   }
   readonly workspaceRoot?: WorkspaceRootBridge
   readonly workspace?: WorkspaceBridge
+  readonly cloud?: DesktopCloudBridge
   readonly clipboard?: { read(): Promise<DesktopResult<DesktopClipboard>>; write(value: DesktopClipboard): Promise<DesktopResult> }
   readonly version: 1
   readonly pluginUi?: {

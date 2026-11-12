@@ -65,9 +65,9 @@ bun run dev
 
 打开终端中 Vite 输出的本地地址，默认是 `http://127.0.0.1:1430`。`bun run dev` 会先构建 Rust／WASM 内核；首次编译需要等待。
 
-### Web 协作服务
+### Web 和桌面协作
 
-桌面端通过 `design-desktop-backend` 管理本机文件、SQLite 和恢复。Web 端通过 HTTP 连接独立的 `design-server`，由服务端管理 PostgreSQL、共享文档和协作版本。三者共用文档模型和 Rust 内核。
+桌面端通过 `design-desktop-backend` 管理本机文件、SQLite 和恢复。桌面默认使用本地模式，Web 和开启云端协作的桌面端都连接独立的 `design-server`。服务端管理 PostgreSQL、共享文档和协作版本。
 
 准备 PostgreSQL 数据库，在仓库根目录构建 Web 端并启动服务。服务启动时应用数据库迁移，默认监听 `127.0.0.1:9430`。
 
@@ -81,9 +81,13 @@ DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
 
 在 Web 首页打开「服务器工作区」，输入 `DESIGN_API_TOKEN` 后打开共享文档，也可以在编辑器内将当前设计接入同步。编辑先在本地异步保存，再发送版本化增量。打开同一文档的浏览器会自动接收已提交的修改。不同图层的并发编辑可合并，重叠冲突时保留本机修改，可从工作区打开服务端版本。接收外部版本时保留可用的视口和选择，并从新版本开始记录本地撤销。
 
+桌面端在「设置 → 保存与范围」勾选「启用云端协作」，填写服务地址和同一工作区令牌，再从「服务器工作区」打开或同步设计。桌面先提交 SQLite 再同步。断网可继续本机编辑，重启后沿用上一次云端版本重试，发生冲突时保留 SQLite 中的修改。令牌可由操作系统安全存储时，桌面会在重新启动后恢复连接。
+
 `DESIGN_DOCUMENT_MEMORY_MIB` 是独立服务的每份文档处理预算，默认 1024 MiB，可设为 256–4096 MiB。文档 JSON 字节上限按预算的十六分之一计算，组件展开也使用该预算。当前令牌授予整个服务器工作区的读写权限。
 
 独立托管 Web 静态文件时，将同源的 `/api/design` 转发到 `design-server`。开发模式下可用 `DESIGN_BACKEND_URL` 指定 Vite 代理目标。`DESIGN_WEB_ROOT` 指定由服务端直接托管的静态构建目录。
+
+挂载到 `/desgin` 时，Web 构建使用 `vite build --base /desgin/`，服务设置 `DESIGN_WEB_BASE=/desgin`。反向代理保留这段路径并转发到独立服务。Web 入口为 `/desgin/`，桌面设置使用带 `/desgin` 的 HTTPS 地址。
 
 | 想做什么 | 从哪里进入 |
 | --- | --- |

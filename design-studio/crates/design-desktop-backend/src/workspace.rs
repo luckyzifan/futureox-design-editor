@@ -749,6 +749,19 @@ impl WorkspaceStore {
         .map_err(db)?;
         Ok(entry)
     }
+    /// Identify the SQLite revision for an already committed mutation. Cloud
+    /// adoption uses this receipt to recover the exact local write on restart.
+    pub async fn mutation_revision(&self, id: &str, mutation: &str) -> Result<Option<i64>> {
+        validate_id(id)?;
+        validate_mutation(mutation)?;
+        sqlx::query_scalar("SELECT revision FROM mutations WHERE mutation_id=? AND document_id=?")
+            .bind(mutation)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db)
+    }
+
     pub async fn commit(
         &self,
         document: &Value,

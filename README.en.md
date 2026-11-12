@@ -65,9 +65,9 @@ bun run dev
 
 Open the local address printed by Vite, normally `http://127.0.0.1:1430`. `bun run dev` builds the Rust/WASM kernel first; the initial compilation takes time.
 
-### Web collaboration service
+### Web and desktop collaboration
 
-The desktop host uses `design-desktop-backend` for local files, SQLite, and recovery. The web app uses the independent `design-server` HTTP service for PostgreSQL, shared documents, and collaboration. All three use the shared document model and Rust kernel.
+The desktop host uses `design-desktop-backend` for local files, SQLite, and recovery. Desktop starts in local mode. The web app and opted-in desktop clients use the independent `design-server` HTTP service for PostgreSQL, shared documents, and collaboration.
 
 Create a PostgreSQL database, then build the web app and start the service from the repository root. The server runs migrations at startup and listens on `127.0.0.1:9430` by default.
 
@@ -81,9 +81,13 @@ DESIGN_WEB_ROOT="$PWD/frontend/design-client/dist" \
 
 Open **Server workspace** on the web home screen and enter `DESIGN_API_TOKEN`. Open a shared design or link the current design from the editor. The browser saves edits asynchronously to local storage before sending versioned patches. Browsers on the same document automatically receive committed edits. Concurrent changes to different layers can merge. An overlapping edit preserves the local changes and lets the editor open the server version from the workspace. An incoming revision keeps the current viewport and valid selection and starts a fresh local undo history.
 
+On desktop, open **Settings → Saving and scope**, enable cloud collaboration, and enter the service address and the same workspace token. Use **Server workspace** to open or link a design. Desktop commits to SQLite before sending edits. Offline edits remain available, and restart resumes pending work from the recorded server revision. Conflicts preserve the local SQLite revisions. The app can reconnect on restart when the operating system can securely retain the token.
+
 `DESIGN_DOCUMENT_MEMORY_MIB` controls the server's per-document processing budget. It defaults to 1024 MiB and accepts 256–4096 MiB. The JSON document limit is one sixteenth of this budget, which also bounds component expansion. The current token grants read and write access to the whole server workspace.
 
 When hosting the web assets separately, proxy same-origin `/api/design` requests to `design-server`. Vite accepts `DESIGN_BACKEND_URL` as a development proxy target. Set `DESIGN_WEB_ROOT` to have the service serve the static web build.
+
+For hosting at `/desgin`, build the web app with `vite build --base /desgin/` and set `DESIGN_WEB_BASE=/desgin` on the service. Preserve the prefix in the reverse proxy. Open `/desgin/` in the browser and use the HTTPS address with `/desgin` in desktop settings.
 
 | Goal | Start here |
 | --- | --- |

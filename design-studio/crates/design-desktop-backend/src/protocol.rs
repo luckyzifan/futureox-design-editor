@@ -212,6 +212,17 @@ async fn dispatch_sqlite(backend: &Backend, method: &str, params: Value) -> Resu
                     .await?,
             )
         }
+        "workspace.mutationRevision" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Mutation {
+                id: String,
+                mutation_id: String,
+            }
+            let request = parse_params::<Mutation>(params)?;
+            let revision = backend.workspace()?.mutation_revision(&request.id, &request.mutation_id).await?;
+            Ok(json!({"revision": revision}))
+        }
         "workspace.commit" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]

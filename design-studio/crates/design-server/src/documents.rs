@@ -227,6 +227,25 @@ pub(crate) async fn read(
     Ok(Json(decode(row)))
 }
 
+const VERSION_ROW: &str = "SELECT document_id::text AS id,document->>'name' AS name,revision,document,created_at::text AS updated_at FROM design_versions WHERE document_id=$1 AND revision=$2";
+
+#[utoipa::path(get,path="/api/design/documents/{id}/versions/{revision}",params(("id"=String,Path),("revision"=i64,Path)),responses((status=200,body=Document),(status=404),(status=422)),security(("workspace_token"=[])))]
+pub(crate) async fn read_version(
+    State(state): State<AppState>,
+    Path((id, revision)): Path<(Uuid, i64)>,
+) -> Result<Json<Document>> {
+    if !revision_is_valid(revision) || revision == 0 {
+        return Err(invalid("Invalid revision"));
+    }
+    let row = sqlx::query(VERSION_ROW)
+        .bind(id)
+        .bind(revision)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(not_found)?;
+    Ok(Json(decode(row)))
+}
+
 #[utoipa::path(get,path="/api/design/documents/{id}/changes",params(("id"=String,Path),("after"=i64,Query)),responses((status=200,body=Change),(status=404),(status=422)),security(("workspace_token"=[])))]
 pub(crate) async fn changes(
     State(state): State<AppState>,
@@ -293,8 +312,11 @@ async fn existing_receipt(
 }
 
 async fn version(tx: &mut Transaction<'_, Postgres>, id: Uuid, revision: i64) -> Result<Document> {
-    let row=sqlx::query("SELECT document_id::text AS id,document->>'name' AS name,revision,document,created_at::text AS updated_at FROM design_versions WHERE document_id=$1 AND revision=$2")
-        .bind(id).bind(revision).fetch_one(&mut **tx).await?;
+    let row = sqlx::query(VERSION_ROW)
+        .bind(id)
+        .bind(revision)
+        .fetch_one(&mut **tx)
+        .await?;
     Ok(decode(row))
 }
 

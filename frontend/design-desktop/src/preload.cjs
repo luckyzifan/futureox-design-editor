@@ -129,6 +129,14 @@ contextBridge.exposeInMainWorld(
       revisions: (value) => invoke('workspace-revisions', value),
       restore: (value) => invoke('workspace-restore', value),
     }),
+    cloud: Object.freeze({
+      status: () => invoke('cloud-status'),
+      configure: value => invoke('cloud-configure', value),
+      request: value => invoke('cloud-request', value),
+      cancel: value => invoke('cloud-cancel', value),
+      readCursor: value => invoke('cloud-read-cursor', value),
+      writeCursor: value => invoke('cloud-write-cursor', value),
+    }),
     live: Object.freeze({initial:()=>invoke('live-initial'),observe:value=>invoke('live-observe',value),openWindow:value=>invoke('live-new-window',value)}),
     clipboard: Object.freeze({
       read: () => invoke('clipboard-read'),

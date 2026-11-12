@@ -1,6 +1,7 @@
+import { webPath } from '../web-path'
 // Editing and rendering share the same Rust geometry implementation.
 import initialize, { geometry_json } from '../generated/design-kernel/design_kernel'
-const moduleReady = initialize({ module_or_path: '/kernel/design_kernel_bg.wasm' })
+const moduleReady = initialize({ module_or_path: webPath('/kernel/design_kernel_bg.wasm') })
 self.onmessage = async (e) => {
   try {
     await moduleReady

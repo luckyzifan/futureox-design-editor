@@ -1,3 +1,4 @@
+import { webPath } from '../web-path'
 /** Persistent decoded-image cache (Sketch's MSImageDataMipMap disk cache
  * equivalent). Level-0 decodes are frozen kernel
  * outputs — residency only, never a different value — so this store may
@@ -62,7 +63,7 @@ let kernelDigest: Promise<string | undefined> | undefined
 function kernelBuildKey(): Promise<string | undefined> {
   kernelDigest ??= (async () => {
     try {
-      const bytes = new Uint8Array(await (await fetch('/kernel/design_kernel_bg.wasm')).arrayBuffer())
+      const bytes = new Uint8Array(await (await fetch(webPath('/kernel/design_kernel_bg.wasm'))).arrayBuffer())
       const digest = await crypto.subtle.digest('SHA-256', bytes)
       return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
     } catch {

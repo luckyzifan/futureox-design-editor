@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::{net::SocketAddr, sync::Arc};
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -133,7 +133,7 @@ async fn health(State(state): State<AppState>) -> Result<Json<Value>> {
 }
 #[derive(OpenApi)]
 #[openapi(
-    paths(documents::list, documents::read, documents::save, documents::edit, documents::changes, render_image),
+    paths(documents::list, documents::read, documents::save, documents::edit, documents::changes, documents::read_version, render_image),
     components(schemas(Save, Document, Summary, Edit, EditReceipt, Change, RenderRequest)),
     modifiers(&Security)
 )]
@@ -153,6 +153,26 @@ impl utoipa::Modify for Security {
         }
     }
 }
+fn web_base(value: String) -> std::result::Result<String, &'static str> {
+    if value == "/" || value.is_empty() {
+        return Ok(String::new());
+    }
+    let base = value.strip_suffix('/').unwrap_or(&value);
+    if base.len() > 128
+        || !base.strip_prefix('/').is_some_and(|path| {
+            path.split('/').all(|part| {
+                !part.is_empty()
+                    && part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
+            })
+        })
+    {
+        return Err("DESIGN_WEB_BASE must be an absolute URL path such as /desgin");
+    }
+    Ok(base.to_owned())
+}
+
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -177,6 +197,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     futureox_design_kernel::capacity::configure(memory_mib * 1024 * 1024)?;
     let body_limit = futureox_design_kernel::capacity::document_byte_limit() + 4096;
+    let base = web_base(std::env::var("DESIGN_WEB_BASE").unwrap_or_default())?;
     let pool = PgPoolOptions::new()
         .max_connections(8)
         .connect(&url)
@@ -208,15 +229,18 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .patch(documents::edit),
         )
         .route("/documents/{id}/changes", get(documents::changes))
+        .route(
+            "/documents/{id}/versions/{revision}",
+            get(documents::read_version),
+        )
         .layer(middleware::from_fn_with_state(state.clone(), authenticate));
     let mut app = Router::new()
         .route("/health", get(health))
         .nest("/api/design", protected)
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", Api::openapi()))
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
-    if let Some(root) = std::env::var_os("DESIGN_WEB_ROOT") {
-        let root = std::path::PathBuf::from(root);
+    let web_root = std::env::var_os("DESIGN_WEB_ROOT").map(std::path::PathBuf::from);
+    if let Some(root) = &web_root {
         for file in ["index.html", "kernel/design_kernel_bg.wasm"] {
             if !tokio::fs::metadata(root.join(file)).await?.is_file() {
                 return Err(format!("DESIGN_WEB_ROOT requires {file}").into());
@@ -224,6 +248,18 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
         app = app.fallback_service(ServeDir::new(root));
     }
+    let mut openapi = Api::openapi();
+    if !base.is_empty() {
+        app = Router::new().nest(&base, app);
+        if let Some(root) = &web_root {
+            app = app.route_service(&format!("{base}/"), ServeFile::new(root.join("index.html")));
+        }
+        openapi.servers = Some(vec![utoipa::openapi::Server::new(&base)]);
+    }
+    let app = app.merge(
+        SwaggerUi::new(format!("{base}/swagger-ui"))
+            .url(format!("{base}/api-doc/openapi.json"), openapi),
+    );
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(%bind,"design studio ready");
     axum::serve(listener, app)

@@ -1,9 +1,10 @@
+import { webPath } from './web-path'
 import { assertImportInputBytes } from './import-input-policy'
 import { ImportStage, type ImportDiagnostic } from './import-diagnostics'
 import { assertDocumentBytes } from './document-capacity'
 import { forma_encode_json, forma_decode_json } from './generated/design-kernel/design_kernel'
 import { initializeKernelModule } from './kernel/module'
-import { desktopBridge } from './desktop'
+import { desktopBridge, type DesktopCloudBridge } from './desktop'
 import { importFileInWorker } from './import-file-worker'
 import { type DesignDocument, validateDocument } from './model'
 import { immutableDocument } from './immutable-document'
@@ -82,14 +83,33 @@ export class BackendError extends Error {
 export class Backend {
   token = ''
   private readonly outboxOwner = crypto.randomUUID()
+  constructor(private readonly cloud?: { bridge: DesktopCloudBridge; handle: string }) {}
   private async scope(id: string, token: string) {
     if (!token) throw new Error('请输入工作空间访问令牌')
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
     return `${Array.from(new Uint8Array(digest), (v) => v.toString(16).padStart(2, '0')).join('')}:${id}`
   }
   async request(path: string, options: RequestInit = {}) {
+    if (this.cloud) {
+      const { bridge, handle } = this.cloud, signal = options.signal
+      signal?.throwIfAborted()
+      const callId = crypto.randomUUID()
+      const cancel = () => { void bridge.cancel({ handle, callId }).catch(() => {}) }
+      signal?.addEventListener('abort', cancel, { once: true })
+      try {
+        const result = await bridge.request({ handle, callId, method: options.method ?? 'GET',
+          target: path, body: typeof options.body === 'string' ? options.body : undefined })
+        signal?.throwIfAborted()
+        if (result.status !== 'ok') throw Error(result.status === 'cancelled' ? '云端请求已取消' : result.message)
+        if (result.httpStatus < 200 || result.httpStatus >= 300) {
+          const error = result.data as { error?: string } | undefined
+          throw new BackendError(result.httpStatus, error?.error || '云端请求失败')
+        }
+        return result.data
+      } finally { signal?.removeEventListener('abort', cancel) }
+    }
     if (desktopBridge()) throw new Error('桌面离线模式不连接云端文件服务')
-    const response = await fetch(`/api/design${path}`, {
+    const response = await fetch(webPath(`/api/design${path}`), {
       cache: 'no-store',
       ...options,
       headers: {
@@ -132,23 +152,36 @@ export class Backend {
     return receipt
   }
   async get(id: string, signal?: AbortSignal): Promise<RemoteDocument> {
+    if (this.cloud)
+      return checkedRemoteDocument(await this.request(`/documents/${encodeURIComponent(id)}`, { signal }), id)
     const token = this.token,
       key = await this.scope(id, token)
     const result: RemoteDocument = await this.request(`/documents/${encodeURIComponent(id)}`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     })
-    if (result.id !== id || result.document?.id !== id || !Number.isSafeInteger(result.revision) || result.revision < 1)
-      throw new Error('服务器文档响应无效')
+    checkedRemoteDocument(result, id)
     await localTransaction(['remote'], 'readwrite', async (tx) => {
       tx.objectStore('remote').put({ revision: result.revision }, key)
     })
     return result
   }
-  async save(doc: DesignDocument, revision: number, options: { signal?: AbortSignal; exactRevision?: boolean } = {}): Promise<RemoteDocument> {
+  async getVersion(id: string, revision: number, signal: AbortSignal): Promise<RemoteDocument> {
+    const result = checkedRemoteDocument(await this.request(`/documents/${encodeURIComponent(id)}/versions/${revision}`, { signal }), id)
+    if (result.revision !== revision) throw Error('服务器历史版本响应无效')
+    return result
+  }
+  async save(doc: DesignDocument, revision: number, options: { signal?: AbortSignal; exactRevision?: boolean; requestId?: string } = {}): Promise<RemoteDocument> {
     if (!immutableDocument(doc)) doc = structuredClone(doc)
     validateDocument(doc)
     const { signal, exactRevision } = options
+    if (this.cloud) {
+      const result = checkedRemoteDocument(await this.request(`/documents/${encodeURIComponent(doc.id)}`, {
+        method: 'PUT', body: JSON.stringify({ document: doc, revision, requestId: options.requestId ?? crypto.randomUUID() }), signal,
+      }), doc.id)
+      if (result.revision !== revision + 1) throw Error('服务器保存回执无效')
+      return result
+    }
     const token = this.token,
       key = await this.scope(doc.id, token)
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -214,4 +247,12 @@ export class Backend {
     })
     return result
   }
+}
+
+function checkedRemoteDocument(value: unknown, id: string): RemoteDocument {
+  const result = value as RemoteDocument | undefined
+  if (!result || result.id !== id || result.document?.id !== id ||
+      !Number.isSafeInteger(result.revision) || result.revision < 1)
+    throw Error('服务器文档响应无效')
+  return result
 }

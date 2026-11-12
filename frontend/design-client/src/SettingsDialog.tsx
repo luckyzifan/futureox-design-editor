@@ -32,12 +32,13 @@ const canvasControls: { key: CanvasSetting; label: InterfaceMessageKey; detail: 
 ]
 
 /** The parent binds bindEditorSettings(editor) for the complete Editor lifetime. */
-export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, workspaceControls, busy = false }: {
+export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, workspaceControls, cloudControls, busy = false }: {
   editor: Editor
   onClose: () => void
   desktop?: boolean
   returnFocus?: HTMLElement | null
   workspaceControls?: ReactNode
+  cloudControls?: ReactNode
   busy?: boolean
 }) {
   const text = useInterfaceText()
@@ -195,6 +196,7 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
           </section>
           <section role="tabpanel" id={`${id}-panel-saving`} aria-labelledby={`${id}-tab-saving`} hidden={section !== 'saving'}>
             {workspaceControls}
+            {cloudControls}
             <h3>{text.savingMode}</h3>
             {desktop ? <p>{text.savingDesktop}</p>
               : <p>{text.savingWeb}</p>}

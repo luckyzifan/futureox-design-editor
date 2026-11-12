@@ -1,6 +1,7 @@
 import { desktopText, localizeNativeMenu } from './native-locale.mjs'
 import { createDesignAiHost } from './design-ai.mjs'
 import { createDesignAgentHost, resolveDesignAgentBinary } from './design-agent-host.mjs'
+import { createCloudCollaboration } from './cloud-collaboration.mjs'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
@@ -13,7 +14,7 @@ import { LargeDocumentHost } from './large-document.mjs'
 import { publishedDocumentJson } from './document-json.mjs'
 import { assertIndependentExport } from './independent-export.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor, safeStorage } from 'electron'
 import path from 'node:path'
 import { mkdtempSync, realpathSync } from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -322,6 +323,19 @@ function register(name, action, exclusiveOperation = true) {
     try { return await action(value) } catch (error) { return resultError(error) }
   })
 }
+const cloud = createCloudCollaboration({
+  root: () => app.getPath('userData'),
+  safeStorage,
+  documentLimit: DOCUMENT_BYTE_LIMIT,
+  findLocalMutation: async (id, mutationId) =>
+    (await backend.request('workspace.mutationRevision', { id, mutationId })).revision,
+})
+register('cloud-status', () => cloud.status(), false)
+register('cloud-configure', value => cloud.configure(value), false)
+register('cloud-request', value => cloud.request(value), false)
+register('cloud-cancel', value => cloud.cancel(value), false)
+register('cloud-read-cursor', value => cloud.readCursor(value), false)
+register('cloud-write-cursor', value => cloud.writeCursor(value), false)
 // Renderer may choose presentation only. register retains current-window sender validation.
 const designAi = createDesignAiHost()
 register('design-ai-status', () => designAi.status(), false)

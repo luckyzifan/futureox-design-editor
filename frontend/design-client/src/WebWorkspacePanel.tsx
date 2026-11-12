@@ -3,7 +3,7 @@ import { modalKeyDown } from './modal-keyboard'
 import type { RemoteDocument } from './persistence'
 import type { WebWorkspace, WebWorkspaceStatus } from './web-workspace'
 
-export function WebWorkspacePanel({ workspace, status, documentId, canSync, locale, onOpen, onSync, onClose }: {
+export function WebWorkspacePanel({ workspace, status, documentId, canSync, locale, onOpen, onSync, onClose, onDisconnect }: {
   workspace: WebWorkspace
   status: WebWorkspaceStatus
   documentId: string
@@ -12,6 +12,7 @@ export function WebWorkspacePanel({ workspace, status, documentId, canSync, loca
   onOpen: (record: RemoteDocument) => Promise<boolean>
   onSync: () => Promise<void>
   onClose: () => void
+  onDisconnect?: () => Promise<void>
 }) {
   const english = locale === 'en'
   const heading = useId(), panel = useRef<HTMLElement>(null), tokenInput = useRef<HTMLInputElement>(null)
@@ -56,7 +57,11 @@ export function WebWorkspacePanel({ workspace, status, documentId, canSync, loca
         <div className="remote-actions">
           <button type="button" disabled={busy || !canSync} onClick={() => void action(onSync)}>{english ? 'Sync current design' : '同步当前设计'}</button>
           <button type="button" className="secondary" disabled={busy} onClick={() => void action(async () => { setFiles(await workspace.list(lifetime.signal)) })}>{english ? 'Refresh' : '刷新'}</button>
-          <button type="button" className="secondary" disabled={busy} onClick={() => { workspace.disconnect(); setFiles([]); setError('') }}>{english ? 'Disconnect' : '断开'}</button>
+          <button type="button" className="secondary" disabled={busy} onClick={() => void action(async () => {
+            if (onDisconnect) await onDisconnect()
+            else workspace.disconnect()
+            setFiles([])
+          })}>{english ? 'Disconnect' : '断开'}</button>
         </div>
         {current?.phase === 'saving' && <p role="status">{english ? 'Syncing to server…' : '正在同步到服务器…'}</p>}
         {current?.phase === 'saved' && <p role="status">{english ? 'Synced to server' : '已同步到服务器'} · r{current.revision}</p>}

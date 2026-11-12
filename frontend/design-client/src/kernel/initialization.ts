@@ -1,3 +1,4 @@
+import { webPath } from '../web-path'
 export type InitializationLease = { signal: AbortSignal; assertCurrent(): void; commit(publish: () => void): void }
 type Clock = {
   now(): number
@@ -68,7 +69,7 @@ export async function readKernelAsset(
   limit: number,
   signal: AbortSignal,
 ): Promise<Uint8Array> {
-  const response = await fetch(path, { signal, mode: 'same-origin', redirect: 'error' })
+  const response = await fetch(webPath(path), { signal, mode: 'same-origin', redirect: 'error' })
   if (!response.ok) throw new Error(`无法载入内核资源：HTTP ${response.status}`)
   if (Number(response.headers.get('Content-Length')) > limit)
     throw new Error('内核资源超过大小限制')

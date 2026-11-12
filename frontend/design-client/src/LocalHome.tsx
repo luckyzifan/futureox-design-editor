@@ -1,3 +1,4 @@
+import { webPath } from './web-path'
 import { useEffect,useLayoutEffect,useRef,useState,type ReactNode } from 'react'
 import { File,FolderOpen,Grid2X2,List,Plus,Search,Settings } from 'lucide-react'
 import { FileMark } from './chrome-icons'
@@ -59,7 +60,7 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
  const continueLabel = locale === 'en' ? `Continue editing · ${currentName}` : `继续编辑 · ${currentName}`
  const savedWhere = source.kind === 'web-local' ? text.savedInBrowser : text.savedOnComputer
  return <section ref={root} className="local-home" aria-label={text.localDesignHome} aria-busy={loading||working||!ready} onKeyUp={e=>e.stopPropagation()} onKeyDown={e=>{e.stopPropagation();if(e.key==='Escape'&&!disabled){e.preventDefault();onResume()}}}>
-  <aside className="local-home-sidebar"><div className="local-home-brand"><img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" /><strong>Futureox Design</strong></div><div className="local-home-identity"><span aria-hidden="true">a</span><div><strong>admin</strong><small>{text.localWorkspace}</small></div></div>
+  <aside className="local-home-sidebar"><div className="local-home-brand"><img className="brand-mark" src={webPath('/branding/futureox-desgin.svg')} width="28" height="28" alt="" /><strong>Futureox Design</strong></div><div className="local-home-identity"><span aria-hidden="true">a</span><div><strong>admin</strong><small>{text.localWorkspace}</small></div></div>
    <nav aria-label={text.homeSections}><button type="button" aria-current="page"><File size={16}/>{text.designRecentFiles}</button>
     {onServerWorkspace&&<button type="button" disabled={disabled} onClick={onServerWorkspace}><FolderOpen size={16}/>{locale==='en'?'Server workspace':'服务器工作区'}</button>}
     <button type="button" disabled={working || (ready && busy)} onClick={onSettings}><Settings size={16}/>{text.settingsTitle}</button></nav>

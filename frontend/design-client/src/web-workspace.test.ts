@@ -1,17 +1,19 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node, type DesignDocument } from './model'
-import { BackendError, type RemoteEditReceipt } from './persistence'
+import { Backend, BackendError, type RemoteEditReceipt } from './persistence'
 import { WebWorkspace } from './web-workspace'
 import { applyWorkspacePatch, workspacePatch } from './workspace-patch'
 
 const api = vi.hoisted(() => ({
   changes: vi.fn(),
+  getVersion: vi.fn(),
   edit: vi.fn(),
   save: vi.fn(),
 }))
 vi.mock('./persistence', () => ({
   Backend: class {
     list() { return Promise.resolve([]) }
+    getVersion(...args: unknown[]) { return api.getVersion(...args) }
     changes(...args: unknown[]) { return api.changes(...args) }
     edit(...args: unknown[]) { return api.edit(...args) }
     save(...args: unknown[]) { return api.save(...args) }
@@ -107,4 +109,30 @@ test('the workspace transport preserves authored null separately from deletion',
   expect(applyWorkspacePatch(base, workspacePatch(base, withNull))).toEqual(withNull)
   const removed = applyWorkspacePatch(withNull, workspacePatch(withNull, base))
   expect(Object.hasOwn(removed, 'fdCompatibility')).toBe(false)
+})
+
+test('an interrupted desktop request resumes from the exact server and SQLite revisions', async () => {
+  const f = await fixture()
+  f.workspace.disconnect()
+  const requestId = crypto.randomUUID()
+  const submitted = f.name(f.base, 0, 'already sent'), later = f.name(submitted, 1, 'edited offline')
+  const write = vi.fn(async () => {})
+  const localVersion = vi.fn(async () => submitted)
+  f.write(later)
+  api.getVersion.mockResolvedValue({
+    id: f.base.id, name: f.base.name, revision: 1, document: f.base, updatedAt: '',
+  })
+  f.workspace.attach(new Backend(), {
+    read: async () => ({ revision: 1, pending: { localRevision: 7, requestId } }),
+    write,
+    localVersion,
+    localRevision: document => document === later ? 8 : undefined,
+  })
+  await vi.advanceTimersByTimeAsync(200)
+  expect(api.getVersion).toHaveBeenCalledWith(f.base.id, 1, expect.any(AbortSignal))
+  expect(localVersion).toHaveBeenCalledWith(f.base.id, 7)
+  expect(api.edit.mock.calls[0].slice(0, 4)).toEqual([f.base.id, 1, requestId, workspacePatch(f.base, submitted)])
+  expect(api.edit.mock.calls[1][1]).toBe(2)
+  expect(api.edit.mock.calls[1][3]).toEqual(workspacePatch(submitted, later))
+  expect(write).toHaveBeenLastCalledWith(f.base.id, { revision: 3 })
 })

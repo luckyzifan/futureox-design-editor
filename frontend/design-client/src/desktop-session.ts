@@ -83,6 +83,76 @@ export class DesktopSession {
   private workspacePending?: { documentJson: string; expectedRevision: number | null; mutationId: string; generation: number; id: string }
   get supportsWorkspace() { return !!this.bridge.workspace }
   get activeDocumentId() { return this.currentDocument.id }
+  private readonly cloudRevisions = new WeakMap<DesignDocument, number>()
+  cloudLocalRevision(document: DesignDocument) { return this.cloudRevisions.get(document) }
+  cloudSnapshot() {
+    if (!this.bridge.workspace || this.active || this.disposed || this.workspacePending || this.dirty ||
+        this.editor.interactionActive || this.editor.propertyPreviewActive || this.editor.state.busy) return
+    const document = this.editor.authoredDocument ?? this.editor.state.doc
+    const revision = this.workspaceHeads.get(document.id)
+    if (document !== this.currentDocument || revision === undefined) return
+    this.cloudRevisions.set(document, revision)
+    return document
+  }
+  async readCloudLocalVersion(id: string, revision: number): Promise<DesignDocument> {
+    const result = await this.bridge.workspace?.open({ id, revision })
+    if (result?.status !== 'ok' || result.id !== id || result.revision !== revision || result.deleted)
+      throw Error('找不到待同步的本机版本，当前文档已保留')
+    const json = nativeDesignJson(result.documentJson)
+    assertDocumentJson(json)
+    const document: DesignDocument = JSON.parse(json)
+    if (document.id !== id) throw Error('本机文档版本响应无效')
+    return document
+  }
+
+  async installCloudVersion(next: DesignDocument, signal: AbortSignal, beforeCommit?: (mutationId: string) => Promise<void>,
+    expected?: DesignDocument): Promise<DesignDocument | undefined> {
+    const store = this.bridge.workspace
+    if (!store || signal.aborted || (expected && this.cloudSnapshot() !== expected)) return
+    const generation = this.generation
+    let prepared: PreparedDocument
+    try { prepared = await this.parse(JSON.stringify(next)) }
+    catch (error) {
+      if (signal.aborted || this.generation !== generation) return
+      throw error
+    }
+    if (signal.aborted || this.generation !== generation || prepared.id !== next.id) return
+    const adoptedOwner = preparedDocumentAdoptionOwner(prepared)
+    const applied = await this.run('open', async () => {
+      if (signal.aborted || !this.authorized(generation)) return false
+      const approved = expected ? generation : await this.leave('open')
+      const current = () => !signal.aborted && this.authorized(approved) && !this.workspacePending &&
+        (!expected || this.currentDocument === expected && !this.dirty) && !this.editor.interactionActive &&
+        !this.editor.state.busy && !hasPendingEdits(this.editor)
+      if (!current()) return false
+      // An explicit cloud open appends to the local history for that document.
+      // Existing offline edits stay available as earlier SQLite revisions.
+      let revision = expected ? this.workspaceHeads.get(next.id) : undefined
+      if (!expected) {
+        const head = await store.open({ id: next.id })
+        if (!current()) return false
+        if (head.status === 'ok' && !head.deleted) revision = head.revision
+        else if (head.status !== 'error' || head.code !== 'WORKSPACE_NOT_FOUND')
+          throw Error('无法读取已有本机文档')
+      }
+      const json = preparedDocumentEncoding(prepared)?.json ?? await this.encode(prepared.snapshot())
+      if (!current()) return false
+      const mutationId = crypto.randomUUID()
+      await beforeCommit?.(mutationId)
+      if (!current() || !this.load(prepared, false, undefined, next.name, this.currentDocument.id === next.id)) return false
+      const document = this.currentDocument
+      if (!adoptedOwner?.(document)) return false
+      if (revision === undefined) this.workspaceHeads.delete(next.id)
+      else this.workspaceHeads.set(next.id, revision)
+      // Adoption precedes the asynchronous commit. Any new edit now derives
+      // from this revision; an interrupted write can be recovered by mutation ID.
+      if (!await this.persistWorkspace(json, this.generation, next.id, mutationId)) return false
+      this.cloudRevisions.set(document, this.workspaceHeads.get(next.id)!)
+      return document
+    })
+    return applied || undefined
+  }
+
   listWorkspace(includeDeleted = false) {
     if (!this.bridge.workspace) throw new Error('本机文档库不可用')
     return this.bridge.workspace.list({ includeDeleted })
@@ -979,7 +1049,7 @@ export class DesktopSession {
     return true
   }
 
-  private async persistWorkspace(snapshot: string, generation: number, id: string): Promise<boolean> {
+  private async persistWorkspace(snapshot: string, generation: number, id: string, mutationId = crypto.randomUUID()): Promise<boolean> {
     const store = this.bridge.workspace
     if (!store || this.disposed) return false
     // Retain the same request identity until an uncertain write is acknowledged.
@@ -1015,7 +1085,7 @@ export class DesktopSession {
         this.publish(); return true
       }
     }
-    const submitted = { documentJson: snapshot, expectedRevision: this.workspaceHeads.get(id) ?? null, mutationId: crypto.randomUUID(), generation, id }
+    const submitted = { documentJson: snapshot, expectedRevision: this.workspaceHeads.get(id) ?? null, mutationId, generation, id }
     this.workspacePending = submitted
     const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId }), submitted.documentJson.length)
     if (result.status !== 'ok') {

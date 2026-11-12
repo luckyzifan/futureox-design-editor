@@ -1,3 +1,4 @@
+import { webPath } from '../web-path'
 import type { DesktopBridge } from '../desktop'
 import type { Editor } from '../engine'
 import type { DesignDocument, DesignNode } from '../model'
@@ -154,7 +155,7 @@ export async function cancelTurn(desktop: DesktopBridge | null | undefined, endp
       await desktop.designAgent.cancel({ sessionId })
       return
     }
-    const root = (endpoint || '/api/agent').replace(/\/$/, '')
+    const root = (endpoint || webPath('/api/agent')).replace(/\/$/, '')
     await fetch(`${root}/v1/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId }) })
   } catch {
     // A missed cancel still cannot apply: the caller drops a response from an older conversation.
@@ -167,7 +168,7 @@ export async function requestTurn(desktop: DesktopBridge | null | undefined, end
     if (result.status !== 'ok') throw new Error('message' in result ? result.message : '助手没有返回结果')
     return result.turn as AgentTurn
   }
-  const root = (endpoint || '/api/agent').replace(/\/$/, '')
+  const root = (endpoint || webPath('/api/agent')).replace(/\/$/, '')
   const response = await fetch(`${root}/v1/turn`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
   const payload = await response.json() as AgentTurn & { error?: string }
   if (!response.ok) throw new Error(payload.error || '设计助手服务没有就绪')
