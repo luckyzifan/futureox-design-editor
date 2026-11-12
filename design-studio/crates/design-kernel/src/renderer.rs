@@ -225,6 +225,32 @@ fn scene_needs_extended_target(doc: &Document) -> bool {
     })
 }
 
+fn paints_opaque_clip_in_place(doc: &Document, node: &Node) -> bool {
+    node.opacity == 1.
+        && node.blend == "normal"
+        && node.clip
+        && doc.mask_child(node).is_none()
+        && !node.effects.iter().any(|effect| effect.visible)
+        && !node.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+        && node.fills.iter().find(|paint| paint.visible).is_some_and(|paint| {
+            paint.opacity == 1.
+                && paint.blend == "normal"
+                && paint.kind != "image"
+                && crate::color::pixel(doc.color_management, &paint.color, 1.)
+                    .is_ok_and(|color| color.0[3] == 1.)
+                && paint.stops.iter().all(|stop| {
+                    crate::color::pixel(doc.color_management, &stop.color, 1.)
+                        .is_ok_and(|color| color.0[3] == 1.)
+                })
+        })
+}
+
+pub(crate) fn clipped_opaque_frame<'a>(doc: &'a Document, roots: &[String]) -> Option<&'a Node> {
+    let [id] = roots else { return None };
+    doc.nodes.get(id).filter(|node| node.visible && node.kind == "frame" && !node.mask
+        && paints_opaque_clip_in_place(doc, node))
+}
+
 fn fitted_display_halo(viewport: Rect, mut halo: i32) -> i32 {
     let cap = display_surface_pixel_cap();
     while halo > 0 {
@@ -1927,8 +1953,18 @@ impl Engine {
         // target itself must carry that support. Shadow layers use a tighter
         // rect and must keep the uncropped content.
         let extended_target = scene_needs_extended_target(doc);
+        // The only root paints directly into its clip on transparent planes.
+        // Outside its coverage the backdrop is transparent for every sample,
+        // so those target texels need no storage even with a large filter halo.
+        let clipped_export_target = if extended_target && compatible && coherent
+            && options.raster_profile == crate::fidelity::RasterProfile::Figma
+            && options.transparent && !self.display_degrade
+        {
+            clipped_opaque_frame(doc, &page.children).map(|frame| prepared[&frame.id].fill_program_bounds)
+        } else { None };
         if extended_target
             && zoom_guard.is_none()
+            && clipped_export_target.is_none()
             && pixels.saturating_mul(slot).saturating_mul(4) > COMPOSITING_BYTES as u64
         {
             used_halo = fitted_display_halo(viewport, used_halo);
@@ -1952,6 +1988,8 @@ impl Engine {
         } else { None };
         let target_rect = if let Some(root) = isolated_root {
             prepared[&root.id].bounds.intersect(extent)
+        } else if let Some(clip) = clipped_export_target {
+            extent.intersect(clip)
         } else if extended_target {
             extent
         } else {
@@ -2026,6 +2064,7 @@ impl Engine {
             profile: options.raster_profile,
             interactive_effects: options.interactive_effects,
             display_degrade: self.display_degrade,
+            clipped_export_target: clipped_export_target.is_some(),
             sample: None,
             raster_workspace: RasterWorkspace::default(),
         };
@@ -2906,6 +2945,7 @@ struct Painter<'a> {
     profile: crate::fidelity::RasterProfile,
     interactive_effects: bool,
     display_degrade: bool,
+    clipped_export_target: bool,
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
 }
@@ -3053,6 +3093,68 @@ impl Painter<'_> {
         }
         out.try_into().map_err(|_| "Invalid sample bundle".into())
     }
+
+    fn paint_solid_progressive_blur(
+        &mut self,
+        node: &Node,
+        prepared: &Prepared,
+        targets: &mut [Surface; 4],
+        clip: Option<&AccountedSamples>,
+    ) -> Result<bool, String> {
+        let ([paint], [effect]) = (node.fills.as_slice(), node.effects.as_slice()) else {
+            return Ok(false);
+        };
+        let Some(gradient) = &effect.gradient_blur else { return Ok(false) };
+        if node.kind != "rectangle" || node.opacity != 1. || node.blend != "normal"
+            || node.mask || node.clip || !node.children.is_empty() || !node.strokes.is_empty()
+            || !paint.visible || paint.kind != "solid" || paint.blend != "normal"
+            || !effect.visible || effect.kind != "blur"
+        {
+            return Ok(false);
+        }
+        let radius = f64::from((effect.blur_radius() * prepared.matrix.max_scale()) as f32);
+        if !(1. ..=512.).contains(&radius) || radius.fract() != 0. {
+            return Ok(false);
+        }
+        // A solid over a clear layer has one byte color per covered sample.
+        // Resolve the original four coverage bits directly. The tent's
+        // integer support bounds all nonzero pixels of this isolated layer.
+        let rgba = crate::color::pixel(self.doc.color_management, &paint.color, paint.opacity as f32)?
+            .0.map(|value| u32::from(crate::figma_sampling::encode_unorm8(value)));
+        let rect = prepared.fill_program_bounds.expand(radius as i32)
+            .intersect(prepared.bounds).intersect(self.extent);
+        let fill = self.rasterize_bundle(&prepared.fill, rect, node.fill_even_odd())?;
+        let mut sharp = self.allocate(rect)?;
+        for y in rect.y..rect.bottom() {
+            for x in rect.x..rect.right() {
+                let covered = (0..4).map(|sample| fill.at(sample, x, y) as u32).sum::<u32>();
+                sharp.pixels[rect.index(x, y).expect("solid blur source")] =
+                    Pixel(rgba.map(|byte| ((byte * covered + 2) / 4) as f32 / 255.));
+                self.stats.shaded_pixels += covered as usize;
+            }
+        }
+        drop(fill);
+        let inverse = prepared.matrix.inverse_composed(rect)?;
+        let blurred = self.blur_filter(radius).apply(&sharp)?;
+        effects::gradient_blur_composite(&mut sharp, &blurred, &inverse, gradient);
+        sharp.quantize_rgba8();
+        drop(blurred);
+        for (sample, target) in targets.iter_mut().enumerate() {
+            let region = rect.intersect(target.rect);
+            for y in region.y..region.bottom() {
+                for x in region.x..region.right() {
+                    let opacity = clip.map_or(1., |mask| mask.at(sample, x, y));
+                    let index = target.rect.index(x, y).expect("solid blur destination");
+                    target.pixels[index] = crate::blend::over_mode(
+                        target.pixels[index], sharp.at(x, y).opacity(opacity), crate::blend::BlendMode::Normal,
+                    ).rgba8_quantized();
+                }
+            }
+        }
+        self.sample = None;
+        self.stats.effect_layers += 1;
+        Ok(true)
+    }
     fn resolve_backdrop(
         &mut self,
         r: Rect,
@@ -3173,29 +3275,16 @@ impl Painter<'_> {
             TextureBundle::Passthrough => true,
             TextureBundle::Unhandled => false,
         };
+        if self.clipped_export_target
+            && self.paint_solid_progressive_blur(n, prepared, targets, clip)?
+        {
+            return Ok(());
+        }
         let fill = self.rasterize_bundle(&prepared.fill, r, n.fill_even_odd() && n.kind != "text")?;
         let mask_id = self.doc.mask_child(n).map(|m| &m.id);
-        let first = n.fills.iter().find(|p| p.visible);
         // A clipped, opaque container completely replaces the destination under
         // every covered sample. Painting it in place avoids four viewport copies.
-        let in_place = clip.is_none()
-            && mask_id.is_none()
-            && n.opacity == 1.
-            && n.blend == "normal"
-            && !n.effects.iter().any(|e| e.visible)
-            && !n.strokes.iter().any(|s| s.visible && s.width > 0.)
-            && n.clip
-            && first.is_some_and(|p| {
-                p.opacity == 1.
-                    && p.blend == "normal"
-                    && p.kind != "image"
-                    && crate::color::pixel(self.doc.color_management, &p.color, 1.)
-                        .is_ok_and(|v| v.0[3] == 1.)
-                    && p.stops.iter().all(|s| {
-                        crate::color::pixel(self.doc.color_management, &s.color, 1.)
-                            .is_ok_and(|v| v.0[3] == 1.)
-                    })
-            });
+        let in_place = clip.is_none() && paints_opaque_clip_in_place(self.doc, n);
         if in_place {
             for sample in 0..4 {
                 self.sample = Some(sample);
@@ -3269,19 +3358,16 @@ impl Painter<'_> {
             }
         }
         let mut coverage: Option<[Arc<Surface>; 4]> = None;
-        let backgrounds: Vec<_> = n.backdrop_effect().filter(|_| !omit_optics && !self.concealed_glass.contains(id)).into_iter().collect();
-        if !backgrounds.is_empty() {
+        let backdrop = n.backdrop_effect().filter(|_| !omit_optics && !self.concealed_glass.contains(id));
+        if let Some(fx) = backdrop {
             let optical = crate::optics::GlassShape::from_node(n)
-                .zip(n.backdrop_effect().and_then(|effect| effect.glass.as_ref()));
+                .zip(fx.glass.as_ref());
             let replay = if clean_backdrop.is_none() && self.compatible && self.profile.is_export() {
-                n.backdrop_effect()
-                    .map(|fx| crate::glass_capture::recipe(self.doc, n, m, fx))
-                    .transpose()?
-                    .flatten()
+                crate::glass_capture::recipe(self.doc, n, m, fx)?
             } else {
                 None
             };
-            let cropped = backgrounds.iter().all(|e| e.kind == "background-blur");
+            let cropped = fx.kind == "background-blur";
             let bounds = crate::coverage::backdrop_box(prepared.fill_bounds, self.extent);
             let capture = if cropped {
                 Rect::new(0, 0, bounds[2] as u32, bounds[3] as u32)
@@ -3298,24 +3384,27 @@ impl Painter<'_> {
             } else {
                 self.resolve_backdrop(capture, origin, clean_backdrop.unwrap_or(targets))?
             };
-            let mut masks = Vec::with_capacity(4);
-            for sample in 0..4 {
-                let mask = fill.plane(sample);
-                let mut surface = self.allocate(r)?;
-                for y in r.y..r.bottom() {
-                    for x in r.x..r.right() {
-                        let a = mask.at(x, y);
-                        surface.pixels[r.index(x, y).expect("mask")] = Pixel([a; 4]);
+            // Most backdrop layers need coverage only at the final composite.
+            // Keep their raster masks instead of making four RGBA copies.
+            let filters_coverage = n.effects.iter().any(|e| e.visible &&
+                matches!(e.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur"));
+            let legacy_glass = fx.kind == "glass" && optical.is_none() && replay.is_none();
+            let masks = if filters_coverage || legacy_glass {
+                let mut masks = self.allocate_bundle(r)?;
+                for (sample, surface) in masks.iter_mut().enumerate() {
+                    let mask = fill.plane(sample);
+                    for y in r.y..r.bottom() {
+                        for x in r.x..r.right() {
+                            let a = mask.at(x, y);
+                            surface.pixels[r.index(x, y).expect("mask")] = Pixel([a; 4]);
+                        }
                     }
                 }
-                masks.push(Arc::new(surface));
-            }
-            let masks: [Arc<Surface>; 4] =
-                masks.try_into().map_err(|_| "Invalid backdrop masks")?;
-            for fx in backgrounds {
-                if replay.is_some() {
-                    continue;
-                }
+                Some(masks.map(Arc::new))
+            } else {
+                None
+            };
+            if replay.is_none() {
                 background = if cropped && !self.compatible {
                     effects::linear_tent_blur(&background, fx.radius * scale, true)?
                 } else if cropped {
@@ -3325,8 +3414,8 @@ impl Painter<'_> {
                         .apply(&background)?
                 };
                 if let Some(controls) = &fx.color_controls { controls.apply(&mut background, self.doc.color_management.is_some()); }
-                if fx.kind == "glass" && optical.is_none() {
-                    let geometry = self.resolve_effect_planes(&masks)?;
+                if legacy_glass {
+                    let geometry = self.resolve_effect_planes(masks.as_ref().expect("legacy glass coverage"))?;
                     background = effects::glass_unmasked(
                         &background,
                         &geometry,
@@ -3398,7 +3487,9 @@ impl Painter<'_> {
                 }
             }
 
-            coverage = Some(masks);
+            if filters_coverage {
+                coverage = masks;
+            }
         }
         for sample in 0..4 {
             self.sample = Some(sample);
@@ -3466,6 +3557,7 @@ impl Painter<'_> {
             }
         }
         self.sample = None;
+        let raw_coverage = (backdrop.is_some() && coverage.is_none()).then_some(fill);
         let mut planes = layers.map(Arc::new);
         if !texture_passthrough && n.effects.iter().any(|e| e.visible) {
             planes = self.apply_foreground_coverage(id, planes, &mut coverage)?;
@@ -3479,7 +3571,7 @@ impl Painter<'_> {
             && n.opacity < 1.
             && !matches!(n.mask_type.as_deref(), Some("outline") | Some("shape"));
         let byte_opacity=self.compatible && !exact_mask_factor && matches!(blend_mode,crate::blend::BlendMode::Normal|crate::blend::BlendMode::Multiply|crate::blend::BlendMode::Screen)
-            && n.opacity<1. && coverage.is_none();
+            && n.opacity<1. && backdrop.is_none();
         for sample in 0..4 {
             let source = &planes[sample];
             let target = &mut targets[sample];
@@ -3502,8 +3594,10 @@ impl Painter<'_> {
                     let mut value = crate::blend::over_mode(dst, src, blend_mode);
                     // A filtered backdrop replaces the covered destination; normal
                     // source-over would count semi-transparent backdrop alpha twice.
-                    if let Some(mask) = &coverage {
-                        let extra = (mask[sample].at(x, y).0[3] * opacity - src.0[3]).max(0.);
+                    let alpha = coverage.as_ref().map(|mask| mask[sample].at(x, y).0[3])
+                        .or_else(|| raw_coverage.as_ref().map(|mask| mask.at(sample, x, y)));
+                    if let Some(alpha) = alpha {
+                        let extra = (alpha * opacity - src.0[3]).max(0.);
                         for c in 0..4 {
                             value.0[c] -= dst.0[c] * extra;
                         }
@@ -3892,31 +3986,35 @@ impl Painter<'_> {
             } else if fx.kind == "blur" {
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
                 let compatible = self.compatible;
-                let filter = |source: &Surface| -> Result<Surface, String> {
-                    let blurred = blur_filter.apply(source)?;
+                let filter = |mut source: Surface| -> Result<Surface, String> {
+                    let blurred = blur_filter.apply(&source)?;
                     if let Some(g) = &fx.gradient_blur {
-                        let mut output = source.try_clone()?;
+                        let inverse = m.inverse_composed(source.rect)?;
                         effects::gradient_blur_composite(
-                            &mut output,
+                            &mut source,
                             &blurred,
-                            &m.inverse_composed(source.rect)?,
+                            &inverse,
                             g,
                         );
                         if compatible {
-                            output.quantize_rgba8();
+                            source.quantize_rgba8();
                         }
-                        Ok(output)
+                        Ok(source)
                     } else {
                         Ok(blurred)
                     }
                 };
-                let output = Arc::new(filter(&resolved)?);
+                // This blur replaces all four source planes and the shadow
+                // basis. Release them before allocating the filter's buffers.
+                drop(planes);
+                drop(shadow_basis);
+                let output = Arc::new(filter(resolved)?);
 
                 planes = std::array::from_fn(|_| output.clone());
                 shadow_basis = planes.clone();
                 if let Some(mask) = coverage {
                     let resolved_mask = self.resolve_effect_planes(mask)?;
-                    let filtered = Arc::new(filter(&resolved_mask)?);
+                    let filtered = Arc::new(filter(resolved_mask)?);
 
                     *mask = std::array::from_fn(|_| filtered.clone());
                 }

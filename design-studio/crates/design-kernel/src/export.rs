@@ -1,5 +1,5 @@
 //! Lossless sRGB PNG export with bounded raster working surfaces.
-use crate::{fidelity::RasterProfile, measurement, renderer::Stats, Engine, RenderOptions};
+use crate::{fidelity::RasterProfile, math::Rect, measurement, renderer::Stats, Engine, RenderOptions};
 use std::io::Write;
 
 pub const MAX_SIDE: u32 = 16384;
@@ -195,7 +195,27 @@ impl Engine {
                     let doc = self.doc.as_ref().expect("document checked");
                     let coherent = options.raster_profile != RasterProfile::Analytic
                         && region_correlated_samples(doc, page_index);
-                    render_tiles(self, &options, 512, 128, coherent, space)
+                    let (tile_width, rows) = if options.raster_profile == RasterProfile::Analytic {
+                        // Share overlapping filter input across a wider tile
+                        // while keeping the PNG row band within eight MiB.
+                        (1024, 256.min(8 * 1024 * 1024 / (options.width * 4)))
+                    } else if options.raster_profile == RasterProfile::Figma
+                        && options.width <= 1024 && options.height <= 1024
+                        && crate::renderer::clipped_opaque_frame(doc, &doc.pages[page_index].children)
+                            .is_some_and(|frame| {
+                                frame.children.iter().any(|id| doc.nodes[id].effects.iter()
+                                    .any(|effect| effect.visible && effect.gradient_blur.is_some()))
+                                && frame.children.iter().any(|id| doc.nodes[id].backdrop_effect().is_some())
+                            })
+                    {
+                        // The root clip bounds all target planes. Render a
+                        // small board once instead of filtering it per band.
+                        // The byte band is at most 4 MiB; pressure still splits it.
+                        (options.width, options.height)
+                    } else {
+                        (512, 128)
+                    };
+                    render_tiles(self, &options, tile_width, rows, coherent, space)
                 }
                 Err(error) => Err(error),
             }
@@ -843,16 +863,8 @@ fn render_tiles(
             let mut band = vec![0; options.width as usize * h as usize * 4];
             for x in (0..options.width).step_by(tile_width as usize) {
                 let w = tile_width.min(options.width - x);
-                let tile = engine.export_tile(options, coherent, x, y, w, h)?;
-                stats.accumulate(engine.stats());
-                if stats.allocated_layer_pixels > 2_000_000_000 {
-                    return Err("PNG export compositing work budget exceeded".into());
-                }
-                for row in 0..h as usize {
-                    let start = (row * options.width as usize + x as usize) * 4;
-                    band[start..start + w as usize * 4]
-                        .copy_from_slice(&tile[row * w as usize * 4..(row + 1) * w as usize * 4]);
-                }
+                write_export_tile(engine, options, coherent, Rect::new(x as i32, y as i32, w, h),
+                    y, &mut band, &mut stats)?;
             }
             if space == crate::color::ColorSpace::DisplayP3 {
                 convert_srgb_straight_to_display_p3(&mut band);
@@ -866,10 +878,89 @@ fn render_tiles(
     Ok(output)
 }
 
+fn write_export_tile(
+    engine: &mut Engine, options: &RenderOptions, coherent: bool, tile: Rect,
+    band_y: u32, band: &mut [u8], stats: &mut Stats,
+) -> Result<(), String> {
+    crate::render_cancellation::checkpoint()?;
+    let result = engine.export_tile(options, coherent, tile.x as u32, tile.y as u32, tile.w, tile.h);
+    stats.accumulate(engine.stats());
+    if stats.allocated_layer_pixels > 2_000_000_000 {
+        return Err("PNG export compositing work budget exceeded".into());
+    }
+    match result {
+        Ok(pixels) => {
+            for (row, source) in pixels.chunks_exact(tile.w as usize * 4).enumerate() {
+                let offset = ((tile.y as usize - band_y as usize + row) * options.width as usize + tile.x as usize) * 4;
+                band[offset..offset + source.len()].copy_from_slice(source);
+            }
+        }
+        Err(error) if error == "Compositing memory budget exceeded" && tile.w.max(tile.h) > 32 => {
+            // Retry only the failed output rectangle. The global sample phase,
+            // filter support, and per-attempt compositor budget still apply.
+            let [a, b] = if tile.w >= tile.h {
+                let w = tile.w / 2;
+                [Rect::new(tile.x, tile.y, w, tile.h), Rect::new(tile.x + w as i32, tile.y, tile.w - w, tile.h)]
+            } else {
+                let h = tile.h / 2;
+                [Rect::new(tile.x, tile.y, tile.w, h), Rect::new(tile.x, tile.y + h as i32, tile.w, tile.h - h)]
+            };
+            write_export_tile(engine, options, coherent, a, band_y, band, stats)?;
+            write_export_tile(engine, options, coherent, b, band_y, band, stats)?;
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn overlapping_blur_support_exports_with_bounded_surfaces() {
+        let lens = |id, y, radius| json!({
+            "id": id, "kind": "rectangle", "width": 192, "height": 104,
+            "transform": [1,0,0,1,257,y], "radii": [16,16,16,16],
+            "fills": [{"kind":"solid", "color":"#ffffff", "opacity":0.1}],
+            "effects": [{"kind":"glass", "radius":radius, "color":"#172033", "opacity":0.5, "amount":14,
+                "glass":{"depth":8, "refraction":0.5, "dispersion":0.3, "lightAngle":45, "lightIntensity":0.5}}]
+        });
+        let document = json!({
+            "schemaVersion":19, "id":"d", "name":"Effect overlap", "rasterProfile":"figma",
+            "pages":[{"id":"p","name":"Page","children":["frame"],"background":"#ffffff"}],
+            "nodes":{
+                "frame":{"id":"frame","kind":"frame","width":480,"height":320,"clip":true,
+                    "children":["glass1","blur","glass2"],"fills":[{"kind":"solid","color":"#151f32"}]},
+                "glass1":lens("glass1",34,8),
+                "blur":{"id":"blur","kind":"rectangle","width":192,"height":104,"transform":[1,0,0,1,32,182],
+                    "radii":[16,16,16,16],"fills":[{"kind":"solid","color":"#f7faff"}],
+                    "effects":[{"kind":"blur","radius":8,"color":"#172033","gradientBlur":{"start":[0,0],"end":[192,0],
+                        "startCount":0,"endCount":12,"smooth":true}}]},
+                "glass2":lens("glass2",182,12)
+            }
+        });
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        let request = RegionRequest {
+            page_id: "p".into(),
+            bounds: ExportBounds { x: 0., y: 0., width: 480., height: 320. },
+            scale: 1.,
+            node_ids: Some(vec!["frame".into()]),
+            raster_profile: None,
+            color_output: None,
+        };
+        let png = engine.render_region_png(&request).unwrap();
+        assert!(engine.compositing_ledger().scene_peak_bytes <= crate::memory::COMPOSITING_BYTES);
+        let options = engine.parse_options(json!({"pageId":"p","width":480,"height":320,
+            "view":{"x":0,"y":0,"zoom":1},"transparent":true})).unwrap();
+        let reference = render_tiles(&mut engine, &options, 120, 80, true, crate::color::ColorSpace::Srgb).unwrap();
+        let decode = |bytes: &[u8]| image::load_from_memory(bytes).unwrap().into_rgba8();
+        let actual = decode(&png);
+        assert_eq!(actual.dimensions(), (480, 320));
+        assert_eq!(actual, decode(&reference));
+    }
     #[test]
     fn svg_keeps_arcs_and_beziers_instead_of_fixed_polygon_samples() {
         use crate::{

@@ -70,7 +70,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
         next.push({name,url,pdf:setting.format==='pdf'||setting.format==='pdf-vector',pdfVector:setting.format==='pdf-vector'&&!asset.fallback,tiff:setting.format==='tiff'})
       }
       if(request.isCurrent()){desktopPet.event('export');setPreviews(next);setMessage(`已生成 ${next.length} 个文件`)}
-    } catch(error){if(request.isCurrent())desktopPet.event('error');release();if(mounted.current)setMessage(request.signal.aborted?'导出已取消：图层或文档已变化':String(error))}
+    } catch(error){if(request.isCurrent())desktopPet.event('error');release();if(mounted.current)setMessage(request.signal.aborted?'导出已取消':String(error))}
     finally{owner.current.cancel(request);if(mounted.current)setBusy(false)}
   }
   return <section aria-label={tr('图层导出设置')} className="node-export-panel">
@@ -85,6 +85,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     {explicit && !selected && <p className="muted">{tr('此图层含广色域、HDR 或负值分量。请先选择与顶部导出相同的输出编码；未选择时不会导出，也不会把高光静默压成 8 位。')}</p>}
     {managed && !explicit && <p className="muted">{tr('输出编码为 sRGB，与顶部导出的 sRGB 使用同一显式编码。')}</p>}
     {!!node.exportSettings?.length && <button type="button" className="wide-button" disabled={busy || (explicit && !selected)} onClick={()=>void generate()}>{busy?tr('生成中…'):tr('预览并导出此图层')}</button>}
+    {busy && <button type="button" className="wide-button" onClick={()=>owner.current.close()}>{tr('取消导出')}</button>}
     {node.exportSettings?.some(s=>s.format==='jpeg')&&<p className="muted">{tr('JPEG 使用质量 100，透明区域填充为白色。')}</p>}
     {node.exportSettings?.some(s=>s.format==='webp')&&<p className="muted">{tr('WebP 使用无损编码。')}</p>}
     {node.exportSettings?.some(s=>s.format==='pdf-vector')&&<p className="muted">{locale === 'en'

@@ -68,6 +68,7 @@ impl Fixture {
             },
             interactive_effects: false,
             display_degrade: false,
+            clipped_export_target: false,
             sample,
             raster_workspace: RasterWorkspace::default(),
         }

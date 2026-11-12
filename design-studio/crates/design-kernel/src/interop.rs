@@ -858,7 +858,8 @@ fn sketch_glass(blur: &Value, space: ColorSpace) -> Option<Effect> {
 fn sketch_blur_value(e: &Effect) -> Value {
     let mut value=json!({"_class":"blur","isEnabled":e.visible,
         "center":e.zoom_blur.map_or_else(||"{0.5, 0.5}".to_string(),|z|format!("{{{}, {}}}",z.center[0],z.center[1])),
-        "motionAngle":e.motion_angle,"radius":e.zoom_blur.map_or(e.radius.max(0.),|z|z.amount),
+        "motionAngle":if e.motion_angle == 0. { 0. } else { -e.motion_angle },
+        "radius":e.zoom_blur.map_or(e.radius.max(0.),|z|z.amount),
         "saturation":e.color_controls.map_or(1.,|c|c.saturation),
         "type":match e.kind.as_str() {"background-blur"=>3,"motion-blur"=>1,"zoom-blur"=>2,_=>0}});
     if let Some(g)=&e.glass {
@@ -1449,7 +1450,8 @@ impl<'a> Importer<'a> {
                     space:Some(self.color_space), saturation: blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.), ..Default::default()
                 }).filter(|c| c.validate() && !c.is_identity()),
                 zoom_blur,
-                motion_angle: if kind=="motion-blur" {f64_at(blur,"motionAngle")} else {0.},
+                // Sketch stores this angle in a y-up coordinate system.
+                motion_angle: if kind=="motion-blur" {-f64_at(blur,"motionAngle")} else {0.},
             }); }
             }
         }

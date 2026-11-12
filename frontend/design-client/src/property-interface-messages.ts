@@ -537,6 +537,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "此图层含广色域、HDR 或负值分量。请先选择与顶部导出相同的输出编码；未选择时不会导出，也不会把高光静默压成 8 位。": "This layer contains wide-gamut, HDR, or negative components. Choose the same output encoding as the top export first. Until then it is not exported, and highlights are not silently crushed to 8-bit.",
   "输出编码为 sRGB，与顶部导出的 sRGB 使用同一显式编码。": "Output encoding is sRGB, using the same explicit encoding as the top-bar sRGB export.",
   "预览并导出此图层": "Preview and export this layer",
+  "取消导出": "Cancel export",
+  "导出已取消": "Export canceled",
   "生成中…": "Generating…",
   "JPEG 使用质量 100，透明区域填充为白色。": "JPEG uses quality 100. Transparent areas are filled with white.",
   "WebP 使用无损编码。": "WebP uses lossless encoding.",

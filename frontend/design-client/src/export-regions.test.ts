@@ -194,8 +194,8 @@ test('cancelled and failed requests dispose their worker; a new request can succ
   expect(workers[0].terminated).toBe(true)
   held = false
   await expect(
-    exportPngBatch(doc, page, [1], { kind: 'page' }, { space: 'srgb', toneMap: 'clip' }),
-  ).rejects.toThrow('managed')
+    exportPngBatch(doc, page, [1], { kind: 'page' }, { space: 'rec2100-pq', toneMap: 'clip' }),
+  ).rejects.toThrow('need document color management')
   expect(workers[1].terminated).toBe(true)
   expect(await exportPngBatch(doc, page, [1])).toHaveLength(1)
   expect(workers[2].terminated).toBe(true)

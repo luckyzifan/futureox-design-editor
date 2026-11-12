@@ -48,10 +48,16 @@ fn patch_native_blur(bytes: &[u8], radius: f64) -> Vec<u8> {
 }
 #[test]
 fn native_sigma_and_motion_roundtrip_without_losing_parameters_or_pixels() {
-    for (kind, angle) in [("gaussian-blur", 0.), ("motion-blur", 37.5)] {
+    for (kind, angle) in [("gaussian-blur", 0.), ("motion-blur", 37.5), ("motion-blur", -37.5)] {
         let d = document(kind, angle);
         let expected = pixels(&d);
-        let reopened = interop::import_sketch_report(&interop::export_sketch(&d).unwrap())
+        let archive = interop::export_sketch(&d).unwrap();
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&archive)).unwrap();
+        let page_name = zip.file_names().filter_map(Result::ok)
+            .find(|name| name.starts_with("pages/")).unwrap().into_owned();
+        let page: Value = serde_json::from_reader(zip.by_name(&page_name).unwrap()).unwrap();
+        assert_eq!(page["layers"][0]["style"]["blurs"][0]["motionAngle"].as_f64(), Some(-angle));
+        let reopened = interop::import_sketch_report(&archive)
             .unwrap()
             .document;
         assert_eq!(reopened.nodes["n"].effects[0].kind, kind);
@@ -140,6 +146,14 @@ fn current_sketch_blur_array_is_read_and_roundtripped() {
         include_bytes!("../../../../testing/fixtures/design/sketch-spatial-blur-modern.sketch");
     let report = interop::import_sketch_report(bytes).unwrap();
     let doc = report.document;
+    for (label, angle) in [
+        ("t1-r10-a0-stripe-source", 0.),
+        ("t1-r10-a30-stripe-source", -30.),
+        ("t1-r10-a90-stripe-source", -90.),
+    ] {
+        let source = doc.nodes.values().find(|node| node.name == label).unwrap();
+        assert_eq!(source.effects[0].motion_angle, angle);
+    }
     assert_eq!(
         doc.nodes
             .values()
