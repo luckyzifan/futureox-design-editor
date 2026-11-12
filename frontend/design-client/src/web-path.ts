@@ -1,4 +1,7 @@
-/** Vite's public root also scopes runtime requests when hosted under a path. */
+/** The Electron protocol serves public assets at the origin root. A relative
+ * Vite base applies to bundle imports, while a worker starts in /assets/. */
 export function webPath(path: `/${string}`) {
-  return (import.meta.env?.BASE_URL ?? '/').replace(/\/$/, '') + path
+  const base = import.meta.env?.BASE_URL
+  if (!base || base === './') return path
+  return base.replace(/\/$/, '') + path
 }

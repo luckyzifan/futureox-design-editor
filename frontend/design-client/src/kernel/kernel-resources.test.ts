@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { loadKernelResourcePair, loadKernelResources } from './kernel-resources'
-import { InitializationGate, type InitializationLease } from './initialization'
+import { InitializationGate, readKernelAsset, type InitializationLease } from './initialization'
 
 test('font download starts while WASM is unresolved, and boot waits for both', async () => {
   let complete!: () => void
@@ -18,6 +18,28 @@ test('missing font or failed WASM remains a visible initialization failure', asy
     .rejects.toThrow('无法载入矢量字形字体')
   await expect(loadKernelResources(async () => { throw Error('bad wasm') }, async () => new Response('font')))
     .rejects.toThrow('bad wasm')
+})
+
+test('the desktop build loads public resources at the protocol root from worker chunks', async () => {
+  const workerLocation = 'design-app://app/assets/render-worker.js'
+  const fetchAsset = vi.fn(async (path: string) => {
+    const url = new URL(path, workerLocation)
+    return new Response(new Uint8Array([1]), {
+      status: url.pathname.startsWith('/assets/') ? 404 : 200,
+    })
+  })
+  vi.stubEnv('BASE_URL', './')
+  vi.stubGlobal('fetch', fetchAsset)
+  try {
+    await readKernelAsset('/kernel/design_kernel_bg.wasm', 4, new AbortController().signal)
+    await loadKernelResources(async () => {})
+    expect(fetchAsset.mock.calls.map(([path]) => new URL(path, workerLocation).pathname)).toEqual([
+      '/kernel/design_kernel_bg.wasm', '/fonts/NotoSansSC.ttf',
+    ])
+  } finally {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  }
 })
 
 test('bounded picking-font reader overlaps WASM but publication waits for both', async () => {
