@@ -74,7 +74,7 @@ test('motion toggles apply to the root and restore on unmount; collapse persists
 })
 test('corrupt and out-of-range storage is bounded; denied storage remains usable', () => {
   const malformed = createInterfacePreference(() => ({ getItem: () => '{', setItem() {} })); expect(malformed.getSnapshot()).toEqual(DEFAULT_INTERFACE_PREFERENCES)
-  const large = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ leftWidth: 1e9, rightWidth: -1, locale: 'bogus' }), setItem() {} })); expect(large.getSnapshot()).toMatchObject({ leftWidth: 480, rightWidth: 260, locale: 'zh-CN' })
+  const large = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ leftWidth: 1e9, rightWidth: -1, locale: 'bogus' }), setItem() {} })); expect(large.getSnapshot()).toMatchObject({ leftWidth: 480, rightWidth: SKETCH_INSPECTOR_WIDTH, locale: 'zh-CN' })
   const denied = createInterfacePreference(() => { throw Error('denied') }); expect(denied.set({ reducedMotion: true })).toBe(false); expect(denied.getSnapshot().reducedMotion).toBe(true)
   expect(denied.reset()).toBe(false); expect(denied.getSnapshot()).toEqual(DEFAULT_INTERFACE_PREFERENCES)
 })

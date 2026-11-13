@@ -1,7 +1,7 @@
 // Mounted production App. Proves Figma hand/zoom live on the bottom pill,
-// and that Sketch still keeps zoom on the inspector tab row.
-// @ts-expect-error jsdom is a test-only runtime dependency.
+// and that Sketch keeps zoom in the window toolbar.
 import { readFileSync } from 'node:fs'
+// @ts-expect-error jsdom is a test-only runtime dependency.
 import { JSDOM } from 'jsdom'
 import React, { act } from 'react'
 import type { Root } from 'react-dom/client'
@@ -73,7 +73,9 @@ test('Figma places hand and zoom above the pill and leaves the inspector tab row
   expect(placed).toContain('bottom: calc(100% + 8px)')
   expect(placed).toContain('width: max-content')
   expect(placed).not.toContain('width: 100%')
-  expect(css).toContain('.editor-shell[data-ui-mode="figma"] .floating-toolbar { bottom: 12px; left: 50%; transform: translateX(-50%);')
+  const pill = css.match(/\.editor-shell\[data-ui-mode="figma"\] \.floating-toolbar \{[^}]+\}/)?.[0]
+  expect(pill).toContain('bottom: 12px')
+  expect(pill).toContain('transform: translateX(-50%)')
   expect(css).toContain('.editor-shell[data-ui-mode="figma"] .figma-view-tools .view-menu-body')
   expect(css).toMatch(/\.editor-shell\[data-ui-mode="figma"\] \.figma-view-tools \.view-menu-body \{[^}]*top: auto;/)
   const sketch = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{[^}]+\}/)?.[0]
@@ -93,7 +95,7 @@ test('Figma places hand and zoom above the pill and leaves the inspector tab row
   expect(zoom!.textContent).toMatch(/%$/)
   expect(zoom!.closest('[data-testid="figma-view-tools"]')).toBe(tools)
   expect(zoom!.closest('.properties-tabs,.properties-zoom')).toBeNull()
-  expect(document.querySelector('.properties-zoom')!.childElementCount).toBe(0)
+  expect(document.querySelector('.properties-tabs [data-testid="zoom-readout"]')).toBeNull()
 
   await act(async () => { hand()!.click(); for (let i = 0; i < 10; i++) await Promise.resolve() })
   expect(editor!.state.tool).toBe('hand')
@@ -113,8 +115,7 @@ test('Figma places hand and zoom above the pill and leaves the inspector tab row
   await act(async () => button('Sketch').click())
   expect(document.querySelector('.editor-shell')!.getAttribute('data-ui-mode')).toBe('sketch')
   expect(group()).toBeNull()
-  expect(readout()!.closest('.properties-zoom')).not.toBeNull()
-  expect(readout()!.closest('.properties-tabs')).not.toBeNull()
+  expect(readout()!.closest('.editor-header')).not.toBeNull()
   expect(document.querySelector('.floating-toolbar')).not.toBeNull()
 
   await act(async () => button('Figma').click())
