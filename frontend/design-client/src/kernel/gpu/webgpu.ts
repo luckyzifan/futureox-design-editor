@@ -894,29 +894,65 @@ fn analyticRectCoverage(local:vec2<f32>,edges:vec4<f32>)->f32{
  let extent=clamp(min(local+vec2<f32>(0.5),edges.zw)-max(local-vec2<f32>(0.5),edges.xy),vec2<f32>(0.),vec2<f32>(1.));
  return extent.x*extent.y;
 }
+fn analyticCoverageAt(p:vec2<f32>,path:vec4<f32>,info:vec4<f32>,extra:vec4<f32>)->f32{
+ if(info.w>=2.){return analyticRectCoverage(p-path.xy,extra);}
+ let pixel=vec2<i32>(floor(p-path.xy));
+ if(all(pixel>=vec2<i32>(0))&&all(pixel<vec2<i32>(i32(path.z),i32(path.w)))){analyticProgramBase=u32(info.x);return areaCoverage(pixel);}
+ return 0.;
+}
+fn analyticCovered(colour:vec4<f32>,opacity:f32,coverage:f32)->vec4<f32>{
+ let paint=mulRN4(mulRN4(vec4<f32>(colour.xyz,1.),vec4<f32>(colour.w)),vec4<f32>(opacity));
+ let covered=mulRN4(paint,vec4<f32>(coverage));
+ let bits=bitcast<vec4<u32>>(covered);
+ return bitcast<vec4<f32>>(select(bits,vec4<u32>(0u),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0u)));
+}
 @fragment fn analyticSolidFragment(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
  let p=position.xy+u(0).xy;
  let base=u32(u(9).x);let count=min(48u,u32(u(9).y));
  var hit=false;var acc=vec4<f32>(0.);
+ var local=vec4<f32>(0.);var group=0.;var open=false;var touched=false;var shape=0.;
  for(var i=0u;i<48u;i=i+1u){
   if(i>=count){break;}
   let item=base+i*6u;let path=solidData[item];let info=solidData[item+1u];let extra=solidData[item+2u];
   let colour=solidData[item+3u];let place=solidData[item+4u];let tail=solidData[item+5u];
   let write=vec4<f32>(place.y,place.z,place.w,tail.x);
-  if(any(p<write.xy)||any(p>=write.xy+write.zw)){continue;}
-  var coverage=0.;
-  if(info.w>=2.){coverage=analyticRectCoverage(p-path.xy,extra);}
-  else{
-   let pixel=vec2<i32>(floor(p-path.xy));
-   if(all(pixel>=vec2<i32>(0))&&all(pixel<vec2<i32>(i32(path.z),i32(path.w)))){analyticProgramBase=u32(info.x);coverage=areaCoverage(pixel);}
+  if(tail.y==0.){
+   if(open&&touched){
+    if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
+    var carried=1.;if(u(4).w>0.5){carried=mulRN(carried,at(sourceC,p,u(3)).a);}
+    acc=over(acc,mulRN4(local,vec4<f32>(carried)),0);
+   }
+   open=false;touched=false;local=vec4<f32>(0.);shape=0.;
+   if(any(p<write.xy)||any(p>=write.xy+write.zw)){continue;}
+   let coverage=analyticCoverageAt(p,path,info,extra);
+   let sampled=analyticCovered(colour,place.x,coverage);
+   var factor=1.;if(u(4).w>0.5){factor=mulRN(factor,at(sourceC,p,u(3)).a);}
+   if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
+   acc=over(acc,mulRN4(sampled,vec4<f32>(factor)),0);
+  }else{
+   if(!open||tail.y!=group){
+    if(open&&touched){
+     if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
+     var previous=1.;if(u(4).w>0.5){previous=mulRN(previous,at(sourceC,p,u(3)).a);}
+     acc=over(acc,mulRN4(local,vec4<f32>(previous)),0);
+    }
+    open=true;group=tail.y;touched=false;local=vec4<f32>(0.);shape=0.;
+   }
+   if(any(p<write.xy)||any(p>=write.xy+write.zw)){continue;}
+   touched=true;
+   let coverage=analyticCoverageAt(p,path,info,extra);
+   if(tail.z==1.||tail.z==2.){shape=coverage;}
+   if(tail.z==2.){continue;}
+   var clipped=coverage;
+   if(info.z==2.){clipped=coverage*shape;}
+   else if(info.z==3.){clipped=coverage*(1.-shape);}
+   local=over(local,mulRN4(analyticCovered(colour,place.x,clipped),vec4<f32>(1.)),0);
   }
-  let paint=mulRN4(mulRN4(vec4<f32>(colour.xyz,1.),vec4<f32>(colour.w)),vec4<f32>(place.x));
-  let covered=mulRN4(paint,vec4<f32>(coverage));
-  let bits=bitcast<vec4<u32>>(covered);
-  let sampled=bitcast<vec4<f32>>(select(bits,vec4<u32>(0u),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0u)));
-  var factor=1.;if(u(4).w>0.5){factor=mulRN(factor,at(sourceC,p,u(3)).a);}
+ }
+ if(open&&touched){
   if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
-  acc=over(acc,mulRN4(sampled,vec4<f32>(factor)),0);
+  var flushFactor=1.;if(u(4).w>0.5){flushFactor=mulRN(flushFactor,at(sourceC,p,u(3)).a);}
+  acc=over(acc,mulRN4(local,vec4<f32>(flushFactor)),0);
  }
  if(!hit){return select(at(sourceA,p,u(1)),integerSample(sourceA,p,u(1)),u(9).z>0.5);}
  return acc;
