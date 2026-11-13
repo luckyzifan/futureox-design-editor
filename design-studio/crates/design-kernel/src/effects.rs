@@ -976,6 +976,28 @@ pub(crate) fn shadow_alpha(
     spread: f64,
     inner: bool,
 ) -> Result<Surface, String> {
+    let alpha = shadow_alpha_plane(surface, spread, inner)?;
+    blur_shadow_alpha(alpha, filter)
+}
+
+/// Figma export rasterizes coverage at 2× and resolves each output pixel from
+/// that pair. A radius-4 outer shadow on the browser PNG matches the same tent
+/// evaluated on the output pixel grid. Blurring the 2× mask and then resolving
+/// the pair keeps the lower code of a half-byte mean, up to two codes off.
+/// Spread stays on the device grid. The returned mask is constant on each
+/// output pair, so the official 2× resolve reproduces the output-grid byte.
+pub(crate) fn shadow_alpha_output_grid(
+    surface: &Surface,
+    filter: BlurFilter,
+    spread: f64,
+) -> Result<Surface, String> {
+    let alpha = shadow_alpha_plane(surface, spread, false)?;
+    let half = downsample_alpha_pairs(&alpha)?;
+    let blurred = blur_shadow_alpha(half, filter)?;
+    upsample_alpha_pairs(&blurred, alpha.rect)
+}
+
+fn shadow_alpha_plane(surface: &Surface, spread: f64, inner: bool) -> Result<Surface, String> {
     let mut alpha = surface.new_like(surface.rect)?;
     for (dst, src) in alpha.pixels.iter_mut().zip(&surface.pixels) {
         dst.0[3] = src.0[3];
@@ -987,6 +1009,10 @@ pub(crate) fn shadow_alpha(
             if inner { spread < 0. } else { spread > 0. },
         )?;
     }
+    Ok(alpha)
+}
+
+fn blur_shadow_alpha(alpha: Surface, filter: BlurFilter) -> Result<Surface, String> {
     match filter {
         // Alpha is no longer needed after filtering. Consume it rather than
         // retaining an additional full surface through all six Gaussian passes.
@@ -1006,6 +1032,69 @@ pub(crate) fn shadow_alpha(
         BlurFilter::IntegratedTent(radius) => tent_blur_impl(alpha, radius, false, false, false),
         BlurFilter::LinearTent(radius) => linear_tent_blur_owned(alpha, radius, false),
     }
+}
+
+fn output_pair_rect(rect: Rect) -> Result<Rect, String> {
+    if rect.empty() {
+        return Ok(Rect::new(rect.x, rect.y, 0, 0));
+    }
+    let x0 = rect.x.div_euclid(2);
+    let y0 = rect.y.div_euclid(2);
+    let x1 = (rect.right() - 1).div_euclid(2) + 1;
+    let y1 = (rect.bottom() - 1).div_euclid(2) + 1;
+    let w = u32::try_from(x1 - x0).map_err(|_| "Shadow output grid is too wide")?;
+    let h = u32::try_from(y1 - y0).map_err(|_| "Shadow output grid is too tall")?;
+    Ok(Rect::new(x0, y0, w, h))
+}
+
+fn alpha_byte(pixel: Pixel) -> u32 {
+    (pixel.0[3] * 255.).round_ties_even() as u32
+}
+
+/// One output pixel per even/odd device pair. A full pair uses the same
+/// `(sum + 2) / 4` byte mean as the coherent plane resolve. Missing samples
+/// outside the surface are zero, which is the shadow mask's exterior.
+fn downsample_alpha_pairs(alpha: &Surface) -> Result<Surface, String> {
+    let rect = output_pair_rect(alpha.rect)?;
+    let mut half = alpha.new_like(rect)?;
+    if rect.empty() {
+        return Ok(half);
+    }
+    for oy in rect.y..rect.bottom() {
+        for ox in rect.x..rect.right() {
+            let mut sum = 0u32;
+            let mut count = 0u32;
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let x = ox * 2 + dx;
+                    let y = oy * 2 + dy;
+                    if alpha.rect.index(x, y).is_some() {
+                        sum += alpha_byte(alpha.at(x, y));
+                        count += 1;
+                    }
+                }
+            }
+            let byte = if count == 0 { 0 } else { (sum + count / 2) / count };
+            let index = half.rect.index(ox, oy).expect("output shadow grid");
+            half.pixels[index].0[3] = byte as f32 / 255.;
+        }
+    }
+    Ok(half)
+}
+
+fn upsample_alpha_pairs(half: &Surface, rect: Rect) -> Result<Surface, String> {
+    let mut out = half.new_like(rect)?;
+    if rect.empty() {
+        return Ok(out);
+    }
+    for y in rect.y..rect.bottom() {
+        for x in rect.x..rect.right() {
+            let value = half.at(x.div_euclid(2), y.div_euclid(2)).0[3];
+            let index = out.rect.index(x, y).expect("upsampled shadow grid");
+            out.pixels[index].0[3] = value;
+        }
+    }
+    Ok(out)
 }
 
 /// A square of exact ones stays one through every box pass. Blur only the
