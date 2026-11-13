@@ -116,6 +116,7 @@ import {
 } from './geometry'
 import { splitEdge } from './vector'
 import { imageData } from './persistence'
+import { GIF_FIRST_FRAME_RULE } from './image-import'
 import { currentPreparedDocumentJson } from './prepared-document'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
@@ -2762,16 +2763,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (image.resized)
           editor.notify(`图片超过 ${Math.floor(maxPixels / 1e4)} 万像素预算，已降采样至 ${image.width}×${image.height}`)
         const k = Math.min(1, 600 / image.width, 600 / image.height)
-        const id = editor.add('rectangle', {
-          ...p,
-          width: image.width * k,
-          height: image.height * k,
-        })
-        editor.update(
-          [id],
-          { name: file.name, fills: [{ ...paint('#ffffff', 'image'), image: image.data }] },
-          '导入图片',
-        )
+        const width = image.width * k, height = image.height * k
+        const imageNode = node('rectangle', p.x, p.y, width, height)
+        imageNode.name = file.name
+        imageNode.fills = [{ ...paint('#ffffff'), kind: 'image', image: image.data }]
+        const inserted = editor.change('导入图片', (doc) => {
+          doc.nodes[imageNode.id] = imageNode
+          doc.pages.find(page => page.id === editor.state.page)?.children.push(imageNode.id)
+        }, [imageNode.id])
+        if (inserted?.status === 'committed' && image.animation === 'first-frame') editor.notify(GIF_FIRST_FRAME_RULE)
       }
     } catch (error) {
       if (current()) editor.notify(String(error))

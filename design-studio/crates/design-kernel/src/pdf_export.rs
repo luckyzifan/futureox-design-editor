@@ -40,12 +40,7 @@ use std::{collections::BTreeMap, fmt::Write as _};
 
 /// Acrobat's 14400-unit default user-space bound still applies to pages.
 const MAX_SIDE_POINTS: f64 = 14400.;
-/// Kernel images admit three URI schemes; anything else is rejected here too.
-const IMAGE_URI_PREFIXES: [&str; 3] = [
-    "data:image/png;base64,",
-    "data:image/jpeg;base64,",
-    "data:image/webp;base64,",
-];
+/// Kernel images admit PNG, JPEG, WebP, GIF (first frame) and single-page TIFF.
 
 pub fn encode_pdf_vector(
     doc: &Document,
@@ -1188,10 +1183,7 @@ fn embed_image(pdf: &mut Pdf, uri: &str) -> Result<(usize, u32, u32), String> {
     if uri.len() > 12 * 1024 * 1024 {
         return Err("Image exceeds 12 MB encoded limit".into());
     }
-    if !IMAGE_URI_PREFIXES
-        .iter()
-        .any(|prefix| uri.starts_with(prefix))
-    {
+    if !crate::raster_import::has_embedded_image_prefix(uri) {
         return Err("Unsupported image URI".into());
     }
     use base64::Engine as _;
@@ -1327,23 +1319,29 @@ fn jpeg_icc(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
 /// Untagged samples stay byte-for-byte and are declared sRGB. A cICP space
 /// other than sRGB, or an ICC profile, is converted before that declaration.
 fn decode_image_srgb(bytes: &[u8]) -> Result<image::RgbaImage, String> {
+    let container = crate::raster_import::inspect_container(bytes)?;
     let space = crate::image_color::png_space(bytes)?;
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::raster_import::decode_failure(&container, e))?;
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
     limits.max_alloc = Some(128 * 1024 * 1024);
     reader.limits(limits);
-    let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
+    let mut decoder = reader.into_decoder().map_err(|e| crate::raster_import::decode_failure(&container, e))?;
     let profile = if space.is_none() {
         crate::image_color::icc(&mut decoder)?
     } else {
         None
     };
-    let orientation = crate::image_color::orientation(&mut decoder)?;
-    let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+    let orientation = if let Some(orientation) = container.tiff_orientation {
+        orientation
+    } else {
+        crate::image_color::orientation(&mut decoder)?
+    };
+    let mut decoded = image::DynamicImage::from_decoder(decoder)
+        .map_err(|e| crate::raster_import::decode_failure(&container, e))?;
     decoded.apply_orientation(orientation);
     let convert = match space {
         Some(crate::color::ColorSpace::Srgb) | None if profile.is_none() => false,

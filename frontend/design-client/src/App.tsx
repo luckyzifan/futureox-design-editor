@@ -10,6 +10,7 @@ import { libraryHostKind, libraryRailVisible } from './library-chrome'
 import { ownedPropertyPreviewTarget } from './property-preview'
 import { hasCanvasColorPicker } from './canvas-color-picker'
 import { appendImageFiles, captureImageImportAnchor, StaleImageImport } from './append-image-files'
+import { imageData, RASTER_FILE_ACCEPT, RASTER_IMPORT_EXTENSION } from './image-import'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
@@ -366,7 +367,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       setImporting(true)
       const canvas = document.querySelector<HTMLElement>('[data-testid=canvas]')
       const anchor = captureImageImportAnchor(editor, { width: canvas?.clientWidth ?? 0, height: canvas?.clientHeight ?? 0 })
-      const result = await appendImageFiles(editor, files, anchor, undefined, file => { const diagnostic = beginImportDiagnostic(file, 'append', trace); diagnostics.push(diagnostic); return diagnostic })
+      const maxPixels = editor.state?.doc?.colorManagement ? 8_388_608 : 16_777_216
+      const result = await appendImageFiles(editor, files, anchor, async file => {
+        const image = await imageData(file, maxPixels)
+        return { uri: image.data, width: image.width, height: image.height }
+      }, file => { const diagnostic = beginImportDiagnostic(file, 'append', trace); diagnostics.push(diagnostic); return diagnostic })
       trace.result(result.status === 'committed' ? ActionOutcome.committed : result.status === 'rejected' ? ActionOutcome.rejected : ActionOutcome.unchanged, result.status === 'rejected' ? ActionReason.validation : ActionReason.none)
     } catch (error) {
       const cancelled = error instanceof StaleImageImport || (diagnostics.length > 0 && diagnostics.every(diagnostic => diagnostic.fail(error) === ImportFailure.cancelled))
@@ -1045,7 +1050,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       onDropCapture={e=>{
         const files=[...e.dataTransfer.files]
         const designFiles=files.filter(f=>/\.(fd|json|svg|svgz|fig|sketch|pdf)$/i.test(f.name))
-        const imageFiles=files.filter(f=>/\.(png|jpe?g|webp)$/i.test(f.name))
+        const imageFiles=files.filter(f=>RASTER_IMPORT_EXTENSION.test(f.name))
         if(!designFiles.length&&!imageFiles.length)return
         e.preventDefault();e.stopPropagation()
         // A design file dropped onto the home screen opens as a document via
@@ -1369,13 +1374,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       <input
         ref={file}
         type="file"
-        accept=".fd,.json,.svg,.svgz,.fig,.sketch,.pdf,.png,.jpg,.jpeg,.webp"
+        accept={`.fd,.json,.svg,.svgz,.fig,.sketch,.pdf,${RASTER_FILE_ACCEPT}`}
         hidden
         onChange={async (e) => {
           const f = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
           if (!f) return
-          if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
+          if (RASTER_IMPORT_EXTENSION.test(f.name)) {
             if (showHome) editor.notify('请先打开画布，再导入图片', { key: 'openCanvasBeforeImageImport' })
             else await importImageFiles([f])
           } else await importDesignFile(f, importMode.current)

@@ -241,27 +241,20 @@ fn decode(
     if data.len() > 12 * 1024 * 1024 {
         return Err("Image exceeds 12 MB encoded limit".into());
     }
+    let kind = crate::raster_import::declared_kind(data).ok_or("Unsupported image URI")?;
     let (_, b64) = data.split_once(',').ok_or("Invalid image URI")?;
-    if ![
-        "data:image/png;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/webp;base64,",
-    ]
-    .iter()
-    .any(|p| data.starts_with(p))
-    {
-        return Err("Unsupported image URI".into());
-    }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(b64)
         .map_err(|_| "Invalid image data")?;
+    crate::raster_import::admit_declared_bytes(kind, &bytes)?;
     decode_bytes(bytes,settings,resident)
 }
 fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resident:usize)->Result<(Surface,usize),String>{
+    let container = crate::raster_import::inspect_container(&bytes)?;
     let space = crate::image_color::png_space(&bytes)?;
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::raster_import::decode_failure(&container, e))?;
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
@@ -269,7 +262,7 @@ fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resid
     // Oversized assets are rejected before decoding, never silently resized.
     limits.max_alloc = Some(320 * 1024 * 1024);
     reader.limits(limits);
-    let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
+    let mut decoder = reader.into_decoder().map_err(|e| crate::raster_import::decode_failure(&container, e))?;
     let (width, height) = decoder.dimensions();
     admit_image_pixels(width, height, settings, resident)?;
     if settings.is_none() && matches!(decoder.color_type(),
@@ -283,8 +276,13 @@ fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resid
     } else {
         None
     };
-    let orientation = crate::image_color::orientation(&mut decoder)?;
-    let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+    let orientation = if let Some(orientation) = container.tiff_orientation {
+        orientation
+    } else {
+        crate::image_color::orientation(&mut decoder)?
+    };
+    let mut decoded = image::DynamicImage::from_decoder(decoder)
+        .map_err(|e| crate::raster_import::decode_failure(&container, e))?;
     decoded.apply_orientation(orientation);
     // Orientation can swap dimensions but cannot change the admitted count.
     // The native-resolution base and managed 16-bit/float precision survive;

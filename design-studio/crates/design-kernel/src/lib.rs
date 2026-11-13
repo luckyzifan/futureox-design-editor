@@ -71,6 +71,7 @@ pub mod gradient_blur;
 pub mod graph_api;
 pub mod handles;
 mod image_color;
+pub mod raster_import;
 pub mod image_rows;
 #[cfg(not(target_arch="wasm32"))]
 pub mod source_bitmap_pixels;

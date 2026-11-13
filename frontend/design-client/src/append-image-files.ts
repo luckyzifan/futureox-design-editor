@@ -1,5 +1,6 @@
 import { ImportStage, type ImportDiagnostic } from './import-diagnostics'
 import { assertImportInputBytes } from './import-input-policy'
+import { GIF_FIRST_FRAME_RULE, imageData } from './image-import'
 import type { Editor } from './engine'
 import { node, paint, type Point } from './model'
 import { screenToWorld, type CanvasSize } from './canvas-camera'
@@ -8,22 +9,9 @@ export class StaleImageImport extends Error { constructor() { super('图片导�
 export type DecodeImportImage = (file: File) => Promise<DecodedImportImage>
 async function readImportImage(file: File, diagnostic?: ImportDiagnostic): Promise<DecodedImportImage> {
   diagnostic?.stage(ImportStage.read)
-  const uri = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error(`读取图片失败: ${file.name}`))
-    reader.readAsDataURL(file)
-  })
+  const image = await imageData(file)
   diagnostic?.stage(ImportStage.decode)
-  // Get image dimensions
-  const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve({ width: img.width, height: img.height })
-    img.onerror = () => reject(new Error(`解码图片失败: ${file.name}`))
-    img.src = uri
-  })
-
-  return { uri, width: dims.width, height: dims.height }
+  return { uri: image.data, width: image.width, height: image.height }
 }
 
 /** Capture the actual visible canvas center before decoding. No fabricated viewport. */
@@ -90,7 +78,8 @@ export async function appendImageFiles(editor: Editor, files: File[], anchor: Po
       offsetY += height + spacing
     }
   })
-  if (result?.status === 'committed') editor.notify(`已导入 ${images.length} 张图片`)
+  const gif = files.some(file => file.type === 'image/gif' || /\.gif$/i.test(file.name))
+  if (result?.status === 'committed') editor.notify(gif ? `已导入 ${images.length} 张图片。${GIF_FIRST_FRAME_RULE}` : `已导入 ${images.length} 张图片`)
   const status = result?.status ?? 'unchanged'
   for (const diagnostic of diagnostics) diagnostic?.result(status === 'committed' ? 1 : status === 'rejected' ? 3 : 2, status === 'committed' ? 1 : 0)
   return { count: images.length, status }

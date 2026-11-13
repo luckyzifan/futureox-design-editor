@@ -19,10 +19,11 @@ Image.new('RGBA', (3, 2), (31, 93, 157, 255)).save(output / 'lossless.webp', los
 report = {
     'source': 'Locally generated synthetic pixels; no user images or Figma reference pixels.',
     'generator': 'generate.py', 'pillowVersion': PIL.__version__,
+    'gifTiffGenerator': 'design-studio/crates/design-kernel/tests/gif_tiff_import.rs encodes two-frame-64x48.gif and red-64x48.tiff. This script does not rewrite them.',
     'iccSource': str(profile_source.relative_to(root)),
     'iccGenerator': 'design-studio/crates/design-kernel/examples/color_assets.rs (moxcms canonical Display P3 profile)',
     'iccSourceSha256': hashlib.sha256(profile_source.read_bytes()).hexdigest(),
     'images': [{'file': f.name, 'sha256': hashlib.sha256(f.read_bytes()).hexdigest(), 'bytes': f.stat().st_size}
-               for f in sorted(output.iterdir()) if f.suffix in ['.jpg', '.png', '.webp']],
+               for f in sorted(output.iterdir()) if f.suffix in ['.gif', '.jpg', '.png', '.tiff', '.webp']],
 }
 (output / 'provenance.json').write_text(json.dumps(report, indent=2) + '\n')

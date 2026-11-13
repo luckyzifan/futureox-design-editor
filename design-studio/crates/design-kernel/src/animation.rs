@@ -271,17 +271,10 @@ impl Pose {
             }
             if p.kind == "image"
                 && !p.image.as_ref().is_some_and(|uri| {
-                    uri.len() <= 12 * 1024 * 1024
-                        && [
-                            "data:image/png;base64,",
-                            "data:image/jpeg;base64,",
-                            "data:image/webp;base64,",
-                        ]
-                        .iter()
-                        .any(|prefix| uri.starts_with(prefix))
+                    uri.len() <= 12 * 1024 * 1024 && crate::raster_import::has_embedded_image_prefix(uri)
                 })
             {
-                return Err("Animation images must use embedded PNG/JPEG/WebP data".into());
+                return Err("Animation images must use embedded PNG, JPEG, WebP, GIF, or TIFF data".into());
             }
             for stop in &p.stops {
                 crate::color::pixel(color, &stop.color, 1.)?;

@@ -52,7 +52,7 @@ import {
   isIdentityImageAdjust,
   defaultPatternTile,
 } from './model'
-import { imageData } from './persistence'
+import { imageData, GIF_FIRST_FRAME_RULE, RASTER_MIME_ACCEPT } from './image-import'
 import { kernelNoiseFillPreset } from './kernel/picking'
 import { backdropEffect } from './kernel/render-dependency'
 const blends: Blend[] = [
@@ -255,7 +255,8 @@ function PaintEditor({
           <input
             ref={file}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
+            accept={RASTER_MIME_ACCEPT}
+            title={GIF_FIRST_FRAME_RULE}
             hidden
             onChange={async (e) => {
               const f = e.target.files?.[0]
@@ -278,7 +279,7 @@ function PaintEditor({
               }
             }}
           />
-          <button className="wide-button" onClick={() => file.current?.click()}>
+          <button className="wide-button" title={GIF_FIRST_FRAME_RULE} onClick={() => file.current?.click()}>
             <ImagePlus size={14} />{tr("选择图片")}</button>
           <select
             aria-label={tr("图片适应方式")}

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, vi } from 'vitest'
+import { RASTER_FILE_ACCEPT, RASTER_IMPORT_EXTENSION } from './image-import'
 
 /** Execute the actual checked-in App input handler, not a duplicate routing
  * implementation. This is a handler test, not mounted React/Electron coverage. */
@@ -9,9 +10,14 @@ function handler(showHome = false, mode = 'open', design = vi.fn(async (_file: F
   const body = input.match(/onChange=\{async \(e\) => \{([\s\S]*?)\n        \}\}/)?.[1]
   if (!body) throw Error('Actual file input handler not found')
   const notices = vi.fn()
-  return { design, images, notices, change: new Function('importDesignFile', 'importImageFiles', 'importMode', 'showHome', 'editor', `return async function(e) {${body}}`)(design, images, { current: mode }, showHome, { notify: notices }) as (event: {currentTarget: {files: File[]; value: string}}) => Promise<void> }
+  return { design, images, notices, change: new Function('importDesignFile', 'importImageFiles', 'importMode', 'showHome', 'editor', 'RASTER_IMPORT_EXTENSION', `return async function(e) {${body}}`)(design, images, { current: mode }, showHome, { notify: notices }, RASTER_IMPORT_EXTENSION) as (event: {currentTarget: {files: File[]; value: string}}) => Promise<void> }
 }
-test.each(['png','PNG','jpg','jpeg','WEBP'])('actual picker dispatches %s image to image import', async ext => {
+test('picker accept lists GIF and TIFF beside the existing rasters', () => {
+  expect(app).toContain('accept={`.fd,.json,.svg,.svgz,.fig,.sketch,.pdf,${RASTER_FILE_ACCEPT}`}')
+  expect(RASTER_FILE_ACCEPT).toBe('.png,.jpg,.jpeg,.webp,.gif,.tif,.tiff')
+  expect(app).toContain('RASTER_IMPORT_EXTENSION.test(f.name)')
+})
+test.each(['png','PNG','jpg','jpeg','WEBP','gif','GIF','tif','tiff','TIF'])('actual picker dispatches %s image to image import', async ext => {
   const h = handler(), f = new File(['opaque'], `input.${ext}`, {type:'image/png'})
   const target = {files:[f],value:'selected'}
   await h.change({currentTarget:target})

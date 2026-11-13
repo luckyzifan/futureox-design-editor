@@ -27,7 +27,7 @@ let collector: ReturnType<typeof createRenderDiagnostics> | undefined
 export function beginImportDiagnostic(file: Pick<File, 'name' | 'size'>, mode: 'open' | 'append', action: { actionId: number; actionOwner: number }) {
   const requestId = ++serial
   const match = /\.([^.]+)$/.exec(file.name)?.[1].toLowerCase()
-  const format = ['fd','json','svg','svgz','fig','sketch','pdf','png','jpg','jpeg','webp'].indexOf(match || '') + 1
+  const format = ['fd','json','svg','svgz','fig','sketch','pdf','png','jpg','jpeg','webp','gif','tif','tiff'].indexOf(match || '') + 1
   const host = typeof window === 'undefined' ? undefined : (window as unknown as { coreDesktop?: {renderDiagnostics?: boolean; renderDiagnosticsDetail?: boolean} }).coreDesktop
   const enabled = host?.renderDiagnostics === true
   if (enabled) collector ||= createRenderDiagnostics({ enabled: true, detail: host?.renderDiagnosticsDetail === true, session: Math.floor(Math.random()*1e11), source:'main', sink: row => console.log(PREFIX+JSON.stringify(row)), batchSink: batch => console.log(PREFIX+JSON.stringify({batch})) })

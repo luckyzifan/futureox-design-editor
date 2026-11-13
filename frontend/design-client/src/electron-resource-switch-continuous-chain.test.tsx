@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Inspector } from './Inspector'
+import { RASTER_MIME_ACCEPT } from './image-import'
 import { Canvas } from './Canvas'
 import { shortcutPreference } from './shortcut-preference'
 import { Editor } from './engine'
@@ -158,7 +159,9 @@ async function mountFixture() {
 function fileInput() {
   const inputs = [...mount.querySelectorAll<HTMLInputElement>('.paint-editor input[type="file"]')]
   expect(inputs).toHaveLength(1)
-  expect(inputs[0].accept).toBe('image/png,image/jpeg,image/webp')
+  expect(inputs[0].accept).toBe(RASTER_MIME_ACCEPT)
+  expect(RASTER_MIME_ACCEPT).toContain('image/gif')
+  expect(RASTER_MIME_ACCEPT).toContain('image/tiff')
   return inputs[0]
 }
 async function chooseImage(name: string) {

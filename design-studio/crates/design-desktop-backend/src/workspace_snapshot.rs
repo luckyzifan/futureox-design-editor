@@ -97,13 +97,9 @@ fn base64(value: &str) -> bool {
 fn valid_resource(kind: Kind, value: &str) -> bool {
     match kind {
         Kind::Font => base64(value),
-        Kind::Image => [
-            "data:image/png;base64,",
-            "data:image/jpeg;base64,",
-            "data:image/webp;base64,",
-        ]
-        .into_iter()
-        .any(|prefix| value.strip_prefix(prefix).is_some_and(base64)),
+        Kind::Image => futureox_design_kernel::raster_import::EMBEDDED_IMAGE_PREFIXES
+            .into_iter()
+            .any(|prefix| value.strip_prefix(prefix).is_some_and(base64)),
     }
 }
 fn paints(value: &Value, pointer: &str, paths: &mut BTreeMap<String, Kind>) {
