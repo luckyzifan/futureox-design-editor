@@ -2467,6 +2467,20 @@ export class GpuRenderer {
     }else this.imageAssetCounters.hits++
     this.used.add(image.texture);this.touch(image.texture);return image
   }
+  /** Pairs sampling posts at most 8192 cells and cannot encode one row wider
+   * than the 65544-byte request. A 256×256 or larger rotated viewport is the
+   * case that repeats that transfer after every pointer sample. */
+  private largeRotationUsesResidentImage(p:GpuPaint,view:{w:number;h:number}):boolean{
+    if(import.meta.env.VITE_DESIGN_SOURCE_SRGB8==='0'||!p.image||imageAdjustActive(p.adjust))return false
+    if((!this.scene.sourceImageDisplay&&!sourceBitmap(p.image))||this.imageAtlas||!this.driver.managed||
+      this.driver.hdr||this.driver.displayMath||this.scene.colorManagement?.documentSpace!=='srgb'||
+      !this.driver.uploadStraightSrgb8||!this.managedImageLoader?.straightSrgb8)return false
+    if(this.sourceSrgbKeys.get(p.image)===null)return false
+    const dims=sourceBitmapDimensions(p.image),limit=this.driver.sourceImageLimit||0
+    if(!dims||dims[0]<256||dims[0]*dims[1]<262144||dims[0]*dims[1]>16777216||dims[0]>limit||dims[1]+2>limit)return false
+    if(this.overBudget(dims[0]*(dims[1]+2)*4,dims[0],dims[1]+2))return false
+    return view.w>8192||view.w*view.h>=256*256
+  }
   private sourceBitmapGrid(n:GpuNode,p:GpuPaint){
     const ref=sourceBitmap(p.image)
     if(!ref?.samples||!p.image||!this.driver.managed||!this.driver.uploadLinear||!this.driver.uploadParameters||
@@ -2477,6 +2491,15 @@ export class GpuRenderer {
     const axes=image_sampling_axes_placed(JSON.stringify(b),new Float64Array(source.matrix),new Float64Array(n.size),
       new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
     const grid=compactSourceAxes(axes,b,ref.width,ref.height)
+    // A rotation has no separable axes. The dense atlas then posts every
+    // source cell and converts those texels again on the next angle. A large
+    // viewport makes that the pause after the pointer stops. The straight
+    // image stays resident; imageGrid still uploads this pose's exact Rust
+    // coordinate field, so sampling addresses do not change.
+    if(!grid && this.largeRotationUsesResidentImage(p, b)){
+      const resident=this.sourceSrgbImage(p,0)
+      if(resident)return
+    }
     const w=grid?grid.xs.length:2*b.w,h=grid?grid.ys.length:2*b.h
     // Hosted interaction samples the straight grid through linearImageTexel.
     // pass() sets u[207]=1 and leaves u[187] at 0, so the shared sRGB table
