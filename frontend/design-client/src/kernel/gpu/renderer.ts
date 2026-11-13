@@ -3,6 +3,7 @@ import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
 import { ResourceLedger, type ResourceClass } from './resource-ledger'
+import { ImageAssetRetirement } from './image-asset-retirement'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
@@ -317,7 +318,7 @@ export class GpuRenderer {
   private frameBudget = SURFACE_BUDGET_BYTES
   private imageResidencyOwner?: ImageResidencyOwner
   private imageResidencyPolicy?: string
-  private retiredImageAssets = new Map<Texture, { epoch: number; covered: boolean }>()
+  private readonly retiredImageAssets = new ImageAssetRetirement<Texture>()
   // Private cumulative proof counters; no source URI, words or public protocol.
   private imageAssetCounters = { hits: 0, uploads: 0, scopeRetiredTextures: 0, legacyPrunes: 0, pressureEvictions: 0 }
   private residentImageRequest = false
@@ -2615,25 +2616,16 @@ export class GpuRenderer {
     for (const page of this.atlasPages) textures.add(page.texture)
     this.images.clear(); this.imageOrigins.clear(); this.imageDims.clear(); this.sourceWindowKeys.clear(); this.sourceSrgbKeys.clear(); this.sourcePngProofs.clear(); this.atlasPages = []
     this.horizontalFilters.clear(); this.retireDisplayMaterial()
-    const epoch = this.driver.resourceEpoch
     for (const texture of textures) {
       this.staticImageBlurs.retireSource(texture)
-      this.retiredImageAssets.set(texture, { epoch: Number.isSafeInteger(epoch) && epoch! >= 0 ? epoch! : Infinity, covered: false })
+      this.retiredImageAssets.retire(texture)
       this.imageAssetCounters.scopeRetiredTextures++
     }
     this.imageResidencyOwner = undefined; this.imageResidencyPolicy = undefined
     this.collectRetiredImageAssets()
   }
   private collectRetiredImageAssets() {
-    for (const [texture, entry] of this.retiredImageAssets) {
-      // The detached, unpinned cohort was covered by its own later real
-      // boundary. The driver's coarse per-frame completed epoch can remain
-      // e-1 after checkpoint(e), since that frame may encode more commands;
-      // it must neither grant this proof nor block the stronger cohort proof.
-      if (!entry.covered || !this.unpinnedImageAsset(texture)) continue
-      this.retiredImageAssets.delete(texture)
-      this.forgetUpload(texture)
-    }
+    this.retiredImageAssets.collect(texture => this.unpinnedImageAsset(texture), texture => this.forgetUpload(texture))
   }
   private unpinnedImageAsset(texture: Texture) {
     return !this.pendingImageTableSources.has(texture) && !this.sequentialImagePins.has(texture) && !this.admissionPins.has(texture) &&
@@ -2642,11 +2634,12 @@ export class GpuRenderer {
   private retiredImageAssetCohort() {
     // A live borrower could encode another read after this boundary. Such a
     // source needs a later boundary after its final pin has been returned.
-    return new Map([...this.retiredImageAssets].filter(([texture, entry]) => !entry.covered && this.unpinnedImageAsset(texture)))
+    return this.retiredImageAssets.capture(texture => this.unpinnedImageAsset(texture))
   }
   private coverRetiredImageAssets(cohort: ReturnType<GpuRenderer['retiredImageAssetCohort']>) {
-    for (const [texture, entry] of cohort) if (this.retiredImageAssets.get(texture) === entry && this.unpinnedImageAsset(texture))
-      entry.covered = true
+    // A real boundary can cover this cohort while the current frame's
+    // numeric epoch still has later reads outstanding.
+    this.retiredImageAssets.cover(cohort, texture => this.unpinnedImageAsset(texture))
     this.collectRetiredImageAssets()
   }
   private requireImageResidencyCurrent() {
@@ -4046,7 +4039,7 @@ export class GpuRenderer {
       (this.interactionWarm || this.workingBytes < this.frameBudget * .875)) return
     const retiredImageTableBytes = this.driver.retiredImageTableBytes || 0
     const imageTablePressure = pressure && retiredImageTableBytes > 0
-    const retiredImageAssetBytes = [...this.retiredImageAssets.keys()].reduce((sum, texture) => sum + texture.bytes, 0)
+    const retiredImageAssetBytes = this.retiredImageAssets.bytes
     const imageAssetPressure = pressure && retiredImageAssetBytes > 0
     if ((!imageTablePressure && !imageAssetPressure && this.bytes < this.frameBudget * .25) || !this.driver.checkpoint) return
     for (const [key, surface] of this.constantTargets) if ((this.aliases.get(surface.texture) || 1) === 1) {

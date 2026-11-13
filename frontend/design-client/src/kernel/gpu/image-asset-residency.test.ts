@@ -275,7 +275,7 @@ test('failed retirement completion keeps charged old storage and never republish
   f.context = { ...f.context, scope: 'new-owner' }
   await expect(f.region([A])).rejects.toThrow('completion rejected')
   expect(f.renderer.images.size).toBe(0); expect(f.renderer.retiredImageAssets.size).toBe(1)
-  expect([...f.renderer.retiredImageAssets.values()][0].covered).toBe(false)
+  expect(f.renderer.retiredImageAssets.capture(() => true).size).toBe(1)
   expect(f.renderer.bytes).toBe(64); expect(f.driver.destroy).not.toHaveBeenCalled()
   f.renderer.dispose()
   expect(f.renderer.images.size).toBe(0); expect(f.renderer.retiredImageAssets.size).toBe(0)
@@ -389,12 +389,12 @@ test('a completed retirement boundary cannot credit a later retirement outside i
   f.driver.waitForSubmittedWork.mockImplementation(() => new Promise<void>(resolve => { complete = resolve }))
   f.context = { ...f.context, scope: 'new-owner' }; const waiting = f.region([A])
   const later = { width: 2, height: 2, bytes: 64, resource: {} } as Texture
-  f.renderer.retiredImageAssets.set(later, { epoch: 1, covered: false }); f.renderer.bytes += later.bytes
+  f.renderer.retiredImageAssets.retire(later); f.renderer.bytes += later.bytes
   complete(); await waiting
   expect(f.driver.destroy.mock.calls[0][0]).toBe(a.texture)
   expect(f.driver.destroy.mock.calls.some(call => call[0] === later)).toBe(false)
   expect(f.renderer.retiredImageAssets.size).toBe(1); expect(f.renderer.bytes).toBe(64)
-  expect(f.renderer.retiredImageAssets.get(later).covered).toBe(false)
+  expect(f.renderer.retiredImageAssets.capture(() => true).has(later)).toBe(true)
 })
 
 test.each([false, true])('abort completion failure=%s only retires the covered asset cohort after success', async fail => {
