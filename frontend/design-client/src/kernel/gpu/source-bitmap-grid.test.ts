@@ -93,11 +93,25 @@ it('a rotated footprint reads each source row once and keeps the pair tap grid',
   else field.set([sx,sy,0.25,0.75],off)
  }
  const urls:string[]=[]
+ let pressure=false
  vi.stubGlobal('XMLHttpRequest',class{
   status=200;responseType='';response:ArrayBuffer=new ArrayBuffer(0);url=''
   open(_method:string,url:string){this.url=url}
   send(payload:Uint32Array){
    urls.push(this.url)
+   if(pressure&&this.url.endsWith('&span=1')){this.status=503;return}
+   if(this.url.endsWith('&pairs=1')){
+    const [w,h]=payload,raw=new Uint8Array(w*h*16)
+    for(let row=0;row<h;row++)for(let col=0;col<w;col++){
+     const i=(row*w+col)*2+2
+     for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++){
+      const at=(Math.min(ih-1,payload[i+1]+dy)*iw+Math.min(iw-1,payload[i]+dx))*4
+      raw.set(image.subarray(at,at+4),((2*row+dy)*2*w+2*col+dx)*4)
+     }
+    }
+    this.response=raw.buffer
+    return
+   }
    expect(this.url).toContain('&span=1')
    const [x,y,w,h]=payload
    const raw=new Uint8Array(w*h*4)
@@ -107,6 +121,14 @@ it('a rotated footprint reads each source row once and keeps the pair tap grid',
  })
  const bytes=readDenseSourceGridBytes('source?samples=1',field.slice(),b,iw,ih)
  const accounting=denseSourceReadAccounting()
+ const normal=bytes.slice()
+ pressure=true
+ const pairBytes=readDenseSourceGridBytes('source?x=1',field.slice(),b,iw,ih)
+ expect(pairBytes).toEqual(normal)
+ expect(urls.at(-1)).toContain('&pairs=1')
+ pressure=false
+ urls.splice(1)
+
  expect(urls).toHaveLength(1)
  expect(accounting.mode).toBe('span')
  expect(accounting.requests).toBe(1)

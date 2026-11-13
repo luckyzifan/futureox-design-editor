@@ -139,7 +139,7 @@ function readDenseTaps(uri:string,field:Float32Array,b:Rect,iw:number,ih:number,
    if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==width*h*16)throw Error('无法读取旋转图片的原始采样区域')
    const raw=new Uint8Array(xhr.response);noteRead(read,raw.byteLength)
    for(let row=0;row<2*h;row++)for(let col=0;col<2*width;col++){
-    tap((y*2+row)*b.w*2+left*2+col,(row*width*2+col)*4)
+    tap((y*2+row)*b.w*2+left*2+col,raw,(row*width*2+col)*4)
    }
   }
  }

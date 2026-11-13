@@ -13,7 +13,6 @@ struct Fixture {
     prepared: HashMap<String, Prepared>,
     concealed_glass: std::collections::HashSet<String>,
     stats: Stats,
-    pose_prefix: Option<PosePrefix>,
 }
 
 impl Fixture {
@@ -47,7 +46,6 @@ impl Fixture {
                 allocated_layer_pixels: 19,
                 peak_compositing_bytes: 23,
             },
-            pose_prefix: None,
         }
     }
 
