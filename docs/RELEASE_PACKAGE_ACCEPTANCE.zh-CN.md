@@ -190,6 +190,47 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs \
 
 源码侧 cargo 图里仍没有许可文本的是这八个 macOS crate：`block2` 0.6.2、`objc2` 0.6.5、`objc2-core-foundation` 0.3.2、`objc2-core-graphics` 0.3.2、`objc2-encode` 4.1.0、`objc2-foundation` 0.3.2、`objc2-metal` 0.3.2、`objc2-quartz-core` 0.3.2。它们不在这个 Linux 包的二进制图里。这个目录仍然不是正式发布验收。
 
+## 2026-11-13 当前 main 的未签名 Linux 目录
+
+同一台 linux x64 先在补许可文件之前，用当前 `main` 跑了 `node scripts/build.mjs`（默认 profile `release`）和 `node scripts/package.mjs`。产物仍是 `frontend/design-desktop/release/futureox-desgin-linux-x64`。没有签名，没有公证，没有打开 GUI，没有做 macOS 或 Windows 包。
+
+当时的 `--require-package` 退出码 0。它重新哈希 811 条包内文件和 `app.asar` 条目。目录身份 SHA-256 `0ed77bdf7b93b7140181c4bce604270dcb2a76c563b43de21346dc59b6fb5f39`。包内普通文件 585。linux 与 wasm 图里的第三方 Rust crate 是 231/231，其中包含后来加入的 `freetype` 0.7.1、`freetype-sys` 0.19.0 和 `splash-glyph` 0.1.0。`splash-glyph` 指向包内项目 MIT `LICENSE`。`freetype` 当时只有 crate 压缩包里的 `LICENSE-MIT` 和 `LICENSE-APACHE`，没有同包的 `COPYRIGHT`。color-fixtures 3/3，验证页 0，FFmpeg 可追溯。清单缺口只有签名 `not_run`，以及 darwin-arm64 与 win32-x64 的 `not_built`。`releaseAcceptance` 是 `not_closed`。源码侧 cargo 图仍有上面那八个 macOS crate 没有许可文件。`dispatch2` 0.3.1 和 `objc2-io-surface` 0.3.2 在 lockfile 里，但不在这四个二进制的 normal 依赖图里，所以没有给它们补文本。
+
+随后把 `freetype` 0.7.1 的 `COPYRIGHT` 从 crate 压缩包抄进 notice 目录。八个 macOS crate 的压缩包 SHA-256 与 lockfile 一致，包内没有许可证文件。每个 crate 的 `.cargo_vcs_info.json` 记下发布提交。那些提交里唯一的许可文件是仓库根目录的 `LICENSE.md`。它写明 SPDX，并链接 MIT、Zlib 和 Apache-2.0 的文本，但没有把授权正文放进文件。notice 目录复制的就是这份 `LICENSE.md`，`source.json` 记下 URL、修订和 sha256。没有用通用许可证正文代替。清单生成器只去掉了 cargo 重复行贴在许可证字段末尾的 ` (*)`，没有改成另一套名单。
+
+补完后重新构建并打包。`node scripts/verify-package.mjs` 退出码 0。然后：
+
+```bash
+node frontend/design-desktop/scripts/release-component-inventory.mjs \
+  --release-dir=frontend/design-desktop/release/futureox-desgin-linux-x64 \
+  --require-package
+```
+
+退出码 0。它重新哈希 828 条包内文件和 `app.asar` 条目。对照失败会让进程失败。这次没有失败。`releaseAcceptance` 仍是 `not_closed`，`formalSignedPackage` 是 `not_supplied`，`signature` 是 `not_run`。目录身份 SHA-256 `3ae8744590671e7e5d774c7dddde2c74bb10aa51856ec6a3202b7a04ef8cde84`。`resource-list.json` 里的 profile 是 `release`，`formalRelease` 是 false。
+
+| 测量 | 这个未签名目录 |
+| --- | --- |
+| 包内普通文件 / 含 asar 条目 | 602 / 828 |
+| Electron 44.7.0 运行时文件 | 71 |
+| 生产 JS 包 / 包内 notice 对上 | 16 / 16 |
+| JS 开发依赖，包内没有对应文件 | 204，泄漏 0 |
+| 本包 linux 与 wasm 图里的第三方 Rust crate / 包内 notice | 231 / 231 |
+| 只在编译期的 proc-macro，notice 在包里 | 13 |
+| 不在本包二进制图里的 lock 名 | 105 |
+| 源码侧四个平台加 wasm 的第三方 crate / 有许可文件 | 271 / 271 |
+| native ELF | 4 |
+| WASM | 6 |
+| 字体 / 图标 | 23 / 23，16 / 16 |
+| color-fixtures | 3 / 3 |
+| 验证页 | 0 |
+| Linux FFmpeg 7.0.2 | 可追溯，GPL-3.0-or-later |
+| 许可或分类缺口 | 0 |
+| 签名 / 其他平台 | `not_run`，darwin-arm64 与 win32-x64 是 `not_built` |
+
+主程序 SHA-256 仍是 `10a14d05c6ff4f94075cfb3eeb6ed6571be33ebcc08cbd675b5ce9ff84706564`，Electron `LICENSE` `5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d`，`LICENSES.chromium.html` `3375e2a9bd7bc631738fde10be6548a76efe8cf5e4b8826b8140ba8b0c4d6353`，Chromium `libffmpeg.so` `c4c805e46f957356f6b80be31999459e5f07e8b0c351221544ad43a16c980638`。仓库 GPL FFmpeg 仍是 `18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317`。
+
+包内 `freetype` 0.7.1 的 `COPYRIGHT` 是 `ec82b96487e9e778ee610c7ab245162464782cfa1f555c2299333f8dbe5c036a`，与 crate 压缩包里的文件一致。八个 macOS crate 的 `LICENSE.md` 都在包内 notice 目录，SHA-256 是 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`。它们仍没有链进这个 Linux 二进制。这个目录仍然不是正式发布验收。
+
 ## 随包资源标识（#264）
 
 打包入口在 staging 内写入 `resource-list.json`，`verify-package.mjs` 核对包内实际字节。组件清单的 `packageResources` 同时记录 JS/WASM/native 的路径和hash。`formalRelease` 仍为 false，签名仍为 `not_run`；目录哈希、资源列表和已安装应用会话属于不同的证据。

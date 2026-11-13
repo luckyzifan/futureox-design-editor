@@ -338,9 +338,27 @@ test('component inventory maps packaged inputs and keeps the lockfile out of the
   assert.equal(profiling.traceable, true)
   assert.equal(profiling.license, 'MIT OR Apache-2.0')
   assert.equal(profiling.notices.length, 2)
-  for (const gap of ['objc2@0.6.5', 'block2@0.6.2']) {
-    assert.equal(report.rust.crates.find(crate => crate.id === gap).traceable, false, gap)
+  assert.equal(report.rust.crates.some(crate => String(crate.license ?? '').includes('(*)')), false)
+  const appleNotices = [
+    ['block2@0.6.2', 'MIT'],
+    ['objc2@0.6.5', 'MIT'],
+    ['objc2-encode@4.1.0', 'MIT'],
+    ['objc2-foundation@0.3.2', 'MIT'],
+    ['objc2-core-foundation@0.3.2', 'Zlib OR Apache-2.0 OR MIT'],
+    ['objc2-core-graphics@0.3.2', 'Zlib OR Apache-2.0 OR MIT'],
+    ['objc2-metal@0.3.2', 'Zlib OR Apache-2.0 OR MIT'],
+    ['objc2-quartz-core@0.3.2', 'Zlib OR Apache-2.0 OR MIT'],
+  ]
+  for (const [id, license] of appleNotices) {
+    const crate = report.rust.crates.find(item => item.id === id)
+    assert.equal(crate.traceable, true, id)
+    assert.equal(crate.license, license, id)
+    assert.deepEqual(crate.platforms, ['aarch64-apple-darwin'], id)
+    assert.deepEqual(crate.notices.map(item => item.path.split('/').at(-1)), ['LICENSE.md'], id)
   }
+  const freetype = report.rust.crates.find(crate => crate.id === 'freetype@0.7.1')
+  assert.equal(freetype.traceable, true)
+  assert.ok(freetype.notices.some(item => item.path.endsWith('/COPYRIGHT')))
   assert.equal(report.notices.every(item => item.matchesInventory), true)
   assert.equal(report.ffmpeg.sha256, ffmpegProvenance({ runBinary: false }).binarySha256)
   assert.equal(report.ffmpeg.license, 'GPL-3.0-or-later')
@@ -416,6 +434,10 @@ test('component inventory maps packaged inputs and keeps the lockfile out of the
         assert.equal(source.crateArchiveChecksum, crate.checksum)
         assert.deepEqual(source.crateArchiveLicenseFiles, [])
         assert.equal(typeof entry.gitRevision, 'string')
+        const vcsFile = path.join(dir, '.cargo_vcs_info.json')
+        assert.equal(existsSync(vcsFile), true, crate.id)
+        const vcs = JSON.parse(readFileSync(vcsFile, 'utf8'))
+        assert.equal(entry.gitRevision, vcs.git.sha1, `${crate.id} ${relative}`)
         assert.equal(readdirSync(dir).some(name => /^(license|licence|copying|notice|unlicense|copyright)(\b|[._-]|$)/i.test(name)), false, crate.id)
       }
       compared += 1
