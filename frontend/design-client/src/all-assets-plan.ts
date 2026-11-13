@@ -41,7 +41,7 @@ export type AllAssetPlan = {
   tasks: AllAssetTask[]
 }
 
-const RASTER = new Set<ExportSetting['format']>(['png', 'jpeg', 'jpg', 'webp', 'pdf', 'tiff'])
+const RASTER = new Set<ExportSetting['format']>(['png', 'jpeg', 'jpg', 'webp', 'pdf', 'tiff', 'heic'])
 const RUNNABLE = new Set<ExportSetting['format']>([...RASTER, 'svg', 'pdf-vector'])
 
 /** Same stem as the single-layer preset download: authored suffix, or `@scale x` when the suffix is empty and the scale is not 1. */

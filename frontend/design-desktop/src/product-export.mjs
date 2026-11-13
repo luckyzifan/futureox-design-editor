@@ -115,7 +115,7 @@ function assertBundle(files) {
   }
 }
 
-const ASSET_EXPORT_EXTENSIONS = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', svg: 'svg', pdf: 'pdf', 'pdf-vector': 'pdf', tiff: 'tiff' }
+const ASSET_EXPORT_EXTENSIONS = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', svg: 'svg', pdf: 'pdf', 'pdf-vector': 'pdf', tiff: 'tiff', heic: 'heic' }
 
 function assertAssetBundle(files) {
   const manifestBytes = files.get('manifest.json')

@@ -90,7 +90,7 @@ export async function encodeAllAssetTask(task: AllAssetTask, document: DesignDoc
   const node = document.nodes[task.nodeId]
   if (!node) throw new Error('图层不存在')
   if (task.format === 'eps' || task.scale === 0) throw new Error(task.blockReason || '该预设不能导出')
-  const format = (task.format === 'jpg' ? 'jpeg' : task.format) as 'png' | 'svg' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff'
+  const format = (task.format === 'jpg' ? 'jpeg' : task.format) as 'png' | 'svg' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff' | 'heic'
   const target = node.kind === 'slice' ? sliceExportTarget(document, node.id) : { kind: 'selection' as const, nodeIds: [node.id] }
   const colorOutput = layerExportColorOutput(document, node.id, encoding)
   const asset = await exportImage(document, task.pageId, format, task.scale, colorOutput, signal, target)
