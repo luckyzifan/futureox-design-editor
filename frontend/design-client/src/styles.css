@@ -1723,17 +1723,56 @@ footer button {
 .scale-anchor button { padding: 3px; min-height: 24px; color: var(--workspace-muted); }
 .scale-anchor [aria-checked=true] { color: var(--workspace-accent); }
 
-/* One shared local editor shell is used by the browser and Electron. */
-.editor-shell { display: grid; grid-template-columns: 57px max-content minmax(0, 1fr) var(--workspace-inspector-width); grid-template-rows: auto 64px minmax(0, 1fr) auto; position: relative; }
-.editor-shell > .editor-header, .editor-shell > .editor-workspace { display: contents; }
+/* One shared local editor shell is used by the browser and Electron.
+   Row 2 is the single window bar. Figma 126.10.13 fills about 36pt with
+   rgb(233, 235, 236) and content starts at y=38. Sketch 2025.1.3 fills about
+   51pt with rgb(232, 235, 236); the bar totals 52pt and content starts at y=53.
+   The 1px border is that split. minmax lets a wrapped narrow window grow
+   instead of covering the canvas; at 1440×960 the controls fit the floor. */
+.editor-shell {
+  --editor-chrome-row: 38px;
+  --editor-chrome-fill: #e9ebec;
+  --editor-chrome-divider: #c5cbd0;
+  display: grid;
+  grid-template-columns: 57px max-content minmax(0, 1fr) var(--workspace-inspector-width);
+  grid-template-rows: auto minmax(var(--editor-chrome-row), max-content) minmax(0, 1fr) auto;
+  position: relative;
+}
+.editor-shell > .editor-workspace { display: contents; }
+.editor-shell > .editor-header {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-items: center;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px 0 4px;
+  gap: 8px;
+  background: var(--editor-chrome-fill);
+  border-bottom: 1px solid var(--editor-chrome-divider);
+  z-index: 32;
+}
+/* Electron on macOS uses titleBarStyle hiddenInset, so the traffic lights
+   overlay this bar. Linux and Windows keep the OS frame outside the page
+   and do not receive this inset. 80px clears the three lights; it is not a
+   measured content-y. */
+.editor-shell[data-window-controls="inset"] > .editor-header {
+  padding-left: 80px;
+  -webkit-app-region: drag;
+}
+.editor-shell[data-window-controls="inset"] > .editor-header :is(button, input, select, a, label, .header-right, .document-title) {
+  -webkit-app-region: no-drag;
+}
 /* The accessible name is localized; column span follows the stable marker. */
 .editor-shell > nav[data-workspace-tabs] { grid-column: 1 / -1; grid-row: 1; }
-.editor-shell .workspace-rail { grid-column: 1; grid-row: 2 / 4; padding-top: 64px; }
-.editor-shell .editor-header > .brand { grid-column: 1; grid-row: 2; width: 57px; height: 48px; padding: 10px 15px; align-self: start; z-index: 31; }
+.editor-shell .workspace-rail { grid-column: 1; grid-row: 3; }
+.editor-shell .editor-header > .brand { flex: none; width: 36px; height: 32px; padding: 2px; align-self: center; }
 .editor-shell .brand strong, .editor-shell .brand > svg, .editor-shell .header-divider { display: none; }
-.editor-shell .editor-header .document-title { grid-column: 2; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: 26px 18px; gap: 2px 4px; padding: 10px 10px 8px 14px; min-width: 0; contain: inline-size; background: var(--workspace-panel); border-bottom: 1px solid var(--workspace-border); z-index: 30; }
-.editor-shell .document-title input { grid-column: 1; grid-row: 1; width: 100%; min-width: 0; padding: 0; font-weight: 600; font-size: 12px; text-overflow: ellipsis; }
-.editor-shell .document-title .document-location { display: block; grid-column: 1 / -1; grid-row: 2; justify-self: start; padding: 0; font-size: 11px; }
+.editor-shell .editor-header .document-title { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 32px; align-items: center; flex: 1 1 auto; gap: 6px; height: 32px; min-width: 0; margin: 0; padding: 0 4px; background: transparent; border: 0; }
+.editor-shell .document-title input { grid-column: 2; grid-row: 1; width: 100%; min-width: 0; height: 28px; padding: 0 4px; font-weight: 600; font-size: 12px; text-overflow: ellipsis; background: transparent; }
+.editor-shell .document-title .document-location { display: block; grid-column: 1; grid-row: 1; justify-self: start; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; font-size: 11px; }
 .editor-shell .document-title .document-location:hover,
 .editor-shell .document-title .document-location:focus-visible { color: var(--workspace-text); }
 /* The 1250px header hides .document-location. In the shell that label is the
@@ -1742,14 +1781,14 @@ footer button {
 @media (max-width: 1250px) {
   .editor-shell .document-title .document-location { display: block; }
 }
-.editor-shell .document-title > button[aria-pressed] { grid-column: 2; grid-row: 1; width: 28px; padding: 4px; }
+.editor-shell .document-title > button[aria-pressed] { grid-column: 3; grid-row: 1; width: 28px; height: 28px; padding: 0; }
 .editor-shell .document-title > b, .editor-shell .document-title .draft-badge { display: none; }
 .editor-shell .layers-panel { grid-column: 2; grid-row: 3; }
 .editor-shell .layers-panel > .workspace-title { display: none; }
-.editor-shell .canvas-workspace { grid-column: 3; grid-row: 2 / 4; --kernel-status-top: 12px; }
+.editor-shell .canvas-workspace { grid-column: 3; grid-row: 3; --kernel-status-top: 12px; }
 .editor-shell .canvas-caption { display: none; }
-.editor-shell .properties-workspace { grid-column: 4; grid-row: 2 / 4; padding-top: 48px; }
-.editor-shell .editor-header .header-right { grid-column: 4; grid-row: 2; align-self: start; display: flex; justify-content: flex-end; height: 48px; width: var(--workspace-inspector-width); padding: 6px 8px; gap: 4px; background: var(--workspace-panel); z-index: 31; }
+.editor-shell .properties-workspace { grid-column: 4; grid-row: 3; padding-top: 0; }
+.editor-shell .editor-header .header-right { align-self: center; display: flex; justify-content: flex-end; align-items: center; flex: none; height: auto; width: auto; max-width: 100%; margin: 0; padding: 0; gap: 4px; background: transparent; }
 .editor-shell .header-right > button { height: 32px; padding: 6px; font-size: 0; }
 .editor-shell .header-right > .primary { font-size: 12px; padding: 6px 9px; }
 /* Settings is a named entry, not another icon-only workspace action. */
@@ -1785,8 +1824,8 @@ footer button {
 .editor-shell.chrome-hide-layers.chrome-hide-inspector { grid-template-columns: 57px 0 minmax(0, 1fr) 0; }
 .editor-shell.chrome-minimized { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell.chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) 0; }
-.editor-shell.chrome-hide-layers .document-title { grid-column: 3; justify-self: start; width: 240px; border: 1px solid var(--workspace-border); border-radius: 8px; margin: 8px; }
-.editor-shell.chrome-hide-inspector .header-right { grid-column: 3; justify-self: end; border-radius: 8px; margin: 8px; }
+.editor-shell.chrome-hide-layers .document-title { width: auto; margin: 0; border: 0; border-radius: 0; }
+.editor-shell.chrome-hide-inspector .header-right { margin: 0; border-radius: 0; background: transparent; }
 .editor-shell.chrome-minimized .brand { display: none; }
 .editor-shell.chrome-minimized > footer { left: 12px; }
 .editor-shell.chrome-hide-inspector .canvas-workspace .canvas-controls { top: auto; right: auto; bottom: 72px; left: 12px; }
@@ -1979,8 +2018,8 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
   .editor-shell .workspace-rail, .editor-shell .editor-header > .brand { width: 48px; }
   .editor-shell .adaptive-layers-shell { grid-column: 3; grid-row: 3; align-self: stretch; justify-self: start; z-index: 35; width: min(var(--workspace-layers-width), calc(100vw - 80px)); border: 1px solid var(--workspace-border); border-radius: 8px; }
   .editor-shell .properties-workspace { grid-column: 3; grid-row: 3; justify-self: end; z-index: 36; width: min(var(--workspace-inspector-width), calc(100vw - 80px)); padding-top: 0; border: 1px solid var(--workspace-border); border-radius: 8px; }
-  .editor-shell .editor-header .document-title { grid-column: 3; width: min(220px, 45vw); justify-self: start; margin: 8px; border-radius: 8px; }
-  .editor-shell .editor-header .header-right { grid-column: 3; justify-self: end; width: auto; margin: 8px; border-radius: 8px; }
+  .editor-shell .editor-header .document-title { width: min(220px, 45vw); margin: 0; border-radius: 0; }
+  .editor-shell .editor-header .header-right { width: auto; margin: 0; border-radius: 0; background: transparent; }
   .editor-shell .header-right .save-status { display: none; }
   .editor-shell .panel-resize-handle { display: none; }
   /* Keep both mounted drafts reachable: dual compact panels occupy separate
@@ -2173,15 +2212,14 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
    The browser uses the same shell, so a medium window reflows the same way. */
 .editor-shell[data-density="desk"] { --workspace-panel-cap: min(240px, 28vw); }
 .editor-shell[data-density="desk"] .editor-header .header-right {
-  grid-column: 3;
-  justify-self: end;
   width: auto;
   height: auto;
-  margin: 8px 10px;
-  max-width: calc(100% - 16px);
-  border: 1px solid var(--workspace-border);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px #1a243314;
+  margin: 0;
+  max-width: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 .editor-shell[data-density="desk"] .properties-workspace { padding-top: 0; }
 .editor-shell[data-density="desk"] .floating-toolbar {
@@ -2196,15 +2234,14 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 @media (min-width: 901px) and (max-width: 1180px) {
   .editor-shell { --workspace-panel-cap: min(240px, 28vw); }
   .editor-shell .editor-header .header-right {
-    grid-column: 3;
-    justify-self: end;
     width: auto;
     height: auto;
-    margin: 8px 10px;
-    max-width: calc(100% - 16px);
-    border: 1px solid var(--workspace-border);
-    border-radius: 12px;
-    box-shadow: 0 8px 24px #1a243314;
+    margin: 0;
+    max-width: 100%;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
   .editor-shell .properties-workspace { padding-top: 0; }
   .editor-shell .floating-toolbar {
@@ -2390,9 +2427,10 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-muted: #5d6673;
 }
 .editor-shell[data-ui-mode="figma"] .editor-header .document-title {
-  grid-template-columns: minmax(0, 1fr) 32px;
-  grid-template-rows: 32px 18px;
-  padding: 6px 10px 6px 14px;
+  grid-template-columns: auto minmax(0, 1fr) 32px;
+  grid-template-rows: 32px;
+  height: 32px;
+  padding: 0 4px;
 }
 .editor-shell[data-ui-mode="figma"] .document-title > button[aria-pressed] {
   width: 32px;
@@ -2401,9 +2439,9 @@ html[data-reduced-motion=true] .animation-modal * {
   min-height: 32px;
   padding: 0;
 }
-/* The 48px bar can hold a 32px control. Horizontal padding stays tight so the
+/* The 38px bar holds a 32px control. Horizontal padding stays tight so the
    Figma/Sketch switch does not grow into the canvas. Sketch layout keeps the
-   26px switch so its top toolbar overlap does not get wider. */
+   26px switch so its canvas toolbar does not get wider. */
 .editor-shell[data-ui-mode="figma"] .header-right .ui-mode-switch button {
   height: 32px;
   min-height: 32px;
@@ -2452,13 +2490,17 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-field: #ffffff;
   --workspace-text: #1d1d1f;
   --workspace-muted: #6e6e73;
+  --editor-chrome-row: 53px;
+  --editor-chrome-fill: #e8ebec;
+  --editor-chrome-divider: #c4cacf;
   grid-template-columns: 44px max-content minmax(0, 1fr) var(--workspace-inspector-width);
   /* Row 2 can grow with a wrapped action bar. The canvas starts on the next
-     row, so that bar cannot sit on top of the toolbar. */
-  grid-template-rows: auto minmax(64px, max-content) minmax(0, 1fr) auto;
+     row, so that bar cannot sit on top of the toolbar. The floor is the
+     official 53px content origin (52pt bar plus the 1px split). */
+  grid-template-rows: auto minmax(var(--editor-chrome-row), max-content) minmax(0, 1fr) auto;
 }
 .editor-shell[data-ui-mode="sketch"] .workspace-rail { display: none; }
-.editor-shell[data-ui-mode="sketch"] .editor-header > .brand { grid-column: 1; grid-row: 2; width: 44px; height: 40px; padding: 6px 8px; justify-content: center; }
+.editor-shell[data-ui-mode="sketch"] .editor-header > .brand { width: 44px; height: 40px; padding: 4px 6px; justify-content: center; }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized,
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) 0; }
@@ -2513,7 +2555,7 @@ html[data-reduced-motion=true] .animation-modal * {
 }
 .editor-shell[data-ui-mode="sketch"] .layers-pages { max-height: 46%; background: #ffffff; }
 .editor-shell[data-ui-mode="sketch"] .layer-heading { background: #ececec; }
-.editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 48px; }
+.editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 0; }
 .editor-shell[data-ui-mode="sketch"] .properties-tabs { background: #e6e6e6; }
 .editor-shell[data-ui-mode="sketch"] .properties-content .inspector > section,
 .editor-shell[data-ui-mode="sketch"] .properties-content .property-card {
