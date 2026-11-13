@@ -98,9 +98,13 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     }
     if !batch.is_empty(){batches.push(batch);}
     let mut geometry_pool=futureox_design_kernel::vector_geometry::GeometryPool::default();
-    // At most two independent CPU conversions. Refill a completed slot after
-    // merging its result in source order; a slow neighbouring batch no longer
-    // leaves the other conversion slot idle for the rest of a fixed pair.
+    // Join from the front so every window still merges in catalogue order.
+    // The published scene stays the two-slot result. Extra slots run only when
+    // another core is idle and the trusted startup budget can hold another
+    // window; below that budget the existing pair is unchanged. Cap at four
+    // so a large machine does not admit an unbounded set of archive windows.
+    let width=conversion_width();
+    s.snapshot_account.convert_width.store(width as u64, std::sync::atomic::Ordering::Relaxed);
     let convert=|batch:&Vec<(usize,usize)>| {
         if batch.len()==1 {
             // Singleton batches share the material-viewer cache. A full-source
@@ -120,7 +124,7 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     std::thread::scope(|scope| -> Result<()> {
         let mut remaining=batches.iter();
         let mut pending=std::collections::VecDeque::new();
-        for batch in remaining.by_ref().take(2) {
+        for batch in remaining.by_ref().take(width) {
             let convert=&convert;pending.push_back(scope.spawn(move||convert(batch)));
         }
         while let Some(next)=pending.pop_front() {
@@ -138,6 +142,23 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     let document = full.ok_or_else(||issue("The source has no drawable canvas objects"))?;
     let (document,id)=place_materials(document,&s.owner.document_id,&s.name,layout)?;
     Ok((document,id,warnings.into_iter().collect()))
+}
+
+/// Pipeline width for one full-source build. Two is the existing pair.
+/// `cores` is `available_parallelism`, and `budget` is the trusted startup
+/// memory budget in bytes. Neither value comes from the document.
+pub(super) fn conversion_width_for(cores: usize, budget: u64) -> usize {
+    if budget < 2 * 1024 * 1024 * 1024 {
+        2
+    } else {
+        cores.max(1).clamp(2, 4)
+    }
+}
+fn conversion_width() -> usize {
+    conversion_width_for(
+        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+        futureox_design_kernel::capacity::memory_budget_bytes(),
+    )
 }
 
 pub(super) fn place_materials(mut document:Document, document_id:&str, name:&str, layout:&canvas_layout::Layout)
@@ -224,6 +245,8 @@ pub(super) struct Account {
     pub scene_writes: u64,
     /// Multi-root archive batches. Singleton roots use the window cache instead.
     pub source_batches: std::sync::atomic::AtomicU64,
+    /// Slots used by the latest full-source build. Not a scene input.
+    pub convert_width: std::sync::atomic::AtomicU64,
 }
 
 pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool, material_keys:Option<&[String]>,navigation_window:Option<canvas_layout::Box2>) -> Result<Value> {
@@ -308,6 +331,22 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
     }
     let snapshot=s.canvas_snapshot.as_ref().unwrap();
     Ok(snapshot_descriptor(snapshot,&s.owner))
+}
+
+#[cfg(test)]
+mod width_tests {
+    use super::conversion_width_for;
+    const GIB: u64 = 1024 * 1024 * 1024;
+    #[test]
+    fn conversion_width_keeps_the_pair_until_budget_and_cores_both_allow_more() {
+        assert_eq!(conversion_width_for(1, 4 * GIB), 2);
+        assert_eq!(conversion_width_for(4, 2 * GIB - 1), 2);
+        assert_eq!(conversion_width_for(8, 512 * 1024 * 1024), 2);
+        assert_eq!(conversion_width_for(2, 2 * GIB), 2);
+        assert_eq!(conversion_width_for(3, 2 * GIB), 3);
+        assert_eq!(conversion_width_for(4, 2 * GIB), 4);
+        assert_eq!(conversion_width_for(16, 8 * GIB), 4);
+    }
 }
 
 pub(super) fn snapshot_descriptor(snapshot:&Snapshot,owner:&Owner)->Value {
