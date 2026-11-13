@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from './engine'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 import { uid, type LocalReview, type Point } from './model'
 import { apply, inverse, worldMatrix } from './geometry'
 import { commitPendingEdits, registerPendingEdit, pendingEditsChanged } from './pending-edits'
@@ -9,6 +10,7 @@ export function reviewPoint(editor: Editor, review: LocalReview): Point {
     : review.position
 }
 export function ReviewsPanel({ editor }: { editor: Editor }) {
+  const { tr } = useProfessionalDialogText()
   const s = useSyncExternalStore(editor.subscribe, editor.snapshot),
     [text, setText] = useState(''),
     [resolved, setResolved] = useState(false)
@@ -71,21 +73,21 @@ export function ReviewsPanel({ editor }: { editor: Editor }) {
   return (
     <aside
       className="inspector local-reviews"
-      aria-label="本地评论与标注"
+      aria-label={tr('本地评论与标注')}
       onKeyDown={(e) => e.stopPropagation()}
     >
       <header className="panel-title">
-        <strong>{draft?.kind === 'annotation' ? '标注' : '评论'}</strong>
-        <button aria-label="关闭评论" onClick={close}>
+        <strong>{tr(draft?.kind === 'annotation' ? '标注' : '评论')}</strong>
+        <button aria-label={tr('关闭评论')} onClick={close}>
           ×
         </button>
       </header>
-      <p className="muted">保存在本机设计文件中</p>
+      <p className="muted">{tr('保存在本机设计文件中')}</p>
       <label>
         <input type="checkbox" checked={resolved} onChange={(e) => setResolved(e.target.checked)} />
-        显示已解决
+        {tr('显示已解决')}
       </label>
-      {!draft && !current && <p>点击画布放置评论，或选择已有评论。</p>}
+      {!draft && !current && <p>{tr('点击画布放置评论，或选择已有评论。')}</p>}
       {(s.doc.reviews || [])
         .filter((r) => r.pageId === s.page && (resolved || !r.resolved))
         .map((r) => (
@@ -98,14 +100,14 @@ export function ReviewsPanel({ editor }: { editor: Editor }) {
             }}
           >
             <span>
-              {r.kind === 'annotation' ? '标注' : '评论'} {r.resolved ? '· 已解决' : ''}
+              {tr(r.kind === 'annotation' ? '标注' : '评论')} {r.resolved ? tr('· 已解决') : ''}
             </span>
             <span>{r.messages[0]?.text}</span>
-            <small>{r.messages.length} 条消息</small>
+            <small>{tr(`${r.messages.length} 条消息`)}</small>
           </button>
         ))}
       {current && (
-        <section aria-label="评论内容">
+        <section aria-label={tr('评论内容')}>
           {current.messages.map((m) => (
             <article key={m.id}>
               <strong>{m.author}</strong>
@@ -119,7 +121,7 @@ export function ReviewsPanel({ editor }: { editor: Editor }) {
               })
             }
           >
-            {current.resolved ? '重新打开' : '标为已解决'}
+            {tr(current.resolved ? '重新打开' : '标为已解决')}
           </button>
           <button
             onClick={() => {
@@ -129,7 +131,7 @@ export function ReviewsPanel({ editor }: { editor: Editor }) {
               editor.set({ commentSelection: undefined })
             }}
           >
-            删除评论
+            {tr('删除评论')}
           </button>
         </section>
       )}
@@ -150,8 +152,8 @@ export function ReviewsPanel({ editor }: { editor: Editor }) {
               composing.current = false
               pendingEditsChanged(editor)
             }}
-            aria-label={draft ? '评论正文' : '回复正文'}
-            placeholder={draft ? '添加评论…' : '回复…'}
+            aria-label={tr(draft ? '评论正文' : '回复正文')}
+            placeholder={tr(draft ? '添加评论…' : '回复…')}
             maxLength={10000}
             value={text}
             onChange={(e) => {
@@ -162,7 +164,7 @@ export function ReviewsPanel({ editor }: { editor: Editor }) {
             autoFocus
           />
           <button type="submit" disabled={!text.trim()}>
-            保存{current ? '回复' : draft?.kind === 'annotation' ? '标注' : '评论'}
+            {tr(current ? '保存回复' : draft?.kind === 'annotation' ? '保存标注' : '保存评论')}
           </button>
           {draft && (
             <button
@@ -174,7 +176,7 @@ export function ReviewsPanel({ editor }: { editor: Editor }) {
                 pendingEditsChanged(editor)
               }}
             >
-              取消
+              {tr('取消')}
             </button>
           )}
         </form>

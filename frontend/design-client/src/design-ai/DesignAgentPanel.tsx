@@ -7,6 +7,7 @@ import { assistantStatus, cancelTurn, requestTurn, snapshotContext, type AgentTu
 import { compareUserFile, sketchRoundTripGaps, type DesignGap } from './format-gap'
 import type { AgentTargetDetail } from './target-event'
 import './design-agent.css'
+import { useProfessionalDialogText } from '../professional-dialog-messages'
 
 type Row = { id: string; role: 'user' | 'agent' | 'plan' | 'tool'; text: string; status?: string }
 
@@ -32,6 +33,7 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   onImport?: (file: File, mode: 'open' | 'append') => void
   active?: boolean
 }) {
+  const { locale, tr } = useProfessionalDialogText()
   const snapshot = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [rows, setRows] = useState<Row[]>([])
   const [input, setInput] = useState(initial?.prompt || '')
@@ -52,7 +54,7 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
   const chosen = useRef<File | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const target = pinned && pinnedDocument.current === snapshot.doc.id ? pinned : snapshot.page
-  const pageName = snapshot.doc.pages.find(page => page.id === target)?.name || '指定页面已不存在'
+  const page = snapshot.doc.pages.find(item => item.id === target)
   const followingCurrent = target === snapshot.page
 
   useEffect(() => {
@@ -172,50 +174,55 @@ export default function DesignAgentPanel({ editor, desktop, onClose, endpoint, i
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Sketch 导出失败') }
   }
 
-  return <aside className="design-agent-panel" aria-label="设计助手">
+  const targetLine = !page
+    ? tr('指定页面已不存在')
+    : locale === 'en'
+      ? `${followingCurrent ? 'Edits' : 'Will edit'} “${page.name}”. ${tr('点名其他页面时，助手会改那一页。')}`
+      : `${followingCurrent ? '默认改' : '将修改'}「${page.name}」。${tr('点名其他页面时，助手会改那一页。')}`
+  return <aside className="design-agent-panel" aria-label={tr('设计助手')}>
     <header className="design-agent-header">
-      <h2>设计助手</h2>
-      <button type="button" onClick={freshConversation}>新对话</button>
-      <button type="button" aria-pressed="true" onClick={onClose}>切换</button>
+      <h2>{tr('设计助手')}</h2>
+      <button type="button" onClick={freshConversation}>{tr('新对话')}</button>
+      <button type="button" aria-pressed="true" onClick={onClose}>{tr('切换')}</button>
     </header>
-    {availability?.text && <p className={`design-agent-mode is-${availability.tone}`} role={availability.tone === 'error' ? 'alert' : 'status'} data-agent-mode={availability.tone}>{availability.text}</p>}
-    <p className="design-agent-target" data-target-page={target}>{followingCurrent ? `默认改「${pageName}」。` : `将修改「${pageName}」。`}点名其他页面时，助手会改那一页。</p>
-    {actor && <p role="status">{actor}</p>}
+    {availability?.text && <p className={`design-agent-mode is-${availability.tone}`} role={availability.tone === 'error' ? 'alert' : 'status'} data-agent-mode={availability.tone}>{tr(availability.text)}</p>}
+    <p className="design-agent-target" data-target-page={target}>{targetLine}</p>
+    {actor && <p role="status">{tr(actor)}</p>}
     <div className="design-agent-log" ref={scroller} aria-live="polite">
-      {rows.length === 0 && <p className="design-agent-empty">用一键出图生成一整页，或悬停页面列表里的 AI 做定向修改。</p>}
+      {rows.length === 0 && <p className="design-agent-empty">{tr('用一键出图生成一整页，或悬停页面列表里的 AI 做定向修改。')}</p>}
       {rows.map(row => <article key={row.id} className={`design-agent-row is-${row.role}`} data-status={row.status || ''}>
-        <span>{row.role === 'user' ? '你' : row.role === 'plan' ? '计划' : row.role === 'tool' ? '操作' : '助手'}</span>
+        <span>{locale === 'en' ? (row.role === 'user' ? 'You' : row.role === 'plan' ? 'Plan' : row.role === 'tool' ? 'Action' : 'Assistant') : (row.role === 'user' ? '你' : row.role === 'plan' ? '计划' : row.role === 'tool' ? '操作' : '助手')}</span>
         <p>{row.text}</p>
       </article>)}
     </div>
     <details className="design-agent-compare">
-      <summary>导入导出与 Fig / Sketch 差距</summary>
-      <label className="design-agent-file">选择文件<input ref={file} aria-label="选择 Fig 或 Sketch" type="file" accept=".fig,.sketch" disabled={busy}
+      <summary>{tr('导入导出与 Fig / Sketch 差距')}</summary>
+      <label className="design-agent-file">{tr('选择文件')}<input ref={file} aria-label={tr('选择 Fig 或 Sketch')} type="file" accept=".fig,.sketch" disabled={busy}
         onChange={event => { chosen.current = event.target.files?.[0] || null }} /></label>
       <div className="design-ai-actions">
-        <button type="button" disabled={busy} onClick={() => void compare()}>查看差距</button>
-        <button type="button" disabled={busy || !chosen.current} onClick={() => { const selected = chosen.current; if (selected) onImport?.(selected, 'append') }}>追加导入</button>
-        <button type="button" disabled={busy || !chosen.current} onClick={() => { const selected = chosen.current; if (selected) onImport?.(selected, 'open') }}>打开为文档</button>
-        <button type="button" disabled={busy} onClick={roundTrip}>导出 Sketch 并比较往返</button>
+        <button type="button" disabled={busy} onClick={() => void compare()}>{tr('查看差距')}</button>
+        <button type="button" disabled={busy || !chosen.current} onClick={() => { const selected = chosen.current; if (selected) onImport?.(selected, 'append') }}>{tr('追加导入')}</button>
+        <button type="button" disabled={busy || !chosen.current} onClick={() => { const selected = chosen.current; if (selected) onImport?.(selected, 'open') }}>{tr('打开为文档')}</button>
+        <button type="button" disabled={busy} onClick={roundTrip}>{tr('导出 Sketch 并比较往返')}</button>
       </div>
-      {gapLabel && <p role="status">{gapLabel}{gaps.length ? ` · ${gaps.length} 处差距` : ' · 没有列出差距'}</p>}
-      {!!gaps.length && <ul>{gaps.map(gap => <li key={`${gap.code}-${gap.detail}`}>{gap.detail}</li>)}</ul>}
+      {gapLabel && <p role="status">{tr(gapLabel)}{gaps.length ? tr(` · ${gaps.length} 处差距`) : tr(' · 没有列出差距')}</p>}
+      {!!gaps.length && <ul>{gaps.map(gap => <li key={`${gap.code}-${gap.detail}`}>{tr(gap.detail)}</li>)}</ul>}
     </details>
     <form className="design-agent-composer" onSubmit={event => { event.preventDefault(); void send(input) }}>
       <div className="design-ai-actions">
-        <button type="button" disabled={busy} onClick={() => void send(input.trim() || '一键出图：做一个可编辑的产品落地页，标题、副标题和三个卖点')}>一键出图</button>
-        <button type="button" disabled={busy} onClick={() => void send(input.trim() || '细节调整：把这一页的标题对比加强，圆角 20')}>细节调整</button>
+        <button type="button" disabled={busy} onClick={() => void send(input.trim() || tr('一键出图：做一个可编辑的产品落地页，标题、副标题和三个卖点'))}>{tr('一键出图')}</button>
+        <button type="button" disabled={busy} onClick={() => void send(input.trim() || tr('细节调整：把这一页的标题对比加强，圆角 20'))}>{tr('细节调整')}</button>
       </div>
-      <label>对话<textarea aria-label="设计对话" rows={3} value={input} disabled={busy} maxLength={4000}
-        onChange={event => setInput(event.target.value)} placeholder="例如：做一个咖啡品牌落地页，标题秋日特惠，卖点：产地、烘焙、门店" /></label>
+      <label>{tr('对话')}<textarea aria-label={tr('设计对话')} rows={3} value={input} disabled={busy} maxLength={4000}
+        onChange={event => setInput(event.target.value)} placeholder={tr('例如：做一个咖啡品牌落地页，标题秋日特惠，卖点：产地、烘焙、门店')} /></label>
       <div className="design-ai-actions">
-        <button type="submit" className="primary" disabled={busy || !input.trim()}>发送</button>
-        {busy && <span role="status">正在执行…</span>}
+        <button type="submit" className="primary" disabled={busy || !input.trim()}>{tr('发送')}</button>
+        {busy && <span role="status">{tr('正在执行…')}</span>}
       </div>
-      {error && <p className="design-agent-failure" role="alert">{error}</p>}
+      {error && <p className="design-agent-failure" role="alert">{tr(error)}</p>}
       {failurePrompt && <div className="design-ai-actions">
-        <button type="button" disabled={busy} onClick={() => void send(failurePrompt.message, failurePrompt.pageId)}>重试</button>
-        <button type="button" disabled={busy} onClick={() => void send(failurePrompt.message, failurePrompt.pageId, { useLocalRules: true })}>使用本机规则模板</button>
+        <button type="button" disabled={busy} onClick={() => void send(failurePrompt.message, failurePrompt.pageId)}>{tr('重试')}</button>
+        <button type="button" disabled={busy} onClick={() => void send(failurePrompt.message, failurePrompt.pageId, { useLocalRules: true })}>{tr('使用本机规则模板')}</button>
       </div>}
     </form>
   </aside>

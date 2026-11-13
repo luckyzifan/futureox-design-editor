@@ -1,3 +1,5 @@
+import { useProfessionalDialogText } from './professional-dialog-messages'
+
 export function importWarningText(message: string): string {
   if (message.includes('fonts without embedded resources')) return '文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。'
   if (message.includes('unsupported source fields')) return '部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。'
@@ -11,14 +13,15 @@ export function importWarningText(message: string): string {
 
 /** Compatibility information never captures the rest of the editor's input. */
 export function ImportNotice({ warnings, onClose }: { warnings: string[]; onClose(): void }) {
-  return <aside className="import-notice" aria-label="导入兼容提示">
+  const { tr } = useProfessionalDialogText()
+  return <aside className="import-notice" aria-label={tr('导入兼容提示')}>
     <div className="import-notice-summary">
-      <span role="status">已导入，可以继续编辑 · {warnings.length} 项兼容提示</span>
-      <button type="button" aria-label="关闭导入提示" onClick={onClose}>×</button>
+      <span role="status">{tr('已导入，可以继续编辑')} · {warnings.length} {tr('项兼容提示')}</span>
+      <button type="button" aria-label={tr('关闭导入提示')} onClick={onClose}>×</button>
     </div>
     <details>
-      <summary>查看兼容说明</summary>
-      <ul>{warnings.map(message => <li key={message}>{importWarningText(message)}</li>)}</ul>
+      <summary>{tr('查看兼容说明')}</summary>
+      <ul>{warnings.map(message => <li key={message}>{tr(importWarningText(message))}</li>)}</ul>
     </details>
   </aside>
 }

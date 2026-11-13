@@ -28,6 +28,7 @@ import { kernelModuleReady } from './kernel/module'
 import { scene, unionBounds } from './geometry'
 import { fitBounds } from './canvas-camera'
 import { desktopBridge } from './desktop'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 import {
   encodeDesktopFrames,
   motionFileName,
@@ -38,6 +39,7 @@ import {
 import './animation.css'
 
 function EasingControls({ value, onChange }: { value: Easing; onChange: (value: Easing) => void }) {
+  const { tr } = useProfessionalDialogText()
   const field = (key: string, label: string, v: number, min: number, max: number) => (
     <label key={key}>
       {label}
@@ -58,9 +60,9 @@ function EasingControls({ value, onChange }: { value: Easing; onChange: (value: 
   return (
     <div className="animation-easing">
       <label>
-        缓动
+        {tr('缓动')}
         <select
-          aria-label="动画缓动"
+          aria-label={tr('动画缓动')}
           value={value.kind === 'named' ? `named:${value.name}` : value.kind}
           onChange={(e) => {
             const v = e.target.value
@@ -75,49 +77,49 @@ function EasingControls({ value, onChange }: { value: Easing; onChange: (value: 
             }
           }}
         >
-          <option value="linear">线性</option>
-          <option value="cubic">贝塞尔</option>
-          <option value="spring">弹簧</option>
-          <option value="hold">保持到下一帧</option>
-          <optgroup label="Figma 缓动预设">
-            <option value="named:ease-in-sine">Sine 入</option>
-            <option value="named:ease-out-sine">Sine 出</option>
-            <option value="named:ease-in-out-sine">Sine 入出</option>
-            <option value="named:ease-in-quad">Quad 入</option>
-            <option value="named:ease-out-quad">Quad 出</option>
-            <option value="named:ease-in-out-quad">Quad 入出</option>
-            <option value="named:ease-in-cubic">Cubic 入</option>
-            <option value="named:ease-out-cubic">Cubic 出</option>
-            <option value="named:ease-in-out-cubic">Cubic 入出</option>
-            <option value="named:ease-in-quart">Quart 入</option>
-            <option value="named:ease-out-quart">Quart 出</option>
-            <option value="named:ease-in-out-quart">Quart 入出</option>
-            <option value="named:ease-in-quint">Quint 入</option>
-            <option value="named:ease-out-quint">Quint 出</option>
-            <option value="named:ease-in-out-quint">Quint 入出</option>
-            <option value="named:ease-in-expo">Expo 入</option>
-            <option value="named:ease-out-expo">Expo 出</option>
-            <option value="named:ease-in-out-expo">Expo 入出</option>
-            <option value="named:ease-in-circ">Circ 入</option>
-            <option value="named:ease-out-circ">Circ 出</option>
-            <option value="named:ease-in-out-circ">Circ 入出</option>
+          <option value="linear">{tr('线性')}</option>
+          <option value="cubic">{tr('贝塞尔')}</option>
+          <option value="spring">{tr('弹簧')}</option>
+          <option value="hold">{tr('保持到下一帧')}</option>
+          <optgroup label={tr('Figma 缓动预设')}>
+            <option value="named:ease-in-sine">{tr('Sine 入')}</option>
+            <option value="named:ease-out-sine">{tr('Sine 出')}</option>
+            <option value="named:ease-in-out-sine">{tr('Sine 入出')}</option>
+            <option value="named:ease-in-quad">{tr('Quad 入')}</option>
+            <option value="named:ease-out-quad">{tr('Quad 出')}</option>
+            <option value="named:ease-in-out-quad">{tr('Quad 入出')}</option>
+            <option value="named:ease-in-cubic">{tr('Cubic 入')}</option>
+            <option value="named:ease-out-cubic">{tr('Cubic 出')}</option>
+            <option value="named:ease-in-out-cubic">{tr('Cubic 入出')}</option>
+            <option value="named:ease-in-quart">{tr('Quart 入')}</option>
+            <option value="named:ease-out-quart">{tr('Quart 出')}</option>
+            <option value="named:ease-in-out-quart">{tr('Quart 入出')}</option>
+            <option value="named:ease-in-quint">{tr('Quint 入')}</option>
+            <option value="named:ease-out-quint">{tr('Quint 出')}</option>
+            <option value="named:ease-in-out-quint">{tr('Quint 入出')}</option>
+            <option value="named:ease-in-expo">{tr('Expo 入')}</option>
+            <option value="named:ease-out-expo">{tr('Expo 出')}</option>
+            <option value="named:ease-in-out-expo">{tr('Expo 入出')}</option>
+            <option value="named:ease-in-circ">{tr('Circ 入')}</option>
+            <option value="named:ease-out-circ">{tr('Circ 出')}</option>
+            <option value="named:ease-in-out-circ">{tr('Circ 入出')}</option>
           </optgroup>
         </select>
       </label>
       {value.kind === 'cubic' && (
         <>
-          {field('x1', '控制点 X1', value.x1, 0, 1)}
-          {field('y1', '控制点 Y1', value.y1, -10, 10)}
-          {field('x2', '控制点 X2', value.x2, 0, 1)}
-          {field('y2', '控制点 Y2', value.y2, -10, 10)}
+          {field('x1', tr('控制点 X1'), value.x1, 0, 1)}
+          {field('y1', tr('控制点 Y1'), value.y1, -10, 10)}
+          {field('x2', tr('控制点 X2'), value.x2, 0, 1)}
+          {field('y2', tr('控制点 Y2'), value.y2, -10, 10)}
         </>
       )}
       {value.kind === 'spring' && (
         <>
-          {field('mass', '质量', value.mass, 0.0001, 1000)}
-          {field('stiffness', '刚度', value.stiffness, 0.01, 1e6)}
-          {field('damping', '阻尼', value.damping, 0, 1e5)}
-          {field('velocity', '初速度', value.velocity, -10000, 10000)}
+          {field('mass', tr('质量'), value.mass, 0.0001, 1000)}
+          {field('stiffness', tr('刚度'), value.stiffness, 0.01, 1e6)}
+          {field('damping', tr('阻尼'), value.damping, 0, 1e5)}
+          {field('velocity', tr('初速度'), value.velocity, -10000, 10000)}
         </>
       )}
     </div>
@@ -166,6 +168,7 @@ export function Timeline({
   onTime: (ms: number) => void
   playheadMs: number | null
 }) {
+  const { tr } = useProfessionalDialogText()
   const [selectedKey, setSelectedKey] = useState<{ nodeId: string; timeMs: number } | null>(null),
     [drag, setDrag] = useState<{
       nodeId: string
@@ -190,7 +193,7 @@ export function Timeline({
   return (
     <div className="animation-timeline">
       <div className="animation-track animation-ruler">
-        <span className="animation-track-label">时间轴</span>
+        <span className="animation-track-label">{tr('时间轴')}</span>
         <div aria-hidden="true" className="animation-track-lane">
           {ticks.map((ms) => (
             <div
@@ -213,7 +216,7 @@ export function Timeline({
             className="animation-track"
             key={track.nodeId}
             role="group"
-            aria-label={`轨道 ${track.nodeId}`}
+            aria-label={tr(`轨道 ${track.nodeId}`)}
             onDoubleClick={(e) => {
               if ((e.target as HTMLElement).closest('button')) return
               const rect = (e.currentTarget as HTMLElement)
@@ -231,7 +234,7 @@ export function Timeline({
           >
             <span
               className="animation-track-label"
-              title={`${nodeName} · 缓动 ${easingNames[kind]}`}
+              title={`${nodeName} · ${tr('缓动')} ${tr(easingNames[kind])}`}
             >
               <span aria-hidden="true">{easingGlyphs[kind]}</span>
               <span className="animation-track-name">{nodeName}</span>
@@ -359,6 +362,7 @@ export function AnimationPreview({
   onClose: () => void
   onTime?: (ms: number) => void
 }) {
+  const { tr } = useProfessionalDialogText()
   const clock = useRef(new PlaybackClock()),
     [time, setTime] = useState(0),
     [playing, setPlaying] = useState(false),
@@ -583,7 +587,7 @@ export function AnimationPreview({
       ref={modal}
       tabIndex={-1}
       role="dialog"
-      aria-label="动画预览"
+      aria-label={tr('动画预览')}
       aria-modal="true"
       onKeyUpCapture={(e) => e.stopPropagation()}
       onKeyDownCapture={(e) => {
@@ -618,7 +622,7 @@ export function AnimationPreview({
       <div className="animation-player">
         <div className="animation-heading">
           <strong>{clip.name}</strong>
-          <span>动画预览</span>
+          <span>{tr('动画预览')}</span>
           <button
             type="button"
             onClick={() => {
@@ -626,7 +630,7 @@ export function AnimationPreview({
               onClose()
             }}
           >
-            关闭预览
+            {tr('关闭预览')}
           </button>
         </div>
         <div className="animation-preview-host" ref={host}>
@@ -672,7 +676,7 @@ export function AnimationPreview({
               }
             }}
           >
-            {playing ? '暂停' : '播放'}
+            {tr(playing ? '暂停' : '播放')}
           </button>
           <button
             type="button"
@@ -682,11 +686,11 @@ export function AnimationPreview({
               seek(0)
             }}
           >
-            回到开头
+            {tr('回到开头')}
           </button>
           <input
             type="range"
-            aria-label="预览时间"
+            aria-label={tr('预览时间')}
             min="0"
             max={clip.delayMs + clip.durationMs}
             step="1"
@@ -719,9 +723,9 @@ export function AnimationPreview({
               }
             }}
           />
-          <output aria-label="当前动画时间">{Math.round(time)} ms</output>
+          <output aria-label={tr('当前动画时间')}>{Math.round(time)} ms</output>
           <select
-            aria-label="播放速度"
+            aria-label={tr('播放速度')}
             value={speed}
             onChange={(e) => {
               const rate = Number(e.target.value)
@@ -737,31 +741,32 @@ export function AnimationPreview({
             ))}
           </select>
           <button type="button" disabled={exporting} onClick={() => void exportFrame()}>
-            导出当前帧 PNG
+            {tr('导出当前帧 PNG')}
           </button>
           {videoReady && (
             <>
               <button type="button" disabled={exporting} onClick={() => void exportVideo('mp4')}>
-                导出 MP4
+                {tr('导出 MP4')}
               </button>
               <button type="button" disabled={exporting} onClick={() => void exportVideo('webm')}>
-                导出 WebM
+                {tr('导出 WebM')}
               </button>
             </>
           )}
           {asset && (
             <a href={asset.url} download={asset.name}>
-              下载 {asset.name}
+              {tr('下载')} {asset.name}
             </a>
           )}
         </div>
-        {error && <p role="alert">{error}</p>}
+        {error && <p role="alert">{tr(error)}</p>}
       </div>
     </div>
   )
 }
 
 export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+  const { tr } = useProfessionalDialogText()
   const s = useSyncExternalStore(editor.subscribe, editor.snapshot),
     clips = s.doc.animations?.filter((c) => c.pageId === s.page) || []
   const [selected, setSelected] = useState(''),
@@ -786,15 +791,15 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
     if (key) setEasing(structuredClone(key.easing))
   }, [clip?.id, selectedNode, time])
   return (
-    <section className="animation-panel" aria-label="动画时间轴">
+    <section className="animation-panel" aria-label={tr('动画时间轴')}>
       <div className="animation-heading">
-        <strong>动画</strong>
+        <strong>{tr('动画')}</strong>
         <select
-          aria-label="当前动画"
+          aria-label={tr('当前动画')}
           value={clip?.id || ''}
           onChange={(e) => setSelected(e.target.value)}
         >
-          {!clips.length && <option value="">尚未创建动画</option>}
+          {!clips.length && <option value="">{tr('尚未创建动画')}</option>}
           {clips.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -817,22 +822,22 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
             }
           }}
         >
-          从选区创建动画
+          {tr('从选区创建动画')}
         </button>
-        <label><input type="checkbox" checked={includeDescendants} onChange={e => setIncludeDescendants(e.target.checked)}/>包含子图层轨道</label>
+        <label><input type="checkbox" checked={includeDescendants} onChange={e => setIncludeDescendants(e.target.checked)}/>{tr('包含子图层轨道')}</label>
         <button type="button" onClick={onClose}>
-          收起动画
+          {tr('收起动画')}
         </button>
       </div>
       {!clip ? (
-        <p>选择图层后创建动画；编辑画布上的位置、颜色或效果，再记录关键帧。</p>
+        <p>{tr('选择图层后创建动画；编辑画布上的位置、颜色或效果，再记录关键帧。')}</p>
       ) : (
         <>
           <div className="animation-properties">
             <label>
-              名称
+              {tr('名称')}
               <input
-                aria-label="动画名称"
+                aria-label={tr('动画名称')}
                 value={clip.name}
                 onChange={(e) =>
                   update('重命名动画', (c) => {
@@ -842,10 +847,10 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
               />
             </label>
             <label>
-              时长 ms
+              {tr('时长 ms')}
               <input
                 type="number"
-                aria-label="动画时长"
+                aria-label={tr('动画时长')}
                 min="1"
                 max="600000"
                 value={clip.durationMs}
@@ -863,10 +868,10 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
               />
             </label>
             <label>
-              延迟 ms
+              {tr('延迟 ms')}
               <input
                 type="number"
-                aria-label="动画延迟"
+                aria-label={tr('动画延迟')}
                 min="0"
                 max="600000"
                 value={clip.delayMs}
@@ -880,9 +885,9 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
               />
             </label>
             <label>
-              重复
+              {tr('重复')}
               <select
-                aria-label="动画重复"
+                aria-label={tr('动画重复')}
                 value={clip.repeat}
                 onChange={(e) =>
                   update('修改动画重复', (c) => {
@@ -890,13 +895,13 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
                   })
                 }
               >
-                <option value="once">一次</option>
-                <option value="loop">循环</option>
-                <option value="alternate">往返</option>
+                <option value="once">{tr('一次')}</option>
+                <option value="loop">{tr('循环')}</option>
+                <option value="alternate">{tr('往返')}</option>
               </select>
             </label>
             <button type="button" onClick={() => setPreview(true)}>
-              预览动画
+              {tr('预览动画')}
             </button>
             <button
               type="button"
@@ -906,15 +911,15 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
                 })
               }
             >
-              删除动画
+              {tr('删除动画')}
             </button>
           </div>
           <div className="animation-record">
             <label>
-              记录时间 ms
+              {tr('记录时间 ms')}
               <input
                 type="number"
-                aria-label="关键帧时间"
+                aria-label={tr('关键帧时间')}
                 min="0"
                 max={clip.durationMs}
                 value={time}
@@ -934,7 +939,7 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
                 })
               }
             >
-              记录选区当前状态
+              {tr('记录选区当前状态')}
             </button>
             <button
               type="button"
@@ -947,9 +952,9 @@ export function AnimationPanel({ editor, onClose }: { editor: Editor; onClose: (
                 })
               }
             >
-              应用缓动到选中轨道
+              {tr('应用缓动到选中轨道')}
             </button>
-            <span>{clip.tracks.length} 个图层轨道</span>
+            <span>{tr(`${clip.tracks.length} 个图层轨道`)}</span>
           </div>
           <EasingControls value={easing} onChange={setEasing} />
           <Timeline

@@ -7,8 +7,10 @@ import {screenToWorld} from './canvas-camera'
 import {uid,type RulerGuide} from './model'
 import {guideOwner,guidePosition,worldGuides} from './ruler-guides'
 import {NumberField} from './fields'
+import {useProfessionalDialogText} from './professional-dialog-messages'
 
 export function CanvasGuides({editor,view,size,entries,intercept}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean}){
+  const {tr}=useProfessionalDialogText()
   const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<{owner:string;id:string}|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
   const doc=editor.state.doc,page=editor.state.page,shown=!!editor.state.rulers
@@ -72,9 +74,9 @@ export function CanvasGuides({editor,view,size,entries,intercept}:{editor:Editor
     <div className="canvas-ruler vertical" data-testid="vertical-ruler" onPointerDown={e=>start(e,'x',owner)}>{ticks('y').map(t=><span key={t.value} style={{top:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>
     <div className="ruler-origin"/>
     {selected&&selectedGuide&&<div className="guide-properties" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
-      <span>{selected.owner===page?'页面':'画板'}参考线</span>
+      <span>{tr(selected.owner===page?'页面参考线':'画板参考线')}</span>
       <NumberField label="参考线位置" value={selectedGuide.position} onChange={position=>runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('设置参考线位置',d=>{const g=guideOwner(d,selected.owner)?.guides?.find(g=>g.id===selected.id);if(g)g.position=position}))}/>
-      <button onClick={()=>{runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('删除参考线',d=>{const o=guideOwner(d,selected.owner);if(o)o.guides=o.guides?.filter(g=>g.id!==selected.id)}));setSelected(null)}}>删除</button>
+      <button onClick={()=>{runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('删除参考线',d=>{const o=guideOwner(d,selected.owner);if(o)o.guides=o.guides?.filter(g=>g.id!==selected.id)}));setSelected(null)}}>{tr('删除')}</button>
     </div>}
   </div>
 }

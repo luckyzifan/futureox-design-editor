@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, MoreHorizontal, Plus, Search } from 'lucide-react'
 import type { Editor } from './engine'
-import { useInterfaceText } from './interface-preference'
+import { useInterfacePreferences, useInterfaceText } from './interface-preference'
 import { commitPendingEdits } from './pending-edits'
 import { modalKeyDown } from './modal-keyboard'
 import { userPages } from './fig-document'
@@ -12,6 +12,7 @@ import './design-ai/design-agent.css'
 
 export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: string) => void }) {
   const text = useInterfaceText()
+  const { locale } = useInterfacePreferences()
   const listId = useId()
   const state = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [open, setOpen] = useState(true)
@@ -71,11 +72,11 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
           <button className={state.page === page.id ? 'page active' : 'page'} onClick={() => editor.switchPage(page.id)} onDoubleClick={() => onRename(page.id)}>
             <span className="page-name" title={page.name}>{page.name}</span>{state.page === page.id && <span className="page-dot" />}
           </button>
-          {hoverPage === page.id && <button type="button" className="page-ai" aria-label={`用 AI 修改 ${page.name}`} onMouseDown={event => event.stopPropagation()} onClick={event => {
+          {hoverPage === page.id && <button type="button" className="page-ai" aria-label={`${locale === 'en' ? 'Edit with AI' : '用 AI 修改'} ${page.name}`} onMouseDown={event => event.stopPropagation()} onClick={event => {
             event.stopPropagation()
             if (!canMutatePages() || !commitPendingEdits(editor)) return
             editor.switchPage(page.id)
-            requestAgentTarget({ pageId: page.id, prompt: `细节调整：修改「${page.name}」`, send: false })
+            requestAgentTarget({ pageId: page.id, prompt: locale === 'en' ? `Refine: edit “${page.name}”` : `细节调整：修改「${page.name}」`, send: false })
           }}>AI</button>}
           <button className="page-options" aria-label={`${text.pageActions}：${page.name}`} onClick={event => {
             if (!commitPendingEdits(editor)) return

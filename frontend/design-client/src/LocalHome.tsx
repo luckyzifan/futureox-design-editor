@@ -4,6 +4,7 @@ import { File,FolderOpen,Grid2X2,List,Plus,Search,Settings } from 'lucide-react'
 import { FileMark } from './chrome-icons'
 import { sourceErrorKind, sourceErrorSummary } from './source-error-text'
 import { useInterfacePreferences, useInterfaceText } from './interface-preference'
+import { translateProfessional } from './professional-dialog-messages'
 import type { HomeEntry,HomeSource } from './local-home-source'
 import './local-home.css'
 
@@ -37,6 +38,7 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
   if (table[value]) return table[value]
   return sourceErrorKind(value) === 'window' ? sourceErrorSummary(value) : value
  }
+ const shown = (value: string) => translateProfessional(knownStatus(value), locale)
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;ticket.current++}},[])
  useLayoutEffect(()=>{
   const shell=root.current?.parentElement,previous=document.activeElement
@@ -71,8 +73,8 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
   <div className="local-home-content"><header><div><h1>{text.recentDesignsTitle}</h1><p>{savedWhere}</p></div><button type="button" disabled={disabled} onClick={onResume}>{continueLabel}</button></header>
    <div className="local-home-actions"><button type="button" disabled={disabled} onClick={()=>void run(onNew)}><Plus size={17}/>{text.newDesign}</button><button type="button" disabled={disabled} onClick={()=>void run(onOpenFile)}><FolderOpen size={17}/>{text.openDesignFile}</button></div>
    <div className="local-home-filter"><label><Search size={16}/><input ref={search} aria-label={text.searchRecentDesigns} placeholder={text.searchDesignNames} value={query} onChange={e=>setQuery(e.target.value)}/></label><button type="button" disabled={loading||disabled} onClick={()=>void refresh()}>{text.refresh}</button><div role="group" aria-label={text.fileDisplay}><button type="button" aria-label={text.gridDisplay} aria-pressed={layout==='grid'} onClick={()=>setLayout('grid')}><Grid2X2 size={17}/></button><button type="button" aria-label={text.listDisplay} aria-pressed={layout==='list'} onClick={()=>setLayout('list')}><List size={17}/></button></div></div>
-   {(error||importError)&&<p role="alert" className="local-home-error">{knownStatus(error||importError||'')}</p>}{notice&&<p role="status">{knownStatus(notice)}</p>}
-   {!ready?<p className="activity-line" role={startupError?"alert":"status"}>{knownStatus(startupError||"正在读取本机设计…")} {knownStatus("文档操作暂不可用，仍可调整本机设置。")}{!startupError&&<span className="activity-track" aria-hidden="true"><i/></span>}</p>:loading?<p className="activity-line" role="status">{knownStatus("正在读取本机设计…")}<span className="activity-track" aria-hidden="true"><i/></span></p>:<div className={`local-home-files ${layout}`} aria-label={text.recentDesignList}>{visible.map(entry=>{
+   {(error||importError)&&<p role="alert" className="local-home-error">{shown(error||importError||'')}</p>}{notice&&<p role="status">{shown(notice)}</p>}
+   {!ready?<p className="activity-line" role={startupError?"alert":"status"}>{shown(startupError||"正在读取本机设计…")} {shown("文档操作暂不可用，仍可调整本机设置。")}{!startupError&&<span className="activity-track" aria-hidden="true"><i/></span>}</p>:loading?<p className="activity-line" role="status">{shown("正在读取本机设计…")}<span className="activity-track" aria-hidden="true"><i/></span></p>:<div className={`local-home-files ${layout}`} aria-label={text.recentDesignList}>{visible.map(entry=>{
     const when = new Date(entry.updatedAt).toLocaleString()
     const meta = locale === 'en' ? `Version ${entry.revision} · Updated ${when}` : `版本 ${entry.revision} · 更新于 ${when}`
     return <button type="button" className="local-home-file" key={entry.id} disabled={disabled} onClick={()=>void run(()=>latest.current.open(entry.id))}>

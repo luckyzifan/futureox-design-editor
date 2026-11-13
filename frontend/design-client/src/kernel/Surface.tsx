@@ -17,6 +17,7 @@ import { canReplaceFallback, frameTransform, presentationMatches, presentationCo
 import { previewCameraScaleWithinLimit, previewPlacementIntersects, showRetainedPreview } from './tile-preview'
 import { canvasStatusLabel, presentKernelStatus } from '../canvas-status-label'
 import { useInterfacePreferences } from '../interface-preference'
+import { useProfessionalDialogText } from '../professional-dialog-messages'
 type Request = {
   epoch: number
   backend: BackendPreference
@@ -590,6 +591,7 @@ export function ReferenceSurface(
 }
 
 export function KernelSurface(props: SurfaceProps) {
+  const { tr } = useProfessionalDialogText()
   // Screen density and the file's export supersampling are separate contracts.
   const [backend] = useState<BackendPreference>(backendPreference)
   const [fallback, setFallback] = useState<{
@@ -784,7 +786,7 @@ export function KernelSurface(props: SurfaceProps) {
       {!visualFrame && <div className="kernel-first-frame" role="status" aria-live="polite" aria-atomic="true"
         style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
           pointerEvents: 'none', fontSize: 12, color: renderFailed ? '#bd3b54' : '#777c8e' }}>
-        {renderFailed ? '画布暂未绘制完成' : '正在绘制画布…'}
+        {tr(renderFailed ? '画布暂未绘制完成' : '正在绘制画布…')}
       </div>}
     </div>
   )

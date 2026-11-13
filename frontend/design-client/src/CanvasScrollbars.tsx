@@ -5,8 +5,10 @@ import type { SceneEntry } from './geometry'
 import { unionBounds } from './geometry'
 import type { CanvasCamera, CanvasSize } from './canvas-camera'
 import { canvasScrollAxis, scrollbarCamera } from './canvas-scrollbars'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 
 export function CanvasScrollbars({ editor, entries, view, size, onPanGestureChange, contentBounds }: { editor: Editor; entries: readonly SceneEntry[]; view: CanvasCamera; size: CanvasSize; onPanGestureChange?: (active: boolean) => void;contentBounds?:import('./model').Bounds }) {
+  const { tr } = useProfessionalDialogText()
   const bounds = useMemo(() => contentBounds??unionBounds(entries.filter(e => e.depth === 0).map(e => e.bounds)), [entries,contentBounds])
   const drag = useRef<{ action: UtilityAction; pointer: number; key: 'x' | 'y'; start: number; axis: ReturnType<typeof canvasScrollAxis>; view: CanvasCamera; session: number; page: string } | null>(null)
   const [held, setHeld] = useState(false)
@@ -37,7 +39,7 @@ export function CanvasScrollbars({ editor, entries, view, size, onPanGestureChan
       const fraction = frozen?.range ? Math.max(0, Math.min(1, (-view[key] / view.zoom - frozen.minimum) / frozen.range)) : 0
       const axis = frozen ? { ...frozen, fraction, offset: fraction * frozen.travel } : axes[key], horizontal = key === 'x'
       return <div key={key} className={`canvas-scrollbar ${horizontal ? 'horizontal' : 'vertical'}`}
-        role="scrollbar" aria-label={horizontal ? '水平画布滚动条' : '垂直画布滚动条'} aria-orientation={horizontal ? 'horizontal' : 'vertical'}
+        role="scrollbar" aria-label={tr(horizontal ? '水平画布滚动条' : '垂直画布滚动条')} aria-orientation={horizontal ? 'horizontal' : 'vertical'}
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(axis.fraction * 100)} aria-controls="design-canvas-view" tabIndex={0}
         onPointerDown={e => {
           e.stopPropagation()

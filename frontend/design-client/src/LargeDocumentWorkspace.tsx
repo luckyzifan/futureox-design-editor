@@ -18,6 +18,7 @@ import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type La
 import { apply, bounds, boxPoints, SpatialIndex, unionBounds } from './geometry'
 import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
 import { sourceErrorKind, sourceErrorSummary } from './source-error-text'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 import { validSourceObjectKey } from './source-object-key'
 import { peekChangedNodes } from './document-patch'
 import { BufferedAutosave } from './buffered-autosave'
@@ -54,6 +55,7 @@ export type SourceWorkspace = {
 /** Source storage owns the full archive and commits only its admitted workset.
  * UI is the ordinary App workbench; no separate Canvas/Inspector implementation. */
 export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,onWindowClose,renderWorkbench}:{bridge:LargeDocumentBridge;initialFile?:File;parentEditor:Editor;onExit:(file?:File)=>void;onWindowClose:(requestId:string)=>Promise<void>;renderWorkbench:(source:SourceWorkspace)=>ReactNode}) {
+  const { locale, tr } = useProfessionalDialogText()
   const [editor]=useState(()=>new Editor(blank()))
   const state=useSyncExternalStore(editor.subscribe,editor.panelSnapshot)
   const [status,setStatus]=useState<LargeDocumentStatus|null>(null),statusRef=useRef<LargeDocumentStatus|null>(null)
@@ -727,43 +729,43 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       ? [{...row.placed,materialKey:row.key,previewScale:thumbnailScale(opening?.images.get(i),row.placed)}] : [])
   },[catalogue,nativeSnapshot?.materialKeys,pageBoxes,sourcePage,detailIndices,opening?.images])
   const browsing=overview||!!opening&&!active
-  const nativeNavigation=<section className="source-board-navigation" data-preview-cache={opening?.cacheHit} data-thumbnail-renders={opening?.rendered} data-detail-roots={nativeSnapshot?.roots??0} data-preview-count={opening?.images.size} data-preview-complete={!!opening && opening.finished && opening.images.size===opening.items.length} data-active-source-page={sourcePage} data-listing="true" data-has-canvas={!overview} aria-label="完整画板素材">
-    <div className="source-pages-heading"><Frame size={15}/><span>完整画板</span><small>{materialRows.length} 个素材</small></div>
-    {browsing&&<label className="source-page-picker">页面 <select aria-label="素材页面" value={sourcePage} onChange={e=>{setQuery('');navigate(e.target.value)}}>
-      <option value="">全部页面</option>{pages.map(([id,name,count])=><option key={id} value={id}>{name}（{count}）</option>)}</select></label>}
+  const nativeNavigation=<section className="source-board-navigation" data-preview-cache={opening?.cacheHit} data-thumbnail-renders={opening?.rendered} data-detail-roots={nativeSnapshot?.roots??0} data-preview-count={opening?.images.size} data-preview-complete={!!opening && opening.finished && opening.images.size===opening.items.length} data-active-source-page={sourcePage} data-listing="true" data-has-canvas={!overview} aria-label={tr('完整画板素材')}>
+    <div className="source-pages-heading"><Frame size={15}/><span>{tr('完整画板')}</span><small>{materialRows.length} {tr('个素材')}</small></div>
+    {browsing&&<label className="source-page-picker">{tr('页面')} <select data-source-page-picker aria-label={tr('素材页面')} value={sourcePage} onChange={e=>{setQuery('');navigate(e.target.value)}}>
+      <option value="">{tr('全部页面')}</option>{pages.map(([id,name,count])=><option key={id} value={id}>{locale === 'en' ? `${name} (${count})` : `${name}（${count}）`}</option>)}</select></label>}
     {browsing&&opening&&(!nativeSnapshot||nativeSnapshot.materialKeys)&&<>
       {sourcePage&&pageBoxes&&pageBoxes.length>0&&pageBoxes.length<=32&&<button className="source-overview-back" disabled={busy||!status}
         onClick={()=>{
           const indices=materialRows.flatMap((item,i)=>item.pageId===sourcePage?[i]:[])
           pageDetailIntent.current=indices.join(',')
           requestDetail(indices,true)
-        }}>精修当前页</button>}
-      <button className="source-overview-back" disabled={busy} onClick={()=>void run(async()=>{if(!statusRef.current){const bound=await ensureStatus();if(!bound)throw Error('源文件尚未打开')};setNotice(current=>current===PREPARING_NOTICE?'':current);await enterOverview(true)},true)}>精修完整画板</button>
+        }}>{tr('精修当前页')}</button>}
+      <button className="source-overview-back" disabled={busy} onClick={()=>void run(async()=>{if(!statusRef.current){const bound=await ensureStatus();if(!bound)throw Error('源文件尚未打开')};setNotice(current=>current===PREPARING_NOTICE?'':current);await enterOverview(true)},true)}>{tr('精修完整画板')}</button>
     </>}
-    {!browsing&&<button className="source-overview-back" disabled={busy} onClick={()=>void run(enterOverview,true)}><ArrowLeft size={14}/>返回完整画板</button>}
-    <form className="layer-search source-search" onSubmit={event=>event.preventDefault()}><Search size={13}/><input aria-label="搜索素材" placeholder="搜索素材…" value={query} onChange={event=>setQuery(event.target.value)}/></form>
-    <div className="source-workspace-rows" role="list" aria-label="全部素材">{materialRows.filter(item=>(!sourcePage||item.pageId===sourcePage)&&`${item.name} ${item.pageName}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(item=><div className="source-page-row" data-active={browsing?selectedMaterialId===item.id:active?.id===item.id} role="listitem" key={item.key}>
-      <button className="source-page-entry" data-source-material-id={item.id} disabled={busy&&!browsing} title={`${item.pageName} · ${item.name}；双击编辑`} onClick={event=>{if(browsing)navigate(sourcePage,item);else if(event.detail<2)editMaterial(item)}} onDoubleClick={()=>{if(browsing)editMaterial(item)}}><span className="source-row-icon"><Frame size={14}/></span><span className="source-row-copy"><span className="source-row-name">{item.name}</span><small className="source-row-page">{item.pageName}</small></span></button>
+    {!browsing&&<button className="source-overview-back" disabled={busy} onClick={()=>void run(enterOverview,true)}><ArrowLeft size={14}/>{tr('返回完整画板')}</button>}
+    <form className="layer-search source-search" onSubmit={event=>event.preventDefault()}><Search size={13}/><input aria-label={tr('搜索素材')} placeholder={tr('搜索素材…')} value={query} onChange={event=>setQuery(event.target.value)}/></form>
+    <div className="source-workspace-rows" role="list" data-source-material-list aria-label={tr('全部素材')}>{materialRows.filter(item=>(!sourcePage||item.pageId===sourcePage)&&`${item.name} ${item.pageName}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(item=><div className="source-page-row" data-active={browsing?selectedMaterialId===item.id:active?.id===item.id} role="listitem" key={item.key}>
+      <button className="source-page-entry" data-source-material-id={item.id} disabled={busy&&!browsing} title={`${item.pageName} · ${item.name}${tr('；双击编辑')}`} onClick={event=>{if(browsing)navigate(sourcePage,item);else if(event.detail<2)editMaterial(item)}} onDoubleClick={()=>{if(browsing)editMaterial(item)}}><span className="source-row-icon"><Frame size={14}/></span><span className="source-row-copy"><span className="source-row-name">{item.name}</span><small className="source-row-page">{item.pageName}</small></span></button>
     </div>)}</div>
-    <footer className="source-history"><span>完整源文件保留全部内容</span><button aria-label="撤销已保存修改" disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}><Undo2 size={14}/></button><button aria-label="重做已保存修改" disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}><Redo2 size={14}/></button></footer>
+    <footer className="source-history"><span>{tr('完整源文件保留全部内容')}</span><button aria-label={tr('撤销已保存修改')} disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}><Undo2 size={14}/></button><button aria-label={tr('重做已保存修改')} disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}><Redo2 size={14}/></button></footer>
   </section>
-  const navigation=nativeSnapshot||opening||active&&catalogue.length?nativeNavigation:<section className="source-board-navigation" data-listing={viewTab==='source'} data-has-canvas={!!active} aria-label="源文件页面">
-    <nav className="source-view-tabs" aria-label="侧栏视图"><button aria-pressed={viewTab==='source'} onClick={()=>setViewTab('source')}>页面 / 画板</button><button disabled={!active} aria-pressed={viewTab==='layers'} onClick={()=>setViewTab('layers')}>图层</button></nav>
+  const navigation=nativeSnapshot||opening||active&&catalogue.length?nativeNavigation:<section className="source-board-navigation" data-listing={viewTab==='source'} data-has-canvas={!!active} aria-label={tr('源文件页面')}>
+    <nav className="source-view-tabs" aria-label={tr('侧栏视图')}><button aria-pressed={viewTab==='source'} onClick={()=>setViewTab('source')}>{tr('页面 / 画板')}</button><button disabled={!active} aria-pressed={viewTab==='layers'} onClick={()=>setViewTab('layers')}>{locale === 'en' ? 'Layers' : '图层'}</button></nav>
     {viewTab==='source'&&<>
-      <div className="source-pages-heading">{parents.length>0?<button className="source-back" aria-label="全部页面" title="返回全部页面" disabled={busy} onClick={allPages}><ArrowLeft size={14}/></button>:null}<span title={parents.at(-1)?.name}>{parents.at(-1)?.name||'页面'}</span><small>{total}</small></div>
-      <form className="layer-search source-search" onSubmit={event=>{event.preventDefault();setFilter(query.trim());setOffset(0)}}><Search size={13}/><input aria-label="搜索源对象" placeholder={parents.length?'搜索当前画板…':'搜索页面…'} value={query} maxLength={256} onChange={event=>setQuery(event.target.value)}/>{query&&<button type="button" aria-label="清除搜索" onClick={()=>setQuery('')}><X size={12}/></button>}</form>
-      <div className="source-workspace-rows" role="list" aria-label={parents.length?'源画板列表':'源页面列表'}>{rows.map((row,index)=>{
+      <div className="source-pages-heading">{parents.length>0?<button className="source-back" aria-label={tr('全部页面')} title={tr('返回全部页面')} disabled={busy} onClick={allPages}><ArrowLeft size={14}/></button>:null}<span title={parents.at(-1)?.name}>{parents.at(-1)?.name||tr('页面')}</span><small>{total}</small></div>
+      <form className="layer-search source-search" onSubmit={event=>{event.preventDefault();setFilter(query.trim());setOffset(0)}}><Search size={13}/><input aria-label={tr('搜索源对象')} placeholder={tr(parents.length?'搜索当前画板…':'搜索页面…')} value={query} maxLength={256} onChange={event=>setQuery(event.target.value)}/>{query&&<button type="button" aria-label={tr('清除搜索')} onClick={()=>setQuery('')}><X size={12}/></button>}</form>
+      <div className="source-workspace-rows" role="list" data-source-material-list aria-label={tr(parents.length?'源画板列表':'源页面列表')}>{rows.map((row,index)=>{
         const selected=active?.key===row.key||(row.kind==='page'&&row.id===(active?.kind==='page'?active.id:active?.pageId))
         return <div className="source-page-row" key={row.key} data-source-key={row.key} role="listitem" data-active={selected}>
-          <button className="source-page-entry" aria-current={selected?'true':undefined} aria-label={`${row.kind==='page'?'载入页面':'载入'} ${row.name}`} disabled={['document','rect','style','exportOptions','rulerData','MSImmutableFreeformGroupLayout'].includes(row.kind)} onClick={()=>requestLoad(row)} title={row.name}>
-            <span className="source-row-icon">{row.kind==='page'?String(offset+index+1).padStart(2,'0'):<Frame size={14}/>}</span><span className="source-row-name">{row.name||'未命名'}</span>{selected&&<span className="page-dot"/>}
-          </button>{row.hasChildren&&<button className="source-row-expand" aria-label={`展开 ${row.name}`} title="浏览画板与图层" disabled={busy} onClick={()=>{setParents([...parents,row]);setQuery('');setFilter('');setOffset(0)}}><ChevronRight size={14}/></button>}
+          <button className="source-page-entry" aria-current={selected?'true':undefined} aria-label={`${tr(row.kind==='page'?'载入页面':'载入')} ${row.name}`} disabled={['document','rect','style','exportOptions','rulerData','MSImmutableFreeformGroupLayout'].includes(row.kind)} onClick={()=>requestLoad(row)} title={row.name}>
+            <span className="source-row-icon">{row.kind==='page'?String(offset+index+1).padStart(2,'0'):<Frame size={14}/>}</span><span className="source-row-name">{row.name||tr('未命名')}</span>{selected&&<span className="page-dot"/>}
+          </button>{row.hasChildren&&<button className="source-row-expand" aria-label={`${tr('展开')} ${row.name}`} title={tr('浏览画板与图层')} disabled={busy} onClick={()=>{setParents([...parents,row]);setQuery('');setFilter('');setOffset(0)}}><ChevronRight size={14}/></button>}
         </div>
-      })}{!busy&&rows.length===0&&<p className="source-list-empty">{filter?'没有匹配的页面或画板':'没有可显示的页面或画板'}</p>}</div>
-      {total>100&&<div className="source-list-paging"><button aria-label="上一页" disabled={busy||offset===0} onClick={()=>setOffset(Math.max(0,offset-100))}><ChevronLeft size={14}/></button><span>{offset+1}–{Math.min(offset+100,total)} / {total}</span><button aria-label="下一页" disabled={busy||offset+100>=total} onClick={()=>setOffset(offset+100)}><ChevronRight size={14}/></button></div>}
+      })}{!busy&&rows.length===0&&<p className="source-list-empty">{tr(filter?'没有匹配的页面或画板':'没有可显示的页面或画板')}</p>}</div>
+      {total>100&&<div className="source-list-paging"><button aria-label={tr('上一页')} disabled={busy||offset===0} onClick={()=>setOffset(Math.max(0,offset-100))}><ChevronLeft size={14}/></button><span>{offset+1}–{Math.min(offset+100,total)} / {total}</span><button aria-label={tr('下一页')} disabled={busy||offset+100>=total} onClick={()=>setOffset(offset+100)}><ChevronRight size={14}/></button></div>}
     </>}
-    {active&&pageRange&&(pageRange.offset>0||pageRange.nextOffset!==null)&&<nav className="source-page-range" aria-label="页面分段"><span title={active.name}>内容 {pageRange.offset+1}–{pageRange.end} / {pageRange.totalRoots}</span><button aria-label="上一部分" title="上一部分" disabled={busy||!active.previousRanges?.length} onClick={()=>{const previous=active.previousRanges!,range=previous.at(-1)!;requestLoad({...active,sceneOffset:range.offset,sceneLimit:range.limit,previousRanges:previous.slice(0,-1)})}}><ChevronLeft size={14}/></button><button aria-label="下一部分" title="下一部分" disabled={busy||pageRange.nextOffset===null} onClick={()=>requestLoad({...active,sceneOffset:pageRange.nextOffset!,previousRanges:[...(active.previousRanges??[]),{offset:pageRange.offset,limit:pageRange.end-pageRange.offset}]})}><ChevronRight size={14}/></button></nav>}
-    <footer className="source-history"><span>全部内容随文件导出</span><button aria-label="撤销已保存修改" title="撤销已保存修改" disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}><Undo2 size={14}/></button><button aria-label="重做已保存修改" title="重做已保存修改" disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}><Redo2 size={14}/></button></footer>
+    {active&&pageRange&&(pageRange.offset>0||pageRange.nextOffset!==null)&&<nav className="source-page-range" aria-label={tr('页面分段')}><span title={active.name}>{tr(`内容 ${pageRange.offset+1}–${pageRange.end} / ${pageRange.totalRoots}`)}</span><button aria-label={tr('上一部分')} title={tr('上一部分')} disabled={busy||!active.previousRanges?.length} onClick={()=>{const previous=active.previousRanges!,range=previous.at(-1)!;requestLoad({...active,sceneOffset:range.offset,sceneLimit:range.limit,previousRanges:previous.slice(0,-1)})}}><ChevronLeft size={14}/></button><button aria-label={tr('下一部分')} title={tr('下一部分')} disabled={busy||pageRange.nextOffset===null} onClick={()=>requestLoad({...active,sceneOffset:pageRange.nextOffset!,previousRanges:[...(active.previousRanges??[]),{offset:pageRange.offset,limit:pageRange.end-pageRange.offset}]})}><ChevronRight size={14}/></button></nav>}
+    <footer className="source-history"><span>{tr('全部内容随文件导出')}</span><button aria-label={tr('撤销已保存修改')} title={tr('撤销已保存修改')} disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}><Undo2 size={14}/></button><button aria-label={tr('重做已保存修改')} title={tr('重做已保存修改')} disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}><Redo2 size={14}/></button></footer>
   </section>
   const earlyDisplay=!active && !nativeSnapshot && focusedMaterial!==undefined &&
     opening?.materialDisplay?.openingMaterial===focusedMaterial && opening.materialDisplay.token!==failedOpeningToken ? opening.materialDisplay : undefined

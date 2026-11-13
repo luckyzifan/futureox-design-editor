@@ -62,13 +62,13 @@ export function sourceErrorSummary(error: string): string {
 
 /** Move focus to the page, asset, or subtree control that can narrow the next read. */
 export function focusSmallerSourceEntry(root: Document = document): boolean {
-  const select = root.querySelector<HTMLSelectElement>('select[aria-label="素材页面"]')
+  const select = root.querySelector<HTMLSelectElement>('select[data-source-page-picker], select[aria-label="素材页面"], select[aria-label="Asset pages"]')
   if (select && !select.disabled) {
     select.focus()
     return root.activeElement === select
   }
   const entry = root.querySelector<HTMLButtonElement>(
-    '[aria-label="全部素材"] button.source-page-entry:not([disabled]), [aria-label="源页面列表"] button.source-page-entry:not([disabled]), [aria-label="源画板列表"] button.source-page-entry:not([disabled])',
+    '[data-source-material-list] button.source-page-entry:not([disabled]), [aria-label="全部素材"] button.source-page-entry:not([disabled]), [aria-label="源页面列表"] button.source-page-entry:not([disabled]), [aria-label="源画板列表"] button.source-page-entry:not([disabled]), [aria-label="All assets"] button.source-page-entry:not([disabled])',
   )
   if (!entry) return false
   entry.focus()

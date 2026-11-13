@@ -8,6 +8,7 @@ import { replaceText, styleTextRange } from './text'
 import { kernelTextLayout } from './kernel/picking'
 import type { Editor } from './engine'
 import { registerPendingEdit, pendingEditsChanged } from './pending-edits'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 
 export function TextInput({
   node,
@@ -22,6 +23,7 @@ export function TextInput({
   canvas?: boolean
   style?: React.CSSProperties
 }) {
+  const { tr } = useProfessionalDialogText()
   const diagnostic = useMemo(() => createInputDiagnostics(editor, InputFamily.text, canvas ? ActionSource.keyboard : ActionSource.properties), [editor, canvas])
   useEffect(() => () => diagnostic.dispose(), [diagnostic])
   const input = useRef<HTMLTextAreaElement>(null),
@@ -80,7 +82,7 @@ export function TextInput({
   return (
     <textarea
       ref={input}
-      aria-label={canvas ? '画布文字编辑' : '文字内容'}
+      aria-label={tr(canvas ? '画布文字编辑' : '文字内容')}
       className={canvas ? 'canvas-text-input' : undefined}
       defaultValue={node.text}
       spellCheck={false}
@@ -154,6 +156,7 @@ export function CanvasTextEditor({
   onClose: (restoreCanvasFocus?: boolean) => void
   isCurrent?: () => boolean
 }) {
+  const { tr } = useProfessionalDialogText()
   const diagnostic = useMemo(() => createInputDiagnostics(editor, InputFamily.richText, ActionSource.keyboard), [editor])
   useEffect(() => () => diagnostic.dispose(), [diagnostic])
   const [draft, setDraft] = useState(() => structuredClone(node)),
@@ -396,7 +399,7 @@ export function CanvasTextEditor({
         ref={toolbar}
         className="rich-text-toolbar"
         role="toolbar"
-        aria-label="文字格式"
+        aria-label={tr('文字格式')}
         style={{ zIndex: 21, left: toolbarLeft, top: toolbarTop, maxWidth: Math.max(0, viewport.width - 16), maxHeight: Math.max(0, viewport.height - 16), pointerEvents: 'auto' }}
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button')) e.preventDefault()
@@ -405,10 +408,10 @@ export function CanvasTextEditor({
           if ((e.target as HTMLElement).closest('button')) e.preventDefault()
         }}
       >
-        <button type="button" title="下划线" onClick={() => style({ underline: true })}>
+        <button type="button" title={tr('下划线')} onClick={() => style({ underline: true })}>
           U̲
         </button>
-        <button type="button" title="删除线" onClick={() => style({ strikethrough: true })}>
+        <button type="button" title={tr('删除线')} onClick={() => style({ strikethrough: true })}>
           S̶
         </button>
         <button
@@ -417,16 +420,16 @@ export function CanvasTextEditor({
             style({ underline: false, strikethrough: false, color: undefined, link: undefined })
           }
         >
-          清除装饰
+          {tr('清除装饰')}
         </button>
         <input
-          aria-label="选中文字颜色"
+          aria-label={tr('选中文字颜色')}
           type="color"
           defaultValue="#222222"
           onChange={(e) => style({ color: e.target.value })}
         />
         <input
-          aria-label="选中文字字号"
+          aria-label={tr('选中文字字号')}
           type="number"
           min={propertyUnits(editor.state.doc, node.id).style}
           max={4096 * propertyUnits(editor.state.doc, node.id).style}
@@ -436,12 +439,12 @@ export function CanvasTextEditor({
           }}
         />
         <select
-          aria-label="选中文字字体"
+          aria-label={tr('选中文字字体')}
           value={runFontId}
           onChange={(e) => style({ fontId: e.target.value || undefined })}
         >
-          <option value="">跟随文本样式</option>
-          <option value="default">Noto Sans SC（内置）</option>
+          <option value="">{tr('跟随文本样式')}</option>
+          <option value="default">{tr('Noto Sans SC（内置）')}</option>
           {Object.entries(editor.state.doc.fonts || {}).map(([id, font]) => (
             <option key={id} value={id}>
               {font.family}
@@ -449,7 +452,7 @@ export function CanvasTextEditor({
           ))}
         </select>
         <input
-          aria-label="选中文字字重"
+          aria-label={tr('选中文字字重')}
           type="number"
           min={1}
           max={1000}
@@ -459,7 +462,7 @@ export function CanvasTextEditor({
           }}
         />
         <input
-          aria-label="文字链接"
+          aria-label={tr('文字链接')}
           type="url"
           placeholder="https://…"
           onKeyDown={(e) => {
@@ -471,10 +474,10 @@ export function CanvasTextEditor({
           }}
         />
         <button type="button" onClick={() => finish(false, true)}>
-          完成
+          {tr('完成')}
         </button>
         <button type="button" onClick={() => finish(true, true)}>
-          取消
+          {tr('取消')}
         </button>
       </div>
       <div
@@ -564,7 +567,7 @@ export function CanvasTextEditor({
         }}
       />
       </div>
-      {error && <div role="alert" style={{ position: 'absolute', left: toolbarLeft, top: toolbarTop + toolbarSize.height, pointerEvents: 'auto' }}>{error}</div>}
+      {error && <div role="alert" style={{ position: 'absolute', left: toolbarLeft, top: toolbarTop + toolbarSize.height, pointerEvents: 'auto' }}>{tr(error)}</div>}
     </div>
   )
 }

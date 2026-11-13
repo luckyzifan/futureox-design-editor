@@ -7,6 +7,7 @@ import {
   type GpuMemorySnapshot,
 } from './kernel/client'
 import { modalOwnsKeyboard } from './modal-keyboard'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 
 /** Mirrors design-kernel memory.rs DEFAULT_GPU_MEMORY_LIMIT_BYTES; the
  * kernel breakdown carries its own limitBytes, which wins when present. */
@@ -62,9 +63,10 @@ function formatBytes(value: number | undefined): string {
   }
   return `${scaled >= 100 ? scaled.toFixed(0) : scaled.toFixed(1)} ${unit}`
 }
-function formatShare(used: number | undefined, budget: number): string {
+function formatShare(used: number | undefined, budget: number, english: boolean): string {
   if (used === undefined) return ''
-  return `（${((used / budget) * 100).toFixed(1)}%）`
+  const percent = ((used / budget) * 100).toFixed(1)
+  return english ? ` (${percent}%)` : `（${percent}%）`
 }
 
 const panelStyle: React.CSSProperties = {
@@ -102,15 +104,17 @@ const labelStyle: React.CSSProperties = { color: '#5a6070' }
 const valueStyle: React.CSSProperties = { textAlign: 'right', whiteSpace: 'nowrap' }
 
 function Row({ label, value, title }: { label: string; value: React.ReactNode; title?: string }) {
+  const { tr } = useProfessionalDialogText()
   return (
     <div style={rowStyle} title={title}>
-      <span style={labelStyle}>{label}</span>
+      <span style={labelStyle}>{tr(label)}</span>
       <span style={valueStyle}>{value}</span>
     </div>
   )
 }
 
 function BreakdownTable({ breakdown }: { breakdown: KernelBreakdown }) {
+  const { tr } = useProfessionalDialogText()
   const buckets: { label: string; live: number; peak: number }[] = [
     { label: '纹理 Texture', live: breakdown.textureBytes, peak: breakdown.peakTextureBytes },
     { label: '缓冲 Buffer', live: breakdown.bufferBytes, peak: breakdown.peakBufferBytes },
@@ -120,8 +124,8 @@ function BreakdownTable({ breakdown }: { breakdown: KernelBreakdown }) {
   return (
     <>
       <div style={{ ...rowStyle, fontWeight: 600 }}>
-        <span style={labelStyle}>桶</span>
-        <span style={valueStyle}>当前 / 峰值</span>
+        <span style={labelStyle}>{tr('桶')}</span>
+        <span style={valueStyle}>{tr('当前 / 峰值')}</span>
       </div>
       {buckets.map((bucket) => (
         <Row
@@ -134,12 +138,13 @@ function BreakdownTable({ breakdown }: { breakdown: KernelBreakdown }) {
       <Row label="策略上限" value={formatBytes(breakdown.limitBytes || KERNEL_POLICY_LIMIT_BYTES)} />
       <Row label="释放事件 freeEvents" value={breakdown.freeEvents} />
       <Row label="准入拒绝 rejections" value={breakdown.rejections} />
-      {breakdown.needsFree && <div style={{ color: '#bd3b54' }}>needsFree：内核请求释放缓存数据</div>}
+      {breakdown.needsFree && <div style={{ color: '#bd3b54' }}>{tr('needsFree：内核请求释放缓存数据')}</div>}
     </>
   )
 }
 
 function DriverStatsTable({ stats }: { stats: GpuDriverMemoryStats }) {
+  const { tr } = useProfessionalDialogText()
   return (
     <>
       <Row label="纹理 texture（含显示驻留）" value={formatBytes(stats.textureBytes)} />
@@ -152,7 +157,7 @@ function DriverStatsTable({ stats }: { stats: GpuDriverMemoryStats }) {
       <Row label="曲线缓冲 curve" value={formatBytes(stats.curveBufferBytes)} />
       <Row label="实例缓冲 solid" value={formatBytes(stats.solidBufferBytes)} />
       <Row label="Uniform 缓冲" value={formatBytes(stats.uniformBufferBytes)} />
-      {stats.deviceLost && <div style={{ color: '#bd3b54' }}>GPU 设备已丢失</div>}
+      {stats.deviceLost && <div style={{ color: '#bd3b54' }}>{tr('GPU 设备已丢失')}</div>}
     </>
   )
 }
@@ -160,6 +165,7 @@ function DriverStatsTable({ stats }: { stats: GpuDriverMemoryStats }) {
 /** 应用内 GPU 内存调试面板。⌘/Ctrl+Shift+G 切换；仅在打开时轮询，关闭时不
  * 保留任何定时器或订阅之外的运行状态。 */
 export function GpuMemoryPanel() {
+  const { locale, tr } = useProfessionalDialogText()
   const [open, setOpen] = useState(false)
   const [snapshot, setSnapshot] = useState<GpuMemorySnapshot | null>(null)
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
@@ -213,12 +219,12 @@ export function GpuMemoryPanel() {
   const workingBudget = snapshot?.rendererPolicy?.workingBudgetBytes
 
   return (
-    <aside aria-label="GPU 内存调试面板" style={panelStyle}>
+    <aside aria-label={tr('GPU 内存调试面板')} style={panelStyle}>
       <div style={headingStyle}>
-        <span>GPU 内存调试</span>
+        <span>{tr('GPU 内存调试')}</span>
         <button
           type="button"
-          aria-label="关闭 GPU 内存调试面板"
+          aria-label={tr('关闭 GPU 内存调试面板')}
           onClick={() => setOpen(false)}
           style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#777c8e', fontSize: 13 }}
         >
@@ -226,19 +232,19 @@ export function GpuMemoryPanel() {
         </button>
       </div>
       <div style={noteStyle}>
-        工作集预算 {formatBytes(workingBudget)} · ⌘⇧G 切换 · 每 {POLL_MS / 1000}s 刷新
-        <div>预算是本程序准入策略；WebGPU 不提供剩余显存查询。</div>
-        <div>交互驻留预算 {formatBytes(snapshot?.rendererPolicy?.interactionBudgetBytes)}</div>
+        {tr('工作集预算')} {formatBytes(workingBudget)} · ⌘⇧G · {POLL_MS / 1000}s
+        <div>{tr('预算是本程序准入策略；WebGPU 不提供剩余显存查询。')}</div>
+        <div>{tr('交互驻留预算')} {formatBytes(snapshot?.rendererPolicy?.interactionBudgetBytes)}</div>
       </div>
 
       <section style={sectionStyle}>
-        <div style={sectionTitleStyle}>渲染器（浏览器，实时）</div>
-        <Row label="后端" value={backend ?? '尚未渲染'} />
+        <div style={sectionTitleStyle}>{tr('渲染器（浏览器，实时）')}</div>
+        <Row label="后端" value={backend ?? tr('尚未渲染')} />
         {rendererSample ? (
           <>
             <Row
               label="工作纹理 working"
-              value={`${formatBytes(rendererSample.workingTextureBytes)}${workingBudget ? formatShare(rendererSample.workingTextureBytes, workingBudget) : ''}`}
+              value={`${formatBytes(rendererSample.workingTextureBytes)}${workingBudget ? formatShare(rendererSample.workingTextureBytes, workingBudget, locale === 'en') : ''}`}
             />
             <Row
               label="峰值纹理 peak"
@@ -248,40 +254,40 @@ export function GpuMemoryPanel() {
             <Row label="瓦片缓存 tileCache" value={formatBytes(rendererSample.tileCacheBytes)} />
           </>
         ) : (
-          <div style={noteStyle}>尚无渲染结果。</div>
+          <div style={noteStyle}>{tr('尚无渲染结果。')}</div>
         )}
         {snapshot?.driverStats ? (
           <>
-            <div style={{ ...noteStyle, marginTop: 4 }}>WebGPU 驱动台账：</div>
+            <div style={{ ...noteStyle, marginTop: 4 }}>{tr('WebGPU 驱动台账：')}</div>
             <DriverStatsTable stats={snapshot.driverStats} />
           </>
         ) : backend === 'webgl2' ? (
-          <div style={noteStyle}>WebGL2 驱动未实现 stats() 台账。</div>
+          <div style={noteStyle}>{tr('WebGL2 驱动未实现 stats() 台账。')}</div>
         ) : null}
-        {snapshotError && <div style={{ color: '#bd3b54' }}>渲染线程查询失败：{snapshotError}</div>}
+        {snapshotError && <div style={{ color: '#bd3b54' }}>{tr('渲染线程查询失败：')}{snapshotError}</div>}
         {!snapshot && !snapshotError && !rendererSample && (
-          <div style={noteStyle}>等待渲染线程…</div>
+          <div style={noteStyle}>{tr('等待渲染线程…')}</div>
         )}
       </section>
 
       <section style={sectionStyle}>
-        <div style={sectionTitleStyle}>内核台账（原生供给；Web 端为零）</div>
+        <div style={sectionTitleStyle}>{tr('内核台账（原生供给；Web 端为零）')}</div>
         {kernel ? (
           <>
             <BreakdownTable breakdown={kernel} />
             {kernelAllZero && (
-              <div style={noteStyle}>全部为零：浏览器端内核不持有 GPU 资源，真实占用见上方渲染器数据。</div>
+              <div style={noteStyle}>{tr('全部为零：浏览器端内核不持有 GPU 资源，真实占用见上方渲染器数据。')}</div>
             )}
           </>
         ) : (
-          <div style={noteStyle}>{snapshot ? '内核引擎尚未就绪。' : '等待渲染线程…'}</div>
+          <div style={noteStyle}>{tr(snapshot ? '内核引擎尚未就绪。' : '等待渲染线程…')}</div>
         )}
       </section>
 
       {nativeRenderStats() && (
         <section style={sectionStyle}>
-          <div style={sectionTitleStyle}>原生（Metal）</div>
-          {metal ? <BreakdownTable breakdown={metal} /> : <div style={noteStyle}>原生桥尚未返回数据。</div>}
+          <div style={sectionTitleStyle}>{tr('原生（Metal）')}</div>
+          {metal ? <BreakdownTable breakdown={metal} /> : <div style={noteStyle}>{tr('原生桥尚未返回数据。')}</div>}
         </section>
       )}
     </aside>

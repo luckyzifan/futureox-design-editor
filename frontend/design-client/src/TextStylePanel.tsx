@@ -248,21 +248,21 @@ export function TextStylePanel({
         </select>
       </label>
       <UnitNumberField unitDescription={styleDescription} historyLabel="段落间距" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("段落间距")} value={style.paragraphSpacing||0} min={0} max={10000} onChange={paragraphSpacing=>update({paragraphSpacing})}/><UnitNumberField unitDescription={styleDescription} historyLabel="首行缩进" diagnosticFamily={2} unit="number" unitScale={units.style} label={tr("首行缩进")} value={style.paragraphIndent||0} min={-10000} max={10000} onChange={paragraphIndent=>update({paragraphIndent})}/>
-      {paragraphs.length > 0 && <details><summary>{locale === 'en' ? 'Paragraph styles' : '分段样式'}</summary>
-        <label>段落<select aria-label="选择段落" value={Math.min(paragraphIndex,paragraphs.length-1)} onChange={e=>setParagraphIndex(Number(e.target.value))}>
-          {paragraphs.map((p,i)=><option key={p.start} value={i}>{i+1} · {p.text.trim().slice(0,24) || '空段落'}</option>)}
+      {paragraphs.length > 0 && <details><summary>{tr('分段样式')}</summary>
+        <label>{tr('段落')}<select aria-label={tr('选择段落')} value={Math.min(paragraphIndex,paragraphs.length-1)} onChange={e=>setParagraphIndex(Number(e.target.value))}>
+          {paragraphs.map((p,i)=><option key={p.start} value={i}>{i+1} · {p.text.trim().slice(0,24) || tr('空段落')}</option>)}
         </select></label>
-        <label>对齐<select aria-label="段落对齐" value={paragraph.align} onChange={e=>updateParagraph({align:e.target.value as TextParagraph['align']})}>
-          <option value="start">起始</option><option value="center">居中</option><option value="end">末尾</option><option value="justify">两端对齐</option>
+        <label>{tr('对齐')}<select aria-label={tr('段落对齐')} value={paragraph.align} onChange={e=>updateParagraph({align:e.target.value as TextParagraph['align']})}>
+          <option value="start">{tr('起始')}</option><option value="center">{tr('居中')}</option><option value="end">{tr('末尾')}</option><option value="justify">{tr('两端对齐')}</option>
         </select></label>
         <NumberField label="段落最小行高" value={paragraph.minimumLineHeight} min={0} max={paragraph.maximumLineHeight || 10000} onChange={minimumLineHeight=>updateParagraph({minimumLineHeight})}/>
         <NumberField label="段落最大行高" value={paragraph.maximumLineHeight} min={0} max={10000} onChange={maximumLineHeight=>updateParagraph({maximumLineHeight})}/>
-        <small>行高为文档单位，0 表示不限制。</small>
+        <small>{tr('行高为文档单位，0 表示不限制。')}</small>
         <NumberField label="本段段后间距" value={paragraph.spacing} min={0} max={10000} onChange={spacing=>updateParagraph({spacing})}/>
         <NumberField label="本段首行缩进" value={paragraph.indent} min={-10000} max={10000} onChange={indent=>updateParagraph({indent})}/>
       </details>}
-      <label>{locale === 'en' ? 'Vertical alignment' : '垂直对齐'}<select
-        aria-label="文本垂直对齐" value={style.verticalAlign ?? 'top'}
+      <label>{tr('文本垂直对齐')}<select
+        aria-label={tr('文本垂直对齐')} value={style.verticalAlign ?? 'top'}
         onChange={e=>update({verticalAlign:e.target.value as TextStyle['verticalAlign']})}>
         <option value="top">{locale === 'en' ? 'Top' : '顶部'}</option>
         <option value="center">{locale === 'en' ? 'Center' : '居中'}</option>

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { CanvasCamera } from './canvas-camera'
 import type { StartupPreview as Preview } from './startup-preview'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 
 export function StartupPreview({ preview, view, loading, width, height }:
   { preview: Preview; view: CanvasCamera; loading: boolean; width: number; height: number }) {
+  const { tr } = useProfessionalDialogText()
   const [image, setImage] = useState<{ preview: Preview; url: string } | null>(null)
   useEffect(() => {
     const value = URL.createObjectURL(preview.image); setImage({ preview, url: value })
@@ -17,7 +19,7 @@ export function StartupPreview({ preview, view, loading, width, height }:
   const y = loading ? (height - preview.height) / 2 : view.y - preview.view.y * scale
   return <div data-testid="startup-preview" data-preview-revision={preview.revision}
     style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', background: preview.background }}>
-    {url && <img alt="上次保存的画布预览" src={url} draggable={false}
+    {url && <img alt={tr('上次保存的画布预览')} src={url} draggable={false}
       onLoad={event => {
         const host = event.currentTarget.closest<HTMLElement>('[data-testid=canvas]')
         if (host) host.dataset.startupPreviewMs = performance.now().toFixed(2)
