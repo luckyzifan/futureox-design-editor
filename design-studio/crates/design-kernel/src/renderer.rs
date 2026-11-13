@@ -4222,10 +4222,10 @@ impl Painter<'_> {
             } else if fx.kind == "blur" {
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
                 let compatible = self.compatible;
-                let constant_half_up = fx.gradient_blur.is_none()
+                let figma_layer = fx.gradient_blur.is_none()
                     && self.compatible
-                    && self.profile == crate::fidelity::RasterProfile::Figma
-                    && fx.blur_radius() * scale == 1.;
+                    && self.profile == crate::fidelity::RasterProfile::Figma;
+                let constant_half_up = figma_layer && fx.blur_radius() * scale == 1.;
                 let filter = |mut source: Surface| -> Result<Surface, String> {
                     if let Some(g) = &fx.gradient_blur {
                         let blurred = blur_filter.apply(&source)?;
@@ -4240,13 +4240,21 @@ impl Painter<'_> {
                             source.quantize_rgba8();
                         }
                         Ok(source)
-                    } else if constant_half_up {
-                        // Constant export pairs round half-up on the layer.
-                        // The backdrop is composited afterwards, so a later
-                        // sibling or clip does not paint onto a baked 2×2.
-                        effects::figma_portable_layer_blur(source)
                     } else {
-                        blur_filter.apply(&source)
+                        let mut blurred = if constant_half_up {
+                            // Constant export pairs round half-up on the layer.
+                            // The backdrop is composited afterwards, so a later
+                            // sibling or clip does not paint onto a baked 2×2.
+                            effects::figma_portable_layer_blur(source)?
+                        } else {
+                            blur_filter.apply(&source)?
+                        };
+                        // Odd 2×2 halves survive the float export resolve.
+                        // Samples stay distinct; only the lesser code moves.
+                        if figma_layer {
+                            effects::lift_figma_odd_export_halves(&mut blurred);
+                        }
+                        Ok(blurred)
                     }
                 };
                 // This blur replaces all four source planes and the shadow

@@ -137,11 +137,11 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
                 .all(|(_, pixels, max)| *pixels == 0 && *max == 0),
         "linear-gradient {linear:?}"
     );
-    // The paired frozen reference comparison moved two shadow rows and four
-    // half-pixel layer-blur rows closer to the original PNGs. The combined
-    // glass-full fixture now uses its frozen readback and adds a zero-diff row.
+    // Odd export halves on premultiplied white layer blur now follow ties-even.
+    // Three threshold rows move closer. Every other frozen row stays put, and
+    // both linear gradients stay exact. Issue #282 is still open.
     assert_eq!(
-        others_sha, "cfd15c0e19d953dfd81e95fca8e5e596b21c0c3acdd989a99d0886778aba06e0",
+        others_sha, "112dc90832e0211bc3ee13fb8e555cfc6dce9f7e794ceaf6c2360b3cd5c9b12d",
         "other frozen figma references moved"
     );
 }

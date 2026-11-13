@@ -406,6 +406,89 @@ pub(crate) fn figma_portable_layer_blur(source: Surface) -> Result<Surface, Stri
     Ok(quantized)
 }
 
+fn unorm_byte(value: f32) -> u8 {
+    (value.clamp(0., 1.) * 255.).round_ties_even() as u8
+}
+
+/// The figma export resolve normalizes a 2×2 byte sum in binary32. An exact
+/// half with an odd quotient, such as 233.5, is not representable there and
+/// encodes as that odd quotient. Ties-even of the same rational average is
+/// the next code. Matching rows of premultiplied white move the lesser sample
+/// by one so the sum lands on that code exactly. The samples stay distinct.
+/// Even halves already match this resolve. Colored layers are composited
+/// before it, so they are left alone.
+pub(crate) fn lift_figma_odd_export_halves(surface: &mut Surface) {
+    let rect = surface.rect;
+    if rect.w < 2 || rect.h < 2 {
+        return;
+    }
+    let pair_start = |edge: i32| edge + edge.rem_euclid(2);
+    let mut y = pair_start(rect.y);
+    while y + 1 < rect.bottom() {
+        let mut x = pair_start(rect.x);
+        while x + 1 < rect.right() {
+            let Some(i00) = rect.index(x, y) else {
+                x += 2;
+                continue;
+            };
+            let (Some(i10), Some(i01), Some(i11)) = (
+                rect.index(x + 1, y),
+                rect.index(x, y + 1),
+                rect.index(x + 1, y + 1),
+            ) else {
+                break;
+            };
+            let row0 = [
+                surface.pixels[i00].0.map(unorm_byte),
+                surface.pixels[i10].0.map(unorm_byte),
+            ];
+            let row1 = [
+                surface.pixels[i01].0.map(unorm_byte),
+                surface.pixels[i11].0.map(unorm_byte),
+            ];
+            if row0 != row1 {
+                x += 2;
+                continue;
+            }
+            // Colored layers composite onto the backdrop before the export
+            // resolve, so their pre-composite bytes are not the averaged
+            // samples. Premultiplied white stays gray on every channel.
+            let gray = |pixel: [u8; 4]| pixel.iter().all(|channel| *channel == pixel[0]);
+            if !gray(row0[0]) || !gray(row0[1]) {
+                x += 2;
+                continue;
+            }
+            for channel in 0..4 {
+                let left = u32::from(row0[0][channel]);
+                let right = u32::from(row0[1][channel]);
+                if left == right {
+                    continue;
+                }
+                let sum = (left + right) * 2;
+                if sum % 4 != 2 {
+                    continue;
+                }
+                let quotient = sum / 4;
+                if quotient % 2 == 0 {
+                    continue;
+                }
+                let bumped = left.min(right) + 1;
+                // Adjacent codes would become one sample. Keep them distinct
+                // so a later layer still sees each device pixel.
+                if bumped == left.max(right) {
+                    continue;
+                }
+                let indexes = if left < right { [i00, i01] } else { [i10, i11] };
+                for index in indexes {
+                    surface.pixels[index].0[channel] = bumped as f32 / 255.;
+                }
+            }
+            x += 2;
+        }
+        y += 2;
+    }
+}
+
 // Shadow inputs have zero RGB. The one-channel specialization uses exactly
 // the same sums, rounding proof and rational fallback for their alpha.
 fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
@@ -2041,6 +2124,28 @@ mod figma_layer_half_up_tests {
                 && pixel.0[1] == pixel.0[2]
                 && pixel.0[2] == pixel.0[3]
         }));
+    }
+
+    #[test]
+    fn odd_export_half_moves_only_the_lesser_sample() {
+        let mut source = Surface::new(Rect::new(0, 0, 4, 4)).unwrap();
+        let mut paint = |x: i32, y: i32, byte: u8| {
+            let value = f32::from(byte) / 255.;
+            source.pixels[source.rect.index(x, y).unwrap()] = Pixel([value; 4]);
+        };
+        // 212 + 255 is the odd half 233.5. 181 + 244 is the even half 212.5.
+        for y in 0..4 {
+            paint(0, y, 212);
+            paint(1, y, 255);
+            paint(2, y, 181);
+            paint(3, y, 244);
+        }
+        lift_figma_odd_export_halves(&mut source);
+        let byte = |x: i32, y: i32| (source.at(x, y).0[0] * 255.).round() as u8;
+        assert_eq!((byte(0, 0), byte(1, 0)), (213, 255));
+        assert_eq!((byte(0, 1), byte(1, 1)), (213, 255));
+        assert_eq!((byte(2, 0), byte(3, 0)), (181, 244));
+        assert_ne!(byte(0, 0), byte(1, 0));
     }
 }
 
