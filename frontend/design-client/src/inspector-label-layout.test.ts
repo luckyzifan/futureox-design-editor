@@ -55,9 +55,10 @@ test('cascade contract detects later overrides and respects selector specificity
   expect(effective('.number-field input { min-width: 3px !important; }' + css, input, 'min-width')).toBe('3px')
 })
 
-test('260px inspector leaves an editable numeric value even for very long localized labels', () => {
+test('official and wider inspectors leave an editable numeric value even for very long localized labels', () => {
   // Explicit box model contract, not a browser pixel-layout or GUI test.
-  for (const panel of [260, 280, 480]) {
+  // 240 and 241 are the Sketch and Figma inspector widths. 260 remains a legal resize above that floor.
+  for (const panel of [240, 241, 260, 280, 480]) {
     const column = (panel - 2 * 16 - 7) / 2
     const valueMinimum = 48
     const labelBudget = column - 2 - 7 - 7 - valueMinimum

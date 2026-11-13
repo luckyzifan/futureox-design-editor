@@ -1,5 +1,5 @@
 import { useLayoutEffect, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
-import { interfacePreference, interfaceText, panelWidth, useInterfacePreferences } from './interface-preference'
+import { interfacePreference, interfaceText, OFFICIAL_INSPECTOR_WIDTHS, officialInspectorWidth, panelWidth, RIGHT_PANEL_MIN, useInterfacePreferences } from './interface-preference'
 
 export type ShellDensity = 'wide' | 'desk' | 'narrow'
 /** Shared by the browser and Electron. 900 and 1180 match the CSS media queries. */
@@ -85,13 +85,13 @@ export function PanelResizeHandle({ side, blocked = false, canResize = () => tru
   useEffect(() => { const shell = handle.current?.closest<HTMLElement>('.editor-shell'); return () => { if (drag.current) shell?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${drag.current.width}px, var(--workspace-panel-cap, max(260px, 26vw)))`); drag.current = null } }, [side])
   const commit = (value: number) => interfacePreference.set(side === 'left' ? { leftWidth: value } : { rightWidth: value })
   return <div ref={handle} className={`panel-resize-handle panel-resize-${side}`} role="separator" tabIndex={blocked ? -1 : 0} aria-disabled={blocked || undefined}
-    aria-label={`${text.resize}: ${text[side]}`} aria-orientation="vertical" aria-valuemin={side === 'left' ? 208 : 260} aria-valuemax={480} aria-valuenow={Math.round(preview ?? measuredWidth ?? width)}
+    aria-label={`${text.resize}: ${text[side]}`} aria-orientation="vertical" aria-valuemin={side === 'left' ? 208 : RIGHT_PANEL_MIN} aria-valuemax={480} aria-valuenow={Math.round(preview ?? measuredWidth ?? width)}
     onPointerDown={event => { if (blocked || !canResize() || event.button !== 0) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture?.(event.pointerId); drag.current = { id: event.pointerId, x: event.clientX, width, visibleWidth: visibleWidth(), next: width } }}
     onPointerMove={event => { const start = drag.current; if (!start || start.id !== event.pointerId) return; start.next = panelWidth(start.visibleWidth + (event.clientX - start.x) * (side === 'left' ? 1 : -1), side); setPreview(start.next); const shell = event.currentTarget.closest<HTMLElement>('.editor-shell'); shell?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${start.next}px, var(--workspace-panel-cap, max(260px, 26vw)))`) }}
     onPointerUp={event => { const start = drag.current; if (!start || start.id !== event.pointerId) return; drag.current = null; setPreview(null); commit(start.next); event.currentTarget.releasePointerCapture?.(event.pointerId) }}
     onLostPointerCapture={event => { if (!drag.current) return; drag.current = null; setPreview(null); event.currentTarget.closest<HTMLElement>('.editor-shell')?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${width}px, var(--workspace-panel-cap, max(260px, 26vw)))`) }}
     onPointerCancel={event => { drag.current = null; setPreview(null); event.currentTarget.closest<HTMLElement>('.editor-shell')?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${width}px, var(--workspace-panel-cap, max(260px, 26vw)))`) }}
-    onKeyDown={event => { if (blocked || !canResize() || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); event.stopPropagation(); commit(event.key === 'Home' ? (side === 'left' ? 208 : 260) : event.key === 'End' ? 480 : panelWidth(visibleWidth() + (event.key === 'ArrowRight' ? 1 : -1) * (side === 'left' ? 1 : -1) * (event.shiftKey ? 32 : 8), side)) }} />
+    onKeyDown={event => { if (blocked || !canResize() || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); event.stopPropagation(); commit(event.key === 'Home' ? (side === 'left' ? 208 : RIGHT_PANEL_MIN) : event.key === 'End' ? 480 : panelWidth(visibleWidth() + (event.key === 'ArrowRight' ? 1 : -1) * (side === 'left' ? 1 : -1) * (event.shiftKey ? 32 : 8), side)) }} />
 }
 export function InterfaceSettings() {
   const preferences = useInterfacePreferences(), text = interfaceText[preferences.locale]
@@ -103,7 +103,7 @@ export function InterfaceSettings() {
     <p className="settings-help">{text.motionHelp}</p>
     <label className="settings-toggle"><input type="checkbox" checked={preferences.rememberViewport} onChange={event => interfacePreference.set({ rememberViewport: event.target.checked })} /><span>{text.rememberViewport}</span></label>
     <p className="settings-help">{text.rememberViewportHelp}</p>
-    <button type="button" onClick={() => interfacePreference.set({ leftWidth: 248, rightWidth: 280, leftOpen: true, rightOpen: true })}>{text.reset}</button>
+    <button type="button" onClick={() => interfacePreference.set({ leftWidth: 248, rightWidth: officialInspectorWidth(preferences.uiMode), inspectorWidths: OFFICIAL_INSPECTOR_WIDTHS, leftOpen: true, rightOpen: true })}>{text.reset}</button>
     {!persisted && <p role="status">{text.temporary}</p>}
   </div>
 }

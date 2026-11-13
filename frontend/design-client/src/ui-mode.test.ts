@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, interfacePreference } from './interface-preference'
+import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_INSPECTOR_WIDTH, interfacePreference, SKETCH_INSPECTOR_WIDTH } from './interface-preference'
 import { applyInterfaceLayout, interfaceLayoutFromShortcut, FIGMA_LAYOUT_COMBO, SKETCH_LAYOUT_COMBO } from './interface-layout'
 import { shortcutPreference } from './shortcut-preference'
 import { shortcutBindings } from './shortcut-profiles'
@@ -35,11 +35,15 @@ test('layout chords switch the shell and the matching editor shortcut profile', 
   expect(interfaceLayoutFromShortcut({ key: 'ƒ', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
   expect(interfaceLayoutFromShortcut({ key: '©', code: 'KeyG', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
   expect(interfaceLayoutFromShortcut({ key: 'Ï', code: 'KeyF', metaKey: true, ctrlKey: false, altKey: true, shiftKey: true })).toBeNull()
+  interfacePreference.reset()
   applyInterfaceLayout('sketch')
   expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(SKETCH_INSPECTOR_WIDTH)
   expect(shortcutPreference.getSnapshot()).toBe('sketch-like')
   applyInterfaceLayout('figma')
   expect(interfacePreference.getSnapshot().uiMode).toBe('figma')
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(FIGMA_INSPECTOR_WIDTH)
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(248)
   expect(shortcutPreference.getSnapshot()).toBe('figma-like')
   for (const profile of ['figma-like', 'sketch-like'] as const) {
     const combos = shortcutBindings({ profile, platform: 'mac', desktop: true }).map(binding => binding.combo)

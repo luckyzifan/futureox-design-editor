@@ -54,7 +54,7 @@ test('Figma chrome at 1440×960 meets the measured targets without resizing Sket
   assert.equal(measured.viewport.w, 1440)
   assert.equal(measured.viewport.h, 960)
   const box = measured.metrics
-  assert.equal(box['header-right'].w, 280)
+  assert.equal(box['header-right'].w, 241)
   assert.equal(box['header-right'].h, 48)
   assert.equal(box['header-right'].gap, '4px')
   assert.ok(box.collapse.w >= 32 && box.collapse.h >= 32)
