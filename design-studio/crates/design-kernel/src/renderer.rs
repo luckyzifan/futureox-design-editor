@@ -3875,6 +3875,24 @@ impl Painter<'_> {
             && view.right() <= interior.right()
             && view.bottom() <= interior.bottom()
     }
+    fn shadow_mask(
+        &self,
+        basis: &crate::blend::Surface,
+        radius: f64,
+        spread: f64,
+        inner: bool,
+    ) -> Result<crate::blend::Surface, String> {
+        // Figma export is the 2× profile. Outer shadows are filtered on the
+        // output grid; inner shadows and the other profiles keep the device tent.
+        if !inner && radius > 0. && self.profile == crate::fidelity::RasterProfile::Figma {
+            return effects::shadow_alpha_output_grid(
+                basis,
+                self.blur_filter(radius / 2.),
+                spread,
+            );
+        }
+        effects::shadow_alpha(basis, self.blur_filter(radius), spread, inner)
+    }
     fn blur_filter(&self, radius: f64) -> effects::BlurFilter {
         if self.doc.color_management.is_some() {
             effects::BlurFilter::LinearTent(radius)
@@ -4245,9 +4263,9 @@ impl Painter<'_> {
                 }
             } else if fx.kind == "shadow" || fx.kind == "inner-shadow" {
                 let inner = fx.kind == "inner-shadow";
-                let alpha = effects::shadow_alpha(
+                let alpha = self.shadow_mask(
                     &resolved,
-                    self.blur_filter(fx.blur_radius() * scale),
+                    fx.blur_radius() * scale,
                     fx.spread * scale,
                     inner,
                 )?;
@@ -4911,9 +4929,9 @@ impl Painter<'_> {
                     let basis = shadow_basis.as_ref().unwrap_or(&layer);
                     let mut shadow = if self.compatible {
                         let inner = fx.kind == "inner-shadow";
-                        let alpha = effects::shadow_alpha(
+                        let alpha = self.shadow_mask(
                             basis,
-                            self.blur_filter(fx.radius * scale),
+                            fx.radius * scale,
                             fx.spread * scale,
                             inner,
                         )?;
