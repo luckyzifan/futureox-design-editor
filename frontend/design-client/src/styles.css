@@ -11,7 +11,7 @@
   --workspace-selected: #e7eefb;
   --workspace-field: #f6f1ea;
   --workspace-danger: #b63a42;
-  --workspace-inspector-width: 280px;
+  --workspace-inspector-width: 241px;
   --workspace-shadow: 0 1px 2px #1c19170a, 0 12px 32px #1c191714;
   --workspace-ease: cubic-bezier(0.2, 0, 0, 1);
   --panel: var(--workspace-panel);
@@ -2447,6 +2447,7 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="sketch"].chrome-hide-inspector { grid-template-columns: 0px max-content minmax(0, 1fr) 0; }
 .editor-shell[data-ui-mode="sketch"].design-agent-open { grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell[data-ui-mode="sketch"] {
+  --workspace-inspector-width: 240px;
   --workspace-accent: #007aff;
   --workspace-accent-hover: #0063cc;
   --workspace-selected: #d6e8ff;

@@ -13,10 +13,18 @@ export function officialLayersWidth(mode: UiMode): number {
   return mode === 'sketch' ? SKETCH_LAYERS_WIDTH : FIGMA_LAYERS_WIDTH
 }
 export const DEFAULT_LAYERS_WIDTHS: LayersWidths = Object.freeze({ figma: FIGMA_LAYERS_WIDTH, sketch: SKETCH_LAYERS_WIDTH })
-export type InterfacePreferences = Readonly<{ leftWidth: number; leftWidths: LayersWidths; rightWidth: number; leftOpen: boolean; rightOpen: boolean; reducedMotion: boolean; rememberViewport: boolean; locale: InterfaceLocale; uiMode: UiMode }>
+export const FIGMA_INSPECTOR_WIDTH = 241
+export const SKETCH_INSPECTOR_WIDTH = 240
+export const LEGACY_SHARED_INSPECTOR_WIDTH = 280
+export const RIGHT_PANEL_MIN = SKETCH_INSPECTOR_WIDTH
+export const RIGHT_PANEL_MAX = 480
+export type InspectorWidths = Readonly<{ figma: number; sketch: number }>
+export const OFFICIAL_INSPECTOR_WIDTHS: InspectorWidths = Object.freeze({ figma: FIGMA_INSPECTOR_WIDTH, sketch: SKETCH_INSPECTOR_WIDTH })
+export function officialInspectorWidth(mode: UiMode) { return OFFICIAL_INSPECTOR_WIDTHS[mode] }
+export type InterfacePreferences = Readonly<{ leftWidth: number; leftWidths: LayersWidths; rightWidth: number; inspectorWidths: InspectorWidths; leftOpen: boolean; rightOpen: boolean; reducedMotion: boolean; rememberViewport: boolean; locale: InterfaceLocale; uiMode: UiMode }>
 export const INTERFACE_PREFERENCE_KEY = 'forma.interface-preferences.v1'
-export const DEFAULT_INTERFACE_PREFERENCES: InterfacePreferences = Object.freeze({ leftWidth: FIGMA_LAYERS_WIDTH, leftWidths: DEFAULT_LAYERS_WIDTHS, rightWidth: 280, leftOpen: true, rightOpen: true, reducedMotion: false, rememberViewport: false, locale: 'zh-CN', uiMode: 'figma' })
-export function panelWidth(value: number, side: 'left' | 'right') { return Math.round(Math.min(480, Math.max(side === 'left' ? 208 : 260, value))) }
+export const DEFAULT_INTERFACE_PREFERENCES: InterfacePreferences = Object.freeze({ leftWidth: FIGMA_LAYERS_WIDTH, leftWidths: DEFAULT_LAYERS_WIDTHS, rightWidth: FIGMA_INSPECTOR_WIDTH, inspectorWidths: OFFICIAL_INSPECTOR_WIDTHS, leftOpen: true, rightOpen: true, reducedMotion: false, rememberViewport: false, locale: 'zh-CN', uiMode: 'figma' })
+export function panelWidth(value: number, side: 'left' | 'right') { return Math.round(Math.min(RIGHT_PANEL_MAX, Math.max(side === 'left' ? 208 : RIGHT_PANEL_MIN, value))) }
 function finiteLeft(value: unknown, fallback: number) {
   return typeof value === 'number' && Number.isFinite(value) ? panelWidth(value, 'left') : fallback
 }
@@ -33,6 +41,17 @@ export function layersWidthsFrom(input: unknown): LayersWidths {
   const chosen = panelWidth(legacy, 'left')
   return Object.freeze({ figma: chosen, sketch: chosen })
 }
+function readInspectorWidths(value: Record<string, unknown>): InspectorWidths {
+  const finiteRight = (width: unknown) => typeof width === 'number' && Number.isFinite(width) ? panelWidth(width, 'right') : undefined
+  const raw = value.inspectorWidths
+  if (raw && typeof raw === 'object') {
+    const record = raw as Record<string, unknown>
+    return Object.freeze({ figma: finiteRight(record.figma) ?? FIGMA_INSPECTOR_WIDTH, sketch: finiteRight(record.sketch) ?? SKETCH_INSPECTOR_WIDTH })
+  }
+  const legacy = finiteRight(value.rightWidth)
+  if (legacy === undefined || legacy === LEGACY_SHARED_INSPECTOR_WIDTH) return OFFICIAL_INSPECTOR_WIDTHS
+  return Object.freeze({ figma: legacy, sketch: legacy })
+}
 export function createInterfacePreference(storage: () => Pick<Storage, 'getItem' | 'setItem'> | undefined) {
   let snapshot = DEFAULT_INTERFACE_PREFERENCES, initialized = false, persisted = true
   const listeners = new Set<() => void>()
@@ -40,11 +59,13 @@ export function createInterfacePreference(storage: () => Pick<Storage, 'getItem'
     const value = input && typeof input === 'object' ? input as Record<string, unknown> : {}
     const uiMode: UiMode = value.uiMode === 'sketch' ? 'sketch' : 'figma'
     const leftWidths = layersWidthsFrom(value)
+    const inspectorWidths = readInspectorWidths(value)
     return Object.freeze({ ...DEFAULT_INTERFACE_PREFERENCES,
       ...Object.fromEntries(['leftOpen', 'rightOpen', 'reducedMotion', 'rememberViewport'].flatMap(key => typeof value[key] === 'boolean' ? [[key, value[key]]] : [])),
       leftWidths,
       leftWidth: leftWidths[uiMode],
-      rightWidth: typeof value.rightWidth === 'number' && Number.isFinite(value.rightWidth) ? panelWidth(value.rightWidth, 'right') : 280,
+      inspectorWidths,
+      rightWidth: inspectorWidths[uiMode],
       locale: value.locale === 'en' ? 'en' : 'zh-CN',
       uiMode,
     })
@@ -70,7 +91,11 @@ export function createInterfacePreference(storage: () => Pick<Storage, 'getItem'
         const edited: UiMode = patch.leftWidths ? nextMode : current.uiMode
         leftWidths[edited] = panelWidth(patch.leftWidth, 'left')
       }
-      snapshot = sanitize({ ...current, ...patch, uiMode: nextMode, leftWidths, leftWidth: leftWidths[nextMode] })
+      const inspectorWidths = patch.inspectorWidths ??
+        (typeof patch.rightWidth === 'number' && Number.isFinite(patch.rightWidth)
+          ? { ...current.inspectorWidths, [nextMode]: patch.rightWidth }
+          : current.inspectorWidths)
+      snapshot = sanitize({ ...current, ...patch, uiMode: nextMode, leftWidths, inspectorWidths })
       try { const target = storage(); target?.setItem(INTERFACE_PREFERENCE_KEY, JSON.stringify(snapshot)); persisted = !!target } catch { persisted = false }
       listeners.forEach(listener => listener()); return persisted
     },
