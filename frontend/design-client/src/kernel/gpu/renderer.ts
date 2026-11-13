@@ -8191,7 +8191,7 @@ export class GpuRenderer {
     // Reclaim sizes no longer used after a resize/zoom. A pool stamp ahead of
     // device completion is still a queued read, including deferred presentation.
     this.reapCompletedFreeTextures()
-    this.retireUnreferencedFreeTextures(trimLarge, upcomingLargeSizes)
+    this.retireUnreferencedFreeTextures(trimLarge === true, upcomingLargeSizes)
     this.used.clear()
     this.coverage.begin(gpuDiagnosticsEnabled())
     this.materialFields.begin()
