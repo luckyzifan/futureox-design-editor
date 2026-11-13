@@ -2382,7 +2382,7 @@ self.onmessage = (e) => {
                 !Number.isFinite(tile.zoom) || tile.zoom <= 0 || tile.zoom > MAX_CANVAS_RASTER_SCALE)
               throw new Error('Invalid tile request')
             const {bytes,width,height,divisor,reason} = await sampleCpuTile(cpuTileFrameOptions(renderOptions,tile),
-              options=>kernel.render_cpu_frame(JSON.stringify(options)),
+              options=>kernel.render_cpu_frame(JSON.stringify(options), undefined, packetWait?.controller.signal),
               ()=>admitAction(liveChoice(false)) !== 'cancel',
               !!request.sourceSnapshot && renderIntent==='preview' && !exportFormat && !renderOptions.exportRegion &&
                 !renderOptions.pixelPreview && !executionPolicy.hdrCompositing)
@@ -2464,7 +2464,7 @@ self.onmessage = (e) => {
             : await kernel.render_png(options)
         : linear
           ? color_encode_rgba8(linear, settingsJson)
-          : await kernel.render_cpu_frame(options, paintDamage)
+          : await kernel.render_cpu_frame(options, paintDamage, packetWait?.controller.signal)
       if (request.png && exportFormat) bytes = transcode_export_png(bytes, exportFormat, request.options.exportRegion?.scale ?? request.options.view.zoom)
       // Color encoding above is CPU sRGB SDR (clip). Explicit readback keeps
       // the original float buffer even when GPU presentation is disabled.

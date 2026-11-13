@@ -648,12 +648,9 @@ impl TiledRenderer {
             source.prepare(options)?;
             let requests = self.tile_requests(index, scale, addresses, options);
             self.rasterisation_in_progress = true;
-            let outcome = self.rasterise_requests(source, requests);
+            let outcome = self.rasterise_requests(source, index, instruction.content_revision, requests);
             self.rasterisation_in_progress = false;
-            let tiles = outcome?;
-            self.last_committed
-                .extend(tiles.iter().map(|(address, _)| *address));
-            self.commit_rasterised(index, instruction.content_revision, tiles)?;
+            outcome?;
         }
         self.last_level = Some(index);
         self.rendered_instruction = Some(instruction.clone());
@@ -722,42 +719,60 @@ impl TiledRenderer {
     fn rasterise_requests(
         &mut self,
         source: &mut dyn TileRasterSource,
+        level_index: usize,
+        revision: u64,
         requests: Vec<TileRequest>,
-    ) -> Result<RasterisedTiles, String> {
+    ) -> Result<(), String> {
         let count = requests.len();
         if count == 0 {
-            return Ok(Vec::new());
+            return Ok(());
         }
         let parallel = self.flags.rasterize_concurrently
             && !self.flags.single_threaded_content_rendering
             && count > 1;
         if !parallel {
-            return self.rasterise_sequential(source, requests);
+            return self.rasterise_sequential(source, level_index, revision, requests);
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.rasterise_parallel(source, requests)
+            let tiles = self.rasterise_parallel(source, requests)?;
+            self.note_rasterised(level_index, revision, tiles)
         }
         #[cfg(target_arch = "wasm32")]
         {
-            self.rasterise_sequential(source, requests)
+            self.rasterise_sequential(source, level_index, revision, requests)
         }
+    }
+
+    fn note_rasterised(
+        &mut self,
+        level_index: usize,
+        revision: u64,
+        tiles: RasterisedTiles,
+    ) -> Result<(), String> {
+        self.last_committed
+            .extend(tiles.iter().map(|(address, _)| *address));
+        self.commit_rasterised(level_index, revision, tiles)
     }
 
     fn rasterise_sequential(
         &mut self,
         source: &mut dyn TileRasterSource,
+        level_index: usize,
+        revision: u64,
         requests: Vec<TileRequest>,
-    ) -> Result<RasterisedTiles, String> {
-        let mut tiles = Vec::with_capacity(requests.len());
+    ) -> Result<(), String> {
         for request in &requests {
+            // A pan that arrives during a zoom-out tile stops before the next
+            // tile. Tiles already committed stay resident for the new camera.
+            crate::render_cancellation::checkpoint()?;
             self.telemetry
                 .begin_rasterisation_with_pixel_count(request.pixel_count);
             let bytes = source.rasterize_tile(request);
             self.telemetry.end_rasterisation();
-            tiles.push((request.address, bytes?));
+            self.note_rasterised(level_index, revision, vec![(request.address, bytes?)])?;
         }
-        Ok(tiles)
+        Ok(())
     }
 
     /// Bounded worker-pool rasterisation: workers pull tile indices from an

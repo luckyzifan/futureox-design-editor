@@ -25,9 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Unexpected argument".into());
     }
     let mut session = Preparation::new(&font)?;
-    // The bounded reader remains available while Rust computes. Only a
-    // stateless packet request receives a cancellation flag; ordered edits and
-    // exact exports cannot be cancelled by a late control message.
+    // The bounded reader remains available while Rust computes. A stateless
+    // packet and an in-flight CPU frame can be cancelled; ordered edits and
+    // exact exports cannot. A cancelled frame keeps tiles it already committed.
     let (sender, receiver) = mpsc::sync_channel::<Result<(Request, Arc<AtomicBool>), String>>(1);
     std::thread::spawn(move || {
         let run = || -> Result<(), String> {
@@ -50,7 +50,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let request:Request=serde_json::from_slice(&frame).map_err(|e|e.to_string())?;
                 if request.id==0||request.args.len()>3{return Err("Invalid preparation request".into())}
                 let flag=Arc::new(AtomicBool::new(false));
-                last=(request.method=="compile_gpu_packet").then(||(request.id,flag.clone()));
+                last = matches!(request.method.as_str(), "compile_gpu_packet" | "render_cpu_frame")
+                    .then(|| (request.id, flag.clone()));
                 if sender.send(Ok((request,flag))).is_err(){return Ok(())}
             }
         };

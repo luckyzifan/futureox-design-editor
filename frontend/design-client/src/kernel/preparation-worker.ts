@@ -89,6 +89,11 @@ self.onmessage = event => {
         progress(2)
         if (method === 'initialize') { kernel.set_image_mips(args[0] === true); snapshots.initialize(lane, args[0] === true) }
         else if (method === 'load_document' && documentFork) value = undefined
+        else if (method === 'render_cpu_frame' && typeof SharedArrayBuffer !== 'undefined' && cancellation instanceof SharedArrayBuffer && cancellation.byteLength === 4) {
+          const flag = new Int32Array(cancellation)
+          value = (kernel as VectorEngine & { render_rgba_cancellable(options: string, probe: () => boolean): Uint8Array })
+            .render_rgba_cancellable(args[0] as string, () => Atomics.load(flag, 0) !== 0)
+        }
         else if (method === 'render_cpu_frame') value = renderCpuFrame(kernel, args[0] as string, args[1] as Parameters<typeof renderCpuFrame>[2])
         else if (method === 'compile_gpu_packet' && typeof SharedArrayBuffer !== 'undefined' && cancellation instanceof SharedArrayBuffer && cancellation.byteLength === 4) {
           const flag = new Int32Array(cancellation)

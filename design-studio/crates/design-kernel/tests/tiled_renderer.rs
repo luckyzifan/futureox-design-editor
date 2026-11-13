@@ -617,3 +617,83 @@ fn managed_document_tiles_are_byte_identical_to_full_render() {
     let pan_assembled = engine.render_tiled_frame(&pan, None).expect("panned tiles");
     assert_eq!(pan_assembled.rgba, pan_full);
 }
+
+/// A zoom-out that is cancelled after the first tile keeps that tile. The
+/// same camera then rasterises only what is still missing, and those bytes
+/// match a run that was never cancelled.
+#[test]
+fn cancelled_batch_keeps_finished_tiles() {
+    use futureox_design_kernel::render_cancellation::with_probe;
+    use futureox_design_kernel::tiled_renderer::TileRequest;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct CancelAfterFirst {
+        inner: CountingSource,
+        cancel: Arc<AtomicBool>,
+    }
+    impl TileRasterizer for CancelAfterFirst {
+        fn rasterize_tile(&mut self, request: &TileRequest) -> Result<Vec<u8>, String> {
+            let bytes = self.inner.rasterize_tile(request)?;
+            self.cancel.store(true, Ordering::Release);
+            Ok(bytes)
+        }
+    }
+    impl TileRasterSource for CancelAfterFirst {
+        fn content_revision(&self) -> u64 {
+            self.inner.content_revision()
+        }
+        fn prepare(&mut self, options: &RenderOptions) -> Result<(), String> {
+            self.inner.prepare(options)
+        }
+        fn spawn_worker(&self) -> Option<Box<dyn TileRasterizer + Send>> {
+            None
+        }
+    }
+
+    let mut engine = Engine::new();
+    engine.load_document(&doc()).expect("document");
+    let inner = CountingSource::new(engine);
+    let viewport = [0., 0., 1024., 512.];
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 1024, 512);
+    let first = instruction(&inner.engine, viewport, 1.);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let probe = Arc::clone(&cancel);
+    let mut source = CancelAfterFirst { inner, cancel };
+    let mut renderer = TiledRenderer::default();
+    let error = with_probe(
+        move || probe.load(Ordering::Acquire),
+        || renderer.update_with_instruction(&mut source, &options, &first, None),
+    )
+    .expect_err("the second tile must observe the cancellation");
+    assert_eq!(error, "PREVIEW_CANCELLED");
+    assert_eq!(source.inner.rasterized(), 1, "only the finished tile ran");
+    assert_eq!(renderer.resident_tile_count(), 1);
+
+    let status = renderer
+        .update_with_instruction(&mut source, &options, &first, None)
+        .expect("resume");
+    assert_eq!(status, UpdateStatus::Completed);
+    assert_eq!(source.inner.rasterized(), 2, "the resident tile is not drawn again");
+
+    let mut reference_engine = Engine::new();
+    reference_engine.load_document(&doc()).expect("reference");
+    reference_engine
+        .render_tiled_frame(&options, None)
+        .expect("reference frame");
+    let reference = reference_engine.tiled_renderer().expect("reference residency");
+    for address in [[0, 0], [1, 0]] {
+        let actual = renderer
+            .level(3)
+            .and_then(|level| level.tile(&address))
+            .expect("resumed tile")
+            .surface
+            .bytes();
+        let expected = reference
+            .level(3)
+            .and_then(|level| level.tile(&address))
+            .expect("reference tile")
+            .surface
+            .bytes();
+        assert_eq!(actual, expected, "address {address:?}");
+    }
+}

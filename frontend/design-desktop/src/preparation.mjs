@@ -59,7 +59,7 @@ export class NativePreparation {
   if(!request||!['canvas','interaction'].includes(request.lane)||(!methods.has(request.method)&&!sourceSnapshot)||!Array.isArray(request.args)||request.args.length>3)
    return Promise.reject(Error('Invalid native preparation request'))
   if(this.pending.size>=32||this.sequence>=0xffffffff)return Promise.reject(Error('Native preparation queue or sequence limit exceeded'))
-  if(request.cancellationId!==undefined&&(request.method!=='compile_gpu_packet'||!Number.isSafeInteger(request.cancellationId)||request.cancellationId<=0||
+  if(request.cancellationId!==undefined&&((request.method!=='compile_gpu_packet'&&request.method!=='render_cpu_frame')||!Number.isSafeInteger(request.cancellationId)||request.cancellationId<=0||
     [...this.pending.values()].some(p=>p.cancellationId===request.cancellationId)))return Promise.reject(Error('Invalid preparation cancellation owner'))
   const id=this.sequence+1
   const input=request.diagnostics
@@ -97,7 +97,7 @@ export class NativePreparation {
  cancel(cancellationId){
   if(!Number.isSafeInteger(cancellationId)||cancellationId<=0)throw Error('Invalid preparation cancellation')
   if(this.closed)return
-  for(const [id,pending]of this.pending)if(pending.method==='compile_gpu_packet'&&pending.cancellationId===cancellationId){
+  for(const [id,pending]of this.pending)if((pending.method==='compile_gpu_packet'||pending.method==='render_cpu_frame')&&pending.cancellationId===cancellationId){
    this.worker.postMessage({cancel:id});break
   }
  }
