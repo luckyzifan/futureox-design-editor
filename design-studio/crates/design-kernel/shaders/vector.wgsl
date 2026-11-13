@@ -1022,9 +1022,9 @@ fn zoomBlurPixel(p:vec2<f32>)->vec4<f32>{
 // near half resolution. a<0 means the historical tap still applies. Fit 0 is
 // cover (max ratio), 1 is contain (min ratio), 2 is stretch. Device scale,
 // not a CSS zoom label, selects the band, so DPR 2 at CSS 50% stays 1:1.
-// u(46).z is set for pattern tiles and baked adjustments. Managed float
-// texels average in linear light, including the straight-sRGB table; byte
-// textures average encoded channel values.
+// u(46).z excludes tiled, adjusted or windowed sources. The footprint
+// requires the complete standalone mip level. Managed float texels average
+// in linear light and byte textures average encoded channel values.
 fn halfScaleTexel(localPx:vec2<f32>)->vec2<f32>{
  let image=u(2).zw;let node=u(6).zw;let fit=u(8).z;
  if(fit>=1.5){return localPx*image/node;}
@@ -1034,7 +1034,7 @@ fn halfScaleTexel(localPx:vec2<f32>)->vec2<f32>{
  return (localPx-inset)/ratio;
 }
 fn halfScaleStretch(p:vec2<f32>)->vec4<f32>{
- if(u(62).z>0.5||u(46).z>0.5||u(5).y!=0.||u(5).z!=0.){return vec4<f32>(-1.);}
+ if(u(62).z>0.5||u(46).z>0.5||u(51).w==1.||u(5).y!=0.||u(5).z!=0.){return vec4<f32>(-1.);}
  let fit=u(8).z;
  if(fit<0.||fit>2.){return vec4<f32>(-1.);}
  let size=u(2).zw;let node=u(6).zw;

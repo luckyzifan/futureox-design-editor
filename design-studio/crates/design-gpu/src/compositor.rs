@@ -1384,6 +1384,7 @@ impl Compositor<'_, '_, '_> {
         sample: usize,
     ) -> Result<Surface, String> {
         let mut inputs = vec![mask];
+        let mut atlased_image = false;
         if p.kind == "image" {
             let uri = p.image.as_deref().unwrap_or("");
             let dims = self.image_dims.get(uri).copied().ok_or("Missing image")?;
@@ -1391,6 +1392,7 @@ impl Compositor<'_, '_, '_> {
             let key = image_key(uri, level);
             let image = *self.images.get(&key).ok_or("Missing image texture")?;
             let origin = self.image_slots.get(&key).copied().unwrap_or([0, 0]);
+            atlased_image = origin != [0, 0];
             inputs.push(image);
             if self.scene.float_compositing || sample < 4 {
                 let key = ImageGridKey {
@@ -1491,6 +1493,9 @@ impl Compositor<'_, '_, '_> {
         let mut u = parameters(n.rect, &inputs);
         u[16] = 2.;
         self.configure_paint(&mut u, n, p, sample)?;
+        if atlased_image {
+            u[186] = 1.;
+        }
         self.frame.draw(out, u, &inputs, false, None)?;
         Ok(out)
     }

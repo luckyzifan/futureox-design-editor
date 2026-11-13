@@ -3352,6 +3352,7 @@ export class GpuRenderer {
     let image: Surface | undefined
     let imageLevel = 0
     let imageOrigin: [number, number] = [0, 0]
+    let windowedImage = false
     if (p.kind === 'image') {
       const uri = p.image || ''
       // Atlas slots exist only where the address field drives sampling; the
@@ -3364,6 +3365,7 @@ export class GpuRenderer {
       imageLevel = this.imageLevel(n, p)
       const external=material?undefined:this.sourceBitmapGrid(n,p)
       const raw=material||external?.image||this.sourceSrgbImage(p,imageLevel),window=raw?undefined:this.sourceImagePaint(n,p)
+      windowedImage = !!(material || external || window)
       if(external)parameterField=external.field
       image = raw || window?.image || this.imageFor(uri, imageLevel, intoAtlas, p.adjust)
       if(window)parameterField=window.field
@@ -3384,6 +3386,7 @@ export class GpuRenderer {
     const render = () => {
       const out = this.run(2, n.rect, inputs, (u) => {
         this.configurePaint(u, n, p)
+        if (windowedImage || imageOrigin[0] !== 0 || imageOrigin[1] !== 0) u[186] = 1
         if (p.kind === 'image' && inputs[3])
           u.set([inputs[3].rect.x, inputs[3].rect.y], 204)
         if(parameterField && p.kind!=='image')u.set([1,parameterField.rect.x-n.rect.x,parameterField.rect.y-n.rect.y,0],188)
