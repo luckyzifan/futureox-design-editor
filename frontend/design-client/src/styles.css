@@ -1749,14 +1749,21 @@ footer button {
 .editor-shell .canvas-workspace { grid-column: 3; grid-row: 2 / 4; --kernel-status-top: 12px; }
 .editor-shell .canvas-caption { display: none; }
 .editor-shell .properties-workspace { grid-column: 4; grid-row: 2 / 4; padding-top: 48px; }
-.editor-shell .editor-header .header-right { grid-column: 4; grid-row: 2; align-self: start; display: flex; justify-content: flex-end; height: 48px; width: var(--workspace-inspector-width); padding: 6px 8px; gap: 4px; background: var(--workspace-panel); z-index: 31; }
+/* The inspector track is 280px, which cannot hold the save status plus the
+   mode switch, language, export and settings. Let the bar grow across the
+   canvas column and stay pinned to the right edge so those controls remain
+   inside the bar. Height stays 48px; this is not a system title bar. */
+.editor-shell .editor-header .header-right { grid-column: 3 / 5; grid-row: 2; justify-self: end; align-self: start; display: flex; justify-content: flex-end; align-items: center; height: 48px; width: max-content; min-width: min(100%, var(--workspace-inspector-width)); max-width: 100%; padding: 6px 8px; gap: 4px; background: var(--workspace-panel); z-index: 31; }
 .editor-shell .header-right > button { height: 32px; padding: 6px; font-size: 0; }
 .editor-shell .header-right > .primary { font-size: 12px; padding: 6px 9px; }
 /* Settings is a named entry, not another icon-only workspace action. */
 .editor-shell .header-right > .app-settings-button { font-size: 12px; flex-shrink: 0; white-space: nowrap; }
 .editor-shell .app-settings-button > svg { flex-shrink: 0; }
 .editor-shell .header-right .prototype-preview-button span { display: none; }
-.editor-shell .header-right .save-status { font-size: 10px; min-width: 16px; flex: 1; overflow: hidden; white-space: nowrap; }
+.editor-shell .header-right .save-status { font-size: 10px; flex: 0 1 auto; min-width: 28px; max-width: min(280px, 100%); overflow: hidden; white-space: nowrap; }
+.editor-shell .header-right .save-status > svg,
+.editor-shell .header-right .save-status > span[aria-hidden] { flex: none; }
+.editor-shell .header-right .save-status .save-status-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-actions { position: relative; order: 10; }
 .workspace-actions > summary { display: flex; align-items: center; justify-content: center; width: 28px; height: 32px; cursor: pointer; list-style: none; border-radius: 6px; }
 .workspace-actions > summary::-webkit-details-marker { display: none; }
@@ -1890,7 +1897,7 @@ footer button {
 .library-history .local-file-row > span { color: var(--workspace-muted); font-size: 11px; }
 .library-history .local-file-row > button { flex: none; font-size: 11px; color: var(--workspace-accent); }
 @media (max-width: 1100px) {
-  .editor-shell .header-right .save-status { font-size: 0; width: 16px; flex: none; }
+  .editor-shell .header-right .save-status { font-size: 0; width: 16px; min-width: 0; flex: none; }
 }
 @media (max-width: 700px) {
   .remote-modal { padding: 18px; }
@@ -1980,7 +1987,7 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
   .editor-shell .adaptive-layers-shell { grid-column: 3; grid-row: 3; align-self: stretch; justify-self: start; z-index: 35; width: min(var(--workspace-layers-width), calc(100vw - 80px)); border: 1px solid var(--workspace-border); border-radius: 8px; }
   .editor-shell .properties-workspace { grid-column: 3; grid-row: 3; justify-self: end; z-index: 36; width: min(var(--workspace-inspector-width), calc(100vw - 80px)); padding-top: 0; border: 1px solid var(--workspace-border); border-radius: 8px; }
   .editor-shell .editor-header .document-title { grid-column: 3; width: min(220px, 45vw); justify-self: start; margin: 8px; border-radius: 8px; }
-  .editor-shell .editor-header .header-right { grid-column: 3; justify-self: end; width: auto; margin: 8px; border-radius: 8px; }
+  .editor-shell .editor-header .header-right { grid-column: 3; justify-self: end; width: auto; min-width: 0; margin: 8px; border-radius: 8px; }
   .editor-shell .header-right .save-status { display: none; }
   .editor-shell .panel-resize-handle { display: none; }
   /* Keep both mounted drafts reachable: dual compact panels occupy separate
@@ -2176,6 +2183,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
   grid-column: 3;
   justify-self: end;
   width: auto;
+  min-width: 0;
   height: auto;
   margin: 8px 10px;
   max-width: calc(100% - 16px);
@@ -2199,6 +2207,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
     grid-column: 3;
     justify-self: end;
     width: auto;
+    min-width: 0;
     height: auto;
     margin: 8px 10px;
     max-width: calc(100% - 16px);

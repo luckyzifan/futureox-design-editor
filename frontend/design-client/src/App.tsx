@@ -1020,6 +1020,25 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       const response=await desktop.respondToClose({allow,requestId})
       if(!allow||!response.accepted)desktopSession?.cancelClose()
     }}/>
+  const saveStatusSource = source
+    ? (source.error ? '自动保存或加载失败' : source.busy ? '处理中…' : source.dirty ? '自动保存中…' : '已自动保存到工作副本')
+    : desktopSession
+      ? (!ready ? '载入中'
+        : desktopStatus.operation === 'save' ? '自动保存中…'
+        : desktopStatus.conflict ? (desktopSession.supportsWorkspace ? '本机库存在新版本' : '文件已被外部修改')
+        : desktopStatus.error ? '操作失败，修改已保留'
+        : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '自动保存有警告' : desktopSession.supportsWorkspace ? '自动保存中…' : '未保存到文件')
+        : desktopStatus.warning ? '已写入，有持久化警告'
+        : desktopSession.supportsWorkspace ? '已自动保存到工作副本'
+        : '已保存到文件')
+      : saved
+  const saveStatusText = translateProfessional(saveStatusSource, locale)
+  const saveStatusHelp = source
+    ? translateProfessional('编辑自动保存到独立工作副本，原文件保持不变', locale)
+    : desktopSession
+      ? translateProfessional(desktopStatus.warning || desktopStatus.recoveryWarning || '编辑自动保存到独立工作副本，原文件保持不变', locale)
+      : ''
+  const saveStatusTitle = saveStatusHelp && saveStatusHelp !== saveStatusText ? `${saveStatusText} — ${saveStatusHelp}` : saveStatusText
   return (
     <div
       ref={panelHost}
@@ -1188,13 +1207,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </details>
           <span
             className={`save-status ${(desktopSession ? desktopStatus.error || desktopStatus.warning || desktopStatus.recoveryWarning : saved.includes('失败')) ? 'error' : ''}`}
-            title={source?translateProfessional('编辑自动保存到独立工作副本，原文件保持不变', locale):desktopSession ? translateProfessional(desktopStatus.warning || desktopStatus.recoveryWarning || '编辑自动保存到独立工作副本，原文件保持不变', locale) : undefined}
+            title={saveStatusTitle}
             role="status"
           >
             {desktopSession && desktopStatus.dirty ? <span aria-hidden="true">●</span> : <Check size={13} />}
-            {translateProfessional(source?(source.error?'自动保存或加载失败':source.busy?'处理中…':source.dirty?'自动保存中…':'已自动保存到工作副本'):desktopSession ? (!ready ? '载入中' : desktopStatus.operation === 'save' ? '自动保存中…'
-              : desktopStatus.conflict ? (desktopSession.supportsWorkspace ? '本机库存在新版本' : '文件已被外部修改') : desktopStatus.error ? '操作失败，修改已保留'
-              : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '自动保存有警告' : desktopSession.supportsWorkspace ? '自动保存中…' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已自动保存到工作副本' : '已保存到文件') : saved, locale)}
+            <span className="save-status-label" title={saveStatusTitle}>{saveStatusText}</span>
           </span>
           {desktopSession&&ready&&<LocalWindowControl editor={editor} session={desktopSession} live={localWindows}/>}
           {!source&&!desktopSession&&<button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
