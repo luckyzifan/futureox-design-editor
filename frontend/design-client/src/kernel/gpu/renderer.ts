@@ -6250,6 +6250,8 @@ export class GpuRenderer {
       const ta=tint?this.alpha(tint.color)*tint.opacity:0,overlay=tint?[...this.color(tint.color).map(c=>c*ta),ta]:[0,0,0,0]
       for(let i=0;i<4;i++){
         targets[i]=await this.composeSourceProgram(SOURCE_IMAGE_LAYER_MODE,targets[i],[image,field[i]],intersect(n.rect,n.fill.rect),u=>{
+          // u[18] is the straight RGBA8 upload. pass() copies it to u[207] so the
+          // layer samples rgba8uint instead of reconstructing unorm bytes.
           u.set([i,Number(!!raw),Number(!!values)],17);u.set([n.rect.x,n.rect.y,n.rect.w,n.rect.h],20)
           u.set([n.fill.rect.x,n.fill.rect.y,n.fill.rect.w,n.fill.rect.h,offset,p.opacity,n.opacity,0,...overlay],24)
           if(values)u.set(values,36)

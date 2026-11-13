@@ -82,18 +82,21 @@ fn u(i:u32)->vec4<f32>{return params.values[i];}
 fn addRN(a:f32,b:f32)->f32{return a+b;}
 fn mulRN(a:f32,b:f32)->f32{return a*b;}
 fn divideRN(a:f32,b:f32)->f32{return a/b;}
-fn tableWord(i:i32,row:i32)->f32{
- let c=vec4<u32>(round(textureLoad(soft1,vec2<i32>(i,row),0)*255.));
- return bitcast<f32>(c.x|(c.y<<8u)|(c.z<<16u)|(c.w<<24u));
+// Straight RGBA8 is rgba8uint. textureLoad returns the stored bytes, and the
+// Rust sRGB table occupies the two rows under the image. Float images stay on soft1.
+@group(0) @binding(6) var sourceBytes:texture_2d<u32>;
+fn hostedByteWord(channel:u32,row:i32)->f32{
+ let bits=textureLoad(sourceBytes,vec2<i32>(i32(channel),row),0);
+ return bitcast<f32>(bits.r|(bits.g<<8u)|(bits.b<<16u)|(bits.a<<24u));
 }
 fn texel(q:vec2<i32>)->vec4<f32>{
  let dimensions=vec2<i32>(u(2).zw);
  let local=q-vec2<i32>(u(2).xy);
  if(any(local<vec2<i32>(0))||any(local>=dimensions)){return vec4<f32>(0.);}
- let value=textureLoad(soft1,local,0);
- if(u(4).z==0.){return value;}
- let c=vec4<i32>(round(value*255.));let a=tableWord(c.a,dimensions.y+1);
- return vec4<f32>(vec3<f32>(tableWord(c.r,dimensions.y),tableWord(c.g,dimensions.y),tableWord(c.b,dimensions.y))*a,a);
+ if(u(4).z==0.){return textureLoad(soft1,local,0);}
+ let stored=textureLoad(sourceBytes,local,0);let row=dimensions.y;
+ let a=hostedByteWord(stored.a,row+1);
+ return vec4<f32>(vec3<f32>(hostedByteWord(stored.r,row),hostedByteWord(stored.g,row),hostedByteWord(stored.b,row))*a,a);
 }
 @fragment fn imageLayer(@builtin(position) pos:vec4<f32>)->@location(0)vec4<f32>{
  let p=vec2<i32>(floor(pos.xy))+vec2<i32>(u(0).xy);var back=vec4<f32>(0.);
