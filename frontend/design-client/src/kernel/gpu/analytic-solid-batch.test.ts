@@ -100,7 +100,7 @@ function stroked(id:string,x:number,align:'center'|'inside'|'outside'='center'){
   const node=leaf(id,x)
   node.rect={x,y:0,w:4,h:4}
   node.strokes=[{align,path:{first:0,count:3,rule:'nonzero',area:{first:0,count:4},rect:{x,y:0,w:4,h:4}},
-    paint:{kind:'solid',color:'#112233',opacity:1,visible:true,blend:'normal',stops:[]}}] as GpuNode['strokes']
+    paint:{id:`${id}-stroke`,kind:'solid',color:'#112233',opacity:1,visible:true,blend:'normal',angle:0,fit:'cover',stops:[]}}]
   return node
 }
 test('a solid fill and its stroke stay in one batch, including inside and outside alignment',()=>{
