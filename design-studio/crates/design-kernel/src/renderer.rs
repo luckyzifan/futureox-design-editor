@@ -3578,7 +3578,7 @@ impl Painter<'_> {
         let raw_coverage = (backdrop.is_some() && coverage.is_none()).then_some(fill);
         let mut planes = layers.map(Arc::new);
         if !texture_passthrough && n.effects.iter().any(|e| e.visible) {
-            planes = self.apply_foreground_coverage(id, planes, &mut coverage)?;
+            planes = self.apply_foreground_coverage(id, planes, &mut coverage, targets, clip)?;
         }
         let blend_mode=crate::blend::BlendMode::from_name(n.composite_blend());
         // An alpha/luminance mask is a coverage factor for later siblings, not a
@@ -3947,6 +3947,8 @@ impl Painter<'_> {
         id: &str,
         mut planes: [Arc<Surface>; 4],
         coverage: &mut Option<[Arc<Surface>; 4]>,
+        targets: &mut [Surface; 4],
+        clip: Option<&AccountedSamples>,
     ) -> Result<[Arc<Surface>; 4], String> {
         let n = &self.doc.nodes[id];
         let m = self.prepared[id].matrix;
@@ -3954,11 +3956,12 @@ impl Painter<'_> {
         // Later drop shadows sample the content from before any shadow in this
         // chain. They stack underneath; they do not blur the previous shadow.
         let mut shadow_basis = planes.clone();
-        for fx in n
+        let foreground: Vec<_> = n
             .effects
             .iter()
             .filter(|e| e.visible && !matches!(e.kind.as_str(), "background-blur" | "glass"))
-        {
+            .collect();
+        for (index, fx) in foreground.iter().enumerate() {
             if (fx.kind == "blur"
                 && !crate::fidelity::layer_blur_active(
                     fx.blur_radius() * scale,
@@ -4002,6 +4005,30 @@ impl Painter<'_> {
                 shadow_basis = planes.clone();
                 if let Some(mask)=coverage {let value=Arc::new(filter(&self.resolve_effect_planes(mask)?)?);*mask=std::array::from_fn(|_|value.clone());}
             } else if fx.kind == "blur" {
+                // Final figma export blur keeps both tent passes unrounded.
+                // A flat 2×2 is rounded onto the layer and composited once
+                // below. A varying 2×2 is averaged with its backdrop in float
+                // and that layer sample is cleared, so it is not composited twice.
+                if self.compatible
+                    && self.profile == crate::fidelity::RasterProfile::Figma
+                    && fx.gradient_blur.is_none()
+                    && coverage.is_none()
+                    && index + 1 == foreground.len()
+                {
+                    drop(planes);
+                    drop(shadow_basis);
+                    let opacity = n.opacity as f32;
+                    let output = Arc::new(effects::place_figma_export_blur(
+                        resolved,
+                        fx.blur_radius() * scale,
+                        targets,
+                        n.composite_blend(),
+                        &|sample, x, y| opacity * clip.map_or(1., |mask| mask.at(sample, x, y)),
+                    )?);
+                    planes = std::array::from_fn(|_| output.clone());
+                    shadow_basis = planes.clone();
+                    continue;
+                }
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
                 let compatible = self.compatible;
                 let filter = |mut source: Surface| -> Result<Surface, String> {

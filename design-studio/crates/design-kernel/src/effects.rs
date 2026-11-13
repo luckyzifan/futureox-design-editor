@@ -149,6 +149,184 @@ pub(crate) fn linear_tent_blur_owned(
 ) -> Result<Surface, String> {
     crate::rational_filter::blur_owned(surface, radius, clamp_edges)
 }
+
+/// Byte nearest a half-code, with the f32 gap between separable passes snapped
+/// back onto that half. `212.5` stored as binary32 comes back as
+/// `212.49999493`; half-up without the snap would keep the even code.
+fn half_up_unorm8(unit: f64) -> u8 {
+    let scaled = (unit.clamp(0.0, 1.0) * 255.0).clamp(0.0, 255.0);
+    let nearest_half = (scaled * 2.0).round() / 2.0;
+    let scaled = if (scaled - nearest_half).abs() < 1.0e-4 {
+        nearest_half
+    } else {
+        scaled
+    };
+    (scaled + 0.5).floor().clamp(0.0, 255.0) as u8
+}
+
+/// Average each even device pair, then round half-up once. Pixels outside a
+/// complete pair still round once, so a later ties-even composite cannot see
+/// the unrounded half-code.
+#[cfg(test)]
+fn round_export_pairs(surface: &mut Surface) {
+    let rect = surface.rect;
+    if rect.empty() {
+        return;
+    }
+    let mut paired = vec![false; surface.pixels.len()];
+    let mut y = if rect.y & 1 == 0 { rect.y } else { rect.y + 1 };
+    while y + 1 < rect.bottom() {
+        let mut x = if rect.x & 1 == 0 { rect.x } else { rect.x + 1 };
+        while x + 1 < rect.right() {
+            let pair = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
+            let mut sum = [0.0_f64; 4];
+            let mut indexes = [0_usize; 4];
+            for (slot, (px, py)) in pair.into_iter().enumerate() {
+                let index = rect.index(px, py).expect("complete export pair");
+                indexes[slot] = index;
+                for channel in 0..4 {
+                    sum[channel] += f64::from(surface.pixels[index].0[channel]);
+                }
+            }
+            let pixel = Pixel(sum.map(|value| f32::from(half_up_unorm8(value * 0.25)) / 255.0));
+            for index in indexes {
+                surface.pixels[index] = pixel;
+                paired[index] = true;
+            }
+            x += 2;
+        }
+        y += 2;
+    }
+    for (index, pixel) in surface.pixels.iter_mut().enumerate() {
+        if paired[index] {
+            continue;
+        }
+        *pixel = Pixel(
+            pixel
+                .0
+                .map(|value| f32::from(half_up_unorm8(f64::from(value))) / 255.0),
+        );
+    }
+}
+
+fn linear_layer_tent(surface: Surface, radius: f64) -> Result<Surface, String> {
+    let radius = f64::from(radius as f32);
+    if !(radius > 0.0) {
+        return Ok(surface);
+    }
+    // Huge radii keep the historical per-pass byte filter. The measured
+    // 0.5–16 contract is inside the portable 512px range.
+    if radius > 512.0 {
+        return tent_blur_impl(surface, radius, false, false, false);
+    }
+    tent_blur_impl(surface, radius, false, false, true)
+}
+
+/// Figma export layer blur with no backdrop in the filter. Both tent passes
+/// stay unrounded, then each even device pair rounds half-up once.
+#[cfg(test)]
+fn figma_export_layer_tent(surface: Surface, radius: f64) -> Result<Surface, String> {
+    let mut blurred = linear_layer_tent(surface, radius)?;
+    round_export_pairs(&mut blurred);
+    Ok(blurred)
+}
+
+/// Split an unrounded export blur. A 2×2 whose samples already agree is
+/// rounded onto the layer so the existing composite still runs once. A 2×2
+/// whose samples differ is source-over'd with each backdrop in float, averaged,
+/// and rounded once into that backdrop; those layer samples are cleared so
+/// they are not composited again.
+pub(crate) fn place_figma_export_blur(
+    surface: Surface,
+    radius: f64,
+    targets: &mut [Surface],
+    blend: &str,
+    coverage_at: &dyn Fn(usize, i32, i32) -> f32,
+) -> Result<Surface, String> {
+    let mut blurred = linear_layer_tent(surface, radius)?;
+    settle_figma_export_blur(
+        &mut blurred,
+        targets,
+        crate::blend::BlendMode::from_name(blend),
+        coverage_at,
+    );
+    Ok(blurred)
+}
+
+pub(crate) fn settle_figma_export_blur(
+    layer: &mut Surface,
+    targets: &mut [Surface],
+    blend: crate::blend::BlendMode,
+    coverage_at: &dyn Fn(usize, i32, i32) -> f32,
+) {
+    let rect = layer.rect;
+    if rect.empty() {
+        return;
+    }
+    let mut baked = vec![false; layer.pixels.len()];
+    let mut y = if rect.y & 1 == 0 { rect.y } else { rect.y + 1 };
+    while y + 1 < rect.bottom() {
+        let mut x = if rect.x & 1 == 0 { rect.x } else { rect.x + 1 };
+        while x + 1 < rect.right() {
+            let coords = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
+            let indexes = coords.map(|(px, py)| rect.index(px, py).expect("complete export pair"));
+            let first = layer.pixels[indexes[0]];
+            let equal = indexes.iter().all(|&index| layer.pixels[index] == first);
+            let covered = targets.iter().all(|target| {
+                coords
+                    .iter()
+                    .all(|(px, py)| target.rect.index(*px, *py).is_some())
+            });
+            if equal {
+                let pixel = Pixel(
+                    first
+                        .0
+                        .map(|value| f32::from(half_up_unorm8(f64::from(value))) / 255.),
+                );
+                for index in indexes {
+                    layer.pixels[index] = pixel;
+                }
+            } else if covered {
+                for (target_index, target) in targets.iter_mut().enumerate() {
+                    let mut sum = [0.0_f64; 4];
+                    for (px, py) in coords {
+                        let value = crate::blend::over_mode(
+                            target.at(px, py),
+                            layer.at(px, py).opacity(coverage_at(target_index, px, py)),
+                            blend,
+                        );
+                        for channel in 0..4 {
+                            sum[channel] += f64::from(value.0[channel]);
+                        }
+                    }
+                    let pixel =
+                        Pixel(sum.map(|value| f32::from(half_up_unorm8(value * 0.25)) / 255.));
+                    for (px, py) in coords {
+                        let index = target.rect.index(px, py).expect("target export pair");
+                        target.pixels[index] = pixel;
+                    }
+                }
+                for index in indexes {
+                    baked[index] = true;
+                }
+            }
+            x += 2;
+        }
+        y += 2;
+    }
+    for (index, pixel) in layer.pixels.iter_mut().enumerate() {
+        if baked[index] {
+            *pixel = Pixel::default();
+        } else {
+            *pixel = Pixel(
+                pixel
+                    .0
+                    .map(|value| f32::from(half_up_unorm8(f64::from(value))) / 255.),
+            );
+        }
+    }
+}
+
 fn tent_blur_impl(
     mut current: Surface,
     radius: f64,
@@ -1876,6 +2054,22 @@ mod gaussian_scanline_memory_tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn figma_export_tent_rounds_the_half_code_bar_after_the_pair_average() {
+        let mut source = Surface::new(Rect::new(0, 0, 6, 16)).unwrap();
+        for y in 0..16 {
+            for x in 2..4 {
+                source.pixels[source.rect.index(x, y).unwrap()] = Pixel::rgba(1., 1., 1., 1.);
+            }
+        }
+        let out = figma_export_layer_tent(source, 1.).unwrap();
+        let byte = |x, y| (out.at(x, y).0[0] * 255.).round() as u8;
+        assert_eq!((byte(0, 8), byte(1, 8)), (21, 21));
+        assert_eq!((byte(2, 8), byte(3, 8)), (213, 213));
+        assert_eq!((byte(4, 8), byte(5, 8)), (21, 21));
+        assert!(out.pixels.iter().all(|pixel| pixel.0.iter().all(|v| v.is_finite())));
     }
 }
 

@@ -138,9 +138,12 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
         "linear-gradient {linear:?}"
     );
     // Digest of "directory/id differentPixels maxChannelError" for every other
-    // strict figma CPU reference, measured on main 5bef88b5 before this change.
+    // strict figma CPU reference. Re-measured after the figma layer-blur
+    // export rounds once per device pair. The previous digest
+    // aae595eebd7943b2313b9d01ea7991b4a4c912528bafe2b089699a3df48d3167
+    // matches this tree with that quantize disabled; only layer-blur rows moved.
     assert_eq!(
-        others_sha, "aae595eebd7943b2313b9d01ea7991b4a4c912528bafe2b089699a3df48d3167",
+        others_sha, "918059859df3c06d419fe6e668f2d0a8cbff573eff2a8e9c08c11c7836d55251",
         "other frozen figma references moved"
     );
 }
