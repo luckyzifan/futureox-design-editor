@@ -1808,8 +1808,11 @@ footer button {
 .properties-tab-buttons { display: flex; min-width: 0; }
 .editor-shell .properties-tabs button { padding: 5px 8px; }
 .properties-zoom { position: relative; }
-.properties-zoom .canvas-controls { position: static; display: flex; height: 30px; padding: 0; background: transparent; box-shadow: none; border: 0; border-radius: 0; font-size: 12px; }
-.compact-controls > .view-menu > summary { min-width: 58px; padding: 6px; font-size: 12px; list-style: none; cursor: pointer; }
+/* 12px readout. #858798 is 3.55:1 on white and 2.84:1 on the Sketch tab #e6e6e6.
+   Sketch muted #6e6e73 is only 4.06:1 on that tab, so this uses the shared
+   secondary ink that clears 4.5:1 on white, #e6e6e6, and #e9ebec / #e8ebec. */
+.properties-zoom .canvas-controls { position: static; display: flex; height: 30px; padding: 0; background: transparent; box-shadow: none; border: 0; border-radius: 0; font-size: 12px; color: #5d6673; }
+.compact-controls > .view-menu > summary { min-width: 58px; padding: 6px; font-size: 12px; list-style: none; cursor: pointer; color: #5d6673; }
 .compact-controls > .view-menu > summary::-webkit-details-marker { display: none; }
 .compact-controls > .view-menu > summary::after { content: '⌄'; margin-left: 6px; }
 .editor-shell .view-menu-body { top: calc(100% + 6px); bottom: auto; right: 0; width: 230px; max-height: min(560px, calc(100dvh - 120px)); overflow: auto; background: var(--workspace-panel); color: var(--workspace-text); border-color: var(--workspace-border); border-radius: 9px; z-index: 60; }
