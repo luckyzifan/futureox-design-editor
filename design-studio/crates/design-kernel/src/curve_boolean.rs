@@ -337,8 +337,23 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                             if let Some(network)=&n.network {
                                 // Native contour traversal carries winding direction.
                                 // Planar face reconstruction can reverse the inner loop.
-                                crate::vector_geometry::VectorGeometry::ordered_network(network,true)
-                                    .and_then(|g|g.paths()).map(|p|p.0).or_else(|_|n.paths().map(|p|p.0))?
+                                let path = crate::vector_geometry::VectorGeometry::ordered_network(network, true)
+                                    .and_then(|geometry| geometry.paths()).map(|paths| paths.0);
+                                match path {
+                                    Ok(path) => path,
+                                    Err(_) if crate::interop::sketch_binding(doc, n, "sketchOpenPath") == Some("true")
+                                        && network.vertices.first().zip(network.vertices.last())
+                                            .is_some_and(|(first, last)| first.point() == last.point()) =>
+                                    {
+                                        // Some Sketch contours store their last anchor at
+                                        // their first while retaining an open stroke flag.
+                                        // They enclose a region in the parent compound fill.
+                                        let (_, mut contour) = crate::vector_geometry::VectorGeometry::ordered_network(network, false)?.paths()?;
+                                        contour.commands.push(Command::Close);
+                                        contour
+                                    }
+                                    Err(_) => n.paths()?.0,
+                                }
                             } else { n.paths()?.0 }
                         } else { n.paths()?.0 },
                         n.transform,

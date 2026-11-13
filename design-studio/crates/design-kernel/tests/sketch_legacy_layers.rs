@@ -146,18 +146,88 @@ fn old_nested_shape_paths_preserve_cubic_handles_and_editable_geometry() {
             .iter()
             .any(|edge| edge.c1.is_some() && edge.c2.is_some())
     );
-    let old_paths = doc
-        .nodes
-        .values()
-        .filter(|node| node.kind == "vector" && node.network.is_some())
-        .count();
-    assert!(
-        old_paths >= 18,
-        "all nested source paths must reach the geometry model"
-    );
+    fn check_paths(layer: &Value, doc: &Document) -> usize {
+        let mut count = 0;
+        if layer["_class"] == "shapePath" {
+            let id = layer["do_objectID"].as_str().unwrap();
+            let path = &layer["path"];
+            let points = path["points"].as_array().unwrap();
+            let network = doc.nodes[id].network.as_ref().unwrap();
+            let closed = path["isClosed"].as_bool().unwrap();
+            assert_eq!(network.vertices.len(), points.len(), "{id}");
+            assert_eq!(
+                network.edges.len(),
+                points.len() - usize::from(!closed),
+                "{id}"
+            );
+            for (index, edge) in network.edges.iter().enumerate() {
+                assert_eq!(
+                    edge.c1.is_some(),
+                    points[index]["hasCurveFrom"] == true,
+                    "{id}"
+                );
+                assert_eq!(
+                    edge.c2.is_some(),
+                    points[(index + 1) % points.len()]["hasCurveTo"] == true,
+                    "{id}"
+                );
+            }
+            count = 1;
+        }
+        if let Some(children) = layer["layers"].as_array() {
+            count += children
+                .iter()
+                .map(|child| check_paths(child, doc))
+                .sum::<usize>();
+        }
+        count
+    }
+    let old_paths = interop::read_zip_public(SEMANTIC)
+        .unwrap()
+        .iter()
+        .filter(|(path, _)| path.starts_with("pages/") && path.ends_with(".json"))
+        .map(|(_, bytes)| check_paths(&serde_json::from_slice(bytes).unwrap(), &doc))
+        .sum::<usize>();
+    assert_eq!(old_paths, 18);
+    let mut resolved = doc.clone();
+    futureox_design_kernel::curve_boolean::resolve(&mut resolved).unwrap();
+    let cart_artboard = &resolved.nodes["EF561AA7-97E5-4662-93FD-B509DE974519"];
+    let cart_outline = &resolved.nodes[&cart_artboard.children[0]];
+    assert!(!cart_outline.paths().unwrap().0.commands.is_empty());
     assert_eq!(reopen_fd(&doc).nodes[CART].network, doc.nodes[CART].network);
     let sketch = interop::import_sketch_report(&interop::export_sketch(&doc).unwrap()).unwrap();
     assert_eq!(sketch.document.nodes[CART].network, doc.nodes[CART].network);
+
+    let mut editor = DocumentEditor::new(doc.clone()).unwrap();
+    let mut edited = doc.clone();
+    let network = edited
+        .nodes
+        .get_mut(CART)
+        .unwrap()
+        .network
+        .as_mut()
+        .unwrap();
+    std::sync::Arc::make_mut(network).vertices[0].x += 0.5;
+    editor
+        .apply(
+            editor.revision(),
+            DocumentPatch::between(&doc, &edited).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        editor.document().nodes[CART].network,
+        edited.nodes[CART].network
+    );
+    editor.undo().unwrap();
+    assert_eq!(
+        editor.document().nodes[CART].network,
+        doc.nodes[CART].network
+    );
+    editor.redo().unwrap();
+    assert_eq!(
+        editor.document().nodes[CART].network,
+        edited.nodes[CART].network
+    );
 }
 
 #[test]
