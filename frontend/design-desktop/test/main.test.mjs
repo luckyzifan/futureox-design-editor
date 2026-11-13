@@ -1,4 +1,5 @@
 import { DOCUMENT_MEMORY_BYTES, DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
+import { SQLITE_OFFTHREAD_BYTES } from '../src/workspace-sqlite-worker-host.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath, symlink } from 'node:fs/promises'
@@ -178,7 +179,15 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     },
   }
   state.Sidecar = class {
-    constructor(executable, recoveryDir, options) { state.backends.push({ executable, recoveryDir, ...options }) }
+    constructor(executable, recoveryDir, options) {
+      state.backends.push({ executable, recoveryDir, ...options })
+      this.sqliteCodec = options.sqliteCodec
+    }
+    async reply(result) {
+      const frame = Buffer.from(JSON.stringify({ id: 'test-response', ok: true, result }))
+      if (frame.length < SQLITE_OFFTHREAD_BYTES) return result
+      return (await this.sqliteCodec.decodeResponse(frame)).response.result
+    }
     async stop() {
       state.stopCalls++
       return true
@@ -207,11 +216,11 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
       }
       if (method === 'open') {
         if (state.openFailure) throw Object.assign(new Error('Cannot open fixture'), { code: state.openFailure })
-        return {
+        return this.reply({
           path: params.path,
           hash: 'opened-hash',
-          document: { name: path.basename(params.path) },
-        }
+          document: state.openedDocument ?? { name: path.basename(params.path) },
+        })
       }
       if (method === 'stat')
         return {
@@ -224,7 +233,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
       }
       if (method === 'recovery.list')
         return { entries: [...state.recoveries.values()], issues: state.recoveryIssues }
-      if (method === 'recovery.read') return state.recoveries.get(params.recoveryId)
+      if (method === 'recovery.read') return this.reply(state.recoveries.get(params.recoveryId))
       if (method === 'recovery.write') {
         if (state.recoveries.size >= state.maxRecovery && !state.recoveries.has(params.recoveryId))
           throw Object.assign(new Error('full'), { code: 'RECOVERY_LIMIT' })
@@ -425,6 +434,70 @@ test('Save As confirms the normalized existing .fd target and Cancel performs no
     await state.dispose()
   }
 })
+test('native file opening publishes the same document across the off-thread decode boundary', async () => {
+  const state = await host()
+  try {
+    const file = path.join(state.root, 'drawing.fd')
+    const document = {
+      name: '设计',
+      width: 10.625,
+      fdCompatibility: { contractVersion: 1, requiredCapabilities: [], extensions: { 'com.example/metadata': { note: '' } } },
+    }
+    const metadata = document.fdCompatibility.extensions['com.example/metadata']
+    const baseBytes = Buffer.byteLength(JSON.stringify({
+      id: 'test-response', ok: true, result: { path: file, hash: 'opened-hash', document },
+    }))
+    for (const frameBytes of [SQLITE_OFFTHREAD_BYTES - 1, SQLITE_OFFTHREAD_BYTES, SQLITE_OFFTHREAD_BYTES + 1]) {
+      metadata.note = 'a'.repeat(frameBytes - baseBytes)
+      state.openedDocument = document
+      state.open.push({ canceled: false, filePaths: [file] })
+      const opened = await state.invoke('open')
+      assert.equal(opened.status, 'ok')
+      assert.equal(opened.documentJson, JSON.stringify(document), `frameBytes=${frameBytes}`)
+    }
+    assert.equal((await state.invoke('open')).status, 'cancelled')
+    state.openFailure = 'INVALID_DOCUMENT'
+    state.open.push({ canceled: false, filePaths: [file] })
+    const corrupt = await state.invoke('open')
+    assert.equal(corrupt.status, 'error')
+    assert.equal(corrupt.code, 'INVALID_DOCUMENT')
+    assert.equal(corrupt.handle, undefined)
+  } finally { await state.dispose() }
+})
+
+test('catalog, pending file and recovery publish documents decoded by the real worker', async () => {
+  const state = await host()
+  try {
+    const directory = path.join(state.root, 'project')
+    const file = path.join(directory, 'drawing.fd')
+    await mkdir(directory)
+    await writeFile(file, '{}')
+    const document = { name: 'Large drawing', notes: 'a'.repeat(SQLITE_OFFTHREAD_BYTES) }
+    state.openedDocument = document
+
+    state.open.push({ canceled: false, filePaths: [directory] })
+    const selected = await state.invoke('catalog-select')
+    assert.equal(selected.status, 'ok')
+    const directoryHandle = selected.directory.directoryHandle
+    assert.equal((await state.invoke('catalog-scan', { directoryHandle })).status, 'ok')
+    const fromCatalog = await state.invoke('catalog-open', { directoryHandle, fileId: 'file-1' })
+
+    state.electron.app.emit('open-file', { preventDefault() {} }, file)
+    const pending = await state.invoke('open-pending')
+
+    state.recoveries.set('snapshot', { recoveryId: 'snapshot', name: document.name, updatedAt: 1, hash: 'snapshot-hash', document })
+    state.messages.push({ response: 0 })
+    const recovery = await state.invoke('recovery-read')
+    assert.equal(recovery.handle, undefined)
+    assert.equal(typeof recovery.recoveryHandle, 'string')
+
+    for (const [name, result] of [['catalog', fromCatalog], ['pending', pending], ['recovery', recovery]]) {
+      assert.equal(result.status, 'ok', name)
+      assert.equal(result.documentJson, JSON.stringify(document), name)
+    }
+  } finally { await state.dispose() }
+})
+
 test('accepted active capability survives many cancelled renderer-open replacements', async () => {
   const state = await host()
   try {
