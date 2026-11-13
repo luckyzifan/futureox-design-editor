@@ -486,35 +486,57 @@ pub(crate) fn backdrop_padding(
     checked_backdrop_padding(total, density)
 }
 
-/// Padding for one display tile. A backdrop changes the tile only when its
-/// output bounds, grown by that backdrop's own sample support, meet the tile.
-/// Readers elsewhere on the page do not enlarge this tile's working extent.
+/// Reduce the working extent of an unmanaged analytic display tile. Keep
+/// the existing budget check and allow later backdrop readers to grow the
+/// region needed from earlier paints.
 pub(crate) fn tile_backdrop_padding(
     engine: &Engine,
     options: &RenderOptions,
     tile: crate::math::Rect,
 ) -> Result<i32, String> {
     use crate::math::Transform;
-    let mut total = 0.;
-    let density = if options.raster_profile.is_export() { 2. } else { 1. };
-    if let Some(doc) = &engine.doc {
-        let page = doc.pages.iter().find(|p| p.id == options.page_id).ok_or("Page not found")?;
-        let v = options.view;
-        let camera = Transform([v.zoom, 0., 0., v.zoom, v.x, v.y]);
-        if options.raster_profile == crate::fidelity::RasterProfile::Analytic
-            && doc.color_management.is_none()
-            && single_backdrop_covered_by_root_halo(doc, page, camera, tile)
-        {
-            return Ok(0);
-        }
-        visit_backdrops(doc, &page.children, camera, |bounds, support| {
-            let reach = support.ceil().max(0.) as i32;
-            if !bounds.expand(reach).intersect(tile).empty() {
-                total += support;
-            }
-        })?;
+
+    let Some(doc) = &engine.doc else { return Ok(0) };
+    let page = doc.pages.iter().find(|p| p.id == options.page_id).ok_or("Page not found")?;
+    let v = options.view;
+    let camera = Transform([v.zoom, 0., 0., v.zoom, v.x, v.y]);
+    if single_backdrop_covered_by_root_halo(doc, page, camera, tile) {
+        return Ok(0);
     }
-    checked_backdrop_padding(total, density)
+
+    let search = tile.expand(2048);
+    let mut backdrops = Vec::new();
+    let mut original_total = 0.;
+    let mut unknown_bounds = false;
+    visit_backdrops(doc, &page.children, camera, |bounds, support| {
+        unknown_bounds |= bounds.empty();
+        if !bounds.intersect(search).empty() {
+            original_total += support;
+            backdrops.push((bounds, support));
+        }
+    })?;
+    let original_padding = checked_backdrop_padding(original_total, 1.)?;
+    if original_padding == 0 || unknown_bounds || doc.nodes.values().any(|node| {
+        node.visible && node.effects.iter().any(|effect| {
+            effect.visible && matches!(effect.kind.as_str(), "glass" | "zoom-blur")
+        })
+    }) {
+        return Ok(original_padding);
+    }
+
+    // Ancestor filters can make a backdrop outside the tile visible. The
+    // existing page halo bounds that reach. Growing it in reverse paint
+    // order also keeps chains of earlier sibling reads.
+    let page_halo = crate::cpu_frame_plan::PageHalo::build(doc, &page.children, camera, false)?.pixels;
+    let mut needed = tile.expand(page_halo);
+    let mut total: f64 = 0.;
+    for (bounds, support) in backdrops.into_iter().rev() {
+        if !bounds.expand(support.ceil() as i32 + 2).intersect(needed).empty() {
+            total += support;
+            needed = tile.expand(page_halo + total.ceil() as i32);
+        }
+    }
+    Ok(original_padding.min(total.ceil() as i32))
 }
 
 pub(crate) fn checked_backdrop_padding(total: f64, density: f64) -> Result<i32, String> {
@@ -594,20 +616,63 @@ mod backdrop_budget_tests {
         assert_eq!(pixels, engine.render(&options()).unwrap());
     }
     #[test]
-    fn tile_padding_keeps_only_backdrops_that_reach_the_tile() {
+    fn tile_padding_skips_distant_backdrops_within_the_existing_budget() {
         let mut engine = Engine::new();
-        engine.load_document(&document(true)).unwrap();
+        let mut far: serde_json::Value = serde_json::from_str(&document(true)).unwrap();
+        for (id, node) in far["nodes"].as_object_mut().unwrap() {
+            if id != "base" {
+                node["effects"][0]["radius"] = json!(50);
+            }
+        }
+        engine.load_document(&far.to_string()).unwrap();
         let analytic = RenderOptions { raster_profile: RasterProfile::Analytic, ..options() };
-        assert_eq!(
-            tile_backdrop_padding(&engine, &analytic, Rect::new(0, 0, 64, 64)).unwrap(),
-            0
-        );
-        engine.load_document(&document(false)).unwrap();
-        assert!(
-            tile_backdrop_padding(&engine, &analytic, Rect::new(0, 0, 64, 64))
-                .unwrap_err()
-                .contains("1024")
-        );
+        let tile = Rect::new(0, 0, 64, 64);
+        assert_eq!(backdrop_padding(&engine, &analytic, tile).unwrap(), 400);
+        assert_eq!(tile_backdrop_padding(&engine, &analytic, tile).unwrap(), 0);
+        for far in [true, false] {
+            engine.load_document(&document(far)).unwrap();
+            assert!(
+                tile_backdrop_padding(&engine, &analytic, tile)
+                    .unwrap_err()
+                    .contains("1024")
+            );
+        }
+    }
+
+    #[test]
+    fn tile_padding_keeps_earlier_reads_in_a_backdrop_chain() {
+        let mut roots = Vec::new();
+        let mut nodes = serde_json::Map::new();
+        for (i, x) in (256..600).step_by(16).enumerate() {
+            let id = format!("ink{i}");
+            nodes.insert(id.clone(), json!({
+                "id":id,"kind":"rectangle","width":16,"height":80,"transform":[1,0,0,1,x,0],
+                "fills":[{"kind":"solid","color":if i % 2 == 0 {"#f84260"} else {"#3268cc"}}]
+            }));
+            roots.push(id);
+        }
+        for (i, x) in [280, 332, 384, 436, 488].into_iter().enumerate() {
+            let id = format!("blur{i}");
+            nodes.insert(id.clone(), json!({
+                "id":id,"kind":"rectangle","width":65,"height":80,"transform":[1,0,0,1,x,0],
+                "effects":[{"kind":"background-blur","visible":true,"radius":24,"color":"#000000"}]
+            }));
+            roots.push(id);
+        }
+        let doc = json!({"schemaVersion":1,"id":"d","name":"chain",
+            "pages":[{"id":"p","name":"page","children":roots,"background":"#ffffff"}],"nodes":nodes});
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        let options = RenderOptions { width: 672, height: 80, raster_profile: RasterProfile::Analytic, ..options() };
+        let tile = Rect::new(512, 0, 64, 80);
+        assert_eq!(tile_backdrop_padding(&engine, &options, tile).unwrap(), 240);
+        let full = engine.render(&options).unwrap();
+        let expected: Vec<_> = full.chunks_exact(options.width as usize * 4)
+            .flat_map(|row| &row[tile.x as usize * 4..tile.right() as usize * 4])
+            .copied()
+            .collect();
+        let actual = engine.render_device_rect(&options, 512, 0, 64, 80).unwrap();
+        assert_eq!(actual, expected);
     }
 
     #[test]
