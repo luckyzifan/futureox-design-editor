@@ -326,7 +326,7 @@ function rustNotices(crate, files) {
   const marker = `/cargo/${crate.name}/${crate.version}/`
   const direct = files.filter(file => file.kind === 'notice' && file.path.includes(marker)).map(noticeRecord)
   if (direct.length) return direct
-  if (crate.name.startsWith('futureox-design-')) {
+  if ((crate.name.startsWith('futureox-design-') || crate.name === 'splash-glyph')) {
     const project = files.find(file => file.path.endsWith('project-license/LICENSE'))
     return project ? [noticeRecord(project)] : []
   }

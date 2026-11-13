@@ -209,7 +209,7 @@ export function materializeCargoNotices(root = repo) {
 }
 
 function crateNotices(root, crate) {
-  if (crate.name.startsWith('futureox-design-')) {
+  if (crate.name.startsWith('futureox-design-') || crate.name === 'splash-glyph') {
     return [noticeRecord(root, 'LICENSE')]
   }
   if (crate.manifestDir) {
