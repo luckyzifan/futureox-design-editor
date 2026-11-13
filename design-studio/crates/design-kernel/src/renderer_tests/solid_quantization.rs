@@ -13,6 +13,7 @@ struct Fixture {
     prepared: HashMap<String, Prepared>,
     concealed_glass: std::collections::HashSet<String>,
     stats: Stats,
+    pose_prefix: Option<PosePrefix>,
 }
 
 impl Fixture {
@@ -46,10 +47,16 @@ impl Fixture {
                 allocated_layer_pixels: 19,
                 peak_compositing_bytes: 23,
             },
+            pose_prefix: None,
         }
     }
 
     fn painter(&mut self, extent: Rect, compatible: bool, sample: Option<usize>) -> Painter<'_> {
+        let profile = if compatible {
+            crate::fidelity::RasterProfile::FigmaSubpixel
+        } else {
+            crate::fidelity::RasterProfile::Analytic
+        };
         Painter {
             concealed_glass: &self.concealed_glass,
             doc: &self.doc,
@@ -61,17 +68,28 @@ impl Fixture {
             viewport: extent,
             compatible,
             coverage_compatible: true,
-            profile: if compatible {
-                crate::fidelity::RasterProfile::FigmaSubpixel
-            } else {
-                crate::fidelity::RasterProfile::Analytic
-            },
+            profile,
             interactive_effects: false,
             display_degrade: false,
             clipped_export_target: false,
             compact_export_groups: false,
             sample,
             raster_workspace: RasterWorkspace::default(),
+            pose_prefix: &mut self.pose_prefix,
+            prefix_view: PrefixView {
+                page: 0,
+                x: 0,
+                y: 0,
+                zoom: 1f64.to_bits(),
+                width: extent.w,
+                height: extent.h,
+                transparent: false,
+                grid: false,
+                checkerboard: false,
+                interactive: false,
+                compatible,
+                profile,
+            },
         }
     }
 

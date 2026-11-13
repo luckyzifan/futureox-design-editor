@@ -22,6 +22,53 @@ use std::{
 /// Pixel, path, coordinate, effect and allocation guards remain independent.
 pub(crate) const MAX_CANVAS_SAMPLE_SCALE: f64 = 4096.;
 
+/// Device camera of one analytic tile or frame. Distinct tiles share a
+/// device origin, so the prefix key has to include the world camera.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PrefixView {
+    page: u64,
+    x: u64,
+    y: u64,
+    zoom: u64,
+    width: u32,
+    height: u32,
+    transparent: bool,
+    grid: bool,
+    checkerboard: bool,
+    interactive: bool,
+    compatible: bool,
+    profile: crate::fidelity::RasterProfile,
+}
+
+struct PrefixEntry {
+    view: PrefixView,
+    rect: Rect,
+    pixels: Vec<Pixel>,
+}
+
+/// Pixels of one isolated parent up to, but not including, a rigid pose.
+/// Later siblings and the parent's own strokes/effects still run every time.
+struct PosePrefix {
+    parent: String,
+    edited: String,
+    index: usize,
+    entries: Vec<PrefixEntry>,
+    bytes: usize,
+}
+
+fn prefix_page_key(id: &str) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in id.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+const PREFIX_ENTRY_PIXELS: usize = 6_000_000;
+const PREFIX_ENTRY_LIMIT: usize = 8;
+const PREFIX_BYTE_LIMIT: usize = 192 * 1024 * 1024;
+
 fn display_pressure(error: &str) -> bool {
     error == "Compositing memory budget exceeded"
         || error == "Combined filter dependency halo exceeds 2048 device pixels"
@@ -543,6 +590,9 @@ pub struct Engine {
     /// Sketch-parity tiled renderer state (tile residency, instructions,
     /// caches, telemetry). Lazily created so export-only engines pay nothing.
     tiled: Option<crate::tiled_renderer::TiledRenderer>,
+    /// Reused analytic pixels in front of one rigid pose. Workers do not share
+    /// it: parallel tiles repaint the whole surface and stay byte-identical.
+    pose_prefix: Option<PosePrefix>,
 }
 impl Default for Engine {
     fn default() -> Self {
@@ -593,6 +643,7 @@ impl Engine {
             page_support: None,
             render_index: None,
             tiled: None,
+            pose_prefix: None,
         }
     }
     pub fn load_font(&mut self, data: &[u8]) -> Result<(), String> {
@@ -604,6 +655,7 @@ impl Engine {
         self.pending_layout = None;
         self.paths.clear();
         self.geo_revision += 1;
+        self.pose_prefix = None;
         self.camera_prepare = None;
         self.camera_residency.clear();
         self.world_support = None;
@@ -799,6 +851,9 @@ impl Engine {
         // resource identity or path topology. Keep those derived products; only
         // device geometry and the damage-dependent tile programs become dirty.
         if translation {
+            // This branch can move any retained node, including one in front of
+            // the cached pose. Drop the prefix rather than reuse its pixels.
+            self.pose_prefix = None;
             for (id, node) in &patch.nodes {
                 let transform = node.as_ref().expect("validated translation").transform;
                 self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = transform;
@@ -816,6 +871,7 @@ impl Engine {
             }
             damage.translation_only = Some(true);
         } else if let Some(bounds_dirty) = retained_paint {
+            self.pose_prefix = None;
             for id in patch.nodes.keys() {
                 let node = &next.nodes[id];
                 crate::derived_invalidation::apply_paint(self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap(), node);
@@ -1106,7 +1162,71 @@ impl Engine {
                 cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, parents);
             }
         }
+        self.note_pose_prefix(patch);
         Ok(true)
+    }
+    /// A single rigid pose can keep the analytic pixels painted before that
+    /// node. Masks, repeats, glass and zoom blur stay on the full child walk.
+    fn note_pose_prefix(&mut self, patch: &crate::editing::DocumentPatch) {
+        let Some((parent, edited, index)) = self.pose_cut(patch) else {
+            self.pose_prefix = None;
+            return;
+        };
+        if let Some(existing) = &self.pose_prefix {
+            if existing.parent == parent && existing.edited == edited && existing.index == index {
+                return;
+            }
+        }
+        self.pose_prefix = Some(PosePrefix {
+            parent,
+            edited,
+            index,
+            entries: Vec::new(),
+            bytes: 0,
+        });
+    }
+    fn pose_cut(&self, patch: &crate::editing::DocumentPatch) -> Option<(String, String, usize)> {
+        if patch.nodes.len() != 1 {
+            return None;
+        }
+        let (edited, next) = patch.nodes.iter().next()?;
+        if next.is_none() {
+            return None;
+        }
+        let doc = self.doc.as_ref()?;
+        let index = self.render_index.as_ref()?;
+        if index.has_repeats || index.has_instance_slots || index.has_connectors
+            || index.in_sketch_mask_chain(edited)
+        {
+            return None;
+        }
+        let node = doc.nodes.get(edited)?;
+        if node.mask || node.boolean_operation.is_some() || node.repeat.is_some() || node.instance.is_some() {
+            return None;
+        }
+        let parent = doc.nodes.iter().find_map(|(id, candidate)| {
+            candidate.children.iter().any(|child| child == edited).then_some(id.clone())
+        })?;
+        if index.sketch_mask_owners.contains(&parent) || self.source_doc.as_ref()?.nodes.get(&parent).is_none() {
+            return None;
+        }
+        let parent_node = doc.nodes.get(&parent)?;
+        if parent_node.mask
+            || parent_node.boolean_operation.is_some()
+            || parent_node.repeat.is_some()
+            || parent_node.instance.is_some()
+            || doc.mask_child(parent_node).is_some()
+            || parent_node.effects.iter().any(|effect| {
+                effect.visible && matches!(effect.kind.as_str(), "glass" | "zoom-blur")
+            })
+        {
+            return None;
+        }
+        let child_index = parent_node.render_children().iter().position(|id| id == edited)?;
+        if child_index == 0 {
+            return None;
+        }
+        Some((parent, edited.clone(), child_index))
     }
     fn apply_clipped_root_translation(&mut self, patch: &crate::editing::DocumentPatch, translation: bool)
         -> Result<Option<crate::dirty_region::PatchDamage>, String> {
@@ -1232,6 +1352,7 @@ impl Engine {
         self.camera_residency.clear();
         self.world_support = None;
         self.source_compile_context = None;
+        self.pose_prefix = None;
         Ok(())
     }
     pub fn stats(&self) -> &Stats {
@@ -2068,6 +2189,20 @@ impl Engine {
                 }
             }
         }
+        let prefix_view = PrefixView {
+            page: prefix_page_key(&options.page_id),
+            x: options.view.x.to_bits(),
+            y: options.view.y.to_bits(),
+            zoom: options.view.zoom.to_bits(),
+            width: options.width,
+            height: options.height,
+            transparent: options.transparent,
+            grid: options.grid,
+            checkerboard: options.checkerboard,
+            interactive: options.interactive_effects,
+            compatible,
+            profile: options.raster_profile,
+        };
         let mut painter = Painter {
             concealed_glass: &halo.concealed,
             doc,
@@ -2086,6 +2221,8 @@ impl Engine {
             compact_export_groups: required.is_some(),
             sample: None,
             raster_workspace: RasterWorkspace::default(),
+            pose_prefix: &mut self.pose_prefix,
+            prefix_view,
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
@@ -2813,6 +2950,7 @@ impl Engine {
             page_support: None,
             render_index: self.render_index.clone(),
             tiled: None,
+            pose_prefix: None,
         }
     }
 
@@ -2977,6 +3115,8 @@ struct Painter<'a> {
     compact_export_groups: bool,
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
+    pose_prefix: &'a mut Option<PosePrefix>,
+    prefix_view: PrefixView,
 }
 
 enum TextureBundle {
@@ -4346,6 +4486,110 @@ impl Painter<'_> {
         }
         Ok(input)
     }
+    fn prefix_index(&self, parent: &str, children: &[String]) -> Option<usize> {
+        if self.display_degrade {
+            return None;
+        }
+        let prefix = self.pose_prefix.as_ref()?;
+        if prefix.parent != parent || prefix.index == 0 || prefix.index >= children.len() {
+            return None;
+        }
+        (children[prefix.index] == prefix.edited).then_some(prefix.index)
+    }
+    fn restore_prefix(&mut self, layer: &mut Surface) -> bool {
+        let view = self.prefix_view;
+        let Some(prefix) = self.pose_prefix.as_ref() else { return false };
+        let Some(slot) = prefix.entries.iter().find(|entry| entry.view == view && entry.rect == layer.rect) else {
+            return false;
+        };
+        if slot.pixels.len() != layer.pixels.len() {
+            return false;
+        }
+        layer.pixels.copy_from_slice(&slot.pixels);
+        true
+    }
+    fn store_prefix(&mut self, layer: &Surface) {
+        let view = self.prefix_view;
+        let pixels = layer.pixels.len();
+        if pixels == 0
+            || pixels > PREFIX_ENTRY_PIXELS
+            || pixels != layer.rect.w as usize * layer.rect.h as usize
+        {
+            return;
+        }
+        let Some(prefix) = self.pose_prefix.as_mut() else { return };
+        if let Some(slot) = prefix.entries.iter_mut().find(|entry| entry.view == view && entry.rect == layer.rect) {
+            if slot.pixels.len() == pixels {
+                slot.pixels.copy_from_slice(&layer.pixels);
+            }
+            return;
+        }
+        let add = pixels.saturating_mul(std::mem::size_of::<Pixel>());
+        if prefix.entries.len() >= PREFIX_ENTRY_LIMIT || prefix.bytes.saturating_add(add) > PREFIX_BYTE_LIMIT {
+            return;
+        }
+        prefix.bytes += add;
+        prefix.entries.push(PrefixEntry { view, rect: layer.rect, pixels: layer.pixels.clone() });
+    }
+    fn paint_cached_list(
+        &mut self, parent: &str, children: &[String], layer: &mut Surface, clip: Option<&Mask>, geometric: bool,
+    ) -> Result<(), String> {
+        if geometric || self.display_degrade {
+            for child in children {
+                self.node_with_outline(child, layer, clip, geometric)?;
+            }
+            return Ok(());
+        }
+        if let Some(index) = self.prefix_index(parent, children) {
+            if self.restore_prefix(layer) {
+                for child in &children[index..] {
+                    self.node_with_outline(child, layer, clip, geometric)?;
+                }
+                return Ok(());
+            }
+            for (ordinal, child) in children.iter().enumerate() {
+                if ordinal == index {
+                    self.store_prefix(layer);
+                }
+                self.node_with_outline(child, layer, clip, geometric)?;
+            }
+            return Ok(());
+        }
+        for child in children {
+            self.node_with_outline(child, layer, clip, geometric)?;
+        }
+        Ok(())
+    }
+    fn paint_cached_regions(
+        &mut self, parent: &str, children: &[String], outputs: &[Rect], layer: &mut Surface,
+        clip: Option<&Mask>, basis: Rect, geometric: bool,
+    ) -> Result<(), String> {
+        if geometric || self.display_degrade || outputs.len() != children.len() {
+            for (child, region) in children.iter().zip(outputs) {
+                self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
+            }
+            return Ok(());
+        }
+        if let Some(index) = self.prefix_index(parent, children) {
+            if self.restore_prefix(layer) {
+                for (child, region) in children.iter().zip(outputs).skip(index) {
+                    self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
+                }
+                return Ok(());
+            }
+            for (ordinal, (child, region)) in children.iter().zip(outputs).enumerate() {
+                if ordinal == index {
+                    self.store_prefix(layer);
+                }
+                self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
+            }
+            return Ok(());
+        }
+        for (child, region) in children.iter().zip(outputs) {
+            self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
+        }
+        Ok(())
+    }
     fn node_with_outline(&mut self,id:&str,target:&mut Surface,clip:Option<&Mask>,inherited_outline:bool)->Result<(),String>{
         let original_target=target.rect;
         self.node_region(id,target,clip,None,original_target,inherited_outline)
@@ -4577,6 +4821,19 @@ impl Painter<'_> {
                 if self.compatible {
                     layer.quantize_rgba8();
                 }
+            }
+        } else if self.pose_prefix.is_some() {
+            // Only a rigid pose pays for the owned child list. Every other
+            // frame keeps the original walk, including the first full paint.
+            if bounded {
+                let parent = n.id.clone();
+                let children: Vec<String> = n.render_children().to_vec();
+                let (_, outputs) = self.regional_children(&children, basis.intersect(output.unwrap()))?;
+                self.paint_cached_regions(&parent, &children, &outputs, &mut layer, child_mask, basis, geometric)?;
+            } else {
+                let parent = n.id.clone();
+                let children = n.render_children().to_vec();
+                self.paint_cached_list(&parent, &children, &mut layer, child_mask, geometric)?;
             }
         } else if bounded {
             let children: Vec<String> = n.render_children().to_vec();
