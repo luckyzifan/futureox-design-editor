@@ -33,7 +33,7 @@ test('status clearance follows the rendered pill and does not invent a pill size
   assert.match(footer, /pointer-events:\s*auto/)
   assert.match(footer, /max\(78px, var\(--floating-toolbar-status-clearance, 78px\)\)/)
   assert.match(chromeSource, /figmaStatusClearance\(bottom, height\)/)
-  const sketch = styles.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{[^}]+\}/)?.[0]
+  const sketch = styles.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{\s*position:[^}]+\}/)?.[0]
   assert.match(sketch, /position: relative/)
   assert.match(sketch, /flex-wrap: nowrap/)
 })

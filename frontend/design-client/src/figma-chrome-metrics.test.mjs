@@ -60,7 +60,7 @@ test('the save status keeps its sentence for hover and does not use the 16px cru
   assert.doesNotMatch(css, /\.editor-shell \.header-right \.save-status \{[^}]*min-width:\s*16px/)
 })
 
-test('Figma chrome at 1440×960 meets the measured targets without resizing Sketch tools', { timeout: 30_000 }, async () => {
+test('Figma chrome and the Sketch toolbar meet their measured sizes at 1440×960', { timeout: 30_000 }, async () => {
   const measured = await measureChrome()
   assert.equal(measured.viewport.w, 1440)
   assert.equal(measured.viewport.h, 960)

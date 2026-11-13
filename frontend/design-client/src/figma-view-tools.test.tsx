@@ -78,7 +78,7 @@ test('Figma places hand and zoom above the pill and leaves the inspector tab row
   expect(pill).toContain('transform: translateX(-50%)')
   expect(css).toContain('.editor-shell[data-ui-mode="figma"] .figma-view-tools .view-menu-body')
   expect(css).toMatch(/\.editor-shell\[data-ui-mode="figma"\] \.figma-view-tools \.view-menu-body \{[^}]*top: auto;/)
-  const sketch = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{[^}]+\}/)?.[0]
+  const sketch = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{\s*position:[^}]+\}/)?.[0]
   expect(sketch).toContain('position: relative')
   expect(sketch).not.toContain('figma-view-tools')
 

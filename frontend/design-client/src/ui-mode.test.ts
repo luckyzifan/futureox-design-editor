@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_INSPECTOR_WIDTH, FIGMA_LAYERS_WIDTH, INTERFACE_PREFERENCE_KEY, interfacePreference, LEGACY_SHARED_LAYERS_WIDTH, SKETCH_INSPECTOR_WIDTH, SKETCH_LAYERS_WIDTH } from './interface-preference'
+import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_INSPECTOR_WIDTH, FIGMA_LAYERS_WIDTH, INTERFACE_PREFERENCE_KEY, interfacePreference, LEGACY_SHARED_INSPECTOR_WIDTH, LEGACY_SHARED_LAYERS_WIDTH, SKETCH_INSPECTOR_WIDTH, SKETCH_LAYERS_WIDTH } from './interface-preference'
 import { applyInterfaceLayout, interfaceLayoutFromShortcut, FIGMA_LAYOUT_COMBO, SKETCH_LAYOUT_COMBO } from './interface-layout'
 import { shortcutPreference } from './shortcut-preference'
 import { shortcutBindings } from './shortcut-profiles'
@@ -61,7 +61,7 @@ test('each layout keeps its own pages and layers width, and the old shared 248 m
   expect(SKETCH_LAYERS_WIDTH).toBe(230)
   expect(LEGACY_SHARED_LAYERS_WIDTH).toBe(248)
   const storage = memoryStorage()
-  storage.setItem(INTERFACE_PREFERENCE_KEY, JSON.stringify({ leftWidth: LEGACY_SHARED_LAYERS_WIDTH, rightWidth: SKETCH_INSPECTOR_WIDTH, uiMode: 'sketch' }))
+  storage.setItem(INTERFACE_PREFERENCE_KEY, JSON.stringify({ leftWidth: LEGACY_SHARED_LAYERS_WIDTH, rightWidth: LEGACY_SHARED_INSPECTOR_WIDTH, uiMode: 'sketch' }))
   const migrated = createInterfacePreference(() => storage)
   expect(migrated.getSnapshot()).toMatchObject({ uiMode: 'sketch', leftWidth: 230, rightWidth: SKETCH_INSPECTOR_WIDTH, leftWidths: { figma: 240, sketch: 230 } })
   const custom = memoryStorage()
@@ -72,7 +72,7 @@ test('each layout keeps its own pages and layers width, and the old shared 248 m
   expect(kept.getSnapshot().leftWidth).toBe(360)
   kept.set({ uiMode: 'sketch' })
   expect(kept.getSnapshot().leftWidth).toBe(333)
-  expect(kept.getSnapshot().rightWidth).toBe(280)
+  expect(kept.getSnapshot().rightWidth).toBe(SKETCH_INSPECTOR_WIDTH)
   kept.set({ leftWidth: 300 })
   kept.set({ uiMode: 'figma' })
   expect(kept.getSnapshot().leftWidth).toBe(360)

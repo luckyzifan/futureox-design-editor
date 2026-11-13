@@ -16,7 +16,7 @@ test('neither layout reserves a far-left icon rail or mark column', () => {
   const canvas = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.canvas-workspace \{[^}]+\}/)?.[0]
   expect(canvas).toContain('grid-row: 3')
   expect(canvas).toContain('padding-top: 0')
-  const toolbar = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{[^}]+\}/)?.[0]
+  const toolbar = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{\s*position:[^}]+\}/)?.[0]
   expect(toolbar).toContain('position: relative')
   expect(toolbar).toContain('flex-wrap: nowrap')
   expect(toolbar).toContain('height: 52px')
