@@ -28,15 +28,25 @@ node frontend/design-desktop/scripts/release-desktop-session.mjs \
 
 脚本会把目录包复制到独立安装前缀，从那份副本启动打包后的可执行文件，并用 `--core-cpu-only` 与 `FUTUREOX_ACCEPTANCE_PROFILE` 打开只读原设计文件。测量包括：沙箱窗口打开、进入画布、放大、修改文档名称且图层不变、撤销回原名称、等待「已自动保存」、关闭后用同一配置重开，以及通过正式「导出副本」菜单走原生保存。导出对话框是 Electron 的保存边界：第一次指向原文件必须被拒绝，第二次写入独立 `.fd`，再由包内 sidecar 打开核对。原文件在会话前后做 SHA-256，目录名单也必须不变。
 
-`desktop-dev`、`debug`、源码目录和只哈希的 `.dmg`/`.pkg`/`.msi`/`.deb` 不会被启动。即使把测量塞进判定函数，这些包的步骤也不会变成 `passed`。`releaseAcceptance` 只有在全部步骤通过，并且当前主机的 codesign 与公证评估都成功时才是 `closed`。Linux 上签名检查保持 `not_run`，因此这里的 release 目录包最多是 `executed_unsigned_release`。
+`desktop-dev`、`debug`、源码目录和只哈希的 `.dmg`/`.pkg`/`.msi`/`.deb` 不会被启动。即使把测量塞进判定函数，这些包的步骤也不会变成 `passed`。`releaseAcceptance` 只有在全部步骤通过，并且当前主机的 codesign 与公证评估都成功时才是 `closed`。Linux 上签名检查保持 `not_run`，因此 release 目录包和未签名 `.deb` 最多是 `executed_unsigned_release`。
+
+已经发布的 linux `.deb` 可以在这台机器上用 `dpkg --root` 装进独立根目录，再从安装出来的可执行文件跑同一套步骤。只算出哈希仍然不会启动。命令是：
+
+```bash
+node frontend/design-desktop/scripts/release-desktop-session.mjs \
+  --package=/absolute/futureox-design-linux-x64.deb \
+  --verification=/absolute/release-verification.json
+```
+
+这个包若没有 `--desktop-acceptance-profile`，脚本会把 `HOME` 和 `XDG_CONFIG_HOME` 指到验收目录，并先写入「打开原默认工作区」会留下的选择记录，再从「打开设计文件」进入。有验收配置钩子的包仍走原来的配置目录，不用这份私有家目录。`.dmg`、`.pkg`、`.msi`、`.exe`、`.rpm` 仍然不挂载。
 
 仍不能在本环境完成、必须保持未关闭的正式包步骤：
 
 - 签名并公证的 macOS 包，以及 `codesign` / `spctl` 评估。
 - Windows Authenticode。
-- 挂载或安装 `.dmg`、`.pkg`、`.msi`、`.exe`、`.deb`、`.rpm`。目录复制不是这些安装器。
+- 挂载或安装 `.dmg`、`.pkg`、`.msi`、`.exe`、`.rpm`。目录复制不是这些安装器。linux `.deb` 用 `dpkg --root` 安装并启动后，安装器记录是 `linux_deb_installed`，不是全部安装器通过。
 
-`.dmg`、`.pkg`、`.msi`、`.exe`、`.deb`、`.rpm`、`.AppImage` 在准备清单里只做文件哈希，不挂载、不启动。目录包会列出 `app.asar` 或未打包 `app/` 里的 JS/WASM、`sidecar/` 与 `bin/` 下的已知原生程序，以及 `design-mcp` 的脚本。每个步骤记录都带 `packageSha256`、`platform` 和 `arch`。准备清单不把这些步骤标成已执行。Linux/Windows 第一次启动时，绝对路径 `.fd` 参数会进入原生打开队列；macOS 仍只接受系统的 `open-file` 事件。验收配置目录不能是默认用户数据目录、家目录、符号链接或全局可写目录。
+`.dmg`、`.pkg`、`.msi`、`.exe`、`.deb`、`.rpm`、`.AppImage` 在准备清单里只做文件哈希，不挂载、不启动。linux `.deb` 的安装和启动属于上面的会话脚本，不属于准备清单。目录包会列出 `app.asar` 或未打包 `app/` 里的 JS/WASM、`sidecar/` 与 `bin/` 下的已知原生程序，以及 `design-mcp` 的脚本。每个步骤记录都带 `packageSha256`、`platform` 和 `arch`。准备清单不把这些步骤标成已执行。Linux/Windows 第一次启动时，绝对路径 `.fd` 参数会进入原生打开队列；macOS 仍只接受系统的 `open-file` 事件。验收配置目录不能是默认用户数据目录、家目录、符号链接或全局可写目录。
 
 目录身份按路径、大小和内容 SHA-256 分段哈希。旧实现把路径文本和文件字节直接拼在一起，`a` + `bc` 与 `ab` + `c` 会得到同一个 SHA-256。单个安装包文件仍是内容 SHA-256。清单哈希和包内字节不一致，或和运行时字节不一致时，进程以失败退出；桌面步骤仍是 `not_run`，`confirmedRuntimeFault` 仍是 false。`profile` 为 `desktop-dev` 或 `debug` 时记为开发包。`release` profile 但没有签名检查的包也不是正式签名安装包。签名和公证保持 `not_run`。
 
@@ -189,6 +199,32 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs \
 包内 `profiling` 1.0.18 的 `LICENSE-MIT` 是 `c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333`，`LICENSE-APACHE` 是 `10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551`。`spirv` 的 `LICENSE` 是 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`。
 
 源码侧 cargo 图里仍没有许可文本的是这八个 macOS crate：`block2` 0.6.2、`objc2` 0.6.5、`objc2-core-foundation` 0.3.2、`objc2-core-graphics` 0.3.2、`objc2-encode` 4.1.0、`objc2-foundation` 0.3.2、`objc2-metal` 0.3.2、`objc2-quartz-core` 0.3.2。它们不在这个 Linux 包的二进制图里。这个目录仍然不是正式发布验收。
+
+## 2026-11-13 已发布的 linux x64 deb
+
+当前 GitHub release `v0.0.0.1` 的 linux 包是 `futureox-design-0.0.0.1-linux-x64.deb`。它的源提交是 `58f0d7542fb7e7bfcc4ab48fecf82b96727b7ea0`，不是这次验收脚本所在的工作树。发布记录里的图形界面此前是 `blocked`，原因是当时的容器拒绝了 Chromium 沙箱命名空间。这台 linux x64 机器可以建立用户命名空间，所以同一份包这次被 `dpkg` 安装并启动了。
+
+`dpkg --root` 使用空的软件包数据库，因此加了 `--force-depends`。依赖警告留在安装输出里。宿主机上这些库已经安装，进程链接的是宿主机库，不是 chroot。没有做 macOS 签名公证，也没有做 Windows Authenticode。
+
+```bash
+node frontend/design-desktop/scripts/release-desktop-session.mjs \
+  --package=/absolute/futureox-design-0.0.0.1-linux-x64.deb \
+  --verification=/absolute/release-verification.json
+```
+
+退出码 0。`packageFlow` 是 `executed_unsigned_release`，`releaseAcceptance` 仍是 `not_closed`，`signature` 是 `not_run`，`formalRelease` 是 false。
+
+- deb SHA-256：`092798551707d6c4016127afcded7404a37ada975a06262ae3b93a0877ff300c`，与 `SHA256SUMS.txt` 和 `release-verification.json` 的 linux-x64 记录一致
+- 安装后的目录身份 SHA-256：`7482de5c607a93ee6d92953b15421ae71ae608035615a309ee86444f4c1867d5`（568 个文件）。会话前后相同，且不等于 deb 哈希
+- 安装位置：`dpkg --root` 下的 `opt/futureox-desgin/futureox-desgin`。启动的是这个文件，不是 `usr/bin` 符号链接，也不是目录复制
+- 平台：linux / x64，profile `release`。`app.asar` SHA-256 `0a4f07f291ebe64c61ab3d52d65eb62f181c760cd285573683580ce7242f8164`。sidecar SHA-256 `050c3484cb33731bfa92ef14734e5bf3c259c6ffb2125c0a8ea978120defec9b`。两者都对上发布校验
+- 运行时：Electron 44.7.0，Chromium 152.0.7977.130。进程参数没有 `--no-sandbox`。渲染进程 sandbox、contextIsolation、webSecurity 为真，nodeIntegration 为假。用户数据在验收用的私有 `HOME` 里，不在真实家目录
+- 这个包没有验收配置钩子，也不读取首次启动的 `.fd` 参数。打开走的是「打开设计文件」和原生打开对话框。当前工作树里的包如果带这些钩子，仍必须使用验收配置目录
+- 只读原件副本 SHA-256 `19c5306e4eb304e20288eb13d6caba11be4e63dc6e24f0d084da93d82bdbf66d`。仓库原件和副本在会话前后都不变
+- 打开后的文档名是 `Futureox / original F-D brand icon`，3 个图层。缩放从 1 到 1.25。名称加上 `acceptance` 后撤销回原名。状态为「已自动保存到工作副本」。关闭后用同一个私有家目录重开，名称和图层键相同
+- 原生导出先拒绝原件路径，再写出独立 `.fd`。包内 sidecar 打开该文件，魔数 `FXDK`，内容哈希与只读原件相同，路径不同
+- 启动参数含 `--core-cpu-only`。这不是硬件 GPU 验收
+- macOS 签名公证与 Windows Authenticode 仍是 `blocked`。`.dmg`、`.pkg`、`.msi`、`.exe`、`.rpm` 仍是未挂载。安装器记录因此是 `linux_deb_installed`，不是全部通过
 
 ## 随包资源标识（#264）
 

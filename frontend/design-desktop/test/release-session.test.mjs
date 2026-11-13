@@ -6,6 +6,7 @@ import path from 'node:path'
 import { buildDesktopFlowReport, DESKTOP_FLOW } from '../scripts/release-desktop-flow.mjs'
 import {
   assessObservedDesktopSession,
+  bindInstalledDeb,
   inspectHostSignature,
   officialPackageBlockers,
   parseCodesignDisplay,
@@ -193,6 +194,62 @@ test('only a verified notarized signature can close the release gate', async () 
     assert.equal(closed.evidence.kind, 'signed_release_bundle')
     assert.equal(closed.evidence.signature, 'verified')
     assert.equal(closed.blockedOfficialSteps.find(step => step.id === 'disk_image_or_system_installer').status, 'not_run')
+  } finally {
+    await rm(release.root, { recursive: true, force: true })
+  }
+})
+
+test('an installed linux deb can pass the desktop steps without closing signed acceptance', async () => {
+  const release = await bundle('release')
+  const debSha = 'd'.repeat(64)
+  try {
+    const baseline = bindInstalledDeb(
+      buildDesktopFlowReport({ packagePath: release.directory, platform: process.platform, arch: process.arch }),
+      { debPath: '/tmp/futureox-design.deb', debSha256: debSha },
+    )
+    const session = measuredSession(baseline)
+    session.packageSha256 = debSha
+    session.installer = { linuxDeb: 'installed' }
+    const payload = baseline.package.payloadSha256
+    session.observation.install.method = 'dpkg'
+    session.observation.install.installer = 'deb'
+    session.observation.install.debSha256 = debSha
+    session.observation.install.sourceSha256 = debSha
+    session.observation.install.installedSha256 = payload
+    session.observation.install.afterSha256 = payload
+    session.observation.runtime.acceptanceHook = false
+    session.observation.runtime.profileSource = 'private-home'
+    session.observation.runtime.privateHome = '/tmp/fx-private-home'
+    session.observation.runtime.userData = '/tmp/fx-private-home/.config/futureox-desgin'
+    session.observation.runtime.realHome = '/home/ubuntu'
+    const passed = assessObservedDesktopSession(baseline, session)
+    assert.equal(passed.package.sha256, debSha)
+    assert.notEqual(passed.package.payloadSha256, debSha)
+    assert.equal(passed.steps.every(step => step.status === 'passed' && step.packageSha256 === debSha), true)
+    assert.equal(passed.packageFlow, 'executed_unsigned_release')
+    assert.equal(passed.releaseAcceptance, 'not_closed')
+    assert.equal(passed.evidence.formalRelease, false)
+    assert.equal(passed.blockedOfficialSteps.find(step => step.id === 'disk_image_or_system_installer').status, 'linux_deb_installed')
+    assert.equal(passed.blockedOfficialSteps.find(step => step.id === 'macos_signed_notarized_package').status, process.platform === 'darwin' ? 'not_run' : 'blocked')
+    assert.equal(passed.blockedOfficialSteps.find(step => step.id === 'windows_authenticode_package').status, process.platform === 'win32' ? 'not_run' : 'blocked')
+
+    const copied = measuredSession(baseline)
+    copied.packageSha256 = debSha
+    copied.observation.install.method = 'dpkg'
+    copied.observation.install.installer = 'deb'
+    copied.observation.install.debSha256 = debSha
+    copied.observation.install.sourceSha256 = debSha
+    copied.observation.install.installedSha256 = debSha
+    copied.observation.install.afterSha256 = debSha
+    copied.observation.runtime.acceptanceHook = false
+    copied.observation.runtime.profileSource = 'private-home'
+    copied.observation.runtime.privateHome = '/home/ubuntu'
+    copied.observation.runtime.userData = '/home/ubuntu/.config/futureox-desgin'
+    copied.observation.runtime.realHome = '/home/ubuntu'
+    const rejected = assessObservedDesktopSession(baseline, copied)
+    assert.equal(rejected.steps.find(step => step.id === 'install').status, 'failed')
+    assert.equal(rejected.steps.find(step => step.id === 'open').status, 'failed')
+    assert.equal(rejected.releaseAcceptance, 'not_closed')
   } finally {
     await rm(release.root, { recursive: true, force: true })
   }

@@ -1,16 +1,18 @@
 // Launch an installed release-profile bundle and record issue #85's desktop flow.
 // A source tree, desktop-dev profile, or hashed-but-unopened installer cannot pass.
+// A linux .deb is installed with dpkg before launch. Other installers stay unopened.
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Sidecar } from '../src/sidecar.mjs'
 import { describePackage, hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
-import { assessObservedDesktopSession, desktopFlowBaseline, inspectHostSignature, officialPackageBlockers, planReleaseLaunch } from './release-session-report.mjs'
+import { assertProductName, bundleLaunchContract, readAsarJson, resolveInstalledBundle, workspaceSelectionSeed } from './release-deb-install.mjs'
+import { assessObservedDesktopSession, bindInstalledDeb, desktopFlowBaseline, inspectHostSignature, officialPackageBlockers, planReleaseLaunch } from './release-session-report.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const core = path.resolve(desktop, '../..')
@@ -70,14 +72,22 @@ async function prepareOriginal(source, destination) {
   return destination
 }
 
-function launchEnv(profile) {
+function launchEnv(profile, launch = {}) {
   const env = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (/^(ELECTRON_RUN_AS_NODE|NODE_OPTIONS|LD_PRELOAD|DYLD_)/.test(key)) continue
     env[key] = value
   }
-  env.FUTUREOX_ACCEPTANCE_PROFILE = profile
   env.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true'
+  if (launch.privateHome) {
+    delete env.FUTUREOX_ACCEPTANCE_PROFILE
+    env.HOME = launch.privateHome
+    env.XDG_CONFIG_HOME = path.join(launch.privateHome, '.config')
+    env.XDG_DATA_HOME = path.join(launch.privateHome, '.local', 'share')
+    env.XDG_CACHE_HOME = path.join(launch.privateHome, '.cache')
+    return env
+  }
+  env.FUTUREOX_ACCEPTANCE_PROFILE = profile
   return env
 }
 
@@ -178,12 +188,13 @@ async function hostFacts(app, installRoot) {
   }
 }
 
-async function launchPackaged(electron, executable, profile, extraArgs, logs) {
+async function launchPackaged(electron, executable, profile, extraArgs, logs, launch = {}) {
   const app = await electron.launch({
     executablePath: executable,
     args: ['--core-cpu-only', ...extraArgs],
     cwd: path.dirname(executable),
-    env: launchEnv(profile),
+    env: launchEnv(profile, launch),
+    chromiumSandbox: true,
     timeout: 90000,
   })
   app.process().stdout?.on('data', chunk => logs.push(String(chunk)))
@@ -197,7 +208,7 @@ async function enterCanvas(page) {
   const canvas = page.locator('[data-testid="canvas"]')
   const visible = await canvas.isVisible().catch(() => false)
   if (!visible) {
-    const resume = page.getByRole('button', { name: /继续编辑/ })
+    const resume = page.getByRole('button', { name: /继续编辑/ }).first()
     await resume.click()
   }
   await canvas.waitFor({ state: 'visible', timeout: 30000 })
@@ -246,18 +257,72 @@ async function restoreSaveDialog(app) {
   }).catch(() => {})
 }
 
-async function readVerification(verificationPath, resourcesRoot) {
+async function readVerification(verificationPath, resourcesRoot, debPath = null) {
   const verification = JSON.parse(await readFile(verificationPath, 'utf8'))
+  const archive = path.join(resourcesRoot, 'app.asar')
+  const actual = hashReadonlyFile(archive).sha256
+  const sidecarName = `sidecar/futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`
+  const sidecar = path.join(resourcesRoot, sidecarName)
+  const sidecarHash = hashReadonlyFile(sidecar).sha256
+  const release = verification.packages?.[`${process.platform}-${process.arch}`]
+  if (release && verification.build) {
+    if (verification.build.profile !== 'release') throw new Error(`release verification profile is ${verification.build.profile}, not release`)
+    if (debPath && hashReadonlyFile(debPath).sha256 !== release.sha256) throw new Error('deb hash does not match the release verification')
+    if (release.appAsarSha256 !== actual) throw new Error('release verification app.asar hash does not match this bundle')
+    if (release.nativeSha256?.[sidecarName] !== sidecarHash) throw new Error('release verification sidecar hash does not match this bundle')
+    return { path: verificationPath, status: 'matched_release_verification', profile: 'release', appAsar: actual }
+  }
   if (verification.status !== 'passed') throw new Error(`package verification status is ${verification.status}`)
   if (verification.platform !== process.platform || verification.arch !== process.arch) throw new Error('package verification platform does not match this host')
   if (verification.build?.profile !== 'release') throw new Error(`package verification profile is ${verification.build?.profile}, not release`)
-  const archive = path.join(resourcesRoot, 'app.asar')
-  const actual = hashReadonlyFile(archive).sha256
   if (verification.artifacts?.['app.asar'] !== actual) throw new Error('package verification app.asar hash does not match this bundle')
-  const sidecarName = `sidecar/futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`
-  const sidecar = path.join(resourcesRoot, sidecarName)
-  if (verification.artifacts?.[sidecarName] !== hashReadonlyFile(sidecar).sha256) throw new Error('package verification sidecar hash does not match this bundle')
+  if (verification.artifacts?.[sidecarName] !== sidecarHash) throw new Error('package verification sidecar hash does not match this bundle')
   return { path: verificationPath, status: verification.status, profile: verification.build.profile, appAsar: actual }
+}
+
+function runCommand(command, args) {
+  const result = spawnSync(command, args, { encoding: 'utf8', timeout: 180000 })
+  return { status: result.status, stdout: result.stdout || '', stderr: (result.stderr || '') + (result.error ? `\n${result.error.message}` : '') }
+}
+
+function privileged(command, args) {
+  if (typeof process.getuid === 'function' && process.getuid() !== 0) return runCommand('sudo', ['-n', command, ...args])
+  return runCommand(command, args)
+}
+
+async function installLinuxDeb(debPath, output) {
+  const root = await mkdtemp(path.join(output, 'dpkg-root-'))
+  await mkdir(path.join(root, 'var/lib/dpkg/updates'), { recursive: true, mode: 0o755 })
+  await mkdir(path.join(root, 'var/lib/dpkg/info'), { recursive: true, mode: 0o755 })
+  await writeFile(path.join(root, 'var/lib/dpkg/status'), '')
+  await writeFile(path.join(root, 'var/lib/dpkg/available'), '')
+  const listed = runCommand('dpkg-deb', ['-c', debPath])
+  if (listed.status !== 0) throw new Error(`dpkg-deb could not list the package: ${listed.stderr}`)
+  const installed = privileged('dpkg', ['--root', root, '--force-depends', '-i', debPath])
+  if (installed.status !== 0) throw new Error(`dpkg could not install the package: ${installed.stderr}`)
+  const bundle = resolveInstalledBundle(root, listed.stdout)
+  if (!bundle) throw new Error('The installed .deb does not contain a futureox-desgin bundle')
+  const contract = bundleLaunchContract(await readFile(path.join(bundle.resources, 'app.asar')))
+  const metadata = readAsarJson(path.join(bundle.resources, 'app.asar'), 'package.json')
+  return {
+    root,
+    ...bundle,
+    contract,
+    productName: metadata.productName || metadata.name,
+    debSha256: hashReadonlyFile(debPath).sha256,
+    tree: hashPackageIdentity(bundle.directory),
+    dpkgStatus: installed.status,
+    dpkgStderr: installed.stderr,
+  }
+}
+
+async function preparePrivateHome(output, debInstall) {
+  const home = await mkdtemp(path.join(output, 'private-home-'))
+  await chmod(home, 0o700)
+  const config = path.join(home, '.config', assertProductName(debInstall.productName))
+  await mkdir(config, { recursive: true, mode: 0o700 })
+  await writeFile(path.join(config, 'workspace-selection-v1.json'), workspaceSelectionSeed(), { mode: 0o600 })
+  return home
 }
 
 async function main() {
@@ -276,8 +341,10 @@ async function main() {
   const observation = { install: {}, runtime: {}, open: {}, navigate: {}, edit: {}, undo: {}, autosave: {}, closeReopen: {}, nativeExport: {}, originals: {} }
   let exitCode = 1
   let report
-  const described = describePackage(packagePath, { platform: process.platform, arch: process.arch })
-  const plan = planReleaseLaunch(described, { platform: process.platform, arch: process.arch })
+  let plan = { canLaunch: false, blockers: ['missing_package'] }
+  let debInstall = null
+  let launchOptions = {}
+  let flowPackage = packagePath
   const signaturePath = process.platform === 'darwin' && !packagePath.endsWith('.app')
     ? path.resolve(path.dirname(bundleExecutable(packagePath)), '../..')
     : packagePath
@@ -287,11 +354,25 @@ async function main() {
       return { status: result.status, stdout: (result.stdout || '') + (result.stderr || '') }
     },
   })
+  const linuxDeb = process.platform === 'linux' && packagePath.toLowerCase().endsWith('.deb')
   report = desktopFlowBaseline({ packagePath, platform: process.platform, arch: process.arch, originalPaths: [] })
   report.blockedOfficialSteps = []
-  report.plan = plan
   report.signature = signature
   try {
+    let bundlePath = packagePath
+    if (linuxDeb) {
+      debInstall = await installLinuxDeb(packagePath, output)
+      bundlePath = debInstall.directory
+      flowPackage = bundlePath
+      launchOptions = debInstall.contract.acceptanceProfile ? {} : { privateHome: await preparePrivateHome(output, debInstall) }
+    }
+    const described = describePackage(bundlePath, { platform: process.platform, arch: process.arch })
+    plan = planReleaseLaunch(described, { platform: process.platform, arch: process.arch })
+    report = desktopFlowBaseline({ packagePath: bundlePath, platform: process.platform, arch: process.arch, originalPaths: [] })
+    if (debInstall) report = bindInstalledDeb(report, { debPath: packagePath, debSha256: debInstall.debSha256 })
+    report.blockedOfficialSteps = []
+    report.plan = plan
+    report.signature = signature
     if (!plan.canLaunch) {
       report.packageFlow = 'not_launched'
       report.releaseAcceptance = 'not_closed'
@@ -300,20 +381,30 @@ async function main() {
       exitCode = 2
       return
     }
-    const frozen = hashPackageIdentity(packagePath)
-    const installParent = await mkdtemp(path.join(output, 'install-'))
-    const installed = path.join(installParent, path.basename(packagePath))
-    await cp(packagePath, installed, { recursive: true, verbatimSymlinks: true })
-    const installedHash = hashPackageIdentity(installed)
-    if (installedHash.sha256 !== frozen.sha256) throw Object.assign(new Error('Installed copy hash does not match the frozen package'), { code: 'INSTALL_MISMATCH' })
+    let installed
+    let frozenSha
+    let installedHash
+    if (debInstall) {
+      installed = debInstall.directory
+      frozenSha = debInstall.debSha256
+      installedHash = debInstall.tree
+    } else {
+      const frozen = hashPackageIdentity(packagePath)
+      const installParent = await mkdtemp(path.join(output, 'install-'))
+      installed = path.join(installParent, path.basename(packagePath))
+      await cp(packagePath, installed, { recursive: true, verbatimSymlinks: true })
+      installedHash = hashPackageIdentity(installed)
+      frozenSha = frozen.sha256
+      if (installedHash.sha256 !== frozenSha) throw Object.assign(new Error('Installed copy hash does not match the frozen package'), { code: 'INSTALL_MISMATCH' })
+    }
     const executable = bundleExecutable(installed)
-    const resourcesRoot = path.join(installed, described.resources.installRoot || 'resources')
+    const resourcesRoot = debInstall?.resources || path.join(installed, described.resources.installRoot || 'resources')
     const sidecarBinary = path.join(resourcesRoot, 'sidecar', `futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`)
-    await chmod(executable, 0o755)
+    if (!debInstall) await chmod(executable, 0o755)
     const verificationPath = option('verification')
       || path.join(path.dirname(packagePath), 'package-verification.json')
     if (!existsSync(verificationPath)) throw Object.assign(new Error('package-verification.json is missing; run verify-package for this bundle first'), { code: 'VERIFICATION_MISSING' })
-    observation.verification = await readVerification(verificationPath, resourcesRoot)
+    observation.verification = await readVerification(verificationPath, resourcesRoot, debInstall ? packagePath : null)
     observation.expectedSidecarSha256 = hashReadonlyFile(sidecarBinary).sha256
     const profile = await mkdtemp(path.join(output, 'profile-'))
     await chmod(profile, 0o700)
@@ -352,22 +443,31 @@ async function main() {
     observation.install = {
       sourcePath: packagePath,
       installRoot: installed,
-      sourceSha256: frozen.sha256,
+      sourceSha256: frozenSha,
       installedSha256: installedHash.sha256,
       afterSha256: null,
       executable,
       executableWithinInstall: realpathSync(executable).startsWith(realpathSync(installed) + path.sep),
       resourcesWithinInstall: realpathSync(resourcesRoot).startsWith(realpathSync(installed) + path.sep),
       launchedFromInstall: true,
+      ...(debInstall ? {
+        method: 'dpkg',
+        installer: 'deb',
+        debSha256: debInstall.debSha256,
+        dpkgRoot: debInstall.root,
+        payloadSha256: debInstall.tree.sha256,
+      } : { method: 'directory_copy' }),
     }
     const { _electron: electron } = requireClient('@playwright/test')
     let app
     let page
     try {
-      ;({ app, page } = await launchPackaged(electron, executable, profile, [originalPath], logs))
+      const openOnArgv = !debInstall || debInstall.contract.argvFiles
+      ;({ app, page } = await launchPackaged(electron, executable, profile, openOnArgv ? [originalPath] : [], logs, launchOptions))
       reached.open = true
       const runtime = await hostFacts(app, profile)
       const profileReal = realpathSync(profile)
+      const realHome = realpathSync(homedir())
       observation.runtime = {
         isPackaged: runtime.isPackaged,
         sandbox: runtime.sandbox,
@@ -375,15 +475,48 @@ async function main() {
         nodeIntegration: runtime.nodeIntegration,
         webSecurity: runtime.webSecurity,
         userData: runtime.userData,
-        profileSource: runtime.userData === profileReal ? 'acceptance-profile' : 'other',
+        profileSource: 'other',
         execPath: runtime.execPath,
         resourcesPath: runtime.resourcesPath,
         appPath: runtime.appPath,
         sidecarSha256: runtime.sidecarSha256,
         versions: runtime.versions,
+        argv: runtime.argv,
+        chromiumSandbox: !runtime.argv.includes('--no-sandbox'),
       }
-      if (observation.runtime.profileSource !== 'acceptance-profile') {
-        throw new Error(`Packaged process userData ${runtime.userData} did not use acceptance profile ${profileReal}`)
+      if (runtime.argv.includes('--no-sandbox')) throw new Error('Chromium process sandbox was disabled')
+      if (!debInstall || debInstall.contract.acceptanceProfile) {
+        observation.runtime.profileSource = runtime.userData === profileReal ? 'acceptance-profile' : 'other'
+        observation.runtime.acceptanceHook = true
+        if (observation.runtime.profileSource !== 'acceptance-profile') {
+          throw new Error(`Packaged process userData ${runtime.userData} did not use acceptance profile ${profileReal}`)
+        }
+      } else {
+        const privateHome = realpathSync(launchOptions.privateHome)
+        observation.runtime.profileSource = 'private-home'
+        observation.runtime.acceptanceHook = false
+        observation.runtime.privateHome = privateHome
+        observation.runtime.realHome = realHome
+        if (!runtime.userData.startsWith(privateHome + path.sep)) {
+          throw new Error(`Packaged process userData ${runtime.userData} is outside the private home ${privateHome}`)
+        }
+        if (runtime.userData === realHome || runtime.userData.startsWith(realHome + path.sep)) {
+          throw new Error(`Packaged process userData ${runtime.userData} is inside the real home`)
+        }
+      }
+      if (!openOnArgv) {
+        await page.locator('.app-shell[data-desktop-ready="true"]').waitFor({ timeout: 60000 })
+        await app.evaluate(({ dialog }, file) => {
+          const original = dialog.showOpenDialog.bind(dialog)
+          dialog.showOpenDialog = async () => {
+            dialog.showOpenDialog = original
+            return { canceled: false, filePaths: [file] }
+          }
+        }, originalPath)
+        await page.getByRole('button', { name: '打开设计文件' }).click()
+        observation.openMethod = 'native_open_menu'
+      } else {
+        observation.openMethod = 'argv'
       }
       if (process.platform === 'darwin') {
         await page.locator('.app-shell[data-desktop-ready="true"]').waitFor({ timeout: 60000 })
@@ -453,7 +586,7 @@ async function main() {
       observation.autosave = { text: saved.save }
       await closeApp(app)
       app = undefined
-      ;({ app, page } = await launchPackaged(electron, executable, profile, [], logs))
+      ;({ app, page } = await launchPackaged(electron, executable, profile, [], logs, launchOptions))
       reached.close_reopen = true
       const reopened = await waitFor(
         async () => readCanvas(page),
@@ -537,12 +670,18 @@ async function main() {
       observation,
     }
     if (plan.canLaunch && session.launched) {
-      report = assessObservedDesktopSession(desktopFlowBaseline({
-        packagePath,
+      let baseline = desktopFlowBaseline({
+        packagePath: flowPackage,
         platform: process.platform,
         arch: process.arch,
         originalPaths: observation.originals.paths || [],
-      }), session)
+      })
+      if (debInstall) {
+        baseline = bindInstalledDeb(baseline, { debPath: packagePath, debSha256: debInstall.debSha256 })
+        session.packageSha256 = debInstall.debSha256
+        session.installer = { linuxDeb: 'installed' }
+      }
+      report = assessObservedDesktopSession(baseline, session)
       if (failure) report.error = failure
     } else {
       report.packageFlow = 'not_launched'
