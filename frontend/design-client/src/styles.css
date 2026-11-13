@@ -2742,3 +2742,25 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="sketch"] .properties-content .inspector h4 {
   font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #6e6e73;
 }
+
+/* Header Export is 12px white on a solid fill. Official Figma bg-brand
+   #0d99ff with text-onbrand #ffffff is 2.99:1, and bg-brand-hover #007be5
+   is 4.23:1. bg-brand-secondary #0768cf is the closest official brand fill
+   that clears 4.5:1 with that same white, including hover and pressed,
+   because the official lighter hover does not. Sketch system blue #007aff
+   is 4.02:1; this control uses the existing accent hover #0063cc (5.74:1).
+   Selected tools keep --workspace-accent. */
+.editor-shell[data-ui-mode="figma"] .header-right > .primary,
+.editor-shell[data-ui-mode="figma"] .header-right > .primary:hover,
+.editor-shell[data-ui-mode="figma"] .header-right > .primary:focus-visible,
+.editor-shell[data-ui-mode="figma"] .header-right > .primary:active {
+  background: #0768cf;
+  color: #ffffff;
+}
+.editor-shell[data-ui-mode="sketch"] .header-right > .primary,
+.editor-shell[data-ui-mode="sketch"] .header-right > .primary:hover,
+.editor-shell[data-ui-mode="sketch"] .header-right > .primary:focus-visible,
+.editor-shell[data-ui-mode="sketch"] .header-right > .primary:active {
+  background: #0063cc;
+  color: #ffffff;
+}
