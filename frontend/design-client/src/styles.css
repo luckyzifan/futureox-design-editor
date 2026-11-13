@@ -1981,6 +1981,17 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
   .editor-shell .properties-workspace { grid-column: 3; grid-row: 3; justify-self: end; z-index: 36; width: min(var(--workspace-inspector-width), calc(100vw - 80px)); padding-top: 0; border: 1px solid var(--workspace-border); border-radius: 8px; }
   .editor-shell .editor-header .document-title { grid-column: 3; width: min(220px, 45vw); justify-self: start; margin: 8px; border-radius: 8px; }
   .editor-shell .editor-header .header-right { grid-column: 3; justify-self: end; width: auto; margin: 8px; border-radius: 8px; }
+  /* Title and actions share the canvas column. Reserve the title's own width
+     (220px / 45vw above, tightened again at 560) so the action bar cannot
+     paint over 「收起界面」. min-width:0 lets that cap win over content size. */
+  .editor-shell[data-ui-mode="figma"] .editor-header .header-right {
+    min-width: 0;
+    height: auto;
+    max-width: calc(100% - min(220px, 45vw) - 16px);
+    flex-wrap: wrap;
+    align-content: flex-start;
+    justify-content: flex-end;
+  }
   .editor-shell .header-right .save-status { display: none; }
   .editor-shell .panel-resize-handle { display: none; }
   /* Keep both mounted drafts reachable: dual compact panels occupy separate
@@ -1998,6 +2009,7 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
   .editor-shell .floating-toolbar { bottom: 10px; height: auto; min-height: 44px; padding: 4px; border-radius: 12px; }
   .editor-shell .floating-toolbar .tool-group { gap: 0; flex-wrap: wrap; justify-content: center; }
   .editor-shell .editor-header .document-title { width: min(160px, 40vw); }
+  .editor-shell[data-ui-mode="figma"] .editor-header .header-right { max-width: calc(100% - min(160px, 40vw) - 16px); }
   .editor-shell .header-right > .primary { padding: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2192,6 +2204,14 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
   row-gap: 2px;
 }
 .editor-shell[data-density="desk"] .header-right > .primary { font-size: 0; padding: 6px; }
+/* innerWidth 900 can miss (max-width: 900px) by a fraction of a device pixel
+   and stay on this desk bar. Keep the Figma bar inside the canvas column. */
+.editor-shell[data-ui-mode="figma"][data-density="desk"] .editor-header .header-right {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: flex-end;
+}
 /* Same desk band as data-density, so the layout matches even before the attribute updates. */
 @media (min-width: 901px) and (max-width: 1180px) {
   .editor-shell { --workspace-panel-cap: min(240px, 28vw); }
@@ -2215,6 +2235,12 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
     row-gap: 2px;
   }
   .editor-shell .header-right > .primary { font-size: 0; padding: 6px; }
+  .editor-shell[data-ui-mode="figma"] .editor-header .header-right {
+    min-width: 0;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    justify-content: flex-end;
+  }
 }
 
 /* Warm, quiet chrome. Accent stays #3459d4. Canvas pixels and selection stroke stay put. */

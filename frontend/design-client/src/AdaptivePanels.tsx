@@ -11,7 +11,10 @@ export function shellDensity(width: number): ShellDensity {
   if (width <= 1180) return 'desk'
   return 'wide'
 }
-/** Prefer the viewport media queries so web and Electron follow the same CSS. */
+/** Prefer the viewport media queries so web and Electron follow the same CSS.
+ * A fractional device pixel can report innerWidth 900 while (max-width: 900px)
+ * is false. Density stays with that query; the Figma bar must not cover the
+ * title collapse control on the desk side of the breakpoint. */
 export function shellDensityFromWindow(win: Pick<Window, 'innerWidth' | 'matchMedia'> | undefined): ShellDensity {
   const match = win && typeof win.matchMedia === 'function' ? win.matchMedia.bind(win) : undefined
   if (match) {
