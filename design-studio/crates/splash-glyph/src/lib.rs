@@ -1,4 +1,4 @@
-//! Grayscale glyph masks from system FreeType.
+//! Grayscale glyph masks from the bundled FreeType.
 //!
 //! The load flags match Poppler 24.02 `SplashFTFont`: no hinting, no embedded
 //! bitmap, normal (grayscale) render, and a horizontal 26.6 offset of
@@ -11,6 +11,10 @@ use freetype::freetype::{
 };
 use std::cell::RefCell;
 use std::ptr;
+use std::sync::Arc;
+
+const MAX_FACE_BYTES: usize = 32 * 1024 * 1024;
+const MAX_FACES: usize = 8;
 
 pub struct GlyphBitmap {
     pub left: i32,
@@ -23,7 +27,7 @@ pub struct GlyphBitmap {
 struct Entry {
     // FreeType keeps a pointer into this buffer for the life of `face`.
     #[allow(dead_code)]
-    bytes: Vec<u8>,
+    bytes: Arc<Vec<u8>>,
     face: FT_Face,
 }
 
@@ -56,7 +60,7 @@ thread_local! {
 }
 
 fn with_face<T>(
-    bytes: &[u8],
+    bytes: &Arc<Vec<u8>>,
     digest: [u8; 32],
     index: u32,
     body: impl FnOnce(FT_Face) -> Option<T>,
@@ -80,14 +84,26 @@ fn with_face<T>(
             .iter()
             .position(|(found, found_index, _)| *found == digest && *found_index == index)
         {
-            return body(cache.faces[pos].2.face);
+            cache.faces.rotate_left(pos);
+            let entry = cache.faces.remove(0);
+            let face = entry.2.face;
+            cache.faces.push(entry);
+            return body(face);
         }
-        let mut owned = bytes.to_vec();
+        if bytes.len() > MAX_FACE_BYTES {
+            return None;
+        }
+        while cache.faces.len() >= MAX_FACES
+            || cache.faces.iter().map(|entry| entry.2.bytes.len()).sum::<usize>() + bytes.len() > MAX_FACE_BYTES
+        {
+            cache.faces.remove(0);
+        }
+        let owned = Arc::clone(bytes);
         let mut face = ptr::null_mut();
         let err = unsafe {
             FT_New_Memory_Face(
                 cache.library,
-                owned.as_mut_ptr(),
+                owned.as_ptr(),
                 owned.len() as _,
                 index as _,
                 &mut face,
@@ -104,7 +120,7 @@ fn with_face<T>(
 }
 
 pub fn rasterize(
-    bytes: &[u8],
+    bytes: &Arc<Vec<u8>>,
     digest: [u8; 32],
     index: u32,
     glyph: u32,
@@ -150,22 +166,20 @@ pub fn rasterize(
         if width < 0 || rows < 0 || width > 4096 || rows > 4096 {
             return None;
         }
-        let mut coverage = vec![0u8; (width.max(0) * rows.max(0)) as usize];
+        let pixels = width.checked_mul(rows)? as usize;
+        if pixels > 2_000_000 {
+            return None;
+        }
+        let mut coverage = vec![0u8; pixels];
         if width > 0 && rows > 0 {
             if bitmap.buffer.is_null() {
                 return None;
             }
             let pitch = bitmap.pitch;
+            if pitch.checked_abs()? < width { return None; }
             for row in 0..rows {
-                let src_offset = if pitch >= 0 {
-                    row * pitch
-                } else {
-                    (rows - 1 - row) * pitch.abs()
-                };
-                if src_offset < 0 {
-                    return None;
-                }
-                let src = bitmap.buffer.add(src_offset as usize);
+                let src_offset = row.checked_mul(pitch)? as isize;
+                let src = bitmap.buffer.offset(src_offset);
                 let dst = (row * width) as usize;
                 ptr::copy_nonoverlapping(src, coverage.as_mut_ptr().add(dst), width as usize);
             }

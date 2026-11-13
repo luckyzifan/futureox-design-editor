@@ -15,3 +15,8 @@ index = "sparse+https://rsproxy.cn/index/"
 
 [net]
 git-fetch-with-cli = true
+
+[env]
+# Link the FreeType shipped by freetype-sys so packaged applications do not
+# require a Homebrew or system FreeType installation.
+FREETYPE2_NO_PKG_CONFIG = { value = "1", force = true }

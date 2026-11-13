@@ -10,6 +10,8 @@ use crate::path::Contour;
 use crate::scene::Node;
 use std::sync::Arc;
 
+const MAX_MASK_PIXELS: usize = 2_000_000;
+
 struct Stamp {
     left: i32,
     top: i32,
@@ -124,6 +126,7 @@ pub(crate) fn sketch_device_mask(
             _ => 0.0,
         };
     let mut stamps = Vec::with_capacity(layout.glyphs.len());
+    let mut stamp_pixels = 0usize;
     for glyph in &layout.glyphs {
         let device = matrix.point(Point::new(glyph.x, glyph.y + offset));
         if !device.finite() {
@@ -144,6 +147,10 @@ pub(crate) fn sketch_device_mask(
             glyph.size * scale,
             frac as i32,
         )?;
+        stamp_pixels = stamp_pixels.checked_add(stamp.coverage.len())?;
+        if stamp_pixels > MAX_MASK_PIXELS {
+            return None;
+        }
         let left = (x0 as i32).saturating_add(stamp.left);
         let top = (y0 as i32).saturating_sub(stamp.top);
         stamps.push(Stamp { left, top, ..stamp });
@@ -166,7 +173,7 @@ pub(crate) fn sketch_device_mask(
     }
     let width = max_x.saturating_sub(min_x);
     let height = max_y.saturating_sub(min_y);
-    if width <= 0 || height <= 0 || i64::from(width) * i64::from(height) > 2_000_000 {
+    if width <= 0 || height <= 0 || i64::from(width) * i64::from(height) > MAX_MASK_PIXELS as i64 {
         return None;
     }
     let mut mask = vec![0u8; (width as usize) * (height as usize)];
@@ -188,6 +195,9 @@ pub(crate) fn sketch_device_mask(
                 mask[i] = dst.saturating_add(add).min(255) as u8;
             }
         }
+    }
+    if mask.iter().filter(|&&coverage| coverage != 0).count() > 65_536 {
+        return None;
     }
     Some(coverage_rects(&mask, min_x, min_y, width, height))
 }
