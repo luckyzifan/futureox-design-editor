@@ -1152,18 +1152,16 @@ fn downsample_alpha_pairs(alpha: &Surface) -> Result<Surface, String> {
     for oy in rect.y..rect.bottom() {
         for ox in rect.x..rect.right() {
             let mut sum = 0u32;
-            let mut count = 0u32;
             for dy in 0..2 {
                 for dx in 0..2 {
                     let x = ox * 2 + dx;
                     let y = oy * 2 + dy;
                     if alpha.rect.index(x, y).is_some() {
                         sum += alpha_byte(alpha.at(x, y));
-                        count += 1;
                     }
                 }
             }
-            let byte = if count == 0 { 0 } else { (sum + count / 2) / count };
+            let byte = (sum + 2) / 4;
             let index = half.rect.index(ox, oy).expect("output shadow grid");
             half.pixels[index].0[3] = byte as f32 / 255.;
         }

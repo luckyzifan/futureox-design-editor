@@ -3882,9 +3882,11 @@ impl Painter<'_> {
         spread: f64,
         inner: bool,
     ) -> Result<crate::blend::Surface, String> {
-        // Figma export is the 2× profile. Outer shadows are filtered on the
-        // output grid; inner shadows and the other profiles keep the device tent.
-        if !inner && radius > 0. && self.profile == crate::fidelity::RasterProfile::Figma {
+        // The frozen SDR reference establishes only a four-output-pixel
+        // outer shadow, without spread, on the 2× Figma export grid.
+        if self.compatible && !inner && radius == 8. && spread == 0.
+            && self.profile == crate::fidelity::RasterProfile::Figma
+        {
             return effects::shadow_alpha_output_grid(
                 basis,
                 self.blur_filter(radius / 2.),
