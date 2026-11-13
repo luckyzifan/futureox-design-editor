@@ -1,0 +1,53 @@
+{
+  "generator": "design-studio/crates/design-kernel/examples/color_assets.rs",
+  "statement": "Synthetic 4x4 images written by that example. No external image was copied.",
+  "notices": {
+    "project-mit": {
+      "license": "MIT",
+      "repoPath": "LICENSE",
+      "sha256": "93d12ad55771e65d422db6171a02bfbe6e53e1209a6ce790a7f3915f0f31cf29"
+    },
+    "moxcms-bsd": {
+      "license": "BSD-3-Clause",
+      "repoPath": "frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE.md",
+      "sha256": "2aa92cada6431e75615e3fe6cb1a9082c98f777d48ae1c087c0da0e37f7b8bff"
+    },
+    "moxcms-apache": {
+      "license": "Apache-2.0",
+      "repoPath": "frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE-APACHE.md",
+      "sha256": "90bf2d659c43045111b65c733ab2a6d4cbcb422a098368c8c58a9ba3db4ed0c5"
+    }
+  },
+  "files": [
+    {
+      "name": "hlg-highlights.png",
+      "sha256": "30ea15f918892946c1bc746ff6aec5ce78edbc5b0d66ecffc6ec000622042f1e",
+      "pixels": "4x4 constant linear Pixel([4, 2, 1, 1]) encoded as HLG by encode_color_png.",
+      "license": "MIT",
+      "notices": [
+        "project-mit"
+      ]
+    },
+    {
+      "name": "pq-highlights.png",
+      "sha256": "47f8c685301219947d10541d60e3d6d4002647773ebb85537a3b703d8b8d1d1c",
+      "pixels": "4x4 constant linear Pixel([4, 2, 1, 1]) encoded as PQ by encode_color_png.",
+      "license": "MIT",
+      "notices": [
+        "project-mit"
+      ]
+    },
+    {
+      "name": "p3-red-icc.png",
+      "sha256": "01b038754d6bb0d963442e1a18c068543f2aa7b97dac4dff1043ec5b603a0b02",
+      "pixels": "4x4 RGBA8 pixels (255, 0, 0, 128). The embedded ICC profile is emitted by moxcms 0.9.1 ColorProfile::new_display_p3 through futureox_design_kernel::export::canonical_icc.",
+      "license": "MIT AND (BSD-3-Clause OR Apache-2.0)",
+      "notices": [
+        "project-mit",
+        "moxcms-bsd",
+        "moxcms-apache"
+      ],
+      "icc": "moxcms 0.9.1 ColorProfile::new_display_p3"
+    }
+  ]
+}

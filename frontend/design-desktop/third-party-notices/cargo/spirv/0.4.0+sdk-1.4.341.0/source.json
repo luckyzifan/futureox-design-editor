@@ -1,0 +1,17 @@
+{
+  "crate": "spirv",
+  "version": "0.4.0+sdk-1.4.341.0",
+  "spdx": "Apache-2.0",
+  "crateArchiveChecksum": "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f",
+  "crateArchiveLicenseFiles": [],
+  "publishRevision": "8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4",
+  "note": "The crates.io archive for spirv 0.4.0+sdk-1.4.341.0 publishes SPDX Apache-2.0 and contains no license file. This text is the repository LICENSE at the GitHub trusted-publishing commit for that version.",
+  "files": [
+    {
+      "file": "LICENSE",
+      "url": "https://github.com/gfx-rs/rspirv/blob/8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4/LICENSE",
+      "gitRevision": "8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  ]
+}

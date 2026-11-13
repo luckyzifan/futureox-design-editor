@@ -133,12 +133,62 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs \
 
 主程序 SHA-256 `10a14d05c6ff4f94075cfb3eeb6ed6571be33ebcc08cbd675b5ce9ff84706564`，`LICENSE` `5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d`，`LICENSES.chromium.html` `3375e2a9bd7bc631738fde10be6548a76efe8cf5e4b8826b8140ba8b0c4d6353`，Chromium `libffmpeg.so` `c4c805e46f957356f6b80be31999459e5f07e8b0c351221544ad43a16c980638`。这些和上一节解压 zip 的对应文件一致，但是这次哈希的是 packager 目录里的文件。仓库 GPL FFmpeg 仍是 `18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317`，和 Chromium 的 `libffmpeg.so` 不是同一个文件。
 
-仍未关闭：
+上面这一节是补齐许可文本之前的目录。当时仍未关闭的是：
 
 - `profiling` 1.0.18 和 `spirv` 0.4.0+sdk-1.4.341.0 在包内二进制的依赖图里，crate 只有 SPDX 标识，没有许可文件。
 - 包里仍有两份验证页和三张 `color-fixtures` 图，没有许可文本。
 - macOS arm64、Windows x64 没有构建。签名、公证、安装包和桌面 GUI 步骤是 `not_run`。
-- 这个目录不能当成正式发布验收。
+- 那个目录不能当成正式发布验收。
+
+## 2026-11-13 许可文本
+
+`profiling` 1.0.18 的 crate 压缩包 SHA-256 是 lockfile 里的 `3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5`，包内没有许可证文件。许可文本取自发布提交 `8271551172eb6fa4cba47369aedd93790c623df9` 的 `LICENSE-MIT` 与 `LICENSE-APACHE`。`spirv` 0.4.0+sdk-1.4.341.0 的压缩包 SHA-256 是 `d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f`，同样没有许可证文件。文本取自 trusted-publishing 提交 `8afc3d0ac8e158128cd1410bb2e4b4c26ab11bb4` 的 `LICENSE`。两份 `source.json` 记下 URL、修订和 sha256。清单生成器没有改写成另一套名单；包里的这些文件哈希对上，crate 才可追溯。
+
+三张 `color-fixtures` 图由 `design-studio/crates/design-kernel/examples/color_assets.rs` 写出。`PROVENANCE.json` 记录每张图的 sha256。高光图对应仓库 MIT `LICENSE`。`p3-red-icc.png` 里的 ICC 配置由 moxcms 0.9.1 生成，包内还要有它的 BSD-3-Clause 和 Apache-2.0 文本。哈希不一致就仍然是缺口。
+
+`canvas-chrome-verify.html` 和 `sdf-shadow-verify.html` 含有 Figma 着色器转写，仓库没有再分发许可。它们继续留在源码树，生产拷贝和打包入口把它们排除在包外，和已经排除的 `figma-blur-verify.html` 一样。如果包里仍然出现 `*-verify.html`，清单保持不可追溯。
+
+macOS 的 `objc2` / `block2` 系列仍然只有 SPDX、没有许可文件。这次没有构建 macOS 包，也没有用一份未核对的文本代替。`releaseAcceptance` 仍然是 `not_closed`。签名、公证、Windows Authenticode 和安装器没有做。
+
+另外五个已经进 Linux 依赖图、但 notice 目录里原先没有文本的 crate，许可文件就在 crates.io 压缩包里：`color_quant` 1.1.0、`fax` 0.2.7、`gif` 0.14.2、`tiff` 0.11.3、`weezl` 0.1.12。`--write-notices` 按现有复制规则把这些文件抄进 `third-party-notices/cargo/`。它们不是上游补录。
+
+## 2026-11-13 补齐后的未签名 Linux 目录
+
+云端 linux x64 在当前 `main` 上跑了 `node scripts/build.mjs`（默认 profile `release`）和 `node scripts/package.mjs`。产物是 `frontend/design-desktop/release/futureox-desgin-linux-x64`。没有签名，没有公证，没有打开 GUI，没有做 macOS 或 Windows 包。
+
+随后执行：
+
+```bash
+node frontend/design-desktop/scripts/release-component-inventory.mjs \
+  --release-dir=frontend/design-desktop/release/futureox-desgin-linux-x64 \
+  --require-package
+```
+
+退出码 0。它重新哈希清单里的 805 条包内文件和 `app.asar` 条目，并和清单记录对照。`profiling` 与 `spirv` 的包内许可文件还要和包内 `source.json` 的 sha256 一致。对照失败会让进程失败。这次没有失败。`releaseAcceptance` 仍是 `not_closed`，`formalSignedPackage` 是 `not_supplied`，`signature` 是 `not_run`。目录身份 SHA-256 `f2e6f44d0250bd8f5ce7ddeea75c8e47b27eb4549bcd5774dd7f78e8f3b832cd`。`resource-list.json` 里的 profile 是 `release`，`formalRelease` 是 false。
+
+| 测量 | 这个未签名目录 |
+| --- | --- |
+| 包内普通文件 / 含 asar 条目 | 581 / 805 |
+| Electron 44.7.0 运行时文件 | 71，含主程序、`LICENSE`、`LICENSES.chromium.html`、`libffmpeg.so` |
+| 生产 JS 包 / 包内 notice 对上 | 16 / 16 |
+| JS 开发依赖，包内没有对应文件 | 204，泄漏 0 |
+| 本包 linux 与 wasm 图里的第三方 Rust crate / 包内 notice | 228 / 228 |
+| 只在编译期的 proc-macro，notice 在包里 | 13 |
+| 不在本包二进制图里的 lock 名 | 105 |
+| native ELF | 4 |
+| WASM | 6 |
+| 字体 / 图标 | 23 / 23，16 / 16 |
+| color-fixtures | 3 / 3，外加包内 `PROVENANCE.json` |
+| 验证页 | 0。两份 Figma 着色器验证页不在包里 |
+| Linux FFmpeg 7.0.2 | 可追溯，GPL-3.0-or-later |
+| 许可或分类缺口 | 0 |
+| 签名 / 其他平台 | `not_run`，darwin-arm64 与 win32-x64 是 `not_built` |
+
+主程序 SHA-256 仍是 `10a14d05c6ff4f94075cfb3eeb6ed6571be33ebcc08cbd675b5ce9ff84706564`，Electron `LICENSE` `5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d`，`LICENSES.chromium.html` `3375e2a9bd7bc631738fde10be6548a76efe8cf5e4b8826b8140ba8b0c4d6353`，Chromium `libffmpeg.so` `c4c805e46f957356f6b80be31999459e5f07e8b0c351221544ad43a16c980638`。仓库 GPL FFmpeg 仍是 `18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317`。
+
+包内 `profiling` 1.0.18 的 `LICENSE-MIT` 是 `c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333`，`LICENSE-APACHE` 是 `10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551`。`spirv` 的 `LICENSE` 是 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`。
+
+源码侧 cargo 图里仍没有许可文本的是这八个 macOS crate：`block2` 0.6.2、`objc2` 0.6.5、`objc2-core-foundation` 0.3.2、`objc2-core-graphics` 0.3.2、`objc2-encode` 4.1.0、`objc2-foundation` 0.3.2、`objc2-metal` 0.3.2、`objc2-quartz-core` 0.3.2。它们不在这个 Linux 包的二进制图里。这个目录仍然不是正式发布验收。
 
 ## 随包资源标识（#264）
 

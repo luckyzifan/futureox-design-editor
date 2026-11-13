@@ -7,8 +7,8 @@ import { tmpdir, homedir } from 'node:os'
 import path from 'node:path'
 import { ffmpegProvenance } from '../scripts/ffmpeg-provenance.mjs'
 import { DESKTOP_FLOW, buildDesktopFlowReport, inspectReleasePackage } from '../scripts/release-desktop-flow.mjs'
-import { asarFromFiles, buildComponentInventory, openAsar, readAsarEntries } from '../scripts/release-component-inventory.mjs'
-import { verifyPackageByteInventory } from '../scripts/release-package-bytes.mjs'
+import { asarFromFiles, buildComponentInventory, openAsar, readAsarEntries, supplementalNoticeProblems } from '../scripts/release-component-inventory.mjs'
+import { assessColorFixtures, verifyPackageByteInventory } from '../scripts/release-package-bytes.mjs'
 import { hashPackageIdentity, verifyDeclaredResourceList, writeAsarArchive, writeUnsignedResourceList } from '../scripts/release-package-resources.mjs'
 
 test('vendored linux ffmpeg matches the rebuilt corresponding source', () => {
@@ -330,10 +330,15 @@ test('component inventory maps packaged inputs and keeps the lockfile out of the
   }
   assert.deepEqual(report.rust.crates.find(crate => crate.id === 'same-file@1.0.6').platforms, ['x86_64-pc-windows-msvc'])
   const spirv = report.rust.crates.find(crate => crate.id === 'spirv@0.4.0+sdk-1.4.341.0')
-  assert.equal(spirv.traceable, false)
+  assert.equal(spirv.traceable, true)
+  assert.equal(spirv.license, 'Apache-2.0')
   assert.equal(spirv.platforms.includes('aarch64-apple-darwin'), false)
   assert.equal(spirv.platforms.includes('x86_64-unknown-linux-gnu'), true)
-  for (const gap of ['profiling@1.0.18', 'objc2@0.6.5', 'block2@0.6.2']) {
+  const profiling = report.rust.crates.find(crate => crate.id === 'profiling@1.0.18')
+  assert.equal(profiling.traceable, true)
+  assert.equal(profiling.license, 'MIT OR Apache-2.0')
+  assert.equal(profiling.notices.length, 2)
+  for (const gap of ['objc2@0.6.5', 'block2@0.6.2']) {
     assert.equal(report.rust.crates.find(crate => crate.id === gap).traceable, false, gap)
   }
   assert.equal(report.notices.every(item => item.matchesInventory), true)
@@ -355,11 +360,30 @@ test('component inventory maps packaged inputs and keeps the lockfile out of the
   assert.equal(report.fonts.every(font => font.traceable), true)
   assert.ok(report.fonts.length >= 16)
   assert.equal(report.icons.every(icon => icon.traceable && icon.license === 'MIT'), true)
-  assert.equal(report.unresolvedPackageInputs.map(item => item.path).sort().join(','), [
-    'frontend/design-client/public/color-fixtures/hlg-highlights.png',
-    'frontend/design-client/public/color-fixtures/p3-red-icc.png',
-    'frontend/design-client/public/color-fixtures/pq-highlights.png',
-  ].join(','))
+  assert.deepEqual(report.unresolvedPackageInputs, [])
+  assert.deepEqual(report.colorFixtures.map(item => item.name).sort(), ['hlg-highlights.png', 'p3-red-icc.png', 'pq-highlights.png'])
+  const repoRoot = path.resolve(import.meta.dirname, '../../..')
+  for (const fixture of report.colorFixtures) {
+    assert.equal(fixture.traceable, true, fixture.name)
+    const disk = path.join(repoRoot, 'frontend/design-client/public/color-fixtures', fixture.name)
+    assert.equal(fixture.sha256, createHash('sha256').update(readFileSync(disk)).digest('hex'))
+    assert.ok(fixture.notices.length > 0)
+    for (const notice of fixture.notices) {
+      assert.equal(notice.sha256, createHash('sha256').update(readFileSync(path.join(repoRoot, notice.repoPath))).digest('hex'), notice.repoPath)
+    }
+  }
+  const p3 = report.colorFixtures.find(item => item.name === 'p3-red-icc.png')
+  assert.equal(p3.license, 'MIT AND (BSD-3-Clause OR Apache-2.0)')
+  assert.deepEqual(p3.notices.map(item => item.id).sort(), ['moxcms-apache', 'moxcms-bsd', 'project-mit'])
+  const withheld = new Map(report.withheldFromPackage.map(item => [item.path, item]))
+  for (const relative of [
+    'frontend/design-client/public/canvas-chrome-verify.html',
+    'frontend/design-client/public/sdf-shadow-verify.html',
+  ]) {
+    assert.equal(withheld.get(relative).reason, 'figma_shader_transcription_without_redistribution_license')
+    assert.equal(withheld.get(relative).sha256, createHash('sha256').update(readFileSync(path.join(repoRoot, relative))).digest('hex'))
+    assert.equal(withheld.get(relative).traceable, false)
+  }
   assert.equal(report.fidelityFilesExcluded, 349)
   assert.ok(report.measurement.traceableThirdPartyComponents > 200)
   const moxcms08 = report.rust.crates.find(crate => crate.id === 'moxcms@0.8.1')
@@ -376,12 +400,44 @@ test('component inventory maps packaged inputs and keeps the lockfile out of the
     const marker = `${crate.name}/${crate.version}/`
     for (const notice of crate.notices) {
       const relative = notice.path.slice(notice.path.indexOf(marker) + marker.length)
-      const digest = createHash('sha256').update(readFileSync(path.join(dir, relative))).digest('hex')
-      assert.equal(digest, notice.sha256, `${crate.id} ${relative}`)
+      const crateCopy = path.join(dir, relative)
+      if (existsSync(crateCopy)) {
+        const digest = createHash('sha256').update(readFileSync(crateCopy)).digest('hex')
+        assert.equal(digest, notice.sha256, `${crate.id} ${relative}`)
+      } else {
+        const source = JSON.parse(readFileSync(path.join(repoRoot, 'frontend/design-desktop/third-party-notices/cargo', crate.name, crate.version, 'source.json'), 'utf8'))
+        const entry = source.files.find(item => item.file === relative)
+        assert.ok(entry, `${crate.id} supplemental ${relative}`)
+        assert.equal(entry.sha256, notice.sha256)
+        assert.equal(source.spdx, crate.license)
+        assert.equal(source.crateArchiveChecksum, crate.checksum)
+        assert.deepEqual(source.crateArchiveLicenseFiles, [])
+        assert.equal(typeof entry.gitRevision, 'string')
+        assert.equal(readdirSync(dir).some(name => /^(license|licence|copying|notice|unlicense|copyright)(\b|[._-]|$)/i.test(name)), false, crate.id)
+      }
       compared += 1
     }
   }
   assert.ok(compared > 400)
+})
+
+test('a color fixture stays untraceable when its bytes differ from the provenance record', () => {
+  const repoRoot = path.resolve(import.meta.dirname, '../../..')
+  const provenance = readFileSync(path.join(repoRoot, 'frontend/design-client/public/color-fixtures/PROVENANCE.json'))
+  const license = readFileSync(path.join(repoRoot, 'LICENSE'))
+  const png = Buffer.from('not-the-generated-fixture')
+  const digest = bytes => createHash('sha256').update(bytes).digest('hex')
+  const files = [
+    { path: 'resources/app.asar/renderer/color-fixtures/hlg-highlights.png', sha256: digest(png), bytes: png.length, text: () => null },
+    { path: 'resources/app.asar/renderer/color-fixtures/PROVENANCE.json', sha256: digest(provenance), bytes: provenance.length, text: () => provenance.toString('utf8') },
+    { path: 'resources/project-license/LICENSE', sha256: digest(license), bytes: license.length, text: () => license.toString('utf8') },
+  ]
+  const mismatched = assessColorFixtures(files, { provenanceSha256: digest(provenance) })
+  assert.equal(mismatched.every(item => item.traceable === false), true)
+  assert.equal(mismatched.find(item => item.name === 'hlg-highlights.png').gap, 'provenance_hash_mismatch')
+  assert.equal(mismatched.filter(item => item.gap === 'fixture_missing').length, 2)
+  const drifted = assessColorFixtures(files, { provenanceSha256: '0'.repeat(64) })
+  assert.equal(drifted.every(item => item.traceable === false && item.gap === 'provenance_differs_from_repo'), true)
 })
 
 test('an asar entry is tied to a package input only when the bytes match', () => {
@@ -494,12 +550,31 @@ test('a release package inventory is read from package bytes, not from the lockf
     await writeFile(path.join(resources, 'fonts/source.json'), await readFile(new URL('../../design-client/public/fonts/source.json', import.meta.url)))
     await writeFile(path.join(resources, 'third-party-notices/cargo/serde/1.0.229/LICENSE-MIT'), packagedMit)
     await writeFile(path.join(resources, 'third-party-notices/cargo/serde/1.0.229/LICENSE-APACHE'), repoApache)
+    const repoRoot = path.resolve(import.meta.dirname, '../../..')
+    const copyRepo = async (relative, destination) => writeFile(destination, await readFile(path.join(repoRoot, relative)))
+    await mkdir(path.join(resources, 'third-party-notices/cargo/profiling/1.0.18'), { recursive: true })
+    await mkdir(path.join(resources, 'third-party-notices/cargo/spirv/0.4.0+sdk-1.4.341.0'), { recursive: true })
+    await mkdir(path.join(resources, 'third-party-notices/cargo/moxcms/0.9.1'), { recursive: true })
+    await copyRepo('frontend/design-desktop/third-party-notices/cargo/profiling/1.0.18/LICENSE-MIT', path.join(resources, 'third-party-notices/cargo/profiling/1.0.18/LICENSE-MIT'))
+    await copyRepo('frontend/design-desktop/third-party-notices/cargo/profiling/1.0.18/LICENSE-APACHE', path.join(resources, 'third-party-notices/cargo/profiling/1.0.18/LICENSE-APACHE'))
+    await copyRepo('frontend/design-desktop/third-party-notices/cargo/profiling/1.0.18/source.json', path.join(resources, 'third-party-notices/cargo/profiling/1.0.18/source.json'))
+    await copyRepo('frontend/design-desktop/third-party-notices/cargo/spirv/0.4.0+sdk-1.4.341.0/LICENSE', path.join(resources, 'third-party-notices/cargo/spirv/0.4.0+sdk-1.4.341.0/LICENSE'))
+    await copyRepo('frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE.md', path.join(resources, 'third-party-notices/cargo/moxcms/0.9.1/LICENSE.md'))
+    await copyRepo('frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE-APACHE.md', path.join(resources, 'third-party-notices/cargo/moxcms/0.9.1/LICENSE-APACHE.md'))
+    const fixtureNames = ['hlg-highlights.png', 'pq-highlights.png', 'p3-red-icc.png']
+    const fixtureEntries = []
+    for (const name of fixtureNames) {
+      fixtureEntries.push({ path: `renderer/color-fixtures/${name}`, bytes: await readFile(path.join(repoRoot, 'frontend/design-client/public/color-fixtures', name)) })
+    }
+    fixtureEntries.push({ path: 'renderer/color-fixtures/PROVENANCE.json', bytes: await readFile(path.join(repoRoot, 'frontend/design-client/public/color-fixtures/PROVENANCE.json')) })
+    fixtureEntries.push({ path: 'renderer/canvas-chrome-verify.html', bytes: Buffer.from('<html>figma-derived verify page</html>\n') })
     const archive = asarFromFiles([
       { path: 'renderer/licenses/react-LICENSE.txt', bytes: reactLicense },
       { path: 'renderer/assets/index.js', bytes: bundle },
       { path: 'assets/branding/mark.png', bytes: icon },
       { path: 'src/main.mjs', bytes: Buffer.from('export {}\n') },
       { path: 'renderer/kernel.wasm', bytes: wasm },
+      ...fixtureEntries,
     ])
     await writeFile(path.join(resources, 'app.asar'), archive)
     const report = buildComponentInventory({ releaseDir: packageDir, electronDist: null })
@@ -559,6 +634,26 @@ test('a release package inventory is read from package bytes, not from the lockf
     assert.equal(report.fromPackage.wasm[0].sha256, digest(wasm))
     assert.ok(report.fromPackage.census.unclassified.some(item => item.path.endsWith('stray.bin')))
     assert.equal(report.fromPackage.components.some(item => item.kind === 'electron' && item.sha256 === digest(electronBinary)), true)
+    const packagedProfiling = report.fromPackage.rust.distributed.find(item => item.id === 'profiling@1.0.18')
+    assert.equal(packagedProfiling.traceable, true)
+    assert.equal(packagedProfiling.gap, null)
+    assert.equal(packagedProfiling.notices.find(item => item.packagePath.endsWith('/LICENSE-MIT')).sha256, digest(await readFile(path.join(repoRoot, 'frontend/design-desktop/third-party-notices/cargo/profiling/1.0.18/LICENSE-MIT'))))
+    assert.deepEqual(supplementalNoticeProblems(report.fromPackage), [])
+    const brokenRecord = JSON.parse(JSON.stringify(report.fromPackage))
+    brokenRecord.rust.distributed.find(item => item.id === 'profiling@1.0.18').notices.find(item => item.packagePath.endsWith('/LICENSE-MIT')).sha256 = '0'.repeat(64)
+    assert.equal(supplementalNoticeProblems(brokenRecord).some(item => item.includes('LICENSE-MIT')), true)
+    const packagedSpirv = report.fromPackage.rust.distributed.find(item => item.id === 'spirv@0.4.0+sdk-1.4.341.0')
+    assert.equal(packagedSpirv.traceable, true)
+    assert.equal(packagedSpirv.notices.find(item => item.packagePath.endsWith('/LICENSE')).sha256, digest(await readFile(path.join(repoRoot, 'frontend/design-desktop/third-party-notices/cargo/spirv/0.4.0+sdk-1.4.341.0/LICENSE'))))
+    assert.equal(report.fromPackage.colorFixtures.length, 3)
+    assert.equal(report.fromPackage.colorFixtures.every(item => item.traceable), true)
+    for (const fixture of report.fromPackage.colorFixtures) {
+      const disk = await readFile(path.join(repoRoot, 'frontend/design-client/public/color-fixtures', fixture.name))
+      assert.equal(fixture.sha256, digest(disk), fixture.name)
+      assert.ok(fixture.notices.every(notice => notice.sha256 && notice.packagePath))
+    }
+    assert.equal(report.fromPackage.gaps.some(item => item.gap === 'verification-page' && item.id.endsWith('canvas-chrome-verify.html')), true)
+    assert.equal(report.releaseAcceptance, 'not_closed')
   } finally {
     await rm(root, { recursive: true, force: true })
   }

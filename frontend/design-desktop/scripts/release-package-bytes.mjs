@@ -176,7 +176,11 @@ function classifyApp(relative) {
   if (base === 'resource-list.json' || base === 'package.json' || base === 'manifest.webmanifest' || base === 'inventory.json' || base === 'README.txt') {
     return { kind: 'package-metadata', role: base }
   }
-  if (lower.includes('color-fixtures/')) return { kind: 'unlicensed', role: 'color-fixture' }
+  if (lower.includes('color-fixtures/')) {
+    if (base === 'PROVENANCE.json') return { kind: 'notice', role: 'color-fixture-provenance' }
+    if (base.endsWith('.png')) return { kind: 'color-fixture', role: 'image' }
+    return { kind: 'unlicensed', role: 'color-fixture' }
+  }
   if (lower.includes('/fidelity/') || lower.startsWith('fidelity/') || base === 'figma-blur-verify.html') return { kind: 'excluded', role: 'excluded-asset' }
   if (/-verify\.html$/i.test(base)) return { kind: 'unlicensed', role: 'verification-page' }
   if (lower.endsWith('.wasm')) return { kind: 'wasm', role: 'wasm' }
@@ -352,6 +356,95 @@ function readJson(file) {
   } catch {
     return null
   }
+}
+
+export function assessColorFixtures(files, { provenanceSha256 = null } = {}) {
+  const images = files.filter(file => file.path.includes('color-fixtures/') && file.path.toLowerCase().endsWith('.png'))
+  const provenanceFile = files.find(file => file.path.includes('color-fixtures/') && path.posix.basename(file.path) === 'PROVENANCE.json') ?? null
+  const byHash = new Map()
+  for (const file of files) {
+    if (!file.sha256) continue
+    const list = byHash.get(file.sha256) ?? []
+    list.push(file)
+    byHash.set(file.sha256, list)
+  }
+  const blank = (image, gap) => ({
+    id: image?.path ?? 'color-fixtures',
+    packagePath: image?.path ?? null,
+    name: image ? path.posix.basename(image.path) : null,
+    sha256: image?.sha256 ?? null,
+    bytes: image?.bytes ?? null,
+    license: null,
+    source: null,
+    notices: [],
+    distribution: 'in_release_package',
+    traceable: false,
+    gap,
+  })
+  if (!provenanceFile) return images.map(image => blank(image, 'no_provenance_record'))
+  if (provenanceSha256 && provenanceFile.sha256 !== provenanceSha256) {
+    return images.map(image => blank(image, 'provenance_differs_from_repo'))
+  }
+  const record = readJson(provenanceFile)
+  if (!record || !Array.isArray(record.files) || !record.notices || typeof record.notices !== 'object') {
+    return images.map(image => blank(image, 'provenance_unreadable'))
+  }
+  const results = []
+  const seen = new Set()
+  for (const image of images) {
+    const name = path.posix.basename(image.path)
+    seen.add(name)
+    const entry = record.files.find(item => item?.name === name)
+    if (!entry) {
+      results.push(blank(image, 'no_provenance_record'))
+      continue
+    }
+    if (entry.sha256 !== image.sha256) {
+      results.push({ ...blank(image, 'provenance_hash_mismatch'), license: entry.license ?? null, source: record.generator ?? null })
+      continue
+    }
+    const noticeIds = Array.isArray(entry.notices) ? entry.notices : []
+    const notices = []
+    let missing = false
+    for (const id of noticeIds) {
+      const spec = record.notices[id]
+      const hits = spec?.sha256
+        ? (byHash.get(spec.sha256) ?? []).filter(file => file !== image && file !== provenanceFile)
+        : []
+      if (!spec || !hits.length) {
+        missing = true
+        continue
+      }
+      notices.push({
+        id,
+        license: spec.license ?? null,
+        repoPath: spec.repoPath ?? null,
+        packagePath: hits[0].path,
+        sha256: hits[0].sha256,
+        bytes: hits[0].bytes ?? null,
+      })
+    }
+    results.push({
+      id: image.path,
+      packagePath: image.path,
+      name,
+      sha256: image.sha256,
+      bytes: image.bytes ?? null,
+      license: entry.license ?? null,
+      source: record.generator ?? null,
+      icc: entry.icc ?? null,
+      notices,
+      provenance: { packagePath: provenanceFile.path, sha256: provenanceFile.sha256 },
+      distribution: 'in_release_package',
+      traceable: noticeIds.length > 0 && !missing && notices.length === noticeIds.length,
+      gap: noticeIds.length > 0 && !missing ? null : 'license_text_missing',
+    })
+  }
+  for (const entry of record.files) {
+    if (!entry?.name || seen.has(entry.name)) continue
+    results.push(blank({ path: `color-fixtures/${entry.name}`, sha256: null, bytes: null }, 'fixture_missing'))
+  }
+  return results
 }
 
 function inventoryVendor(files) {
@@ -652,6 +745,10 @@ export function inventoryFromPackageBytes({
     gap: projectLicense ? null : 'project_license_not_in_package',
   }))
   const vendor = inventoryVendor(content)
+  const provenanceRecord = path.join(root, 'frontend/design-client/public/color-fixtures/PROVENANCE.json')
+  const colorFixtures = assessColorFixtures(content, {
+    provenanceSha256: isFile(provenanceRecord) ? hashReadonlyFile(provenanceRecord).sha256 : null,
+  })
   const unclassified = content.filter(file => file.kind === 'unclassified' || file.kind === 'unlicensed' || file.kind === 'excluded')
   const byKind = {}
   for (const file of content) byKind[file.kind] = (byKind[file.kind] ?? 0) + 1
@@ -669,6 +766,7 @@ export function inventoryFromPackageBytes({
   }
   for (const item of fonts) addGap('font', item.packagePath, item.gap)
   for (const item of icons) addGap('icon', item.packagePath, item.gap)
+  for (const item of colorFixtures) addGap('color-fixture', item.packagePath ?? item.id, item.gap)
   if (!vendor.traceable) addGap('vendor', 'ffmpeg', vendor.gap)
   for (const file of unclassified) addGap(file.kind, file.path, file.kind === 'unclassified' ? 'unclassified_package_file' : file.role)
   for (const item of leaked) addGap('development', item.package, 'development_dependency_in_package')
@@ -737,6 +835,7 @@ export function inventoryFromPackageBytes({
     })),
     ...fonts.map(item => ({ kind: 'font', name: path.posix.basename(item.packagePath), ...item })),
     ...icons.map(item => ({ kind: 'icon', name: path.posix.basename(item.packagePath), ...item })),
+    ...colorFixtures.map(item => ({ kind: 'color-fixture', ...item })),
   ]
   if (vendor.present) {
     components.push({
@@ -798,6 +897,7 @@ export function inventoryFromPackageBytes({
     vendor: { ffmpeg: vendor },
     fonts,
     icons,
+    colorFixtures,
     referenceNotices,
     components,
     notDistribution: {
@@ -838,6 +938,8 @@ export function inventoryFromPackageBytes({
       fontsTraceable: fonts.filter(item => item.traceable).length,
       icons: icons.length,
       iconsTraceable: icons.filter(item => item.traceable).length,
+      colorFixtures: colorFixtures.length,
+      colorFixturesTraceable: colorFixtures.filter(item => item.traceable).length,
       vendorFfmpeg: vendor.traceable ? 'traceable' : (vendor.present ? 'gap' : 'absent'),
       unclassified: unclassified.length,
       gaps: gaps.length,
