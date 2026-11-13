@@ -640,7 +640,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     moveFrame.current = null; queuedMove.current = null; queuedInputAt.current = 0
   }
   useEffect(() => editor.subscribe(() => {
-    if (!editor.interactionActive) editor.setLiveRotation(null)
+    if (!editor.interactionActive) {
+      editor.setLiveRotation(null)
+      editor.setLiveBlur(null)
+    }
   }), [editor])
   useLayoutEffect(() => {
     const previous = drag.current
@@ -2224,7 +2227,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           const [x, y] = effect.zoomBlur.center
           effect.zoomBlur.center = [bound(x + dx / d.node.width, 1e6), bound(y + dy / d.node.height, 1e6)]
         } else return
-        editor.preview({ [d.node.id]: { effects } })
+        if (editor.preview({ [d.node.id]: { effects } })) {
+          const live = editor.state.doc.nodes[d.node.id]?.effects[d.handle]
+          editor.setLiveBlur(live ? {
+            session: d.session, page: d.page, documentId: editor.state.doc.id, nodeId: d.node.id, effectId: live.id,
+            gradient: live.gradientBlur && {
+              start: [live.gradientBlur.start[0], live.gradientBlur.start[1]],
+              end: [live.gradientBlur.end[0], live.gradientBlur.end[1]],
+            },
+            zoomCenter: live.zoomBlur && [live.zoomBlur.center[0], live.zoomBlur.center[1]],
+          } : null)
+        }
         return
       }
       if ((d.parameter === 'gradientAngle' || d.parameter === 'gradientStop') && d.materialFill !== undefined) {

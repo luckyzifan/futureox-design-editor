@@ -413,6 +413,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
     ids = s.selection,
     n = s.doc.nodes[ids[0]]
   const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation) as LiveRotation | null
+  const liveBlur = useSyncExternalStore(editor.subscribeLiveBlur, () => editor.liveBlur)
   const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
   if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
@@ -457,6 +458,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
       </aside>
     )
   const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
+  const blurReadout = liveBlur && editor.interactionActive
+    && liveBlur.session === editor.sessionGeneration && liveBlur.page === s.page
+    && liveBlur.documentId === s.doc.id && liveBlur.nodeId === n.id
+    ? liveBlur : undefined
   const authoredFills = editor.authoredDocument.nodes[n.id]?.fills ?? n.fills
   const visibleFills = authoredFills.filter(paint => paint.visible && paint.opacity > 0)
   const opaqueFill = visibleFills.length === 1 && visibleFills[0].kind === 'solid'
@@ -1033,7 +1038,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
               </div>}
               {fx.zoomBlur && <div className="field-grid effect-fields">
                 <NumberField label={tr('缩放模糊强度')} historyLabel="缩放模糊强度" unit="number" diagnosticFamily={2} min={0} max={1000} value={fx.zoomBlur.amount} onChange={v=>update(n=>{n.effects[i].zoomBlur!.amount=v})}/>
-                {([0,1] as const).map(axis=><NumberField key={axis} label={tr(axis===0?'焦点 X %':'焦点 Y %')} historyLabel="缩放模糊焦点" unit="number" diagnosticFamily={2} min={-1e8} max={1e8} value={fx.zoomBlur!.center[axis]*100} onChange={v=>update(n=>{n.effects[i].zoomBlur!.center[axis]=v/100})}/>)}
+                {([0,1] as const).map(axis=><NumberField key={axis} label={tr(axis===0?'焦点 X %':'焦点 Y %')} historyLabel="缩放模糊焦点" unit="number" diagnosticFamily={2} min={-1e8} max={1e8} value={(blurReadout?.effectId === fx.id && blurReadout.zoomCenter ? blurReadout.zoomCenter : fx.zoomBlur!.center)[axis]*100} onChange={v=>update(n=>{n.effects[i].zoomBlur!.center[axis]=v/100})}/>)}
               </div>}
               {fx.kind === 'motion-blur' && <NumberField label={tr('方向 °')} historyLabel="运动模糊方向" unit="number" diagnosticFamily={2} min={-1e7} max={1e7} value={fx.motionAngle??0} onChange={v=>update(n=>{n.effects[i].motionAngle=v})}/>}
               {(fx.kind === 'blur' || fx.kind === 'background-blur') && <>
@@ -1044,7 +1049,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                   else delete effect.gradientBlur
                 })}/>{tr("渐变模糊")}</label>
                 {fx.gradientBlur && <div className="field-grid effect-fields">
-                  {(['start','end'] as const).flatMap(anchor=>([0,1] as const).map(axis=><UnitNumberField historyLabel={`${anchor==='start'?'起点':'终点'} ${axis?'Y':'X'}`} unit="number" diagnosticFamily={2} key={`${anchor}:${axis}`} unitScale={axis?units.y:units.x} label={`${tr(anchor==='start'?'起点':'终点')} ${axis?'Y':'X'}`} value={fx.gradientBlur![anchor][axis]} onChange={v=>update(n=>{n.effects[i].gradientBlur![anchor][axis]=v})}/>))}
+                  {(['start','end'] as const).flatMap(anchor=>([0,1] as const).map(axis=>{
+                    const gradient = blurReadout?.effectId === fx.id && blurReadout.gradient ? blurReadout.gradient : fx.gradientBlur!
+                    return <UnitNumberField historyLabel={`${anchor==='start'?'起点':'终点'} ${axis?'Y':'X'}`} unit="number" diagnosticFamily={2} key={`${anchor}:${axis}`} unitScale={axis?units.y:units.x} label={`${tr(anchor==='start'?'起点':'终点')} ${axis?'Y':'X'}`} value={gradient[anchor][axis]} onChange={v=>update(n=>{n.effects[i].gradientBlur![anchor][axis]=v})}/>
+                  }))}
                   {(['startCount','endCount'] as const).map(key=><NumberField historyLabel={key==='startCount'?'起点强度':'终点强度'} unit="number" diagnosticFamily={2} key={key} label={tr(key==='startCount'?'起点强度':'终点强度')} min={0} max={64} step={.1} value={fx.gradientBlur![key]} onChange={v=>update(n=>{n.effects[i].gradientBlur![key]=v})}/>)}
                   <label><input aria-label={tr("平滑渐变模糊")} type="checkbox" checked={fx.gradientBlur.smooth} onChange={e=>update(n=>{n.effects[i].gradientBlur!.smooth=e.target.checked})}/>{tr("平滑权重")}</label>
                 </div>}

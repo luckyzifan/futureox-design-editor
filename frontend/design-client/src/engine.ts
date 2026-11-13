@@ -23,6 +23,7 @@ import { expandRepeats, repeatSourceId } from './repeat-transforms'
 import * as ComponentSlots from './component-slots'
 import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
 import { sameLiveRotation, type LiveRotation } from './rotation-field'
+import { sameLiveBlur, type LiveBlur } from './live-blur'
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
@@ -420,6 +421,21 @@ export class Editor {
       try { fn() } catch { /* Angle feedback must not reject the gesture. */ }
     }
   }
+  /** Blur endpoint and zoom-focus readout while a canvas transaction holds the
+   * inspector snapshot. Cleared when that transaction ends. */
+  liveBlur: LiveBlur | null = null
+  private liveBlurListeners = new Set<() => void>()
+  subscribeLiveBlur = (fn: () => void) => {
+    this.liveBlurListeners.add(fn)
+    return () => { this.liveBlurListeners.delete(fn) }
+  }
+  setLiveBlur(next: LiveBlur | null) {
+    if (this.disposed || sameLiveBlur(this.liveBlur, next)) return
+    this.liveBlur = next
+    for (const fn of this.liveBlurListeners) {
+      try { fn() } catch { /* Blur readout must not reject the gesture. */ }
+    }
+  }
   /** Panel-originated camera request: bring these ids into view. The canvas
    * owns the viewport size and applies the minimal pan; canvas clicks never
    * emit this, so selecting on-canvas keeps the camera perfectly still. */
@@ -447,7 +463,7 @@ export class Editor {
     // A canvas preview transaction keeps the last authored Layers/Inspector
     // tree until release, undo, or a selection/page/tool change. Property
     // preview still publishes because the inspector owns that draft.
-    // The clockwise angle readout uses setLiveRotation, not this snapshot.
+    // Angle, blur endpoints, and zoom focus use their live readouts, not this snapshot.
     if (this.transaction && !this.propertyPreview && this.panelState && next.page === this.panelState.page &&
       next.selection === this.panelState.selection && next.tool === this.panelState.tool &&
       next.renamingLayer === this.panelState.renamingLayer &&
