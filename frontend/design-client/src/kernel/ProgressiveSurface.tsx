@@ -31,6 +31,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
+import { zoomInFocusTile } from './zoom-underlay'
 import { captureMostlyOffscreen, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
@@ -1591,7 +1592,25 @@ export function ProgressiveSurfaceImpl(
             return !existing || existing.document !== doc || existing.revision !== contract.revision
           }), bounds).onScreen
           const priorities = new Map<RasterTile, import('./tile-cache').TileFillPriority>()
-          const tile = navigationCost.choose(prioritizeUncoveredTiles(missing, resident.filter(tile => tile.zoom >= native.scale), bounds, priorities), priorities)
+          const ordered = prioritizeUncoveredTiles(missing, resident.filter(tile => tile.zoom >= native.scale), bounds, priorities)
+          // The ordinary tile is 512 device pixels. While the displayed picture
+          // is already past the preview ratio, draw the focus cell inside that
+          // tile first. The parent key stays missing, so the rest of it still
+          // runs after this cell. Settled repair does not use this key.
+          const anchor = { x: (width / 2 - target.x) / target.zoom, y: (height / 2 - target.y) / target.zoom }
+          const host = detailInsteadOfPreview && !zoomOutCoverage ? ordered.find(tile => {
+            const gutter = tile.gutter ?? 1
+            const x = (tile.x + gutter - (tile.phaseX ?? 0)) / tile.zoom
+            const y = (tile.y + gutter - (tile.phaseY ?? 0)) / tile.zoom
+            const w = (tile.width - 2 * gutter) / tile.zoom
+            const h = (tile.height - 2 * gutter) / tile.zoom
+            return anchor.x >= x && anchor.y >= y && anchor.x < x + w && anchor.y < y + h
+          }) : undefined
+          const focusTile = host ? zoomInFocusTile(host, anchor) : undefined
+          if (focusTile && !tileRef.current.has(focusTile.key)) priorities.set(focusTile, 0)
+          const tile = focusTile && priorities.has(focusTile)
+            ? focusTile
+            : navigationCost.choose(ordered, priorities)
           if (!tile) return
           // Keep existing finite halo/preparation and GPU/cache admission. One
           // tile can still be expensive; this never promises a GPU time bound.

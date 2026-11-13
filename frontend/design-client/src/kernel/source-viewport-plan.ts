@@ -10,7 +10,7 @@ import type {RasterTile} from './tile-cache'
 import type {Rect} from './gpu/types'
 import {tileIntersectsView} from './tile-preview'
 import {continuousZoomInScale} from './continuous-zoom-scale'
-import {zoomUnderlayImproves} from './zoom-underlay'
+import {zoomInFocusAhead,zoomUnderlayImproves} from './zoom-underlay'
 import type {ResidentAcknowledgement} from './resident-presentation'
 
 export const SOURCE_PREFETCH_BUDGET={tiles:8,bytes:8*514*514*4} as const
@@ -46,7 +46,14 @@ export function improvesSourceZoom(previous:ResidentAcknowledgement|undefined, n
   const entries=[...tiles],prior=new Set(previous.ids),shown=new Set(next.ids)
   const former=(previousTiles?[...previousTiles]:entries).filter(t=>t.gpuTile!==undefined&&prior.has(t.gpuTile))
   const current=entries.filter(t=>t.gpuTile!==undefined&&shown.has(t.gpuTile))
-  if(next.zoomUnderlay)return zoomUnderlayImproves(previous,current,target.view,target,former)
+  if(next.zoomUnderlay){
+    if(zoomUnderlayImproves(previous,current,target.view,target,former))return true
+    // The same ready tiles at a closer camera. Publishing again samples those
+    // textures and the held picture once. Leaving the previous bitmap for CSS
+    // stretches the sharp region as well as the hold.
+    return next.view.zoom>previous.view.zoom && current.length>0 &&
+      current.every(tile=>former.some(old=>old.gpuTile===tile.gpuTile && old.zoom===tile.zoom))
+  }
   if(previous.ids.some(id=>!former.some(t=>t.gpuTile===id)))return false
   const same=(a:typeof entries[number],b:typeof entries[number])=>a.gpuTile===b.gpuTile&&a.key===b.key
   if(former.some(t=>!current.some(c=>same(c,t))&&sourceTileBringsDetail(t,target.view,target,current)))return false
@@ -316,6 +323,18 @@ export class SourceViewportPlanner {
       const hits:typeof viewport=[],rest:typeof viewport=[]
       for(const tile of viewport)(tileIntersectsView(tile,clipped,window)?hits:rest).push(tile)
       if(hits.length&&rest.length)viewport=[...hits,...rest]
+    }
+    if(moving&&continuousZoom&&this.zoomingIn&&!this.coverageRetry){
+      // One 160-pixel cell at the held motion scale, ahead of the ordinary
+      // lattice. The cell key does not follow the live camera, so the raster
+      // survives the next wheel tick. Settled plans do not take this branch.
+      const focus=this.focus(view,width,height)
+      const ahead=zoomInFocusAhead(viewport,
+        bounds.x*raster.scale+raster.phase.x,bounds.y*raster.scale+raster.phase.y,
+        (bounds.x+bounds.width)*raster.scale+raster.phase.x,(bounds.y+bounds.height)*raster.scale+raster.phase.y,
+        focus.x*raster.scale+raster.phase.x,focus.y*raster.scale+raster.phase.y,
+        raster.scale,raster.phase)
+      if(ahead)viewport=[ahead,...viewport]
     }
     const tiles=viewport.map(rekey)
     let rim=addressed.rim.map(rekey)

@@ -13,6 +13,45 @@ pub struct SampledPicture {
     pub world_h: f64,
 }
 
+/// Device side of the first cell drawn during a continuous zoom-in.
+/// The settled lattice stays on its ordinary tile. This cell is only the
+/// region that can leave the stretched picture before that tile finishes.
+pub const ZOOM_IN_FOCUS_CORE: f64 = 160.0;
+
+/// Content box, in device pixels of the motion lattice, of the one focus
+/// cell to raster first. The origin is the stable 160-pixel grid, so a later
+/// wheel tick at the same scale keeps the same cell. The box is not clipped
+/// to the live viewport: clipping would change the key every tick and cancel
+/// the raster. `None` when the focus is outside the viewport.
+pub fn zoom_in_focus_core(
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
+    focus_x: f64,
+    focus_y: f64,
+) -> Option<[f64; 4]> {
+    let core = ZOOM_IN_FOCUS_CORE;
+    if ![left, top, right, bottom, focus_x, focus_y]
+        .iter()
+        .all(|value| value.is_finite())
+    {
+        return None;
+    }
+    if !(right > left && bottom > top && core > 0.0) {
+        return None;
+    }
+    if focus_x < left || focus_y < top || focus_x >= right || focus_y >= bottom {
+        return None;
+    }
+    let x = (focus_x / core).floor() * core;
+    let y = (focus_y / core).floor() * core;
+    if !(x < right && y < bottom && x + core > left && y + core > top) {
+        return None;
+    }
+    Some([x, y, core, core])
+}
+
 /// Normalized UV of `world` inside a picture whose device texture was rendered
 /// with `base_view` at `base_dpr`. Matches the display underlay quad.
 pub fn underlay_uv(

@@ -1,5 +1,5 @@
 use futureox_design_kernel::zoom_in_preview::{
-    compose_zoom_in_preview, underlay_uv, SampledPicture,
+    compose_zoom_in_preview, underlay_uv, zoom_in_focus_core, SampledPicture, ZOOM_IN_FOCUS_CORE,
 };
 use futureox_design_kernel::{Engine, RenderOptions, View};
 use serde_json::json;
@@ -172,4 +172,142 @@ fn a_ready_center_tile_replaces_the_stretched_zoom_in_preview() {
         border_changed, 0,
         "outside the ready tile the original hold stays"
     );
+}
+
+fn timed(engine: &mut Engine, view: View, width: u32, height: u32) -> (Vec<u8>, f64) {
+    let started = Instant::now();
+    let pixels = engine.render(&frame(view, width, height)).expect("raster");
+    let ms = started.elapsed().as_secs_f64() * 1_000.0;
+    (pixels, ms)
+}
+
+fn far_pixels(image: &[u8], direct: &[u8], threshold: u8) -> usize {
+    image
+        .chunks(4)
+        .zip(direct.chunks(4))
+        .filter(|(pixel, oracle)| channel_delta(pixel, oracle) >= threshold)
+        .count()
+}
+
+/// Frozen before the rasters below. Linux CPU, analytic profile, test
+/// (unoptimized) build. Not a Metal frame time and not a 117 file.
+///
+/// The ordinary motion tile is 512 content pixels plus the existing 1px
+/// filter gutter (514). The focus cell is `ZOOM_IN_FOCUS_CORE` plus that
+/// same gutter (162). The focus picture has to be ready in less than half
+/// the ordinary tile's wall time. At that earlier time the ordinary-tile
+/// policy is still the stretched zoom-1 picture: at least 64 viewport
+/// pixels differ from the direct zoom-4 frame by channel delta >= 40.
+/// The focus composite matches that direct frame (channel delta <= 1).
+/// A second inward camera that already holds the focus cell does not raster
+/// again. The settled frame stays the 64² native viewport, not the cell.
+const FOCUS_READY_FRACTION: f64 = 0.5;
+const STRETCH_DELTA: u8 = 40;
+const MIN_STRETCH_PIXELS: usize = 64;
+
+#[test]
+fn continuous_zoom_focus_leaves_the_stretched_preview_before_the_ordinary_tile() {
+    assert_eq!(ZOOM_IN_FOCUS_CORE, 160.0);
+    assert_eq!(
+        zoom_in_focus_core(0.0, 0.0, 800.0, 600.0, 400.0, 300.0),
+        Some([320.0, 160.0, 160.0, 160.0])
+    );
+    assert_eq!(
+        zoom_in_focus_core(0.0, 0.0, 800.0, 600.0, -1.0, 10.0),
+        None
+    );
+
+    let mut engine = Engine::new();
+    engine.load_document(&bars()).expect("bars");
+    // Warm the analytic path. This frame is not a sample.
+    let _ = timed(
+        &mut engine,
+        View {
+            x: 0.0,
+            y: 0.0,
+            zoom: 1.0,
+        },
+        16,
+        16,
+    );
+
+    let zoom4 = View {
+        x: 0.0,
+        y: 0.0,
+        zoom: 4.0,
+    };
+    let (ordinary_a, ordinary_a_ms) = timed(&mut engine, zoom4, 514, 514);
+    let (focus_a, focus_a_ms) = timed(&mut engine, zoom4, 162, 162);
+    let (_ordinary_b, ordinary_b_ms) = timed(&mut engine, zoom4, 514, 514);
+    let (_focus_b, focus_b_ms) = timed(&mut engine, zoom4, 162, 162);
+    let ordinary_ms = ordinary_a_ms.min(ordinary_b_ms);
+    let focus_ms = focus_a_ms.max(focus_b_ms);
+    assert_eq!(ordinary_a.len(), 514 * 514 * 4);
+    assert_eq!(focus_a.len(), 162 * 162 * 4);
+
+    let (base, _) = timed(
+        &mut engine,
+        View {
+            x: 0.0,
+            y: 0.0,
+            zoom: 1.0,
+        },
+        64,
+        64,
+    );
+    let (direct, _) = timed(
+        &mut engine,
+        View {
+            x: -96.0,
+            y: -96.0,
+            zoom: 4.0,
+        },
+        64,
+        64,
+    );
+    let base_picture = picture(0.0, 0.0, 64.0, 64.0);
+    let target = picture(24.0, 24.0, 16.0, 16.0);
+    // 162 device pixels at zoom 4. The gutter is inside this image; the
+    // world span is the picture the compositor samples.
+    let focus_picture = picture(0.0, 0.0, 162.0 / 4.0, 162.0 / 4.0);
+    let stretch = compose_zoom_in_preview(&base_picture, &base, 64, 64, &[], &target, 64, 64)
+        .expect("stretched hold");
+    let sharp = compose_zoom_in_preview(
+        &base_picture,
+        &base,
+        64,
+        64,
+        &[(&focus_picture, focus_a.as_slice(), 162, 162)],
+        &target,
+        64,
+        64,
+    )
+    .expect("focus cell over hold");
+    let stretch_far = far_pixels(&stretch, &direct, STRETCH_DELTA);
+    let sharp_far = far_pixels(&sharp, &direct, 2);
+    // t = 0: both policies show the stretch. t = focus_ms: the focus policy
+    // composites the resident cell and the ordinary policy is still waiting.
+    // The return trip starts at that same instant with the cell already
+    // resident, so its extra raster is 0. The ordinary policy starts the
+    // 514 tile over.
+    eprintln!(
+        "zoom-in focus duration cpu analytic: ordinary 514px {ordinary_a_ms:.3}/{ordinary_b_ms:.3} ms (used {ordinary_ms:.3}), focus 162px {focus_a_ms:.3}/{focus_b_ms:.3} ms (used {focus_ms:.3}), stretch pixels delta>={STRETCH_DELTA} {stretch_far}/4096, focus composite pixels delta>1 {sharp_far}/4096, cold blur ordinary {ordinary_ms:.3} ms focus {focus_ms:.3} ms, return extra raster ordinary {ordinary_ms:.3} ms focus 0 ms"
+    );
+    assert!(
+        focus_ms * (1.0 / FOCUS_READY_FRACTION) < ordinary_ms,
+        "focus cell {focus_ms:.3} ms is not under half of the ordinary tile {ordinary_ms:.3} ms"
+    );
+    assert!(
+        stretch_far >= MIN_STRETCH_PIXELS,
+        "the zoom-1 picture stretched to this camera is not the blurred hold ({stretch_far})"
+    );
+    assert_eq!(
+        sharp_far, 0,
+        "the focus cell must match the zoom-4 viewport, not the stretched hold"
+    );
+    assert!(
+        focus_ms < ordinary_ms,
+        "at t={focus_ms:.3} ms the ordinary tile is still the stretched picture"
+    );
+    assert_eq!(direct.len(), 64 * 64 * 4, "settled native viewport stays 64px");
 }
