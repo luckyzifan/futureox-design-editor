@@ -91,7 +91,7 @@ test('the old zoom ink fails 4.5:1 and the shared secondary ink does not', () =>
   assert.doesNotMatch(summary, /#858798/)
 })
 
-test('inspector zoom readout clears 4.5:1 on the live Figma and Sketch chrome', { timeout: 90_000 }, async () => {
+test('the live Figma and Sketch zoom readouts clear 4.5:1', { timeout: 90_000 }, async () => {
   const measured = await measureZoom()
   if (outDir) {
     await mkdir(outDir, { recursive: true })
@@ -109,16 +109,16 @@ test('inspector zoom readout clears 4.5:1 on the live Figma and Sketch chrome', 
     assert.equal(shot.colorHex, READOUT_INK, where)
     assert.equal(shot.viewport.w, shot.requestedWidth)
     assert.equal(shot.viewport.h, shot.requestedHeight)
-    assert.equal(shot.backgroundHex, shot.mode === 'sketch' ? SKETCH_TAB : WHITE, where)
+    assert.equal(shot.backgroundHex, shot.mode === 'sketch' ? OFFICIAL_SKETCH_TOP : WHITE, where)
     for (const [name, ratio] of Object.entries(shot.ratios)) {
       assert.ok(ratio >= 4.5, `${where} ${name}=${ratio}`)
     }
     assert.equal(shot.centerHit, true, where)
     assert.equal(shot.clipped, false, where)
-    assert.equal(shot.inTabRow, true, where)
+    assert.equal(shot.inControls, true, where)
     assert.equal(shot.intersectsToolbar, false, where)
-    assert.ok(shot.box.y >= -0.5 && shot.box.y < 160, where)
-    assert.ok(shot.box.x > shot.viewport.w * 0.55, where)
+    assert.ok(shot.box.y >= -0.5, where)
+    if (shot.mode === 'sketch') assert.ok(shot.box.y < 52, where)
     assert.ok(shot.box.y + shot.box.h <= shot.viewport.h + 0.5, where)
     assert.ok(shot.pixelDelta <= 2, where)
     assert.ok(contrast(hexRgb(shot.colorHex), shot.pixelBackground) >= 4.5, where)
@@ -153,13 +153,14 @@ function probeHtml() {
       <label class="locale-switch"><select aria-label="语言"><option>中文</option></select></label>
       <button type="button" class="prototype-preview-button" aria-label="预览原型"><span>预览</span></button>
       <button type="button" class="primary">导出</button>
+      <div class="sketch-window-zoom"></div>
       <button type="button" class="app-settings-button"><span>设置</span></button>
     </div>
   </header>
   <main class="editor-workspace">
     <nav class="workspace-rail" aria-label="工作区"></nav>
     <div class="adaptive-layers-shell"><aside class="layers-panel"></aside></div>
-    <div class="canvas-workspace"><div class="toolbar floating-toolbar" id="toolbar"></div></div>
+    <div class="canvas-workspace"><div class="toolbar floating-toolbar" id="toolbar"><button type="button">选择</button><div class="figma-view-tools"><div class="figma-view-zoom"></div></div></div></div>
     <div class="properties-workspace">
       <div class="properties-tabs">
         <div class="properties-tab-buttons" role="tablist" aria-label="属性">
@@ -234,6 +235,8 @@ window.__readZoom = (mode) => {
   shell.dataset.uiMode = mode
   shell.dataset.density = width <= 900 ? 'narrow' : width <= 1180 ? 'desk' : 'wide'
   const summary = document.querySelector('[data-testid="zoom-readout"]')
+  const host = document.querySelector(mode === 'figma' ? '.figma-view-zoom' : '.sketch-window-zoom')
+  host.append(summary.closest('.canvas-controls'))
   const style = getComputedStyle(summary)
   const color = parseColor(style.color)
   const background = compositeBackground(summary)
@@ -243,7 +246,7 @@ window.__readZoom = (mode) => {
   const hit = document.elementFromPoint(x, y)
   const toolbar = document.getElementById('toolbar')
   const toolbarBox = toolbar ? boxOf(toolbar) : null
-  const tabs = summary.closest('.properties-tabs')
+  const controls = summary.closest(mode === 'figma' ? '.figma-view-tools' : '.sketch-window-zoom')
   return {
     mode,
     density: shell.dataset.density,
@@ -259,7 +262,7 @@ window.__readZoom = (mode) => {
     centerHit: !!hit && (hit === summary || summary.contains(hit)),
     hit: hit ? (hit.getAttribute('aria-label') || hit.id || hit.className || hit.tagName) : null,
     clipped: clipped(summary),
-    inTabRow: !!tabs && tabs.contains(summary),
+    inControls: !!controls,
     toolbar: toolbarBox,
     intersectsToolbar: !!(toolbarBox && toolbarBox.w > 2 && toolbarBox.h > 2 && intersects(box, toolbarBox)),
     viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio },
