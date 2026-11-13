@@ -65,11 +65,12 @@ export function packAnalyticSolids(items: readonly AnalyticSolid[]) {
   const out = new Float32Array(items.length * ANALYTIC_SOLID_FLOATS)
   items.forEach((item, index) => {
     const at = index * ANALYTIC_SOLID_FLOATS
-    const area = item.program.kind === 'area'
+    const program = item.program
+    const area = program.kind === 'area'
     out.set([
       item.path.x, item.path.y, item.path.w, item.path.h,
-      area ? item.program.first : 0, area ? item.program.count : 0, 0, area ? 0 : 2,
-      ...(item.program.kind === 'rect' ? item.program.edges : [0, 0, 0, 0]),
+      area ? program.first : 0, area ? program.count : 0, 0, area ? 0 : 2,
+      ...(program.kind === 'rect' ? program.edges : [0, 0, 0, 0]),
       item.rgb[0], item.rgb[1], item.rgb[2], item.alpha,
       item.opacity, item.write.x, item.write.y, item.write.w,
       item.write.h, 0, 0, 0,

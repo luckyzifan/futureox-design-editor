@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
@@ -32,8 +33,8 @@ test('acceptance profile must be one real private directory', async () => {
       [`--desktop-acceptance-profile=${profile}`],
       { defaultUserData: userData, home },
     )
-    assert.equal(resolved, profile)
-    assert.equal(resolveAcceptanceProfile([], { env: { FUTUREOX_ACCEPTANCE_PROFILE: profile }, defaultUserData: userData, home }), profile)
+    assert.equal(resolved, realpathSync(profile))
+    assert.equal(resolveAcceptanceProfile([], { env: { FUTUREOX_ACCEPTANCE_PROFILE: profile }, defaultUserData: userData, home }), realpathSync(profile))
     assert.throws(() => acceptanceProfileArgument([`--desktop-acceptance-profile=${profile}`], { FUTUREOX_ACCEPTANCE_PROFILE: profile }), /only one/)
     assert.throws(() => resolveAcceptanceProfile(['--desktop-acceptance-profile=relative'], { defaultUserData: userData, home }), /absolute/)
     assert.throws(() => resolveAcceptanceProfile([`--desktop-acceptance-profile=${userData}`], { defaultUserData: userData, home }), /default user data/)
@@ -44,7 +45,7 @@ test('acceptance profile must be one real private directory', async () => {
     const link = path.join(root, 'link')
     await symlink(profile, link)
     assert.throws(() => resolveAcceptanceProfile([`--desktop-acceptance-profile=${link}`], { defaultUserData: userData, home }), /real directory/)
-    assert.equal(selectDesktopProfile({ acceptanceProfile: profile }).profile, profile)
+    assert.equal(selectDesktopProfile({ acceptanceProfile: profile }).profile, realpathSync(profile))
     assert.throws(() => selectDesktopProfile({ acceptanceProfile: profile, smoke: true }), /cannot be combined/)
     let created = 0
     const temporary = selectDesktopProfile({ guiTest: true, createTemporary: () => { created += 1; return path.join(root, 'temp') } })
