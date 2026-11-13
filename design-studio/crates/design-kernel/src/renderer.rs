@@ -24,9 +24,10 @@ pub(crate) const MAX_CANVAS_SAMPLE_SCALE: f64 = 4096.;
 
 /// Device camera of one analytic tile or frame. Distinct tiles share a
 /// device origin, so the prefix key has to include the world camera.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 struct PrefixView {
-    page: u64,
+    viewport: Rect,
+    extent: Rect,
     x: u64,
     y: u64,
     zoom: u64,
@@ -56,18 +57,9 @@ struct PosePrefix {
     bytes: usize,
 }
 
-fn prefix_page_key(id: &str) -> u64 {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in id.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
-
 const PREFIX_ENTRY_PIXELS: usize = 6_000_000;
 const PREFIX_ENTRY_LIMIT: usize = 8;
-const PREFIX_BYTE_LIMIT: usize = 192 * 1024 * 1024;
+const PREFIX_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 
 fn display_pressure(error: &str) -> bool {
     error == "Compositing memory budget exceeded"
@@ -675,10 +667,14 @@ impl Engine {
     /// does not bump the content revision because layout and caret geometry
     /// keep the shaped fractional grid — hosts opt in per presentation.
     pub fn set_text_quantization(&mut self, on: bool) {
+        if self.fonts.glyph_origin_quantization() != on { self.pose_prefix = None; }
         self.fonts.set_glyph_origin_quantization(on);
     }
     #[cfg(not(target_arch="wasm32"))]
-    pub(crate) fn set_source_bitmaps(&mut self,access:Option<crate::source_bitmap_pixels::Access>){self.images.source=access;}
+    pub(crate) fn set_source_bitmaps(&mut self, access: Option<crate::source_bitmap_pixels::Access>) {
+        self.pose_prefix = None;
+        self.images.source = access;
+    }
     pub fn image_data(&mut self, uri: &str) -> Result<Arc<Surface>, String> {
         self.images.image(uri)
     }
@@ -686,6 +682,7 @@ impl Engine {
         self.images.image_at(uri, level)
     }
     pub fn set_image_mips(&mut self, mips: bool) {
+        if self.image_mips() != mips { self.pose_prefix = None; }
         self.images.set_mip_enabled(mips);
     }
     pub fn image_mips(&self) -> bool {
@@ -711,7 +708,7 @@ impl Engine {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn release_source_compile_caches(&mut self){
         self.camera_prepare=None;self.world_support=None;self.camera_residency.clear();self.paths.clear();
-        self.local_strokes=Default::default();self.page_support=None;
+        self.local_strokes=Default::default();self.page_support=None;self.pose_prefix=None;
     }
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn authored_document(&self)->Option<&Document>{self.source_doc.as_deref()}
@@ -1204,14 +1201,14 @@ impl Engine {
         if node.mask || node.boolean_operation.is_some() || node.repeat.is_some() || node.instance.is_some() {
             return None;
         }
-        let parent = doc.nodes.iter().find_map(|(id, candidate)| {
-            candidate.children.iter().any(|child| child == edited).then_some(id.clone())
-        })?;
+        let parent = index.parents.ancestors(edited).next()?.to_owned();
         if index.sketch_mask_owners.contains(&parent) || self.source_doc.as_ref()?.nodes.get(&parent).is_none() {
             return None;
         }
         let parent_node = doc.nodes.get(&parent)?;
         if parent_node.mask
+            || parent_node.passes_backdrop()
+            || parent_node.backdrop_effect().is_some()
             || parent_node.boolean_operation.is_some()
             || parent_node.repeat.is_some()
             || parent_node.instance.is_some()
@@ -1269,6 +1266,7 @@ impl Engine {
         };
         let rects: Vec<_> = patch.nodes.iter().flat_map(|(id, next)|
             [rect(&source.nodes[id]), rect(next.as_ref().unwrap())]).collect();
+        self.pose_prefix = None;
         self.retained_source_size = None;
         for (id, next) in &patch.nodes {
             let transform = next.as_ref().unwrap().transform;
@@ -1926,17 +1924,25 @@ impl Engine {
         extra_halo: i32,
         budget: Budget,
     ) -> Result<Vec<Surface>, String> {
-        self.render_surfaces_budget_plan(options, synchronized, viewport, ExportPadding::Extra(extra_halo), budget, None)
+        self.render_surfaces_budget_plan(options, synchronized, viewport, ExportPadding::Extra(extra_halo), budget, None, false)
     }
     fn render_surfaces_budget_plan(
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
-        padding: ExportPadding, budget: Budget, plan: Option<&mut CpuFramePlan>,
+        padding: ExportPadding, budget: Budget, plan: Option<&mut CpuFramePlan>, use_pose_prefix: bool,
     ) -> Result<Vec<Surface>, String> {
         // The ledger clone shares the budget's usage Arc, so pressure events
         // stay observable even when the render below fails and returns early.
         let ledger_budget = budget.clone();
-        let result =
-            self.render_surfaces_planned(options, synchronized, viewport, padding, budget, true, plan);
+        // Account for pixels that predate this frame alongside its allocations.
+        let _resident = if use_pose_prefix {
+            let bytes = self.pose_prefix.as_ref().map_or(0, |prefix| prefix.bytes);
+            Some(budget.reserve(bytes, 1, false)?)
+        } else {
+            None
+        };
+        let result = self.render_surfaces_planned(
+            options, synchronized, viewport, padding, budget, true, plan, use_pose_prefix,
+        );
         let ledger_usage = ledger_budget.usage();
         self.scene_peak_bytes = self.scene_peak_bytes.max(ledger_usage.peak_bytes);
         self.budget_rejections += ledger_usage.rejections;
@@ -1953,11 +1959,11 @@ impl Engine {
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
         extra_halo: i32, budget: Budget, regional: bool,
     ) -> Result<Vec<Surface>, String> {
-        self.render_surfaces_planned(options, synchronized, viewport, ExportPadding::Extra(extra_halo), budget, regional, None)
+        self.render_surfaces_planned(options, synchronized, viewport, ExportPadding::Extra(extra_halo), budget, regional, None, false)
     }
     fn render_surfaces_planned(
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
-        padding: ExportPadding, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>,
+        padding: ExportPadding, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>, use_pose_prefix: bool,
     ) -> Result<Vec<Surface>, String> {
         let (extra_halo, required) = match padding {
             ExportPadding::Extra(value) => (value, None),
@@ -2190,7 +2196,8 @@ impl Engine {
             }
         }
         let prefix_view = PrefixView {
-            page: prefix_page_key(&options.page_id),
+            viewport,
+            extent,
             x: options.view.x.to_bits(),
             y: options.view.y.to_bits(),
             zoom: options.view.zoom.to_bits(),
@@ -2221,8 +2228,9 @@ impl Engine {
             compact_export_groups: required.is_some(),
             sample: None,
             raster_workspace: RasterWorkspace::default(),
-            pose_prefix: &mut self.pose_prefix,
+            pose_prefix: self.pose_prefix.as_mut().filter(|_| use_pose_prefix && !self.display_degrade && !synchronized),
             prefix_view,
+            prefix_allocations: Vec::new(),
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
@@ -2495,7 +2503,7 @@ impl Engine {
                 options,
             );
         let surfaces = self.render_surfaces_budget_plan(&source, coherent, viewport, ExportPadding::Extra(extra * density as i32),
-            Budget::new(COMPOSITING_BYTES), plan)?;
+            Budget::new(COMPOSITING_BYTES), plan, false)?;
         let mut pixels = Vec::with_capacity((w * h) as usize);
         for ty in y..y + h {
             for tx in x..x + w {
@@ -2596,7 +2604,27 @@ impl Engine {
         if options.raster_profile == crate::fidelity::RasterProfile::Analytic {
             let tile = Rect::new(x as i32, y as i32, w, h);
             let padding = crate::export::tile_backdrop_padding(self, options, tile)?;
-            self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(padding))
+            let mut cropped = options.clone();
+            cropped.width = w;
+            cropped.height = h;
+            let reuse = self.pose_prefix.is_some() && options.animation.is_none();
+            let mut result = self.render_surfaces_budget_plan(
+                &cropped, coherent, tile, ExportPadding::Extra(padding), Budget::new(COMPOSITING_BYTES), None, reuse,
+            );
+            if reuse && result.as_ref().is_err_and(|error| display_pressure(error)) {
+                self.pose_prefix = None;
+                result = self.render_surfaces_budget_plan(
+                    &cropped, coherent, tile, ExportPadding::Extra(padding), Budget::new(COMPOSITING_BYTES), None, false,
+                );
+            }
+            let planes: Vec<_> = result?.iter().map(|surface| surface.rgba8(tile)).collect();
+            if coherent {
+                Ok(crate::fidelity::resolve_sample_planes([
+                    &planes[0], &planes[1], &planes[2], &planes[3],
+                ]))
+            } else {
+                Ok(planes.into_iter().next().expect("one render plane"))
+            }
         } else {
             self.export_tile(options, coherent, x, y, w, h)
         }
@@ -2658,7 +2686,7 @@ impl Engine {
             cropped.width = w;
             cropped.height = h;
             let planes: Vec<_> = self.render_surfaces_budget_plan(&cropped, coherent, tile, padding,
-                Budget::new(COMPOSITING_BYTES), None)?.iter().map(|surface| surface.rgba8(tile)).collect();
+                Budget::new(COMPOSITING_BYTES), None, false)?.iter().map(|surface| surface.rgba8(tile)).collect();
             if coherent {
                 Ok(crate::fidelity::resolve_sample_planes([
                     &planes[0], &planes[1], &planes[2], &planes[3],
@@ -3115,8 +3143,9 @@ struct Painter<'a> {
     compact_export_groups: bool,
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
-    pose_prefix: &'a mut Option<PosePrefix>,
+    pose_prefix: Option<&'a mut PosePrefix>,
     prefix_view: PrefixView,
+    prefix_allocations: Vec<Allocation>,
 }
 
 enum TextureBundle {
@@ -4551,8 +4580,13 @@ impl Painter<'_> {
         if prefix.entries.len() >= PREFIX_ENTRY_LIMIT || prefix.bytes.saturating_add(add) > PREFIX_BYTE_LIMIT {
             return;
         }
+        let Ok(allocation) = self.budget.reserve(pixels, std::mem::size_of::<Pixel>(), false) else { return };
+        let mut copy = Vec::new();
+        if copy.try_reserve_exact(pixels).is_err() { return; }
+        copy.extend_from_slice(&layer.pixels);
         prefix.bytes += add;
-        prefix.entries.push(PrefixEntry { view, rect: layer.rect, pixels: layer.pixels.clone() });
+        prefix.entries.push(PrefixEntry { view, rect: layer.rect, pixels: copy });
+        self.prefix_allocations.push(allocation);
     }
     fn paint_cached_list(
         &mut self, parent: &str, children: &[String], layer: &mut Surface, clip: Option<&Mask>, geometric: bool,
@@ -4580,36 +4614,6 @@ impl Painter<'_> {
         }
         for child in children {
             self.node_with_outline(child, layer, clip, geometric)?;
-        }
-        Ok(())
-    }
-    fn paint_cached_regions(
-        &mut self, parent: &str, children: &[String], outputs: &[Rect], layer: &mut Surface,
-        clip: Option<&Mask>, basis: Rect, geometric: bool,
-    ) -> Result<(), String> {
-        if geometric || self.display_degrade || outputs.len() != children.len() {
-            for (child, region) in children.iter().zip(outputs) {
-                self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
-            }
-            return Ok(());
-        }
-        if let Some(index) = self.prefix_index(parent, children) {
-            if self.restore_prefix(layer) {
-                for (child, region) in children.iter().zip(outputs).skip(index) {
-                    self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
-                }
-                return Ok(());
-            }
-            for (ordinal, (child, region)) in children.iter().zip(outputs).enumerate() {
-                if ordinal == index {
-                    self.store_prefix(layer);
-                }
-                self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
-            }
-            return Ok(());
-        }
-        for (child, region) in children.iter().zip(outputs) {
-            self.node_region(child, layer, clip, Some(*region), basis, geometric)?;
         }
         Ok(())
     }
@@ -4845,19 +4849,9 @@ impl Painter<'_> {
                     layer.quantize_rgba8();
                 }
             }
-        } else if self.pose_prefix.is_some() {
-            // Only a rigid pose pays for the owned child list. Every other
-            // frame keeps the original walk, including the first full paint.
-            if bounded {
-                let parent = n.id.clone();
-                let children: Vec<String> = n.render_children().to_vec();
-                let (_, outputs) = self.regional_children(&children, basis.intersect(output.unwrap()))?;
-                self.paint_cached_regions(&parent, &children, &outputs, &mut layer, child_mask, basis, geometric)?;
-            } else {
-                let parent = n.id.clone();
-                let children = n.render_children().to_vec();
-                self.paint_cached_list(&parent, &children, &mut layer, child_mask, geometric)?;
-            }
+        } else if !bounded && self.prefix_index(id, n.render_children()).is_some() {
+            let children = n.render_children().to_vec();
+            self.paint_cached_list(id, &children, &mut layer, child_mask, geometric)?;
         } else if bounded {
             let children: Vec<String> = n.render_children().to_vec();
             let (_, outputs) = self.regional_children(&children, basis.intersect(output.unwrap()))?;

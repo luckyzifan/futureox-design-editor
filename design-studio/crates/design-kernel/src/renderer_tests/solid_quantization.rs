@@ -75,9 +75,11 @@ impl Fixture {
             compact_export_groups: false,
             sample,
             raster_workspace: RasterWorkspace::default(),
-            pose_prefix: &mut self.pose_prefix,
+            pose_prefix: None,
+            prefix_allocations: Vec::new(),
             prefix_view: PrefixView {
-                page: 0,
+                viewport: extent,
+                extent,
                 x: 0,
                 y: 0,
                 zoom: 1f64.to_bits(),
