@@ -630,13 +630,14 @@ impl Path {
         self.flatten_impl(m, tolerance, None, false)
     }
     /// Smooth-arc chord replacements outside `guard` preserve fill winding in
-    /// the guard. Callers must include every effect's sampling halo. This output
-    /// is unsuitable for stroke expansion, editing, or geometry export.
+    /// the guard. Callers must include every effect's sampling halo. Only the
+    /// Figma raster profiles use the fitted silhouette coverage residual.
     pub(crate) fn flatten_for_fill(
         &self,
         m: Transform,
         tolerance: f64,
         guard: crate::math::Rect,
+        coverage_bias: bool,
     ) -> Result<Vec<Contour>, String> {
         self.flatten_impl(
             m,
@@ -645,7 +646,7 @@ impl Path {
                 min: Point::new(f64::from(guard.x), f64::from(guard.y)),
                 max: Point::new(f64::from(guard.right()), f64::from(guard.bottom())),
             }),
-            true,
+            coverage_bias,
         )
     }
     /// Preserve full-polyline winding at `point` and boundary proximity within
@@ -666,7 +667,7 @@ impl Path {
                 min: point - radius,
                 max: point + radius,
             }),
-            true,
+            false,
         )
     }
     fn flatten_impl(
@@ -1048,7 +1049,7 @@ mod smooth_fill_tests {
                 Rect::new(-64, -64, 128, 128),
                 Rect::new(47, -21, 64, 64),
             ] {
-                let clipped = path.flatten_for_fill(m, 1. / 64., guard).unwrap();
+                let clipped = path.flatten_for_fill(m, 1. / 64., guard, false).unwrap();
                 for evenodd in [true, false] {
                     let expected = rasterize(&full, guard, evenodd);
                     let actual = rasterize(&clipped, guard, evenodd);
@@ -1068,7 +1069,7 @@ mod smooth_fill_tests {
         let path = Path::superellipse_rectangle(4000., 4000., [2000.; 4], 1.);
         let m = Transform([32., 0., 0., 32., -119400.25, -7900.375]);
         let before = path.flatten(m, 1. / 64.).unwrap();
-        path.flatten_for_fill(m, 1. / 64., Rect::new(0, 0, 64, 64))
+        path.flatten_for_fill(m, 1. / 64., Rect::new(0, 0, 64, 64), false)
             .unwrap();
         let after = path.flatten(m, 1. / 64.).unwrap();
         assert_eq!(before[0].points, after[0].points);
@@ -1136,7 +1137,7 @@ mod smooth_fill_tests {
             ]);
             let guard = Rect::new(0, 0, 64, 64);
             let full = path.flatten(m, 1. / 64.).unwrap();
-            let clipped = path.flatten_for_fill(m, 1. / 64., guard).unwrap();
+            let clipped = path.flatten_for_fill(m, 1. / 64., guard, false).unwrap();
             for evenodd in [true, false] {
                 assert_eq!(
                     rasterize(&full, guard, evenodd).data,
