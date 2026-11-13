@@ -28,7 +28,7 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
       const box = canvas.getBoundingClientRect(), half = toolbar.getBoundingClientRect().width / 2
       toolbar.style.left = `${Math.max(half + 8, Math.min(window.innerWidth / 2 - box.left, box.width - half - 8))}px`
       if (shell?.getAttribute('data-ui-mode') === 'figma') {
-        const bottom = Number.parseFloat(getComputedStyle(toolbar).bottom)
+        const bottom = Number.parseFloat(window.getComputedStyle(toolbar).bottom)
         const box = toolbar.getBoundingClientRect()
         const height = viewTools ? box.bottom - Math.min(box.top, viewTools.getBoundingClientRect().top) : box.height
         const clearance = figmaStatusClearance(bottom, height)

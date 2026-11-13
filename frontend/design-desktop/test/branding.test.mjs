@@ -52,7 +52,7 @@ test('Web favicon, touch icon, manifest and editor share the original brand', as
   assert.equal(manifest.name,'Futureox Design')
   for(const item of manifest.icons) await access(path.join(client,'public',item.src))
   const app=await readFile(path.join(client,'src/App.tsx'),'utf8')
-  assert.match(app, /className="brand-mark" src="\/branding\/futureox-desgin.svg"/)
+  assert.match(app, /className="brand-mark" src=\{webPath\('\/branding\/futureox-desgin\.svg'\)\}/)
   assert.doesNotMatch(app, /className="brand-mark">f</)
 })
 test('development and packaged windows use owned assets on every platform', async () => {
