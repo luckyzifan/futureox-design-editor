@@ -151,7 +151,7 @@ pub fn paths(guide:&Network,brush:&VectorBrush)->Result<Path,String>{
             transformed(&source,Transform([scale*c,scale*s,-scale*s,scale*c,p.x-t.y*normal-scale*c*xc+scale*s*yc,p.y+t.x*normal-scale*s*xc-scale*c*yc]),&mut out)?;
         }
     }
-    Ok(Path{commands:out})
+    Ok(Path{commands:out, ..Path::default()})
 }
 
 #[cfg(test)]

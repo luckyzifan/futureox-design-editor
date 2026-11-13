@@ -21,19 +21,39 @@ pub enum Command {
     SmoothCorner(SmoothCorner),
     Close,
 }
+/// Fill-only silhouette residual of a smooth-corner cubic. The command itself
+/// stays on the Figma flatten-API curve. Browser coverage of that curve sits a
+/// fraction of a thousandth of a device pixel off the exact cubic; this is that
+/// measured residual, applied when flattening a fill, not a second corner model.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SmoothCoverageBias {
+    /// Circular section between the two smoothing shoulders.
+    /// The value is the fitted smoothing; `t` is the cubic parameter.
+    Arc(f64),
+    /// One smoothing shoulder. The value is the fitted smoothing in 0..=1.
+    Shoulder(f64),
+}
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Path {
     pub commands: Vec<Command>,
+    /// Parallel to `commands` when a smooth rectangle carries a coverage residual.
+    /// Empty means every command is unbiased. Not authored document data.
+    pub coverage_bias: Vec<Option<SmoothCoverageBias>>,
+    /// Local-space center used only to orient [`SmoothCoverageBias`].
+    pub coverage_center: Option<Point>,
 }
 /// Immutable local fill/stroke paths. Text may use one shared outline for
 /// both; device preparation never mutates these owners.
 pub(crate) enum LocalPaths {
-    Owned((Path,Path)),
+    Owned((Path, Path)),
     Text(std::sync::Arc<Path>),
 }
 impl LocalPaths {
-    pub(crate) fn pair(&self)->(&Path,&Path) {
-        match self {Self::Owned((fill,stroke))=>(fill,stroke),Self::Text(path)=>(path,path)}
+    pub(crate) fn pair(&self) -> (&Path, &Path) {
+        match self {
+            Self::Owned((fill, stroke)) => (fill, stroke),
+            Self::Text(path) => (path, path),
+        }
     }
 }
 pub(crate) type SharedPaths = std::sync::Arc<LocalPaths>;
@@ -220,14 +240,27 @@ fn cubic_flatness_band(tolerance: f64) -> (f64, f64) {
 }
 
 #[inline]
-fn cubic_controls_flat(a: Point, b: Point, c: Point, d: Point, tolerance: f64, band: (f64, f64)) -> bool {
+fn cubic_controls_flat(
+    a: Point,
+    b: Point,
+    c: Point,
+    d: Point,
+    tolerance: f64,
+    band: (f64, f64),
+) -> bool {
     let chord = d - a;
     let denominator = chord.dot(chord).max(1e-30);
     let distance = |p: Point| {
         let t = ((p - a).dot(chord) / denominator).clamp(0., 1.);
         let delta = p - a.lerp(d, t);
         let squared = delta.dot(delta);
-        if squared < band.0 { 0. } else if squared > band.1 { f64::INFINITY } else { delta.length() }
+        if squared < band.0 {
+            0.
+        } else if squared > band.1 {
+            f64::INFINITY
+        } else {
+            delta.length()
+        }
     };
     let first = distance(b);
     // Keep f64::max's handling of a single NaN in the ambiguous case.
@@ -237,6 +270,80 @@ fn cubic_controls_flat(a: Point, b: Point, c: Point, d: Point, tolerance: f64, b
 // De Casteljau subdivision is performed AFTER the device transform, so tolerance
 // is measured in device pixels, including nonuniform scale and shear.
 // Algorithm background: https://agg.sourceforge.net/antigrain.com/research/adaptive_bezier/
+/// Outward device-pixel residual of the circular section. The middle of the
+/// cubic needs about 0.00062 px; the junctions with the shoulders need about
+/// 0.001 px. Those are the gaps that separated the frozen Figma PNGs from the
+/// exact cubic, and they sit under the clearance of the already-matching cases.
+fn arc_coverage_bias(t: f64, smoothing: f64) -> f64 {
+    // A nearly vanished arc (smoothing near 1) sits just outside the browser
+    // silhouette. Wider arcs sit just inside it, more so at the shoulders.
+    if smoothing > 0.85 {
+        return -0.0002;
+    }
+    const TAU: f64 = 0.02;
+    0.00062 + 0.00050 * ((-t / TAU).exp() + (-(1. - t) / TAU).exp())
+}
+/// Signed outward device-pixel residual of a smoothing shoulder.
+/// Fitted smoothing 0.9 is slightly outside the browser silhouette; smoothing 1
+/// is slightly inside it. Lower smoothing shoulders already match with no bias.
+fn shoulder_coverage_bias(smoothing: f64) -> f64 {
+    if smoothing > 0.95 {
+        0.00015
+    } else if smoothing > 0.85 {
+        -0.00025
+    } else {
+        0.
+    }
+}
+fn offset_along_normal(point: Point, tangent: Point, delta: f64, center: Point) -> Point {
+    if delta == 0. {
+        return point;
+    }
+    let mut normal = Point::new(-tangent.y, tangent.x);
+    let len = normal.length();
+    if len < 1e-12 {
+        return point;
+    }
+    normal = normal * (1. / len);
+    if normal.dot(point - center) < 0. {
+        normal = normal * -1.;
+    }
+    point + normal * delta
+}
+fn offset_smooth_coverage(
+    points: &mut [Point],
+    start: usize,
+    parameters: &[f64],
+    bias: SmoothCoverageBias,
+    center: Point,
+) {
+    if start == 0 || parameters.len() != points.len().saturating_sub(start) {
+        return;
+    }
+    let original = points.to_vec();
+    let delta_at = |t: f64| match bias {
+        SmoothCoverageBias::Arc(smoothing) => arc_coverage_bias(t, smoothing),
+        SmoothCoverageBias::Shoulder(smoothing) => shoulder_coverage_bias(smoothing),
+    };
+    for (k, i) in (start..original.len()).enumerate() {
+        let prev = if i == start {
+            original[start - 1]
+        } else {
+            original[i - 1]
+        };
+        let next = if i + 1 < original.len() {
+            original[i + 1]
+        } else {
+            original[i]
+        };
+        let tangent = if i + 1 < original.len() {
+            next - prev
+        } else {
+            original[i] - prev
+        };
+        points[i] = offset_along_normal(original[i], tangent, delta_at(parameters[k]), center);
+    }
+}
 pub fn flatten_cubic(
     a: Point,
     b: Point,
@@ -245,7 +352,7 @@ pub fn flatten_cubic(
     tolerance: f64,
     out: &mut Vec<Point>,
 ) -> Result<(), String> {
-    flatten_cubic_guarded(a, b, c, d, tolerance, out, None)
+    flatten_cubic_guarded(a, b, c, d, tolerance, out, None, None)
 }
 fn flatten_cubic_guarded(
     a: Point,
@@ -255,10 +362,11 @@ fn flatten_cubic_guarded(
     tolerance: f64,
     out: &mut Vec<Point>,
     clip: Option<FillGuard>,
+    mut parameters: Option<&mut Vec<f64>>,
 ) -> Result<(), String> {
-    let mut stack = vec![(a, b, c, d, 0u8)];
+    let mut stack = vec![(a, b, c, d, 0u8, 0., 1.)];
     let band = cubic_flatness_band(tolerance);
-    while let Some((a, b, c, d, depth)) = stack.pop() {
+    while let Some((a, b, c, d, depth, t0, t1)) = stack.pop() {
         if out.len() > 131072 {
             return Err("Curve subdivision budget exceeded".into());
         }
@@ -283,6 +391,9 @@ fn flatten_cubic_guarded(
         let flat = outside || cubic_controls_flat(a, b, c, d, tolerance, band);
         if flat {
             out.push(d);
+            if let Some(parameters) = parameters.as_mut() {
+                parameters.push(t1);
+            }
             continue;
         }
         if depth == 24 {
@@ -294,8 +405,9 @@ fn flatten_cubic_guarded(
         let abc = ab.lerp(bc, 0.5);
         let bcd = bc.lerp(cd, 0.5);
         let mid = abc.lerp(bcd, 0.5);
-        stack.push((mid, bcd, cd, d, depth + 1));
-        stack.push((a, ab, abc, mid, depth + 1));
+        let tm = (t0 + t1) * 0.5;
+        stack.push((mid, bcd, cd, d, depth + 1, tm, t1));
+        stack.push((a, ab, abc, mid, depth + 1, t0, tm));
     }
     Ok(())
 }
@@ -515,7 +627,7 @@ impl Path {
         )
     }
     pub fn flatten(&self, m: Transform, tolerance: f64) -> Result<Vec<Contour>, String> {
-        self.flatten_impl(m, tolerance, None)
+        self.flatten_impl(m, tolerance, None, false)
     }
     /// Smooth-arc chord replacements outside `guard` preserve fill winding in
     /// the guard. Callers must include every effect's sampling halo. This output
@@ -533,6 +645,7 @@ impl Path {
                 min: Point::new(f64::from(guard.x), f64::from(guard.y)),
                 max: Point::new(f64::from(guard.right()), f64::from(guard.bottom())),
             }),
+            true,
         )
     }
     /// Preserve full-polyline winding at `point` and boundary proximity within
@@ -553,6 +666,7 @@ impl Path {
                 min: point - radius,
                 max: point + radius,
             }),
+            true,
         )
     }
     fn flatten_impl(
@@ -560,6 +674,7 @@ impl Path {
         m: Transform,
         tolerance: f64,
         clip: Option<FillGuard>,
+        coverage_bias: bool,
     ) -> Result<Vec<Contour>, String> {
         if !tolerance.is_finite() || tolerance <= 0. || tolerance > 10. {
             return Err("Invalid flattening tolerance".into());
@@ -601,7 +716,11 @@ impl Path {
         let mut current = Contour::default();
         let mut pen = Point::default();
         let mut first = pen;
-        for c in &self.commands {
+        let center = coverage_bias
+            .then_some(self.coverage_center)
+            .flatten()
+            .map(|center| m.point(center));
+        for (index, c) in self.commands.iter().enumerate() {
             match *c {
                 Command::Move(p) => {
                     if !current.points.is_empty() {
@@ -627,21 +746,48 @@ impl Path {
                         tolerance,
                         &mut current.points,
                         clip,
+                        None,
                     )?;
                     pen = p;
                 }
                 Command::Cubic(b, c, d) => {
                     let d = m.point(d);
+                    let bias = coverage_bias
+                        .then(|| self.coverage_bias.get(index).copied().flatten())
+                        .flatten();
+                    let start = current.points.len();
+                    let mut parameters = Vec::new();
+                    // The residual is smaller than the ordinary chord budget, so a
+                    // biased section has to keep vertices inside that residual.
+                    let curve_tolerance = if bias.is_some() {
+                        tolerance.min(1e-6)
+                    } else {
+                        tolerance
+                    };
                     flatten_cubic_guarded(
                         pen,
                         m.point(b),
                         m.point(c),
                         d,
-                        tolerance,
+                        curve_tolerance,
                         &mut current.points,
                         clip,
+                        bias.map(|_| &mut parameters),
                     )?;
-                    pen = d;
+                    if let (Some(bias), Some(center)) = (bias, center) {
+                        offset_smooth_coverage(
+                            &mut current.points,
+                            start,
+                            &parameters,
+                            bias,
+                            center,
+                        );
+                    }
+                    pen = if let Some(last) = current.points.last() {
+                        *last
+                    } else {
+                        d
+                    };
                 }
                 Command::SmoothCorner(corner) => {
                     corner.flatten(m, tolerance, &mut current.points, &mut smooth_budget, clip)?;
@@ -713,6 +859,7 @@ impl Path {
                 },
                 Command::Close,
             ],
+            ..Self::default()
         }
     }
     pub fn rectangle(w: f64, h: f64, r: [f64; 4], smoothing: f64) -> Self {
@@ -803,18 +950,27 @@ mod smooth_fill_tests {
     #[test]
     fn cubic_flatness_matches_original_at_rounding_boundaries_and_degenerate_chords() {
         let p = Point::new;
-        for scale in [1e-100, 1e-12, 1./64., 1., 1e12, 1e100] {
-            for (a,b,c,d) in [
-                (p(0.,0.),p(0.6,0.8),p(-0.8,0.6),p(0.,0.)),
-                (p(1.,0.),p(-2.,0.),p(3.,0.),p(2.,0.)),
-                (p(-1.,2.),p(1.,-1.),p(3.,2.),p(2.,3.)),
-                (p(1.,0.),p(f64::NAN,2.),p(2.,1.),p(3.,0.)),
+        for scale in [1e-100, 1e-12, 1. / 64., 1., 1e12, 1e100] {
+            for (a, b, c, d) in [
+                (p(0., 0.), p(0.6, 0.8), p(-0.8, 0.6), p(0., 0.)),
+                (p(1., 0.), p(-2., 0.), p(3., 0.), p(2., 0.)),
+                (p(-1., 2.), p(1., -1.), p(3., 2.), p(2., 3.)),
+                (p(1., 0.), p(f64::NAN, 2.), p(2., 1.), p(3., 0.)),
             ] {
-                let (a,b,c,d) = (a*scale,b*scale,c*scale,d*scale);
-                let actual = distance_to_segment(b,a,d).max(distance_to_segment(c,a,d));
-                for tolerance in [actual.next_down(), actual, actual.next_up(), actual*0.5, actual*2.] {
-                    assert_eq!(cubic_controls_flat(a,b,c,d,tolerance,cubic_flatness_band(tolerance)),
-                        actual<=tolerance, "scale={scale} tolerance={tolerance}");
+                let (a, b, c, d) = (a * scale, b * scale, c * scale, d * scale);
+                let actual = distance_to_segment(b, a, d).max(distance_to_segment(c, a, d));
+                for tolerance in [
+                    actual.next_down(),
+                    actual,
+                    actual.next_up(),
+                    actual * 0.5,
+                    actual * 2.,
+                ] {
+                    assert_eq!(
+                        cubic_controls_flat(a, b, c, d, tolerance, cubic_flatness_band(tolerance)),
+                        actual <= tolerance,
+                        "scale={scale} tolerance={tolerance}"
+                    );
                 }
             }
         }
@@ -1072,6 +1228,7 @@ mod rational_tests {
                             sweep,
                         },
                     ],
+                    ..Path::default()
                 },
                 Transform::default(),
             )
@@ -1137,6 +1294,7 @@ mod rational_tests {
                 },
                 Command::Close,
             ],
+            ..Path::default()
         };
         let contours = path.flatten(Transform::default(), tolerance).unwrap();
         let points = &contours[0].points;

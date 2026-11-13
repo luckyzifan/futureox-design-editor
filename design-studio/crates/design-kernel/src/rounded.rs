@@ -90,12 +90,25 @@ pub fn rectangle(width: f64, height: f64, radii: [f64; 4], smoothing: f64) -> Pa
         corners.push((r, s, points.map(orient)));
     }
     let mut path = Path::default();
+    let mut bias = Vec::new();
+    let push = |path: &mut Path,
+                bias: &mut Vec<Option<crate::path::SmoothCoverageBias>>,
+                command,
+                coverage| {
+        path.commands.push(command);
+        bias.push(coverage);
+    };
     for (index, (r, s, p)) in corners.into_iter().enumerate() {
-        path.commands.push(if index == 0 {
-            Command::Move(p[0])
-        } else {
-            Command::Line(p[0])
-        });
+        push(
+            &mut path,
+            &mut bias,
+            if index == 0 {
+                Command::Move(p[0])
+            } else {
+                Command::Line(p[0])
+            },
+            None,
+        );
         if r == 0. {
             continue;
         }
@@ -106,24 +119,48 @@ pub fn rectangle(width: f64, height: f64, radii: [f64; 4], smoothing: f64) -> Pa
                 2 => Point::new(width - r, height - r),
                 _ => Point::new(r, height - r),
             };
-            path.commands.push(Command::Arc {
-                center,
-                radius: Point::new(r, r),
-                start: std::f64::consts::PI + index as f64 * std::f64::consts::FRAC_PI_2,
-                sweep: std::f64::consts::FRAC_PI_2,
-            });
+            push(
+                &mut path,
+                &mut bias,
+                Command::Arc {
+                    center,
+                    radius: Point::new(r, r),
+                    start: std::f64::consts::PI + index as f64 * std::f64::consts::FRAC_PI_2,
+                    sweep: std::f64::consts::FRAC_PI_2,
+                },
+                None,
+            );
             continue;
         }
         if s > 0. {
-            path.commands.push(Command::Cubic(p[1], p[2], p[3]));
+            push(
+                &mut path,
+                &mut bias,
+                Command::Cubic(p[1], p[2], p[3]),
+                Some(crate::path::SmoothCoverageBias::Shoulder(s)),
+            );
         }
         if s < 1. {
-            path.commands.push(Command::Cubic(p[4], p[5], p[6]));
+            push(
+                &mut path,
+                &mut bias,
+                Command::Cubic(p[4], p[5], p[6]),
+                Some(crate::path::SmoothCoverageBias::Arc(s)),
+            );
         }
         if s > 0. {
-            path.commands.push(Command::Cubic(p[7], p[8], p[9]));
+            push(
+                &mut path,
+                &mut bias,
+                Command::Cubic(p[7], p[8], p[9]),
+                Some(crate::path::SmoothCoverageBias::Shoulder(s)),
+            );
         }
     }
-    path.commands.push(Command::Close);
+    push(&mut path, &mut bias, Command::Close, None);
+    if bias.iter().any(Option::is_some) {
+        path.coverage_bias = bias;
+        path.coverage_center = Some(Point::new(width * 0.5, height * 0.5));
+    }
     path
 }

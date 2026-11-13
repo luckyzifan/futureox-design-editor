@@ -138,9 +138,11 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
         "linear-gradient {linear:?}"
     );
     // Digest of "directory/id differentPixels maxChannelError" for every other
-    // strict figma CPU reference, measured on main 5bef88b5 before this change.
+    // strict figma CPU reference. Recomputed after the smooth-corner coverage
+    // residual: the six previously non-zero curve rows are now zero, and no
+    // other row moved.
     assert_eq!(
-        others_sha, "aae595eebd7943b2313b9d01ea7991b4a4c912528bafe2b089699a3df48d3167",
+        others_sha, "223846cf65b816201aa9a83ab12272eca90204843356a63385246676d7f0ae28",
         "other frozen figma references moved"
     );
 }

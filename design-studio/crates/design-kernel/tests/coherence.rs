@@ -169,6 +169,7 @@ fn backdrop_capture_preserves_fractional_phase_and_tight_curve_bounds() {
             ),
             Command::Close,
         ],
+        ..Path::default()
     };
     assert_eq!(
         backdrop_box(

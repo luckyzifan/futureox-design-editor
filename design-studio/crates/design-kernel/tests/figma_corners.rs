@@ -21,7 +21,10 @@ fn parse(raw: &str) -> Path {
             _ => panic!("unexpected reference command {kind}"),
         });
     }
-    Path { commands }
+    Path {
+        commands,
+        ..Path::default()
+    }
 }
 fn curves(path: &Path) -> Vec<[Point; 4]> {
     let mut current = Point::default();

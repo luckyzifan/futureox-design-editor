@@ -42,7 +42,7 @@ fn circle_arc_chord_error_stays_in_device_tolerance_at_32x_fractional_pan() {
 #[test]
 fn cubic_samples_stay_within_device_error_after_fractional_pan() {
     let controls = [Point::new(0., 0.), Point::new(2., 8.), Point::new(8., -6.), Point::new(10., 2.)];
-    let path = Path { commands: vec![Command::Move(controls[0]), Command::Cubic(controls[1], controls[2], controls[3])] };
+    let path = Path { commands: vec![Command::Move(controls[0]), Command::Cubic(controls[1], controls[2], controls[3])], ..Path::default() };
     for zoom in [1., 32.] {
         for (x, y) in [(0., 0.), (0.375, -0.125), (-500.625, 256.5)] {
             let matrix = Transform([zoom, 0., 0., zoom, x, y]);
