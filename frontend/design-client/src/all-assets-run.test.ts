@@ -153,9 +153,18 @@ test('name collisions, the pixel budget, cancellation, failure and retry stay pe
     encode,
   })
   const merged = mergeAllAssetRuns(run, retried)
+  const editedPlan = planAllAssets(doc, { scope: 'page', pageId: doc.pages[0].id, revision: 3 })
+  const edited = await runAllAssets({
+    document: doc, plan: editedPlan, selectedIds: new Set(retried.items.map(item => item.task.id)), encoding: '', encode,
+  })
+  expect(mergeAllAssetRuns(merged, edited).items.map(item => item.task.revision)).toEqual([3])
   expect(merged.counts.failed).toBe(0)
   expect(merged.counts.delivered).toBe(1)
   expect(merged.complete).toBe(false)
+  const dotted = { ...merged, items: merged.items.map(item => item.status === 'delivered'
+    ? { ...item, task: { ...item.task, path: 'Other..v2.svg' } }
+    : item) }
+  expect(Object.keys(unzipSync(allAssetsZip(dotted)))).toContain('Other..v2.svg')
   const zip = unzipSync(allAssetsZip(merged))
   expect(Object.keys(zip).sort()).toEqual(['Other@one.svg', 'manifest.json'])
   expect(JSON.parse(new TextDecoder().decode(zip['manifest.json'])).complete).toBe(false)

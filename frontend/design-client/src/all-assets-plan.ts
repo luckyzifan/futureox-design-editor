@@ -1,4 +1,5 @@
 import { filename, targetBounds } from './export'
+import { kernelExportPlan } from './kernel/picking'
 import { sliceExportTarget } from './export-metadata'
 import type { DesignDocument, DesignNode, ExportSetting } from './model'
 
@@ -58,7 +59,8 @@ function classify(doc: DesignDocument, pageId: string, node: DesignNode, setting
   try {
     const target = node.kind === 'slice' ? sliceExportTarget(doc, node.id) : { kind: 'selection' as const, nodeIds: [node.id] }
     const bounds = targetBounds(doc, pageId, target)
-    const pixelCount = RASTER.has(setting.format) ? Math.ceil(bounds.width * setting.scale) * Math.ceil(bounds.height * setting.scale) : 0
+    const raster = RASTER.has(setting.format) ? kernelExportPlan(bounds, setting.scale) : undefined
+    const pixelCount = raster ? raster.width * raster.height : 0
     if (!Number.isFinite(pixelCount) || pixelCount < 0) throw new Error('导出尺寸无效')
     return { executable: true, pixelCount }
   } catch (error) {

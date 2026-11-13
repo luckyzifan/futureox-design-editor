@@ -169,7 +169,8 @@ export async function runAllAssets(input: {
 }
 
 export function mergeAllAssetRuns(previous: AllAssetRun, next: AllAssetRun): AllAssetRun {
-  if (previous.documentId !== next.documentId) return next
+  if (previous.documentId !== next.documentId || previous.revision !== next.revision ||
+      previous.scope !== next.scope || previous.pageId !== next.pageId) return next
   const replaced = new Map(next.items.map(item => [item.task.id, item]))
   const items = previous.items.map(item => replaced.get(item.task.id) ?? item)
   for (const item of next.items) if (!previous.items.some(current => current.task.id === item.task.id)) items.push(item)
@@ -224,7 +225,7 @@ export function allAssetsManifest(run: AllAssetRun): AllAssetManifest {
 }
 
 function safeZipPath(path: string): boolean {
-  return path.length > 0 && path.length < 240 && path !== 'manifest.json' && !path.includes('..') && !path.startsWith('/') && !path.includes('\\') && !path.includes('\0')
+  return path.length > 0 && path.length < 240 && path !== 'manifest.json' && !path.includes('/') && !path.includes('\\') && !path.includes('\0')
 }
 
 /** ZIP entries are the delivered bytes plus a manifest. A partial run stays partial in `complete`. */
@@ -236,5 +237,5 @@ export function allAssetsZip(run: AllAssetRun): Uint8Array {
     files[item.task.path] = item.bytes
   }
   files['manifest.json'] = strToU8(`${JSON.stringify(allAssetsManifest(run))}\n`)
-  return zipSync(files, { level: 6, mtime: new Date('1980-01-01T00:00:00Z') })
+  return zipSync(files, { level: 0, mtime: new Date('1980-01-01T00:00:00Z') })
 }

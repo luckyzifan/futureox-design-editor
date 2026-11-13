@@ -17,7 +17,6 @@ import { commitExportEdits } from './export-ownership'
 import { subtreeNeedsExplicitColorEncoding } from './export-metadata'
 import type { Editor } from './engine'
 import { useInterfacePreferences } from './interface-preference'
-import { download } from './persistence'
 
 const messageEnglish: Record<string, string> = {
   '与其他所选预设的文件名冲突，未写入': 'This file name collides with another selected preset, so nothing was written.',
@@ -177,7 +176,9 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
       }
     }
   }
-  const retryIds = new Set((run?.items ?? []).filter(item => item.status === 'failed' || item.status === 'cancelled').map(item => item.task.id))
+  const currentRun = run?.documentId === plan.documentId && run.revision === plan.revision &&
+    run.scope === plan.scope && run.pageId === plan.pageId ? run : null
+  const retryIds = new Set((currentRun?.items ?? []).filter(item => item.status === 'failed' || item.status === 'cancelled').map(item => item.task.id))
   return <div className="all-assets-export" role="group" aria-label={text('全部资产', 'All assets')}>
     <p>{text('按各层已有预设分别列出任务。整页、合并选区和自定义区域仍可用，不会把多个图层画成一张图。', 'Lists one task for each layer preset. Page, merged selection, and custom region stay available, and layers are not flattened into one image.')}</p>
     <fieldset disabled={busy}>
@@ -243,7 +244,7 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
     <div className="feature-row">
       <button type="button" disabled={busy || !checked.size || waitingForEncoding} onClick={() => void execute(checked, null)}>{busy ? text('导出中…', 'Exporting…') : text('导出所选预设', 'Export selected presets')}</button>
       {busy && <button type="button" onClick={() => { request.current?.abort(); setProgress(text('已取消导出', 'Export cancelled')) }}>{text('取消导出', 'Cancel export')}</button>}
-      {!!retryIds.size && !busy && <button type="button" onClick={() => void execute(retryIds, run)}>{text('重试失败和已取消项', 'Retry failed and cancelled')}</button>}
+      {!!retryIds.size && !busy && <button type="button" onClick={() => void execute(retryIds, currentRun)}>{text('重试失败和已取消项', 'Retry failed and cancelled')}</button>}
     </div>
     <p role="status" aria-live="polite">{progress || (run ? allAssetsStatusText(run, english) : '')}</p>
     {!!run?.items.length && <ul className="all-assets-results">
@@ -252,10 +253,7 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
         {item.status === 'delivered' && links.files.get(item.task.id) && <a href={links.files.get(item.task.id)} download={item.task.path}>{text('下载', 'Download')} {item.task.path}</a>}
       </li>)}
     </ul>}
-    {links.zip && run && <p><a href={links.zip} download={`${filenameBase(snap.doc.name)}.zip`} onClick={event => {
-      event.preventDefault()
-      download(`${filenameBase(snap.doc.name)}-assets.zip`, bytesBlob(allAssetsZip(run), 'application/zip'))
-    }}>{text(`下载 ZIP（${run.counts.delivered} 个文件和清单）`, `Download ZIP (${run.counts.delivered} files and manifest)`)}</a></p>}
+    {links.zip && run && <p><a href={links.zip} download={`${filenameBase(snap.doc.name)}-assets.zip`}>{text(`下载 ZIP（${run.counts.delivered} 个文件和清单）`, `Download ZIP (${run.counts.delivered} files and manifest)`)}</a></p>}
   </div>
 }
 

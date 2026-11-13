@@ -1342,6 +1342,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
           <button
             className="primary"
+            aria-label={locale === 'en' ? 'Export' : '导出'}
             onClick={() => openExportPanel()}
           >
             <Download size={14} />

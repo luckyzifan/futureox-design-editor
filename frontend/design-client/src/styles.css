@@ -2714,7 +2714,10 @@ html[data-reduced-motion=true] .animation-modal * {
   .editor-shell[data-ui-mode="sketch"] .editor-header .header-right { gap: 2px; }
   .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { display: none; }
   .editor-shell[data-ui-mode="sketch"] .header-right .locale-switch select { max-width: 60px; }
-  .editor-shell[data-ui-mode="sketch"] .header-right > .primary { font-size: 0; padding-inline: 6px; }
+  .editor-shell[data-ui-mode="sketch"] .header-right .ui-mode-switch button { padding-inline: 5px; }
+  .editor-shell[data-ui-mode="sketch"] .header-right .local-window-control > button { padding-inline: 4px; }
+  .editor-shell[data-ui-mode="sketch"] .header-right > button { padding-inline: 4px; }
+  .editor-shell[data-ui-mode="sketch"] .header-right > .primary { font-size: 0; padding-inline: 4px; }
   .editor-shell[data-ui-mode="sketch"] .header-right .design-agent-toggle span,
   .editor-shell[data-ui-mode="sketch"] .header-right .app-settings-button span { display: none; }
 }
