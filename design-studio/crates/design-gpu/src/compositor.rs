@@ -494,8 +494,14 @@ impl Compositor<'_, '_, '_> {
         if let Some(fx) = futureox_design_kernel::scene::selected_backdrop(&n.effects) {
             let copy = self.copy(backdrop, n.rect)?;
             let raw = self.blur(copy, fx.backdrop_radius() * n.matrix.max_scale(), false)?;
-            let blurred = self.color_controls(raw, fx.color_controls.as_ref())?;
-            if raw.id != blurred.id { self.frame.release(&[raw]); }
+            let mixed = self.gradient_blur(copy, raw, n, fx)?;
+            if mixed.id != raw.id && raw.id != copy.id {
+                self.frame.release(&[raw]);
+            }
+            let blurred = self.color_controls(mixed, fx.color_controls.as_ref())?;
+            if mixed.id != blurred.id && mixed.id != copy.id {
+                self.frame.release(&[mixed]);
+            }
             let next = if fx.kind == "glass" {
                 self.glass(blurred, fill, n, fx, false, None)?
             } else {
@@ -690,6 +696,16 @@ impl Compositor<'_, '_, '_> {
         n: &GpuNode,
         fx: &Effect,
     ) -> Result<Surface, String> {
+        self.gradient_blur_at(sharp, blurred, n, fx, [0., 0.])
+    }
+    fn gradient_blur_at(
+        &mut self,
+        sharp: Surface,
+        blurred: Surface,
+        n: &GpuNode,
+        fx: &Effect,
+        origin: [f64; 2],
+    ) -> Result<Surface, String> {
         let Some(params) = fx.gradient_blur else {
             return Ok(blurred);
         };
@@ -703,11 +719,15 @@ impl Compositor<'_, '_, '_> {
         for (p, v) in full.pixels.iter_mut().zip(b.chunks_exact(4)) {
             p.0.copy_from_slice(v);
         }
-        futureox_design_kernel::effects::gradient_blur_composite(
+        // Cropped backdrop textures store texel 0 at the fractional box origin,
+        // while the integer rect may truncate that origin. The CPU composite
+        // adds the same offset before projecting into node space.
+        futureox_design_kernel::effects::gradient_blur_composite_at(
             &mut target,
             &full,
             &n.matrix.inverse_composed(sharp.rect)?,
             &params,
+            futureox_design_kernel::math::Point::new(origin[0], origin[1]),
         );
         if !self.scene.float_compositing {
             target.quantize_rgba8();
@@ -2035,10 +2055,23 @@ impl Compositor<'_, '_, '_> {
         cropped: bool,
         b: [f64; 4],
     ) -> Result<Surface, String> {
-        let mut background =
-            self.blur(input, fx.backdrop_radius() * n.matrix.max_scale(), cropped)?;
-        if background.id != input.id {
-            self.frame.release(&[input]);
+        let sharp = input;
+        let blurred = self.blur(sharp, fx.backdrop_radius() * n.matrix.max_scale(), cropped)?;
+        let origin = if cropped {
+            [b[0] - f64::from(sharp.rect.x), b[1] - f64::from(sharp.rect.y)]
+        } else {
+            [0., 0.]
+        };
+        let mut background = if fx.gradient_blur.is_some() {
+            self.gradient_blur_at(sharp, blurred, n, fx, origin)?
+        } else {
+            blurred
+        };
+        if background.id != blurred.id && blurred.id != sharp.id {
+            self.frame.release(&[blurred]);
+        }
+        if background.id != sharp.id {
+            self.frame.release(&[sharp]);
         }
         if cropped {
             let expanded = self.frame.acquire(n.rect)?;

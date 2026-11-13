@@ -535,6 +535,14 @@ mod wasm {
     }
     #[wasm_bindgen]
     pub fn document_capacity_bytes() -> f64 { capacity::document_byte_limit() as f64 }
+    /// FIG progressive background blur, shared with the editor importer.
+    /// Non-finite width or height means the layer box is absent.
+    #[wasm_bindgen]
+    pub fn fig_progressive_background_json(effect_json: &str, width: f64, height: f64, kind: &str) -> Result<String, JsValue> {
+        let effect: serde_json::Value = serde_json::from_str(effect_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let size = (width.is_finite() && height.is_finite()).then_some([width, height]);
+        serde_json::to_string(&fig::progressive_background_import(&effect, size, kind)).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
     #[wasm_bindgen]
     pub fn decode_fig_network_json(bytes:&[u8],sx:f64,sy:f64)->Result<String,JsValue>{
         let decoded=fig_geometry::decode_network(bytes,sx,sy).map_err(|e|JsValue::from_str(&e))?;

@@ -96,7 +96,7 @@ export function applyFigDocumentSemantics(
   guid: (value: unknown) => string,
   tools: {
     toPaint: (paint: FigRecord) => Paint
-    effectsOf: (record: FigRecord) => Effect[]
+    effectsOf: (record: FigRecord, note?: (message: string) => void) => Effect[]
     strokesOf: (record: FigRecord) => Stroke[]
     fallbackName: string
   },
@@ -125,7 +125,11 @@ export function applyFigDocumentSemantics(
     if (name.length > 512) throw new Error(`FIG 共享样式 ${name.slice(0, 32)} 的名称过长；原文件未修改`)
     if (record.styleType === 'FILL') styles[id] = { name, kind: 'paint', value: (record.fillPaints || []).map(tools.toPaint) }
     else if (record.styleType === 'STROKE') styles[id] = { name, kind: 'paint', value: [], strokes: tools.strokesOf(record) }
-    else if (record.styleType === 'EFFECT') styles[id] = { name, kind: 'effect', value: tools.effectsOf(record) }
+    else if (record.styleType === 'EFFECT') {
+      const notes: string[] = []
+      styles[id] = { name, kind: 'effect', value: tools.effectsOf(record, message => { if (!notes.includes(message)) notes.push(message) }) }
+      for (const message of notes) warnings.add(`FIG 共享样式 ${name}: ${message}`)
+    }
     else styles[id] = { name, kind: 'text', value: textStyleOf(record) }
     if (record.fontName?.family) remember(notes, `shared style ${name}: fontName.family=${record.fontName.family}`)
   }

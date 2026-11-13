@@ -1293,6 +1293,53 @@ async fn gradient_blur_gpu_composite_matches_the_f64_reference() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    not(feature = "hardware-tests"),
+    ignore = "run with --features hardware-tests on a GPU host"
+)]
+async fn progressive_background_blur_matches_the_cpu_on_the_device() {
+    let mut gpu = NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    let mut stripes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for index in 0..8 {
+        let id = format!("stripe{index}");
+        children.push(id.clone());
+        stripes.insert(id.clone(), json!({
+            "id": id, "kind": "rectangle", "width": 8, "height": 32,
+            "transform": [1, 0, 0, 1, index * 8, 0],
+            "fills": [{"kind": "solid", "color": if index % 2 == 0 { "#111111" } else { "#eeeeee" }}]
+        }));
+    }
+    children.push("lens".into());
+    stripes.insert("lens".into(), json!({
+        "id": "lens", "kind": "rectangle", "width": 48, "height": 24,
+        "transform": [1, 0, 0, 1, 8, 4], "radii": [4, 4, 4, 4],
+        "fills": [{"kind": "solid", "color": "#ffffff", "opacity": 0.1}],
+        "effects": [{"kind": "background-blur", "radius": 1, "color": "#000000",
+            "colorControls": {"space": "srgb", "brightness": 0, "contrast": 1, "saturation": 0.25, "hue": 0},
+            "gradientBlur": {"start": [0, 12], "end": [48, 12], "startCount": 0, "endCount": 6, "smooth": true}}]
+    }));
+    let document = json!({
+        "schemaVersion": 19, "id": "d", "name": "Progressive backdrop", "rasterProfile": "figma",
+        "pages": [{"id": "p", "name": "p", "children": children, "background": "#ffffff"}],
+        "nodes": stripes
+    });
+    let options: RenderOptions = serde_json::from_value(json!({
+        "pageId": "p", "width": 64, "height": 32, "transparent": true, "rasterProfile": "figma",
+        "view": {"x": 0, "y": 0, "zoom": 1}
+    })).unwrap();
+    assert_parity(&mut gpu, &document.to_string(), &options);
+    let mut uniform = document.clone();
+    uniform["nodes"]["lens"]["effects"][0].as_object_mut().unwrap().remove("gradientBlur");
+    uniform["nodes"]["lens"]["effects"][0]["radius"] = json!(6);
+    let mut engine = Engine::new();
+    engine.load_document(&uniform.to_string()).unwrap();
+    let flat = engine.render(&options).unwrap();
+    engine.load_document(&document.to_string()).unwrap();
+    assert_ne!(engine.render(&options).unwrap(), flat, "the two ends must change the backdrop");
+}
+
+#[tokio::test]
 #[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
 async fn zoom_cropped_gpu_retains_remote_source_pixels() {
     let mut gpu=NativeGpu::new(Backends::PRIMARY).await.unwrap();

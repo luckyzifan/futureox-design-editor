@@ -132,6 +132,35 @@ test.each(['partial', 'fractional', 'sample-count', 'unselected', 'off'] as cons
   f.renderer.mask = vi.fn(() => ({ ordinary: true }))
   expect(f.renderer.nodeMask(n)).toEqual({ ordinary: true }); expect(f.driver.pass).not.toHaveBeenCalled()
 })
+test('progressive background blur blends the sharp and filtered captures before expansion and saturation', async () => {
+  const f = rendererFixture()
+  const modes: number[] = []
+  const run = f.renderer.run.bind(f.renderer)
+  f.renderer.run = (mode: number, r: Rect, inputs: Surface[], ...rest: unknown[]) => {
+    modes.push(mode)
+    return run(mode, r, inputs, ...rest)
+  }
+  f.renderer.blurBackdropRegion = async (background: Surface) => f.renderer.acquire(background.rect)
+  const gradientBlur = { start: [0, 3], end: [8, 3], startCount: 0, endCount: 4, smooth: true }
+  const fx = {
+    kind: 'background-blur', radius: 1, visible: true, gradientBlur,
+    colorControls: { space: 'srgb', brightness: 0, contrast: 1, saturation: 0, hue: 0 },
+  }
+  const node = {
+    id: 'lens', rect: { x: 0, y: 0, w: 8, h: 6 }, backdropBox: [0, 0, 8, 6], postCompositeBox: [0, 0, 8, 6],
+    matrix: [1, 0, 0, 1, 0, 0], children: [], fills: [], strokes: [], effects: [fx],
+    opaqueCoverage: true, blend: 'normal', opacity: 1,
+  } as unknown as GpuNode
+  await f.renderer.drawBackdropLeaf(node, f.targets, undefined, fx)
+  const capture = modes.indexOf(26)
+  const gradient = modes.indexOf(46)
+  const saturation = modes.indexOf(60)
+  const expand = modes.lastIndexOf(27)
+  expect(capture).toBeGreaterThanOrEqual(0)
+  expect(gradient).toBeGreaterThan(capture)
+  expect(saturation).toBeGreaterThan(gradient)
+  expect(expand).toBeGreaterThan(saturation)
+})
 test('backdrop consumes its wide four-plane prefix before cropping the complete parent suffix',async()=>{
   const f=rendererFixture(),events:string[]=[],run=f.renderer.run.bind(f.renderer)
   f.renderer.run=(mode:number,r:Rect,inputs:Surface[],...rest:any[])=>{
