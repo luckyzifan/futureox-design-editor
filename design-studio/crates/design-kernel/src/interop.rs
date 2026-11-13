@@ -817,6 +817,100 @@ fn sketch_blur_enabled(blur: &Value) -> bool {
     matches!(blur.get("isEnabled"), Some(Value::Bool(true)))
         || blur.get("isEnabled").and_then(Value::as_u64) == Some(1)
 }
+fn sketch_point(value: &Value) -> Option<[f64; 2]> {
+    let (x, y) = match value {
+        Value::String(text) => {
+            let inner = text.trim().strip_prefix('{')?.strip_suffix('}')?;
+            let (x, y) = inner.split_once(',')?;
+            (x.trim().parse::<f64>().ok()?, y.trim().parse::<f64>().ok()?)
+        }
+        Value::Object(_) => (value.get("x")?.as_f64()?, value.get("y")?.as_f64()?),
+        _ => return None,
+    };
+    (x.is_finite() && y.is_finite()).then_some([x, y])
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum SketchProgressiveBackground {
+    NotProgressive,
+    Uniform(f64),
+    Ramp(crate::scene::GradientBlurParameters),
+}
+
+/// Sketch 2025.2 exposes `Blur.progressive` and `Blur.gradient`. Stop alpha is
+/// the published progression channel; this importer treats two linear stops as
+/// fractions of `radius`. `isProgressive` is a different graphics flag.
+/// Radial and non-two-stop gradients stay uniform and are named. The published
+/// file schema does not list these fields, so this is the plugin shape, not a
+/// framebuffer oracle.
+pub(crate) fn sketch_background_progressive(blur: &Value, size: Option<[f64; 2]>) -> std::result::Result<SketchProgressiveBackground, &'static str> {
+    if blur.get("progressive") != Some(&Value::Bool(true)) {
+        return Ok(SketchProgressiveBackground::NotProgressive);
+    }
+    if blur.get("type").and_then(Value::as_i64).unwrap_or(0) != 3 {
+        return Err("progressive-blur-outside-background-scope");
+    }
+    let gradient = blur.get("gradient").ok_or("progressive-background-blur-gradient-missing")?;
+    let gradient_type = gradient.get("gradientType").and_then(Value::as_u64).ok_or("progressive-background-blur-gradient-missing")?;
+    if gradient_type != 0 {
+        return Err(if gradient_type == 1 {
+            "progressive-background-blur-radial-not-modeled"
+        } else {
+            "progressive-background-blur-gradient-not-linear"
+        });
+    }
+    let from = gradient.get("from").and_then(sketch_point).ok_or("progressive-background-blur-endpoints-missing")?;
+    let to = gradient.get("to").and_then(sketch_point).ok_or("progressive-background-blur-endpoints-missing")?;
+    let stops = gradient.get("stops").and_then(Value::as_array).ok_or("progressive-background-blur-stops-not-two-ended")?;
+    if stops.len() != 2 {
+        return Err("progressive-background-blur-stops-not-two-ended");
+    }
+    let mut indexed = Vec::with_capacity(2);
+    for stop in stops {
+        let position = stop.get("position").and_then(Value::as_f64).filter(|value| value.is_finite()).ok_or("progressive-background-blur-stops-not-two-ended")?;
+        let direct = stop.get("alpha").and_then(Value::as_f64);
+        let color = stop.pointer("/color/alpha").and_then(Value::as_f64);
+        let alpha = match (direct, color) {
+            (Some(left), Some(right)) if left != right => return Err("progressive-background-blur-stop-alpha-conflict"),
+            (Some(alpha), _) | (_, Some(alpha)) => alpha,
+            _ => return Err("progressive-background-blur-stop-alpha-missing"),
+        };
+        if !alpha.is_finite() || !(0. ..=1.).contains(&alpha) {
+            return Err("progressive-background-blur-stop-alpha-outside-unit-interval");
+        }
+        indexed.push((position, alpha));
+    }
+    indexed.sort_by(|left, right| left.0.partial_cmp(&right.0).unwrap_or(std::cmp::Ordering::Equal));
+    let radius = match blur.get("radius") {
+        None => 0.,
+        Some(value) => value.as_f64().filter(|value| value.is_finite() && *value >= 0.).ok_or("progressive-background-blur-radius-outside-model")?,
+    };
+    let start_radius = indexed[0].1 * radius;
+    let end_radius = indexed[1].1 * radius;
+    let (start, end) = if start_radius == end_radius {
+        ([0., 0.], [1., 0.])
+    } else {
+        let Some(size) = size else { return Err("progressive-background-blur-needs-layer-bounds") };
+        let at = |t: f64| [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t];
+        let local = |point: [f64; 2]| [point[0] * size[0], point[1] * size[1]];
+        (local(at(indexed[0].0)), local(at(indexed[1].0)))
+    };
+    match crate::gradient_blur::admit_two_end_progressive(start, end, start_radius, end_radius) {
+        Ok(crate::gradient_blur::TwoEndAdmission::Uniform(radius)) => Ok(SketchProgressiveBackground::Uniform(radius)),
+        Ok(crate::gradient_blur::TwoEndAdmission::Ramp(params)) => Ok(SketchProgressiveBackground::Ramp(params)),
+        Err(crate::gradient_blur::TwoEndReject::Endpoints) => Err("progressive-background-blur-endpoints-missing"),
+        Err(crate::gradient_blur::TwoEndReject::OutsideModel) => Err("progressive-background-blur-radius-outside-model"),
+    }
+}
+
+fn sketch_progressive_note(blur: &Value, size: Option<[f64; 2]>) -> Option<&'static str> {
+    match sketch_background_progressive(blur, size) {
+        Ok(SketchProgressiveBackground::Uniform(_)) => Some("progressive-background-blur-equal-radii-kept-uniform"),
+        Err(note) => Some(note),
+        Ok(_) => None,
+    }
+}
+
 fn sketch_zoom_parameters(blur:&Value)->Option<crate::zoom_blur::ZoomBlur> {
     let amount=match blur.get("radius") {None=>0.,Some(value)=>value.as_f64()?};
     let center=match blur.get("center") {
@@ -1391,7 +1485,7 @@ impl<'a> Importer<'a> {
         out
     }
 
-    fn effects(&self, style: &Value, allow_color_controls: bool) -> Vec<Effect> {
+    fn effects(&self, style: &Value, allow_color_controls: bool, size: Option<[f64; 2]>) -> Vec<Effect> {
         let mut out = Vec::new();
         let mut push_shadow = |parts: Option<&Vec<Value>>, inner: bool| {
             if let Some(parts) = parts {
@@ -1442,11 +1536,23 @@ impl<'a> Importer<'a> {
             if let Some(kind) = kind {
                 let zoom_blur=if kind=="zoom-blur" {sketch_zoom_parameters(blur)} else {None};
                 if kind=="zoom-blur" && zoom_blur.is_none() {continue;}
+                let mut radius = if kind=="zoom-blur" {0.} else {f64_at(blur, "radius")};
+                let mut gradient_blur = None;
+                if kind == "background-blur" {
+                    match sketch_background_progressive(blur, size) {
+                        Ok(SketchProgressiveBackground::Uniform(value)) => radius = value,
+                        Ok(SketchProgressiveBackground::Ramp(params)) => {
+                            radius = 1.;
+                            gradient_blur = Some(params);
+                        }
+                        Ok(SketchProgressiveBackground::NotProgressive) | Err(_) => {}
+                    }
+                }
                 out.push(Effect {
                 id: String::new(),
                 kind: kind.into(),
                 visible: true,
-                radius: if kind=="zoom-blur" {0.} else {f64_at(blur, "radius")},
+                radius,
                 x: 0.,
                 y: 0.,
                 spread: 0.,
@@ -1455,7 +1561,7 @@ impl<'a> Importer<'a> {
                 amount: 0.,
                 glass: None,
                 texture: None,
-                gradient_blur: None,
+                gradient_blur,
                 show_shadow_behind_node: false,
                 color_controls: (kind == "background-blur").then(|| crate::color_controls::ColorControls {
                     space:Some(self.color_space), saturation: blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.), ..Default::default()
@@ -1631,7 +1737,7 @@ impl<'a> Importer<'a> {
                 );
             }
             node.strokes=borders.into_iter().map(|(_,stroke)|stroke).collect();
-            node.effects = self.effects(&style, class == "bitmap");
+            node.effects = self.effects(&style, class == "bitmap", Some([node.width, node.height]));
             // Our historical blur radius remains a different authored model.
             // Restore only while the native effect fields still match exactly;
             // a subsequent native Sketch edit must supersede this receipt.
@@ -1646,6 +1752,9 @@ impl<'a> Importer<'a> {
                     "effects":blur_projection(&node.effects),
                 }).to_string());
                 for blur in source_blurs.iter().filter(|b| sketch_blur_enabled(b)) {
+                    if let Some(note) = sketch_progressive_note(blur, Some([node.width, node.height])) {
+                        import_lossy.push(note.into());
+                    }
                     match blur.get("type").and_then(Value::as_i64).unwrap_or(0) {
                         2 if sketch_zoom_parameters(blur).is_none()=>import_lossy.push("zoom-blur-invalid-parameters;source-retained".into()),
                         0 | 1 | 2 | 3 => {},
@@ -3162,7 +3271,12 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             if kind == "paint" && !style_object.is_null() {
                 strokes = importer.strokes(&style_object, [1., 1.], &mut style_lossy);
                 effects = restored_effect_model(object, &style_object)
-                    .unwrap_or_else(|| importer.effects(&style_object, true));
+                    .unwrap_or_else(|| importer.effects(&style_object, true, None));
+                for blur in sketch_blurs(&style_object).into_iter().filter(|blur| sketch_blur_enabled(blur)) {
+                    if let Some(note) = sketch_progressive_note(blur, None) {
+                        style_lossy.push(note.into());
+                    }
+                }
             }
             let value = match kind {
                 // paint styles archive their fills; convert them to kernel paints
@@ -3553,6 +3667,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     }) {
         version = version.max(14);
     }
+    if doc.nodes.values().any(|node| node.effects.iter().any(|effect| effect.gradient_blur.is_some())) {
+        version = version.max(9);
+    }
     if doc.requires_schema17() { version=version.max(17); }
     if doc.requires_schema18() { version=version.max(18); }
     if doc.requires_schema20() { version=version.max(20); }
@@ -3728,7 +3845,7 @@ fn layer_style_parts(document: &Document, style: &Value) -> Result<(Value, Value
     }
     let fills = importer.paints(style, "fills", [1., 1.]);
     let strokes = importer.strokes(style, [1., 1.], &mut lossy);
-    let effects = importer.effects(style, false);
+    let effects = importer.effects(style, false, None);
     Ok((
         serde_json::to_value(&fills).map_err(|e| Error::MalformedJson(e.to_string()))?,
         serde_json::to_value(&strokes).map_err(|e| Error::MalformedJson(e.to_string()))?,
@@ -5111,6 +5228,43 @@ fn export_paint(
 // and the fig2sketch sketchformat sources)
 // ---------------------------------------------------------------------------
 
+/// `Some(true)` is an exact inverse of the two-stop importer (base radius 1,
+/// smooth tier). `Some(false)` still writes that portable form; the FD receipt
+/// keeps a different base radius or tier. `None` leaves the uniform blur.
+fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size: [f64; 2]) -> Option<bool> {
+    let gradient = effect.gradient_blur.as_ref()?;
+    if !(size[0] > 0. && size[1] > 0. && size.iter().all(|value| value.is_finite())) {
+        return None;
+    }
+    let max_count = gradient.start_count.max(gradient.end_count);
+    if !(max_count.is_finite() && max_count > 0. && gradient.start_count >= 0. && gradient.end_count >= 0.) {
+        return None;
+    }
+    let normalize = |point: [f64; 2]| [point[0] / size[0], point[1] / size[1]];
+    let from = normalize(gradient.start);
+    let to = normalize(gradient.end);
+    if !from.iter().chain(to.iter()).all(|value| value.is_finite()) {
+        return None;
+    }
+    let point = |value: [f64; 2]| format!("{{{}, {}}}", value[0], value[1]);
+    let stop = |position: f64, alpha: f64| json!({
+        "_class": "gradientStop", "position": position,
+        "color": {"_class": "color", "red": 0., "green": 0., "blue": 0., "alpha": alpha}
+    });
+    blur["progressive"] = json!(true);
+    blur["radius"] = json!(max_count);
+    blur["gradient"] = json!({
+        "_class": "gradient", "gradientType": 0, "elipseLength": 0.,
+        "from": point(from), "to": point(to),
+        "stops": [stop(0., gradient.start_count / max_count), stop(1., gradient.end_count / max_count)]
+    });
+    let exact = effect.radius == 1. && matches!(
+        crate::gradient_blur::admit_two_end_progressive(gradient.start, gradient.end, gradient.start_count, gradient.end_count),
+        Ok(crate::gradient_blur::TwoEndAdmission::Ramp(params)) if params == *gradient
+    );
+    Some(exact)
+}
+
 /// Kernel strokes/effects → Sketch border/shadow/blur parts. Shared by the
 /// layer exporter and the document-level layerStyles container, so a shared
 /// style archives exactly what a layer with the same parts would. The
@@ -5253,7 +5407,23 @@ fn export_style_parts(
                        "radius": 0., "saturation": 1., "type": 0})
         }
     };
+    let mut blur = blur;
+    let exported_background_progressive = blur_like.first().and_then(|effect| {
+        if effect.kind == "background-blur" { attach_sketch_progressive_background(&mut blur, effect, size) } else { None }
+    });
+    if exported_background_progressive == Some(false) {
+        note_lossy(lossy, "progressive-background-blur-portable-sketch-keeps-strength-counts");
+    }
+    let mut skipped_background_progressive = false;
     for e in effects {
+        let exported = exported_background_progressive.is_some()
+            && e.kind == "background-blur"
+            && e.gradient_blur.is_some()
+            && !skipped_background_progressive;
+        if exported {
+            skipped_background_progressive = true;
+            continue;
+        }
         if matches!(e.kind.as_str(), "texture" | "gradient-blur")
             || e.texture.is_some()
             || e.gradient_blur.is_some()
@@ -7217,7 +7387,7 @@ fn export_layer_impl(
                 user_info.insert("stackAlignment".into(), json!({"align":l.align,"justify":l.justify}));
             }
         }
-        if n.effects.iter().any(|e|e.kind=="blur" || e.glass.is_some()) {
+        if n.effects.iter().any(|e|e.kind=="blur" || e.glass.is_some() || (e.kind=="background-blur" && e.gradient_blur.is_some())) {
             user_info.insert("legacyEffectModel".into(),json!({"native":native_effect_projection(&layer["style"]),"effects":n.effects}));
         }
 
@@ -8211,7 +8381,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     adaptable_apply_shared_style(&mut object, fidelity);
                 }
             }
-            if shared.kind == "paint" && shared.effects.iter().any(|e| e.kind == "blur" || e.glass.is_some()) {
+            if shared.kind == "paint" && shared.effects.iter().any(|e| e.kind == "blur" || e.glass.is_some() || (e.kind=="background-blur" && e.gradient_blur.is_some())) {
                 object["userInfo"] = json!({"com.futureox.design-kernel": {"legacyEffectModel": {
                     "native": native_effect_projection(&object["value"]), "effects": shared.effects
                 }}});

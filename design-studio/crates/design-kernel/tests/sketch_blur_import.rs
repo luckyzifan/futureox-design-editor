@@ -130,6 +130,108 @@ fn edited_background_blur_exports_native_type_three_instead_of_gaussian() {
 }
 
 #[test]
+fn linear_progressive_background_blur_imports_two_strengths_and_keeps_saturation() {
+    let mut source = source_blur(3);
+    source["progressive"] = json!(true);
+    source["saturation"] = json!(0.25);
+    source["radius"] = json!(8);
+    source["gradient"] = json!({
+        "_class":"gradient","gradientType":0,"elipseLength":0,
+        "from":"{0, 0.5}","to":"{1, 0.5}",
+        "stops":[
+            {"_class":"gradientStop","position":0,"color":{"red":0,"green":0,"blue":0,"alpha":0}},
+            {"_class":"gradientStop","position":1,"alpha":1,"color":{"red":0,"green":0,"blue":0,"alpha":1}}
+        ]
+    });
+    let report = interop::import_sketch_report(&archive(&source)).unwrap();
+    let effect = &report.document.nodes["frosted"].effects[0];
+    assert_eq!(effect.kind, "background-blur");
+    assert_eq!(effect.radius, 1.);
+    let gradient = effect.gradient_blur.expect("linear two-end ramp");
+    assert_eq!(gradient.start, [0., 16.]);
+    assert_eq!(gradient.end, [32., 16.]);
+    assert_eq!((gradient.start_count, gradient.end_count, gradient.smooth), (0., 8., true));
+    assert_eq!(effect.color_controls.unwrap().saturation, 0.25);
+    assert!(report.document.schema_version >= 17);
+    assert!(report.document.validate().is_ok());
+    assert_eq!(exported_blur(&report.document), source);
+    let lossy = report.document.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get("nodeMetadata"))
+        .and_then(|metadata| metadata.pointer("/frosted/bindings/sketchImportLossy"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    assert!(!lossy.contains("progressive-background"), "{lossy}");
+
+    let progressive = render(&report.document);
+    let mut uniform = source.clone();
+    uniform.as_object_mut().unwrap().remove("progressive");
+    uniform.as_object_mut().unwrap().remove("gradient");
+    let uniform = render(&interop::import_sketch_report(&archive(&uniform)).unwrap().document);
+    let red = |pixels: &[u8], x: usize, y: usize| pixels[(y * 64 + x) * 4] as i16;
+    let contrast = |pixels: &[u8], x: usize| (red(pixels, x, 20) - red(pixels, x + 4, 20)).abs();
+    assert!(contrast(&progressive, 20) > contrast(&progressive, 40), "the start stays sharper than the end");
+    assert!(contrast(&progressive, 20) > contrast(&uniform, 20), "uniform blurs the sharp end");
+    assert_ne!(progressive, uniform);
+}
+
+#[test]
+fn progressive_background_scope_is_explicit_for_radial_multistop_and_layer_blur() {
+    let mut radial = source_blur(3);
+    radial["progressive"] = json!(true);
+    radial["gradient"] = json!({"gradientType":1,"from":"{0.5, 0.5}","to":"{1, 0.5}","stops":[
+        {"position":0,"color":{"alpha":0}},{"position":1,"color":{"alpha":1}}
+    ]});
+    let mut stops = radial.clone();
+    stops["gradient"]["gradientType"] = json!(0);
+    stops["gradient"]["stops"] = json!([
+        {"position":0,"color":{"alpha":0}},
+        {"position":0.5,"color":{"alpha":0.5}},
+        {"position":1,"color":{"alpha":1}}
+    ]);
+    let mut layer = source_blur(0);
+    layer["progressive"] = json!(true);
+    layer["gradient"] = radial["gradient"].clone();
+    layer["gradient"]["gradientType"] = json!(0);
+    for (blur, note) in [
+        (radial, "progressive-background-blur-radial-not-modeled"),
+        (stops, "progressive-background-blur-stops-not-two-ended"),
+        (layer, "progressive-blur-outside-background-scope"),
+    ] {
+        let report = interop::import_sketch_report(&archive(&blur)).unwrap();
+        assert!(report.document.nodes["frosted"].effects[0].gradient_blur.is_none());
+        let lossy = report.document.design_system.as_ref()
+            .and_then(|system| system.sketch_containers.get("nodeMetadata"))
+            .and_then(|metadata| metadata.pointer("/frosted/bindings/sketchImportLossy"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        assert!(lossy.contains(note), "{lossy} missing {note}");
+        assert_eq!(exported_blur(&report.document), blur);
+    }
+}
+
+#[test]
+fn edited_progressive_background_blur_reopens_through_the_fd_receipt() {
+    let mut source = source_blur(3);
+    source["progressive"] = json!(true);
+    source["radius"] = json!(4);
+    source["gradient"] = json!({"gradientType":0,"from":"{0, 0.5}","to":"{1, 0.5}","stops":[
+        {"position":0,"color":{"alpha":0}},{"position":1,"color":{"alpha":1}}
+    ]});
+    let mut report = interop::import_sketch_report(&archive(&source)).unwrap();
+    let effect = &mut report.document.nodes.get_mut("frosted").unwrap().effects[0];
+    effect.radius = 2.;
+    effect.gradient_blur.as_mut().unwrap().end_count = 6.;
+    effect.gradient_blur.as_mut().unwrap().smooth = false;
+    let exported = interop::export_sketch(&report.document).unwrap();
+    let reopened = interop::import_sketch_report(&exported).unwrap();
+    let effect = &reopened.document.nodes["frosted"].effects[0];
+    assert_eq!(effect.radius, 2.);
+    assert_eq!(effect.gradient_blur.unwrap().end_count, 6.);
+    assert!(!effect.gradient_blur.unwrap().smooth);
+    assert_eq!(render(&reopened.document), render(&report.document));
+}
+
+#[test]
 fn motion_and_zoom_blurs_keep_distinct_executable_kinds_and_native_source() {
     for (kind, expected) in [(1, "motion-blur"), (2, "zoom-blur")] {
         let source = source_blur(kind);
