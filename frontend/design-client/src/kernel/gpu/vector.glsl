@@ -216,28 +216,47 @@ vec4 gradientBlurComposite(vec2 p){
 vec4 over(vec4 b,vec4 s,int mode){if(s.a<=0.)return b;if(b.a<=0.)return s;if(mode==0){if(u[60].x>.5)return addRN4(s,mulRN4(b,vec4(addRN(1.,-s.a))));return s+b*(1.-s.a);}if(u[60].x>.5)return blendRN(b,s,mode);vec3 cb=b.rgb/b.a,cs=s.rgb/s.a,m=vec3(channel(cb.r,cs.r,mode),channel(cb.g,cs.g,mode),channel(cb.b,cs.b,mode));if(mode==12)m=setLum(setSat(cs,sat(cb)),lum(cb));if(mode==13)m=setLum(setSat(cb,sat(cs)),lum(cb));if(mode==14)m=setLum(cs,lum(cb));if(mode==15)m=setLum(cb,lum(cs));return vec4(s.rgb*(1.-b.a)+s.a*b.a*m+b.rgb*(1.-s.a),s.a+b.a*(1.-s.a));}
 float noise(ivec2 p,uint seed){uint h=uint(p.x)*0x9e3779b1u^uint(p.y)*0x85ebca77u^seed;h^=h>>16;h*=0x7feb352du;h^=h>>15;h*=0x846ca68bu;h^=h>>16;return divideRN(float(h&0x00ffffffu),16777215.);}
 vec2 local(vec2 p){return vec2(u[5].x*p.x+u[5].z*p.y+u[6].x,u[5].y*p.x+u[5].w*p.y+u[6].y);}
+vec2 halfScaleTexel(vec2 localPx){
+ vec2 image=u[2].zw,node=u[6].zw;float fit=u[8].z;
+ if(fit>=1.5)return localPx*image/node;
+ vec2 ratios=node/image;
+ float ratio=fit<.5?max(ratios.x,ratios.y):min(ratios.x,ratios.y);
+ vec2 inset=(node-image*ratio)*.5;
+ return (localPx-inset)/ratio;
+}
 vec4 halfScaleStretch(vec2 p){
- if(u[60].x>.5||u[62].z>.5||u[8].z<1.5||u[5].y!=0.||u[5].z!=0.)return vec4(-1.);
+ if(u[62].z>.5||u[46].z>.5||u[5].y!=0.||u[5].z!=0.)return vec4(-1.);
+ float fit=u[8].z;
+ if(fit<0.||fit>2.)return vec4(-1.);
  vec2 size=u[2].zw,node=u[6].zw;
  if(any(lessThanEqual(node,vec2(0.)))||any(lessThan(size,vec2(1.))))return vec4(-1.);
- vec2 origin=floor(p),scale=size/node;
- vec2 e00=local(origin)*scale,e10=local(origin+vec2(1.,0.))*scale,e01=local(origin+vec2(0.,1.))*scale;
+ vec2 origin=floor(p);
+ vec2 e00=halfScaleTexel(local(origin)),e10=halfScaleTexel(local(origin+vec2(1.,0.))),e01=halfScaleTexel(local(origin+vec2(0.,1.)));
  vec2 span=abs(vec2(e10.x-e00.x,e01.y-e00.y));
  if(any(lessThan(span,vec2(1.5)))||any(greaterThanEqual(span,vec2(2.5))))return vec4(-1.);
+ if(abs(e01.x-e00.x)>1e-4||abs(e10.y-e00.y)>1e-4)return vec4(-1.);
  float xLo=min(e00.x,e10.x),xHi=max(e00.x,e10.x),yLo=min(e00.y,e01.y),yHi=max(e00.y,e01.y);
  vec4 sum=vec4(0.);float weight=0.;
  int x0=int(floor(xLo)),y0=int(floor(yLo)),x1=int(ceil(xHi)),y1=int(ceil(yHi));
- ivec2 base=ivec2(u[2].xy);
+ if(y1-y0>4||x1-x0>4)return vec4(-1.);
+ ivec2 base=ivec2(u[2].xy);bool managed=u[60].x>.5;
  for(int y=0;y<4;++y){int ty=y0+y;if(ty>=y1)break;
   float yb=float(ty),wy=min(yHi,yb+1.)-max(yLo,yb);if(wy<=0.)continue;
   for(int x=0;x<4;++x){int tx=x0+x;if(tx>=x1)break;
    float xb=float(tx),wx=min(xHi,xb+1.)-max(xLo,xb);if(wx<=0.)continue;
    if(tx<0||ty<0||float(tx)>=size.x||float(ty)>=size.y)continue;
-   float w=wx*wy;sum+=roundEven(texelFetch(sourceB,base+ivec2(tx,ty),0)*255.)*w;weight+=w;
+   float w=wx*wy;
+   if(managed)sum+=texelFetch(sourceB,base+ivec2(tx,ty),0)*w;
+   else sum+=roundEven(texelFetch(sourceB,base+ivec2(tx,ty),0)*255.)*w;
+   weight+=w;
   }
  }
  if(weight<=0.)return vec4(0.);
- return clamp(floor(sum/weight+vec4(.5)),vec4(0.),vec4(255.))/255.;
+ float full=(xHi-xLo)*(yHi-yLo);
+ float denom=(fit>.5&&fit<1.5)?full:weight;
+ if(denom<=0.)return vec4(0.);
+ if(managed)return sum/denom;
+ return clamp(floor(sum/denom+vec4(.5)),vec4(0.),vec4(255.))/255.;
 }
 vec4 encodePoint(vec2 p){if(p.x<0.)return vec4(1);uvec2 q=uvec2(round(p));return vec4(float(q.x&255u),float(q.x>>8),float(q.y&255u),float(q.y>>8))/255.;}
 vec2 decodePoint(vec4 v){uvec4 q=uvec4(round(v*255.));if(q.x==255u&&q.y==255u)return vec2(-1);return vec2(float(q.x|(q.y<<8)),float(q.z|(q.w<<8)));}
@@ -1011,7 +1030,7 @@ vec4 shade(vec2 p){
    if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4(opacity));}
   }
   if(kind==3&&u[60].x>.5){paint=mulRN4(linearImage(p),vec4(opacity));}else if(kind==3&&u[46].w>.5){vec4 grid=byteImageAddress(p);paint=grid.z>.5?roundEven(smpBytesIndex(sourceB,grid.xy,u[2])*opacity)/255.:vec4(0);}else if(kind==3){vec2 size=u[2].zw;vec2 coord=paintUV(q)*size-.5;if(u[62].z<.5){coord=(q*size-u[6].zw*.5)/u[6].zw;if(u[8].z<1.5){float ratio=u[8].z<.5?max(u[6].z/size.x,u[6].w/size.y):min(u[6].z/size.x,u[6].w/size.y);coord=(q-(u[6].zw-(size-1.)*ratio)*.5)/ratio;}}if(u[8].z>.5&&u[8].z<1.5&&(any(lessThan(coord,vec2(-.5)))||any(greaterThanEqual(coord,size-.5))))paint=vec4(0);else if(u[46].w>.5)paint=roundEven(smpBytesIndex(sourceB,clamp(coord,vec2(0),size-1.),u[2])*opacity)/255.;else paint=smpIndex(sourceB,clamp(coord,vec2(0),size-1.),u[2])*opacity;}
-  {vec4 filteredImage=halfScaleStretch(p);if(kind==3&&filteredImage.x>=0.)paint=filteredImage*opacity;}
+  if(kind==3){vec4 filteredImage=halfScaleStretch(p);if(filteredImage.w>=0.){if(u[60].x>.5)paint=mulRN4(filteredImage,vec4(opacity));else paint=filteredImage*opacity;}}
   if(u[46].w>.5)paint=roundEven(paint*255.)/255.;vec4 result=paint*at(sourceA,p,u[1]).a;if(u[60].x>.5)result=mulRN4(paint,vec4(at(sourceA,p,u[1]).a));if(mode==16){result*=u[4].z;if(u[4].w>0.5)result*=at(sourceC,p,u[3]).a;}return result;
  }
  if(mode==15){vec4 src=a*u[4].z;if(u[4].w>0.5)src*=at(sourceC,p,u[3]).a;return src;}

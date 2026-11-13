@@ -1330,6 +1330,9 @@ impl Compositor<'_, '_, '_> {
                 &futureox_design_kernel::paint::solid_rgba8(&p.color, p.opacity as f32)?.0,
             );
         }
+        if kind == 3 && (p.adjust.is_some() || p.tile.as_ref().is_some_and(|tile| tile.is_active())) {
+            u[186] = 1.;
+        }
         if p.stops.len() > futureox_design_kernel::scene::MAX_GRADIENT_STOPS {
             return Err("Gradient stop budget exceeded".into());
         }
