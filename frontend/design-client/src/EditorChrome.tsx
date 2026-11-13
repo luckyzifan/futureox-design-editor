@@ -1,5 +1,6 @@
 import { useInterfacePreferences } from './interface-preference'
 import { canvasText } from './canvas-interface-messages'
+import { figmaStatusClearance } from './figma-toolbar-layout'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, FolderOpen, Layers, Shapes, SlidersHorizontal, Variable } from 'lucide-react'
@@ -18,17 +19,25 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
   useLayoutEffect(() => {
     const toolbar = host.current, canvas = toolbar?.closest('.canvas-workspace')
     if (!toolbar || !canvas) return
-    const shell = toolbar.closest('.editor-shell')
+    const shell = toolbar.closest<HTMLElement>('.editor-shell')
     const place = () => {
       // This `left` value is the visual center and only matches a bottom toolbar
-      // shifted with translateX(-50%). Sketch tools sit in the window toolbar;
-      // writing that center inline slides them under the title or the zoom.
-      if (shell?.getAttribute('data-ui-mode') === 'sketch') {
+      // shifted with translateX(-50%). Sketch keeps its own row under the
+      // document action bar; writing that center inline slides the row sideways
+      // until the action bar covers the buttons.
+      if (shell && shell.getAttribute('data-ui-mode') === 'sketch') {
         toolbar.style.removeProperty('left')
+        shell.style.removeProperty('--floating-toolbar-status-clearance')
         return
       }
       const box = canvas.getBoundingClientRect(), half = toolbar.getBoundingClientRect().width / 2
       toolbar.style.left = `${Math.max(half + 8, Math.min(window.innerWidth / 2 - box.left, box.width - half - 8))}px`
+      if (shell?.getAttribute('data-ui-mode') === 'figma') {
+        const bottom = Number.parseFloat(getComputedStyle(toolbar).bottom)
+        const clearance = figmaStatusClearance(bottom, toolbar.getBoundingClientRect().height)
+        if (clearance > 0) shell.style.setProperty('--floating-toolbar-status-clearance', `${clearance}px`)
+        else shell.style.removeProperty('--floating-toolbar-status-clearance')
+      }
     }
     const observer = new ResizeObserver(place)
     observer.observe(toolbar); observer.observe(canvas); window.addEventListener('resize', place)

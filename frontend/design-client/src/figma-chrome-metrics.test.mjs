@@ -171,12 +171,12 @@ function probeHtml() {
 </div>
 <div class="app-shell editor-shell" id="sketch-shell" data-ui-mode="sketch" style="width:1440px;height:200px">
   <header class="editor-header" id="sketch-header">
-    <button type="button" class="brand">F</button>
-    <div class="document-title"><button type="button" class="document-location">本机设计</button><input value="未命名"></div>
+    <div class="toolbar floating-toolbar"><div class="tool-group"><button type="button" id="sketch-tool">排</button></div></div>
+    <div class="document-title"><button class="brand" type="button">F</button><button type="button" class="document-location">本机设计</button><input value="未命名"></div>
     <div class="header-right"><div class="ui-mode-switch"><button type="button" id="sketch-mode">Sketch</button></div></div>
   </header>
   <div class="adaptive-layers-shell" id="sketch-layers"><div class="layers-panel">页面</div></div>
-  <div class="canvas-workspace" id="sketch-canvas"><div class="toolbar floating-toolbar"><div class="tool-group"><button type="button" id="sketch-tool">排</button></div></div></div>
+  <div class="canvas-workspace" id="sketch-canvas"></div>
   <div class="properties-workspace" id="sketch-inspector"></div>
 </div>
 <section class="design-tools export-panel" id="export-dialog"></section>
