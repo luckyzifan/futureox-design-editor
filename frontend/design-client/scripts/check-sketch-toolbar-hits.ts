@@ -11,7 +11,7 @@ await mkdir(output, { recursive: true })
 
 const sizes = [
   { width: 1440, height: 960 },
-  { width: 1280, height: 800 },
+  { width: 1180, height: 800 },
   { width: 1000, height: 640 },
 ] as const
 const locales = [
@@ -64,15 +64,31 @@ try {
   const base = server.resolvedUrls?.local?.[0]
   if (!base) throw new Error('Vite did not report a local URL')
   report.base = base
+  const headed = process.env.SKETCH_TOOLBAR_HEADED === '1'
+  const launchArgs = ['--disable-dev-shm-usage', '--force-device-scale-factor=1', ...(headed ? ['--no-sandbox'] : [])]
   try {
-    browser = await chromium.launch({ headless: true, chromiumSandbox: true, args: ['--disable-dev-shm-usage'] })
-    report.browser = 'playwright-chromium'
+    browser = await chromium.launch({ headless: !headed, chromiumSandbox: !headed, channel: headed ? 'chrome' : undefined, args: launchArgs })
+    report.browser = headed ? 'headed-chrome' : 'playwright-chromium'
   } catch (error) {
     report.bundledChromiumError = String(error).split('\n')[0]
-    browser = await chromium.launch({ headless: true, channel: 'chrome', args: ['--disable-dev-shm-usage'] })
-    report.browser = 'chrome-channel'
+    browser = await chromium.launch({ headless: !headed, channel: 'chrome', args: [...launchArgs, '--no-sandbox'] })
+    report.browser = headed ? 'headed-chrome-channel' : 'chrome-channel'
   }
-  page = await browser.newPage({ viewport: { width: 1440, height: 960 } })
+  page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 })
+  await page.addInitScript(() => {
+    const host = window as Window & { coreDesktop?: { version: number } }
+    if (host.coreDesktop?.version === 1) return
+    host.coreDesktop = {
+      version: 1,
+      readRecovery: async () => ({ status: 'cancelled' }),
+      writeRecovery: async () => ({ status: 'ok' }),
+      clearRecovery: async () => ({ status: 'ok' }),
+      setDirty: async () => {},
+      onCommand: () => () => {},
+      onCloseRequested: () => () => {},
+      respondToClose: async () => ({ accepted: true }),
+    }
+  })
   const errors: string[] = []
   page.on('pageerror', error => errors.push(String(error)))
   await page.goto(base)
@@ -121,16 +137,40 @@ try {
     const bar = document.querySelector<HTMLElement>('.floating-toolbar')
     const style = bar ? getComputedStyle(bar) : null
     const workspace = document.querySelector<HTMLElement>('.canvas-workspace')
+    const windowBar = document.querySelector<HTMLElement>('.editor-header')
+    const rectOf = (element: Element | null) => {
+      if (!element) return null
+      const rect = element.getBoundingClientRect()
+      return { x: +rect.x.toFixed(2), y: +rect.y.toFixed(2), w: +rect.width.toFixed(2), h: +rect.height.toFixed(2) }
+    }
+    const zoom = document.querySelector<HTMLElement>('[data-testid="zoom-readout"]')
+    const preview = document.querySelector<HTMLElement>('.prototype-preview-button')
+    const layers = document.querySelector<HTMLElement>('.adaptive-layers-shell')
+    const inspector = document.querySelector<HTMLElement>('.properties-workspace')
     return {
       mode: shell?.getAttribute('data-ui-mode'),
       density: shell?.getAttribute('data-density'),
+      dpr: window.devicePixelRatio,
+      viewport: { w: window.innerWidth, h: window.innerHeight },
       inlineLeft: bar?.style.left || '',
       position: style?.position,
       transform: style?.transform,
       canvasRow: workspace ? getComputedStyle(workspace).gridRow : '',
+      toolbarInHeader: !!bar && !!windowBar && windowBar.contains(bar),
+      zoomInHeader: !!zoom && !!windowBar && windowBar.contains(zoom),
+      previewInHeader: !!preview && !!windowBar && windowBar.contains(preview),
+      geometry: {
+        toolbar: rectOf(bar),
+        header: rectOf(windowBar),
+        canvas: rectOf(workspace),
+        zoom: rectOf(zoom),
+        preview: rectOf(preview),
+        layers: rectOf(layers),
+        inspector: rectOf(inspector),
+      },
       panels: {
-        left: document.querySelector('.adaptive-layers-shell')?.getBoundingClientRect().width || 0,
-        right: document.querySelector('.properties-workspace')?.getBoundingClientRect().width || 0,
+        left: layers?.getBoundingClientRect().width || 0,
+        right: inspector?.getBoundingClientRect().width || 0,
       },
       toolbarHits, headerHits, overlaps,
     }
@@ -165,8 +205,34 @@ try {
           size, mode, locale: locale.id, hit, missing, covered, headerMisses, overlaps: hit.overlaps, screenshot: shot,
         }
         const canvasRow = hit.canvasRow.replace(/\s/g, '')
-        if (mode === 'sketch' && (hit.position !== 'relative' || hit.inlineLeft !== '' || !/^3(\/auto)?$/.test(canvasRow)))
-          failures.push(`${size.width} sketch placement inlineLeft=${hit.inlineLeft} position=${hit.position} row=${hit.canvasRow}`)
+        const near = (value: number, target: number) => Math.abs(value - target) <= 0.75
+        const insideBar = (box: { x: number; y: number; w: number; h: number } | null, bar: { x: number; y: number; w: number; h: number } | null) =>
+          !!box && !!bar && box.y >= bar.y - 0.75 && box.y + box.h <= bar.y + bar.h + 0.75 && box.x >= bar.x - 0.75 && box.x + box.w <= bar.x + bar.w + 0.75
+        if (mode === 'sketch') {
+          const bar = hit.geometry.header
+          const tools = hit.geometry.toolbar
+          if (!hit.toolbarInHeader || hit.position !== 'relative' || hit.inlineLeft !== '')
+            failures.push(`${size.width} sketch tools left the window toolbar position=${hit.position} inlineLeft=${hit.inlineLeft} inHeader=${hit.toolbarInHeader}`)
+          if (!bar || !near(bar.h, 52) || !near(bar.y, 0) || !near(bar.x, 0))
+            failures.push(`${size.width} sketch window toolbar ${JSON.stringify(bar)}`)
+          if (!tools || tools.y < -0.75 || tools.y + tools.h > 52.75)
+            failures.push(`${size.width} sketch tool cluster is a second bar ${JSON.stringify(tools)}`)
+          if (!hit.geometry.canvas || !near(hit.geometry.canvas.y, 53) || !/^3(\/auto)?$/.test(canvasRow))
+            failures.push(`${size.width} sketch content ${JSON.stringify(hit.geometry.canvas)} row=${hit.canvasRow}`)
+          if (hit.geometry.layers && !near(hit.geometry.layers.y, 53))
+            failures.push(`${size.width} sketch layers ${JSON.stringify(hit.geometry.layers)}`)
+          if (hit.geometry.inspector && !near(hit.geometry.inspector.y, 53))
+            failures.push(`${size.width} sketch inspector ${JSON.stringify(hit.geometry.inspector)}`)
+          if (!hit.zoomInHeader || !insideBar(hit.geometry.zoom, bar))
+            failures.push(`${size.width} sketch zoom ${JSON.stringify(hit.geometry.zoom)}`)
+          if (!hit.previewInHeader || !insideBar(hit.geometry.preview, bar))
+            failures.push(`${size.width} sketch preview ${JSON.stringify(hit.geometry.preview)}`)
+        }
+        if (mode === 'figma') {
+          const tools = hit.geometry.toolbar
+          if (hit.toolbarInHeader || !tools || tools.y + tools.h < size.height - 40)
+            failures.push(`${size.width} figma bottom pill moved ${JSON.stringify(tools)} inHeader=${hit.toolbarInHeader}`)
+        }
         if (hit.panels.left < 180 || hit.panels.right < 180)
           failures.push(`${size.width} ${mode} panels closed left=${hit.panels.left} right=${hit.panels.right}`)
         if (missing.length) failures.push(`${size.width} ${mode} ${locale.id} missing ${missing.join(',')}`)
