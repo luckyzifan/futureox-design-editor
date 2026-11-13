@@ -2,10 +2,51 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { fileURLToPath } from 'node:url'
-import { parseOptions } from '../src/cli.mjs'
+import { mkdtemp, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { isDirectInvocation, parseOptions } from '../src/cli.mjs'
 const token = 'ephemeral-test-token-1234567890'
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url))
+
+async function helpText(script) {
+  const child = spawn(process.execPath, [script, '--help'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let stdout = '', stderr = ''
+  child.stdout.on('data', bytes => { stdout += bytes })
+  child.stderr.on('data', bytes => { stderr += bytes })
+  const [code] = await once(child, 'exit')
+  return { code, stdout, stderr }
+}
+
+test('an installed symlink path still starts the adapter', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'fx-mcp-link-'))
+  try {
+    const source = fileURLToPath(new URL('../src', import.meta.url))
+    const linked = path.join(directory, 'resources')
+    await symlink(source, linked)
+    const cli = await helpText(path.join(linked, 'cli.mjs'))
+    assert.equal(cli.code, 0)
+    assert.equal(cli.stdout, '')
+    assert.match(cli.stderr, /Futureox Design MCP/)
+    const figma = await helpText(path.join(linked, 'figma-cli.mjs'))
+    assert.equal(figma.code, 0)
+    assert.equal(figma.stdout, '')
+    assert.match(figma.stderr, /Figma-shaped MCP/)
+    const direct = path.join(directory, 'cli-link.mjs')
+    await symlink(path.join(source, 'cli.mjs'), direct)
+    const fileLink = await helpText(direct)
+    assert.equal(fileLink.code, 0)
+    assert.match(fileLink.stderr, /Futureox Design MCP/)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('Windows packaged paths compare case-insensitively after canonicalization', () => {
+  const moduleUrl = pathToFileURL('/tmp/Futureox/cli.mjs').href
+  assert.equal(isDirectInvocation(moduleUrl, '/TMP/Futureox/cli.mjs', 'win32'), true)
+  assert.equal(isDirectInvocation(moduleUrl, '/tmp/other/cli.mjs', 'win32'), false)
+  assert.equal(isDirectInvocation(moduleUrl, '--help', 'linux'), false)
+})
 
 test('CLI parser accepts explicit ephemeral configuration and refuses token arguments', () => {
   const options = parseOptions(['--socket', '/tmp/private/bridge.sock', '--session', 'sid'], { FUTUREOX_DESIGN_BRIDGE_TOKEN: token })

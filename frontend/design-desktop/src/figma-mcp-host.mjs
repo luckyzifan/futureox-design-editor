@@ -4,14 +4,40 @@ import path from 'node:path'
 /** Outside ASAR so both Electron and external stdio clients can run these exact files. */
 export function desktopMcpPaths(resourcesPath) {
   const root = resourcesPath ? path.join(resourcesPath, 'design-mcp', 'src') : fileURLToPath(new URL('../../design-mcp/src/', import.meta.url))
-  return { cli: path.join(root, 'cli.mjs'), http: path.join(root, 'figma-http.mjs') }
+  return { cli: path.join(root, 'cli.mjs'), figmaCli: path.join(root, 'figma-cli.mjs'), http: path.join(root, 'figma-http.mjs') }
 }
 
-export function desktopMcpClientConfig(connection, cli, executable = process.execPath) {
+// Some clients replace the child environment with this object. Packaged Electron
+// still has to resolve its libraries, temporary directory, and locale from here.
+const LAUNCH_ENV_KEYS = ['HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'TMPDIR', 'TEMP', 'TMP', 'PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'XDG_RUNTIME_DIR', 'APPDATA', 'LOCALAPPDATA']
+
+function readEnv(env, name, platform) {
+  if (platform !== 'win32') return { key: name, value: env[name] }
+  const key = Object.keys(env).find(item => item.toLowerCase() === name.toLowerCase())
+  return key ? { key, value: env[key] } : { key: name, value: undefined }
+}
+
+export function packagedElectronLaunchEnv(baseEnv = process.env, platform = process.platform) {
+  const env = { ELECTRON_RUN_AS_NODE: '1' }
+  for (const name of LAUNCH_ENV_KEYS) {
+    const { key, value } = readEnv(baseEnv, name, platform)
+    if (typeof value !== 'string' || value.length === 0 || value.length > 32768 || /[\0\r\n]/.test(value)) continue
+    env[key] = value
+  }
+  return env
+}
+
+export function desktopMcpClientConfig(connection, cli, executable = process.execPath, options = {}) {
+  const baseEnv = options.env ?? process.env
+  const platform = options.platform ?? process.platform
   return { mcpServers: { futureox_design: {
     command: executable, args: [cli],
-    env: { ELECTRON_RUN_AS_NODE: '1', FUTUREOX_DESIGN_SOCKET: connection.endpoint,
-      FUTUREOX_DESIGN_SESSION: connection.sessionId, FUTUREOX_DESIGN_BRIDGE_TOKEN: connection.token },
+    env: {
+      ...packagedElectronLaunchEnv(baseEnv, platform),
+      FUTUREOX_DESIGN_SOCKET: connection.endpoint,
+      FUTUREOX_DESIGN_SESSION: connection.sessionId,
+      FUTUREOX_DESIGN_BRIDGE_TOKEN: connection.token,
+    },
   } } }
 }
 

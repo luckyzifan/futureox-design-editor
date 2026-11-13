@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-import { pathToFileURL } from 'node:url'
 import { DesignMcpServer } from './server.mjs'
 import { SocketDesignBackend } from './socket-backend.mjs'
 import { FIGMA_MCP_INSTRUCTIONS, FigmaFacade } from './figma-facade.mjs'
-import { parseOptions } from './cli.mjs'
+import { isDirectInvocation, parseOptions } from './cli.mjs'
 
 export async function main(argv = process.argv.slice(2)) {
   const options = parseOptions(argv)
   if (options.help) {
-    process.stderr.write('Futureox Design Figma-shaped MCP (stdio, MCP 2025-11-25)\nUsage: node src/figma-cli.mjs --socket ABSOLUTE_SOCKET_PATH --session SESSION_ID\nToken: FUTUREOX_DESIGN_BRIDGE_TOKEN environment variable.\nTools follow common Figma MCP names and call the existing Design API. The full design_* catalog remains src/cli.mjs.\n')
+    process.stderr.write('Futureox Design Figma-shaped MCP (stdio, MCP 2025-11-25)\nUsage: <packaged Electron or Node> <design-mcp>/src/figma-cli.mjs\nToken: FUTUREOX_DESIGN_BRIDGE_TOKEN environment variable.\nTools follow common Figma MCP names and call the existing Design API. The full design_* catalog remains src/cli.mjs.\n')
     return
   }
   const socket = new SocketDesignBackend(options)
@@ -28,6 +27,6 @@ export async function main(argv = process.argv.slice(2)) {
   finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); socket.close() }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch(error => { process.stderr.write(`[futureox-figma-mcp] ${error.message}\n`); process.exitCode = 1 })
 }
