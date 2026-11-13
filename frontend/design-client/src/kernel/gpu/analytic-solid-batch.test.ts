@@ -1,6 +1,6 @@
 import {afterEach,expect,test,vi} from 'vitest'
 import {GpuRenderer} from './renderer'
-import {analyticSolidLeaf,planAnalyticSolidBatches,packAnalyticSolids,ANALYTIC_SOLID_FLOATS} from './analytic-solid-batch'
+import {analyticSolidBrushes,analyticSolidLeaf,planAnalyticSolidBatches,packAnalyticSolids,ANALYTIC_SOLID_FLOATS} from './analytic-solid-batch'
 import {sourcePainterOrder} from './opaque-painter-prefix'
 import type {GpuNode,GpuScene,Rect,Texture} from './types'
 
@@ -44,7 +44,10 @@ test('area solids pack the original program index and split when footprints touc
   const packed=packAnalyticSolids([a])
   expect(packed).toHaveLength(ANALYTIC_SOLID_FLOATS)
   expect(packed[4]).toBe(0)
+  expect(packed[6]).toBe(0)
   expect(packed[7]).toBe(0)
+  expect(packed[21]).toBe(0)
+  expect(packed[22]).toBe(0)
   const touching=planAnalyticSolidBatches([a,b,apart],bounds.w*bounds.h)
   expect(touching.map(batch=>batch.items.map(item=>item.write.x))).toEqual([[0],[2,8]])
 })
@@ -93,6 +96,42 @@ function harness(perGroup=8,groups=4){
   return {renderer,driver,draws,target,count:groups*perGroup}
 }
 
+function stroked(id:string,x:number,align:'center'|'inside'|'outside'='center'){
+  const node=leaf(id,x)
+  node.rect={x,y:0,w:4,h:4}
+  node.strokes=[{align,path:{count:3,area:{first:0,count:4},rect:{x,y:0,w:4,h:4}},
+    paint:{kind:'solid',color:'#112233',opacity:1,visible:true,blend:'normal',stops:[]}}] as GpuNode['strokes']
+  return node
+}
+test('a solid fill and its stroke stay in one batch, including inside and outside alignment',()=>{
+  const color=()=>[0.2,0.4,0.6] as const,channel=()=>1
+  const center=analyticSolidBrushes(stroked('a',0),bounds,8,color,channel)!
+  const inside=analyticSolidBrushes(stroked('b',0,'inside'),bounds,8,color,channel)!
+  const outside=analyticSolidBrushes(stroked('c',0,'outside'),bounds,8,color,channel)!
+  const border=stroked('d',0,'outside');border.fills=[]
+  const shape=analyticSolidBrushes(border,bounds,8,color,channel)!
+  expect(center.map(item=>[item.role??0,item.clip??0])).toEqual([[0,0],[0,0]])
+  expect(inside.map(item=>[item.role??0,item.clip??0])).toEqual([[1,0],[0,2]])
+  expect(outside.map(item=>[item.role??0,item.clip??0])).toEqual([[1,0],[0,3]])
+  expect(shape.map(item=>[item.role??0,item.clip??0])).toEqual([[2,0],[0,3]])
+  expect(analyticSolidBrushes(leaf('plain',0),bounds,8,color,channel)).toBeUndefined()
+  const gradient=stroked('g',0);gradient.strokes[0].paint.kind='linear' as 'solid'
+  expect(analyticSolidBrushes(gradient,bounds,8,color,channel)).toBeUndefined()
+  const near=analyticSolidBrushes(stroked('n',1),bounds,8,color,channel)!
+  const far=analyticSolidBrushes(stroked('f',20),bounds,8,color,channel)!
+  for(const item of near)item.group=2
+  for(const item of far)item.group=2
+  const area=bounds.w*bounds.h
+  expect(planAnalyticSolidBatches([...center,...near],area).map(batch=>batch.items.length)).toEqual([2,2])
+  expect(planAnalyticSolidBatches([...center,...far],area).map(batch=>batch.items.map(item=>item.group))).toEqual([[1,1,2,2]])
+  const words=packAnalyticSolids(inside)
+  expect(words[6]).toBe(0)
+  expect(words[21]).toBe(1)
+  expect(words[22]).toBe(1)
+  expect(words[24+6]).toBe(2)
+  expect(words[24+22]).toBe(0)
+})
+
 test('partial opacity stays outside the fused solid draw',async()=>{
   const on=harness()
   on.renderer.scene.nodes.faint={...leaf('faint',0),opacity:.5}
@@ -121,6 +160,56 @@ test('analytic topology leaves fuse coverage and paint, and the flag restores th
   console.log(JSON.stringify({scope:'same analytic renderer, 128 area solids in neutral groups, tile-sized target',beforeDraws:before,afterDraws:after,batchedNodes:count}))
 })
 
+
+function strokeHarness(count=24){
+  const draws:string[]=[]
+  const create=(width:number,height:number)=>({width,height,bytes:width*height*16,resource:{}}) as Texture
+  const driver:any={
+    name:'webgpu',managed:true,hdr:false,displayMath:false,analyticSolidsReady:true,exactSolidPaintOver:true,
+    create,clear(){},destroy(){},checkpoint:async()=>{},
+    mask(){draws.push('mask')},
+    pass(_target:Texture,u:Float32Array){draws.push(`pass:${u[16]}`)},
+    drawAnalyticSolids(_output:Texture,_source:Texture,_rect:Rect,_clip:Texture|undefined,_clipRect:Rect|undefined,data:Float32Array,n:number){
+      draws.push(`batch:${n}:${data.length}`)
+      return true
+    },
+  }
+  const renderer=new GpuRenderer(driver,true,false) as any
+  const nodes:Record<string,GpuNode>={}
+  const children:string[]=[]
+  const frame={x:0,y:0,w:count*8,h:8}
+  for(let i=0;i<count;i++){
+    const id=`s${i}`
+    children.push(id)
+    nodes[id]=stroked(id,i*8)
+  }
+  nodes.stage=group('stage',children)
+  nodes.stage.rect=frame
+  nodes.stage.blend='pass-through'
+  nodes.stage.passthrough=true
+  renderer.scene={nodes,roots:['stage'],curves:new Float32Array(32),coherentSamples:false,interactionRetained:false,
+    softwareRaster:false,extent:frame,view:{x:0,y:0,zoom:1}} as GpuScene
+  renderer.outputFrame={present:true,readback:false}
+  renderer.curveBits=new Uint32Array(renderer.scene.curves.buffer)
+  renderer.sampleIndex=undefined
+  renderer.fastWork.reset(true)
+  return {renderer,draws,target:renderer.acquire(frame),count}
+}
+test('opaque solid strokes fuse into the analytic draw instead of a mask and a paint per brush',async()=>{
+  const on=strokeHarness(32)
+  await on.renderer.drawList(['stage'],on.target)
+  const after=on.draws.length
+  expect(on.draws.filter(draw=>draw.startsWith('batch:')).length).toBe(2)
+  expect(on.draws.some(draw=>draw==='mask'||draw.startsWith('pass:'))).toBe(false)
+
+  vi.stubEnv('VITE_DESIGN_ANALYTIC_SOLID_BATCH','0')
+  const off=strokeHarness(32)
+  await off.renderer.drawList(['stage'],off.target)
+  expect(off.draws.some(draw=>draw.startsWith('batch:'))).toBe(false)
+  const before=off.draws.length
+  expect(before).toBeGreaterThan(after)
+  console.log(JSON.stringify({scope:'same analytic renderer, 32 stroked solids, mock WebGPU driver, no Metal or device timestamps',beforeDraws:before,afterDraws:after,nodes:on.count}))
+})
 
 test('an exhausted analytic arena falls back for the remaining leaves',async()=>{
   const run=harness(8,2)

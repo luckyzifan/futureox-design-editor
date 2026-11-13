@@ -77,7 +77,7 @@ import type {
 } from './types'
 import { parameters, blends, rect, intersect } from './types'
 import {opaquePainterStart,sourcePainterOrder} from './opaque-painter-prefix'
-import {ANALYTIC_SOLID_TARGET_PIXELS,analyticSolidLeaf,packAnalyticSolids,planAnalyticSolidBatches} from './analytic-solid-batch'
+import {ANALYTIC_SOLID_TARGET_PIXELS,analyticSolidBrushes,analyticSolidLeaf,packAnalyticSolids,planAnalyticSolidBatches,type AnalyticSolid} from './analytic-solid-batch'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
@@ -3611,13 +3611,23 @@ export class GpuRenderer {
     const words=this.curveWords()
     const items=[]
     const capacity = this.driver.analyticSolidRemaining?.() ?? MAX_SOLID_INSTANCES
-    let end=start
+    const colour=(value:string)=>this.color(value),channel=(value:string)=>this.alpha(value)
+    const programReady=(program:AnalyticSolid['program'])=>program.kind!=='area'||!this.driver.relocateCoverageProgram||
+      this.driver.relocateCoverageProgram(program.first)!==undefined
+    let end=start,nextGroup=1
     for(;end<ids.length && items.length<capacity;end++){
-      const item=analyticSolidLeaf(this.scene.nodes[ids[end]],target.rect,words,value=>this.color(value),value=>this.alpha(value))
-      if(!item)break
-      if(item.program.kind==='area'&&this.driver.relocateCoverageProgram&&
-        this.driver.relocateCoverageProgram(item.program.first)===undefined)break
-      items.push(item)
+      const node=this.scene.nodes[ids[end]]
+      const item=analyticSolidLeaf(node,target.rect,words,colour,channel)
+      if(item){
+        if(!programReady(item.program))break
+        items.push(item)
+        continue
+      }
+      const brushes=analyticSolidBrushes(node,target.rect,words,colour,channel)
+      if(!brushes||items.length+brushes.length>capacity||brushes.some(brush=>!programReady(brush.program)))break
+      const group=nextGroup++
+      for(const brush of brushes)brush.group=group
+      items.push(...brushes)
     }
     if(!items.length)return
     const planned=planAnalyticSolidBatches(items,target.rect.w*target.rect.h)
