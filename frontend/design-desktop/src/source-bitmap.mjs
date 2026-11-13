@@ -5,6 +5,7 @@ import {Worker} from 'node:worker_threads'
 let service, sequence=0
 const requests=new Map()
 const SPAN_BUDGET=64*1024*1024
+class SpanUnavailable extends Error {}
 let activeSpanBytes=0
 // unref only when no sample is queued. A short-lived node --test loop otherwise
 // looks idle and cancels the still-pending reply. Electron can still exit once
@@ -16,8 +17,9 @@ function sample(file,iw,ih,body,pairs,span=false){
  if(span){
   if(body.length!==16)throw Error('Invalid sample indices')
   spanBytes=body.readUInt32LE(8)*body.readUInt32LE(12)*4
-  if(!Number.isSafeInteger(spanBytes)||spanBytes<=0||spanBytes>SPAN_BUDGET||activeSpanBytes+spanBytes>SPAN_BUDGET)
-   throw Error('Source sampler span budget exceeded')
+  if(!Number.isSafeInteger(spanBytes)||spanBytes<=0||spanBytes>SPAN_BUDGET)
+   throw Error('Invalid sample extent')
+  if(activeSpanBytes+spanBytes>SPAN_BUDGET)throw new SpanUnavailable('Source sampler span budget exceeded')
  }
  if(!service){
   const worker=new Worker(new URL('./source-bitmap-samples.mjs',import.meta.url));service=worker
@@ -45,7 +47,9 @@ export async function serveSourceBitmap(request,active,root) {
    const reader=request.body?.getReader();if(!reader)return new Response(null,{status:400})
    let bytes=0;const chunks=[]
    for(;;){const {done,value}=await reader.read();if(done)break;bytes+=value.length;if(bytes>65544){await reader.cancel();return new Response(null,{status:413})}chunks.push(value)}
-   const pixels=await sample(full,Number(match[3]),Number(match[4]),Buffer.concat(chunks,bytes),url.search.endsWith('&pairs=1'),span)
+   let pixels
+   try{pixels=await sample(full,Number(match[3]),Number(match[4]),Buffer.concat(chunks,bytes),url.search.endsWith('&pairs=1'),span)}
+   catch(error){if(error instanceof SpanUnavailable)return new Response(null,{status:503});throw error}
    if(!active(match[1]))return new Response(null,{status:409})
    return new Response(pixels,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})
  }

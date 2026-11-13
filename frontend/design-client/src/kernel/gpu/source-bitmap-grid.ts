@@ -69,6 +69,7 @@ function denseSourceSpan(field:Float32Array,b:Rect,iw:number,ih:number,x0=0,x1=b
 function postSpan(uri:string,span:SourceSpan){
  const payload=new Uint32Array([span.x,span.y,span.w,span.h])
  const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&span=1',false);xhr.responseType='arraybuffer';xhr.send(payload)
+ if(xhr.status===503)return
  if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==span.w*span.h*4)throw Error('无法读取旋转图片的原始采样区域')
  return new Uint8Array(xhr.response)
 }
@@ -124,26 +125,36 @@ function spanStrips(field:Float32Array,b:Rect,iw:number,ih:number){
 function readDenseTaps(uri:string,field:Float32Array,b:Rect,iw:number,ih:number,tap:(dest:number,raw:Uint8Array,rawAt:number)=>void){
  const strips=spanStrips(field,b,iw,ih)
  const read:DenseSourceRead={mode:strips?'span':'pairs',requests:0,sourceBytes:0,residentBytes:0,inFlightBytes:0}
+ const pairs=(left:number,top:number,width:number,height:number)=>{
+  const bandRows=Math.max(1,Math.floor(8192/width))
+  for(let y=top;y<top+height;y+=bandRows){
+   const h=Math.min(bandRows,top+height-y),data=new Uint32Array(2+width*h*2);data.set([width,h])
+   for(let row=0;row<h;row++)for(let col=0;col<width;col++){
+    const i=row*width+col,index=(y+row)*b.w+left+col,cell=cellAt(field,index,iw,ih)
+    if(!cell)continue
+    data[2+i*2]=cell[0];data[3+i*2]=cell[1]
+    field[index*4]=2*(left+col);field[index*4+1]=2*(y+row)
+   }
+   const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&pairs=1',false);xhr.responseType='arraybuffer';xhr.send(data)
+   if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==width*h*16)throw Error('无法读取旋转图片的原始采样区域')
+   const raw=new Uint8Array(xhr.response);noteRead(read,raw.byteLength)
+   for(let row=0;row<2*h;row++)for(let col=0;col<2*width;col++){
+    tap((y*2+row)*b.w*2+left*2+col,(row*width*2+col)*4)
+   }
+  }
+ }
  if(strips){
   for(const strip of strips){
-   const raw=postSpan(uri,strip.span);noteRead(read,raw.byteLength)
+   const raw=postSpan(uri,strip.span)
+   if(!raw){
+    read.mode='pairs'
+    pairs(strip.x,strip.y,strip.w,strip.h)
+    continue
+   }
+   noteRead(read,raw.byteLength)
    scatterSpan(field,b,strip.span,raw,iw,ih,strip.x,strip.x+strip.w,strip.y,strip.y+strip.h,(dest,rawAt)=>tap(dest,raw,rawAt))
   }
-  lastDenseSourceRead=read;return
- }
- const bandRows=Math.max(1,Math.floor(8192/b.w))
- for(let y=0;y<b.h;y+=bandRows){
-  const h=Math.min(bandRows,b.h-y),data=new Uint32Array(2+b.w*h*2);data.set([b.w,h])
-  for(let i=0;i<b.w*h;i++){
-   const index=y*b.w+i,cell=cellAt(field,index,iw,ih);if(!cell)continue
-   data[2+i*2]=cell[0];data[3+i*2]=cell[1]
-   field[index*4]=2*(i%b.w);field[index*4+1]=2*(y+Math.floor(i/b.w))
-  }
-  const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&pairs=1',false);xhr.responseType='arraybuffer';xhr.send(data)
-  if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==b.w*h*16)throw Error('无法读取旋转图片的原始采样区域')
-  const raw=new Uint8Array(xhr.response);noteRead(read,raw.byteLength)
-  for(let i=0;i<raw.length;i+=4)tap(y*2*b.w*2+i/4,raw,i)
- }
+ }else pairs(0,0,b.w,b.h)
  lastDenseSourceRead=read
 }
 // A rotated/sheared image has no separable axes. A rotation reads each source
