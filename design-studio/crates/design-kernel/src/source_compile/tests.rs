@@ -763,3 +763,225 @@ fn a_known_miss_outside_the_stage_stays_out_of_the_tile_and_a_reaching_shadow_st
     compare(&mut runtime, &mut actual, &mut expected, &desc, &request(-480.25, -480.375, 1.));
     assert!(runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap().nodes.contains_key("c"));
 }
+
+fn env_usize(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+/// Many authored roots under one neutral stage. The shared prepare window
+/// covers every root except the last row and column; each compile is still
+/// one 514px tile. A reaching shadow and a component master sit outside the
+/// first tile box and must remain in that tile's closure.
+fn spread_document(cols: usize, rows: usize, children: usize) -> (Document, String, String, String) {
+    let mut doc = document();
+    for id in ["a", "b", "c"] {
+        doc.nodes.remove(id);
+    }
+    let pitch = 256.0;
+    let mut rect: crate::scene::Node = serde_json::from_value(json!({
+        "id": "rect", "kind": "rectangle", "width": 18.0, "height": 12.0,
+        "fills": [{"kind": "solid", "color": "#3777cc"}]
+    }))
+    .unwrap();
+    let mut frame: crate::scene::Node = serde_json::from_value(json!({
+        "id": "frame", "kind": "frame", "width": 200.0, "height": 160.0,
+        "fills": [{"kind": "solid", "color": "#f7f4ee"}]
+    }))
+    .unwrap();
+    let mut stage_children = Vec::new();
+    for row in 0..rows {
+        for col in 0..cols {
+            let id = format!("r{row}_{col}");
+            let mut kids = Vec::with_capacity(children);
+            for index in 0..children {
+                let child = format!("{id}_{index}");
+                rect.id = child.clone();
+                rect.transform = Transform([1., 0., 0., 1., 4. + (index % 8) as f64 * 22., 4. + (index / 8) as f64 * 16.]);
+                doc.nodes.insert(child.clone(), rect.clone());
+                kids.push(child);
+            }
+            if row == 0 && col == 0 {
+                let use_master = "use-master".to_owned();
+                let mut host = frame.clone();
+                host.id = use_master.clone();
+                host.children.clear();
+                host.width = 48.;
+                host.height = 32.;
+                host.transform = Transform([1., 0., 0., 1., 8., 8.]);
+                host.instance =
+                    Some(serde_json::from_value(json!({"componentId": "master", "overrides": {}})).unwrap());
+                doc.nodes.insert(use_master.clone(), host);
+                kids.push(use_master);
+            }
+            frame.id = id.clone();
+            frame.transform = Transform([1., 0., 0., 1., col as f64 * pitch, row as f64 * pitch]);
+            frame.children = kids;
+            doc.nodes.insert(id.clone(), frame.clone());
+            stage_children.push(id);
+        }
+    }
+    let mut reach = frame.clone();
+    reach.id = "reach".into();
+    reach.children.clear();
+    reach.transform = Transform([1., 0., 0., 1., 620., 48.]);
+    reach.width = 72.;
+    reach.height = 64.;
+    reach.effects = serde_json::from_value(
+        json!([{"kind": "shadow", "radius": 8, "x": -180, "color": "#102030", "opacity": 0.85}]),
+    )
+    .unwrap();
+    doc.nodes.insert("reach".into(), reach);
+    stage_children.push("reach".into());
+    let mut master_leaf = rect.clone();
+    master_leaf.id = "master-leaf".into();
+    master_leaf.transform = Transform([1., 0., 0., 1., 4., 4.]);
+    master_leaf.fills[0].color = "#c4512c".into();
+    doc.nodes.insert("master-leaf".into(), master_leaf);
+    let mut master = frame.clone();
+    master.id = "master".into();
+    master.children = vec!["master-leaf".into()];
+    master.width = 48.;
+    master.height = 32.;
+    master.transform = Transform([1., 0., 0., 1., 20_000., 40.]);
+    master.component = Some(serde_json::from_value(json!({})).unwrap());
+    master.effects.clear();
+    doc.nodes.insert("master".into(), master);
+    stage_children.push("master".into());
+    let stage = doc.nodes.get_mut("stage").unwrap();
+    stage.children = stage_children;
+    stage.width = cols as f64 * pitch + 240.;
+    stage.height = rows as f64 * pitch + 240.;
+    let far = format!("r{}_{}", rows - 1, cols - 1);
+    (doc, far, "reach".into(), "master".into())
+}
+
+#[test]
+fn shared_prepare_window_does_not_repeat_distant_roots_on_every_tile() {
+    let cols = env_usize("FUTUREOX_TILE_CONTEXT_COLS", 8);
+    let rows = env_usize("FUTUREOX_TILE_CONTEXT_ROWS", 6);
+    let children = env_usize("FUTUREOX_TILE_CONTEXT_CHILDREN", 8);
+    let tiles = env_usize("FUTUREOX_TILE_CONTEXT_TILES", 2);
+    let (doc, far, reach, master) = spread_document(cols, rows, children);
+    let desc = descriptor(&doc);
+    let document_json_bytes = serde_json::to_vec(&doc).unwrap().len();
+    let pitch = 256i32;
+    let tile = 514i32;
+    let step = 512i32;
+    let tile_edge = (tiles as i32 - 1) * step + tile;
+    let last_x = (cols as i32 - 1) * pitch;
+    let last_y = (rows as i32 - 1) * pitch;
+    assert!(last_x > tile_edge && last_y > tile_edge, "the outer roots must sit outside the tile grid");
+    let prepare_right = tile_edge.max(last_x - 64);
+    let prepare_bottom = tile_edge.max(last_y - 64);
+    assert!(prepare_right < last_x && prepare_bottom < last_y);
+    assert!(prepare_right >= tile_edge && prepare_bottom >= tile_edge);
+    let prepare = json!({"x": -16, "y": -16, "w": prepare_right + 16, "h": prepare_bottom + 16});
+    let mut expected = owner(doc.clone(), "spread-oracle");
+    let mut actual = owner(doc, "spread-live");
+    let mut runtime = Runtime::default();
+    let mut records = Vec::new();
+    let mut first_tile = None;
+    let wall = std::time::Instant::now();
+    for row in 0..tiles {
+        for col in 0..tiles {
+            let x = col as i32 * step;
+            let y = row as i32 * step;
+            let request = json!({
+                "pageId": "page", "width": tile, "height": tile,
+                "view": {"x": 0.0, "y": 0.0, "zoom": 1.0},
+                "rasterProfile": "figmaSubpixel", "gpuPageBackground": true,
+                "gpuViewport": {"x": x, "y": y, "w": tile, "h": tile},
+                "prepareViewport": prepare,
+            });
+            let demand_started = std::time::Instant::now();
+            let packet = crate::capacity::with_source_storage_scope(true, || {
+                runtime.compile(&mut actual, &desc, "stage", "page", &request.to_string())
+            })
+            .unwrap();
+            let demand_ms = demand_started.elapsed().as_secs_f64() * 1000.;
+            let oracle_started = std::time::Instant::now();
+            let full = crate::capacity::with_source_storage_scope(true, || {
+                expected.compile_gpu_packet_request(&request.to_string())
+            })
+            .unwrap();
+            let oracle_ms = oracle_started.elapsed().as_secs_f64() * 1000.;
+            assert_projection_equivalent(&packet, &full);
+            let stats = runtime.stats.clone();
+            let resolved = stats["resolvedCompileNodes"].as_u64().unwrap_or(0);
+            let record = json!({
+                "x": x, "y": y, "demandMs": demand_ms, "oracleMs": oracle_ms,
+                "mode": stats["mode"], "resolvedCompileNodes": stats["resolvedCompileNodes"],
+                "residentAuthoredNodes": stats["residentAuthoredNodes"],
+                "projectionDecision": stats["projectionDecision"],
+                "projectionRebuilds": stats["projectionRebuilds"],
+                "projectionReuses": stats["projectionReuses"],
+                "scopeExpansions": stats["scopeExpansions"],
+                "packetBytes": packet.len(),
+                "estimatedClosureBytes": document_json_bytes as u64 * resolved / desc.nodes.max(1),
+                "frameScene": stats["frameScene"],
+                "cache": stats["cache"],
+            });
+            if first_tile.is_none() {
+                let compiled = runtime.compiler.as_ref().and_then(|engine| engine.doc.as_ref());
+                first_tile = Some(json!({
+                    "containsReach": compiled.is_some_and(|doc| doc.nodes.contains_key(&reach)),
+                    "omitsFarRoot": compiled.is_some_and(|doc| !doc.nodes.contains_key(&far)),
+                    "containsMaster": compiled.is_some_and(|doc| doc.nodes.contains_key(&master)),
+                }));
+            }
+            if std::env::var("FUTUREOX_TILE_CONTEXT_LOG").ok().as_deref() == Some("1") {
+                eprintln!("TILE_CONTEXT_TILE {record}");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            records.push(record);
+        }
+    }
+    let nodes = records
+        .iter()
+        .map(|record| record["resolvedCompileNodes"].as_u64().unwrap_or(0))
+        .collect::<Vec<_>>();
+    let sum = nodes.iter().copied().sum::<u64>();
+    let max = nodes.iter().copied().max().unwrap_or(0);
+    let summary = json!({
+        "nodes": desc.nodes,
+        "documentJsonBytes": document_json_bytes,
+        "cols": cols, "rows": rows, "children": children, "tiles": tiles,
+        "prepare": prepare,
+        "sumResolvedCompileNodes": sum,
+        "maxResolvedCompileNodes": max,
+        "minResolvedCompileNodes": nodes.iter().copied().min().unwrap_or(0),
+        "demandWallMs": records.iter().map(|record| record["demandMs"].as_f64().unwrap_or(0.)).sum::<f64>(),
+        "oracleWallMs": records.iter().map(|record| record["oracleMs"].as_f64().unwrap_or(0.)).sum::<f64>(),
+        "totalWallMs": wall.elapsed().as_secs_f64() * 1000.,
+        "firstTile": first_tile.clone(),
+        "projectionRebuilds": runtime.stats["projectionRebuilds"],
+        "projectionReuses": runtime.stats["projectionReuses"],
+        "tiles": records,
+    });
+    if std::env::var("FUTUREOX_TILE_CONTEXT_LOG").ok().as_deref() == Some("1") {
+        eprintln!("TILE_CONTEXT_SUMMARY {summary}");
+    } else {
+        eprintln!(
+            "TILE_CONTEXT_SUMMARY nodes={} sumResolved={} maxResolved={} minResolved={} demandMs={:.1} oracleMs={:.1} rebuilds={} reuses={} first={}",
+            summary["nodes"], summary["sumResolvedCompileNodes"], summary["maxResolvedCompileNodes"],
+            summary["minResolvedCompileNodes"], summary["demandWallMs"].as_f64().unwrap_or(0.),
+            summary["oracleWallMs"].as_f64().unwrap_or(0.), summary["projectionRebuilds"],
+            summary["projectionReuses"], summary["firstTile"]
+        );
+    }
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    let first = first_tile.unwrap();
+    assert_eq!(runtime.stats["mode"], "demand", "partial viewport must stay on the demand compiler: {}", runtime.stats);
+    assert_eq!(first["containsReach"], true, "a shadow that reaches the tile stays in the closure");
+    assert_eq!(first["containsMaster"], true, "an instance master stays in the closure");
+    assert_eq!(first["omitsFarRoot"], true, "a root outside this tile and the published extent stays out");
+    assert!(
+        sum * 2 < desc.nodes * records.len() as u64,
+        "tile compiles repeated the shared prepare context: sum {sum} max {max} source {}",
+        desc.nodes
+    );
+}

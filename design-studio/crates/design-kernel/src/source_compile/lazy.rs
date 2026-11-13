@@ -107,7 +107,7 @@ impl LazyRuntime {
         let view = query.options.view;
         let camera = Transform([view.zoom, 0., 0., view.zoom, view.x, view.y]);
         let Some(mut selection) = directory
-            .select(camera, query.prepare.expand(4), &cancel)
+            .select(camera, super::tile_closure_guard(query.region, None), &cancel)
             .map_err(|e| e.to_string())?
         else {
             return self.decline("global-source-contract");
@@ -252,7 +252,7 @@ impl LazyRuntime {
             std::mem::swap(&mut compiler.frame_scene, &mut owner.frame_scene);
             let result = compiler.compile_gpu_packet_request_checked(request, |scene| {
                 let next = directory
-                    .select(camera, query.prepare.union(scene.extent).expand(4), &cancel)
+                    .select(camera, super::tile_closure_guard(query.region, Some(scene.extent)), &cancel)
                     .map_err(|e| e.to_string())?
                     .ok_or("SOURCE_DEMAND_REPLAN")?;
                 if next

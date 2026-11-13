@@ -20,9 +20,23 @@ mod lazy;
 pub(crate) use lazy::LazyRuntime;
 struct Query {
     options: RenderOptions,
+    /// The tile or capture that this packet publishes. Demand closure follows
+    /// this rectangle, not the optional shared prepare window.
+    region: Rect,
     prepare: Rect,
     page_background: bool,
     dense_paint:bool,
+}
+/// Roots admitted for one tile. `prepare` stays a geometry-cache hint inside
+/// the packet compiler; using it as the demand guard made every tile resolve
+/// the whole shared window (the 80–100k context). One published extent may
+/// still pull a backdrop, mask or effect neighbour. This is not a superset
+/// of earlier tiles.
+fn tile_closure_guard(region: Rect, extent: Option<Rect>) -> Rect {
+    match extent {
+        Some(extent) => region.union(extent).expand(4),
+        None => region.expand(4),
+    }
 }
 impl Query {
     fn parse(owner: &Engine, request: &str) -> Result<Option<Self>, String> {
@@ -145,6 +159,7 @@ impl Query {
         }
         Ok(Some(Self {
             options,
+            region,
             prepare,
             page_background: background == Some(Value::Bool(true)),
             dense_paint,
@@ -384,7 +399,7 @@ impl Runtime {
             crate::render_cancellation::checkpoint()?;
             bounds.map(|bounds|bounds.into_iter().map(|b|[b[0]+view.x,b[1]+view.y,b[2]+view.x,b[3]+view.y]).collect::<Vec<_>>())
         } else {None};
-        let mut guard = query.prepare.expand(4);
+        let mut guard = tile_closure_guard(query.region, None);
         let mut demand = plan.catalog.viewport_for_compile(camera, guard, &AtomicBool::new(false))?;
         let demand_stats=demand.stats();
         // A complete demand stays on the old compiler without destroying its
@@ -502,7 +517,7 @@ impl Runtime {
             // minting transfer IDs or exposing a packet to the renderer.
             std::mem::swap(&mut compiler.frame_scene, &mut owner.frame_scene);
             let result = compiler.compile_gpu_packet_request_checked(request, |scene| {
-                let extent_guard = query.prepare.union(scene.extent).expand(4);
+                let extent_guard = tile_closure_guard(query.region, Some(scene.extent));
                 if extent_guard == guard {
                     // This identical guard was already closed by the catalogue.
                     return Ok(());
