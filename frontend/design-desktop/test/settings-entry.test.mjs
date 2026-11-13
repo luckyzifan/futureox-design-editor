@@ -132,14 +132,16 @@ test('loading, switching and active interaction block shortcut opens before any 
   assert.ok(button); assert.match(button, /disabled=\{!ready \|\| switching \|\| desktopStatus.transitioning\}/)
   assert.match(button, /正在处理设计文件，完成后可打开设置/)
 })
-test('collapsed Inspector CSS keeps the named Settings entry in the canvas grid column', () => {
+test('collapsed Inspector CSS leaves Settings in the full-width window header', () => {
   const hide = css.match(/\.editor-shell\.chrome-hide-inspector \.header-right \{([^}]+)\}/)?.[1]
-  assert.ok(hide); assert.match(hide, /grid-column:\s*3/); assert.match(hide, /justify-self:\s*end/)
+  assert.ok(hide)
+  assert.match(css, /\.editor-shell > \.editor-header \{[^}]*display:\s*flex[^}]*grid-column:\s*1 \/ -1/)
+  assert.match(css, /\.editor-shell \.editor-header \.header-right \{[^}]*justify-content:\s*flex-end/)
   const minimized = css.match(/\.editor-shell\.chrome-minimized\.chrome-hide-inspector \{([^}]+)\}/)?.[1]
   assert.ok(minimized); assert.match(minimized, /grid-template-columns:\s*0 0 minmax\(0, 1fr\) 0/)
   const settingsRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(match => match[1].includes('.app-settings-button'))
   assert.ok(settingsRules.length >= 2)
-  for (const [, , declarations] of settingsRules) assert.doesNotMatch(declarations, /display:\s*none|visibility:\s*hidden|font-size:\s*0(?:px)?\b/)
+  for (const [, selector, declarations] of settingsRules.filter(([, selector]) => !selector.trim().endsWith('span'))) assert.doesNotMatch(declarations, /display:\s*none|visibility:\s*hidden|font-size:\s*0(?:px)?\b/)
   assert.match(css, /\.editor-shell \.header-right > \.app-settings-button \{[^}]*font-size:\s*12px[^}]*flex-shrink:\s*0[^}]*white-space:\s*nowrap/)
 })
 test('Electron minimum-width and compact-header contracts preserve Settings label exception', async () => {
@@ -154,5 +156,5 @@ test('Electron minimum-width and compact-header contracts preserve Settings labe
   // Small physical displays may be narrower than desktop minimum; mobile header remains right-aligned.
   const small = { workArea: { x: 0, y: 0, width: 800, height: 700 } }
   assert.equal(fitWindowState(undefined, [small], small).minWidth, 800)
-  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.editor-shell \.editor-header \.header-right \{[^}]*grid-column:\s*3[^}]*justify-self:\s*end[^}]*width:\s*auto/)
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.editor-shell \.editor-header \.header-right \{[^}]*width:\s*auto/)
 })
