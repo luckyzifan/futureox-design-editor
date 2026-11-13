@@ -1858,6 +1858,18 @@ impl Fonts {
                     }
                     if natural > 0. {
                         height = natural;
+                        // Quartz text previews snap an unspecified Sketch line
+                        // box onto whole document points. The baseline is the
+                        // nearest point of the ascender, and the next line
+                        // starts one nearest-point font line box later.
+                        // USWDS colors columns are 11, 25, 39… rather than
+                        // 11.4 + 14.1n. Fixed line boxes take the other branch
+                        // and are not rounded again here.
+                        ascent = ascent.round_ties_even();
+                        let pitched = height.round_ties_even();
+                        if pitched > 0. {
+                            height = pitched;
+                        }
                     }
                 }
                 let trailing = shaped

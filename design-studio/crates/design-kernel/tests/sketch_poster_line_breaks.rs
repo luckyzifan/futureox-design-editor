@@ -197,10 +197,10 @@ fn fixed_abeezee_title_stays_three_lines_when_the_following_space_overflows() {
         node.width, width,
         "text box width must stay the fitted frame"
     );
-    let natural = natural_line_box(28.);
+    let natural = natural_line_box(28.).round_ties_even();
     assert!(
         (layout.height - natural * 3.).abs() < 1e-6,
-        "text box height {} != 3 * font line box {natural}",
+        "text box height {} != 3 * nearest-point font line box {natural}",
         layout.height
     );
     let mut floor = node.clone();
@@ -242,7 +242,7 @@ fn edit_and_reopen_keep_the_three_line_title_and_frame() {
     layout::resolve(&mut document, &fonts).unwrap();
     let solved = &document.nodes["title"];
     assert_eq!(solved.width, width);
-    let natural = natural_line_box(28.);
+    let natural = natural_line_box(28.).round_ties_even();
     assert!(
         (solved.height - natural * 3.).abs() < 1e-6,
         "hug height {}",
