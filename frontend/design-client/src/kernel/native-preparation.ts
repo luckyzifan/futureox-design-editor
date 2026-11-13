@@ -48,7 +48,7 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
       const owner = await session
       if (closed) return
       progress(5)
-      const cancellationId = cancellable && method === 'compile_gpu_packet' ? id : undefined
+      const cancellationId = cancellable && (method === 'compile_gpu_packet' || method === 'render_cpu_frame') ? id : undefined
       let notified = false
       const flag = typeof SharedArrayBuffer !== 'undefined' && cancellation instanceof SharedArrayBuffer && cancellation.byteLength === 4 ? new Int32Array(cancellation) : undefined
       const poll = () => {

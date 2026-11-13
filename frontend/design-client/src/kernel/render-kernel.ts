@@ -247,7 +247,9 @@ export class RenderKernel {
   render_png(options: string) { return this.call<Uint8Array>('render_png', [options]) }
   render_color_png(options: string, output: string) { return this.call<Uint8Array>('render_color_png', [options, output]) }
   render_region_png(options: string) { return this.call<Uint8Array>('render_region_png', [options]) }
-  render_cpu_frame(options: string, damage?: PaintDamage) { return this.call<Uint8Array>('render_cpu_frame', [options, damage]) }
+  render_cpu_frame(options: string, damage?: PaintDamage, signal?: AbortSignal) {
+    return this.call<Uint8Array>('render_cpu_frame', [options, damage], signal)
+  }
   stats() { return this.call<string>('stats') }
   gpu_memory_breakdown() { return this.call<string>('gpu_memory_breakdown') }
   color_settings() { return this.settings }

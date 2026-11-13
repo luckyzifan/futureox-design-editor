@@ -1924,15 +1924,39 @@ mod wasm {
             serde_json::to_string(&sampled).map_err(|e| JsValue::from_str(&e.to_string()))
         }
         pub fn render_rgba(&mut self, options: &str) -> Result<Vec<u8>, JsValue> {
-            let value =
-                serde_json::from_str(options).map_err(|e| JsValue::from_str(&format!("{e}")))?;
-            let options = self
-                .inner
-                .parse_options(value)
-                .map_err(|e| JsValue::from_str(&e))?;
-            self.inner
-                .render_exact(&options)
-                .map_err(|e| JsValue::from_str(&e))
+            self.render_rgba_with(options, None)
+        }
+        pub fn render_rgba_cancellable(
+            &mut self,
+            options: &str,
+            probe: js_sys::Function,
+        ) -> Result<Vec<u8>, JsValue> {
+            self.render_rgba_with(options, Some(probe))
+        }
+        fn render_rgba_with(
+            &mut self,
+            options: &str,
+            probe: Option<js_sys::Function>,
+        ) -> Result<Vec<u8>, JsValue> {
+            let render = || -> Result<Vec<u8>, String> {
+                let value = serde_json::from_str(options).map_err(|e| e.to_string())?;
+                let options = self.inner.parse_options(value)?;
+                self.inner.render_exact(&options)
+            };
+            let result = match probe {
+                Some(probe) => crate::render_cancellation::with_probe(
+                    move || {
+                        probe
+                            .call0(&JsValue::NULL)
+                            .ok()
+                            .and_then(|value| value.as_bool())
+                            .unwrap_or(true)
+                    },
+                    render,
+                ),
+                None => render(),
+            };
+            result.map_err(|e| JsValue::from_str(&e))
         }
         pub fn color_settings(&self) -> String {
             serde_json::to_string(&self.inner.color_settings()).expect("validated color settings")

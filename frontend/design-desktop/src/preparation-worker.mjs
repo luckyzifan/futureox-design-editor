@@ -49,9 +49,10 @@ child.stdout.on('data',part=>{
 })
 parentPort.on('message',message=>{
  if(message.cancel){
-  const queued=queue.findIndex(job=>job.id===message.cancel&&job.method==='compile_gpu_packet')
+  const cancellable=method=>method==='compile_gpu_packet'||method==='render_cpu_frame'
+  const queued=queue.findIndex(job=>job.id===message.cancel&&cancellable(job.method))
   if(queued>=0){const [job]=queue.splice(queued,1);queuedBytes-=job.bytes.length;parentPort.postMessage({id:job.id,reply:{id:job.id,error:'PREVIEW_CANCELLED'}})}
-  else if(active?.id===message.cancel&&active.method==='compile_gpu_packet'){
+  else if(active?.id===message.cancel&&cancellable(active.method)){
    active.cancelled=true
    if(active.sent)child.stdin.write(JSON.stringify({cancel:active.id})+'\n')
   }
