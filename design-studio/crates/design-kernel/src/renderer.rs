@@ -4224,8 +4224,8 @@ impl Painter<'_> {
                 let compatible = self.compatible;
                 let constant_half_up = fx.gradient_blur.is_none()
                     && self.compatible
-                    && self.profile == crate::fidelity::RasterProfile::Figma;
-                let blur_radius = fx.blur_radius() * scale;
+                    && self.profile == crate::fidelity::RasterProfile::Figma
+                    && fx.blur_radius() * scale == 1.;
                 let filter = |mut source: Surface| -> Result<Surface, String> {
                     if let Some(g) = &fx.gradient_blur {
                         let blurred = blur_filter.apply(&source)?;
@@ -4244,7 +4244,7 @@ impl Painter<'_> {
                         // Constant export pairs round half-up on the layer.
                         // The backdrop is composited afterwards, so a later
                         // sibling or clip does not paint onto a baked 2×2.
-                        effects::figma_portable_layer_blur(source, blur_radius)
+                        effects::figma_portable_layer_blur(source)
                     } else {
                         blur_filter.apply(&source)
                     }

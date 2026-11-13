@@ -362,92 +362,48 @@ fn tent_blur_impl(
     Ok(current)
 }
 
-/// Byte nearest a half-code. `212.5/255` stored as binary32 comes back as
-/// `212.49999`; without the snap, half-up would keep the even code.
-fn half_up_unorm8(unit: f64) -> u8 {
-    let scaled = (unit.clamp(0.0, 1.0) * 255.0).clamp(0.0, 255.0);
-    let nearest_half = (scaled * 2.0).round() / 2.0;
-    let scaled = if (scaled - nearest_half).abs() < 1.0e-4 {
-        nearest_half
-    } else {
-        scaled
-    };
-    (scaled + 0.5).floor().clamp(0.0, 255.0) as u8
-}
-
-fn budget_limited(error: &str) -> bool {
-    error.contains("budget")
-}
-
-/// Figma export layer blur. Both separable passes still quantize on the
-/// portable/integer kernel. A 2×2 whose unrounded samples are already the same
-/// value is then stored half-up, so an exact half-code does not stay on the
-/// even side. Varying pairs keep the per-pass bytes: rewriting them to their
-/// average, or writing that average into the backdrop, lets a later layer or
-/// clip paint on already-merged samples.
-pub(crate) fn figma_portable_layer_blur(source: Surface, radius: f64) -> Result<Surface, String> {
-    let radius = f64::from(radius as f32);
-    let portable = radius > 0. && radius <= 512. && radius.fract() != 0.;
-    if !(radius > 0.) || radius > 512. {
-        return tent_blur_impl(source, radius, false, false, false);
-    }
-    let linear_src = match source.try_clone() {
-        Ok(copy) => copy,
-        Err(error) if budget_limited(&error) => {
-            return tent_blur_impl(source, radius, false, portable, false);
+/// One device-pixel tent has separable integer weights [1, 4, 1]/6.
+/// Keep the normal per-pass bytes except for exact half-codes that are
+/// constant on an entire export pair. Use the original source to prove the
+/// tie, so the rounding is independent of float error and memory pressure.
+pub(crate) fn figma_portable_layer_blur(source: Surface) -> Result<Surface, String> {
+    let mut quantized = portable_tent_blur_edge(&source, 1., false)?;
+    let rect = source.rect;
+    let pair_start = |edge: i32| edge + edge.rem_euclid(2);
+    let numerator = |x: i32, y: i32| {
+        let mut result = [0u32; 4];
+        for (dy, wy) in [(-1, 1), (0, 4), (1, 1)] {
+            for (dx, wx) in [(-1, 1), (0, 4), (1, 1)] {
+                let rgba = source.at(x + dx, y + dy).0;
+                for (channel, value) in result.iter_mut().zip(rgba) {
+                    *channel += (value.clamp(0., 1.) * 255.).round_ties_even() as u32 * wx * wy;
+                }
+            }
         }
-        Err(error) => return Err(error),
+        result
     };
-    let mut quantized = tent_blur_impl(source, radius, false, portable, false)?;
-    let linear = match tent_blur_impl(linear_src, radius, false, false, true) {
-        Ok(linear) => linear,
-        Err(error) if budget_limited(&error) => return Ok(quantized),
-        Err(error) => return Err(error),
-    };
-    lift_constant_half_up(&mut quantized, &linear);
-    Ok(quantized)
-}
-
-fn lift_constant_half_up(quantized: &mut Surface, linear: &Surface) {
-    let rect = quantized.rect;
-    if rect != linear.rect || rect.empty() {
-        return;
-    }
-    let mut y = if rect.y & 1 == 0 { rect.y } else { rect.y + 1 };
-    while y + 1 < rect.bottom() {
-        let mut x = if rect.x & 1 == 0 { rect.x } else { rect.x + 1 };
-        while x + 1 < rect.right() {
-            let coords = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
-            let indexes = coords.map(|(px, py)| rect.index(px, py).expect("complete export pair"));
-            let first = linear.pixels[indexes[0]];
-            let constant = indexes.iter().all(|&index| {
-                linear.pixels[index]
-                    .0
-                    .iter()
-                    .zip(first.0)
-                    .all(|(value, reference)| {
-                        ((f64::from(*value) - f64::from(reference)) * 255.).abs() <= 1.0e-4
-                    })
-            });
-            if constant {
-                // Only an exact half-code disagrees with the per-pass ties-even
-                // byte. Other constants already match, including places where
-                // the float weights and the Q24 kernel differ by a fraction.
-                let lifted = first.0.map(|value| half_up_unorm8(f64::from(value)));
-                let ties = first.0.map(|value| {
-                    (f64::from(value).clamp(0., 1.) * 255.).round_ties_even() as u8
-                });
-                if lifted != ties {
-                    let pixel = Pixel(lifted.map(|byte| f32::from(byte) / 255.));
-                    for index in indexes {
-                        quantized.pixels[index] = pixel;
+    for y in (pair_start(rect.y)..rect.bottom() - 1).step_by(2) {
+        for x in (pair_start(rect.x)..rect.right() - 1).step_by(2) {
+            let base = numerator(x, y);
+            let lift = base.map(|value| value % 72 == 18);
+            if !lift.into_iter().any(|channel| channel)
+                || numerator(x + 1, y) != base
+                || numerator(x, y + 1) != base
+                || numerator(x + 1, y + 1) != base
+            {
+                continue;
+            }
+            for (px, py) in [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)] {
+                let pixel = &mut quantized.pixels[rect.index(px, py).expect("complete export pair")];
+                for channel in 0..4 {
+                    if lift[channel] {
+                        pixel.0[channel] = (base[channel] / 36 + 1) as f32 / 255.;
                     }
                 }
             }
-            x += 2;
         }
-        y += 2;
     }
+    Ok(quantized)
 }
 
 // Shadow inputs have zero RGB. The one-channel specialization uses exactly
@@ -1081,9 +1037,11 @@ pub(crate) fn shadow_alpha_output_grid(
     spread: f64,
 ) -> Result<Surface, String> {
     let alpha = shadow_alpha_plane(surface, spread, false)?;
+    let rect = alpha.rect;
     let half = downsample_alpha_pairs(&alpha)?;
+    drop(alpha);
     let blurred = blur_shadow_alpha(half, filter)?;
-    upsample_alpha_pairs(&blurred, alpha.rect)
+    upsample_alpha_pairs(&blurred, rect)
 }
 
 fn shadow_alpha_plane(surface: &Surface, spread: f64, inner: bool) -> Result<Surface, String> {
@@ -2067,7 +2025,7 @@ mod figma_layer_half_up_tests {
                 source.pixels[source.rect.index(x, y).unwrap()] = Pixel::rgba(1., 1., 1., 1.);
             }
         }
-        let out = figma_portable_layer_blur(source, 1.).unwrap();
+        let out = figma_portable_layer_blur(source).unwrap();
         let byte = |x: i32, y: i32, channel: usize| -> u8 {
             (out.at(x, y).0[channel] * 255.).round() as u8
         };
