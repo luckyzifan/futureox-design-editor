@@ -61,9 +61,9 @@ export function readDenseSourceGrid(uri:string,field:Float32Array,b:Rect,iw:numb
 
 // Straight RGBA8 of the same 2× tap grid as the linear fetch. Coordinates stay
 // in that fetch's layout: xy is the integer 2× cell, zw is the original
-// fraction. Hosted WebGPU decodes these bytes with the sRGB table inside
-// linearImageTexel and filters them with the same bsBilinear4. Invalid cells
-// remain -2 so every tap is outside the texture and contributes zero.
+// fraction. Hosted WebGPU loads these bytes from an rgba8uint image, decodes
+// them with the sRGB table, and filters with the same bsBilinear4. Invalid
+// cells remain -2 so every tap is outside the texture and contributes zero.
 export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw:number,ih:number){
  const width=b.w*2,height=b.h*2,out=new Uint8Array(width*height*4)
  const bandRows=Math.max(1,Math.floor(8192/b.w))
@@ -98,13 +98,24 @@ export function straightImageUploadRows(bytes:Uint8Array,width:number,height:num
  for(let y=0;y<height;y++)padded.set(bytes.subarray(y*width*4,(y+1)*width*4),y*bytesPerRow)
  return {bytes:padded,bytesPerRow}
 }
-/** Managed paint uniforms for a straight RGBA8 image. u[207] selects the
- *  table decode in linearImageTexel. u[206] is the separate source-detail
- *  mix, and this helper never enables the byte-space u[187] branch. */
+/** Managed paint uniforms for a straight RGBA8 image. u[207] selects rgba8uint
+ *  sampling plus the sRGB table inside linearImageTexel. u[206] is the
+ *  separate source-detail mix. Paint mode 2 and the image-resolve step both
+ *  sample that texture; this helper never enables the byte-space u[187] branch. */
 export function noteHostedStraightImage(u:Float32Array,straight:boolean,sourceDetailSampling:boolean,certifiedRange:boolean){
- if(u[16]!==2||u[28]!==3)return
+ if((u[16]!==2&&u[16]!==51)||u[28]!==3)return
  u[207]=straight?1:0
  u[206]=sourceDetailSampling&&straight||certifiedRange?1:0
+}
+/** The float bind group cannot accept rgba8uint. Straight bytes move to the
+ *  dedicated uint binding; the float image slot keeps an ordinary texture. */
+export function hostedStraightFloatInputs<T>(inputs:readonly T[],straight:T|undefined,blank:T):{inputs:T[],byteImage:T}{
+ if(straight===undefined)return {inputs:inputs.slice(),byteImage:blank}
+ if(inputs[1]!==straight||inputs.some((texture,index)=>index!==1&&texture===straight))
+  throw Error('Straight RGBA byte image must be the hosted paint source')
+ const copy=inputs.slice()
+ copy[1]=blank
+ return {inputs:copy,byteImage:straight}
 }
 /** Byte-space mix used by `smpBytesIndex`. The hosted straight grid does not
  *  take that branch; tests use this as the unequal negative control. */

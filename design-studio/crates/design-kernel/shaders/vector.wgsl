@@ -852,8 +852,9 @@ fn bytePreview(point:vec2<f32>)->vec4<f32>{
 // Image addresses are compiled from the same binary64 transforms as CPU
 // sampling. This field carries no colors; the GPU fetches its own source image.
 // A straight RGBA8 upload stores the Rust sRGB table in the two rows under the
-// image. u(51).w selects that decode before bsBilinear4. u(46).w stays clear:
-// the byte-space branch would skip the table.
+// image. Hosted WebGPU replaces linearImageTexel with rgba8uint loads selected
+// by u(51).w, then bsBilinear4. u(46).w stays clear: that branch mixes bytes
+// and skips the table.
 fn sourceTableWord(index:i32,row:i32)->f32{
  let bits=vec4<u32>(round(textureLoad(sourceB,vec2<i32>(index,row),0)*255.));
  return bitcast<f32>(bits.r|(bits.g<<8u)|(bits.b<<16u)|(bits.a<<24u));
@@ -879,6 +880,7 @@ fn byteImageAddress(p:vec2<f32>)->vec4<f32>{
  }
  return textureLoad(sourceD,pixel,0);
 }
+fn hostedStraightByteImage(p:vec2<f32>)->vec4<f32>{return linearImage(p);}
 fn linearImage(p:vec2<f32>)->vec4<f32>{
  let grid:vec4<f32>=textureLoad(sourceD,vec2<i32>(floor(p-u(0).xy)),0);let q:vec2<i32>=vec2<i32>(grid.xy);
  return bsBilinear4(linearImageTexel(q),linearImageTexel(q+vec2<i32>(1,0)),linearImageTexel(q+vec2<i32>(0,1)),linearImageTexel(q+vec2<i32>(1,1)),grid.zw,u32(u(63).w),u32(u(63).z));
@@ -1083,7 +1085,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
    if(kind==0){paint=mulRN4(mulRN4(vec4<f32>(u(7).yzw,1.),vec4<f32>(u(60).y)),vec4<f32>(opacity));}
    if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4<f32>(opacity));}
   }
-  if(kind==3&&u(46).w>0.5){let grid=byteImageAddress(p);if(grid.z>0.5){paint=round(smpBytesIndex(sourceB,grid.xy,u(2))*opacity)/255.;}else{paint=vec4<f32>(0);}}else if(kind==3&&u(60).x>0.5){paint=mulRN4(linearImage(p),vec4<f32>(opacity));}else if(kind==3){let size=u(2).zw;var coord=paintUV(q)*size-0.5;if(u(62).z<0.5){coord=(q*size-u(6).zw*0.5)/u(6).zw;if(u(8).z<1.5){let ratio=select(min(u(6).z/size.x,u(6).w/size.y),max(u(6).z/size.x,u(6).w/size.y),u(8).z<0.5);coord=(q-(u(6).zw-(size-1.)*ratio)*0.5)/ratio;}}if(u(8).z>0.5&&u(8).z<1.5&&(any(coord<vec2<f32>(-0.5))||any(coord>=size-0.5))){paint=vec4<f32>(0);}else{if(u(46).w>0.5){paint=round(smpBytesIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity)/255.;}else{paint=smpIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity;}}}
+  if(kind==3&&u(46).w>0.5){let grid=byteImageAddress(p);if(grid.z>0.5){paint=round(smpBytesIndex(sourceB,grid.xy,u(2))*opacity)/255.;}else{paint=vec4<f32>(0);}}else if(kind==3&&u(60).x>0.5&&u(51).w>0.5){paint=mulRN4(hostedStraightByteImage(p),vec4<f32>(opacity));}else if(kind==3&&u(60).x>0.5){paint=mulRN4(linearImage(p),vec4<f32>(opacity));}else if(kind==3){let size=u(2).zw;var coord=paintUV(q)*size-0.5;if(u(62).z<0.5){coord=(q*size-u(6).zw*0.5)/u(6).zw;if(u(8).z<1.5){let ratio=select(min(u(6).z/size.x,u(6).w/size.y),max(u(6).z/size.x,u(6).w/size.y),u(8).z<0.5);coord=(q-(u(6).zw-(size-1.)*ratio)*0.5)/ratio;}}if(u(8).z>0.5&&u(8).z<1.5&&(any(coord<vec2<f32>(-0.5))||any(coord>=size-0.5))){paint=vec4<f32>(0);}else{if(u(46).w>0.5){paint=round(smpBytesIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity)/255.;}else{paint=smpIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity;}}}
   {let half=halfScaleStretch(p);if(kind==3&&half.x>=0.){paint=half*opacity;}}
   if(u(46).w>0.5){paint=round(paint*255.)/255.;}
   var result=paint*at(sourceA,p,u(1)).a;if(u(60).x>0.5){result=mulRN4(paint,vec4<f32>(at(sourceA,p,u(1)).a));}if(mode==16){result=result*u(4).z;if(u(4).w>0.5){result=result*at(sourceC,p,u(3)).a;}}return result;
