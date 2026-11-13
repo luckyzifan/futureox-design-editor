@@ -50,22 +50,14 @@ package source revision remains a release-verification task.
 
 ## Release gates
 
-`node frontend/design-desktop/scripts/release-component-inventory.mjs` maps the
-current package inputs. It does not accept a signed installer. On 2026-11-10
-the locked graph had 381 package entries. The normal dependency trees of the
-four packaged binaries, across Linux x64, macOS arm64, Windows x64, and
-wasm32, contain 263 third-party crates. 253 of those have a license text under
-`frontend/design-desktop/third-party-notices/cargo/`. The other ten publish an
-SPDX identifier and no license file in the crate archive.
+`node frontend/design-desktop/scripts/release-component-inventory.mjs --release-dir=<electron packager directory> --require-package` reads the distributed inventory from that directory's bytes. Lockfile names are attribution for files and linked binaries inside the package, not the component list. It does not accept a signed installer. On 2026-11-10 the locked graph had 381 package entries. The normal dependency trees of the four packaged binaries, across Linux x64, macOS arm64, Windows x64, and wasm32, contain 263 third-party crates. 253 of those have a license text under `frontend/design-desktop/third-party-notices/cargo/`. The other ten publish an SPDX identifier and no license file in the crate archive.
 
 Installed development packages are not shipped runtime code. Vite, Lightning
 CSS, Playwright, and `@electron/packager` stay on that development side. The
 `electron` npm package is a downloader; the runtime that ships is the Electron
 distribution zip.
 
-This document does not clear a signed or notarized release. Native sidecar
-binaries were not built here, and the generated WASM bindings were not in
-this checkout.
+On 2026-11-13 an unsigned linux-x64 `release` profile packager directory was inventoried from its own bytes. That run is not a signed or notarized release. macOS and Windows packages were not built. `profiling` 1.0.18 and `spirv` 0.4.0+sdk-1.4.341.0 are linked into that Linux package and still publish no license file. Two verification pages and three color-fixture images are inside the package without a license text. See [the release package note](docs/RELEASE_PACKAGE_ACCEPTANCE.zh-CN.md).
 
 Reference fixtures are excluded from production assets, but remain in the source
 repository and tests. Source publication still requires their ownership/permission

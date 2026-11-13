@@ -1,15 +1,17 @@
 // Package-component inventory for issue 88.
 // Cargo.lock names and an Electron version string are build inputs.
-// Distributed components are the files and crates the desktop packager copies
-// or links. A missing signed installer stays not_closed.
+// When an Electron packager directory is supplied, the distributed inventory is
+// read from those bytes. Lockfiles only attribute version, source, and license.
+// A missing signed installer stays not_closed.
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, copyFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, copyFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describePackage } from './release-package-resources.mjs'
 import { packageSourceFilter } from './package-source.mjs'
+import { inventoryFromPackageBytes, locateElectronPackage, verifyPackageByteInventory } from './release-package-bytes.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
@@ -588,7 +590,7 @@ export function asarFromFiles(files) {
   return Buffer.concat([sizePickle, headerPickle, ...files.map(file => file.bytes)])
 }
 
-export function readAsarEntries(buffer) {
+export function openAsar(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 16) return null
   const headerPickleSize = buffer.readUInt32LE(4)
   if (headerPickleSize < 8 || 8 + headerPickleSize > buffer.length) return null
@@ -607,16 +609,45 @@ export function readAsarEntries(buffer) {
     for (const [name, info] of Object.entries(node?.files ?? {})) {
       const relative = prefix ? `${prefix}/${name}` : name
       if (info.files) visit(info, relative)
-      else if (info.unpacked) entries.push({ path: relative, unpacked: true, sha256: null })
+      else if (info.unpacked) entries.push({ path: relative, unpacked: true, sha256: null, bytes: null, offset: null, size: null })
       else {
-        const start = dataStart + Number(info.offset)
-        const bytes = buffer.subarray(start, start + info.size)
-        entries.push({ path: relative, unpacked: false, sha256: sha256(bytes), bytes: info.size })
+        const size = Number(info.size)
+        const offset = Number(info.offset)
+        const start = dataStart + offset
+        const slice = buffer.subarray(start, start + size)
+        entries.push({
+          path: relative,
+          unpacked: false,
+          sha256: sha256(slice),
+          bytes: size,
+          offset,
+          size,
+          invalid: !Number.isSafeInteger(size) || !Number.isSafeInteger(offset) || size < 0 || offset < 0 || start + size > buffer.length,
+        })
       }
     }
   }
   visit(header, '')
-  return entries.sort((a, b) => a.path.localeCompare(b.path))
+  entries.sort((a, b) => a.path.localeCompare(b.path))
+  return {
+    entries,
+    read(entryPath) {
+      const entry = entries.find(item => item.path === entryPath)
+      if (!entry || entry.unpacked || entry.invalid || entry.offset == null) return null
+      const start = dataStart + entry.offset
+      return buffer.subarray(start, start + entry.size)
+    },
+  }
+}
+
+export function readAsarEntries(buffer) {
+  const opened = openAsar(buffer)
+  if (!opened) return null
+  return opened.entries.map(entry => (
+    entry.unpacked
+      ? { path: entry.path, unpacked: true, sha256: null }
+      : { path: entry.path, unpacked: false, sha256: entry.sha256, bytes: entry.bytes }
+  ))
 }
 
 function classifyRelease(root, releaseDir, knownHashes) {
@@ -708,6 +739,25 @@ export function buildComponentInventory({
       traceable: false,
     }
   })
+  const located = locateElectronPackage(releaseDir)
+  const fromPackage = located?.packageDir
+    ? inventoryFromPackageBytes({
+      root,
+      layout: located,
+      openAsar,
+      rust,
+      javascript,
+      declaredElectronVersion: electronVersion,
+    })
+    : located?.rejected
+      ? {
+        producedFrom: 'rejected',
+        reason: located.rejected,
+        releaseAcceptance: 'not_closed',
+        formalSignedPackage: 'not_supplied',
+        signature: 'not_run',
+      }
+      : null
   const traceableThirdPartyComponents = [
     ...rust.crates.filter(crate => crate.thirdParty && crate.traceable),
     ...javascript.distributed.filter(item => item.traceable),
@@ -724,11 +774,15 @@ export function buildComponentInventory({
     electronDistReport?.traceable ? null : { kind: 'electron', id: electronVersion, gap: electronDist ? 'electron_dist_untraceable' : 'chromium_binary_not_in_checkout' },
   ].filter(Boolean)
   return {
-    schema: 2,
+    schema: 3,
     issue: 88,
     classification: 'release_prep',
     confirmedRuntimeFault: false,
-    scope: release.present ? 'release_directory_hashed_not_a_signed_installer' : 'packaging_inputs_not_a_signed_release',
+    producedFrom: fromPackage?.producedFrom === 'release_package_bytes' ? 'release_package_bytes' : (fromPackage?.producedFrom ?? 'packaging_inputs'),
+    scope: fromPackage?.producedFrom === 'release_package_bytes'
+      ? 'unsigned_release_package_bytes'
+      : (release.present ? 'release_directory_hashed_not_a_signed_installer' : 'packaging_inputs_not_a_signed_release'),
+    fromPackage,
     releaseAcceptance: 'not_closed',
     formalSignedPackage: 'not_supplied',
     macElectronMetal: 'not_run',
@@ -809,21 +863,54 @@ if (invoked) {
     releaseDir: releaseArg ?? path.join(desktop, 'release'),
     electronDist: electronArg ?? process.env.FUTUREOX_ELECTRON_DIST ?? null,
   })
+  const writeReport = process.argv.find(arg => arg.startsWith('--write-report='))?.slice('--write-report='.length)
+  if (writeReport) writeFileSync(writeReport, `${JSON.stringify(report, null, 2)}\n`)
   const broken = report.notices.filter(item => !item.matchesInventory)
+  const requirePackage = process.argv.includes('--require-package')
+  let packageProblems = []
+  if (requirePackage) {
+    if (report.producedFrom !== 'release_package_bytes') packageProblems.push('inventory was not read from release package bytes')
+    else {
+      const verified = verifyPackageByteInventory(report.fromPackage, openAsar)
+      if (!verified.ok) packageProblems.push(`package byte verification failed (${verified.mismatches?.length ?? 0})`)
+      const summary = report.fromPackage.summary
+      if (!summary.electronBinary) packageProblems.push('electron binary')
+      if (summary.electronNotices < 2) packageProblems.push('electron notices')
+      if (summary.javascriptBundles < 1) packageProblems.push('javascript bundles')
+      if (summary.javascriptPackagesWithNotice < 1) packageProblems.push('javascript notices')
+      if (summary.javascriptDevelopmentOnly < 1) packageProblems.push('development dependency list')
+      if (summary.javascriptDevelopmentLeaked > 0) packageProblems.push('development dependency leaked into the package')
+      if (summary.rustDistributedWithNotice < 1) packageProblems.push('rust notices')
+      if (summary.lockPackagesNotInPackage < 1) packageProblems.push('lockfile names were not distinguished from the package')
+      if (summary.nativeBinaries < 1) packageProblems.push('native binaries')
+      if (summary.wasmFiles < 1) packageProblems.push('wasm')
+      if (summary.fonts < 1) packageProblems.push('fonts')
+      if (summary.icons < 1) packageProblems.push('icons')
+      if (report.fromPackage.platform === 'linux' && report.fromPackage.arch === 'x64' && summary.vendorFfmpeg !== 'traceable') packageProblems.push('vendored ffmpeg')
+    }
+  }
   console.log(JSON.stringify({
+    producedFrom: report.producedFrom,
     scope: report.scope,
     releaseAcceptance: report.releaseAcceptance,
     formalSignedPackage: report.formalSignedPackage,
     macElectronMetal: report.macElectronMetal,
+    signature: report.fromPackage?.signature ?? 'not_run',
     measurement: report.measurement,
-    notDistribution: report.notDistribution,
-    electron: { version: report.electron.version, chromiumBinaryHashed: report.electron.chromiumBinaryHashed, note: report.electron.note },
-    ffmpeg: { version: report.ffmpeg.version, sha256: report.ffmpeg.sha256, license: report.ffmpeg.license, traceable: report.ffmpeg.traceable },
-    javascriptDistributed: report.javascript.distributed.map(item => ({ package: item.package, version: item.version, license: item.license, traceable: item.traceable })),
-    javascriptDevelopmentOnly: report.javascript.developmentOnly,
-    rustGaps: report.rust.crates.filter(crate => crate.thirdParty && !crate.traceable).map(crate => crate.id),
+    fromPackage: report.fromPackage?.summary ?? null,
+    notDistribution: report.fromPackage?.notDistribution?.note ?? report.notDistribution,
+    electron: report.fromPackage?.electron
+      ? { version: report.fromPackage.electron.version, binary: report.fromPackage.electron.binary, notices: report.fromPackage.electron.notices, chromiumFfmpeg: report.fromPackage.electron.chromiumFfmpeg }
+      : { version: report.electron.version, chromiumBinaryHashed: report.electron.chromiumBinaryHashed, note: report.electron.note },
+    ffmpeg: report.fromPackage?.vendor?.ffmpeg
+      ? { version: report.fromPackage.vendor.ffmpeg.version, sha256: report.fromPackage.vendor.ffmpeg.binary?.sha256 ?? null, license: report.fromPackage.vendor.ffmpeg.license, traceable: report.fromPackage.vendor.ffmpeg.traceable }
+      : { version: report.ffmpeg.version, sha256: report.ffmpeg.sha256, license: report.ffmpeg.license, traceable: report.ffmpeg.traceable },
+    javascriptDistributed: (report.fromPackage?.javascript.packages ?? report.javascript.distributed).map(item => ({ package: item.package, version: item.version, license: item.license, traceable: item.traceable })),
+    javascriptDevelopmentOnly: report.fromPackage?.javascript.developmentOnly ?? report.javascript.developmentOnly,
+    rustGaps: (report.fromPackage?.rust.distributed ?? report.rust.crates).filter(crate => crate.thirdParty && !crate.traceable).map(crate => crate.id),
     notices: report.notices.map(item => ({ package: item.package, version: item.version, license: item.license, matchesInventory: item.matchesInventory })),
-    gaps: report.gaps.length,
+    gaps: report.fromPackage?.gaps?.length ?? report.gaps.length,
+    packageProblems,
   }, null, 2))
-  process.exit(broken.length ? 1 : 0)
+  process.exit(broken.length || packageProblems.length ? 1 : 0)
 }
