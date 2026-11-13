@@ -269,14 +269,15 @@ fn pinned_regular_matches_the_file_and_missing_bold_italic_does_not_borrow_it() 
         chosen.expect("no width where ABeeZee line breaks differ from Noto and match raw advances");
     let reference_layout = measure_file(&abeezee, "abeezee", width, false);
     let face = ttf_parser::Face::parse(&abeezee, 0).unwrap();
-    let natural_height = (f64::from(face.ascender()) - f64::from(face.descender())
+    let line_box = ((f64::from(face.ascender()) - f64::from(face.descender())
         + f64::from(face.line_gap()))
         * SIZE
-        / f64::from(face.units_per_em())
-        * raw_lines.len() as f64;
+        / f64::from(face.units_per_em()))
+    .round_ties_even();
+    let natural_height = line_box * raw_lines.len() as f64;
     assert!(
         (reference_layout.height - natural_height).abs() < 1e-9,
-        "automatic Sketch line box must use the pinned font's independent vertical metrics"
+        "automatic Sketch line box must use the pinned font's metrics on the nearest document point"
     );
     let archive = sketch(vec![
         text_layer(

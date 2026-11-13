@@ -64,3 +64,24 @@ The second command exited 0 after the fix (3 + 4 + 5 + 4 + 7 + 4 tests).
 - Full artboard versus a Sketch native page export. The 1.31% / 71% figure was not remeasured.
 - Mac, Electron, Metal, or a GUI.
 - Roboto Mono glyph identity. The PDF subset did not shape `(0.178)` on this VM, so that face was not used as a pixel oracle. Its PDF baseline is still the same nearest-point rule (size 12, line 16, baseline 13).
+
+## 2026-11-13 unspecified line boxes
+
+Fixed line boxes were already on the nearest point. Labels with no minimum/maximum line height were still on the raw font metrics. Public Sans Bold at 12px drew baseline 11.4 and advanced 14.1. Quartz text previews of the colors-page columns are baseline 11, then +14 (the nearest point of the ascender and of the font line box). By the last row that was 1.3px, and analytic coverage of the unrounded column was channel delta > 16 on 908/2240 pixels, max 255.
+
+The unspecified Sketch line box now rounds that ascender and that line pitch with ties-to-even. Fixed boxes are unchanged. Editor text with `lineHeightAuto` off stays on the 1.35 floor.
+
+Same Public Sans / Roboto Mono files, poppler 24.02.0 `pdftoppm -r 72`, analytic profile, Linux, no Metal:
+
+| Crop | Pixels with delta > 16 | Max channel delta |
+| --- | ---: | ---: |
+| `Old` 20×14, before (unrounded analytic) | 103 / 280 | 149 |
+| `Old` after | 22 / 280 | 45 |
+| Column `5…90` 16×140, before | 908 / 2240 | 255 |
+| Column after | 285 / 2240 | 64 |
+| `Changed values in 2.6.0` after | 402 / 5256 | 62 |
+| `50v` analytic delta > 0 | 130 / 264 (unchanged) | 53 |
+
+952 shipped text-preview pages (Public Sans Regular/Light/Bold/SemiBold and Roboto Mono Regular) match the Quartz text matrices: max baseline error 0. Eleven centered labels differ in x by at most 0.048px (6 or 8 font units of kerning). Three pages that use Lucida Grande or Public Sans Thin were not shaped.
+
+Full poppler sweep of those 952 pages, analytic, same fonts: colors-page text crops have 42,653 pixels with channel delta > 16. The artboard is 3193×3821 = 12,200,453 pixels. That is 0.3496% of the artboard, under the historical >16/255 on >1% screening line. The largest single-pixel delta in the sweep is 88. Swatches were not re-composited; this counts text-preview pixels only. A Mac Sketch export, Electron, and Metal were not run (`/dev/dri` is absent; SwiftShader is not Metal).
