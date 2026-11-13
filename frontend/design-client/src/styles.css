@@ -2417,7 +2417,22 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="figma"] .header-right .local-window-control > button {
   font-size: 12px;
 }
-.editor-shell[data-ui-mode="figma"] .floating-toolbar { bottom: 12px; left: 50%; transform: translateX(-50%); border-radius: 12px; }
+/* Content-sized bottom pill. width:max-content keeps the centering offset from
+   becoming the shrink-to-fit left edge; nowrap keeps that pill one row tall so
+   it does not grow over the status capsule. No fixed official width or height. */
+.editor-shell[data-ui-mode="figma"] .floating-toolbar {
+  bottom: 12px;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  flex-wrap: nowrap;
+  transform: translateX(-50%);
+  border-radius: 12px;
+}
+.editor-shell[data-ui-mode="figma"] > footer {
+  pointer-events: auto;
+  bottom: max(78px, var(--floating-toolbar-status-clearance, 78px));
+}
 @media (min-width: 1181px) {
   .editor-shell[data-ui-mode="figma"] .floating-toolbar {
     height: auto;
