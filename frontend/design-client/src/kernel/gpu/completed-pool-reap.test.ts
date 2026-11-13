@@ -75,3 +75,59 @@ test('tracked surfaces keep class, life and peak apart from completed free bytes
   expect(sample.life.reclaimable).toBe(128)
   expect(sample.life.active).toBe(0)
 })
+
+test('an in-flight free texture survives budget pressure and the next frame sweep until its epoch completes', () => {
+  const destroyed: Texture[] = []
+  const driver = {
+    managed: true, scratchBytes: 0, resourceEpoch: 5, completedResourceEpoch: 3,
+    destroy: (texture: Texture) => { destroyed.push(texture) },
+  }
+  const renderer = new GpuRenderer(driver as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as unknown as {
+    bytes: number
+    frameBudget: number
+    free: Map<string, Texture[]>
+    used: Set<Texture>
+    poolReleaseEpoch: WeakMap<Texture, number>
+    overBudget(required: number): boolean
+    retireUnreferencedFreeTextures(trimLarge?: boolean, upcoming?: ReadonlySet<string>): void
+  }
+  const pending = { width: 8, height: 8, bytes: 1024, resource: {} } as unknown as Texture
+  const finished = { width: 4, height: 4, bytes: 256, resource: {} } as unknown as Texture
+  const unstamped = { width: 2, height: 2, bytes: 64, resource: {} } as unknown as Texture
+  renderer.frameBudget = pending.bytes
+  renderer.bytes = pending.bytes + finished.bytes + unstamped.bytes
+  renderer.free.set('8:8', [pending])
+  renderer.free.set('4:4', [finished])
+  renderer.free.set('2:2', [unstamped])
+  renderer.poolReleaseEpoch.set(pending, 4)
+  renderer.poolReleaseEpoch.set(finished, 3)
+  expect(renderer.overBudget(1)).toBe(true)
+  expect(destroyed.map(texture => texture.bytes).sort((a, b) => a - b)).toEqual([64, 256])
+  expect(renderer.free.get('8:8')).toEqual([pending])
+  expect(renderer.bytes).toBe(pending.bytes)
+  driver.completedResourceEpoch = 4
+  expect(renderer.overBudget(1)).toBe(false)
+  expect(destroyed).toContain(pending)
+  expect(renderer.free.has('8:8')).toBe(false)
+
+  const swept = { width: 16, height: 16, bytes: 4096, resource: {} } as unknown as Texture
+  const readable = { width: 3, height: 3, bytes: 128, resource: {} } as unknown as Texture
+  destroyed.length = 0
+  driver.completedResourceEpoch = 3
+  renderer.bytes = swept.bytes + readable.bytes
+  renderer.free.set('16:16', [swept])
+  renderer.free.set('3:3', [readable])
+  renderer.poolReleaseEpoch.set(swept, 5)
+  renderer.poolReleaseEpoch.set(readable, 3)
+  renderer.used.add(readable)
+  renderer.retireUnreferencedFreeTextures()
+  expect(destroyed).toEqual([])
+  expect(renderer.free.get('16:16')).toEqual([swept])
+  expect(renderer.free.get('3:3')).toEqual([readable])
+  renderer.used.delete(readable)
+  driver.completedResourceEpoch = 5
+  renderer.retireUnreferencedFreeTextures()
+  expect(destroyed).toEqual([swept, readable])
+  expect(renderer.free.size).toBe(0)
+  expect(renderer.bytes).toBe(0)
+})
