@@ -36,10 +36,10 @@ export type DesktopStatus = {
 type SessionEditor = Pick<Editor, 'state' | 'subscribe' | 'load' | 'notify'> & Partial<Pick<Editor, 'interactionActive' | 'sessionGeneration' | 'authoredDocument' | 'propertyPreviewActive' | 'settleOwnedPropertyPreview'>>
 // These backend responses prove this request was rejected, rather than leaving
 // an uncertain write. INVALID_REQUEST validation precedes commit/transaction
-// completion. A reported full disk or failed upgrade rolled back. Timeout,
-// transport loss and invalid acknowledgements stay pending.
+// completion. A reported full disk, read-only/write failure, or failed upgrade
+// rolled back. Timeout, transport loss and invalid acknowledgements stay pending.
 const rejectedWorkspaceWrite = (result: DesktopResult<unknown>) => result.status !== 'ok' && result.status !== 'cancelled' &&
-  (result.status === 'conflict' || ['INVALID_REQUEST', 'WORKSPACE_CONFLICT', 'WORKSPACE_MUTATION_CONFLICT', 'WORKSPACE_STORAGE_FULL', 'WORKSPACE_MIGRATION'].includes(result.code))
+  (result.status === 'conflict' || ['INVALID_REQUEST', 'WORKSPACE_CONFLICT', 'WORKSPACE_MUTATION_CONFLICT', 'WORKSPACE_STORAGE_FULL', 'WORKSPACE_WRITE_FAILED', 'WORKSPACE_MIGRATION'].includes(result.code))
 
 /** Disk acknowledgements are scoped to immutable snapshots, never to the latest edit. */
 export type WorkspaceTab = { id: string; name: string; persisted: boolean }

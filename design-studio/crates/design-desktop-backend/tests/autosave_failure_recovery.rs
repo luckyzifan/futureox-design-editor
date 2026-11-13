@@ -225,3 +225,209 @@ fn autosave_recovery_readonly_and_leftover_temp_keep_import_and_recovery() {
     assert_eq!(reopened.open(&working).unwrap().hash, saved.hash);
     assert_eq!(fs::read(&import).unwrap(), import_bytes);
 }
+
+#[test]
+fn autosave_recovery_synced_temp_reopens_without_touching_import() {
+    let f = Fixture::new();
+    let import = f.0.join("original-import.fig");
+    let import_bytes = b"user-import-bytes-must-stay";
+    fs::write(&import, import_bytes).unwrap();
+    let import_hash = sha256(import_bytes);
+    let recovery = f.0.join("recovery");
+    let backend = Backend::new(&recovery).unwrap();
+    backend
+        .recovery_write(
+            "session-1",
+            &document("consistent"),
+            import.to_str(),
+            Some(&import_hash),
+        )
+        .unwrap();
+    let published = recovery.join("session-1.recovery.json");
+    let older = fs::read(&published).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    backend
+        .recovery_write(
+            "session-1",
+            &document("recovered edit"),
+            import.to_str(),
+            Some(&import_hash),
+        )
+        .unwrap();
+    let newer = fs::read(&published).unwrap();
+    fs::write(&published, &older).unwrap();
+    fs::write(recovery.join(".fd-write-synced.tmp"), &newer).unwrap();
+    fs::write(recovery.join(".fd-write-partial.tmp"), b"{").unwrap();
+    drop(backend);
+    let reopened = Backend::new(&recovery).unwrap();
+    let restored = reopened.recovery_read("session-1").unwrap();
+    eprintln!(
+        "MEASURE synced_temp older_bytes={} newer_bytes={} import_bytes={} restored={}",
+        older.len(),
+        newer.len(),
+        import_bytes.len(),
+        restored.document["name"]
+    );
+    assert_eq!(restored.document["name"], "recovered edit");
+    assert_eq!(fs::read(&import).unwrap(), import_bytes);
+    assert!(!recovery.join(".fd-write-synced.tmp").exists());
+    assert_eq!(
+        fs::read(recovery.join(".fd-write-partial.tmp")).unwrap(),
+        b"{"
+    );
+    assert_eq!(
+        reopened
+            .recovery_read("session-1")
+            .unwrap()
+            .entry
+            .source_hash
+            .as_deref(),
+        Some(import_hash.as_str())
+    );
+}
+
+#[tokio::test]
+async fn autosave_recovery_killed_process_reopens_last_commit() {
+    use std::{
+        io::{BufRead, BufReader, Write},
+        process::{Command, Stdio},
+        sync::mpsc,
+        time::Duration,
+    };
+    let f = Fixture::new();
+    let import = f.0.join("original-import.fig");
+    let import_bytes = b"user-import-bytes-must-stay".to_vec();
+    fs::write(&import, &import_bytes).unwrap();
+    let root = f.0.clone();
+    let db = f.db();
+    let edited = document("must-not-commit");
+    let outcome = tokio::task::spawn_blocking(move || {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_futureox-design-desktop-backend"))
+            .args([
+                "--recovery-dir",
+                root.join("recovery").to_str().unwrap(),
+                "--workspace-db",
+                db.to_str().unwrap(),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut input = child.stdin.take().unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap());
+        let mut stderr = child.stderr.take().unwrap();
+        let stderr_thread = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stderr, &mut bytes);
+            bytes
+        });
+        let mut line = String::new();
+        let send = |input: &mut std::process::ChildStdin, value: serde_json::Value| {
+            writeln!(input, "{value}").unwrap();
+            input.flush().unwrap();
+        };
+        send(
+            &mut input,
+            json!({"id":"health","method":"health","params":{}}),
+        );
+        output.read_line(&mut line).unwrap();
+        let health: Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(health["result"]["workspaceAvailable"], true);
+        line.clear();
+        send(
+            &mut input,
+            json!({"id":"commit","method":"workspace.commit","params":{"document":document("consistent"),"expectedRevision":null,"mutationId":"process-create"}}),
+        );
+        output.read_line(&mut line).unwrap();
+        let created: Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(created["result"]["revision"], 1, "{created}");
+        let (locked_tx, locked_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let locked_db = db.clone();
+        let locker = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                let mut connection = SqliteConnection::connect(&format!(
+                    "sqlite://{}",
+                    locked_db.display()
+                ))
+                .await
+                .unwrap();
+                connection.execute("BEGIN IMMEDIATE").await.unwrap();
+                locked_tx.send(()).unwrap();
+                let _ = release_rx.recv();
+                drop(connection);
+            });
+        });
+        locked_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("external writer did not lock the workspace");
+        send(
+            &mut input,
+            json!({"id":"commit-2","method":"workspace.commit","params":{"document":edited,"expectedRevision":1,"mutationId":"process-edit"}}),
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        child.kill().unwrap();
+        let status = child.wait().unwrap();
+        release_tx.send(()).unwrap();
+        locker.join().unwrap();
+        let stderr = String::from_utf8_lossy(&stderr_thread.join().unwrap()).into_owned();
+        (status.success(), stderr)
+    })
+    .await
+    .unwrap();
+    assert!(
+        !outcome.0,
+        "killed backend should not exit cleanly: {}",
+        outcome.1
+    );
+    let mut child = Command::new(env!("CARGO_BIN_EXE_futureox-design-desktop-backend"))
+        .args([
+            "--recovery-dir",
+            f.0.join("recovery").to_str().unwrap(),
+            "--workspace-db",
+            f.db().to_str().unwrap(),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    writeln!(
+        input,
+        "{}",
+        json!({"id":"open","method":"workspace.open","params":{"id":ID}})
+    )
+    .unwrap();
+    drop(input);
+    let finished = child.wait_with_output().unwrap();
+    assert!(
+        finished.status.success(),
+        "{}",
+        String::from_utf8_lossy(&finished.stderr)
+    );
+    let replies = String::from_utf8(finished.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    let opened = replies.iter().find(|reply| reply["id"] == "open").unwrap();
+    eprintln!(
+        "MEASURE killed_process import_bytes={} reopened={} stderr_bytes={}",
+        import_bytes.len(),
+        opened["result"]["document"]["name"],
+        outcome.1.len()
+    );
+    assert!(
+        opened.get("error").is_none() || opened["error"].is_null(),
+        "{opened}"
+    );
+    assert_eq!(opened["result"]["revision"], 1);
+    assert_eq!(opened["result"]["document"], document("consistent"));
+    assert_eq!(fs::read(&import).unwrap(), import_bytes);
+}

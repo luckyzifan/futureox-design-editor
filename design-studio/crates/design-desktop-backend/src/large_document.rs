@@ -1138,11 +1138,21 @@ fn commit(
             .read(true)
             .write(true)
             .open(file_path)
-            .map_err(issue)?;
-        let start = file.metadata().map_err(issue)?.len();
-        let additions = changes.spill_to(&mut file).map_err(issue)?;
+            .map_err(save_io)?;
+        let start = file.metadata().map_err(save_io)?.len();
+        let additions = match changes.spill_to(&mut file) {
+            Ok(additions) => additions,
+            Err(error) => {
+                // A torn append is not part of the published checkpoint.
+                let _ = file.set_len(start);
+                return Err(save_io(error));
+            }
+        };
         if !additions.is_empty() {
-            file.sync_all().map_err(issue)?;
+            if let Err(error) = file.sync_all() {
+                let _ = file.set_len(start);
+                return Err(save_io(error));
+            }
             written.push((p, start, additions));
         }
     }
@@ -1330,14 +1340,102 @@ fn recover_with_opening(
     candidates.sort_by(|a, b| b.0.cmp(&a.0));
     for (_, directory) in candidates {
         check_cancel(cancel).map_err(issue)?;
+        // A crash after journal.next was synced, and before its rename, left
+        // the newer checkpoint beside the last published journal. Adopt it
+        // only when it validates; a partial next stays untouched.
+        if let Some(session) =
+            promote_synced_journal_next(&directory, source_hash, source_limit, cancel)?
+        {
+            return Ok(Some(session));
+        }
         let checkpoint: RecoveryCheckpoint = match serde_json::from_reader(
             File::open(directory.join("journal.json")).map_err(issue)?,
         ) {
             Ok(v) => v,
             Err(_) => continue,
         };
+        match load_checkpoint(&directory, checkpoint, source_hash, source_limit, cancel, &mut on_pristine)? {
+            CheckpointLoad::Ready(session) => return Ok(Some(session)),
+            CheckpointLoad::Skip => continue,
+            CheckpointLoad::Stop => return Ok(None),
+        }
+    }
+    Ok(None)
+}
+
+enum CheckpointLoad {
+    Ready(Session),
+    Skip,
+    Stop,
+}
+
+fn promote_synced_journal_next(
+    directory: &Path,
+    source_hash: &str,
+    source_limit: u64,
+    cancel: &AtomicBool,
+) -> Result<Option<Session>> {
+    let next_path = directory.join("journal.next");
+    let published = directory.join("journal.json");
+    let meta = match fs::symlink_metadata(&next_path) {
+        Ok(meta)
+            if meta.is_file()
+                && !meta.file_type().is_symlink()
+                && meta.len() > 0
+                && meta.len() <= MAX_CHECKPOINT_BYTES =>
+        {
+            meta
+        }
+        _ => return Ok(None),
+    };
+    let _ = meta;
+    let next_checkpoint: RecoveryCheckpoint = match fs::read(&next_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    {
+        Some(checkpoint) => checkpoint,
+        None => return Ok(None),
+    };
+    let current: RecoveryCheckpoint = match fs::read(&published)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    {
+        Some(checkpoint) => checkpoint,
+        None => return Ok(None),
+    };
+    if next_checkpoint.revision <= current.revision || next_checkpoint.source_hash != source_hash {
+        return Ok(None);
+    }
+    let session = match load_checkpoint(
+        directory,
+        next_checkpoint,
+        source_hash,
+        source_limit,
+        cancel,
+        &mut || false,
+    ) {
+        Ok(CheckpointLoad::Ready(session)) => session,
+        _ => return Ok(None),
+    };
+    // Rename is the publication. If it cannot replace the previous journal,
+    // leave both files and reopen that journal below.
+    if fs::rename(&next_path, &published).is_err() {
+        return Ok(None);
+    }
+    let _ = File::open(directory).and_then(|file| file.sync_all());
+    Ok(Some(session))
+}
+
+fn load_checkpoint(
+    directory: &Path,
+    checkpoint: RecoveryCheckpoint,
+    source_hash: &str,
+    source_limit: u64,
+    cancel: &AtomicBool,
+    on_pristine: &mut impl FnMut() -> bool,
+) -> Result<CheckpointLoad> {
         if checkpoint.source_hash != source_hash {
-            continue;
+            return Ok(CheckpointLoad::Skip);
         }
         if !matches!(checkpoint.version,1|2)
             || checkpoint.expanded_bytes > source_limit
@@ -1356,7 +1454,7 @@ fn recover_with_opening(
         }
         if checkpoint.revision==0 && checkpoint.saved_revision==0 && checkpoint.undo.is_empty() && checkpoint.redo.is_empty() &&
             checkpoint.state.group_placements.is_empty() && checkpoint.additions.iter().all(Vec::is_empty) && checkpoint.state.changes.iter().all(Changes::is_pristine) && on_pristine() {
-            return Ok(None);
+            return Ok(CheckpointLoad::Stop);
         }
         let index_path = directory.join("index.json");
         let metadata = fs::symlink_metadata(&index_path).map_err(issue)?;
@@ -1460,7 +1558,7 @@ fn recover_with_opening(
                 &directory,
             )?;
         }
-        return Ok(Some(Session {
+        Ok(CheckpointLoad::Ready(Session {
             version: checkpoint.version,
             owner: checkpoint.owner,
             name: checkpoint.name,
@@ -1474,7 +1572,7 @@ fn recover_with_opening(
             state: checkpoint.state,
             undo: checkpoint.undo,
             redo: checkpoint.redo,
-            directory,
+            directory: directory.to_path_buf(),
             projection: None,
                 scene: None,
             canvas_layout: None,
@@ -1482,9 +1580,7 @@ fn recover_with_opening(
                 recent_materials: Default::default(),
                 converted_windows: Mutex::default(),
                 snapshot_account: Default::default(),
-        }));
-    }
-    Ok(None)
+        }))
 }
 fn persist(s: &Session) -> Result<Option<&'static str>> {
     let metadata = Checkpoint {

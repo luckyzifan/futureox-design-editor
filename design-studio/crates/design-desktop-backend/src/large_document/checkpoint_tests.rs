@@ -220,6 +220,163 @@ fn rejected_apply_preserves_revision_history_index_source_and_recoverable_journa
 }
 
 #[test]
+fn autosave_recovery_synced_journal_next_reopens_edit() {
+    let f = Fixture::new();
+    let cancel = AtomicBool::new(false);
+    let original = fs::read(&f.source).unwrap();
+    let (directory, source_hash, limit, revision0) = {
+        let slot = f.sessions.current.lock().unwrap();
+        let s = slot.as_ref().unwrap();
+        (
+            s.directory.clone(),
+            s.source_hash.clone(),
+            s.max_expanded_bytes,
+            fs::read(s.directory.join("journal.json")).unwrap(),
+        )
+    };
+    let read = f
+        .sessions
+        .dispatch("large.read", f.request(json!({"key":"0:0"})), &cancel)
+        .unwrap();
+    let changed = read["json"].as_str().unwrap().replace("before", "afterX");
+    let applied = f
+        .sessions
+        .dispatch(
+            "large.apply",
+            f.request(json!({"key":"0:0","json":changed,"expectedHash":read["hash"],"requestId":"synced-next"})),
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(applied["revision"], 1);
+    let edited = fs::read(directory.join("journal.json")).unwrap();
+    fs::write(directory.join("journal.next"), &edited).unwrap();
+    fs::write(directory.join("journal.json"), &revision0).unwrap();
+    f.sessions
+        .dispatch("large.close", request(&applied, json!({})), &cancel)
+        .unwrap();
+    let opened = f.sessions.open(
+        Open {
+            opening_preview: false,
+            path: f.source.clone(),
+            document_id: "reopen".into(),
+            session_epoch: 2,
+        },
+        &cancel,
+    );
+    eprintln!(
+        "MEASURE synced_journal_next original_bytes={} revision0_bytes={} edited_bytes={} status={}",
+        original.len(),
+        revision0.len(),
+        edited.len(),
+        opened.as_ref().map(|value| format!("ok revision={}", value["revision"])).unwrap_or_else(|error| format!("error {}: {}", error.code, error.message))
+    );
+    let opened = opened.expect("a fully synced journal.next is the last consistent edit");
+    assert_eq!(opened["revision"], 1);
+    let warning = opened
+        .get("saveWarning")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    assert!(!warning.contains("saved"));
+    let restored = f
+        .sessions
+        .dispatch(
+            "large.read",
+            request(&opened, json!({"key":"0:0"})),
+            &cancel,
+        )
+        .unwrap();
+    assert!(restored["json"].as_str().unwrap().contains("afterX"));
+    assert!(!restored["json"].as_str().unwrap().contains("before"));
+    assert_eq!(fs::read(&f.source).unwrap(), original);
+    assert!(!directory.join("journal.next").exists());
+    let recovered = recover(
+        &f.root.join("cache"),
+        &f.root.join("not-a-session"),
+        &source_hash,
+        limit,
+        &cancel,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(recovered.revision, 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn autosave_recovery_source_write_denied_keeps_original() {
+    let f = Fixture::new();
+    let cancel = AtomicBool::new(false);
+    let original = fs::read(&f.source).unwrap();
+    let (directory, journal) = {
+        let slot = f.sessions.current.lock().unwrap();
+        let s = slot.as_ref().unwrap();
+        (
+            s.directory.clone(),
+            fs::read(s.directory.join("journal.json")).unwrap(),
+        )
+    };
+    let spool = directory.join("source");
+    let writable = fs::metadata(&spool).unwrap().permissions();
+    let mut readonly = writable.clone();
+    readonly.set_readonly(true);
+    fs::set_permissions(&spool, readonly).unwrap();
+    let read = f
+        .sessions
+        .dispatch("large.read", f.request(json!({"key":"0:0"})), &cancel)
+        .unwrap();
+    let changed = read["json"].as_str().unwrap().replace("before", "denied");
+    let error = f
+        .sessions
+        .dispatch(
+            "large.apply",
+            f.request(json!({"key":"0:0","json":changed,"expectedHash":read["hash"],"requestId":"write-denied"})),
+            &cancel,
+        )
+        .unwrap_err();
+    fs::set_permissions(&spool, writable).unwrap();
+    eprintln!(
+        "MEASURE source_write_denied original_bytes={} journal_bytes={} status=error {}: {}",
+        original.len(),
+        journal.len(),
+        error.code,
+        error.message
+    );
+    assert_eq!(error.code, "SOURCE_WRITE_FAILED");
+    assert_ne!(error.code, "SOURCE_STORAGE_FULL");
+    assert_ne!(error.code, "LARGE_DOCUMENT_ERROR");
+    assert!(error.message.contains("not written"));
+    assert!(error.message.contains("unchanged"));
+    assert!(!error.message.contains("saved"));
+    assert_eq!(fs::read(&f.source).unwrap(), original);
+    assert_eq!(fs::read(directory.join("journal.json")).unwrap(), journal);
+    close_session(&f);
+    let opened = f
+        .sessions
+        .open(
+            Open {
+                opening_preview: false,
+                path: f.source.clone(),
+                document_id: "reopen".into(),
+                session_epoch: 2,
+            },
+            &cancel,
+        )
+        .expect("the last published journal reopens after a rejected write");
+    assert_eq!(opened["revision"], 0);
+    assert_eq!(fs::read(&f.source).unwrap(), original);
+    let restored = f
+        .sessions
+        .dispatch(
+            "large.read",
+            request(&opened, json!({"key":"0:0"})),
+            &cancel,
+        )
+        .unwrap();
+    assert!(restored["json"].as_str().unwrap().contains("before"));
+    assert!(!restored["json"].as_str().unwrap().contains("denied"));
+}
+
+#[test]
 fn autosave_recovery_interrupted_journal_next_is_not_saved() {
     let f = Fixture::new();
     let slot = f.sessions.current.lock().unwrap();
