@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { Editor } from './engine'
 import { family } from './components'
+import { usePropertyText } from './property-interface-messages'
 export function AssetsPanel({ editor }: { editor: Editor }) {
+  const { tr } = usePropertyText()
   const [search, setSearch] = useState('')
   const doc = editor.state.doc
   const items = Object.values(doc.nodes).filter(
@@ -13,8 +15,8 @@ export function AssetsPanel({ editor }: { editor: Editor }) {
   return (
     <div className="assets-panel">
       <input
-        aria-label="搜索组件"
-        placeholder="搜索本地组件…"
+        aria-label={tr('搜索组件')}
+        placeholder={tr('搜索本地组件…')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
@@ -23,9 +25,9 @@ export function AssetsPanel({ editor }: { editor: Editor }) {
         disabled={!editor.state.selection.length}
         onClick={() => editor.createComponent()}
       >
-        ◇ 从选择创建组件
+        {tr('◇ 从选择创建组件')}
       </button>
-      <p className="muted">点击插入，或拖入画布</p>
+      <p className="muted">{tr('点击插入，或拖入画布')}</p>
       {items.map((n) => (
         <button
           className="component-asset"
@@ -39,14 +41,14 @@ export function AssetsPanel({ editor }: { editor: Editor }) {
         >
           <strong title={n.name}>◇ {n.name}</strong>
           <small>
-            {family(doc, n.id)?.name || '本地组件'}
+            {family(doc, n.id)?.name || tr('本地组件')}
             {Object.keys(n.component!.variants).length
               ? ` · ${Object.values(n.component!.variants).join(' / ')}`
               : ''}
           </small>
         </button>
       ))}
-      {!items.length && <p className="muted">暂无匹配的组件</p>}
+      {!items.length && <p className="muted">{tr('暂无匹配的组件')}</p>}
     </div>
   )
 }
