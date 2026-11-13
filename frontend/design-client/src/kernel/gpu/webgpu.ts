@@ -1,6 +1,6 @@
 import {DENSE_PAINT_MODE,densePaintWgsl} from './dense-paint-shader'
 import {sourceLayerWgsl,sourceImageLayerWgsl} from './source-layer-shader'
-import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE} from './source-layer'
+import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,noteHostedSourceImageLayer} from './source-layer'
 import {sourceSolidLayerDisplay} from './source-solid-layers'
 import {gaussianPrefixWorthwhile,gaussianPrefixDemand} from './gaussian-selection'
 import {straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
@@ -3127,6 +3127,10 @@ fn analyticCovered(colour:vec4<f32>,opacity:f32,coverage:f32)->vec4<f32>{
       const range=this.sourceImageSampling&&inputs[1]&&this.immutableImageRange(inputs[1])
       const straight=!!inputs[1]&&this.straightSources?.has(inputs[1])===true
       noteHostedStraightImage(u,straight,this.sourceImageSampling,!!(range&&range.unitAlpha&&range.nonnegativeRgb&&range.maximum.every(v=>v<=127)))
+    }
+    if(u[16]===SOURCE_IMAGE_LAYER_MODE){
+      const straight=!!inputs[1]&&this.straightSources?.has(inputs[1])===true
+      noteHostedSourceImageLayer(u,straight)
     }
     this.encodePass(target,u,inputs,region,channels,filter,clearOutside)
   }

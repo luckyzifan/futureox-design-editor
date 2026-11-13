@@ -127,3 +127,14 @@ export function sourceLayer(node: GpuNode, programOffset: (path: PathMesh) => nu
   // operands cannot justify omitting the original floating-point operations.
   return { data, fields, transparentOnZeroFields:brushesEnd===9 && data[0].every(Number.isFinite) }
 }
+
+/** Mode 77's raw flag is u[18]. A straight RGBA8 upload lives in an rgba8uint
+ * texture; u[207] tells bind() to move it onto the uint binding. Leaving the
+ * flag and the upload disagreeing samples a blank float texture or rejects
+ * the pass. u[187] stays untouched so byte-space mixing does not turn on. */
+export function noteHostedSourceImageLayer(u: Float32Array, straight: boolean) {
+  if (u[16] !== SOURCE_IMAGE_LAYER_MODE) return
+  if (u.length < 208) throw Error('Source image layer uniforms are incomplete')
+  if (straight !== (u[18] === 1)) throw Error('Source image layer straight RGBA flag does not match the upload')
+  u[207] = straight ? 1 : 0
+}
