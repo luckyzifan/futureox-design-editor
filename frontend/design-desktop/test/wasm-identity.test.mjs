@@ -27,3 +27,19 @@ test('packaged WASM rejects missing, unrelated and ambiguous source mappings', (
     /Ambiguous WASM source/,
   )
 })
+
+test('shared QuickJS basenames resolve by exact bytes and reject a stale variant', () => {
+  const sources = [
+    { name: 'node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm', sha256: 'sync' },
+    { name: 'node_modules/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.wasm', sha256: 'async' },
+  ]
+  assert.equal(
+    verifyWasmIdentity('assets/emscripten-module-B1g2L2eS.wasm', 'sync', sources),
+    sources[0].name,
+  )
+  assert.equal(
+    verifyWasmIdentity('assets/emscripten-module-ZrHFMo7O.wasm', 'async', sources),
+    sources[1].name,
+  )
+  assert.throws(() => verifyWasmIdentity('assets/emscripten-module-B1g2L2eS.wasm', 'stale', sources), /Stale WASM/)
+})

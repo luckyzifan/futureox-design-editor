@@ -1,6 +1,7 @@
-// Checklist for a frozen release package. GUI steps stay not_run until an
-// installer is actually launched. Hashing, resource listing, and read-only
-// original hashes are preparation evidence, not formal acceptance.
+// Checklist for a frozen release package. This report leaves every GUI step
+// not_run. Hashing and resource listing are preparation evidence, not formal
+// acceptance. release-desktop-session.mjs is the launcher that can record an
+// installed release-profile bundle; a desktop-dev tree still cannot close it.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describePackage, recordReadonlyOriginals, releaseEvidenceFailed } from './release-package-resources.mjs'

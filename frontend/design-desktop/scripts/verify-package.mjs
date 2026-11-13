@@ -176,6 +176,16 @@ try {
         sha256: sha(await readFile(path.join(core, 'frontend/design-client/public', name))),
       })),
   )
+  const requireClient = createRequire(path.join(core, 'frontend/design-client/package.json'))
+  for (const variant of [
+    '@jitl/quickjs-wasmfile-debug-asyncify',
+    '@jitl/quickjs-wasmfile-debug-sync',
+    '@jitl/quickjs-wasmfile-release-asyncify',
+    '@jitl/quickjs-wasmfile-release-sync',
+  ]) {
+    const wasm = path.join(path.dirname(requireClient.resolve(`${variant}/package.json`)), 'dist/emscripten-module.wasm')
+    wasmSources.push({ name: path.relative(core, wasm), sha256: sha(await readFile(wasm)) })
+  }
   for (const name of wasmFiles) {
     verifyWasmIdentity(
       name,

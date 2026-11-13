@@ -13,6 +13,7 @@ import { serveSourceBitmap } from './source-bitmap.mjs'
 import { LargeDocumentHost } from './large-document.mjs'
 import { publishedDocumentJson } from './document-json.mjs'
 import { assertIndependentExport } from './independent-export.mjs'
+import { launchFilesFromArgv, resolveAcceptanceProfile, selectDesktopProfile } from './release-launch.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor, safeStorage } from 'electron'
 import path from 'node:path'
@@ -92,12 +93,28 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ])
-// GUI checks never touch a developer's real recovery/profile or running application.
-if (smoke || guiTest || isolatedProfile) {
-  const profile = mkdtempSync(path.join(realpathSync(tmpdir()), isolatedProfile ? `forma-desktop-manual-${randomUUID()}-` : 'forma-desktop-smoke-'))
-  app.setPath('userData', profile)
-  app.setPath('sessionData', profile)
-  console.log(`DESKTOP_SMOKE_PROFILE ${profile}`)
+// GUI checks and the packaged acceptance profile never touch a developer's
+// regular recovery directory. The acceptance path is reused across a close
+// and reopen; smoke and gui-test still get a fresh temporary directory.
+let acceptanceHome
+try { acceptanceHome = app.getPath('home') } catch { acceptanceHome = undefined }
+const acceptanceProfile = resolveAcceptanceProfile(process.argv, {
+  defaultUserData: app.getPath('userData'),
+  home: acceptanceHome,
+  env: process.env,
+})
+const desktopProfile = selectDesktopProfile({
+  smoke,
+  guiTest,
+  isolatedProfile,
+  acceptanceProfile,
+  createTemporary: () => mkdtempSync(path.join(realpathSync(tmpdir()), isolatedProfile ? `forma-desktop-manual-${randomUUID()}-` : 'forma-desktop-smoke-')),
+})
+if (desktopProfile) {
+  app.setPath('userData', desktopProfile.profile)
+  app.setPath('sessionData', desktopProfile.profile)
+  console.log(`DESKTOP_SMOKE_PROFILE ${desktopProfile.profile}`)
+  if (desktopProfile.source === 'acceptance-profile') console.log(`DESKTOP_ACCEPTANCE_PROFILE ${desktopProfile.profile}`)
 }
 const peerWindowId=process.argv.find(value=>value.startsWith('--local-peer='))?.slice('--local-peer='.length)
 const localSessionId=randomUUID()
@@ -113,7 +130,7 @@ if(peerWindowId!==undefined){
 }
 const localChildren=new Set()
 let pendingPeerLaunches = 0
-if (!smoke && !guiTest && !isolatedProfile && peerWindowId === undefined) {
+if (!desktopProfile && peerWindowId === undefined) {
   // 3917bba91 renamed the app (Forma* → futureox-desgin*), which re-homes every
   // durable store under the new productName. Carry the old profile's catalog,
   // workspace, recovery and window state forward once — before the sidecar
@@ -289,6 +306,7 @@ function enqueueNativeFile(filePath) {
   if (hostReady && !quitRequested) void createWindow().then(() => sendCommand('openPending')).catch(reportWindowError)
   return true
 }
+for (const filePath of launchFilesFromArgv(process.argv, process.platform)) enqueueNativeFile(filePath)
 function reportPendingOverflow() {
   if (!pendingOverflow) return
   pendingOverflow = false
@@ -1473,7 +1491,7 @@ else {
     .whenReady()
     .then(async () => {
       if (peerWindowId === undefined) {
-        const selected = await workspaceRoots.startup({ isolated: smoke || guiTest || isolatedProfile || !!renderCheck })
+        const selected = await workspaceRoots.startup({ isolated: !!desktopProfile || !!renderCheck })
         if (!selected) { shutdownComplete = true; app.quit(); return }
         workspaceRoot = selected.storagePath
       } else {
