@@ -10,7 +10,8 @@ test('neither layout reserves a far-left icon rail or mark column', () => {
   expect(css).not.toContain('.editor-shell[data-ui-mode="sketch"] .editor-header > .brand')
   expect(css).not.toMatch(/grid-template-columns:\s*(?:57|44|48)px/)
   expect(css).toContain('grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width);')
-  expect(css).toContain('grid-template-rows: auto minmax(64px, max-content) minmax(0, 1fr) auto;')
+  expect(css).toContain('--editor-chrome-row: 53px;')
+  expect(css).toContain('grid-template-rows: auto minmax(var(--editor-chrome-row), max-content) minmax(0, 1fr) auto;')
   expect(css).toContain('.editor-shell[data-ui-mode="sketch"] .canvas-workspace')
   const canvas = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.canvas-workspace \{[^}]+\}/)?.[0]
   expect(canvas).toContain('grid-row: 3')

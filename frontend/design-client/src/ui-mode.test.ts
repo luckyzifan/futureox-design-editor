@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_LAYERS_WIDTH, INTERFACE_PREFERENCE_KEY, interfacePreference, LEGACY_SHARED_LAYERS_WIDTH, SKETCH_LAYERS_WIDTH } from './interface-preference'
+import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_INSPECTOR_WIDTH, FIGMA_LAYERS_WIDTH, INTERFACE_PREFERENCE_KEY, interfacePreference, LEGACY_SHARED_LAYERS_WIDTH, SKETCH_INSPECTOR_WIDTH, SKETCH_LAYERS_WIDTH } from './interface-preference'
 import { applyInterfaceLayout, interfaceLayoutFromShortcut, FIGMA_LAYOUT_COMBO, SKETCH_LAYOUT_COMBO } from './interface-layout'
 import { shortcutPreference } from './shortcut-preference'
 import { shortcutBindings } from './shortcut-profiles'
@@ -41,11 +41,12 @@ test('layout chords switch the shell and the matching editor shortcut profile', 
   applyInterfaceLayout('sketch')
   expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
   expect(interfacePreference.getSnapshot().leftWidth).toBe(SKETCH_LAYERS_WIDTH)
-  expect(interfacePreference.getSnapshot().rightWidth).toBe(280)
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(SKETCH_INSPECTOR_WIDTH)
   expect(shortcutPreference.getSnapshot()).toBe('sketch-like')
   applyInterfaceLayout('figma')
   expect(interfacePreference.getSnapshot().uiMode).toBe('figma')
   expect(interfacePreference.getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH)
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(FIGMA_INSPECTOR_WIDTH)
   expect(interfacePreference.getSnapshot().leftWidths).toEqual({ figma: FIGMA_LAYERS_WIDTH, sketch: SKETCH_LAYERS_WIDTH })
   expect(shortcutPreference.getSnapshot()).toBe('figma-like')
   for (const profile of ['figma-like', 'sketch-like'] as const) {

@@ -54,9 +54,24 @@ test('Figma chrome at 1440×960 meets the measured targets without resizing Sket
   assert.equal(measured.viewport.w, 1440)
   assert.equal(measured.viewport.h, 960)
   const box = measured.metrics
-  assert.equal(box['header-right'].w, 241)
-  assert.equal(box['header-right'].h, 48)
+  assert.equal(box.header.h, 38)
+  assert.equal(box.header.w, 1440)
+  assert.equal(box.header.bg, 'rgb(233, 235, 236)')
+  assert.equal(box.header.borderBottom, '1px')
+  for (const id of ['layers', 'canvas', 'inspector']) {
+    assert.equal(box[id].y, 38, `${id} starts at ${box[id].y}`)
+  }
+  assert.equal(box.title.bg, 'rgba(0, 0, 0, 0)')
+  assert.ok(box['header-right'].y >= box.header.y - 0.5 && box['header-right'].y + box['header-right'].h <= box.header.y + box.header.h + 0.5, JSON.stringify(box['header-right']))
+  assert.equal(box['header-right'].bg, 'rgba(0, 0, 0, 0)')
   assert.equal(box['header-right'].gap, '4px')
+  assert.equal(measured.sketch.header.h, 53)
+  assert.equal(measured.sketch.header.bg, 'rgb(232, 235, 236)')
+  assert.equal(measured.sketch.layers.y, 53)
+  assert.equal(measured.sketch.canvas.y, 53)
+  assert.equal(measured.sketch.inspector.y, 53)
+  assert.ok(measured.sketch.toolbar.y >= 53, `sketch tools moved into the bar at ${measured.sketch.toolbar.y}`)
+  assert.equal(measured.sketch.toolbar.position, 'relative')
   assert.ok(box.collapse.w >= 32 && box.collapse.h >= 32)
   assert.equal(intersects(box.collapse, box['title-input']), false)
   for (const id of ['mode-figma', 'mode-sketch']) {
@@ -113,8 +128,8 @@ function probeHtml() {
 <style>html,body{margin:0;width:1440px;height:960px}*,*::before,*::after{animation:none!important;transition:none!important}</style>
 </head><body>
 <div class="app-shell editor-shell" data-ui-mode="figma" style="width:1440px;height:960px">
-  <header class="editor-header">
-    <div class="document-title" id="document-title">
+  <header class="editor-header" id="header">
+    <div class="document-title" id="title">
       <button type="button" class="document-location" id="location">本机设计</button>
       <input id="title-input" aria-label="文档名称" value="未命名">
       <button type="button" id="collapse" aria-pressed="false" aria-label="收起界面">▣</button>
@@ -133,7 +148,9 @@ function probeHtml() {
       <button type="button" class="app-settings-button"><span>设置</span></button>
     </div>
   </header>
-  <div class="canvas-workspace">
+  <nav class="workspace-rail" id="rail"><button type="button">图层</button></nav>
+  <div class="adaptive-layers-shell" id="layers"><div class="layers-panel">页面</div></div>
+  <div class="canvas-workspace" id="canvas">
     <div class="toolbar floating-toolbar">
       <div class="tool-group">
         <div class="tool-popover"><button type="button" id="tool-select">选</button><button type="button" class="tool-picker-arrow" id="tool-arrow"></button></div>
@@ -144,7 +161,7 @@ function probeHtml() {
       </div>
     </div>
   </div>
-  <div class="properties-workspace"><div class="properties-content"><aside class="inspector">
+  <div class="properties-workspace" id="inspector"><div class="properties-content"><aside class="inspector">
     <div class="panel-tabs"><b>设计</b><span id="prop-label">属性</span></div>
     <section class="empty-inspector"><p id="empty-copy">选中图层后，在这里编辑颜色、形状与约束。</p></section>
     <div class="number-field" id="num"><span id="num-label">X</span><input value="0"></div>
@@ -152,15 +169,22 @@ function probeHtml() {
     <div class="local-badge" id="badge">独立工作空间 · 本地优先</div>
   </aside></div></div>
 </div>
-<div class="app-shell editor-shell" data-ui-mode="sketch" style="width:1440px;height:120px">
-  <div class="header-right"><div class="ui-mode-switch"><button type="button" id="sketch-mode">Sketch</button></div></div>
-  <div class="canvas-workspace"><div class="toolbar floating-toolbar"><div class="tool-group"><button type="button" id="sketch-tool">排</button></div></div></div>
+<div class="app-shell editor-shell" id="sketch-shell" data-ui-mode="sketch" style="width:1440px;height:200px">
+  <header class="editor-header" id="sketch-header">
+    <button type="button" class="brand">F</button>
+    <div class="document-title"><button type="button" class="document-location">本机设计</button><input value="未命名"></div>
+    <div class="header-right"><div class="ui-mode-switch"><button type="button" id="sketch-mode">Sketch</button></div></div>
+  </header>
+  <div class="adaptive-layers-shell" id="sketch-layers"><div class="layers-panel">页面</div></div>
+  <div class="canvas-workspace" id="sketch-canvas"><div class="toolbar floating-toolbar"><div class="tool-group"><button type="button" id="sketch-tool">排</button></div></div></div>
+  <div class="properties-workspace" id="sketch-inspector"></div>
 </div>
 <section class="design-tools export-panel" id="export-dialog"></section>
 <section class="settings-dialog" id="settings-dialog"></section>
 <script>
-const ids = ${JSON.stringify(['collapse','title-input','windows','window-count','mode-figma','mode-sketch','locale','header-right','tool-select','tool-frame','tool-rect','tool-pen','tool-eraser','tool-arrow','prop-label','empty-copy','num-label','num','h4','badge','sketch-mode','sketch-tool','export-dialog','settings-dialog'])};
-const box = (el) => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return { w: +r.width.toFixed(2), h: +r.height.toFixed(2), x: +r.x.toFixed(2), y: +r.y.toFixed(2), font: s.fontSize, color: s.color, bg: s.backgroundColor, shadow: s.boxShadow, gap: s.gap } };
+const ids = ${JSON.stringify(['collapse','title-input','windows','window-count','mode-figma','mode-sketch','locale','header-right','header','layers','canvas','inspector','rail','title','tool-select','tool-frame','tool-rect','tool-pen','tool-eraser','tool-arrow','prop-label','empty-copy','num-label','num','h4','badge','sketch-mode','sketch-tool','export-dialog','settings-dialog'])};
+const box = (el) => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return { w: +r.width.toFixed(2), h: +r.height.toFixed(2), x: +r.x.toFixed(2), y: +r.y.toFixed(2), font: s.fontSize, color: s.color, bg: s.backgroundColor, shadow: s.boxShadow, gap: s.gap, borderBottom: s.borderBottomWidth } };
+const relative = (el, shell) => { const value = box(el), origin = shell.getBoundingClientRect(); return { ...value, y: +(value.y - origin.y).toFixed(2), x: +(value.x - origin.x).toFixed(2) } };
 const hit = {};
 for (const id of ['mode-figma','mode-sketch','locale','tool-select','tool-frame','tool-rect','tool-pen','tool-eraser','collapse']) {
   const el = document.getElementById(id);
@@ -169,7 +193,15 @@ for (const id of ['mode-figma','mode-sketch','locale','tool-select','tool-frame'
   const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
   hit[id] = { self: top === el || (!!top && el.contains(top)), via: top ? (top.id || top.className || top.tagName) : null };
 }
-window.__chrome = { viewport: { w: innerWidth, h: innerHeight }, metrics: Object.fromEntries(ids.map(id => [id, box(document.getElementById(id))])), hit };
+const sketchShell = document.getElementById('sketch-shell');
+const sketch = {
+  header: relative(document.getElementById('sketch-header'), sketchShell),
+  layers: relative(document.getElementById('sketch-layers'), sketchShell),
+  canvas: relative(document.getElementById('sketch-canvas'), sketchShell),
+  inspector: relative(document.getElementById('sketch-inspector'), sketchShell),
+  toolbar: { ...relative(document.getElementById('sketch-tool').closest('.floating-toolbar'), sketchShell), position: getComputedStyle(document.getElementById('sketch-tool').closest('.floating-toolbar')).position },
+};
+window.__chrome = { viewport: { w: innerWidth, h: innerHeight }, metrics: Object.fromEntries(ids.map(id => [id, box(document.getElementById(id))])), hit, sketch };
 </script></body></html>`
 }
 

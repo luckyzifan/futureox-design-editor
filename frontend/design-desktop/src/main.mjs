@@ -1237,6 +1237,20 @@ async function buildWindow() {
     title: applicationName,
     show: false,
     backgroundColor: '#e8eaee',
+    // macOS only. hiddenInset draws the traffic lights in the web content, so
+    // they sit in the single editor bar (Figma 38px, Sketch 53px) instead of a
+    // system title bar plus a second 48–64px header. Linux and Windows skip
+    // this branch and keep the default frame; the page origin stays the top of
+    // the web content, and this does not insert a 31pt title bar on Linux.
+    // trafficLightPosition is placed for the shorter Figma bar (about 12px
+    // lights, top at 12px). Those lights still fall inside the taller Sketch
+    // bar. The renderer adds left padding only for data-window-controls="inset"
+    // (Electron whose user agent reports Mac OS X). Dragging the empty part of
+    // the bar moves the window; controls opt out with -webkit-app-region.
+    ...(process.platform === 'darwin' ? {
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 12, y: 12 },
+    } : {}),
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       additionalArguments: [

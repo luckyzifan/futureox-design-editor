@@ -5,7 +5,7 @@ import React, { act } from 'react'
 import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { InterfaceSettings, PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
-import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_LAYERS_WIDTH, interfacePreference, INTERFACE_PREFERENCE_KEY, interfaceText, SKETCH_LAYERS_WIDTH } from './interface-preference'
+import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_INSPECTOR_WIDTH, FIGMA_LAYERS_WIDTH, interfacePreference, INTERFACE_PREFERENCE_KEY, interfaceText, LEGACY_SHARED_INSPECTOR_WIDTH, OFFICIAL_INSPECTOR_WIDTHS, panelWidth, SKETCH_INSPECTOR_WIDTH, SKETCH_LAYERS_WIDTH } from './interface-preference'
 import { readFileSync } from 'node:fs'
 import { hasPendingEdits, registerPendingEdit } from './pending-edits'
 let dom: any, root: Root, mount: HTMLElement
@@ -31,18 +31,19 @@ test('keyboard resize bounds, persisted reopen, layout reset and locale labels',
   await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Reset panel layout')!.click())
   expect(interfacePreference.getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH)
   expect(interfacePreference.getSnapshot().leftWidths).toEqual({ figma: FIGMA_LAYERS_WIDTH, sketch: SKETCH_LAYERS_WIDTH })
-  expect(interfacePreference.getSnapshot().rightWidth).toBe(280)
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(FIGMA_INSPECTOR_WIDTH)
+  expect(interfacePreference.getSnapshot().inspectorWidths).toEqual(OFFICIAL_INSPECTOR_WIDTHS)
   expect(interfacePreference.getSnapshot().locale).toBe('en')
 })
-test('the mounted shell uses 240px in Figma and 230px in Sketch without changing the inspector', async () => {
+test('the mounted shell uses the independent widths of both layouts', async () => {
   await render(<Shell />)
   const shell = document.querySelector<HTMLElement>('.editor-shell')!
   expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain(`${FIGMA_LAYERS_WIDTH}px`)
-  expect(shell.style.getPropertyValue('--workspace-inspector-width')).toContain('280px')
+  expect(shell.style.getPropertyValue('--workspace-inspector-width')).toContain(`${FIGMA_INSPECTOR_WIDTH}px`)
   await act(async () => interfacePreference.set({ uiMode: 'sketch' }))
   expect(interfacePreference.getSnapshot().leftWidth).toBe(SKETCH_LAYERS_WIDTH)
   expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain(`${SKETCH_LAYERS_WIDTH}px`)
-  expect(shell.style.getPropertyValue('--workspace-inspector-width')).toContain('280px')
+  expect(shell.style.getPropertyValue('--workspace-inspector-width')).toContain(`${SKETCH_INSPECTOR_WIDTH}px`)
   await act(async () => interfacePreference.set({ uiMode: 'figma' }))
   expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain(`${FIGMA_LAYERS_WIDTH}px`)
 })
@@ -60,7 +61,8 @@ test('disabled separator preserves a mounted pending input and its draft', async
   await render(<div><input defaultValue="pending draft" /><PanelResizeHandle side="right" canResize={() => !hasPendingEdits(owner)} /></div>)
   const field = document.querySelector('input')!, handle = document.querySelector<HTMLElement>('[role=separator]')!
   field.value = 'unfinished 12.'; field.focus(); await key(handle, 'End'); await pointer(handle, 'pointerdown', 200); await pointer(handle, 'pointermove', 10); await pointer(handle, 'pointerup', 10)
-  expect(field.value).toBe('unfinished 12.'); expect(document.activeElement).toBe(field); expect(interfacePreference.getSnapshot().rightWidth).toBe(280); expect(hasPendingEdits(owner)).toBe(true); unregister()
+  expect(field.value).toBe('unfinished 12.'); expect(document.activeElement).toBe(field); expect(interfacePreference.getSnapshot().rightWidth).toBe(FIGMA_INSPECTOR_WIDTH)
+  expect(interfacePreference.getSnapshot().inspectorWidths).toEqual(OFFICIAL_INSPECTOR_WIDTHS); expect(hasPendingEdits(owner)).toBe(true); unregister()
 })
 test('motion toggles apply to the root and restore on unmount; collapse persists on desktop', async () => {
   await render(<Shell />)
@@ -151,6 +153,45 @@ test('compact simultaneous panels have separate vertical slots without hiding ei
   expect(css).toContain('.editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .properties-workspace')
 })
 
+test('official inspector widths are reachable and each layout keeps its own width', async () => {
+  expect(panelWidth(241, 'right')).toBe(241)
+  expect(panelWidth(240, 'right')).toBe(240)
+  expect(panelWidth(239, 'right')).toBe(240)
+  expect(panelWidth(100, 'left')).toBe(208)
+  expect(panelWidth(239, 'left')).toBe(239)
+  expect(panelWidth(FIGMA_INSPECTOR_WIDTH, 'right')).toBe(FIGMA_INSPECTOR_WIDTH)
+  expect(panelWidth(SKETCH_INSPECTOR_WIDTH, 'right')).toBe(SKETCH_INSPECTOR_WIDTH)
+  expect(DEFAULT_INTERFACE_PREFERENCES.rightWidth).toBe(241)
+  expect(DEFAULT_INTERFACE_PREFERENCES.inspectorWidths).toEqual({ figma: 241, sketch: 240 })
+  expect(DEFAULT_INTERFACE_PREFERENCES.leftWidth).toBe(FIGMA_LAYERS_WIDTH)
+  const freshSketch = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ uiMode: 'sketch' }), setItem() {} }))
+  expect(freshSketch.getSnapshot().rightWidth).toBe(240)
+  expect(freshSketch.getSnapshot().inspectorWidths).toEqual(OFFICIAL_INSPECTOR_WIDTHS)
+  const legacy = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ uiMode: 'sketch', rightWidth: LEGACY_SHARED_INSPECTOR_WIDTH }), setItem() {} }))
+  expect(legacy.getSnapshot().rightWidth).toBe(240)
+  expect(legacy.getSnapshot().inspectorWidths).toEqual({ figma: 241, sketch: 240 })
+  const custom = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ rightWidth: 320, uiMode: 'figma' }), setItem() {} }))
+  expect(custom.getSnapshot().inspectorWidths).toEqual({ figma: 320, sketch: 320 })
+  const kept = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ rightWidth: 260, uiMode: 'figma' }), setItem() {} }))
+  expect(kept.getSnapshot().rightWidth).toBe(260)
+  interfacePreference.set({ rightWidth: 300 })
+  expect(interfacePreference.getSnapshot().inspectorWidths.figma).toBe(300)
+  interfacePreference.set({ uiMode: 'sketch' })
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(240)
+  expect(interfacePreference.getSnapshot().inspectorWidths.figma).toBe(300)
+  interfacePreference.set({ rightWidth: 241 })
+  expect(interfacePreference.getSnapshot().inspectorWidths).toEqual({ figma: 300, sketch: 241 })
+  interfacePreference.set({ uiMode: 'figma' })
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(300)
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH)
+  await render(<div className="properties-workspace"><PanelResizeHandle side="right" /></div>)
+  const handle = document.querySelector<HTMLElement>('[role=separator]')!
+  expect(handle.getAttribute('aria-valuemin')).toBe('240')
+  await key(handle, 'Home')
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(240)
+  expect(interfacePreference.getSnapshot().inspectorWidths.figma).toBe(240)
+  expect(interfacePreference.getSnapshot().inspectorWidths.sketch).toBe(241)
+})
 test('right panel resize uses its capped edge in the reversed drag direction', async () => {
   interfacePreference.set({ rightWidth: 480 }); await render(<div className="properties-workspace"><PanelResizeHandle side="right" /></div>)
   const handle = document.querySelector<HTMLElement>('[role=separator]')!

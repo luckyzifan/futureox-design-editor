@@ -1031,6 +1031,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       }}
       style={adaptivePanels.style}
       data-host={desktop ? 'electron' : 'web'}
+      data-window-controls={desktop && /Mac OS X/.test(navigator.userAgent) ? 'inset' : undefined}
       data-density={adaptivePanels.density}
       data-ui-mode={uiMode}
       className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) && !agentDockOpen ? '' : agentDockOpen ? '' : 'chrome-hide-inspector'} ${agentDockOpen ? 'design-agent-open' : ''} ${uiMinimized ? 'chrome-minimized' : ''}`}
