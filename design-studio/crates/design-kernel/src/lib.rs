@@ -1938,7 +1938,7 @@ mod wasm {
             options: &str,
             probe: Option<js_sys::Function>,
         ) -> Result<Vec<u8>, JsValue> {
-            let render = || -> Result<Vec<u8>, String> {
+            let mut render = || -> Result<Vec<u8>, String> {
                 let value = serde_json::from_str(options).map_err(|e| e.to_string())?;
                 let options = self.inner.parse_options(value)?;
                 self.inner.render_exact(&options)
