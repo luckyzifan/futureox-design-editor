@@ -34,7 +34,7 @@
       FUTUREOX_DESIGN_BRIDGE_TOKEN: '<本次授权的 token>'
 ```
 
-复制的配置只供本机个人使用。使用私有配置文件（macOS/Linux 可设为 `chmod 600`），不要把临时 token 贴到模型对话、命令行参数或项目仓库。若不想将 token 写入 Codex 配置，可用 `env_vars` 转发启动客户端时已有的三个 `FUTUREOX_DESIGN_*` 环境变量，并继续在 MCP 子进程配置中设置 `ELECTRON_RUN_AS_NODE = "1"`。不要给整个桌面应用或当前终端全局设置 `ELECTRON_RUN_AS_NODE`。
+复制的配置只供本机个人使用。使用私有配置文件（macOS/Linux 可设为 `chmod 600`），不要把临时 token 贴到模型对话、命令行参数或项目仓库。复制出来的 `env` 里除了三个 `FUTUREOX_DESIGN_*` 和 `ELECTRON_RUN_AS_NODE`，还可能有 `HOME`、`PATH`、`TMPDIR` 等启动变量。有的客户端会用这份 `env` 替换子进程环境，所以要整份保留，不要只留下 token。若不想将 token 写入 Codex 配置，可用 `env_vars` 转发启动客户端时已有的三个 `FUTUREOX_DESIGN_*` 环境变量，并继续在 MCP 子进程配置中设置 `ELECTRON_RUN_AS_NODE = "1"`，同时保留上面的启动变量。不要给整个桌面应用或当前终端全局设置 `ELECTRON_RUN_AS_NODE`。
 
 ## 验证读写和撤权
 
@@ -54,6 +54,6 @@
 | 出现另一个编辑器窗口或客户端没有收到握手 | 检查 MCP **子进程**的 `ELECTRON_RUN_AS_NODE=1`，以及分开的 `command` 和 `args`。也可将 command 改为本机 Node 22+ 的绝对路径，删除该变量，保留脚本路径和另外三个变量。 |
 | 无法连接、旧资源过期、权限不足 | 确认编辑器和客户端同机、同账户，文档未切换。重新启用所需范围，更换整份会话配置；已超时的写请求应先读回版本，再决定是否重试。 |
 | 只有浏览器版、原生 Sketch 源预览或大文档源视图 | 浏览器不监听 MCP；请在桌面版打开支持普通 Editor 编辑的文档。 |
-| 安装包移动后命令找不到 | 启动新位置的应用并重新复制配置。macOS 资源在 `.app/Contents/Resources/design-mcp/`，Windows/Linux 在应用的 `resources/design-mcp/`。本指南随包保存为 `design-mcp/README.zh-CN.md`。 |
+| 安装包移动后命令找不到 | 启动新位置的应用并重新复制配置。macOS 资源在 `.app/Contents/Resources/design-mcp/`，Windows/Linux 在应用的 `resources/design-mcp/`。本指南随包保存为 `design-mcp/README.zh-CN.md`。配置里的脚本路径可以经过符号链接；适配器用解析后的文件判断自己是不是入口。 | |
 
 开发者在 `frontend/design-desktop` 运行 `bun run package:local`。该命令构建本机平台的 release 包，并核对适配器文件、用包内 Electron 启动两个 stdio 入口、连接本机 HTTP、读取资源后再撤权。默认不启用服务，也不改外部客户端的个人配置。跨平台包需在对应平台构建验证。

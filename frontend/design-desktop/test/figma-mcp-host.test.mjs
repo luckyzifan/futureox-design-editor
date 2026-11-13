@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { LocalAutomationBridge, registerAutomationBridge } from '../src/automation-bridge.mjs'
-import { attachFigmaMcp } from '../src/figma-mcp-host.mjs'
+import { attachFigmaMcp, desktopMcpClientConfig } from '../src/figma-mcp-host.mjs'
 import { APP_URL, assertSender } from '../src/security.mjs'
 
 const editor = {
@@ -43,6 +43,25 @@ test('a failed loopback start is redacted and does not block the existing socket
   assert.match(shown.figmaMcp.reason, /\[redacted\]/)
   assert.equal(JSON.stringify(bridge.status()).includes('secret-token-value'), false)
   await bridge.close()
+})
+
+test('stdio config survives a replaced environment and omits unrelated secrets', () => {
+  const token = 'a'.repeat(64)
+  const config = desktopMcpClientConfig(
+    { endpoint: '\\\\.\\pipe\\futureox-design-session', sessionId: 'session-1', token },
+    'C:/Program Files/Futureox/resources/design-mcp/src/cli.mjs',
+    'C:/Program Files/Futureox/futureox-desgin.exe',
+    { env: { Path: 'C:/Windows', PathExt: '.EXE', NODE_OPTIONS: '--inspect', SECRET_TOKEN: token, LD_PRELOAD: '/tmp/lib.so' }, platform: 'win32' },
+  ).mcpServers.futureox_design
+  assert.equal(config.command, 'C:/Program Files/Futureox/futureox-desgin.exe')
+  assert.deepEqual(config.args, ['C:/Program Files/Futureox/resources/design-mcp/src/cli.mjs'])
+  assert.equal(config.env.ELECTRON_RUN_AS_NODE, '1')
+  assert.equal(config.env.Path, 'C:/Windows')
+  assert.equal(config.env.PathExt, '.EXE')
+  assert.equal(config.env.FUTUREOX_DESIGN_BRIDGE_TOKEN, token)
+  assert.equal(config.env.NODE_OPTIONS, undefined)
+  assert.equal(config.env.LD_PRELOAD, undefined)
+  assert.equal(config.env.SECRET_TOKEN, undefined)
 })
 
 test('confirmed enable publishes the loopback URL without putting the token in status', async t => {
