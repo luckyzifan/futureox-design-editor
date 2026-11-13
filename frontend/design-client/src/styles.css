@@ -1796,7 +1796,10 @@ footer button {
 .editor-shell .header-right > .app-settings-button { font-size: 12px; flex-shrink: 0; white-space: nowrap; }
 .editor-shell .app-settings-button > svg { flex-shrink: 0; }
 .editor-shell .header-right .prototype-preview-button span { display: none; }
-.editor-shell .header-right .save-status { font-size: 10px; min-width: 16px; flex: 1; overflow: hidden; white-space: nowrap; }
+.editor-shell .header-right .save-status { font-size: 10px; flex: 0 1 auto; min-width: 28px; max-width: min(280px, 100%); overflow: hidden; white-space: nowrap; }
+.editor-shell .header-right .save-status > svg,
+.editor-shell .header-right .save-status > span[aria-hidden] { flex: none; }
+.editor-shell .header-right .save-status .save-status-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-actions { position: relative; order: 10; }
 .workspace-actions > summary { display: flex; align-items: center; justify-content: center; width: 28px; height: 32px; cursor: pointer; list-style: none; border-radius: 6px; }
 .workspace-actions > summary::-webkit-details-marker { display: none; }
@@ -1933,7 +1936,7 @@ footer button {
 .library-history .local-file-row > span { color: var(--workspace-muted); font-size: 11px; }
 .library-history .local-file-row > button { flex: none; font-size: 11px; color: var(--workspace-accent); }
 @media (max-width: 1100px) {
-  .editor-shell .header-right .save-status { font-size: 0; width: 16px; flex: none; }
+  .editor-shell .header-right .save-status { font-size: 0; width: 16px; min-width: 0; flex: none; }
 }
 @media (max-width: 700px) {
   .remote-modal { padding: 18px; }
@@ -2219,6 +2222,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .editor-shell[data-density="desk"] { --workspace-panel-cap: min(240px, 28vw); }
 .editor-shell[data-density="desk"] .editor-header .header-right {
   width: auto;
+  min-width: 0;
   height: auto;
   margin: 0;
   max-width: 100%;
@@ -2241,6 +2245,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
   .editor-shell { --workspace-panel-cap: min(240px, 28vw); }
   .editor-shell .editor-header .header-right {
     width: auto;
+    min-width: 0;
     height: auto;
     margin: 0;
     max-width: 100%;

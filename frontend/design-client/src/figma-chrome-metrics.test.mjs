@@ -49,6 +49,17 @@ test('the reported #888 secondary ink fails 4.5:1 and the Figma token does not',
   assert.match(styles, /min-width: 1181px/)
 })
 
+test('the save status keeps its sentence for hover and does not use the 16px crush', async () => {
+  const app = await readFile(new URL('./App.tsx', root), 'utf8')
+  const css = await readFile(new URL('./styles.css', root), 'utf8')
+  assert.match(app, /const saveStatusTitle = /)
+  assert.match(app, /title=\{saveStatusTitle\}/)
+  assert.match(app, /className="save-status-label" title=\{saveStatusTitle\}/)
+  assert.match(css, /\.editor-shell \.editor-header \.header-right \{[^}]*width:\s*max-content/)
+  assert.match(css, /\.editor-shell \.header-right \.save-status \{[^}]*min-width:\s*28px/)
+  assert.doesNotMatch(css, /\.editor-shell \.header-right \.save-status \{[^}]*min-width:\s*16px/)
+})
+
 test('Figma chrome at 1440×960 meets the measured targets without resizing Sketch tools', { timeout: 30_000 }, async () => {
   const measured = await measureChrome()
   assert.equal(measured.viewport.w, 1440)
@@ -112,11 +123,66 @@ test('Figma chrome at 1440×960 meets the measured targets without resizing Sket
   assert.ok(box['sketch-mode'].w <= 56)
 })
 
+test('1440×960 Figma and Sketch headers keep the save sentence and mode switch off the canvas', { timeout: 30_000 }, async () => {
+  const measured = await measureChrome(issueHtml(), { dpr: 1 })
+  assert.equal(measured.viewport.w, 1440)
+  assert.equal(measured.viewport.h, 960)
+  assert.ok(Math.abs(measured.dpr - 1) < 0.01, String(measured.dpr))
+  assert.ok(measured.doc.w <= 1440.5, `page grew to ${measured.doc.w}`)
+  for (const mode of ['figma', 'sketch']) {
+    const shot = measured[mode]
+    assert.equal(shot.header.h, 48, mode)
+    assert.equal(shot.header.gap, '4px', mode)
+    assert.ok(shot.header.w > 280, `${mode} header ${shot.header.w}`)
+    assert.ok(Math.abs(shot.header.x + shot.header.w - 1440) < 1, JSON.stringify(shot.header))
+    assert.equal(shot.overlapsTitle, false, mode)
+    assert.ok(shot.save.w > 16, `${mode} save crushed to ${shot.save.w}`)
+    assert.ok(shot.save.w > shot.icon, `${mode} save ${shot.save.w} is not wider than the ${shot.icon}px icon`)
+    assert.equal(shot.label.full, true, JSON.stringify(shot.label))
+    assert.equal(shot.label.contained, true, JSON.stringify({ save: shot.save, label: shot.label }))
+    assert.equal(shot.label.text, '已自动保存到工作副本')
+    assert.match(shot.save.title, /已自动保存到工作副本/)
+    for (const id of ['figma', 'sketch']) {
+      assert.equal(inside(shot.controls[id], shot.header), true, `${mode} ${id} ${JSON.stringify(shot.controls[id])} vs ${JSON.stringify(shot.header)}`)
+      assert.ok(shot.controls[id].w <= 56, `${mode} ${id} grew to ${shot.controls[id].w}`)
+      assert.equal(shot.hits[id].self, true, JSON.stringify(shot.hits[id]))
+    }
+    if (mode === 'figma') {
+      for (const id of ['figma', 'sketch']) {
+        assert.ok(shot.controls[id].h >= 32, `${id} ${shot.controls[id].h}`)
+        assert.equal(shot.controls[id].font, '12px')
+      }
+    } else {
+      for (const id of ['figma', 'sketch']) {
+        assert.equal(shot.controls[id].h, 26, `${id} ${shot.controls[id].h}`)
+        assert.equal(shot.controls[id].font, '11px')
+      }
+      assert.equal(shot.tool.h, 34)
+      assert.equal(shot.tool.w, 34)
+      assert.equal(intersects(shot.tool, shot.header), false, JSON.stringify(shot.tool))
+    }
+    for (const id of ['locale', 'export', 'settings']) {
+      assert.equal(inside(shot.controls[id], shot.header), true, `${mode} ${id}`)
+      assert.equal(shot.hits[id].self, true, `${mode} ${id} ${JSON.stringify(shot.hits[id])}`)
+    }
+  }
+  const english = measured.en
+  assert.equal(inside(english.controls.figma, english.header), true, JSON.stringify(english.controls.figma))
+  assert.equal(inside(english.controls.sketch, english.header), true)
+  assert.ok(english.save.w > english.icon)
+  assert.match(english.save.title, /The file was changed outside this editor/)
+  assert.equal(english.label.contained, true, JSON.stringify(english.label))
+  assert.equal(english.label.full, true, JSON.stringify(english.label))
+  for (const id of ['locale', 'export', 'settings']) assert.equal(english.hits[id].self, true, JSON.stringify(english.hits[id]))
+})
+
 function intersects(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 function inside(child, parent) {
-  return child.y >= parent.y - 0.5 && child.y + child.h <= parent.y + parent.h + 0.5
+  return child.x >= parent.x - 0.5 && child.y >= parent.y - 0.5
+    && child.x + child.w <= parent.x + parent.w + 0.5
+    && child.y + child.h <= parent.y + parent.h + 0.5
 }
 
 function probeHtml() {
@@ -205,15 +271,106 @@ window.__chrome = { viewport: { w: innerWidth, h: innerHeight }, metrics: Object
 </script></body></html>`
 }
 
-async function measureChrome() {
+function issueHtml() {
+  const icon = '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"></svg>'
+  const icon16 = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"></svg>'
+  const header = (prefix, status) => `<header class="editor-header">
+    <button class="brand" type="button"><strong>Futureox Design</strong></button>
+    <div class="document-title" id="${prefix}-title">
+      <button type="button" class="document-location">本机设计</button>
+      <input aria-label="文档名称" value="未命名">
+      <button type="button" aria-pressed="false" aria-label="收起界面">▣</button>
+    </div>
+    <div class="header-right" id="${prefix}-header">
+      <details class="workspace-actions"><summary id="${prefix}-more" aria-label="更多操作">${icon16}</summary></details>
+      <span class="save-status" id="${prefix}-save" role="status" title="${status}">${icon}<span class="save-status-label">${status}</span></span>
+      <button type="button" id="${prefix}-files">${icon16}本机文件</button>
+      <div class="ui-mode-switch" role="group" aria-label="界面布局">
+        <button type="button" id="${prefix}-figma" aria-pressed="true">Figma</button>
+        <button type="button" id="${prefix}-sketch" aria-pressed="false">Sketch</button>
+      </div>
+      <label class="locale-switch"><select id="${prefix}-locale" aria-label="语言"><option>中文</option></select></label>
+      <button type="button" class="design-agent-toggle" id="${prefix}-agent">${icon16}<span>设计助手</span></button>
+      <button type="button" class="prototype-preview-button" id="${prefix}-preview">${icon16}<span>预览</span></button>
+      <button type="button" class="primary" id="${prefix}-export">${icon16}导出</button>
+      <button type="button" class="app-settings-button" id="${prefix}-settings">${icon16}<span>设置</span></button>
+    </div>
+  </header>`
+  const shell = (mode, prefix, status) => `<div class="app-shell editor-shell" data-ui-mode="${mode}" id="${prefix}-shell" style="width:1440px;height:960px;--workspace-layers-width:248px;--workspace-inspector-width:280px">
+    ${header(prefix, status)}
+    <div class="workspace-rail"></div>
+    <div class="adaptive-layers-shell"><div class="layers-panel"></div></div>
+    <div class="canvas-workspace" id="${prefix}-canvas"><div class="toolbar floating-toolbar"><div class="tool-group"><button type="button" id="${prefix}-tool">选</button></div></div></div>
+    <div class="properties-workspace"></div>
+  </div>`
+  return `<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="${pathToFileURL(join(root.pathname, 'styles.css')).href}">
+<link rel="stylesheet" href="${pathToFileURL(join(root.pathname, 'chrome-polish.css')).href}">
+<style>html,body{margin:0;width:1440px;height:960px;overflow:hidden}*,*::before,*::after{animation:none!important;transition:none!important}</style>
+</head><body>
+${shell('figma', 'figma', '已自动保存到工作副本')}
+${shell('sketch', 'sketch', '已自动保存到工作副本')}
+${shell('figma', 'en', 'The file was changed outside this editor')}
+<script>
+const round = (n) => Math.round(n * 100) / 100
+const box = (el) => {
+  const r = el.getBoundingClientRect(), s = getComputedStyle(el)
+  return { x: round(r.x), y: round(r.y), w: round(r.width), h: round(r.height), font: s.fontSize, gap: s.gap, title: el.getAttribute('title') }
+}
+function hit(id) {
+  const el = document.getElementById(id)
+  el.scrollIntoView({ block: 'center', inline: 'center' })
+  const r = el.getBoundingClientRect()
+  const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+  return { self: !!top && (top === el || el.contains(top)), via: top ? (top.id || top.className || top.tagName) : null }
+}
+function read(prefix) {
+  for (const shell of document.querySelectorAll('.editor-shell')) shell.hidden = shell.id !== prefix + '-shell'
+  scrollTo(0, 0)
+  const header = box(document.getElementById(prefix + '-header'))
+  const saveEl = document.getElementById(prefix + '-save')
+  const labelEl = saveEl.querySelector('.save-status-label')
+  const save = box(saveEl)
+  const labelRect = labelEl.getBoundingClientRect()
+  const label = {
+    text: labelEl.textContent,
+    w: round(labelRect.width),
+    scroll: labelEl.scrollWidth,
+    client: labelEl.clientWidth,
+    x: round(labelRect.x),
+    full: labelEl.scrollWidth <= labelEl.clientWidth + 1,
+    contained: labelRect.left >= saveEl.getBoundingClientRect().left - 0.5 && labelRect.right <= saveEl.getBoundingClientRect().right + 0.5,
+  }
+  const ids = ['figma','sketch','locale','export','settings']
+  const title = box(document.getElementById(prefix + '-title'))
+  const overlapsTitle = header.x < title.x + title.w - 0.5 && header.x + header.w > title.x + 0.5 && header.y < title.y + title.h && header.y + header.h > title.y
+  return {
+    header, save, label, icon: 13, overlapsTitle,
+    controls: Object.fromEntries(ids.map(id => [id, box(document.getElementById(prefix + '-' + id))])),
+    hits: Object.fromEntries(ids.map(id => [id, hit(prefix + '-' + id)])),
+    tool: box(document.getElementById(prefix + '-tool')),
+  }
+}
+window.__chrome = {
+  viewport: { w: innerWidth, h: innerHeight },
+  dpr: devicePixelRatio,
+  doc: { w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight },
+  figma: read('figma'), sketch: read('sketch'), en: read('en'),
+}
+</script></body></html>`
+}
+
+async function measureChrome(html = probeHtml(), { dpr = Number(process.env.CHROME_DPR || 2) } = {}) {
   const binary = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/opt/google/chrome/chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].filter(Boolean).find(existsSync)
   assert.ok(binary, 'Chrome is required to measure computed chrome')
   const dir = await mkdtemp(join(tmpdir(), 'figma-chrome-'))
   const port = 9300 + Math.floor(Math.random() * 600)
   const file = join(dir, 'probe.html')
-  await writeFile(file, probeHtml())
+  await writeFile(file, html)
   const chrome = spawn(binary, [
-    '--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run',
+    ...(process.env.CHROME_HEADED === '1' ? [] : ['--headless=new']),
+    '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run',
+    `--window-size=1440,960`,
     `--user-data-dir=${join(dir, 'profile')}`, `--remote-debugging-port=${port}`, 'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] })
   chrome.stderr?.resume()
@@ -226,13 +383,13 @@ async function measureChrome() {
     await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }) })
     const client = cdp(ws)
     await client.send('Page.enable')
-    await client.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: 2, mobile: false })
+    await client.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 960, deviceScaleFactor: dpr, mobile: false })
     const loaded = client.wait('Page.loadEventFired')
     await client.send('Page.navigate', { url: pathToFileURL(file).href })
     await loaded
     const evaluated = await client.send('Runtime.evaluate', { expression: 'window.__chrome', returnByValue: true })
-    assert.equal(evaluated.exceptionDetails, undefined)
-    assert.ok(evaluated.result?.value?.metrics)
+    assert.equal(evaluated.exceptionDetails, undefined, JSON.stringify(evaluated.exceptionDetails))
+    assert.ok(evaluated.result?.value && (evaluated.result.value.metrics || evaluated.result.value.figma), `chrome probe returned ${JSON.stringify(evaluated).slice(0, 1500)}`)
     ws.close()
     return evaluated.result.value
   } finally {
