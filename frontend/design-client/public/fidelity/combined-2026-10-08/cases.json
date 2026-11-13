@@ -1402,10 +1402,10 @@
   },
   {
     "id": "glass-full",
-    "strictComparable": false,
-    "mappingNote": "Illustrative approximation: Figma depth 8/refraction .5/dispersion .3/lightAngle 45; kernel has no independent depth, dispersion or lightAngle. amount 4 is not an equivalent parameter.",
+    "strictComparable": true,
+    "mappingNote": "Closed mapping of the obsolete amount/opacity stand-in onto the frozen Figma readback. amount 4 was depth 8 times refraction 0.5, and opacity 0.5 was lightIntensity. Dispersion 0.30000001192092896 and lightAngle 45 were not representable as those two fields, so they now live on the glass effect. The PNG is unchanged.",
     "document": {
-      "schemaVersion": 4,
+      "schemaVersion": 5,
       "id": "glass-full",
       "name": "glass-full",
       "pages": [
@@ -1558,9 +1558,16 @@
             {
               "kind": "glass",
               "radius": 4,
-              "amount": 4,
-              "opacity": 0.5,
-              "color": "#000000"
+              "amount": 0,
+              "opacity": 1,
+              "color": "#000000",
+              "glass": {
+                "depth": 8,
+                "refraction": 0.5,
+                "dispersion": 0.30000001192092896,
+                "lightAngle": 45,
+                "lightIntensity": 0.5
+              }
             }
           ],
           "opacity": 1
