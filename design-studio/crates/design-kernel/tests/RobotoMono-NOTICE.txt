@@ -1,0 +1,5 @@
+Roboto Mono Regular
+Version 2.000985
+Copyright 2015 Google Inc. All Rights Reserved.
+The font's name table identifies Apache License, Version 2.0.
+This binary is used only as a Rust text-layout test fixture.
