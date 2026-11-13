@@ -65,29 +65,10 @@ export function panStripBounds(view: CanvasCamera, size: { width: number; height
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
 }
 
-/** One coarse page tile before a finer refine. Pasteboard keeps its quiet
- *  admission. A same-zoom pan that has left the resident pictures asks for
- *  the strip even while the previous zoom gesture is still marked continuous.
- *  A continuous zoom-out does not, even when this camera's exact tiles are
- *  already cached: that page held the only raster owner and stretched
- *  inverse-wheel ready+sharp. Cached residents still fill the hole. */
-export function coarsePanCoverNeeded(options: {
-  firstNative: boolean
-  hasStrip: boolean
-  stripCached: boolean
-  pasteboard: boolean
-  cpuOnly: boolean
-  translated: boolean
-  moving: boolean
-  continuousZoom: boolean
-  translationFollow: boolean
-  residentsCover: boolean
-  quietStripAllowed?: boolean
-}) {
-  if (options.firstNative || !options.hasStrip || options.stripCached) return false
-  const quietPasteboard = options.pasteboard && (options.cpuOnly || options.translated || (!options.moving && !options.continuousZoom && options.quietStripAllowed !== false))
-  return quietPasteboard || (options.translationFollow && !options.residentsCover)
-}
+/** Strip admission lives in the kernel zoom-refine schedule. This file only
+ *  builds the coarse page geometry. Continuous zoom-out still must not take
+ *  the raster owner; the schedule returns that decision.
+ */
 
 /** Fractions of the viewport and of the tile that still overlap. A zero result
  * is not coverage: bad geometry must not keep a stale capture. */
