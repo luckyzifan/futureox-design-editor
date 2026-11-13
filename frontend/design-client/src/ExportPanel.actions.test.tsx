@@ -18,13 +18,16 @@ test('the top export offers TIFF and explains bit depth and transparency', async
   try {
     await act(async () => root.render(<ExportPanel editor={editor} onClose={() => {}} />))
     const select = document.querySelector<HTMLSelectElement>('[aria-label="导出图像格式"]')!
-    expect([...select.options].map(option => option.value)).toEqual(['sketch', 'svg', 'png', 'jpeg', 'webp', 'tiff', 'pdf', 'pdf-vector'])
+    expect([...select.options].map(option => option.value)).toEqual(['sketch', 'svg', 'png', 'jpeg', 'webp', 'tiff', 'heic', 'pdf', 'pdf-vector'])
     expect(select.querySelector('option[value="tiff"]')?.textContent).toBe('TIFF')
-    expect(document.body.textContent).not.toContain('HEIC')
+    expect(select.querySelector('option[value="heic"]')?.textContent).toBe('HEIC')
     await act(async () => { select.value = 'tiff'; select.dispatchEvent(new Event('change', { bubbles: true })) })
     expect(document.body.textContent).toContain('8 位图像')
     expect(document.body.textContent).toContain('透明度')
-    expect(document.body.textContent).not.toContain('HEIC')
+    await act(async () => { select.value = 'heic'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(document.body.textContent).toContain('无损 HEVC')
+    expect(document.body.textContent).toContain('4:4:4')
+    expect(document.body.textContent).toContain('直线透明度')
   } finally { await act(async () => root.unmount()); editor.dispose(); vi.restoreAllMocks(); vi.unstubAllGlobals(); dom.window.close() }
 })
 test('an awaited export reports generation, not an unrelated concurrent document commit', async () => {

@@ -3,14 +3,15 @@
 //! PDF embeds the raster at its authored size with a separate alpha mask.
 //! TIFF is classic big-endian, 8-bit, uncompressed, chunky RGBA with
 //! unassociated alpha and the same sRGB or Display P3 ICC profile.
-//! JPEG, WebP, PDF and TIFF tag those samples. They do not leave DeviceRGB
-//! or an untagged bitmap for a viewer to assign another profile.
-//! HEIC is rejected: this build has no HEVC encoder, and a renamed PNG is not HEIC.
+//! HEIC is a real `ftypheic` still: lossless HEVC I_PCM, 4:4:4 identity
+//! RGB, straight alpha in an auxiliary image, and that same ICC profile.
+//! JPEG, WebP, PDF, TIFF and HEIC tag those samples. They do not leave
+//! DeviceRGB or an untagged bitmap for a viewer to assign another profile.
 use image::ImageEncoder;
 
 const MAX_PIXELS: u64 = 16_777_216;
 const COLOR_TAG_ERROR: &str =
-    "JPEG/WebP/PDF/TIFF can tag sRGB or Display P3. Export PNG for other color spaces.";
+    "JPEG/WebP/PDF/TIFF/HEIC can tag sRGB or Display P3. Export PNG for other color spaces.";
 
 pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String> {
     if png.len() > 64 * 1024 * 1024 || !png.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -19,13 +20,7 @@ pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String
     if !scale.is_finite() || !(0.001..=128.).contains(&scale) {
         return Err("Invalid export scale".into());
     }
-    if matches!(format, "heic" | "heif") {
-        return Err(
-            "HEIC export is not available in this build: no HEVC encoder is linked, and a renamed PNG is not HEIC"
-                .into(),
-        );
-    }
-    if !matches!(format, "jpeg" | "webp" | "pdf" | "tiff") {
+    if !matches!(format, "jpeg" | "webp" | "pdf" | "tiff" | "heic" | "heif") {
         return Err("Unsupported export encoder".into());
     }
     let space = tagged_space(png)?;
@@ -34,9 +29,18 @@ pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String
         crate::color::ColorSpace::Srgb => crate::export::srgb_icc_profile()?,
         _ => return Err(COLOR_TAG_ERROR.into()),
     };
-    if format == "tiff" {
-        let (w, h, rgba) = png_straight_rgba8(png)?;
-        return encode_baseline_tiff(&rgba, w, h, &profile);
+    if matches!(format, "tiff" | "heic" | "heif") {
+        let label = if format == "tiff" { "TIFF" } else { "HEIC" };
+        let (w, h, rgba) = png_straight_rgba8(png, label)?;
+        if format == "tiff" {
+            return encode_baseline_tiff(&rgba, w, h, &profile);
+        }
+        let primaries = match space {
+            crate::color::ColorSpace::DisplayP3 => 12,
+            crate::color::ColorSpace::Srgb => 1,
+            _ => return Err(COLOR_TAG_ERROR.into()),
+        };
+        return crate::heic_export::encode(&rgba, w, h, &profile, primaries);
     }
     let reader =
         image::ImageReader::with_format(std::io::Cursor::new(png), image::ImageFormat::Png);
@@ -217,7 +221,7 @@ fn tag_webp_srgb(
 
 /// Straight 8-bit RGBA, or 16-bit RGBA quantized to 8-bit. No color transform:
 /// the samples are already in the space `tagged_space` reported.
-fn png_straight_rgba8(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+fn png_straight_rgba8(png: &[u8], label: &str) -> Result<(u32, u32, Vec<u8>), String> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(png));
     decoder.set_transformations(png::Transformations::IDENTITY);
     let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
@@ -232,12 +236,12 @@ fn png_straight_rgba8(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
         )
     };
     if interlaced {
-        return Err("TIFF export expects a non-interlaced PNG".into());
+        return Err(format!("{label} export expects a non-interlaced PNG"));
     }
     if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_PIXELS {
-        return Err(
-            "TIFF export exceeds 16 million pixels; choose a smaller export scale".into(),
-        );
+        return Err(format!(
+            "{label} export exceeds 16 million pixels; choose a smaller export scale"
+        ));
     }
     let size = reader
         .output_buffer_size()
@@ -249,13 +253,15 @@ fn png_straight_rgba8(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
         (png::ColorType::Rgba, png::BitDepth::Eight) => buffer,
         (png::ColorType::Rgba, png::BitDepth::Sixteen) => quantize_be_u16(&buffer)?,
         _ => {
-            return Err(
-                "TIFF export expects 8-bit or 16-bit straight RGBA PNG samples".into(),
-            )
+            return Err(format!(
+                "{label} export expects 8-bit or 16-bit straight RGBA PNG samples"
+            ));
         }
     };
     if rgba.len() as u64 != u64::from(width) * u64::from(height) * 4 {
-        return Err("TIFF RGBA sample count differs from PNG dimensions".into());
+        return Err(format!(
+            "{label} RGBA sample count differs from PNG dimensions"
+        ));
     }
     Ok((width, height, rgba))
 }
@@ -483,9 +489,11 @@ mod tests {
             &pixels
         );
         let jpeg_bytes = transcode(&png, "jpeg", 2.).unwrap();
-        assert!(jpeg_bytes
-            .windows(12)
-            .any(|window| window == b"ICC_PROFILE\0"));
+        assert!(
+            jpeg_bytes
+                .windows(12)
+                .any(|window| window == b"ICC_PROFILE\0")
+        );
         let jpeg = image::load_from_memory(&jpeg_bytes).unwrap().to_rgb8();
         assert_eq!(jpeg.dimensions(), (2, 2));
         assert!(
@@ -526,12 +534,15 @@ mod tests {
         assert_tiff_contract(&tiff, 120, 90, &pixels, &profile);
         let decoded = decode_tiff_crate(&tiff);
         assert_eq!(decoded, (120, 90, pixels));
-        assert!(transcode(&tiff, "tiff", 1.).is_err(), "TIFF bytes are not a PNG");
-        assert!(transcode(&png, "heic", 1.)
-            .unwrap_err()
-            .contains("HEIC"));
-        assert!(transcode(&png, "heif", 2.).is_err());
-        assert!(transcode(&png, "eps", 1.).is_err());
+        assert!(
+            transcode(&tiff, "tiff", 1.).is_err(),
+            "TIFF bytes are not a PNG"
+        );
+        assert!(
+            transcode(&png, "eps", 1.)
+                .unwrap_err()
+                .contains("Unsupported")
+        );
         if let Ok(path) = std::env::var("TIFF_FIXTURE") {
             std::fs::write(path, &tiff).unwrap();
         }
@@ -540,23 +551,24 @@ mod tests {
     #[test]
     fn tiff_keeps_display_p3_samples_and_refuses_linear_and_sixteen_bit_mislabel() {
         let source = [10u8, 20, 30, 128, 255, 0, 0, 255];
-        let png = crate::export::encode_tagged_rgba(
-            2,
-            1,
-            &source,
-            crate::color::ColorSpace::DisplayP3,
-        )
-        .unwrap();
-        assert!(!png.windows(8).any(|window| window == [0, 0, 0, 1, b's', b'R', b'G', b'B']));
+        let png =
+            crate::export::encode_tagged_rgba(2, 1, &source, crate::color::ColorSpace::DisplayP3)
+                .unwrap();
+        assert!(
+            !png.windows(8)
+                .any(|window| window == [0, 0, 0, 1, b's', b'R', b'G', b'B'])
+        );
         let expected = png_samples(&png);
         assert_ne!(expected, source);
         let tiff = transcode(&png, "tiff", 2.).unwrap();
         let profile = crate::export::display_p3_icc_profile().unwrap();
         assert_tiff_contract(&tiff, 2, 1, &expected, &profile);
         assert_eq!(decode_tiff_crate(&tiff).2, expected);
-        assert!(!tiff.windows(profile.len()).any(|window| {
-            window == crate::export::srgb_icc_profile().unwrap().as_slice()
-        }));
+        assert!(
+            !tiff
+                .windows(profile.len())
+                .any(|window| { window == crate::export::srgb_icc_profile().unwrap().as_slice() })
+        );
 
         let linear = crate::export::encode_color_png(
             1,
@@ -570,7 +582,10 @@ mod tests {
         )
         .unwrap();
         let rejected = transcode(&linear, "tiff", 1.).unwrap_err();
-        assert!(rejected.contains("sRGB") || rejected.contains("Display P3"), "{rejected}");
+        assert!(
+            rejected.contains("sRGB") || rejected.contains("Display P3"),
+            "{rejected}"
+        );
         assert!(!rejected.contains("MM"));
 
         let wide = crate::export::encode_color_png(
@@ -634,7 +649,11 @@ mod tests {
             tags.insert(tag, (kind, n, raw));
         }
         assert_eq!(
-            u32::from_be_bytes(bytes[ifd + 2 + count * 12..ifd + 6 + count * 12].try_into().unwrap()),
+            u32::from_be_bytes(
+                bytes[ifd + 2 + count * 12..ifd + 6 + count * 12]
+                    .try_into()
+                    .unwrap()
+            ),
             0
         );
         let value = |tag: u16| -> Vec<u8> {
@@ -669,7 +688,14 @@ mod tests {
         assert_eq!(short(296), 2, "inch");
         assert_eq!(short(338), 2, "unassociated alpha");
         assert_eq!(short(339), 1, "unsigned integer");
-        assert_eq!(value(282), 72u32.to_be_bytes().into_iter().chain(1u32.to_be_bytes()).collect::<Vec<_>>());
+        assert_eq!(
+            value(282),
+            72u32
+                .to_be_bytes()
+                .into_iter()
+                .chain(1u32.to_be_bytes())
+                .collect::<Vec<_>>()
+        );
         assert_eq!(value(283), value(282));
         assert_eq!(value(34675), icc);
         let strip = long(273) as usize;
@@ -679,10 +705,7 @@ mod tests {
     fn decode_tiff_crate(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
         let mut decoder = tiff::decoder::Decoder::new(std::io::Cursor::new(bytes)).unwrap();
         let (width, height) = decoder.dimensions().unwrap();
-        assert_eq!(
-            decoder.colortype().unwrap(),
-            tiff::ColorType::RGBA(8)
-        );
+        assert_eq!(decoder.colortype().unwrap(), tiff::ColorType::RGBA(8));
         match decoder.read_image().unwrap() {
             tiff::decoder::DecodingResult::U8(samples) => (width, height, samples),
             _ => panic!("TIFF decoder did not return 8-bit samples"),

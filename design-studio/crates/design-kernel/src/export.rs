@@ -1512,6 +1512,14 @@ mod tests {
             assert_eq!(samples, png_pixels);
             let profile = srgb_icc_profile().unwrap();
             assert!(tiff.windows(profile.len()).any(|window| window == profile.as_slice()));
+            let heic = crate::export_formats::transcode(&png, "heic", scale).unwrap();
+            assert_eq!(&heic[4..12], b"ftypheic");
+            crate::heic_export::assert_heic_rgba(
+                &heic,
+                (120. * scale) as u32,
+                (90. * scale) as u32,
+                &png_pixels,
+            );
         }
         assert_eq!(doc.to_string(), saved);
     }

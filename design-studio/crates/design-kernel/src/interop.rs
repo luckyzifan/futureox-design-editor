@@ -2730,7 +2730,7 @@ impl<'a> Importer<'a> {
                     .unwrap_or("png")
                     .to_lowercase();
                 let scale = f.get("scale").and_then(Value::as_f64).unwrap_or(1.);
-                // Positive-scale TIFF is an executable 8-bit export. EPS and the
+                // Positive-scale TIFF and HEIC are executable exports. EPS and the
                 // Sketch absolute-size sentinel (scale 0) stay source-only.
                 if format == "eps" || scale == 0. {
                     import_lossy.push("export-setting-preserved-without-local-render-support".into());
@@ -10784,6 +10784,7 @@ mod tests {
                 "frame": {"_class": "rect", "x": 0, "y": 0, "width": 120, "height": 90},
                 "exportOptions": {"_class": "exportOptions", "exportFormats": [
                     {"_class": "exportFormat", "fileFormat": "tiff", "scale": 2, "name": "@2x", "namingScheme": 1},
+                    {"_class": "exportFormat", "fileFormat": "heic", "scale": 1, "name": ""},
                     {"_class": "exportFormat", "fileFormat": "eps", "scale": 1, "name": ""},
                     {"_class": "exportFormat", "fileFormat": "tiff", "scale": 0, "name": "", "absoluteSize": 100, "visibleScaleType": 1},
                     {"_class": "exportFormat", "fileFormat": "png", "scale": 1, "name": ""}
@@ -10800,7 +10801,7 @@ mod tests {
             .collect();
         assert_eq!(
             formats,
-            vec![("tiff", 2., "@2x"), ("eps", 1., ""), ("tiff", 0., ""), ("png", 1., "")]
+            vec![("tiff", 2., "@2x"), ("heic", 1., ""), ("eps", 1., ""), ("tiff", 0., ""), ("png", 1., "")]
         );
         let lossy = import_lossy_of(node);
         let preserved = lossy
@@ -10814,7 +10815,7 @@ mod tests {
             .iter()
             .map(|setting| (setting.format.as_str(), setting.scale))
             .collect();
-        assert_eq!(round_trip, vec![("tiff", 2.), ("eps", 1.), ("tiff", 0.), ("png", 1.)]);
+        assert_eq!(round_trip, vec![("tiff", 2.), ("heic", 1.), ("eps", 1.), ("tiff", 0.), ("png", 1.)]);
         let fields = again.nodes["n1"]
             .bindings
             .get("sketchExportFormatFields")

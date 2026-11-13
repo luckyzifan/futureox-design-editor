@@ -46,7 +46,7 @@ function tiffValue(bytes: Uint8Array, kind: number, count: number, raw: Uint8Arr
   return bytes.subarray(offset, offset + length)
 }
 
-test('the WASM export entry writes a real TIFF and rejects HEIC', () => {
+test('the WASM export entry writes a real TIFF and a real HEIC', () => {
   const width = 120
   const height = 90
   const pixels = Buffer.alloc(width * height * 4)
@@ -58,8 +58,13 @@ test('the WASM export entry writes a real TIFF and rejects HEIC', () => {
   }
   const png = rgbaPng(width, height, pixels)
   expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
-  expect(() => transcode_export_png(png, 'heic', 1)).toThrow(/HEIC/)
   expect(() => transcode_export_png(png, 'eps', 1)).toThrow(/Unsupported export encoder/)
+  const heic = transcode_export_png(png, 'heic', 1)
+  expect(Buffer.from(heic.subarray(4, 12)).toString('ascii')).toBe('ftypheic')
+  expect(heic[0]).not.toBe(0x89)
+  expect(Buffer.from(heic).includes(Buffer.from('hvcC'))).toBe(true)
+  expect(Buffer.from(heic).includes(Buffer.from('auxl'))).toBe(true)
+  expect(Buffer.from(heic).includes(Buffer.from('ftypheic'))).toBe(true)
   const tiff = transcode_export_png(png, 'tiff', 1)
   expect([...tiff.subarray(0, 4)]).toEqual([0x4d, 0x4d, 0x00, 0x2a])
   expect(tiff[0]).not.toBe(0x89)

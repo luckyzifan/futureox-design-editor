@@ -9,7 +9,7 @@ import { commitExportEdits, ExportOwner } from './export-ownership'
 import { commitPendingEdits } from './pending-edits'
 import { usePropertyText } from './property-interface-messages'
 
-type Preview = { name: string; url: string; pdf: boolean; pdfVector: boolean; tiff: boolean }
+type Preview = { name: string; url: string; pdf: boolean; pdfVector: boolean; tiff: boolean; heic: boolean }
 export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
   const { locale, tr } = usePropertyText()
   const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[previews,setPreviews]=useState<Preview[]>([])
@@ -61,13 +61,13 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       if(pixels>64_000_000)throw new Error('批量导出总尺寸超过 6400 万像素，请拆分设置')
       const next:Preview[]=[]
       for(const setting of settings) {
-        const format=(setting.format==='jpg'?'jpeg':setting.format) as 'png'|'svg'|'jpeg'|'webp'|'pdf'|'pdf-vector'|'tiff'
+        const format=(setting.format==='jpg'?'jpeg':setting.format) as 'png'|'svg'|'jpeg'|'webp'|'pdf'|'pdf-vector'|'tiff'|'heic'
         const asset=await exportImage(request.document,request.page,format,setting.scale,colorOutput,request.signal,target)
         if(!request.isCurrent())throw new Error('导出已取消：图层或文档已变化')
         const url=URL.createObjectURL(asset.blob);urls.current.push(url)
         const name=filename(request.document.nodes[node.id].name+(setting.suffix || (setting.scale===1?'':`@${setting.scale}x`)))+'.'+(setting.format==='jpeg'?'jpg':setting.format==='pdf-vector'?'pdf':setting.format)
         if(next.some(p=>p.name===name))throw new Error('导出设置生成了同名文件，请填写不同后缀')
-        next.push({name,url,pdf:setting.format==='pdf'||setting.format==='pdf-vector',pdfVector:setting.format==='pdf-vector'&&!asset.fallback,tiff:setting.format==='tiff'})
+        next.push({name,url,pdf:setting.format==='pdf'||setting.format==='pdf-vector',pdfVector:setting.format==='pdf-vector'&&!asset.fallback,tiff:setting.format==='tiff',heic:setting.format==='heic'})
       }
       if(request.isCurrent()){desktopPet.event('export');setPreviews(next);setMessage(`已生成 ${next.length} 个文件`)}
     } catch(error){if(request.isCurrent())desktopPet.event('error');release();if(mounted.current)setMessage(request.signal.aborted?'导出已取消':String(error))}
@@ -77,7 +77,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     <div className="section-title"><h3>{tr('导出')}</h3><button type="button" aria-label={tr('添加图层导出设置')} disabled={busy || (node.exportSettings?.length||0)>=16} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.push({id:uid(),format:'png',scale:1,suffix:''}))}}>＋</button></div>
     {(node.exportSettings||[]).map((setting,i)=><div className="node-export-setting" key={setting.id}>
       <NumberField label={indexed('导出倍率', 'Export scale', i)} value={setting.scale} min={.001} max={128} onChange={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.scale=value})} />
-      <select aria-label={indexed('导出格式', 'Export format', i)} value={setting.format} onChange={event=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.format=event.target.value as ExportSetting['format']})}><option value="png">PNG</option><option value="svg">SVG</option><option value="jpeg">JPEG</option><option value="jpg">{tr('JPG（Sketch）')}</option><option value="webp">WebP</option><option value="pdf">PDF</option><option value="pdf-vector" disabled={vectorIssues.length>0}>{tr('PDF（矢量）')}</option><option value="tiff">TIFF</option><option value="eps">{tr('EPS（仅 Sketch 往返）')}</option></select>
+      <select aria-label={indexed('导出格式', 'Export format', i)} value={setting.format} onChange={event=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.format=event.target.value as ExportSetting['format']})}><option value="png">PNG</option><option value="svg">SVG</option><option value="jpeg">JPEG</option><option value="jpg">{tr('JPG（Sketch）')}</option><option value="webp">WebP</option><option value="pdf">PDF</option><option value="pdf-vector" disabled={vectorIssues.length>0}>{tr('PDF（矢量）')}</option><option value="tiff">TIFF</option><option value="heic">HEIC</option><option value="eps">{tr('EPS（仅 Sketch 往返）')}</option></select>
       <DraftInput aria-label={indexed('导出后缀', 'Export suffix', i)} placeholder={tr('后缀')} value={setting.suffix} validate={v=>v.length<=80&&!exportSuffixHasForbiddenCharacters(v)} onCommit={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.suffix=value})}/>
       <button type="button" aria-label={indexed('删除导出设置', 'Remove export setting', i)} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.splice(s.findIndex(s=>s.id===setting.id),1))}}>−</button>
     </div>)}
@@ -93,6 +93,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       : `矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，与倍率无关${vectorIssues.length?`；当前图层包含${vectorIssues.join('、')}，将回退为位图 PDF`:''}。`}</p>}
     {message&&<p role="status">{present(message)}</p>}
     {node.exportSettings?.some(s=>s.format==='tiff')&&<p className="muted">{locale === 'en' ? 'TIFF exports uncompressed 8-bit RGBA with transparency and the sRGB or Display P3 profile. 16-bit samples are quantized to 8-bit.' : 'TIFF 导出未压缩的 8 位 RGBA，保留透明度以及 sRGB 或 Display P3 配置。16 位样本会量化为 8 位。'}</p>}
-    {previews.map((p,i)=><div key={p.url} className="node-export-preview">{p.pdf?<span>{p.pdfVector?tr('PDF · 矢量'):tr('PDF · 精确位图')}</span>:p.tiff?<span>{locale === 'en' ? 'TIFF · 8-bit uncompressed' : 'TIFF · 8 位未压缩'}</span>:<img src={p.url} alt={indexed('图层导出预览', 'Layer export preview', i)}/>}<a href={p.url} download={p.name}>{p.name}</a></div>)}
+    {node.exportSettings?.some(s=>s.format==='heic')&&<p className="muted">{locale === 'en' ? 'HEIC is lossless HEVC (I_PCM, 4:4:4) with straight transparency and the sRGB or Display P3 profile. 16-bit samples are quantized to 8-bit.' : 'HEIC 是无损 HEVC（I_PCM，4:4:4），保留直线透明度以及 sRGB 或 Display P3 配置。16 位样本会量化为 8 位。'}</p>}
+    {previews.map((p,i)=><div key={p.url} className="node-export-preview">{p.pdf?<span>{p.pdfVector?tr('PDF · 矢量'):tr('PDF · 精确位图')}</span>:p.tiff?<span>{locale === 'en' ? 'TIFF · 8-bit uncompressed' : 'TIFF · 8 位未压缩'}</span>:p.heic?<span>{locale === 'en' ? 'HEIC · lossless 4:4:4' : 'HEIC · 无损 4:4:4'}</span>:<img src={p.url} alt={indexed('图层导出预览', 'Layer export preview', i)}/>}<a href={p.url} download={p.name}>{p.name}</a></div>)}
   </section>
 }
