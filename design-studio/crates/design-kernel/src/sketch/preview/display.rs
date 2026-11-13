@@ -281,7 +281,8 @@ impl Projection<'_> {
         Ok(p)
     }
     fn geometry(&self, v: &Value, n: &mut Node) -> Result<()> {
-        let raw = array(v, "points");
+        let path_field = |key| v.as_object().and_then(|fields| crate::sketch::path_field(fields, key));
+        let raw = path_field("points").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
         if raw.is_empty() {
             return Ok(());
         }
@@ -311,7 +312,7 @@ impl Projection<'_> {
                 y: p.y,
             })
         }
-        let count = if yes(v, "isClosed", true) {
+        let count = if path_field("isClosed").and_then(Value::as_bool).unwrap_or(true) {
             raw.len()
         } else {
             raw.len().saturating_sub(1)
@@ -660,12 +661,24 @@ impl Projection<'_> {
         Ok(output)
     }
     fn text(&mut self, v: &Value, n: &mut Node) -> Result<()> {
-        n.text = v["attributedString"]["string"]
+        let modern = &v["attributedString"];
+        let decoded;
+        let attributed = if let Some(archive) = super::super::archived_text::legacy_archive(modern) {
+            decoded = archive.and_then(super::super::archived_text::decode)
+                .map_err(|reason| Error::Invalid(reason.into()))?;
+            if decoded["unsupportedArchiveAttributes"] == true {
+                self.warnings.insert("sketch-archived-text-attributes-partially-supported".into());
+            }
+            &decoded
+        } else {
+            modern
+        };
+        n.text = attributed["string"]
             .as_str()
             .unwrap_or("")
             .into();
         let len = n.text.encode_utf16().count();
-        let raw = array(&v["attributedString"], "attributes");
+        let raw = array(attributed, "attributes");
         let first = raw
             .first()
             .map(|r| &r["attributes"])

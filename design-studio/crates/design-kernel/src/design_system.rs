@@ -552,7 +552,19 @@ pub(crate) fn resolve_node(
                     serde_json::to_value(&shared.strokes).map_err(|e| e.to_string())?;
                 continue;
             }
-            json[field] = style_with_defaults(shared)?;
+            let mut value = style_with_defaults(shared)?;
+            // Sketch shares typography. Text box wrapping and its fixed line
+            // box baseline are properties of the layer receiving that style.
+            if field == "textStyle"
+                && s.sketch_containers.get("sharedStyleFidelity").and_then(|styles| styles.get(id)).is_some()
+                && let Some(local) = &n.text_style
+            {
+                value["wrap"] = Value::Bool(local.wrap);
+                value["lineBoxBaseline"] = Value::String(local.line_box_baseline.clone());
+                value["lineHeightAuto"] = Value::Bool(local.line_height_auto);
+                value["verticalAlign"] = Value::String(local.vertical_align.clone());
+            }
+            json[field] = value;
             // A paint style carrying borders/shadows (full Sketch layer
             // style) resolves them together with the fills it replaces.
             if field == "fills" && shared.kind == "paint" {

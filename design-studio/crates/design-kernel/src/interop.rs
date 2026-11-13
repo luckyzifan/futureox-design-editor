@@ -2028,7 +2028,8 @@ impl<'a> Importer<'a> {
                 node.inner_radius = layer.get("radius").or_else(||layer.get("innerRadius")).and_then(Value::as_f64).unwrap_or(0.5);
             }
             "shapePath" | "shape" => {
-                if layer.get("isClosed").and_then(Value::as_bool) == Some(false) {
+                let path_field = |key| layer.as_object().and_then(|fields| crate::sketch::path_field(fields, key));
+                if path_field("isClosed").and_then(Value::as_bool) == Some(false) {
                     node.bindings.insert("sketchOpenPath".into(), "true".into());
                 }
                 if layer
@@ -2044,7 +2045,7 @@ impl<'a> Importer<'a> {
                     node.bindings
                         .insert("sketchNormalizedCoordinates".into(), "true".into());
                 }
-                if let Some(points) = layer.get("points").and_then(Value::as_array) {
+                if let Some(points) = path_field("points").and_then(Value::as_array) {
                     let mut network = crate::scene::Network {
                         filled_faces: None,
                         vertices: Vec::new(),
@@ -2133,10 +2134,20 @@ impl<'a> Importer<'a> {
                 }
             }
             "text" => {
-                let attr = layer
-                    .get("attributedString")
-                    .cloned()
-                    .unwrap_or(Value::Null);
+                let mut attr = layer.get("attributedString").unwrap_or(&Value::Null);
+                let decoded;
+                if let Some(archive) = crate::sketch::archived_text::legacy_archive(attr) {
+                    match archive.and_then(crate::sketch::archived_text::decode) {
+                        Ok(value) => {
+                            if value["unsupportedArchiveAttributes"] == true {
+                                import_lossy.push("sketch-archived-text-attributes-partially-supported".into());
+                            }
+                            decoded = value;
+                            attr = &decoded;
+                        }
+                        Err(reason) => import_lossy.push(reason.into()),
+                    }
+                }
                 node.text = attr
                     .get("string")
                     .and_then(Value::as_str)
