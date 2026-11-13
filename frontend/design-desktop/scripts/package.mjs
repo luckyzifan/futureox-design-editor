@@ -64,6 +64,13 @@ const resourceList = writeUnsignedResourceList({ staging, desktop: root })
 if (resourceList.formalRelease !== false || resourceList.signature !== 'not_run') {
   throw new Error('Unsigned packager cannot write a formal release resource list')
 }
+// Electron's own LICENSE sits beside the runtime. This copy is the project MIT
+// text, so first-party binaries, host source, and icons can be traced from the
+// package directory without consulting the git checkout.
+const projectLicense = path.join(root, 'dist/project-license')
+await rm(projectLicense, { recursive: true, force: true })
+await mkdir(projectLicense, { recursive: true })
+await cp(path.resolve(root, '../..', 'LICENSE'), path.join(projectLicense, 'LICENSE'))
 const outputs = await packager({
   dir: staging,
   name: packageName,
@@ -87,6 +94,6 @@ const outputs = await packager({
   overwrite: true,
   asar: true,
   prune: false,
-  extraResource: [mcp, path.join(root, 'dist/sidecar'), path.join(root, 'dist/bin'), path.join(root, 'dist/fonts'), path.join(root, 'third-party-notices')],
+  extraResource: [mcp, path.join(root, 'dist/sidecar'), path.join(root, 'dist/bin'), path.join(root, 'dist/fonts'), path.join(root, 'third-party-notices'), projectLicense],
 })
 for (const output of outputs) console.log(`Unsigned native development bundle: ${output}`)

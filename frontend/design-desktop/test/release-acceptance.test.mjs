@@ -7,7 +7,8 @@ import { tmpdir, homedir } from 'node:os'
 import path from 'node:path'
 import { ffmpegProvenance } from '../scripts/ffmpeg-provenance.mjs'
 import { DESKTOP_FLOW, buildDesktopFlowReport, inspectReleasePackage } from '../scripts/release-desktop-flow.mjs'
-import { asarFromFiles, buildComponentInventory, readAsarEntries } from '../scripts/release-component-inventory.mjs'
+import { asarFromFiles, buildComponentInventory, openAsar, readAsarEntries } from '../scripts/release-component-inventory.mjs'
+import { verifyPackageByteInventory } from '../scripts/release-package-bytes.mjs'
 import { hashPackageIdentity, verifyDeclaredResourceList, writeAsarArchive, writeUnsignedResourceList } from '../scripts/release-package-resources.mjs'
 
 test('vendored linux ffmpeg matches the rebuilt corresponding source', () => {
@@ -414,6 +415,7 @@ test('a release directory does not become a closed installer', async () => {
 test('packaging copies the cargo notice directory next to the other extra resources', async () => {
   const source = await readFile(new URL('../scripts/package.mjs', import.meta.url), 'utf8')
   assert.match(source, /third-party-notices/)
+  assert.match(source, /project-license/)
   assert.equal(existsSync(new URL('../third-party-notices/cargo/serde/1.0.229', import.meta.url)), true)
 })
 
@@ -440,6 +442,127 @@ test('the unpacked Electron distribution is hashed only when that directory is s
   }
 })
 
+
+test('a release package inventory is read from package bytes, not from the lockfile', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'fx-package-bytes-'))
+  const digest = bytes => createHash('sha256').update(bytes).digest('hex')
+  try {
+    const packageDir = path.join(root, 'futureox-desgin-linux-x64')
+    const resources = path.join(packageDir, 'resources')
+    await mkdir(path.join(resources, 'bin'), { recursive: true })
+    await mkdir(path.join(resources, 'sidecar'), { recursive: true })
+    await mkdir(path.join(resources, 'fonts'), { recursive: true })
+    await mkdir(path.join(resources, 'project-license'), { recursive: true })
+    await mkdir(path.join(resources, 'third-party-notices/cargo/serde/1.0.229'), { recursive: true })
+    const electronLicense = Buffer.from('ELECTRON-LICENSE-FIXTURE\nMIT License\n')
+    const chromiumLicense = Buffer.from('CHROMIUM-LICENSES-FIXTURE\n')
+    const electronBinary = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from('futureox-electron-binary')])
+    const chromiumFfmpeg = Buffer.from('chromium-libffmpeg-fixture')
+    const nativeBinary = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from('native-sidecar')])
+    const ffmpegBinary = Buffer.from('vendored-ffmpeg-fixture')
+    const ffmpegNotice = Buffer.from('vendored-ffmpeg-gpl\n')
+    const bundle = Buffer.from('console.log("packaged-bundle")\n')
+    const icon = Buffer.from('branding-icon-fixture')
+    const wasm = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
+    const reactLicense = await readFile(new URL('../../design-client/public/licenses/react-LICENSE.txt', import.meta.url))
+    const repoMit = await readFile(new URL('../third-party-notices/cargo/serde/1.0.229/LICENSE-MIT', import.meta.url))
+    const repoApache = await readFile(new URL('../third-party-notices/cargo/serde/1.0.229/LICENSE-APACHE', import.meta.url))
+    const packagedMit = Buffer.concat([repoMit, Buffer.from('\nPACKAGED-NOTICE-MARKER\n')])
+    await writeFile(path.join(packageDir, 'futureox-desgin'), electronBinary)
+    await writeFile(path.join(packageDir, 'version'), '44.7.0\n')
+    await writeFile(path.join(packageDir, 'LICENSE'), electronLicense)
+    await writeFile(path.join(packageDir, 'LICENSES.chromium.html'), chromiumLicense)
+    await writeFile(path.join(packageDir, 'libffmpeg.so'), chromiumFfmpeg)
+    await writeFile(path.join(resources, 'sidecar/futureox-design-desktop-backend'), nativeBinary)
+    for (const name of ['design-render', 'design-prepare', 'futureox-design-agent']) {
+      await writeFile(path.join(resources, 'bin', name), nativeBinary)
+    }
+    await writeFile(path.join(resources, 'bin/ffmpeg'), ffmpegBinary)
+    await writeFile(path.join(resources, 'bin/ffmpeg-LICENSE.txt'), Buffer.from('ffmpeg-license-fixture\n'))
+    await writeFile(path.join(resources, 'bin/ffmpeg-COPYING.GPLv3'), ffmpegNotice)
+    await writeFile(path.join(resources, 'bin/ffmpeg-source.json'), JSON.stringify({
+      version: '7.0.2',
+      license: 'GPL-3.0-or-later',
+      sha256: digest(ffmpegBinary),
+      sources: [],
+      notices: [{ file: 'COPYING.GPLv3', sha256: digest(ffmpegNotice) }],
+    }))
+    await writeFile(path.join(resources, 'stray.bin'), Buffer.from('not-a-known-component'))
+    await writeFile(path.join(resources, 'project-license/LICENSE'), await readFile(new URL('../../../LICENSE', import.meta.url)))
+    await writeFile(path.join(resources, 'fonts/NotoSansSC.ttf'), await readFile(new URL('../../design-client/public/fonts/NotoSansSC.ttf', import.meta.url)))
+    await writeFile(path.join(resources, 'fonts/OFL.txt'), await readFile(new URL('../../design-client/public/fonts/OFL.txt', import.meta.url)))
+    await writeFile(path.join(resources, 'fonts/source.json'), await readFile(new URL('../../design-client/public/fonts/source.json', import.meta.url)))
+    await writeFile(path.join(resources, 'third-party-notices/cargo/serde/1.0.229/LICENSE-MIT'), packagedMit)
+    await writeFile(path.join(resources, 'third-party-notices/cargo/serde/1.0.229/LICENSE-APACHE'), repoApache)
+    const archive = asarFromFiles([
+      { path: 'renderer/licenses/react-LICENSE.txt', bytes: reactLicense },
+      { path: 'renderer/assets/index.js', bytes: bundle },
+      { path: 'assets/branding/mark.png', bytes: icon },
+      { path: 'src/main.mjs', bytes: Buffer.from('export {}\n') },
+      { path: 'renderer/kernel.wasm', bytes: wasm },
+    ])
+    await writeFile(path.join(resources, 'app.asar'), archive)
+    const report = buildComponentInventory({ releaseDir: packageDir, electronDist: null })
+    assert.equal(report.producedFrom, 'release_package_bytes')
+    assert.equal(report.scope, 'unsigned_release_package_bytes')
+    assert.equal(report.releaseAcceptance, 'not_closed')
+    assert.equal(report.formalSignedPackage, 'not_supplied')
+    assert.equal(report.confirmedRuntimeFault, false)
+    assert.equal(report.fromPackage.signature, 'not_run')
+    assert.equal(report.fromPackage.macElectronMetal, 'not_run')
+    assert.equal(report.fromPackage.electron.version, '44.7.0')
+    assert.equal(report.fromPackage.electron.binary.sha256, digest(electronBinary))
+    assert.equal(report.fromPackage.electron.binary.format, 'elf')
+    assert.equal(report.fromPackage.electron.notices.find(item => item.packagePath === 'LICENSE').sha256, digest(electronLicense))
+    assert.equal(report.fromPackage.electron.chromiumFfmpeg.sha256, digest(chromiumFfmpeg))
+    assert.notEqual(report.fromPackage.electron.chromiumFfmpeg.sha256, report.fromPackage.vendor.ffmpeg.binary.sha256)
+    assert.equal(report.fromPackage.vendor.ffmpeg.version, '7.0.2')
+    assert.equal(report.fromPackage.vendor.ffmpeg.license, 'GPL-3.0-or-later')
+    assert.equal(report.fromPackage.vendor.ffmpeg.traceable, true)
+    assert.equal(report.fromPackage.vendor.ffmpeg.binary.sha256, digest(ffmpegBinary))
+    const verified = verifyPackageByteInventory(report.fromPackage, openAsar)
+    assert.equal(verified.ok, true, JSON.stringify(verified.mismatches))
+    const react = report.fromPackage.javascript.packages.find(item => item.package === 'react')
+    assert.equal(react.version, '19.3.1')
+    assert.equal(react.license, 'MIT')
+    assert.equal(react.traceable, true)
+    assert.equal(react.notices[0].sha256, digest(reactLicense))
+    assert.equal(react.notices[0].packagePath.includes('app.asar/renderer/licenses/react-LICENSE.txt'), true)
+    const bundled = report.fromPackage.javascript.bundles.find(item => item.packagePath.endsWith('renderer/assets/index.js'))
+    assert.equal(bundled.sha256, digest(bundle))
+    assert.equal(report.fromPackage.javascript.developmentOnly.includes('vite'), true)
+    assert.equal(report.fromPackage.javascript.developmentOnly.includes('electron'), false)
+    assert.equal(report.fromPackage.javascript.electronNpmPackageDistributed, false)
+    assert.equal(report.fromPackage.components.some(item => item.name === 'vite'), false)
+    assert.deepEqual(report.rust.errors, [])
+    const serde = report.fromPackage.rust.distributed.find(item => item.id === 'serde@1.0.229')
+    assert.equal(serde.distribution, 'linked_into_packaged_binary')
+    assert.equal(serde.gap, 'notice_differs_from_repo')
+    const packagedNotice = serde.notices.find(item => item.packagePath.endsWith('LICENSE-MIT'))
+    assert.equal(packagedNotice.sha256, digest(packagedMit))
+    assert.notEqual(packagedNotice.sha256, digest(repoMit))
+    assert.equal(report.fromPackage.rust.distributed.some(item => item.id === 'utoipa@6.0.0' || item.id === 'same-file@1.0.6'), false)
+    assert.ok(report.fromPackage.notDistribution.cargoLockNameEntries > report.fromPackage.rust.distributed.length)
+    assert.match(report.fromPackage.notDistribution.note, /not the component list/)
+    const noto = report.fromPackage.fonts.find(item => item.packagePath.endsWith('fonts/NotoSansSC.ttf'))
+    assert.equal(noto.sha256, digest(await readFile(path.join(resources, 'fonts/NotoSansSC.ttf'))))
+    assert.equal(noto.license, 'OFL-1.1')
+    assert.equal(noto.traceable, true)
+    const mark = report.fromPackage.icons.find(item => item.packagePath.endsWith('mark.png'))
+    assert.equal(mark.sha256, digest(icon))
+    assert.equal(mark.license, 'MIT')
+    assert.equal(mark.traceable, true)
+    const backend = report.fromPackage.native.find(item => item.packagePath.endsWith('sidecar/futureox-design-desktop-backend'))
+    assert.equal(backend.sha256, digest(nativeBinary))
+    assert.equal(backend.format, 'elf')
+    assert.equal(report.fromPackage.gaps.some(item => item.gap === 'binary_not_in_package'), false)
+    assert.equal(report.fromPackage.wasm[0].sha256, digest(wasm))
+    assert.ok(report.fromPackage.census.unclassified.some(item => item.path.endsWith('stray.bin')))
+    assert.equal(report.fromPackage.components.some(item => item.kind === 'electron' && item.sha256 === digest(electronBinary)), true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test('component inventory lists bundle JS and WASM without calling them a closed SBOM', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'fx-release-inventory-'))

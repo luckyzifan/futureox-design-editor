@@ -26,7 +26,18 @@ node frontend/design-desktop/scripts/release-desktop-flow.mjs
 node frontend/design-desktop/scripts/release-component-inventory.mjs
 ```
 
-脚本现在按打包输入生成组件清单，而不是把 `Cargo.lock` 的 `name` 条数当成随包清单。没有签名安装包时，`releaseAcceptance` 保持 `not_closed`。桌面流程脚本的行为不变：没有冻结安装包时，打开、编辑和导出步骤仍是 `not_run`。
+没有签名安装包时，脚本仍按打包输入生成对照清单，`releaseAcceptance` 保持 `not_closed`。桌面流程脚本的行为不变：没有冻结安装包时，打开、编辑和导出步骤仍是 `not_run`。
+
+把 Electron packager 打出的目录传进去时，分发清单改从该目录的文件字节生成，而不是从 `Cargo.lock` 的 `name` 条数生成：
+
+```bash
+node frontend/design-desktop/scripts/release-component-inventory.mjs \
+  --release-dir=frontend/design-desktop/release/futureox-desgin-linux-x64 \
+  --require-package \
+  --write-report=/tmp/futureox-release-inventory.json
+```
+
+`--require-package` 会重新哈希包内文件和 `app.asar` 条目。哈希对不上、或者 Electron/Chromium、JS、Rust notice、native、WASM、字体、图标、Linux FFmpeg 任一缺失时，进程失败。`Cargo.lock` 和 npm devDependencies 只用来给已经出现在包里的文件或已链接进包内二进制的 crate 补版本、来源和许可证；没进这个包的 lock 名和 Vite、Playwright、`@electron/packager` 留在 `notDistribution`。签名、公证和其他操作系统安装包保持 `not_run` / `not_built`，`releaseAcceptance` 仍是 `not_closed`。
 
 清单区分这些东西：
 
@@ -56,6 +67,43 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs
 Electron zip SHA-256 `3ae7d5bdad61c664486c6ab61361dd084d064c8c08af8d13a687096e18ce555a`，与 `electron` 44.7.0 npm 包里的 `checksums.json` 一致。`electron` 二进制 SHA-256 `10a14d05c6ff4f94075cfb3eeb6ed6571be33ebcc08cbd675b5ce9ff84706564`。`LICENSE` SHA-256 `5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d`。`LICENSES.chromium.html` SHA-256 `3375e2a9bd7bc631738fde10be6548a76efe8cf5e4b8826b8140ba8b0c4d6353`。发行目录里的 `libffmpeg.so` SHA-256 `c4c805e46f957356f6b80be31999459e5f07e8b0c351221544ad43a16c980638`，与仓库里的 GPL FFmpeg `18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317` 不是同一个文件。
 
 这组哈希来自官方 Electron zip 的解压目录，不是 Futureox 签名安装包。macOS 和 Windows 的 Electron zip 没有下载。十个 crate 的发布包里没有许可文本：`profiling` 1.0.18、`spirv` 0.4.0+sdk-1.4.341.0，以及 macOS 的 `objc2` / `block2` 系列。`public/color-fixtures/` 的三张图没有来源记录。正式签名包、公证和 native GUI 仍然是 `not_run`。
+
+## 2026-11-13 未签名 Linux release 目录
+
+云端 linux x64 跑了仓库自己的 `node scripts/build.mjs`（profile `release`）和 `node scripts/package.mjs`。产物是 packager 目录 `frontend/design-desktop/release/futureox-desgin-linux-x64`，不是签名安装包，没有公证，也没有打开 GUI。目录身份 SHA-256 `6cbd9d5b9ccc2aac8a07b0e066c1f2dd3ff1668ad745199ed1abe081670ca5bf`。
+
+随后执行：
+
+```bash
+node frontend/design-desktop/scripts/release-component-inventory.mjs \
+  --release-dir=frontend/design-desktop/release/futureox-desgin-linux-x64 \
+  --require-package
+```
+
+`--require-package` 退出码 0。它把清单里的 787 条包内文件和 `app.asar` 条目重新哈希，并和清单记录对照。对照失败会让进程失败。这次没有失败。`releaseAcceptance` 仍是 `not_closed`，`formalSignedPackage` 是 `not_supplied`，`signature` 是 `not_run`。
+
+| 测量 | 这个未签名目录 |
+| --- | --- |
+| 包内普通文件 / 含 asar 条目 | 569 / 787 |
+| Electron 44.7.0 运行时文件 | 71，含主程序、`LICENSE`、`LICENSES.chromium.html`、`libffmpeg.so` |
+| 生产 JS 包 / 包内 notice 对上 | 16 / 16 |
+| JS 开发依赖，包内没有对应文件 | 204，泄漏 0。含 Vite、Lightning CSS、Playwright、`@electron/packager` |
+| 本包 linux 与 wasm 图里的第三方 Rust crate / 包内 notice | 223 / 221 |
+| 只在编译期的 proc-macro，notice 在包里 | 13 |
+| 不在本包二进制图里的 lock 名 | 106。含 Windows 的 `same-file` 1.0.6 和 dev-dependency `tiny-skia` 0.12.0 |
+| native ELF | 4：sidecar、`design-render`、`design-prepare`、`futureox-design-agent`，均 0.1.0 |
+| WASM | 6，其中设计内核两份字节相同 |
+| 字体 / 图标 | 23 / 23 可追溯，16 / 16 图标指向包内 `resources/project-license/LICENSE` |
+| Linux FFmpeg 7.0.2 | 可追溯，GPL-3.0-or-later |
+
+主程序 SHA-256 `10a14d05c6ff4f94075cfb3eeb6ed6571be33ebcc08cbd675b5ce9ff84706564`，`LICENSE` `5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d`，`LICENSES.chromium.html` `3375e2a9bd7bc631738fde10be6548a76efe8cf5e4b8826b8140ba8b0c4d6353`，Chromium `libffmpeg.so` `c4c805e46f957356f6b80be31999459e5f07e8b0c351221544ad43a16c980638`。这些和上一节解压 zip 的对应文件一致，但是这次哈希的是 packager 目录里的文件。仓库 GPL FFmpeg 仍是 `18b5fd65ba4de2754c548b6b3f38ec92fb8863b36f1b034d9175248aa78c3317`，和 Chromium 的 `libffmpeg.so` 不是同一个文件。
+
+仍未关闭：
+
+- `profiling` 1.0.18 和 `spirv` 0.4.0+sdk-1.4.341.0 在包内二进制的依赖图里，crate 只有 SPDX 标识，没有许可文件。
+- 包里仍有两份验证页和三张 `color-fixtures` 图，没有许可文本。
+- macOS arm64、Windows x64 没有构建。签名、公证、安装包和桌面 GUI 步骤是 `not_run`。
+- 这个目录不能当成正式发布验收。
 
 ## 随包资源标识（#264）
 
