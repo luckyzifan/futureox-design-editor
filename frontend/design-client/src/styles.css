@@ -2494,71 +2494,174 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-field: #ffffff;
   --workspace-text: #1d1d1f;
   --workspace-muted: #6e6e73;
+  grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width);
+  grid-template-rows: 52px 1px minmax(0, 1fr) auto;
   --editor-chrome-row: 53px;
   --editor-chrome-fill: #e8ebec;
   --editor-chrome-divider: #c4cacf;
-  grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width);
-  /* Row 2 can grow with a wrapped action bar. The canvas starts on the next
-     row, so that bar cannot sit on top of the toolbar. The floor is the
-     official 53px content origin (52pt bar plus the 1px split). */
-  grid-template-rows: auto minmax(var(--editor-chrome-row), max-content) minmax(0, 1fr) auto;
+  background: var(--editor-chrome-divider);
 }
+.editor-shell[data-ui-mode="sketch"] > .local-home { grid-column: 1 / -1; grid-row: 1 / -1; }
+.editor-shell[data-ui-mode="sketch"] > .editor-header {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-self: stretch;
+  align-items: center;
+  width: auto;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  margin: 0;
+  padding: 0 8px 0 6px;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: var(--editor-chrome-fill);
+  box-shadow: none;
+  z-index: 32;
+  overflow: visible;
+}
+.editor-shell[data-ui-mode="sketch"] > nav[data-workspace-tabs] { grid-column: 1 / -1; grid-row: 3; }
+.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) { grid-template-rows: 52px 1px auto minmax(0, 1fr) auto; }
+.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) .canvas-workspace,
+.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) .adaptive-layers-shell,
+.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) .properties-workspace,
+.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) > footer { grid-row: 4; }
+.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) > .animation-panel { grid-row: 5; }
 .editor-shell[data-ui-mode="sketch"] .workspace-rail { display: none; }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized,
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) 0; }
-/* The canvas used to span the header row, and the toolbar was absolutely
-   positioned inside that row. The document action bar lives there too, so its
-   overflow and the desk/narrow overlay covered toolbar hit targets. */
+.editor-shell[data-ui-mode="sketch"] .editor-header .document-title {
+  display: flex;
+  align-items: center;
+  grid-column: auto;
+  grid-row: auto;
+  grid-template-columns: none;
+  grid-template-rows: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: 32px;
+  max-height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+.editor-shell[data-ui-mode="sketch"] .document-title input,
+.editor-shell[data-ui-mode="sketch"] .document-title .document-location,
+.editor-shell[data-ui-mode="sketch"] .document-title > button[aria-pressed] {
+  grid-column: auto;
+  grid-row: auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
+.editor-shell[data-ui-mode="sketch"] .document-title input { flex: 1 1 auto; height: 28px; }
+.editor-shell[data-ui-mode="sketch"] .document-title .document-location {
+  display: block;
+  flex: none;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.editor-shell[data-ui-mode="sketch"] .document-title > button[aria-pressed] { flex: none; width: 28px; height: 28px; padding: 4px; }
+.editor-shell[data-ui-mode="sketch"] .editor-header .header-right {
+  position: static;
+  grid-column: auto;
+  grid-row: auto;
+  align-self: center;
+  justify-self: auto;
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  align-content: center;
+  justify-content: flex-end;
+  width: auto;
+  height: 32px;
+  max-height: 32px;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-window-zoom { display: flex; align-items: center; flex: none; height: 30px; }
+.editor-shell[data-ui-mode="sketch"] .sketch-window-zoom .view-menu:not([open]) > .view-menu-body { display: none; }
+.editor-shell[data-ui-mode="sketch"] .sketch-window-zoom .canvas-controls {
+  position: static;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  display: flex;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+  z-index: auto;
+}
+.editor-shell[data-ui-mode="sketch"] .properties-zoom { display: none; }
 .editor-shell[data-ui-mode="sketch"] .canvas-workspace {
   grid-row: 3;
   flex-direction: column;
   align-items: stretch;
   padding-top: 0;
 }
+.editor-shell[data-ui-mode="sketch"] .adaptive-layers-shell { grid-row: 3; }
 .editor-shell[data-ui-mode="sketch"] .floating-toolbar {
   position: relative;
   top: auto; right: auto; bottom: auto; left: auto; transform: none;
-  order: -1;
+  order: 0;
   flex: none;
-  align-self: stretch;
+  align-self: center;
   width: auto;
   min-width: 0;
   max-width: none;
-  height: auto;
-  min-height: 40px;
-  margin: 8px 12px 0;
-  flex-wrap: wrap;
-  align-content: flex-start;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  margin: 0;
+  padding: 0 2px;
+  flex-wrap: nowrap;
+  align-content: center;
   justify-content: flex-start;
-  row-gap: 4px;
+  row-gap: 0;
   overflow: visible;
-  border-radius: 8px;
-  background: #f7f7f7;
-  box-shadow: inset 0 0 0 1px #d5d5d5, 0 1px 2px #00000014;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group {
-  flex: 0 1 auto;
-  flex-wrap: wrap;
+  flex: none;
+  flex-wrap: nowrap;
   min-width: 0;
-  max-width: 100%;
+  max-width: none;
 }
 .editor-shell[data-ui-mode="sketch"] .floating-toolbar .creation-tool-hint {
   top: calc(100% + 8px);
   bottom: auto;
 }
-@media (max-width: 1180px) {
-  .editor-shell[data-ui-mode="sketch"] .editor-header .header-right {
-    flex-wrap: wrap;
-    align-content: flex-start;
-    height: auto;
-    max-height: none;
-    overflow: visible;
-  }
-}
 .editor-shell[data-ui-mode="sketch"] .layers-pages { max-height: 46%; background: #ffffff; }
 .editor-shell[data-ui-mode="sketch"] .layer-heading { background: #ececec; }
-.editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 0; }
+.editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 0; grid-row: 3; }
+@media (max-width: 900px) {
+  .editor-shell[data-ui-mode="sketch"] { grid-template-columns: 0 0 minmax(0, 1fr) 0 !important; }
+}
 .editor-shell[data-ui-mode="sketch"] .properties-tabs { background: #e6e6e6; }
 .editor-shell[data-ui-mode="sketch"] .properties-content .inspector > section,
 .editor-shell[data-ui-mode="sketch"] .properties-content .property-card {

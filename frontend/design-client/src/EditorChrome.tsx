@@ -21,9 +21,8 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     const shell = toolbar.closest('.editor-shell')
     const place = () => {
       // This `left` value is the visual center and only matches a bottom toolbar
-      // shifted with translateX(-50%). Sketch keeps its own row under the
-      // document action bar; writing that center inline slides the row sideways
-      // until the action bar covers the buttons.
+      // shifted with translateX(-50%). Sketch tools sit in the window toolbar;
+      // writing that center inline slides them under the title or the zoom.
       if (shell?.getAttribute('data-ui-mode') === 'sketch') {
         toolbar.style.removeProperty('left')
         return

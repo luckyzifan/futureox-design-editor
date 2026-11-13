@@ -18,9 +18,16 @@ test('neither layout reserves a far-left icon rail or mark column', () => {
   expect(canvas).toContain('padding-top: 0')
   const toolbar = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{[^}]+\}/)?.[0]
   expect(toolbar).toContain('position: relative')
-  expect(toolbar).toContain('flex-wrap: wrap')
+  expect(toolbar).toContain('flex-wrap: nowrap')
+  expect(toolbar).toContain('height: 52px')
   expect(toolbar).toContain('top: auto')
+  expect(toolbar).toContain('bottom: auto')
   expect(toolbar).not.toContain('top: 8px')
+  expect(toolbar).not.toContain('bottom: 12px')
+  expect(css).toContain('.sketch-window-zoom')
+  expect(css).toContain('.editor-shell[data-ui-mode="sketch"] .properties-zoom { display: none; }')
+  expect(css).toContain('.editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 0; grid-row: 3; }')
+  expect(css).not.toContain('.editor-shell[data-ui-mode="sketch"] .floating-toolbar {\n  position: relative;\n  top: auto; right: auto; bottom: auto; left: auto; transform: none;\n  order: -1;')
 })
 
 test('source material names keep their own line under the page label', () => {
