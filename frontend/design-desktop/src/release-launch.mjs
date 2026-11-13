@@ -45,10 +45,19 @@ export function resolveAcceptanceProfile(argv, { defaultUserData, home, env = {}
   }
   if ((info.mode & 0o002) !== 0) throw new Error('--desktop-acceptance-profile must not be world-writable')
   const resolved = realpath(raw)
-  if (typeof defaultUserData === 'string' && defaultUserData && (resolved === defaultUserData || resolved.startsWith(defaultUserData + path.sep))) {
+  const canonical = value => {
+    if (typeof value !== 'string' || !value) return null
+    try { return realpath(value) }
+    catch (error) {
+      if (error?.code === 'ENOENT') return path.resolve(value)
+      throw error
+    }
+  }
+  const defaultProfile = canonical(defaultUserData)
+  if (defaultProfile && (resolved === defaultProfile || resolved.startsWith(defaultProfile + path.sep))) {
     throw new Error('--desktop-acceptance-profile must not be the default user data directory')
   }
-  if (typeof home === 'string' && home && resolved === home) throw new Error('--desktop-acceptance-profile must not be the home directory')
+  if (resolved === canonical(home)) throw new Error('--desktop-acceptance-profile must not be the home directory')
   return resolved
 }
 

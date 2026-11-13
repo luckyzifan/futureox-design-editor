@@ -45,7 +45,7 @@ test('acceptance profile must be one real private directory', async () => {
     const link = path.join(root, 'link')
     await symlink(profile, link)
     assert.throws(() => resolveAcceptanceProfile([`--desktop-acceptance-profile=${link}`], { defaultUserData: userData, home }), /real directory/)
-    assert.equal(selectDesktopProfile({ acceptanceProfile: profile }).profile, realpathSync(profile))
+    assert.equal(selectDesktopProfile({ acceptanceProfile: resolved }).profile, realpathSync(profile))
     assert.throws(() => selectDesktopProfile({ acceptanceProfile: profile, smoke: true }), /cannot be combined/)
     let created = 0
     const temporary = selectDesktopProfile({ guiTest: true, createTemporary: () => { created += 1; return path.join(root, 'temp') } })
