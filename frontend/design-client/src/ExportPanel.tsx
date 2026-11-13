@@ -3,7 +3,7 @@ import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
 import { validateSvgOptions, svgFileBytes } from './export-options'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useInterfacePreferences } from './interface-preference'
 import type { Editor } from './engine'
 import { pdfVectorIssues, sliceExportTarget, type ExportTarget } from './export-metadata'
@@ -22,13 +22,14 @@ import {
   useVideoEncodeAvailable,
 } from './motion-video'
 
+const AllAssetsExport = lazy(() => import('./AllAssetsExport').then(module => ({ default: module.AllAssetsExport })))
 type Asset = { name: string; url: string; width: number; height: number; scale: number; pdf: boolean; pdfVector: boolean }
 
-export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor: Editor; onClose: () => void; exportSelectedSketch?:()=>Promise<string|undefined> }) {
+export function ExportPanel({ editor, onClose, exportSelectedSketch, initialTarget }: { editor: Editor; onClose: () => void; exportSelectedSketch?:()=>Promise<string|undefined>; initialTarget?: 'assets' }) {
   const s = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale } = useInterfacePreferences()
   const tx = (zh: string, en: string) => locale === 'en' ? en : zh
-  const [kind, setKind] = useState<ExportTarget['kind']>(s.selection.length ? 'selection' : 'page')
+  const [kind, setKind] = useState<ExportTarget['kind'] | 'assets'>(initialTarget === 'assets' ? 'assets' : s.selection.length ? 'selection' : 'page')
   const [pickCanvas,setPickCanvas]=useState<HTMLElement|null>(null)
   const picking=useRef(false)
   const stopPicking=useCallback(()=>{picking.current=false;setPickCanvas(null)},[])
@@ -73,6 +74,7 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
   // for the currently chosen target; blocked targets fall back to bitmap PDF.
   const vectorIssues = useMemo(() => {
     try {
+      if (kind === 'assets') return []
       const target: ExportTarget =
         kind === 'page'
           ? { kind }
@@ -134,6 +136,7 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
   async function generate() {
     const trace = beginEditorAction(editor, CanvasAction.export, ActionSource.menu, 350 + ['png','jpeg','webp','pdf','pdf-vector','svg','tiff'].indexOf(format))
     try {
+    if (kind === 'assets') { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
     if (request.current) { trace.result(ActionOutcome.blocked, ActionReason.busy); return }
     if (!commitExportEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
     const committed = editor.state
@@ -366,18 +369,18 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
             {tx('关闭', 'Close')}
           </button>
         </header>
-        {format!=='sketch' && <p className="export-color-note">{tx(
+        {kind !== 'assets' && format!=='sketch' && <p className="export-color-note">{tx(
           '默认是 sRGB：8 位 PNG 写入 sRGB 色彩块和 sRGB ICC。选择 Display P3 时，同一套 sRGB 像素会换算成 Display P3 并写入 ICC 与 cICP；JPEG、WebP、TIFF 和位图 PDF 带上同一份描述文件。这不改画布合成，也不是默认 PNG。其他色彩空间仍用 PNG。SVG 的 gzip 导出是 .svgz。桌面版在安装了打包的 FFmpeg 时，可以把当前页的动画烘焙成帧，再由 Rust 调用该二进制编成 MP4 或 WebM，不走系统 PATH。没有这个二进制时（含网页版）仍只导出静帧。',
           'The default is sRGB: 8-bit PNG writes an sRGB chunk and an sRGB ICC profile. Display P3 converts those sRGB samples and writes an ICC profile plus cICP. JPEG, WebP, TIFF and bitmap PDF carry the same profile. This does not change canvas compositing, and it is not the default PNG. Other color spaces still use PNG. Gzip SVG export is .svgz. On the desktop, when the bundled FFmpeg is installed, the current page animation can be baked to frames and encoded to MP4 or WebM by Rust invoking that binary, not a PATH lookup. Without that binary, including on the web, export stays a still image.',
         )}</p>}
-        {(format === 'png' || format === 'jpeg' || format === 'webp' || format === 'tiff' || format === 'pdf') && <label>{tx('色彩空间', 'Color space')} <select aria-label={tx('导出色彩空间', 'Export color space')} value={gamut} disabled={busy} onChange={event => setGamut(event.target.value as 'srgb' | 'display-p3')}>
+        {kind !== 'assets' && (format === 'png' || format === 'jpeg' || format === 'webp' || format === 'tiff' || format === 'pdf') && <label>{tx('色彩空间', 'Color space')} <select aria-label={tx('导出色彩空间', 'Export color space')} value={gamut} disabled={busy} onChange={event => setGamut(event.target.value as 'srgb' | 'display-p3')}>
           <option value="srgb">sRGB</option>
           <option value="display-p3">Display P3</option>
         </select></label>}
-        <label>{tx('格式', 'Format')} <select aria-label={tx('导出图像格式', 'Export image format')} value={format} disabled={busy} onChange={e=>{const next=e.target.value as typeof format;setFormat(next);if(next==='sketch')setKind('selection');setStatus('');release();setAssets([])}}>
+        {kind !== 'assets' && <label>{tx('格式', 'Format')} <select aria-label={tx('导出图像格式', 'Export image format')} value={format} disabled={busy} onChange={e=>{const next=e.target.value as typeof format;setFormat(next);if(next==='sketch')setKind('selection');setStatus('');release();setAssets([])}}>
           <option value="sketch" disabled={!s.selection.length}>{tx('Sketch（可编辑）','Sketch (editable)')}</option><option value="svg">{tx('SVG / SVGZ（矢量）', 'SVG / SVGZ (vector)')}</option><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">{tx('WebP（无损）', 'WebP (lossless)')}</option><option value="tiff">TIFF</option><option value="pdf">{tx('PDF（精确位图）', 'PDF (exact bitmap)')}</option><option value="pdf-vector" disabled={vectorIssues.length>0}>{tx('PDF（矢量）', 'PDF (vector)')}</option>
-        </select></label>
-        {format === 'svg' && <fieldset disabled={busy}>
+        </select></label>}
+        {kind !== 'assets' && format === 'svg' && <fieldset disabled={busy}>
           <legend>{tx('SVG 矢量选项', 'SVG vector options')}</legend>
           <label>{tx('视口倍率', 'Viewport scale')} <input aria-label={tx('SVG 视口倍率', 'SVG viewport scale')} type="number" min="0.001" max="128" step="any" value={svgScale} onChange={e => setSvgScale(e.target.value)} /></label>
           <label>{tx('文字模式', 'Text mode')} <select aria-label={tx('SVG 文字模式', 'SVG text mode')} value={textMode} onChange={e => setTextMode(e.target.value as typeof textMode)}><option value="outlines">{tx('轮廓（保持外观）', 'Outlines (keep appearance)')}</option><option value="editable">{tx('可编辑文字（需要对应字体）', 'Editable text (needs the font)')}</option></select></label>
@@ -387,12 +390,12 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
           <label>{tx('压缩', 'Compression')} <select aria-label={tx('SVG 压缩', 'SVG compression')} value={compression} onChange={e => setCompression(e.target.value as typeof compression)}><option value="none">{tx('无（.svg）', 'None (.svg)')}</option><option value="gzip">{tx('无损 gzip（.svgz）', 'Lossless gzip (.svgz)')}</option></select></label>
           <p>{tx('倍率仅改变矢量视口尺寸，不是像素分辨率。精度舍入会改变几何形状；无损 gzip 不改变解压后的 SVG。FD 和 Sketch 原生文件不使用这些矢量选项。', 'Scale changes the vector viewport, not pixel resolution. Precision rounding changes geometry; lossless gzip does not change the decompressed SVG. FD and Sketch files do not use these vector options.')}</p>
         </fieldset>}
-        {format==='jpeg'&&<p>{tx(`JPEG 为有损格式，使用质量 100，透明区域填充为白色，并写入 ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICC 描述文件。`, `JPEG is lossy, uses quality 100, fills transparent areas with white, and embeds a ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICC profile.`)}</p>}
-        {format==='tiff'&&<p>{tx(`TIFF 导出未压缩的 8 位图像，保留透明度以及 ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} 配置。16 位样本会量化为 8 位；文档里的 HDR 数值保持不变。`, `TIFF exports an uncompressed 8-bit image with transparency and a ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} profile. 16-bit samples are quantized to 8-bit; authored HDR values stay in the document.`)}</p>}
-        {format==='pdf'&&<p>{tx(`PDF 保留当前导出倍率的像素与透明度，页面按设计尺寸保存，并用 ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICCBased 标记颜色。使用 futureox-desgin 文件继续编辑图层。`, `PDF keeps the pixels and transparency of the chosen scale, stores the page at the design size, and tags colors with a ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICCBased space. Keep the futureox-desgin file to edit layers.`)}</p>}
-        {format==='pdf-vector'&&<p>{tx('矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，按设计尺寸保存（1 设计单位 = 1 pt）。', 'Vector PDF writes paths, gradients and text outlines as native PDF objects at the design size (1 design unit = 1 pt).')}</p>}
-        {format==='png'&&<p>{tx(gamut === 'display-p3' ? 'PNG 使用 CPU 导出。未启用色彩管理时，8 位样本从 sRGB 换算到 Display P3，并写入 ICC 与 cICP，不写 sRGB 色彩块。已启用色彩管理的文档仍走 16 位色彩输出。' : 'PNG 使用 CPU 导出。8 位 sRGB 写入 sRGB 色彩块和 sRGB ICC。已启用色彩管理时，显式色彩输出再写入 16 位 ICC 与 cICP。画布上的 HDR / 广色域数值仍留在文档里。', gamut === 'display-p3' ? 'PNG is exported on the CPU. Without color management, 8-bit samples are converted from sRGB to Display P3 and tagged with ICC and cICP, and no sRGB chunk is written. A color-managed document still uses the 16-bit color output.' : 'PNG is exported on the CPU. 8-bit sRGB writes an sRGB chunk and an sRGB ICC profile. A color-managed document still writes 16-bit ICC and cICP when a color output is explicit. HDR and wide-gamut values stay in the document.')}</p>}
-        {vectorIssues.length>0&&<p role="note">{tx(`当前导出内容包含${vectorIssues.join('、')}，矢量 PDF 暂不支持，该项已禁用；可导出 PDF（精确位图）。`, `This export includes ${vectorIssues.join(', ')}. Vector PDF cannot keep that yet, so the option is disabled. Exact bitmap PDF is available.`)}</p>}
+        {kind !== 'assets' && format==='jpeg'&&<p>{tx(`JPEG 为有损格式，使用质量 100，透明区域填充为白色，并写入 ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICC 描述文件。`, `JPEG is lossy, uses quality 100, fills transparent areas with white, and embeds a ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICC profile.`)}</p>}
+        {kind !== 'assets' && format==='tiff'&&<p>{tx(`TIFF 导出未压缩的 8 位图像，保留透明度以及 ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} 配置。16 位样本会量化为 8 位；文档里的 HDR 数值保持不变。`, `TIFF exports an uncompressed 8-bit image with transparency and a ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} profile. 16-bit samples are quantized to 8-bit; authored HDR values stay in the document.`)}</p>}
+        {kind !== 'assets' && format==='pdf'&&<p>{tx(`PDF 保留当前导出倍率的像素与透明度，页面按设计尺寸保存，并用 ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICCBased 标记颜色。使用 futureox-desgin 文件继续编辑图层。`, `PDF keeps the pixels and transparency of the chosen scale, stores the page at the design size, and tags colors with a ${gamut === 'display-p3' ? 'Display P3' : 'sRGB'} ICCBased space. Keep the futureox-desgin file to edit layers.`)}</p>}
+        {kind !== 'assets' && format==='pdf-vector'&&<p>{tx('矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，按设计尺寸保存（1 设计单位 = 1 pt）。', 'Vector PDF writes paths, gradients and text outlines as native PDF objects at the design size (1 design unit = 1 pt).')}</p>}
+        {kind !== 'assets' && format==='png'&&<p>{tx(gamut === 'display-p3' ? 'PNG 使用 CPU 导出。未启用色彩管理时，8 位样本从 sRGB 换算到 Display P3，并写入 ICC 与 cICP，不写 sRGB 色彩块。已启用色彩管理的文档仍走 16 位色彩输出。' : 'PNG 使用 CPU 导出。8 位 sRGB 写入 sRGB 色彩块和 sRGB ICC。已启用色彩管理时，显式色彩输出再写入 16 位 ICC 与 cICP。画布上的 HDR / 广色域数值仍留在文档里。', gamut === 'display-p3' ? 'PNG is exported on the CPU. Without color management, 8-bit samples are converted from sRGB to Display P3 and tagged with ICC and cICP, and no sRGB chunk is written. A color-managed document still uses the 16-bit color output.' : 'PNG is exported on the CPU. 8-bit sRGB writes an sRGB chunk and an sRGB ICC profile. A color-managed document still writes 16-bit ICC and cICP when a color output is explicit. HDR and wide-gamut values stay in the document.')}</p>}
+        {kind !== 'assets' && vectorIssues.length>0&&<p role="note">{tx(`当前导出内容包含${vectorIssues.join('、')}，矢量 PDF 暂不支持，该项已禁用；可导出 PDF（精确位图）。`, `This export includes ${vectorIssues.join(', ')}. Vector PDF cannot keep that yet, so the option is disabled. Exact bitmap PDF is available.`)}</p>}
         <fieldset disabled={busy}>
           <legend>{tx('导出目标', 'Export target')}</legend>
           <label>
@@ -422,6 +425,16 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
               onChange={() => setKind('slice')}
             />
             {tx('自定义区域', 'Custom region')}
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="export-target"
+              disabled={format==='sketch'}
+              checked={kind === 'assets'}
+              onChange={() => { setKind('assets'); release(); setAssets([]); setStatus('') }}
+            />
+            {tx('全部图层预设', 'All layer presets')}
           </label>
           {kind === 'page' && (
             <label>
@@ -456,14 +469,17 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
             </div>
           )}
           <p>
-            {kind === 'selection'
-              ? tx('按选中图层的几何边界裁切，保留内部效果与蒙版；不包含其他图层或祖先效果。', 'Crops to the selection bounds and keeps effects and masks inside it. Other layers and ancestor effects are excluded.')
+            {kind === 'assets'
+              ? tx('按各层已有预设勾选并分别导出。上面的整页、合并选区和自定义区域保持不变。', 'Check each layer’s presets and export them separately. Page, merged selection, and custom region above stay as they are.')
+              : kind === 'selection'
+              ? tx('按选中图层的几何边界裁切，保留内部效果与蒙版；不包含其他图层或祖先效果。合并为一个文件。', 'Crops to the selection bounds and keeps effects and masks inside it. Other layers and ancestor effects are excluded. The selection is one file.')
               : kind === 'slice'
                 ? tx('按页面坐标裁切，保留该区域的整页合成效果。', 'Crops in page coordinates and keeps the composited page in that region.')
                 : tx('包含可见内容和效果，页面留白可设为 0。', 'Includes visible content and effects. Page padding can be 0.')}
           </p>
         </fieldset>
-        {format!=='sketch' && <fieldset disabled={busy || format === 'pdf-vector' || format === 'svg'}>
+        {kind === 'assets' && <Suspense fallback={<p role="status">{tx('正在打开全部资产…', 'Opening all assets…')}</p>}><AllAssetsExport editor={editor} /></Suspense>}
+        {kind !== 'assets' && format!=='sketch' && <fieldset disabled={busy || format === 'pdf-vector' || format === 'svg'}>
           <legend>{tx('倍率', 'Scale')}</legend>
           {[...new Set([1, 2, 3, ...scales])].sort((a, b) => a - b).map((scale) => (
             <label key={scale}>
@@ -489,18 +505,18 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
             setScales([...new Set([...scales, value])]); setCustomScale(''); setStatus('')
           }}>{tx('添加倍率', 'Add scale')}</button>
         </fieldset>}
-        <p>
+        {kind !== 'assets' && <p>
           {format === 'svg' ? tx('SVG 是分辨率无关的矢量输出；SVGZ 可下载后使用支持 gzip 的查看器打开。', 'SVG is resolution-independent. SVGZ opens in a viewer that supports gzip.') : format === 'pdf-vector'
             ? tx('矢量输出与倍率无关，文件按设计尺寸保存。', 'Vector output ignores scale and is stored at the design size.')
             : tx('像素尺寸向上取整，不拉伸内容；不受画布缩放或设备 DPR 影响。小数尾像素覆盖范围会向右、向下扩展。', 'Pixel size rounds up without stretching. Canvas zoom and device DPR do not apply. A fractional edge extends right and down.')}
-        </p>
-        {videoReady && pageClip && <fieldset disabled={busy}>
+        </p>}
+        {kind !== 'assets' && videoReady && pageClip && <fieldset disabled={busy}>
           <legend>{tx('动效预览', 'Motion preview')}</legend>
           <p>{tx(`把「${pageClip.name}」按 12 帧/秒烘焙一圈（最长 8 秒），再交给打包的 FFmpeg。重复播放只导出一轮。`, `Bakes one cycle of “${pageClip.name}” at 12 fps (8 seconds at most), then the bundled FFmpeg encodes it. Repeats export a single cycle.`)}</p>
           <button type="button" onClick={() => void exportPageMotion('mp4')}>MP4</button>
           <button type="button" onClick={() => void exportPageMotion('webm')}>WebM</button>
         </fieldset>}
-        <div className="feature-row">
+        {kind !== 'assets' && <div className="feature-row">
           <button type="button" disabled={busy || (format==='sketch' ? !s.selection.length : format !== 'pdf-vector' && format !== 'svg' && !scales.length)} onClick={() => void generate()}>
             {format==='sketch'?tx('导出选区为 Sketch…','Export selection as Sketch…'):tx(`生成 ${format === 'pdf-vector' ? 'PDF（矢量）' : format.toUpperCase()}`, `Export ${format === 'pdf-vector' ? 'vector PDF' : format.toUpperCase()}`)}
           </button>
@@ -517,11 +533,11 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
               {tx('取消导出', 'Cancel export')}
             </button>
           )}
-        </div>
-        <p role="status" aria-live="polite">
+        </div>}
+        {kind !== 'assets' && <p role="status" aria-live="polite">
           {status}
-        </p>
-        <div className="export-assets">
+        </p>}
+        {kind !== 'assets' && <div className="export-assets">
           {assets.map((asset) => (
             <figure key={`${asset.name}-${asset.scale}`}>
               {asset.name.endsWith('.mp4') || asset.name.endsWith('.webm') ? <span>{asset.name.endsWith('.mp4') ? 'MP4' : 'WebM'}</span> : asset.name.endsWith('.svgz') ? <span>{tx('SVGZ · 矢量', 'SVGZ · vector')}</span> : asset.name.endsWith('.tiff') ? <span>{tx('TIFF · 8 位未压缩', 'TIFF · 8-bit uncompressed')}</span> : asset.pdf ? <span>{asset.pdfVector ? tx('PDF · 矢量', 'PDF · vector') : tx('PDF · 精确位图', 'PDF · exact bitmap')}</span> : <img src={asset.url} alt={tx(`${asset.scale}x 切图预览`, `${asset.scale}x export preview`)} />}
@@ -533,7 +549,7 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch }: { editor:
               </a>
             </figure>
           ))}
-        </div>
+        </div>}
       </section>
     </div>
   )
