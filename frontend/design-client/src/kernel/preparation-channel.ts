@@ -118,7 +118,7 @@ export class PreparationChannel {
   }
   request(lane: string, method: PreparationMethod, args: unknown[] = [], signal?: AbortSignal): Promise<PreparationReply> {
     if (this.closed) return Promise.reject(this.closed)
-    if (signal && method !== 'compile_gpu_packet' && method !== 'render_cpu_frame') return Promise.reject(new Error('Only packet preparation and CPU frame rendering can be cancelled'))
+    if (signal && method !== 'compile_gpu_packet' && method !== 'render_cpu_frame') return Promise.reject(new Error('Only stateless packet preparation and CPU frame rendering can be cancelled'))
     if (signal?.aborted) return Promise.reject(new Error('PREVIEW_CANCELLED'))
     if (this.queued.length + Number(!!this.active) >= 128) return Promise.reject(new Error('CPU preparation request budget exceeded'))
     return new Promise((resolve, reject) => {

@@ -1190,7 +1190,7 @@ export class GpuRenderer {
     for (const [key, list] of this.free) {
       let largeKept = 0
       const retained = list.filter((texture) => {
-        if (this.freePoolReleasePending(texture)) return true
+        if (this.admissionPins.has(texture) || this.freePoolReleasePending(texture)) return true
         if (this.used.has(texture) && (!trimLarge || texture.bytes <= 8 * 1024 * 1024 ||
           upcomingLargeSizes!.has(`${texture.width}:${texture.height}`) && largeKept++ < 2)) return true
         this.driver.destroy(texture)
