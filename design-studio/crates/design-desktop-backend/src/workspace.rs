@@ -44,6 +44,13 @@ fn db(error: sqlx::Error) -> BackendError {
             "WORKSPACE_STORAGE_FULL",
             format!("Local document storage is full; this change was not written and the last committed revision is unchanged: {error}"),
         )
+    } else if matches!(primary, Some(8 | 10)) {
+        // SQLITE_READONLY / SQLITE_IOERR. The statement rolled back or never
+        // started. This is not a full disk, a migration failure, or a commit.
+        (
+            "WORKSPACE_WRITE_FAILED",
+            format!("Local document storage could not be written; this change was not written and the last committed revision is unchanged: {error}"),
+        )
     } else {
         (
             "WORKSPACE_ERROR",
@@ -54,7 +61,7 @@ fn db(error: sqlx::Error) -> BackendError {
 }
 fn migration_failure(error: BackendError) -> BackendError {
     match error.code {
-        "WORKSPACE_STORAGE_FULL" | "WORKSPACE_BUSY" | "WORKSPACE_FUTURE_SCHEMA" | "WORKSPACE_MIGRATION" => error,
+        "WORKSPACE_STORAGE_FULL" | "WORKSPACE_WRITE_FAILED" | "WORKSPACE_BUSY" | "WORKSPACE_FUTURE_SCHEMA" | "WORKSPACE_MIGRATION" => error,
         _ => BackendError::new(
             "WORKSPACE_MIGRATION",
             format!(
@@ -1012,6 +1019,7 @@ impl WorkspaceStore {
 #[cfg(test)]
 mod autosave_recovery_tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     const ID: &str = "10000000-0000-0000-0000-0000000000a1";
@@ -1110,6 +1118,80 @@ mod autosave_recovery_tests {
         reopened.close().await;
         let _ = fs::remove_dir_all(&root);
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn autosave_recovery_sqlite_readonly_is_not_saved() {
+        static N: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "futureox-sqlite-ro-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let db = root.join("workspace.sqlite3");
+        let store = WorkspaceStore::open(&db).await.unwrap();
+        let saved = store
+            .commit(&document("consistent"), None, "create-ro")
+            .await
+            .unwrap();
+        store.close().await;
+        let mut paths = vec![db.clone()];
+        for suffix in ["-wal", "-shm", "-journal"] {
+            let extra = PathBuf::from(format!("{}{suffix}", db.display()));
+            if extra.exists() {
+                paths.push(extra);
+            }
+        }
+        let saved_permissions: Vec<_> = paths
+            .iter()
+            .map(|path| (path.clone(), fs::metadata(path).unwrap().permissions()))
+            .collect();
+        for path in &paths {
+            let mut readonly = fs::metadata(path).unwrap().permissions();
+            readonly.set_readonly(true);
+            fs::set_permissions(path, readonly).unwrap();
+        }
+        let opened = WorkspaceStore::open(&db).await;
+        let error = match opened {
+            Ok(store) => {
+                let error = store
+                    .commit(
+                        &document("must-not-commit"),
+                        Some(saved.revision),
+                        "edit-ro",
+                    )
+                    .await
+                    .expect_err("a read-only database must not report the edit as saved");
+                store.close().await;
+                error
+            }
+            Err(error) => error,
+        };
+        eprintln!(
+            "MEASURE sqlite_readonly status=error {}: {}",
+            error.code, error.message
+        );
+        for (path, permissions) in &saved_permissions {
+            fs::set_permissions(path, permissions.clone()).unwrap();
+        }
+        assert_eq!(error.code, "WORKSPACE_WRITE_FAILED");
+        assert_ne!(error.code, "WORKSPACE_STORAGE_FULL");
+        assert_ne!(error.code, "WORKSPACE_MIGRATION");
+        assert_ne!(error.code, "WORKSPACE_CORRUPT");
+        assert!(error.message.contains("not written"));
+        assert!(error.message.contains("unchanged"));
+        assert!(!error.message.contains("saved"));
+        let reopened = WorkspaceStore::open(&db).await.unwrap();
+        let current = reopened.read(ID, None).await.unwrap();
+        assert_eq!(current.entry.revision, saved.revision);
+        assert_eq!(current.entry.hash, saved.hash);
+        assert_eq!(current.document, document("consistent"));
+        reopened.close().await;
+        let _ = fs::remove_dir_all(&root);
+    }
+
 }
 
 #[cfg(test)]

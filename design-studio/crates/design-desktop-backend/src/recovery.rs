@@ -84,11 +84,86 @@ impl RecoveryStore {
             }
             Err(error) => return Err(BackendError::io("Cannot inspect recovery directory", error)),
         }
-        Ok(Self {
+        let store = Self {
             root: path
                 .canonicalize()
                 .map_err(|e| BackendError::io("Cannot resolve recovery directory", e))?,
-        })
+        };
+        // A crash after the temporary snapshot was synced, and before rename,
+        // leaves the bytes beside the last published recovery file.
+        store.publish_synced_temps()?;
+        Ok(store)
+    }
+
+    fn validated_record(&self, bytes: &[u8]) -> Result<RecoveryRecord> {
+        let record: RecoveryRecord = serde_json::from_slice(bytes).map_err(|e| {
+            BackendError::new(
+                "INVALID_RECOVERY",
+                format!("Recovery snapshot is damaged; retained unchanged: {e}"),
+            )
+        })?;
+        let document = document_bytes(&record.document)?;
+        validate_hash(record.entry.source_hash.as_deref())?;
+        // Reject a record whose id cannot name a recovery file before any rename.
+        self.path(&record.entry.recovery_id)?;
+        if record.entry.hash != hash(&document)
+            || record.document["id"].as_str() != Some(&record.entry.document_id)
+            || record.document["name"].as_str() != Some(&record.entry.name)
+            || record
+                .entry
+                .source_path
+                .as_deref()
+                .is_some_and(|p| !Path::new(p).is_absolute() || p.len() > MAX_PATH_BYTES)
+        {
+            return Err(BackendError::new(
+                "INVALID_RECOVERY",
+                "Recovery metadata/hash mismatch; snapshot retained unchanged",
+            ));
+        }
+        Ok(record)
+    }
+
+    /// Publish only a fully parsed temporary snapshot. Partial temps stay on disk
+    /// and never replace a newer published snapshot or the import they name.
+    fn publish_synced_temps(&self) -> Result<()> {
+        let directory = fs::read_dir(&self.root)
+            .map_err(|e| BackendError::io("Cannot list recovery directory", e))?;
+        for item in directory {
+            let item = item.map_err(|e| BackendError::io("Cannot inspect recovery entry", e))?;
+            let name = item.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if !(name.starts_with(".fd-write-") && name.ends_with(".tmp")) {
+                continue;
+            }
+            let path = item.path();
+            let Ok(metadata) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                continue;
+            }
+            let Ok(bytes) = storage::read_bounded(&path, recovery_byte_limit()) else {
+                continue;
+            };
+            let Ok(record) = self.validated_record(&bytes) else {
+                continue;
+            };
+            let dest = self.path(&record.entry.recovery_id)?;
+            match self.read(&record.entry.recovery_id) {
+                Ok(existing) if existing.entry.updated_at >= record.entry.updated_at => continue,
+                Ok(_) => {}
+                Err(error) if error.code == "NOT_FOUND" || error.code == "INVALID_RECOVERY" => {}
+                Err(_) => continue,
+            }
+            if storage::checked_metadata(&dest)?.is_none() && self.files()?.len() >= MAX_RECOVERIES
+            {
+                continue;
+            }
+            if fs::rename(&path, &dest).is_err() {
+                continue;
+            }
+        }
+        Ok(())
     }
 
     fn path(&self, id: &str) -> Result<PathBuf> {
@@ -198,24 +273,8 @@ impl RecoveryStore {
 
     pub fn read(&self, id: &str) -> Result<RecoveryRecord> {
         let bytes = storage::read_bounded(&self.path(id)?, recovery_byte_limit())?;
-        let record: RecoveryRecord = serde_json::from_slice(&bytes).map_err(|e| {
-            BackendError::new(
-                "INVALID_RECOVERY",
-                format!("Recovery snapshot is damaged; retained unchanged: {e}"),
-            )
-        })?;
-        let document = document_bytes(&record.document)?;
-        validate_hash(record.entry.source_hash.as_deref())?;
-        if record.entry.recovery_id != id
-            || record.entry.hash != hash(&document)
-            || record.document["id"].as_str() != Some(&record.entry.document_id)
-            || record.document["name"].as_str() != Some(&record.entry.name)
-            || record
-                .entry
-                .source_path
-                .as_deref()
-                .is_some_and(|p| !Path::new(p).is_absolute() || p.len() > MAX_PATH_BYTES)
-        {
+        let record = self.validated_record(&bytes)?;
+        if record.entry.recovery_id != id {
             return Err(BackendError::new(
                 "INVALID_RECOVERY",
                 "Recovery metadata/hash mismatch; snapshot retained unchanged",
