@@ -49,6 +49,14 @@ export function electronPackageLayout(directory) {
   if (isFile(path.join(macResources, 'app.asar')) && (isFile(path.join(directory, 'Contents/Info.plist')) || isFile(path.join(directory, 'Contents/Frameworks/Electron Framework.framework/Electron Framework')))) {
     return { packageDir: directory, resourcesRoot: macResources, resourcesPrefix: 'Contents/Resources', style: 'mac-app' }
   }
+  // Electron Packager puts the macOS app and the runtime notices next to
+  // each other. Keep the enclosing directory as the byte-inventory root.
+  const apps = childDirectories(directory).filter(entry => entry.endsWith('.app'))
+  if (apps.length === 1 && isFile(path.join(apps[0], 'Contents/Resources/app.asar')) &&
+      isFile(path.join(apps[0], 'Contents/Info.plist'))) {
+    const resourcesPrefix = path.posix.join(path.basename(apps[0]), 'Contents/Resources')
+    return { packageDir: directory, resourcesRoot: path.join(apps[0], 'Contents/Resources'), resourcesPrefix, style: 'mac-app' }
+  }
   const resources = path.join(directory, 'resources')
   if (isFile(path.join(resources, 'app.asar')) && (isFile(path.join(directory, 'version')) || isFile(path.join(directory, 'LICENSES.chromium.html')))) {
     return { packageDir: directory, resourcesRoot: resources, resourcesPrefix: 'resources', style: 'electron-directory' }

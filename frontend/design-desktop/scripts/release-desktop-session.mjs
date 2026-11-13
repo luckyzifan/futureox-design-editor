@@ -377,6 +377,17 @@ async function main() {
       if (observation.runtime.profileSource !== 'acceptance-profile') {
         throw new Error(`Packaged process userData ${runtime.userData} did not use acceptance profile ${profileReal}`)
       }
+      if (process.platform === 'darwin') {
+        await page.locator('.app-shell[data-desktop-ready="true"]').waitFor({ timeout: 60000 })
+        await app.evaluate(({ dialog }, file) => {
+          const original = dialog.showOpenDialog.bind(dialog)
+          dialog.showOpenDialog = async () => {
+            dialog.showOpenDialog = original
+            return { canceled: false, filePaths: [file] }
+          }
+        }, originalPath)
+        await clickMenu(app, 'CmdOrCtrl+O')
+      }
       const opened = await waitFor(async () => readCanvas(page), value => value.ready && value.name === originalOpened.document.name, 90000, 'open document')
       await enterCanvas(page)
       observation.open = { ready: opened.ready, documentName: opened.name, renderer: (await readCanvas(page)).renderer }
@@ -389,10 +400,11 @@ async function main() {
         'initial zoom',
       )
       const zoomBefore = Number(zoomReady.zoom)
-      await page.keyboard.press('Control+Equal')
+      const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+      await page.keyboard.press(`${modifier}+Equal`)
       let zoomAfter = Number((await waitFor(async () => readCanvas(page), value => Number(value.zoom) > zoomBefore, 10000, 'zoom').catch(() => ({ zoom: zoomBefore }))).zoom)
       if (!(zoomAfter > zoomBefore)) {
-        await page.keyboard.press('Control+Plus')
+        await page.keyboard.press(`${modifier}+Plus`)
         zoomAfter = Number((await waitFor(async () => readCanvas(page), value => Number(value.zoom) > zoomBefore, 10000, 'zoom plus')).zoom)
       }
       observation.navigate = { zoomBefore, zoomAfter }
@@ -415,7 +427,7 @@ async function main() {
       reached.undo = true
       const canvas = page.locator('[data-testid="canvas"]')
       await canvas.focus()
-      await page.keyboard.press('Control+z')
+      await page.keyboard.press(`${modifier}+z`)
       const undone = await waitFor(
         async () => readCanvas(page),
         value => value.name === beforeEdit.name && nodeKey(value.ids) === observation.edit.nodeKeyBefore,

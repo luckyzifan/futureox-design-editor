@@ -3,6 +3,7 @@ import { verifyMcp } from './mcp-bundle.mjs'
 import { verifyPackagedMcpTransport } from '../test/runtime/packaged-mcp-transport.mjs'
 import { verifyWasmIdentity } from './wasm-identity.mjs'
 import { buildInputs } from './build-inputs.mjs'
+import { documentChildEnvironment } from '../src/document-capacity.mjs'
 import { verifyDeclaredResourceList } from './release-package-resources.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -246,11 +247,11 @@ try {
     maxBuffer: 8 * 1024 * 1024,
     timeout: 60_000,
     shell: false,
-    env: {
+    env: documentChildEnvironment({
       ...process.env,
       CORE_DESKTOP_SIDECAR: binary,
       CORE_DESKTOP_TEST_SOURCE: pathToFileURL(path.join(temporary, 'src') + path.sep).href,
-    },
+    }),
   })
   const log = `${result.stdout || ''}${result.stderr || ''}`
   process.stdout.write(log)
