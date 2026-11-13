@@ -71,11 +71,11 @@ export function opaquePainterStart(scene:GpuScene,ids:readonly string[],region:R
 /** Reuse the parent target for neutral source groups only when none of the
  * descendants reads its initial backdrop. Keep masked groups isolated unless
  * the source path certificate covers this entire destination, including halo. */
-export function sourcePainterOrder(scene:GpuScene,ids:string[],region:Rect):string[]{
+export function sourcePainterOrder(scene:GpuScene,ids:string[],region:Rect,limit=4096):string[]{
  const checked=new Map<string,boolean>()
  const independent=(id:string):boolean=>{
   const known=checked.get(id);if(known!==undefined)return known
-  if(checked.size>=4096)return false
+  if(checked.size>=limit)return false
   checked.set(id,false)
   const n=scene.nodes[id]
   const result=!n || (!n.captureReplay&&!n.textureReplay&&(n.blend==='normal'||!!n.passthrough&&n.blend==='pass-through')&&
