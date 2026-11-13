@@ -118,6 +118,44 @@ fn outer_shadow_hidden_in_fill_interior(
         .all(|effect| matches!(effect.kind.as_str(), "shadow" | "noise"))
 }
 
+/// The 2× export resolve normalizes an exact half-byte mean just below
+/// `n.5/255` and keeps the lower code. A black outer shadow on white becomes
+/// opaque gray there; the frozen browser image keeps the upper code. Lowering
+/// one shadow alpha in each even 2×2 block whose gray sum is 2 mod 4 moves
+/// only that residue. Sharp source pixels have nonzero RGB, so the block is
+/// skipped, and a flat color sums to 0 mod 4.
+fn lift_export_shadow_half_bytes(surface: &mut crate::blend::Surface) {
+    let rect = surface.rect;
+    let byte = |pixel: crate::blend::Pixel, channel: usize| {
+        (pixel.0[channel] * 255.).round_ties_even() as u8
+    };
+    let mut y = rect.y + (rect.y & 1);
+    while y + 1 < rect.bottom() {
+        let mut x = rect.x + (rect.x & 1);
+        while x + 1 < rect.right() {
+            let coords = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
+            let pixels = coords.map(|(px, py)| surface.at(px, py));
+            let shadow = pixels.iter().all(|pixel| {
+                byte(*pixel, 0) == 0 && byte(*pixel, 1) == 0 && byte(*pixel, 2) == 0
+            });
+            if shadow {
+                let alphas = pixels.map(|pixel| byte(pixel, 3));
+                let gray_sum = alphas.iter().map(|alpha| u32::from(255 - *alpha)).sum::<u32>();
+                if gray_sum % 4 == 2 {
+                    if let Some(index) = alphas.iter().position(|alpha| *alpha > 0) {
+                        let (px, py) = coords[index];
+                        let next = alphas[index] - 1;
+                        let slot = surface.rect.index(px, py).expect("shadow half byte");
+                        surface.pixels[slot] = crate::blend::Pixel([0., 0., 0., next as f32 / 255.]);
+                    }
+                }
+            }
+            x += 2;
+        }
+        y += 2;
+    }
+}
+
 /// Outer effects do not change pixels deep inside an opaque fill. A zoomed
 /// view of a shadowed frame used to expand the whole frame by `blur * zoom`
 /// and allocate that device buffer. Interior cameras keep the fill and a
@@ -4100,6 +4138,9 @@ impl Painter<'_> {
                     };
                     if self.compatible {
                         output.quantize_rgba8();
+                    }
+                    if !inner && self.profile.is_export() {
+                        lift_export_shadow_half_bytes(&mut output);
                     }
                     outputs.push(Arc::new(output));
                 }
