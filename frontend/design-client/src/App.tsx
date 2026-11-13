@@ -200,6 +200,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const fileMenuTrigger = useRef<HTMLButtonElement>(null)
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>('layers')
   const [zoomHost, setZoomHost] = useState<HTMLDivElement | null>(null)
+  const [figmaZoomHost, setFigmaZoomHost] = useState<HTMLDivElement | null>(null)
   const workspaceActions = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
     const dismiss = (event: Event) => { if (workspaceActions.current && !workspaceActions.current.contains(event.target as Node)) workspaceActions.current.open = false }
@@ -996,6 +997,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   )
   const shapeTools = ['rectangle', 'line', 'arrow', 'ellipse', 'polygon', 'star'].map(id => tools.find(tool => tool.id === id)!)
   const moveTool = tools.find(({ id }) => id === s.tool && ['select', 'hand', 'scale', 'zoom'].includes(id)) || tools.find(({ id }) => id === lastMoveTool)!
+  const handTool = tools.find(({ id }) => id === 'hand')!
   const regionTool = tools.find(({ id }) => id === s.tool && ['frame', 'section', 'slice'].includes(id)) || tools.find(({ id }) => id === lastRegionTool)!
   const shapeTool = shapeTools.find(({ id }) => id === s.tool) || tools.find(({ id }) => id === lastShapeTool)!
   const drawingTool = tools.find(({ id }) => id === s.tool && ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)) || tools.find(({ id }) => id === lastDrawingTool)!
@@ -1455,7 +1457,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             blurEffectIndex={blurEffectIndex} onExitBlurEdit={exitBlurEdit}
             onSelectSourcePoint={source?.selectMaterialAt} selectedMaterialBox={source?.selectedMaterialBox} pickSourceMaterial={source?.pickMaterial} prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
-            zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
+            zoomControlsTarget={uiMode === 'figma' ? figmaZoomHost : ((uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null)} /></HomeCanvasGate>
           {!showHome && ready && canvasEmpty && !switching && !desktopStatus.busy && !importing && <EmptyCanvas title={activityText[locale].emptyTitle} body={activityText[locale].emptyBody} />}
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)}>
             {ready && !showHome && !source?.nativeCanvas && !source?.openingPreview && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow', 'pen', 'eraser'].includes(s.tool) && (
@@ -1540,6 +1542,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <Search size={18} />
               </button>
             </div>
+            {uiMode === 'figma' && <div className="figma-view-tools" data-testid="figma-view-tools" onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+              <button type="button" aria-label={handTool.label} aria-pressed={s.tool === 'hand'} className={s.tool === 'hand' ? 'active' : ''}
+                data-tooltip={`${handTool.label}${handTool.key ? ` (${handTool.key})` : ''}`}
+                onClick={() => chooseTool('hand')}>
+                <handTool.icon size={16} />
+              </button>
+              <div ref={setFigmaZoomHost} className="figma-view-zoom" />
+            </div>}
           </DesignToolbar>
         </div>
         <div ref={rightPanel} className="properties-workspace">

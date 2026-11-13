@@ -39,6 +39,7 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     return () => { observer.disconnect(); mode?.disconnect(); window.removeEventListener('resize', place) }
   }, [])
   const buttons = () => [...(host.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || [])]
+    .filter(button => !button.closest('.figma-view-tools'))
   const show = (button: HTMLButtonElement, immediate: boolean) => {
     if (!host.current?.contains(button) || !button.dataset.tooltip || button.getAttribute('aria-expanded') === 'true') return
     if (candidate.current === button && !immediate) return
@@ -106,6 +107,13 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     onBlurCapture={hide}
     onKeyDown={event => {
       event.stopPropagation()
+      if ((event.target as Element | null)?.closest?.('.figma-view-tools')) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          if (hint) hide(); else document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
+        }
+        return
+      }
       if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
       if (event.repeat && ['Enter', ' ', 'Escape'].includes(event.key)) { event.preventDefault(); return }
       const enabled = buttons()

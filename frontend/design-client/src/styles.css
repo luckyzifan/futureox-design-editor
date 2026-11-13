@@ -2374,7 +2374,8 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell.design-agent-open .properties-content { display: none; }
 .local-window-popover { position: fixed; top: auto; right: auto; }
 
-/* Figma: left rail, bottom floating tools, white panels, design-tab inspector. */
+/* Figma: left rail, bottom floating tools, white panels, design-tab inspector.
+   Hand and zoom are a compact group on the pill, not the inspector tab row. */
 .editor-shell[data-ui-mode="figma"] {
   --workspace-accent: #0d99ff;
   --workspace-accent-hover: #0b86e0;
@@ -2417,7 +2418,74 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="figma"] .header-right .local-window-control > button {
   font-size: 12px;
 }
-.editor-shell[data-ui-mode="figma"] .floating-toolbar { bottom: 12px; left: 50%; transform: translateX(-50%); border-radius: 12px; }
+.editor-shell[data-ui-mode="figma"] .floating-toolbar { bottom: 12px; left: 50%; transform: translateX(-50%); border-radius: 12px; overflow: visible; }
+/* The group is taken out of the pill's flow so the pill stays bottom-center.
+   8px keeps it against the pill without sharing the pill's border box. The
+   menu opens upward so a short window cannot clip it on the bottom edge. */
+.editor-shell[data-ui-mode="figma"] .figma-view-tools {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: calc(100% - 4px);
+  min-height: 36px;
+  padding: 2px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 10px;
+  background: var(--workspace-panel);
+  box-shadow: 0 4px 16px #00000014, 0 1px 2px #0000000a;
+  pointer-events: auto;
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools > button {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 4px;
+  border-radius: 7px;
+  color: var(--workspace-text);
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools > button[aria-pressed="true"] {
+  color: var(--workspace-accent);
+  background: var(--workspace-selected);
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools .canvas-controls {
+  position: static;
+  inset: auto;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+  z-index: auto;
+  color: var(--workspace-text);
+  font-size: 12px;
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools .compact-controls > .view-menu > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  min-width: 58px;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+.editor-shell[data-ui-mode="figma"] .figma-view-tools .view-menu-body {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  max-height: min(420px, calc(100dvh - 200px));
+}
+.editor-shell[data-ui-mode="figma"] .floating-toolbar .creation-tool-hint {
+  bottom: calc(100% + 56px);
+}
 @media (min-width: 1181px) {
   .editor-shell[data-ui-mode="figma"] .floating-toolbar {
     height: auto;

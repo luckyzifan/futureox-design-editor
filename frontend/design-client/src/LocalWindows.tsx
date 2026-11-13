@@ -17,7 +17,7 @@ export function useLocalWindows(editor: Editor, session: DesktopSession | undefi
       if (
         followingRef.current &&
         event.target instanceof Element &&
-        event.target.closest('[data-testid="canvas"],.properties-zoom')
+        event.target.closest('[data-testid="canvas"],.properties-zoom,.figma-view-tools')
       )
         setFollowing(null)
     }
