@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -51,6 +52,20 @@ test('HTML ZIP admission accepts only the fixed design bundle', () => {
   assert.equal(reason(() => validateProductExport('html-zip', bomb)), 'size')
   assert.equal(reason(() => validateProductExport('html-zip', Buffer.concat([Buffer.from([0]), productZip()]))), 'layout')
   assert.equal(reason(() => validateProductExport('html-zip', Buffer.concat([productZip(), Buffer.from([0])]))), 'eocd')
+})
+
+test('asset ZIP admission binds the manifest to the delivered entries', () => {
+  const item = { path: 'Layer..v2.png', format: 'png', status: 'delivered', bytes: PNG.length,
+    sha256: createHash('sha256').update(PNG).digest('hex') }
+  const manifest = items => Buffer.from(JSON.stringify({ kind: 'futureox-all-assets', version: 1, items }))
+  const zip = makeZip([['manifest.json', manifest([item])], [item.path, PNG]], { method: 0 })
+  assert.deepEqual(validateProductExport('assets-zip', zip), zip)
+  assert.equal(reason(() => validateProductExport('html-zip', zip)), 'entries')
+  const extra = makeZip([['manifest.json', manifest([item])], [item.path, PNG], ['payload.sh', Buffer.from('unsafe')]], { method: 0 })
+  assert.equal(reason(() => validateProductExport('assets-zip', extra)), 'entries')
+  const forged = makeZip([['manifest.json', manifest([{ ...item, sha256: '0'.repeat(64) }])], [item.path, PNG]], { method: 0 })
+  assert.equal(reason(() => validateProductExport('assets-zip', forged)), 'bundle')
+  assert.equal(exportDialogName('assets-zip', 'Export-assets.zip'), 'Export-assets.zip')
 })
 
 test('dialog names and destinations stay inside the chosen file and extension', async () => {

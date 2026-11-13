@@ -959,7 +959,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           editor.notify(`关闭请求失败，设计已保留：${detail}`, { key: 'closeFailedDocumentRetained', error: detail })
         })
     })
-    return () => { window.removeEventListener('keydown', layout); window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
+    return () => { window.removeEventListener('keydown', allAssetsShortcut, true); window.removeEventListener('keydown', layout); window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
   }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source])
   function resumeEditor() {
     if (!ready) return
