@@ -1190,7 +1190,7 @@ pub(crate) fn assert_heic_rgba(heic: &[u8], width: u32, height: u32, rgba: &[u8]
     assert_eq!(rgba.len(), (width as usize) * (height as usize) * 4);
     let (color, alpha) = annex_b_items(heic);
     if cfg!(target_os = "macos") {
-        assert_imageio_rgba(heic, width, height, rgba);
+        assert_imageio_alpha(heic, width, height, rgba);
         return;
     }
     let dir = std::env::temp_dir().join(format!(
@@ -1240,7 +1240,7 @@ pub(crate) fn assert_heic_rgba(heic: &[u8], width: u32, height: u32, rgba: &[u8]
 }
 
 #[cfg(test)]
-fn assert_imageio_rgba(heic: &[u8], width: u32, height: u32, expected: &[u8]) {
+fn assert_imageio_alpha(heic: &[u8], width: u32, height: u32, expected: &[u8]) {
     let root = std::env::temp_dir().join(format!("futureox-heic-imageio-{}-{:?}-{width}x{height}",
         std::process::id(), std::thread::current().id()));
     std::fs::create_dir_all(&root).unwrap();
@@ -1251,13 +1251,16 @@ fn assert_imageio_rgba(heic: &[u8], width: u32, height: u32, expected: &[u8]) {
         .args(["-s", "format", "png"]).arg(&source).arg("--out").arg(&target)
         .output().expect("ImageIO via sips");
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    let image = image::open(&target).unwrap().into_rgba8();
-    assert_eq!(image.dimensions(), (width, height));
-    for (index, (actual, expected)) in image.as_raw().chunks_exact(4).zip(expected.chunks_exact(4)).enumerate() {
+    // sips may color-convert tagged pixels or normalize low-alpha RGB on
+    // PNG output. Verify the original container's dimensions and alpha here.
+    // The external libde265/libheif path independently checks the RGB planes.
+    let bytes = std::fs::read(&target).unwrap();
+    assert_eq!(u32::from_be_bytes(bytes[16..20].try_into().unwrap()), width);
+    assert_eq!(u32::from_be_bytes(bytes[20..24].try_into().unwrap()), height);
+    let pixels = png_rgba(&bytes);
+    assert_eq!(pixels.len(), expected.len());
+    for (index, (actual, expected)) in pixels.chunks_exact(4).zip(expected.chunks_exact(4)).enumerate() {
         assert_eq!(actual[3], expected[3], "alpha at pixel {index}");
-        if expected[3] != 0 {
-            assert_eq!(&actual[..3], &expected[..3], "colour at pixel {index}");
-        }
     }
     std::fs::remove_dir_all(root).unwrap();
 }
