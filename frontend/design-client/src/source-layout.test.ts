@@ -26,5 +26,5 @@ test('source material names keep their own line under the page label', () => {
   expect(css).toContain('.source-row-copy .source-row-name { white-space:normal;')
   expect(css).toContain('.source-page-inspector dl')
   expect(css).toContain('@media (min-width: 901px)')
-  expect(css).toContain('width:max(300px, var(--workspace-layers-width, 248px))')
+  expect(css).toContain('width:max(300px, var(--workspace-layers-width, 240px))')
 })

@@ -1962,7 +1962,10 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .brand-mark, .editor-header .brand-mark { display: block; width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; background: transparent; border-radius: 0; }
 
 /* Adaptive design-tool chrome. Width drags change only the shell, not document data. */
-.editor-shell .adaptive-layers-shell { grid-column: 2; grid-row: 3; position: relative; min-height: 0; width: var(--workspace-layers-width, 248px); display: flex; }
+.editor-shell .adaptive-layers-shell { grid-column: 2; grid-row: 3; position: relative; min-height: 0; width: var(--workspace-layers-width, 240px); display: flex; }
+@media (min-width: 901px) {
+  .editor-shell[data-ui-mode="sketch"]:not([data-source-document="true"]) .adaptive-layers-shell { width: var(--workspace-layers-width, 230px); }
+}
 .editor-shell .adaptive-layers-shell .layers-panel { width: 100%; min-width: 0; max-width: none; }
 .editor-shell.chrome-hide-layers .adaptive-layers-shell { display: none; }
 .editor-shell .properties-workspace { position: relative; min-width: 0; }
@@ -2163,7 +2166,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .source-compatibility-card ul { padding-left:16px; margin:8px 0; max-height:180px; overflow:auto; line-height:1.6; }
 .editor-shell[data-source-document="true"] .adaptive-layers-shell { flex-direction:column; overflow:visible; background:var(--workspace-panel); }
 @media (min-width: 901px) {
-  .editor-shell[data-source-document="true"] .adaptive-layers-shell { width:max(300px, var(--workspace-layers-width, 248px)); }
+  .editor-shell[data-source-document="true"] .adaptive-layers-shell { width:max(300px, var(--workspace-layers-width, 240px)); }
 }
 .editor-shell[data-source-document="true"] .adaptive-layers-shell>.layers-panel { flex:1; min-height:0; }
 

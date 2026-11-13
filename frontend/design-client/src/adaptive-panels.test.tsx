@@ -5,7 +5,7 @@ import React, { act } from 'react'
 import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { InterfaceSettings, PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
-import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, interfacePreference, INTERFACE_PREFERENCE_KEY, interfaceText } from './interface-preference'
+import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_LAYERS_WIDTH, interfacePreference, INTERFACE_PREFERENCE_KEY, interfaceText, SKETCH_LAYERS_WIDTH } from './interface-preference'
 import { readFileSync } from 'node:fs'
 import { hasPendingEdits, registerPendingEdit } from './pending-edits'
 let dom: any, root: Root, mount: HTMLElement
@@ -29,17 +29,31 @@ test('keyboard resize bounds, persisted reopen, layout reset and locale labels',
   await act(async () => (document.querySelector('select')!.value = 'en', document.querySelector('select')!.dispatchEvent(new Event('change', { bubbles: true }))))
   expect(handle.getAttribute('aria-label')).toBe('Resize panel: Layers panel')
   await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === 'Reset panel layout')!.click())
-  expect(interfacePreference.getSnapshot().leftWidth).toBe(248)
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH)
+  expect(interfacePreference.getSnapshot().leftWidths).toEqual({ figma: FIGMA_LAYERS_WIDTH, sketch: SKETCH_LAYERS_WIDTH })
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(280)
   expect(interfacePreference.getSnapshot().locale).toBe('en')
+})
+test('the mounted shell uses 240px in Figma and 230px in Sketch without changing the inspector', async () => {
+  await render(<Shell />)
+  const shell = document.querySelector<HTMLElement>('.editor-shell')!
+  expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain(`${FIGMA_LAYERS_WIDTH}px`)
+  expect(shell.style.getPropertyValue('--workspace-inspector-width')).toContain('280px')
+  await act(async () => interfacePreference.set({ uiMode: 'sketch' }))
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(SKETCH_LAYERS_WIDTH)
+  expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain(`${SKETCH_LAYERS_WIDTH}px`)
+  expect(shell.style.getPropertyValue('--workspace-inspector-width')).toContain('280px')
+  await act(async () => interfacePreference.set({ uiMode: 'figma' }))
+  expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain(`${FIGMA_LAYERS_WIDTH}px`)
 })
 test('drag writes once on release; cancellation restores session width', async () => {
   await render(<Shell />); const handle = document.querySelector<HTMLElement>('[role=separator]')!, shell = document.querySelector<HTMLElement>('.editor-shell')!
   const initial = localStorage.getItem(INTERFACE_PREFERENCE_KEY)
   await pointer(handle, 'pointerdown', 250); await pointer(handle, 'pointermove', 320)
-  expect(handle.getAttribute('aria-valuenow')).toBe('318'); expect(localStorage.getItem(INTERFACE_PREFERENCE_KEY)).toBe(initial)
-  await pointer(handle, 'pointercancel', 320); expect(interfacePreference.getSnapshot().leftWidth).toBe(248); expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain('248px')
+  expect(handle.getAttribute('aria-valuenow')).toBe(String(FIGMA_LAYERS_WIDTH + 70)); expect(localStorage.getItem(INTERFACE_PREFERENCE_KEY)).toBe(initial)
+  await pointer(handle, 'pointercancel', 320); expect(interfacePreference.getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH); expect(shell.style.getPropertyValue('--workspace-layers-width')).toContain(`${FIGMA_LAYERS_WIDTH}px`)
   await pointer(handle, 'pointerdown', 250); await pointer(handle, 'pointermove', 400); await pointer(handle, 'pointerup', 400)
-  expect(createInterfacePreference(() => localStorage).getSnapshot().leftWidth).toBe(398)
+  expect(createInterfacePreference(() => localStorage).getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH + 150)
 })
 test('disabled separator preserves a mounted pending input and its draft', async () => {
   const owner = {}, unregister = registerPendingEdit(owner, { dirty: () => document.querySelector('input')?.value !== 'pending draft', commit: () => false })
@@ -85,8 +99,8 @@ test('unmount during width gesture discards the uncommitted preview', async () =
   await render(<Shell />); const handle = document.querySelector<HTMLElement>('[role=separator]')!
   await pointer(handle, 'pointerdown', 250); await pointer(handle, 'pointermove', 450)
   await render(null)
-  expect(interfacePreference.getSnapshot().leftWidth).toBe(248)
-  expect(createInterfacePreference(() => localStorage).getSnapshot().leftWidth).toBe(248)
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH)
+  expect(createInterfacePreference(() => localStorage).getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH)
 })
 test('remember viewport is opt-in, persists via mounted setting and resets with preferences', async () => {
   await render(<InterfaceSettings />)
@@ -124,6 +138,9 @@ test('left resize handle is outside the clipped layers content', () => {
   expect(css).toContain('.editor-shell .adaptive-layers-shell .layers-panel { width: 100%; height: 100%; min-width: 0; max-width: none; overflow: hidden; }')
   expect(css).toContain('.panel-resize-left { right: -4px; }')
   expect(css).toContain('.editor-shell[data-source-document="true"] .adaptive-layers-shell { flex-direction:column; overflow:visible; background:var(--workspace-panel); }')
+  expect(css).toContain('width: var(--workspace-layers-width, 240px)')
+  expect(css).toContain('.editor-shell[data-ui-mode="sketch"]:not([data-source-document="true"]) .adaptive-layers-shell { width: var(--workspace-layers-width, 230px); }')
+  expect(css).not.toContain('248px')
   expect(css).toContain('.editor-shell .panel-resize-handle { display: none; }')
   expect(css).toContain('height: calc((100% - 8px) / 2); min-height: 0; overflow: auto;')
 })
