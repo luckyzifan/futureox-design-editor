@@ -4,6 +4,7 @@ import { DecodedImageCache, decodedImageScope, validDecodedImage, type DecodedIm
 import { sceneIndex } from './gpu/scene-index'
 import type { GpuScene } from './gpu/types'
 import { largePngRowCandidate, nativeImageRows, sourceBitmapDimensions } from './image-row-source'
+import { EMBEDDED_RASTER_URI_PREFIX } from '../embedded-raster'
 
 export type ImageVariant = 'byte' | 'linear'
 export type ImagePersistence = {
@@ -248,7 +249,7 @@ export class SceneImageHydration {
       if (this.cache.get(scope, key) || this.attempted.has(key) || uploaded?.(uri)) continue
       // Long/invalid sources are still validated by the renderer. Skipping
       // optional acceleration must not become a different source-error policy.
-      if (uri.length >= 2_000_000 || !/^data:image\/(png|jpeg|webp);base64,/.test(uri)) continue
+      if (uri.length >= 2_000_000 || !EMBEDDED_RASTER_URI_PREFIX.test(uri)) continue
       const bytes = key.length * 2 + 128
       if (this.attempted.size >= this.limits.entries || bytes > this.limits.keyBytes - this.keyBytes ||
           this.readBytes >= this.limits.readBytes) return

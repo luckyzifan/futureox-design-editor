@@ -1,10 +1,11 @@
+import { EMBEDDED_RASTER_PREFIXES } from '../embedded-raster'
 /** Independent, allocation-free canonical-base64 proof for a bounded recovery.
  * This is not source admission and never repairs/normalizes authored bytes.
  * The bound matches the existing full-image decoder's encoded allowance. */
 export function canRebuildImageDecoder(error:unknown,uri:string):boolean {
   const message=typeof error==='string'?error:error instanceof Error?error.message:''
   if(message!=='Invalid image data'||uri.length>12*1024*1024)return false
-  const prefix=['data:image/png;base64,','data:image/jpeg;base64,','data:image/webp;base64,'].find(p=>uri.startsWith(p))
+  const prefix=EMBEDDED_RASTER_PREFIXES.find(p=>uri.startsWith(p))
   if(!prefix)return false
   const length=uri.length-prefix.length
   if(length<4||length%4)return false

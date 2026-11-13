@@ -1027,6 +1027,8 @@ fn sniff_image_mime(bytes: &[u8]) -> &'static str {
         "image/gif"
     } else if bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
         "image/webp"
+    } else if bytes.starts_with(b"II*\x00") || bytes.starts_with(b"MM\x00*") {
+        "image/tiff"
     } else {
         "application/octet-stream"
     }
@@ -1056,6 +1058,15 @@ fn repeated_archive_image_references_share_exact_encoded_bytes(){
     let a=result.document.nodes.values().find(|n|n.name=="a").unwrap().fills[0].image.as_ref().unwrap();
     let b=result.document.nodes.values().find(|n|n.name=="b").unwrap().fills[0].image.as_ref().unwrap();
     assert!(std::sync::Arc::ptr_eq(a,b));assert_eq!(a.as_ref(),image_data_uri(&bytes));
+}
+
+#[cfg(all(test,not(target_arch="wasm32")))]
+#[test]
+fn classic_tiff_bitmap_bytes_keep_a_tiff_data_uri() {
+    let bytes = b"II*\x00\x08\x00\x00\x00".to_vec();
+    assert!(image_data_uri(&bytes).starts_with("data:image/tiff;base64,"));
+    assert_eq!(sniff_image_mime(b"MM\x00*"), "image/tiff");
+    assert_eq!(sniff_image_mime(b"GIF89a"), "image/gif");
 }
 
 #[cfg(all(test,not(target_arch="wasm32")))]

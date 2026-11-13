@@ -20,6 +20,7 @@ import { hasPendingEdits } from '../pending-edits'
 import { detachMissing } from '../components'
 import { granularExtensions, PREFLIGHT_METHODS } from './granular'
 import { CHANGE_SUMMARY_LIMITS, summarizeChanges } from './change-summary'
+import { isEmbeddedRasterUri } from '../embedded-raster'
 import {
   container, defaultLayout, defaultSizing, defaultTextStyle, node, uid,
   validateStructure,
@@ -467,8 +468,8 @@ function safeUrls(value: unknown): void {
     if (typeof v === 'string' && v) {
       if (['url', 'href', 'link'].includes(key) && (!/^(https?:\/\/|mailto:|tel:)/i.test(v) || /[\u0000-\u0020\u007f]/.test(v)))
         fail('unsafe_url', `${key} must use an explicit safe URL scheme`)
-      if (key === 'image' && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v))
-        fail('unsafe_asset', 'Image paints must use embedded PNG, JPEG or WebP data; automation does not fetch URLs or local files')
+      if (key === 'image' && !isEmbeddedRasterUri(v))
+        fail('unsafe_asset', 'Image paints must use embedded PNG, JPEG, WebP, GIF, or TIFF data; automation does not fetch URLs or local files')
     }
     safeUrls(v)
   }

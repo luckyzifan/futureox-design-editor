@@ -48,6 +48,6 @@ describe('production image import admission/construction with controlled browser
     expect(nodes.map(node => node.transform[4])).toEqual([450, 425, 440]); expect(f.changes).toHaveLength(1)
   })
   it('a PNG extension cannot bypass production MIME admission', async () => {
-    await expect(imageData(new File(['not an image'], 'fake.png', { type: 'text/plain' }))).rejects.toThrow(/PNG、JPEG 或 WebP/)
+    await expect(imageData(new File(['not an image'], 'fake.png', { type: 'text/plain' }))).rejects.toThrow(/PNG、JPEG、WebP、GIF 或 TIFF/)
   })
 })

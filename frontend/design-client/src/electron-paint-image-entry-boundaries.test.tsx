@@ -14,6 +14,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { Buffer } from 'node:buffer'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Inspector } from './Inspector'
+import { RASTER_MIME_ACCEPT } from './image-import'
 import { Editor } from './engine'
 import { blank, node, paint, type DesignDocument } from './model'
 import { interfacePreference } from './interface-preference'
@@ -148,7 +149,9 @@ async function mountFixture() {
 function fileInput() {
   const inputs = [...mount.querySelectorAll<HTMLInputElement>('.paint-editor input[type="file"]')]
   expect(inputs).toHaveLength(1)
-  expect(inputs[0].accept).toBe('image/png,image/jpeg,image/webp')
+  expect(inputs[0].accept).toBe(RASTER_MIME_ACCEPT)
+  expect(RASTER_MIME_ACCEPT).toContain('image/gif')
+  expect(RASTER_MIME_ACCEPT).toContain('image/tiff')
   return inputs[0]
 }
 async function chooseImage(name: string) {
