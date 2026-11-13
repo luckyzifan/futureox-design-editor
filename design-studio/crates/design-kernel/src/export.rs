@@ -475,10 +475,43 @@ pub(crate) fn backdrop_padding(
         {
             return Ok(0);
         }
-        // The 2048-pixel support limit is in source coordinates.
+        // The 2048-pixel support limit is in source coordinates. Export budget
+        // accounting keeps that window so a page of separated readers is still
+        // rejected instead of being cropped.
         let region = tile.expand((2048. / density) as i32);
         visit_backdrops(doc, &page.children, camera, |bounds, support| {
             if !bounds.intersect(region).empty() { total += support; }
+        })?;
+    }
+    checked_backdrop_padding(total, density)
+}
+
+/// Padding for one display tile. A backdrop changes the tile only when its
+/// output bounds, grown by that backdrop's own sample support, meet the tile.
+/// Readers elsewhere on the page do not enlarge this tile's working extent.
+pub(crate) fn tile_backdrop_padding(
+    engine: &Engine,
+    options: &RenderOptions,
+    tile: crate::math::Rect,
+) -> Result<i32, String> {
+    use crate::math::Transform;
+    let mut total = 0.;
+    let density = if options.raster_profile.is_export() { 2. } else { 1. };
+    if let Some(doc) = &engine.doc {
+        let page = doc.pages.iter().find(|p| p.id == options.page_id).ok_or("Page not found")?;
+        let v = options.view;
+        let camera = Transform([v.zoom, 0., 0., v.zoom, v.x, v.y]);
+        if options.raster_profile == crate::fidelity::RasterProfile::Analytic
+            && doc.color_management.is_none()
+            && single_backdrop_covered_by_root_halo(doc, page, camera, tile)
+        {
+            return Ok(0);
+        }
+        visit_backdrops(doc, &page.children, camera, |bounds, support| {
+            let reach = support.ceil().max(0.) as i32;
+            if !bounds.expand(reach).intersect(tile).empty() {
+                total += support;
+            }
         })?;
     }
     checked_backdrop_padding(total, density)
@@ -560,6 +593,23 @@ mod backdrop_budget_tests {
         engine.load_document(&plain.to_string()).unwrap();
         assert_eq!(pixels, engine.render(&options()).unwrap());
     }
+    #[test]
+    fn tile_padding_keeps_only_backdrops_that_reach_the_tile() {
+        let mut engine = Engine::new();
+        engine.load_document(&document(true)).unwrap();
+        let analytic = RenderOptions { raster_profile: RasterProfile::Analytic, ..options() };
+        assert_eq!(
+            tile_backdrop_padding(&engine, &analytic, Rect::new(0, 0, 64, 64)).unwrap(),
+            0
+        );
+        engine.load_document(&document(false)).unwrap();
+        assert!(
+            tile_backdrop_padding(&engine, &analytic, Rect::new(0, 0, 64, 64))
+                .unwrap_err()
+                .contains("1024")
+        );
+    }
+
     #[test]
     fn genuinely_local_over_budget_chain_remains_rejected() {
         let mut engine = Engine::new();

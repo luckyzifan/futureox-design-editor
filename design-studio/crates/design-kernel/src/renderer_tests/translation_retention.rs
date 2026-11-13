@@ -531,6 +531,36 @@ fn bounded_root_damage_contains_pixels_through_overlapping_background_blur() {
     }
     assert!(changed>100);
 }
+
+#[test]
+fn rotation_beside_a_background_blur_keeps_the_resolved_scene() {
+    let mut original = source();
+    original.schema_version = 5;
+    original.nodes.insert("lens".into(), serde_json::from_value(json!({
+        "id": "lens", "kind": "rectangle", "width": 36., "height": 28.,
+        "transform": [1., 0., 0., 1., 180., 140.],
+        "fills": [{"kind": "solid", "color": "#88aacc", "opacity": 0.4}],
+        "effects": [{"kind": "background-blur", "radius": 6., "visible": true, "color": "#000000"}]
+    })).unwrap());
+    original.pages[0].children.push("lens".into());
+    let mut engine = Engine::new();
+    engine.install_document(original.clone()).unwrap();
+    let options = options();
+    let _ = engine.render(&options).unwrap();
+    assert!(!engine.layout_dirty);
+    let mut next = original.clone();
+    let child = next.nodes.get_mut("child").unwrap();
+    child.transform = Transform([0., 1., -1., 0., child.transform.0[4], child.transform.0[5]]);
+    let patch = crate::editing::DocumentPatch::between(&original, &next).unwrap();
+    let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+    assert!(!damage.full, "{:?}", damage.reason);
+    assert!(!engine.layout_dirty, "a bounded rotation must not rebuild resolved layout");
+    let turned = engine.render(&options).unwrap();
+    let mut fresh = Engine::new();
+    fresh.install_document(next).unwrap();
+    assert_eq!(turned, fresh.render(&options).unwrap());
+}
+
 #[test]
 fn worker_snapshots_detach_on_edits_and_preserve_owner_pixels() {
     let mut owner = Engine::new();

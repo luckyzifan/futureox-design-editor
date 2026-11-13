@@ -834,6 +834,18 @@ impl Engine {
                 }
                 cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents);
             }
+        } else if !damage.full && let Some(proof) = pose {
+            // Leaf certificates decline when any backdrop shares the page, even
+            // if the patch damage above is already a finite union. The pose
+            // proof still says layout, masks and components do not move, so
+            // keep the resolved scene and let the settled tiles repaint only
+            // that union. A full install would reshape the whole document
+            // again inside every refined tile.
+            drop(applied);
+            self.apply_retained_pose(proof)?;
+            if let Some(bytes) = self.source_doc_bytes.take() {
+                self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), bytes));
+            }
         } else {
             let retain_index = crate::render_index::RenderIndex::preserved_by(source, patch);
             self.install_document_policy(DocumentInstall::Patch { applied, retain_index })?;
@@ -2325,7 +2337,7 @@ impl Engine {
         // use that provisional document to populate the frame's backdrop list.
         let extra = match plan.as_deref_mut() {
             Some(frame) if !self.layout_dirty => frame.padding(self, options, tile, density)?,
-            _ => crate::export::backdrop_padding(self, options, tile)?,
+            _ => crate::export::tile_backdrop_padding(self, options, tile)?,
         };
         let source = if density == 2 {
             crate::fidelity::source(options, 0, 0, w, h)?
@@ -2469,7 +2481,7 @@ impl Engine {
         h: u32,
     ) -> Result<Vec<u8>, String> {
         let tile = Rect::new(x as i32, y as i32, w, h);
-        let extra_halo = crate::export::backdrop_padding(self, options, tile)?;
+        let extra_halo = crate::export::tile_backdrop_padding(self, options, tile)?;
         self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(extra_halo))
     }
     pub(crate) fn export_tile_with_padding(
