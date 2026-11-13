@@ -123,12 +123,12 @@ impl GlassShape {
 pub(crate) fn next_glass_consumer<'a>(doc: &'a crate::scene::Document, lower: &Node, next: Option<&String>) -> Option<&'a Node> {
     if lower.effects.is_empty() || lower.mask || !lower.visible || lower.opacity != 1. || lower.blend!="normal" ||
         !lower.render_children().is_empty() ||
-        !lower.backdrop_effect().is_some_and(|e| e.kind=="glass" && e.glass.is_some()) ||
+        !lower.backdrop_effect().is_some_and(|e| e.evaluated_glass().is_some()) ||
         lower.effects.iter().filter(|e| e.visible).count()!=1 ||
         crate::interop::sketch_binding(doc,lower,"sketchSourceBlur").is_some() { return None; }
     let upper=doc.nodes.get(next?)?;
     (!upper.mask && upper.visible && upper.opacity==1. && upper.blend=="normal" && upper.render_children().is_empty() &&
-        upper.backdrop_effect().is_some_and(|e|e.kind=="background-blur" || e.glass.is_some()) &&
+        upper.backdrop_effect().is_some_and(|e| e.kind=="background-blur" || e.evaluated_glass().is_some()) &&
         crate::interop::sketch_binding(doc,upper,"sketchSourceBlur").is_none() &&
         upper.effects.iter().filter(|e|e.visible).count()==1 &&
         GlassShape::from_node(lower).is_some() && GlassShape::from_node(upper).is_some()).then_some(upper)

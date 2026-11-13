@@ -119,7 +119,7 @@ pub fn recipe(
     matrix: Transform,
     effect: &Effect,
 ) -> Result<Option<Replay>, String> {
-    let Some(glass) = &effect.glass else {
+    let Some(glass) = effect.evaluated_glass() else {
         return Ok(None);
     };
     if doc.color_management.is_some()

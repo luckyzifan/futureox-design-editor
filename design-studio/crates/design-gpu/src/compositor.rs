@@ -730,7 +730,8 @@ impl Compositor<'_, '_, '_> {
         unmasked: bool,
         sample: Option<usize>,
     ) -> Result<Surface, String> {
-        if let Some((shape, glass)) = n.glass_shape.zip(fx.glass.as_ref()) {
+        let resolved_glass = fx.evaluated_glass();
+        if let Some((shape, glass)) = n.glass_shape.zip(resolved_glass.as_ref()) {
             let values = futureox_design_kernel::optics::field_with_raster(
                 n.rect,
                 shape,
@@ -1767,7 +1768,7 @@ impl Compositor<'_, '_, '_> {
                     background = adjusted;
                 }
                 for i in 0..4 {
-                    let optical = if n.glass_shape.is_some() && fx.glass.is_some() {
+                    let optical = if n.glass_shape.is_some() && fx.evaluated_glass().is_some() {
                         Some(self.glass(background, masks[i], n, fx, true, Some(i))?)
                     } else {
                         None
@@ -2048,7 +2049,7 @@ impl Compositor<'_, '_, '_> {
             self.frame.draw(expanded, u, &[background], false, None)?;
             self.frame.release(&[background]);
             background = expanded;
-        } else if fx.kind == "glass" && (n.glass_shape.is_none() || fx.glass.is_none()) {
+        } else if fx.kind == "glass" && (n.glass_shape.is_none() || fx.evaluated_glass().is_none()) {
             let masks = (0..4)
                 .map(|i| self.mask(&n.fill, i))
                 .collect::<Result<Vec<_>, _>>()?;

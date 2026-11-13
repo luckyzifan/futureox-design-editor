@@ -1989,7 +1989,7 @@ impl Compiler<'_> {
                 glass_shape: n
                     .effects
                     .iter()
-                    .any(|e| e.glass.is_some())
+                    .any(|e| e.glass.is_some() || (e.visible && e.evaluated_glass().is_some()))
                     .then(|| crate::optics::GlassShape::from_node(n))
                     .flatten(),
                 capture_replay: if rgba8 && self.profile.is_export() {
@@ -2779,7 +2779,7 @@ impl Engine {
         if options.raster_profile != crate::fidelity::RasterProfile::Analytic {
             let mut has_glass=false;
             for n in nodes.values_mut() {
-                has_glass |= n.glass_shape.is_some() && n.effects.iter().any(|fx|fx.visible && fx.glass.is_some());
+                has_glass |= n.glass_shape.is_some() && n.effects.iter().any(|fx| fx.visible && fx.evaluated_glass().is_some());
                 n.fill.analytic_rect = None;
                 n.fill.sample_count = Some(4);
                 for path in n.strokes.iter_mut().map(|s| &mut s.path).chain(
