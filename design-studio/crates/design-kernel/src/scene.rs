@@ -1275,7 +1275,7 @@ impl Document {
                         || !export_ids.insert(&s.id)
                         || !matches!(
                             s.format.as_str(),
-                            "png" | "svg" | "jpeg" | "jpg" | "webp" | "pdf" | "pdf-vector" | "tiff" | "eps"
+                            "png" | "svg" | "jpeg" | "jpg" | "webp" | "pdf" | "pdf-vector" | "tiff" | "heic" | "eps"
                         )
                         || !s.scale.is_finite()
                         || !(0.0..=128.).contains(&s.scale)

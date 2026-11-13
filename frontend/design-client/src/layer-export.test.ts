@@ -95,6 +95,7 @@ test('TIFF is an executable layer preset while EPS stays round-trip only', () =>
   const d = blank(), shape = node('rectangle', 0, 0, 120, 90)
   shape.exportSettings = [
     { id: uid(), format: 'tiff', scale: 2, suffix: '@2x' },
+    { id: uid(), format: 'heic', scale: 1, suffix: '' },
     { id: uid(), format: 'eps', scale: 1, suffix: '' },
   ]
   d.nodes[shape.id] = shape
@@ -102,11 +103,12 @@ test('TIFF is an executable layer preset while EPS stays round-trip only', () =>
   const editor = new Editor(d); editors.push(editor)
   const layer = renderToStaticMarkup(createElement(NodeExportPanel, { editor, node: editor.state.doc.nodes[shape.id] }))
   expect(layer).toContain('value="tiff"')
+  expect(layer).toContain('value="heic"')
   expect(layer).not.toContain('TIFF（仅 Sketch 往返）')
   expect(layer).toContain('EPS（仅 Sketch 往返）')
   expect(layer).toContain('未压缩的 8 位')
   expect(layer).toContain('透明度')
-  expect(layer).not.toContain('HEIC')
+  expect(layer).toContain('无损 HEVC')
 })
 test('ordinary sRGB layer presets use the top bar sRGB encoding and HDR still requires a choice', () => {
   const d = blank(), shape = node('rectangle', 80, 88, 96, 64), child = node('rectangle', 4, 4, 8, 8)
