@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futureox_design_kernel::{
     binfmt, components,
     editing::{DocumentEditor, DocumentPatch},
@@ -22,6 +23,104 @@ fn reopen_fd(doc: &Document) -> Document {
     let json = serde_json::to_string(doc).unwrap();
     let fd = binfmt::encode_authored_json(&json).unwrap();
     serde_json::from_str(&binfmt::decode_authored_json(&fd).unwrap()).unwrap()
+}
+
+#[test]
+fn native_mixed_archive_preserves_utf16_ranges_and_run_styles() {
+    // NSKeyedArchiver output from AppKit. The first range includes an emoji
+    // and requires more than one byte in NSAttributeInfo's range length.
+    let archived =
+        include_bytes!("../../../../testing/fixtures/design/sketch-legacy-mixed-text.bplist");
+    let source = serde_json::json!({
+        "_class":"page","do_objectID":"page","name":"Mixed archived text","layers":[{
+            "_class":"text","do_objectID":"text","name":"Text","textBehaviour":2,
+            "frame":{"x":0,"y":0,"width":400,"height":100},
+            "attributedString":{"archivedAttributedString":{"_archive":STANDARD.encode(archived)}}
+        }]
+    });
+    let import = |page: &Value| {
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("document.json", options).unwrap();
+        zip.write_all(br#"{"_class":"document","pages":[{"_ref":"pages/page"}]}"#)
+            .unwrap();
+        zip.start_file("meta.json", options).unwrap();
+        zip.write_all(b"{}").unwrap();
+        zip.start_file("pages/page.json", options).unwrap();
+        zip.write_all(page.to_string().as_bytes()).unwrap();
+        interop::import_sketch_report(&zip.finish().unwrap().into_inner()).unwrap()
+    };
+    let report = import(&source);
+    let doc = report.document;
+    let node = &doc.nodes["text"];
+    assert_eq!(node.text, format!("{}😀\nTwo", "A".repeat(128)));
+    assert_eq!(node.text_runs.len(), 2);
+    let first = &node.text_runs[0];
+    let second = &node.text_runs[1];
+    assert_eq!((first.start, first.end), (0, 131));
+    assert_eq!((second.start, second.end), (131, 134));
+    assert_eq!(first.font_size, Some(15.));
+    assert_eq!(
+        first.color.as_deref(),
+        Some("color(srgb 0.2 0.4 0.6 / 0.8)")
+    );
+    assert_eq!(second.font_size, Some(19.));
+    assert_eq!(second.color.as_deref(), Some("#996633"));
+    assert_eq!(second.letter_spacing, Some(1.5));
+    let paragraph = second.paragraph.as_ref().unwrap();
+    assert_eq!(paragraph.align, "end");
+    assert_eq!(paragraph.minimum_line_height, 16.);
+    assert_eq!(paragraph.maximum_line_height, 19.);
+    assert_eq!(paragraph.spacing, 4.);
+    let meta = &doc.design_system.as_ref().unwrap().sketch_containers["nodeMetadata"];
+    let names: Value = serde_json::from_str(
+        meta["text"]["bindings"]["sketchSourceFonts"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(names["runs"]["0"], "Menlo-Regular");
+    assert_eq!(names["runs"]["1"], "Menlo-Bold");
+
+    let fd = reopen_fd(&doc);
+    assert_eq!(fd.nodes["text"].text_runs, node.text_runs);
+    let reimport = interop::import_sketch_report(&interop::export_sketch(&fd).unwrap()).unwrap();
+    let reimported = &reimport.document.nodes["text"];
+    assert_eq!(reimported.text, node.text);
+    assert_eq!(reimported.text_runs[1].letter_spacing, Some(1.5));
+    assert_eq!(reimported.text_runs[1].paragraph.as_ref(), Some(paragraph));
+
+    // A length that bisects the emoji must not build a malformed kernel run.
+    let mut damaged = plist::Value::from_reader(Cursor::new(archived)).unwrap();
+    let objects = damaged
+        .as_dictionary_mut()
+        .unwrap()
+        .get_mut("$objects")
+        .unwrap()
+        .as_array_mut()
+        .unwrap();
+    let info = objects[1].as_dictionary().unwrap()["NSAttributeInfo"]
+        .as_uid()
+        .unwrap()
+        .get();
+    objects[info as usize]
+        .as_dictionary_mut()
+        .unwrap()
+        .insert("NS.data".into(), plist::Value::Data(vec![129, 1, 0, 5, 1]));
+    let mut binary = Vec::new();
+    damaged.to_writer_binary(&mut binary).unwrap();
+    let mut broken = source;
+    broken["layers"][0]["attributedString"]["archivedAttributedString"]["_archive"] =
+        Value::String(STANDARD.encode(binary));
+    let degraded = import(&broken);
+    assert_eq!(degraded.document.nodes["text"].text, node.text);
+    assert!(degraded.document.nodes["text"].text_runs.is_empty());
+    assert!(
+        degraded
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("sketch-archived-text-attributes-partially-supported"))
+    );
 }
 
 #[test]

@@ -2136,6 +2136,7 @@ impl<'a> Importer<'a> {
             "text" => {
                 let mut attr = layer.get("attributedString").unwrap_or(&Value::Null);
                 let decoded;
+                let mut from_archive = false;
                 if let Some(archive) = crate::sketch::archived_text::legacy_archive(attr) {
                     match archive.and_then(crate::sketch::archived_text::decode) {
                         Ok(value) => {
@@ -2144,6 +2145,7 @@ impl<'a> Importer<'a> {
                             }
                             decoded = value;
                             attr = &decoded;
+                            from_archive = true;
                         }
                         Err(reason) => import_lossy.push(reason.into()),
                     }
@@ -2217,7 +2219,16 @@ impl<'a> Importer<'a> {
                             .and_then(|f| f.get("attributes"))
                             .and_then(|f| f.get("size"))
                             .and_then(Value::as_f64);
-                        let color = a.get("MSAttributedStringColorAttribute").map(|c| gradient_stop_color(c, self.color_space));
+                        let color = a.get("MSAttributedStringColorAttribute").map(|c| {
+                            if from_archive && let Some(value) = c["archiveSrgb"].as_str() {
+                                return value.to_owned();
+                            }
+                            gradient_stop_color(c, self.color_space)
+                        });
+                        let kerning = a.get("kerning").and_then(Value::as_f64)
+                            .or(from_archive.then_some(0.));
+                        let run_spacing = kerning.filter(|value| !node.text_runs.is_empty()
+                            && *value != style.letter_spacing);
                         let font_name = a
                             .get("MSAttributedStringFontAttribute")
                             .and_then(|f| f.get("attributes"))
@@ -2265,7 +2276,7 @@ impl<'a> Importer<'a> {
                             font_size,
                             weight: a.pointer("/MSAttributedStringFontAttribute/attributes/variation/2003265652")
                                 .and_then(Value::as_f64).map(|weight| weight as f32),
-                            letter_spacing: None,
+                            letter_spacing: run_spacing,
                             line_height: None,
                         });
                         // first run fills the defaults
@@ -2336,7 +2347,7 @@ impl<'a> Importer<'a> {
                                     import_lossy.push("paragraph-tightening-not-modeled".into());
                                 }
                             }
-                            if let Some(kerning) = a.get("kerning").and_then(Value::as_f64) {
+                            if let Some(kerning) = kerning {
                                 style.letter_spacing = kerning;
                             }
                             // 22 号字典 §4 remaining run keys. The kernel
@@ -3693,6 +3704,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if doc.requires_schema18() { version=version.max(18); }
     if doc.requires_schema20() { version=version.max(20); }
     if doc.requires_schema19() { version=version.max(19); }
+    if doc.requires_schema21() { version=version.max(21); }
     if doc.requires_schema22() { version=version.max(22); }
     doc.schema_version = version;
     Ok(doc)
@@ -6970,6 +6982,7 @@ fn export_layer_impl(
                                      size: f64,
                                      weight: f32,
                                      color: Option<&str>,
+                                     letter_spacing: f64,
                                      underline: bool,
                                      strikethrough: bool,
                                      case: Option<&crate::font::TextCase>,
@@ -6993,8 +7006,8 @@ fn export_layer_impl(
                             hex_to_rgba(c, 1., images.color_settings)?,
                         );
                     }
-                    if kerning != 0. {
-                        attrs.insert("kerning".into(), json!(kerning));
+                    if letter_spacing != 0. || kerning != 0. {
+                        attrs.insert("kerning".into(), json!(letter_spacing));
                     }
                     if underline {
                         attrs.insert("underlineStyle".into(), json!(1));
@@ -7100,6 +7113,7 @@ fn export_layer_impl(
                             n.font_size,
                             default_weight,
                             default_color.as_deref(),
+                            kerning,
                             false,
                             false,
                             None,
@@ -7113,6 +7127,7 @@ fn export_layer_impl(
                         run.font_size.unwrap_or(n.font_size),
                         run.weight.unwrap_or(default_weight),
                         run.color.as_deref().or(default_color.as_deref()),
+                        run.letter_spacing.unwrap_or(kerning),
                         run.underline,
                         run.strikethrough,
                         run.text_case.as_ref(),
@@ -7128,6 +7143,7 @@ fn export_layer_impl(
                         n.font_size,
                         default_weight,
                         default_color.as_deref(),
+                        kerning,
                         false,
                         false,
                         None,
