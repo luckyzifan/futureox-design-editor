@@ -400,7 +400,10 @@ test('component inventory maps packaged inputs and keeps the lockfile out of the
     const marker = `${crate.name}/${crate.version}/`
     for (const notice of crate.notices) {
       const relative = notice.path.slice(notice.path.indexOf(marker) + marker.length)
-      const crateCopy = path.join(dir, relative)
+      // freetype-sys vendors FreeType's source. Its notice is nested in
+      // the registry archive and shipped beside the binding's MIT license.
+      const bundledFreeType = crate.name === 'freetype-sys' && relative === 'LICENSE-FREETYPE'
+      const crateCopy = path.join(dir, bundledFreeType ? 'freetype2/docs/FTL.TXT' : relative)
       if (existsSync(crateCopy)) {
         const digest = createHash('sha256').update(readFileSync(crateCopy)).digest('hex')
         assert.equal(digest, notice.sha256, `${crate.id} ${relative}`)
