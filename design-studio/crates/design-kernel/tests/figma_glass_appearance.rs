@@ -5,8 +5,9 @@
 //! matches. Downsample and the filter store stay on the software byte contract.
 //!
 //! Measured on this Linux CPU build against browser-2026-10-07 (PNG checksums
-//! unchanged). Backdrop is unchanged. figmaSoftware glass pixel counts fell;
-//! the max channel did not.
+//! unchanged). Backdrop is unchanged. The combined aggregate's glass-full
+//! document now carries the same frozen readback, so its figma profile matches
+//! that PNG. figmaSoftware glass pixel counts fell; the max channel did not.
 //!
 //! | case | profile | main pixels / max | candidate |
 //! | --- | --- | ---: | ---: |
@@ -186,6 +187,51 @@ fn legacy_zero_refraction_frost_matches_the_frozen_pngs() {
         let (pixels, max) = gap(&render(case, "figma"), &reference_of(&path, case));
         assert_eq!((pixels, max), (0, 0), "{file} {id}");
     }
+}
+
+/// The combined aggregate kept the pre-schema-5 stand-in (`amount` 4,
+/// `opacity` 0.5) for the same Chrome PNG. Those two numbers are
+/// `depth * refraction` and `lightIntensity`; they cannot store dispersion
+/// or the light angle. The document now carries the frozen readback, and
+/// the figma profile matches the unchanged PNG. Backdrop blur is not part
+/// of this mapping.
+#[test]
+fn combined_glass_full_uses_the_frozen_readback() {
+    let (path, cases) = manifest("combined-2026-10-08/cases.json");
+    let case = case(&cases, "glass-full");
+    let provenance: Value = serde_json::from_str(include_str!(
+        "../../../../frontend/design-client/public/fidelity/browser-2026-10-07/provenance.json"
+    ))
+    .unwrap();
+    let source = provenance["frames"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|frame| frame["case"] == "glass-full")
+        .unwrap()["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["name"] == "lens")
+        .unwrap()["effects"][0]
+        .clone();
+    let effect = &case["document"]["nodes"]["lens"]["effects"][0];
+    assert_eq!(case["strictComparable"], true);
+    assert_eq!(case["document"]["schemaVersion"], 5);
+    assert_eq!(effect["radius"], source["radius"]);
+    assert_eq!(effect["glass"]["depth"], source["depth"]);
+    assert_eq!(effect["glass"]["refraction"], source["refraction"]);
+    assert_eq!(effect["glass"]["dispersion"], source["dispersion"]);
+    assert_eq!(effect["glass"]["lightAngle"], source["lightAngle"]);
+    assert_eq!(effect["glass"]["lightIntensity"], source["lightIntensity"]);
+    let (pixels, max) = gap(&render(case, "figma"), &reference_of(&path, case));
+    assert_eq!((pixels, max), (0, 0));
+    let (software_pixels, software_max) =
+        gap(&render(case, "figmaSoftware"), &reference_of(&path, case));
+    assert!(
+        software_pixels <= 1579 && software_max <= 3,
+        "figmaSoftware {software_pixels}/{software_max}"
+    );
 }
 
 #[test]
