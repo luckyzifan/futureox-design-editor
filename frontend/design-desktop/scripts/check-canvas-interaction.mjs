@@ -398,7 +398,7 @@ try {
     checked('native Space/hand drag and Shift wheel preserve exact camera deltas without a document mutation')
     await click('minimize workspace',page.getByRole('button',{name:'收起界面',exact:true}))
     await expect(page.locator('.workspace-rail')).toBeHidden();await expect(page.locator('.layers-panel')).toBeHidden()
-    await canvas.focus();await key('Meta+Shift+Backslash');await expect(page.locator('.workspace-rail')).toBeVisible();await expect(page.locator('.layers-panel')).toBeVisible();await settle()
+    await canvas.focus();await key('Meta+Shift+Backslash');await expect(page.locator('.workspace-rail')).toBeHidden();await expect(page.locator('.layers-panel')).toBeVisible();await settle()
     await page.screenshot({path:path.join(output,'09-native-navigation.png')})
     checked('native minimized workspace and macOS shortcut restore the side panels')
   }

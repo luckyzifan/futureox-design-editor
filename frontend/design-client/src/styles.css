@@ -1723,16 +1723,19 @@ footer button {
 .scale-anchor button { padding: 3px; min-height: 24px; color: var(--workspace-muted); }
 .scale-anchor [aria-checked=true] { color: var(--workspace-accent); }
 
-/* One shared local editor shell is used by the browser and Electron. */
-.editor-shell { display: grid; grid-template-columns: 57px max-content minmax(0, 1fr) var(--workspace-inspector-width); grid-template-rows: auto 64px minmax(0, 1fr) auto; position: relative; }
+/* One shared local editor shell is used by the browser and Electron.
+   Column 1 stays a zero track. Official Figma and Sketch have no far-left
+   icon rail or mark column; the pages/layers sidebar is the first band. */
+.editor-shell { display: grid; grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width); grid-template-rows: auto 64px minmax(0, 1fr) auto; position: relative; }
 .editor-shell > .editor-header, .editor-shell > .editor-workspace { display: contents; }
 /* The accessible name is localized; column span follows the stable marker. */
 .editor-shell > nav[data-workspace-tabs] { grid-column: 1 / -1; grid-row: 1; }
-.editor-shell .workspace-rail { grid-column: 1; grid-row: 2 / 4; padding-top: 64px; }
-.editor-shell .editor-header > .brand { grid-column: 1; grid-row: 2; width: 57px; height: 48px; padding: 10px 15px; align-self: start; z-index: 31; }
+.editor-shell .workspace-rail { display: none; }
+.editor-shell .document-title > .brand { grid-column: 1; grid-row: 1; width: 24px; height: 24px; min-width: 0; min-height: 0; margin: 0; padding: 0; gap: 0; align-self: center; justify-self: center; z-index: 31; }
+.editor-shell .document-title > .brand .brand-mark { width: 22px; height: 22px; }
 .editor-shell .brand strong, .editor-shell .brand > svg, .editor-shell .header-divider { display: none; }
-.editor-shell .editor-header .document-title { grid-column: 2; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: 26px 18px; gap: 2px 4px; padding: 10px 10px 8px 14px; min-width: 0; contain: inline-size; background: var(--workspace-panel); border-bottom: 1px solid var(--workspace-border); z-index: 30; }
-.editor-shell .document-title input { grid-column: 1; grid-row: 1; width: 100%; min-width: 0; padding: 0; font-weight: 600; font-size: 12px; text-overflow: ellipsis; }
+.editor-shell .editor-header .document-title { grid-column: 2; grid-row: 2; display: grid; grid-template-columns: 24px minmax(0, 1fr) 28px; grid-template-rows: 26px 18px; gap: 2px 4px; padding: 10px 10px 8px 14px; min-width: 0; contain: inline-size; background: var(--workspace-panel); border-bottom: 1px solid var(--workspace-border); z-index: 30; }
+.editor-shell .document-title input { grid-column: 2; grid-row: 1; width: 100%; min-width: 0; padding: 0; font-weight: 600; font-size: 12px; text-overflow: ellipsis; }
 .editor-shell .document-title .document-location { display: block; grid-column: 1 / -1; grid-row: 2; justify-self: start; padding: 0; font-size: 11px; }
 .editor-shell .document-title .document-location:hover,
 .editor-shell .document-title .document-location:focus-visible { color: var(--workspace-text); }
@@ -1742,7 +1745,7 @@ footer button {
 @media (max-width: 1250px) {
   .editor-shell .document-title .document-location { display: block; }
 }
-.editor-shell .document-title > button[aria-pressed] { grid-column: 2; grid-row: 1; width: 28px; padding: 4px; }
+.editor-shell .document-title > button[aria-pressed] { grid-column: 3; grid-row: 1; width: 28px; padding: 4px; }
 .editor-shell .document-title > b, .editor-shell .document-title .draft-badge { display: none; }
 .editor-shell .layers-panel { grid-column: 2; grid-row: 3; }
 .editor-shell .layers-panel > .workspace-title { display: none; }
@@ -1780,9 +1783,9 @@ footer button {
 .editor-shell > footer > div { display: none; }
 .editor-shell .floating-toolbar { bottom: 12px; }
 .editor-shell > .animation-panel { grid-column: 1 / -1; grid-row: 4; }
-.editor-shell.chrome-hide-layers { grid-template-columns: 57px 0 minmax(0, 1fr) var(--workspace-inspector-width); }
-.editor-shell.chrome-hide-inspector { grid-template-columns: 57px max-content minmax(0, 1fr) 0; }
-.editor-shell.chrome-hide-layers.chrome-hide-inspector { grid-template-columns: 57px 0 minmax(0, 1fr) 0; }
+.editor-shell.chrome-hide-layers { grid-template-columns: 0px 0 minmax(0, 1fr) var(--workspace-inspector-width); }
+.editor-shell.chrome-hide-inspector { grid-template-columns: 0px max-content minmax(0, 1fr) 0; }
+.editor-shell.chrome-hide-layers.chrome-hide-inspector { grid-template-columns: 0px 0 minmax(0, 1fr) 0; }
 .editor-shell.chrome-minimized { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell.chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) 0; }
 .editor-shell.chrome-hide-layers .document-title { grid-column: 3; justify-self: start; width: 240px; border: 1px solid var(--workspace-border); border-radius: 8px; margin: 8px; }
@@ -1975,8 +1978,7 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .editor-shell .floating-toolbar button { transition: background-color 160ms var(--workspace-ease), color 160ms var(--workspace-ease); }
 .editor-shell .floating-toolbar button:active:not(:disabled) { transform: none; background: var(--workspace-hover); }
 @media (max-width: 900px) {
-  .editor-shell { --workspace-panel-cap: calc(100vw - 80px); grid-template-columns: 48px 0 minmax(0, 1fr) 0 !important; }
-  .editor-shell .workspace-rail, .editor-shell .editor-header > .brand { width: 48px; }
+  .editor-shell { --workspace-panel-cap: calc(100vw - 80px); grid-template-columns: 0px 0 minmax(0, 1fr) 0 !important; }
   .editor-shell .adaptive-layers-shell { grid-column: 3; grid-row: 3; align-self: stretch; justify-self: start; z-index: 35; width: min(var(--workspace-layers-width), calc(100vw - 80px)); border: 1px solid var(--workspace-border); border-radius: 8px; }
   .editor-shell .properties-workspace { grid-column: 3; grid-row: 3; justify-self: end; z-index: 36; width: min(var(--workspace-inspector-width), calc(100vw - 80px)); padding-top: 0; border: 1px solid var(--workspace-border); border-radius: 8px; }
   .editor-shell .editor-header .document-title { grid-column: 3; width: min(220px, 45vw); justify-self: start; margin: 8px; border-radius: 8px; }
@@ -2374,7 +2376,7 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell.design-agent-open .properties-content { display: none; }
 .local-window-popover { position: fixed; top: auto; right: auto; }
 
-/* Figma: left rail, bottom floating tools, white panels, design-tab inspector. */
+/* Figma: pages and layers from the window edge, bottom floating tools, white panels, design-tab inspector. */
 .editor-shell[data-ui-mode="figma"] {
   --workspace-accent: #0d99ff;
   --workspace-accent-hover: #0b86e0;
@@ -2390,7 +2392,7 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-muted: #5d6673;
 }
 .editor-shell[data-ui-mode="figma"] .editor-header .document-title {
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: 24px minmax(0, 1fr) 32px;
   grid-template-rows: 32px 18px;
   padding: 6px 10px 6px 14px;
 }
@@ -2438,9 +2440,9 @@ html[data-reduced-motion=true] .animation-modal * {
 
 /* Sketch: macOS document toolbar across the top of the canvas, no left tool rail,
    page list above layers, inspector sections as grouped white cards. */
-.editor-shell[data-ui-mode="sketch"].chrome-hide-layers { grid-template-columns: 44px 0 minmax(0, 1fr) var(--workspace-inspector-width); }
-.editor-shell[data-ui-mode="sketch"].chrome-hide-inspector { grid-template-columns: 44px max-content minmax(0, 1fr) 0; }
-.editor-shell[data-ui-mode="sketch"].design-agent-open { grid-template-columns: 44px max-content minmax(0, 1fr) var(--workspace-inspector-width); }
+.editor-shell[data-ui-mode="sketch"].chrome-hide-layers { grid-template-columns: 0px 0 minmax(0, 1fr) var(--workspace-inspector-width); }
+.editor-shell[data-ui-mode="sketch"].chrome-hide-inspector { grid-template-columns: 0px max-content minmax(0, 1fr) 0; }
+.editor-shell[data-ui-mode="sketch"].design-agent-open { grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell[data-ui-mode="sketch"] {
   --workspace-accent: #007aff;
   --workspace-accent-hover: #0063cc;
@@ -2452,13 +2454,12 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-field: #ffffff;
   --workspace-text: #1d1d1f;
   --workspace-muted: #6e6e73;
-  grid-template-columns: 44px max-content minmax(0, 1fr) var(--workspace-inspector-width);
+  grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width);
   /* Row 2 can grow with a wrapped action bar. The canvas starts on the next
      row, so that bar cannot sit on top of the toolbar. */
   grid-template-rows: auto minmax(64px, max-content) minmax(0, 1fr) auto;
 }
 .editor-shell[data-ui-mode="sketch"] .workspace-rail { display: none; }
-.editor-shell[data-ui-mode="sketch"] .editor-header > .brand { grid-column: 1; grid-row: 2; width: 44px; height: 40px; padding: 6px 8px; justify-content: center; }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized,
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) 0; }
