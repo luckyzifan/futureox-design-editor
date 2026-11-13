@@ -15,7 +15,8 @@ import {
 import type { BackendPreference } from './gpu/types'
 import { canReplaceFallback, frameTransform, presentationMatches, presentationContentMatches, referencePresentationPolicy, surfaceMetrics, useDevicePixelRatio, useDisplayCapability, type ExactPresentation } from './presentation'
 import { previewCameraScaleWithinLimit, previewPlacementIntersects, showRetainedPreview } from './tile-preview'
-import { canvasStatusLabel } from '../canvas-status-label'
+import { canvasStatusLabel, presentKernelStatus } from '../canvas-status-label'
+import { useInterfacePreferences } from '../interface-preference'
 type Request = {
   epoch: number
   backend: BackendPreference
@@ -96,6 +97,7 @@ export function ReferenceSurface(
   },
 ) {
   const capability = useDisplayCapability()
+  const { locale } = useInterfacePreferences()
   const devicePixelRatio = useDevicePixelRatio()
   const latestPixelRatio = useRef(devicePixelRatio)
   latestPixelRatio.current = devicePixelRatio
@@ -580,7 +582,7 @@ export function ReferenceSurface(
           zIndex: 4,
         }}
       >
-        {canvasStatusLabel(status)}
+        {presentKernelStatus(status, locale)}
 
       </div>}
     </div>

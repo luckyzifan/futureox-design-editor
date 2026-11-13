@@ -2997,7 +2997,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         vectorSupport={vectorPreviewSupport} captureFrame={presented} epoch={editor.sessionGeneration} scene={interactionScene}
         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
-      {editPreviewVisible && <span className="canvas-edit-status" role="status">编辑预览 · 正在细化</span>}
+      {editPreviewVisible && <span className="canvas-edit-status" role="status">{chromeCopy.editPreviewRefining}</span>}
       {['pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
         <div
           className="pencil-controls"
@@ -3005,7 +3005,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           onDoubleClick={(e) => e.stopPropagation()}
         >
           <NumberField
-            label="笔宽"
+            label={chromeCopy.brushWidth}
+            historyLabel="笔宽"
+            unit="length"
             value={state[(state.tool as FreehandTool)].width}
             min={0.5}
             max={200}
@@ -3013,7 +3015,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             onChange={(width) => { const tool = (state.tool as FreehandTool); editor.set({ [tool]: { ...state[tool], width } }) }}
           />
           <NumberField
-            label="平滑"
+            label={chromeCopy.brushSmoothing}
+            historyLabel="平滑"
             value={state[(state.tool as FreehandTool)].smoothing}
             min={0.1}
             max={5}
@@ -3022,29 +3025,30 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           />
           <input
             type="color"
-            aria-label="画笔颜色"
+            aria-label={chromeCopy.brushColor}
             value={state[(state.tool as FreehandTool)].color}
             onChange={(e) => { const tool = (state.tool as FreehandTool); editor.set({ [tool]: { ...state[tool], color: e.target.value } }) }}
           />
           <label>
             <input
               type="checkbox"
+              aria-label={chromeCopy.brushPressure}
               checked={state[(state.tool as FreehandTool)].pressure}
               disabled={state.tool !== 'brush'}
               onChange={(e) =>
                 editor.set({ brush: { ...state.brush, pressure: e.target.checked } })
               }
             />
-            笔压
+            {chromeCopy.brushPressure}
           </label>
-          <small>鼠标 / 触控笔绘制 · Esc 取消 · V 选择</small>
+          <small>{chromeCopy.brushHelp}</small>
         </div>
       )}
       <svg
         className="stage"
         width={size.width}
         height={size.height}
-        aria-label="设计画布"
+        aria-label={chromeCopy.canvasSurface}
         style={{ position: 'relative', zIndex: 3, background: 'transparent' }}
       >
         {pixelGridPath && (!gpuOverlay||presented?.gpuPixelGrid===false) && (
@@ -3666,7 +3670,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       </div>}
       <div className="canvas-caption">
         <span className="status-dot" />
-        自由画布<span>拖入图片 · 双击编辑矢量 · 空格拖动画布</span>
+        {chromeCopy.freeCanvas}<span>{chromeCopy.freeCanvasHint}</span>
       </div>
       {pen && (
         <div className="pen-hint">

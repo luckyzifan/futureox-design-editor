@@ -8,15 +8,18 @@ import type { Root } from 'react-dom/client'
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Inspector } from './Inspector'
+import { AssetsPanel } from './AssetsPanel'
 import { LocalHome } from './LocalHome'
+import { SketchLibraryLocate } from './SketchLibraryLocate'
 import { Editor } from './engine'
-import { blank, node } from './model'
+import { blank, effect, node } from './model'
 import { createInterfacePreference, interfacePreference, INTERFACE_PREFERENCE_KEY, type InterfaceLocale, type UiMode } from './interface-preference'
 import { PendingEditContext } from './pending-edit-context'
 import { DesktopSession, type LeaveDecision } from './desktop-session'
 import { operationStatusText } from './operation-status-messages'
 import { canvasStatusLabel } from './canvas-status-label'
 import { translateProfessional } from './professional-dialog-messages'
+import { presentKernelStatus } from './canvas-status-label'
 import type { DesktopBridge } from './desktop'
 import type { HomeSource } from './local-home-source'
 
@@ -339,4 +342,91 @@ test('professional dialog catalog still translates known chrome and leaves autho
   expect(translateProfessional('未命名设计', 'en')).toBe('未命名设计')
   expect(translateProfessional('历史版本', 'zh-CN')).toBe('历史版本')
   expect(translateProfessional('Choose a .fd file', 'en')).toBe('Choose a .fd file')
+  expect(presentKernelStatus('CPU · 118 ms · 0 图层', 'en')).toBe('CPU · 118 ms · 0 layers')
+  expect(presentKernelStatus('CPU · 118 ms · 1 图层 · 已降级', 'en')).toBe('CPU · 118 ms · 1 layer · degraded')
+  expect(presentKernelStatus('正在初始化自研渲染内核…', 'en')).toBe('Starting the rendering kernel…')
+  expect(presentKernelStatus('CPU · 118 ms · 0 图层', 'zh-CN')).toBe('CPU · 118 ms · 0 图层')
+  expect(translateProfessional('缺少外部符号', 'en')).toBe('Missing external symbol')
+  expect(translateProfessional('按 ID 核对并重新打开', 'en')).toBe('Match by ID and reopen')
+})
+
+test('English fill, mask, blur, component assets and sketch library chrome follow the locale', async () => {
+  const doc = blank('未命名设计')
+  doc.schemaVersion = 19
+  doc.pages[0].name = '页面 1'
+  const shape = node('frame', 12, 18, 80, 48)
+  shape.name = 'Frame A'
+  shape.mask = true
+  shape.maskType = 'outline'
+  shape.effects = [effect('zoom-blur'), effect('motion-blur')]
+  shape.component = { variants: { Size: 'Large' }, properties: {} }
+  doc.nodes[shape.id] = shape
+  doc.pages[0].children = [shape.id]
+  editor = new Editor(doc)
+  editor.select([shape.id])
+  const before = editor.state.doc
+  const diagnosis = 'unsupported lossless conversion: symbol 6F0139C2。这是缺失的外部库符号定义。作者图层 Frame A'
+  for (const uiMode of ['figma', 'sketch'] as const) {
+    await act(async () => {
+      interfacePreference.set({ locale: 'en', uiMode })
+      root.render(<PendingEditContext.Provider value={editor!}><Inspector editor={editor!} /><AssetsPanel editor={editor!} /></PendingEditContext.Provider>)
+    })
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search components"]')
+    expect(search, uiMode).not.toBeNull()
+    await act(async () => {
+      search!.focus()
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'Frame')
+      search!.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(search!.value).toBe('Frame')
+    expect(document.querySelector('option[value="noise-image"]')?.textContent).toBe('Noise image preset')
+    expect(document.querySelector('option[value="gaussian-blur"]')?.textContent).toBe('Gaussian blur')
+    expect(document.querySelector('option[value="motion-blur"]')?.textContent).toBe('Motion blur')
+    expect(document.querySelector('option[value="zoom-blur"]')?.textContent).toBe('Zoom blur')
+    expect(document.querySelector('option[value="color-controls"]')?.textContent).toBe('Color adjustments')
+    expect(document.querySelector('option[value="outline"]')?.textContent).toBe('Outline')
+    expect(document.querySelector('input[aria-label="Zoom blur amount"]')).not.toBeNull()
+    expect(document.querySelector('input[aria-label="Direction °"]')).not.toBeNull()
+    expect(document.body.textContent).toContain('◇ Create component from selection')
+    expect(document.body.textContent).toContain('Click to insert, or drag onto the canvas')
+    expect(document.body.textContent).toContain('◇ Frame A')
+    expect(document.body.textContent).toContain('Large')
+    expect(document.body.textContent).not.toContain('搜索组件')
+    expect(document.body.textContent).not.toContain('噪声图片预设')
+    expect(editor.state.doc).toBe(before)
+    await act(async () => { interfacePreference.set({ locale: 'zh-CN', uiMode }) })
+    expect(search!.value).toBe('Frame')
+    expect(document.querySelector('option[value="noise-image"]')?.textContent).toBe('噪声图片预设')
+    expect(document.querySelector('option[value="outline"]')?.textContent).toBe('轮廓')
+    expect(document.querySelector('input[aria-label="缩放模糊强度"]')).not.toBeNull()
+    expect(document.querySelector('input[aria-label="方向 °"]')).not.toBeNull()
+    expect(document.querySelector('input[aria-label="搜索组件"]')).toBe(search)
+    expect(document.body.textContent).toContain('◇ 从选择创建组件')
+    expect(document.body.textContent).toContain('◇ Frame A')
+    expect(document.body.textContent).toContain('Large')
+    expect(editor.state.doc.nodes[shape.id].name).toBe('Frame A')
+    expect(editor.state.doc.name).toBe('未命名设计')
+    expect(editor.state.doc.pages[0].name).toBe('页面 1')
+    expect(editor.canUndo).toBe(false)
+  }
+  await act(async () => {
+    interfacePreference.set({ locale: 'en', uiMode: 'figma' })
+    root.render(<SketchLibraryLocate block={{ kind: 'symbol', canAttach: true }} error={diagnosis} busy={false} onClose={() => {}} onAttach={async () => {}} />)
+  })
+  expect(document.querySelector('[aria-label="Locate Sketch library"]')).not.toBeNull()
+  expect(document.querySelector('[aria-label="Choose a local Sketch library"]')).not.toBeNull()
+  expect(document.body.textContent).toContain('Missing external symbol')
+  expect(document.body.textContent).toContain('Match by ID and reopen')
+  expect(document.body.textContent).toContain('Technical details')
+  expect(document.body.textContent).toContain('6F0139C2')
+  expect(document.body.textContent).toContain('作者图层 Frame A')
+  expect(document.body.textContent).not.toContain('缺少外部符号')
+  expect(document.body.textContent).not.toContain('Author layer')
+  await act(async () => { interfacePreference.set({ locale: 'zh-CN', uiMode: 'sketch' }) })
+  expect(document.querySelector('[aria-label="定位 Sketch 库"]')).not.toBeNull()
+  expect(document.body.textContent).toContain('缺少外部符号')
+  expect(document.body.textContent).toContain('按 ID 核对并重新打开')
+  expect(document.body.textContent).toContain('作者图层 Frame A')
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
 })
