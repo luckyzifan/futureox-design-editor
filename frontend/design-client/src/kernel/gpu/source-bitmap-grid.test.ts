@@ -1,5 +1,5 @@
 import {describe,it,expect,vi,afterEach} from 'vitest'
-import {compactSourceAxes,hostedDenseByteFrame,hostedStraightFloatInputs,noteHostedStraightImage,readDenseSourceGrid,readDenseSourceGridBytes,sampleHostedByteImage,straightImageUploadRows} from './source-bitmap-grid'
+import {compactSourceAxes,denseSourceReadAccounting,hostedDenseByteFrame,hostedStraightFloatInputs,noteHostedStraightImage,readDenseSourceGrid,readDenseSourceGridBytes,sampleHostedByteImage,straightImageUploadRows} from './source-bitmap-grid'
 import {straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
 afterEach(()=>vi.unstubAllGlobals())
 describe('file-backed image grid',()=>{
@@ -79,6 +79,64 @@ it('straight uploads pad only the WebGPU row stride and keep every logical texel
  expect(padded.bytes[width*4]).toBe(0)
  expect(()=>straightImageUploadRows(bytes,width,height-1)).toThrow('Invalid straight sRGB source')
 })
+it('a rotated footprint reads each source row once and keeps the pair tap grid',()=>{
+ const iw=48,ih=36,b={x:0,y:0,w:24,h:18}
+ const image=new Uint8Array(iw*ih*4)
+ for(let i=0;i<image.length;i++)image[i]=(i*17+3)&255
+ const field=new Float32Array(b.w*b.h*4)
+ const radians=37*Math.PI/180,cos=Math.cos(radians),sin=Math.sin(radians)
+ for(let y=0;y<b.h;y++)for(let x=0;x<b.w;x++){
+  const dx=x+0.5-b.w/2,dy=y+0.5-b.h/2
+  const sx=Math.floor(cos*dx-sin*dy+iw/2),sy=Math.floor(sin*dx+cos*dy+ih/2)
+  const off=(y*b.w+x)*4
+  if(sx<0||sy<0||sx>=iw||sy>=ih)field.set([-2,-2,0,0],off)
+  else field.set([sx,sy,0.25,0.75],off)
+ }
+ const urls:string[]=[]
+ vi.stubGlobal('XMLHttpRequest',class{
+  status=200;responseType='';response:ArrayBuffer=new ArrayBuffer(0);url=''
+  open(_method:string,url:string){this.url=url}
+  send(payload:Uint32Array){
+   urls.push(this.url)
+   expect(this.url).toContain('&span=1')
+   const [x,y,w,h]=payload
+   const raw=new Uint8Array(w*h*4)
+   for(let row=0;row<h;row++)raw.set(image.subarray(((y+row)*iw+x)*4,((y+row)*iw+x+w)*4),row*w*4)
+   this.response=raw.buffer
+  }
+ })
+ const bytes=readDenseSourceGridBytes('source?samples=1',field.slice(),b,iw,ih)
+ const accounting=denseSourceReadAccounting()
+ expect(urls).toHaveLength(1)
+ expect(accounting.mode).toBe('span')
+ expect(accounting.requests).toBe(1)
+ expect(accounting.inFlightBytes).toBe(accounting.sourceBytes)
+ expect(accounting.residentBytes).toBe(accounting.sourceBytes)
+ expect(accounting.sourceBytes).toBeLessThan(b.w*b.h*16)
+ expect(accounting.sourceBytes).toBeGreaterThan(0)
+ const width=b.w*2
+ const expected=new Uint8Array(width*b.h*2*4)
+ const source=field.slice()
+ for(let i=0;i<b.w*b.h;i++){
+  const sx=source[i*4],sy=source[i*4+1]
+  if(sx===-2)continue
+  const ox=2*(i%b.w),oy=2*Math.floor(i/b.w)
+  for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++){
+   const px=Math.min(iw-1,sx+dx),py=Math.min(ih-1,sy+dy)
+   expected.set(image.subarray((py*iw+px)*4,(py*iw+px)*4+4),((oy+dy)*width+ox+dx)*4)
+  }
+ }
+ expect(Array.from(bytes)).toEqual(Array.from(expected))
+ const remapped=field.slice()
+ readDenseSourceGridBytes('source?samples=1',remapped,b,iw,ih)
+ for(let i=0;i<b.w*b.h;i++)if(source[i*4]!==-2){
+  expect(remapped[i*4]).toBe(2*(i%b.w))
+  expect(remapped[i*4+1]).toBe(2*Math.floor(i/b.w))
+  expect(remapped[i*4+2]).toBeCloseTo(0.25)
+  expect(remapped[i*4+3]).toBeCloseTo(0.75)
+ }else expect(remapped[i*4]).toBe(-2)
+})
+
 it.each(['cell','short','status'])('dense byte transport rejects %s without returning partial pixels',kind=>{
  vi.stubGlobal('XMLHttpRequest',class{status=kind==='status'?500:200;responseType='';response=new ArrayBuffer(kind==='short'?4:16);open(){}send(){}})
  const field=new Float32Array([kind==='cell'?100:0,0,.5,.5])

@@ -16,6 +16,9 @@ test('native source reads are owner-scoped; sparse samples preserve original tex
   const sample=async(data,pairs=false)=>new Uint8Array(await (await serveSourceBitmap(new Request(url+'?samples=1'+(pairs?'&pairs=1':''),{method:'POST',body:new Uint32Array(data)}),active,root)).arrayBuffer())
   assert.deepEqual([...await sample([2,2,3,0,2,0])], [11,8,3,0].flatMap(i=>[...pixels.subarray(i*4,i*4+4)]))
   assert.deepEqual([...await sample([2,1,0,1,3,2],true)], [4,5,11,11,8,9,11,11].flatMap(i=>[...pixels.subarray(i*4,i*4+4)]))
+  const span=new Uint8Array(await (await serveSourceBitmap(new Request(url+'?samples=1&span=1',{method:'POST',body:new Uint32Array([1,1,2,2])}),active,root)).arrayBuffer())
+  assert.deepEqual([...span], [5,6,9,10].flatMap(i=>[...pixels.subarray(i*4,i*4+4)]))
+  assert.equal((await serveSourceBitmap(new Request(url+'?samples=1&span=1&extra=1',{method:'POST',body:new Uint32Array([0,0,1,1])}),active,root)).status,403)
   await assert.rejects(sample([1,1,4,0]))
  }finally{await rm(root,{recursive:true,force:true})}
 })
