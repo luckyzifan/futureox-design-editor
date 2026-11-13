@@ -46,6 +46,7 @@ Object.assign(tileCostLimits, {certifiedTentPasses:1e9,retainedPhaseRejects:1e9,
 const pageCommitLimits={pageCommitStage:3,pageCommitChecks:255,pageCommitReason:10}
 tileCostLimits.wideTentPasses=1e9
 for (const key of Object.keys(pageCommitLimits)) fields.add(key)
+Object.assign(tileCostLimits, {refineCohort:4,refineTrace:14,refineBatch:8,refinePriority:3,refineRelease:0})
 for (const key of [...Object.keys(tileCostLimits), ...Object.keys(admissionLimits)]) fields.add(key)
 for (const key of Object.keys(failureLimits)) fields.add(key)
 for (const key of Object.keys(textureFailureLimits)) fields.add(key)

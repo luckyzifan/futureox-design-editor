@@ -1,5 +1,5 @@
 import { settledPoseDamage } from './interaction-pose-damage'
-import { choosePreparedTile } from './zoom-refinement-policy'
+import { admitAction, admitPreparedTile } from './zoom-refine-schedule'
 import { equalValue } from '../document-patch'
 import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regional-gaussian-display'
 import {MATERIAL_BAND,sourceBandDefersWholePresent} from './source-display-band'
@@ -1043,8 +1043,18 @@ self.onmessage = (e) => {
       renderOptions.gpuPainterCaptureReads = usesPainterCaptureReads(import.meta.env.VITE_DESIGN_PAINTER_CAPTURE_READS,
         renderOptions.gpuPainterSupport)
       if(terminalDiagnostics.enabled && renderIntent==='canvas')gridMeasurements.record({gridKind:1,gridVisible:Number(!!renderOptions.grid&&!renderOptions.transparent&&renderOptions.view.zoom>0.13),gridSpacingClass:3,gridRedrawReason:2})
-      const previewCurrent = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-        (!tileViewport || channel !== 'canvas' || fillGeneration === tileFillGeneration)
+      // One admission word. Fill is enforced only for a canvas tile batch.
+      // Repeated checks of the same facts hit the kernel memo, not a second policy.
+      const liveFlags = (enforceFill: boolean, allowGap = false, canFill = false) =>
+        (packetWait?.controller.signal.aborted ? 1 : 0)
+        | (generation === previewGenerations[channel] ? 2 : 0)
+        | (fillGeneration === tileFillGeneration ? 4 : 0)
+        | (enforceFill ? 8 : 0)
+        | (channel === 'canvas' ? 16 : 0)
+        | (allowGap ? 32 : 0)
+        | (canFill ? 64 : 0)
+      const liveChoice = (enforceFill: boolean, allowGap = false, canFill = false) => admitPreparedTile(liveFlags(enforceFill, allowGap, canFill))
+      const previewCurrent = () => admitAction(liveChoice(!!tileViewport && channel === 'canvas')) !== 'cancel'
       const retainCoverage = channel === 'canvas' && coverageTiles === true && !!tileViewport && renderIntent === 'preview'
       if(renderOptions.captureViewport&&(request.png||request.readback||tileViewport||renderOptions.pixelPreview||exportFormat||renderOptions.exportRegion))
         throw Error('Native viewport capture is only available for canvas presentation')
@@ -1351,12 +1361,10 @@ self.onmessage = (e) => {
       }
       // Apply the versioned document envelope even when its pixels were
       // superseded; the following request may legitimately patch this revision.
-      if ((livePreview || tileViewport) && (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw Error('PREVIEW_CANCELLED')
       // Camera-only cancellation must still apply the ordered document above,
       // but need not initialize GPU pipelines or hydrate a stale raster batch.
       // Page coverage is useful across cameras and keeps its explicit exemption.
-      if (tileViewport && channel === 'canvas' && fillGeneration !== tileFillGeneration)
-        throw Error('PREVIEW_CANCELLED')
+      if ((livePreview || tileViewport) && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
       if (laneState.deferredInteractionDocument && translated?.options !== options && laneState.compiledScene?.options !== options) await synchronizeDeferred()
       const hydrateImages = sceneImageHydration(kernel, () => !(livePreview || tileViewport) || previewCurrent())
       const settingsJson = kernel.color_settings()
@@ -1441,7 +1449,7 @@ self.onmessage = (e) => {
               // task boundary. Only the presenter's actual accepted backing,
               // never that requested frame, may certify the following copy.
               await yieldPreviewTask()
-              if(generation!==previewGenerations.canvas)throw Error('PREVIEW_CANCELLED')
+              if (admitAction(liveChoice(false)) === 'cancel') throw Error('PREVIEW_CANCELLED')
               let snapshot:ReturnType<NonNullable<typeof gpu.driver.snapshotPageTranslation>>
               try{snapshot=gpu.driver.snapshotPageTranslation(translatedPageCommit.sourceOwner,translatedPageCommit.targetOwner,
                 translatedPageCommit.offset,renderOptions.width,renderOptions.height,renderOptions.view.zoom,pixelSourceContract(renderOptions))}
@@ -1462,7 +1470,7 @@ self.onmessage = (e) => {
               // Otherwise a harmless scheduling race triggers a full tile refill.
               await queue.yieldToHigherPriority(0)
               selectLane('canvas')
-              if (generation !== previewGenerations.canvas) throw Error('PREVIEW_CANCELLED')
+              if (admitAction(liveChoice(false)) === 'cancel') throw Error('PREVIEW_CANCELLED')
             }
             const settledPose = poseSession
             if (channel === 'canvas' && request.documentPatch && !tileViewport.length &&
@@ -1647,14 +1655,9 @@ self.onmessage = (e) => {
             let filterColumnPlans = 0, filterColumnReorders = 0
             const ahead = new PrepareAhead<{ bytes: ScenePacket; ms: number; tile: RasterTile }>()
             let preparationWaitMs = 0, overlappedPreparations = 0
-            const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-              (channel !== 'canvas' || fillGeneration === tileFillGeneration)
-            const tileFence = (enforceFill: boolean, allowGapFill = false, canFillGap = false) => choosePreparedTile({
-              aborted: !!packetWait?.controller.signal.aborted,
-              generationCurrent: generation === previewGenerations[channel],
-              fillCurrent: fillGeneration === tileFillGeneration,
-              enforceFill, channelIsCanvas: channel === 'canvas', allowGapFill, canFillGap,
-            })
+            const tileFence = (enforceFill: boolean, allowGapFill = false, canFillGap = false) =>
+              admitAction(liveChoice(enforceFill, allowGapFill, canFillGap))
+            const current = () => tileFence(channel === 'canvas') !== 'cancel'
             const canStreamGaussian = regionalGaussianDisplay({backend,channel,profile:renderOptions.rasterProfile,colorSpace:color?.documentSpace,
               displayOnly:!request.readback&&!request.png&&!request.referenceGpu&&!exportFormat&&(renderIntent==='preview'||renderIntent==='canvas'),
               regional:renderOptions.gpuGaussianRegions,hdr:executionPolicy.hdrCompositing,pixelPreview:renderOptions.pixelPreview,
@@ -1711,7 +1714,7 @@ self.onmessage = (e) => {
               let undelivered: { bitmap?: ImageBitmap; gpuTile?: number } | undefined
               let nextColumnPlan: { index: number | undefined; changed: boolean; deltaY: number } | undefined
               try {
-              if (tileFence(true).action === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              if (tileFence(true) === 'cancel') throw new Error('PREVIEW_CANCELLED')
               // World slots retain the computation camera for measured byte
               // dithering, grids and pixel preview. Those established paths
               // cannot certify a translated hit from world address alone.
@@ -1753,10 +1756,10 @@ self.onmessage = (e) => {
                 speculativeSavedMs = Math.max(0, prepared.ms - waited)
                 const rawScene = prepared.bytes
                 const preparedChoice = tileFence(true, !retainCoverage && !cameraDependent, preparedTileCanFill(tile, displayFrame))
-                if (preparedChoice.action === 'cancel') throw Error('PREVIEW_CANCELLED')
+                if (preparedChoice === 'cancel') throw Error('PREVIEW_CANCELLED')
                 // Optional page backing yields to a new viewport. Only an
                 // already prepared visible tile may supply useful pixels.
-                cameraFallback = preparedChoice.action === 'cover-gap'
+                cameraFallback = preparedChoice === 'cover-gap'
                 witness = () => scenePacketWitness(rawScene)
                 result = disableExactCache ? undefined : tileCache.get(cacheKey, witness)
                 preparedScene = result ? undefined : decodeScenePacket(rawScene)
@@ -1807,15 +1810,14 @@ self.onmessage = (e) => {
                   settingsJson, tileSide, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareForTile(tile), !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
-                  () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
+                  () => tileFence(false) !== 'cancel' && tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
                     draws=>reportWorkProgress(2,draws),displayBackpressure,sourceDetailDisplay && tile.zoom>=2,sourceDetailDisplay)
                 if (result.gpuTile && preparedScene && renderIntent==='canvas' && channel==='canvas' && !request.sourceSnapshot &&
                     !request.png && !request.readback && !exportFormat && !canvasDisplayFilters && !canvasMath && !canvasTentRadius &&
                     !canvasImageSource && !canvasMaterialSource && !renderOptions.animation && !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.pixelPreview)
                   gpu?.driver.tagExactTile?.(result.gpuTile,kernel.contentIdentity,pixelSourceContract(tileOptions),tile.gutter??1)
                 undelivered = result
-                if (tileFence(false).action === 'cancel') throw new Error('PREVIEW_CANCELLED')
+                if (tileFence(false) === 'cancel') throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
                 // Budget-subdivided assemblies have no accepted single-scene witness.
                 if (!disableExactCache && witness && result.previewTiles === 1 && ownsExactTileBytes(result) && cacheOwner.current(cacheTicket))
@@ -1843,7 +1845,7 @@ self.onmessage = (e) => {
                 tileDrawCalls += result.drawCalls
                 tileTriangles += result.triangles
               }
-              if (tileFence(false).action === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              if (tileFence(false) === 'cancel') throw new Error('PREVIEW_CANCELLED')
               // Cached or fresh, the tile posts back: the surface rebuilds its
               // resident map from deliveries, so a cached hit must still arrive
               // (the historical resident-skip here was unreachable dead code —
@@ -1870,7 +1872,7 @@ self.onmessage = (e) => {
                 } catch {
                   bitmap = undefined
                 }
-                if (tileFence(false).action === 'cancel') {
+                if (tileFence(false) === 'cancel') {
                   bitmap?.close()
                   throw new Error('PREVIEW_CANCELLED')
                 }
@@ -1940,7 +1942,7 @@ self.onmessage = (e) => {
               await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0, GPU_PRIORITY_BURST)
               // A canceled returning lane must not retire the interaction's
               // current resources merely to restore an obsolete canvas owner.
-              if (tileFence(true).action === 'cancel') throw new Error('PREVIEW_CANCELLED')
+              if (tileFence(true) === 'cancel') throw new Error('PREVIEW_CANCELLED')
               selectLane(channel)
               if (settingsJson !== colorKey || preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
                 noteRetiredDevice(gpu); gpu?.dispose(); gpu = undefined; invalidateTileCache(); unavailable.clear()
@@ -2372,7 +2374,7 @@ self.onmessage = (e) => {
           await synchronizeDeferred()
           const tileStarted = performance.now()
           for (let index = 0; index < tileViewport.length; index++) {
-            if (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
+            if (admitAction(liveChoice(false)) === 'cancel') throw new Error('PREVIEW_CANCELLED')
             const tile = tileViewport[index]
             if (!tile || typeof tile.key !== 'string' || tile.key.length > 256 ||
                 ![tile.x, tile.y, tile.width, tile.height].every(Number.isSafeInteger) ||
@@ -2381,7 +2383,7 @@ self.onmessage = (e) => {
               throw new Error('Invalid tile request')
             const {bytes,width,height,divisor,reason} = await sampleCpuTile(cpuTileFrameOptions(renderOptions,tile),
               options=>kernel.render_cpu_frame(JSON.stringify(options)),
-              ()=>!packetWait?.controller.signal.aborted && generation===previewGenerations[channel],
+              ()=>admitAction(liveChoice(false)) !== 'cancel',
               !!request.sourceSnapshot && renderIntent==='preview' && !exportFormat && !renderOptions.exportRegion &&
                 !renderOptions.pixelPreview && !executionPolicy.hdrCompositing)
             let bitmap: ImageBitmap | undefined
@@ -2390,7 +2392,7 @@ self.onmessage = (e) => {
                 bitmap = await createImageBitmap(new ImageData(new Uint8ClampedArray(bytes), width, height))
               } catch { bitmap = undefined }
             }
-            if (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) {
+            if (admitAction(liveChoice(false)) === 'cancel') {
               bitmap?.close()
               throw new Error('PREVIEW_CANCELLED')
             }

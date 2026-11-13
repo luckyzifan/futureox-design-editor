@@ -244,3 +244,10 @@ test('resident scratch causal trace retains bounded scalar fields and rejects pa
   assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(valid).map(key=>[key,value]))),{})
  assert.deepEqual(sanitizeFields({deviceRetirementBatchCount:4,deviceFencePhase:3,deviceFenceOutcome:4,deviceFenceAsync:2}),{})
 })
+test('zoom refine schedule traces stay numeric and a release bit is not a payload', () => {
+ const valid = {refineCohort:2,refineTrace:11,refineBatch:2,refinePriority:1,refineRelease:0}
+ assert.deepEqual(sanitizeFields({...valid,refineTraceName:'exact-viewport',document:{secret:true}}),valid)
+ assert.deepEqual(sanitizeFields({refineCohort:4,refineTrace:14,refineBatch:8,refinePriority:3,refineRelease:0}),
+  {refineCohort:4,refineTrace:14,refineBatch:8,refinePriority:3,refineRelease:0})
+ assert.deepEqual(sanitizeFields({refineCohort:5,refineTrace:15,refineBatch:9,refinePriority:4,refineRelease:1}),{})
+})
