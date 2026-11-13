@@ -46,15 +46,22 @@ test('finite parameters, seed range and network limits are enforced before seria
   n.vectorBrush = { ...brush, spacing: 0 }; expect(() => validateVectorBrush(n)).toThrow()
   n.vectorBrush = { ...brush, source: { ...brush.source, vertices: Array(4097).fill(brush.source.vertices[0]) } }; expect(() => validateVectorBrush(n)).toThrow()
 })
-test('unsupported curved Stretch and excessive scatter fail atomically', () => {
+test('curved Stretch commits on the same derived path and excessive scatter still fails atomically', () => {
   const { editor, n, brush } = fixture()
   editor.updateProperties([n.id], n => { n.network = pathNetwork('M0 0C0 40 40 40 40 0') }, 'Curved guide')
   const before = editor.state.doc
-  editor.updateProperties([n.id], n => { n.vectorBrush = { ...brush, mode: 'stretch' } }, 'Unsupported stretch')
-  expect(editor.state.doc).toBe(before)
-  expect(editor.state.message).toContain('Curved Stretch')
+  editor.updateProperties([n.id], n => { n.vectorBrush = { ...brush, mode: 'stretch' } }, 'Curved stretch')
+  expect(editor.state.doc).not.toBe(before)
+  const fill = kernelSvgPaths(editor.state.doc.nodes[n.id])!.fill
+  expect(fill).toMatch(/[CA]/)
+  const committed = editor.state.doc
+  editor.undo()
+  expect(editor.state.doc.nodes[n.id].vectorBrush).toBeUndefined()
+  editor.redo()
+  expect(kernelSvgPaths(editor.state.doc.nodes[n.id])!.fill).toBe(fill)
+  expect(editor.state.doc.nodes[n.id].vectorBrush!.mode).toBe('stretch')
   editor.updateProperties([n.id], n => { n.vectorBrush = { ...brush, spacing: .001 } }, 'Too many stamps')
-  expect(editor.state.doc).toBe(before)
+  expect(editor.state.doc).toBe(committed)
   expect(editor.state.message).toContain('budget')
 })
 test('native WASM admission rejects embedded duplicate IDs and Sketch export cannot drop the brush', async () => {

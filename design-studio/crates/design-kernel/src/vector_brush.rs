@@ -1,5 +1,7 @@
 //! Editable vector brushes preserving source Bezier commands. Scatter uses bounded
-//! arc-length inversion; Stretch currently admits straight guides only.
+//! arc-length inversion. Straight Stretch is an exact affine map; curved, corner,
+//! cusp and closed Stretch use the same arc-length budget without flattening the source.
+mod stretch;
 use crate::{math::{Point, Transform}, path::{Path, Command}, scene::Network};
 use serde::{Deserialize, Serialize};
 const LIMIT: usize = 100_000;
@@ -128,11 +130,14 @@ pub fn paths(guide:&Network,brush:&VectorBrush)->Result<Path,String>{
     let mut work=0;let guide_path=guide.paths()?.1;let mut track=Track::new(&guide_path,ARC_ERROR,&mut work)?;let yc=(ymin+ymax)/2.;let mut out=Vec::new();
     if brush.mode=="stretch"{
         let(first,t)=track.frame(0.,&mut work)?;
-        // Straight forward-only polyline guides are exact affine maps. Curved
-        // warp requires a device error contract and is deliberately not enabled.
-        for segment in &track.segments{let Segment::Line(a,b)=*segment else{return Err("Curved Stretch brushes are not supported; use Scatter".into())};let u=(b-a)*(1./distance(a,b));if distance(u,t)>1e-12{return Err("Stretch requires a straight forward-only guide; corners and cusps are unsupported".into())}}
-        let sx=track.length/(xmax-xmin);let sy=brush.width/(ymax-ymin);
-        transformed(&source,Transform([t.x*sx,t.y*sx,-t.y*sy,t.x*sy,first.x-t.x*sx*xmin+t.y*sy*yc,first.y-t.y*sx*xmin-t.x*sy*yc]),&mut out)?;
+        // Straight forward-only polylines stay an exact affine image of the source.
+        let straight=track.segments.iter().all(|segment|{let Segment::Line(a,b)=*segment else{return false};let u=(b-a)*(1./distance(a,b));distance(u,t)<=1e-12});
+        if straight {
+            let sx=track.length/(xmax-xmin);let sy=brush.width/(ymax-ymin);
+            transformed(&source,Transform([t.x*sx,t.y*sx,-t.y*sy,t.x*sy,first.x-t.x*sx*xmin+t.y*sy*yc,first.y-t.y*sx*xmin-t.x*sy*yc]),&mut out)?;
+        } else {
+            out=stretch::apply(&track,&source,xmin,xmax,ymin,ymax,brush.width,&mut work)?;
+        }
     }else{
         let count=if track.closed{
             let mut error=ARC_ERROR;
@@ -173,4 +178,11 @@ mod tests {
     }
     #[test]
     fn arc_budget_never_silently_degrades(){let c=Curve([Point::new(0.,0.),Point::new(0.,100.),Point::new(100.,100.),Point::new(100.,0.)]);let mut work=WORK_LIMIT;assert!(c.bounds(ARC_ERROR,0,&mut work).is_err());}
+    #[test]
+    fn stretch_setup_stays_bounded(){
+        let path=Path{commands:vec![Command::Move(Point::new(0.,0.)),Command::Cubic(Point::new(0.,40.),Point::new(40.,40.),Point::new(40.,0.))]};
+        let mut work=0;let track=Track::new(&path,ARC_ERROR,&mut work).unwrap();
+        assert!(track.segments.len()<20000,"arc-length leaves {}",track.segments.len());
+        assert!(work<WORK_LIMIT);
+    }
 }

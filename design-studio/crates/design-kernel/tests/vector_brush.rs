@@ -18,12 +18,76 @@ fn scatter_is_seeded_and_closed_guides_do_not_duplicate_seam(){
     let p=paths(&g,&b).unwrap();assert_eq!(p.commands.iter().filter(|c|matches!(c,Command::Move(_))).count(),4);
     b.rotation_variance=1.;b.scale_variance=0.4;b.scatter=3.;let p=paths(&g,&b).unwrap();assert_eq!(p,paths(&g,&b).unwrap());b.seed=1;assert_ne!(p,paths(&g,&b).unwrap());
 }
+fn distance_to_contour(path:&futureox_design_kernel::path::Path,point:Point)->f64{
+    let flat=path.flatten(Transform::default(),1e-7).unwrap();
+    let mut best=f64::MAX;
+    for contour in flat{
+        for window in contour.points.windows(2){
+            let (a,b)=(window[0],window[1]);
+            let chord=b-a;let denom=chord.dot(chord).max(1e-30);
+            let t=((point-a).dot(chord)/denom).clamp(0.,1.);
+            best=best.min((point-a.lerp(b,t)).length());
+        }
+    }
+    best
+}
 #[test]
-fn curved_scatter_preserves_beziers_and_curved_stretch_is_explicitly_rejected(){
+fn curved_scatter_preserves_beziers_and_curved_stretch_follows_the_frame(){
     let mut g=network(&[(0.,0.),(40.,0.)],false);g.edges[0].c1=Some(Point::new(0.,40.));g.edges[0].c2=Some(Point::new(40.,40.));
-    let mut b=brush();b.source.edges[0].c1=Some(Point::new(-1.,-1.));b.source.edges[0].c2=Some(Point::new(1.,-1.));assert!(paths(&g,&b).unwrap().commands.iter().any(|c|matches!(c,Command::Cubic(..))));
-    b.mode="stretch".into();assert!(paths(&g,&b).unwrap_err().contains("Curved Stretch"));
-    assert!(paths(&network(&[(0.,0.),(10.,0.),(0.,0.)],false),&b).unwrap_err().contains("cusps"));
+    let mut b=brush();b.source.edges[0].c1=Some(Point::new(-1.,-1.));b.source.edges[0].c2=Some(Point::new(1.,-1.));
+    let scatter=paths(&g,&b).unwrap();
+    assert!(scatter.commands.iter().any(|c|matches!(c,Command::Cubic(..))));
+    assert_eq!(scatter,paths(&g,&b).unwrap());
+    b.mode="stretch".into();
+    let stretched=paths(&g,&b).unwrap();
+    assert!(stretched.commands.iter().any(|c|matches!(c,Command::Cubic(..))),"curved stretch keeps cubic commands");
+    assert!(stretched.commands.len()<100_000);
+    assert_eq!(stretched.commands,paths(&g,&b).unwrap().commands);
+    // Symmetric analytic cubic: length 200, arc midpoint (30,75), tangent +x.
+    let mut analytic=network(&[(-20.,0.),(80.,0.)],false);
+    analytic.edges[0].c1=Some(Point::new(-20.,100.));analytic.edges[0].c2=Some(Point::new(80.,100.));
+    let mut width=b.clone();width.width=2.;
+    let mapped=paths(&analytic,&width).unwrap();
+    let gap=distance_to_contour(&mapped,Point::new(30.,76.));
+    assert!(gap*32.<0.00064,"curved stretch left the 3200% position budget, gap {gap}");
+    let cusp_guide=network(&[(0.,0.),(10.,0.),(0.,0.)],false);
+    let cusp=paths(&cusp_guide,&width).unwrap();
+    assert!(cusp.commands.iter().any(|c|matches!(c,Command::Arc{sweep,..} if (sweep.abs()-std::f64::consts::PI).abs()<1e-6)),"a reversal sweeps +pi");
+    assert!(distance_to_contour(&cusp,Point::new(9.,0.))<1e-6,"cusp arc missed the deterministic semicircle");
+    assert_eq!(cusp.commands,paths(&cusp_guide,&width).unwrap().commands);
+    let corner=paths(&network(&[(0.,0.),(10.,0.),(10.,10.)],false),&width).unwrap();
+    for point in [Point::new(0.,1.),Point::new(10.,1.),Point::new(9.,0.),Point::new(9.,10.)]{
+        assert!(distance_to_contour(&corner,point)<1e-6,"corner stretch missed {point:?}");
+    }
+    let closed=paths(&network(&[(0.,0.),(30.,0.),(30.,20.),(0.,20.)],true),&width).unwrap();
+    let contours=closed.flatten(Transform::default(),1e-6).unwrap();
+    assert!(contours.iter().any(|c|c.closed));
+    assert!(closed.commands.iter().filter(|c|matches!(c,Command::Arc{..})).count()>=3);
+}
+#[test]
+fn curved_stretch_render_pick_export_and_gpu_scene_share_one_derived_path(){
+    let mut g=network(&[(-20.,0.),(80.,0.)],false);
+    g.edges[0].c1=Some(Point::new(-20.,100.));g.edges[0].c2=Some(Point::new(80.,100.));
+    let mut b=brush();b.mode="stretch".into();b.width=2.;
+    let d=fixture(b,g);d.validate().unwrap();
+    let json=serde_json::to_string(&d).unwrap();
+    let reopened:Document=serde_json::from_str(&json).unwrap();
+    assert_eq!(reopened.nodes["n"].vector_brush,d.nodes["n"].vector_brush);
+    let options=RenderOptions{page_id:"p".into(),width:120,height:140,view:View{x:0.,y:0.,zoom:1.},transparent:true,grid:false,pixel_preview:None,animation:None,raster_profile:RasterProfile::FigmaSoftware,interactive_effects:false,checkerboard:false};
+    let mut engine=Engine::new();engine.load_document(&json).unwrap();
+    let rgba=engine.render(&options).unwrap();
+    assert!(rgba.chunks_exact(4).any(|p|p[3]>0),"CPU render of curved stretch is empty");
+    let scene=engine.compile_gpu(&options).unwrap();
+    assert!(!scene.curves.is_empty(),"official WebGPU scene did not receive curved-stretch crossings");
+    let node=&d.nodes["n"];
+    let svg=futureox_design_kernel::export::svg_paths(node,&futureox_design_kernel::font::Fonts::new()).unwrap();
+    assert!(svg.fill.contains('C')||svg.fill.contains('A'),"SVG dropped the curved stretch outline");
+    let pdf=engine.export_pdf_vector(&options).unwrap();
+    let pdf=String::from_utf8_lossy(&pdf);
+    assert!(pdf.contains(" c ")||pdf.contains("\nc "),"vector PDF dropped the curved stretch cubics");
+    assert!(futureox_design_kernel::hit_test_fill_device(node,Point::new(30.,75.),Transform::default()).unwrap());
+    assert!(!futureox_design_kernel::hit_test_fill_device(node,Point::new(30.,120.),Transform::default()).unwrap());
+    assert!(futureox_design_kernel::interop::export_sketch(&d).is_err());
 }
 #[test]
 fn invalid_input_and_budgets_are_errors(){let g=network(&[(0.,0.),(100.,0.)],false);let mut b=brush();b.spacing=0.001;assert!(paths(&g,&b).unwrap_err().contains("budget"));b.spacing=10.;b.width=f64::NAN;assert!(paths(&g,&b).is_err());b.width=4.;b.source.vertices[0].x=f64::INFINITY;assert!(paths(&g,&b).is_err());assert!(paths(&network(&[(0.,0.),(0.,0.)],false),&brush()).is_err());}

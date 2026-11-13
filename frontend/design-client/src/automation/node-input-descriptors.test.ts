@@ -143,7 +143,10 @@ it('MCP authors editable vector brushes and rejects unsupported or over-budget e
   expect(create.isError,JSON.stringify(create)).toBe(false)
   expect(f.editor.state.doc.nodes[id].vectorBrush).toEqual(brush)
   expect(f.editor.state.doc.schemaVersion).toBe(15)
-  for(const patch of [{vectorBrush:{...brush,mode:'stretch'}},{vectorBrush:{...brush,spacing:.001}},{vectorBrush:{...brush,seed:-1}}]) {
+  const stretched=await f.mutate('node.update',{ids:[id],patch:{vectorBrush:{...brush,mode:'stretch'}}})
+  expect(stretched.isError,JSON.stringify(stretched)).toBe(false)
+  expect(f.editor.state.doc.nodes[id].vectorBrush!.mode).toBe('stretch')
+  for(const patch of [{vectorBrush:{...brush,spacing:.001}},{vectorBrush:{...brush,seed:-1}}]) {
     const before=f.editor.state.doc,revision=f.editor.state.version
     const result=await f.mutate('node.update',{ids:[id],patch})
     expect(result.isError,JSON.stringify(result)).toBe(true)
