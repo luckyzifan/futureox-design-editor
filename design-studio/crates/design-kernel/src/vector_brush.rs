@@ -180,7 +180,7 @@ mod tests {
     fn arc_budget_never_silently_degrades(){let c=Curve([Point::new(0.,0.),Point::new(0.,100.),Point::new(100.,100.),Point::new(100.,0.)]);let mut work=WORK_LIMIT;assert!(c.bounds(ARC_ERROR,0,&mut work).is_err());}
     #[test]
     fn stretch_setup_stays_bounded(){
-        let path=Path{commands:vec![Command::Move(Point::new(0.,0.)),Command::Cubic(Point::new(0.,40.),Point::new(40.,40.),Point::new(40.,0.))]};
+        let path=Path{commands:vec![Command::Move(Point::new(0.,0.)),Command::Cubic(Point::new(0.,40.),Point::new(40.,40.),Point::new(40.,0.))],..Path::default()};
         let mut work=0;let track=Track::new(&path,ARC_ERROR,&mut work).unwrap();
         assert!(track.segments.len()<20000,"arc-length leaves {}",track.segments.len());
         assert!(work<WORK_LIMIT);
