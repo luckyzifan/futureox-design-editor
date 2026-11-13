@@ -361,6 +361,95 @@ fn tent_blur_impl(
     }
     Ok(current)
 }
+
+/// Byte nearest a half-code. `212.5/255` stored as binary32 comes back as
+/// `212.49999`; without the snap, half-up would keep the even code.
+fn half_up_unorm8(unit: f64) -> u8 {
+    let scaled = (unit.clamp(0.0, 1.0) * 255.0).clamp(0.0, 255.0);
+    let nearest_half = (scaled * 2.0).round() / 2.0;
+    let scaled = if (scaled - nearest_half).abs() < 1.0e-4 {
+        nearest_half
+    } else {
+        scaled
+    };
+    (scaled + 0.5).floor().clamp(0.0, 255.0) as u8
+}
+
+fn budget_limited(error: &str) -> bool {
+    error.contains("budget")
+}
+
+/// Figma export layer blur. Both separable passes still quantize on the
+/// portable/integer kernel. A 2×2 whose unrounded samples are already the same
+/// value is then stored half-up, so an exact half-code does not stay on the
+/// even side. Varying pairs keep the per-pass bytes: rewriting them to their
+/// average, or writing that average into the backdrop, lets a later layer or
+/// clip paint on already-merged samples.
+pub(crate) fn figma_portable_layer_blur(source: Surface, radius: f64) -> Result<Surface, String> {
+    let radius = f64::from(radius as f32);
+    let portable = radius > 0. && radius <= 512. && radius.fract() != 0.;
+    if !(radius > 0.) || radius > 512. {
+        return tent_blur_impl(source, radius, false, false, false);
+    }
+    let linear_src = match source.try_clone() {
+        Ok(copy) => copy,
+        Err(error) if budget_limited(&error) => {
+            return tent_blur_impl(source, radius, false, portable, false);
+        }
+        Err(error) => return Err(error),
+    };
+    let mut quantized = tent_blur_impl(source, radius, false, portable, false)?;
+    let linear = match tent_blur_impl(linear_src, radius, false, false, true) {
+        Ok(linear) => linear,
+        Err(error) if budget_limited(&error) => return Ok(quantized),
+        Err(error) => return Err(error),
+    };
+    lift_constant_half_up(&mut quantized, &linear);
+    Ok(quantized)
+}
+
+fn lift_constant_half_up(quantized: &mut Surface, linear: &Surface) {
+    let rect = quantized.rect;
+    if rect != linear.rect || rect.empty() {
+        return;
+    }
+    let mut y = if rect.y & 1 == 0 { rect.y } else { rect.y + 1 };
+    while y + 1 < rect.bottom() {
+        let mut x = if rect.x & 1 == 0 { rect.x } else { rect.x + 1 };
+        while x + 1 < rect.right() {
+            let coords = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)];
+            let indexes = coords.map(|(px, py)| rect.index(px, py).expect("complete export pair"));
+            let first = linear.pixels[indexes[0]];
+            let constant = indexes.iter().all(|&index| {
+                linear.pixels[index]
+                    .0
+                    .iter()
+                    .zip(first.0)
+                    .all(|(value, reference)| {
+                        ((f64::from(*value) - f64::from(reference)) * 255.).abs() <= 1.0e-4
+                    })
+            });
+            if constant {
+                // Only an exact half-code disagrees with the per-pass ties-even
+                // byte. Other constants already match, including places where
+                // the float weights and the Q24 kernel differ by a fraction.
+                let lifted = first.0.map(|value| half_up_unorm8(f64::from(value)));
+                let ties = first.0.map(|value| {
+                    (f64::from(value).clamp(0., 1.) * 255.).round_ties_even() as u8
+                });
+                if lifted != ties {
+                    let pixel = Pixel(lifted.map(|byte| f32::from(byte) / 255.));
+                    for index in indexes {
+                        quantized.pixels[index] = pixel;
+                    }
+                }
+            }
+            x += 2;
+        }
+        y += 2;
+    }
+}
+
 // Shadow inputs have zero RGB. The one-channel specialization uses exactly
 // the same sums, rounding proof and rational fallback for their alpha.
 fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
@@ -1876,6 +1965,37 @@ mod gaussian_scanline_memory_tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod figma_layer_half_up_tests {
+    use super::*;
+
+    #[test]
+    fn constant_half_code_rounds_up_and_a_varying_pair_stays_split() {
+        let mut source = Surface::new(Rect::new(0, 0, 6, 8)).unwrap();
+        for y in 0..8 {
+            for x in 2..4 {
+                source.pixels[source.rect.index(x, y).unwrap()] = Pixel::rgba(1., 1., 1., 1.);
+            }
+        }
+        let out = figma_portable_layer_blur(source, 1.).unwrap();
+        let byte = |x: i32, y: i32, channel: usize| -> u8 {
+            (out.at(x, y).0[channel] * 255.).round() as u8
+        };
+        // Device pixels, before the export 2×2 resolve. The center pair is the
+        // constant 212.5 half-code and stores 213. The side pairs are 0 and
+        // 42.5; they stay 0 and 42 so a later clip can still see each sample.
+        assert_eq!((byte(0, 4, 0), byte(1, 4, 0)), (0, 42));
+        assert_eq!((byte(2, 4, 0), byte(3, 4, 0)), (213, 213));
+        assert_eq!((byte(4, 4, 0), byte(5, 4, 0)), (42, 0));
+        assert!(out.pixels.iter().all(|pixel| {
+            pixel.0.iter().all(|value| value.is_finite())
+                && pixel.0[0] == pixel.0[1]
+                && pixel.0[1] == pixel.0[2]
+                && pixel.0[2] == pixel.0[3]
+        }));
     }
 }
 
