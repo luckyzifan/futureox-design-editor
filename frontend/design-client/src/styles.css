@@ -2401,7 +2401,9 @@ html[data-reduced-motion=true] .animation-modal * {
 .workspace-title b, .workspace-title small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-heading { flex: none; min-width: 0; gap: 8px; }
 .layer-tabs { display: flex; flex: 1; min-width: 0; gap: 8px; }
-.layer-tabs button { white-space: nowrap; }
+.layer-tabs button { white-space: nowrap; color: var(--workspace-muted); }
+.layer-tabs button[aria-selected="true"] { background: var(--workspace-selected); color: var(--workspace-selected-ink, var(--workspace-text)); }
+.editor-shell .editor-workspace .layer-row.selected { color: var(--workspace-selected-ink, var(--workspace-text)); }
 .layer-heading > span, .layer-heading > button { flex: none; }
 .layers-tabpanel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; overflow: hidden; }
 .layers-tabpanel[hidden] { display: none !important; }

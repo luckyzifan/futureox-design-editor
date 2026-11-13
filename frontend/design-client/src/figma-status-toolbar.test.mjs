@@ -145,7 +145,7 @@ window.__measure = (density) => {
 }
 
 async function measureStatus() {
-  const binary = ['/usr/bin/google-chrome', '/usr/bin/chromium', '/opt/google/chrome/chrome'].find(existsSync)
+  const binary = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/opt/google/chrome/chrome'].filter(Boolean).find(existsSync)
   assert.ok(binary, 'Chrome is required to measure the status capsule')
   const dir = await mkdtemp(join(tmpdir(), 'figma-status-'))
   const port = 9400 + Math.floor(Math.random() * 500)

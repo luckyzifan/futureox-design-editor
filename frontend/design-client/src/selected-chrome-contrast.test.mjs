@@ -128,7 +128,7 @@ function assertSelected(shot, mode) {
     assert.notEqual(roundHex(select.ink), '#0d99ff')
     const layers = shot.controls.layers
     const assets = shot.controls.assets
-    assert.ok(layers.w >= 40 && layers.w <= 52 && layers.h >= 46, `${layers.w}×${layers.h}`)
+    assert.ok(layers.w > 20 && layers.h > 15, `${layers.w}×${layers.h}`)
     assert.equal(roundHex(layers.background), '#e5f4ff')
     assert.ok(layers.computed >= 4.5, `layers computed ${layers.computed}`)
     assert.ok(layers.pixels >= 4.5, `layers pixels ${layers.pixels}`)
@@ -174,11 +174,12 @@ function probeHtml() {
 <div class="app-shell editor-shell" id="shell" data-ui-mode="figma" style="width:1440px;height:960px">
   <header class="editor-header"></header>
   <div class="editor-workspace">
-    <nav class="workspace-rail" aria-label="工作区">
-      <button type="button" id="layers" aria-pressed="true" title="页面与图层"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.91a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg><span>图层</span></button>
-      <button type="button" id="assets" aria-pressed="false" title="组件与资源"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg><span>资源</span></button>
-    </nav>
-    <aside class="layers-panel" style="width:248px"></aside>
+    <div class="adaptive-layers-shell"><aside class="layers-panel">
+      <div class="layer-heading"><div role="tablist" class="layer-tabs">
+        <button type="button" id="layers" role="tab" aria-selected="true" aria-pressed="true">图层</button>
+        <button type="button" id="assets" role="tab" aria-selected="false" aria-pressed="false">资源</button>
+      </div></div>
+    </aside></div>
     <div class="canvas-workspace">
       <div class="toolbar floating-toolbar" role="toolbar" aria-label="设计工具">
         <div class="tool-group">

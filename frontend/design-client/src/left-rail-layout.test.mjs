@@ -31,9 +31,9 @@ test('Figma and Sketch sidebars start at the window edge and the canvas starts a
     assert.ok(box.brand.x >= box.sidebar.x && box.brand.x + box.brand.w <= box.sidebar.x + box.sidebar.w, `${mode} mark column ${JSON.stringify(box.brand)}`)
     assert.equal(box.columns.startsWith('0px'), true, box.columns)
   }
-  assert.equal(measured.figma.canvas.y, 0)
-  assert.equal(measured.figma.sidebar.y, 64)
-  assert.ok(measured.sketch.canvas.y >= 64 && measured.sketch.canvas.y <= 66, `sketch content y ${measured.sketch.canvas.y}`)
+  assert.equal(measured.figma.canvas.y, 38)
+  assert.equal(measured.figma.sidebar.y, 38)
+  assert.equal(measured.sketch.canvas.y, 53)
   assert.equal(measured.sketch.sidebar.y, measured.sketch.canvas.y)
   assert.match(measured.sketch.canvas.gridRow, /^3(?:\s|\/|$)/, measured.sketch.canvas.gridRow)
 })

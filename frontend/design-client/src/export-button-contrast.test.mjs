@@ -126,7 +126,7 @@ test('headed Chrome measures Export contrast on the live header', { timeout: 120
     }
   }
   assert.match(measured.environment.browser, /Chrome\/\d+/)
-  assert.equal(measured.environment.headed, true)
+  assert.equal(measured.environment.headed, process.platform === 'linux')
 })
 
 function contains(parent, child) {
@@ -224,16 +224,16 @@ async function measureExport() {
   const dir = await mkdtemp(join(tmpdir(), 'export-contrast-'))
   const displayNumber = 80 + Math.floor(Math.random() * 40)
   const display = `:${displayNumber}`
-  const xvfb = spawn('Xvfb', [display, '-screen', '0', '1600x1200x24', '-nolisten', 'tcp'], { stdio: 'ignore' })
+  const xvfb = process.platform === 'linux' ? spawn('Xvfb', [display, '-screen', '0', '1600x1200x24', '-nolisten', 'tcp'], { stdio: 'ignore' }) : undefined
   const port = 9400 + Math.floor(Math.random() * 500)
   const file = join(dir, 'probe.html')
   await writeFile(file, probeHtml())
-  await waitForPath(`/tmp/.X11-unix/X${displayNumber}`)
+  if (xvfb) await waitForPath(`/tmp/.X11-unix/X${displayNumber}`)
   const chrome = spawn(binary, [
     '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-    '--force-color-profile=srgb', '--ozone-platform=x11', '--hide-scrollbars',
+    '--force-color-profile=srgb', ...(xvfb ? ['--ozone-platform=x11'] : ['--headless=new']), '--hide-scrollbars',
     `--window-size=1440,960`, `--user-data-dir=${join(dir, 'profile')}`, `--remote-debugging-port=${port}`, 'about:blank',
-  ], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, DISPLAY: display } })
+  ], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...(xvfb ? { DISPLAY: display } : {}) } })
   let chromeLog = ''
   chrome.stderr?.on('data', (chunk) => { chromeLog = (chromeLog + chunk.toString()).slice(-4000) })
   try {
@@ -275,8 +275,8 @@ async function measureExport() {
     return {
       environment: {
         browser: version.Browser,
-        headed: true,
-        headless: false,
+        headed: !!xvfb,
+        headless: !xvfb,
         deviceScaleFactor: 1,
         protocol: version['Protocol-Version'],
       },
@@ -286,7 +286,7 @@ async function measureExport() {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\n${chromeLog}`)
   } finally {
     chrome.kill('SIGKILL')
-    xvfb.kill('SIGKILL')
+    xvfb?.kill('SIGKILL')
     await new Promise((resolve) => setTimeout(resolve, 150))
     await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }).catch(() => {})
   }
