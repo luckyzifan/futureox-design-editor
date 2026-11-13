@@ -48,6 +48,9 @@ miniz_oxide.workspace = true
 sha2 = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Splash text masks. System FreeType is Poppler's text rasterizer. WASM keeps
+# analytic outlines; this crate is not linked there.
+splash-glyph = { path = "../splash-glyph" }
 sonic-rs = { version = "=0.5.10", optional = true, default-features = false }
 rkyv = { version = "=0.8.18", optional = true, default-features = false, features = ["std", "bytecheck", "little_endian", "unaligned", "pointer_width_64"] }
 memmap2 = { version = "=0.9.11", optional = true }

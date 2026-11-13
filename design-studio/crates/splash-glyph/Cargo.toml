@@ -1,0 +1,10 @@
+[package]
+name = "splash-glyph"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "FreeType grayscale masks using Poppler's Splash load flags."
+
+[dependencies]
+freetype = "=0.7.1"
