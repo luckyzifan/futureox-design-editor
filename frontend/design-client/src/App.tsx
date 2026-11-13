@@ -1364,6 +1364,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <div className="menu-scrim" onClick={() => setMenu(false)} />
           <AnchoredMenu anchor={fileMenuTrigger.current} className="file-menu" prefer="below">
             <button type="button" onClick={enterHome}><FolderOpen size={15} />{menuText.localHome}</button>
+            {uiMode === 'sketch' && <button type="button" className="compact-library-entry" onClick={() => { setMenu(false); openPersistentLibrary() }}>
+              {desktopSession ? menuText.localDesign : menuText.myDesigns}
+            </button>}
             <button type="button" onClick={openSettings}><SettingsIcon size={15} />{panelText.settingsTitle}</button>
             <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
             <button type="button" onClick={() => { const opener = fileMenuTrigger.current; setMenu(false); requestCommandSearch(opener) }}>

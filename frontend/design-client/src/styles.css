@@ -1767,6 +1767,9 @@ footer button {
 }
 /* The accessible name is localized; column span follows the stable marker. */
 .editor-shell > nav[data-workspace-tabs] { grid-column: 1 / -1; grid-row: 1; }
+.editor-shell[data-ui-mode="figma"][data-window-controls="inset"] { grid-template-rows: minmax(var(--editor-chrome-row), max-content) auto minmax(0, 1fr) auto; }
+.editor-shell[data-ui-mode="figma"][data-window-controls="inset"] > .editor-header { grid-row: 1; }
+.editor-shell[data-ui-mode="figma"][data-window-controls="inset"] > nav[data-workspace-tabs] { grid-row: 2; }
 .editor-shell .workspace-rail { display: none; }
 .editor-shell .document-title > .brand { grid-column: 1; grid-row: 1; width: 24px; height: 24px; min-width: 0; min-height: 0; margin: 0; padding: 0; gap: 0; align-self: center; z-index: 31; }
 .editor-shell .document-title > .brand .brand-mark { width: 22px; height: 22px; }
@@ -1811,9 +1814,7 @@ footer button {
 .properties-tab-buttons { display: flex; min-width: 0; }
 .editor-shell .properties-tabs button { padding: 5px 8px; }
 .properties-zoom { position: relative; }
-/* 12px readout. #858798 is 3.55:1 on white and 2.84:1 on the Sketch tab #e6e6e6.
-   Sketch muted #6e6e73 is only 4.06:1 on that tab, so this uses the shared
-   secondary ink that clears 4.5:1 on white, #e6e6e6, and #e9ebec / #e8ebec. */
+/* The compact readout clears 4.5:1 in the Figma pill and Sketch toolbar. */
 .properties-zoom .canvas-controls { position: static; display: flex; height: 30px; padding: 0; background: transparent; box-shadow: none; border: 0; border-radius: 0; font-size: 12px; color: #5d6673; }
 .compact-controls > .view-menu > summary { min-width: 58px; padding: 6px; font-size: 12px; list-style: none; cursor: pointer; color: #5d6673; }
 .compact-controls > .view-menu > summary::-webkit-details-marker { display: none; }
@@ -2596,7 +2597,6 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-muted: #6e6e73;
   grid-template-columns: 0px max-content minmax(0, 1fr) var(--workspace-inspector-width);
   grid-template-rows: 52px 1px minmax(0, 1fr) auto;
-  --editor-chrome-row: 53px;
   --editor-chrome-fill: #e8ebec;
   --editor-chrome-divider: #c4cacf;
   background: var(--editor-chrome-divider);
@@ -2641,13 +2641,13 @@ html[data-reduced-motion=true] .animation-modal * {
   grid-template-columns: none;
   grid-template-rows: none;
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: 80px;
   width: auto;
   height: 32px;
   max-height: 32px;
   margin: 0;
-  padding: 0 8px;
-  gap: 6px;
+  padding: 0 4px;
+  gap: 4px;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -2696,6 +2696,21 @@ html[data-reduced-motion=true] .animation-modal * {
   border-radius: 0;
   box-shadow: none;
   overflow: visible;
+}
+.file-menu .compact-library-entry { display: none; }
+@media (max-width: 1280px) {
+  .file-menu .compact-library-entry { display: flex; }
+  .editor-shell[data-ui-mode="sketch"] .editor-header .document-title .document-location { display: none; }
+  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { max-width: 72px; }
+}
+@media (max-width: 1180px) {
+  .editor-shell[data-ui-mode="sketch"] .floating-toolbar { gap: 3px; }
+  .editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group { gap: 0; }
+}
+@media (max-width: 1000px) {
+  .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { display: none; }
+  .editor-shell[data-ui-mode="sketch"] .header-right .design-agent-toggle span,
+  .editor-shell[data-ui-mode="sketch"] .header-right .app-settings-button span { display: none; }
 }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-zoom { display: flex; align-items: center; flex: none; height: 30px; }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-zoom .view-menu:not([open]) > .view-menu-body { display: none; }

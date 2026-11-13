@@ -20,31 +20,31 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     const toolbar = host.current, canvas = toolbar?.closest('.canvas-workspace')
     if (!toolbar || !canvas) return
     const shell = toolbar.closest<HTMLElement>('.editor-shell')
+    const viewTools = toolbar.querySelector<HTMLElement>('.figma-view-tools')
     const place = () => {
       // This `left` value is the visual center and only matches a bottom toolbar
-      // shifted with translateX(-50%). Sketch keeps its own row under the
-      // document action bar; writing that center inline slides the row sideways
-      // until the action bar covers the buttons.
-      if (shell && shell.getAttribute('data-ui-mode') === 'sketch') {
-        toolbar.style.removeProperty('left')
-        shell.style.removeProperty('--floating-toolbar-status-clearance')
-        return
-      }
+      // shifted with translateX(-50%). This effect runs on the canvas toolbar.
+      if (!shell) return
       const box = canvas.getBoundingClientRect(), half = toolbar.getBoundingClientRect().width / 2
       toolbar.style.left = `${Math.max(half + 8, Math.min(window.innerWidth / 2 - box.left, box.width - half - 8))}px`
       if (shell?.getAttribute('data-ui-mode') === 'figma') {
         const bottom = Number.parseFloat(getComputedStyle(toolbar).bottom)
-        const clearance = figmaStatusClearance(bottom, toolbar.getBoundingClientRect().height)
+        const box = toolbar.getBoundingClientRect()
+        const height = viewTools ? box.bottom - Math.min(box.top, viewTools.getBoundingClientRect().top) : box.height
+        const clearance = figmaStatusClearance(bottom, height)
         if (clearance > 0) shell.style.setProperty('--floating-toolbar-status-clearance', `${clearance}px`)
         else shell.style.removeProperty('--floating-toolbar-status-clearance')
       }
     }
     const observer = new ResizeObserver(place)
-    observer.observe(toolbar); observer.observe(canvas); window.addEventListener('resize', place)
-    const mode = shell && typeof MutationObserver === 'function' ? new MutationObserver(place) : undefined
-    if (shell) mode?.observe(shell, { attributes: true, attributeFilter: ['data-ui-mode'] })
+    observer.observe(toolbar); observer.observe(canvas)
+    if (viewTools) observer.observe(viewTools)
+    window.addEventListener('resize', place)
     place()
-    return () => { observer.disconnect(); mode?.disconnect(); window.removeEventListener('resize', place) }
+    return () => {
+      observer.disconnect(); window.removeEventListener('resize', place)
+      shell?.style.removeProperty('--floating-toolbar-status-clearance')
+    }
   }, [])
   const buttons = () => [...(host.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || [])]
     .filter(button => !button.closest('.figma-view-tools'))

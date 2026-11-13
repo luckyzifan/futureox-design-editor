@@ -32,10 +32,10 @@ test('status clearance follows the rendered pill and does not invent a pill size
   assert.ok(footer)
   assert.match(footer, /pointer-events:\s*auto/)
   assert.match(footer, /max\(78px, var\(--floating-toolbar-status-clearance, 78px\)\)/)
-  assert.match(chromeSource, /figmaStatusClearance\(bottom, toolbar\.getBoundingClientRect\(\)\.height\)/)
+  assert.match(chromeSource, /figmaStatusClearance\(bottom, height\)/)
   const sketch = styles.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{[^}]+\}/)?.[0]
   assert.match(sketch, /position: relative/)
-  assert.match(sketch, /flex-wrap: wrap/)
+  assert.match(sketch, /flex-wrap: nowrap/)
 })
 
 test('Figma 「设计已打开」 stays clear of the tool pill at 1440, 1180, 1000, and 900', { timeout: 40_000 }, async () => {
