@@ -88,7 +88,10 @@ function parseTreeLine(line) {
   if (!text || text.startsWith('error:')) return null
   const tab = text.indexOf('\t')
   let spec = tab === -1 ? text : text.slice(0, tab)
-  const license = tab === -1 ? '' : text.slice(tab + 1).trim()
+  // cargo appends " (*)" to a later duplicate line. The map keeps the last
+  // line, so that marker would otherwise replace the SPDX expression.
+  let license = tab === -1 ? '' : text.slice(tab + 1).trim()
+  if (license.endsWith(' (*)')) license = license.slice(0, -' (*)'.length).trim()
   if (spec.endsWith(' (*)')) spec = spec.slice(0, -4)
   let procMacro = false
   if (spec.endsWith(' (proc-macro)')) {
