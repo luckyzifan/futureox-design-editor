@@ -349,7 +349,7 @@ header {
 }
 .tool-group button.active {
   background: var(--workspace-selected);
-  color: var(--workspace-accent);
+  color: var(--workspace-selected-ink, var(--workspace-accent));
 }
 .toolbar i {
   height: 17px;
@@ -1523,7 +1523,7 @@ footer button {
 .workspace-rail button { flex-direction: column; gap: 4px; min-height: 46px; border-radius: 12px; padding: 7px 3px; color: var(--workspace-muted); font-weight: 500; }
 .workspace-rail button span { font-size: 10px; letter-spacing: 0.01em; }
 .workspace-rail button:hover { background: var(--workspace-hover); color: var(--workspace-text); }
-.workspace-rail button[aria-pressed=true] { background: var(--workspace-selected); color: var(--workspace-accent); }
+.workspace-rail button[aria-pressed=true] { background: var(--workspace-selected); color: var(--workspace-selected-ink, var(--workspace-accent)); }
 .editor-workspace .layers-panel { position: relative; max-width: 360px; min-width: 200px; border-color: var(--workspace-border); }
 .editor-workspace .workspace-title { padding: 14px 14px 16px; gap: 8px; }
 .editor-workspace .workspace-title small { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; max-width: 155px; margin-top: 4px; color: var(--workspace-muted); }
@@ -1552,14 +1552,14 @@ footer button {
 .floating-toolbar .tool-group { gap: 2px; align-items: center; }
 .floating-toolbar .tool-group > button, .floating-toolbar .tool-popover > button { width: 34px; height: 34px; border-radius: 7px; padding: 7px; color: var(--workspace-text); }
 .floating-toolbar .tool-group > button.active,
-.floating-toolbar .tool-popover > button.active { color: var(--workspace-accent); background: var(--workspace-selected); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 32%, transparent); }
+.floating-toolbar .tool-popover > button.active { color: var(--workspace-selected-ink, var(--workspace-accent)); background: var(--workspace-selected); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 32%, transparent); }
 .floating-toolbar button:hover:not(:disabled) { background: var(--workspace-hover); }
 .floating-toolbar button:disabled:hover { background: transparent; }
 .floating-toolbar button:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
 .floating-toolbar button[aria-expanded=true] { background: var(--workspace-selected); color: var(--workspace-accent); }
 .toolbar-tooltip { position: fixed; z-index: 90; max-width: min(280px, calc(100vw - 16px)); padding: 7px 9px; border: 1px solid var(--workspace-text); border-radius: 6px; background: var(--workspace-text); color: var(--workspace-panel); font-size: 11px; line-height: 16px; white-space: normal; pointer-events: none; box-shadow: 0 3px 10px #0002; }
 .floating-toolbar .tool-group > button.active:hover,
-.floating-toolbar .tool-popover > button.active:hover { color: var(--workspace-accent); background: var(--workspace-selected); }
+.floating-toolbar .tool-popover > button.active:hover { color: var(--workspace-selected-ink, var(--workspace-accent)); background: var(--workspace-selected); }
 .tool-popover { position: relative; display: flex; }
 .tool-popover-content { position: fixed; z-index: 80; width: 238px; max-width: calc(100vw - 16px); max-height: min(65dvh, calc(100dvh - 16px), 540px); overflow: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--workspace-border); border-radius: 9px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 6px 28px #0002; user-select: none; }
 .tool-popover-content > button { display: flex; width: 100%; height: 32px; justify-content: flex-start; padding: 6px 8px; font-size: 11px; border-radius: 5px; }
@@ -1840,7 +1840,7 @@ footer button {
 .properties-content .inspector h4 { color: var(--workspace-muted); font-size: 11px; }
 .properties-content .inspector select, .properties-content .property-card > input:not([type="color"]), .properties-content .paint-row select { font-size: 11px; }
 .properties-content .text-button, .properties-content .selection-actions button { font-size: 11px; }
-.properties-tabs button[aria-selected=true] { background: transparent; color: var(--workspace-accent); border-radius: 0; box-shadow: inset 0 -2px 0 var(--workspace-accent); font-weight: 600; }
+.properties-tabs button[aria-selected=true] { background: transparent; color: var(--workspace-selected-ink, var(--workspace-accent)); border-radius: 0; box-shadow: inset 0 -2px 0 var(--workspace-accent); font-weight: 600; }
 .floating-toolbar { box-shadow: 0 6px 24px #18233014, 0 1px 4px #1823300a; }
 .tool-popover-content > button, .canvas-context-menu button { font-size: 12px; min-height: 30px; }
 .file-menu { border-color: var(--workspace-border); }
@@ -2222,7 +2222,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .workspace-rail { gap: 4px; }
 .workspace-rail button[aria-pressed=true] {
   background: var(--workspace-selected);
-  color: var(--workspace-accent);
+  color: var(--workspace-selected-ink, var(--workspace-accent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 22%, transparent);
 }
 .editor-workspace .page, .editor-workspace .layer-row { border-radius: 8px; }
@@ -2379,6 +2379,11 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-accent: #0d99ff;
   --workspace-accent-hover: #0b86e0;
   --workspace-selected: #e5f4ff;
+  /* Glyphs on the selected wash, and the selected tab label. Figma's
+     text / icon-onselected token is #000000e5. bg-brand #0d99ff on #e5f4ff
+     is 2.67:1; icon-selected #007be5 is 3.77:1 on that wash and 4.23:1 on
+     white. The wash and the accent indicator stay. */
+  --workspace-selected-ink: #000000e5;
   --workspace-panel: #ffffff;
   --workspace-canvas: #e5e5e5;
   --workspace-border: #e6e6e6;
@@ -2445,6 +2450,10 @@ html[data-reduced-motion=true] .animation-modal * {
   --workspace-accent: #007aff;
   --workspace-accent-hover: #0063cc;
   --workspace-selected: #d6e8ff;
+  /* Same role as Figma text-onselected: the primary label already used as
+     Sketch text. #007aff on #d6e8ff is 3.22:1. The wash and system-blue
+     indicator stay. */
+  --workspace-selected-ink: #1d1d1f;
   --workspace-panel: #f2f2f2;
   --workspace-canvas: #c8c8c8;
   --workspace-border: #c6c6c6;
