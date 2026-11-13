@@ -3039,6 +3039,9 @@ fn analyticRectCoverage(local:vec2<f32>,edges:vec4<f32>)->f32{
     this.triangles += count * 2
   }
   get analyticSolidsReady(){return !!this.analyticSolidPipeline}
+  analyticSolidRemaining() {
+    return Math.floor((this.solidData.length - this.solidOffset) / ANALYTIC_SOLID_FLOATS)
+  }
   relocateCoverageProgram(first:number){
     if(!Number.isSafeInteger(first)||first<0||first>16_777_216)return
     if(!this.programOffsets)return first

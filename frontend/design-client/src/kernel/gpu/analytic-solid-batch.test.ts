@@ -120,3 +120,20 @@ test('analytic topology leaves fuse coverage and paint, and the flag restores th
   expect(after).toBe(Math.ceil(count/48))
   console.log(JSON.stringify({scope:'same analytic renderer, 128 area solids in neutral groups, tile-sized target',beforeDraws:before,afterDraws:after,batchedNodes:count}))
 })
+
+
+test('an exhausted analytic arena falls back for the remaining leaves',async()=>{
+  const run=harness(8,2)
+  let remaining=3
+  const draw=run.driver.drawAnalyticSolids
+  run.driver.analyticSolidRemaining=()=>remaining
+  run.driver.drawAnalyticSolids=(output:Texture,source:Texture,rect:Rect,clip:Texture|undefined,clipRect:Rect|undefined,data:Float32Array,count:number)=>{
+    expect(count).toBeLessThanOrEqual(remaining)
+    remaining-=count
+    return draw(output,source,rect,clip,clipRect,data,count)
+  }
+  await run.renderer.drawList(['stage'],run.target)
+  expect(run.draws.filter(draw=>draw.startsWith('batch:'))).toEqual(['batch:3:72'])
+  expect(run.draws.some(draw=>draw==='mask')).toBe(true)
+  expect(remaining).toBe(0)
+})

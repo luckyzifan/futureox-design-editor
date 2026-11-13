@@ -293,6 +293,7 @@ export interface Driver {
   drawOpaqueSolids?(batch:OpaqueSolidBatch,target:Texture,sample:number):boolean
   /** Analytic area/rect coverage fused into exact solid paint-over. One draw. */
   readonly analyticSolidsReady?: boolean
+  analyticSolidRemaining?(): number
   relocateCoverageProgram?(first: number): number | undefined
   drawAnalyticSolids?(output: Texture, source: Texture, sourceRect: Rect, clip: Texture | undefined, clipRect: Rect | undefined, data: Float32Array, count: number, fullPass: boolean): boolean
   usesDisplayFilter?(radius: number, channels?: number): boolean

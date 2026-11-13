@@ -3610,8 +3610,9 @@ export class GpuRenderer {
     if(!this.analyticSolidBatchEnabled()||!this.analyticSolidTarget(target)||clip&&(clip.texture===target.texture||!!clip.logicalBounds))return
     const words=this.curveWords()
     const items=[]
+    const capacity = this.driver.analyticSolidRemaining?.() ?? MAX_SOLID_INSTANCES
     let end=start
-    for(;end<ids.length;end++){
+    for(;end<ids.length && items.length<capacity;end++){
       const item=analyticSolidLeaf(this.scene.nodes[ids[end]],target.rect,words,value=>this.color(value),value=>this.alpha(value))
       if(!item)break
       if(item.program.kind==='area'&&this.driver.relocateCoverageProgram&&
