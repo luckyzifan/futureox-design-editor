@@ -225,7 +225,7 @@ export interface DesktopBridge {
   }): Promise<DesktopResult<DesktopFile>>
   /** Writes one validated panel export. The host chooses the dialog and extension. */
   exportProductFile?(request: {
-    kind: 'fd' | 'html-zip'
+    kind: 'fd' | 'html-zip' | 'assets-zip'
     filename: string
     bytes: Uint8Array
   }): Promise<DesktopResult<{ displayName: string }>>

@@ -17,6 +17,7 @@ import { commitExportEdits } from './export-ownership'
 import { subtreeNeedsExplicitColorEncoding } from './export-metadata'
 import type { Editor } from './engine'
 import { useInterfacePreferences } from './interface-preference'
+import { desktopBridge } from './desktop'
 
 const messageEnglish: Record<string, string> = {
   '与其他所选预设的文件名冲突，未写入': 'This file name collides with another selected preset, so nothing was written.',
@@ -45,6 +46,7 @@ function defaultChecked(tasks: readonly AllAssetTask[]): Set<string> {
 export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: AllAssetEncoder }) {
   const { locale } = useInterfacePreferences()
   const english = locale === 'en'
+  const desktop = desktopBridge()
   const text = (zh: string, en: string) => english ? en : zh
   const snap = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const [scope, setScope] = useState<AllAssetScope>('page')
@@ -94,6 +96,7 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
   const layerInputs = useRef(new Map<string, HTMLInputElement>())
   const request = useRef<AbortController | null>(null)
   const [links, setLinks] = useState<{ zip: string; files: ReadonlyMap<string, string> }>({ zip: '', files: new Map() })
+  const [savingZip, setSavingZip] = useState(false)
   useEffect(() => {
     for (const group of groups) {
       const input = layerInputs.current.get(`${group.pageName}:${group.nodeId}`)
@@ -116,11 +119,25 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
       created.push(url)
       files.set(item.task.id, url)
     }
-    const zip = URL.createObjectURL(bytesBlob(allAssetsZip(run), 'application/zip'))
-    created.push(zip)
+    const zip = desktop ? '' : URL.createObjectURL(bytesBlob(allAssetsZip(run), 'application/zip'))
+    if (zip) created.push(zip)
     setLinks({ zip, files })
     return () => { for (const url of created) URL.revokeObjectURL(url) }
-  }, [run])
+  }, [run, desktop])
+  async function saveZip() {
+    if (!run || savingZip) return
+    setSavingZip(true)
+    try {
+      const publish = desktop?.exportProductFile
+      if (!publish) throw new Error(text('本机 ZIP 保存入口不可用', 'Local ZIP export is unavailable.'))
+      const result = await publish({
+        kind: 'assets-zip', filename: `${filenameBase(snap.doc.name)}-assets.zip`, bytes: allAssetsZip(run),
+      })
+      if (result.status !== 'ok' && result.status !== 'cancelled') throw new Error(result.message)
+    } catch (error) {
+      setProgress(String(error instanceof Error ? error.message : error))
+    } finally { setSavingZip(false) }
+  }
   function toggleIds(tasks: readonly AllAssetTask[], on: boolean) {
     setChecked(previous => {
       const next = new Set(previous)
@@ -253,7 +270,10 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
         {item.status === 'delivered' && links.files.get(item.task.id) && <a href={links.files.get(item.task.id)} download={item.task.path}>{text('下载', 'Download')} {item.task.path}</a>}
       </li>)}
     </ul>}
-    {links.zip && run && <p><a href={links.zip} download={`${filenameBase(snap.doc.name)}-assets.zip`}>{text(`下载 ZIP（${run.counts.delivered} 个文件和清单）`, `Download ZIP (${run.counts.delivered} files and manifest)`)}</a></p>}
+    {!!run?.counts.delivered && <p>{desktop
+      ? <button type="button" disabled={savingZip} onClick={() => void saveZip()}>{text(`保存 ZIP（${run.counts.delivered} 个文件和清单）`, `Save ZIP (${run.counts.delivered} files and manifest)`)}</button>
+      : links.zip && <a href={links.zip} download={`${filenameBase(snap.doc.name)}-assets.zip`}>{text(`下载 ZIP（${run.counts.delivered} 个文件和清单）`, `Download ZIP (${run.counts.delivered} files and manifest)`)}</a>}
+    </p>}
   </div>
 }
 

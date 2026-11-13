@@ -134,19 +134,19 @@ export async function runAllAssets(input: {
   const folded = new Map<string, number>()
   for (const task of selected) {
     if (!task.executable) continue
-    const key = task.path.toLocaleLowerCase('en-US')
+    const key = task.path.normalize('NFC').toLocaleLowerCase('en-US')
     folded.set(key, (folded.get(key) ?? 0) + 1)
   }
   let pixels = 0
   for (const task of selected) {
-    if (!task.executable || (folded.get(task.path.toLocaleLowerCase('en-US')) ?? 0) > 1) continue
+    if (!task.executable || (folded.get(task.path.normalize('NFC').toLocaleLowerCase('en-US')) ?? 0) > 1) continue
     pixels += task.pixelCount
   }
   const overBudget = pixels > ALL_ASSETS_PIXEL_BUDGET
   const items: AllAssetItem[] = []
   for (const task of selected) {
     let item: AllAssetItem
-    const collision = task.executable && (folded.get(task.path.toLocaleLowerCase('en-US')) ?? 0) > 1
+    const collision = task.executable && (folded.get(task.path.normalize('NFC').toLocaleLowerCase('en-US')) ?? 0) > 1
     if (!task.executable) item = { task, status: 'blocked', message: task.blockReason || '该预设不能导出' }
     else if (collision) item = { task, status: 'conflict', message: ALL_ASSETS_CONFLICT_REASON }
     else if (overBudget) item = { task, status: 'blocked', message: ALL_ASSETS_BUDGET_REASON }

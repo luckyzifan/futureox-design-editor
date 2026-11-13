@@ -919,13 +919,18 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         e.preventDefault(); command('open')
       } else if (desktopSession && key === 'n' && !e.shiftKey) {
         e.preventDefault(); command('new')
-      } else if (!showHome && matchesAllAssetsShortcut(e, shortcutPlatform())) {
-        e.preventDefault()
-        setMenu(false)
-        setExportEntry('assets')
-        setShowExport(true)
       }
     }
+    const allAssetsShortcut = (event: KeyboardEvent) => {
+      if (!ready || showHome || largeDocument || switching || desktopStatus.busy ||
+          desktopStatus.transitioning || editor.interactionActive || event.defaultPrevented ||
+          event.keyCode === 229 || shortcutTargetOwnsKeyboard(event.target) ||
+          !matchesAllAssetsShortcut(event, shortcutPlatform())) return
+      event.preventDefault()
+      setMenu(false)
+      openExportPanel('assets')
+    }
+    window.addEventListener('keydown', allAssetsShortcut, true)
     window.addEventListener('keydown', layout)
     window.addEventListener('keydown', shortcut)
     const offCommand = desktop?.onCommand(command)

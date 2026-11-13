@@ -1,7 +1,7 @@
-// Explicit desktop write for the two MCP panel exports that must not use the
+// Explicit desktop writes for exports that must not use the
 // generic blob allowlist. The renderer cannot choose a directory, an extension,
 // or a network URL. FD bytes must be a version-2 checksum container. ZIP bytes
-// must be the fixed HTML/CSS/manifest bundle, plus optional image assets.
+// carry a validated HTML/CSS manifest or a verified preset asset manifest.
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { constants } from 'node:fs'
 import { lstat, open, readFile, realpath, rename, rm } from 'node:fs/promises'
@@ -10,6 +10,7 @@ import { inflateRawSync } from 'node:zlib'
 
 export const FD_EXPORT_BYTE_LIMIT = 64 * 1024 * 1024
 export const HTML_ZIP_BYTE_LIMIT = 8 * 1024 * 1024
+export const ASSET_ZIP_BYTE_LIMIT = 64 * 1024 * 1024
 const MAX_ZIP_ENTRIES = 503
 const ZIP_LOCAL = 0x04034b50
 const ZIP_CENTRAL = 0x02014b50
@@ -114,12 +115,43 @@ function assertBundle(files) {
   }
 }
 
-function validateZip(bytes, limit) {
+const ASSET_EXPORT_EXTENSIONS = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', svg: 'svg', pdf: 'pdf', 'pdf-vector': 'pdf', tiff: 'tiff' }
+
+function assertAssetBundle(files) {
+  const manifestBytes = files.get('manifest.json')
+  if (!manifestBytes) reject('bundle')
+  let manifest
+  try { manifest = JSON.parse(text(manifestBytes)) }
+  catch { reject('bundle') }
+  if (manifest?.kind !== 'futureox-all-assets' || manifest.version !== 1 ||
+      !Array.isArray(manifest.items) || manifest.items.length > MAX_ZIP_ENTRIES - 1) reject('bundle')
+  const names = new Set()
+  for (const item of manifest.items) {
+    if (!item || typeof item.path !== 'string') reject('bundle')
+    if (item.status !== 'delivered') continue
+    const name = item.path.normalize('NFC').toLowerCase()
+    if (name === 'manifest.json' || item.path.includes('/') || names.has(name)) reject('entries')
+    const extension = Object.hasOwn(ASSET_EXPORT_EXTENSIONS, item.format) ? ASSET_EXPORT_EXTENSIONS[item.format] : null
+    const data = files.get(item.path)
+    if (!extension || !item.path.endsWith('.' + extension) || !data?.length || data.length !== item.bytes ||
+        createHash('sha256').update(data).digest('hex') !== item.sha256) reject('bundle')
+    names.add(name)
+  }
+  if (!names.size || names.size !== files.size - 1) reject('entries')
+}
+function productLimit(kind) {
+  if (kind === 'fd') return FD_EXPORT_BYTE_LIMIT
+  if (kind === 'html-zip') return HTML_ZIP_BYTE_LIMIT
+  if (kind === 'assets-zip') return ASSET_ZIP_BYTE_LIMIT
+  reject('kind')
+}
+
+function validateZip(bytes, limit, validateBundle, minEntries) {
   if (bytes.length < 22 || bytes.readUInt32LE(bytes.length - 22) !== ZIP_EOCD) reject('eocd')
   const eocd = bytes.length - 22
   if (bytes.readUInt16LE(eocd + 4) !== 0 || bytes.readUInt16LE(eocd + 6) !== 0) reject('disk')
   const count = bytes.readUInt16LE(eocd + 8)
-  if (count !== bytes.readUInt16LE(eocd + 10) || count < REQUIRED.length || count > MAX_ZIP_ENTRIES) reject('entries')
+  if (count !== bytes.readUInt16LE(eocd + 10) || count < minEntries || count > MAX_ZIP_ENTRIES) reject('entries')
   const directorySize = bytes.readUInt32LE(eocd + 12)
   const directoryOffset = bytes.readUInt32LE(eocd + 16)
   if (bytes.readUInt16LE(eocd + 20) !== 0 || directoryOffset >= eocd || directoryOffset + directorySize !== eocd) reject('layout')
@@ -196,21 +228,23 @@ function validateZip(bytes, limit) {
     packed = end
   }
   if (firstOffset !== 0 || packed !== directoryOffset) reject('layout')
-  assertBundle(files)
+  validateBundle(files)
   return bytes
 }
 
-export function validateProductExport(kind, value, limit = kind === 'fd' ? FD_EXPORT_BYTE_LIMIT : HTML_ZIP_BYTE_LIMIT) {
-  if (kind !== 'fd' && kind !== 'html-zip') reject('kind')
+export function validateProductExport(kind, value, limit = productLimit(kind)) {
   if (!Number.isSafeInteger(limit) || limit < 1) reject('size')
-  const bytes = coerceExportBytes(value, Math.min(limit, kind === 'fd' ? FD_EXPORT_BYTE_LIMIT : HTML_ZIP_BYTE_LIMIT))
-  return kind === 'fd' ? validateFd(bytes) : validateZip(bytes, Math.min(limit, HTML_ZIP_BYTE_LIMIT))
+  const bounded = Math.min(limit, productLimit(kind))
+  const bytes = coerceExportBytes(value, bounded)
+  if (kind === 'fd') return validateFd(bytes)
+  return kind === 'html-zip' ? validateZip(bytes, bounded, assertBundle, REQUIRED.length)
+    : validateZip(bytes, bounded, assertAssetBundle, 2)
 }
 
 export function exportDialogName(kind, filename) {
-  const fallback = kind === 'fd' ? 'design.fd' : 'design-html.zip'
+  const fallback = kind === 'fd' ? 'design.fd' : kind === 'assets-zip' ? 'design-assets.zip' : 'design-html.zip'
   const expected = kind === 'fd' ? '.fd' : '.zip'
-  if ((kind !== 'fd' && kind !== 'html-zip') || typeof filename !== 'string') return fallback
+  if ((kind !== 'fd' && kind !== 'html-zip' && kind !== 'assets-zip') || typeof filename !== 'string') return fallback
   if (filename.length > 80 || filename.length < expected.length + 1 || path.basename(filename) !== filename) return fallback
   if (/[\u0000-\u001f\u007f\\/]/.test(filename) || filename === '.' || filename === '..') return fallback
   if (path.extname(filename).toLowerCase() !== expected) return fallback
@@ -218,7 +252,7 @@ export function exportDialogName(kind, filename) {
 }
 
 export function normalizeExportChoice(kind, filePath) {
-  const expected = kind === 'fd' ? '.fd' : kind === 'html-zip' ? '.zip' : ''
+  const expected = kind === 'fd' ? '.fd' : kind === 'html-zip' || kind === 'assets-zip' ? '.zip' : ''
   if (!expected) reject('kind')
   if (typeof filePath !== 'string' || !filePath || filePath.includes('\0') || !path.isAbsolute(filePath)) reject('path', { actual: '' })
   let selected = filePath

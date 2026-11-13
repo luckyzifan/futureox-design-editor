@@ -57,6 +57,7 @@ const en = {
   },
   productExportRejected(kind) {
     if (kind === 'fd') return 'The .fd export failed validation and was not written.'
+    if (kind === 'assets-zip') return 'The preset asset ZIP failed validation and was not written.'
     if (kind === 'html-zip') return 'The HTML / asset ZIP is not the fixed design export and was not written.'
     return 'This export type is not supported.'
   },
@@ -97,6 +98,7 @@ const zhCN = {
   },
   productExportRejected(kind) {
     if (kind === 'fd') return '无法写入 .fd：内容未通过设计文件校验。'
+    if (kind === 'assets-zip') return '无法写入预设资产 ZIP：压缩包未通过校验。'
     if (kind === 'html-zip') return '无法写入 HTML / 素材 ZIP：压缩包不是固定的设计导出内容。'
     return '不支持该导出类型。'
   },

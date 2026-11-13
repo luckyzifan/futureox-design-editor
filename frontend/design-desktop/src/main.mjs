@@ -37,6 +37,7 @@ import { Sidecar } from './sidecar.mjs'
 import { createWorkspaceSqliteCodec, SQLITE_OFFTHREAD_BYTES } from './workspace-sqlite-worker-host.mjs'
 import { DOCUMENT_BYTE_LIMIT, DOCUMENT_MEMORY_BYTES, STARTUP_MEMORY } from './document-capacity.mjs'
 import {
+  ASSET_ZIP_BYTE_LIMIT,
   FD_EXPORT_BYTE_LIMIT,
   HTML_ZIP_BYTE_LIMIT,
   exportDialogName,
@@ -870,17 +871,18 @@ register('save', async (value) => {
     ...(saved.warning ? { warning: saved.warning } : {}),
   }
 })
-// Panel FD / HTML ZIP exports. This does not adopt the file, grant a path, or
+// Panel FD and ZIP exports. This does not adopt the file, grant a path, or
 // widen the blob allowlist. The native dialog is the only destination.
 register('export-product-file', async value => {
   const params = record(value, ['kind', 'filename', 'bytes'])
   const kind = params.kind
   const text = desktopText[interfaceLocale]
-  if (kind !== 'fd' && kind !== 'html-zip') {
+  if (kind !== 'fd' && kind !== 'html-zip' && kind !== 'assets-zip') {
     return { status: 'error', code: 'PRODUCT_EXPORT_REJECTED', message: text.productExportRejected(kind) }
   }
   const expected = kind === 'fd' ? '.fd' : '.zip'
-  const limit = kind === 'fd' ? Math.min(FD_EXPORT_BYTE_LIMIT, DOCUMENT_BYTE_LIMIT) : HTML_ZIP_BYTE_LIMIT
+  const limit = kind === 'fd' ? Math.min(FD_EXPORT_BYTE_LIMIT, DOCUMENT_BYTE_LIMIT)
+    : kind === 'assets-zip' ? ASSET_ZIP_BYTE_LIMIT : HTML_ZIP_BYTE_LIMIT
   let admitted
   try { admitted = validateProductExport(kind, params.bytes, limit) }
   catch (error) {
@@ -1133,7 +1135,7 @@ async function buildWindow() {
       .join('')
       .slice(0, 200)
       const extension = path.extname(name).toLowerCase()
-      // .fd and .zip stay off this list. Those two panel exports use export-product-file.
+      // FD and ZIP panel exports use export-product-file.
       const allowed = ['.png', '.svg', '.svgz', '.jpg', '.jpeg', '.webp', '.tiff', '.tif', '.pdf', '.json', '.fdlib', '.sketch'].includes(
       extension,
     )
