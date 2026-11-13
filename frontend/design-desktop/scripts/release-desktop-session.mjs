@@ -278,7 +278,15 @@ async function main() {
   let report
   const described = describePackage(packagePath, { platform: process.platform, arch: process.arch })
   const plan = planReleaseLaunch(described, { platform: process.platform, arch: process.arch })
-  const signature = inspectHostSignature({ platform: process.platform, packagePath })
+  const signaturePath = process.platform === 'darwin' && !packagePath.endsWith('.app')
+    ? path.resolve(path.dirname(bundleExecutable(packagePath)), '../..')
+    : packagePath
+  const signature = inspectHostSignature({ platform: process.platform, packagePath: signaturePath,
+    run(command, args) {
+      const result = spawnSync(command, args, { encoding: 'utf8', timeout: 15000 })
+      return { status: result.status, stdout: (result.stdout || '') + (result.stderr || '') }
+    },
+  })
   report = desktopFlowBaseline({ packagePath, platform: process.platform, arch: process.arch, originalPaths: [] })
   report.blockedOfficialSteps = []
   report.plan = plan
