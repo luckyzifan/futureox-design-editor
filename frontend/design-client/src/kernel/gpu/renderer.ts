@@ -3433,6 +3433,10 @@ export class GpuRenderer {
       this.sampleIndex !== undefined
         ? 1
         : 0
+    // u(46).z tells the half-scale footprint to keep the historical tap.
+    // Adjustments are already baked into the upload; pattern tiles are not
+    // a single axis-aligned placement. Solids never read this as an image.
+    if (kind === 3 && (imageAdjustActive(p.adjust) || (!!p.tile && p.tile.mode !== 'none'))) u[186] = 1
     u[187] =
       !this.driver.managed && this.scene.coherentSamples && this.sampleIndex !== undefined ? 1 : 0
     if (u[186]) u.set(solidRgba8(this.color(p.color), p.opacity), 192)

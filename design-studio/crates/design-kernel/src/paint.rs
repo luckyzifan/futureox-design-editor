@@ -1343,23 +1343,27 @@ impl Sampler {
         self.linear_sampling |= floating;
         Ok(())
     }
-    /// Coverage-weighted encoded average for an axis-aligned stretch sample
-    /// whose device pixel covers about two source texels on both axes.
+    /// Coverage-weighted average for an axis-aligned image sample whose
+    /// device pixel covers about two source texels on both axes.
     ///
     /// Centre bilinear and a 2×2 box agree when the scale is exactly 2. A
     /// rounded half frame (an odd source such as 749 placed at half size) is
     /// not that lattice: the centre tap and the pixel footprint then diverge.
-    /// Device zoom is the scale, so a CSS half view at DPR 2 stays a 1:1 copy.
+    /// Sketch Fill is `cover` and Fit is `contain`; both use one uniform
+    /// scale, so a half-size placement is the same band as stretch. Device
+    /// zoom is the scale, so a CSS half view at DPR 2 stays a 1:1 copy.
     /// Magnification and other minification ratios keep the historical tap.
     /// Unmanaged texels are averaged as encoded bytes. Managed texels are
     /// averaged in the linear values already stored for them. Image
-    /// adjustments stay on the historical tap.
+    /// adjustments and pattern tiles stay on the historical tap. Contain
+    /// letterbox texels contribute zero and divide by the full footprint, so
+    /// the margin stays transparent.
     fn half_scale_stretch(&self, image: &SampleImage, device: Point) -> Option<Pixel> {
         let coords = self.image_coordinates.as_ref()?;
         if self.adjust.is_some()
             || coords.pattern.is_some()
-            || coords.fit != "stretch"
             || coords.paint_inverse.is_some()
+            || !matches!(coords.fit.as_str(), "stretch" | "cover" | "contain")
         {
             return None;
         }
@@ -1428,11 +1432,16 @@ impl Sampler {
                 weight += w;
             }
         }
-        if weight <= 0. {
+        let full = (x_hi - x_lo) * (y_hi - y_lo);
+        if weight <= 0. || full <= 0. {
             return Some(Pixel::default());
         }
+        // Stretch and cover footprints lie in the image, so the in-bounds
+        // weight is the footprint. Contain's letterbox is empty texels:
+        // dividing by the full footprint keeps that margin transparent.
+        let denom = if coords.fit == "contain" { full } else { weight };
         Some(Pixel(sum.map(|value| {
-            let averaged = value / weight;
+            let averaged = value / denom;
             if self.encoded_texels {
                 averaged.round().clamp(0., 255.) as f32 / 255.
             } else {

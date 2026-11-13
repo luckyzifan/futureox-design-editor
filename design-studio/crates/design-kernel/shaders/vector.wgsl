@@ -1002,31 +1002,56 @@ fn zoomBlurPixel(p:vec2<f32>)->vec4<f32>{
  }
  return meanFourRN(groups[0],groups[1],groups[2],groups[3]);
 }
-// Encoded area of one device pixel when an axis-aligned stretch image is near
-// half resolution. x<0 means the historical tap still applies. Device scale,
+// Device-pixel footprint for an axis-aligned stretch, cover, or contain image
+// near half resolution. a<0 means the historical tap still applies. Fit 0 is
+// cover (max ratio), 1 is contain (min ratio), 2 is stretch. Device scale,
 // not a CSS zoom label, selects the band, so DPR 2 at CSS 50% stays 1:1.
+// u(46).z is set for pattern tiles and baked adjustments. Managed float
+// texels average in linear light, including the straight-sRGB table; byte
+// textures average encoded channel values.
+fn halfScaleTexel(localPx:vec2<f32>)->vec2<f32>{
+ let image=u(2).zw;let node=u(6).zw;let fit=u(8).z;
+ if(fit>=1.5){return localPx*image/node;}
+ let ratios=node/image;
+ let ratio=select(min(ratios.x,ratios.y),max(ratios.x,ratios.y),fit<0.5);
+ let inset=(node-image*ratio)*0.5;
+ return (localPx-inset)/ratio;
+}
 fn halfScaleStretch(p:vec2<f32>)->vec4<f32>{
- if(u(60).x>0.5||u(62).z>0.5||u(8).z<1.5||u(5).y!=0.||u(5).z!=0.){return vec4<f32>(-1.);}
+ if(u(62).z>0.5||u(46).z>0.5||u(5).y!=0.||u(5).z!=0.){return vec4<f32>(-1.);}
+ let fit=u(8).z;
+ if(fit<0.||fit>2.){return vec4<f32>(-1.);}
  let size=u(2).zw;let node=u(6).zw;
  if(any(node<=vec2<f32>(0.))||any(size<vec2<f32>(1.))){return vec4<f32>(-1.);}
- let origin=floor(p);let scale=size/node;
- let e00=local(origin)*scale;let e10=local(origin+vec2<f32>(1.,0.))*scale;let e01=local(origin+vec2<f32>(0.,1.))*scale;
+ let origin=floor(p);
+ let e00=halfScaleTexel(local(origin));
+ let e10=halfScaleTexel(local(origin+vec2<f32>(1.,0.)));
+ let e01=halfScaleTexel(local(origin+vec2<f32>(0.,1.)));
  let span=abs(vec2<f32>(e10.x-e00.x,e01.y-e00.y));
  if(any(span<vec2<f32>(1.5))||any(span>=vec2<f32>(2.5))){return vec4<f32>(-1.);}
+ if(abs(e01.x-e00.x)>1e-4||abs(e10.y-e00.y)>1e-4){return vec4<f32>(-1.);}
  let xLo=min(e00.x,e10.x);let xHi=max(e00.x,e10.x);let yLo=min(e00.y,e01.y);let yHi=max(e00.y,e01.y);
  var sum=vec4<f32>(0.);var weight=0.;
  let x0=i32(floor(xLo));let y0=i32(floor(yLo));let x1=i32(ceil(xHi));let y1=i32(ceil(yHi));
- let base=vec2<i32>(u(2).xy);
+ if(y1-y0>4||x1-x0>4){return vec4<f32>(-1.);}
+ let base=vec2<i32>(u(2).xy);let managed=u(60).x>0.5;
  for(var y=0;y<4;y=y+1){let ty=y0+y;if(ty>=y1){break;}
   let yb=f32(ty);let wy=min(yHi,yb+1.)-max(yLo,yb);if(wy<=0.){continue;}
   for(var x=0;x<4;x=x+1){let tx=x0+x;if(tx>=x1){break;}
    let xb=f32(tx);let wx=min(xHi,xb+1.)-max(xLo,xb);if(wx<=0.){continue;}
    if(tx<0||ty<0||f32(tx)>=size.x||f32(ty)>=size.y){continue;}
-   let w=wx*wy;sum=sum+round(textureLoad(sourceB,base+vec2<i32>(tx,ty),0)*255.)*w;weight=weight+w;
+   let w=wx*wy;
+   if(managed){sum=sum+linearImageTexel(base+vec2<i32>(tx,ty))*w;}
+   else{sum=sum+round(textureLoad(sourceB,base+vec2<i32>(tx,ty),0)*255.)*w;}
+   weight=weight+w;
   }
  }
  if(weight<=0.){return vec4<f32>(0.);}
- return clamp(floor(sum/weight+vec4<f32>(0.5)),vec4<f32>(0.),vec4<f32>(255.))/255.;
+ let full=(xHi-xLo)*(yHi-yLo);
+ let denom=select(weight,full,fit>0.5&&fit<1.5);
+ if(denom<=0.){return vec4<f32>(0.);}
+ if(managed){return sum/denom;}
+ return clamp(floor(sum/denom+vec4<f32>(0.5)),vec4<f32>(0.),vec4<f32>(255.))/255.;
 }
 fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
  // Managed surfaces preserve extended-range linear light in RGBA32F.
@@ -1084,7 +1109,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
    if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4<f32>(opacity));}
   }
   if(kind==3&&u(46).w>0.5){let grid=byteImageAddress(p);if(grid.z>0.5){paint=round(smpBytesIndex(sourceB,grid.xy,u(2))*opacity)/255.;}else{paint=vec4<f32>(0);}}else if(kind==3&&u(60).x>0.5){paint=mulRN4(linearImage(p),vec4<f32>(opacity));}else if(kind==3){let size=u(2).zw;var coord=paintUV(q)*size-0.5;if(u(62).z<0.5){coord=(q*size-u(6).zw*0.5)/u(6).zw;if(u(8).z<1.5){let ratio=select(min(u(6).z/size.x,u(6).w/size.y),max(u(6).z/size.x,u(6).w/size.y),u(8).z<0.5);coord=(q-(u(6).zw-(size-1.)*ratio)*0.5)/ratio;}}if(u(8).z>0.5&&u(8).z<1.5&&(any(coord<vec2<f32>(-0.5))||any(coord>=size-0.5))){paint=vec4<f32>(0);}else{if(u(46).w>0.5){paint=round(smpBytesIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity)/255.;}else{paint=smpIndex(sourceB,clamp(coord,vec2<f32>(0),size-1.),u(2))*opacity;}}}
-  {let half=halfScaleStretch(p);if(kind==3&&half.x>=0.){paint=half*opacity;}}
+  if(kind==3){let half=halfScaleStretch(p);if(half.a>=0.){if(u(60).x>0.5){paint=mulRN4(half,vec4<f32>(opacity));}else{paint=half*opacity;}}}
   if(u(46).w>0.5){paint=round(paint*255.)/255.;}
   var result=paint*at(sourceA,p,u(1)).a;if(u(60).x>0.5){result=mulRN4(paint,vec4<f32>(at(sourceA,p,u(1)).a));}if(mode==16){result=result*u(4).z;if(u(4).w>0.5){result=result*at(sourceC,p,u(3)).a;}}return result;
  }
