@@ -27,6 +27,7 @@
     "test:io-import": "bun scripts/check-io-import.ts",
     "test:preview-contract": "bun scripts/check-preview-contract.ts",
     "test:sketch-toolbar-hits": "bun scripts/check-sketch-toolbar-hits.ts",
+    "test:figma-view-tools": "bun scripts/check-figma-view-tools.ts",
     "test:sketch-toolbar-hits-electron": "bun scripts/check-sketch-toolbar-hits-electron.ts",
     "test:figma-software": "bun scripts/check-figma-software.ts",
     "test:tile-frame": "bun scripts/check-tile-frame.ts",

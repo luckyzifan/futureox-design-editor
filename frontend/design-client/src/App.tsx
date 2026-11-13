@@ -199,8 +199,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const workspaceRootPending = useRef(false)
   const fileMenuTrigger = useRef<HTMLButtonElement>(null)
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>('layers')
-  const [zoomHost, setZoomHost] = useState<HTMLDivElement | null>(null)
   const [sketchZoomHost, setSketchZoomHost] = useState<HTMLDivElement | null>(null)
+  const [figmaZoomHost, setFigmaZoomHost] = useState<HTMLDivElement | null>(null)
   const workspaceActions = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
     const dismiss = (event: Event) => { if (workspaceActions.current && !workspaceActions.current.contains(event.target as Node)) workspaceActions.current.open = false }
@@ -997,6 +997,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   )
   const shapeTools = ['rectangle', 'line', 'arrow', 'ellipse', 'polygon', 'star'].map(id => tools.find(tool => tool.id === id)!)
   const moveTool = tools.find(({ id }) => id === s.tool && ['select', 'hand', 'scale', 'zoom'].includes(id)) || tools.find(({ id }) => id === lastMoveTool)!
+  const handTool = tools.find(({ id }) => id === 'hand')!
   const regionTool = tools.find(({ id }) => id === s.tool && ['frame', 'section', 'slice'].includes(id)) || tools.find(({ id }) => id === lastRegionTool)!
   const shapeTool = shapeTools.find(({ id }) => id === s.tool) || tools.find(({ id }) => id === lastShapeTool)!
   const drawingTool = tools.find(({ id }) => id === s.tool && ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)) || tools.find(({ id }) => id === lastDrawingTool)!
@@ -1105,7 +1106,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <Search size={18} />
               </button>
             </div>
-          </DesignToolbar>
+                  {uiMode === 'figma' && <div className="figma-view-tools" data-testid="figma-view-tools" onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+              <button type="button" aria-label={handTool.label} aria-pressed={s.tool === 'hand'} className={s.tool === 'hand' ? 'active' : ''}
+                data-tooltip={`${handTool.label}${handTool.key ? ` (${handTool.key})` : ''}`}
+                onClick={() => chooseTool('hand')}>
+                <handTool.icon size={16} />
+              </button>
+              <div ref={setFigmaZoomHost} className="figma-view-zoom" />
+            </div>}
+    </DesignToolbar>
   )
   return (
     <div
@@ -1545,7 +1554,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             blurEffectIndex={blurEffectIndex} onExitBlurEdit={exitBlurEdit}
             onSelectSourcePoint={source?.selectMaterialAt} selectedMaterialBox={source?.selectedMaterialBox} pickSourceMaterial={source?.pickMaterial} prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
-            zoomControlsTarget={uiMode === 'sketch' ? sketchZoomHost : ((uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null)} /></HomeCanvasGate>
+            zoomControlsTarget={uiMode === 'sketch' ? sketchZoomHost : figmaZoomHost} /></HomeCanvasGate>
           {!showHome && ready && canvasEmpty && !switching && !desktopStatus.busy && !importing && <EmptyCanvas title={activityText[locale].emptyTitle} body={activityText[locale].emptyBody} />}
           {uiMode === 'sketch' ? null : designToolbar}
         </div>
@@ -1560,7 +1569,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           }}>
             <button type="button" role="tab" id="design-properties-tab" tabIndex={propertiesTab === 'design' ? 0 : -1} aria-selected={propertiesTab === 'design'} aria-controls="design-properties" onClick={() => setPropertiesTab('design')}>{panelText.design}</button>
             <button type="button" role="tab" id="prototype-properties-tab" tabIndex={propertiesTab === 'prototype' ? 0 : -1} aria-selected={propertiesTab === 'prototype'} aria-controls="prototype-properties" onClick={() => setPropertiesTab('prototype')}>{panelText.prototype}</button>
-            </div><div ref={setZoomHost} className="properties-zoom" />
+            </div>
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
             {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} blurEffectIndex={blurEffectIndex} onEditBlur={editBlur} /></PendingEditContext.Provider>
