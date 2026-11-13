@@ -33,6 +33,8 @@ struct State {
     viewport_density:Option<f64>,
     viewport_anchor:Option<[f64;2]>,
     finished: bool,
+    /// First fixed conversion-window reject. Later thumbnails keep running.
+    window_limit: Option<String>,
     admitted: bool,
     rendered: usize,
     // Keep only failed ordinals here. Successful images can be regenerated
@@ -253,13 +255,25 @@ impl Opening {
             "pages":if r.offset==0{Some(&c.pages)}else{None},"offset":r.offset,"items":&c.items[r.offset..end],"nextOffset":end,
              "materialSnapshot":s.material_snapshot.as_ref().filter(|(i,_)|Some(*i)==r.material&&!s.admitted).map(|(_,snapshot)|snapshot),
             "indexing":!s.admitted,"detailBase":s.detail_base,"nextDetailCursor":next_detail,"detailPending":detail_pending,
-            "moreDetails":next_detail<s.detail_end(),"detail":detail,"cacheHit":s.cache_hit,"rendered":s.rendered,"cursor":cursor,"moreImages":cursor<s.images.len(),"images":images,"finished":s.finished && cursor==s.images.len()}),
+            "moreDetails":next_detail<s.detail_end(),"detail":detail,"cacheHit":s.cache_hit,"rendered":s.rendered,"cursor":cursor,"moreImages":cursor<s.images.len(),"images":images,"finished":s.finished && cursor==s.images.len(),"windowLimit":s.window_limit}),
         )
     }
 }
 
 // Count the actual aspect-fitted texels, including the small materials
 // rendered at their original size. The IPC batch still fits in 192 KiB.
+/// Same 64 MiB span admit as `projection::CONVERSION_WINDOW_LIMIT`. Not an allocator failure.
+pub(super) fn fixed_conversion_window(message: &str) -> bool {
+    let text = message.to_ascii_lowercase();
+    text.contains("conversion window")
+        || text.contains("conversion entry exceeds")
+        || text.contains("thumbnail dependencies exceed window")
+}
+fn note_window(state: &mut State, message: &str) {
+    if state.window_limit.is_none() && fixed_conversion_window(message) {
+        state.window_limit = Some(message.to_owned());
+    }
+}
 pub(super) const MAX_THUMB_SIDE:u32=176;
 pub(super) const MAX_THUMB_ENCODED:usize=192*1024;
 fn catalogue_side(items:&[super::canvas_layout::Item])->u32 {
@@ -547,6 +561,7 @@ fn run(
                         let mut state=job.state.lock().unwrap();
                         state.detail_busy=false;
                         if !job.cancelled.load(Ordering::Acquire){
+                            if let Err(error) = &pixels { note_window(&mut state, &error.message); }
                             match pixels{
                                 Ok(png) if png.len()<=360_000 => state.install_detail(i,png),
                                 _=>{state.detail_attempts.insert(i);}
@@ -557,6 +572,7 @@ fn run(
                     }
                     let mut s=job.state.lock().unwrap();
                     s.base_active-=1;
+                    if let Err(error) = &pixels { note_window(&mut s, &error.message); }
                     job.admission.notify_all();
                     if let Ok(png) = pixels {
                         if !job.cancelled.load(Ordering::Relaxed)
@@ -657,6 +673,27 @@ mod overview_tests{
         let b=Box2{x,y:0.,width:side,height:side};
         Item{key:format!("p:{i}"),id:i.to_string(),name:i.to_string(),kind:"artboard".into(),
             page_id:"p".into(),page_name:"p".into(),source:b,placed:b,bytes:10000}
+    }
+    #[test]
+    fn a_fixed_conversion_window_is_not_an_allocation_failure_and_stays_64_mib(){
+        let source = include_str!("opening.rs");
+        assert!(source.contains("if bytes > 64 * 1024 * 1024"));
+        assert!(source.contains("Thumbnail dependencies exceed window"));
+        assert!(fixed_conversion_window("Thumbnail dependencies exceed window"));
+        assert!(fixed_conversion_window("Thumbnail conversion window exceeded"));
+        assert!(fixed_conversion_window("Source subtree exceeds the bounded conversion window; select a smaller subtree"));
+        assert!(fixed_conversion_window("unsupported lossless conversion: Source conversion window exceeds its memory allowance"));
+        assert!(fixed_conversion_window("Source conversion entry exceeds its memory allowance"));
+        assert!(!fixed_conversion_window("memory allocation failed"));
+        assert!(!fixed_conversion_window("out of memory"));
+        assert!(!fixed_conversion_window("DOCUMENT_RESOURCE_LIMIT: page working set needs 1 bytes"));
+        let mut state = State::default();
+        note_window(&mut state, "memory allocation failed");
+        assert!(state.window_limit.is_none());
+        note_window(&mut state, "Thumbnail dependencies exceed window");
+        assert_eq!(state.window_limit.as_deref(), Some("Thumbnail dependencies exceed window"));
+        note_window(&mut state, "Source subtree exceeds the bounded conversion window; select a smaller subtree");
+        assert_eq!(state.window_limit.as_deref(), Some("Thumbnail dependencies exceed window"));
     }
     #[test]
     fn aspect_fitted_catalogue_keeps_its_actual_pixel_budget(){

@@ -94,7 +94,7 @@ export type SourceCanvasSnapshot={viewportSubset?:boolean;openingMaterial?:numbe
 export type OpeningPage = [id:string,name:string,materials:number]
 export type SourceOpeningResult = {phase:'pending'|'unavailable'} | {
   phase:'available';indexing?:boolean;moreDetails?:boolean;detailPending?:boolean;detailBase?:number;nextDetailCursor?:number;detail?:{index:number;png:string}|null;materialDisplay?:SourceCanvasSnapshot;cacheHit:boolean;rendered:number;owner:LargeDocumentOwner;revision:0;bounds:SourceCanvasBox;total:number;pages:OpeningPage[]|null;
-  offset:number;items:SourceCanvasItem[];nextOffset:number;cursor:number;moreImages:boolean;images:{index:number;png:string}[];finished:boolean
+  offset:number;items:SourceCanvasItem[];nextOffset:number;cursor:number;moreImages:boolean;images:{index:number;png:string}[];finished:boolean;windowLimit?:string|null
 }
 export interface LargeDocumentBridge {
   /** Read the host document when the renderer binding was dropped. Absent on older preloads. */

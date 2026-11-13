@@ -561,3 +561,40 @@ test('a conversion-window reject stays distinct from directory, preview and a sm
  expect(binding.source!.failureStage).toBe('refine')
  expect(binding.source!.stageReport!.edit.status).not.toBe('ready')
 })
+
+test('a preview conversion-window limit names the fixed window on the card and the editor status',async()=>{
+ const owner={documentId:'source-window',sessionEpoch:1}
+ const status={owner,revision:0,name:'synthetic-over-limit.sketch',format:'sketch' as const,expandedBytes:93412322,maxExpandedBytes:2**42,indexedObjects:2,dirty:false,undoCount:0,redoCount:0}
+ const bounds={x:0,y:0,width:400,height:80}
+ const rect={x:0,y:0,width:80,height:80}
+ const catalogue=[
+  {id:'wide',name:'整页图表',kind:'artboard',pageId:'p1',pageName:'数据',source:rect,placed:{...rect,x:0},key:'1:0',bytes:80_000_000},
+  {id:'small',name:'图例',kind:'artboard',pageId:'p1',pageName:'数据',source:rect,placed:{...rect,x:160},key:'1:1',bytes:1024},
+ ]
+ const limit='Thumbnail dependencies exceed window'
+ let finish!:(value:unknown)=>void
+ const openingView=async()=>({status:'ok' as const,phase:'available' as const,owner,bounds,revision:0 as const,total:2,
+  items:catalogue.map((item,i)=>({...item,key:`preview-${i}`})),pages:[['p1','数据',2]] as [string,string,number][],offset:0,nextOffset:2,cursor:2,
+  images:catalogue.map((_,index)=>({index,png:'a'})),moreImages:false,finished:true,rendered:0,cacheHit:true,windowLimit:limit})
+ const bridge={cancel:async()=>({status:'ok' as const}),open:()=>new Promise(resolve=>{finish=resolve}),openingView,
+  children:async()=>({status:'ok' as const,items:[],total:0,hasMore:false})} as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=>{binding.source=s;return <div ref={s.canvas}>{s.navigation}<SourceDocumentStatus source={s}/></div>}} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(document.querySelectorAll('.source-page-entry')).toHaveLength(2)
+ const card=document.querySelector('[data-failure-stage="preview"]')!
+ expect(card.querySelector('[role="alert"]')!.textContent).toContain('固定转换窗口')
+ expect(card.querySelector('[role="alert"]')!.textContent).toContain('选择较小页面、素材或子树')
+ expect(card.querySelector('[role="alert"]')!.textContent).not.toContain('内存不足')
+ expect(card.querySelector('[role="alert"]')!.textContent).not.toContain('可释放其他应用的内存后重试')
+ expect(card.querySelector('pre')!.textContent).toBe(limit)
+ expect(binding.source!.stageReport).toMatchObject({
+  directory:{status:'ready',detail:'目录：1 页 / 2 个素材'},
+  preview:{status:'rejected',detail:'预览：超过固定转换窗口，尚未完成'},
+ })
+ expect(binding.source!.editor.state.message).toContain('固定转换窗口')
+ expect(binding.source!.editor.state.message).not.toContain('内存不足')
+ expect(binding.source!.editor.state.message).not.toContain('可释放其他应用的内存后重试')
+ await act(async()=>finish({status:'ok',...status}))
+ expect(binding.source!.busy).toBe(false)
+ expect(binding.source!.error).toBe(limit)
+ expect((document.querySelector('[data-source-material-id="small"]') as HTMLButtonElement).disabled).toBe(false)
+})

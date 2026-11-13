@@ -1,8 +1,9 @@
 const LEAD = /^(?:操作失败，当前画布已保留：|保存失败，当前画布已保留：|自动保存失败，当前修改已保留：)\s*/
 const ERR = /^(?:Uncaught\s+)?(?:Error|TypeError|RangeError|SyntaxError|ReferenceError|DOMException):\s+/
 const USEFUL_ENGLISH = /large document|source scene|working set|hash mismatch|operation is busy|design content|opening view|stale or foreign|native file|utf-8/i
-/** Fixed span admit. Checked before the read buffer exists, so it is not an allocator failure. */
-const WINDOW = /conversion window/i
+/** Fixed span admit. Checked before the read buffer exists, so it is not an allocator failure.
+ * "conversion entry" and thumbnail dependency overflow are the same 64 MiB admit. */
+const WINDOW = /conversion window|conversion entry exceeds|thumbnail dependencies exceed window/i
 /** Session or working-set allowance. Quitting other apps does not raise it. */
 const CAPACITY = /DOCUMENT_(RESOURCE_LIMIT|TOO_LARGE)|\bTOO_LARGE\b|working[\s-]set|working[\s-]memory|memory allowance|safely admit/i
 /** A failed allocation attempt, after policy checks have been ruled out. */
@@ -37,12 +38,13 @@ export function sourceErrorKind(error: string): SourceErrorKind {
 
 export function sourceErrorSummary(error: string): string {
   const unwrapped = unwrapSourceError(error)
+  // Window before every memory phrase: "conversion window/entry exceeds its memory allowance"
+  // is the fixed admit limit, checked before a read buffer exists.
+  if (WINDOW.test(unwrapped))
+    return '所选内容超过固定转换窗口。请点击「选择较小页面、素材或子树」，在左侧列表改选较小的页面、素材或子树后再试。这个上限在分配读取缓冲之前已经固定，无需退出其他应用。'
   const memory = /(\d+)-byte working-memory budget/.exec(unwrapped)
   if (memory && Number(memory[1]) < 64 * 1024 ** 2)
     return `当前启动内存预算仅为 ${(Number(memory[1]) / 1024 ** 2).toLocaleString(undefined, { maximumFractionDigits: 1 })} MiB，无法载入这些内容。请检查启动配置并重新打开应用。`
-  // Window before capacity: "conversion window exceeds its memory allowance" is still the fixed admit limit.
-  if (WINDOW.test(unwrapped))
-    return '所选内容超过固定转换窗口。请点击「选择较小页面、素材或子树」，在左侧列表改选较小的页面、素材或子树后再试。这个上限在分配读取缓冲之前已经固定，无需退出其他应用。'
   if (CAPACITY.test(unwrapped))
     return '本次内容超过当前会话的固定容量上限。请改为较小的页面或对象，或检查启动内存预算。无需退出其他应用。'
   if (ALLOCATION.test(unwrapped))

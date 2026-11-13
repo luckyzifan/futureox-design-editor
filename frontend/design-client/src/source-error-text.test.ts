@@ -12,6 +12,10 @@ test('a fixed conversion window is not described as an allocation failure', () =
     'Thumbnail conversion window exceeded',
     'Encoded Sketch image exceeds the conversion window',
     'Source conversion window exceeds its memory allowance',
+    'unsupported lossless conversion: Source conversion window exceeds its memory allowance',
+    'Source conversion entry exceeds its memory allowance',
+    'Thumbnail dependencies exceed window',
+    'Thumbnail conversion window exceeded',
   ]) {
     expect(sourceErrorKind(error)).toBe('window')
     const summary = sourceErrorSummary(error)

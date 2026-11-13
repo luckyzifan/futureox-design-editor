@@ -150,3 +150,27 @@ test('completed catalogues wake again and accept a rolling detail cursor beyond 
     expect(calls).toBe(idle)
   }finally{await act(()=>root.unmount());vi.useRealTimers();vi.unstubAllGlobals()}
 })
+
+test('a fixed conversion window is reported once and does not erase a catalogue that is still arriving',async()=>{
+  const host=document.createElement('div'),root=createRoot(host)
+  vi.useFakeTimers();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+  const seen:string[]=[]
+  let calls=0
+  const owner=source.owner
+  const available=()=>({status:'ok' as const,phase:'available' as const,owner,revision:0 as const,bounds:source.bounds,total:2,offset:0,
+    items:items.slice(0,2),pages:[] as [string,string,number][],nextOffset:2,cursor:2,images:[{index:0,png:'kept'},{index:1,png:'kept'}],
+    moreImages:false,finished:true,rendered:2,cacheHit:false})
+  const bridge={openingView:async()=>{
+    calls++
+    if(calls<4) throw Error('大型文档：Source subtree exceeds the bounded conversion window; select a smaller subtree')
+    return available()
+  }} as unknown as import('./desktop').LargeDocumentBridge
+  function Probe(){const q=useSourceOpening(bridge,1,message=>seen.push(message));return createElement('div',null,q.view?.images.get(0)??'empty')}
+  try{
+    await act(()=>root.render(createElement(Probe)))
+    await act(()=>vi.advanceTimersByTimeAsync(800))
+    expect(seen).toEqual(['大型文档：Source subtree exceeds the bounded conversion window; select a smaller subtree'])
+    expect(host.textContent).toBe('data:image/png;base64,kept')
+    expect(calls).toBeGreaterThanOrEqual(4)
+  }finally{await act(()=>root.unmount());vi.useRealTimers();vi.unstubAllGlobals()}
+})

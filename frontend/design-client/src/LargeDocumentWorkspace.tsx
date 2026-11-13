@@ -63,7 +63,9 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const [nativeSnapshot,setNativeSnapshot]=useState<SourceCanvasSnapshot|null>(null),[catalogue,setCatalogue]=useState<SourceCanvasItem[]>([]),[overview,setOverview]=useState(false)
   const [openingGeneration,setOpeningGeneration]=useState<number|undefined>(0)
   const openingSerial=useRef(0), exactView=useRef<{x:number;y:number;zoom:number}|undefined>(undefined)
-  const quick=useSourceOpening(bridge,openingGeneration)
+  const reportedWindow=useRef('')
+  const windowLimitSink=useRef<(message:string)=>void>(()=>{})
+  const quick=useSourceOpening(bridge,openingGeneration,message=>windowLimitSink.current(message))
   const [showOpening,setShowOpening]=useState(true),[sourcePage,setSourcePage]=useState('')
   const opening=quick.view && (!status || status.revision===0 && status.owner.documentId===quick.view.owner.documentId &&
     status.owner.sessionEpoch===quick.view.owner.sessionEpoch) ? quick.view : undefined
@@ -124,6 +126,16 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const [failureStage,setFailureStage]=useState<SourceFailureStage>()
   const failureStageRef=useRef<SourceFailureStage|undefined>(undefined)
   const [stageRejection,setStageRejection]=useState<Partial<Record<SourceFailureStage,string>>>({})
+  windowLimitSink.current=(message)=>{
+    if(!message||reportedWindow.current===message)return
+    reportedWindow.current=message
+    setStageRejection(current=>current.preview?current:{...current,preview:message})
+    setFailureStage(current=>current??'preview')
+    setError(current=>current||message)
+  }
+  useEffect(()=>{
+    if(error&&sourceErrorKind(error)==='window')editor.notify(sourceErrorSummary(error))
+  },[error,editor])
   const autosave=useRef<Promise<void>|undefined>(undefined)
   const rejectedAutosave=useRef<DesignDocument|undefined>(undefined)
   const [viewTab,setViewTab]=useState<'source'|'layers'>('source')
@@ -578,7 +590,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     admittedOpen.current=null;openOutcome.current='pending';rebindTried.current=false
     baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);itemsForSnapshot.current=[]
     editor.setMutationRestriction(undefined);editor.load(blank(),true);editor.setMutationRestriction('正在准备源文件，暂时只能浏览。');editor.set({tool:'hand',selection:[]})
-    openingRef.current=undefined;statusRef.current=null;setStatus(null);setFailureStage(undefined);failureStageRef.current=undefined;setStageRejection({})
+    openingRef.current=undefined;statusRef.current=null;setStatus(null);setFailureStage(undefined);failureStageRef.current=undefined;setStageRejection({});reportedWindow.current=''
     nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);setSourcePage('')
     nativePresentedToken.current=undefined
     pageDetailIntent.current=undefined;setFocusedMaterial(undefined);setSelectedMaterialId(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
