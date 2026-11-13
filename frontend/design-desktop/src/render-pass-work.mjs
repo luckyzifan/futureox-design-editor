@@ -8,7 +8,7 @@ export const fastPathKeys=['fastSampleOnlyPasses','fastSampleOnlyPixels','fastPa
  'fastRegionalUsed','fastRegionalSharedReject','fastRegionalFeedbackReject','fastRegionalLatticeReject','fastRegionalLargeReject',
  'fastRegionalPixels','fastRegionalFullPixels','fastGradientSavedPixels','fastCoverageSavedPixels',
  'backdropCapturePixels','glassCapturePixels','glassFieldTexelsSaved','densePaintBatches','densePaintRoots','densePaintEffects','sourceLayerNodes','sourceLayerBatches','sourceShadowPaintsSaved','sourceProgramPixelsSaved','denseGradientBuildPixels','gradientWindowBuildPixels',
- 'analyticSolidBatches','analyticSolidNodes']
+ 'analyticSolidBatches','analyticSolidNodes','analyticGradientBatches','analyticGradientNodes']
 export const drawWorkLimits={drawWorkVersion:2,drawWorkCapped:1,clearPasses:1e9,drawPixelsMeasuredDraws:1e9,drawPixelsUnmeasuredDraws:1e9,...Object.fromEntries(groups.map(name=>['draw'+name,1e9])),
   ...Object.fromEntries(groups.map(name=>['drawPixels'+name,1e15])),
   ...Object.fromEntries(fastPathKeys.map(name=>[name,1e15])),

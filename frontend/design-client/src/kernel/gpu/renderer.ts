@@ -77,7 +77,7 @@ import type {
 } from './types'
 import { parameters, blends, rect, intersect } from './types'
 import {opaquePainterStart,sourcePainterOrder} from './opaque-painter-prefix'
-import {ANALYTIC_SOLID_TARGET_PIXELS,analyticSolidBrushes,analyticSolidLeaf,packAnalyticSolids,planAnalyticSolidBatches,type AnalyticSolid} from './analytic-solid-batch'
+import {ANALYTIC_GRADIENT_FIELD_TEXELS,ANALYTIC_SOLID_FLOATS,ANALYTIC_SOLID_LIMIT,ANALYTIC_SOLID_TARGET_PIXELS,analyticGradientFieldFromSamples,analyticGradientFloats,analyticGradientLeaf,analyticSolidBrushes,analyticSolidLeaf,packAnalyticGradients,packAnalyticSolids,planAnalyticSolidBatches,type AnalyticSolid} from './analytic-solid-batch'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
@@ -3597,6 +3597,27 @@ export class GpuRenderer {
       !this.scene.softwareRaster&&!this.scene.resolve&&!this.scene.presentation&&
       this.outputFrame?.present===true&&this.outputFrame.readback!==true
   }
+  private analyticGradientBatchEnabled(){
+    return this.analyticSolidBatchEnabled()&&import.meta.env.VITE_DESIGN_ANALYTIC_GRADIENT_BATCH!=='0'
+  }
+  /** Same sample-4 field the per-leaf analytic gradient uploads. Axis storage
+   * wins when the kernel separates it; a large dense grid keeps its texture. */
+  private analyticGradientField(node: GpuNode, paint: GpuPaint) {
+    const pixels = node.rect.w * node.rect.h
+    if (!Number.isSafeInteger(pixels) || pixels < 1 || pixels > 262144) return
+    const parameters = { kind: paint.kind, color: '#000000', angle: paint.angle, transform: paint.transform,
+      stops: paint.stops.map(stop => ({ offset: stop.offset, color: '#000000' })) }
+    const rect = JSON.stringify(node.rect), matrix = new Float64Array(node.matrix), size = new Float64Array(node.size)
+    const paintJson = JSON.stringify(parameters)
+    try {
+      const axes = import.meta.env.VITE_DESIGN_GRADIENT_AXES !== '0' && paint.kind === 'linear'
+        ? gradient_sampling_axes(rect, matrix, size, paintJson, 4) : undefined
+      const separated = analyticGradientFieldFromSamples(node.rect, axes, undefined)
+      if (separated) return separated
+      if (pixels > ANALYTIC_GRADIENT_FIELD_TEXELS) return
+      return analyticGradientFieldFromSamples(node.rect, undefined, gradient_sampling_grid(rect, matrix, size, paintJson, 4))
+    } catch { return }
+  }
   private analyticSolidTarget(target:Surface){
     return !target.logicalBounds&&!target.texture.uniformColor&&!target.texture.transparentZero&&
       target.texture.width===target.rect.w&&target.texture.height===target.rect.h&&
@@ -3614,30 +3635,50 @@ export class GpuRenderer {
     const colour=(value:string)=>this.color(value),channel=(value:string)=>this.alpha(value)
     const programReady=(program:AnalyticSolid['program'])=>program.kind!=='area'||!this.driver.relocateCoverageProgram||
       this.driver.relocateCoverageProgram(program.first)!==undefined
-    let end=start,nextGroup=1
+    const gradients=this.analyticGradientBatchEnabled()
+    const remainingFloats=capacity*ANALYTIC_SOLID_FLOATS
+    let end=start,nextGroup=1,floats=0
+    let kind:'solid'|'gradient'|undefined
     for(;end<ids.length && items.length<capacity;end++){
       const node=this.scene.nodes[ids[end]]
       const item=analyticSolidLeaf(node,target.rect,words,colour,channel)
       if(item){
-        if(!programReady(item.program))break
+        if(kind==='gradient'||!programReady(item.program))break
+        kind='solid'
         items.push(item)
         continue
       }
       const brushes=analyticSolidBrushes(node,target.rect,words,colour,channel)
-      if(!brushes||items.length+brushes.length>capacity||brushes.some(brush=>!programReady(brush.program)))break
-      const group=nextGroup++
-      for(const brush of brushes)brush.group=group
-      items.push(...brushes)
+      if(brushes&&items.length+brushes.length<=capacity&&brushes.every(brush=>programReady(brush.program))){
+        if(kind==='gradient')break
+        kind='solid'
+        const group=nextGroup++
+        for(const brush of brushes)brush.group=group
+        items.push(...brushes)
+        continue
+      }
+      if(kind!=='solid'&&gradients){
+        const gradient=analyticGradientLeaf(node,target.rect,words,colour,channel,(leaf,paint)=>this.analyticGradientField(leaf,paint))
+        if(gradient&&programReady(gradient.program)){
+          const need=analyticGradientFloats(gradient)
+          if(items.length>=ANALYTIC_SOLID_LIMIT||floats+need>remainingFloats)break
+          kind='gradient'
+          items.push(gradient)
+          floats+=need
+          continue
+        }
+      }
+      break
     }
-    if(!items.length)return
+    if(!items.length||!kind)return
     const planned=planAnalyticSolidBatches(items,target.rect.w*target.rect.h)
     let surface=target
     for(const batch of planned){
-      const data=packAnalyticSolids(batch.items)
+      const data=kind==='gradient'?packAnalyticGradients(batch.items):packAnalyticSolids(batch.items)
       if(this.surfaceNeedsAdmission(surface.rect))await this.reclaimForSurface(surface.rect)
       this.checkFrameCurrent()
       const out=this.acquire(surface.rect,false,false,SurfaceAllocationSite.passOutput,78)
-      const drew=this.driver.drawAnalyticSolids!(out.texture,surface.texture,surface.rect,clip?.texture,clip?.rect,data,batch.items.length,batch.fullPass)
+      const drew=this.driver.drawAnalyticSolids!(out.texture,surface.texture,surface.rect,clip?.texture,clip?.rect,data,batch.items.length,batch.fullPass,kind==='gradient')
       if(!drew){
         this.release(out)
         if(surface!==target)throw Error('Analytic solid batch was declined after admission')
@@ -3646,8 +3687,13 @@ export class GpuRenderer {
       this.release(surface)
       surface=out
       this.passPixels+=surface.rect.w*surface.rect.h
-      this.fastWork.add('analyticSolidBatches')
-      this.fastWork.add('analyticSolidNodes',batch.items.length)
+      if(kind==='gradient'){
+        this.fastWork.add('analyticGradientBatches')
+        this.fastWork.add('analyticGradientNodes',batch.items.length)
+      }else{
+        this.fastWork.add('analyticSolidBatches')
+        this.fastWork.add('analyticSolidNodes',batch.items.length)
+      }
     }
     return {target:surface,end}
   }

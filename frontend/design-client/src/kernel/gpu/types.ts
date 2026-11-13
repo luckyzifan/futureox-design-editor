@@ -295,7 +295,7 @@ export interface Driver {
   readonly analyticSolidsReady?: boolean
   analyticSolidRemaining?(): number
   relocateCoverageProgram?(first: number): number | undefined
-  drawAnalyticSolids?(output: Texture, source: Texture, sourceRect: Rect, clip: Texture | undefined, clipRect: Rect | undefined, data: Float32Array, count: number, fullPass: boolean): boolean
+  drawAnalyticSolids?(output: Texture, source: Texture, sourceRect: Rect, clip: Texture | undefined, clipRect: Rect | undefined, data: Float32Array, count: number, fullPass: boolean, gradient?: boolean): boolean
   usesDisplayFilter?(radius: number, channels?: number): boolean
   /** True only for this driver's actual immutable finite image upload. */
   usesDisplayImageSource?(image: Texture): boolean

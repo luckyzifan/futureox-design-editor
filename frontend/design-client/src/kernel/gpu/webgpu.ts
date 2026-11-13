@@ -65,7 +65,7 @@ import { rational_tent_kernel_rgba,certified_tent_prefix_plan } from '../../gene
 import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic, OpaqueSolidBatch } from './types'
 import { parameters, intersect, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
-import { ANALYTIC_SOLID_FLOATS, ANALYTIC_SOLID_LIMIT } from './analytic-solid-batch'
+import { ANALYTIC_GRADIENT_FLOATS, ANALYTIC_SOLID_FLOATS, ANALYTIC_SOLID_LIMIT, acceptAnalyticGradientBatch } from './analytic-solid-batch'
 import { GpuBindingCache } from './binding-cache'
 import { ResidentGeometry } from './resident-geometry'
 import { ResidentPrograms, type ProgramPlan } from './resident-programs'
@@ -906,9 +906,51 @@ fn analyticCovered(colour:vec4<f32>,opacity:f32,coverage:f32)->vec4<f32>{
  let bits=bitcast<vec4<u32>>(covered);
  return bitcast<vec4<f32>>(select(bits,vec4<u32>(0u),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0u)));
 }
+fn analyticBatchStop(record:u32,index:u32)->vec4<f32>{
+ let row=solidData[record+8u+index*2u];
+ let alpha=solidData[record+9u+index*2u].x;
+ return mulRN4(vec4<f32>(row.yzw,1.),vec4<f32>(alpha));
+}
+fn analyticGradientGrid(p:vec2<f32>,node:vec4<f32>,fieldW:i32,fieldH:i32,fieldBase:u32)->vec4<f32>{
+ var address=vec2<i32>(floor(p-node.xy));
+ if(fieldW==1&&i32(node.z)>1){address.x=0;}
+ if(fieldH==1&&i32(node.w)>1){address.y=0;}
+ if(any(address<vec2<i32>(0))||address.x>=fieldW||address.y>=fieldH){return vec4<f32>(0.);}
+ return solidData[fieldBase+u32(address.y*fieldW+address.x)];
+}
+fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
+ var hit=false;var acc=vec4<f32>(0.);
+ for(var i=0u;i<48u;i=i+1u){
+  if(i>=count){break;}
+  let item=base+i*24u;
+  let path=solidData[item];let info=solidData[item+1u];let extra=solidData[item+2u];
+  let node=solidData[item+3u];let place=solidData[item+4u];let tail=solidData[item+5u];
+  let fieldInfo=solidData[item+6u];let baseColor=solidData[item+7u];
+  let write=vec4<f32>(place.y,place.z,place.w,tail.x);
+  if(any(p<write.xy)||any(p>=write.xy+write.zw)){continue;}
+  let coverage=analyticCoverageAt(p,path,info,extra);
+  let grid=analyticGradientGrid(p,node,i32(tail.w),i32(fieldInfo.x),base+u32(fieldInfo.y));
+  var color:vec4<f32>;
+  if(grid.x<0.){color=mulRN4(vec4<f32>(baseColor.xyz,1.),vec4<f32>(fieldInfo.w));}
+  else{
+   let left=analyticBatchStop(item,u32(grid.x));color=left;
+   if(grid.x!=grid.y){let right=analyticBatchStop(item,u32(grid.y));color=addRN4(left,mulRN4(addRN4(right,-left),vec4<f32>(grid.z)));}
+  }
+  let painted=mulRN4(color,vec4<f32>(place.x));
+  let covered=mulRN4(painted,vec4<f32>(coverage));
+  let bits=bitcast<vec4<u32>>(covered);
+  let sampled=bitcast<vec4<f32>>(select(bits,vec4<u32>(0u),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0u)));
+  var factor=1.;if(u(4).w>0.5){factor=mulRN(factor,at(sourceC,p,u(3)).a);}
+  if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
+  acc=over(acc,mulRN4(sampled,vec4<f32>(factor)),0);
+ }
+ if(!hit){return select(at(sourceA,p,u(1)),integerSample(sourceA,p,u(1)),u(9).z>0.5);}
+ return acc;
+}
 @fragment fn analyticSolidFragment(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
  let p=position.xy+u(0).xy;
  let base=u32(u(9).x);let count=min(48u,u32(u(9).y));
+ if(u(9).w>0.5){return analyticGradientBatch(p,base,count);}
  var hit=false;var acc=vec4<f32>(0.);
  var local=vec4<f32>(0.);var group=0.;var open=false;var touched=false;var shape=0.;
  for(var i=0u;i<48u;i=i+1u){
@@ -3083,19 +3125,22 @@ fn analyticCovered(colour:vec4<f32>,opacity:f32,coverage:f32)->vec4<f32>{
     if(!this.programOffsets)return first
     return this.programOffsets.get(first)
   }
-  drawAnalyticSolids(output:Texture, source:Texture, sourceRect:Rect, clip:Texture|undefined, clipRect:Rect|undefined, data:Float32Array, count:number, fullPass:boolean){
+  drawAnalyticSolids(output:Texture, source:Texture, sourceRect:Rect, clip:Texture|undefined, clipRect:Rect|undefined, data:Float32Array, count:number, fullPass:boolean, gradient=false){
     if(!this.analyticSolidPipeline||!this.curves||!this.encoder||this.lost||this.disposed||!Number.isInteger(count)||count<1||count>ANALYTIC_SOLID_LIMIT)return false
-    if(!(data instanceof Float32Array)||data.length!==count*ANALYTIC_SOLID_FLOATS||output===source||output.resource===source.resource)return false
+    const stride=gradient?ANALYTIC_GRADIENT_FLOATS:ANALYTIC_SOLID_FLOATS
+    if(!(data instanceof Float32Array)||output===source||output.resource===source.resource)return false
+    if(gradient?!acceptAnalyticGradientBatch(data,count):data.length!==count*stride)return false
     if(output.width!==sourceRect.w||output.height!==sourceRect.h||source.width!==sourceRect.w||source.height!==sourceRect.h)return false
     if(output.binaryCoverage||output.scalarCoverage||source.binaryCoverage||source.scalarCoverage)return false
     if(!this.textures.has(output)||!this.textures.has(source))return false
     if(clip&&(!clipRect||clip===output||clip.resource===output.resource||!this.textures.has(clip)))return false
     const relocated=new Float32Array(data)
     for(let index=0;index<count;index++){
-      if(relocated[index*ANALYTIC_SOLID_FLOATS+7]>=2)continue
-      const mapped=this.relocateCoverageProgram(relocated[index*ANALYTIC_SOLID_FLOATS+4])
+      const at=index*stride
+      if(relocated[at+7]>=2)continue
+      const mapped=this.relocateCoverageProgram(relocated[at+4])
       if(mapped===undefined)return false
-      relocated[index*ANALYTIC_SOLID_FLOATS+4]=mapped
+      relocated[at+4]=mapped
     }
     if(!this.solidBuffer){
       this.solidBuffer=this.device.createBuffer({size:this.solidData.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST})
@@ -3108,7 +3153,7 @@ fn analyticCovered(colour:vec4<f32>,opacity:f32,coverage:f32)->vec4<f32>{
     this.invalidateTextureCertificates(output)
     this.closeOver()
     const u=parameters(sourceRect,sourceRect,sourceRect,clipRect||sourceRect)
-    u[16]=78;u[19]=clip?1:0;u[36]=base;u[37]=count;u[38]=fullPass?1:0
+    u[16]=78;u[19]=clip?1:0;u[36]=base;u[37]=count;u[38]=fullPass?1:0;u[39]=gradient?1:0
     const bind=this.bind(u,clip?[source,source,clip]:[source])
     const pass=this.encoder.beginRenderPass({colorAttachments:[{
       view:this.bindingCache.view(output.resource as GPUTexture),loadOp:'clear',storeOp:'store',clearValue:[0,0,0,0],
