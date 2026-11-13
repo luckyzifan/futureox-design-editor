@@ -4,7 +4,9 @@ import {GpuRenderer} from './renderer'
 import type {Driver,GpuScene,Texture} from './types'
 import {inverse} from '../../geometry'
 import type {Matrix} from '../../model'
-import {imageCoordinateSource} from './image-coordinate-source'
+import {hostedByteImageSource,imageCoordinateSource} from './image-coordinate-source'
+import {displayImageSource} from './display-image-source'
+import {imageResolveStepWgsl} from './image-resolve-step'
 import {hostedDenseByteFrame,noteHostedStraightImage,sampleHostedByteImage} from './source-bitmap-grid'
 import {WebGpuDriver} from './webgpu'
 import {color_controls_uniforms,straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
@@ -83,15 +85,24 @@ test('managed WebGPU decodes the straight grid with the linear image path',()=>{
  noteHostedStraightImage(u,true,false,false)
  expect([u[187],u[206],u[207]]).toEqual([0,0,1])
  u[240]=1
- const addressed=imageCoordinateSource(readFileSync(new URL('../../../../../design-studio/crates/design-kernel/shaders/vector.wgsl',import.meta.url),'utf8'))
- const decode=addressed.indexOf('if(u(4).x==2.&&u(7).x==3.&&u(51).w==1.)')
- const linear=addressed.indexOf('fn linearImage(')
- const exact=addressed.indexOf('return bsBilinear4(a,b,c,d,grid.zw',linear)
- const byteAt=addressed.indexOf('if(kind==3&&u(46).w>0.5)')
- const linearCall=addressed.indexOf('paint=mulRN4(linearImage(p)',byteAt)
- expect(decode).toBeGreaterThan(addressed.indexOf('fn linearImageTexel'))
+ const vector=readFileSync(new URL('../../../../../design-studio/crates/design-kernel/shaders/vector.wgsl',import.meta.url),'utf8')
+ const addressed=imageCoordinateSource(vector+imageResolveStepWgsl)
+ const hosted=hostedByteImageSource(addressed)
+ const texelAt=hosted.indexOf('fn linearImageTexel(')
+ const texel=hosted.slice(texelAt,hosted.indexOf('\nfn ',texelAt+1))
+ const linear=hosted.indexOf('fn linearImage(')
+ const exact=hosted.indexOf('return bsBilinear4(a,b,c,d,grid.zw',linear)
+ const byteAt=hosted.indexOf('if(kind==3&&u(46).w>0.5)')
+ const hostedCall=hosted.indexOf('paint=mulRN4(hostedStraightByteImage(p)',byteAt)
+ const linearCall=hosted.indexOf('paint=mulRN4(linearImage(p)',hostedCall)
+ expect(texel).toContain('if(u(51).w==1.)')
+ expect(texel).toContain('textureLoad(sourceBytes,q,0)')
+ expect(texel).not.toContain('round(')
+ expect(hosted).toContain('@group(0) @binding(6) var sourceBytes:texture_2d<u32>')
  expect(exact).toBeGreaterThan(linear)
- expect(linearCall).toBeGreaterThan(byteAt)
+ expect(hostedCall).toBeGreaterThan(byteAt)
+ expect(linearCall).toBeGreaterThan(hostedCall)
+ expect(displayImageSource(hosted)).toContain('fn displayImageLinear(')
  expect(u[240]).toBe(1)
  const controls={brightness:.2,contrast:1.4,saturation:.4,hue:15}
  const effect=f.r.colorControls(painted,controls)
@@ -151,6 +162,10 @@ test('hosted pass selects table decode for a straight image and leaves other mod
  host.sourceImageSampling=true
  WebGpuDriver.prototype.pass.call(host,{} as Texture,u,[undefined as unknown as Texture,image as Texture])
  expect([u[187],u[206],u[207]]).toEqual([0,1,1])
+ host.sourceImageSampling=false
+ u[16]=51;u[206]=0;u[207]=0
+ WebGpuDriver.prototype.pass.call(host,{} as Texture,u,[undefined as unknown as Texture,image as Texture])
+ expect([u[187],u[206],u[207]]).toEqual([0,0,1])
  u[16]=22;const kept=u[207]
  WebGpuDriver.prototype.pass.call(host,{} as Texture,u,[undefined as unknown as Texture,image as Texture])
  expect(u[207]).toBe(kept)

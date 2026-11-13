@@ -2478,9 +2478,9 @@ export class GpuRenderer {
       new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
     const grid=compactSourceAxes(axes,b,ref.width,ref.height)
     const w=grid?grid.xs.length:2*b.w,h=grid?grid.ys.length:2*b.h
-    // Hosted interaction samples the straight grid through linearImageTexel.
-    // pass() sets u[207]=1 and leaves u[187] at 0, so the shared sRGB table
-    // runs before bsBilinear4. Exact frames keep the predecoded float upload.
+    // Hosted interaction samples the straight grid as rgba8uint. pass() sets
+    // u[207]=1 and leaves u[187] at 0, so byte loads use the shared sRGB table
+    // before bsBilinear4. Exact frames keep the predecoded float upload.
     // Keep this experiment opt-in until complete hardware/GUI conformance.
     const exactOutput=!!this.outputFrame&&!hostedDenseByteFrame({
       present:this.outputFrame.present,readback:this.outputFrame.readback,resolve:!!this.scene.resolve,

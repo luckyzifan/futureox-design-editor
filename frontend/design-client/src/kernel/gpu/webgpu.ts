@@ -41,8 +41,8 @@ import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSour
 import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { displayImageSource } from './display-image-source'
-import { imageCoordinateSource } from './image-coordinate-source'
-import { noteHostedStraightImage, straightImageUploadRows } from './source-bitmap-grid'
+import { hostedByteImageSource, imageCoordinateSource } from './image-coordinate-source'
+import { hostedStraightFloatInputs, noteHostedStraightImage, straightImageUploadRows } from './source-bitmap-grid'
 import { IMAGE_RESOLVE_STEP_MODE, imageResolveStepWgsl } from './image-resolve-step'
 import { certifyExactImageRange, imageXTablePlanRange, type ExactImageRange, type ExactImageXTablePlan } from './exact-image-x-table'
 import { ImageXTablePipeline, ImageXTableStorage } from './image-x-table-gpu'
@@ -551,6 +551,7 @@ export class WebGpuDriver implements Driver {
   private sourceImageSampling=false
   private straightSources=new WeakSet<Texture>()
   private straightTable?:Uint8Array<ArrayBuffer>
+  private byteBlank?:Texture
   get sourceImageLimit(){return this.device.limits.maxTextureDimension2D}
   private gaussianReductionModule?: GPUShaderModule
   private exactMotionSource?: string
@@ -884,7 +885,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     const exactCode=import.meta.env.VITE_DESIGN_EXACT_IDENTITIES==='1'&&!this.displayMath?exactArithmeticIdentities(compositorCode):compositorCode
     const imageAddressedCode = this.managed ? imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl) : exactCode
     const parameterCode = this.gradientPhaseFields ? gradientPhaseSource(imageAddressedCode) : imageAddressedCode
-    const addressedCode = this.managed ? scalarCoverageSource(gradientWindowSource(parameterCode)) : exactCode
+    const addressedCode = this.managed ? hostedByteImageSource(scalarCoverageSource(gradientWindowSource(parameterCode))) : exactCode
     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
@@ -914,6 +915,11 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
           visibility: GPUShaderStage.FRAGMENT,
           texture: { sampleType: 'unfilterable-float' as const },
         })),
+        ...(this.managed ? [{
+          binding: 6,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: { sampleType: 'uint' as const },
+        }] : []),
         {
           binding: 4,
           visibility: GPUShaderStage.FRAGMENT,
@@ -1134,6 +1140,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     })
     this.encoder = this.device.createCommandEncoder()
     this.blank = this.create(1, 1)
+    this.ensureByteBlank()
     this.clear(this.blank)
     this.submitEncoder()
     await this.waitForQueue('initialization')
@@ -2038,6 +2045,29 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       resource.dimension === '2d' && resource.depthOrArrayLayers === 1 && resource.sampleCount === 1 &&
       !!(resource.usage & GPUTextureUsage.TEXTURE_BINDING) && !!(resource.usage & GPUTextureUsage.RENDER_ATTACHMENT)
   }
+  private createByteImage(width: number, height: number): Texture {
+    if (
+      width < 1 ||
+      height < 1 ||
+      width > this.device.limits.maxTextureDimension2D ||
+      height > this.device.limits.maxTextureDimension2D
+    )
+      throw textureAllocationError(width, height, this.device.limits.maxTextureDimension2D, 4)
+    const bytes = textureByteLength(width, height, 4)
+    const resource = this.device.createTexture({
+      label: `Straight RGBA8 ${width}x${height}`,
+      size: [width, height],
+      format: 'rgba8uint',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
+    })
+    const texture = { width, height, resource, bytes }
+    this.textures.add(texture)
+    return texture
+  }
+  private ensureByteBlank() {
+    if (!this.managed || this.byteBlank) return
+    this.byteBlank = this.createByteImage(1, 1)
+  }
   private createFormat(width: number, height: number, format: GPUTextureFormat): Texture {
     if (
       width < 1 ||
@@ -2232,7 +2262,9 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     const table=this.straightTable??=new Uint8Array(straight_srgb8_table())
     if(table.length!==2048)throw Error('Invalid sRGB transfer table')
     const image=straightImageUploadRows(bytes,width,height)
-    const texture=this.createFormat(width,height+2,'rgba8unorm')
+    // rgba8uint textureLoad returns the stored bytes. rgba8unorm would require
+    // an unorm conversion before the sRGB table could be reconstructed.
+    const texture=this.createByteImage(width,height+2)
     try{
       this.device.queue.writeTexture({texture:texture.resource as GPUTexture},image.bytes as Uint8Array<ArrayBuffer>,{bytesPerRow:image.bytesPerRow},[width,height])
       this.device.queue.writeTexture({texture:texture.resource as GPUTexture,origin:[0,height]},table,{bytesPerRow:1024},[256,2])
@@ -2845,13 +2877,21 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       }
   }
   private bind(u: Float32Array, inputs: Texture[]) {
-    u[SCALAR_COVERAGE_UNIFORM]=inputs.reduce((flags,t,i)=>flags|
-      (t.scalarCoverage?1<<i:0)|(t.transparentZero?1<<(i+4):0)|(t.uniformColor?1<<(i+8):0),0)
+    const straight = this.managed && inputs[1] && this.straightSources.has(inputs[1]) ? inputs[1] : undefined
+    if (this.managed && inputs.some((texture, index) => index !== 1 && texture && this.straightSources.has(texture)))
+      throw Error('Straight RGBA byte image must be the hosted paint source')
+    if (straight && u[207] !== 1) throw Error('Straight RGBA byte image requires hosted byte sampling')
+    const routed = hostedStraightFloatInputs(inputs, straight, this.blank)
+    const byteImage = straight ? routed.byteImage : this.byteBlank
+    if (straight && !byteImage) throw Error('Hosted byte image sampler is unavailable')
+    u[SCALAR_COVERAGE_UNIFORM]=routed.inputs.reduce((flags,t,i)=>flags|
+      (t?.scalarCoverage?1<<i:0)|(t?.transparentZero?1<<(i+4):0)|(t?.uniformColor?1<<(i+8):0),0)
     u[240] = this.managed ? 1 : 0
     u[253] = this.softwareRaster ? 1 : 0
     u[254] = 9
     u[255] = 19 // Exact sampler limb count; keep compiler loops bounded.
-    const uniform = this.uniform(u), textures = [0, 1, 2, 3].map(i => (inputs[i] || this.blank).resource as GPUTexture)
+    const uniform = this.uniform(u), textures = [0, 1, 2, 3].map(i => (routed.inputs[i] || this.blank).resource as GPUTexture)
+    const byteResource = byteImage ? byteImage.resource as GPUTexture : undefined
     const offset = this.dynamicUniformBindings ? 0 : uniform.offset
     const create = () => this.device.createBindGroup({
       layout: this.layout,
@@ -2862,11 +2902,13 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
           resource: this.bindingCache.view(textures[i]),
         })),
         { binding: 4, resource: { buffer: this.curves! } },
+        ...(byteResource ? [{ binding: 6, resource: this.bindingCache.view(byteResource) }] : []),
       ],
     })
     let group: GPUBindGroup
+    const key = byteResource ? [this.layout, uniform.buffer, this.curves!, ...textures, byteResource] : [this.layout, uniform.buffer, this.curves!, ...textures]
     if (import.meta.env.VITE_DESIGN_BINDING_CACHE === '0') { this.bindingCache.groupCreates++; group = create() }
-    else group = this.bindingCache.group([this.layout, uniform.buffer, this.curves!, ...textures], offset, create)
+    else group = this.bindingCache.group(key, offset, create)
     return { group, offsets: this.dynamicUniformBindings ? [uniform.offset] : [] }
   }
   solidBatchRemaining() {
@@ -2952,7 +2994,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     this.triangles += count * 2
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
-    if(u[16]===2 && u[28]===3){
+    if((u[16]===2 || u[16]===IMAGE_RESOLVE_STEP_MODE) && u[28]===3){
       const range=this.sourceImageSampling&&inputs[1]&&this.immutableImageRange(inputs[1])
       const straight=!!inputs[1]&&this.straightSources?.has(inputs[1])===true
       noteHostedStraightImage(u,straight,this.sourceImageSampling,!!(range&&range.unitAlpha&&range.nonnegativeRgb&&range.maximum.every(v=>v<=127)))
@@ -3598,6 +3640,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     this.errors = []
     this.encoder = this.device.createCommandEncoder()
     this.blank = this.create(1, 1)
+    this.ensureByteBlank()
     this.clear(this.blank)
     this.byteTentRecordingFailed = false
     this.submitEncoder()
@@ -3619,6 +3662,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     this.boxPrefix?.release()
     this.releaseImageTables()
     for (const t of [...this.textures]) this.destroy(t)
+    this.byteBlank = undefined
     for (const t of this.transientTargets) this.destroy(t)
     this.transientTargets = []
     for (const t of this.transient) t.destroy()

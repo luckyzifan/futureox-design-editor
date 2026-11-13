@@ -1,5 +1,5 @@
 import {describe,it,expect,vi,afterEach} from 'vitest'
-import {compactSourceAxes,hostedDenseByteFrame,noteHostedStraightImage,readDenseSourceGrid,readDenseSourceGridBytes,sampleHostedByteImage,straightImageUploadRows} from './source-bitmap-grid'
+import {compactSourceAxes,hostedDenseByteFrame,hostedStraightFloatInputs,noteHostedStraightImage,readDenseSourceGrid,readDenseSourceGridBytes,sampleHostedByteImage,straightImageUploadRows} from './source-bitmap-grid'
 import {straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
 afterEach(()=>vi.unstubAllGlobals())
 describe('file-backed image grid',()=>{
@@ -58,6 +58,13 @@ it('exact frames stay off the straight grid and image paint does not enable byte
  u[16]=22;u[207]=7
  noteHostedStraightImage(u,false,true,true)
  expect(u[207]).toBe(7)
+ u[16]=51;u[28]=3;u[207]=0
+ noteHostedStraightImage(u,true,false,false)
+ expect([u[187],u[206],u[207]]).toEqual([0,0,1])
+ const straight={id:'byte'},blank={id:'float'},other={id:'mask'}
+ expect(hostedStraightFloatInputs([other,straight],straight,blank)).toEqual({inputs:[other,blank],byteImage:straight})
+ expect(hostedStraightFloatInputs([other],undefined,blank)).toEqual({inputs:[other],byteImage:blank})
+ expect(()=>hostedStraightFloatInputs([straight,other],straight,blank)).toThrow('hosted paint source')
 })
 it('straight uploads pad only the WebGPU row stride and keep every logical texel',()=>{
  const aligned=new Uint8Array(256*2*4);aligned[4]=9;aligned[256*4+7]=3
