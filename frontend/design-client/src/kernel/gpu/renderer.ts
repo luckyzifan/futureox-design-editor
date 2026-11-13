@@ -2,7 +2,8 @@ import {compactSourceAxes,hostedDenseByteFrame,readSourceGrid,readDenseSourceGri
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
-import { ResourceLedger, type ResourceClass } from './resource-ledger'
+import { GpuResourceLifetime, surfacePoolKey } from './gpu-resource-lifetime'
+import { type ResourceLedger, type ResourceClass } from './resource-ledger'
 import {sourceSolidLayerDisplay,sourceSolidLayer} from './source-solid-layers'
 import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
@@ -777,9 +778,10 @@ export class GpuRenderer {
     }
     return targets
   }
-  private free: Map<string,Texture[]> = new SurfacePool<Texture>()
-  private busy = new Set<Texture>()
-  private readonly ledger = new ResourceLedger<Texture, Surface>()
+  private readonly lifetime: GpuResourceLifetime<Texture, Surface>
+  private free!: Map<string,Texture[]>
+  private busy!: Set<Texture>
+  private readonly ledger: ResourceLedger<Texture, Surface>
   /** Class of the next `bytes` assignment. Scratch is the constructor charge;
    * every later assignment is unclassified until a callsite says otherwise. */
   private byteClass: ResourceClass = 'scratch'
@@ -796,7 +798,7 @@ export class GpuRenderer {
   private get peak() { return this.ledger.peak }
   private set peak(value: number) { this.ledger.peak = value }
   private chargeTexture(texture: Texture, klass: ResourceClass) {
-    this.ledger.chargeTracked(texture, klass)
+    this.lifetime.charge(texture, klass)
   }
   private dischargeTexture(texture: Texture) {
     this.ledger.dischargeTracked(texture, this.driver.completedResourceEpoch)
@@ -920,7 +922,7 @@ export class GpuRenderer {
   // CPU-only retention for the pure certified-tent constructor. This does
   // not enable GPU kernel residency or alter any upload/fence lifetime.
   private coefficientBytes = new CoefficientByteCache(1024 * 1024, 64)
-  private retiredKernels: { texture: Texture; epoch: number }[] = []
+  private retiredKernels!: { texture: Texture; epoch: number }[]
   private kernelBuilds = 0
   private kernelResidentHits = 0
   private kernelUploadBytes = 0
@@ -952,15 +954,14 @@ export class GpuRenderer {
   // Monotonic use counter: every pool hand-out, pool return, parameter upload
   // and image sample stamps it, ordering LRU/age candidates within and across
   // frames. It never gates destruction - the checkpoint discipline does.
-  private generation = 0
-  private lastUsed = new Map<Texture, number>()
+  private lastUsed!: Map<Texture, number>
   // A pool entry has no future reader until acquire removes it. Stamp actual
   // pool return, not allocation: cached coverage may be read in a newer frame.
   private get poolReleaseEpoch() { return this.ledger.poolEpochs }
   // Parameter uploads whose last read has been encoded. Destroying them early
   // could race queued commands and pooling them would let a later writeTexture
   // overtake pending reads, so only a completed checkpoint may destroy them.
-  private retiredUploads: Texture[] = []
+  private retiredUploads!: Texture[]
   private meshBits = new Uint32Array(0)
   private curveBits = new Uint32Array(0)
   private sharedMasks = new ReverseIndexMap<string, { bits: Uint32Array; texture: Texture }[], Texture>(entries => entries.map(entry => entry.texture))
@@ -1063,6 +1064,22 @@ export class GpuRenderer {
     private imageAtlas = false,
     private readonly gpuWorkingBudgetMiB?: number,
   ) {
+    this.lifetime = new GpuResourceLifetime<Texture, Surface>({
+      protectedTexture: texture => this.materialFields.has(texture) || this.gradientPhaseResources.has(texture),
+      dropPhase: texture => { this.gradientPhaseResources.delete(texture) },
+      frameUse: texture => this.used.has(texture),
+      dropFrameUse: texture => { this.used.delete(texture) },
+      pinned: texture => this.admissionPins.has(texture),
+      destroy: texture => this.driver.destroy(texture),
+      resourceEpoch: () => this.driver.resourceEpoch,
+      completedEpoch: () => this.driver.completedResourceEpoch,
+    })
+    this.free = this.lifetime.free
+    this.busy = this.lifetime.busy
+    this.ledger = this.lifetime.ledger
+    this.retiredKernels = this.lifetime.retiredKernels
+    this.lastUsed = this.lifetime.lastUsed
+    this.retiredUploads = this.lifetime.retiredUploads
     this.frameBudget = workingSetBudget(0, 0, false, 0, gpuWorkingBudgetMiB)
     this.bytes = driver.scratchBytes || 0
     this.peak = this.bytes
@@ -1094,13 +1111,8 @@ export class GpuRenderer {
     const required = textureByteLength(r.w, r.h, this.driver.managed && !binaryCoverage && !scalarCoverage ? 16 : 4)
     if (![r.x, r.y, r.x + r.w, r.y + r.h].every(value => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER))
       throw new Error('无效的 GPU 表面边界')
-    const key = `${scalarCoverage ? 'scalar:' : binaryCoverage ? 'binary:' : ''}${r.w}:${r.h}`,
-      list = this.free.get(key)
-    let texture = list?.pop()
-    if (texture) {
-      this.ledger.unpark(texture, this.driver.completedResourceEpoch)
-      ;(this.free as SurfacePool<Texture>).removed?.(texture)
-    }
+    const key = surfacePoolKey(r.w, r.h, binaryCoverage, scalarCoverage)
+    let texture = this.lifetime.takePooled(key)
     if (!texture) {
       // Over-budget pressure first evicts the oldest generations of the free
       // pool and the least-recently-used images (both re-create identically).
@@ -1138,61 +1150,17 @@ export class GpuRenderer {
     return { texture, rect: r }
   }
   private touch(texture: Texture) {
-    const age=++this.generation
-    this.lastUsed.set(texture,age)
-    ;(this.free as SurfacePool<Texture>).touched?.(texture,age)
+    this.lifetime.touch(texture)
   }
   /** Completed free-pool duplicates are physical residency, not a future read.
-   * In-flight epochs and an unknown completion stay. Two survivors per size
-   * remain so the next identical allocation can reuse them. */
+   * The kernel selects the drop set from encode epochs and ages. */
   private reapCompletedFreeTextures() {
-    const completed = this.driver.completedResourceEpoch
-    if (!Number.isSafeInteger(completed) || completed! < 0) return
-    for (const [key, list] of [...this.free]) {
-      const inflight: Texture[] = []
-      const ready: Texture[] = []
-      for (const texture of list) {
-        if (this.admissionPins.has(texture)) { inflight.push(texture); continue }
-        const epoch = this.poolReleaseEpoch.get(texture)
-        if (epoch === undefined || epoch > completed!) inflight.push(texture)
-        else ready.push(texture)
-      }
-      ready.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
-      const keep = ready.slice(Math.max(0, ready.length - 2))
-      const drop = new Set(ready.filter(texture => !keep.includes(texture)))
-      if (!drop.size) continue
-      const retained = list.filter(texture => !drop.has(texture))
-      for (const texture of drop) {
-        this.used.delete(texture)
-        this.lastUsed.delete(texture)
-        this.dischargeTexture(texture)
-        this.ledger.clearPoolEpoch(texture)
-        this.driver.destroy(texture)
-        ;(this.free as SurfacePool<Texture>).removed?.(texture)
-        this.ledger.noteCompletedFree(texture.bytes)
-      }
-      if (retained.length) {
-        if ((this.free as SurfacePool<Texture>).setOwned) (this.free as SurfacePool<Texture>).setOwned(key, retained)
-        else this.free.set(key, retained)
-      } else this.free.delete(key)
-    }
+    this.lifetime.reapCompletedFree()
   }
   /** Remove one texture from its free list and destroy it. Only call this for
    * textures whose GPU commands provably completed. */
   private destroyFree(texture: Texture) {
-    if (this.admissionPins.has(texture)) return
-    const key = `${texture.scalarCoverage ? 'scalar:' : texture.binaryCoverage ? 'binary:' : ''}${texture.width}:${texture.height}`,
-      list = this.free.get(key)
-    if (!list) return
-    const at = list.indexOf(texture)
-    if (at < 0) return
-    list.splice(at, 1)
-    ;(this.free as SurfacePool<Texture>).removed?.(texture)
-    if (!list.length) this.free.delete(key)
-    this.used.delete(texture)
-    this.lastUsed.delete(texture)
-    this.driver.destroy(texture)
-    this.dischargeTexture(texture)
+    this.lifetime.destroyPooled(texture)
   }
   /** Evict least-recently-used images until `required` bytes are free. Outside
    * a completed checkpoint only images unreferenced by this frame's commands
@@ -1316,26 +1284,10 @@ export class GpuRenderer {
     return error
   }
   private release(...surfaces: (Surface | undefined)[]) {
-    for (const s of new Set(surfaces)) {
-      if (!s || this.materialFields.has(s.texture) || this.gradientPhaseResources.has(s.texture)) continue
-      if (this.ledger.beginRelease(s) !== 'pool') continue
-      if (!this.busy.delete(s.texture)) continue
-      const key = `${s.texture.scalarCoverage ? 'scalar:' : s.texture.binaryCoverage ? 'binary:' : ''}${s.texture.width}:${s.texture.height}`,
-        list = this.free.get(key) || []
-      list.push(s.texture)
-      ;(this.free as SurfacePool<Texture>).added?.(s.texture)
-      this.ledger.notePoolReturn(s.texture, this.driver.resourceEpoch)
-      this.ledger.park(s.texture, this.driver.resourceEpoch, this.driver.completedResourceEpoch)
-      if((this.free as SurfacePool<Texture>).setOwned)(this.free as SurfacePool<Texture>).setOwned(key,list)
-      else this.free.set(key,list)
-      // Returning to the pool is the end of this texture's latest use; stamp
-      // it so pressure eviction prefers the least recently used entry.
-      this.touch(s.texture)
-    }
+    this.lifetime.retire(surfaces)
   }
   private retain(surface: Surface): Surface {
-    this.ledger.retain(surface.texture)
-    return { ...surface }
+    return this.lifetime.hold(surface)
   }
   /** Active, waiting on GPU completion, or reclaimable. Logical retirement is
    * not reported as released. */
@@ -3779,17 +3731,10 @@ export class GpuRenderer {
    * checkpoint. Destroying earlier could race queued sampling commands;
    * pooling it would let a later writeTexture overtake pending reads. */
   private retireUpload(texture: Texture) {
-    if (this.materialFields.has(texture)||this.gradientPhaseResources.has(texture)) return
-    this.coordinateMaps.delete(texture)
-    this.retiredUploads.push(texture)
+    this.lifetime.queueUploadRetirement(texture, () => { this.coordinateMaps.delete(texture) })
   }
   private forgetUpload(texture: Texture) {
-    this.gradientPhaseResources.delete(texture)
-    this.busy.delete(texture)
-    this.used.delete(texture)
-    this.lastUsed.delete(texture)
-    this.driver.destroy(texture)
-    this.dischargeTexture(texture)
+    this.lifetime.releaseUpload(texture)
   }
   /** Destroy one still-cached coordinate upload and detach every alias, so a
    * later cache miss re-uploads identical bytes instead of binding a
@@ -6598,12 +6543,7 @@ export class GpuRenderer {
     return planes
   }
   private reapRetiredKernels() {
-    const completed = this.driver.completedResourceEpoch ?? -1
-    this.retiredKernels = this.retiredKernels.filter(({ texture, epoch }) => {
-      if (epoch > completed) return true
-      this.forgetUpload(texture)
-      return false
-    })
+    this.lifetime.reapRetiredKernels()
   }
   private beginKernelFrame() {
     for (const { texture } of [...this.blurKernels.values(), ...this.certifiedKernels.values()]) {
@@ -8001,23 +7941,7 @@ export class GpuRenderer {
     // Reclaim sizes no longer used after a resize/zoom. The previous frame has
     // completed; destroying textures while its command buffer is pending is unsafe.
     this.reapCompletedFreeTextures()
-    for (const [key, list] of this.free) {
-      let largeKept=0
-      const retained = list.filter((t) => {
-        if (this.used.has(t)&&(!trimLarge||t.bytes<=8*1024*1024||
-          upcomingLargeSizes!.has(`${t.width}:${t.height}`)&&largeKept++<2)) return true
-        this.driver.destroy(t)
-        ;(this.free as SurfacePool<Texture>).removed?.(t)
-        this.dischargeTexture(t)
-        this.lastUsed.delete(t)
-        return false
-      })
-      if (retained.length) {
-        if((this.free as SurfacePool<Texture>).setOwned)(this.free as SurfacePool<Texture>).setOwned(key,retained)
-        else this.free.set(key,retained)
-      }
-      else this.free.delete(key)
-    }
+    this.lifetime.discardUnreferencedFree(!!trimLarge, upcomingLargeSizes)
     this.used.clear()
     this.coverage.begin(gpuDiagnosticsEnabled())
     this.materialFields.begin()
@@ -8351,6 +8275,7 @@ export class GpuRenderer {
     this.kernelCache.abandon()
     this.retiredKernels.length = 0
     this.driver.dispose()
+    if (this.driver.lost) this.lifetime.onDeviceLoss()
     this.images.clear()
     this.blurKernels.clear()
     this.certifiedKernels.clear()

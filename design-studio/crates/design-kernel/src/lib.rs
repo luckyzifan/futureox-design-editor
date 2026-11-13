@@ -106,6 +106,7 @@ pub mod preparation;
 #[cfg(not(target_arch="wasm32"))]
 pub mod navigation_image;
 pub mod render_cancellation;
+pub mod resource_lifetime;
 pub mod prototype;
 pub mod prototype_logic;
 pub mod protocol;
@@ -455,6 +456,28 @@ mod wasm {
     use js_sys::{Array, Uint8Array};
     use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+    #[wasm_bindgen]
+    pub fn pool_epoch_reclaimable(has_epoch: bool, epoch: f64, completed: f64) -> bool {
+        crate::resource_lifetime::pool_epoch_reclaimable(has_epoch, epoch, completed)
+    }
+    #[wasm_bindgen]
+    pub fn retired_upload_due(epoch: f64, completed: f64) -> bool {
+        crate::resource_lifetime::retired_upload_due(epoch, completed)
+    }
+    #[wasm_bindgen]
+    pub fn device_loss_owner_reset(charged_bytes: f64) -> f64 {
+        crate::resource_lifetime::device_loss_owner_reset(charged_bytes)
+    }
+    #[wasm_bindgen]
+    pub fn select_completed_pool_drops(
+        has_epoch: &[u8],
+        epochs: &[f64],
+        ages: &[f64],
+        pinned: &[u8],
+        completed: f64,
+    ) -> Vec<u32> {
+        crate::resource_lifetime::select_completed_pool_drops(has_epoch, epochs, ages, pinned, completed)
+    }
     /// Trusted bootstrap only. No document field or operation argument routes here.
     #[wasm_bindgen]
     pub fn color_fully_opaque(color: &str, opacity: f64) -> bool {
