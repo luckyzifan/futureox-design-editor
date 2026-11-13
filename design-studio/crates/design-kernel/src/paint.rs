@@ -1333,9 +1333,7 @@ fn partition_rotated(coords: &ImageCoordinates, bounds: Rect, row_bytes: usize) 
             rotated_window_fits(coords, Rect::new(bounds.x, y, w, 1), row_bytes).is_some()
         });
         if tile_w == 0 {
-            windows.push(RotatedWindow { rect: Rect::new(bounds.x, y, 1, 1), y0: 0, y1: 0 });
-            y += 1;
-            continue;
+            return None;
         }
         let tile_h = max_rotated_extent(remaining_h, |h| {
             rotated_window_fits(coords, Rect::new(bounds.x, y, tile_w, h), row_bytes).is_some()
@@ -1349,7 +1347,9 @@ fn partition_rotated(coords: &ImageCoordinates, bounds: Rect, row_bytes: usize) 
             if let Some((y0, y1)) = rotated_window_fits(coords, rect, row_bytes) {
                 windows.push(RotatedWindow { rect, y0, y1 });
             } else {
-                windows.push(RotatedWindow { rect: Rect::new(x, y, 1, 1), y0: 0, y1: 0 });
+                // An individual tile did not fit. Use the complete scanline
+                // path instead of skipping the rest of its output rectangle.
+                return None;
             }
             x += w as i32;
         }
@@ -1500,11 +1500,13 @@ impl Sampler {
     pub(crate) fn take_rotated_windows(&mut self) -> Option<Vec<RotatedWindow>> {
         self.rotated_windows.take()
     }
-    pub(crate) fn cover_rotated_rows(&self, y0: u32, y1: u32) -> Result<(), String> {
+    pub(crate) fn cover_rotated_rows(
+        &self, y0: u32, y1: u32, budget: &crate::memory::Budget,
+    ) -> Result<(), String> {
         match &self.image {
             #[cfg(not(target_arch = "wasm32"))]
-            Some(SampleImage::Rows(rows)) => rows.cover_rows(y0, y1),
-            _ => Ok(()),
+            Some(SampleImage::Rows(rows)) => rows.cover_rows_with_budget(y0, y1, budget),
+            _ => { let _ = (y0, y1, budget); Ok(()) }
         }
     }
     fn plan_rotated_windows(&self, bounds: Rect) -> Option<Vec<RotatedWindow>> {

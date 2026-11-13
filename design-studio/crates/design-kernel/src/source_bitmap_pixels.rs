@@ -209,6 +209,7 @@ struct Span {
     y0: u32,
     rows: u32,
     bytes: Vec<u8>,
+    _allocation: Option<crate::memory::Allocation>,
 }
 struct Cache {
     file: File,
@@ -278,7 +279,14 @@ impl Rows {
     /// Read `[y0, y1)` once into this sampler. The previous window is released
     /// before the new allocation, so the peak is one window plus the two
     /// scanlines. `y0 == y1` releases the window.
-    pub(crate) fn cover_rows(&self, y0: u32, y1: u32) -> Result<(), String> {
+    pub(crate) fn cover_rows_with_budget(
+        &self, y0: u32, y1: u32, budget: &crate::memory::Budget,
+    ) -> Result<(), String> {
+        self.cover_rows(y0, y1, Some(budget))
+    }
+    fn cover_rows(
+        &self, y0: u32, y1: u32, budget: Option<&crate::memory::Budget>,
+    ) -> Result<(), String> {
         if y1 < y0 || y1 > self.height {
             return Err("Source row window is outside the image".into());
         }
@@ -306,9 +314,19 @@ impl Rows {
             cache.span = None;
         }
         self.set_resident(line);
+        let allocation = match budget {
+            Some(budget) => match budget.reserve(bytes, 1, false) {
+                Ok(allocation) => Some(allocation),
+                // Keep the original two-line sampler when the frame cannot
+                // admit the optional bulk read.
+                Err(_) => return Ok(()),
+            },
+            None => None,
+        };
         let mut data = Vec::new();
-        data.try_reserve_exact(bytes)
-            .map_err(|_| "Could not allocate rotated source window")?;
+        if data.try_reserve_exact(bytes).is_err() {
+            return Ok(());
+        }
         data.resize(bytes, 0);
         // The buffer exists before the read finishes. Count it in both places.
         self.set_resident(line + bytes);
@@ -336,6 +354,7 @@ impl Rows {
             y0,
             rows: y1 - y0,
             bytes: data,
+            _allocation: allocation,
         });
         Ok(())
     }
@@ -438,7 +457,7 @@ mod pose_cost {
         let image_h = 3072u32;
         let (root, uri, access) = pose_file(image_w, image_h);
         let covered = access.resolve(&uri).unwrap().raw(None).unwrap().unwrap();
-        covered.cover_rows(0, image_h).unwrap();
+        covered.cover_rows(0, image_h, None).unwrap();
         let streaming = access.resolve(&uri).unwrap().raw(None).unwrap().unwrap();
         for y in 0..image_h as i32 {
             for x in (0..image_w as i32).step_by(64) {

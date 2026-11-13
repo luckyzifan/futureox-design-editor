@@ -3992,102 +3992,99 @@ impl Painter<'_> {
         // A rotation has no row the two-line window can keep. Load each
         // source-row window once, then sample it. Axis-aligned paints pass
         // through with an empty window and keep the scanline cache.
-        let passes = sampler.take_rotated_windows().unwrap_or_else(|| {
-            vec![crate::paint::RotatedWindow { rect: r, y0: 0, y1: 0 }]
-        });
-        for window in passes {
-            if window.y1 > window.y0 {
-                sampler.cover_rotated_rows(window.y0, window.y1)?;
-            } else {
-                sampler.cover_rotated_rows(0, 0)?;
+        let passes = sampler.take_rotated_windows();
+        let baseline = [crate::paint::RotatedWindow { rect: r, y0: 0, y1: 0 }];
+        for window in passes.as_deref().unwrap_or(&baseline) {
+            if passes.is_some() {
+                sampler.cover_rotated_rows(window.y0, window.y1, &self.budget)?;
             }
             let area = window.rect;
-        for y in area.y..area.bottom() {
-            for x in area.x..area.right() {
-                let alpha = mask.at(x, y) * extra(x, y);
-                if alpha <= 0. {
-                    continue;
-                }
-                if let Some((gradient, coordinates)) = &measured_gradient {
-                    let values = coordinates.at(x, y)?;
-                    let color = gradient
-                        .sample_with_raster(values[0], self.profile.is_software())
-                        .map_err(|e| e.to_string())?
-                        .map(|v| v * p.opacity as f32);
-                    if color[3] == 0. {
+            for y in area.y..area.bottom() {
+                for x in area.x..area.right() {
+                    let alpha = mask.at(x, y) * extra(x, y);
+                    if alpha <= 0. {
                         continue;
                     }
-                    let mut source = color.map(|v| (v + values[1]).abs().min(1.));
-                    if color[3] == 1. {
-                        source[3] = 1.;
-                    }
-                    let source = source.map(|v| v * alpha);
-                    let i = layer.rect.index(x, y).expect("gradient paint");
-                    if self.profile.is_software() {
-                        layer.pixels[i] =
-                            Pixel(crate::software_raster::over(layer.pixels[i].0, source));
+                    if let Some((gradient, coordinates)) = &measured_gradient {
+                        let values = coordinates.at(x, y)?;
+                        let color = gradient
+                            .sample_with_raster(values[0], self.profile.is_software())
+                            .map_err(|e| e.to_string())?
+                            .map(|v| v * p.opacity as f32);
+                        if color[3] == 0. {
+                            continue;
+                        }
+                        let mut source = color.map(|v| (v + values[1]).abs().min(1.));
+                        if color[3] == 1. {
+                            source[3] = 1.;
+                        }
+                        let source = source.map(|v| v * alpha);
+                        let i = layer.rect.index(x, y).expect("gradient paint");
+                        if self.profile.is_software() {
+                            layer.pixels[i] =
+                                Pixel(crate::software_raster::over(layer.pixels[i].0, source));
+                            self.stats.shaded_pixels += 1;
+                            continue;
+                        }
+                        let factor = 1. - source[3];
+                        layer.pixels[i] = Pixel(std::array::from_fn(|c| {
+                            f32::from(crate::figma_sampling::encode_unorm8(
+                                layer.pixels[i].0[c]
+                                    .mul_add(factor, source[c])
+                                    .clamp(0., 1.),
+                            )) / 255.
+                        }));
                         self.stats.shaded_pixels += 1;
                         continue;
                     }
-                    let factor = 1. - source[3];
-                    layer.pixels[i] = Pixel(std::array::from_fn(|c| {
-                        f32::from(crate::figma_sampling::encode_unorm8(
-                            layer.pixels[i].0[c]
-                                .mul_add(factor, source[c])
-                                .clamp(0., 1.),
-                        )) / 255.
-                    }));
-                    self.stats.shaded_pixels += 1;
-                    continue;
-                }
-                if (0. ..=1.).contains(&alpha)
-                    && let Some(source) = direct_constant
-                {
-                    let source = source.opacity(alpha);
-                    let i = layer.rect.index(x, y).expect("solid paint");
-                    if self.profile.is_software() {
-                        layer.pixels[i] =
-                            Pixel(crate::software_raster::over(layer.pixels[i].0, source.0));
+                    if (0. ..=1.).contains(&alpha)
+                        && let Some(source) = direct_constant
+                    {
+                        let source = source.opacity(alpha);
+                        let i = layer.rect.index(x, y).expect("solid paint");
+                        if self.profile.is_software() {
+                            layer.pixels[i] =
+                                Pixel(crate::software_raster::over(layer.pixels[i].0, source.0));
+                            self.stats.shaded_pixels += 1;
+                            continue;
+                        }
+                        let factor = 1. - source.0[3];
+                        layer.pixels[i] = Pixel(std::array::from_fn(|c| {
+                            let value = layer.pixels[i].0[c].mul_add(factor, source.0[c]);
+                            f32::from(crate::figma_sampling::encode_unorm8(value.clamp(0., 1.))) / 255.
+                        }));
                         self.stats.shaded_pixels += 1;
                         continue;
                     }
-                    let factor = 1. - source.0[3];
-                    layer.pixels[i] = Pixel(std::array::from_fn(|c| {
-                        let value = layer.pixels[i].0[c].mul_add(factor, source.0[c]);
-                        f32::from(crate::figma_sampling::encode_unorm8(value.clamp(0., 1.))) / 255.
-                    }));
-                    self.stats.shaded_pixels += 1;
-                    continue;
-                }
-                let pixel = if let Some(pixel) = quantized_solid.filter(|_| alpha == 1.) {
-                    pixel
-                } else {
-                    let mut pixel = solid
-                        .unwrap_or_else(|| {
-                            let (sx, sy) = self
-                                .sample
-                                .map_or((0.5, 0.5), |i| crate::fidelity::SAMPLE_OFFSETS[i]);
-                            let point = Point::new(x as f64 + sx, y as f64 + sy);
-                            if self.compatible && self.sample.is_some() && alpha == 1. {
-                                sampler.at_rgba8(point)
-                            } else {
-                                sampler.at(point)
-                            }
-                        })
-                        .opacity(alpha);
-                    if self.compatible && self.sample.is_some() {
-                        pixel = pixel.rgba8_quantized();
+                    let pixel = if let Some(pixel) = quantized_solid.filter(|_| alpha == 1.) {
+                        pixel
+                    } else {
+                        let mut pixel = solid
+                            .unwrap_or_else(|| {
+                                let (sx, sy) = self
+                                    .sample
+                                    .map_or((0.5, 0.5), |i| crate::fidelity::SAMPLE_OFFSETS[i]);
+                                let point = Point::new(x as f64 + sx, y as f64 + sy);
+                                if self.compatible && self.sample.is_some() && alpha == 1. {
+                                    sampler.at_rgba8(point)
+                                } else {
+                                    sampler.at(point)
+                                }
+                            })
+                            .opacity(alpha);
+                        if self.compatible && self.sample.is_some() {
+                            pixel = pixel.rgba8_quantized();
+                        }
+                        pixel
+                    };
+                    let i = layer.rect.index(x, y).expect("paint");
+                    layer.pixels[i] = crate::blend::over_mode(layer.pixels[i], pixel, blend_mode);
+                    if self.compatible {
+                        layer.pixels[i] = layer.pixels[i].rgba8_quantized();
                     }
-                    pixel
-                };
-                let i = layer.rect.index(x, y).expect("paint");
-                layer.pixels[i] = crate::blend::over_mode(layer.pixels[i], pixel, blend_mode);
-                if self.compatible {
-                    layer.pixels[i] = layer.pixels[i].rgba8_quantized();
+                    self.stats.shaded_pixels += 1;
                 }
-                self.stats.shaded_pixels += 1;
             }
-        }
         }
         Ok(())
     }

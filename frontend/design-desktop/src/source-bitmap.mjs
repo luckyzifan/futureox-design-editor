@@ -4,20 +4,35 @@ import {Readable} from 'node:stream'
 import {Worker} from 'node:worker_threads'
 let service, sequence=0
 const requests=new Map()
+const SPAN_BUDGET=64*1024*1024
+let activeSpanBytes=0
 // unref only when no sample is queued. A short-lived node --test loop otherwise
 // looks idle and cancels the still-pending reply. Electron can still exit once
 // the queue is empty.
 function pinSampler(){if(service)requests.size?service.ref():service.unref()}
 function sample(file,iw,ih,body,pairs,span=false){
  if(requests.size>=8)throw Error('Source sampler busy')
+ let spanBytes=0
+ if(span){
+  if(body.length!==16)throw Error('Invalid sample indices')
+  spanBytes=body.readUInt32LE(8)*body.readUInt32LE(12)*4
+  if(!Number.isSafeInteger(spanBytes)||spanBytes<=0||spanBytes>SPAN_BUDGET||activeSpanBytes+spanBytes>SPAN_BUDGET)
+   throw Error('Source sampler span budget exceeded')
+ }
  if(!service){
   const worker=new Worker(new URL('./source-bitmap-samples.mjs',import.meta.url));service=worker
-  const lost=()=>{if(service!==worker)return;service=undefined;for(const job of requests.values())job.reject(Error('Source sampler stopped'));requests.clear()}
+  const lost=()=>{if(service!==worker)return;service=undefined;for(const job of requests.values())job.reject(Error('Source sampler stopped'));requests.clear();activeSpanBytes=0}
   worker.on('error',lost);worker.on('exit',lost)
-  worker.on('message',result=>{const job=requests.get(result.id);if(!job)return;requests.delete(result.id);pinSampler();if(result.error)job.reject(Error('Source sample unavailable'));else job.resolve(result.buffer)})
+  worker.on('message',result=>{const job=requests.get(result.id);if(!job)return;requests.delete(result.id);activeSpanBytes-=job.spanBytes;pinSampler();if(result.error)job.reject(Error('Source sample unavailable'));else job.resolve(result.buffer)})
  }
  const id=++sequence
- return new Promise((resolve,reject)=>{requests.set(id,{resolve,reject});pinSampler();try{service.postMessage({id,file,iw,ih,body,pairs,span})}catch(e){requests.delete(id);pinSampler();reject(e)}})
+ return new Promise((resolve,reject)=>{
+  requests.set(id,{resolve,reject,spanBytes})
+  activeSpanBytes+=spanBytes
+  pinSampler()
+  try{service.postMessage({id,file,iw,ih,body,pairs,span})}
+  catch(e){requests.delete(id);activeSpanBytes-=spanBytes;pinSampler();reject(e)}
+ })
 }
 export async function serveSourceBitmap(request,active,root) {
  const url=new URL(request.url), match=/^\/source-image\/([a-zA-Z0-9-]{1,160})\/([a-f0-9]{64}-([1-9]\d{0,8})x([1-9]\d{0,8}))\.png$/.exec(url.pathname)
