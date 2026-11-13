@@ -2622,6 +2622,8 @@ html[data-reduced-motion=true] .animation-modal * {
   z-index: 32;
   overflow: visible;
 }
+.editor-shell[data-ui-mode="sketch"][data-window-controls="inset"] > .editor-header { padding-left: 80px; }
+.editor-shell[data-window-controls="inset"] > .editor-header .floating-toolbar { -webkit-app-region: no-drag; }
 .editor-shell[data-ui-mode="sketch"] > nav[data-workspace-tabs] { grid-column: 1 / -1; grid-row: 3; }
 .editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) { grid-template-rows: 52px 1px auto minmax(0, 1fr) auto; }
 .editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) .canvas-workspace,
@@ -2708,7 +2710,11 @@ html[data-reduced-motion=true] .animation-modal * {
   .editor-shell[data-ui-mode="sketch"] .floating-toolbar .tool-group { gap: 0; }
 }
 @media (max-width: 1000px) {
+  .editor-shell[data-ui-mode="sketch"] > .editor-header { gap: 4px; }
+  .editor-shell[data-ui-mode="sketch"] .editor-header .header-right { gap: 2px; }
   .editor-shell[data-ui-mode="sketch"] .editor-header .save-status { display: none; }
+  .editor-shell[data-ui-mode="sketch"] .header-right .locale-switch select { max-width: 60px; }
+  .editor-shell[data-ui-mode="sketch"] .header-right > .primary { font-size: 0; padding-inline: 6px; }
   .editor-shell[data-ui-mode="sketch"] .header-right .design-agent-toggle span,
   .editor-shell[data-ui-mode="sketch"] .header-right .app-settings-button span { display: none; }
 }
