@@ -80,7 +80,12 @@ pub(super) fn convert(s: &Session, p: usize, n: usize, cancel: &AtomicBool, cont
     };
     if let Some(path) = path {
         let generation=format!("{}:{}:{}:{p}:{n}",s.owner.document_id,s.owner.session_epoch,s.revision);
+        let started=std::time::Instant::now();
         if let Ok(entry) = write(&path, &generation, &document, &warnings, cancel) {
+            let elapsed=u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+            s.snapshot_account.window_write_ns.fetch_add(elapsed, Ordering::Relaxed);
+            s.snapshot_account.window_write_bytes.fetch_add(entry.descriptor.bytes, Ordering::Relaxed);
+            s.snapshot_account.window_writes.fetch_add(1, Ordering::Relaxed);
             s.converted_windows.lock().map_err(issue)?.entries.insert((p,n), entry);
         }
     }

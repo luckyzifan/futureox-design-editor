@@ -98,9 +98,14 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     }
     if !batch.is_empty(){batches.push(batch);}
     let mut geometry_pool=futureox_design_kernel::vector_geometry::GeometryPool::default();
-    // At most two independent CPU conversions. Refill a completed slot after
-    // merging its result in source order; a slow neighbouring batch no longer
-    // leaves the other conversion slot idle for the rest of a fixed pair.
+    // Keep a small ordered pipeline. Each slot converts an independent archive
+    // window; results still merge in catalogue order. Use idle cores up to four
+    // when the trusted startup budget can hold more than one window, and stay
+    // on one worker below that budget. This does not raise scene admission.
+    let width=if futureox_design_kernel::capacity::memory_budget_bytes()>=2*1024*1024*1024 {
+        std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1).clamp(1,4)
+    } else {1};
+    s.snapshot_account.convert_width.store(width as u64, std::sync::atomic::Ordering::Relaxed);
     let convert=|batch:&Vec<(usize,usize)>| {
         if batch.len()==1 {
             // Singleton batches share the material-viewer cache. A full-source
@@ -117,18 +122,21 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
         append_batch(s,batch,cancel,&context,&mut document,&mut notes,render_only)?;
         Ok::<_,BackendError>((document.ok_or_else(||issue("Empty source batch"))?,notes))
     };
+    let build_started=std::time::Instant::now();
     std::thread::scope(|scope| -> Result<()> {
         let mut remaining=batches.iter();
         let mut pending=std::collections::VecDeque::new();
-        for batch in remaining.by_ref().take(2) {
+        for batch in remaining.by_ref().take(width) {
             let convert=&convert;pending.push_back(scope.spawn(move||convert(batch)));
         }
         while let Some(next)=pending.pop_front() {
             check_cancel(cancel).map_err(issue)?;
             let (mut document,notes)=next.join().unwrap_or_else(|_|Err(issue("Source conversion worker failed")))?;
             warnings.extend(notes);
+            let merging=std::time::Instant::now();
             for node in document.nodes.values_mut(){if let Some(geometry)=&mut node.vector_geometry{geometry_pool.intern(geometry);}}
             if let Some(full)=&mut full {scene::merge_window(full,document)?;} else {full=Some(document);}
+            s.snapshot_account.merge_ns.fetch_add(u64::try_from(merging.elapsed().as_nanos()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
             if let Some(batch)=remaining.next() {
                 let convert=&convert;pending.push_back(scope.spawn(move||convert(batch)));
             }
@@ -137,6 +145,7 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     })?;
     let document = full.ok_or_else(||issue("The source has no drawable canvas objects"))?;
     let (document,id)=place_materials(document,&s.owner.document_id,&s.name,layout)?;
+    s.snapshot_account.build_wall_ns.fetch_add(u64::try_from(build_started.elapsed().as_nanos()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
     Ok((document,id,warnings.into_iter().collect()))
 }
 
@@ -224,6 +233,16 @@ pub(super) struct Account {
     pub scene_writes: u64,
     /// Multi-root archive batches. Singleton roots use the window cache instead.
     pub source_batches: std::sync::atomic::AtomicU64,
+    /// Summed worker time. Parallel batches overlap, so these are not wall clocks.
+    pub parse_ns: std::sync::atomic::AtomicU64,
+    pub import_ns: std::sync::atomic::AtomicU64,
+    pub window_write_ns: std::sync::atomic::AtomicU64,
+    pub window_write_bytes: std::sync::atomic::AtomicU64,
+    pub window_writes: std::sync::atomic::AtomicU64,
+    pub merge_ns: std::sync::atomic::AtomicU64,
+    pub build_wall_ns: std::sync::atomic::AtomicU64,
+    pub scene_write_ns: std::sync::atomic::AtomicU64,
+    pub convert_width: std::sync::atomic::AtomicU64,
 }
 
 pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool, material_keys:Option<&[String]>,navigation_window:Option<canvas_layout::Box2>) -> Result<Value> {
@@ -271,6 +290,7 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
         let next=s.directory.join("canvas-native.next");
         let result=(||{
             let generation=format!("{}:{}:{}{suffix}",s.owner.document_id,s.owner.session_epoch,s.revision);
+            let writing=std::time::Instant::now();
             let write=||document.write(&next,&generation,&warnings,cancel);
             let store=match write(){
                 Err(error) if error.kind()==std::io::ErrorKind::StorageFull && !s.recent_materials.0.is_empty()=>{
@@ -278,6 +298,7 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
                 }
                 result=>result.map_err(issue)?,
             };
+            s.snapshot_account.scene_write_ns.fetch_add(u64::try_from(writing.elapsed().as_nanos()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
             check_cancel(cancel).map_err(issue)?;
             fs::rename(&next,&path).map_err(issue)?;
             let mut snapshot=Snapshot{scope:scope.clone(),revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,

@@ -1188,3 +1188,106 @@ fn selection_export_promotes_roots_keeps_required_masters_and_does_not_save_the_
     assert_eq!(grouped["layers"].as_array().unwrap().len(),1);
     assert_eq!(grouped["layers"][0]["layers"][0]["do_objectID"],RECT);
 }
+
+/// Cold production entries for issue #70: `large.canvasSnapshot` then
+/// `load_source_snapshot` on a fresh session. Prints wall times; does not
+/// change admission. Requires TOPOLOGY_SKETCH. SNAPSHOT_SAMPLES defaults to 3.
+#[test]
+#[ignore = "Complete user topology source; run explicitly with TOPOLOGY_SKETCH"]
+fn topology_source_snapshot_load_measures_production_entries() {
+    let source = PathBuf::from(std::env::var_os("TOPOLOGY_SKETCH").expect("TOPOLOGY_SKETCH"));
+    let samples: usize = std::env::var("SNAPSHOT_SAMPLES").ok().and_then(|v| v.parse().ok()).filter(|n| (1..=5).contains(n)).unwrap_or(3);
+    let font_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf");
+    let font = fs::read(&font_path).unwrap_or_else(|e| panic!("font {}: {e}", font_path.display()));
+    let source_bytes = fs::read(&source).unwrap();
+    let source_sha = digest(&source_bytes);
+    let meta = fs::symlink_metadata(&source).unwrap();
+    eprintln!("topology source bytes={} sha256={source_sha} samples={samples}", source_bytes.len());
+    for sample in 0..samples {
+        let root = std::env::temp_dir().join(format!("topology-snapshot-load-{}-{sample}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir(&root).unwrap();
+        let sessions = Sessions::new(root.join("cache"));
+        let cancel = AtomicBool::new(false);
+        let opened = std::time::Instant::now();
+        let status = sessions.open(Open {
+            opening_preview: false,
+            path: source.clone(),
+            document_id: format!("topology-snapshot-{sample}"),
+            session_epoch: 1,
+        }, &cancel).unwrap();
+        let open_ms = opened.elapsed().as_secs_f64() * 1000.0;
+        let snap = std::time::Instant::now();
+        let snapshot = sessions.dispatch("large.canvasSnapshot", Fixture::request(&status, json!({})), &cancel).unwrap();
+        let snapshot_ms = snap.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(snapshot["roots"], 306);
+        assert_eq!(snapshot["nodes"], 124447);
+        let scene_bytes = snapshot["bytes"].as_u64().unwrap();
+        assert!(scene_bytes > 0);
+        assert_eq!(fs::metadata(snapshot["path"].as_str().unwrap()).unwrap().len(), scene_bytes);
+        let descriptor = json!({
+            "path": snapshot["path"],
+            "store": snapshot["store"],
+            "documentId": snapshot["owner"]["documentId"],
+            "pageId": snapshot["pageId"],
+            "stageId": snapshot["stageId"],
+            "nodes": snapshot["nodes"],
+        });
+        let mut native = futureox_design_kernel::preparation::Preparation::new(&font).unwrap();
+        let loading = std::time::Instant::now();
+        let loaded = native.request("canvas", "load_source_snapshot", &[descriptor]).unwrap();
+        let load_ms = loading.elapsed().as_secs_f64() * 1000.0;
+        let identity = &loaded.metadata["value"];
+        assert_eq!(identity["documentId"], snapshot["owner"]["documentId"]);
+        assert_eq!(identity["pageId"], snapshot["pageId"]);
+        assert_eq!(identity["stageId"], snapshot["stageId"]);
+        assert_eq!(identity["nodes"], snapshot["nodes"]);
+        let warm = std::time::Instant::now();
+        let again = sessions.dispatch("large.canvasSnapshot", Fixture::request(&status, json!({})), &cancel).unwrap();
+        let warm_ms = warm.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(again["path"], snapshot["path"]);
+        assert_eq!(again["bytes"], snapshot["bytes"]);
+        assert_eq!(again["store"], snapshot["store"]);
+        let mut scene = File::open(snapshot["path"].as_str().unwrap()).unwrap();
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 1024 * 1024];
+        loop {
+            let n = scene.read(&mut buffer).unwrap();
+            if n == 0 { break; }
+            hasher.update(&buffer[..n]);
+        }
+        let scene_sha = digest_hex(hasher.finalize().as_slice());
+        let account = {
+            let slot = sessions.current.lock().unwrap();
+            let s = slot.as_ref().unwrap();
+            let windows = s.converted_windows.lock().unwrap();
+            let ms = |ns: u64| ns as f64 / 1_000_000.0;
+            let text = format!("builds={} sceneWrites={} descriptorHits={} layoutBuilds={} layoutReuses={} sourceBatches={} convertWidth={} windowConversions={} windowReads={} parseCpuMs={:.2} importCpuMs={:.2} windowWriteCpuMs={:.2} windowWrites={} windowWriteBytes={} mergeCpuMs={:.2} buildWallMs={:.2} sceneWriteMs={:.2}",
+                s.snapshot_account.builds, s.snapshot_account.scene_writes, s.snapshot_account.descriptor_hits,
+                s.snapshot_account.layout_builds, s.snapshot_account.layout_reuses,
+                s.snapshot_account.source_batches.load(Ordering::Relaxed),
+                s.snapshot_account.convert_width.load(Ordering::Relaxed),
+                windows.conversions, windows.retained_reads,
+                ms(s.snapshot_account.parse_ns.load(Ordering::Relaxed)),
+                ms(s.snapshot_account.import_ns.load(Ordering::Relaxed)),
+                ms(s.snapshot_account.window_write_ns.load(Ordering::Relaxed)),
+                s.snapshot_account.window_writes.load(Ordering::Relaxed),
+                s.snapshot_account.window_write_bytes.load(Ordering::Relaxed),
+                ms(s.snapshot_account.merge_ns.load(Ordering::Relaxed)),
+                ms(s.snapshot_account.build_wall_ns.load(Ordering::Relaxed)),
+                ms(s.snapshot_account.scene_write_ns.load(Ordering::Relaxed)));
+            drop(windows);
+            text
+        };
+        let phase_ms = snapshot_ms + load_ms;
+        eprintln!("sample={sample} openMs={open_ms:.2} snapshotMs={snapshot_ms:.2} loadMs={load_ms:.2} phaseMs={phase_ms:.2} warmMs={warm_ms:.2} sceneBytes={scene_bytes} sceneSha={scene_sha} {account}");
+        drop(native);
+        drop(sessions);
+        let _ = fs::remove_dir_all(&root);
+    }
+    let after = fs::read(&source).unwrap();
+    assert_eq!(after, source_bytes, "original sketch bytes changed");
+    let after_meta = fs::symlink_metadata(&source).unwrap();
+    assert_eq!(after_meta.len(), meta.len());
+    assert_eq!(after_meta.modified().ok(), meta.modified().ok());
+}

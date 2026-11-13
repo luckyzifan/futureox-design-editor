@@ -229,9 +229,11 @@ pub(super) fn sketch_window_in(
 ) -> Result<(Document, Vec<String>)> {
     check_cancel(cancel).map_err(issue)?;
     let source_bytes = s.parts[p].index.entries[n].span.len();
+    let parsed=std::time::Instant::now();
     let root: Value =
         serde_json::from_slice(&read_window(s, p, s.parts[p].index.entries[n].span, limit)?)
             .map_err(issue)?;
+    s.snapshot_account.parse_ns.fetch_add(u64::try_from(parsed.elapsed().as_nanos()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
     if root.get("do_objectID").and_then(Value::as_str).is_none()
         || matches!(
             root.get("_class").and_then(Value::as_str),
@@ -240,13 +242,17 @@ pub(super) fn sketch_window_in(
     {
         return Err(issue("Select a layer/subtree for canvas editing"));
     }
-    if legacy_refs_enabled() {
+    let started=std::time::Instant::now();
+    let imported=if legacy_refs_enabled() {
         let mut facts = RootFacts::default();
         legacy_refs(&root, &mut facts.symbols, &mut facts.images);
-        return sketch_roots_in(s, vec![root.clone()], facts, source_bytes, limit, context,cancel);
-    }
-    let facts = RootFacts::scan(&root);
-    sketch_roots_in(s, vec![root], facts, source_bytes, limit, context,cancel)
+        sketch_roots_in(s, vec![root.clone()], facts, source_bytes, limit, context,cancel)
+    } else {
+        let facts = RootFacts::scan(&root);
+        sketch_roots_in(s, vec![root], facts, source_bytes, limit, context,cancel)
+    };
+    s.snapshot_account.import_ns.fetch_add(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
+    imported
 }
 /// A bounded conversion batch shares archive metadata and dependency decoding.
 /// It is still the same importer and original source, never an editing baseline.
@@ -256,6 +262,7 @@ pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,ca
     let mut first_policy = None;
     let mut compatible = true;
     let legacy = legacy_refs_enabled();
+    let parsed=std::time::Instant::now();
     for &(p,n) in locations {
         check_cancel(cancel).map_err(issue)?;
         let span=s.parts[p].index.entries[n].span;
@@ -282,6 +289,7 @@ pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,ca
         facts.append(root_facts);
         roots.push(root);
     }
+    s.snapshot_account.parse_ns.fetch_add(u64::try_from(parsed.elapsed().as_nanos()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
     if roots.is_empty(){return Err(issue("Empty source conversion batch"));}
     if roots.len()>1 {
         // Symbol admission assigns stable keys to the entire conversion
@@ -290,7 +298,10 @@ pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,ca
         // Unknown private compatibility semantics keep the singleton path.
         if !compatible { return Err(issue("Source batch requires independent component admission")); }
     }
-    sketch_roots_in(s,roots,facts,bytes,limit,context,cancel)
+    let started=std::time::Instant::now();
+    let imported=sketch_roots_in(s,roots,facts,bytes,limit,context,cancel);
+    s.snapshot_account.import_ns.fetch_add(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX), std::sync::atomic::Ordering::Relaxed);
+    imported
 }
 fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:u64,limit:u64,context:&SketchContext,cancel:&AtomicBool)->Result<(Document,Vec<String>)> {
     let document = &context.document;
