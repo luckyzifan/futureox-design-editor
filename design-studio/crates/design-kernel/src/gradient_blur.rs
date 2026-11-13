@@ -154,6 +154,54 @@ impl CompositeField {
     }
 }
 
+/// Two official endpoint radii, admitted into the editor's existing strength
+/// field. Counts are those radii and the caller sets the effect radius to 1,
+/// so the filter support is the larger radius. This is not a claim that a
+/// Figma or Sketch framebuffer matches the strength curve.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TwoEndAdmission {
+    /// The endpoints name one shared radius, including values the strength
+    /// field cannot store. Keep the existing uniform blur of this radius.
+    Uniform(f64),
+    Ramp(crate::scene::GradientBlurParameters),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TwoEndReject {
+    /// A differing pair does not fit the 0..=64 strength field, or the larger
+    /// radius never leaves the sharp plateau (below 1).
+    OutsideModel,
+    Endpoints,
+}
+
+pub fn admit_two_end_progressive(
+    start: [f64; 2],
+    end: [f64; 2],
+    start_radius: f64,
+    end_radius: f64,
+) -> Result<TwoEndAdmission, TwoEndReject> {
+    if !start_radius.is_finite() || !end_radius.is_finite() || start_radius < 0. || end_radius < 0. {
+        return Err(TwoEndReject::OutsideModel);
+    }
+    if start_radius == end_radius {
+        return Ok(TwoEndAdmission::Uniform(start_radius));
+    }
+    if start_radius > 64. || end_radius > 64. || start_radius.max(end_radius) < 1. {
+        return Err(TwoEndReject::OutsideModel);
+    }
+    if start.iter().chain(end.iter()).any(|value| !value.is_finite() || value.abs() > 1e7) {
+        return Err(TwoEndReject::Endpoints);
+    }
+    Ok(TwoEndAdmission::Ramp(crate::scene::GradientBlurParameters {
+        start,
+        end,
+        start_count: start_radius,
+        end_count: end_radius,
+        // Same tier the background-blur card writes when progressive mode is enabled.
+        smooth: true,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,5 +425,21 @@ mod tests {
         );
         assert!(worst_weight < 1e-6, "weight error {worst_weight}");
         assert!(worst_value < 1e-6, "channel error {worst_value}");
+    }
+
+    #[test]
+    fn two_end_admission_keeps_equal_radii_uniform_and_stores_a_ramp_as_strengths() {
+        assert_eq!(admit_two_end_progressive([0., 0.], [10., 0.], 6., 6.), Ok(TwoEndAdmission::Uniform(6.)));
+        assert_eq!(admit_two_end_progressive([0., 0.], [10., 0.], 80., 80.), Ok(TwoEndAdmission::Uniform(80.)));
+        let ramp = admit_two_end_progressive([0., 4.], [32., 4.], 0., 8.).unwrap();
+        match ramp {
+            TwoEndAdmission::Ramp(params) => {
+                assert_eq!((params.start, params.end, params.start_count, params.end_count, params.smooth), ([0., 4.], [32., 4.], 0., 8., true));
+            }
+            TwoEndAdmission::Uniform(_) => panic!("a differing pair is a ramp"),
+        }
+        assert_eq!(admit_two_end_progressive([0., 0.], [1., 0.], 0., 80.), Err(TwoEndReject::OutsideModel));
+        assert_eq!(admit_two_end_progressive([0., 0.], [1., 0.], 0., 0.5), Err(TwoEndReject::OutsideModel));
+        assert_eq!(admit_two_end_progressive([1e8, 0.], [0., 0.], 0., 4.), Err(TwoEndReject::Endpoints));
     }
 }

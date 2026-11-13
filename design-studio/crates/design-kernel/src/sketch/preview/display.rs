@@ -487,7 +487,7 @@ impl Projection<'_> {
                 3 => "background-blur",
                 _ => return Err(Error::Unsupported("Sketch motion/zoom blur".into())),
             };
-            n.effects.push(Effect {
+            let mut effect = Effect {
                 id: format!("{id}:blur"),
                 kind: kind.into(),
                 radius: number(blur, "radius", 0.)?,
@@ -505,7 +505,24 @@ impl Projection<'_> {
                 color_controls: None,
                 zoom_blur: None,
                 motion_angle: 0.,
-            });
+            };
+            if effect.kind == "background-blur" {
+                match crate::interop::sketch_background_progressive(blur, Some([n.width, n.height])) {
+                    Ok(crate::interop::SketchProgressiveBackground::Ramp(params)) => {
+                        effect.radius = 1.;
+                        effect.gradient_blur = Some(params);
+                    }
+                    Ok(crate::interop::SketchProgressiveBackground::Uniform(radius)) => {
+                        effect.radius = radius;
+                        self.warnings.insert("progressive-background-blur-equal-radii-kept-uniform".into());
+                    }
+                    Err(note) => {
+                        self.warnings.insert(note.into());
+                    }
+                    Ok(crate::interop::SketchProgressiveBackground::NotProgressive) => {}
+                }
+            }
+            n.effects.push(effect);
         }
         if yes(&style["colorControls"], "isEnabled", false) {
             return Err(Error::Unsupported("Sketch image color controls".into()));

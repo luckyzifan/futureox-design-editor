@@ -1059,6 +1059,121 @@ mod tests {
     }
 
     #[test]
+    fn progressive_background_blur_matches_its_png_and_stays_inside_shape_and_clip() {
+        let mut nodes = serde_json::Map::new();
+        let mut stripe_ids = Vec::new();
+        for index in 0..10 {
+            let id = format!("stripe{index}");
+            stripe_ids.push(id.clone());
+            let color = if index % 2 == 0 { "#111111" } else { "#eeeeee" };
+            nodes.insert(id.clone(), json!({
+                "id": id, "kind": "rectangle", "width": 8, "height": 48, "transform": [1,0,0,1,index * 8,0],
+                "fills": [{"kind":"solid","color":color}]
+            }));
+        }
+        stripe_ids.push("lens".into());
+        nodes.insert("frame".into(), json!({
+            "id":"frame","kind":"frame","width":80,"height":48,"clip":true,"transform":[1,0,0,1,8,8],
+            "children": stripe_ids
+        }));
+        let children = vec!["frame".to_string(), "ink".to_string()];
+        nodes.insert("lens".into(), json!({
+            "id":"lens","kind":"rectangle","width":64,"height":32,"transform":[1,0,0,1,0,8],
+            "radii":[8,8,8,8],
+            "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+            "effects":[{"kind":"background-blur","radius":1,"color":"#000000",
+                "gradientBlur":{"start":[0,16],"end":[64,16],"startCount":0,"endCount":8,"smooth":true}}]
+        }));
+        nodes.insert("ink".into(), json!({
+            "id":"ink","kind":"rectangle","width":6,"height":8,"transform":[1,0,0,1,70,36],
+            "fills":[{"kind":"solid","color":"#00aa00"}]
+        }));
+        let scene = json!({
+            "schemaVersion":19,"id":"d","name":"Progressive backdrop edges","rasterProfile":"figma",
+            "pages":[{"id":"p","name":"Page","children":children,"background":"#ffffff"}],
+            "nodes": nodes
+        });
+        let request = RegionRequest {
+            page_id: "p".into(),
+            bounds: ExportBounds { x: 0., y: 0., width: 96., height: 64. },
+            scale: 1.,
+            node_ids: None,
+            raster_profile: None,
+            color_output: None,
+        };
+        let mut engine = Engine::new();
+        engine.load_document(&scene.to_string()).unwrap();
+        let png = image::load_from_memory(&engine.render_region_png(&request).unwrap()).unwrap().into_rgba8();
+        let options = engine.parse_options(json!({"pageId":"p","width":96,"height":64,
+            "view":{"x":0,"y":0,"zoom":1},"transparent":true})).unwrap();
+        let tiled = image::load_from_memory(&render_tiles(&mut engine, &options, 96, 64, true, crate::color::ColorSpace::Srgb).unwrap()).unwrap().into_rgba8();
+        assert_eq!(png, tiled);
+        let again = image::load_from_memory(&engine.render_region_png(&request).unwrap()).unwrap().into_rgba8();
+        assert_eq!(png, again);
+        let contrast = |x: u32| (png.get_pixel(x, 32)[0] as i16 - png.get_pixel(x + 4, 32)[0] as i16).abs();
+        assert!(contrast(20) > contrast(60), "start {} end {}", contrast(20), contrast(60));
+        assert_eq!(png.get_pixel(72, 40)[1], 170);
+        let mut sharp = scene.clone();
+        sharp["nodes"]["lens"]["effects"] = json!([]);
+        let mut sharp_engine = Engine::new();
+        sharp_engine.load_document(&sharp.to_string()).unwrap();
+        let sharp = image::load_from_memory(&sharp_engine.render_region_png(&request).unwrap()).unwrap().into_rgba8();
+        assert_eq!(png.get_pixel(72, 40), sharp.get_pixel(72, 40), "opaque foreground stacks above the blur");
+        assert_eq!(png.get_pixel(4, 32), sharp.get_pixel(4, 32), "clipped progressive blur does not paint outside the frame");
+        assert_ne!(png.get_pixel(24, 32), sharp.get_pixel(24, 32));
+
+        let angle = 40_f64.to_radians();
+        let (cos, sin) = (angle.cos(), angle.sin());
+        let (w, h) = (40_f64, 24_f64);
+        let (tx, ty) = (32. - cos * w / 2. + sin * h / 2., 32. - sin * w / 2. - cos * h / 2.);
+        let mut turned = json!({
+            "schemaVersion":19,"id":"d","name":"Rotated progressive lens","rasterProfile":"figma",
+            "pages":[{"id":"p","name":"Page","children":["stripe","lens"],"background":"#ffffff"}],
+            "nodes":{
+                "stripe":{"id":"stripe","kind":"rectangle","width":64,"height":64,"fills":[{"kind":"solid","color":"#2244aa"}]},
+                "lens":{"id":"lens","kind":"rectangle","width":40,"height":24,"radii":[6,6,6,6],
+                    "transform":[cos, sin, -sin, cos, tx, ty],
+                    "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+                    "effects":[{"kind":"background-blur","radius":1,"color":"#000000",
+                        "gradientBlur":{"start":[0,12],"end":[40,12],"startCount":0,"endCount":6,"smooth":true}}]}
+            }
+        });
+        let mut mask = turned.clone();
+        mask["nodes"]["lens"]["effects"] = json!([]);
+        mask["nodes"]["lens"]["fills"] = json!([{"kind":"solid","color":"#ffffff","opacity":1}]);
+        let small = RegionRequest {
+            page_id: "p".into(),
+            bounds: ExportBounds { x: 0., y: 0., width: 64., height: 64. },
+            scale: 1., node_ids: None, raster_profile: None, color_output: None,
+        };
+        let decode = |document: &serde_json::Value| {
+            let mut engine = Engine::new();
+            engine.load_document(&document.to_string()).unwrap();
+            image::load_from_memory(&engine.render_region_png(&small).unwrap()).unwrap().into_rgba8()
+        };
+        let blurred = decode(&turned);
+        let covered = decode(&mask);
+        turned["nodes"]["lens"]["effects"] = json!([]);
+        turned["nodes"]["lens"]["fills"] = json!([]);
+        let bare = decode(&turned);
+        let mut saw_outside = false;
+        let mut leaked = false;
+        let mut inside = false;
+        for y in 0..64u32 {
+            for x in 0..64u32 {
+                if covered.get_pixel(x, y) == bare.get_pixel(x, y) {
+                    saw_outside = true;
+                    leaked |= blurred.get_pixel(x, y) != bare.get_pixel(x, y);
+                } else {
+                    inside |= blurred.get_pixel(x, y) != bare.get_pixel(x, y);
+                }
+            }
+        }
+        assert!(saw_outside && inside, "the rotated rounded lens has pixels both inside and outside its shape");
+        assert!(!leaked, "the rotated lens does not filter pixels outside its rounded shape");
+    }
+
+    #[test]
     fn overlapping_blur_support_exports_with_bounded_surfaces() {
         let lens = |id, y, radius| json!({
             "id": id, "kind": "rectangle", "width": 192, "height": 104,

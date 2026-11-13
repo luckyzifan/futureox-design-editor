@@ -715,6 +715,67 @@ fn f64_value(value: &Value) -> Option<f64> {
     }
 }
 
+/// REST calls this `blurType`; kiwi calls it `blurOpType` and numbers
+/// NORMAL=0, PROGRESSIVE=1. Both arrive as the embedded schema's names.
+fn fig_progressive_flag(effect: &Value) -> Result<bool, &'static str> {
+    let marker = |key: &str, allow_int: bool| -> Option<Result<bool, ()>> {
+        let value = effect.get(key)?;
+        Some(match value {
+            Value::String(text) if text == "PROGRESSIVE" => Ok(true),
+            Value::String(text) if text == "NORMAL" => Ok(false),
+            Value::Number(number) if allow_int && number.as_i64() == Some(1) => Ok(true),
+            Value::Number(number) if allow_int && number.as_i64() == Some(0) => Ok(false),
+            _ => Err(()),
+        })
+    };
+    match (marker("blurType", false), marker("blurOpType", true)) {
+        (None, None) => Ok(false),
+        (Some(Err(())), _) | (_, Some(Err(()))) => Err("progressive-background-blur-marker-unknown"),
+        (Some(Ok(left)), Some(Ok(right))) if left != right => Err("progressive-background-blur-marker-conflict"),
+        (Some(Ok(value)), _) | (_, Some(Ok(value))) => Ok(value),
+    }
+}
+
+fn fig_offset(effect: &Value, key: &str, size: [f64; 2]) -> Option<[f64; 2]> {
+    let point = effect.get(key)?;
+    let x = point.get("x")?.as_f64()?;
+    let y = point.get("y")?.as_f64()?;
+    (x.is_finite() && y.is_finite()).then_some([x * size[0], y * size[1]])
+}
+
+enum FigProgressive {
+    NotProgressive,
+    Uniform(f64),
+    Ramp(crate::scene::GradientBlurParameters),
+}
+
+/// Official background progressive blur: `radius` is the end radius,
+/// `startRadius` the start radius, and offsets are normalized object space.
+/// Differing radii that fit the strength field become that field with base
+/// radius 1. Equal radii stay uniform. Nothing here is a framebuffer oracle.
+fn fig_background_progressive(effect: &Value, size: [f64; 2]) -> Result<FigProgressive, &'static str> {
+    if !fig_progressive_flag(effect)? {
+        return Ok(FigProgressive::NotProgressive);
+    }
+    let finite = |key: &str| effect.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.);
+    let end_radius = finite("radius").ok_or("progressive-background-blur-radius-outside-model")?;
+    let start_radius = finite("startRadius").ok_or("progressive-background-blur-start-radius-missing")?;
+    let (start, end) = if start_radius == end_radius {
+        ([0., 0.], [1., 0.])
+    } else {
+        (
+            fig_offset(effect, "startOffset", size).ok_or("progressive-background-blur-endpoints-missing")?,
+            fig_offset(effect, "endOffset", size).ok_or("progressive-background-blur-endpoints-missing")?,
+        )
+    };
+    match crate::gradient_blur::admit_two_end_progressive(start, end, start_radius, end_radius) {
+        Ok(crate::gradient_blur::TwoEndAdmission::Uniform(radius)) => Ok(FigProgressive::Uniform(radius)),
+        Ok(crate::gradient_blur::TwoEndAdmission::Ramp(params)) => Ok(FigProgressive::Ramp(params)),
+        Err(crate::gradient_blur::TwoEndReject::Endpoints) => Err("progressive-background-blur-endpoints-missing"),
+        Err(crate::gradient_blur::TwoEndReject::OutsideModel) => Err("progressive-background-blur-radius-outside-model"),
+    }
+}
+
 fn json_float(value: f64) -> Value {
     if value.is_nan() {
         Value::Null
@@ -1577,11 +1638,33 @@ impl FigImporter {
                     untranslated.push(format!("effectBlendMode={mode}"));
                 }
                 let show_shadow_behind_node = bool_of(e, "showShadowBehindNode").unwrap_or(false);
+                let mut radius = f64_of(Some(e), "radius");
+                let mut gradient_blur = None;
+                if kind == "background-blur" {
+                    match fig_background_progressive(e, [node.width, node.height]) {
+                        Ok(FigProgressive::NotProgressive) => {}
+                        Ok(FigProgressive::Uniform(value)) => {
+                            radius = value;
+                            untranslated.push("progressive-background-blur-equal-radii-kept-uniform".into());
+                        }
+                        Ok(FigProgressive::Ramp(params)) => {
+                            radius = 1.;
+                            gradient_blur = Some(params);
+                        }
+                        Err(note) => untranslated.push(note.into()),
+                    }
+                } else if kind == "blur" {
+                    match fig_progressive_flag(e) {
+                        Ok(true) => untranslated.push("progressive-layer-blur-outside-background-scope".into()),
+                        Err(note) => untranslated.push(note.into()),
+                        Ok(false) => {}
+                    }
+                }
                 node.effects.push(Effect {
                     id: String::new(),
                     kind: kind.into(),
                     visible: bool_of(e, "visible").unwrap_or(true),
-                    radius: f64_of(Some(e), "radius"),
+                    radius,
                     x: ox,
                     y: oy,
                     spread: f64_of(Some(e), "spread"),
@@ -1604,7 +1687,7 @@ impl FigImporter {
                         clip_to_shape: bool_of(e, "clipToShape").unwrap_or(false),
                         noise: None,
                     }) } else { None },
-                    gradient_blur: None,
+                    gradient_blur,
                     show_shadow_behind_node,
                     color_controls: None,
                     zoom_blur: None, motion_angle: 0.,
@@ -3572,6 +3655,13 @@ mod tests {
                         ("spread", -5, false, 6),
                         ("blendMode", 8, false, 7),
                         ("showShadowBehindNode", -1, false, 8),
+                        // Test-schema names only. A real file's ordinals stay in its
+                        // embedded schema; the importer reads these field names.
+                        ("blurType", -6, false, 40),
+                        ("blurOpType", -6, false, 41),
+                        ("startRadius", -5, false, 42),
+                        ("startOffset", 3, false, 43),
+                        ("endOffset", 3, false, 44),
                     ],
                 ), // 9
                 (
@@ -4641,6 +4731,92 @@ mod tests {
             assert_eq!(fx.len(), 1);
             assert_eq!(fx[0].kind, "blur");
             assert!((fx[0].radius - 6.).abs() < 1e-9);
+        }
+
+        #[test]
+        fn kiwi_progressive_marker_accepts_the_integer_enum_and_rejects_a_rest_number() {
+            assert_eq!(fig_progressive_flag(&json!({"blurOpType": 1})).unwrap(), true);
+            assert_eq!(fig_progressive_flag(&json!({"blurOpType": 0})).unwrap(), false);
+            assert!(fig_progressive_flag(&json!({"blurType": 1})).is_err());
+            assert!(fig_progressive_flag(&json!({"blurType": "PROGRESSIVE", "blurOpType": "NORMAL"})).is_err());
+        }
+
+        #[test]
+        fn progressive_background_blur_maps_normalized_ends_onto_strengths() {
+            for marker in ["blurType", "blurOpType"] {
+                let mut changes = canvas_only();
+                let mut frame = base_change("RECTANGLE", 1, 2);
+                frame["size"] = json!({"x": 80, "y": 40});
+                frame["effects"] = json!([{
+                    "type": "BACKGROUND_BLUR", "visible": true, "radius": 8, "startRadius": 0,
+                    marker: "PROGRESSIVE",
+                    "startOffset": {"x": 0, "y": 0.5}, "endOffset": {"x": 1, "y": 0.5}
+                }]);
+                changes.push(frame);
+                let doc = doc_with(changes).unwrap();
+                assert!(doc.schema_version >= 9, "{}", doc.schema_version);
+                let fx = &node_of(&doc, 1, 2).effects[0];
+                assert_eq!(fx.kind, "background-blur");
+                assert_eq!(fx.radius, 1.);
+                let gradient = fx.gradient_blur.expect("two-end ramp");
+                assert_eq!(gradient.start, [0., 20.]);
+                assert_eq!(gradient.end, [80., 20.]);
+                assert_eq!((gradient.start_count, gradient.end_count, gradient.smooth), (0., 8., true));
+                assert!(source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").is_none());
+            }
+        }
+
+        #[test]
+        fn progressive_background_blur_outside_the_strength_field_stays_uniform_and_is_named() {
+            let mut changes = canvas_only();
+            let mut frame = base_change("RECTANGLE", 1, 2);
+            frame["size"] = json!({"x": 80, "y": 40});
+            frame["effects"] = json!([{
+                "type": "BACKGROUND_BLUR", "visible": true, "radius": 80, "startRadius": 0,
+                "blurOpType": "PROGRESSIVE",
+                "startOffset": {"x": 0, "y": 0}, "endOffset": {"x": 1, "y": 0}
+            }]);
+            changes.push(frame);
+            let doc = doc_with(changes).unwrap();
+            let fx = &node_of(&doc, 1, 2).effects[0];
+            assert!(fx.gradient_blur.is_none());
+            assert_eq!(fx.radius, 80.);
+            let note = source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").unwrap();
+            assert!(note.contains("progressive-background-blur-radius-outside-model"), "{note}");
+        }
+
+        #[test]
+        fn equal_progressive_radii_stay_on_the_uniform_background_blur() {
+            let mut changes = canvas_only();
+            let mut frame = base_change("RECTANGLE", 1, 2);
+            frame["effects"] = json!([{
+                "type": "BACKGROUND_BLUR", "radius": 6, "startRadius": 6, "blurType": "PROGRESSIVE"
+            }]);
+            changes.push(frame);
+            let doc = doc_with(changes).unwrap();
+            let fx = &node_of(&doc, 1, 2).effects[0];
+            assert!(fx.gradient_blur.is_none());
+            assert_eq!(fx.radius, 6.);
+            let note = source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").unwrap();
+            assert!(note.contains("progressive-background-blur-equal-radii-kept-uniform"), "{note}");
+        }
+
+        #[test]
+        fn progressive_layer_blur_is_outside_this_background_import() {
+            let mut changes = canvas_only();
+            let mut frame = base_change("RECTANGLE", 1, 2);
+            frame["effects"] = json!([{
+                "type": "LAYER_BLUR", "radius": 6, "startRadius": 0, "blurType": "PROGRESSIVE",
+                "startOffset": {"x": 0, "y": 0}, "endOffset": {"x": 1, "y": 0}
+            }]);
+            changes.push(frame);
+            let doc = doc_with(changes).unwrap();
+            let fx = &node_of(&doc, 1, 2).effects[0];
+            assert_eq!(fx.kind, "blur");
+            assert!(fx.gradient_blur.is_none());
+            assert_eq!(fx.radius, 6.);
+            let note = source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").unwrap();
+            assert!(note.contains("progressive-layer-blur-outside-background-scope"), "{note}");
         }
 
         // ---------------- text ----------------

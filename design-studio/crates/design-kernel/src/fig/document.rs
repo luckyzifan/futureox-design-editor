@@ -1207,6 +1207,9 @@ pub(super) fn raise_schema(doc: &Document, version: &mut u32) {
     }) {
         *version = (*version).max(12);
     }
+    if doc.nodes.values().any(|node| node.effects.iter().any(|effect| effect.gradient_blur.is_some())) {
+        *version = (*version).max(9);
+    }
     if doc.requires_schema17() {
         *version = (*version).max(17);
     }
