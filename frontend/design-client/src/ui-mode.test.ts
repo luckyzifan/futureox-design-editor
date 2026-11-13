@@ -61,6 +61,24 @@ test('english memory banners collapse to a short status', () => {
   expect(canvasStatusLabel('已自动保存到工作副本')).toBe('已自动保存到工作副本')
 })
 
+test('a fixed conversion window is not labelled as running out of memory', () => {
+  for (const message of [
+    '大型文档：Source subtree exceeds the bounded conversion window; select a smaller subtree',
+    'Source conversion window exceeds its memory allowance',
+    'unsupported lossless conversion: Source conversion window exceeds its memory allowance',
+    'Source conversion entry exceeds its memory allowance',
+    'Thumbnail dependencies exceed window',
+  ]) {
+    const label = canvasStatusLabel(message)
+    expect(label).toContain('固定转换窗口')
+    expect(label).toContain('选择较小页面、素材或子树')
+    expect(label).toContain('无需退出其他应用')
+    expect(label).not.toContain('内存不足')
+    expect(label).not.toContain('可释放其他应用的内存后重试')
+    expect(label).not.toContain('Close other documents')
+  }
+})
+
 test('menus flip above the trigger when the viewport cannot hold them below', () => {
   const viewport = { width: 1280, height: 768 }
   const anchor = { left: 20, top: 700, right: 80, bottom: 732 }

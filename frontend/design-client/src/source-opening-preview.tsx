@@ -1,4 +1,5 @@
 import {MATERIAL_MARGIN} from './kernel/source-overview-window'
+import {sourceErrorKind} from './source-error-text'
 import {PASTEBOARD_COVERAGE} from './kernel/cpu-tile-frame'
 import {memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type RefObject} from 'react'
 import type {CanvasCamera} from './canvas-camera'
@@ -9,15 +10,22 @@ export type OpeningView = {
   materialDisplay?:SourceCanvasSnapshot; images:ReadonlyMap<number,string>; finished:boolean; cacheHit:boolean; rendered:number
 }
 export const SOURCE_DETAIL_SAMPLE_MS=120
-export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|undefined) {
+export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|undefined, onWindowLimit?:(message:string)=>void) {
   const [value,setValue]=useState<{generation:number;view:OpeningView}>()
   const priority=useRef<{pageId?:string;material?:number;viewport?:SourceCanvasBox;viewportDensity?:number;viewportAnchor?:[number,number]}>({})
   const focusedAt=useRef(-Infinity)
   const wake=useRef<()=>void>(()=>{})
+  const onWindowLimitRef=useRef(onWindowLimit)
+  onWindowLimitRef.current=onWindowLimit
   useEffect(()=>{
     if(generation===undefined || !bridge.openingView)return
     const read=bridge.openingView.bind(bridge)
-    let failures=0,live=true, inFlight=false, timer:ReturnType<typeof setTimeout>|undefined
+    let failures=0,reported='',live=true, inFlight=false, timer:ReturnType<typeof setTimeout>|undefined
+    const reportWindow=(message:string)=>{
+      if(!message||message===reported)return
+      reported=message
+      onWindowLimitRef.current?.(message)
+    }
     let owner:LargeDocumentOwner|undefined, pages:OpeningPage[]=[], cursor=0, detailCursor=0, finished=false, lastDisplay:SourceCanvasSnapshot|undefined
     const items:SourceCanvasItem[]=[], images=new Map<number,string>(),baseImages=new Map<number,string>(),refined=new Map<number,number>()
     const poll=async()=>{
@@ -33,6 +41,7 @@ export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|u
         if(reply.status==='ok' && reply.phase==='unavailable' || reply.status==='cancelled' && owner){setValue(undefined);live=false;return}
         if(reply.status==='ok' && reply.phase==='available'){
           if(owner&&(owner.documentId!==reply.owner.documentId||owner.sessionEpoch!==reply.owner.sessionEpoch))return
+          if(typeof reply.windowLimit==='string')reportWindow(reply.windowLimit)
           owner=reply.owner; if(reply.pages)pages=reply.pages
           if(reply.offset!==items.length || reply.cursor!==cursor+reply.images.length)throw Error('Invalid material preview batch')
           items.push(...reply.items);cursor=reply.cursor
@@ -78,9 +87,15 @@ export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|u
           else if(reply.detailPending)delay=65
           else if(!reply.images.length)delay=priority.current.material!==undefined&&!display&&performance.now()-focusedAt.current<800?32:200
         }
-      }catch {
-        delay=250
-        if(++failures>=3 && live){live=false;setValue(undefined)}
+      }catch(error) {
+        const message=error instanceof Error?error.message:String(error)
+        // A fixed window reject is not a transport failure. Keep the catalogue
+        // and say so once, instead of wiping the preview after three retries.
+        if(sourceErrorKind(message)==='window'){reportWindow(message);delay=250}
+        else {
+          delay=250
+          if(++failures>=3 && live){live=false;setValue(undefined)}
+        }
       }
       finally {
         inFlight=false

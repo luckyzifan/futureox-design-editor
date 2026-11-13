@@ -2,6 +2,7 @@ import { webPath } from './web-path'
 import { useEffect,useLayoutEffect,useRef,useState,type ReactNode } from 'react'
 import { File,FolderOpen,Grid2X2,List,Plus,Search,Settings } from 'lucide-react'
 import { FileMark } from './chrome-icons'
+import { sourceErrorKind, sourceErrorSummary } from './source-error-text'
 import { useInterfacePreferences, useInterfaceText } from './interface-preference'
 import type { HomeEntry,HomeSource } from './local-home-source'
 import './local-home.css'
@@ -33,7 +34,8 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
    '文档操作暂不可用，仍可调整本机设置。': text.documentActionsUnavailable,
    '本地恢复失败，文档操作和自动保存已暂停。': text.localRecoveryPaused,
   }
-  return table[value] ?? value
+  if (table[value]) return table[value]
+  return sourceErrorKind(value) === 'window' ? sourceErrorSummary(value) : value
  }
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;ticket.current++}},[])
  useLayoutEffect(()=>{
