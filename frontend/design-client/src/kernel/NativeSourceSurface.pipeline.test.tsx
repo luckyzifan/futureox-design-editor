@@ -68,7 +68,10 @@ afterEach(async()=>{await act(async()=>{root.unmount();await pause()});dom.windo
 
 test('the visible viewport presents in one frame as soon as its last tile arrives',async()=>{
  await draw();const first=state.jobs[0]
- expect(first.options.tileViewport).toHaveLength(2)
+  expect(first.options.tileViewport).toHaveLength(2)
+  expect(document.querySelector('.native-source-content')?.getAttribute('data-refine-trace')).toBe('exact-viewport')
+  expect(document.querySelector('.native-source-content')?.getAttribute('data-refine-batch')).toBe('2')
+  expect(document.querySelector('.native-source-content')?.getAttribute('data-refine-release')).toBe('0')
  await act(async()=>{deliver(first,0,11);paint()})
  expect(state.frames).toHaveLength(0)
  expect(statuses.some(value=>value.phase==='ready')).toBe(false)

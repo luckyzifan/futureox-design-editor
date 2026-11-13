@@ -32,6 +32,7 @@ pub mod editing;
 pub mod effects;
 pub mod spatial_blur;
 pub mod zoom_blur;
+pub mod zoom_refine_schedule;
 mod zoom_support;
 pub mod noise_fill;
 pub mod export;
@@ -2423,6 +2424,13 @@ mod wasm {
         let plan = tile_stack::raster_addresses(bounds, zoom, limit, phase)
             .map_err(|e| JsValue::from_str(&e))?;
         serde_json::to_string(&plan).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Zoom and pan task choice plus preview cancellation. One JSON entry.
+    /// The decision does not release a texture a presented frame still samples.
+    #[wasm_bindgen]
+    pub fn zoom_refine_policy_json(json: &str) -> Result<String, JsValue> {
+        zoom_refine_schedule::policy_json(json).map_err(|error| JsValue::from_str(&error))
     }
 
     #[wasm_bindgen]

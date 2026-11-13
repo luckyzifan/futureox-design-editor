@@ -1,9 +1,12 @@
 import { defineConfig } from 'vitest/config'
 
-// These camera/coverage tests do not call the Rust picking kernel. Keep them
-// runnable in a fresh checkout before building WASM or launching Electron.
+// Coverage geometry here does not call picking. The native source surface now
+// asks the kernel for zoom-refine scheduling, so this suite initializes that
+// module. A checkout without the built kernel fails this setup instead of
+// skipping the surface.
 export default defineConfig({
   test: {
+    setupFiles: ['./src/kernel/camera-handoff-kernel-setup.ts'],
     include: [
       'src/kernel/camera-reprojection.test.ts',
       'src/kernel/source-tile-retirement.test.ts',

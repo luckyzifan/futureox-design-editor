@@ -1043,8 +1043,15 @@ self.onmessage = (e) => {
       renderOptions.gpuPainterCaptureReads = usesPainterCaptureReads(import.meta.env.VITE_DESIGN_PAINTER_CAPTURE_READS,
         renderOptions.gpuPainterSupport)
       if(terminalDiagnostics.enabled && renderIntent==='canvas')gridMeasurements.record({gridKind:1,gridVisible:Number(!!renderOptions.grid&&!renderOptions.transparent&&renderOptions.view.zoom>0.13),gridSpacingClass:3,gridRedrawReason:2})
-      const previewCurrent = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-        (!tileViewport || channel !== 'canvas' || fillGeneration === tileFillGeneration)
+      // One preview fence. Fill is enforced only for a canvas tile batch.
+      // Cancellation does not release a texture the presenter still samples.
+      const admitPreview = (enforceFill: boolean, allowGapFill = false, canFillGap = false) => choosePreparedTile({
+        aborted: !!packetWait?.controller.signal.aborted,
+        generationCurrent: generation === previewGenerations[channel],
+        fillCurrent: fillGeneration === tileFillGeneration,
+        enforceFill, channelIsCanvas: channel === 'canvas', allowGapFill, canFillGap,
+      })
+      const previewCurrent = () => admitPreview(!!tileViewport).action !== 'cancel'
       const retainCoverage = channel === 'canvas' && coverageTiles === true && !!tileViewport && renderIntent === 'preview'
       if(renderOptions.captureViewport&&(request.png||request.readback||tileViewport||renderOptions.pixelPreview||exportFormat||renderOptions.exportRegion))
         throw Error('Native viewport capture is only available for canvas presentation')
@@ -1351,12 +1358,10 @@ self.onmessage = (e) => {
       }
       // Apply the versioned document envelope even when its pixels were
       // superseded; the following request may legitimately patch this revision.
-      if ((livePreview || tileViewport) && (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw Error('PREVIEW_CANCELLED')
       // Camera-only cancellation must still apply the ordered document above,
       // but need not initialize GPU pipelines or hydrate a stale raster batch.
       // Page coverage is useful across cameras and keeps its explicit exemption.
-      if (tileViewport && channel === 'canvas' && fillGeneration !== tileFillGeneration)
-        throw Error('PREVIEW_CANCELLED')
+      if ((livePreview || tileViewport) && admitPreview(!!tileViewport).action === 'cancel') throw Error('PREVIEW_CANCELLED')
       if (laneState.deferredInteractionDocument && translated?.options !== options && laneState.compiledScene?.options !== options) await synchronizeDeferred()
       const hydrateImages = sceneImageHydration(kernel, () => !(livePreview || tileViewport) || previewCurrent())
       const settingsJson = kernel.color_settings()
@@ -1647,14 +1652,8 @@ self.onmessage = (e) => {
             let filterColumnPlans = 0, filterColumnReorders = 0
             const ahead = new PrepareAhead<{ bytes: ScenePacket; ms: number; tile: RasterTile }>()
             let preparationWaitMs = 0, overlappedPreparations = 0
-            const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-              (channel !== 'canvas' || fillGeneration === tileFillGeneration)
-            const tileFence = (enforceFill: boolean, allowGapFill = false, canFillGap = false) => choosePreparedTile({
-              aborted: !!packetWait?.controller.signal.aborted,
-              generationCurrent: generation === previewGenerations[channel],
-              fillCurrent: fillGeneration === tileFillGeneration,
-              enforceFill, channelIsCanvas: channel === 'canvas', allowGapFill, canFillGap,
-            })
+            const current = () => admitPreview(true).action !== 'cancel'
+            const tileFence = admitPreview
             const canStreamGaussian = regionalGaussianDisplay({backend,channel,profile:renderOptions.rasterProfile,colorSpace:color?.documentSpace,
               displayOnly:!request.readback&&!request.png&&!request.referenceGpu&&!exportFormat&&(renderIntent==='preview'||renderIntent==='canvas'),
               regional:renderOptions.gpuGaussianRegions,hdr:executionPolicy.hdrCompositing,pixelPreview:renderOptions.pixelPreview,
@@ -1807,8 +1806,7 @@ self.onmessage = (e) => {
                   settingsJson, tileSide, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareForTile(tile), !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
-                  () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
+                  () => admitPreview(false).action !== 'cancel' && tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
                     draws=>reportWorkProgress(2,draws),displayBackpressure,sourceDetailDisplay && tile.zoom>=2,sourceDetailDisplay)
                 if (result.gpuTile && preparedScene && renderIntent==='canvas' && channel==='canvas' && !request.sourceSnapshot &&
                     !request.png && !request.readback && !exportFormat && !canvasDisplayFilters && !canvasMath && !canvasTentRadius &&

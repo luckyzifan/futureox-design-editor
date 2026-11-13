@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
-import { coarsePanCoverNeeded, retainPannedTile } from './navigation-overview'
+import { retainPannedTile } from './navigation-overview'
+import { coarsePanCoverNeeded } from './zoom-refinement-policy'
 
 const base = {
   firstNative: false, hasStrip: true, stripCached: false, pasteboard: false, cpuOnly: false,
