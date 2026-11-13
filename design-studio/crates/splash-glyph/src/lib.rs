@@ -144,7 +144,7 @@ pub fn rasterize(
             yy: 0x10000,
         };
         let mut delta = FT_Vector {
-            x: i64::from(x_frac) * 16,
+            x: (x_frac * 16).into(),
             y: 0,
         };
         FT_Set_Transform(face, &mut matrix, &mut delta);
