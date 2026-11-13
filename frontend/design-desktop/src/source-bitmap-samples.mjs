@@ -2,8 +2,35 @@
 // any file. The Electron main process never loops over the sampled pixels.
 import {openSync,closeSync,readSync,fstatSync} from 'node:fs'
 import {parentPort} from 'node:worker_threads'
-export function readBitmapSamples(file,iw,ih,body,pairs=false){
- const src=Buffer.from(body);if(src.length<16||src.length%4||src.length>65544)throw Error('Invalid sample indices')
+const SPAN_BYTES=64*1024*1024
+function readExact(fd,target,offset,length,at){
+ let used=0
+ while(used<length){
+  const count=readSync(fd,target,offset+used,length-used,at+used)
+  if(!count)throw Error('Truncated source row')
+  used+=count
+ }
+}
+/** One axis-aligned source rectangle, each row read once. The caller scatters
+ * bilinear taps. This is not retained after the reply is transferred. */
+function readSpanSamples(file,iw,ih,src){
+ if(src.length!==16)throw Error('Invalid sample indices')
+ const x=src.readUInt32LE(0),y=src.readUInt32LE(4),w=src.readUInt32LE(8),h=src.readUInt32LE(12)
+ if(!w||!h||x>iw||y>ih||w>iw-x||h>ih-y||!Number.isSafeInteger(iw*ih*4)||!Number.isSafeInteger(w*h*4)||w*h*4>SPAN_BYTES)throw Error('Invalid sample extent')
+ // Exact allocation: a pooled Buffer view would transfer unrelated bytes.
+ const data=new Uint8Array(w*h*4)
+ const fd=openSync(file,'r')
+ try{
+  if(fstatSync(fd).size!==iw*ih*4)throw Error('Incomplete source image')
+  const row=w*4
+  for(let i=0;i<h;i++)readExact(fd,data,i*row,row,((y+i)*iw+x)*4)
+  return data
+ }finally{closeSync(fd)}
+}
+export function readBitmapSamples(file,iw,ih,body,pairs=false,span=false){
+ const src=Buffer.from(body)
+ if(span)return readSpanSamples(file,iw,ih,src)
+ if(src.length<16||src.length%4||src.length>65544)throw Error('Invalid sample indices')
  const w=src.readUInt32LE(0),h=src.readUInt32LE(4)
  if(!w||!h||w*h>524288||src.length!==(2+(pairs?2*w*h:w+h))*4||!Number.isSafeInteger(iw*ih*4)||iw*4>1024*1024)throw Error('Invalid sample extent')
  const read=(i,max)=>{const v=src.readUInt32LE(8+i*4);if(v>=max)throw Error('Invalid source coordinate');return v}
@@ -32,7 +59,7 @@ export function readBitmapSamples(file,iw,ih,body,pairs=false){
   return data
  }finally{closeSync(fd)}
 }
-parentPort?.on('message',({id,file,iw,ih,body,pairs})=>{
- try{const bytes=readBitmapSamples(file,iw,ih,body,pairs);parentPort.postMessage({id,buffer:bytes.buffer},[bytes.buffer])}
+parentPort?.on('message',({id,file,iw,ih,body,pairs,span})=>{
+ try{const bytes=readBitmapSamples(file,iw,ih,body,pairs,span===true);parentPort.postMessage({id,buffer:bytes.buffer},[bytes.buffer])}
  catch{parentPort.postMessage({id,error:true})}
 })

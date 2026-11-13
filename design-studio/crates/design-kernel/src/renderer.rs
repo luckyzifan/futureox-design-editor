@@ -3820,8 +3820,21 @@ impl Painter<'_> {
         } else {
             None
         };
-        for y in r.y..r.bottom() {
-            for x in r.x..r.right() {
+        // A rotation has no row the two-line window can keep. Load each
+        // source-row window once, then sample it. Axis-aligned paints pass
+        // through with an empty window and keep the scanline cache.
+        let passes = sampler.take_rotated_windows().unwrap_or_else(|| {
+            vec![crate::paint::RotatedWindow { rect: r, y0: 0, y1: 0 }]
+        });
+        for window in passes {
+            if window.y1 > window.y0 {
+                sampler.cover_rotated_rows(window.y0, window.y1)?;
+            } else {
+                sampler.cover_rotated_rows(0, 0)?;
+            }
+            let area = window.rect;
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() {
                 let alpha = mask.at(x, y) * extra(x, y);
                 if alpha <= 0. {
                     continue;
@@ -3905,6 +3918,7 @@ impl Painter<'_> {
                 }
                 self.stats.shaded_pixels += 1;
             }
+        }
         }
         Ok(())
     }

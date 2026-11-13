@@ -528,6 +528,68 @@ impl ImageCoordinates {
         let uv = self.paint_inverse.map_or(uv, |m| m.point(uv));
         Point::new(uv.x * self.image[0], uv.y * self.image[1])
     }
+    /// Source y changes along a device scanline. The two-line window then
+    /// rereads a source row for every pixel. Pattern fills are not affine.
+    fn device_x_moves_source_y(&self) -> bool {
+        if self.pattern.is_some() {
+            return false;
+        }
+        let m = self.inverse.0;
+        if let Some(paint) = self.paint_inverse {
+            let p = paint.0;
+            let (sx, sy) = (self.size[0], self.size[1]);
+            if sx == 0. || sy == 0. {
+                return true;
+            }
+            p[1] * m[0] / sx + p[3] * m[1] / sy != 0.
+        } else {
+            m[1] != 0.
+        }
+    }
+    /// Texel rows a bilinear or byte sample of `bounds` can touch. Corners of
+    /// the closed pixel rectangle cover every sample offset in `[0, 1]`.
+    fn source_texel_rows(&self, bounds: Rect) -> Option<(u32, u32)> {
+        let right = bounds.checked_right()?;
+        let bottom = bounds.checked_bottom()?;
+        let image_h = self.image[1];
+        if image_h < 1. {
+            return None;
+        }
+        let mut min_y = f64::INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        let mut min_byte = f64::INFINITY;
+        let mut max_byte = f64::NEG_INFINITY;
+        for (x, y) in [
+            (f64::from(bounds.x), f64::from(bounds.y)),
+            (f64::from(right), f64::from(bounds.y)),
+            (f64::from(bounds.x), f64::from(bottom)),
+            (f64::from(right), f64::from(bottom)),
+        ] {
+            let linear = self.linear_point(Point::new(x, y));
+            let byte = self.byte_point(Point::new(x, y));
+            if !linear.y.is_finite() || !byte.y.is_finite() {
+                return None;
+            }
+            min_y = min_y.min(linear.y);
+            max_y = max_y.max(linear.y);
+            min_byte = min_byte.min(byte.y);
+            max_byte = max_byte.max(byte.y);
+        }
+        let lo = min_y.clamp(0.5, image_h - 0.5);
+        let hi = max_y.clamp(0.5, image_h - 0.5);
+        let mut y0 = (lo - 0.5).floor().min(min_byte.clamp(0., image_h - 1.).floor());
+        let mut y1 = ((hi - 0.5).floor() + 1.).max(max_byte.clamp(0., image_h - 1.).floor());
+        if y0 < 0. {
+            y0 = 0.;
+        }
+        if y1 >= image_h {
+            y1 = image_h - 1.;
+        }
+        if y1 < y0 {
+            return None;
+        }
+        Some((y0 as u32, y1 as u32 + 1))
+    }
 }
 /// One row of the original linear mapping, with only placement constants
 /// hoisted. Do not compose its arithmetic into a single affine transform:
@@ -1202,6 +1264,98 @@ pub struct Sampler {
     /// selects the image-adjust bookend variant — captured before
     /// `prepare_sampled` can flip `linear_sampling`.
     adjust: Option<(crate::image_adjust::ImageAdjust, bool)>,
+    /// Device rectangles whose source rows are loaded one window at a time.
+    /// `None` keeps the two-line scan, including every axis-aligned image.
+    rotated_windows: Option<Vec<RotatedWindow>>,
+}
+#[derive(Clone, Copy)]
+pub(crate) struct RotatedWindow {
+    pub rect: Rect,
+    pub y0: u32,
+    pub y1: u32,
+}
+const ROTATION_SCRATCH_LIMIT: usize = 64 * 1024 * 1024;
+fn span_bytes(rows: (u32, u32), row_bytes: usize) -> Option<usize> {
+    ((rows.1 - rows.0) as usize).checked_mul(row_bytes)
+}
+fn rotated_window_fits(coords: &ImageCoordinates, rect: Rect, row_bytes: usize) -> Option<(u32, u32)> {
+    let rows = coords.source_texel_rows(rect)?;
+    let bytes = span_bytes(rows, row_bytes)?;
+    (bytes <= ROTATION_SCRATCH_LIMIT).then_some(rows)
+}
+fn max_rotated_extent(limit: u32, mut fits: impl FnMut(u32) -> bool) -> u32 {
+    if limit == 0 || !fits(1) {
+        return 0;
+    }
+    let mut best = 1u32;
+    let mut lo = 1u32;
+    let mut hi = limit;
+    while lo <= hi {
+        let mid = lo + (hi - lo) / 2;
+        if fits(mid) {
+            best = mid;
+            lo = mid + 1;
+        } else if mid == 0 {
+            break;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    best
+}
+/// Full footprint when it fits. Otherwise strips, or tiles when one device row
+/// already crosses more source rows than the scratch can hold. Tiles advance
+/// by their own height so the next strip does not reread the same rows per pixel.
+fn partition_rotated(coords: &ImageCoordinates, bounds: Rect, row_bytes: usize) -> Option<Vec<RotatedWindow>> {
+    let mut windows = Vec::new();
+    let mut y = bounds.y;
+    let bottom = bounds.checked_bottom()?;
+    let right_edge = bounds.checked_right()?;
+    while y < bottom {
+        let remaining_h = (bottom - y) as u32;
+        let full = Rect::new(bounds.x, y, bounds.w, remaining_h);
+        if let Some((y0, y1)) = rotated_window_fits(coords, full, row_bytes) {
+            windows.push(RotatedWindow { rect: full, y0, y1 });
+            break;
+        }
+        let strip_h = max_rotated_extent(remaining_h, |h| {
+            rotated_window_fits(coords, Rect::new(bounds.x, y, bounds.w, h), row_bytes).is_some()
+        });
+        if strip_h >= 1 {
+            let rect = Rect::new(bounds.x, y, bounds.w, strip_h);
+            let (y0, y1) = rotated_window_fits(coords, rect, row_bytes)?;
+            windows.push(RotatedWindow { rect, y0, y1 });
+            y += strip_h as i32;
+            continue;
+        }
+        let remaining_w = (right_edge - bounds.x) as u32;
+        let tile_w = max_rotated_extent(remaining_w, |w| {
+            rotated_window_fits(coords, Rect::new(bounds.x, y, w, 1), row_bytes).is_some()
+        });
+        if tile_w == 0 {
+            windows.push(RotatedWindow { rect: Rect::new(bounds.x, y, 1, 1), y0: 0, y1: 0 });
+            y += 1;
+            continue;
+        }
+        let tile_h = max_rotated_extent(remaining_h, |h| {
+            rotated_window_fits(coords, Rect::new(bounds.x, y, tile_w, h), row_bytes).is_some()
+        })
+        .max(1);
+        let mut x = bounds.x;
+        while x < right_edge {
+            let w = ((right_edge - x) as u32).min(tile_w);
+            let h = ((bottom - y) as u32).min(tile_h);
+            let rect = Rect::new(x, y, w, h);
+            if let Some((y0, y1)) = rotated_window_fits(coords, rect, row_bytes) {
+                windows.push(RotatedWindow { rect, y0, y1 });
+            } else {
+                windows.push(RotatedWindow { rect: Rect::new(x, y, 1, 1), y0: 0, y1: 0 });
+            }
+            x += w as i32;
+        }
+        y += tile_h as i32;
+    }
+    Some(windows)
 }
 impl Sampler {
     pub fn solid(&self) -> Option<Pixel> {
@@ -1330,16 +1484,46 @@ impl Sampler {
                 .adjust
                 .filter(|a| !a.is_identity())
                 .map(|a| (a, images.settings.is_some())),
+            rotated_windows: None,
         })
     }
     pub(crate) fn prepare_sampled(
         &mut self,
         _paint: &Paint,
-        _bounds: Rect,
+        bounds: Rect,
         floating: bool,
     ) -> Result<(), String> {
         self.linear_sampling |= floating;
+        self.rotated_windows = self.plan_rotated_windows(bounds);
         Ok(())
+    }
+    pub(crate) fn take_rotated_windows(&mut self) -> Option<Vec<RotatedWindow>> {
+        self.rotated_windows.take()
+    }
+    pub(crate) fn cover_rotated_rows(&self, y0: u32, y1: u32) -> Result<(), String> {
+        match &self.image {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(SampleImage::Rows(rows)) => rows.cover_rows(y0, y1),
+            _ => Ok(()),
+        }
+    }
+    fn plan_rotated_windows(&self, bounds: Rect) -> Option<Vec<RotatedWindow>> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let (Some(SampleImage::Rows(rows)), Some(coords)) = (&self.image, &self.image_coordinates) else {
+                return None;
+            };
+            if bounds.empty() || !coords.device_x_moves_source_y() {
+                return None;
+            }
+            let row_bytes = rows.width as usize * 4;
+            return partition_rotated(coords, bounds, row_bytes);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = bounds;
+            None
+        }
     }
     /// Coverage-weighted encoded average for an axis-aligned stretch sample
     /// whose device pixel covers about two source texels on both axes.

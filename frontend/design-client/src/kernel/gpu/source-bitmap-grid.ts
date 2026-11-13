@@ -36,50 +36,135 @@ export function readSourceGrid(uri:string,xs:number[],ys:number[],lut:Float32Arr
 }
 
 
-// A rotated/sheared image has no separable axes. Fetch the four native texels
-// for each original Rust cell in bounded bands; keep its fractional words.
-export function readDenseSourceGrid(uri:string,field:Float32Array,b:Rect,iw:number,ih:number,lut:Float32Array){
- const width=b.w*2,height=b.h*2,out=new Float32Array(width*height*4)
- // The field generator stores -2 for transparent samples and clamps valid
- // source indices to pixel centres before computing their cell and fraction.
+/** One dense-pose fetch. Nothing here is kept after the call returns: `residentBytes`
+ * and `inFlightBytes` are the peak of the reply being scattered, not a cache. */
+export type DenseSourceRead={mode:'pairs'|'span';requests:number;sourceBytes:number;residentBytes:number;inFlightBytes:number}
+const emptyRead:DenseSourceRead={mode:'pairs',requests:0,sourceBytes:0,residentBytes:0,inFlightBytes:0}
+let lastDenseSourceRead:DenseSourceRead=emptyRead
+export function denseSourceReadAccounting():DenseSourceRead{return lastDenseSourceRead}
+const SPAN_BYTES=64*1024*1024
+type SourceSpan={x:number;y:number;w:number;h:number}
+function cellAt(field:Float32Array,index:number,iw:number,ih:number){
+ const x=field[index*4],y=field[index*4+1]
+ if(x===-2)return
+ if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||y<0||x>=iw||y>=ih)throw Error('Invalid source image cell')
+ return [x,y] as const
+}
+/** Source rectangle covering every bilinear tap. Null when the footprint is no
+ * taller than the output, where the existing pair bands already read each row
+ * once. A rotation's output row crosses many source rows, so those bands reread. */
+function denseSourceSpan(field:Float32Array,b:Rect,iw:number,ih:number,x0=0,x1=b.w,y0=0,y1=b.h):SourceSpan|null{
+ let left=iw,top=ih,right=-1,bottom=-1
+ for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+  const cell=cellAt(field,y*b.w+x,iw,ih);if(!cell)continue
+  if(cell[0]<left)left=cell[0]
+  if(cell[1]<top)top=cell[1]
+  if(cell[0]>right)right=cell[0]
+  if(cell[1]>bottom)bottom=cell[1]
+ }
+ if(right<0)return null
+ const span={x:left,y:top,w:Math.min(iw,right+2)-left,h:Math.min(ih,bottom+2)-top}
+ return span.h>y1-y0?span:null
+}
+function postSpan(uri:string,span:SourceSpan){
+ const payload=new Uint32Array([span.x,span.y,span.w,span.h])
+ const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&span=1',false);xhr.responseType='arraybuffer';xhr.send(payload)
+ if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==span.w*span.h*4)throw Error('无法读取旋转图片的原始采样区域')
+ return new Uint8Array(xhr.response)
+}
+function noteRead(read:DenseSourceRead,bytes:number){
+ read.requests++;read.sourceBytes+=bytes
+ read.inFlightBytes=Math.max(read.inFlightBytes,bytes)
+ read.residentBytes=Math.max(read.residentBytes,bytes)
+}
+function scatterSpan(field:Float32Array,b:Rect,span:SourceSpan,raw:Uint8Array,iw:number,ih:number,x0:number,x1:number,y0:number,y1:number,tap:(dest:number,rawAt:number)=>void){
+ for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+  const index=y*b.w+x,cell=cellAt(field,index,iw,ih);if(!cell)continue
+  const ox=2*x,oy=2*y;field[index*4]=ox;field[index*4+1]=oy
+  for(let dy=0;dy<2;dy++){
+   const sy=Math.min(ih-1,cell[1]+dy)
+   for(let dx=0;dx<2;dx++){
+    const sx=Math.min(iw-1,cell[0]+dx)
+    tap((oy+dy)*b.w*2+(ox+dx),((sy-span.y)*span.w+(sx-span.x))*4)
+   }
+  }
+ }
+}
+/** Output strips whose source rectangles fit the 64 MiB reply. One pixel that
+ * cannot is left for the pair reader. */
+function spanStrips(field:Float32Array,b:Rect,iw:number,ih:number){
+ const whole=denseSourceSpan(field,b,iw,ih)
+ if(!whole)return
+ if(whole.w*whole.h*4<=SPAN_BYTES)return [{x:0,y:0,w:b.w,h:b.h,span:whole}]
+ const strips:{x:number;y:number;w:number;h:number;span:SourceSpan}[]=[]
+ let y=0
+ while(y<b.h){
+  let best=0,lo=1,hi=b.h-y
+  while(lo<=hi){
+   const mid=lo+((hi-lo)>>1),span=denseSourceSpan(field,b,iw,ih,0,b.w,y,y+mid)
+   if(span&&span.w*span.h*4<=SPAN_BYTES){best=mid;lo=mid+1}else hi=mid-1
+  }
+  if(best>0){
+   strips.push({x:0,y,w:b.w,h:best,span:denseSourceSpan(field,b,iw,ih,0,b.w,y,y+best)!});y+=best;continue
+  }
+  let x=0
+  while(x<b.w){
+   let width=0;lo=1;hi=b.w-x
+   while(lo<=hi){
+    const mid=lo+((hi-lo)>>1),span=denseSourceSpan(field,b,iw,ih,x,x+mid,y,y+1)
+    if(span&&span.w*span.h*4<=SPAN_BYTES){width=mid;lo=mid+1}else hi=mid-1
+   }
+   if(!width)return
+   strips.push({x,y,w:width,h:1,span:denseSourceSpan(field,b,iw,ih,x,x+width,y,y+1)!});x+=width
+  }
+  y++
+ }
+ return strips
+}
+function readDenseTaps(uri:string,field:Float32Array,b:Rect,iw:number,ih:number,tap:(dest:number,raw:Uint8Array,rawAt:number)=>void){
+ const strips=spanStrips(field,b,iw,ih)
+ const read:DenseSourceRead={mode:strips?'span':'pairs',requests:0,sourceBytes:0,residentBytes:0,inFlightBytes:0}
+ if(strips){
+  for(const strip of strips){
+   const raw=postSpan(uri,strip.span);noteRead(read,raw.byteLength)
+   scatterSpan(field,b,strip.span,raw,iw,ih,strip.x,strip.x+strip.w,strip.y,strip.y+strip.h,(dest,rawAt)=>tap(dest,raw,rawAt))
+  }
+  lastDenseSourceRead=read;return
+ }
  const bandRows=Math.max(1,Math.floor(8192/b.w))
  for(let y=0;y<b.h;y+=bandRows){
   const h=Math.min(bandRows,b.h-y),data=new Uint32Array(2+b.w*h*2);data.set([b.w,h])
   for(let i=0;i<b.w*h;i++){
-   const off=(y*b.w+i)*4,x=field[off],v=field[off+1]
-   if(x===-2)continue
-   if(!Number.isInteger(x)||!Number.isInteger(v)||x<0||v<0||x>=iw||v>=ih)throw Error('Invalid source image cell')
-   data[2+i*2]=x;data[3+i*2]=v
-   field[off]=2*(i%b.w);field[off+1]=2*(y+Math.floor(i/b.w))
+   const index=y*b.w+i,cell=cellAt(field,index,iw,ih);if(!cell)continue
+   data[2+i*2]=cell[0];data[3+i*2]=cell[1]
+   field[index*4]=2*(i%b.w);field[index*4+1]=2*(y+Math.floor(i/b.w))
   }
   const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&pairs=1',false);xhr.responseType='arraybuffer';xhr.send(data)
   if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==b.w*h*16)throw Error('无法读取旋转图片的原始采样区域')
-  const raw=new Uint8Array(xhr.response);for(let i=0;i<raw.length;i+=4){const dest=y*2*width*4+i,a=lut[256+raw[i+3]];out[dest]=lut[raw[i]]*a;out[dest+1]=lut[raw[i+1]]*a;out[dest+2]=lut[raw[i+2]]*a;out[dest+3]=a}
+  const raw=new Uint8Array(xhr.response);noteRead(read,raw.byteLength)
+  for(let i=0;i<raw.length;i+=4)tap(y*2*b.w*2+i/4,raw,i)
  }
+ lastDenseSourceRead=read
+}
+// A rotated/sheared image has no separable axes. A rotation reads each source
+// row of its footprint once; a short footprint keeps the pair bands. Fractions
+// stay in the field. The reply is scattered and dropped inside this call.
+export function readDenseSourceGrid(uri:string,field:Float32Array,b:Rect,iw:number,ih:number,lut:Float32Array){
+ const out=new Float32Array(b.w*2*b.h*2*4)
+ readDenseTaps(uri,field,b,iw,ih,(dest,raw,at)=>{
+  const a=lut[256+raw[at+3]],i=dest*4
+  out[i]=lut[raw[at]]*a;out[i+1]=lut[raw[at+1]]*a;out[i+2]=lut[raw[at+2]]*a;out[i+3]=a
+ })
  return out
 }
-
 // Straight RGBA8 of the same 2× tap grid as the linear fetch. Coordinates stay
 // in that fetch's layout: xy is the integer 2× cell, zw is the original
 // fraction. Hosted WebGPU loads these bytes from an rgba8uint image, decodes
 // them with the sRGB table, and filters with the same bsBilinear4. Invalid
 // cells remain -2 so every tap is outside the texture and contributes zero.
 export function readDenseSourceGridBytes(uri:string,field:Float32Array,b:Rect,iw:number,ih:number){
- const width=b.w*2,height=b.h*2,out=new Uint8Array(width*height*4)
- const bandRows=Math.max(1,Math.floor(8192/b.w))
- for(let y=0;y<b.h;y+=bandRows){
-  const h=Math.min(bandRows,b.h-y),data=new Uint32Array(2+b.w*h*2);data.set([b.w,h])
-  for(let i=0;i<b.w*h;i++){
-   const off=(y*b.w+i)*4,x=field[off],v=field[off+1]
-   if(x===-2)continue
-   if(!Number.isInteger(x)||!Number.isInteger(v)||x<0||v<0||x>=iw||v>=ih)throw Error('Invalid source image cell')
-   data[2+i*2]=x;data[3+i*2]=v
-   field[off]=2*(i%b.w);field[off+1]=2*(y+Math.floor(i/b.w))
-  }
-  const xhr=new XMLHttpRequest();xhr.open('POST',uri+'&pairs=1',false);xhr.responseType='arraybuffer';xhr.send(data)
-  if(xhr.status!==200||!(xhr.response instanceof ArrayBuffer)||xhr.response.byteLength!==b.w*h*16)throw Error('无法读取旋转图片的原始采样区域')
-  out.set(new Uint8Array(xhr.response),y*2*width*4)
- }
+ const out=new Uint8Array(b.w*2*b.h*2*4)
+ readDenseTaps(uri,field,b,iw,ih,(dest,raw,at)=>out.set(raw.subarray(at,at+4),dest*4))
  return out
 }
 /** Interaction display may upload the straight grid. Exact readback, an

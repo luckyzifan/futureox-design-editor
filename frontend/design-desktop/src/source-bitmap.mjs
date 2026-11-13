@@ -8,7 +8,7 @@ const requests=new Map()
 // looks idle and cancels the still-pending reply. Electron can still exit once
 // the queue is empty.
 function pinSampler(){if(service)requests.size?service.ref():service.unref()}
-function sample(file,iw,ih,body,pairs){
+function sample(file,iw,ih,body,pairs,span=false){
  if(requests.size>=8)throw Error('Source sampler busy')
  if(!service){
   const worker=new Worker(new URL('./source-bitmap-samples.mjs',import.meta.url));service=worker
@@ -17,11 +17,12 @@ function sample(file,iw,ih,body,pairs){
   worker.on('message',result=>{const job=requests.get(result.id);if(!job)return;requests.delete(result.id);pinSampler();if(result.error)job.reject(Error('Source sample unavailable'));else job.resolve(result.buffer)})
  }
  const id=++sequence
- return new Promise((resolve,reject)=>{requests.set(id,{resolve,reject});pinSampler();try{service.postMessage({id,file,iw,ih,body,pairs})}catch(e){requests.delete(id);pinSampler();reject(e)}})
+ return new Promise((resolve,reject)=>{requests.set(id,{resolve,reject});pinSampler();try{service.postMessage({id,file,iw,ih,body,pairs,span})}catch(e){requests.delete(id);pinSampler();reject(e)}})
 }
 export async function serveSourceBitmap(request,active,root) {
  const url=new URL(request.url), match=/^\/source-image\/([a-zA-Z0-9-]{1,160})\/([a-f0-9]{64}-([1-9]\d{0,8})x([1-9]\d{0,8}))\.png$/.exec(url.pathname)
- if(!match||!active(match[1])||(url.search&&url.search!=='?samples=1'&&url.search!=='?samples=1&pairs=1')||request.method!=='GET'&&request.method!=='POST')return new Response('Forbidden',{status:403})
+ const span=url.search==='?samples=1&span=1'
+ if(!match||!active(match[1])||(url.search&&url.search!=='?samples=1'&&url.search!=='?samples=1&pairs=1'&&!span)||request.method!=='GET'&&request.method!=='POST')return new Response('Forbidden',{status:403})
  const full=path.resolve(root,'large-documents',match[1],'bitmaps',match[2]+(request.method==='GET'?'.png':'.rgba'))
  if(await realpath(full)!==await realpath(root)+full.slice(path.resolve(root).length))return new Response('Forbidden',{status:403})
  if(request.method==='POST'){
@@ -29,7 +30,7 @@ export async function serveSourceBitmap(request,active,root) {
    const reader=request.body?.getReader();if(!reader)return new Response(null,{status:400})
    let bytes=0;const chunks=[]
    for(;;){const {done,value}=await reader.read();if(done)break;bytes+=value.length;if(bytes>65544){await reader.cancel();return new Response(null,{status:413})}chunks.push(value)}
-   const pixels=await sample(full,Number(match[3]),Number(match[4]),Buffer.concat(chunks,bytes),url.search.endsWith('&pairs=1'))
+   const pixels=await sample(full,Number(match[3]),Number(match[4]),Buffer.concat(chunks,bytes),url.search.endsWith('&pairs=1'),span)
    if(!active(match[1]))return new Response(null,{status:409})
    return new Response(pixels,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})
  }
