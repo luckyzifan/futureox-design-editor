@@ -8,8 +8,8 @@ import {tileComputationDependsOnCamera,tileComputationKey,periodicComputationCam
 import {panPrefetch} from './pan-prefetch'
 import type {RasterTile} from './tile-cache'
 import type {Rect} from './gpu/types'
-import {tileIntersectsView} from './tile-preview'
-import {continuousZoomInScale} from './continuous-zoom-scale'
+import {MAX_PREVIEW_SCALE_RATIO,tileIntersectsView} from './tile-preview'
+import {continuousZoomInScale,zoomInLatticeCore} from './continuous-zoom-scale'
 import type {ResidentAcknowledgement} from './resident-presentation'
 
 export const SOURCE_PREFETCH_BUDGET={tiles:8,bytes:8*514*514*4} as const
@@ -302,6 +302,14 @@ export class SourceViewportPlanner {
         viewport = viewport.map(tile => clipAlignedTile(tile, rect))
       }
     }
+    // A fit bitmap stretched past the preview ratio is replaced one small
+    // core at a time. A zoom still inside that ratio keeps its ordinary
+    // lattice. The scale is already below native density; quiet
+    // certification still asks for the native lattice.
+    const stretched=this.visibleDensity>0&&native/this.visibleDensity>MAX_PREVIEW_SCALE_RATIO
+    const core=moving&&this.zoomingIn&&continuousZoom&&!this.coverageRetry&&stretched?zoomInLatticeCore(raster.scale,native):undefined
+    if(core&&viewport.some(tile=>tile.width>core+2||tile.height>core+2))
+      viewport=materialTiles(bounds,raster.scale,raster.phase,core,this.zoomFocus)??viewport
     // Catalogue bounds only change order. Dropping tiles outside a material
     // window left screen-aligned holes: at 25% the art can cover less than
     // 80% of the viewport, the omitted lattice never gets scheduled, and the

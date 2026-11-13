@@ -30,6 +30,8 @@ import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
+import { continuousZoomReplacementScale, zoomInSampleZoom } from './continuous-zoom-scale'
+import { materialTiles } from './source-display-band'
 import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
 import { captureMostlyOffscreen, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
@@ -1565,15 +1567,31 @@ export function ProgressiveSurfaceImpl(
               sequentialContext.current.width !== width || sequentialContext.current.height !== height || sequentialContext.current.dpr !== dpr) return
           const target = latestContext.current.requestedView || latestContext.current.view
           if (target.zoom < 1) return
-          // Native density, unchanged four-sample/render policy and canonical
-          // moving-camera phase. Final native-phase certification stays below.
-          const native = canvasRasterPlan(target, dpr, width, height, { rasterProfile, exactPhase: false })
+          // A fit bitmap past the preview ratio stays on screen until a closer
+          // sample covers. Raster that sample, inside the ratio and below
+          // native density, before a full native tile. Once it covers, the
+          // same turn returns to the native lattice. Settled certification
+          // is unchanged.
+          const displayedZoom = displayed
+            ? zoomInSampleZoom(displayed.view.zoom, dpr, [...displayed.residents.values()].map(tile => tile.zoom))
+            : undefined
+          const replacement = typeof displayedZoom === 'number'
+            ? continuousZoomReplacementScale(displayedZoom, target.zoom, dpr) : undefined
           const bounds = { x: -target.x / target.zoom, y: -target.y / target.zoom,
             width: width / target.zoom, height: height / target.zoom }
+          const resident = validCoverage()
+          const replacementPending = !!replacement && !tilesCoverBounds(
+            resident.filter(tile => tile.zoom + 1e-9 >= replacement.scale), bounds, replacement.scale)
+          const native = canvasRasterPlan(target, dpr, width, height, {
+            rasterProfile, exactPhase: false,
+            ...(replacementPending && replacement ? { samplingScale: replacement.scale } : {}),
+          })
           const fullTiles = planTilesAligned(bounds, native.scale, budgetTileLimit(displayTileBudget(width, height, dpr, false), false), native.phase)
+          const bounded = replacementPending && replacement?.core
+            ? materialTiles(bounds, native.scale, native.phase, replacement.core) : undefined
           // Use a smaller exact crop for one interruptible detail turn on a
           // filtered page. The full settled tile plan keeps its own keys.
-          const candidates = filteredContent && !zoomOutCoverage && target.zoom > 1 && target.zoom < 2 && !cameraDependent ? fullTiles.flatMap(tile => {
+          const candidates = bounded?.length ? bounded : !replacementPending && filteredContent && !zoomOutCoverage && target.zoom > 1 && target.zoom < 2 && !cameraDependent ? fullTiles.flatMap(tile => {
             const gutter = tile.gutter ?? 1
             const side = (tile.width - 2 * gutter) / 2
             return [0, 1].flatMap(y => [0, 1].map(x => ({
@@ -1583,7 +1601,6 @@ export function ProgressiveSurfaceImpl(
           }) : fullTiles
           const plan = candidates
             .map(tile => ({ ...tile, key: tileComputationKey(tile, native.camera, cameraDependent) }))
-          const resident = validCoverage()
           const missing = prioritizeTileFill(plan.filter(tile => {
             const existing = tileRef.current.get(tile.key)
             // Import-pending pixels already own this key. Do not duplicate
