@@ -1,4 +1,5 @@
-import type { DesignNode, Paint, Point } from './model'
+import { apply, inverse } from './geometry'
+import type { DesignNode, Matrix, Paint, Point } from './model'
 
 /** Same object-bounding-box line as Renderer.gradientLine and the kernel angle projection. */
 function gradientLine(angle: number) {
@@ -133,6 +134,34 @@ export function gradientStopPoint(width: number, height: number, angle: number, 
     x: ends.start.x + (ends.end.x - ends.start.x) * offset,
     y: ends.start.y + (ends.end.y - ends.start.y) * offset,
   }
+}
+
+function boundedAxis(value: number, limit: number) {
+  return Math.max(-limit, Math.min(limit, value))
+}
+
+/** Pointer delta in the node's local space, including parent scale, rotation, and flip. */
+export function blurLocalDelta(matrix: Matrix, worldAt: Point, worldStart: Point) {
+  const local = inverse(matrix)
+  const at = apply(local, worldAt)
+  const start = apply(local, worldStart)
+  return { dx: at.x - start.x, dy: at.y - start.y }
+}
+
+/** Node-local gradient endpoint after one gesture. The limit matches effect validation. */
+export function blurEndpointAfterDrag(point: readonly [number, number], dx: number, dy: number, limit = 1e7): [number, number] {
+  return [boundedAxis(point[0] + dx, limit), boundedAxis(point[1] + dy, limit)]
+}
+
+/** Normalized zoom-blur focal point. A zero-area node cannot host a focus. */
+export function zoomCenterAfterDrag(
+  center: readonly [number, number], width: number, height: number, dx: number, dy: number, limit = 1e6,
+): [number, number] | undefined {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width === 0 || height === 0) return
+  const x = center[0] + dx / width
+  const y = center[1] + dy / height
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return
+  return [boundedAxis(x, limit), boundedAxis(y, limit)]
 }
 
 export function gradientStopOffset(start: Point, end: Point, local: Point): number {

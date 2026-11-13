@@ -1,9 +1,10 @@
 import { expect, test } from 'vitest'
+import { apply, multiply } from './geometry'
 import { effect, node, paint } from './model'
 import {
-  cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, fittedCornerRadii,
+  blurEndpointAfterDrag, blurLocalDelta, cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, fittedCornerRadii,
   glassHandleLocal, glassLightAngle, glassLightDirection, gradientAngleFromLocal, gradientAngleHandle,
-  gradientEndpoints, gradientStopOffset, rectangleCornerTarget,
+  gradientEndpoints, gradientStopOffset, rectangleCornerTarget, zoomCenterAfterDrag,
 } from './canvas-material-handles'
 
 test('fitted corners match the kernel shared-edge limit', () => {
@@ -43,6 +44,26 @@ test('glass light angle 0 points down and the drag inverts it', () => {
   expect(firstGlass(lens)?.angle).toBe(45)
   lens.effects[0].visible = false
   expect(firstGlass(lens)).toBeNull()
+})
+
+test('blur endpoint and zoom focus follow rotation, flip, and parent scale', () => {
+  const rotated = multiply([1, 0, 0, 1, 100, 50], [0, 1, -1, 0, 0, 0])
+  const rotatedDelta = blurLocalDelta(rotated, apply(rotated, { x: 6, y: -3 }), apply(rotated, { x: 0, y: 0 }))
+  expect(rotatedDelta.dx).toBeCloseTo(6)
+  expect(rotatedDelta.dy).toBeCloseTo(-3)
+  expect(blurEndpointAfterDrag([10, 20], rotatedDelta.dx, rotatedDelta.dy)).toEqual([16, 17])
+  const flipped: [number, number, number, number, number, number] = [-1, 0, 0, 1, 200, 0]
+  const flippedDelta = blurLocalDelta(flipped, apply(flipped, { x: 4, y: 9 }), apply(flipped, { x: 10, y: 4 }))
+  expect(flippedDelta.dx).toBeCloseTo(-6)
+  expect(flippedDelta.dy).toBeCloseTo(5)
+  const nested = multiply(flipped, rotated)
+  const nestedDelta = blurLocalDelta(nested, apply(nested, { x: 4, y: -1 }), apply(nested, { x: 1, y: 2 }))
+  expect(nestedDelta.dx).toBeCloseTo(3)
+  expect(nestedDelta.dy).toBeCloseTo(-3)
+  expect(zoomCenterAfterDrag([0.25, 0.75], 120, 80, nestedDelta.dx, nestedDelta.dy))
+    .toEqual([0.25 + 3 / 120, 0.75 - 3 / 80])
+  expect(zoomCenterAfterDrag([0.5, 0.5], 0, 80, 1, 1)).toBeUndefined()
+  expect(blurEndpointAfterDrag([1e7 - 1, 0], 5, 0)[0]).toBe(1e7)
 })
 
 test('gradient handles follow the kernel angle and keep stops on the segment', () => {

@@ -121,7 +121,7 @@ import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
-import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, type CornerIndex } from './canvas-material-handles'
+import { blurEndpointAfterDrag, cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, zoomCenterAfterDrag, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
 import {
@@ -653,8 +653,22 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     return cancelQueuedMove
   }, [editor, editor.sessionGeneration, state.page])
   const queuePointerMove = (event: React.PointerEvent) => actionTrace.cpu.run(CpuStage.pointerQueue, () => queuePointerMoveImpl(event), drag.current?.actionToken)
+  const holdBlurPointer = (event: { pointerId: number; buttons: number }) => {
+    const active = drag.current
+    const element = host.current
+    if (!active || active.pointerId !== event.pointerId || active.kind !== 'parameter'
+        || (active.parameter !== 'blurEndpoint' && active.parameter !== 'zoomBlurCenter')) return false
+    // A long blur sample can detach the original handle. Recapture while the
+    // button is still down so that loss does not cancel the gesture.
+    if ((event.buttons & 1) === 0 || !element?.isConnected) return false
+    if (!element.hasPointerCapture(event.pointerId)) {
+      try { element.setPointerCapture(event.pointerId) } catch { return false }
+    }
+    return true
+  }
   const queuePointerMoveImpl = (event: React.PointerEvent) => {
     const active = drag.current
+    if (active) holdBlurPointer(event)
     const hover = !active && !pencil.current && !utility.active()
     // These previews are functions of the captured gesture baseline and latest
     // pointer. Pen construction (vertex without a node), freehand and utility
@@ -2215,13 +2229,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const dx = at.x - start.x, dy = at.y - start.y
         const effects = structuredClone(d.node.effects)
         const effect = effects[d.handle]
-        const bound = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value))
         if (d.parameter === 'blurEndpoint' && d.blurEndpoint && effect?.gradientBlur) {
-          const [x, y] = effect.gradientBlur[d.blurEndpoint]
-          effect.gradientBlur[d.blurEndpoint] = [bound(x + dx, 1e7), bound(y + dy, 1e7)]
+          effect.gradientBlur[d.blurEndpoint] = blurEndpointAfterDrag(effect.gradientBlur[d.blurEndpoint], dx, dy)
         } else if (d.parameter === 'zoomBlurCenter' && effect?.zoomBlur) {
-          const [x, y] = effect.zoomBlur.center
-          effect.zoomBlur.center = [bound(x + dx / d.node.width, 1e6), bound(y + dy / d.node.height, 1e6)]
+          const center = zoomCenterAfterDrag(effect.zoomBlur.center, d.node.width, d.node.height, dx, dy)
+          if (!center) return
+          effect.zoomBlur.center = center
         } else return
         editor.preview({ [d.node.id]: { effects } })
         return
@@ -2845,6 +2858,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       onLostPointerCapture={(e) => {
         if(utility.active())utility.cancel(e.pointerId)
         if (pencil.current?.input.pointerId === e.pointerId) cancelPencil()
+        if (drag.current?.pointerId === e.pointerId && holdBlurPointer(e)) return
         if (drag.current?.pointerId === e.pointerId) {
           desktopPet.stopNavigation()
           cancelQueuedMove()

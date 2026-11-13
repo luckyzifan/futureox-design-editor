@@ -14,6 +14,7 @@ import { MAX_GRADIENT_STOPS } from '../../model'
 import { FastPathWork } from '../../../../design-desktop/src/render-pass-work.mjs'
 import { GRADIENT_PAINT_OVER_MODE, gradientFieldMaximumStop, gradientFusionWorthwhile } from './gradient-paint-over'
 import { gradientPhaseFieldLayout } from './gradient-phase-field'
+import { gradientBlurPlaneKey } from './blur-parameter-cache'
 import { shadowFilterRegion } from './shadow-filter-region'
 import { annotateTextureFailure } from '../../../../design-desktop/src/render-texture-failure.mjs'
 import { MaintenanceResidency } from './maintenance-residency'
@@ -475,6 +476,8 @@ export class GpuRenderer {
   private interactionCapturing = false
   private interactionTextures = new Set<Texture>()
   private interactionBytes = 0
+  private gradientBlurPlanes = new Map<string, { sharp: Surface; full: Surface; maskSharp?: Surface; maskFull?: Surface; bytes: number }>()
+  private gradientBlurPlaneBytes = 0
   private interactionHits = 0
   private interactionInvalid = false
   // A single unchanged nested prefix, before the final moving foreground.
@@ -6489,23 +6492,50 @@ export class GpuRenderer {
           coverage.value=[value,this.retain(value),this.retain(value),this.retain(value)];coverage.owned=true
         }
       } else if (fx.kind === 'blur') {
-        const resolved = resolvedFirstBlur || this.run(23, n.rect, planes)
-        resolvedFirstBlur = undefined
-        // The resolve has encoded the last read of these sample planes.
-        // Keeping them throughout both separable passes unnecessarily pins
-        // four full effect-halo surfaces at high zoom.
-        this.release(...planes)
         const radius=fx.radius*Math.max(1,fx.gradientBlur?.startCount??1,fx.gradientBlur?.endCount??1)*sc
-        const full=(pendingSurfaceAdmission = this.foregroundBlur(resolved, n, fx, radius / 2), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)
+        const blurCoverage = !!coverage.value
+        const planeKey = fx.gradientBlur ? gradientBlurPlaneKey(n, fx, this.gradientBlurPlanePolicy(), blurCoverage) : undefined
+        const cached = planeKey ? this.borrowGradientBlurPlanes(planeKey) : undefined
+        let resolved: Surface
+        let full: Surface
+        if (cached) {
+          // Endpoint motion does not change the sharp layer or the full-radius
+          // blur. Recomposite those exact planes instead of filtering again.
+          this.release(...planes, resolvedFirstBlur)
+          resolvedFirstBlur = undefined
+          resolved = cached.sharp
+          full = cached.full
+        } else {
+          resolved = resolvedFirstBlur || this.run(23, n.rect, planes)
+          resolvedFirstBlur = undefined
+          // The resolve has encoded the last read of these sample planes.
+          // Keeping them throughout both separable passes unnecessarily pins
+          // four full effect-halo surfaces at high zoom.
+          this.release(...planes)
+          full=(pendingSurfaceAdmission = this.foregroundBlur(resolved, n, fx, radius / 2), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)
+        }
         const blurred=await this.gradientBlur(resolved,full,n,fx)
+        let mask: Surface | undefined
+        let fullMask: Surface | undefined
+        if (coverage.value) {
+          if (cached?.maskSharp && cached.maskFull) {
+            if (coverage.owned) this.release(...coverage.value)
+            mask = cached.maskSharp
+            fullMask = cached.maskFull
+          } else {
+            mask = this.run(23, n.rect, coverage.value)
+            if (coverage.owned) this.release(...coverage.value)
+            fullMask = (pendingSurfaceAdmission = this.foregroundBlur(mask, n, fx, radius / 2), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)
+          }
+        }
+        // Copy before the working planes return to the pool. Endpoint changes
+        // then rerun only the exact composite.
+        if (planeKey && !cached) this.rememberGradientBlurPlanes(planeKey, resolved, full, mask, fullMask)
         if(blurred!==full && full!==resolved)this.release(full)
         if (blurred !== resolved) this.release(resolved)
         planes = [blurred, this.retain(blurred), this.retain(blurred), this.retain(blurred)]
-        if (coverage.value) {
-          const mask = this.run(23, n.rect, coverage.value)
-          if (coverage.owned) this.release(...coverage.value)
-          const fullMask = (pendingSurfaceAdmission = this.foregroundBlur(mask, n, fx, radius / 2), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission),
-            filtered = await this.gradientBlur(mask,fullMask,n,fx)
+        if (mask && fullMask) {
+          const filtered = await this.gradientBlur(mask,fullMask,n,fx)
           if(filtered!==fullMask && fullMask!==mask)this.release(fullMask)
           if (filtered !== mask) this.release(mask)
           coverage.value = [filtered, this.retain(filtered), this.retain(filtered), this.retain(filtered)]
@@ -7073,6 +7103,80 @@ export class GpuRenderer {
       current = next
     }
     return current
+  }
+  private gradientBlurPlanePolicy() {
+    return [!!this.scene.integratedBlur, !!this.scene.floatCompositing, this.scene.coherentSamples === true,
+      this.scene.colorManagement ?? null, !!this.scene.canvasBlurApproximation, !!this.scene.displayFilters,
+      this.scene.displayFilterRadiusLimit ?? null, !!this.scene.displayTentRadius, this.driver.name,
+      !!this.driver.managed, !!this.driver.hdr, !!this.driver.displayMath, !!this.driver.linearLight]
+  }
+  private dropGradientBlurPlane(key: string) {
+    const entry = this.gradientBlurPlanes.get(key)
+    if (!entry) return
+    this.gradientBlurPlanes.delete(key)
+    this.gradientBlurPlaneBytes -= entry.bytes
+    const planes = [entry.sharp, entry.full === entry.sharp ? undefined : entry.full, entry.maskSharp, entry.maskFull === entry.maskSharp ? undefined : entry.maskFull]
+    for (const surface of planes) if (surface) {
+      this.interactionTextures.delete(surface.texture)
+      this.interactionBytes -= surface.texture.bytes
+    }
+    this.release(...planes)
+  }
+  private retireGradientBlurPlanes() {
+    for (const key of [...this.gradientBlurPlanes.keys()]) this.dropGradientBlurPlane(key)
+  }
+  private borrowGradientBlurPlanes(key: string) {
+    const entry = this.gradientBlurPlanes.get(key)
+    if (!entry) return
+    this.gradientBlurPlanes.delete(key)
+    this.gradientBlurPlanes.set(key, entry)
+    this.used.add(entry.sharp.texture)
+    this.used.add(entry.full.texture)
+    const sharp = this.retain(entry.sharp)
+    const full = entry.full.texture === entry.sharp.texture ? sharp : this.retain(entry.full)
+    let maskSharp: Surface | undefined
+    let maskFull: Surface | undefined
+    if (entry.maskSharp && entry.maskFull) {
+      this.used.add(entry.maskSharp.texture)
+      this.used.add(entry.maskFull.texture)
+      maskSharp = this.retain(entry.maskSharp)
+      maskFull = entry.maskFull.texture === entry.maskSharp.texture ? maskSharp : this.retain(entry.maskFull)
+    }
+    return { sharp, full, maskSharp, maskFull }
+  }
+  private rememberGradientBlurPlanes(key: string, sharp: Surface, full: Surface, maskSharp?: Surface, maskFull?: Surface) {
+    const planes = [sharp, full.texture === sharp.texture ? undefined : full, maskSharp, maskFull && maskSharp && maskFull.texture === maskSharp.texture ? undefined : maskFull]
+    const bytes = planes.reduce((total, surface) => total + (surface ? surface.rect.w * surface.rect.h * 16 : 0), 0)
+    if (!bytes || bytes > 32 * 1024 * 1024 || this.overBudget(bytes)) return
+    const saved: Surface[] = []
+    try {
+      for (const surface of planes) if (surface) saved.push(this.copyInteractionSource(surface))
+    } catch (error) {
+      this.release(...saved)
+      if (error instanceof Error && /预算|budget/i.test(error.message)) return
+      throw error
+    }
+    let cursor = 0
+    const take = (surface: Surface | undefined) => surface ? saved[cursor++] : undefined
+    const entry = {
+      sharp: take(sharp)!, full: full.texture === sharp.texture ? saved[0] : take(full)!,
+      maskSharp: take(maskSharp), maskFull: maskFull && maskSharp && maskFull.texture === maskSharp.texture ? undefined : take(maskFull),
+      bytes,
+    }
+    if (entry.maskFull === undefined && maskFull && maskSharp && maskFull.texture === maskSharp.texture) entry.maskFull = entry.maskSharp
+    this.dropGradientBlurPlane(key)
+    while (this.gradientBlurPlanes.size >= 8 || this.gradientBlurPlaneBytes + bytes > 48 * 1024 * 1024) {
+      const oldest = this.gradientBlurPlanes.keys().next().value
+      if (!oldest) break
+      this.dropGradientBlurPlane(oldest)
+    }
+    this.gradientBlurPlanes.set(key, entry)
+    this.gradientBlurPlaneBytes += bytes
+    for (const surface of [entry.sharp, entry.full === entry.sharp ? undefined : entry.full, entry.maskSharp, entry.maskFull === entry.maskSharp ? undefined : entry.maskFull]) {
+      if (!surface) continue
+      this.interactionTextures.add(surface.texture)
+      this.interactionBytes += surface.texture.bytes
+    }
   }
   private async gradientBlur(sharp:Surface, blurred:Surface, n:GpuNode, fx:Effect):Promise<Surface> {
     if(!fx.gradientBlur)return blurred
@@ -7989,6 +8093,7 @@ export class GpuRenderer {
         ? index.sources : undefined)
     if(retainRoots||this.interactionInvalid)this.retireCoherentSubtrees(retainRoots&&!this.interactionInvalid?index.sources:undefined,scene.interactionLease)
     if(this.interactionInvalid)this.retireInteractionPrefix()
+    if(this.interactionInvalid)this.retireGradientBlurPlanes()
     if(this.interactionInvalid||retainRoots&&this.movingBackdrop?.lease!==scene.interactionLease)this.releaseMovingBackdrop()
     if(this.interactionInvalid||retainRoots&&this.stationaryBackdrop?.lease!==(scene.interactionLease||index))this.retireStationaryBackdrop()
     this.interactionInvalid = false; this.interactionHits = 0; this.prefixHits = 0

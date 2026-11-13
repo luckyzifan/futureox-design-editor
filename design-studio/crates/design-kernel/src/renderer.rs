@@ -773,7 +773,7 @@ impl Engine {
             });
         }
         let retained_paint = self.retainable_paint_changes(patch);
-        let mut damage = if retained_paint.as_ref().is_some_and(Vec::is_empty) {
+        let mut damage = if retained_paint.as_ref().is_some_and(|paint| paint.bounds.is_empty()) {
             // Certify once from resolved placement. The exact material proof
             // preserves geometry, effect support and optical isolation.
             crate::dirty_region::resolved_material_damage(self.doc.as_ref().unwrap(), patch, &self.fonts)
@@ -815,7 +815,7 @@ impl Engine {
                 cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
             }
             damage.translation_only = Some(true);
-        } else if let Some(bounds_dirty) = retained_paint {
+        } else if let Some(paint) = retained_paint {
             for id in patch.nodes.keys() {
                 let node = &next.nodes[id];
                 crate::derived_invalidation::apply_paint(self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap(), node);
@@ -829,10 +829,22 @@ impl Engine {
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
             self.geo_revision += 1;
             if let Some(cache) = &mut self.camera_prepare {
-                if !bounds_dirty.is_empty() {
-                    cache.translated(self.doc.as_ref().unwrap(), bounds_dirty.into_iter(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+                if !paint.bounds.is_empty() {
+                    cache.translated(self.doc.as_ref().unwrap(), paint.bounds.iter().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
                 }
-                cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents);
+                if paint.parameter_only {
+                    // Endpoints and the focal point leave flattened contours,
+                    // effect support, and camera padding unchanged. Dropping
+                    // those entries made every drag sample rebuild the layer.
+                    cache.parameters_changed(self.geo_revision, self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), &self.render_index.as_ref().unwrap().parents);
+                } else {
+                    cache.paint_changed(self.geo_revision, self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), &self.render_index.as_ref().unwrap().parents);
+                }
+            }
+            if paint.parameter_only {
+                if let Some(support) = &mut self.world_support {
+                    if support.revision + 1 == self.geo_revision { support.revision = self.geo_revision; }
+                }
             }
         } else {
             let retain_index = crate::render_index::RenderIndex::preserved_by(source, patch);
@@ -884,7 +896,7 @@ impl Engine {
         self.source_doc_bytes = None;
         self.source_doc = Some(source);
     }
-    fn retainable_paint_changes(&self, patch: &crate::editing::DocumentPatch) -> Option<Vec<String>> {
+    fn retainable_paint_changes(&self, patch: &crate::editing::DocumentPatch) -> Option<crate::derived_invalidation::RetainedPaint> {
         let source = self.source_doc.as_ref()?;
         if crate::repeat::has_repeats(source) { return None; }
         let resolved = self.doc.as_ref()?;
@@ -893,6 +905,7 @@ impl Engine {
             || !source.animations.is_empty()
             || !patch.fields.is_empty() || patch.nodes.is_empty() { return None; }
         let mut bounds = Vec::new();
+        let mut parameter_only = true;
         for (id, next) in &patch.nodes {
             if index.in_sketch_mask_chain(id) { return None; }
             let (old, next) = (source.nodes.get(id)?, next.as_ref()?);
@@ -911,8 +924,9 @@ impl Engine {
                     || node.boolean_operation.is_some() { return None; }
             }
             if change == crate::derived_invalidation::PaintChange::Bounds { bounds.push(id.clone()); }
+            if change != crate::derived_invalidation::PaintChange::Parameter { parameter_only = false; }
         }
-        Some(bounds)
+        Some(crate::derived_invalidation::RetainedPaint { bounds, parameter_only })
     }
     /// Shared interaction-lane validation. `affine` admits linear-part changes
     /// (rotation/scale): the moved subtree's prepared entries and aggregate

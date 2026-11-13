@@ -103,6 +103,14 @@ impl CameraPrepare {
         self.fragments.invalidate_tree(doc,ids,parents); self.programs.reserve(self.fragments.bytes);
         self.incremental=true;
     }
+    /// Gradient endpoints and zoom focal points change the effect operands,
+    /// not contours or the camera halo. Keep the prepared paths and metadata.
+    pub(crate) fn parameters_changed(&mut self, revision: u64, doc:&Document, ids:impl Iterator<Item=String>, parents:&impl crate::render_index::ParentLookup) {
+        self.key.0 = revision;
+        self.fragments.invalidate_tree(doc, ids, parents);
+        self.programs.reserve(self.fragments.bytes);
+        self.incremental = true;
+    }
     /// Affine interaction edits (rotation/scale) reuse the translation dirty
     /// set — moved subtree plus ancestors — but a changed linear part can move
     /// device-space effect margins (radius × scale) and the guard padding, so
@@ -3542,6 +3550,76 @@ mod incremental_prepare_tests {
             assert_eq!(engine.compile_gpu_region(&options,region,Some(guard)).unwrap().into_packet().unwrap(),
                 fresh.compile_gpu_region(&options,region,Some(guard)).unwrap().into_packet().unwrap());
         }
+    }
+
+    fn blur_pose_document() -> serde_json::Value {
+        json!({"schemaVersion":19,"id":"blur-pose","name":"blur pose",
+            "colorManagement":crate::color::ColorSettings::default(),
+            "pages":[{"id":"p","name":"p","background":"#ffffff","children":["flip","other"]}],
+            "nodes":{
+                "flip":{"id":"flip","kind":"group","width":400,"height":300,
+                    "transform":[-2.0,0.0,0.0,2.0,500.0,40.0],"children":["turn"]},
+                "turn":{"id":"turn","kind":"group","width":220,"height":180,
+                    "transform":[0.0,1.0,-1.0,0.0,30.0,20.0],"children":["shape"]},
+                "shape":{"id":"shape","kind":"rectangle","width":120,"height":80,
+                    "transform":[1.0,0.0,0.0,1.0,16.0,12.0],
+                    "fills":[{"kind":"solid","color":"#3366b3"}],
+                    "effects":[
+                        {"kind":"blur","radius":4,"color":"#000000","gradientBlur":{"start":[0.0,40.0],"end":[120.0,40.0],"startCount":0,"endCount":6,"smooth":true}},
+                        {"kind":"zoom-blur","radius":0,"color":"#000000","zoomBlur":{"amount":20,"center":[0.25,0.75]}}
+                    ]},
+                "other":{"id":"other","kind":"rectangle","width":40,"height":40,
+                    "transform":[1.0,0.0,0.0,1.0,20.0,20.0],"fills":[{"kind":"solid","color":"#e07030"}]}}})
+    }
+
+    fn blur_pose_options() -> RenderOptions {
+        serde_json::from_value(json!({"pageId":"p","width":180,"height":140,
+            "view":{"x":-8.0,"y":6.5,"zoom":1.0},"rasterProfile":"figmaSubpixel"})).unwrap()
+    }
+
+    #[test]
+    fn blur_endpoint_and_zoom_focus_keep_prepared_geometry_and_match_a_fresh_scene() {
+        let mut doc = blur_pose_document();
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        let options = blur_pose_options();
+        engine.compile_gpu(&options).unwrap();
+        let shape = engine.camera_prepare.as_ref().unwrap().prepared["shape"].fill.clone();
+        let other = engine.camera_prepare.as_ref().unwrap().prepared["other"].fill.clone();
+        let support = engine.world_support.as_ref().unwrap().index.clone();
+        let same = |engine: &Engine, fill: &std::sync::Arc<Vec<crate::path::Contour>>| {
+            std::sync::Arc::ptr_eq(fill, &engine.camera_prepare.as_ref().unwrap().prepared["shape"].fill)
+                && std::sync::Arc::ptr_eq(&other, &engine.camera_prepare.as_ref().unwrap().prepared["other"].fill)
+                && std::sync::Arc::ptr_eq(&support, &engine.world_support.as_ref().unwrap().index)
+        };
+        let publish = |engine: &mut Engine, doc: &serde_json::Value| {
+            let patch = serde_json::from_value(json!({"nodes":{"shape":doc["nodes"]["shape"].clone()}})).unwrap();
+            let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+            assert!(!damage.full, "blur axis edit must stay inside the layer footprint");
+            assert!(damage.bounds.is_some_and(|bounds| bounds.iter().all(|value| value.is_finite()) && bounds[2] < 4000. && bounds[3] < 4000.));
+            let actual = engine.compile_gpu(&options).unwrap().into_packet().unwrap();
+            let mut fresh = Engine::new();
+            fresh.load_document(&doc.to_string()).unwrap();
+            assert_eq!(actual, fresh.compile_gpu(&options).unwrap().into_packet().unwrap());
+        };
+        doc["nodes"]["shape"]["effects"][0]["gradientBlur"]["end"] = json!([80.0, 10.0]);
+        publish(&mut engine, &doc);
+        assert!(same(&engine, &shape), "moving a gradient endpoint must not rebuild contours");
+        doc["nodes"]["shape"]["effects"][1]["zoomBlur"]["center"] = json!([0.8, 0.2]);
+        publish(&mut engine, &doc);
+        assert!(same(&engine, &shape), "moving a zoom focal point must not rebuild contours");
+        let revised = engine.camera_prepare.as_ref().unwrap().prepared["shape"].fill.clone();
+        doc["nodes"]["shape"]["effects"][0]["gradientBlur"]["endCount"] = json!(9);
+        publish(&mut engine, &doc);
+        assert!(!std::sync::Arc::ptr_eq(&revised, &engine.camera_prepare.as_ref().unwrap().prepared["shape"].fill),
+            "changing endpoint strength changes blur support and must rebuild that contour");
+        let kept = engine.camera_prepare.as_ref().unwrap().prepared["shape"].fill.clone();
+        let revision = engine.geo_revision;
+        doc["nodes"]["shape"]["effects"][1]["zoomBlur"]["center"] = json!([1.0e7, 0.2]);
+        let rejected = serde_json::from_value(json!({"nodes":{"shape":doc["nodes"]["shape"].clone()}})).unwrap();
+        assert!(engine.apply_document_patch_with_damage(&rejected).is_err());
+        assert_eq!(engine.geo_revision, revision);
+        assert!(std::sync::Arc::ptr_eq(&kept, &engine.camera_prepare.as_ref().unwrap().prepared["shape"].fill));
     }
 }
 
