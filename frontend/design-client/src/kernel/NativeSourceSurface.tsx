@@ -11,6 +11,7 @@ import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
+import {zoomInPartialTiles} from './zoom-underlay'
 import {acceptTranslatedCoverage,coverageBeyondBacking,releaseInFlightForDemand,retainInFlightTile,selectCoverageStack,sharperCoverageFrame,zoomInFramePastPlan} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
@@ -18,7 +19,7 @@ import {nativeSourceBadgeText} from './native-source-status'
 import {densityCertifiesDemand,settledCoverageChoice} from './frame-handoff'
 import {acceptFrameClarity,type ViewportCoverage} from './frame-acceptance'
 import {exactTilesBeforeOverview,quietPasteStripAllowed} from './zoom-refinement-policy'
-import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
+import {MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {sourceTileRetirement,rememberSourceTier,zoomOutRetentionCohort} from './source-tile-retirement'
@@ -137,7 +138,7 @@ export function NativeSourceSurface(props:Props){
     const prefix=crypto.randomUUID(),cache=new Map<string,Tile>(),retired=new Map<number,number>()
     // A displayed bitmap can outlive evicted GPU tiles. Its geometry remains
     // needed to prove the next zoom frame preserves all visible detail.
-    const submittedPlacements=new Map<number,{tiles:Placement[];wheel:boolean;outward:boolean;progressive:boolean;mixed:boolean;regions?:OverviewMaterial[];view:CanvasCamera;width:number;height:number;dpr:number}>()
+    const submittedPlacements=new Map<number,{tiles:Placement[];wheel:boolean;outward:boolean;progressive:boolean;mixed:boolean;zoomUnderlay:boolean;regions?:OverviewMaterial[];view:CanvasCamera;width:number;height:number;dpr:number}>()
     const recentNative=new Map<number,Set<string>>()
     let zoomReturn: {scale:number;keys:ReadonlySet<string>}|undefined
     const returnReuse=import.meta.env.VITE_DESIGN_SOURCE_RETURN_REUSE!=='0'
@@ -475,6 +476,12 @@ export function NativeSourceSurface(props:Props){
           (zoomingIn||pipelineFullSource&&translationFollow)
         const wantSharper=(moving&&continuousZoom&&zoomingIn||settledDetail)&&backing&&bitmapContext&&!focal&&!planIsNative
         const promoted=wantSharper?(refining?sharperCoverageFrame(cache.values(),backingTiles,p.view,p):zoomInFramePastPlan(cache.values(),backingTiles,p.view,p,raster.scale)):undefined
+        // The retained bitmap can outlive the tiles that produced it. A finer
+        // tile then has nothing cached to union with, and the old picture
+        // stays stretched across the whole view. Publish that tile anyway;
+        // the presenter resamples the retained picture underneath it.
+        const stretchedZoom=!!backing && moving && continuousZoom && zoomingIn && p.view.zoom>backing.view.zoom*MAX_PREVIEW_SCALE_RATIO
+        const partialZoom=!promoted && stretchedZoom ? zoomInPartialTiles([...cache.values()].filter(tile=>tile.gpuTile!=null),backingTiles,p.view,{width:p.width,height:p.height,dpr:ratio}) : undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
         if(!promoted&&!stored&&(refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
           const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
@@ -500,9 +507,13 @@ export function NativeSourceSurface(props:Props){
         else if(refining && wheel){
           // An immutable lower rung can cover the rest of the new viewport.
           // Submit only a complete mosaic with genuinely sharper source pixels.
+          // One ready tile that does not cover still replaces the part of the
+          // stretched picture it owns.
           const mosaic=coveredSourceDetail(cache.values(),p,backingTiles,p.view.zoom*ratio>=8)
-          if(!mosaic){emit({phase:'refining',done,total:tiles.length});return}
-          visible=mosaic
+          if(mosaic)visible=mosaic
+          else if(partialZoom?.length)visible=partialZoom
+          else{emit({phase:'refining',done,total:tiles.length});return}
+        }else if(partialZoom?.length){visible=partialZoom
         }else{
           if(!tiles.length || refining){emit({phase:'refining',done,total:tiles.length});return}
           visible=tiles.map(tile=>cache.get(tile.key)!)
@@ -518,8 +529,9 @@ export function NativeSourceSurface(props:Props){
             previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile)))return
         const sequence=++submission,id=`${prefix}:${sequence}`
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
+        const zoomUnderlay=stretchedZoom && visible.some(tile=>tile.zoom>backing!.view.zoom*ratio*(1+1e-9))
         submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement!),wheel:wheel||!!promoted,outward:continuity,
-          progressive:!!promoted&&settledDetail,mixed,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
+          progressive:!!promoted&&settledDetail,zoomUnderlay,mixed,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
         if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:promoted?1:(exact&&keys.has(tile.key)?4:1),
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
@@ -528,7 +540,7 @@ export function NativeSourceSurface(props:Props){
           element.dataset.sourceCoverageExtend='pan'
         // The presenter independently checks actual textures and physical coverage.
         emit({phase:'refining',done,total:tiles.length})
-        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:!refining,...(regions?{cameraPreview:{anchor:visible[0].gpuTile!}}:{})})
+        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:!refining,...(zoomUnderlay?{zoomUnderlay:true}:{}),...(regions?{cameraPreview:{anchor:visible[0].gpuTile!}}:{})})
       }catch(error){fail(error)}
     }
     const schedulePaint=()=>{if(alive&&!frameHandle)frameHandle=requestAnimationFrame(paint)}
@@ -782,12 +794,13 @@ export function NativeSourceSurface(props:Props){
       if(p.parked)return
       const backingScale=backing?backing.view.zoom*backing.dpr:undefined
       const finerThanBacking=backingScale!==undefined&&shownTiles.some(tile=>tile.zoom>backingScale+1e-6)
-      const wheelAdvance=sent?.wheel && !actual.preview &&
+      const underlayAdvance=!!sent?.zoomUnderlay && !!actual.zoomUnderlay && !actual.previewGaps?.length
+      const wheelAdvance=(!!sent?.wheel || underlayAdvance) && (!actual.preview || underlayAdvance) &&
         bitmap && bitmapContext && sent.tiles.length===shownTiles.length &&
         actual.view.x===sent.view.x && actual.view.y===sent.view.y && actual.view.zoom===sent.view.zoom &&
         actual.width===sent.width && actual.height===sent.height && actual.dpr===sent.dpr &&
         improvesSourceZoom(backing,actual,p,shownTiles,backingTiles) &&
-        (moving&&continuousZoom&&zoomingIn || overviewMode&&current || finerThanBacking)
+        (underlayAdvance || moving&&continuousZoom&&zoomingIn || overviewMode&&current || finerThanBacking)
       const outwardAdvance=sent?.outward && current && allIds && bitmap && bitmapContext && sent.tiles.length===shownTiles.length
       const progressiveAdvance=sent?.progressive && allIds && submittedMatch && bitmap && bitmapContext
       // The pointer can pan again before this GPU frame is acknowledged.
@@ -805,7 +818,7 @@ export function NativeSourceSurface(props:Props){
       const accepted=planned&&current&&bitmap&&bitmapContext&&(!actual.preview||actual.previewGaps)&&
         completeMaterialRegions(materialRegions(planned,p,actual.dpr),shownTiles,actual.view.zoom*actual.dpr,actual.previewGaps)
       const regional=!!(accepted&&accepted.length===planned?.length&&retainsVisibleMaterials(partialMaterials,accepted,p,actual.dpr))
-      if((actual.preview&&!regional) || ((sent?.mixed || !current || !allIds) && !wheelAdvance && !outwardAdvance && !progressiveAdvance && !translationAdvance && !regional)){
+      if((actual.preview&&!regional&&!underlayAdvance) || ((sent?.mixed || !current || !allIds) && !wheelAdvance && !outwardAdvance && !progressiveAdvance && !translationAdvance && !regional)){
         if(wanted?.id===actual.presentationId)wanted=undefined
         return
       }
@@ -835,6 +848,8 @@ export function NativeSourceSurface(props:Props){
         }
       }
       if(bitmapApplied){
+        if(actual.zoomUnderlay)element.dataset.sourceZoomUnderlay='true'
+        else delete element.dataset.sourceZoomUnderlay
         const p=latest.current
         const newlyVisible=shownTiles.filter(t=>!backingTiles.some(old=>old.gpuTile===t.gpuTile&&old.key===t.key)&&
           tileIntersectsView(t,actual.view,actual)&&tileIntersectsView(t,p.view,p))

@@ -16,6 +16,7 @@ import { backgroundPaintRects, emptyBackgroundTile, pageBackgroundProof, type Pa
 import { presentedFragmentQuality } from './presented-fragment-quality'
 import { PresenterAlphaTrace } from './presenter-alpha-trace'
 import { cameraPreviewCoverage, cameraPreviewShader, type CameraPreview } from './camera-preview'
+import { retainedPreviewUnderlay } from '../zoom-underlay'
 
 export type ResidentItem = Omit<CompositeItem, 'tile'> & {
   tile: Omit<CompositeItem['tile'], 'bytes' | 'bitmap'> & { gpuTile: number }
@@ -40,6 +41,9 @@ export type ResidentFrame = {
   gestureGuides?: boolean
   allowEmpty?: boolean
   allowBackground?: boolean
+  /** Sample the retained picture under any ready finer tiles. Used only when
+   * those tiles do not yet cover the viewport. Not a native certificate. */
+  zoomUnderlay?: boolean
   /** Same-content camera navigation. Unavailable pixels are marked pending,
    * independently of exact coverage and isolated-layer transparency. */
   cameraPreview?: CameraPreview
@@ -133,6 +137,10 @@ export class ResidentPresenter {
   private translatedProof?:{frame:ResidentFrame;source:PageBackgroundProof;offset:{x:number;y:number}}
   private translatedProofChecks=0
   private backbuffer?: { texture: GPUTexture; width: number; height: number; payload: PayloadToken }
+  /** The picture a zoom-in is allowed to resample. Later frames sample this
+   * texture, not the already enlarged result, so the hold is not stretched twice. */
+  private zoomBasis?: { texture: GPUTexture; width: number; height: number; payload: PayloadToken; bind: GPUBindGroup; view: CanvasCamera; cssWidth: number; cssHeight: number; dpr: number }
+  private drawnUnderlay = false
   private payload: PresenterPayloadLedger
   private diagnosticCoverageAt = -Infinity
   private frames = 0
@@ -680,6 +688,62 @@ export class ResidentPresenter {
         }
       }
     }
+    let usedZoomUnderlay = false
+    let freshZoomBasis: { texture: GPUTexture; width: number; height: number; payload: PayloadToken; bind: GPUBindGroup; view: CanvasCamera; cssWidth: number; cssHeight: number; dpr: number } | undefined
+    const basis = this.drawnUnderlay ? this.zoomBasis : undefined
+    const basisPicture = basis ? {
+      view: basis.view, cssWidth: basis.cssWidth, cssHeight: basis.cssHeight, dpr: basis.dpr,
+      textureWidth: basis.width, textureHeight: basis.height,
+    } : this.drawn && this.backbuffer && this.backbuffer.width === w && this.backbuffer.height === h ? {
+      view: this.drawn.view, cssWidth: this.drawn.width, cssHeight: this.drawn.height, dpr: this.drawn.dpr,
+      textureWidth: this.backbuffer.width, textureHeight: this.backbuffer.height,
+    } : undefined
+    const basisDensity = basisPicture ? basisPicture.view.zoom * basisPicture.dpr : 0
+    const underlay = frame.zoomUnderlay && !complete && !frame.interaction && !frame.linearBlend && basisPicture &&
+      rows.some(row => row.item.tile.zoom > basisDensity * (1 + 1e-9))
+      ? retainedPreviewUnderlay({
+        view: basisPicture.view, width: basisPicture.cssWidth, height: basisPicture.cssHeight, dpr: basisPicture.dpr,
+        textureWidth: basisPicture.textureWidth, textureHeight: basisPicture.textureHeight,
+      }, frame) : undefined
+    if (underlay && this.backbuffer && basisPicture) {
+      const source = this.backbuffer
+      let created: GPUTexture | undefined
+      let reserved: PayloadToken | undefined
+      try {
+        const texture = basis?.texture ?? (created = this.device.createTexture({
+          size: [source.width, source.height], format: this.format,
+          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        }))
+        const payload = basis?.payload ?? (reserved = this.payload.reserve(source.width * source.height * 4))
+        const bind = basis?.bind ?? this.device.createBindGroup({ layout: this.layout, entries: [
+          { binding: 0, resource: { buffer: this.uniforms, size: 48 } },
+          { binding: 1, resource: texture.createView() },
+          { binding: 2, resource: this.sampler },
+        ] })
+        if (!basis) {
+          freshZoomBasis = { texture, width: source.width, height: source.height, payload, bind,
+            view: basisPicture.view, cssWidth: basisPicture.cssWidth, cssHeight: basisPicture.cssHeight, dpr: basisPicture.dpr }
+        }
+        rows.unshift({
+          item: { active: true, layer: 0, blend: false, gutter: 0, tile: {
+            key: 'zoom-underlay', serial: 0, gpuTile: 0, x: 0, y: 0,
+            width: basis ? basis.width : source.width, height: basis ? basis.height : source.height,
+            zoom: basisDensity,
+          } },
+          entry: { texture, bytes: (basis ? basis.width : source.width) * (basis ? basis.height : source.height) * 4, bind },
+          raster: { x: 0, y: 0, width: w, height: h,
+            box: [0, 0, width, height] as [number, number, number, number],
+            uv: [underlay.u0, underlay.v0, underlay.u1 - underlay.u0, underlay.v1 - underlay.v0] as [number, number, number, number] },
+        })
+        complete = true
+        usedZoomUnderlay = true
+      } catch {
+        // Keep the picture already on screen when the extra texture cannot be admitted.
+        created?.destroy()
+        if (reserved) this.payload.cancel(reserved)
+        freshZoomBasis = undefined
+      }
+    }
     const preview = !complete && frame.cameraPreview && !frame.interaction && !frame.linearBlend
       ? cameraPreviewCoverage(this.textures.get(frame.cameraPreview.anchor)?.content,
         rows.map(row => ({ ...row.raster, blend: row.item.blend, content: row.entry.content })), w, h) : undefined
@@ -736,8 +800,11 @@ export class ResidentPresenter {
         ] })
       }
     } catch (error) {
-      try { nextBack?.texture.destroy(); nextLinear?.texture.destroy() }
-      finally { if (backPayload) this.payload.cancel(backPayload); if (linearPayload) this.payload.cancel(linearPayload); if(bitmapPayload)this.payload.cancel(bitmapPayload) }
+      try { nextBack?.texture.destroy(); nextLinear?.texture.destroy(); freshZoomBasis?.texture.destroy() }
+      finally {
+        if (freshZoomBasis) this.payload.cancel(freshZoomBasis.payload)
+        if (backPayload) this.payload.cancel(backPayload); if (linearPayload) this.payload.cancel(linearPayload); if(bitmapPayload)this.payload.cancel(bitmapPayload)
+      }
       throw error
     }
     // Publish every new owner before retiring either old target: retirement
@@ -766,6 +833,9 @@ export class ResidentPresenter {
     if(upload?.data.length)this.device.queue.writeBuffer(this.uniforms,upload.offset,upload.data)
     const background = frame.backgroundLinear || [1, 1, 1, 1]
     const encoder = this.device.createCommandEncoder()
+    if (freshZoomBasis && this.backbuffer) {
+      encoder.copyTextureToTexture({ texture: this.backbuffer.texture }, { texture: freshZoomBasis.texture }, [freshZoomBasis.width, freshZoomBasis.height])
+    }
     for(let phase=0;phase<samples;phase++){
     const pass = encoder.beginRenderPass({
         colorAttachments: [
@@ -838,13 +908,37 @@ export class ResidentPresenter {
     const alpha = this.alphaTrace?.encode(encoder, this.backbuffer!.texture, {
       ...deviceDiagnosticFields(this), alphaFrame: this.frames + 1, alphaSequence: frame.diagnosticSequence, alphaWidth: w, alphaHeight: h,
     })
-    try { this.device.queue.submit([encoder.finish()]) } catch (error) { alpha?.cancel(); if(bitmapPayload)this.payload.cancel(bitmapPayload); throw error }
+    try { this.device.queue.submit([encoder.finish()]) } catch (error) {
+      alpha?.cancel(); if(bitmapPayload)this.payload.cancel(bitmapPayload)
+      if (freshZoomBasis) { freshZoomBasis.texture.destroy(); this.payload.cancel(freshZoomBasis.payload) }
+      throw error
+    }
+    if (usedZoomUnderlay && freshZoomBasis) {
+      const previous = this.zoomBasis
+      this.zoomBasis = freshZoomBasis
+      this.payload.commit(freshZoomBasis.payload)
+      if (previous) {
+        const retiring = previous
+        void this.device.queue.onSubmittedWorkDone().then(() => {
+          retiring.texture.destroy()
+          this.payload.retire(retiring.payload)
+        }, () => { retiring.texture.destroy() })
+      }
+    } else if (!usedZoomUnderlay && this.zoomBasis) {
+      const retiring = this.zoomBasis
+      this.zoomBasis = undefined
+      void this.device.queue.onSubmittedWorkDone().then(() => {
+        retiring.texture.destroy()
+        this.payload.retire(retiring.payload)
+      }, () => { retiring.texture.destroy() })
+    }
+    this.drawnUnderlay = usedZoomUnderlay
     const pending=bitmapPayload?{token:++nextPresentationToken,payload:bitmapPayload,frame,sent:false}:undefined
     if(pending){this.payload.commit(pending.payload);this.bitmapPending=pending;this.bitmapReserved=undefined}
     alpha?.submitted()
     const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
-    this.drawnPreview = !!preview
+    this.drawnPreview = !!preview || usedZoomUnderlay
     this.drawnIds = available.filter(item => item.active).map(item => item.tile.gpuTile)
     this.translatedProof=undefined
     const translation=frame.backgroundTranslation,sourceProof=rows.find(row=>row.entry.background?.pixel)?.entry.background
@@ -870,7 +964,7 @@ export class ResidentPresenter {
     }
     this.frames++
     const coverageAt=performance.now()
-    const terminalQuality = this.terminalQualityGate.claim(complete?frame.terminalQuality:undefined, detailedDiagnostics)
+    const terminalQuality = this.terminalQualityGate.claim(complete && !usedZoomUnderlay ? frame.terminalQuality : undefined, detailedDiagnostics)
     const measureCoverage=strictSharpDiagnostics || traceQuality || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     const report = {
@@ -898,7 +992,8 @@ export class ResidentPresenter {
         presentationToken: pending?.token,
         ...(this.navigationBacking ? { navigationBackingBytes: this.navigationBacking.bytes } : {}),
         ...(this.atomic && preview && preview.gaps.length <= MAX_NAVIGATION_GAPS ? {previewGaps: preview.gaps} : {}),
-        preview: !!preview,
+        preview: !!preview || usedZoomUnderlay,
+        zoomUnderlay: usedZoomUnderlay,
         gpuOverlay: !!frame.overlay,
         gpuSelection: !!frame.overlay?.selection,
         gpuPixelGrid: !this.atomic && !!frame.overlay?.pixelGrid && view.zoom>=4,
@@ -972,7 +1067,8 @@ export class ResidentPresenter {
       this.bytes + (this.linearTarget ? this.linearTarget.width * this.linearTarget.height * 8*this.linearTarget.samples : 0) +
       (this.navigationBacking?.bytes || 0) + (this.navigationTransfer?.payload.bytes || 0) +
       (this.bitmapVisible?.bytes || 0) + (this.bitmapPending?.payload.bytes || 0) +
-      (this.backbuffer ? this.backbuffer.width * this.backbuffer.height * 4 : 0) + (this.overlay?.residentBytes || 0)
+      (this.backbuffer ? this.backbuffer.width * this.backbuffer.height * 4 : 0) +
+      (this.zoomBasis ? this.zoomBasis.width * this.zoomBasis.height * 4 : 0) + (this.overlay?.residentBytes || 0)
     )
   }
   lost(message: string) {
@@ -992,6 +1088,7 @@ export class ResidentPresenter {
     this.overlay?.dispose()
     this.release([...this.textures.keys()])
     if (this.linearTarget) { this.payload.retire(this.linearTarget.payload); this.linearTarget.texture.destroy(); this.linearTarget = undefined }
+    if (this.zoomBasis) { this.payload.retire(this.zoomBasis.payload); this.zoomBasis.texture.destroy(); this.zoomBasis = undefined }
     if (this.backbuffer) { this.payload.retire(this.backbuffer.payload); this.backbuffer.texture.destroy(); this.backbuffer = undefined }
     this.uniforms.destroy()
     this.context.unconfigure()

@@ -14,6 +14,9 @@ export type ResidentAcknowledgement = {
   dpr: number
   interaction: boolean
   preview?: boolean
+  /** The previous picture was resampled under ready finer tiles. This is not
+   * a native frame and it has no holes punched through that picture. */
+  zoomUnderlay?: boolean
   previewGaps?: import("./navigation-backing").ScreenRect[]
   navigationBackingBytes?: number
   ids: number[]

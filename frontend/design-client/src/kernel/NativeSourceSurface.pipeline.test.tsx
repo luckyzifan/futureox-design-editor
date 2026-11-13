@@ -453,6 +453,39 @@ test('continuous zoom-in from a settled view requests at least half the native d
   expect(statuses.at(-1)?.sharp).not.toBe(true)
 })
 
+test('one ready tile during a stretched zoom-in is submitted over the retained picture', async () => {
+  vi.stubGlobal('OffscreenCanvas', class {})
+  vi.stubGlobal('ImageBitmapRenderingContext', class {})
+  Object.defineProperty(dom.window.HTMLCanvasElement.prototype, 'getContext', { configurable: true, value: () => ({ transferFromImageBitmap() {} }) })
+  const drawWheel = (zoom: number, wheel = false) => act(async () => {
+    root.render(<NativeSourceSurface source={source} view={{ x: 0, y: 0, zoom }} wheelView={wheel ? { x: 0, y: 0, zoom } : undefined} width={800} height={700} onStatus={value => statuses.push(value)} />)
+    await pause()
+  })
+  const finish = async () => {
+    for (let guard = 0; guard < 8; guard++) {
+      const job = [...state.jobs].reverse().find(item => item.active)
+      if (!job) break
+      const base = 8000 + guard * 20
+      await act(async () => {
+        job.options.tileViewport!.forEach((_, index) => deliver(job, index, base + index))
+        job.finish(); await pause(); paint()
+      })
+      if (statuses.at(-1)?.phase === 'ready') return
+    }
+  }
+  await drawWheel(1); await finish()
+  expect(statuses.at(-1)).toMatchObject({ phase: 'ready', sharp: true, view: { zoom: 1 } })
+  await drawWheel(16, true)
+  const motion = [...state.jobs].reverse().find(job => job.active)
+  expect(motion?.options.tileViewport?.length).toBeGreaterThan(0)
+  const before = state.frames.length
+  await act(async () => { deliver(motion!, 0, 4242); paint(); await pause() })
+  const frame = state.frames.slice(before).find(item => item.items.some(row => row.tile.gpuTile === 4242))
+  expect(frame?.zoomUnderlay).toBe(true)
+  expect(frame?.items.some(row => row.tile.gpuTile === 4242)).toBe(true)
+  expect(statuses.at(-1)?.sharp).not.toBe(true)
+})
+
 test('a return pan after 3200% does not stay ready on the stale high-density tiles',async()=>{
  vi.stubGlobal('OffscreenCanvas',class {})
  vi.stubGlobal('ImageBitmapRenderingContext',class {})

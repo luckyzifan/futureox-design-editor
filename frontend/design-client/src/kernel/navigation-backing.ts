@@ -85,6 +85,12 @@ export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | und
   // that frame covers the live viewport. A narrow crop from another camera
   // must not become the picture, and an older crop must not cover a wider one.
   if (!previewCameraScaleWithinLimit(backing.view.zoom, next.view.zoom)) {
+    // A covering resample of the old picture, with ready finer tiles on it,
+    // replaces the stretched hold. A preview that would punch a hole does not.
+    if (next.zoomUnderlay && !(next.previewGaps?.length)) {
+      if (!target) return true
+      return !contains(project(next, target), screen(target))
+    }
     if (next.preview || (next.previewGaps?.length ?? 0) > 0) return true
     if (!target) return false
     return !contains(project(next, target), screen(target))

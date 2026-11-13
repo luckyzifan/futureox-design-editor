@@ -33,6 +33,8 @@ test('a finer in-flight tile may replace a projection only with real surviving c
  expect(improvesSourceZoom(a,b,{...target,view:{x:0,y:0,zoom:2.3}},[old,tile])).toBe(true)
  expect(improvesSourceZoom(a,b,{...target,view:{x:12,y:0,zoom:2.3}},[old,tile])).toBe(false)
  expect(improvesSourceZoom(a,{...b,preview:true},target,[old,tile])).toBe(false)
+ expect(improvesSourceZoom(a,{...b,ids:[12],preview:true,zoomUnderlay:true},target,[narrow],[old])).toBe(true)
+ expect(improvesSourceZoom(a,{...b,ids:[12],preview:true},target,[narrow],[old])).toBe(false)
  const projected=ack(4,[8]),zoomed=ack(5,[8,12])
  expect(improvesSourceZoom(projected,zoomed,{...target,view:zoomed.view},[old,tile],[old])).toBe(true)
  expect(improvesSourceZoom(projected,zoomed,{...target,view:zoomed.view},[old,{...tile,zoom:old.zoom}],[old])).toBe(false)

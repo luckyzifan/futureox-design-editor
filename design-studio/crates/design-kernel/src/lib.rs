@@ -142,6 +142,7 @@ pub mod tile_level;
 pub mod tile_stack;
 pub mod tiled_renderer;
 pub mod vector_tools;
+pub mod zoom_in_preview;
 pub use renderer::{Engine, RenderOptions, View};
 
 /// Stateless authored-document admission. No renderer, font or history state is created.

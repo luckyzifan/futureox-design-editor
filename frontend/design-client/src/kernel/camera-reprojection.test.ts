@@ -234,6 +234,17 @@ test('new pan strips can publish without painting a white block over a known par
   expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next,backing)).toBe(false)
 })
 
+test('a stretched zoom keeps a gapped preview and shows a covering underlay', () => {
+  const low = { presentationId: 'low', view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 80, dpr: 2, interaction: false, ids: [1] }
+  const far = { ...low, presentationId: 'far', view: { x: 0, y: 0, zoom: 8 }, preview: true }
+  const live = { view: far.view, width: 100, height: 80 }
+  expect(keepCompleteCameraBacking(low, far, true, true, live)).toBe(true)
+  expect(keepCompleteCameraBacking(low, { ...far, zoomUnderlay: true }, true, true, live)).toBe(false)
+  expect(keepCompleteCameraBacking(low, { ...far, zoomUnderlay: true, previewGaps: [{ x: 0, y: 0, width: 4, height: 4 }] }, true, true, live)).toBe(true)
+  const missed = { ...far, zoomUnderlay: true, view: { x: -400, y: -300, zoom: 8 } }
+  expect(keepCompleteCameraBacking(low, missed, true, true, live)).toBe(true)
+})
+
 test('continuous zoom accepts a covering sharper frame and refuses a late coarser snap-back', () => {
   const low = { presentationId: 'low', view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 80, dpr: 2, interaction: false, ids: [1] }
   const high = { ...low, presentationId: 'high', view: { x: 0, y: 0, zoom: 2 } }
