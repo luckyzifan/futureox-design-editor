@@ -1598,20 +1598,29 @@ fn texture_impl(
     for y in out.rect.y..out.rect.bottom() {
         for x in out.rect.x..out.rect.right() {
             let index = out.rect.index(x, y).expect("bounds");
+            let original = input.pixels[index];
             // The effect halo keeps room for the displacement lookup, but a
             // texel the shape did not paint is not a sample destination.
             // Writing it would grow an integer rectangle by the noise reach.
-            if input.pixels[index].0[3] <= 0. {
+            if original.0[3] <= 0. {
                 continue;
             }
             let sample = texture_location(x, y, amount, transform, inverse);
             if !sample.finite() {
                 return Err("Nonfinite texture sample coordinate".into());
             }
-            out.pixels[index] = if linear {
+            let shifted = if linear {
                 input.sample_linear(sample.x, sample.y)
             } else {
                 input.sample(sample.x, sample.y)
+            };
+            // The missing weight of a displaced edge sample must not reveal
+            // the backdrop through a fully covered texel. Keep partial
+            // coverage and all fully covered lookups on their original paths.
+            out.pixels[index] = if original.0[3] == 1. && shifted.0[3] < 1. {
+                crate::blend::over(original, shifted, "normal")
+            } else {
+                shifted
             };
         }
     }

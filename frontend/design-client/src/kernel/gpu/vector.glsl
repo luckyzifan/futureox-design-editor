@@ -572,6 +572,20 @@ vec4 linearTexture(vec2 p){
  vec4 grid=at(sourceB,p,u[2]);ivec2 q=ivec2(grid.xy);
  return bsBilinear4(linearTextureTexel(q),linearTextureTexel(q+ivec2(1,0)),linearTextureTexel(q+ivec2(0,1)),linearTextureTexel(q+ivec2(1,1)),grid.zw,uint(u[63].w),uint(u[63].z));
 }
+vec4 legacyTexture(vec2 p,bool linear){
+ vec4 original=at(sourceA,p,u[1]);
+ if(original.a<=0.)return original;
+ vec4 shifted;
+ if(linear)shifted=linearTexture(p);
+ else {
+  ivec2 q=ivec2(floor(local(p)));
+  vec2 delta=(vec2(noise(q,13u),noise(q,29u))-.5)*u[10].x;
+  vec2 device=vec2(u[45].x*delta.x+u[45].z*delta.y,u[45].y*delta.x+u[45].w*delta.y);
+  shifted=smp(sourceA,p+device,u[1]);
+ }
+ if(original.a==1.&&shifted.a<1.)return over(original,shifted,0);
+ return shifted;
+}
 float linearDistance(vec2 p){
  vec2 q=decodePoint(at(sourceB,p,u[2]));
  if(q.x<0.){return 1000000.;}
@@ -953,7 +967,7 @@ vec4 shade(vec2 p){
  int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==46)return gradientBlurComposite(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
  if(u[60].x>.5){
   if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
-  if(mode==8){return linearTexture(p);}
+  if(mode==8){return legacyTexture(p,true);}
   if(mode==11){return linearGlass(p);}
   if(mode==23)return meanFourRN(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));
   if(mode==26)return meanFourRN(smp(sourceA,p,u[1]),smp(sourceB,p,u[2]),smp(sourceC,p,u[3]),smp(sourceD,p,u[1]));
@@ -1008,7 +1022,7 @@ vec4 shade(vec2 p){
  if(mode==60)return colorControlsPixel(a);
  if(mode==30)return vec4(maskLumRN(a.rgb));
  if(mode==7){float v=noise(ivec2(floor(local(p)*max(.01,u[10].x))),7u);float alpha=u[10].y*a.a;vec4 source=vec4(vec3(v*alpha),alpha);if(u[60].x<.5)source=roundEven(source*255.)/255.;return over(a,source,9);}
- if(mode==8){ivec2 q=ivec2(floor(local(p)));vec2 delta=(vec2(noise(q,13u),noise(q,29u))-.5)*u[10].x;vec2 device=vec2(u[45].x*delta.x+u[45].z*delta.y,u[45].y*delta.x+u[45].w*delta.y);return smp(sourceA,p+device,u[1]);}
+ if(mode==8){return legacyTexture(p,false);}
  if(mode==9)return at(sourceA,p,u[1]).a>.5?vec4(1):encodePoint(floor(p-u[0].xy));
  if(mode==10){vec2 here=floor(p-u[0].xy),best=vec2(-1);float score=1e30;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 pos=p+vec2(x,y)*u[9].x;if(any(lessThan(pos,u[1].xy))||any(greaterThanEqual(pos,u[1].xy+u[1].zw)))continue;vec2 candidate=decodePoint(at(sourceA,pos,u[1]));if(candidate.x<0.)continue;float d=dot(here-candidate,here-candidate);if(d<score){score=d;best=candidate;}}return encodePoint(best);}
  if(mode==11){float d=distanceField(p);vec2 grad=vec2(distanceField(p+vec2(1,0))-distanceField(p-vec2(1,0)),distanceField(p+vec2(0,1))-distanceField(p-vec2(0,1)));float len=max(length(grad),1e-5);float factor=clamp(1.-d/max(u[9].x,4.),0.,1.);vec4 refract=smp(sourceA,p+grad/len*u[9].y*factor*factor,u[1]);float highlight=abs(grad.x-grad.y)/len*factor*u[9].z*.25;if(u[60].x<.5&&u[9].w>.5){uvec4 dst=uvec4(roundEven(clamp(smpBytes(sourceA,p+grad/len*u[9].y*factor*factor,u[1]),vec4(0),vec4(255))));uint alpha=uint(roundEven(clamp(highlight,0.,1.)*255.));uvec4 sum=dst*(255u-alpha)+uvec4(alpha*255u);uvec4 q=sum/255u;uvec4 rem=sum-q*255u;return vec4(q+uvec4(greaterThan(rem*2u,uvec4(255))))/255.;}return over(refract,vec4(vec3(highlight),highlight),0)*(u[9].w>.5?1.:at(sourceC,p,u[3]).a);}

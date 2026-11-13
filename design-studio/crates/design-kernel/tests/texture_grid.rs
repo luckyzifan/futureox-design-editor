@@ -114,8 +114,12 @@ fn texture_sampling_stays_inside_texels_the_shape_already_painted() {
             source.at(x, y + 1),
             source.at(x + 1, y + 1),
         ];
+        let alpha = sampling::bilinear(ps.map(|p| p.0[3]), g[2], g[3]);
         for c in 0..4 {
-            let reconstructed = sampling::bilinear(ps.map(|p| p.0[c]), g[2], g[3]);
+            let shifted = sampling::bilinear(ps.map(|p| p.0[c]), g[2], g[3]);
+            // The fixture is fully opaque wherever it is painted. The missing
+            // weight from transparent neighbours comes from the destination.
+            let reconstructed = shifted + source.pixels[index].0[c] * (1. - alpha);
             assert_eq!(
                 actual.pixels[index].0[c].to_bits(),
                 reconstructed.to_bits(),
