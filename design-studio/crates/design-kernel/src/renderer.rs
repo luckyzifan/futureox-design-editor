@@ -3371,8 +3371,8 @@ impl Painter<'_> {
         let mut coverage: Option<[Arc<Surface>; 4]> = None;
         let backdrop = n.backdrop_effect().filter(|_| !omit_optics && !self.concealed_glass.contains(id));
         if let Some(fx) = backdrop {
-            let optical = crate::optics::GlassShape::from_node(n)
-                .zip(fx.glass.as_ref());
+            let resolved_glass = fx.evaluated_glass();
+            let optical = crate::optics::GlassShape::from_node(n).zip(resolved_glass.as_ref());
             let replay = if clean_backdrop.is_none() && self.compatible && self.profile.is_export() {
                 crate::glass_capture::recipe(self.doc, n, m, fx)?
             } else {
@@ -4318,7 +4318,8 @@ impl Painter<'_> {
         let working = working.intersect(basis);
         let mut input = if n.passes_backdrop() { working } else { output };
         if let Some(fx) = n.backdrop_effect() {
-            let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref()) {
+            let resolved = fx.evaluated_glass();
+            let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(resolved.as_ref()) {
                 crate::optics::input_region(basis, working, shape, p.matrix, glass, None)?
             } else { working };
             let sigma = fx.backdrop_radius() * p.matrix.max_scale() / 2.;
@@ -4458,8 +4459,9 @@ impl Painter<'_> {
         if let Some(fx) = n.backdrop_effect().filter(|fx| {
             apply_effects && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))
         }) {
+            let resolved_glass = fx.evaluated_glass();
             let mut blurred = if bounded {
-                let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref()) {
+                let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(resolved_glass.as_ref()) {
                     crate::optics::input_region(basis, r, shape, m, glass, None)?
                 } else { r };
                 effects::gaussian_region(target, basis, samples, fx.backdrop_radius() * scale / 2.)?
@@ -4476,7 +4478,7 @@ impl Painter<'_> {
             }
             if let Some(controls) = &fx.color_controls { controls.apply(&mut blurred, self.doc.color_management.is_some()); }
             let background = if let Some((shape, glass)) =
-                crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref())
+                crate::optics::GlassShape::from_node(n).zip(resolved_glass.as_ref())
             {
                 let shade = nonzero_coverage_bounds(&fill).unwrap_or(r);
                 let (domain, output) = if bounded {

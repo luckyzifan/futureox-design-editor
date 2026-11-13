@@ -138,6 +138,79 @@ fn previously_exact_chrome_references_stay_exact() {
     }
 }
 
+fn manifest(relative: &str) -> (std::path::PathBuf, Vec<Value>) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../frontend/design-client/public/fidelity")
+        .join(relative);
+    let cases = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    (path, cases)
+}
+
+fn reference_of(manifest: &std::path::Path, case: &Value) -> Vec<u8> {
+    let path = manifest.parent().unwrap().join(case["reference"].as_str().unwrap());
+    let bytes = std::fs::read(&path).unwrap();
+    let digest = Sha256::digest(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    assert_eq!(digest, case["referenceSha256"].as_str().unwrap());
+    image::open(path).unwrap().into_rgba8().into_raw()
+}
+
+/// Legacy frost documents keep amount 0 / opacity 0 and no glass struct.
+/// That subset is Figma's default depth 8, zero dispersion and light angle 45,
+/// with the one-unit frost minimum. The frozen PNGs are unchanged.
+#[test]
+fn legacy_zero_refraction_frost_matches_the_frozen_pngs() {
+    let specs = [
+        ("combined-2026-10-08/cases.json", "glass-frost-only"),
+        ("combined-2026-10-08/cases.json", "MaterialQA-frost-quarter"),
+        ("combined-2026-10-08/cases.json", "MaterialQA-frost-1"),
+        ("combined-2026-10-08/cases.json", "MaterialQA-frost-4"),
+        ("materials-2026-10-08/cases.json", "MaterialQA-frost-quarter"),
+        ("materials-2026-10-08/cases.json", "MaterialQA-frost-1"),
+        ("materials-2026-10-08/cases.json", "MaterialQA-frost-4"),
+    ];
+    for (file, id) in specs {
+        let (path, cases) = manifest(file);
+        let case = case(&cases, id);
+        let effect = &case["document"]["nodes"]
+            .as_object()
+            .unwrap()
+            .values()
+            .find_map(|node| node["effects"].as_array())
+            .unwrap()[0];
+        assert!(effect.get("glass").is_none(), "{id} keeps the legacy frost fields");
+        assert_eq!(effect["amount"], 0);
+        assert_eq!(effect["opacity"], 0);
+        let (pixels, max) = gap(&render(case, "figma"), &reference_of(&path, case));
+        assert_eq!((pixels, max), (0, 0), "{file} {id}");
+    }
+}
+
+#[test]
+fn legacy_nonzero_amount_is_not_a_full_glass_mapping() {
+    let fx: futureox_design_kernel::scene::Effect = serde_json::from_value(json!({
+        "kind": "glass", "radius": 4, "amount": 4, "opacity": 0.5, "color": "#000000"
+    }))
+    .unwrap();
+    assert!(fx.evaluated_glass().is_none());
+    assert_eq!(fx.backdrop_radius(), 4.);
+    let mut frost: futureox_design_kernel::scene::Effect = serde_json::from_value(json!({
+        "kind": "glass", "radius": 0.25, "amount": 0, "opacity": 0, "color": "#000000"
+    }))
+    .unwrap();
+    let glass = frost.evaluated_glass().unwrap();
+    assert_eq!(
+        (glass.depth, glass.refraction, glass.dispersion, glass.light_angle, glass.light_intensity),
+        (8., 0., 0., 45., 0.)
+    );
+    assert_eq!(frost.backdrop_radius(), 1.);
+    assert_eq!(frost.radius, 0.25);
+    frost.radius = 4.;
+    assert_eq!(frost.backdrop_radius(), 4.);
+}
+
 #[test]
 fn issue_179_appearance_stays_within_the_measured_ceilings() {
     let cases = cases();

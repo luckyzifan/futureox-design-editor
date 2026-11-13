@@ -598,11 +598,44 @@ impl Effect {
     /// The authored glass frost control retains zero in the document, but
     /// its backdrop capture has a one-unit minimum filter support.
     pub fn backdrop_radius(&self) -> f64 {
-        if self.kind == "glass" && self.glass.is_some() {
+        if self.uses_frost_capture() {
             self.radius.max(1.)
         } else {
             self.blur_radius()
         }
+    }
+    /// Modern glass fields, or the legacy zero-refraction subset.
+    ///
+    /// Documents authored before independent depth, dispersion and light
+    /// stored that subset as glass radius with amount 0 and opacity 0.
+    /// Those two stand-ins are not refraction or light. The subset renders
+    /// as Figma's default depth 8, light angle 45 and zero dispersion, which
+    /// is the parameter mapping already exact against the frozen frost PNGs.
+    /// Nonzero amount or opacity stays on the legacy shader: those values do
+    /// not determine dispersion, so they are not rewritten into a full glass.
+    pub fn evaluated_glass(&self) -> Option<GlassParameters> {
+        if self.kind != "glass" {
+            return None;
+        }
+        if let Some(glass) = &self.glass {
+            return Some(glass.clone());
+        }
+        if self.amount == 0. && self.opacity == 0. && self.radius > 0. {
+            return Some(GlassParameters {
+                bevel_size: None,
+                depth: 8.,
+                refraction: 0.,
+                dispersion: 0.,
+                light_angle: 45.,
+                light_intensity: 0.,
+            });
+        }
+        None
+    }
+    fn uses_frost_capture(&self) -> bool {
+        self.kind == "glass"
+            && (self.glass.is_some()
+                || (self.amount == 0. && self.opacity == 0. && self.radius > 0.))
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
