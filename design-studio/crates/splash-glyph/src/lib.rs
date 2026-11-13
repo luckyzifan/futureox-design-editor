@@ -84,8 +84,7 @@ fn with_face<T>(
             .iter()
             .position(|(found, found_index, _)| *found == digest && *found_index == index)
         {
-            cache.faces.rotate_left(pos);
-            let entry = cache.faces.remove(0);
+            let entry = cache.faces.remove(pos);
             let face = entry.2.face;
             cache.faces.push(entry);
             return body(face);
@@ -178,8 +177,9 @@ pub fn rasterize(
             let pitch = bitmap.pitch;
             if pitch.checked_abs()? < width { return None; }
             for row in 0..rows {
-                let src_offset = row.checked_mul(pitch)? as isize;
-                let src = bitmap.buffer.offset(src_offset);
+                let physical_row = if pitch >= 0 { row } else { rows - 1 - row };
+                let src_offset = physical_row.checked_mul(pitch.checked_abs()?)? as usize;
+                let src = bitmap.buffer.add(src_offset);
                 let dst = (row * width) as usize;
                 ptr::copy_nonoverlapping(src, coverage.as_mut_ptr().add(dst), width as usize);
             }
