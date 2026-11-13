@@ -18,6 +18,7 @@
     "package:native": "bun run build && node scripts/package.mjs && bun run verify:package",
     "install:runtime": "node node_modules/electron/install.js",
     "verify:package": "node scripts/verify-package.mjs",
+    "test:release-session": "node scripts/release-desktop-session.mjs",
     "package:exact": "bun run build && node scripts/package.mjs --exact && node scripts/verify-package.mjs --exact",
     "package:preview": "bun run build && node scripts/package.mjs --preview && node scripts/verify-package.mjs --preview",
     "package:local": "node scripts/build.mjs --release && node scripts/package.mjs --local && node scripts/verify-package.mjs --local",

@@ -159,6 +159,13 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
       constructor(values){this.values=values;this.types=Object.keys(values)}
       async getType(type){const value=await this.values[type];if(value===undefined)throw new Error('Missing MIME');return value instanceof Blob?value:new Blob([value],{type})}
     },
+    powerMonitor: new EventEmitter(),
+    safeStorage: {
+      isEncryptionAvailable: () => false,
+      getSelectedStorageBackend: () => 'unknown',
+      encryptString() { throw new Error('unavailable') },
+      decryptString() { throw new Error('unavailable') },
+    },
     clipboard: {
       read: async()=>state.clipboardItems||[],
       write: async items=>{
@@ -240,8 +247,8 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   const src = new URL('../src/main.mjs', import.meta.url)
   let source = await readFile(src, 'utf8')
   source = source.replace(
-    /import \{ app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor \} from 'electron'/,
-    `const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } = globalThis[${JSON.stringify(key)}].electron`,
+    /import \{ app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor, safeStorage \} from 'electron'/,
+    `const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor, safeStorage } = globalThis[${JSON.stringify(key)}].electron`,
   )
   source = source.replace("from './render-terminal-diagnostics.mjs'", `from ${JSON.stringify(new URL('../src/render-terminal-diagnostics.mjs', import.meta.url).href)}`)
   source = source.replace("from './pet/host.mjs'", `from ${JSON.stringify(new URL('../src/pet/host.mjs', import.meta.url).href)}`)

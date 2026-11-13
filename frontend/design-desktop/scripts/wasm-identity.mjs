@@ -13,7 +13,14 @@ export function verifyWasmIdentity(packagedName, packagedHash, sources) {
     return name === base || (base.endsWith('.wasm') && /^[A-Za-z0-9_-]+$/.test(viteHash))
   })
   assert.ok(candidates.length, `Missing WASM source for ${packagedName}`)
-  assert.equal(candidates.length, 1, `Ambiguous WASM source for ${packagedName}`)
+  // Several installed packages can share one basename, as the QuickJS wasm
+  // variants do. Exact bytes choose among them. Two sources with the same
+  // bytes stay ambiguous, and a hash that matches none is stale.
+  const exact = candidates.filter(candidate => candidate.sha256 === packagedHash)
+  if (candidates.length > 1) {
+    assert.equal(exact.length, 1, exact.length ? `Ambiguous WASM source for ${packagedName}` : `Stale WASM: ${packagedName}`)
+    return exact[0].name
+  }
   assert.equal(packagedHash, candidates[0].sha256, `Stale WASM: ${packagedName}`)
   return candidates[0].name
 }

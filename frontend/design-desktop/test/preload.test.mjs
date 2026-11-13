@@ -36,8 +36,8 @@ function load(argv = [], reply = { status: 'ok' }, window) {
   return { api, events, calls, context }
 }
 
-test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or shell handle', () => {
-  const { api, context } = load()
+test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or shell handle', async () => {
+  const { api, context, calls } = load()
   assert.equal(Object.isFrozen(api), true)
   assert.deepEqual(
     Object.keys(api).sort(),
@@ -55,6 +55,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'workspaceRoot',
       'live',
       'clipboard',
+      'cloud',
       'designAi',
       'designAgent',
       'fonts',
@@ -89,6 +90,22 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'videoEncode',
     ].sort(),
   )
+  assert.equal(Object.isFrozen(api.cloud), true)
+  assert.deepEqual(Object.keys(api.cloud).sort(), ['cancel', 'configure', 'readCursor', 'request', 'status', 'writeCursor'])
+  await api.cloud.status()
+  await api.cloud.configure({ baseUrl: 'https://example.test' })
+  await api.cloud.request({ id: '1' })
+  await api.cloud.cancel({ id: '1' })
+  await api.cloud.readCursor({ id: '1' })
+  await api.cloud.writeCursor({ id: '1' })
+  assert.deepEqual(calls.map(call => call[0]), [
+    'design-desktop:cloud-status',
+    'design-desktop:cloud-configure',
+    'design-desktop:cloud-request',
+    'design-desktop:cloud-cancel',
+    'design-desktop:cloud-read-cursor',
+    'design-desktop:cloud-write-cursor',
+  ])
   assert.equal(Object.isFrozen(api.designAi),true)
   assert.deepEqual(Object.keys(api.designAi).sort(),['cancel','configure','run','status'])
   assert.equal(api.version, 1)
