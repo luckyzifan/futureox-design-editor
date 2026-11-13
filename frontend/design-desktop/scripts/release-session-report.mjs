@@ -64,12 +64,13 @@ export function inspectHostSignature({ platform, packagePath, run } = {}) {
   }
 }
 
-export function officialPackageBlockers(platform, signature = { status: 'not_run' }) {
+export function officialPackageBlockers(platform, signature = { status: 'not_run' }, installer = null) {
   const macStatus = signature.status === 'verified'
     ? 'passed'
     : platform === 'darwin'
       ? (signature.status === 'failed' || signature.status === 'signed_unnotarized' ? signature.status : 'not_run')
       : 'blocked'
+  const linuxDeb = installer?.linuxDeb === 'installed'
   return [
     {
       id: 'macos_signed_notarized_package',
@@ -85,10 +86,27 @@ export function officialPackageBlockers(platform, signature = { status: 'not_run
     },
     {
       id: 'disk_image_or_system_installer',
-      status: 'not_run',
-      reason: 'No .dmg, .pkg, .msi, .exe installer, .deb, or .rpm was mounted. Copying an electron-packager directory into an install prefix is not a signed installer.',
+      status: linuxDeb ? 'linux_deb_installed' : 'not_run',
+      reason: linuxDeb
+        ? 'dpkg installed and launched the linux .deb. .dmg, .pkg, .msi, .exe, and .rpm were not mounted. The package is still unsigned.'
+        : 'No .dmg, .pkg, .msi, .exe installer, .deb, or .rpm was mounted. Copying an electron-packager directory into an install prefix is not a signed installer.',
     },
   ]
+}
+
+export function bindInstalledDeb(report, { debPath, debSha256 } = {}) {
+  if (!hex(debSha256)) throw new Error('deb hash is missing')
+  const next = structuredClone(report)
+  next.package = {
+    status: 'hashed_installed_deb',
+    sha256: debSha256,
+    files: 1,
+    payloadSha256: report.package.sha256,
+    payloadFiles: report.package.files,
+  }
+  next.packagePath = debPath
+  next.steps = next.steps.map(step => ({ ...step, packageSha256: debSha256 }))
+  return next
 }
 
 export function planReleaseLaunch(described, { platform, arch } = {}) {
@@ -167,23 +185,41 @@ function checks(report, session) {
   const originals = observation.originals || {}
   const samePackage = session.packageSha256 === report.package.sha256 && hex(session.packageSha256)
   const sameHost = session.platform === report.platform && session.arch === report.arch
+  const acceptanceProfile = runtime.profileSource === 'acceptance-profile'
+  const privateHome = runtime.acceptanceHook === false
+    && runtime.profileSource === 'private-home'
+    && inside(runtime.privateHome, runtime.userData)
+    && typeof runtime.realHome === 'string'
+    && !inside(runtime.realHome, runtime.privateHome)
+  const profileOk = runtime.acceptanceHook === false ? privateHome : acceptanceProfile
   const packagedRuntime = runtime.isPackaged === true
     && runtime.sandbox === true
     && runtime.contextIsolation === true
     && runtime.nodeIntegration === false
     && runtime.webSecurity === true
-    && runtime.profileSource === 'acceptance-profile'
+    && profileOk
     && inside(install.installRoot, runtime.execPath)
     && inside(install.installRoot, runtime.resourcesPath)
     && hex(runtime.sidecarSha256)
     && runtime.sidecarSha256 === observation.expectedSidecarSha256
+  const directoryInstall = install.method !== 'dpkg'
+    && install.installedSha256 === install.sourceSha256 && install.afterSha256 === install.sourceSha256
+    && install.sourceSha256 === report.package.sha256
+  const debInstall = install.method === 'dpkg'
+    && install.installer === 'deb'
+    && hex(install.debSha256)
+    && install.debSha256 === report.package.sha256
+    && hex(install.installedSha256)
+    && install.afterSha256 === install.installedSha256
+    && install.installedSha256 !== install.debSha256
+    && install.sourceSha256 === report.package.sha256
   return {
     samePackage,
     sameHost,
     packagedRuntime,
     freeze_release_package: samePackage && sameHost && install.sourceSha256 === report.package.sha256 && hex(install.sourceSha256),
     record_package_hash_and_platform: samePackage && sameHost && typeof report.platform === 'string' && typeof report.arch === 'string',
-    install: samePackage && install.installedSha256 === install.sourceSha256 && install.afterSha256 === install.sourceSha256
+    install: samePackage && (debInstall || directoryInstall)
       && install.executableWithinInstall === true && install.resourcesWithinInstall === true && install.launchedFromInstall === true
       && inside(install.installRoot, install.executable),
     open: packagedRuntime && open.ready === true && typeof open.documentName === 'string' && open.documentName.length > 0,
@@ -228,7 +264,7 @@ export function assessObservedDesktopSession(report, session = {}) {
   const development = developmentPackage(next.evidence)
   const signature = session.signature || { status: 'not_run', notarization: 'not_run', reason: 'signature was not inspected' }
   next.signature = signature
-  next.blockedOfficialSteps = officialPackageBlockers(next.platform, signature)
+  next.blockedOfficialSteps = officialPackageBlockers(next.platform, signature, session.installer)
   next.observation = session.observation || null
   next.steps = DESKTOP_FLOW.map(id => {
     if (session.launched !== true) return { id, ...stepResult(next, 'not_run', 'the packaged session was not launched') }
