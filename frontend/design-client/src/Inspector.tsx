@@ -543,7 +543,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
         <button type="button" aria-label={tr("更多图层操作")} onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
       </div>
       <div className="inspector-scroll">
-        {styleDescription && <p role="note" className="property-unit-notice">＊ 最大缩放系数换算。{styleDescription}</p>}
+        {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
         <section>
 
           <h3>{tr("位置")}</h3>
@@ -915,7 +915,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                   </select>
                 </label>)}
               </div>}
-              {styleDescription && <small title={styleDescription}>虚线：最大缩放系数换算</small>}
+              {styleDescription && <small title={tr(styleDescription)}>{tr('虚线：最大缩放系数换算')}</small>}
               <DraftInput aria-description={styleDescription} title={styleDescription} aria-label={tr("虚线")} placeholder={tr("虚线，如 8 4")} value={dashInUnits(st.dash, units.style)}
                 validate={value => { try { dashInUnits(value, 1 / units.style); return true } catch { return false } }}
                 onCommit={(value) => update((n) => { if (n.strokes[i]) n.strokes[i].dash = dashInUnits(value, 1 / units.style) })} />

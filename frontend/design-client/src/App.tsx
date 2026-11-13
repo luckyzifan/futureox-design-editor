@@ -1274,7 +1274,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <b>/</b>
           <input
             aria-label={menuText.documentName}
-            value={source?.name||s.doc.name}
+            value={source?.name === '正在打开文件' ? translateProfessional(source.name, locale) : (source?.name || s.doc.name)}
             readOnly={!!source}
             onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
             onCompositionEnd={() => { titleComposing.current = false; pendingEditsChanged(editor) }}
@@ -1634,7 +1634,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showPlugins && <PluginPanel editor={editor} desktop={desktop} launch={pluginLaunch} returnFocus={fileMenuTrigger.current} onClose={() => { setShowPlugins(false); setPluginLaunch(null) }} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}
         cloudControls={desktop?.cloud && cloudWorkspace && <DesktopCloudSettings status={cloudStatus} locale={locale} configure={configureDesktopCloud} />}
-        busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">设计尚未就绪，暂不能切换工作区目录。</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
+        busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">{translateProfessional('设计尚未就绪，暂不能切换工作区目录。', locale)}</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
           busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {
             if (workspaceRootPending.current || !ready || desktopStatus.busy || !commitPendingEdits(editor)) return
             workspaceRootPending.current = true; setWorkspaceRootBusy(true)
@@ -1657,7 +1657,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         }} onClose={() => { fileImports.invalidate(); setShowCatalog(false) }} />}
       {localFiles && (
         <div className="modal-backdrop">
-          <section className="remote-modal workspace-library" role="dialog" aria-modal="true" aria-label="本机文件"
+          <section className="remote-modal workspace-library" role="dialog" aria-modal="true" aria-label={translateProfessional('本机文件', locale)}
             onKeyDown={event => {
               if (event.key === 'Escape') {
                 event.preventDefault(); event.stopPropagation(); fileImports.invalidate(); setLocalFiles(null); focusCanvas()
@@ -1669,9 +1669,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }
             }}>
             <h2>
-              本机文件<button autoFocus aria-label="关闭本机文件" onClick={() => { fileImports.invalidate(); setLocalFiles(null); focusCanvas() }}>×</button>
+              {translateProfessional('本机文件', locale)}<button autoFocus aria-label={translateProfessional('关闭本机文件', locale)} onClick={() => { fileImports.invalidate(); setLocalFiles(null); focusCanvas() }}>×</button>
             </h2>
-            {!localFiles.length && <p>编辑后的作品会自动保存在这里。</p>}
+            {!localFiles.length && <p>{translateProfessional('编辑后的作品会自动保存在这里。', locale)}</p>}
             {localFiles.map((entry) => (
               <div className="local-file-row" key={entry.id}>
                 <button
@@ -1684,16 +1684,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   }}
                 >
                   {entry.name}
-                  {entry.deleted ? '（回收站）' : ''}
+                  {entry.deleted ? translateProfessional('（回收站）', locale) : ''}
                 </button>
-                <span>版本 {entry.revision}</span>
+                <span>{translateProfessional('版本', locale)} {entry.revision}</span>
                 <button
                   disabled={entry.id === s.doc.id}
                   onClick={() =>
                     void trashLocalFile(entry.id, !entry.deleted)
                   }
                 >
-                  {entry.deleted ? '恢复' : '移入回收站'}
+                  {translateProfessional(entry.deleted ? '恢复' : '移入回收站', locale)}
                 </button>
               </div>
             ))}

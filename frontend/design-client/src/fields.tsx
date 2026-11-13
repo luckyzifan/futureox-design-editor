@@ -125,8 +125,12 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
       if (input.current) input.current.value = shown(value)
     }
   }, [value])
+  const shownLabel = tr(label)
+  const shownCaption = caption === undefined ? shownLabel : tr(caption)
+  const scrubHelp = tr("拖动调整数值；Shift 加速，Option 精细调整")
+  const shownUnit = unitDescription ? tr(unitDescription) : undefined
   return <label className="number-field">
-    <span className="number-scrub" title={`${label}: ${tr("拖动调整数值；Shift 加速，Option 精细调整")}`} tabIndex={0} role="button" aria-label={locale === 'en' ? `Adjust ${label} by dragging` : `拖动调整 ${label}`} aria-description={unitDescription ? `${tr('拖动调整数值；Shift 加速，Option 精细调整')}；${unitDescription}` : undefined}
+    <span className="number-scrub" title={`${shownLabel}: ${scrubHelp}`} tabIndex={0} role="button" aria-label={locale === 'en' ? `Adjust ${shownLabel} by dragging` : `拖动调整 ${shownLabel}`} aria-description={shownUnit ? `${scrubHelp}；${shownUnit}` : undefined}
       onPointerDown={event => {
         if (event.button !== 0 || !event.isPrimary || composing.current || !finish() || editor?.interactionActive) return
         event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId)
@@ -142,8 +146,8 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       }} onPointerCancel={() => stopScrub(true)} onLostPointerCapture={() => stopScrub(true)}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); stopScrub(true) } }}
-    >{caption ?? label}{unitDescription && <small title={unitDescription}>＊</small>}</span>
-    <input ref={input} aria-label={label} aria-description={unitDescription} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={unitDescription ? `${value}；${unitDescription}` : shown(value)} defaultValue={shown(value)}
+    >{shownCaption}{shownUnit && <small title={shownUnit}>＊</small>}</span>
+    <input ref={input} aria-label={shownLabel} aria-description={shownUnit} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={shownUnit ? `${value}；${shownUnit}` : shown(value)} defaultValue={shown(value)}
       onFocus={(e) => { diagnostic.event(InputPhase.focus); if (!dirty.current) e.currentTarget.select() }}
       onChange={(e) => { startDraft(); draftRevision.current++; diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
       onCompositionStart={() => { startDraft(); draftRevision.current++; diagnostic.start(); diagnostic.event(InputPhase.compositionStart); composing.current = true; changed() }}

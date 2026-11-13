@@ -7,8 +7,10 @@ import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
 import {adjustLayoutHandle,layoutHandles,type LayoutHandle} from './canvas-layout-handles'
 import {NumberField} from './fields'
+import {useProfessionalDialogText} from './professional-dialog-messages'
 
 export function CanvasLayoutHandles({editor,view,size,visible}:{editor:Editor;view:CanvasCamera;size:CanvasSize;visible:boolean}){
+  const {tr}=useProfessionalDialogText()
   const host=useRef<HTMLDivElement>(null),[input,setInput]=useState<{handle:LayoutHandle;alt:boolean;shift:boolean}|null>(null),[feedback,setFeedback]=useState<string|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;id:string;handle:LayoutHandle;layout:AutoLayout;inverse:Matrix;view:CanvasCamera;start:Point;moved:boolean}|null>(null)
   const ids=editor.topSelection(),id=ids.length===1?ids[0]:null,n=id?editor.state.doc.nodes[id]:undefined
@@ -39,6 +41,6 @@ export function CanvasLayoutHandles({editor,view,size,visible}:{editor:Editor;vi
       <line x1={p.x-(h.axis==='y'?5:0)} y1={p.y-(h.axis==='x'?5:0)} x2={p.x+(h.axis==='y'?5:0)} y2={p.y+(h.axis==='x'?5:0)} stroke="#f24eaa" strokeWidth={2.5}/>
     </g>})}</svg>
     {feedback&&<div className="layout-handle-input">{feedback}</div>}
-    {input&&<div className="layout-handle-input" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}><NumberField label={input.handle.padding===undefined?'间距':'内边距'} value={input.handle.padding===undefined?n.layout[input.handle.property!]:n.layout.padding[input.handle.padding]} min={input.handle.padding===undefined?-1e6:0} onChange={value=>{const h=input.handle;runUtilityAction(editor,CanvasAction.layoutHandle,ActionSource.properties,()=>editor.update([id],{layout:adjustLayoutHandle(n.layout!,{...h,value},0,{alt:input.alt,shift:input.shift,ctrl:true})},'设置自动布局'));setInput(null)}}/><button onClick={()=>setInput(null)}>完成</button></div>}
+    {input&&<div className="layout-handle-input" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}><NumberField label={input.handle.padding===undefined?'间距':'内边距'} value={input.handle.padding===undefined?n.layout[input.handle.property!]:n.layout.padding[input.handle.padding]} min={input.handle.padding===undefined?-1e6:0} onChange={value=>{const h=input.handle;runUtilityAction(editor,CanvasAction.layoutHandle,ActionSource.properties,()=>editor.update([id],{layout:adjustLayoutHandle(n.layout!,{...h,value},0,{alt:input.alt,shift:input.shift,ctrl:true})},'设置自动布局'));setInput(null)}}/><button onClick={()=>setInput(null)}>{tr('完成')}</button></div>}
   </div>
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { agentAvailability, AGENT_CONNECTION_CHANGED } from './agent-availability'
 import { desktopBridge, type DesktopResult } from '../desktop'
 import './design-agent.css'
+import { useProfessionalDialogText } from '../professional-dialog-messages'
 
 function refused(result: Exclude<DesktopResult, { status: 'ok' }>) {
   return result.status === 'cancelled' ? '已取消' : result.message
@@ -17,6 +18,7 @@ function canDelete(provider: ProviderView) {
 }
 
 export function AgentSettings() {
+  const { locale, tr } = useProfessionalDialogText()
   const desktop = desktopBridge()
   const [kind, setKind] = useState<'api' | 'token_plan' | 'ccswitch'>('api')
   const [name, setName] = useState('我的 API')
@@ -120,29 +122,29 @@ export function AgentSettings() {
   }
 
   return <div className="agent-settings">
-    <h3>模型连接</h3>
-    <p className="settings-help">可以在本机 Grok、已保存的 API、Token plan，以及 CC Switch 里的一条上游之间切换。选中哪一条，下一轮设计对话就打到哪一条。服务失败会保留画布并显示原因，需要时可选择本机规则模板。</p>
-    <label>类型<select aria-label="连接类型" value={kind} onChange={event => setKind(event.target.value as typeof kind)}>
+    <h3>{tr('模型连接')}</h3>
+    <p className="settings-help">{tr('可以在本机 Grok、已保存的 API、Token plan，以及 CC Switch 里的一条上游之间切换。选中哪一条，下一轮设计对话就打到哪一条。服务失败会保留画布并显示原因，需要时可选择本机规则模板。')}</p>
+    <label>{tr('类型')}<select aria-label={tr('连接类型')} value={kind} onChange={event => setKind(event.target.value as typeof kind)}>
       <option value="api">API</option>
       <option value="token_plan">Token plan</option>
       <option value="ccswitch">CC Switch</option>
     </select></label>
-    <label>名称<input aria-label="连接名称" value={name} onChange={event => setName(event.target.value)} /></label>
-    <label>地址<input aria-label="接口地址" placeholder={kind === 'ccswitch' ? 'http://127.0.0.1:15721/v1' : 'https://…/v1'} value={baseUrl} onChange={event => setBaseUrl(event.target.value)} /></label>
-    <label>模型<input aria-label="模型名" value={model} onChange={event => setModel(event.target.value)} /></label>
-    <label>{kind === 'token_plan' ? 'Plan token' : 'API key'}<input aria-label="密钥" type="password" autoComplete="off" value={secret} onChange={event => setSecret(event.target.value)} /></label>
-    <div className="design-ai-actions"><button type="button" disabled={pending !== ''} onClick={() => void save()}>保存并使用</button><button type="button" disabled={pending !== ''} onClick={() => void useLocal()}>改用本机模式</button></div>
-    {!!providers.length && <ul className="agent-saved-list" aria-label="已保存的连接">{providers.map(provider => <li key={provider.id} className={provider.active ? 'is-active' : undefined} onClick={() => { if (!provider.active && !pending) void activateSaved(provider) }}>
-      <span className="agent-saved-summary">{provider.active ? '使用中 · ' : ''}{provider.name} · {provider.kind} · {provider.model}{provider.has_secret ? ' · 已保存密钥' : ''}</span>
+    <label>{tr('名称')}<input aria-label={tr('连接名称')} value={name} onChange={event => setName(event.target.value)} /></label>
+    <label>{tr('地址')}<input aria-label={tr('接口地址')} placeholder={kind === 'ccswitch' ? 'http://127.0.0.1:15721/v1' : 'https://…/v1'} value={baseUrl} onChange={event => setBaseUrl(event.target.value)} /></label>
+    <label>{tr('模型')}<input aria-label={tr('模型名')} value={model} onChange={event => setModel(event.target.value)} /></label>
+    <label>{kind === 'token_plan' ? 'Plan token' : 'API key'}<input aria-label={tr('密钥')} type="password" autoComplete="off" value={secret} onChange={event => setSecret(event.target.value)} /></label>
+    <div className="design-ai-actions"><button type="button" disabled={pending !== ''} onClick={() => void save()}>{tr('保存并使用')}</button><button type="button" disabled={pending !== ''} onClick={() => void useLocal()}>{tr('改用本机模式')}</button></div>
+    {!!providers.length && <ul className="agent-saved-list" aria-label={tr('已保存的连接')}>{providers.map(provider => <li key={provider.id} className={provider.active ? 'is-active' : undefined} onClick={() => { if (!provider.active && !pending) void activateSaved(provider) }}>
+      <span className="agent-saved-summary">{provider.active ? tr('使用中 · ') : ''}{provider.name} · {provider.kind} · {provider.model}{provider.has_secret ? tr(' · 已保存密钥') : ''}</span>
       <span className="agent-saved-actions">
-        <button type="button" className="agent-connection-action" disabled={provider.active || pending !== ''} aria-label={provider.active ? `使用中：${provider.name}` : `用这条连接：${provider.name}`} onClick={event => { event.stopPropagation(); void activateSaved(provider) }}>{provider.active ? '使用中' : '用这条连接'}</button>
-        {canDelete(provider) && <button type="button" className="agent-connection-action danger" disabled={pending !== ''} aria-label={`删除连接：${provider.name}`} onClick={event => { event.stopPropagation(); void removeSaved(provider) }}>删除</button>}
+        <button type="button" className="agent-connection-action" disabled={provider.active || pending !== ''} aria-label={tr(provider.active ? `使用中：${provider.name}` : `用这条连接：${provider.name}`)} onClick={event => { event.stopPropagation(); void activateSaved(provider) }}>{tr(provider.active ? '使用中' : '用这条连接')}</button>
+        {canDelete(provider) && <button type="button" className="agent-connection-action danger" disabled={pending !== ''} aria-label={tr(`删除连接：${provider.name}`)} onClick={event => { event.stopPropagation(); void removeSaved(provider) }}>{tr('删除')}</button>}
       </span>
     </li>)}</ul>}
     {ccswitch && <div>
-      <p role="status">CC Switch 数据库{ccswitch.present ? '已找到' : '未找到'}。{ccswitch.detail || ''}</p>
-      {!!ccswitch.providers?.length && <ul aria-label="CC Switch 供应商">{ccswitch.providers.map(provider => <li key={`${provider.app_type}:${provider.id}`} className={provider.current ? 'is-active' : undefined}>{provider.current ? '当前 · ' : ''}{provider.name} · {provider.kind || provider.app_type} · {provider.model || '未写模型'}{provider.has_secret ? ' · 已有密钥' : ' · 缺少可执行地址或密钥'} <button type="button" className="agent-connection-action" onClick={() => void useSwitch(provider)}>用这条连接</button></li>)}</ul>}
+      <p role="status">{locale === 'en' ? `CC Switch database ${ccswitch.present ? 'found' : 'not found'}.` : `CC Switch 数据库${ccswitch.present ? '已找到' : '未找到'}。`} {ccswitch.detail || ''}</p>
+      {!!ccswitch.providers?.length && <ul aria-label={tr('CC Switch 供应商')}>{ccswitch.providers.map(provider => <li key={`${provider.app_type}:${provider.id}`} className={provider.current ? 'is-active' : undefined}>{provider.current ? tr('当前 · ') : ''}{provider.name} · {provider.kind || provider.app_type} · {provider.model || tr('未写模型')}{provider.has_secret ? tr(' · 已有密钥') : tr(' · 缺少可执行地址或密钥')} <button type="button" className="agent-connection-action" onClick={() => void useSwitch(provider)}>{tr('用这条连接')}</button></li>)}</ul>}
     </div>}
-    {message && <p role={tone === 'error' ? 'alert' : 'status'} data-agent-mode={tone}>{message}</p>}
+    {message && <p role={tone === 'error' ? 'alert' : 'status'} data-agent-mode={tone}>{tr(message)}</p>}
   </div>
 }

@@ -2,6 +2,7 @@ import type { DesignNode, WidthPoint } from './model'
 import { NumberField } from './fields'
 import { profilePreset, profileTopology } from './stroke-profile'
 import type { Editor } from './engine'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 
 export function StrokeProfilePanel({
   n,
@@ -14,6 +15,7 @@ export function StrokeProfilePanel({
   editor: Editor
   update: (fn: (n: DesignNode) => void, label?: string) => void
 }) {
+  const { tr } = useProfessionalDialogText()
   const s = n.strokes[index],
     ps = s.widthProfile || [],
     topology = profileTopology(n)
@@ -56,35 +58,35 @@ export function StrokeProfilePanel({
   return (
     <div className="stroke-profile">
       <label>
-        宽度轮廓
+        {tr('宽度轮廓')}
         <select
-          aria-label="宽度轮廓"
+          aria-label={tr('宽度轮廓')}
           value={ps.length ? 'custom' : 'uniform'}
           disabled={topology.branched || n.kind === 'text'}
           onChange={(e) => replace(profilePreset(e.target.value, topology.closed))}
         >
-          <option value="uniform">等宽</option>
-          <option value="spindle">两端收尖</option>
+          <option value="uniform">{tr('等宽')}</option>
+          <option value="spindle">{tr('两端收尖')}</option>
           {!topology.closed && (
             <>
-              <option value="taper">末端收尖</option>
-              <option value="grow">起点收尖</option>
+              <option value="taper">{tr('末端收尖')}</option>
+              <option value="grow">{tr('起点收尖')}</option>
             </>
           )}
-          <option value="wave">起伏</option>
-          <option value="one-side">单侧收尖</option>
-          <option value="custom">自定义控制点</option>
+          <option value="wave">{tr('起伏')}</option>
+          <option value="one-side">{tr('单侧收尖')}</option>
+          <option value="custom">{tr('自定义控制点')}</option>
         </select>
       </label>
-      {topology.branched && <small>分叉路径需先拆分为独立路径</small>}
+      {topology.branched && <small>{tr('分叉路径需先拆分为独立路径')}</small>}
       {!!ps.length && (
         <>
           <small>
-            位置沿路径长度计算；两侧宽度为基础粗细的一半 × 倍率。
-            {topology.closed ? '闭合接缝两端联动。' : ''}
+            {tr('位置沿路径长度计算；两侧宽度为基础粗细的一半 × 倍率。')}
+            {topology.closed ? tr('闭合接缝两端联动。') : ''}
           </small>
           <button onClick={() => editor.set({ tool: 'width', widthStroke: index })}>
-            在画布调整宽度
+            {tr('在画布调整宽度')}
           </button>
           {ps.map((p, i) => (
             <div className="profile-point" key={`${i}-${p.position}`}>
@@ -117,13 +119,13 @@ export function StrokeProfilePanel({
                   aria-label={`删除宽度点 ${i + 1}`}
                   onClick={() => replace(ps.filter((_, at) => at !== i))}
                 >
-                  删除点
+                  {tr('删除点')}
                 </button>
               </div>
             </div>
           ))}
           <button disabled={ps.length >= 512} onClick={add}>
-            ＋ 添加宽度点
+            {tr('＋ 添加宽度点')}
           </button>
         </>
       )}

@@ -1,3 +1,4 @@
+import { presentChrome } from './english-chrome'
 import { useInterfacePreferences, type InterfaceLocale } from './interface-preference'
 import { surfaceEnglish } from './surface-dialog-catalog'
 /** Display-only allowlist. Never translate authored names, history labels or core identifiers. */
@@ -88,7 +89,7 @@ function translateKnownSegments(source: string): string | null {
   })
   return translated.every((part): part is string => part !== null) ? translated.join('; ') : null
 }
-/** Display translation. Unknown diagnostics, authored names and history labels stay verbatim. */
+/** Display translation. Unknown diagnostics, authored names and unmatched history summaries stay verbatim. */
 export function translateProfessional(source: string, locale: InterfaceLocale = 'zh-CN'): string {
   if (locale !== 'en' || typeof source !== 'string' || source.length === 0) return source
   const direct = catalogValue(source)
@@ -98,7 +99,7 @@ export function translateProfessional(source: string, locale: InterfaceLocale = 
     const match = pattern.exec(source)
     if (match) return format(match.slice(1))
   }
-  return translateKnownSegments(source) ?? source
+  return translateKnownSegments(source) ?? presentChrome(source, locale)
 }
 export function useProfessionalDialogText() {
   const { locale } = useInterfacePreferences()

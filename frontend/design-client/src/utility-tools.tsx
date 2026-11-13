@@ -15,6 +15,7 @@ import { commitPendingEdits } from './pending-edits'
 import { creationToolStaysArmed } from './shape-creation'
 import { ERASER_SCREEN_PX, applyEraserEdits, eraserPreviewPatches, planVectorEraser, type EraserEdit } from './vector-eraser'
 import { PEN_BLUE } from './pen-geometry'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 
 export const utilityToolNames: Partial<Record<Tool, string>> = {
   multiselect: '多选',
@@ -71,6 +72,7 @@ export function useUtilityTools(
   hit: (p: Point, deep: boolean, eligible?: (node: DesignNode) => boolean) => string | null,
   displayZoom: number,
 ) {
+  const { tr } = useProfessionalDialogText()
   const drag = useRef<Gesture | null>(null),
     [drawing, setDrawing] = useState<{ tool: Tool; points: Point[] } | null>(null)
   const [preview, setPreview] = useState<ReturnType<typeof boardObjects> | null>(null)
@@ -494,7 +496,7 @@ export function useUtilityTools(
               key={r.id}
               transform={`translate(${p.x} ${p.y}) scale(${1 / zoom})`}
               role="button"
-              aria-label={`${r.kind === 'annotation' ? '标注' : '评论'} ${i + 1}`}
+              aria-label={`${tr(r.kind === 'annotation' ? '标注' : '评论')} ${i + 1}`}
               tabIndex={0}
               onPointerDown={(e) => {
                 e.stopPropagation()

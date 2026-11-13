@@ -1,3 +1,4 @@
+import { presentChrome } from './english-chrome'
 import { useInterfacePreferences, type InterfaceLocale } from './interface-preference'
 /** Explicit presentation catalog. Never apply this to document text, names, IDs or history labels. */
 export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
@@ -573,7 +574,10 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "蒙版": "a mask",
   "角向/菱形渐变": "an angular or diamond gradient"
 })
-export function translateProperty(source: string, locale: InterfaceLocale = 'zh-CN'): string { return locale === 'en' && Object.prototype.hasOwnProperty.call(propertyEnglish, source) ? propertyEnglish[source] : source }
+export function translateProperty(source: string, locale: InterfaceLocale = 'zh-CN'): string {
+  if (locale === 'en' && Object.prototype.hasOwnProperty.call(propertyEnglish, source)) return propertyEnglish[source]
+  return presentChrome(source, locale)
+}
 const zhText = (source: string) => translateProperty(source, 'zh-CN')
 const enText = (source: string) => translateProperty(source, 'en')
 export function usePropertyText() {

@@ -46,7 +46,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
   return <aside className="inspector" aria-label={tr("多选属性")}>
     <div className="panel-tabs"><b>{tr("设计")}</b><span>{propertyLayerCount(nodes.length, locale)}</span></div>
     <div className="inspector-scroll">
-      {styleDescription && <p role="note" className="property-unit-notice">＊ 最大缩放系数换算。{styleDescription}</p>}
+      {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
       <section><h3>{propertyLayerCount(nodes.length, locale)}</h3><p className="muted">{tr("混合表示数值不同。输入后会同时应用于所选图层。")}</p>
         <AlignmentControls editor={editor}/>
         <div className="field-grid">

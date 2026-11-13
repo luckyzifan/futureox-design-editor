@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { profileBars, renderProfile, type RenderProfileSample } from './kernel/render-profile'
+import { useProfessionalDialogText } from './professional-dialog-messages'
 
 /** Diagnostic UI only: closed = no recording, no polling, no React updates. */
 export function RenderProfilePanel() {
+  const { locale, tr } = useProfessionalDialogText()
   const [open, setOpen] = useState(false)
   const [samples, setSamples] = useState<RenderProfileSample[]>([])
   const [paused, setPaused] = useState(false)
@@ -35,28 +37,28 @@ export function RenderProfilePanel() {
     const a = document.createElement('a'); a.href = url; a.download = 'render-profile.json'; a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  return <aside aria-label="渲染性能火焰图" style={{position:'fixed',zIndex:1100,bottom:16,left:16,width:'min(760px, calc(100vw - 32px))',background:'#171d29',color:'#eef2f9',padding:16,borderRadius:10,boxShadow:'0 6px 30px #0005',fontSize:12}}>
+  return <aside aria-label={tr('渲染性能火焰图')} style={{position:'fixed',zIndex:1100,bottom:16,left:16,width:'min(760px, calc(100vw - 32px))',background:'#171d29',color:'#eef2f9',padding:16,borderRadius:10,boxShadow:'0 6px 30px #0005',fontSize:12}}>
     <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:10}}>
-      <strong style={{flex:1}}>渲染性能 · 阶段火焰图</strong>
-      <button onClick={() => { if (paused) { renderProfile.start(); setSelection(null) } else renderProfile.pause(); setPaused(!paused); setSamples(renderProfile.snapshot()) }}>{paused?'重新录制':'暂停'}</button>
-      <button onClick={exportTrace} disabled={!samples.length && !renderProfile.diagnostics().samples.length}>导出 JSON</button>
-      <button aria-label="关闭渲染性能火焰图" onClick={() => setOpen(false)}>关闭</button>
+      <strong style={{flex:1}}>{tr('渲染性能 · 阶段火焰图')}</strong>
+      <button onClick={() => { if (paused) { renderProfile.start(); setSelection(null) } else renderProfile.pause(); setPaused(!paused); setSamples(renderProfile.snapshot()) }}>{tr(paused?'重新录制':'暂停')}</button>
+      <button onClick={exportTrace} disabled={!samples.length && !renderProfile.diagnostics().samples.length}>{tr('导出 JSON')}</button>
+      <button aria-label={tr('关闭渲染性能火焰图')} onClick={() => setOpen(false)}>{tr('关闭')}</button>
     </div>
-    <p>⌘ / Ctrl ⇧ P · 最多保留 512 次结果。横宽表示阶段耗时，子层包含在父层内；不是调用栈采样或时间轴。</p>
-    <p>诊断日志记录缩放、DPR、请求与发布采样密度、缓存命中和错误分类；不记录文档内容、图片地址或原始错误文本。关闭面板即停止记录。</p>
-    <select aria-label="渲染样本" value={selection ?? ''} onChange={e=>setSelection(e.target.value===''?null:Number(e.target.value))} style={{width:'100%',marginBottom:10}}>
-      <option value="">跟随最新结果</option>
+    <p>{tr('⌘ / Ctrl ⇧ P · 最多保留 512 次结果。横宽表示阶段耗时，子层包含在父层内；不是调用栈采样或时间轴。')}</p>
+    <p>{tr('诊断日志记录缩放、DPR、请求与发布采样密度、缓存命中和错误分类；不记录文档内容、图片地址或原始错误文本。关闭面板即停止记录。')}</p>
+    <select aria-label={tr('渲染样本')} value={selection ?? ''} onChange={e=>setSelection(e.target.value===''?null:Number(e.target.value))} style={{width:'100%',marginBottom:10}}>
+      <option value="">{tr('跟随最新结果')}</option>
       {samples.map((s,i)=><option key={`${s.at}-${i}`} value={i}>{i+1} · {s.kind} · {s.total.toFixed(1)} ms</option>)}
     </select>
     {sample ? <>
-      <div>本次 {sample.kind}：{sample.total.toFixed(2)} ms · {sample.drawCalls ?? '—'} 次绘制 · {sample.passPixels?.toLocaleString() ?? '—'} pass 像素</div>
+      <div>{locale === 'en' ? 'This' : '本次'} {sample.kind}: {sample.total.toFixed(2)} ms · {sample.drawCalls ?? '—'} {locale === 'en' ? 'draws' : '次绘制'} · {sample.passPixels?.toLocaleString() ?? '—'} pass {locale === 'en' ? 'pixels' : '像素'}</div>
       {(sample.fieldUploadBytes!==undefined||sample.geometryUploadBytes!==undefined)&&<div>
-        参数上传 {sample.fieldUploadBytes===undefined?'—':`${(sample.fieldUploadBytes/1048576).toFixed(2)} MiB`} ·
-        几何上传 {sample.geometryUploadBytes===undefined?'—':`${(sample.geometryUploadBytes/1048576).toFixed(2)} MiB`}
+        {tr('参数上传')} {sample.fieldUploadBytes===undefined?'—':`${(sample.fieldUploadBytes/1048576).toFixed(2)} MiB`} ·
+        {tr('几何上传')} {sample.geometryUploadBytes===undefined?'—':`${(sample.geometryUploadBytes/1048576).toFixed(2)} MiB`}
       </div>}
       <div style={{display:'flex',height:32,marginTop:8}}>{bars.map((bar,i)=><div key={bar.name} title={`${bar.name}: ${bar.ms.toFixed(2)} ms`} style={{width:`${bar.ms/extent*100}%`,background:colors[i],color:'#17202b',overflow:'hidden',whiteSpace:'nowrap',padding:'7px 0',boxSizing:'border-box',borderRight:'1px solid #171d29'}}>{bar.name} {bar.ms.toFixed(1)}</div>)}</div>
       <div style={{display:'flex',height:30}}>{bars.map(bar=><div key={bar.name} style={{display:'flex',width:`${bar.ms/extent*100}%`}}>{bar.children?.map((child,i)=><div key={child.name} title={`${child.name}: ${child.ms.toFixed(2)} ms`} style={{width:`${child.ms/bar.ms*100}%`,background:colors[i],color:'#17202b',overflow:'hidden',whiteSpace:'nowrap',paddingTop:6,borderRight:'1px solid #171d29',boxSizing:'border-box'}}>{child.name} {child.ms.toFixed(1)}</div>)}</div>)}</div>
-      <p>{attributed > sample.total + 1 ? '阶段有并行重叠或累计子任务，阶段总和不能当作响应延迟。' : `其余排队、通信与准备：${Math.max(0,sample.total-attributed).toFixed(2)} ms。`}</p>
-    </> : <p>录制中。请缩放、平移或拖动对象。</p>}
+      <p>{attributed > sample.total + 1 ? tr('阶段有并行重叠或累计子任务，阶段总和不能当作响应延迟。') : tr(`其余排队、通信与准备：${Math.max(0,sample.total-attributed).toFixed(2)} ms。`)}</p>
+    </> : <p>{tr('录制中。请缩放、平移或拖动对象。')}</p>}
   </aside>
 }
