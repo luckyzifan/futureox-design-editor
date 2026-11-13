@@ -1179,6 +1179,32 @@ export class GpuRenderer {
       } else this.free.delete(key)
     }
   }
+  /** Positive pool stamps still ahead of `completedResourceEpoch` are queued
+   * reads. Missing stamps are not this proof. */
+  private freePoolReleasePending(texture: Texture) {
+    return this.ledger.poolReleasePending(this.poolReleaseEpoch.get(texture), this.driver.completedResourceEpoch)
+  }
+  /** Drop free textures this frame will not read. In-flight pool stamps stay
+   * until device completion; two large survivors of an opted-in trim stay too. */
+  private retireUnreferencedFreeTextures(trimLarge: boolean, upcomingLargeSizes?: ReadonlySet<string>) {
+    for (const [key, list] of this.free) {
+      let largeKept = 0
+      const retained = list.filter((texture) => {
+        if (this.freePoolReleasePending(texture)) return true
+        if (this.used.has(texture) && (!trimLarge || texture.bytes <= 8 * 1024 * 1024 ||
+          upcomingLargeSizes!.has(`${texture.width}:${texture.height}`) && largeKept++ < 2)) return true
+        this.driver.destroy(texture)
+        ;(this.free as SurfacePool<Texture>).removed?.(texture)
+        this.dischargeTexture(texture)
+        this.lastUsed.delete(texture)
+        return false
+      })
+      if (retained.length) {
+        if ((this.free as SurfacePool<Texture>).setOwned) (this.free as SurfacePool<Texture>).setOwned(key, retained)
+        else this.free.set(key, retained)
+      } else this.free.delete(key)
+    }
+  }
   /** Remove one texture from its free list and destroy it. Only call this for
    * textures whose GPU commands provably completed. */
   private destroyFree(texture: Texture) {
@@ -1236,10 +1262,9 @@ export class GpuRenderer {
   }
   /** Budget gate shared by every allocation site: returns whether `required`
    * bytes still do not fit after evicting provably completed resources.
-   * Coverage entries, pool textures and images untouched by this frame were
-   * last referenced before the previous frame completed, so destroying them
-   * cannot race queued commands. Callers keep throwing their explicit errors;
-   * nothing is silently downgraded. */
+   * A free texture whose pool stamp is still ahead of device completion stays
+   * charged: deferred presentation can leave that queue running. Callers keep
+   * throwing their explicit errors; nothing is silently downgraded. */
   private overBudget(required: number, width?: number, height?: number): boolean {
     this.lastBudgetFailure = undefined
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
@@ -1266,6 +1291,7 @@ export class GpuRenderer {
     stale.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
     for (const texture of stale) {
       if (this.workingBytes + required <= this.frameBudget) break
+      if (this.freePoolReleasePending(texture)) continue
       this.destroyFree(texture)
     }
     if (this.workingBytes + required <= this.frameBudget) return false
@@ -1273,11 +1299,11 @@ export class GpuRenderer {
     if (this.workingBytes + required > this.frameBudget) {
       this.staticImageBlurs.clear()
       this.retireDisplayMaterial()
-      // Only GPU-completed entries can reach the pool here. Borrowed or
-      // in-flight results retain their source/plane pins until their fence.
+      // Borrowed or in-flight results retain their source/plane pins until
+      // their fence. A pool stamp ahead of device completion is the same wait.
       for (const list of [...this.free.values()]) for (const texture of [...list]) {
         if (this.workingBytes + required <= this.frameBudget) break
-        if (!this.used.has(texture)) this.destroyFree(texture)
+        if (!this.used.has(texture) && !this.freePoolReleasePending(texture)) this.destroyFree(texture)
       }
       this.evictImages(this.workingBytes + required - this.frameBudget)
     }
@@ -8116,26 +8142,10 @@ export class GpuRenderer {
     const trimLarge=nativeDisplay&&scene.nativeInteraction&&import.meta.env.VITE_DESIGN_TRIM_LARGE_POOL==='1'
     const upcomingLargeSizes=trimLarge?new Set([scene.extent,scene.output,workingTarget,...Object.values(scene.nodes).map(n=>n.rect)]
       .filter((r):r is Rect=>!!r).map(r=>`${r.w}:${r.h}`)):undefined
-    // Reclaim sizes no longer used after a resize/zoom. The previous frame has
-    // completed; destroying textures while its command buffer is pending is unsafe.
+    // Reclaim sizes no longer used after a resize/zoom. A pool stamp ahead of
+    // device completion is still a queued read, including deferred presentation.
     this.reapCompletedFreeTextures()
-    for (const [key, list] of this.free) {
-      let largeKept=0
-      const retained = list.filter((t) => {
-        if (this.used.has(t)&&(!trimLarge||t.bytes<=8*1024*1024||
-          upcomingLargeSizes!.has(`${t.width}:${t.height}`)&&largeKept++<2)) return true
-        this.driver.destroy(t)
-        ;(this.free as SurfacePool<Texture>).removed?.(t)
-        this.dischargeTexture(t)
-        this.lastUsed.delete(t)
-        return false
-      })
-      if (retained.length) {
-        if((this.free as SurfacePool<Texture>).setOwned)(this.free as SurfacePool<Texture>).setOwned(key,retained)
-        else this.free.set(key,retained)
-      }
-      else this.free.delete(key)
-    }
+    this.retireUnreferencedFreeTextures(trimLarge, upcomingLargeSizes)
     this.used.clear()
     this.coverage.begin(gpuDiagnosticsEnabled())
     this.materialFields.begin()

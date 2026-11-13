@@ -42,6 +42,16 @@ test('completed free-pool bytes are counted apart from the high-water peak', () 
   expect(ledger.peak).toBe(128)
 })
 
+test('a positive pool stamp stays pending until that device epoch completes', () => {
+  const ledger = new ResourceLedger<Tex, Surf>()
+  expect(ledger.poolReleasePending(4, 3)).toBe(true)
+  expect(ledger.poolReleasePending(4, 4)).toBe(false)
+  expect(ledger.poolReleasePending(4, undefined)).toBe(true)
+  expect(ledger.poolReleasePending(4, Number.NaN)).toBe(true)
+  expect(ledger.poolReleasePending(undefined, 4)).toBe(false)
+  expect(ledger.poolReleasePending(0, 4)).toBe(false)
+})
+
 test('device loss forgets owners without pretending the bytes were destroyed', () => {
   const ledger = new ResourceLedger<Tex, Surf>()
   const texture = { id: 3, bytes: 8 }

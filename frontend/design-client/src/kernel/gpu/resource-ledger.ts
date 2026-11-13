@@ -170,6 +170,15 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
     return input.poolEpoch <= completed ? 'reclaimable' : 'retired-pending-completion'
   }
 
+  /** A positive pool stamp is still ahead of device completion. A missing
+   * completion proof keeps that stamp pending. Epoch 0 and a missing stamp
+   * are not this proof. */
+  poolReleasePending(poolEpoch: number | undefined, completedEpoch: number | undefined) {
+    if (!Number.isSafeInteger(poolEpoch) || poolEpoch! <= 0) return false
+    if (!Number.isSafeInteger(completedEpoch) || completedEpoch! < 0) return true
+    return poolEpoch! > completedEpoch!
+  }
+
   noteCompletion(completed: number | undefined) {
     this.fold(completed)
     if (Number.isSafeInteger(completed) && completed! >= 0) this.completionSample = this.sample()
