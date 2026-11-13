@@ -6457,15 +6457,27 @@ export class GpuRenderer {
       } catch(error){this.release(...outputs);throw error}
       finally{this.release(resolved,a,b)}
     }
+    // Later shadows in one chain sample the silhouette from before the first
+    // shadow. They stack under or over that result; they do not blur it.
+    // A blur, colour control, noise or texture starts a new chain. Glass and
+    // background blur do not, matching the native painter.
+    let shadowBasis: Surface[] | undefined
+    const sharesShadowBasis = n.effects.filter(e => e.visible && (e.kind === 'shadow' || e.kind === 'inner-shadow')).length >= 2
+    const releaseShadowBasis = () => {
+      const held = shadowBasis
+      shadowBasis = undefined
+      if (held) this.release(...held)
+    }
+    try {
     for (const fx of n.effects) {
       await this.reclaimScratch()
       if (!fx.visible || fx.kind === 'background-blur' || fx.kind === 'glass') continue
-      if (fx.kind === 'blur' && fx.radius === 0) continue
+      if (fx.kind === 'blur' && fx.radius === 0) { releaseShadowBasis(); continue }
       if (
         fx.kind === 'texture' &&
         (fx.texture ? fx.radius === 0 : fx.amount === 0 || fx.opacity === 0)
-      )
-        continue
+      ) { releaseShadowBasis(); continue }
+      if (fx.kind !== 'shadow' && fx.kind !== 'inner-shadow') releaseShadowBasis()
       if (fx.kind === 'color-controls') {
         const shared = new Map<Texture, Surface>()
         planes = planes.map(plane => {
@@ -6513,9 +6525,11 @@ export class GpuRenderer {
           coverage.owned = true
         }
       } else if (fx.kind === 'shadow' || fx.kind === 'inner-shadow') {
+        if (sharesShadowBasis && !shadowBasis && planes.length) shadowBasis = planes.map(plane => this.retain(plane))
+        const basisPlanes = shadowBasis?.length ? shadowBasis : planes
         const scalarAlpha = !!(this.optimized && this.driver.managed && this.driver.scalarAlphaFilter &&
           this.scene.integratedBlur && !this.displayFilterActive(fx.radius * scale(n.matrix)) && fx.spread === 0)
-        const resolved = resolvedFirstBlur || this.run(scalarAlpha ? 49 : 23, n.rect, planes, undefined, 15, undefined, scalarAlpha)
+        const resolved = resolvedFirstBlur || this.run(scalarAlpha ? 49 : 23, n.rect, basisPlanes, undefined, 15, undefined, scalarAlpha)
         resolvedFirstBlur = undefined
         const inner = fx.kind === 'inner-shadow'
         const pointwise =
@@ -6539,16 +6553,21 @@ export class GpuRenderer {
         if (alpha !== blurred) this.release(alpha)
         const outputs: Surface[] = [],
           shared = new Map<Texture, Surface>()
-        for (const plane of planes) {
+        for (let index = 0; index < planes.length; index++) {
+          const plane = planes[index]
           let next = shared.get(plane.texture)
           if (!next) {
             await this.reclaimScratch()
-            const alphaSource = pointwise ? plane : blurred
-            if (this.optimized && this.driver.managed && !this.driver.displayMath && this.driver.exactShadowOver &&
+            const shape = shadowBasis?.[index] ?? plane
+            const alphaSource = pointwise ? shape : blurred
+            // Inner coverage reads source alpha. After the first inner shadow
+            // that alpha lives on the retained silhouette, not the composite.
+            const separateShape = inner && shape.texture !== plane.texture
+            if (!separateShape && this.optimized && this.driver.managed && !this.driver.displayMath && this.driver.exactShadowOver &&
                 exactBlendLattice([n.rect, plane.rect, alphaSource.rect])) {
               next = this.shadow(plane, alphaSource, n, fx, true, boundedCorners)
             } else {
-              const shadow = this.shadow(plane, alphaSource, n, fx)
+              const shadow = this.shadow(separateShape ? shape : plane, alphaSource, n, fx)
               next = inner ? this.compose(shadow, plane) : this.compose(plane, shadow)
               this.release(shadow)
             }
@@ -6597,6 +6616,7 @@ export class GpuRenderer {
       } else throw new Error(`不支持的采样效果 ${fx.kind}`)
     }
     return planes
+    } finally { releaseShadowBasis() }
   }
   private reapRetiredKernels() {
     const completed = this.driver.completedResourceEpoch ?? -1
@@ -7598,19 +7618,31 @@ export class GpuRenderer {
     const plan = n.analyticRegion!
     const effects = n.effects.filter(fx => fx.visible && fx.kind !== 'background-blur')
     if (effects.length !== plan.effects.length) throw Error('Invalid analytic filter stages')
+    let shadowBasis: Surface | undefined
+    const sharesShadowBasis = effects.filter(fx => fx.kind === 'shadow' || fx.kind === 'inner-shadow').length >= 2
+    const releaseShadowBasis = () => {
+      const held = shadowBasis
+      shadowBasis = undefined
+      if (held) this.release(held)
+    }
+    try {
     for (let index = 0; index < effects.length; index++) {
       const fx = effects[index], { output, filter } = plan.effects[index]
-      const filtered = await this.filterBoxRegion(layer, filter, fx.kind)
-      if (fx.kind === 'shadow' || fx.kind === 'inner-shadow') {
+      const shadowKind = fx.kind === 'shadow' || fx.kind === 'inner-shadow'
+      if (!shadowKind) releaseShadowBasis()
+      else if (sharesShadowBasis && !shadowBasis) shadowBasis = this.retain(layer)
+      const silhouette = shadowKind ? shadowBasis ?? layer : layer
+      const filtered = await this.filterBoxRegion(silhouette, filter, fx.kind)
+      if (shadowKind) {
         const inner = fx.kind === 'inner-shadow'
         await this.reclaimForSurface(output, 2)
-        const shadow = this.run(6, output, [layer, filtered], u => {
+        const shadow = this.run(6, output, [inner ? silhouette : layer, filtered], u => {
           u.set([0, ...this.color(fx.color)], 28)
           u[32] = fx.opacity * this.alpha(fx.color)
           u.set([0, n.matrix[0] * fx.x + n.matrix[2] * fx.y,
             n.matrix[1] * fx.x + n.matrix[3] * fx.y, inner ? 1 : 0], 36)
         })
-        if (filtered !== layer) this.release(filtered)
+        if (filtered !== silhouette) this.release(filtered)
         const result = inner ? this.compose(shadow, layer, 'normal', 1, undefined, output)
           : this.compose(layer, shadow, 'normal', 1, undefined, output)
         this.release(layer, shadow)
@@ -7625,6 +7657,7 @@ export class GpuRenderer {
     const result = this.copy(layer, plan.output)
     this.release(layer)
     return result
+    } finally { releaseShadowBasis() }
   }
 
   private async node(id: string, backdrop: Surface, skipEffects = false): Promise<Surface | undefined> {
@@ -7749,14 +7782,22 @@ export class GpuRenderer {
     }
     if (n.analyticRegion && !skipEffects) return this.applyAnalyticEffects(n, layer)
     const sc = scale(n.matrix)
+    let shadowBasis: Surface | undefined
+    const sharesShadowBasis = n.effects.filter(e => e.visible && (e.kind === 'shadow' || e.kind === 'inner-shadow')).length >= 2
+    const releaseShadowBasis = () => {
+      const held = shadowBasis
+      shadowBasis = undefined
+      if (held) this.release(held)
+    }
+    try {
     for (const fx of n.effects) {
-      if (
-        !fx.visible ||
-        skipEffects ||
-        (fx.kind === 'texture' &&
-          (fx.texture ? fx.radius === 0 : fx.amount === 0 || fx.opacity === 0))
-      )
+      if (!fx.visible || skipEffects) continue
+      if (fx.kind === 'texture' && (fx.texture ? fx.radius === 0 : fx.amount === 0 || fx.opacity === 0)) {
+        releaseShadowBasis()
         continue
+      }
+      if (fx.kind !== 'shadow' && fx.kind !== 'inner-shadow' && fx.kind !== 'glass' && fx.kind !== 'background-blur')
+        releaseShadowBasis()
       if (fx.kind === 'color-controls') {
         const next = this.colorControls(layer, fx.colorControls)
         if (next !== layer) this.release(layer)
@@ -7772,16 +7813,18 @@ export class GpuRenderer {
         if(next!==layer)this.release(layer)
         layer=next
       } else if (fx.kind === 'shadow' || fx.kind === 'inner-shadow') {
-        let alpha = layer
+        if (sharesShadowBasis && !shadowBasis) shadowBasis = this.retain(layer)
+        const silhouette = shadowBasis ?? layer
         const inner = fx.kind === 'inner-shadow'
+        let alpha = silhouette
         if (Math.abs(fx.spread * sc) >= 0.5 && !this.sourceShadowField(n,fx))
           alpha = this.morphology(
-            layer,
+            silhouette,
             Math.round(Math.abs(fx.spread * sc)),
             inner ? fx.spread < 0 : fx.spread > 0,
           )
         const blur = (pendingSurfaceAdmission = this.foregroundBlur(alpha, n, fx, fx.radius * sc / 2, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)
-        const shadow = this.run(6, n.rect, [layer, blur], (u) => {
+        const shadow = this.run(6, n.rect, [inner ? silhouette : layer, blur], (u) => {
           u.set([0, ...this.color(fx.color)], 28)
           u[32] = fx.opacity * this.alpha(fx.color)
           u.set(
@@ -7795,7 +7838,10 @@ export class GpuRenderer {
           )
         })
         const next = inner ? this.compose(shadow, layer) : this.compose(layer, shadow)
-        this.release(layer, alpha, blur, shadow)
+        const retiring: Surface[] = [layer, shadow]
+        if (alpha !== shadowBasis) retiring.push(alpha)
+        if (blur !== alpha && blur !== shadowBasis) retiring.push(blur)
+        this.release(...retiring)
         layer = next
       } else if (fx.kind === 'noise' || fx.kind === 'texture') {
         const addresses = this.textureGrid(n, fx)
@@ -7821,6 +7867,7 @@ export class GpuRenderer {
       }
     }
     return layer
+    } finally { releaseShadowBasis() }
   }
   async abortFrameAndReleaseFilterScratch(reason: 'admission' | 'cancel' = 'admission') {
     const abort = this.driver.abortFrameAndReleaseFilterScratch
