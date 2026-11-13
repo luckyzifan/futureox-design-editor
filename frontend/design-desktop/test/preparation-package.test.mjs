@@ -18,6 +18,7 @@ test('desktop package staging includes the preparation worker and its frame deco
   await cp(new URL('../scripts/mcp-bundle.mjs',import.meta.url),path.join(root,'scripts/mcp-bundle.mjs'))
   await cp(new URL('../scripts/release-package-resources.mjs',import.meta.url),path.join(root,'scripts/release-package-resources.mjs'))
   await cp(new URL('../../design-mcp/src',import.meta.url),path.join(temporary,'frontend/design-mcp/src'),{recursive:true})
+  await cp(new URL('../../../LICENSE',import.meta.url),path.join(temporary,'LICENSE'))
   await mkdir(path.join(temporary,'docs'),{recursive:true})
   await cp(new URL('../../../docs/ELECTRON_LOCAL_MCP.zh-CN.md',import.meta.url),path.join(temporary,'docs/ELECTRON_LOCAL_MCP.zh-CN.md'))
   await cp(new URL('../package.json',import.meta.url),path.join(root,'package.json'))
@@ -32,6 +33,8 @@ test('desktop package staging includes the preparation worker and its frame deco
   const env={...process.env};delete env.ELECTRON_ZIP_DIR
   const result=spawnSync(process.execPath,[path.join(root,'scripts/package.mjs')],{encoding:'utf8',env,timeout:10000})
   assert.equal(result.status,0,result.stderr||result.error?.message)
+  assert.deepEqual(await readFile(path.join(root,'dist/project-license/LICENSE')),
+   await readFile(new URL('../../../LICENSE',import.meta.url)))
   assert.deepEqual(await readFile(path.join(root,'dist/package-app/assets',icon)),
    await readFile(new URL('../assets/'+icon,import.meta.url)))
   const staged=path.join(root,'dist/package-app/src')
