@@ -584,6 +584,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "freetype"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efc8599a3078adf8edeb86c71e9f8fa7d88af5ca31e806a867756081f90f5d83"
+dependencies = [
+ "freetype-sys",
+ "libc",
+]
+
+[[package]]
+name = "freetype-sys"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66ee28c39a43d89fbed8b4798fb4ba56722cfd2b5af81f9326c27614ba88ecd5"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "fs2"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -666,6 +687,7 @@ dependencies = [
  "sha1",
  "sha2 0.11.1",
  "sonic-rs",
+ "splash-glyph",
  "thin-vec",
  "tiff 0.9.1",
  "tiny-skia",
@@ -2294,6 +2316,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "splash-glyph"
+version = "0.1.0"
+dependencies = [
+ "freetype",
 ]
 
 [[package]]

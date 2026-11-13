@@ -224,7 +224,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         );
         return Ok(Rect::default());
     }
-    let fill = fill_path.flatten_for_fill(
+    let mut fill = fill_path.flatten_for_fill(
         matrix,
         if compatible {
             0.0001220703125
@@ -233,6 +233,13 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         },
         guard,
     )?;
+    // Analytic Sketch text uses a FreeType mask. Figma profiles keep the
+    // outlines; WASM has no FreeType and also keeps them.
+    if !compatible {
+        if let Some(mask) = crate::font_splash::sketch_device_mask(n, fonts, matrix) {
+            fill = mask;
+        }
+    }
     let mut bound = Rect::from_points(fill.iter().flat_map(|p| p.points.iter().copied()));
     let fill_program_bounds=bound.expand(1);
     let mut strokes = Vec::new();

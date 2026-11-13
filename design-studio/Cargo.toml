@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend", "crates/design-agent"]
+members = ["crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend", "crates/design-agent", "crates/splash-glyph"]
 
 [workspace.package]
 edition = "2024"

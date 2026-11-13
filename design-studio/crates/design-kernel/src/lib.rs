@@ -51,6 +51,18 @@ pub mod ruler_units;
 pub mod svg_export;
 pub mod fixed_gradient;
 pub mod font;
+#[cfg(not(target_arch = "wasm32"))]
+mod font_splash;
+#[cfg(target_arch = "wasm32")]
+mod font_splash {
+    pub(crate) fn sketch_device_mask(
+        _node: &crate::scene::Node,
+        _fonts: &crate::font::Fonts,
+        _matrix: crate::math::Transform,
+    ) -> Option<Vec<crate::path::Contour>> {
+        None
+    }
+}
 pub mod abeezee_font;
 mod font_glyph_cache;
 mod text_path_cache;

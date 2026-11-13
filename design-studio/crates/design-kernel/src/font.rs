@@ -424,6 +424,12 @@ pub struct Glyph {
     #[serde(skip)]
     vars: Vec<rustybuzz::Variation>,
 }
+
+impl Glyph {
+    pub(crate) fn has_variations(&self) -> bool {
+        !self.vars.is_empty()
+    }
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextLine {
@@ -692,6 +698,16 @@ impl Fonts {
     }
     pub fn glyph_origin_quantization(&self) -> bool {
         self.quantize_glyph_origins
+    }
+    pub(crate) fn owned_face_bytes(&self, font_id: &str) -> Option<(Arc<Vec<u8>>, u32, [u8; 32])> {
+        if font_id.is_empty() || font_id == "default" {
+            if self.data.is_empty() {
+                return None;
+            }
+            return Some((Arc::clone(&self.data), 0, self.data_digest));
+        }
+        let data = self.named.get(font_id)?;
+        Some((Arc::clone(&data.bytes), data.index, data.digest))
     }
     pub(crate) fn source_stamp(&self) -> FontSourceStamp {
         FontSourceStamp { default:self.data_digest, quantized:self.quantize_glyph_origins,

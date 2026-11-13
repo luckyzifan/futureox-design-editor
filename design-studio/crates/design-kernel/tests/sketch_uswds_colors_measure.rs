@@ -448,7 +448,10 @@ fn fifty_v_crop_moves_closer_to_the_sketch_preview_without_raising_the_threshold
             "MEASURE pixels profile={name} over0={over0} over1={over1} over2={over2} max={max} darkest={darkest:?} main_over0={previous}"
         );
         let expected = match name {
-            "analytic" => 130,
+            // Analytic now paints the FreeType mask. Figma profiles keep the
+            // outlines, so that count stays on the previous analytic-adjacent
+            // rasterizer.
+            "analytic" => 121,
             "figma" => 127,
             _ => unreachable!(),
         };
@@ -695,13 +698,17 @@ fn unspecified_line_box_crops_move_under_the_misplaced_column() {
     println!(
         "MEASURE auto old over0={old0} over16={old16} max={old_max} column over0={col0} over16={col16} max={col_max} changed over0={chg0} over16={chg16} max={chg_max}"
     );
-    // Unrounded analytic coverage of the same outlines was over16 103/280
-    // (max 149) for "Old" and 908/2240 (max 255) for the column. The
-    // screening line is channel delta > 16. Those locks are this engine
+    // Unrounded analytic coverage was over16 103/280 (max 149) for "Old"
+    // and 908/2240 (max 255) for the column. Line-box rounding left
+    // 22/285/402. Splash's FreeType mask brings every one of those under
+    // the channel-delta > 16 screening line. The locks are this engine
     // against poppler 24.02.0 at 72 dpi, not a raised threshold.
-    assert_eq!((old0, old16, old_max), (117, 22, 45), "Old crop");
-    assert_eq!((col0, col16, col_max), (862, 285, 64), "column crop");
-    assert_eq!((chg0, chg16, chg_max), (1242, 402, 62), "changed crop");
+    assert_eq!((old0, old16, old_max), (108, 0, 13), "Old crop");
+    assert_eq!((col0, col16, col_max), (827, 0, 16), "column crop");
+    assert_eq!((chg0, chg16, chg_max), (1173, 0, 13), "changed crop");
+    assert_eq!(old16, 0, "Old still exceeds the screening line");
+    assert_eq!(col16, 0, "column still exceeds the screening line");
+    assert_eq!(chg16, 0, "changed still exceeds the screening line");
 }
 
 const SEMIBOLD: &[u8] = include_bytes!("PublicSans-SemiBold.otf");
@@ -963,9 +970,14 @@ fn poppler_preview_pixel_sweep() {
         hot.is_empty(),
         "a preview still misses by more than 100: {hot:?}"
     );
+    assert!(colors_pixels > 0, "colors-page text neighborhood was empty");
+    assert!(
+        colors_over16 * 100 < colors_pixels,
+        "colors-page text neighborhood still exceeds the 1% screening line: {colors_over16}/{colors_pixels}"
+    );
     assert!(
         colors_over16 * 100 < artboard,
-        "colors-page text still exceeds the 1% screening line: {colors_over16}/{artboard}"
+        "colors-page text still exceeds the 1% artboard screening line: {colors_over16}/{artboard}"
     );
 }
 
