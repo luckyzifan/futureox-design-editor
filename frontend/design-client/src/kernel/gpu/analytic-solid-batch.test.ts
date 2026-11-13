@@ -99,7 +99,7 @@ function harness(perGroup=8,groups=4){
 function stroked(id:string,x:number,align:'center'|'inside'|'outside'='center'){
   const node=leaf(id,x)
   node.rect={x,y:0,w:4,h:4}
-  node.strokes=[{align,path:{count:3,area:{first:0,count:4},rect:{x,y:0,w:4,h:4}},
+  node.strokes=[{align,path:{first:0,count:3,rule:'nonzero',area:{first:0,count:4},rect:{x,y:0,w:4,h:4}},
     paint:{kind:'solid',color:'#112233',opacity:1,visible:true,blend:'normal',stops:[]}}] as GpuNode['strokes']
   return node
 }
