@@ -1,5 +1,5 @@
 import { useLayoutEffect, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
-import { interfacePreference, interfaceText, panelWidth, useInterfacePreferences } from './interface-preference'
+import { FIGMA_LAYERS_WIDTH, SKETCH_LAYERS_WIDTH, interfacePreference, interfaceText, panelWidth, useInterfacePreferences } from './interface-preference'
 
 export type ShellDensity = 'wide' | 'desk' | 'narrow'
 /** Shared by the browser and Electron. 900 and 1180 match the CSS media queries. */
@@ -57,7 +57,7 @@ export function useAdaptivePanels() {
     else interfacePreference.set(side === 'left' ? { leftOpen: next } : { rightOpen: next })
   }
   return { preferences, density, leftOpen, rightOpen, setLeftOpen: (value: boolean | ((current: boolean) => boolean)) => setter('left', value), setRightOpen: (value: boolean | ((current: boolean) => boolean)) => setter('right', value),
-    style: { '--workspace-layers-width': `min(${preferences.leftWidth}px, var(--workspace-panel-cap, max(260px, 26vw)))`, '--workspace-inspector-width': `min(${preferences.rightWidth}px, var(--workspace-panel-cap, max(260px, 26vw)))` } as CSSProperties }
+    style: { '--workspace-layers-width': `min(${preferences.leftWidths[preferences.uiMode]}px, var(--workspace-panel-cap, max(260px, 26vw)))`, '--workspace-inspector-width': `min(${preferences.rightWidth}px, var(--workspace-panel-cap, max(260px, 26vw)))` } as CSSProperties }
 }
 export function PanelResizeHandle({ side, blocked = false, canResize = () => true }: { side: 'left' | 'right'; blocked?: boolean; canResize?: () => boolean }) {
   const preferences = useInterfacePreferences(), text = interfaceText[preferences.locale], width = side === 'left' ? preferences.leftWidth : preferences.rightWidth
@@ -103,7 +103,7 @@ export function InterfaceSettings() {
     <p className="settings-help">{text.motionHelp}</p>
     <label className="settings-toggle"><input type="checkbox" checked={preferences.rememberViewport} onChange={event => interfacePreference.set({ rememberViewport: event.target.checked })} /><span>{text.rememberViewport}</span></label>
     <p className="settings-help">{text.rememberViewportHelp}</p>
-    <button type="button" onClick={() => interfacePreference.set({ leftWidth: 248, rightWidth: 280, leftOpen: true, rightOpen: true })}>{text.reset}</button>
+    <button type="button" onClick={() => interfacePreference.set({ leftWidths: { figma: FIGMA_LAYERS_WIDTH, sketch: SKETCH_LAYERS_WIDTH }, rightWidth: 280, leftOpen: true, rightOpen: true })}>{text.reset}</button>
     {!persisted && <p role="status">{text.temporary}</p>}
   </div>
 }

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, interfacePreference } from './interface-preference'
+import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_LAYERS_WIDTH, INTERFACE_PREFERENCE_KEY, interfacePreference, LEGACY_SHARED_LAYERS_WIDTH, SKETCH_LAYERS_WIDTH } from './interface-preference'
 import { applyInterfaceLayout, interfaceLayoutFromShortcut, FIGMA_LAYOUT_COMBO, SKETCH_LAYOUT_COMBO } from './interface-layout'
 import { shortcutPreference } from './shortcut-preference'
 import { shortcutBindings } from './shortcut-profiles'
@@ -17,7 +17,9 @@ test('ui mode is remembered and unknown values stay on Figma', () => {
   const memory = createInterfacePreference(() => storage)
   expect(memory.getSnapshot().uiMode).toBe('figma')
   expect(memory.set({ uiMode: 'sketch' })).toBe(true)
-  expect(createInterfacePreference(() => storage).getSnapshot().uiMode).toBe('sketch')
+  expect(createInterfacePreference(() => storage).getSnapshot()).toMatchObject({ uiMode: 'sketch', leftWidth: SKETCH_LAYERS_WIDTH, rightWidth: 280 })
+  memory.set({ uiMode: 'figma' })
+  expect(createInterfacePreference(() => storage).getSnapshot()).toMatchObject({ uiMode: 'figma', leftWidth: FIGMA_LAYERS_WIDTH })
   const bogus = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ uiMode: 'photoshop' }), setItem() {} }))
   expect(bogus.getSnapshot().uiMode).toBe('figma')
   expect(DEFAULT_INTERFACE_PREFERENCES.uiMode).toBe('figma')
@@ -35,17 +37,45 @@ test('layout chords switch the shell and the matching editor shortcut profile', 
   expect(interfaceLayoutFromShortcut({ key: 'ƒ', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
   expect(interfaceLayoutFromShortcut({ key: '©', code: 'KeyG', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
   expect(interfaceLayoutFromShortcut({ key: 'Ï', code: 'KeyF', metaKey: true, ctrlKey: false, altKey: true, shiftKey: true })).toBeNull()
+  interfacePreference.reset()
   applyInterfaceLayout('sketch')
   expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(SKETCH_LAYERS_WIDTH)
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(280)
   expect(shortcutPreference.getSnapshot()).toBe('sketch-like')
   applyInterfaceLayout('figma')
   expect(interfacePreference.getSnapshot().uiMode).toBe('figma')
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(FIGMA_LAYERS_WIDTH)
+  expect(interfacePreference.getSnapshot().leftWidths).toEqual({ figma: FIGMA_LAYERS_WIDTH, sketch: SKETCH_LAYERS_WIDTH })
   expect(shortcutPreference.getSnapshot()).toBe('figma-like')
   for (const profile of ['figma-like', 'sketch-like'] as const) {
     const combos = shortcutBindings({ profile, platform: 'mac', desktop: true }).map(binding => binding.combo)
     expect(combos).not.toContain(FIGMA_LAYOUT_COMBO)
     expect(combos).not.toContain(SKETCH_LAYOUT_COMBO)
   }
+})
+
+test('each layout keeps its own pages and layers width, and the old shared 248 migrates', () => {
+  expect(FIGMA_LAYERS_WIDTH).toBe(240)
+  expect(SKETCH_LAYERS_WIDTH).toBe(230)
+  expect(LEGACY_SHARED_LAYERS_WIDTH).toBe(248)
+  const storage = memoryStorage()
+  storage.setItem(INTERFACE_PREFERENCE_KEY, JSON.stringify({ leftWidth: LEGACY_SHARED_LAYERS_WIDTH, rightWidth: 280, uiMode: 'sketch' }))
+  const migrated = createInterfacePreference(() => storage)
+  expect(migrated.getSnapshot()).toMatchObject({ uiMode: 'sketch', leftWidth: 230, rightWidth: 280, leftWidths: { figma: 240, sketch: 230 } })
+  const custom = memoryStorage()
+  custom.setItem(INTERFACE_PREFERENCE_KEY, JSON.stringify({ leftWidth: 333, uiMode: 'figma' }))
+  const kept = createInterfacePreference(() => custom)
+  expect(kept.getSnapshot().leftWidths).toEqual({ figma: 333, sketch: 333 })
+  expect(kept.set({ leftWidth: 360 })).toBe(true)
+  expect(kept.getSnapshot().leftWidth).toBe(360)
+  kept.set({ uiMode: 'sketch' })
+  expect(kept.getSnapshot().leftWidth).toBe(333)
+  expect(kept.getSnapshot().rightWidth).toBe(280)
+  kept.set({ leftWidth: 300 })
+  kept.set({ uiMode: 'figma' })
+  expect(kept.getSnapshot().leftWidth).toBe(360)
+  expect(createInterfacePreference(() => custom).getSnapshot().leftWidths).toEqual({ figma: 360, sketch: 300 })
 })
 
 test('opaque srgb page background displays as hex', () => {
