@@ -23,10 +23,11 @@ test('only Figma workspace drops the rail control that repeats the header librar
   expect(libraryRailVisible('sketch', 'web')).toBe(true)
 })
 
-test('the shell keeps the header library entry at the narrow width that hides the plain header label, and Sketch still hides the rail', () => {
+test('the shell keeps the header library entry at the narrow width that hides the plain header label, and neither layout shows the icon rail', () => {
   const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
   expect(css).toContain('.editor-header .document-location, .editor-header .document-title > b, .editor-header .draft-badge { display: none; }')
   expect(css).toContain('@media (max-width: 1250px) {\n  .editor-shell .document-title .document-location { display: block; }\n}')
+  expect(css).toContain('.editor-shell .workspace-rail { display: none; }')
   expect(css).toContain('.editor-shell[data-ui-mode="sketch"] .workspace-rail { display: none; }')
   expect(css).toContain('.editor-shell .document-title .document-location:hover')
 })

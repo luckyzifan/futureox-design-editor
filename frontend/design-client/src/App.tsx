@@ -1127,13 +1127,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           openSettings()
         }} />}
       <header className="editor-header">
-        <button ref={fileMenuTrigger} className="brand" aria-label={panelText.fileMenu} aria-expanded={menu} onClick={() => setMenu(!menu)}>
-          <img className="brand-mark" src={webPath('/branding/futureox-desgin.svg')} width="28" height="28" alt="" aria-hidden="true" />
-          <strong>Futureox Design</strong>
-          <ChevronDown size={13} />
-        </button>
         <span className="header-divider" />
         <div className="document-title">
+          <button ref={fileMenuTrigger} className="brand" aria-label={panelText.fileMenu} aria-expanded={menu} onClick={() => setMenu(!menu)}>
+            <img className="brand-mark" src={webPath('/branding/futureox-desgin.svg')} width="28" height="28" alt="" aria-hidden="true" />
+            <strong>Futureox Design</strong>
+            <ChevronDown size={13} />
+          </button>
           <button type="button" className="document-location" title={desktopSession?.supportsWorkspace ? menuText.openLibrary : undefined}
             aria-haspopup={desktopSession?.supportsWorkspace ? 'dialog' : undefined} onClick={openPersistentLibrary}>{desktopSession ? menuText.localDesign : menuText.myDesigns}</button>
           <b>/</b>
