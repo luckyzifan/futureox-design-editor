@@ -137,13 +137,11 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
                 .all(|(_, pixels, max)| *pixels == 0 && *max == 0),
         "linear-gradient {linear:?}"
     );
-    // Digest of "directory/id differentPixels maxChannelError" for every other
-    // strict figma CPU reference. Current main measured
-    // c8309d141af886d8de25c0765ec0ce81d673010905c3210186fa1f8ae5e62a01, which
-    // already differed from the previously checked-in digest. Against that
-    // measurement only the two shadow rows moved, from 668/2 to 429/1.
+    // The paired frozen reference comparison moved two shadow rows and four
+    // half-pixel layer-blur rows closer to the original PNGs. The combined
+    // glass-full fixture now uses its frozen readback and adds a zero-diff row.
     assert_eq!(
-        others_sha, "6446206c32635bb304f44c43197c616b185371f8bd51825e0465e1f321d0e4ee",
+        others_sha, "cfd15c0e19d953dfd81e95fca8e5e596b21c0c3acdd989a99d0886778aba06e0",
         "other frozen figma references moved"
     );
 }
