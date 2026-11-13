@@ -1,7 +1,8 @@
-//! Issue #81. Palette examples is not in this tree; these checks use the
-//! fixed bundled ABeeZee-Regular file and the face's own hmtx / vertical
-//! metrics as the reference. They do not treat a family-name match as
-//! wrap agreement.
+//! Issue #81. Palette examples is not in this tree. These checks pin the
+//! bundled ABeeZee-Regular and Noto Sans SC files. Word widths come from
+//! those files' hmtx and GPOS, not from a box derived only after the wrapper
+//! has already measured itself. A breaking space that does not fit must not
+//! drop the word already on the line.
 use futureox_design_kernel::{font::Fonts, interop, layout, scene::Document};
 use serde_json::json;
 use std::io::{Cursor, Write};
@@ -18,6 +19,26 @@ fn fonts() -> Fonts {
     let mut fonts = Fonts::new();
     fonts.load(&abeezee_bytes()).unwrap();
     fonts
+}
+
+fn noto_bytes() -> Vec<u8> {
+    std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+    ))
+    .unwrap()
+}
+
+fn noto_fonts() -> Fonts {
+    let mut fonts = Fonts::new();
+    fonts.load(&noto_bytes()).unwrap();
+    fonts
+}
+
+/// Breaking spaces hang. No-break spaces do not. Kept aligned with
+/// `overflow_hangs` in the kernel.
+fn hangs(ch: char) -> bool {
+    !matches!(ch, '\u{00A0}' | '\u{202F}' | '\u{FEFF}') && ch.is_whitespace()
 }
 
 fn text_node(
@@ -105,7 +126,7 @@ fn reference_word_breaks(fonts: &Fonts, text: &str, width: f64) -> Vec<(usize, u
         let mut end = units[index].1;
         while index < units.len() {
             let (_, next, ch, advance) = units[index];
-            if ch == ' ' {
+            if hangs(ch) {
                 pending += advance;
                 end = next;
                 index += 1;
@@ -122,7 +143,7 @@ fn reference_word_breaks(fonts: &Fonts, text: &str, width: f64) -> Vec<(usize, u
             end = next;
             index += 1;
         }
-        while index < units.len() && units[index].2 == ' ' {
+        while index < units.len() && hangs(units[index].2) {
             end = units[index].1;
             index += 1;
         }
@@ -156,6 +177,19 @@ fn fixed_abeezee_advance_matches_hmtx_and_tracking_is_points() {
         "shaped advance {glyph} differs from hmtx {tables}"
     );
     let plain = unwrapped_width(&fonts, "Palette");
+    // hmtx sum of Palette is 3426 units. GPOS format-1 pairs Pa/le/te are
+    // -15/-15/-20, so the kerned width is 3376 units at 28 px. Both numbers
+    // are the font file, not the wrapper's previous output.
+    let table_word = hmtx_width("Palette", 28.);
+    let kerned_word = 3376.0 * 28.0 / 1000.0;
+    assert!(
+        (table_word - 3426.0 * 28.0 / 1000.0).abs() < 1e-9,
+        "hmtx Palette {table_word}"
+    );
+    assert!(
+        (plain - kerned_word).abs() < 1e-6,
+        "shaped Palette {plain} is not the font's kerned width {kerned_word} (hmtx {table_word})"
+    );
     let mut tracked = text_node("Palette", 10000., 4., false);
     tracked.text_style.as_mut().unwrap().wrap = false;
     let tracked_width = fonts.node_layout(&tracked, None).unwrap().width;
@@ -173,6 +207,13 @@ fn fixed_abeezee_title_stays_three_lines_when_the_following_space_overflows() {
     let fonts = fonts();
     let text = title();
     let width = fitted_box(&fonts);
+    // Two kerned words plus the space between them, plus a quarter of the
+    // following space. 7127 font units at 28 px is 199.556.
+    let table_width = 7127.0 * 28.0 / 1000.0;
+    assert!(
+        (width - table_width).abs() < 1e-6,
+        "fitted box {width} drifted from the font-table width {table_width}"
+    );
     let reference = reference_word_breaks(&fonts, &text, width);
     assert_eq!(
         reference.len(),
@@ -262,6 +303,142 @@ fn edit_and_reopen_keep_the_three_line_title_and_frame() {
     assert_eq!(imported_node.text, text);
     assert!(imported_node.text_style.as_ref().unwrap().line_height_auto);
     assert_eq!(line_spans(&fonts, imported_node), before);
+}
+
+/// The old rewind. A separator that does not fit is not consumed, so the last
+/// legal break is still the previous separator. The word between them drops
+/// onto the next line.
+fn rewind_breaks(fonts: &Fonts, text: &str, width: f64) -> Vec<(usize, usize)> {
+    let mut flat = text_node(text, 10000., 0., false);
+    flat.text_style.as_mut().unwrap().wrap = false;
+    let layout = fonts.node_layout(&flat, None).unwrap();
+    let units: Vec<_> = layout
+        .glyphs
+        .iter()
+        .map(|glyph| {
+            let ch = text.chars().nth(glyph.cluster).unwrap();
+            (glyph.cluster, glyph.cluster_end, ch, glyph.advance)
+        })
+        .collect();
+    let mut lines = Vec::new();
+    let mut index = 0;
+    while index < units.len() {
+        let start = units[index].0;
+        let mut content = 0.;
+        let mut legal = index;
+        let mut end = index;
+        while end < units.len() {
+            if end > index && content + units[end].3 > width {
+                break;
+            }
+            content += units[end].3;
+            end += 1;
+            if hangs(units[end - 1].2) {
+                legal = end;
+            }
+        }
+        if end < units.len() && legal > index {
+            end = legal;
+        }
+        lines.push((start, units[end - 1].1));
+        index = end;
+    }
+    lines
+}
+
+fn utf16_slice(text: &str, start: usize, end: usize) -> String {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    String::from_utf16(&units[start..end]).unwrap()
+}
+
+#[test]
+fn breaking_en_space_keeps_the_fitted_word_on_three_lines() {
+    let fonts = noto_fonts();
+    let text = "Palette\u{2002}Palette\u{2002}Palette\u{2002}Palette\u{2002}Palette\u{2002}Palette";
+    let pair = unwrapped_width(&fonts, "Palette\u{2002}Palette");
+    let with_trailing = unwrapped_width(&fonts, "Palette\u{2002}Palette\u{2002}");
+    let sep = unwrapped_width(&fonts, "\u{2002}");
+    let sep_table = {
+        let bytes = noto_bytes();
+        let face = ttf_parser::Face::parse(&bytes, 0).unwrap();
+        let scale = 28.0 / f64::from(face.units_per_em());
+        let id = face.glyph_index('\u{2002}').expect("Noto must draw U+2002");
+        f64::from(face.glyph_hor_advance(id).unwrap()) * scale
+    };
+    assert!(
+        (sep - sep_table).abs() < 1e-6,
+        "shaped en space {sep} differs from hmtx {sep_table}"
+    );
+    assert!(
+        sep > unwrapped_width(&fonts, " ") * 1.5,
+        "en space must be the wide separator, not a missing-glyph stand-in for U+0020"
+    );
+    assert!(
+        with_trailing > pair + sep * 0.5,
+        "the trailing en space must be wider than the fit pad"
+    );
+    let width = pair + sep * 0.25;
+    let kept = reference_word_breaks(&fonts, text, width);
+    let rewound = rewind_breaks(&fonts, text, width);
+    assert_eq!(
+        kept.len(),
+        3,
+        "font-advance reference is not three lines: {kept:?}"
+    );
+    assert!(
+        rewound.len() > kept.len(),
+        "the old rewind must still be a longer wrap, otherwise this check does not cover the bug: {rewound:?}"
+    );
+    let node = text_node(text, width, 0., true);
+    let layout = fonts.node_layout(&node, Some(node.width)).unwrap();
+    let actual: Vec<_> = layout
+        .lines
+        .iter()
+        .map(|line| (line.start, line.end))
+        .collect();
+    assert_eq!(
+        actual,
+        kept,
+        "editor wrapped to {} lines",
+        layout.lines.len()
+    );
+    let lines: Vec<String> = kept
+        .iter()
+        .map(|(start, end)| {
+            utf16_slice(text, *start, *end)
+                .replace('\u{2002}', " ")
+                .trim()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        lines,
+        vec![
+            "Palette Palette".to_string(),
+            "Palette Palette".to_string(),
+            "Palette Palette".to_string(),
+        ]
+    );
+    let natural = {
+        let bytes = noto_bytes();
+        let face = ttf_parser::Face::parse(&bytes, 0).unwrap();
+        (f64::from(face.ascender()) - f64::from(face.descender()) + f64::from(face.line_gap()))
+            * 28.0
+            / f64::from(face.units_per_em())
+    };
+    assert!(
+        (layout.height - natural * 3.).abs() < 1e-6,
+        "height {}",
+        layout.height
+    );
+    let mut document_node = node.clone();
+    document_node.opacity = 0.5;
+    let encoded = serde_json::to_vec(&document_node).unwrap();
+    let reopened: futureox_design_kernel::scene::Node = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(reopened.opacity, 0.5);
+    assert_eq!(reopened.text, text);
+    assert!((reopened.width - width).abs() < 1e-9);
+    assert_eq!(line_spans(&fonts, &reopened), actual);
 }
 
 fn sketch_document(text: &str, width: f64) -> Document {

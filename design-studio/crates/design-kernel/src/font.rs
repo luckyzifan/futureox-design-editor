@@ -676,6 +676,12 @@ fn sketch_font_line_box(style: &TextStyle) -> bool {
     // The editor default 1.35 stays in force once a line height is authored.
     style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9
 }
+/// A separator that may cross the line edge without pushing the word already
+/// on the line onto the next one. Core Text word wrap does this for every
+/// breaking space, not only U+0020 and tab. No-break spaces stay glue.
+fn overflow_hangs(ch: char) -> bool {
+    !matches!(ch, '\u{00A0}' | '\u{202F}' | '\u{FEFF}') && ch.is_whitespace()
+}
 fn cluster_line_multiplier(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 {
     run_covering(runs, cluster)
         .and_then(|run| run.line_height)
@@ -1621,15 +1627,17 @@ impl Fonts {
                     while end < entries.len() {
                         // Compare occupied width directly: subtracting the
                         // inset from an exact-fit Hug width can round down.
-                        // A space that itself overflows hangs on this line.
-                        // Breaking there rewinds to the previous legal break
-                        // and drops the word that already fit, which is how a
-                        // Sketch title that is three lines becomes four or five.
+                        // A breaking space that itself overflows hangs on this
+                        // line. Breaking before it rewinds to the previous
+                        // legal break and drops the word that already fit,
+                        // which is how a Sketch title that is three lines
+                        // becomes four or five. U+0020 is the common case;
+                        // en, em and ideographic spaces follow the same rule.
                         let byte = entries[end].0;
                         let hanging = text[byte..]
                             .chars()
                             .next()
-                            .is_some_and(|ch| matches!(ch, ' ' | '\t'));
+                            .is_some_and(overflow_hangs);
                         let tracking = cluster_tracking(runs, utf16[byte], style);
                         if end > begin
                             && !hanging
