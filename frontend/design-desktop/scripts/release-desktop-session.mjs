@@ -199,9 +199,15 @@ async function launchPackaged(electron, executable, profile, extraArgs, logs, la
   })
   app.process().stdout?.on('data', chunk => logs.push(String(chunk)))
   app.process().stderr?.on('data', chunk => logs.push(String(chunk)))
-  const page = await app.firstWindow({ timeout: 90000 })
-  page.on('pageerror', error => logs.push(`pageerror ${error}\n`))
-  return { app, page }
+  try {
+    const page = await app.firstWindow({ timeout: 90000 })
+    page.on('pageerror', error => logs.push(`pageerror ${error}\n`))
+    await page.waitForURL(/^design-app:/, { timeout: 90000, waitUntil: 'domcontentloaded' })
+    return { app, page }
+  } catch (error) {
+    await closeApp(app)
+    throw error
+  }
 }
 
 async function enterCanvas(page) {
@@ -257,6 +263,16 @@ async function restoreSaveDialog(app) {
   }).catch(() => {})
 }
 
+async function verifyLinuxInstaller(verificationPath, debPath) {
+  const verification = JSON.parse(await readFile(verificationPath, 'utf8'))
+  const release = verification.packages?.[`${process.platform}-${process.arch}`]
+  const sha = hashReadonlyFile(debPath).sha256
+  if (verification.build?.profile !== 'release' || release?.sha256 !== sha) {
+    throw new Error('deb hash or platform does not match the release verification')
+  }
+  return sha
+}
+
 async function readVerification(verificationPath, resourcesRoot, debPath = null) {
   const verification = JSON.parse(await readFile(verificationPath, 'utf8'))
   const archive = path.join(resourcesRoot, 'app.asar')
@@ -290,7 +306,7 @@ function privileged(command, args) {
   return runCommand(command, args)
 }
 
-async function installLinuxDeb(debPath, output) {
+async function installLinuxDeb(debPath, output, verifiedSha256) {
   const root = await mkdtemp(path.join(output, 'dpkg-root-'))
   await mkdir(path.join(root, 'var/lib/dpkg/updates'), { recursive: true, mode: 0o755 })
   await mkdir(path.join(root, 'var/lib/dpkg/info'), { recursive: true, mode: 0o755 })
@@ -309,7 +325,7 @@ async function installLinuxDeb(debPath, output) {
     ...bundle,
     contract,
     productName: metadata.productName || metadata.name,
-    debSha256: hashReadonlyFile(debPath).sha256,
+    debSha256: verifiedSha256,
     tree: hashPackageIdentity(bundle.directory),
     dpkgStatus: installed.status,
     dpkgStderr: installed.stderr,
@@ -361,7 +377,9 @@ async function main() {
   try {
     let bundlePath = packagePath
     if (linuxDeb) {
-      debInstall = await installLinuxDeb(packagePath, output)
+      const releaseVerification = option('verification') || path.join(path.dirname(packagePath), 'package-verification.json')
+      const verifiedSha256 = await verifyLinuxInstaller(releaseVerification, packagePath)
+      debInstall = await installLinuxDeb(packagePath, output, verifiedSha256)
       bundlePath = debInstall.directory
       flowPackage = bundlePath
       launchOptions = debInstall.contract.acceptanceProfile ? {} : { privateHome: await preparePrivateHome(output, debInstall) }
