@@ -49,6 +49,23 @@ test('a shown sharp crop still receives the overview that paints the newly expos
   expect(selectCoverageUnderlay([overview, crop], view, size, [crop]).map(item => item.key)).toEqual(['overview'])
 })
 
+test('a large pan after zoom-out yields the in-flight tile that left the viewport', () => {
+  const size = { width: 1000, height: 800 }
+  const refine = { key: 'refine', x: 0, y: 0, width: 1000, height: 800, zoom: 1, gutter: 0 }
+  const idle = new Set<string>()
+  for (const view of [
+    { x: -600, y: 0, zoom: 1 },
+    { x: 600, y: 0, zoom: 1 },
+    { x: 0, y: -500, zoom: 1 },
+    { x: 0, y: 500, zoom: 1 },
+    { x: -600, y: -500, zoom: 1 },
+  ]) {
+    expect(retainInFlightTile(refine, view, size, [], idle, new Set(), false, 1)).toBe(false)
+  }
+  expect(retainInFlightTile(refine, { x: -200, y: 0, zoom: 1 }, size, [], idle, new Set(), false, 1)).toBe(true)
+  expect(retainInFlightTile({ ...refine, key: 'planned' }, { x: -600, y: 0, zoom: 1 }, size, [], new Set(['planned']), new Set(), false, 1)).toBe(true)
+})
+
 test('a fast zoom-out keeps the in-flight tile that paints the hole and drops one the cache already paints', () => {
   const edge = tile('edge', 2, 0, 0, 1024)
   const centre = tile('centre', 8, 0, 0, 64)

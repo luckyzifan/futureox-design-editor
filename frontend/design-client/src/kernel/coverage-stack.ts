@@ -1,6 +1,7 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
 import { ORDINARY_SOURCE_TILE } from './source-display-band'
+import { panTileOverlap } from './pan-tile'
 import { MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit, tileIntersectsView } from './tile-preview'
 
 /** World rectangle of a tile's owned core that actually intersects the viewport.
@@ -236,13 +237,18 @@ export function releaseInFlightForDemand(tile: Pick<RasterTile, 'key' | 'width' 
  *  A scale change is not staleness. The tile is stale once resident pixels
  *  already paint its viewport rect and it is neither the requested key nor a
  *  nearby density the exact phase may still need. Zoom-out holes stay in
- *  flight even when the new lattice is many times coarser. */
+ *  flight even when the new lattice is many times coarser.
+ *  A pan that has carried most of an unrequested tile off the live viewport,
+ *  without that remainder still covering most of the view, yields the raster
+ *  owner. Accepted pixels stay. The current camera's own keys do not yield. */
 export function retainInFlightTile(tile: RasterTile, view: CanvasCamera, size: { width: number; height: number },
   resident: Iterable<RasterTile>, wanted: ReadonlySet<string>, prefetch: ReadonlySet<string>,
   continuousZoomIn: boolean, targetScale: number, settling = false) {
   if (tile.prefetch) return wanted.has(tile.key) || prefetch.has(tile.key)
   if (!tileIntersectsView(tile, view, size) || !(targetScale > 0) || !(tile.zoom > 0)) return false
   if (wanted.has(tile.key)) return true
+  const overlap = panTileOverlap(tile, view, size)
+  if (overlap.viewport < 0.5 && overlap.tile < 0.5) return false
   const painted = [...resident]
   const hole = coversUnpaintedViewport(tile, view, size, painted)
   // A speculative full-viewport capture that does not fill a hole only delays
