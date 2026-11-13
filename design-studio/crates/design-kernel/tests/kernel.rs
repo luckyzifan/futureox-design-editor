@@ -129,6 +129,7 @@ fn cubic_collinear_overshoot_is_not_discarded() {
                 Point::new(1., 0.),
             ),
         ],
+        ..Path::default()
     };
     let ps = p.flatten(Transform::default(), 0.1).unwrap();
     assert!(ps[0].points.iter().any(|p| p.x < -20.));
@@ -146,6 +147,7 @@ fn coincident_cubic_endpoints_retain_loop() {
             ),
             Command::Close,
         ],
+        ..Path::default()
     };
     assert!(
         p.flatten(Transform::default(), 0.1).unwrap()[0]
@@ -174,6 +176,7 @@ fn cubic_flatten_preserves_endpoints() {
                 Point::new(100., 30.),
             ),
         ],
+        ..Path::default()
     };
     let a = p.flatten(Transform::default(), 0.1).unwrap();
     assert_eq!(a[0].points.first(), Some(&Point::new(1., 2.)));

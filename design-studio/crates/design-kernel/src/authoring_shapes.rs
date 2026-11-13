@@ -45,7 +45,7 @@ pub fn ellipse_arc(width: f64, height: f64, arc: EllipseArc) -> Path {
         commands.push(Command::Line(center));
     }
     commands.push(Command::Close);
-    Path { commands }
+    Path { commands, ..Path::default() }
 }
 
 /// Circular fillets on a closed polygon. Each corner consumes at most half of
@@ -150,7 +150,7 @@ fn rounded_polygon_with(points:&[Point],radius:impl Fn(usize)->f64, smoothing:f6
         commands.push(curve.unwrap_or(Command::Line(exit)));
     }
     commands.push(Command::Close);
-    Path { commands }
+    Path { commands, ..Path::default() }
 }
 
 pub fn is_zero(value: &f64) -> bool {

@@ -124,6 +124,7 @@ fn curve_commands_are_relative_to_the_actual_coverage_texture_and_preserve_extre
             ),
             Command::Close,
         ],
+        ..Path::default()
     };
     let data = analytic::segments(&p, Transform::default(), Rect::new(7, 7, 102, 77)).unwrap();
     assert!(data.len() > 32);
@@ -163,6 +164,7 @@ fn open_paths_do_not_acquire_fill_and_arc_segments_have_monotone_bands() {
             Command::Move(Point::new(0., 0.)),
             Command::Line(Point::new(50., 100.)),
         ],
+        ..Path::default()
     };
     assert!(
         analytic::segments(&p, Transform::default(), Rect::new(0, 0, 100, 100))

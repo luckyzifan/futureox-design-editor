@@ -134,6 +134,7 @@ fn cubic_true_bounds_exclude_control_handles() {
             ),
             Command::Close,
         ],
+        ..Path::default()
     };
     let b = path_bounds(&path, Transform::default()).unwrap();
     assert_eq!((b.x, b.y, b.width, b.height), (0., 0., 100., 75.));
@@ -146,6 +147,7 @@ fn transformed_cubic_bounds_match_independent_dense_sampling() {
     let d = Point::new(100., 0.);
     let path = Path {
         commands: vec![Command::Move(a), Command::Cubic(b, c, d)],
+        ..Path::default()
     };
     let angle = 17f64.to_radians();
     let m = Transform([

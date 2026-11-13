@@ -67,7 +67,7 @@ mod tests {
     use super::*;
     #[test]
     fn keys_preserve_order_fill_rules_phase_and_signed_zero(){
-        let p=Path{commands:vec![Command::Move(crate::math::Point::new(0.,0.)),Command::Close]};
+        let p=Path{commands:vec![Command::Move(crate::math::Point::new(0.,0.)),Command::Close], ..Path::default()};
         let input=vec![(p,Transform::default(),true)];let key=Cache::key(&input,Operation::Union);
         let mut changed=input.clone();changed[0].1.0[4]=-0.;assert_ne!(key,Cache::key(&changed,Operation::Union));
         changed=input.clone();changed[0].2=false;assert_ne!(key,Cache::key(&changed,Operation::Union));

@@ -7743,7 +7743,7 @@ fn baked_explicit_path(path: &crate::path::Path) -> crate::path::Path {
             other => commands.push(other.clone()),
         }
     }
-    crate::path::Path { commands }
+    crate::path::Path { commands, ..Default::default() }
 }
 
 pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
@@ -7865,6 +7865,7 @@ fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Optio
                         crate::path::Command::Line(corners[3]),
                         crate::path::Command::Close,
                     ],
+                    ..Default::default()
                 },
                 "ellipse" => crate::authoring_shapes::ellipse_arc(
                     node.width,
@@ -7892,6 +7893,7 @@ fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Optio
                                 .chain(ring[1..].iter().map(|p| crate::path::Command::Line(*p)))
                                 .chain(std::iter::once(crate::path::Command::Close))
                                 .collect(),
+                            ..Default::default()
                         }
                     }
                 }

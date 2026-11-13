@@ -57,6 +57,7 @@ fn decode(curves: &[Curve]) -> Path {
                 Curve::Close => Command::Close,
             })
             .collect(),
+        ..Path::default()
     }
 }
 impl VectorGeometry {

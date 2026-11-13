@@ -1236,6 +1236,7 @@ mod tests {
                 Command::Quad(Point::new(30., -20.), Point::new(0., 0.)),
                 Command::Close,
             ],
+            ..Path::default()
         }
         .svg_data();
         assert!(curve.contains('C') && curve.contains('Q') && curve.ends_with("Z "));

@@ -505,7 +505,7 @@ mod memo_tests {
         let input=source.paths().unwrap().0;
         // Dense representation takes the same established clipping algebra as
         // a four-edge rectangle, retaining the original source independently.
-        let simple=Path{commands:vec![Command::Move(Point::new(0.,0.)),Command::Line(Point::new(40.,0.)),Command::Line(Point::new(40.,40.)),Command::Line(Point::new(0.,40.)),Command::Close]};
+        let simple=Path{commands:vec![Command::Move(Point::new(0.,0.)),Command::Line(Point::new(40.,0.)),Command::Line(Point::new(40.,40.)),Command::Line(Point::new(0.,40.)),Command::Close], ..Path::default()};
         let expected=combine(&[(simple,Transform::default(),false)],Operation::Union).unwrap();
         assert_eq!(path.control_bounds(Transform::default()),expected.paths().unwrap().0.control_bounds(Transform::default()));
         assert!(combine(&[(input,Transform::default(),false)],Operation::Union).is_err(),"point-editing path keeps its original segment limit");
@@ -520,23 +520,24 @@ mod memo_tests {
         let explicit = Path { commands: vec![
             Command::Move(origin), Command::Line(Point::new(10., 0.)),
             Command::Line(origin), Command::Close,
-        ] };
+        ], ..Path::default() };
         let implicit = Path { commands: vec![
             Command::Move(origin), Command::Line(Point::new(10., 0.)), Command::Close,
-        ] };
+        ], ..Path::default() };
         assert_eq!(source_segment_count(&explicit).unwrap(), 2);
         assert_eq!(source_segment_count(&implicit).unwrap(), 2);
         let mut multiple = explicit.clone(); multiple.commands.extend(implicit.commands.clone());
         assert_eq!(source_segment_count(&multiple).unwrap(), 4);
         let cubic = Path { commands: vec![Command::Move(origin),
             Command::Quad(Point::new(2., 3.), Point::new(5., 0.)),
-            Command::Cubic(Point::new(6., 1.), Point::new(6., 2.), origin), Command::Close] };
+            Command::Cubic(Point::new(6., 1.), Point::new(6., 2.), origin), Command::Close], ..Path::default() };
         let smooth = Path { commands: vec![Command::Move(origin),
-            Command::SmoothCorner(SmoothCorner { center: origin, radius: 5., power: 4., quadrant: 1 }), Command::Close] };
+            Command::SmoothCorner(SmoothCorner { center: origin, radius: 5., power: 4., quadrant: 1 }), Command::Close], ..Path::default() };
         let arcs = [0., std::f64::consts::FRAC_PI_2, -std::f64::consts::TAU].map(|sweep| Path {
             commands: vec![Command::Move(Point::new(5., 0.)), Command::Arc {
                 center: origin, radius: Point::new(5., 5.), start: 0., sweep,
             }, Command::Close],
+            ..Path::default()
         });
         for path in [explicit, implicit, multiple, cubic, smooth].into_iter().chain(arcs) {
             let actual: usize = curves(&path, Transform::default()).unwrap().iter().map(|(_, pieces)| pieces.len()).sum();
