@@ -17,6 +17,7 @@ export default defineConfig({
       'src/kernel/frame-acceptance.test.ts',
       'src/kernel/continuous-zoom-scale.test.ts',
       'src/kernel/zoom-in-frame.test.ts',
+      'src/kernel/zoom-underlay.test.ts',
       'src/kernel/NativeSourceSurface.pipeline.test.tsx',
       'src/kernel/native-source-cpu-tiles.test.tsx',
 ],

@@ -10,6 +10,7 @@ import type {RasterTile} from './tile-cache'
 import type {Rect} from './gpu/types'
 import {tileIntersectsView} from './tile-preview'
 import {continuousZoomInScale} from './continuous-zoom-scale'
+import {zoomUnderlayImproves} from './zoom-underlay'
 import type {ResidentAcknowledgement} from './resident-presentation'
 
 export const SOURCE_PREFETCH_BUDGET={tiles:8,bytes:8*514*514*4} as const
@@ -28,10 +29,12 @@ export function backingCoversSettledSource(backing:ResidentAcknowledgement|undef
 }
 
 /** Publish a sharper tile during a zoom without losing any old visible
- * texture. The presenter has already certified physical coverage. */
+ * texture. The presenter has already certified physical coverage. A zoom
+ * underlay keeps the previous picture in the bitmap and paints only the
+ * ready finer tiles, so those old tiles do not have to be listed again. */
 export function improvesSourceZoom(previous:ResidentAcknowledgement|undefined, next:ResidentAcknowledgement,
   target:{view:CanvasCamera;width:number;height:number}, tiles:Iterable<RasterTile & {gpuTile?:number}>, previousTiles?:Iterable<RasterTile & {gpuTile?:number}>){
-  if(!previous||next.preview||next.dpr!==previous.dpr||previous.width!==target.width||previous.height!==target.height||
+  if(!previous||(next.preview && !next.zoomUnderlay)||next.dpr!==previous.dpr||previous.width!==target.width||previous.height!==target.height||
       next.width!==target.width||next.height!==target.height||
       next.view.zoom<previous.view.zoom||next.view.zoom>target.view.zoom||
       (next.view.zoom===previous.view.zoom && (next.view.x!==previous.view.x||next.view.y!==previous.view.y)))return false
@@ -43,6 +46,7 @@ export function improvesSourceZoom(previous:ResidentAcknowledgement|undefined, n
   const entries=[...tiles],prior=new Set(previous.ids),shown=new Set(next.ids)
   const former=(previousTiles?[...previousTiles]:entries).filter(t=>t.gpuTile!==undefined&&prior.has(t.gpuTile))
   const current=entries.filter(t=>t.gpuTile!==undefined&&shown.has(t.gpuTile))
+  if(next.zoomUnderlay)return zoomUnderlayImproves(previous,current,target.view,target,former)
   if(previous.ids.some(id=>!former.some(t=>t.gpuTile===id)))return false
   const same=(a:typeof entries[number],b:typeof entries[number])=>a.gpuTile===b.gpuTile&&a.key===b.key
   if(former.some(t=>!current.some(c=>same(c,t))&&sourceTileBringsDetail(t,target.view,target,current)))return false
