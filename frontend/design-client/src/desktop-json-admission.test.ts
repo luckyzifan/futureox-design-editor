@@ -22,15 +22,20 @@ function fixture(options: { known?: boolean; frozenCodec?: boolean; frozenBridge
   if (options.accessorMarker) Object.defineProperty(codec, 'decoding', { get() { throw new Error('Untrusted marker getter must not run') } })
   const opened = () => ({ ...ok, id: target.id, name: target.name, revision, hash: 'same', deleted, updatedAt: 1, documentJson: source })
   const open = vi.fn(async () => opened()), commits: string[] = []
+  const commit = vi.fn<NonNullable<DesktopBridge['workspace']>['commit']>(async ({ documentJson }) => {
+    commits.push(documentJson)
+    const d = JSON.parse(documentJson)
+    return { ...ok, id: d.id, name: d.name, revision: ++revision, hash: 'saved', deleted: false, updatedAt: 2 }
+  })
   const bridge = { version: options.version ?? 1, documentCodec: options.frozenCodec === false ? codec : Object.freeze(codec),
-    workspace: { list: async () => ({ ...ok, documents: [] }), open, commit: async ({ documentJson }: { documentJson: string }) => { commits.push(documentJson); const d = JSON.parse(documentJson); return { ...ok, id: d.id, name: d.name, revision: ++revision, hash: 'saved', deleted: false, updatedAt: 2 } } },
+    workspace: { list: async () => ({ ...ok, documents: [] }), open, commit },
     readRecovery: async () => ({ status: 'cancelled' }), clearRecovery: async () => ok, writeRecovery: async () => ok, setDirty: async () => {},
   } as unknown as DesktopBridge
   if (options.frozenBridge !== false) Object.freeze(bridge)
   vi.stubGlobal('window', { coreDesktop: options.installed === false ? Object.freeze({ ...bridge }) : bridge })
   const confirm = vi.fn(async () => 'discard' as const), session = new DesktopSession(bridge, editor, confirm)
   sessions.push(session)
-  return { session, editor, target, original, codec, bridge, decode, encode, open, commits, confirm, opened,
+  return { session, editor, target, original, codec, bridge, decode, encode, open, commit, commits, confirm, opened,
     setSource: (s: string) => { source = s }, setDeleted: () => { deleted = true } }
 }
 
@@ -61,16 +66,18 @@ test('changed fresh bytes with identical metadata are prepared again, not reused
   expect(prepare).toHaveBeenCalledTimes(2); expect(f.editor.state.doc.name).toBe('Fresh changed bytes')
 })
 
-test('cancelled leave and deleted fresh targets keep the current document and history', async () => {
+test('a cancelled autosave or deleted fresh target keeps the current document and history', async () => {
   const f = fixture()
   f.editor.change('dirty', d => { d.name = 'Dirty original' })
   const before = f.editor.state.doc, canUndo = f.editor.canUndo
-  f.confirm.mockResolvedValueOnce('cancel' as never)
+  f.commit.mockResolvedValueOnce({ status: 'cancelled' })
   expect(await f.session.openWorkspace(f.target.id)).toBe(false)
+  expect(f.commit).toHaveBeenCalledOnce()
+  expect(f.confirm).not.toHaveBeenCalled()
   expect(f.editor.state.doc).toBe(before); expect(f.editor.canUndo).toBe(canUndo)
   f.open.mockImplementationOnce(async () => f.opened()).mockImplementationOnce(async () => ({ ...f.opened(), deleted: true }))
   expect(await f.session.openWorkspace(f.target.id)).toBe(false)
-  expect(f.editor.state.doc).toBe(before)
+  expect(f.editor.state.doc).toBe(before); expect(f.editor.canUndo).toBe(canUndo)
 })
 
 test('invalid source, font and raw size failures do not publish; the next valid request still works', async () => {
@@ -90,7 +97,7 @@ for (const mutation of ['versioned-same-root', 'replacement-root', 'session-repl
     const unsubscribe = f.editor.subscribe(() => {
       if (changed || f.editor.state.doc.id !== f.target.id) return
       changed = true
-      if (mutation === 'versioned-same-root') { f.editor.state.doc.name = 'New edit'; f.editor.set({ version: f.editor.state.version + 1 }) }
+      if (mutation === 'versioned-same-root') f.editor.set({ version: f.editor.state.version + 1 })
       else if (mutation === 'replacement-root') f.editor.set({ doc: { ...f.editor.state.doc, name: 'New owner' } })
       else f.editor.load(blank('Nested load'))
     })
