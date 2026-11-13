@@ -77,6 +77,7 @@ import type {
 } from './types'
 import { parameters, blends, rect, intersect } from './types'
 import {opaquePainterStart,sourcePainterOrder} from './opaque-painter-prefix'
+import {ANALYTIC_SOLID_TARGET_PIXELS,analyticSolidLeaf,packAnalyticSolids,planAnalyticSolidBatches} from './analytic-solid-batch'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
@@ -3589,6 +3590,56 @@ export class GpuRenderer {
     }
     return {targets,end}
   }
+  private analyticSolidBatchEnabled(){
+    return import.meta.env.VITE_DESIGN_ANALYTIC_SOLID_BATCH!=='0'&&this.optimized&&this.driver.name==='webgpu'&&
+      !!this.driver.managed&&!this.driver.hdr&&!this.driver.displayMath&&!!this.driver.drawAnalyticSolids&&
+      !!this.driver.analyticSolidsReady&&!this.scene.coherentSamples&&!this.scene.interactionRetained&&
+      !this.scene.softwareRaster&&!this.scene.resolve&&!this.scene.presentation&&
+      this.outputFrame?.present===true&&this.outputFrame.readback!==true
+  }
+  private analyticSolidTarget(target:Surface){
+    return !target.logicalBounds&&!target.texture.uniformColor&&!target.texture.transparentZero&&
+      target.texture.width===target.rect.w&&target.texture.height===target.rect.h&&
+      target.rect.w>0&&target.rect.h>0&&target.rect.w*target.rect.h<=ANALYTIC_SOLID_TARGET_PIXELS
+  }
+  private curveWords(){
+    const curves=this.scene.curves
+    return curves&&typeof curves.length==='number'?Math.floor(curves.length/4):0
+  }
+  private async drawAnalyticSolidRun(ids:string[],start:number,target:Surface,clip?:Surface){
+    if(!this.analyticSolidBatchEnabled()||!this.analyticSolidTarget(target)||clip&&(clip.texture===target.texture||!!clip.logicalBounds))return
+    const words=this.curveWords()
+    const items=[]
+    let end=start
+    for(;end<ids.length;end++){
+      const item=analyticSolidLeaf(this.scene.nodes[ids[end]],target.rect,words,value=>this.color(value),value=>this.alpha(value))
+      if(!item)break
+      if(item.program.kind==='area'&&this.driver.relocateCoverageProgram&&
+        this.driver.relocateCoverageProgram(item.program.first)===undefined)break
+      items.push(item)
+    }
+    if(!items.length)return
+    const planned=planAnalyticSolidBatches(items,target.rect.w*target.rect.h)
+    let surface=target
+    for(const batch of planned){
+      const data=packAnalyticSolids(batch.items)
+      if(this.surfaceNeedsAdmission(surface.rect))await this.reclaimForSurface(surface.rect)
+      this.checkFrameCurrent()
+      const out=this.acquire(surface.rect,false,false,SurfaceAllocationSite.passOutput,78)
+      const drew=this.driver.drawAnalyticSolids!(out.texture,surface.texture,surface.rect,clip?.texture,clip?.rect,data,batch.items.length,batch.fullPass)
+      if(!drew){
+        this.release(out)
+        if(surface!==target)throw Error('Analytic solid batch was declined after admission')
+        return
+      }
+      this.release(surface)
+      surface=out
+      this.passPixels+=surface.rect.w*surface.rect.h
+      this.fastWork.add('analyticSolidBatches')
+      this.fastWork.add('analyticSolidNodes',batch.items.length)
+    }
+    return {target:surface,end}
+  }
   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
     if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
       ids=sourcePainterOrder(this.scene,ids,target.rect)
@@ -3596,8 +3647,14 @@ export class GpuRenderer {
       const batched=await this.drawOpaqueGroup(ids,[target],[this.sampleIndex]);if(batched)return batched[0]
     }
     let pendingSurfaceAdmission: Surface | Promise<Surface>
-    const children = skip ? ids.filter((id) => id !== skip) : ids
+    let children = skip ? ids.filter((id) => id !== skip) : ids
+    if(this.analyticSolidBatchEnabled()&&this.analyticSolidTarget(target)&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
+      children=sourcePainterOrder(this.scene,children,target.rect,262144)
     for (let i = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0; i < children.length; ) {
+      if(this.analyticSolidBatchEnabled()){
+        const batch=await this.drawAnalyticSolidRun(children,i,target,clip)
+        if(batch){target=batch.target;i=batch.end;continue}
+      }
       if(this.sourceSolidLayers&&this.sampleIndex!==undefined){
         const batch=await this.drawSourceSolidLayers(children,i,[target],[this.sampleIndex],clip?[clip]:undefined)
         if(batch){target=batch.targets[0];i=batch.end;continue}

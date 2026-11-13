@@ -18,6 +18,8 @@ import { validateLinearImageDimensions, writeLinearImageRows } from './linear-im
 import { textureByteLength } from './texture-byte-length'
 /// <reference types="@webgpu/types" />
 import vectorShader from '../../../../../design-studio/crates/design-kernel/shaders/vector.wgsl?raw'
+import coverage64Shader from '../../../../../design-studio/crates/design-kernel/shaders/coverage64.wgsl?raw'
+import areaCoverageShader from '../../../../../design-studio/crates/design-kernel/shaders/area.wgsl?raw'
 import { minifiedPreviewRgba8, unorm8ToFloat32 } from './rgba8'
 import samplingShader from '../../../../../design-studio/crates/design-kernel/shaders/sampling.wgsl?raw'
 import { exactFilterWgsl, rationalStubWgsl } from './exact-filter'
@@ -63,6 +65,7 @@ import { rational_tent_kernel_rgba,certified_tent_prefix_plan } from '../../gene
 import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic, OpaqueSolidBatch } from './types'
 import { parameters, intersect, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
+import { ANALYTIC_SOLID_FLOATS, ANALYTIC_SOLID_LIMIT } from './analytic-solid-batch'
 import { GpuBindingCache } from './binding-cache'
 import { ResidentGeometry } from './resident-geometry'
 import { ResidentPrograms, type ProgramPlan } from './resident-programs'
@@ -575,6 +578,7 @@ export class WebGpuDriver implements Driver {
   private binaryPipelines = new Map<number, GPURenderPipeline>()
   private overPipeline!: GPURenderPipeline
   private solidPipeline!: GPURenderPipeline
+  private analyticSolidPipeline?: GPURenderPipeline
   private nativeTentKernels=new WeakMap<Texture,{operator:'rational-tent'|'certified-tent';radius:number;resource:unknown;width:number;height:number;boundBits:number}>()
   private certifiedTentPasses=0
   private opaqueSolidPipeline?: GPURenderPipeline
@@ -880,6 +884,41 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
  let src=mulRN4(a,vec4<f32>(opacity));let dst=smp(sourceB,p,u(2));
  if(src.a<=0.){return dst;}if(dst.a<=0.){return src;}
  return addRN4(src,mulRN4(dst,vec4<f32>(addRN(1.,-src.a))));
+}` + coverage64Shader + `
+var<private> analyticProgramBase:u32;
+fn cvFetch(index:u32)->vec4<f32>{return curves[analyticProgramBase+index];}
+fn cvSampleIndex()->i32{return 0;}
+` + areaCoverageShader + `
+fn analyticRectCoverage(local:vec2<f32>,edges:vec4<f32>)->f32{
+ let extent=clamp(min(local+vec2<f32>(0.5),edges.zw)-max(local-vec2<f32>(0.5),edges.xy),vec2<f32>(0.),vec2<f32>(1.));
+ return extent.x*extent.y;
+}
+@fragment fn analyticSolidFragment(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
+ let p=position.xy+u(0).xy;
+ let base=u32(u(9).x);let count=min(48u,u32(u(9).y));
+ var hit=false;var acc=vec4<f32>(0.);
+ for(var i=0u;i<48u;i=i+1u){
+  if(i>=count){break;}
+  let item=base+i*6u;let path=solidData[item];let info=solidData[item+1u];let extra=solidData[item+2u];
+  let colour=solidData[item+3u];let place=solidData[item+4u];let tail=solidData[item+5u];
+  let write=vec4<f32>(place.y,place.z,place.w,tail.x);
+  if(any(p<write.xy)||any(p>=write.xy+write.zw)){continue;}
+  var coverage=0.;
+  if(info.w>=2.){coverage=analyticRectCoverage(p-path.xy,extra);}
+  else{
+   let pixel=vec2<i32>(floor(p-path.xy));
+   if(all(pixel>=vec2<i32>(0))&&all(pixel<vec2<i32>(i32(path.z),i32(path.w)))){analyticProgramBase=u32(info.x);coverage=areaCoverage(pixel);}
+  }
+  let paint=mulRN4(mulRN4(vec4<f32>(colour.xyz,1.),vec4<f32>(colour.w)),vec4<f32>(place.x));
+  let covered=mulRN4(paint,vec4<f32>(coverage));
+  let bits=bitcast<vec4<u32>>(covered);
+  let sampled=bitcast<vec4<f32>>(select(bits,vec4<u32>(0u),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0u)));
+  var factor=1.;if(u(4).w>0.5){factor=mulRN(factor,at(sourceC,p,u(3)).a);}
+  if(!hit){acc=integerSample(sourceA,p,u(1));hit=true;}
+  acc=over(acc,mulRN4(sampled,vec4<f32>(factor)),0);
+ }
+ if(!hit){return select(at(sourceA,p,u(1)),integerSample(sourceA,p,u(1)),u(9).z>0.5);}
+ return acc;
 }`
     const exactCode=import.meta.env.VITE_DESIGN_EXACT_IDENTITIES==='1'&&!this.displayMath?exactArithmeticIdentities(compositorCode):compositorCode
     const imageAddressedCode = this.managed ? imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl) : exactCode
@@ -1056,6 +1095,12 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       }),
       vertex: { module, entryPoint: 'solidQuad' },
       fragment: { module, entryPoint: 'solidFragment', targets: [{ format: this.layerFormat }] },
+      primitive: { topology: 'triangle-list' },
+    })
+    this.analyticSolidPipeline = await this.device.createRenderPipelineAsync({
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.layout, this.solidLayout] }),
+      vertex: { module, entryPoint: 'quad' },
+      fragment: { module, entryPoint: 'analyticSolidFragment', targets: [{ format: this.layerFormat }] },
       primitive: { topology: 'triangle-list' },
     })
     })
@@ -2950,6 +2995,51 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     pass.end()
     this.noteDraw(64)
     this.triangles += count * 2
+  }
+  get analyticSolidsReady(){return !!this.analyticSolidPipeline}
+  relocateCoverageProgram(first:number){
+    if(!Number.isSafeInteger(first)||first<0||first>16_777_216)return
+    if(!this.programOffsets)return first
+    return this.programOffsets.get(first)
+  }
+  drawAnalyticSolids(output:Texture, source:Texture, sourceRect:Rect, clip:Texture|undefined, clipRect:Rect|undefined, data:Float32Array, count:number, fullPass:boolean){
+    if(!this.analyticSolidPipeline||!this.curves||!this.encoder||this.lost||this.disposed||!Number.isInteger(count)||count<1||count>ANALYTIC_SOLID_LIMIT)return false
+    if(!(data instanceof Float32Array)||data.length!==count*ANALYTIC_SOLID_FLOATS||output===source||output.resource===source.resource)return false
+    if(output.width!==sourceRect.w||output.height!==sourceRect.h||source.width!==sourceRect.w||source.height!==sourceRect.h)return false
+    if(output.binaryCoverage||output.scalarCoverage||source.binaryCoverage||source.scalarCoverage)return false
+    if(!this.textures.has(output)||!this.textures.has(source))return false
+    if(clip&&(!clipRect||clip===output||clip.resource===output.resource||!this.textures.has(clip)))return false
+    const relocated=new Float32Array(data)
+    for(let index=0;index<count;index++){
+      if(relocated[index*ANALYTIC_SOLID_FLOATS+7]>=2)continue
+      const mapped=this.relocateCoverageProgram(relocated[index*ANALYTIC_SOLID_FLOATS+4])
+      if(mapped===undefined)return false
+      relocated[index*ANALYTIC_SOLID_FLOATS+4]=mapped
+    }
+    if(!this.solidBuffer){
+      this.solidBuffer=this.device.createBuffer({size:this.solidData.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST})
+      this.solidBind=this.device.createBindGroup({layout:this.solidLayout,entries:[{binding:0,resource:{buffer:this.solidBuffer}}]})
+    }
+    if(this.solidOffset+relocated.length>this.solidData.length)return false
+    const base=this.solidOffset/4
+    this.solidData.set(relocated,this.solidOffset)
+    this.solidOffset+=relocated.length
+    this.invalidateTextureCertificates(output)
+    this.closeOver()
+    const u=parameters(sourceRect,sourceRect,sourceRect,clipRect||sourceRect)
+    u[16]=78;u[19]=clip?1:0;u[36]=base;u[37]=count;u[38]=fullPass?1:0
+    const bind=this.bind(u,clip?[source,source,clip]:[source])
+    const pass=this.encoder.beginRenderPass({colorAttachments:[{
+      view:this.bindingCache.view(output.resource as GPUTexture),loadOp:'clear',storeOp:'store',clearValue:[0,0,0,0],
+    }]})
+    pass.setPipeline(this.analyticSolidPipeline)
+    pass.setBindGroup(0,bind.group,bind.offsets)
+    pass.setBindGroup(1,this.solidBind!)
+    pass.draw(3)
+    pass.end()
+    this.noteDraw(78,1,sourceRect.w*sourceRect.h)
+    this.triangles+=1
+    return true
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
     if(u[16]===2 && u[28]===3){

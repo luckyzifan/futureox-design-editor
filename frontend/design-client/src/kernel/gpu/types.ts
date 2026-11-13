@@ -291,6 +291,10 @@ export interface Driver {
   sourceProgramOffset?(path:PathMesh):number|undefined
   prepareOpaqueSolids?(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[],region?:Rect):OpaqueSolidBatch|undefined
   drawOpaqueSolids?(batch:OpaqueSolidBatch,target:Texture,sample:number):boolean
+  /** Analytic area/rect coverage fused into exact solid paint-over. One draw. */
+  readonly analyticSolidsReady?: boolean
+  relocateCoverageProgram?(first: number): number | undefined
+  drawAnalyticSolids?(output: Texture, source: Texture, sourceRect: Rect, clip: Texture | undefined, clipRect: Rect | undefined, data: Float32Array, count: number, fullPass: boolean): boolean
   usesDisplayFilter?(radius: number, channels?: number): boolean
   /** True only for this driver's actual immutable finite image upload. */
   usesDisplayImageSource?(image: Texture): boolean
