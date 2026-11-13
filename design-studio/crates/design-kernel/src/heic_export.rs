@@ -1257,7 +1257,20 @@ fn assert_imageio_alpha(heic: &[u8], width: u32, height: u32, expected: &[u8]) {
     let bytes = std::fs::read(&target).unwrap();
     assert_eq!(u32::from_be_bytes(bytes[16..20].try_into().unwrap()), width);
     assert_eq!(u32::from_be_bytes(bytes[20..24].try_into().unwrap()), height);
-    let pixels = png_rgba(&bytes);
+    // Decode only the pixel stream. ImageIO has already decoded the original
+    // HEIC container; its PNG may carry an ICC chunk rejected by libpng/png.
+    let mut pixel_png = bytes[..8].to_vec();
+    let mut at = 8;
+    while at + 12 <= bytes.len() {
+        let count = u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+        let end = at + count + 12;
+        assert!(end <= bytes.len());
+        if matches!(&bytes[at + 4..at + 8], b"IHDR" | b"IDAT" | b"IEND") {
+            pixel_png.extend_from_slice(&bytes[at..end]);
+        }
+        at = end;
+    }
+    let pixels = png_rgba(&pixel_png);
     assert_eq!(pixels.len(), expected.len());
     for (index, (actual, expected)) in pixels.chunks_exact(4).zip(expected.chunks_exact(4)).enumerate() {
         assert_eq!(actual[3], expected[3], "alpha at pixel {index}");
