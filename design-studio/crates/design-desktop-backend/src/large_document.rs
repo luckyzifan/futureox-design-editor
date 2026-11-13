@@ -1620,13 +1620,21 @@ fn persist(s: &Session) -> Result<Option<&'static str>> {
     }
     let temporary = s.directory.join("journal.next");
     let final_path = s.directory.join("journal.json");
-    let mut file = CheckpointWriter::new(BufWriter::new(
-        File::create(&temporary).map_err(save_io)?,
-    ));
-    serde_json::to_writer(&mut file, &metadata).map_err(checkpoint_io)?;
-    file.flush().map_err(save_io)?;
-    file.get_ref().get_ref().sync_all().map_err(save_io)?;
-    fs::rename(temporary, final_path).map_err(save_io)?;
+    let staged = File::create(&temporary).map_err(save_io)?;
+    let result = (|| {
+        let mut file = CheckpointWriter::new(BufWriter::new(staged));
+        serde_json::to_writer(&mut file, &metadata).map_err(checkpoint_io)?;
+        file.flush().map_err(save_io)?;
+        file.get_ref().get_ref().sync_all().map_err(save_io)?;
+        drop(file);
+        fs::rename(&temporary, final_path).map_err(save_io)
+    })();
+    if let Err(error) = result {
+        // Recovery may adopt a complete next journal after a process exit.
+        // A write that returned an error must not later appear committed.
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
     // Rename is the commit point. Directory-sync failure remains a committed
     // warning, not an error that could roll the already-published state back.
     Ok(File::open(&s.directory)

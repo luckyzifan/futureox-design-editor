@@ -44,9 +44,9 @@ fn db(error: sqlx::Error) -> BackendError {
             "WORKSPACE_STORAGE_FULL",
             format!("Local document storage is full; this change was not written and the last committed revision is unchanged: {error}"),
         )
-    } else if matches!(primary, Some(8 | 10)) {
-        // SQLITE_READONLY / SQLITE_IOERR. The statement rolled back or never
-        // started. This is not a full disk, a migration failure, or a commit.
+    } else if primary == Some(8) {
+        // A readonly write is a known rejection. Generic I/O errors keep
+        // the existing outcome-reconciliation path.
         (
             "WORKSPACE_WRITE_FAILED",
             format!("Local document storage could not be written; this change was not written and the last committed revision is unchanged: {error}"),

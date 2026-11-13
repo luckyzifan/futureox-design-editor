@@ -128,7 +128,7 @@ impl RecoveryStore {
     fn publish_synced_temps(&self) -> Result<()> {
         let directory = fs::read_dir(&self.root)
             .map_err(|e| BackendError::io("Cannot list recovery directory", e))?;
-        for item in directory {
+        for item in directory.take(256) {
             let item = item.map_err(|e| BackendError::io("Cannot inspect recovery entry", e))?;
             let name = item.file_name();
             let Some(name) = name.to_str() else { continue };
