@@ -1,6 +1,7 @@
 //! Production rotate settle: patch admission plus the tiled refine/present
-//! the CPU host uses after an edit. This is not a 117.sketch replay. The
-//! real file is an LFS pointer here, and this process is not Mac/Electron/Metal.
+//! the CPU host uses after an edit. When `117.sketch` is a real zip rather
+//! than an LFS pointer, the same path times rotation of group 23. This
+//! process is not Mac/Electron/Metal.
 //!
 //! Each sample times `apply_document_patch_with_damage` and
 //! `render_tiled_frame` with the damage that call returned. Full damage
@@ -64,8 +65,8 @@ fn with_blur(mut node: Node, radius: f64) -> Node {
     node
 }
 
-/// Twelve viewport tiles of real blur paint, plus one artboard whose mask
-/// chain currently forces a full redraw when a child rotates.
+/// Twelve viewport tiles of real blur paint, plus one artboard whose nested
+/// mask chain repaints only the owning subtree when a child rotates.
 fn masked_artboard() -> (Document, String) {
     let mut nodes = serde_json::Map::new();
     let mut roots = Vec::new();
@@ -301,6 +302,224 @@ fn run(label: &str, doc: Document, id: &str) {
     assert_eq!(max_delta, 0);
 }
 
+fn invalid_scene_nodes(doc: &Document) -> Vec<String> {
+    let mut found = Vec::new();
+    for (id, node) in &doc.nodes {
+        let bad_dim = [node.width, node.height, node.font_size]
+            .iter()
+            .any(|value| !value.is_finite() || *value <= 0. || *value > 1e7);
+        let bad_transform = node.transform.0.iter().any(|value| !value.is_finite() || value.abs() > 1e7)
+            || node.transform.inverse().is_err();
+        if id != &node.id || bad_dim || bad_transform || !node.opacity.is_finite()
+            || node.opacity < 0. || node.opacity > 1.
+            || node.fills.len() > 16 || node.strokes.len() > 16 || node.effects.len() > 16
+        {
+            found.push(format!(
+                "{id} kind={} w={} h={} font={} opacity={} fills={} strokes={} effects={} transform={:?}",
+                node.kind, node.width, node.height, node.font_size, node.opacity,
+                node.fills.len(), node.strokes.len(), node.effects.len(), node.transform.0
+            ));
+            if found.len() == 8 { break; }
+        }
+    }
+    found
+}
+
+fn substitute_unembedded_fonts(doc: &mut Document) -> usize {
+    let known: std::collections::BTreeSet<String> = doc.fonts.keys().cloned().collect();
+    let present = |id: &str| id == "default" || known.contains(id);
+    let mut replaced = 0usize;
+    for node in doc.nodes.values_mut() {
+        if let Some(style) = node.text_style.as_mut() {
+            if !present(&style.font_id) {
+                style.font_id = "default".into();
+                replaced += 1;
+            }
+            let before = style.fallbacks.len();
+            style.fallbacks.retain(|id| present(id));
+            replaced += before - style.fallbacks.len();
+        }
+        for run in &mut node.text_runs {
+            if run.font_id.as_deref().is_some_and(|id| !present(id)) {
+                run.font_id = Some("default".into());
+                replaced += 1;
+            }
+        }
+    }
+    replaced
+}
+
+/// Real 117.sketch group "组合 23", the editable chart group named by the
+/// existing sketch performance entry. The archive stays an LFS pointer in
+/// git; this only runs when the working tree has the zip bytes.
+fn run_real_117() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../testing/fixtures/user-regression-20261109/117.sketch"
+    );
+    let Ok(bytes) = std::fs::read(path) else {
+        println!("{{\"scenario\":\"real-117-group-23\",\"status\":\"BLOCKED\",\"reason\":\"fixture missing\"}}");
+        return;
+    };
+    if bytes.starts_with(b"version https://git-lfs.github.com") {
+        println!("{{\"scenario\":\"real-117-group-23\",\"status\":\"BLOCKED\",\"reason\":\"lfs pointer\"}}");
+        return;
+    }
+    let font_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+    );
+    let font = std::fs::read(font_path).expect("default font");
+    let imported = Instant::now();
+    let doc = futureox_design_kernel::interop::import_sketch_report(&bytes)
+        .expect("import 117")
+        .document;
+    let import_ms = imported.elapsed().as_secs_f64() * 1000.;
+    let id = doc
+        .nodes
+        .iter()
+        .find(|(_, node)| node.name == "组合 23" && node.kind == "group")
+        .map(|(id, _)| id.clone())
+        .expect("group 23");
+    let mut cursor = id.as_str();
+    let mut chain = vec![cursor];
+    for _ in 0..doc.nodes.len() {
+        let parent = doc.nodes.iter().find(|(_, node)| node.children.iter().any(|child| child == cursor));
+        match parent {
+            Some((parent, _)) => {
+                cursor = parent.as_str();
+                chain.push(cursor);
+            }
+            None => break,
+        }
+    }
+    let board = &doc.nodes[*chain.last().unwrap()];
+    let width = board.width.ceil().clamp(1., 4096.) as u32;
+    let height = board.height.ceil().clamp(1., 4096.) as u32;
+    let options = serde_json::from_value(serde_json::json!({
+        "pageId": doc.pages[0].id, "width": width, "height": height,
+        "view": {"x": -board.transform.0[4], "y": -board.transform.0[5], "zoom": 1.0},
+        "transparent": false, "grid": false,
+        "rasterProfile": "analytic"
+    }))
+    .unwrap();
+    let mut loaded = doc.clone();
+    let substituted = substitute_unembedded_fonts(&mut loaded);
+    let mut engine = Engine::new();
+    engine.load_font(&font).unwrap();
+    let json = serde_json::to_string(&loaded).unwrap();
+    if let Err(error) = engine.load_document(&json) {
+        let direct = loaded.validate().err().map(|err| err.to_string());
+        let parsed: Document = serde_json::from_str(&json).unwrap();
+        let parsed_error = parsed.validate().err().map(|err| err.to_string());
+        let offenders = invalid_scene_nodes(&parsed);
+        println!(
+            "{{\"scenario\":\"real-117-group-23\",\"status\":\"BLOCKED\",\"load_error\":{error:?},\"direct_error\":{direct:?},\"parsed_error\":{parsed_error:?},\"font_substitutions\":{substituted},\"invalid_nodes\":{offenders:?}}}"
+        );
+        return;
+    }
+    engine.load_font(&font).unwrap();
+    let cold = Instant::now();
+    let _ = engine.render_tiled_frame(&options, None).unwrap();
+    let cold_ms = cold.elapsed().as_secs_f64() * 1000.;
+    let forward = patch_turning(&loaded, &id, true);
+    let mut turned = loaded.clone();
+    turned.nodes.get_mut(&id).unwrap().transform = turn(&loaded.nodes[&id], true);
+    let back = DocumentPatch::between(&turned, &loaded).unwrap();
+    let _ = settle_once(&mut engine, &options, &forward, 0);
+    let _ = settle_once(&mut engine, &options, &back, 0);
+    let rounds = std::env::var("ROTATE_SETTLE_ROUNDS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| (1..=5).contains(value))
+        .unwrap_or(5);
+    let mut samples = Vec::new();
+    for _ in 0..rounds {
+        samples.push(settle_once(&mut engine, &options, &forward, 0));
+        samples.push(settle_once(&mut engine, &options, &back, 0));
+    }
+    let presented = engine.render_tiled_frame(&options, None).unwrap().rgba;
+    let mut fresh = Engine::new();
+    fresh.load_font(&font).unwrap();
+    fresh
+        .load_document(&serde_json::to_string(&loaded).unwrap())
+        .unwrap();
+    fresh.load_font(&font).unwrap();
+    let reference = fresh.render(&options).unwrap();
+    let mut mismatch = 0u64;
+    let mut max_delta = 0u8;
+    for (a, b) in presented.iter().zip(reference.iter()) {
+        let d = a.abs_diff(*b);
+        if d > 0 {
+            mismatch += 1;
+            max_delta = max_delta.max(d);
+        }
+    }
+    let mut e2e: Vec<f64> = samples.iter().map(|s| s.apply_ms + s.present_ms).collect();
+    let mut apply: Vec<f64> = samples.iter().map(|s| s.apply_ms).collect();
+    let mut present_ms: Vec<f64> = samples.iter().map(|s| s.present_ms).collect();
+    let tiles: Vec<_> = samples.iter().map(|s| s.tiles).collect();
+    let full = samples.iter().all(|s| s.full);
+    let reason = samples.iter().find_map(|s| s.reason.clone());
+    let blurs = doc.nodes.values().filter(|node| node.effects.iter().any(|effect| effect.visible && effect.kind == "background-blur")).count();
+    println!(
+        "{{\"scenario\":\"real-117-group-23\",\"status\":\"measured\",\"import_ms\":{import_ms:.3},\"nodes\":{},\"font_substitutions\":{substituted},\"background_blurs\":{blurs},\"view_w\":{width},\"view_h\":{height},\"cold_ms\":{cold_ms:.3},\"samples\":{},\"e2e_median_ms\":{:.3},\"apply_median_ms\":{:.3},\"present_median_ms\":{:.3},\"e2e_min_ms\":{:.3},\"e2e_max_ms\":{:.3},\"tiles\":{tiles:?},\"damage_full\":{full},\"damage_reason\":{reason:?},\"bounds_area\":{:.1},\"pixel_mismatch\":{mismatch},\"pixel_max_delta\":{max_delta},\"rss_kib\":{},\"hwm_kib\":{}}}",
+        loaded.nodes.len(),
+        samples.len(),
+        median(&mut e2e),
+        median(&mut apply),
+        median(&mut present_ms),
+        e2e.iter().copied().fold(f64::INFINITY, f64::min),
+        e2e.iter().copied().fold(0., f64::max),
+        samples[0].bounds_area,
+        rss_kib(),
+        hwm_kib(),
+    );
+    assert_eq!(mismatch, 0, "real 117 presented pixels diverged from an independent full render");
+    assert_eq!(max_delta, 0);
+    let turned_doc = {
+        let mut turned = loaded.clone();
+        turned.nodes.get_mut(&id).unwrap().transform = turn(&loaded.nodes[&id], true);
+        turned
+    };
+    let turned_damage = engine.apply_document_patch_with_damage(&forward).unwrap();
+    let turned_present = Instant::now();
+    let turned_frame = {
+        let rects;
+        let passed: Option<&[[f64; 4]]> = if turned_damage.full {
+            None
+        } else if let Some(rects_owned) = turned_damage.rects.as_deref() {
+            rects = rects_owned.to_vec();
+            Some(rects.as_slice())
+        } else if let Some(bounds) = turned_damage.bounds {
+            rects = vec![bounds];
+            Some(rects.as_slice())
+        } else {
+            rects = Vec::new();
+            Some(rects.as_slice())
+        };
+        engine.render_tiled_frame(&options, passed).unwrap()
+    };
+    let turned_present_ms = turned_present.elapsed().as_secs_f64() * 1000.;
+    let mut fresh_turned = Engine::new();
+    fresh_turned.load_font(&font).unwrap();
+    fresh_turned
+        .load_document(&serde_json::to_string(&turned_doc).unwrap())
+        .unwrap();
+    fresh_turned.load_font(&font).unwrap();
+    let turned_reference = fresh_turned.render(&options).unwrap();
+    let mut turned_mismatch = 0u64;
+    for (a, b) in turned_frame.rgba.iter().zip(turned_reference.iter()) {
+        if a != b { turned_mismatch += 1; }
+    }
+    println!(
+        "{{\"scenario\":\"real-117-group-23-rotated\",\"present_ms\":{turned_present_ms:.3},\"damage_full\":{},\"tiles\":{},\"pixel_mismatch\":{turned_mismatch}}}",
+        turned_damage.full,
+        engine.tiled_renderer().map(|r| r.last_committed().len()).unwrap_or(0),
+    );
+    assert_eq!(turned_mismatch, 0, "rotated 117 pixels diverged from an independent full render");
+}
+
 fn main() {
     let started = Instant::now();
     println!(
@@ -308,12 +527,15 @@ fn main() {
         rss_kib(),
         hwm_kib()
     );
-    let (doc, id) = plain_group();
-    run("plain-group", doc, &id);
-    let (doc, id) = clipped_group();
-    run("clipped-group", doc, &id);
-    let (doc, id) = masked_artboard();
-    run("masked-artboard", doc, &id);
+    if std::env::var("ROTATE_SETTLE_ONLY").ok().as_deref() != Some("117") {
+        let (doc, id) = plain_group();
+        run("plain-group", doc, &id);
+        let (doc, id) = clipped_group();
+        run("clipped-group", doc, &id);
+        let (doc, id) = masked_artboard();
+        run("masked-artboard", doc, &id);
+    }
+    run_real_117();
     println!(
         "{{\"event\":\"done\",\"elapsed_s\":{:.3}}}",
         started.elapsed().as_secs_f64()

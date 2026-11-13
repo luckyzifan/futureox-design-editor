@@ -834,6 +834,18 @@ impl Engine {
                 }
                 cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents);
             }
+        } else if !damage.full && let Some(proof) = pose {
+            // Leaf certificates decline when any backdrop shares the page, even
+            // if the patch damage above is already a finite union. The pose
+            // proof still says layout, masks and components do not move, so
+            // keep the resolved scene and let the settled tiles repaint only
+            // that union. A full install would reshape the whole document
+            // again inside every refined tile.
+            drop(applied);
+            self.apply_retained_pose(proof)?;
+            if let Some(bytes) = self.source_doc_bytes.take() {
+                self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), bytes));
+            }
         } else {
             let retain_index = crate::render_index::RenderIndex::preserved_by(source, patch);
             self.install_document_policy(DocumentInstall::Patch { applied, retain_index })?;
@@ -2444,7 +2456,13 @@ impl Engine {
             .doc
             .as_ref()
             .is_some_and(|doc| crate::fidelity::coherent_samples(doc, options));
-        self.export_tile(options, coherent, x, y, w, h)
+        if options.raster_profile == crate::fidelity::RasterProfile::Analytic {
+            let tile = Rect::new(x as i32, y as i32, w, h);
+            let padding = crate::export::tile_backdrop_padding(self, options, tile)?;
+            self.export_tile_with_padding(options, coherent, tile, ExportPadding::Extra(padding))
+        } else {
+            self.export_tile(options, coherent, x, y, w, h)
+        }
     }
     pub fn render_color_png(
         &mut self,
