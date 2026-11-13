@@ -2,6 +2,78 @@ use futureox_design_kernel::{Engine, RenderOptions, View, fidelity::RasterProfil
 use serde_json::{Value, json};
 use std::io::Write;
 
+#[test]
+fn sketch_frame_fill_can_be_visible_in_canvas_and_omitted_from_its_own_export() {
+    use futureox_design_kernel::export::{ExportBounds, RegionRequest};
+
+    let source = include_bytes!("../../../../testing/fixtures/design/sketch-spatial-blur-modern.sketch");
+    let report = interop::import_sketch_report(source).unwrap();
+    let doc = report.document;
+    let frame = doc.nodes.values().find(|node| node.name == "t0-r1-a0-box").unwrap();
+    let id = frame.id.clone();
+    assert_eq!(frame.kind, "frame");
+    assert!(frame.fills.iter().any(|fill| fill.visible));
+    let page_id = doc.pages[0].id.clone();
+
+    let roundtrip = |doc: &futureox_design_kernel::scene::Document| {
+        let json = serde_json::to_string(doc).unwrap();
+        let fd = futureox_design_kernel::binfmt::encode_authored_json(&json).unwrap();
+        futureox_design_kernel::binfmt::decode_authored_json(&fd).unwrap()
+    };
+    let check = |json: &str| {
+        let mut engine = Engine::new();
+        engine.load_document(json).unwrap();
+        for scale in [1., 2.] {
+            for node_ids in [None, Some(vec![id.clone()])] {
+                let request = RegionRequest {
+                    page_id: page_id.clone(),
+                    bounds: ExportBounds { x: 0., y: 0., width: 256., height: 192. },
+                    scale,
+                    node_ids,
+                    raster_profile: Some(RasterProfile::Analytic),
+                    color_output: None,
+                };
+                let png = engine.render_region_png(&request).unwrap();
+                let image = image::load_from_memory(&png).unwrap().into_rgba8();
+                // Independent Sketch 2025.1.3 exports leave the corner clear
+                // while retaining the white content. The blur kernel is
+                // validated separately, away from the frame background.
+                assert_eq!(image.get_pixel(0, 0).0, [0; 4]);
+                assert_eq!(image.get_pixel((128. * scale) as u32, (96. * scale) as u32).0, [255; 4]);
+            }
+        }
+        let canvas = engine.parse_options(json!({
+            "pageId":page_id,"width":256,"height":192,"view":{"x":0,"y":0,"zoom":1},
+            "transparent":true,"rasterProfile":"analytic"
+        })).unwrap();
+        assert_eq!(&engine.render(&canvas).unwrap()[..4], &[255; 4], "export must restore the live frame fill");
+    };
+    check(&roundtrip(&doc));
+
+    let exported = interop::export_sketch(&doc).unwrap();
+    let reopened = interop::import_sketch_report(&exported).unwrap();
+    check(&roundtrip(&reopened.document));
+
+    let mut nested = doc;
+    let mut outer = futureox_design_kernel::facet::sample_node("outer", "frame");
+    outer.width = 256.;
+    outer.height = 192.;
+    outer.children = std::mem::take(&mut nested.pages[0].children);
+    nested.nodes.insert(outer.id.clone(), outer);
+    nested.pages[0].children = vec!["outer".into()];
+    let mut engine = Engine::new();
+    engine.load_document(&roundtrip(&nested)).unwrap();
+    let mut request = RegionRequest {
+        page_id, bounds: ExportBounds { x: 0., y: 0., width: 256., height: 192. },
+        scale: 1., node_ids: Some(vec!["outer".into()]),
+        raster_profile: Some(RasterProfile::Analytic), color_output: None,
+    };
+    let first_pixel = |png: Vec<u8>| image::load_from_memory(&png).unwrap().into_rgba8().get_pixel(0, 0).0;
+    assert_eq!(first_pixel(engine.render_region_png(&request).unwrap()), [255; 4], "a nested frame's fill remains content of the outer export");
+    request.node_ids = Some(vec![id]);
+    assert_eq!(first_pixel(engine.render_region_png(&request).unwrap()), [0; 4]);
+}
+
 fn source_blur(kind: i64) -> Value {
     json!({"_class":"blur","isEnabled":true,"type":kind,"radius":4,
         "saturation":1,"center":"{0.25, 0.75}","motionAngle":37,

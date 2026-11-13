@@ -1621,6 +1621,14 @@ impl<'a> Importer<'a> {
                 Some(2) => false,
                 _ => class != "symbolMaster",
             };
+            // Sketch's "Include fill in exports" is independent of the fill
+            // rendered on the canvas or inside a parent frame.
+            if matches!(
+                layer.get("includeBackgroundColorInExport"),
+                Some(Value::Bool(false))
+            ) || layer.get("includeBackgroundColorInExport").and_then(Value::as_u64) == Some(0) {
+                node.bindings.insert("sketchOmitFrameFillInExport".into(), "true".into());
+            }
         }
         // Import-side degradation ledger (mirror of the exporter's userInfo
         // lossy list, surfaced through bindings like figUntranslated).
@@ -6600,7 +6608,10 @@ fn export_layer_impl(
             "artboard" | "symbolMaster" => {
                 layer.insert("clippingBehavior".into(), json!(if n.clip { 1 } else { 2 }));
                 layer.insert("hasBackgroundColor".into(), json!(false));
-                layer.insert("includeBackgroundColorInExport".into(), json!(true));
+                layer.insert(
+                    "includeBackgroundColorInExport".into(),
+                    json!(n.bindings.get("sketchOmitFrameFillInExport").is_none_or(|v| v != "true")),
+                );
                 layer.insert(
                     "backgroundColor".into(),
                     hex_to_rgba("#ffffff", 0., images.color_settings)?,

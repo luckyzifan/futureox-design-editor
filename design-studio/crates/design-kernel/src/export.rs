@@ -189,6 +189,27 @@ impl Engine {
                 .collect();
             restore = Some((children, transforms));
         }
+        let omitted_fills = {
+            let doc = self.doc.as_mut().expect("document checked");
+            let ids = doc.pages[page_index]
+                .children
+                .iter()
+                .filter(|id| {
+                    let node = &doc.nodes[*id];
+                    node.kind == "frame"
+                        && !node.fills.is_empty()
+                        && crate::interop::sketch_binding(doc, node, "sketchOmitFrameFillInExport")
+                            == Some("true")
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            ids.into_iter()
+                .map(|id| {
+                    let node = doc.nodes.get_mut(&id).expect("export root exists");
+                    (id, std::mem::take(&mut node.fills))
+                })
+                .collect::<Vec<_>>()
+        };
         let result = if managed {
             self.render_color_png(&options, request.color_output.unwrap_or_default())
         } else {
@@ -227,6 +248,12 @@ impl Engine {
                 Err(error) => Err(error),
             }
         };
+        if !omitted_fills.is_empty() {
+            let doc = self.doc.as_mut().expect("render preserves document");
+            for (id, fills) in omitted_fills {
+                doc.nodes.get_mut(&id).expect("render preserves nodes").fills = fills;
+            }
+        }
         if let Some((children, transforms)) = restore {
             let doc = self.doc.as_mut().expect("render preserves document");
             doc.pages[page_index].children = children;
