@@ -131,6 +131,7 @@ import { Layers } from './Layers'
 import { Inspector } from './Inspector'
 import { AnimationPanel } from './AnimationPanel'
 import { ColorPanel } from './ColorPanel'
+import { matchesAllAssetsShortcut } from './all-assets-shortcut'
 import { ExportPanel } from './ExportPanel'
 import { download, exportDocument, readDesignFile } from './persistence'
 import { createImportedCopy } from './import-identity'
@@ -227,6 +228,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [lastUtilityTool, setLastUtilityTool] = useState<Tool>('eraser')
   const [showColor, setShowColor] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [exportEntry, setExportEntry] = useState<'merged' | 'assets'>('merged')
   const [showAnimation, setShowAnimation] = useState(false)
   const adaptivePanels = useAdaptivePanels()
   const showLayers = adaptivePanels.leftOpen
@@ -260,7 +262,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     exports.activate(editor)
     return () => exports.dispose()
   }, [editor, exports])
-  function openExportPanel() {
+  function openExportPanel(entry: 'merged' | 'assets' = 'merged') {
+    setExportEntry(entry)
     if(source)source.prepareExport(()=>setShowExport(true))
     else setShowExport(true)
   }
@@ -911,6 +914,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         e.preventDefault(); command('open')
       } else if (desktopSession && key === 'n' && !e.shiftKey) {
         e.preventDefault(); command('new')
+      } else if (!showHome && matchesAllAssetsShortcut(e, shortcutPlatform())) {
+        e.preventDefault()
+        setMenu(false)
+        setExportEntry('assets')
+        setShowExport(true)
       }
     }
     window.addEventListener('keydown', layout)
@@ -1329,7 +1337,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
           <button
             className="primary"
-            onClick={openExportPanel}
+            onClick={() => openExportPanel()}
           >
             <Download size={14} />
             {locale === 'en' ? 'Export' : '导出'}
@@ -1465,6 +1473,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <button type="button" disabled={!ready || exportAsset !== null}
               title={menuText.exportSketchTitle}
               onClick={() => void generateSketchExport()}>{menuText.exportSketch}</button>
+            <button type="button" onClick={() => { openExportPanel('assets'); setMenu(false) }}>
+              {menuText.exportAllAssets}
+              <kbd>{formatShortcutCombo('Mod+Shift+E', shortcutContext.platform)}</kbd>
+            </button>
             <button onClick={() => { openExportPanel(); setMenu(false) }}>{menuText.exportImages}</button>
             {(['svg', 'png'] as const).map((format) => (
               <button
@@ -1506,7 +1518,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <button type="button" disabled={desktopStatus.busy} onClick={() => void (desktopSession?.supportsWorkspace ? desktopSession.saveCopy() : desktopSession?.save(true))}>{translateProfessional(desktopSession?.supportsWorkspace ? '保存本机副本' : '另存为', locale)}</button>
         <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{translateProfessional(desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件', locale)}</button>
       </div>}
-      {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} onClose={() => setShowExport(false)} />}
+      {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} initialTarget={exportEntry === 'assets' ? 'assets' : undefined} onClose={() => { setShowExport(false); setExportEntry('merged') }} />}
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}

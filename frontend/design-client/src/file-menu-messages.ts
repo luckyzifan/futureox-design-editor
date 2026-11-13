@@ -43,6 +43,7 @@ const phrases = {
   exportSketch: ['导出 Sketch（兼容格式）', 'Export Sketch (compatibility)'],
   exportSketchTitle: ['用于 Sketch 交换，部分效果可能降级；完整编辑信息保存在 .fd 文件', 'For Sketch interchange. Some effects may be downgraded. Full editing data stays in the .fd file.'],
   exportImages: ['导出图像 · 1x / 2x / 3x', 'Export images · 1x / 2x / 3x'],
+  exportAllAssets: ['导出全部资产…', 'Export All Assets…'],
   propertiesWorkspace: ['属性工作区', 'Properties'],
   stopOperation: ['停止当前操作', 'Stop current operation'],
   canvasLabel: ['设计画布编辑器', 'Design canvas'],

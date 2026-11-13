@@ -22,7 +22,21 @@ body { background: var(--workspace-canvas); }
    .design-tools, whose own shadow is a heavier separate black blur. */
 .design-tools.export-panel {
   box-shadow: var(--workspace-shadow);
+  width: min(900px, 100%);
+  max-height: calc(100vh - 64px);
+  box-sizing: border-box;
 }
+.all-assets-export { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.all-assets-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.all-assets-filters label { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 140px; }
+.all-assets-export input, .all-assets-export select { max-width: none; }
+.all-assets-filters input, .all-assets-filters select { width: 100%; margin: 0; box-sizing: border-box; }
+.all-assets-list { display: flex; flex-direction: column; gap: 8px; max-height: min(280px, 36vh); overflow: auto; min-width: 0; }
+.all-assets-layer { border: 1px solid var(--workspace-border); border-radius: 8px; padding: 8px; min-width: 0; }
+.all-assets-task { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.all-assets-task span, .all-assets-results li { min-width: 0; overflow-wrap: anywhere; }
+.all-assets-results { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.all-assets-export .feature-row { flex-wrap: wrap; }
 .editor-shell .floating-toolbar {
   border-radius: 16px;
   box-shadow: 0 8px 28px #1a243314, 0 1px 2px #1a24330d;
