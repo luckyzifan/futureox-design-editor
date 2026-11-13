@@ -73,7 +73,7 @@ pub fn gradient_blur_composite(
 }
 
 /// Captured backdrop pixels can have a fractional world-space origin.
-pub(crate) fn gradient_blur_composite_at(
+pub fn gradient_blur_composite_at(
     target: &mut Surface,
     blurred: &Surface,
     inverse: &crate::math::Transform,

@@ -753,7 +753,7 @@ enum FigProgressive {
 /// `startRadius` the start radius, and offsets are normalized object space.
 /// Differing radii that fit the strength field become that field with base
 /// radius 1. Equal radii stay uniform. Nothing here is a framebuffer oracle.
-fn fig_background_progressive(effect: &Value, size: [f64; 2]) -> Result<FigProgressive, &'static str> {
+fn fig_background_progressive(effect: &Value, size: Option<[f64; 2]>) -> Result<FigProgressive, &'static str> {
     if !fig_progressive_flag(effect)? {
         return Ok(FigProgressive::NotProgressive);
     }
@@ -763,6 +763,9 @@ fn fig_background_progressive(effect: &Value, size: [f64; 2]) -> Result<FigProgr
     let (start, end) = if start_radius == end_radius {
         ([0., 0.], [1., 0.])
     } else {
+        let Some(size) = size else {
+            return Err("progressive-background-blur-needs-layer-bounds");
+        };
         (
             fig_offset(effect, "startOffset", size).ok_or("progressive-background-blur-endpoints-missing")?,
             fig_offset(effect, "endOffset", size).ok_or("progressive-background-blur-endpoints-missing")?,
@@ -774,6 +777,39 @@ fn fig_background_progressive(effect: &Value, size: [f64; 2]) -> Result<FigProgr
         Err(crate::gradient_blur::TwoEndReject::Endpoints) => Err("progressive-background-blur-endpoints-missing"),
         Err(crate::gradient_blur::TwoEndReject::OutsideModel) => Err("progressive-background-blur-radius-outside-model"),
     }
+}
+
+/// Editor FIG import calls this through WASM. A missing layer box cannot place
+/// normalized ends, so differing radii stay on the uniform radius and name why.
+pub(crate) fn progressive_background_import(effect: &Value, size: Option<[f64; 2]>, kind: &str) -> Value {
+    let mut out = serde_json::Map::new();
+    let note = |out: &mut serde_json::Map<String, Value>, message: &str| {
+        out.insert("note".into(), Value::String(message.into()));
+    };
+    if kind == "background-blur" {
+        match fig_background_progressive(effect, size) {
+            Ok(FigProgressive::NotProgressive) => {}
+            Ok(FigProgressive::Uniform(radius)) => {
+                out.insert("radius".into(), Value::from(radius));
+                note(&mut out, "progressive-background-blur-equal-radii-kept-uniform");
+            }
+            Ok(FigProgressive::Ramp(params)) => {
+                out.insert("radius".into(), Value::from(1.));
+                out.insert(
+                    "gradientBlur".into(),
+                    serde_json::to_value(params).expect("gradient parameters serialize"),
+                );
+            }
+            Err(message) => note(&mut out, message),
+        }
+    } else if kind == "blur" {
+        match fig_progressive_flag(effect) {
+            Ok(true) => note(&mut out, "progressive-layer-blur-outside-background-scope"),
+            Err(message) => note(&mut out, message),
+            Ok(false) => {}
+        }
+    }
+    Value::Object(out)
 }
 
 fn json_float(value: f64) -> Value {
@@ -1640,24 +1676,16 @@ impl FigImporter {
                 let show_shadow_behind_node = bool_of(e, "showShadowBehindNode").unwrap_or(false);
                 let mut radius = f64_of(Some(e), "radius");
                 let mut gradient_blur = None;
-                if kind == "background-blur" {
-                    match fig_background_progressive(e, [node.width, node.height]) {
-                        Ok(FigProgressive::NotProgressive) => {}
-                        Ok(FigProgressive::Uniform(value)) => {
-                            radius = value;
-                            untranslated.push("progressive-background-blur-equal-radii-kept-uniform".into());
-                        }
-                        Ok(FigProgressive::Ramp(params)) => {
-                            radius = 1.;
-                            gradient_blur = Some(params);
-                        }
-                        Err(note) => untranslated.push(note.into()),
+                if kind == "background-blur" || kind == "blur" {
+                    let decision = progressive_background_import(e, Some([node.width, node.height]), kind);
+                    if let Some(value) = decision.get("radius").and_then(Value::as_f64) {
+                        radius = value;
                     }
-                } else if kind == "blur" {
-                    match fig_progressive_flag(e) {
-                        Ok(true) => untranslated.push("progressive-layer-blur-outside-background-scope".into()),
-                        Err(note) => untranslated.push(note.into()),
-                        Ok(false) => {}
+                    if let Some(params) = decision.get("gradientBlur") {
+                        gradient_blur = Some(serde_json::from_value(params.clone()).expect("admitted gradient blur"));
+                    }
+                    if let Some(note) = decision.get("note").and_then(Value::as_str) {
+                        untranslated.push(note.to_owned());
                     }
                 }
                 node.effects.push(Effect {
@@ -4799,6 +4827,35 @@ mod tests {
             assert_eq!(fx.radius, 6.);
             let note = source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").unwrap();
             assert!(note.contains("progressive-background-blur-equal-radii-kept-uniform"), "{note}");
+        }
+
+        #[test]
+        fn progressive_background_blur_without_a_layer_box_names_the_limit() {
+            let differing = json!({
+                "type": "BACKGROUND_BLUR", "radius": 8, "startRadius": 0, "blurType": "PROGRESSIVE",
+                "startOffset": {"x": 0, "y": 0.5}, "endOffset": {"x": 1, "y": 0.5}
+            });
+            let decision = progressive_background_import(&differing, None, "background-blur");
+            assert!(decision.get("gradientBlur").is_none());
+            assert!(decision.get("radius").is_none());
+            assert_eq!(decision["note"], "progressive-background-blur-needs-layer-bounds");
+            let equal = json!({"type": "BACKGROUND_BLUR", "radius": 6, "startRadius": 6, "blurOpType": "PROGRESSIVE"});
+            let uniform = progressive_background_import(&equal, None, "background-blur");
+            assert_eq!(uniform["radius"], 6.);
+            assert_eq!(uniform["note"], "progressive-background-blur-equal-radii-kept-uniform");
+            let placed = progressive_background_import(&differing, Some([80., 40.]), "background-blur");
+            assert_eq!(placed["radius"], 1.);
+            assert_eq!(placed["gradientBlur"]["start"], json!([0., 20.]));
+            assert_eq!(placed["gradientBlur"]["end"], json!([80., 20.]));
+            assert_eq!(placed["gradientBlur"]["startCount"], 0.);
+            assert_eq!(placed["gradientBlur"]["endCount"], 8.);
+            assert_eq!(placed["gradientBlur"]["smooth"], true);
+            let layer = progressive_background_import(&json!({
+                "type": "LAYER_BLUR", "radius": 6, "startRadius": 0, "blurType": "PROGRESSIVE"
+            }), Some([80., 40.]), "blur");
+            assert!(layer.get("gradientBlur").is_none());
+            assert_eq!(layer["note"], "progressive-layer-blur-outside-background-scope");
+            assert!(progressive_background_import(&json!({"type": "BACKGROUND_BLUR", "radius": 4}), Some([80., 40.]), "background-blur").as_object().unwrap().is_empty());
         }
 
         #[test]

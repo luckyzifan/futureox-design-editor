@@ -116,7 +116,7 @@ function resolveOverridePath(addressesByComponent: Map<string, Map<string, strin
   return resolved
 }
 
-export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, strokesOf: (record:any)=>Stroke[], warnings?: { add(message: string): unknown }, receipts?: FigReceipts, effectsOf?: (record: any) => Effect[]) {
+export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, strokesOf: (record:any)=>Stroke[], warnings?: { add(message: string): unknown }, receipts?: FigReceipts, effectsOf?: (record: any, note?: (message: string) => void) => Effect[]) {
   for (const [sourceId, r] of records) {
     const n=doc.nodes[ids.get(sourceId)!]
     if (!n || r.type!=='SYMBOL') continue
@@ -418,14 +418,16 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
   if(changed) fields.textStyle = style
 }
 
-function applyEffects(fields: Record<string, unknown>, override: any, effectsOf: ((record: any) => Effect[]) | undefined, warnings?: { add(message: string): unknown }) {
+function applyEffects(fields: Record<string, unknown>, override: any, effectsOf: ((record: any, note?: (message: string) => void) => Effect[]) | undefined, warnings?: { add(message: string): unknown }) {
   if(override.effects === undefined) return
   if(!Array.isArray(override.effects) || !effectsOf) {
     warnings?.add('FIG 实例覆盖 effects 暂不能执行，其余覆盖已保留')
     return
   }
   try {
-    fields.effects = effectsOf({ effects: override.effects })
+    const notes: string[] = []
+    fields.effects = effectsOf({ effects: override.effects }, message => { if (!notes.includes(message)) notes.push(message) })
+    for (const message of notes) warnings?.add(`FIG 实例覆盖 ${message}`)
   } catch {
     warnings?.add('FIG 实例覆盖 effects 暂不能执行，其余覆盖已保留')
   }

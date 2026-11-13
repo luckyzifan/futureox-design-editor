@@ -1,4 +1,4 @@
-import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, network_geometry_json, fig_mask_suffixes, fig_stroke_caps_json } from './generated/design-kernel/design_kernel'
+import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, network_geometry_json, fig_mask_suffixes, fig_stroke_caps_json, fig_progressive_background_json } from './generated/design-kernel/design_kernel'
 import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
@@ -21,6 +21,7 @@ import {
   hasLayerExports,
   hasLocalTools,
   hasSchema20Features,
+  hasGradientBlur,
   type DesignNode,
   type Matrix,
   type Paint,
@@ -482,6 +483,24 @@ function figBakedGeometry(entries: any[], getBlob: (index: number) => Uint8Array
   return { fillRule, fill }
 }
 
+/** Rust admits the two ends. A missing layer box keeps the uniform radius and names the limit. */
+export function mapFigBlurEffect(
+  effectRecord: object,
+  kind: string,
+  size: [number, number] | undefined,
+  note?: (message: string) => void,
+): { radius?: number; gradientBlur?: Effect['gradientBlur'] } {
+  if (kind !== 'background-blur' && kind !== 'blur') return {}
+  const decision = JSON.parse(fig_progressive_background_json(
+    JSON.stringify(effectRecord),
+    size && Number.isFinite(size[0]) ? size[0] : Number.NaN,
+    size && Number.isFinite(size[1]) ? size[1] : Number.NaN,
+    kind,
+  )) as { radius?: number; gradientBlur?: Effect['gradientBlur']; note?: string }
+  if (decision.note) note?.(decision.note)
+  return decision
+}
+
 export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign & { backend: 'typescript-fig' } {
   const { data, files } = decodeFig(bytes),
     doc = blank(name),
@@ -625,7 +644,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       ...(mappedCap.endMarker ? { endMarker: mappedCap.endMarker } : {}),
     }))
   }
-  const effectsOf = (record: any): Effect[] => (record.effects || []).map((x: any) => {
+  const effectsOf = (record: any, note?: (message: string) => void, size?: [number, number]): Effect[] => (record.effects || []).map((x: any) => {
     const kind = (
       {
         DROP_SHADOW: 'shadow',
@@ -658,15 +677,18 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         typeof x.clipToShape !== 'boolean')
     )
       throw new Error('FIG 纹理参数不完整；原文件未修改')
+    const progressive = kind === 'background-blur' || kind === 'blur'
+      ? mapFigBlurEffect(x, kind, size, note) : undefined
     return {
       ...effect(kind),
       color: rgb(x.color, colorSpace),
       opacity: x.color?.a ?? 1,
       x: x.offset?.x || 0,
       y: x.offset?.y || 0,
-      radius: x.radius || 0,
+      radius: progressive?.radius ?? (x.radius || 0),
       spread: x.spread || 0,
       visible: x.visible !== false,
+      ...(progressive?.gradientBlur ? { gradientBlur: progressive.gradientBlur } : {}),
       ...(kind === 'glass'
         ? {
             glass: {
@@ -763,7 +785,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       r.rectangleBottomLeftCornerRadius ?? r.cornerRadius ?? 0,
     ]
     n.smoothing = r.cornerSmoothing || 0
-    n.effects = effectsOf(r)
+    n.effects = effectsOf(r, message => figNote(receipts, n.id, message), [n.width, n.height])
     for (const x of r.effects || []) {
       if (x?.blendMode && x.blendMode !== 'NORMAL') {
         figNote(receipts, n.id, `effectBlendMode=${x.blendMode}`)
@@ -1004,5 +1026,6 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   if (Object.values(doc.designSystem?.styles || {}).some(style => style.kind === 'text' && style.value && typeof style.value === 'object' && 'textCase' in style.value && style.value.textCase && style.value.textCase !== 'original'))
     doc.schemaVersion = Math.max(15, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasSchema20Features(doc)) doc.schemaVersion = Math.max(20, doc.schemaVersion) as typeof doc.schemaVersion
+  if (hasGradientBlur(doc)) doc.schemaVersion = Math.max(9, doc.schemaVersion) as typeof doc.schemaVersion
   return { document: doc, backend: 'typescript-fig', ...warnings.result() }
 }
