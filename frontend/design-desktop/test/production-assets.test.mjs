@@ -17,12 +17,18 @@ test('actual Vite production build excludes references and preserves font, brand
     await build({ configFile: false, root: temp, publicDir, plugins: [productionPublicAssets()], logLevel: 'silent', build: { outDir: 'dist', emptyOutDir: true } })
     await assert.rejects(access(path.join(temp, 'dist/fidelity')), { code: 'ENOENT' })
     await assert.rejects(access(path.join(temp, 'dist/figma-blur-verify.html')), { code: 'ENOENT' })
+    await assert.rejects(access(path.join(temp, 'dist/canvas-chrome-verify.html')), { code: 'ENOENT' })
+    await assert.rejects(access(path.join(temp, 'dist/sdf-shadow-verify.html')), { code: 'ENOENT' })
+    await access(path.join(temp, 'dist/color-fixtures/PROVENANCE.json'))
+    await access(path.join(temp, 'dist/color-fixtures/p3-red-icc.png'))
     for (const name of ['manifest.webmanifest', 'fonts/NotoSansSC.ttf', 'fonts/OFL.txt', 'fonts/source.json', 'branding/futureox-desgin.svg', 'licenses/lucide-react-LICENSE.txt', 'licenses/NotoSansSC-OFL.txt', 'licenses/inventory.json']) {
       assert.deepEqual(await readFile(path.join(temp, 'dist', name)), await readFile(path.join(publicDir, name)))
     }
     // Exclusion must never delete the original reference/evidence source.
     await access(path.join(publicDir, 'fidelity/mcp-2026-10-06/provenance.json'))
     await access(path.join(publicDir, 'figma-blur-verify.html'))
+    await access(path.join(publicDir, 'canvas-chrome-verify.html'))
+    await access(path.join(publicDir, 'sdf-shadow-verify.html'))
   } finally { await rm(temp, { recursive: true, force: true }) }
 })
 test('asset copier refuses source/output overlap', async () => {
@@ -34,7 +40,9 @@ test('native font and package paths retain notices and reject stale reference ou
   assert.match(buildSource, /\['OFL.txt', 'source.json'\]/)
   const packageSource = await readFile(path.join(root, 'frontend/design-desktop/scripts/package.mjs'), 'utf8')
   assert.match(packageSource, /dist\/renderer\/fidelity/)
-  assert.match(packageSource, /dist\/renderer\/figma-blur-verify\.html/)
+  assert.match(packageSource, /figma-blur-verify\.html/)
+  assert.match(packageSource, /canvas-chrome-verify\.html/)
+  assert.match(packageSource, /sdf-shadow-verify\.html/)
   const lucide = await readFile(path.join(publicDir, 'licenses/lucide-react-LICENSE.txt'), 'utf8')
   assert.match(lucide, /ISC License/); assert.match(lucide, /Cole Bemis/); assert.match(lucide, /The MIT License/)
 })

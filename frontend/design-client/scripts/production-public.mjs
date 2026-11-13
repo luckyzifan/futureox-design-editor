@@ -42,7 +42,7 @@ export async function copyProductionPublic(source, destination, wasmIdentity = {
   if (verified) await assertPublicWasmHash(from, expectedWasmSha256, generatedDirectory)
   await mkdir(to, { recursive: true })
   for (const entry of await readdir(from)) {
-    if (entry === 'fidelity' || entry === 'figma-blur-verify.html') continue
+    if (entry === 'fidelity' || entry === 'figma-blur-verify.html' || entry === 'canvas-chrome-verify.html' || entry === 'sdf-shadow-verify.html') continue
     await cp(path.join(from, entry), path.join(to, entry), { recursive: true })
   }
   if (verified) {

@@ -11,7 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describePackage } from './release-package-resources.mjs'
 import { packageSourceFilter } from './package-source.mjs'
-import { inventoryFromPackageBytes, locateElectronPackage, verifyPackageByteInventory } from './release-package-bytes.mjs'
+import { assessColorFixtures, inventoryFromPackageBytes, locateElectronPackage, verifyPackageByteInventory } from './release-package-bytes.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repo = path.resolve(desktop, '../..')
@@ -35,7 +35,12 @@ const NATIVE_BINARIES = [
   { path: 'bin/design-prepare', crate: 'futureox-design-kernel' },
   { path: 'bin/futureox-design-agent', crate: 'futureox-design-agent' },
 ]
-const PRODUCTION_EXCLUDED = new Set(['fidelity', 'figma-blur-verify.html'])
+const PRODUCTION_EXCLUDED = new Set(['fidelity', 'figma-blur-verify.html', 'canvas-chrome-verify.html', 'sdf-shadow-verify.html'])
+const WITHHELD_PUBLIC = [
+  ['frontend/design-client/public/figma-blur-verify.html', 'experimental_verification_page_excluded'],
+  ['frontend/design-client/public/canvas-chrome-verify.html', 'figma_shader_transcription_without_redistribution_license'],
+  ['frontend/design-client/public/sdf-shadow-verify.html', 'figma_shader_transcription_without_redistribution_license'],
+]
 const LICENSE_FILE = /^(license|licence|copying|notice|unlicense|copyright)(\b|[._-]|$)/i
 
 function sha256(bytes) {
@@ -477,7 +482,7 @@ function buildFontsAndPublic(root) {
       continue
     }
     if (relative.startsWith('color-fixtures/')) {
-      other.push({ path: repoPath, sha256: digest, license: null, distribution: 'renderer_package_input', traceable: false, gap: 'no_provenance_record' })
+      other.push({ path: repoPath, sha256: digest, bytes: statSync(file).size, text: () => readFileSync(file, 'utf8') })
     }
   }
   for (const file of walk(path.join(root, 'frontend/design-desktop/assets/branding'))) {
@@ -493,7 +498,22 @@ function buildFontsAndPublic(root) {
       thirdParty: false,
     })
   }
-  return { fonts, icons, unresolvedPackageInputs: other, fidelityFilesExcluded }
+  const licenseInputs = [
+    { path: 'LICENSE', full: path.join(root, 'LICENSE') },
+    { path: 'frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE.md', full: path.join(root, 'frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE.md') },
+    { path: 'frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE-APACHE.md', full: path.join(root, 'frontend/design-desktop/third-party-notices/cargo/moxcms/0.9.1/LICENSE-APACHE.md') },
+  ].filter(item => existsSync(item.full)).map(item => ({
+    path: item.path,
+    sha256: sha256File(item.full),
+    bytes: statSync(item.full).size,
+    text: () => readFileSync(item.full, 'utf8'),
+  }))
+  const provenance = other.find(item => item.path.endsWith('/PROVENANCE.json'))
+  const colorFixtures = assessColorFixtures([...other, ...licenseInputs], {
+    provenanceSha256: provenance?.sha256 ?? null,
+  }).map(item => ({ ...item, distribution: 'renderer_package_input' }))
+  const unresolvedPackageInputs = colorFixtures.filter(item => !item.traceable)
+  return { fonts, icons, colorFixtures, unresolvedPackageInputs, fidelityFilesExcluded }
 }
 
 function buildFfmpeg(root) {
@@ -825,6 +845,14 @@ export function buildComponentInventory({
     rust,
     fonts: assets.fonts,
     icons: assets.icons,
+    colorFixtures: assets.colorFixtures,
+    withheldFromPackage: WITHHELD_PUBLIC.map(([relative, reason]) => ({
+      path: relative,
+      reason,
+      sha256: existsSync(path.join(root, relative)) ? sha256File(path.join(root, relative)) : null,
+      distribution: 'withheld_from_package',
+      traceable: false,
+    })),
     hostSourceInputs: hostFiles.length,
     unresolvedPackageInputs: assets.unresolvedPackageInputs,
     fidelityFilesExcluded: assets.fidelityFilesExcluded,
@@ -850,6 +878,37 @@ export function buildComponentInventory({
   }
 }
 
+export function supplementalNoticeProblems(packageReport) {
+  if (!packageReport || packageReport.producedFrom !== 'release_package_bytes') return ['inventory was not produced from package bytes']
+  const problems = []
+  const crates = [...(packageReport.rust?.distributed ?? []), ...(packageReport.rust?.buildOnly ?? [])]
+  for (const crate of crates) {
+    const marker = `/cargo/${crate.name}/${crate.version}/source.json`
+    const listed = (packageReport.census?.files ?? []).find(file => file.path.includes(marker))
+    if (!listed) continue
+    const full = path.join(packageReport.packageDir, listed.path)
+    if (!existsSync(full)) {
+      problems.push(`${crate.id} source.json missing on disk`)
+      continue
+    }
+    const raw = readFileSync(full)
+    if (sha256(raw) !== listed.sha256) problems.push(`${crate.id} source.json hash`)
+    let source
+    try {
+      source = JSON.parse(raw.toString('utf8'))
+    } catch {
+      problems.push(`${crate.id} source.json unreadable`)
+      continue
+    }
+    if (source.spdx !== crate.license) problems.push(`${crate.id} spdx`)
+    for (const entry of source.files ?? []) {
+      const notice = (crate.notices ?? []).find(item => item.packagePath?.endsWith(`/${entry.file}`))
+      if (!notice || notice.sha256 !== entry.sha256) problems.push(`${crate.id} ${entry.file}`)
+    }
+  }
+  return problems
+}
+
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (invoked) {
   if (process.argv.includes('--write-notices')) {
@@ -873,6 +932,12 @@ if (invoked) {
     else {
       const verified = verifyPackageByteInventory(report.fromPackage, openAsar)
       if (!verified.ok) packageProblems.push(`package byte verification failed (${verified.mismatches?.length ?? 0})`)
+      const supplemental = supplementalNoticeProblems(report.fromPackage)
+      if (supplemental.length) packageProblems.push(`supplemental license record mismatch: ${supplemental.slice(0, 8).join('; ')}`)
+      const blocking = (report.fromPackage.gaps ?? []).filter(gap => gap.kind !== 'signature' && gap.kind !== 'platform')
+      if (blocking.length) {
+        packageProblems.push(`license or classification gaps remain (${blocking.length}): ${blocking.slice(0, 12).map(item => `${item.kind}:${item.id}:${item.gap}`).join('; ')}`)
+      }
       const summary = report.fromPackage.summary
       if (!summary.electronBinary) packageProblems.push('electron binary')
       if (summary.electronNotices < 2) packageProblems.push('electron notices')

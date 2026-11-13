@@ -25,7 +25,9 @@ await mkdir(staging, { recursive: true })
 await cp(path.join(root, 'assets'), path.join(staging, 'assets'), { recursive: true })
 await cp(path.join(root, 'src'), path.join(staging, 'src'), { recursive: true, filter: packageSourceFilter(path.join(root, 'src')) })
 if (existsSync(path.join(root, 'dist/renderer/fidelity'))) throw new Error('Reference fixtures found in renderer output; rebuild before packaging')
-if (existsSync(path.join(root, 'dist/renderer/figma-blur-verify.html'))) throw new Error('Experimental verification page found in renderer output; rebuild before packaging')
+for (const name of ['figma-blur-verify.html', 'canvas-chrome-verify.html', 'sdf-shadow-verify.html']) {
+  if (existsSync(path.join(root, 'dist/renderer', name))) throw new Error(`Verification page ${name} found in renderer output; rebuild before packaging`)
+}
 await cp(path.join(root, 'dist/renderer'), path.join(staging, 'renderer'), { recursive: true })
 const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
 const electronZipDir = process.env.ELECTRON_ZIP_DIR
