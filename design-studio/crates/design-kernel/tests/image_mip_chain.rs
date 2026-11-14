@@ -308,3 +308,48 @@ fn sampler_renders_minified_images_from_selected_levels() {
     assert_ne!(disabled, enabled);
     assert_eq!(enabled, render(true));
 }
+
+#[test]
+fn sketch_bitmap_minifies_with_box_levels_and_keeps_intrinsic_pixels() {
+    use futureox_design_kernel::{Engine, RenderOptions};
+    let image = gradient_png(16, 16);
+    let ordinary = json!({
+        "schemaVersion":7, "id":"d", "name":"Image",
+        "pages":[{"id":"p","name":"p","children":["bitmap"],"background":"#ffffff"}],
+        "nodes":{"bitmap":{"id":"bitmap","kind":"rectangle","width":16,"height":16,
+            "fills":[{"kind":"image","color":"#000000","image":image,"fit":"cover"}]}}
+    });
+    let mut imported = ordinary.clone();
+    imported["designSystem"] = json!({"sketchContainers":{"nodeMetadata":{
+        "bitmap":{"bindings":{"sketchSourceBitmap":"true"},"styleRefs":{}}
+    }}});
+    let render = |document: &serde_json::Value, zoom: f64, mips: bool, profile: &str| {
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        engine.set_image_mips(mips);
+        let side = (16. * zoom) as u32;
+        let options: RenderOptions = serde_json::from_value(json!({
+            "pageId":"p","width":side,"height":side,"transparent":true,"rasterProfile":profile,
+            "view":{"x":0,"y":0,"zoom":zoom}
+        }))
+        .unwrap();
+        engine.render(&options).unwrap()
+    };
+    let minified = render(&ordinary, 0.25, true, "analytic");
+    assert!(render(&ordinary, 0.25, false, "analytic") != minified);
+    assert_eq!(render(&imported, 0.25, false, "analytic"), minified);
+    assert_eq!(
+        render(&imported, 0.5, false, "analytic"),
+        render(&ordinary, 0.5, true, "analytic")
+    );
+    for zoom in [1., 2.] {
+        assert_eq!(
+            render(&imported, zoom, false, "analytic"),
+            render(&ordinary, zoom, false, "analytic")
+        );
+    }
+    assert_eq!(
+        render(&imported, 0.5, false, "figma"),
+        render(&ordinary, 0.5, false, "figma")
+    );
+}

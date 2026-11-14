@@ -138,11 +138,16 @@ impl Images {
     /// zero while mips are disabled is an explicit error, never a silent
     /// resolution mismatch with compiled coordinates.
     pub fn image_at(&mut self, data: &str, level: u32) -> Result<Arc<Surface>, String> {
+        if level > 0 && !self.mips {
+            return Err("Image mip levels are disabled".into());
+        }
+        self.image_at_selected_level(data, level)
+    }
+    /// Used by a renderer that already selected a level for this paint.
+    /// A level does not change the authored image or the decoder's policy.
+    pub fn image_at_selected_level(&mut self, data: &str, level: u32) -> Result<Arc<Surface>, String> {
         if level == 0 {
             return Ok(self.base(data)?.base.clone());
-        }
-        if !self.mips {
-            return Err("Image mip levels are disabled".into());
         }
         let level = {
             let cached = self.base(data)?;
@@ -689,6 +694,34 @@ pub fn image_mip_level(
         return Ok(0);
     }
     Ok((ratio.log2().floor() as u32).min(u32::MAX - 1))
+}
+
+/// For imported Sketch bitmap layers choose the offline box mip when both
+/// device axes minify a simple image. At the original size the base texels
+/// remain addressable exactly; anisotropic or adjusted paints keep their
+/// established sampling, and full-scene experimental mips remain opt-in.
+pub fn sketch_bitmap_mip_level(
+    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2], paint: &Paint,
+) -> Result<u32, String> {
+    if matrix.0[1] != 0. || matrix.0[2] != 0. || paint.transform.is_some()
+        || paint.adjust.is_some() || paint.tile.as_ref().is_some_and(|tile| tile.is_active())
+        || !matches!(paint.fit.as_str(), "cover" | "contain" | "stretch")
+    {
+        return Ok(0);
+    }
+    let mapping = ImageCoordinates::new(paint, size, matrix, rect, image)?;
+    let at = Point::new(f64::from(rect.x), f64::from(rect.y));
+    let source = mapping.byte_point(at);
+    let next_x = mapping.byte_point(at + Point::new(1., 0.));
+    let next_y = mapping.byte_point(at + Point::new(0., 1.));
+    let stride = (next_x.x - source.x).abs().min((next_y.y - source.y).abs());
+    // Cancel only arithmetic round-off at powers of two. An exact 2×
+    // shrink must not choose the base because the affine subtraction lost an ulp.
+    Ok(if stride.is_finite() && stride >= 2. - 1e-9 {
+        ((stride + 1e-9).log2().floor() as u32).min(crate::image_mipmap::mip_levels(image) - 1)
+    } else {
+        0
+    })
 }
 /// Shared binary64 coordinate compilation; GPU samples its own decoded colors.
 pub fn image_sampling_grid(
@@ -1390,6 +1423,11 @@ impl Sampler {
         samples: Rect,
         images: &mut Images,
     ) -> Result<Self, String> {
+        Self::with_sketch_bitmap(p, n, m, samples, images, false)
+    }
+    pub(crate) fn with_sketch_bitmap(
+        p: &Paint, n: &Node, m: Transform, samples: Rect, images: &mut Images, sketch_bitmap: bool,
+    ) -> Result<Self, String> {
         if !p.opacity.is_finite() || !p.angle.is_finite() {
             return Err("Invalid paint".into());
         }
@@ -1423,10 +1461,12 @@ impl Sampler {
                     p,
                 )?
                 .min(crate::image_mipmap::mip_levels([base.rect.w, base.rect.h]) - 1)
+            } else if sketch_bitmap && images.settings.is_none() && uri.starts_with("data:") {
+                sketch_bitmap_mip_level(samples, m, [n.width, n.height], [base.rect.w, base.rect.h], p)?
             } else {
                 0
             };
-                Ok(Some(SampleImage::Surface(images.image_at(uri,level)?)))
+            Ok(Some(SampleImage::Surface(images.image_at_selected_level(uri,level)?)))
             };
             #[cfg(not(target_arch="wasm32"))]
             {

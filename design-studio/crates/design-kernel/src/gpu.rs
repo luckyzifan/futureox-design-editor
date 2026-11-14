@@ -425,6 +425,8 @@ pub struct GpuPaint {
     pub gradient_plane: Option<[f64; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fixed_gradient: Option<crate::fixed_gradient::FixedGradient>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sketch_bitmap_sampling: bool,
 }
 impl std::ops::Deref for GpuPaint {
     type Target = Paint;
@@ -433,6 +435,11 @@ impl std::ops::Deref for GpuPaint {
     }
 }
 impl GpuPaint {
+    fn with_sketch_bitmap_sampling(mut self, allowed: bool) -> Self {
+        self.sketch_bitmap_sampling = allowed && self.image.as_deref().is_some_and(|uri| uri.starts_with("data:"));
+        self
+    }
+
     fn new(
         paint: &Paint,
         inverse: Transform,
@@ -463,6 +470,7 @@ impl GpuPaint {
             fixed_gradient: crate::fixed_gradient::FixedGradient::new(
                 paint, inverse, size, origin,
             )?,
+            sketch_bitmap_sampling: false,
         })
     }
 }
@@ -1921,6 +1929,8 @@ impl Compiler<'_> {
         let mut strokes = Vec::new();
         let inverse = matrix.inverse_composed(rect)?;
         let rgba8 = self.compatible;
+        let sketch_bitmap_sampling = !rgba8 && self.doc.color_management.is_none()
+            && crate::interop::sketch_binding(self.doc, n, "sketchSourceBitmap") == Some("true");
         for (index, s) in n
             .strokes
             .iter()
@@ -1952,7 +1962,7 @@ impl Compiler<'_> {
                     [n.width, n.height],
                     rect,
                     rgba8 && self.profile.is_export(),
-                )?,
+                )?.with_sketch_bitmap_sampling(sketch_bitmap_sampling),
                 align: s.align.clone(),
             });
         }
@@ -2022,7 +2032,7 @@ impl Compiler<'_> {
                             [n.width, n.height],
                             rect,
                             rgba8 && self.profile.is_export(),
-                        )
+                        ).map(|paint| paint.with_sketch_bitmap_sampling(sketch_bitmap_sampling))
                     })
                     .collect::<Result<_, String>>()?,
                 strokes,
