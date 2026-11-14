@@ -1,7 +1,7 @@
 import type { Editor } from './engine'
 import { defaultTextStyle, type DesignDocument, type DesignNode } from './model'
 import { commitPendingEdits } from './pending-edits'
-import { fontMatchKey, preserveUnmatchedSourceRuns, sourceFonts, sourceNameResolved, type FontResource, type SourceFontRequest } from './font-matching'
+import { fontMatchKey, preserveUnmatchedSourceRuns, resolveSourceFonts, sourceFonts, sourceNameResolved, type FontResource, type SourceFontRequest } from './font-matching'
 
 export const FONT_PAGE_SIZE = 40
 export type FontChoice = { id: string; family: string; style?: string; postscript?: string }
@@ -100,6 +100,14 @@ function detachStyle(node: DesignNode) {
 function assertFont(doc: DesignDocument, id: string) {
   if (id !== 'default' && !Object.hasOwn(doc.fonts || {}, id)) throw Error('字体资源不存在，请重新选择')
 }
+
+function resolveWholeLayerSourceFonts(doc: DesignDocument, node: DesignNode) {
+  const source = sourceFonts(doc, node)
+  const names = Object.values(source.runs ?? {})
+  if (source.style) names.push(source.style)
+  return resolveSourceFonts(doc, node, source, names)
+}
+
 export type FontEditResult = { status: 'committed' | 'unchanged' | 'blocked' | 'rejected'; changedNodes: number; changedReferences: number; visitedNodes: number; visitedRuns: number; skippedLocked: number; skippedLinked: number; inherited: number; message: string }
 const emptyResult = (message: string): FontEditResult => ({ status: 'blocked', changedNodes: 0, changedReferences: 0, visitedNodes: 0, visitedRuns: 0, skippedLocked: 0, skippedLinked: 0, inherited: 0, message })
 
@@ -121,7 +129,8 @@ export function applySelectionFont(editor: Editor, ids: readonly string[], fontI
     for (const { id } of targets.targets) {
       const n = doc.nodes[id]
       visitedRuns += n.textRuns?.length || 0
-      if ((n.textStyle?.fontId ?? 'default') === fontId && !n.textRuns?.some(run => run.fontId !== undefined) && !(options.detachSharedStyle && n.styleRefs?.textStyle)) continue
+      const resolvedSource = fontId === 'default' && resolveWholeLayerSourceFonts(doc, n) > 0
+      if (!resolvedSource && (n.textStyle?.fontId ?? 'default') === fontId && !n.textRuns?.some(run => run.fontId !== undefined) && !(options.detachSharedStyle && n.styleRefs?.textStyle)) continue
       changedNodes++; changedReferences++
       if (options.detachSharedStyle) detachStyle(n)
       if (n.textStyle) n.textStyle.fontId = fontId

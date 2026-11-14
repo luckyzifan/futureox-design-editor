@@ -31,6 +31,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { inFlightPreviewCancelRatio, navigationPreviewDensity, zoomDetailInsteadOfViewportPreview } from './navigation-zoom'
+import { focusTileDuringZoom } from './zoom-underlay'
 import { captureMostlyOffscreen, liveNavigationCapture, navigationCoverageBounds, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
@@ -1591,7 +1592,15 @@ export function ProgressiveSurfaceImpl(
             return !existing || existing.document !== doc || existing.revision !== contract.revision
           }), bounds).onScreen
           const priorities = new Map<RasterTile, import('./tile-cache').TileFillPriority>()
-          const tile = navigationCost.choose(prioritizeUncoveredTiles(missing, resident.filter(tile => tile.zoom >= native.scale), bounds, priorities), priorities)
+          const ordered = prioritizeUncoveredTiles(missing, resident.filter(tile => tile.zoom >= native.scale), bounds, priorities)
+          const held = displayed?.view
+          const focus = held && filteredContent && !cameraDependent && !zoomOutCoverage && target.zoom > held.zoom
+            ? focusTileDuringZoom(ordered, target, held, { width, height })
+            : undefined
+          // Sample a bounded crop around the wheel anchor first. Its key is
+          // distinct from the parent so the current exact plan still fills it.
+          const tile = focus && !tileRef.current.has(focus.key) ? focus : navigationCost.choose(ordered, priorities)
+          if (tile === focus && focus) priorities.set(focus, 0)
           if (!tile) return
           // Keep existing finite halo/preparation and GPU/cache admission. One
           // tile can still be expensive; this never promises a GPU time bound.

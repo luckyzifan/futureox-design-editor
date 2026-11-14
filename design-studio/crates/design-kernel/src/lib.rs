@@ -1006,6 +1006,7 @@ mod wasm {
         size: &[f64],
         image: &[u32],
         paint: &str,
+        sketch_bitmap: Option<bool>,
     ) -> Result<u32, JsValue> {
         let rect = serde_json::from_str(rect).map_err(|e| JsValue::from_str(&format!("{e}")))?;
         let matrix: [f64; 6] = matrix
@@ -1018,7 +1019,12 @@ mod wasm {
             .try_into()
             .map_err(|_| JsValue::from_str("Invalid image dimensions"))?;
         let paint = serde_json::from_str(paint).map_err(|e| JsValue::from_str(&format!("{e}")))?;
-        crate::paint::image_mip_level(rect, math::Transform(matrix), size, image, &paint)
+        let select = if sketch_bitmap == Some(true) {
+            crate::paint::sketch_bitmap_mip_level
+        } else {
+            crate::paint::image_mip_level
+        };
+        select(rect, math::Transform(matrix), size, image, &paint)
             .map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
@@ -2025,7 +2031,7 @@ mod wasm {
         ) -> Result<Vec<f32>, JsValue> {
             let image = self
                 .inner
-                .image_at_level(uri, level)
+                .image_at_selected_level(uri, level)
                 .map_err(|e| JsValue::from_str(&e))?;
             Ok(image.pixels.iter().flat_map(|p| p.0).collect())
         }
@@ -2037,7 +2043,7 @@ mod wasm {
             }
             let image = self
                 .inner
-                .image_at_level(uri, level)
+                .image_at_selected_level(uri, level)
                 .map_err(|e| JsValue::from_str(&e))?;
             Ok(image
                 .pixels

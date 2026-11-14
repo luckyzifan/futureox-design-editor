@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { sharperCoverageFrame } from './coverage-stack'
 import type { RasterTile } from './tile-cache'
-import { retainedPreviewUnderlay, zoomInPartialTiles, zoomUnderlayImproves } from './zoom-underlay'
+import { focusTileDuringZoom, retainedPreviewUnderlay, zoomInPartialTiles, zoomUnderlayImproves } from './zoom-underlay'
 
 const view = { x: 0, y: 0, zoom: 8 }
 const size = { width: 800, height: 600, dpr: 2 }
@@ -9,6 +9,17 @@ const size = { width: 800, height: 600, dpr: 2 }
 function tile(key: string, zoom: number, x: number, y: number, span: number): RasterTile {
   return { key, x, y, width: span, height: span, zoom, gutter: 1 }
 }
+
+test('moving inward refines the off-center wheel anchor without moving the exact tile lattice', () => {
+  const tiles = [tile('left', 4, -1, -1, 514), tile('right', 4, 511, -1, 514)]
+  const oldView = { x: 0, y: 0, zoom: 1 }
+  const newView = { x: -180, y: -70, zoom: 2 }
+  const viewport = { width: 200, height: 100 }
+  const focus = focusTileDuringZoom(tiles, newView, oldView, viewport)
+  expect(focus).toMatchObject({ key: 'right/640:160:162:162/zoom-focus', x: 639, y: 159, width: 162, height: 162, zoom: 4, gutter: 1 })
+  expect(tiles[1]).toEqual(tile('right', 4, 511, -1, 514))
+  expect(focusTileDuringZoom(tiles, oldView, newView, viewport)).toBeUndefined()
+})
 
 test('the underlay uv is the new viewport inside the retained device texture', () => {
   // Same numbers as the kernel underlay_uv fixture.

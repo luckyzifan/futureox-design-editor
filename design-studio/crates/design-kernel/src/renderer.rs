@@ -681,6 +681,10 @@ impl Engine {
     pub fn image_at_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
         self.images.image_at(uri, level)
     }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn image_at_selected_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
+        self.images.image_at_selected_level(uri, level)
+    }
     pub fn set_image_mips(&mut self, mips: bool) {
         if self.image_mips() != mips { self.pose_prefix = None; }
         self.images.set_mip_enabled(mips);
@@ -3956,7 +3960,13 @@ impl Painter<'_> {
         }
         let blend_mode=crate::blend::BlendMode::from_name(&p.blend);
         let r = layer.rect.intersect(mask.rect());
-        let mut sampler = Sampler::new(p, n, m, basis, self.images)?;
+        let sketch_bitmap = p.kind == "image" && self.profile == crate::fidelity::RasterProfile::Analytic
+            && crate::interop::sketch_binding(self.doc, n, "sketchSourceBitmap") == Some("true");
+        let mut sampler = if sketch_bitmap {
+            Sampler::with_sketch_bitmap(p, n, m, basis, self.images, true)?
+        } else {
+            Sampler::new(p, n, m, basis, self.images)?
+        };
         sampler.prepare_sampled(p, r, !self.compatible)?;
         let solid = sampler.solid();
         let direct_constant = if self.compatible && self.sample.is_some() && p.blend == "normal" {

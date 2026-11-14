@@ -1,12 +1,42 @@
 import type { CanvasCamera } from '../canvas-camera'
-import { selectSharperCoverage } from './coverage-stack'
+import { selectSharperCoverage, tileVisibleWorld } from './coverage-stack'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
+import { clipAlignedTile } from './tile-plan-aligned'
 
 export type CameraSample = {
   view: CanvasCamera
   width: number
   height: number
   dpr: number
+}
+
+/** The incremental camera transform identifies the unchanged screen point.
+ * Clamp to the viewport center for a compound zoom and pan whose pivot lies
+ * outside it. Use an integer grid on the tile's own sample lattice. */
+export function focusTileDuringZoom(
+  tiles: readonly RasterTile[], view: CanvasCamera, previous: CanvasCamera,
+  size: { width: number; height: number },
+) {
+  const delta = view.zoom - previous.zoom
+  if (!(delta > 0)) return
+  const anchor = (old: number, current: number, extent: number) => {
+    const screen = (old * view.zoom - current * previous.zoom) / delta
+    return ((screen >= 0 && screen < extent ? screen : extent / 2) - current) / view.zoom
+  }
+  const x = anchor(previous.x, view.x, size.width)
+  const y = anchor(previous.y, view.y, size.height)
+  const tile = tiles.find(tile => {
+    const core = tileVisibleWorld(tile, view, size)
+    return core && x >= core.x && y >= core.y && x < core.x + core.width && y < core.y + core.height
+  })
+  if (!tile) return
+  const side = 160
+  const crop = clipAlignedTile(tile, {
+    x: Math.floor((x * tile.zoom + (tile.phaseX ?? 0)) / side) * side,
+    y: Math.floor((y * tile.zoom + (tile.phaseY ?? 0)) / side) * side,
+    w: side, h: side,
+  })
+  if (crop !== tile) return { ...crop, key: `${crop.key}/zoom-focus` }
 }
 
 /** UV of the next viewport inside the retained picture's device texture.

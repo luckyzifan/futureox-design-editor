@@ -852,7 +852,7 @@ export class GpuRenderer {
       color:(value:string)=>[...this.color(value),this.alpha(value)],
       image:(node:GpuNode,paint:GpuPaint)=>{
         if(this.sourceTileOcclusion&&paint.image&&!imageAdjustActive(paint.adjust)&&this.sourcePngProofs.has(paint.image))return true
-        if(!paint.image||this.imageMips&&!this.imageDims.has(paint.image))return false
+        if(!paint.image||(this.imageMips||paint.sketchBitmapSampling)&&!this.imageDims.has(paint.image))return false
         try{
           const image=this.images.get(this.imageKey(paint.image,this.imageLevel(node,paint),false,paint.adjust))
           const range=image&&this.driver.immutableImageRange?.(image.texture)
@@ -2415,18 +2415,18 @@ export class GpuRenderer {
   }
   /** Pure geometric level selection, mirroring the kernel sampler: the max
    * axis texel stride of the device→texel mapping, floor(log2), clamped to
-   * the chain. Level 0 whenever mips are disabled (bit-identical to the
-   * historical single-tap path). Node and paint transforms determine texel
+   * the chain. Ordinary authored paints keep level 0 with mips disabled.
+   * Imported Sketch bitmaps have their own minification policy. Transforms determine texel
    * demand; the page's zoom percentage alone cannot choose a correct level.
    */
   private imageLevel(n: GpuNode, p: GpuPaint): number {
-    if (!this.imageMips || !p.image) return 0
+    if ((!this.imageMips && !p.sketchBitmapSampling) || !p.image) return 0
 
     const dims = this.baseDims(p.image)
     const levels = this.imageLevels.get(n)
     const cached = levels?.get(p)
     if (cached && cached.width === dims[0] && cached.height === dims[1]) return cached.level
-    const paintJson = JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile })
+    const paintJson = JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile, adjust: p.adjust })
 
     // Call Rust to compute geometric mip level based on screen-space size
     const raw = image_mip_level(
@@ -2435,6 +2435,7 @@ export class GpuRenderer {
       new Float64Array(n.size),
       new Uint32Array(dims),
       paintJson,
+      !this.imageMips && p.sketchBitmapSampling === true,
     )
     const level = Math.min(raw, mipLevelsFor(dims) - 1)
     const entries = levels ?? new WeakMap()

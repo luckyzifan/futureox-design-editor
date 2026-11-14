@@ -117,7 +117,7 @@ pub(crate) fn render(
             c.images.insert(key.clone(), resident);
             continue;
         }
-        let source = decoder.image_at(uri, *level)?;
+        let source = decoder.image_at_selected_level(uri, *level)?;
         let small = source.rect.w <= ATLAS_MAX_IMAGE && source.rect.h <= ATLAS_MAX_IMAGE;
         if atlas && scene.float_compositing && small {
             continue;
@@ -334,7 +334,7 @@ fn pack_atlas_pages(
                 .next()
                 .and_then(|l| l.parse::<u32>().ok())
                 .unwrap_or(0);
-            Ok((key.clone(), decoder.image_at(uri, level)?))
+            Ok((key.clone(), decoder.image_at_selected_level(uri, level)?))
         })
         .collect::<Result<_, String>>()?;
     struct Page {
@@ -407,7 +407,12 @@ fn image_key(uri: &str, level: u32) -> String {
 impl Compositor<'_, '_, '_> {
     fn paint_level(&self, n: &GpuNode, p: &GpuPaint, dims: [u32; 2]) -> u32 {
         if !self.mips {
-            return 0;
+            return if p.sketch_bitmap_sampling {
+                futureox_design_kernel::paint::sketch_bitmap_mip_level(n.rect, n.matrix, n.size, dims, &p.paint)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
         }
         let level = futureox_design_kernel::paint::image_mip_level(
             n.rect, n.matrix, n.size, dims, &p.paint,

@@ -1,9 +1,8 @@
 import type { Editor } from './engine'
-import { emptySystem } from './design-system'
 import { BUNDLED_NOTO_SANS_SC, suggestFontFace, type FontFaceInfo, type FontScript, type SuggestionKind } from './font-catalog'
 import { fontTargets, type FontEditResult } from './font-management'
-import { preserveUnmatchedSourceRuns, sourceFonts, sourceNameResolved, type FontSourceRecord } from './font-matching'
-import { defaultTextStyle, type DesignDocument, type DesignNode } from './model'
+import { preserveUnmatchedSourceRuns, resolveSourceFonts, sourceFonts, sourceNameResolved } from './font-matching'
+import { defaultTextStyle, type DesignDocument } from './model'
 import { commitPendingEdits } from './pending-edits'
 
 export type FontDecision = { name: string; fontId: string }
@@ -19,25 +18,6 @@ export function suggestDocumentFont(name: string, faces: readonly DocumentFace[]
 }
 
 const blocked = (message: string): FontEditResult => ({ status: 'blocked', changedNodes: 0, changedReferences: 0, visitedNodes: 0, visitedRuns: 0, skippedLocked: 0, skippedLinked: 0, inherited: 0, message })
-
-function remember(source: FontSourceRecord, name: string) {
-  if (source.resolved?.includes(name)) return false
-  source.resolved = [...(source.resolved ?? []), name]
-  return true
-}
-
-function materialize(document: DesignDocument, node: DesignNode): FontSourceRecord {
-  const existing = document.designSystem?.fontSources?.[node.id]
-  if (existing) return existing
-  const source = sourceFonts(document, node)
-  document.designSystem ??= emptySystem()
-  document.designSystem.fontSources ??= {}
-  const record: FontSourceRecord = {}
-  if (source.style) record.style = source.style
-  if (source.runs) record.runs = { ...source.runs }
-  document.designSystem.fontSources[node.id] = record
-  return record
-}
 
 /** Confirm a missing source name onto a document font id, including the
  * built-in face. Original names stay in fontSources; `resolved` is what
@@ -73,14 +53,14 @@ export function applyFontSubstitutions(document: DesignDocument, decisions: read
       continue
     }
     let changed = 0
-    const record = () => materialize(document, node)
+    const resolved: string[] = []
     if (target.runs) {
       for (const [index, name] of Object.entries(source.runs || {})) {
         const run = node.textRuns?.[Number(index)]
         const fontId = typeof name === 'string' ? byName.get(name) : undefined
         if (!run || !fontId || sourceNameResolved(source, name) || (run.fontId ?? base) !== 'default') continue
         run.fontId = fontId
-        if (remember(record(), name)) changed++
+        resolved.push(name)
         changed++
       }
     }
@@ -88,9 +68,10 @@ export function applyFontSubstitutions(document: DesignDocument, decisions: read
       if (target.runs) preserveUnmatchedSourceRuns(node, source)
       if (node.textStyle) node.textStyle.fontId = styleDecision
       else node.textStyle = { ...defaultTextStyle(), fontId: styleDecision }
-      if (remember(record(), styleName)) changed++
+      resolved.push(styleName)
       changed++
     }
+    changed += resolveSourceFonts(document, node, source, resolved)
     if (changed) { changedNodes++; changedReferences += changed }
   }
   return { ...targets, changedNodes, changedReferences, deferredInherited }

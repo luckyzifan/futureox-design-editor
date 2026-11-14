@@ -144,6 +144,7 @@ export type GpuPaint = Paint & {
   figmaGradient?: boolean
   gradientPlane?: [number, number, number]
   fixedGradient?: { bits: number; words: number[][] }
+  sketchBitmapSampling?: boolean
 }
 export type GpuScene = {
   /** Worker-owned exact regional display request. */

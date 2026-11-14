@@ -30,6 +30,24 @@ export function sourceFonts(document: DesignDocument, node: DesignNode): Source 
     return source && typeof source === 'object' && !Array.isArray(source) ? source : {}
   } catch { return {} }
 }
+
+/** Record an explicit replacement while keeping the imported face identities. */
+export function resolveSourceFonts(document: DesignDocument, node: DesignNode, source: Source, names: readonly string[]): number {
+  const system = document.designSystem
+  if (!system) return 0
+  const unresolved = [...new Set(names)].filter(name => name && !sourceNameResolved(source, name))
+  if (!unresolved.length) return 0
+  const records = system.fontSources ??= {}
+  const record = records[node.id] ??= {
+    ...(source.style ? { style: source.style } : {}),
+    ...(source.runs ? { runs: { ...source.runs } } : {}),
+    ...(source.digest ? { digest: source.digest } : {}),
+    ...(source.runDigests ? { runDigests: { ...source.runDigests } } : {}),
+  }
+  record.resolved = [...(source.resolved ?? []), ...unresolved]
+  return unresolved.length
+}
+
 export function unmatchedSourceFonts(document: DesignDocument, node: DesignNode): string[] {
   return [...new Set(unmatchedSourceFontRequests(document, node).map(request => request.name))]
 }

@@ -2405,7 +2405,6 @@ impl<'a> Importer<'a> {
                 }
                 node.text_style = Some((style).into());
                 let parsed_style_font = node.text_style.as_ref().map(|style| style.font_id.clone());
-                let parsed_run_fonts: Vec<Option<String>> = node.text_runs.iter().map(|run| run.font_id.clone()).collect();
                 if let Some(receipt) = user_ns.get("textModel")
                     && receipt.get("native") == Some(&native_text_projection(layer)) {
                     if let (Ok(saved_style),Ok(saved_runs)) = (
@@ -2419,19 +2418,37 @@ impl<'a> Importer<'a> {
                             ||node.text_runs.iter().any(|r|r.font_id.as_deref()==Some(id));
                         if saved_style.as_ref().is_none_or(|s|owned(&s.font_id))
                             && saved_runs.iter().all(|r|r.font_id.as_deref().is_none_or(owned)) {
-                            node.text_style=saved_style.map(Box::new); node.text_runs=saved_runs.into();
-                            // The receipt stores the editable default face. An unshipped
-                            // ABeeZee name in the native descriptor is still the request.
+                            let mut restored_runs = saved_runs;
+                            let faces = &user_ns["preservedSourceFaces"];
+                            for (index, run) in restored_runs.iter_mut().enumerate() {
+                                if run.font_id.as_deref().unwrap_or("default") != "default" {
+                                    continue;
+                                }
+                                let parsed = node.text_runs
+                                    .binary_search_by_key(&run.start, |parsed| parsed.start).ok()
+                                    .and_then(|position| node.text_runs.get(position))
+                                    .filter(|parsed| parsed.end == run.end)
+                                    .and_then(|parsed| parsed.font_id.as_ref());
+                                if let Some(name) = parsed.filter(|name|
+                                    faces["runs"][index.to_string()] == name.as_str()
+                                        || crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
+                                    run.font_id = Some(name.clone());
+                                }
+                            }
+                            node.text_style=saved_style.map(Box::new); node.text_runs=restored_runs.into();
+                            // The receipt can store the editable fallback while the
+                            // native descriptor still names the original source face.
                             if let Some(style) = node.text_style.as_mut()
                                 && style.font_id == "default"
-                                && let Some(name) = parsed_style_font.filter(|name| crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
+                                && let Some(name) = parsed_style_font.filter(|name|
+                                    crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
                                 style.font_id = name;
                             }
-                            for (run, parsed) in node.text_runs.iter_mut().zip(parsed_run_fonts) {
-                                if run.font_id.as_deref().unwrap_or("default") == "default"
-                                    && let Some(name) = parsed.filter(|name| crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
-                                    run.font_id = Some(name);
-                                }
+                            if let Some(style) = node.text_style.as_mut()
+                                && style.font_id == "default"
+                                && let Some(name) = faces["style"].as_str().filter(|name|
+                                    !name.is_empty() && name.len() <= 128) {
+                                style.font_id = name.to_owned();
                             }
                         }
                     }
@@ -5972,6 +5989,10 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
     true
 }
 
+fn exportable_sketch_source_face<'a>(source: &crate::design_system::FontSource, name: Option<&'a str>) -> Option<&'a str> {
+    name.filter(|name| !name.is_empty() && name.len() <= 128 && !source.resolved.contains(*name))
+}
+
 /// Sketch resolves `MSAttributedStringFontAttribute.attributes.name`
 /// against installed font *names*. Kernel font ids are resource-table keys —
 /// a scanner digest is unresolvable there. Resolve through the document's
@@ -5980,7 +6001,7 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
 /// the editor's bundled CJK font either way.
 fn sketch_font_name(doc: &Document, font_id: &str, source_name: Option<&str>) -> String {
     if font_id.is_empty() || font_id == "default" {
-        if let Some(name) = source_name.filter(|name| crate::abeezee_font::absent_abeezee_diagnosis(name).is_some()) {
+        if let Some(name) = source_name {
             return name.to_owned();
         }
         return "HelveticaNeue".into();
@@ -6116,6 +6137,7 @@ fn export_layer_impl(
     descendants: bool,
 ) -> Result<Value> {
     let mut source_text_frame_restored = false;
+    let mut preserved_source_faces = Map::new();
     let restored_node = doc
         .nodes
         .get(id)
@@ -6954,6 +6976,20 @@ fn export_layer_impl(
                 let style = n.text_style.as_ref();
                 let absent_default = crate::abeezee_font::exported_absent_face(doc, n);
                 let default_font = style.map(|s| s.font_id.as_str()).unwrap_or("default");
+                let retained_faces = n.bindings.get("sketchSourceFonts")
+                    .and_then(|raw| serde_json::from_str::<crate::design_system::FontSource>(raw).ok());
+                let source_faces = doc.design_system.as_ref()
+                    .and_then(|system| system.font_sources.get(&n.id))
+                    .or(retained_faces.as_ref());
+                let requested_default = if default_font == "default" {
+                    if let Some(source) = source_faces {
+                        exportable_sketch_source_face(source, source.style.as_deref())
+                    } else {
+                        absent_default.as_deref()
+                    }
+                } else {
+                    None
+                };
                 let default_weight = style.map(|s| s.weight).unwrap_or(400.);
                 let default_color = n
                     .fills
@@ -6979,6 +7015,7 @@ fn export_layer_impl(
                 let mut attribute = |location: usize,
                                      length: usize,
                                      font: &str,
+                                     requested_font: Option<&str>,
                                      size: f64,
                                      weight: f32,
                                      color: Option<&str>,
@@ -6997,7 +7034,7 @@ fn export_layer_impl(
                             font,
                             size,
                             weight,
-                            if font == "default" { absent_default.as_deref() } else { None },
+                            requested_font,
                         ),
                     );
                     if let Some(c) = color {
@@ -7073,15 +7110,17 @@ fn export_layer_impl(
                     )
                 };
                 let total = utf16_len(&n.text);
-                let mut runs: Vec<&crate::font::TextRun> = n
+                let mut runs: Vec<_> = n
                     .text_runs
                     .iter()
-                    .filter(|r| r.end > r.start && r.start < total)
+                    .enumerate()
+                    .filter(|(_, r)| r.end > r.start && r.start < total)
                     .collect();
-                runs.sort_by_key(|r| r.start);
+                runs.sort_by_key(|(_, r)| r.start);
                 let mut attributes: Vec<Value> = Vec::new();
                 let mut cursor = 0usize;
-                for run in runs {
+                let mut preserved_runs = Map::new();
+                for (index, run) in runs {
                     let start = run.start.min(total);
                     let end = run.end.min(total).max(start);
                     if end <= start {
@@ -7110,6 +7149,7 @@ fn export_layer_impl(
                             cursor,
                             start - cursor,
                             default_font,
+                            requested_default,
                             n.font_size,
                             default_weight,
                             default_color.as_deref(),
@@ -7120,10 +7160,24 @@ fn export_layer_impl(
                             None,
                         )?);
                     }
+                    let run_font = run.font_id.as_deref().unwrap_or(default_font);
+                    let requested_run = if run_font != "default" {
+                        None
+                    } else if let Some((source, name)) = source_faces.and_then(|source| {
+                        source.runs.get(&index.to_string()).map(|name| (source, name.as_str()))
+                    }) {
+                        exportable_sketch_source_face(source, Some(name))
+                    } else {
+                        requested_default
+                    };
+                    if let Some(name) = requested_run {
+                        preserved_runs.insert(index.to_string(), json!(name));
+                    }
                     attributes.push(attribute(
                         start,
                         end - start,
-                        run.font_id.as_deref().unwrap_or(default_font),
+                        run_font,
+                        requested_run,
                         run.font_size.unwrap_or(n.font_size),
                         run.weight.unwrap_or(default_weight),
                         run.color.as_deref().or(default_color.as_deref()),
@@ -7140,6 +7194,7 @@ fn export_layer_impl(
                         cursor,
                         total - cursor,
                         default_font,
+                        requested_default,
                         n.font_size,
                         default_weight,
                         default_color.as_deref(),
@@ -7152,6 +7207,12 @@ fn export_layer_impl(
                 }
                 if let Some(native_style) = layer.get_mut("style").and_then(Value::as_object_mut) {
                     native_style.insert("textStyle".into(), json!({"_class":"textStyle","verticalAlignment":vertical_alignment.unwrap_or(0)}));
+                }
+                if let Some(name) = requested_default {
+                    preserved_source_faces.insert("style".into(), json!(name));
+                }
+                if !preserved_runs.is_empty() {
+                    preserved_source_faces.insert("runs".into(), Value::Object(preserved_runs));
                 }
                 layer.insert(
                     "attributedString".into(),
@@ -7430,6 +7491,9 @@ fn export_layer_impl(
         }
 
         if n.kind == "text" {
+            if !preserved_source_faces.is_empty() {
+                user_info.insert("preservedSourceFaces".into(), Value::Object(preserved_source_faces));
+            }
             user_info.insert("textModel".into(),json!({"native":native_text_projection(&Value::Object(layer.clone())),"style":n.text_style,"runs":n.text_runs}));
             let behaviour = sketch_text_behaviour(n);
             let wrap = n.text_style.as_ref().is_some_and(|s| s.wrap);
