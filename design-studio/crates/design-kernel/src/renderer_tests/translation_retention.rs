@@ -393,23 +393,36 @@ fn pure_root_move_retains_layout_and_matches_fresh_render() {
     }
 }
 #[test]
-fn derived_or_non_translation_edits_keep_normal_invalidation() {
-    for field in ["width", "opacity", "transform"] {
-        let original = source(); let mut next = original.clone();
-        match field {
-            "width" => next.nodes.get_mut("frame").unwrap().width += 1.,
-            "opacity" => next.nodes.get_mut("frame").unwrap().opacity = 0.5,
-            "transform" => next.nodes.get_mut("frame").unwrap().transform.0[0] = 2.,
-            _ => next.nodes.get_mut("child").unwrap().transform.0[4] += 2.,
+fn width_edits_invalidate_layout_and_bounded_affine_edits_keep_it() {
+    let original = source();
+    for (edit, layout_dirty) in [("width", true), ("opacity", false), ("affine", false)] {
+        let mut next = original.clone();
+        let frame = next.nodes.get_mut("frame").unwrap();
+        match edit {
+            "width" => frame.width += 1.,
+            "opacity" => frame.opacity = 0.5,
+            _ => frame.transform.0[0] = 2.,
         }
-        let mut engine = Engine::new(); engine.install_document(original.clone()).unwrap();
+        let mut engine = Engine::new();
+        engine.install_document(original.clone()).unwrap();
         engine.render(&options()).unwrap();
         let patch = crate::editing::DocumentPatch::between(&original, &next).unwrap();
-        assert!(!engine.retained_pose(&patch, false).is_some());
-        engine.apply_document_patch_with_damage(&patch).unwrap();
-        assert_eq!(engine.layout_dirty, field != "opacity");
-        let mut fresh = Engine::new(); fresh.install_document(next).unwrap();
-        assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
+        assert!(engine.retained_pose(&patch, false).is_none(), "{edit}");
+        let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+        assert_eq!(engine.layout_dirty, layout_dirty, "{edit}");
+        if edit == "affine" {
+            assert!(!damage.full);
+            assert!(damage.bounds.is_some());
+            assert!(damage.translation_only.is_none());
+        }
+        let mut fresh = Engine::new();
+        fresh.install_document(next).unwrap();
+        assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap(), "{edit}");
+        assert_eq!(
+            engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),
+            fresh.compile_gpu(&options()).unwrap().into_packet().unwrap(),
+            "{edit}",
+        );
     }
 }
 
