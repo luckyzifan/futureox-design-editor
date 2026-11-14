@@ -44,10 +44,10 @@ fn real_page_metadata_and_transformed_curves_are_projected_without_mutating_nati
     assert_eq!(out.artboards, ["A"]);
     let n = &out.document.nodes["leaf"];
     let m = n.transform.0;
-    assert!((m[1] - 1.).abs() < 1e-12);
-    assert!((m[2] - 1.).abs() < 1e-12);
-    assert!((m[4] - 12.).abs() < 1e-12);
-    assert!((m[5] + 7.).abs() < 1e-12);
+    assert!((m[1] + 1.).abs() < 1e-12);
+    assert!((m[2] + 1.).abs() < 1e-12);
+    assert!((m[4] - 32.).abs() < 1e-12);
+    assert!((m[5] - 33.).abs() < 1e-12);
     let g = n.network.as_ref().unwrap();
     assert_eq!(g.edges[0].c1.unwrap().x, 20.);
     assert_eq!(g.edges[0].c2.unwrap().y, 10.);
@@ -97,8 +97,40 @@ fn default_font_policy_keeps_text_and_utf16_ranges_while_reporting_the_source_fo
 }
 
 #[test]
+fn detached_text_respects_fixed_height_alignment_and_legacy_line_spacing() {
+    let fonts_bytes = include_bytes!("../../../../frontend/design-client/public/fonts/NotoSansSC.ttf");
+    let mut fonts = futureox_design_kernel::font::Fonts::new();
+    fonts.load(fonts_bytes).unwrap();
+    for (behaviour, alignment_moves_glyphs) in [(1, false), (2, true)] {
+        let project = |alignment| {
+            let layer = json!({"_class":"text","do_objectID":"T","frame":{"x":0,"y":0,"width":120,"height":90},
+                "textBehaviour":behaviour,"lineSpacingBehaviour":1,"style":{"textStyle":{"verticalAlignment":alignment}},
+                "attributedString":{"string":"A","attributes":[{"location":0,"length":1,"attributes":{
+                    "MSAttributedStringFontAttribute":{"attributes":{"size":20}},
+                    "paragraphStyle":{"minimumLineHeight":24,"maximumLineHeight":24}
+                }}]}});
+            let source = session(json!([layer]));
+            let doc = display_snapshot(&source, "P").unwrap().document;
+            let node = &doc.nodes["T"];
+            let editable_bytes = source.document().to_sketch().unwrap();
+            let editable = futureox_design_kernel::interop::import_sketch_report(&editable_bytes)
+                .unwrap().document;
+            let mut model = editable.nodes["T"].clone();
+            if behaviour == 1 {
+                model.height = fonts.node_measure(&model, Some(model.width)).unwrap().height;
+            }
+            let actual = fonts.node_layout(node, Some(node.width)).unwrap();
+            let expected = fonts.node_layout(&model, Some(model.width)).unwrap();
+            assert_eq!(actual.glyphs[0].y, expected.glyphs[0].y);
+            actual.glyphs[0].y
+        };
+        assert_eq!(project(1) > project(0), alignment_moves_glyphs);
+    }
+}
+
+#[test]
 fn display_difference_and_intersection_follow_native_enum() {
-    for (code,expected) in [(2,"Some(Exclude)"),(3,"Some(Intersect)")] {
+    for (code,expected) in [(2,"Some(Intersect)"),(3,"Some(Exclude)")] {
         let mut b=path("b");b["booleanOperation"]=json!(code);
         let out=display_snapshot(&session(json!([{"_class":"shapeGroup","do_objectID":"G","frame":{"x":0,"y":0,"width":40,"height":20},"layers":[path("a"),b]}])),"P").unwrap();
         assert_eq!(format!("{:?}",out.document.nodes["G"].boolean_operation),expected);

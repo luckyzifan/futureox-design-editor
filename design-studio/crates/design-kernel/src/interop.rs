@@ -10,6 +10,7 @@
 use crate::color::{ColorSettings, ColorSpace};
 use crate::math::Transform;
 use crate::scene::{Document, Effect, ExportSetting, Node, Page, Paint, Stroke};
+use crate::sketch::geometry::{boolean_operation as boolean_from_code, layer_transform};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -501,10 +502,15 @@ fn color_alpha(color: &Value) -> f64 {
 }
 
 fn gradient_stop_color(color: &Value, space: ColorSpace) -> String {
-    let resolved = adaptable_resolved(color);
-    if color_alpha(color) == 1. {
+    let alpha = color_alpha(color);
+    if alpha == 1. {
         return color_hex(color);
     }
+    sketch_css_color(color, space, alpha)
+}
+
+fn sketch_css_color(color: &Value, space: ColorSpace, alpha: f64) -> String {
+    let resolved = adaptable_resolved(color);
     format!(
         "color({} {} {} {} / {})",
         if space == ColorSpace::DisplayP3 {
@@ -515,7 +521,7 @@ fn gradient_stop_color(color: &Value, space: ColorSpace) -> String {
         f64_at(resolved, "red").clamp(0., 1.),
         f64_at(resolved, "green").clamp(0., 1.),
         f64_at(resolved, "blue").clamp(0., 1.),
-        color_alpha(color)
+        alpha
     )
 }
 
@@ -705,7 +711,23 @@ fn adaptable_apply_layer(layer: &mut Map<String, Value>, node: &Node) {
                     if adaptable_unchanged(node, slot)
                         && let Ok(value) = serde_json::from_str::<Value>(raw)
                     {
-                        if let Some(target)=adaptable_slot_in_layer(layer, slot) { *target = value; }
+                        let fill = slot.strip_prefix("fill.")
+                            .and_then(|i| i.parse::<usize>().ok())
+                            .and_then(|i| node.fills.get(i))
+                            .filter(|paint| paint.kind == "solid");
+                        if let Some(target) = adaptable_slot_in_layer(layer, slot) {
+                            // A legacy FD can store opacity separately on a
+                            // retained adaptable fill. Apply that factor to
+                            // both appearances before restoring the payload.
+                            let mut value = value;
+                            if let Some(paint) = fill.filter(|p| p.opacity != 1.)
+                                && let Ok((_, _, intrinsic)) = crate::color::parse(&paint.color, ColorSpace::Srgb)
+                                && (intrinsic - color_alpha(&value)).abs() <= 1e-7
+                            {
+                                scale_adaptable_alpha(&mut value, paint.opacity);
+                            }
+                            *target = value;
+                        }
                     }
                 }
             }
@@ -715,6 +737,17 @@ fn adaptable_apply_layer(layer: &mut Map<String, Value>, node: &Node) {
             {
                 object.insert("swatchID".into(), json!(raw));
             }
+        }
+    }
+}
+
+fn scale_adaptable_alpha(color: &mut Value, factor: f64) {
+    if let Some(alpha) = color["alpha"].as_f64() {
+        color["alpha"] = json!(alpha * factor);
+    }
+    for key in ["light", "dark", "lightColor", "darkColor", "color"] {
+        if let Some(child) = color.get_mut(key) {
+            scale_adaptable_alpha(child, factor);
         }
     }
 }
@@ -806,17 +839,43 @@ fn solid_paint(color: &Value, base_opacity: f64, blend: &str, space: ColorSpace)
     paint
 }
 
-fn sketch_blurs(style: &Value) -> Vec<&Value> {
+pub(crate) fn sketch_blurs(style: &Value) -> Vec<&Value> {
     if let Some(blurs) = style.get("blurs").and_then(Value::as_array) { blurs.iter().collect() }
     else { style.get("blur").into_iter().collect() }
 }
-fn sketch_blur_enabled(blur: &Value) -> bool {
+pub(crate) fn sketch_blur_enabled(blur: &Value) -> bool {
     // Real Sketch archives can encode this NSNumber flag as JSON 0/1.
     // Keep this compatibility local to blur dictionaries; arbitrary numbers
     // and strings are not boolean admission for other document properties.
     matches!(blur.get("isEnabled"), Some(Value::Bool(true)))
         || blur.get("isEnabled").and_then(Value::as_u64) == Some(1)
 }
+
+/// Old Sketch files sometimes have a blur dictionary on a plain group
+/// even though only its children render effects. The modern array can
+/// carry real group effects; don't erase those or treat Frames as groups.
+fn sketch_plain_group(layer: &Value) -> bool {
+    layer["_class"] == "group"
+        && !matches!(layer["groupBehavior"].as_i64(), Some(1 | 2))
+        && layer["clippingBehavior"].as_i64() != Some(1)
+}
+
+pub(crate) fn legacy_sketch_group_blur(layer: &Value, style: &Value) -> bool {
+    sketch_plain_group(layer)
+        && style.get("blurs").and_then(Value::as_array).is_none()
+        && style.get("blur").is_some_and(sketch_blur_enabled)
+}
+
+pub(crate) fn sketch_fixed_line_baseline(spacing: Option<i64>) -> &'static str {
+    if matches!(spacing, Some(0 | 1)) { "sketch-font-leading" } else { "nearest-point" }
+}
+
+pub(crate) fn sketch_vertical_alignment(layer: &Value, attributes: &Value) -> Option<i64> {
+    layer.pointer("/style/textStyle/verticalAlignment")
+        .and_then(Value::as_i64)
+        .or_else(|| attributes["textStyleVerticalAlignmentKey"].as_i64())
+}
+
 fn sketch_point(value: &Value) -> Option<[f64; 2]> {
     let (x, y) = match value {
         Value::String(text) => {
@@ -1323,6 +1382,7 @@ impl<'a> Importer<'a> {
         base_opacity: f64,
         blend: &str,
         size: [f64; 2],
+        is_border: bool,
     ) -> Option<Paint> {
         let (part_opacity, part_blend) = blend_of(part);
         let base_opacity = base_opacity * part_opacity;
@@ -1375,8 +1435,19 @@ impl<'a> Importer<'a> {
                 if part.get("image").is_some() {
                     image_paint(part)
                 } else {
-                    part.get("color")
-                        .map(|c| solid_paint(c, base_opacity, blend, self.color_space))
+                    part.get("color").map(|c| {
+                        if is_border {
+                            return solid_paint(c, base_opacity, blend, self.color_space);
+                        }
+                        // Sketch stores the solid fill's opacity in its color.
+                        // Put it on the editable opacity control, with straight RGB.
+                        let alpha = color_alpha(c);
+                        let mut paint = solid_paint(c, alpha, blend, self.color_space);
+                        if alpha != 1. {
+                            paint.color = sketch_css_color(c, self.color_space, 1.);
+                        }
+                        paint
+                    })
                 }
             }
             1..=3 => part.get("gradient").and_then(|g| {
@@ -1402,9 +1473,8 @@ impl<'a> Importer<'a> {
             return out;
         };
         for part in parts {
-            // The node owns the layer context. Each paint owns only its part
-            // context and color alpha; multiplying layer opacity here repeats it.
-            if let Some(paint) = self.paint_part(part, 1., "normal", size) {
+            // The node owns the layer context; never multiply it in a paint.
+            if let Some(paint) = self.paint_part(part, 1., "normal", size, false) {
                 out.push((part,paint));
             }
         }
@@ -1460,7 +1530,7 @@ impl<'a> Importer<'a> {
         for part in parts {
             // A border has the same paint carrier as a fill. Its `color`
             // can be an unused black fallback while fillType selects a gradient.
-            let Some(mut paint) = self.paint_part(part, 1., "normal", size) else {
+            let Some(mut paint) = self.paint_part(part, 1., "normal", size, true) else {
                 continue;
             };
             paint.id = String::new();
@@ -1487,7 +1557,7 @@ impl<'a> Importer<'a> {
         out
     }
 
-    fn effects(&self, style: &Value, allow_color_controls: bool, size: Option<[f64; 2]>) -> Vec<Effect> {
+    fn effects(&self, style: &Value, allow_color_controls: bool, size: Option<[f64; 2]>, skip_legacy_group_blur: bool) -> Vec<Effect> {
         let mut out = Vec::new();
         let mut push_shadow = |parts: Option<&Vec<Value>>, inner: bool| {
             if let Some(parts) = parts {
@@ -1519,7 +1589,7 @@ impl<'a> Importer<'a> {
         };
         push_shadow(style.get("shadows").and_then(Value::as_array), false);
         push_shadow(style.get("innerShadows").and_then(Value::as_array), true);
-        for blur in sketch_blurs(style).into_iter().filter(|blur| sketch_blur_enabled(blur)) {
+        for blur in sketch_blurs(style).into_iter().filter(|blur| !skip_legacy_group_blur && sketch_blur_enabled(blur)) {
             if blur.get("type").and_then(Value::as_i64)==Some(4) {
                 if let Some(effect)=sketch_glass(blur,self.color_space) { out.push(effect); }
                 continue;
@@ -1684,7 +1754,7 @@ impl<'a> Importer<'a> {
             bool_at(layer, "isFlippedVertical"),
         ];
         if rotation != 0. || flip.iter().any(|v| *v) {
-            node.transform = crate::sketch::geometry::layer_transform(
+            node.transform = layer_transform(
                 [x, y, node.width, node.height],
                 rotation,
                 flip,
@@ -1747,7 +1817,8 @@ impl<'a> Importer<'a> {
                 );
             }
             node.strokes=borders.into_iter().map(|(_,stroke)|stroke).collect();
-            node.effects = self.effects(&style, class == "bitmap", Some([node.width, node.height]));
+            let inactive_group_blur = legacy_sketch_group_blur(layer, style);
+            node.effects = self.effects(style, class == "bitmap", Some([node.width, node.height]), inactive_group_blur);
             // Our historical blur radius remains a different authored model.
             // Restore only while the native effect fields still match exactly;
             // a subsequent native Sketch edit must supersede this receipt.
@@ -1761,7 +1832,7 @@ impl<'a> Importer<'a> {
                     "blur":source_blurs.first(), "blurs":style.get("blurs"),
                     "effects":blur_projection(&node.effects),
                 }).to_string());
-                for blur in source_blurs.iter().filter(|b| sketch_blur_enabled(b)) {
+                for blur in source_blurs.iter().filter(|b| !inactive_group_blur && sketch_blur_enabled(b)) {
                     if let Some(note) = sketch_progressive_note(blur, Some([node.width, node.height])) {
                         import_lossy.push(note.into());
                     }
@@ -2374,8 +2445,7 @@ impl<'a> Importer<'a> {
                             // other defaults resolve) and export writes them
                             // back onto every run; the unmodeled semantics
                             // are reported, not silently absorbed.
-                            if let Some(vertical) = layer.pointer("/style/textStyle/verticalAlignment")
-                                .or_else(||a.get("textStyleVerticalAlignmentKey")).and_then(Value::as_i64) {
+                            if let Some(vertical) = sketch_vertical_alignment(layer, a) {
                                 match vertical {
                                     0 => style.vertical_align = "top".into(),
                                     1 => style.vertical_align = "center".into(),
@@ -2418,11 +2488,7 @@ impl<'a> Importer<'a> {
                 if node.text_runs.iter().any(|run| {
                     run.paragraph.as_ref().and_then(crate::font::TextParagraph::fixed_line_height).is_some()
                 }) {
-                    style.line_box_baseline = if matches!(raw_spacing_behaviour, Some(0 | 1)) {
-                        "sketch-font-leading".into()
-                    } else {
-                        "nearest-point".into()
-                    };
+                    style.line_box_baseline = sketch_fixed_line_baseline(raw_spacing_behaviour).into();
                 }
                 node.text_style = Some((style).into());
                 let parsed_style_font = node.text_style.as_ref().map(|style| style.font_id.clone());
@@ -2859,6 +2925,7 @@ impl<'a> Importer<'a> {
         if class == "shapeGroup" {
             node.bindings.insert("sketchSourceShapeGroup".into(), json!({
                 "parentOperation":layer.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1),
+                "nativeBooleanCodes": true,
                 "windingRule":style.get("windingRule").or_else(||layer.get("windingRule")).and_then(Value::as_i64).unwrap_or(1),
                 "operations":layer.get("layers").and_then(Value::as_array).map(|children|
                     children.iter().map(|child| child.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1)).collect::<Vec<_>>()).unwrap_or_default(),
@@ -3365,7 +3432,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             if kind == "paint" && !style_object.is_null() {
                 strokes = importer.strokes(&style_object, [1., 1.], &mut style_lossy);
                 effects = restored_effect_model(object, &style_object)
-                    .unwrap_or_else(|| importer.effects(&style_object, true, None));
+                    .unwrap_or_else(|| importer.effects(&style_object, true, None, false));
                 for blur in sketch_blurs(&style_object).into_iter().filter(|blur| sketch_blur_enabled(blur)) {
                     if let Some(note) = sketch_progressive_note(blur, None) {
                         style_lossy.push(note.into());
@@ -3381,7 +3448,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
                         Value::Array(
                             fills
                                 .iter()
-                                .filter_map(|f| importer.paint_part(f, 1., "normal", [1., 1.]))
+                                .filter_map(|f| importer.paint_part(f, 1., "normal", [1., 1.], false))
                                 .filter_map(|p| serde_json::to_value(p).ok())
                                 .collect(),
                         )
@@ -3931,7 +3998,7 @@ fn layer_style_parts(document: &Document, style: &Value) -> Result<(Value, Value
     for key in ["fills", "borders"] {
         let Some(parts) = style.get(key).and_then(Value::as_array) else { continue };
         for part in parts {
-            if bool_at(part, "isEnabled") && importer.paint_part(part, 1., "normal", [1., 1.]).is_none() {
+            if bool_at(part, "isEnabled") && importer.paint_part(part, 1., "normal", [1., 1.], key == "borders").is_none() {
                 return Err(Error::Unsupported(format!(
                     "Sketch override `layerStyle` 的启用{key}无法转换成可编辑绘制属性。不会跳过该部分，也不会关闭无损保护；请保留原始 .sketch 文件。"
                 )));
@@ -3940,7 +4007,7 @@ fn layer_style_parts(document: &Document, style: &Value) -> Result<(Value, Value
     }
     let fills = importer.paints(style, "fills", [1., 1.]);
     let strokes = importer.strokes(style, [1., 1.], &mut lossy);
-    let effects = importer.effects(style, false, None);
+    let effects = importer.effects(style, false, None, false);
     Ok((
         serde_json::to_value(&fills).map_err(|e| Error::MalformedJson(e.to_string()))?,
         serde_json::to_value(&strokes).map_err(|e| Error::MalformedJson(e.to_string()))?,
@@ -5206,11 +5273,11 @@ fn export_paint(
     Ok(match paint.kind.as_str() {
         "solid" if !paint.color.is_empty() => Some(json!({
             "_class": "fill", "isEnabled": paint.visible, "fillType": 0,
-            "color": hex_to_rgba(&paint.color, 1.0, images.color_settings)?,
+            "color": hex_to_rgba(&paint.color, paint.opacity, images.color_settings)?,
             "noiseIndex": 0, "noiseIntensity": 0., "noiseFillType": 0,
             "patternFillType": 1, "patternTileScale": 1.,
             "contextSettings": {"_class": "graphicsContextSettings",
-                                 "blendMode": blend_code(&paint.blend), "opacity": paint.opacity.clamp(0., 1.),
+                                 "blendMode": blend_code(&paint.blend), "opacity": 1.,
                                  "isProgressive": false}
         })),
         "linear" | "radial" | "angular" | "diamond" => {
@@ -5616,27 +5683,16 @@ fn flex_align(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
     }
 }
 
-/// booleanOperation codes (22 号字典 §3, measured distribution):
-/// -1 none, 0 Union, 1 Subtract, 3 Intersection, 2 Difference/XOR.
+/// Sketch File Format BooleanOperation codes; -1 is no operand operation.
 fn boolean_code(op: crate::boolean::Operation) -> i64 {
     match op {
         crate::boolean::Operation::Union => 0,
         crate::boolean::Operation::Subtract => 1,
-        crate::boolean::Operation::Exclude => 2,
-        crate::boolean::Operation::Intersect => 3,
+        crate::boolean::Operation::Exclude => 3,
+        crate::boolean::Operation::Intersect => 2,
         crate::boolean::Operation::CompoundNonzero | crate::boolean::Operation::CompoundEvenodd => {
             -1
         }
-    }
-}
-
-fn boolean_from_code(code: i64) -> Option<crate::boolean::Operation> {
-    match code {
-        0 => Some(crate::boolean::Operation::Union),
-        1 => Some(crate::boolean::Operation::Subtract),
-        2 => Some(crate::boolean::Operation::Exclude),
-        3 => Some(crate::boolean::Operation::Intersect),
-        _ => None,
     }
 }
 
@@ -6403,6 +6459,14 @@ fn export_layer_impl(
                 .and_then(|v| serde_json::from_value::<[f64; 4]>(v.clone()).ok())
             && frame[2] == n.width
             && frame[3] == n.height
+            && let Some(rotation) = source["rotation"].as_f64()
+            && let Ok(flip) = serde_json::from_value::<[bool; 2]>(source["flip"].clone())
+            // FDs saved with the old flip order keep their authored matrix.
+            && layer_transform(frame, rotation, flip)
+                .0
+                .into_iter()
+                .zip(t)
+                .all(|(a, b)| (a - b).abs() <= 1e-9)
         {
             layer.insert("frame".into(), json!({"_class":"rect", "x":frame[0], "y":frame[1], "width":frame[2], "height":frame[3]}));
             layer.insert("rotation".into(), source["rotation"].clone());
@@ -6622,6 +6686,7 @@ fn export_layer_impl(
             }
         }
         let mut source_blurs = None;
+        let mut keep_legacy_group_blur = false;
         if let Some(source) = n
             .bindings
             .get("sketchSourceBlur")
@@ -6634,6 +6699,11 @@ fn export_layer_impl(
                 == Some(&blur_projection(&n.effects)) {
                 blur = source["blur"].clone();
                 source_blurs = source.get("blurs").filter(|v|v.is_array()).cloned();
+                // Mirroring an inactive legacy field into the modern list
+                // makes Sketch render it. Keep the original storage form.
+                keep_legacy_group_blur = class == "group" && n.kind == "group"
+                    && source_blurs.is_none() && sketch_blur_enabled(&blur)
+                    && blur_projection(&n.effects).is_empty();
             } else if n.effects.iter().any(|e|e.glass.is_some()) && let Some(parts)=edited_glass_blurs(&source,&n.effects) {
                 if let Some(first)=parts.first() { blur=first.clone(); }
                 source_blurs=Some(Value::Array(parts));
@@ -6691,7 +6761,9 @@ fn export_layer_impl(
         style.insert("borders".into(), Value::Array(borders));
         style.insert("shadows".into(), Value::Array(shadows));
         style.insert("innerShadows".into(), Value::Array(inner_shadows));
-        style.insert("blurs".into(), source_blurs.unwrap_or_else(|| modern_blurs(&blur, additional_blurs)));
+        if !keep_legacy_group_blur {
+            style.insert("blurs".into(), source_blurs.unwrap_or_else(|| modern_blurs(&blur, additional_blurs)));
+        }
         // Keep the old dictionary for old readers; current Sketch reads blurs.
         style.insert("blur".into(), blur);
         style.insert("borderOptions".into(), border_options);
@@ -7547,9 +7619,19 @@ fn export_layer_impl(
             });
             if unchanged {
                 let source = source.as_ref().unwrap();
-                layer.insert("booleanOperation".into(), source["parentOperation"].clone());
+                // Old FDs already modelled 2 and 3 with reversed meanings.
+                // Encode what the editable FD shows, including mixed sequences.
+                let encode = |value: &Value| match (
+                    source["nativeBooleanCodes"].as_bool() == Some(true),
+                    value.as_i64(),
+                ) {
+                    (false, Some(2)) => json!(3),
+                    (false, Some(3)) => json!(2),
+                    _ => value.clone(),
+                };
+                layer.insert("booleanOperation".into(), encode(&source["parentOperation"]));
                 for (index, child) in children.iter_mut().enumerate() {
-                    child["booleanOperation"] = source["operations"][index].clone();
+                    child["booleanOperation"] = encode(&source["operations"][index]);
                 }
             } else {
                 for child in children.iter_mut().skip(1) {
@@ -8895,7 +8977,7 @@ mod tests {
                 child.fills = fills.clone();
                 child.visible = match code {
                     1 => i == 0,
-                    3 => false,
+                    2 => false,
                     _ => true,
                 };
             }

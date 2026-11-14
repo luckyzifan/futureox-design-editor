@@ -1,14 +1,27 @@
 //! Native frame placement translated into the shared affine vocabulary.
+use crate::boolean::Operation;
 use crate::math::Transform;
 
+// Sketch File Format BooleanOperation: 2 is Intersection, 3 is Difference.
+pub(crate) fn boolean_operation(code: i64) -> Option<Operation> {
+    match code {
+        0 => Some(Operation::Union),
+        1 => Some(Operation::Subtract),
+        2 => Some(Operation::Intersect),
+        3 => Some(Operation::Exclude),
+        _ => None,
+    }
+}
+
 /// Sketch rotates counter-clockwise around the local frame center; screen
-/// coordinates point down. Flips share that center and precede rotation.
+/// coordinates point down. Flips share that center and follow rotation in
+/// the parent axes, as in Sketch's exported SVG transform.
 pub fn layer_transform(frame: [f64; 4], rotation: f64, flip: [bool; 2]) -> Transform {
     let [x, y, width, height] = frame;
     let (s, c) = (-rotation.to_radians()).sin_cos();
     let sx = if flip[0] { -1. } else { 1. };
     let sy = if flip[1] { -1. } else { 1. };
-    let (a, b, cc, d) = (c * sx, s * sx, -s * sy, c * sy);
+    let (a, b, cc, d) = (c * sx, s * sy, -s * sx, c * sy);
     Transform([
         a,
         b,
@@ -42,7 +55,8 @@ pub fn frame_placement(
     }
     let flip = determinant < 0.;
     let sign = if flip { -1. } else { 1. };
-    let rotation = -(b * sign).atan2(a * sign).to_degrees();
+    // Canonicalize a reflection to the horizontal axis. It flips a but not b.
+    let rotation = -b.atan2(a * sign).to_degrees();
     Some((
         [
             x - width / 2. + a * width / 2. + c * height / 2.,

@@ -34,13 +34,13 @@ fn explicit_p3_solid_exports_red_and_roundtrips_profile_and_alpha() {
     let bytes = export_sketch(&doc).unwrap();
     let (archive, page) = parts(&bytes);
     assert_eq!(archive["colorSpace"], 2);
-    close(channels(&page["layers"][0]["style"]["fills"][0]["color"]), [1.,0.,0.,0.25], 0.);
+    close(channels(&page["layers"][0]["style"]["fills"][0]["color"]), [1.,0.,0.,0.125], 0.);
     let back = import_sketch(&bytes).unwrap();
     assert_eq!(back.color_management.unwrap().document_space, ColorSpace::DisplayP3);
     let paint = &back.nodes["n"].fills[0];
-    assert_eq!(paint.color, "color(display-p3 1 0 0 / 0.25)");
-    assert_eq!(paint.opacity, 0.5);
-    close(channels(&parts(&export_sketch(&back).unwrap()).1["layers"][0]["style"]["fills"][0]["color"]), [1.,0.,0.,0.25], 0.);
+    assert_eq!(paint.color, "color(display-p3 1 0 0 / 1)");
+    assert_eq!(paint.opacity, 0.125);
+    close(channels(&parts(&export_sketch(&back).unwrap()).1["layers"][0]["style"]["fills"][0]["color"]), [1.,0.,0.,0.125], 0.);
 }
 #[test]
 fn explicit_srgb_to_p3_uses_f64_coordinates_without_premultiplying() {

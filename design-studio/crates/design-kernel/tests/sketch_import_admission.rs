@@ -311,7 +311,7 @@ fn native_rotation_flips_and_open_beziers_share_one_placement_rule() {
     let center = node
         .transform
         .point(futureox_design_kernel::math::Point::new(50., 25.));
-    assert!((origin.x - 35.).abs() < 1e-10 && (origin.y + 5.).abs() < 1e-10);
+    assert!((origin.x - 85.).abs() < 1e-10 && (origin.y - 95.).abs() < 1e-10);
     assert!((center.x - 60.).abs() < 1e-10 && (center.y - 45.).abs() < 1e-10);
     let reimport =
         interop::import_sketch_report(&interop::export_sketch(&report.document).unwrap()).unwrap();
@@ -479,14 +479,83 @@ fn mixed_native_boolean_operations_follow_source_order_and_restore_original_oper
 }
 
 #[test]
-fn layer_and_paint_opacity_apply_once_and_survive_compatibility_round_trip() {
-    for paint_opacity in [0.5, 1.] {
+fn native_intersection_and_difference_render_the_expected_parts_of_overlapping_shapes() {
+    // Sketch uses 2 for the shared region and 3 for the parts outside it.
+    for (code, expected) in [(2, [0, 255, 0]), (3, [255, 0, 255])] {
+        let mut right = native_rectangle_path("right", 10., 0., 20., 20.);
+        right["booleanOperation"] = json!(code);
+        let group = json!({"_class":"shapeGroup","do_objectID":"boolean","booleanOperation":-1,
+            "frame":{"x":0,"y":0,"width":30,"height":20},
+            "style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":1,"green":0,"blue":0,"alpha":1}}]},
+            "layers":[native_rectangle_path("left",0.,0.,20.,20.),right]});
+        let bytes = archive(json!({"pages":[{"_ref":"pages/p"}]}), &[("p", page("p", vec![group]))]);
+        let doc = interop::import_sketch_report(&bytes).unwrap().document;
+        let check_plot = |doc: &futureox_design_kernel::scene::Document| {
+            let pixels = render(doc, 30, 20);
+            assert_eq!([5, 15, 25].map(|x| pixels[(10 * 30 + x) * 4 + 3]), expected);
+        };
+        check_plot(&doc);
+        let exported = interop::export_sketch(&doc).unwrap();
+        check_plot(&interop::import_sketch_report(&exported).unwrap().document);
+
+        // Simulate an editable FD with the same operator saved by the old
+        // importer from the opposite source code. Export must keep its pixels.
+        let mut legacy = doc;
+        let metadata = legacy.design_system.as_mut().unwrap()
+            .sketch_containers.get_mut("nodeMetadata").unwrap();
+        let raw = &mut metadata["boolean"]["bindings"]["sketchSourceShapeGroup"];
+        let mut receipt: Value = serde_json::from_str(raw.as_str().unwrap()).unwrap();
+        receipt.as_object_mut().unwrap().remove("nativeBooleanCodes");
+        receipt["operations"][1] = json!(5 - code);
+        *raw = json!(receipt.to_string());
+        let restored = interop::import_sketch_report(&interop::export_sketch(&legacy).unwrap())
+            .unwrap().document;
+        check_plot(&restored);
+    }
+}
+
+#[test]
+fn native_rotation_followed_by_flip_round_trips_without_changing_legacy_fd_placement() {
+    use futureox_design_kernel::math::{Point, Transform};
+    let mut shape = native_rectangle_path("shape", 10., 20., 40., 20.);
+    shape["rotation"] = json!(90);
+    shape["isFlippedHorizontal"] = json!(true);
+    let bytes = archive(json!({"pages":[{"_ref":"pages/p"}]}), &[("p", page("p", vec![shape]))]);
+    let doc = interop::import_sketch_report(&bytes).unwrap().document;
+    let check_top_left = |doc: &futureox_design_kernel::scene::Document, x: f64, y: f64| {
+        let p = doc.nodes["shape"].transform.point(Point::new(0., 0.));
+        assert!((p.x - x).abs() < 1e-9 && (p.y - y).abs() < 1e-9, "{p:?}");
+    };
+    let round_trip = |doc: &futureox_design_kernel::scene::Document| {
+        interop::import_sketch_report(&interop::export_sketch(doc).unwrap())
+            .unwrap().document
+    };
+    // Sketch's exported SVG maps the shape's top left to the bottom right.
+    check_top_left(&doc, 40., 50.);
+    check_top_left(&round_trip(&doc), 40., 50.);
+
+    // A document saved by the old importer has the opposite placement.
+    let mut legacy = doc;
+    let old = Transform([0., 1., 1., 0., 20., 10.]);
+    legacy.nodes.get_mut("shape").unwrap().transform = old;
+    let metadata = legacy.design_system.as_mut().unwrap()
+        .sketch_containers.get_mut("nodeMetadata").unwrap();
+    let raw = &mut metadata["shape"]["bindings"]["sketchSourceTransform"];
+    let mut receipt: Value = serde_json::from_str(raw.as_str().unwrap()).unwrap();
+    receipt["matrix"] = json!(old.0);
+    *raw = json!(receipt.to_string());
+    check_top_left(&round_trip(&legacy), 20., 10.);
+}
+
+#[test]
+fn native_solid_fill_alpha_and_layer_opacity_apply_once_and_round_trip() {
+    for (color_alpha, part_opacity) in [(0.4_f64, 0.4), (1., 0.4), (0.4, 1.), (1., 0.)] {
         let rectangle = json!({"_class":"rectangle","do_objectID":"opacity",
             "frame":{"x":0,"y":0,"width":10,"height":10},
             "style":{"contextSettings":{"opacity":0.48,"blendMode":0},
                 "fills":[{"isEnabled":true,"fillType":0,
-                    "contextSettings":{"opacity":paint_opacity,"blendMode":0},
-                    "color":{"red":1,"green":0,"blue":0,"alpha":1}}]}});
+                    "contextSettings":{"opacity":part_opacity,"blendMode":0},
+                    "color":{"red":1,"green":0,"blue":0,"alpha":color_alpha}}]}});
         let bytes = archive(
             json!({"pages":[{"_ref":"pages/p"}]}),
             &[("p", page("p", vec![rectangle]))],
@@ -494,22 +563,46 @@ fn layer_and_paint_opacity_apply_once_and_survive_compatibility_round_trip() {
         let report = interop::import_sketch_report(&bytes).unwrap();
         let node = &report.document.nodes["opacity"];
         assert_eq!(node.opacity, 0.48);
-        assert_eq!(node.fills[0].opacity, paint_opacity);
+        assert_eq!(node.fills[0].opacity, color_alpha);
         let pixels = render(&report.document, 10, 10);
         let alpha = pixels[(5 * 10 + 5) * 4 + 3] as i32;
-        let expected = (255. * 0.48 * paint_opacity).round() as i32;
+        let expected = (255. * 0.48 * color_alpha).round() as i32;
         assert!(
             (alpha - expected).abs() <= 1,
-            "layer .48 × paint {paint_opacity}: {alpha}, expected {expected}"
+            "layer .48 × color {color_alpha}: {alpha}, expected {expected}"
         );
         let exported = interop::export_sketch(&report.document).unwrap();
         let reopened = interop::import_sketch_report(&exported).unwrap();
         assert_eq!(reopened.document.nodes["opacity"].opacity, 0.48);
-        assert_eq!(
-            reopened.document.nodes["opacity"].fills[0].opacity,
-            paint_opacity
-        );
         assert_eq!(render(&reopened.document, 10, 10), pixels);
+    }
+}
+
+#[test]
+fn ignored_legacy_group_blur_stays_inactive_after_compatibility_export() {
+    let blur = json!({"_class":"blur","isEnabled":true,"radius":8,"type":0});
+    for modern in [false, true] {
+        let mut group = json!({"_class":"group","do_objectID":"group",
+            "frame":{"x":10,"y":4,"width":20,"height":20},
+            "style":{"blur":blur},
+            "layers":[native_rectangle_path("child",0.,0.,20.,20.)]});
+        if modern {
+            group["style"].as_object_mut().unwrap().remove("blur");
+            group["style"]["blurs"] = json!([blur]);
+        }
+        let bytes = archive(json!({"pages":[{"_ref":"pages/p"}]}), &[("p", page("p", vec![group]))]);
+        let doc = interop::import_sketch_report(&bytes).unwrap().document;
+        let halo = |doc: &futureox_design_kernel::scene::Document| render(doc, 40, 28)[(10 * 40 + 8) * 4 + 3];
+        assert_eq!(halo(&doc) > 16, modern, "the empty pixels beside the group");
+
+        let exported = interop::export_sketch(&doc).unwrap();
+        let files = interop::read_zip_public(&exported).unwrap();
+        let p: Value = serde_json::from_slice(&files.iter().find(|(name, _)| name.starts_with("pages/")).unwrap().1).unwrap();
+        let style = &p["layers"][0]["style"];
+        assert_eq!(style["blur"], blur);
+        assert_eq!(style.get("blurs").is_some(), modern);
+        let reopened = interop::import_sketch_report(&exported).unwrap().document;
+        assert_eq!(halo(&reopened), halo(&doc));
     }
 }
 
