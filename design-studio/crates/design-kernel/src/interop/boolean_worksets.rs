@@ -129,6 +129,7 @@ pub(super) fn source_view(doc: &Document) -> Result<Cow<'_, Document>> {
     }
     let mut result = doc.clone();
     let mut removed = std::collections::HashSet::new();
+    let mut resolved = None;
     for id in roots {
         let root = result.nodes[&id].clone();
         let operation: crate::boolean::Operation =
@@ -178,8 +179,6 @@ pub(super) fn source_view(doc: &Document) -> Result<Cow<'_, Document>> {
                     || !node.fills.is_empty()
                     || !node.strokes.is_empty()
                     || !node.effects.is_empty()
-                    || node.network.is_some()
-                    || node.vector_geometry.is_some()
                     || node.layout.is_some()
                     || node.sizing.is_some()
                     || node.constraints.is_some()
@@ -201,6 +200,20 @@ pub(super) fn source_view(doc: &Document) -> Result<Cow<'_, Document>> {
                     || node.height != root.height
                 {
                     return Err(Error::Unsupported("This source boolean grouping has edits that require the native document format".into()));
+                }
+                // The editor stores a preview outline on boolean nodes. Verify
+                // it against the operand tree before removing this helper.
+                if node.network.is_some() || node.vector_geometry.is_some() {
+                    let (root_id, reference) = resolved.get_or_insert_with(|| (String::new(), doc.clone()));
+                    if root_id != &id {
+                        crate::curve_boolean::resolve_subtrees(reference, vec![id.clone()])
+                            .map_err(Error::InvalidDocument)?;
+                        *root_id = id.clone();
+                    }
+                    let expected = &reference.nodes[&child];
+                    if node.network != expected.network || node.vector_geometry != expected.vector_geometry {
+                        return Err(Error::Unsupported("This source boolean grouping has edits that require the native document format".into()));
+                    }
                 }
                 let transform = parent.concat(node.transform);
                 stack.extend(node.children.iter().rev().map(|id| (id.clone(), transform)));

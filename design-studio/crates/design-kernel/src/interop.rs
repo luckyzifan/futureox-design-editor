@@ -7541,9 +7541,10 @@ fn export_layer_impl(
                 serde_json::to_value(&inst.property_values).unwrap_or(Value::Null),
             );
         }
-        // Layout grid appearance (color/opacity) has no archived Sketch home;
-        // the full authored payload keeps kernel round-trips lossless.
-        if let Some(grid) = &n.layout_grid {
+        // Sketch symbol instances get their grids from the master. The
+        // editor's resolved frame also carries a grid, which the Sketch
+        // instance cannot own. The master preserves the original appearance.
+        if let Some(grid) = &n.layout_grid && n.instance.is_none() {
             user_info.insert(
                 "layoutGrid".into(),
                 serde_json::to_value(grid).unwrap_or(Value::Null),
@@ -8760,6 +8761,16 @@ mod tests {
                     .all(|n| n.children.len() <= 64)
             );
             let bytes = export_sketch(&document).unwrap();
+            let mut editor_document = document.clone();
+            crate::curve_boolean::resolve(&mut editor_document).unwrap();
+            assert_eq!(export_sketch(&editor_document).unwrap(), bytes);
+            let helper = editor_document.nodes["n"].children.iter().find(|id| {
+                editor_document.nodes[*id].boolean_operation.is_some()
+            }).unwrap().clone();
+            let cached = editor_document.nodes.get_mut(&helper).unwrap().network.as_mut().unwrap();
+            let cached = std::sync::Arc::make_mut(cached);
+            cached.fill_rule = if cached.fill_rule == "nonzero" { "evenodd" } else { "nonzero" }.into();
+            assert!(export_sketch(&editor_document).is_err());
             let parts = crate::sketch::archive::read(&bytes).unwrap();
             let page: Value = serde_json::from_slice(
                 parts
@@ -10337,6 +10348,35 @@ mod tests {
             Some(&json!(true)),
             "instance property values travel through userInfo"
         );
+    }
+
+    #[test]
+    fn export_resolved_symbol_keeps_grid_on_the_master() {
+        let mut doc = sample_document();
+        doc.schema_version = 12;
+        let mut master = crate::facet::sample_node("master", "frame");
+        master.component = Some(Default::default());
+        master.layout_grid = Some(serde_json::from_value(json!({
+            "axis":"uniform", "count":1, "gutter":0, "margin":0,
+            "color":"#ff0000", "opacity":0.25, "visible":true
+        })).unwrap());
+        let mut instance = master.clone();
+        instance.id = "instance".into();
+        instance.component = None;
+        instance.instance = Some(crate::components::Instance {
+            component_id: master.id.clone(),
+            slot_contents: Default::default(),
+            overrides: Default::default(),
+            property_values: Default::default(),
+        }.into());
+        doc.pages[0].children.extend([master.id.clone(), instance.id.clone()]);
+        doc.nodes.insert(master.id.clone(), master);
+        doc.nodes.insert(instance.id.clone(), instance);
+
+        let reopened = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
+        assert_eq!(reopened.nodes["master"].layout_grid, doc.nodes["master"].layout_grid);
+        assert!(reopened.nodes["instance"].layout_grid.is_none());
+        assert_eq!(reopened.nodes["instance"].instance.as_ref().unwrap().component_id, "master");
     }
 
     #[test]
