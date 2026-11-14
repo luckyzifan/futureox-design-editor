@@ -969,10 +969,8 @@ fn sketch_blur_value(e: &Effect) -> Value {
     value
 }
 
-fn modern_blurs(effects: &[Effect], first: &Value) -> Value {
-    if effects.iter().any(|e| e.glass.is_some()) {
-        Value::Array(blur_projection(effects).iter().map(|e| modern_blur(sketch_blur_value(e))).collect())
-    } else { json!([modern_blur(first.clone())]) }
+fn modern_blurs(first: &Value, additional: Vec<Value>) -> Value {
+    Value::Array(std::iter::once(modern_blur(first.clone())).chain(additional).collect())
 }
 
 // Patch only the modeled native controls that actually changed. In
@@ -1025,10 +1023,14 @@ fn restored_effect_model(owner: &Value, style: &Value) -> Option<Vec<Effect>> {
     (effects.len() <= 16 && effects.iter().all(|e| e.validate_material().is_ok())).then_some(effects)
 }
 
+fn is_sketch_blur(effect: &Effect) -> bool {
+    matches!(effect.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "background-blur" | "glass")
+}
+
 fn blur_projection(effects: &[Effect]) -> Vec<Effect> {
     effects
         .iter()
-        .filter(|effect| matches!(effect.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "background-blur" | "glass"))
+        .filter(|effect| is_sketch_blur(effect))
         .cloned()
         .map(|mut effect| {
             effect.id.clear();
@@ -5318,6 +5320,25 @@ fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size:
     Some(exact)
 }
 
+fn sketch_blur_with_progressive(effect: &Effect, size: [f64; 2]) -> (Value, Option<bool>) {
+    let mut blur = sketch_blur_value(effect);
+    let progressive = if effect.kind == "background-blur" {
+        attach_sketch_progressive_background(&mut blur, effect, size)
+    } else {
+        None
+    };
+    (blur, progressive)
+}
+
+struct SketchStyleParts {
+    borders: Vec<Value>,
+    shadows: Vec<Value>,
+    inner_shadows: Vec<Value>,
+    blur: Value,
+    additional_blurs: Vec<Value>,
+    border_options: Value,
+}
+
 /// Kernel strokes/effects → Sketch border/shadow/blur parts. Shared by the
 /// layer exporter and the document-level layerStyles container, so a shared
 /// style archives exactly what a layer with the same parts would. The
@@ -5329,7 +5350,8 @@ fn export_style_parts(
     lossy: &mut Vec<String>,
     images: &mut ExportedImages,
     size: [f64; 2],
-) -> Result<(Vec<Value>, Vec<Value>, Vec<Value>, Value, Value)> {
+    writes_modern_blurs: bool,
+) -> Result<SketchStyleParts> {
     let settings = images.color_settings;
     // Native gradients share the fill encoding, including strict HDR/gamut
     // admission. Unsupported border carriers still reject instead of falling
@@ -5438,53 +5460,46 @@ fn export_style_parts(
         .filter(|e| e.kind == "inner-shadow")
         .map(shadow_json)
         .collect::<Result<Vec<_>>>()?;
-    // The legacy dictionary mirrors the first blur; modern arrays are written below.
-    let blur_like: Vec<&Effect> = effects
-        .iter()
-        .filter(|e| matches!(e.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "background-blur" | "glass"))
-        .collect();
-    let blur = match blur_like.first() {
-        Some(e) => {
-            match e.kind.as_str() {
-                "glass" if e.glass.is_some() => note_lossy(lossy, "glass-native-depth-and-lighting-projection;authored-optics-retained"),
-                "glass" => note_lossy(lossy, "effect-glass->gaussian(refraction-lost)"),
-                _ => {}
-            }
-            if blur_like.len() > 1 && !blur_like.iter().any(|e| e.glass.is_some()) {
+    // The legacy dictionary mirrors the first blur. Only styles with a
+    // modern array can carry the rest of an existing glass blur stack.
+    let preserves_stack = writes_modern_blurs && effects.iter().any(|e| e.glass.is_some());
+    let mut blur = None;
+    let mut additional_blurs = Vec::new();
+    for e in effects {
+        let mut progressive = None;
+        if is_sketch_blur(e) {
+            if blur.is_none() {
+                match e.kind.as_str() {
+                    "glass" if e.glass.is_some() => note_lossy(lossy, "glass-native-depth-and-lighting-projection;authored-optics-retained"),
+                    "glass" => note_lossy(lossy, "effect-glass->gaussian(refraction-lost)"),
+                    _ => {}
+                }
+                let (part, exported) = sketch_blur_with_progressive(e, size);
+                blur = Some(part);
+                progressive = exported;
+            } else if preserves_stack {
+                let (part, exported) = sketch_blur_with_progressive(e, size);
+                additional_blurs.push(modern_blur(part));
+                progressive = exported;
+            } else {
                 note_lossy(lossy, "effect-multiple-blurs-collapsed");
             }
-            sketch_blur_value(e)
         }
-        None => {
-            json!({"_class": "blur", "isEnabled": false, "center": "{0.5, 0.5}", "motionAngle": 0.,
-                       "radius": 0., "saturation": 1., "type": 0})
-        }
-    };
-    let mut blur = blur;
-    let exported_background_progressive = blur_like.first().and_then(|effect| {
-        if effect.kind == "background-blur" { attach_sketch_progressive_background(&mut blur, effect, size) } else { None }
-    });
-    if exported_background_progressive == Some(false) {
-        note_lossy(lossy, "progressive-background-blur-portable-sketch-keeps-strength-counts");
-    }
-    let mut skipped_background_progressive = false;
-    for e in effects {
-        let exported = exported_background_progressive.is_some()
-            && e.kind == "background-blur"
-            && e.gradient_blur.is_some()
-            && !skipped_background_progressive;
-        if exported {
-            skipped_background_progressive = true;
-            continue;
-        }
-        if matches!(e.kind.as_str(), "texture" | "gradient-blur")
-            || e.texture.is_some()
-            || e.gradient_blur.is_some()
-        {
-            note_lossy(lossy, &format!("effect-{}-omitted", e.kind));
+        match progressive {
+            Some(false) => note_lossy(lossy, "progressive-background-blur-portable-sketch-keeps-strength-counts"),
+            Some(true) => {}
+            None if matches!(e.kind.as_str(), "texture" | "gradient-blur")
+                || e.texture.is_some() || e.gradient_blur.is_some() => {
+                note_lossy(lossy, &format!("effect-{}-omitted", e.kind));
+            }
+            None => {}
         }
     }
-    Ok((borders, shadows, inner_shadows, blur, border_options))
+    let blur = blur.unwrap_or_else(|| json!({
+        "_class": "blur", "isEnabled": false, "center": "{0.5, 0.5}",
+        "motionAngle": 0., "radius": 0., "saturation": 1., "type": 0
+    }));
+    Ok(SketchStyleParts { borders, shadows, inner_shadows, blur, additional_blurs, border_options })
 }
 
 /// Record a downgrade note once; the exporter writes the collected list into
@@ -6499,12 +6514,13 @@ fn export_layer_impl(
                 break;
             }
         }
-        let (mut borders, shadows, inner_shadows, mut blur, border_options) = export_style_parts(
+        let SketchStyleParts { mut borders, shadows, inner_shadows, mut blur, additional_blurs, border_options } = export_style_parts(
             &n.strokes,
             &n.effects,
             &mut lossy,
             images,
             [n.width, n.height],
+            true,
         )?;
         if let Some(sources) = n
             .bindings
@@ -6598,7 +6614,7 @@ fn export_layer_impl(
         style.insert("borders".into(), Value::Array(borders));
         style.insert("shadows".into(), Value::Array(shadows));
         style.insert("innerShadows".into(), Value::Array(inner_shadows));
-        style.insert("blurs".into(), source_blurs.unwrap_or_else(|| modern_blurs(&n.effects,&blur)));
+        style.insert("blurs".into(), source_blurs.unwrap_or_else(|| modern_blurs(&blur, additional_blurs)));
         // Keep the old dictionary for old readers; current Sketch reads blurs.
         style.insert("blur".into(), blur);
         style.insert("borderOptions".into(), border_options);
@@ -6884,7 +6900,7 @@ fn export_layer_impl(
                             note_lossy(&mut lossy, "component-overrides-in-userInfo");
                             continue;
                         }
-                        let (borders, shadows, inner_shadows, blur, border_options) = export_style_parts(&strokes, &effects, &mut lossy, images, [1., 1.])?;
+                        let SketchStyleParts { borders, shadows, inner_shadows, blur, border_options, .. } = export_style_parts(&strokes, &effects, &mut lossy, images, [1., 1.], false)?;
                         let mut paints = Vec::new();
                         for paint in &fills {
                             if let Some(part) = export_paint(paint, images, [1., 1.])? { paints.push(part); }
@@ -8186,7 +8202,7 @@ fn sync_foreign_paint_styles(document: &mut Value, doc: &Document, images: &mut 
             }
         }
         let mut lossy = Vec::new();
-        let (borders, shadows, inner_shadows, blur, border_options) = export_style_parts(&shared.strokes, &shared.effects, &mut lossy, images, [1., 1.])?;
+        let SketchStyleParts { borders, shadows, inner_shadows, blur, border_options, .. } = export_style_parts(&shared.strokes, &shared.effects, &mut lossy, images, [1., 1.], false)?;
         if !lossy.is_empty() {
             return Err(Error::Unsupported(format!(
                 "Sketch foreign layer style `{local_id}` edit cannot preserve {}; keep the original .sketch file",
@@ -8400,13 +8416,14 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     // their fills; the shared helper writes the same parts a
                     // layer with these strokes/effects would.
                     let mut style_lossy = Vec::new();
-                    let (borders, shadows, inner_shadows, blur, border_options) =
+                    let SketchStyleParts { borders, shadows, inner_shadows, blur, additional_blurs, border_options } =
                         export_style_parts(
                             &shared.strokes,
                             &shared.effects,
                             &mut style_lossy,
                             &mut images,
                             [1., 1.],
+                            true,
                         )?;
                     let controls = shared.effects.iter().find(|e|e.kind=="color-controls").and_then(|e|e.color_controls.map(|c|
                         json!({"_class":"colorControls","isEnabled":e.visible,"brightness":c.brightness,
@@ -8415,7 +8432,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                            "value": {"_class": "style", "do_objectID": sketch_id(style_id),
                                      "fills": paints, "borders": borders,
                                      "shadows": shadows, "innerShadows": inner_shadows,
-                                     "blurs": modern_blurs(&shared.effects,&blur), "blur": blur, "borderOptions": border_options,
+                                     "blurs": modern_blurs(&blur, additional_blurs), "blur": blur, "borderOptions": border_options,
                                      "colorControls": controls.unwrap_or_else(||json!({"_class":"colorControls","isEnabled":false,"brightness":0.,"contrast":1.,"saturation":1.,"hue":0.}))}})
                 }
                 "text" => {

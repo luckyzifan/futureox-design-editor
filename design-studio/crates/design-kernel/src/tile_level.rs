@@ -254,8 +254,8 @@ impl TileMipLevel {
                 .get(&address)
                 .is_none_or(|entry| entry.content_revision < content_revision);
             let needs = missing_or_stale || self.dirty_covers(address);
-            if self.tiles.contains_key(&address) {
-                self.epoch = self.epoch.wrapping_add(1);
+            if let Some(entry) = self.tiles.get_mut(&address) {
+                entry.observed = self.epoch;
             }
             if needs {
                 renderable.push(address);
@@ -492,6 +492,20 @@ mod tests {
         // The oldest tiles were evicted; the newest column is resident.
         assert!(level.tile(&[LEVEL_TILE_LIMIT as i32 + 15, 0]).is_some());
         assert!(level.tile(&[0, 0]).is_none());
+    }
+
+    #[test]
+    fn panning_over_an_old_tile_refreshes_its_eviction_priority() {
+        let mut level = level();
+        for column in 0..LEVEL_TILE_LIMIT as i32 {
+            level.commit_tile([column, 0], RasterSurface::new(1, 1), 1);
+        }
+        let queue = level.enqueue_renderable_tiles_for_visible_rect([0., 0., 512., 512.], 1).unwrap();
+        assert!(queue.is_empty());
+        level.commit_tile([LEVEL_TILE_LIMIT as i32, 0], RasterSurface::new(1, 1), 1);
+        assert_eq!(level.tile_count(), LEVEL_TILE_LIMIT);
+        assert!(level.tile(&[0, 0]).is_some());
+        assert!(level.tile(&[1, 0]).is_none());
     }
 
     #[test]
