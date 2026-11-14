@@ -380,29 +380,28 @@ function indexByHash(files) {
   return map
 }
 
-function repoNoticeMatch(crate, packaged) {
-  const base = path.posix.basename(packaged.packagePath)
-  const repo = (crate.notices ?? []).find(item => item.path.endsWith(`/${base}`) || item.path === base)
-  if (!repo) return null
-  return repo.sha256 === packaged.sha256
-}
-
 function rustNotices(crate, files) {
   const marker = `/cargo/${crate.name}/${crate.version}/`
-  const direct = files.filter(file => file.kind === 'notice' && file.path.includes(marker)).map(noticeRecord)
-  if (direct.length) return direct
-  if ((crate.name.startsWith('futureox-design-') || crate.name === 'splash-glyph')) {
-    const project = files.find(file => file.path.endsWith('project-license/LICENSE'))
-    return project ? [noticeRecord(project)] : []
+  const project = crate.name.startsWith('futureox-design-') || crate.name === 'splash-glyph'
+  const matched = []
+  for (const expected of crate.notices ?? []) {
+    let packaged
+    if (project) {
+      packaged = files.find(file => file.path.endsWith('/project-license/LICENSE'))
+    } else if (expected.path.includes(marker)) {
+      // Match a recorded text by its full crate-relative path. Provenance
+      // files share this directory and are independently inventoried.
+      const suffix = expected.path.slice(expected.path.indexOf(marker))
+      packaged = files.find(file => file.kind === 'notice' && file.path.endsWith(suffix))
+    } else {
+      const named = file => file.sha256 === expected.sha256 && file.path.toLowerCase().includes(crate.name.toLowerCase())
+      const base = path.posix.basename(expected.path)
+      packaged = files.find(file => (file.kind === 'notice' || file.kind === 'font-notice') && named(file) && path.posix.basename(file.path) === base)
+        ?? files.find(file => file.kind === 'notice' && named(file))
+    }
+    if (packaged) matched.push({ packaged, expected })
   }
-  const named = []
-  for (const repo of crate.notices ?? []) {
-    const base = path.posix.basename(repo.path)
-    const hit = files.find(file => (file.kind === 'notice' || file.kind === 'font-notice') && file.sha256 === repo.sha256 && file.path.toLowerCase().includes(crate.name.toLowerCase()) && path.posix.basename(file.path) === base)
-      ?? files.find(file => file.kind === 'notice' && file.sha256 === repo.sha256 && file.path.toLowerCase().includes(crate.name.toLowerCase()))
-    if (hit) named.push(noticeRecord(hit))
-  }
-  return named
+  return matched
 }
 
 function artifactsFor(crate, hostTarget, binaries, wasmFiles) {
@@ -713,11 +712,10 @@ export function inventoryFromPackageBytes({
   const rustBuildOnly = []
   for (const crate of rust.crates) {
     if (![...selectedPlatforms].some(platform => crate.platforms.includes(platform))) continue
-    const notices = rustNotices(crate, content)
-    const matches = notices.map(item => repoNoticeMatch(crate, item))
-    const differs = matches.some(item => item === false)
-    const repoCount = crate.notices?.length ?? 0
-    const missingRepo = repoCount > 0 && notices.length < repoCount && !crate.name.startsWith('futureox-design-')
+    const matches = rustNotices(crate, content)
+    const notices = matches.map(({ packaged }) => noticeRecord(packaged))
+    const differs = matches.some(({ packaged, expected }) => packaged.sha256 !== expected.sha256)
+    const missingRepo = notices.length < (crate.notices?.length ?? 0)
     let gap = null
     if (!crate.license) gap = 'missing_license_expression'
     else if (!notices.length) gap = 'license_text_not_in_package'
