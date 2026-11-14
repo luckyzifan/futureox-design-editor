@@ -275,3 +275,32 @@ test('zoom focus follows the same pose at another zoom, and Esc or pointer cance
   expect(button('在画布上编辑模糊')).toBeUndefined()
   expect(mount.querySelector('[data-testid="corner-radius-0"]')).toBeTruthy()
 })
+
+test('coincident blur endpoints keep separate hit areas and the start drags without jumping', async () => {
+  const { flip, turn, shape, other } = posedRectangle()
+  shape.effects[0].gradientBlur!.end = [10, 40]
+  const before = await show([flip, turn, shape, other], [flip.id, other.id])
+  await act(async () => { editor.select([shape.id]); editor.set({ view: { x: 0, y: 0, zoom: 0.5 } }) })
+  await enterEdit()
+  const start = mount.querySelector('[data-testid="blur-start-handle"]')!
+  const end = mount.querySelector('[data-testid="blur-end-handle"]')!
+  expect(start.getAttribute('cx')).toBe(end.getAttribute('cx'))
+  expect(start.getAttribute('cy')).toBe(end.getAttribute('cy'))
+  expect(Number(start.getAttribute('r'))).toBeGreaterThan(Number(end.getAttribute('r')))
+  const world = { x: Number(start.getAttribute('cx')), y: Number(start.getAttribute('cy')) }
+  const from = screen(world)
+  const dx = 9
+  await act(async () => pointer('pointerdown', from.x + dx, from.y, start))
+  await act(async () => pointer('pointermove', from.x + dx + 12, from.y + 4))
+  await flush()
+  await act(async () => pointer('pointerup', from.x + dx + 12, from.y + 4))
+  const matrix = inverse(worldMatrix(before, shape.id))
+  const oldLocal = apply(matrix, world)
+  const newLocal = apply(matrix, { x: world.x + 24, y: world.y + 8 })
+  expect(endpoint(shape.id, 'start')[0]).toBeCloseTo(10 + newLocal.x - oldLocal.x, 6)
+  expect(endpoint(shape.id, 'start')[1]).toBeCloseTo(40 + newLocal.y - oldLocal.y, 6)
+  expect(endpoint(shape.id, 'end')).toEqual([10, 40])
+  await act(async () => editor.undo())
+  expect(endpoint(shape.id, 'start')).toEqual([10, 40])
+  expect(editor.canUndo).toBe(false)
+})
