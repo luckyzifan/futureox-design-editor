@@ -697,3 +697,95 @@ fn cancelled_batch_keeps_finished_tiles() {
         assert_eq!(actual, expected, "address {address:?}");
     }
 }
+
+/// Parallel workers do not share the caller's probe. The tile that trips the
+/// probe stays resident. The others stop instead of finishing the batch.
+#[test]
+fn parallel_cancel_keeps_one_finished_tile() {
+    use futureox_design_kernel::render_cancellation::{checkpoint, with_probe};
+    use futureox_design_kernel::tiled_renderer::TileRequest;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::thread;
+    use std::time::Duration;
+
+    struct Pool {
+        cancel: Arc<AtomicBool>,
+        finished: Arc<AtomicUsize>,
+        ordinal: Arc<AtomicUsize>,
+        slow: Arc<AtomicBool>,
+        revision: u64,
+    }
+    struct Worker {
+        cancel: Arc<AtomicBool>,
+        finished: Arc<AtomicUsize>,
+        ordinal: Arc<AtomicUsize>,
+        slow: Arc<AtomicBool>,
+    }
+    fn blank() -> Vec<u8> { vec![7u8; TILE_SIZE as usize * TILE_SIZE as usize * 4] }
+    impl TileRasterizer for Worker {
+        fn rasterize_tile(&mut self, _request: &TileRequest) -> Result<Vec<u8>, String> {
+            let n = self.ordinal.fetch_add(1, Ordering::AcqRel);
+            if self.slow.load(Ordering::Acquire) && n == 0 {
+                self.finished.fetch_add(1, Ordering::Release);
+                self.cancel.store(true, Ordering::Release);
+                return Ok(blank());
+            }
+            if !self.slow.load(Ordering::Acquire) {
+                self.finished.fetch_add(1, Ordering::Release);
+                return Ok(blank());
+            }
+            for _ in 0..400 {
+                checkpoint()?;
+                thread::sleep(Duration::from_millis(5));
+            }
+            self.finished.fetch_add(1, Ordering::Release);
+            Ok(blank())
+        }
+    }
+    impl TileRasterizer for Pool {
+        fn rasterize_tile(&mut self, request: &TileRequest) -> Result<Vec<u8>, String> {
+            Worker {
+                cancel: Arc::clone(&self.cancel), finished: Arc::clone(&self.finished),
+                ordinal: Arc::clone(&self.ordinal), slow: Arc::clone(&self.slow),
+            }.rasterize_tile(request)
+        }
+    }
+    impl TileRasterSource for Pool {
+        fn content_revision(&self) -> u64 { self.revision }
+        fn prepare(&mut self, _options: &RenderOptions) -> Result<(), String> { Ok(()) }
+        fn spawn_worker(&self) -> Option<Box<dyn TileRasterizer + Send>> {
+            Some(Box::new(Worker {
+                cancel: Arc::clone(&self.cancel), finished: Arc::clone(&self.finished),
+                ordinal: Arc::clone(&self.ordinal), slow: Arc::clone(&self.slow),
+            }))
+        }
+    }
+
+    let mut engine = Engine::new();
+    engine.load_document(&doc()).expect("document");
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 2048, 1024);
+    let planned = instruction(&engine, [0., 0., 2048., 1024.], 1.);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let finished = Arc::new(AtomicUsize::new(0));
+    let slow = Arc::new(AtomicBool::new(true));
+    let mut source = Pool {
+        cancel: Arc::clone(&cancel), finished: Arc::clone(&finished),
+        ordinal: Arc::new(AtomicUsize::new(0)), slow: Arc::clone(&slow),
+        revision: engine.content_revision(),
+    };
+    let mut renderer = TiledRenderer::new(RenderFeatureFlags {
+        rasterize_concurrently: true, ..RenderFeatureFlags::default()
+    });
+    let probe = Arc::clone(&cancel);
+    let error = with_probe(move || probe.load(Ordering::Acquire), || {
+        renderer.update_with_instruction(&mut source, &options, &planned, None)
+    }).expect_err("the batch must stop when the probe fires");
+    assert_eq!(error, "PREVIEW_CANCELLED");
+    assert_eq!(finished.load(Ordering::Acquire), 1);
+    assert_eq!(renderer.resident_tile_count(), 1);
+    slow.store(false, Ordering::Release);
+    let status = renderer.update_with_instruction(&mut source, &options, &planned, None).expect("resume");
+    assert_eq!(status, UpdateStatus::Completed);
+    assert!(renderer.resident_tile_count() > 1);
+    assert!(finished.load(Ordering::Acquire) > 1);
+}

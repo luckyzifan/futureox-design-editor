@@ -2752,8 +2752,9 @@ impl Engine {
     }
 
     /// Read/write access to the Sketch-parity tiled renderer owned by this
-    /// engine. Created on first use with default (sequential) flags; native
-    /// hosts flip `rasterize_concurrently` on through here.
+    /// engine. Created on first use with default (sequential) flags.
+    /// `render_tiled_frame` and `update_tiled_frame` enable native parallelism
+    /// when those flags are still the default.
     pub fn tiled_renderer_mut(
         &mut self,
     ) -> &mut crate::tiled_renderer::TiledRenderer {
@@ -2811,6 +2812,7 @@ impl Engine {
         let mut renderer = std::mem::take(
             self.tiled.get_or_insert_with(crate::tiled_renderer::TiledRenderer::default),
         );
+        renderer.enable_native_parallelism();
         let status = renderer.update_with_instruction(self, options, &instruction, damage);
         let previous_level = renderer.previous_level();
         let telemetry = renderer.telemetry().report_statistics();
@@ -2906,6 +2908,7 @@ impl Engine {
             self.tiled
                 .get_or_insert_with(crate::tiled_renderer::TiledRenderer::default),
         );
+        renderer.enable_native_parallelism();
         let status = renderer.update_with_instruction(self, options, &instruction, damage);
         let previous_level = renderer.previous_level();
         let telemetry = renderer.telemetry().report_statistics();
