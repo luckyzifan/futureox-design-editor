@@ -572,12 +572,12 @@ async function residentPrefixBoundary(enabled = true) {
   return { boundary, driver, prefix, finish, close }
 }
 
-test('a same-device mask pose keeps pending textures until the periodic fence', async () => {
+test.each([true, false])('a same-device native pose keeps pending textures until the periodic fence (fixed mask: %s)', async fixedMask => {
   vi.stubEnv('VITE_DESIGN_NATIVE_PIPELINE', '0')
   const f = await residentPrefixBoundary(false)
   f.prefix.scratchBytes = 0
   try {
-    await f.driver.prepareScene({ ...empty, interactionRetained: true, nativeInteraction: true, interactionFixedMask: true })
+    await f.driver.prepareScene({ ...empty, interactionRetained: true, nativeInteraction: true, interactionFixedMask: fixedMask })
     for (let i = 1; i <= 3; i++) {
       const result = await f.finish()
       expect(result.gpuTile).toBeDefined()

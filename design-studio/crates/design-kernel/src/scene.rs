@@ -809,6 +809,13 @@ impl Node {
         selected_backdrop(&self.effects)
     }
 
+    pub(crate) fn knock_out_outer_shadow(&self, effect: &Effect) -> bool {
+        // Sketch draws text's blurred coverage behind a second draw of the
+        // glyphs. The glyph's source-over already covers the shadow at its
+        // edge. Applying shape knockout there a second time thins the glow.
+        effect.shadow_knockout && self.kind != "text"
+    }
+
     /// Alpha of a simple, uniformly painted outline, for Sketch's shadow
     /// silhouette. Complex layers use their rendered alpha as before.
     pub(crate) fn shadow_paint_alpha(&self) -> f32 {

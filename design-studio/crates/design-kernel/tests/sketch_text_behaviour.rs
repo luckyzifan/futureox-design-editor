@@ -136,8 +136,71 @@ fn sketch_custom_line_height_changes_the_advance_without_moving_the_first_baseli
             let laid = font.node_layout(node, Some(node.width)).unwrap();
             assert_eq!(laid.glyphs[0].y, 40.);
             assert!((laid.glyphs[4].y - 40. - advance).abs() < 1e-9);
-            assert!((laid.glyphs[0].advance - 43.47).abs() < 1e-9);
+            assert!((laid.glyphs[0].advance - 43.4492481203).abs() < 1e-9);
         }
+    }
+}
+
+#[test]
+fn legacy_line_boxes_follow_the_observed_system_baseline_and_han_advance() {
+    let fonts = fonts();
+    for (text, size, baseline, advance) in [
+        ("指标名称", 16., 15., Some(15.8754863813)),
+        ("我是小标题名称", 20., 17., Some(19.1541353383)),
+        ("14:37:30", 26., 25., None),
+    ] {
+        let mut files = interop::read_zip_public(&source(Some(1), text, 240.)).unwrap();
+        let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
+        let layer = &mut page["layers"][0];
+        layer["lineSpacingBehaviour"] = json!(1);
+        let attributes = &mut layer["attributedString"]["attributes"][0]["attributes"];
+        attributes["MSAttributedStringFontAttribute"]["attributes"] =
+            json!({"name": "MissingPreviewFace", "size": size});
+        attributes["paragraphStyle"] = json!({"minimumLineHeight": 32., "maximumLineHeight": 32.});
+        files.insert("pages/p.json".into(), serde_json::to_vec(&page).unwrap());
+        let document = interop::import_sketch_source_window(&files).unwrap().document;
+        let node = &document.nodes["caption"];
+        let layout = fonts.node_layout(node, Some(node.width)).unwrap();
+        assert_eq!(layout.glyphs[0].y, baseline, "{text}");
+        if let Some(expected) = advance {
+            assert!((layout.glyphs[0].advance - expected).abs() < 1e-9);
+        }
+        assert_eq!(layout.lines[0].height, 32.);
+        assert!(exported_text(&document)["attributedString"].to_string().contains("MissingPreviewFace"));
+    }
+}
+
+#[test]
+fn sketch_text_shadow_compiles_as_source_over_and_keeps_its_archive_fields() {
+    use futureox_design_kernel::Engine;
+
+    let mut files = interop::read_zip_public(&source(Some(1), "Heading", 240.)).unwrap();
+    let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
+    let shadow = json!({
+        "_class":"shadow", "isEnabled":true, "blurRadius":15, "offsetX":0, "offsetY":0,
+        "spread":0, "color":{"red":0.17,"green":0.45,"blue":1,"alpha":0.8}
+    });
+    page["layers"][0]["style"]["shadows"] = json!([shadow.clone()]);
+    for colored_run in [false, true] {
+        if colored_run {
+            page["layers"][0]["attributedString"]["attributes"][0]["attributes"]["MSAttributedStringColorAttribute"] =
+                json!({"red":1,"green":1,"blue":1,"alpha":1});
+        }
+        files.insert("pages/p.json".into(), serde_json::to_vec(&page).unwrap());
+        let doc = interop::import_sketch_source_window(&files).unwrap().document;
+        assert!(doc.nodes["caption"].effects[0].shadow_knockout);
+        let mut engine = Engine::new();
+        engine.load_font(include_bytes!("../../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap();
+        engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+        let scene = engine.compile_gpu_request(&json!({
+            "pageId": "p", "width": 240, "height": 200, "transparent": true,
+            "view": {"x": 0, "y": 0, "zoom": 1}
+        }).to_string()).unwrap();
+        let compiled = &scene.nodes["caption"].effects[0];
+        assert!(!compiled.shadow_knockout, "colored run: {colored_run}");
+        assert_eq!((compiled.radius, compiled.opacity), (15., 0.8));
+        let archived = exported_text(&doc);
+        assert_eq!(archived["style"]["shadows"][0]["blurRadius"].as_f64(), Some(15.));
     }
 }
 
@@ -203,10 +266,10 @@ fn legacy_fixed_spacing_survives_shared_style_and_fd_round_trip() {
     assert!(node.text_style.as_ref().unwrap().wrap);
     let text = fonts().node_layout(node, Some(node.width)).unwrap();
     assert_eq!(text.lines.len(), 2);
-    // The bundled fallback's Latin typographic ascent rounds to the first
-    // baseline. Its zero leading keeps the archived 24.5-point advance.
+    // The system Latin ascent rounds to the first baseline. Zero leading
+    // keeps the archived 24.5-point advance.
     assert_eq!(text.lines[1].y, 24.5);
-    assert_eq!(text.glyphs[0].y, 21.);
+    assert_eq!(text.glyphs[0].y, 23.);
     assert_eq!(exported_text(&reopened)["lineSpacingBehaviour"], 1);
 }
 
