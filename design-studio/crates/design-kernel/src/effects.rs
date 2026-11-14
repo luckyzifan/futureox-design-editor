@@ -410,7 +410,7 @@ pub(crate) fn figma_portable_layer_blur(source: Surface) -> Result<Surface, Stri
 // Shadow inputs have zero RGB. The one-channel specialization uses exactly
 // the same sums, rounding proof and rational fallback for their alpha.
 fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
-    box_pass_in_place_domain_core::<CHANNELS>(input, r, horizontal, bounded, None)
+    box_pass_in_place_domain_core::<CHANNELS>(input, r, horizontal, bounded, None, false)
 }
 
 /// One-channel alpha, clamped to the unit interval. Same sums and the same
@@ -589,6 +589,7 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
 }
 fn box_pass_in_place_domain_core<const CHANNELS: usize>(
     input: &mut Surface, r: i32, horizontal: bool, bounded: bool, solid_core: Option<Rect>,
+    clamp_edges: bool,
 ) -> Result<(), String> {
     if CHANNELS == 1 && bounded {
         return box_pass_unit_alpha(input, r, horizontal, solid_core);
@@ -646,7 +647,13 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
             }
         }
         let sample = |at: i32| {
-            if at >= 0 && at < len { source_line[at as usize] } else { [0.; CHANNELS] }
+            if clamp_edges && len != 0 {
+                source_line[at.clamp(0, len - 1) as usize]
+            } else if at >= 0 && at < len {
+                source_line[at as usize]
+            } else {
+                [0.; CHANNELS]
+            }
         };
         // A sliding f64 sum of f32 samples is exact enough to round back to
         // the same binary32 as the rational kernel while the accumulated
@@ -895,6 +902,21 @@ pub fn gaussian_surface(surface: &Surface, sigma: f64, byte: bool) -> Result<Sur
     gaussian_surface_owned(surface.try_clone()?, sigma, byte)
 }
 
+pub(crate) fn gaussian_backdrop(mut surface: Surface, sigma: f64, byte: bool) -> Result<Surface, String> {
+    for radius in gaussian_box_radii(sigma)? {
+        if radius == 0 {
+            continue;
+        }
+        for horizontal in [true, false] {
+            box_pass_in_place_domain_core::<4>(&mut surface, radius as i32, horizontal, byte, None, true)?;
+            if byte {
+                surface.quantize_rgba8();
+            }
+        }
+    }
+    Ok(surface)
+}
+
 /// At small device sigmas a stack of integer boxes can reduce to a single
 /// uniform window. Integrate the Gaussian over each pixel instead, within
 /// the same three-sigma support already reserved for authored Gaussian blur.
@@ -1132,6 +1154,33 @@ pub(crate) fn shadow_alpha(
     blur_shadow_alpha(alpha, filter)
 }
 
+pub(crate) fn knock_out_shadow(shadow: &mut Surface, silhouette: &Surface, paint_alpha: f32) {
+    debug_assert_eq!(shadow.rect, silhouette.rect);
+    for (pixel, shape) in shadow.pixels.iter_mut().zip(&silhouette.pixels) {
+        *pixel = pixel.opacity(1. - (shape.0[3] / paint_alpha).min(1.));
+    }
+}
+
+pub(crate) fn sketch_shadow_alpha(
+    surface: &Surface, sigma: f64, spread: f64, opacity: f32,
+) -> Result<Surface, String> {
+    // Quartz casts the shadow from the silhouette and applies the paint
+    // alpha when it draws the fill. Recover that silhouette for a uniformly
+    // translucent paint. Opaque or mixed paints keep their measured alpha.
+    if opacity >= 1. || opacity <= 0. {
+        return shadow_alpha(surface, BlurFilter::Gaussian(sigma), spread, false);
+    }
+    let mut alpha = surface.new_like(surface.rect)?;
+    for (p, src) in alpha.pixels.iter_mut().zip(&surface.pixels) {
+        let a = (src.0[3] / opacity).min(1.);
+        *p = Pixel([a; 4]);
+    }
+    if spread.abs() >= 0.5 {
+        alpha = morphology_alpha(&alpha, spread.abs().round() as i32, spread > 0.)?;
+    }
+    blur_shadow_alpha(alpha, BlurFilter::Gaussian(sigma))
+}
+
 /// Figma export rasterizes coverage at 2× and resolves each output pixel from
 /// that pair. A radius-4 outer shadow on the browser PNG matches the same tent
 /// evaluated on the output pixel grid. Blurring the 2× mask and then resolving
@@ -1271,8 +1320,8 @@ fn blur_alpha_outside_solid_core(alpha: Surface, sigma: f64) -> Result<Surface, 
         if radius == 0 {
             continue;
         }
-        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, true, true, Some(core))?;
-        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, false, true, Some(core))?;
+        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, true, true, Some(core), false)?;
+        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, false, true, Some(core), false)?;
     }
     Ok(out)
 }

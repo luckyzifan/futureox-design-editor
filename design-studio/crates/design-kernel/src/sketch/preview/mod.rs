@@ -509,6 +509,7 @@ fn visit(
             source_filter_field:None,
             gaussian_region:None,
             opaque_coverage: false,
+            shadow_paint_alpha: None,
             passthrough: false,
             backdrop_box: [0.; 4],
             backdrop_output_box: None,

@@ -481,6 +481,8 @@ impl Projection<'_> {
                     texture: None,
                     gradient_blur: None,
                     show_shadow_behind_node: false,
+                    shadow_knockout: kind == "shadow",
+                    sketch_backdrop: false,
                     color_controls: None,
                     zoom_blur: None,
                     motion_angle: 0.,
@@ -514,6 +516,8 @@ impl Projection<'_> {
                 texture: None,
                 gradient_blur: None,
                 show_shadow_behind_node: false,
+                shadow_knockout: false,
+                sketch_backdrop: false,
                 color_controls: None,
                 zoom_blur: None,
                 motion_angle: 0.,
@@ -531,7 +535,9 @@ impl Projection<'_> {
                     Err(note) => {
                         self.warnings.insert(note.into());
                     }
-                    Ok(crate::interop::SketchProgressiveBackground::NotProgressive) => {}
+                    Ok(crate::interop::SketchProgressiveBackground::NotProgressive) => {
+                        effect.sketch_backdrop = true;
+                    }
                 }
             }
             n.effects.push(effect);

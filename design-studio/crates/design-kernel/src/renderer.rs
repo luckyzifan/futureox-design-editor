@@ -310,12 +310,11 @@ fn effect_exceeds_display_budget(fx: &crate::scene::Effect, scale: f64, layer: R
     if effect_exceeds_display(fx, scale) {
         return true;
     }
-    let halo = (fx.blur_radius() * 2.
-        + fx.spread.abs()
-        + fx.x.abs()
-        + fx.y.abs()
-        + fx.material_halo())
-        * scale;
+    let halo = if fx.sketch_backdrop {
+        fx.backdrop_outset(scale)
+    } else {
+        (fx.blur_radius() * 2. + fx.spread.abs() + fx.x.abs() + fx.y.abs() + fx.material_halo()) * scale
+    };
     if !halo.is_finite() || halo.ceil() > 16_000_000. {
         return true;
     }
@@ -332,16 +331,19 @@ fn effect_exceeds_display(fx: &crate::scene::Effect, scale: f64) -> bool {
             return true;
         }
     }
-    let sigma = fx.blur_radius().max(fx.radius) * scale;
+    let sigma = if fx.sketch_backdrop {
+        fx.sketch_backdrop_sigma(scale)
+    } else {
+        fx.blur_radius().max(fx.radius) * scale
+    };
     if sigma.is_finite() && sigma > 512. {
         return true;
     }
-    let halo = (fx.blur_radius() * 2.
-        + fx.spread.abs()
-        + fx.x.abs()
-        + fx.y.abs()
-        + fx.material_halo())
-        * scale;
+    let halo = if fx.sketch_backdrop {
+        fx.backdrop_outset(scale)
+    } else {
+        (fx.blur_radius() * 2. + fx.spread.abs() + fx.x.abs() + fx.y.abs() + fx.material_halo()) * scale
+    };
     !halo.is_finite() || halo > 2048.
 }
 
@@ -3632,7 +3634,9 @@ impl Painter<'_> {
             };
             if replay.is_none() {
                 let radius = fx.backdrop_radius() * scale;
-                let blurred = if cropped && !self.compatible {
+                let blurred = if fx.sketch_backdrop {
+                    effects::gaussian_backdrop(background.try_clone()?, fx.sketch_backdrop_sigma(scale), self.compatible)?
+                } else if cropped && !self.compatible {
                     effects::linear_tent_blur(&background, radius, true)?
                 } else if cropped {
                     effects::portable_tent_blur_edge(&background, radius, true)?
@@ -4299,14 +4303,14 @@ impl Painter<'_> {
                 }
             } else if fx.kind == "shadow" || fx.kind == "inner-shadow" {
                 let inner = fx.kind == "inner-shadow";
-                let alpha = self.shadow_mask(
-                    &resolved,
-                    fx.blur_radius() * scale,
-                    fx.spread * scale,
-                    inner,
-                )?;
+                let paint_alpha = if fx.shadow_knockout { n.shadow_paint_alpha() } else { 1. };
+                let alpha = if fx.shadow_knockout && paint_alpha < 1. {
+                    effects::sketch_shadow_alpha(&resolved, fx.radius * scale / 2., fx.spread * scale, paint_alpha)?
+                } else {
+                    self.shadow_mask(&resolved, fx.blur_radius() * scale, fx.spread * scale, inner)?
+                };
                 let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
-                let pointwise = fx.radius == 0.
+                let pointwise = paint_alpha == 1. && fx.radius == 0.
                     && fx.spread == 0.
                     && offset.x.fract() == 0.
                     && offset.y.fract() == 0.;
@@ -4346,6 +4350,9 @@ impl Painter<'_> {
                             inner,
                         )?
                     };
+                    if fx.shadow_knockout {
+                        effects::knock_out_shadow(&mut shadow, &shadow_basis[i], paint_alpha);
+                    }
                     if self.compatible {
                         shadow.quantize_rgba8();
                     }
@@ -4553,6 +4560,7 @@ impl Painter<'_> {
             && n.render_children().iter().all(|child| self.bounded_node(child))
             && n.effects.iter().filter(|e| e.visible).all(|e| {
                 n.backdrop_effect().is_some_and(|b| std::ptr::eq(e, b))
+                    && !e.sketch_backdrop
                     && (e.kind != "glass" || (e.glass.is_some()
                         && crate::optics::GlassShape::from_node(n).is_some()))
             })
@@ -4800,6 +4808,33 @@ impl Painter<'_> {
             apply_effects && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))
         }) {
             let resolved_glass = fx.evaluated_glass();
+            if fx.sketch_backdrop {
+                // Native Sketch clamps to its frame capture. Capture the
+                // same texel phase in the single-plane analytic painter.
+                let [x, y, w, h] = crate::coverage::backdrop_box(prepared.fill_bounds, self.extent);
+                let capture = Rect::new(0, 0, w as u32, h as u32);
+                let mut surface = self.allocate(capture)?;
+                for row in 0..capture.h {
+                    for column in 0..capture.w {
+                        surface.pixels[row as usize * capture.w as usize + column as usize] =
+                            target.sample_linear(x + f64::from(column) + 0.5, y + f64::from(row) + 0.5);
+                    }
+                }
+                let mut filtered = effects::gaussian_backdrop(surface, fx.sketch_backdrop_sigma(scale), self.compatible)?;
+                if let Some(controls) = &fx.color_controls {
+                    controls.apply(&mut filtered, self.doc.color_management.is_some());
+                }
+                for py in r.y..r.bottom() {
+                    for px in r.x..r.right() {
+                        let sx = (f64::from(px) + 0.5 - x).clamp(0.5, w - 0.5);
+                        let sy = (f64::from(py) + 0.5 - y).clamp(0.5, h - 0.5);
+                        layer.pixels[r.index(px, py).expect("backdrop coverage")] =
+                            filtered.sample_linear(sx, sy).opacity(fill.at(px, py));
+                    }
+                }
+                // Foreground paint, children and their layout keep the usual path.
+                self.stats.backdrop_reads += 1;
+            } else {
             let mut blurred = if bounded {
                 let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(resolved_glass.as_ref()) {
                     crate::optics::input_region(basis, r, shape, m, glass, None)?
@@ -4853,6 +4888,7 @@ impl Painter<'_> {
                     layer.pixels[r.index(x, y).expect("in-bounds backdrop")] =
                         background.at(x, y).opacity(fill.at(x, y));
                 }
+            }
             }
         }
         for paint in &n.fills {
@@ -4963,7 +4999,12 @@ impl Painter<'_> {
                         shadow_basis = Some(layer.try_clone()?);
                     }
                     let basis = shadow_basis.as_ref().unwrap_or(&layer);
-                    let mut shadow = if self.compatible {
+                    let paint_alpha = if fx.shadow_knockout { n.shadow_paint_alpha() } else { 1. };
+                    let mut shadow = if fx.shadow_knockout && paint_alpha < 1. {
+                        let alpha = effects::sketch_shadow_alpha(basis, fx.radius * scale / 2., fx.spread * scale, paint_alpha)?;
+                        let color = crate::color::pixel(self.doc.color_management, &fx.color, fx.opacity as f32)?;
+                        effects::color_shadow_linear(basis, &alpha, color, offset.x, offset.y, false)?
+                    } else if self.compatible {
                         let inner = fx.kind == "inner-shadow";
                         let alpha = self.shadow_mask(
                             basis,
@@ -5000,6 +5041,9 @@ impl Painter<'_> {
                             fx.kind == "inner-shadow",
                         )?
                     };
+                    if fx.shadow_knockout {
+                        effects::knock_out_shadow(&mut shadow, basis, paint_alpha);
+                    }
                     if self.compatible {
                         shadow.quantize_rgba8();
                     }

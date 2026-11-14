@@ -570,6 +570,8 @@ pub struct GpuNode {
     pub source_filter_field:Option<source_filter::SourceFilter>,
     /// The entire working rectangle lies inside an opaque, simple fill.
     pub opaque_coverage: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shadow_paint_alpha: Option<f32>,
     pub passthrough: bool,
     pub backdrop_box: [f64; 4],
     /// Complete painter-dependency output demand, not merely the visible crop.
@@ -1274,6 +1276,10 @@ fn painter_backdrop_phases_supported(
         if fx.kind != "background-blur" { return false; }
         let planned = support.stages.as_ref().and_then(|s|s.backdrop_inputs.get(id))
             .copied().unwrap_or(support.extent);
+        if fx.sketch_backdrop {
+            return crate::coverage::backdrop_box(Some(bounds), legacy_extent)
+                == crate::coverage::backdrop_box(Some(bounds), planned);
+        }
         backdrop_sample_phase_supported(
             crate::coverage::backdrop_box(Some(bounds),legacy_extent),
             crate::coverage::backdrop_box(Some(bounds),planned),
@@ -1538,7 +1544,7 @@ fn painter_support_extent(
                     // as well as every nonzero contributing source pixel;
                     // avoid a symmetric halo that also allocates known-zero
                     // rows beyond a large source's edge.
-                    if !n.render_children().is_empty() || n.clip || shadow.spread != 0.
+                    if shadow.shadow_knockout || !n.render_children().is_empty() || n.clip || shadow.spread != 0.
                         || n.effects.iter().filter(|e| e.visible).count() != 1 { return None; }
                     let m = p.matrix.0;
                     let dx = m[0]*shadow.x + m[2]*shadow.y;
@@ -1577,6 +1583,7 @@ fn painter_support_extent(
                     // must not thereby move/re-size this earlier capture.
                     let backdrop = match self.capture_stages {
                         Some(stages) => *stages.backdrop_inputs.get(id)?,
+                        None if fx.sketch_backdrop => p.fill_program_bounds,
                         None => content.expand(reach(fx.backdrop_radius() * scale)?),
                     };
                     self.backdrop_outputs.insert(id.clone(), content);
@@ -1977,6 +1984,8 @@ impl Compiler<'_> {
                 source_filter_field,
                 gaussian_region:reduced.map(|(plan,_)|plan).or(full_gaussian),
                 opaque_coverage,
+                shadow_paint_alpha: n.effects.iter().any(|effect| effect.visible && effect.shadow_knockout)
+                    .then(|| n.shadow_paint_alpha()).filter(|alpha| *alpha < 1.),
                 passthrough: n.passes_backdrop(),
                 backdrop_box: crate::coverage::backdrop_box(
                     crate::bounds::path_bounds(fill_path, matrix),

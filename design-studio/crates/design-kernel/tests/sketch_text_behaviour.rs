@@ -115,6 +115,33 @@ fn real_font_layout_keeps_flexible_text_on_one_line_and_wraps_fixed_modes() {
 }
 
 #[test]
+fn sketch_custom_line_height_changes_the_advance_without_moving_the_first_baseline() {
+    let font = fonts();
+    for advance in [42., 50.764, 72.] {
+        let mut files = interop::read_zip_public(&source(Some(1), "系统名称\n系统名称", 300.)).unwrap();
+        let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
+        let node = &mut page["layers"][0];
+        node["lineSpacingBehaviour"] = json!(3);
+        let attributes = &mut node["attributedString"]["attributes"][0]["attributes"];
+        attributes["MSAttributedStringFontAttribute"]["attributes"]["size"] = json!(46);
+        attributes["paragraphStyle"] = json!({
+            "minimumLineHeight": advance, "maximumLineHeight": advance,
+        });
+        files.insert("pages/p.json".into(), serde_json::to_vec(&page).unwrap());
+        let document = interop::import_sketch_source_window(&files).unwrap().document;
+        let exported = interop::export_sketch(&document).unwrap();
+        let reopened = interop::import_sketch_report(&exported).unwrap().document;
+        for doc in [&document, &reopened] {
+            let node = &doc.nodes["caption"];
+            let laid = font.node_layout(node, Some(node.width)).unwrap();
+            assert_eq!(laid.glyphs[0].y, 40.);
+            assert!((laid.glyphs[4].y - 40. - advance).abs() < 1e-9);
+            assert!((laid.glyphs[0].advance - 43.47).abs() < 1e-9);
+        }
+    }
+}
+
+#[test]
 fn explicit_and_trailing_newlines_survive_all_modes_and_round_trip() {
     let fonts = fonts();
     let text = "AB\nCD\n";
@@ -176,10 +203,10 @@ fn legacy_fixed_spacing_survives_shared_style_and_fd_round_trip() {
     assert!(node.text_style.as_ref().unwrap().wrap);
     let text = fonts().node_layout(node, Some(node.width)).unwrap();
     assert_eq!(text.lines.len(), 2);
-    // The bundled font has zero leading. Its effective ascender rounds to
-    // the first baseline, independent of the 24.5-point authored line box.
+    // The bundled fallback's Latin typographic ascent rounds to the first
+    // baseline. Its zero leading keeps the archived 24.5-point advance.
     assert_eq!(text.lines[1].y, 24.5);
-    assert_eq!(text.glyphs[0].y, 28.);
+    assert_eq!(text.glyphs[0].y, 21.);
     assert_eq!(exported_text(&reopened)["lineSpacingBehaviour"], 1);
 }
 

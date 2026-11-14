@@ -217,13 +217,38 @@ fn native_background_blur_changes_the_checkerboard_behind_the_layer_instead_of_i
     let gaussian_contrast = (red(&gaussian, 20, 20) - red(&gaussian, 24, 20)).abs();
     let background_contrast = (red(&background, 20, 20) - red(&background, 24, 20)).abs();
     assert!(gaussian_contrast > 100, "layer blur preserves the underlying checkerboard");
-    // Shared background filtering remains a tent kernel, so this certifies
-    // backdrop semantics; native Gaussian blur strength is a separate gap.
     assert!(background_contrast + 40 < gaussian_contrast, "background blur reduces backdrop contrast");
     assert!(red(&background, 20, 20) > red(&gaussian, 20, 20));
     assert!(red(&background, 24, 20) < red(&gaussian, 24, 20));
     assert_eq!(&background[(24 * 64 + 8) * 4..(24 * 64 + 8) * 4 + 4], &[0, 0, 0, 255], "the effect stays inside its layer shape");
     assert_ne!(background, gaussian);
+}
+
+#[test]
+fn native_uniform_blur_reads_within_the_shape_and_matches_the_wide_step_response() {
+    let mut files = interop::read_zip_public(&archive(&source_blur(3))).unwrap();
+    let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
+    let radius = 8.;
+    let mut blur = source_blur(3);
+    blur["radius"] = json!(radius);
+    let mut foreground = rectangle("frosted", [16, 8, 32, 32], 1., 0.05);
+    foreground["style"]["blur"] = blur;
+    page["layers"] = json!([
+        rectangle("white", [0, 0, 64, 48], 1., 1.),
+        rectangle("black", [0, 0, 24, 48], 0., 1.),
+        foreground,
+    ]);
+    files.insert("pages/p.json".into(), serde_json::to_vec(&page).unwrap());
+    let document = interop::import_sketch_source_window(&files).unwrap().document;
+    let pixels = render(&document);
+    let red = |x: usize| i16::from(pixels[(24 * 64 + x) * 4]);
+    // On the same native step/radius, blur already brightens the left edge
+    // of the capture well before the transition. The old radius-8 tent
+    // leaves this pixel close to the 5% foreground fill (red=13).
+    assert!(red(16) >= 95 && red(16) <= 120, "capture left edge: {}", red(16));
+    assert_eq!(red(15), 0);
+    assert_eq!(red(48), 255);
+    assert_eq!(exported_blur(&document)["radius"], radius);
 }
 
 #[test]

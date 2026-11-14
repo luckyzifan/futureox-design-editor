@@ -103,6 +103,7 @@ export type GpuNode = {
    * it in the live damage window instead of recapturing a full cached image. */
   previewDynamic?: boolean
   opaqueCoverage?: boolean
+  shadowPaintAlpha?: number
   passthrough?: boolean
   backdropBox?: [number, number, number, number]
   /** Native painter-dependency certificate, emitted only for the adopted

@@ -504,14 +504,29 @@ impl Compositor<'_, '_, '_> {
         };
         let fill = self.mask(&n.fill, 4)?;
         if let Some(fx) = futureox_design_kernel::scene::selected_backdrop(&n.effects) {
-            let copy = self.copy(backdrop, n.rect)?;
-            let raw = self.blur(copy, fx.backdrop_radius() * n.matrix.max_scale(), false)?;
-            let mixed = self.gradient_blur(copy, raw, n, fx)?;
-            if mixed.id != raw.id && raw.id != copy.id {
-                self.frame.release(&[raw]);
-            }
+            let mixed = if fx.sketch_backdrop {
+                let [x, y, w, h] = n.backdrop_box;
+                let capture = Rect::new(x as i32, y as i32, w as u32, h as u32);
+                let copy = self.frame.acquire(capture)?;
+                let mut u = parameters(capture, &[backdrop]);
+                u[0] = x as f32;
+                u[1] = y as f32;
+                self.frame.draw(copy, u, &[backdrop], false, None)?;
+                self.backdrop_blur(copy, n, fx, true, n.backdrop_box)?
+            } else {
+                let copy = self.copy(backdrop, n.rect)?;
+                let raw = self.blur(copy, fx.backdrop_radius() * n.matrix.max_scale(), false)?;
+                let mixed = self.gradient_blur(copy, raw, n, fx)?;
+                if mixed.id != raw.id && raw.id != copy.id {
+                    self.frame.release(&[raw]);
+                }
+                if mixed.id != copy.id {
+                    self.frame.release(&[copy]);
+                }
+                mixed
+            };
             let blurred = self.color_controls(mixed, fx.color_controls.as_ref())?;
-            if mixed.id != blurred.id && mixed.id != copy.id {
+            if mixed.id != blurred.id {
                 self.frame.release(&[mixed]);
             }
             let next = if fx.kind == "glass" {
@@ -519,7 +534,7 @@ impl Compositor<'_, '_, '_> {
             } else {
                 self.compose(blurred, layer, "normal", 1., Some(fill))?
             };
-            self.frame.release(&[copy, blurred, layer]);
+            self.frame.release(&[blurred, layer]);
             layer = next;
         }
         for p in &n.fills {
@@ -629,9 +644,10 @@ impl Compositor<'_, '_, '_> {
                 layer = next;
             } else if fx.kind == "shadow" || fx.kind == "inner-shadow" {
                 let inner = fx.kind == "inner-shadow";
+                let silhouette = self.shadow_silhouette(layer, n, fx)?;
                 let alpha = if (fx.spread * sc).abs() >= 0.5 {
                     self.morphology(
-                        layer,
+                        silhouette,
                         (fx.spread * sc).abs().round(),
                         if inner {
                             fx.spread < 0.
@@ -640,15 +656,16 @@ impl Compositor<'_, '_, '_> {
                         },
                     )?
                 } else {
-                    layer
+                    silhouette
                 };
-                let blurred = self.blur(alpha, fx.radius * sc, false)?;
+                let blurred = self.blur_mode(alpha, fx.radius * sc, false, fx.shadow_knockout && n.shadow_paint_alpha.is_some())?;
                 let color = rgb(self.scene, &fx.color)?;
                 let m = n.matrix.0;
                 let shadow = self.frame.run(6., n.rect, &[layer, blurred], |u| {
                     u[28..32].copy_from_slice(&[0., color[0], color[1], color[2]]);
                     u[32] =
                         fx.opacity as f32 * self.scene.colors.get(&fx.color).map_or(1., |c| c[3]);
+                    if fx.shadow_knockout { u[41] = 1. / n.shadow_paint_alpha.unwrap_or(1.); }
                     u[36..40].copy_from_slice(&[
                         1.,
                         (m[0] * fx.x + m[2] * fx.y) as f32,
@@ -661,7 +678,7 @@ impl Compositor<'_, '_, '_> {
                 } else {
                     self.compose(layer, shadow, "normal", 1., None)?
                 };
-                self.frame.release(&[layer, alpha, blurred, shadow]);
+                self.frame.release(&[layer, silhouette, alpha, blurred, shadow]);
                 layer = next;
             } else if fx.kind == "noise" || fx.kind == "texture" {
                 let mut inputs = vec![layer];
@@ -2024,10 +2041,10 @@ impl Compositor<'_, '_, '_> {
                 let kernel = self.blur_kernels[&key];
                 for axis in [0., 1.] {
                     let next = if gaussian && self.frame.byte_targets() {
-                        self.frame.slide_uniform_box(current, input.rect, r as f32, axis, false)?
+                        self.frame.slide_uniform_box(current, input.rect, r as f32, axis, clamp_edges)?
                     } else {
                         self.frame.run(22., input.rect, &[current, kernel], |u| {
-                            u[36..40].copy_from_slice(&[r as f32, axis, 0., if gaussian { 2. } else { 1. }]);
+                            u[36..40].copy_from_slice(&[r as f32, axis, f32::from(gaussian && clamp_edges), if gaussian { 2. } else { 1. }]);
                         })?
                     };
                     if current.id != input.id {
@@ -2095,7 +2112,11 @@ impl Compositor<'_, '_, '_> {
         b: [f64; 4],
     ) -> Result<Surface, String> {
         let sharp = input;
-        let blurred = self.blur(sharp, fx.backdrop_radius() * n.matrix.max_scale(), cropped)?;
+        let blurred = if fx.sketch_backdrop {
+            self.blur_mode(sharp, fx.sketch_backdrop_sigma(n.matrix.max_scale()) * 2., true, true)?
+        } else {
+            self.blur(sharp, fx.backdrop_radius() * n.matrix.max_scale(), cropped)?
+        };
         let origin = if cropped {
             [b[0] - f64::from(sharp.rect.x), b[1] - f64::from(sharp.rect.y)]
         } else {
@@ -2200,6 +2221,13 @@ impl Compositor<'_, '_, '_> {
         self.frame.release(&[h]);
         Ok(v)
     }
+    fn shadow_silhouette(&mut self, input: Surface, n: &GpuNode, fx: &Effect) -> Result<Surface, String> {
+        if let Some(alpha) = n.shadow_paint_alpha.filter(|_| fx.shadow_knockout) {
+            self.frame.run(63., input.rect, &[input], |u| { u[41] = 1. / alpha; })
+        } else {
+            Ok(input)
+        }
+    }
     fn color_controls(&mut self, input: Surface, controls: Option<&futureox_design_kernel::color_controls::ColorControls>) -> Result<Surface, String> {
         let Some(controls) = controls.filter(|c| !c.is_identity()) else { return Ok(input); };
         let matrix = controls.uniforms(self.scene.color_management.is_some());
@@ -2274,11 +2302,12 @@ impl Compositor<'_, '_, '_> {
                 let m = n.matrix.0;
                 let dx = m[0] * fx.x + m[2] * fx.y;
                 let dy = m[1] * fx.x + m[3] * fx.y;
-                let pointwise =
-                    fx.radius == 0. && fx.spread == 0. && dx.fract() == 0. && dy.fract() == 0.;
+                let pointwise = !(fx.shadow_knockout && n.shadow_paint_alpha.is_some())
+                    && fx.radius == 0. && fx.spread == 0. && dx.fract() == 0. && dy.fract() == 0.;
+                let silhouette = self.shadow_silhouette(resolved, n, fx)?;
                 let alpha = if (fx.spread * sc).abs() >= 0.5 {
                     self.morphology(
-                        resolved,
+                        silhouette,
                         (fx.spread * sc).abs().round(),
                         if inner {
                             fx.spread < 0.
@@ -2287,9 +2316,9 @@ impl Compositor<'_, '_, '_> {
                         },
                     )?
                 } else {
-                    resolved
+                    silhouette
                 };
-                let blurred = self.blur(alpha, fx.radius * sc, false)?;
+                let blurred = self.blur_mode(alpha, fx.radius * sc, false, fx.shadow_knockout && n.shadow_paint_alpha.is_some())?;
                 let color = rgb(self.scene, &fx.color)?;
                 let mut outputs = Vec::new();
                 let mut shared = HashMap::new();
@@ -2305,6 +2334,7 @@ impl Compositor<'_, '_, '_> {
                                 u[28..32].copy_from_slice(&[0., color[0], color[1], color[2]]);
                                 u[32] = fx.opacity as f32
                                     * self.scene.colors.get(&fx.color).map_or(1., |c| c[3]);
+                                if fx.shadow_knockout { u[41] = 1. / n.shadow_paint_alpha.unwrap_or(1.); }
                                 u[36..40].copy_from_slice(&[
                                     1.,
                                     dx as f32,
@@ -2325,7 +2355,7 @@ impl Compositor<'_, '_, '_> {
                     outputs.push(next);
                 }
                 self.frame.release(&planes);
-                self.frame.release(&[resolved, alpha, blurred]);
+                self.frame.release(&[resolved, silhouette, alpha, blurred]);
                 planes = outputs;
             } else if matches!(fx.kind.as_str(), "noise" | "texture") {
                 let mut outputs = Vec::new();
