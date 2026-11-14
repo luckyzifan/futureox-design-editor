@@ -142,9 +142,28 @@ function electronRole(relative) {
   if (base === 'LICENSE' || base === 'LICENSES.chromium.html') return 'notice'
   if (base === 'libffmpeg.so' || base === 'ffmpeg.dll' || base === 'libffmpeg.dylib') return 'chromium-ffmpeg'
   if (base === 'futureox-desgin' || base === 'futureox-desgin.exe' || relative.endsWith('/MacOS/futureox-desgin')) return 'binary'
+  if (/^Contents\/Frameworks\/Electron Framework\.framework\/Versions\/[^/]+\/Electron Framework$/.test(relative)) return 'framework-binary'
   if (relative.includes('/locales/')) return 'locale'
   if (base === 'Info.plist') return 'bundle-metadata'
   return 'runtime'
+}
+
+function electronFrameworkVersion(file) {
+  const text = file?.text()
+  if (!text || !/<key>\s*CFBundleIdentifier\s*<\/key>\s*<string>\s*com\.github\.Electron\.framework\s*<\/string>/.test(text)) return null
+  return /<key>\s*CFBundleVersion\s*<\/key>\s*<string>\s*(\d+\.\d+\.\d+(?:-[\w.-]+)?)\s*<\/string>/.exec(text)?.[1] ?? null
+}
+
+function frameworkTarget(binary) {
+  if (!binary) return null
+  const header = binary.prefix(12)
+  // The packaged macOS runtime targets a single architecture. A universal,
+  // unreadable or unknown binary has no per-target attribution here.
+  if (header.length < 12) return null
+  const type = header.readUInt32LE(0) === 0xfeedfacf ? header.readUInt32LE(4)
+    : header.readUInt32BE(0) === 0xfeedfacf ? header.readUInt32BE(4) : null
+  const triple = type === 0x0100000c ? 'darwin-arm64' : type === 0x01000007 ? 'darwin-x64' : null
+  return triple ? { triple, ...HOST_TARGETS[triple] } : null
 }
 
 function classifyResource(inner) {
@@ -202,7 +221,10 @@ function classifyDisk(relative, resourcesPrefix) {
     if (!inner) return { kind: 'unclassified', role: 'resource-root' }
     return classifyResource(inner)
   }
-  return { kind: 'electron', role: electronRole(relative) }
+  const appPrefix = resourcesPrefix.endsWith('/Contents/Resources')
+    ? resourcesPrefix.slice(0, -'Contents/Resources'.length) : ''
+  const resourcePath = appPrefix && relative.startsWith(appPrefix) ? relative.slice(appPrefix.length) : relative
+  return { kind: 'electron', role: electronRole(resourcePath) }
 }
 
 function macFrameworkLink(packageDir, relative) {
@@ -265,7 +287,7 @@ function walkPackage(packageDir, resourcesPrefix, brandIcon) {
           role: classified.role,
           origin: 'file',
           text: () => hashed.size > 2_000_000 ? null : readFileSync(full, 'utf8'),
-          prefix: () => readPrefix(full, 4),
+          prefix: (length = 4) => readPrefix(full, length),
         })
       } catch (error) {
         rejected.push({ path: relative, reason: error.message })
@@ -541,11 +563,15 @@ function mitLicenseText(text) {
   return text.includes('Permission is hereby granted, free of charge') && text.includes('THE SOFTWARE IS PROVIDED "AS IS"')
 }
 
-function inventoryElectron(files, declaredVersion) {
+function inventoryElectron(files, declaredVersion, style) {
   const electronFiles = files.filter(file => file.kind === 'electron')
   const versionFile = electronFiles.find(file => file.role === 'version')
-  const version = versionFile?.text()?.trim() || null
-  const binary = electronFiles.find(file => file.role === 'binary') ?? null
+  const framework = style === 'mac-app' ? electronFiles.find(file => file.role === 'framework-binary') : undefined
+  const plistPath = framework && path.posix.join(path.posix.dirname(framework.path), 'Resources/Info.plist')
+  const plist = plistPath && electronFiles.find(file => file.path === plistPath)
+  const packagedVersion = versionFile?.text()?.trim()
+  const version = packagedVersion || electronFrameworkVersion(plist)
+  const binary = framework ?? electronFiles.find(file => file.role === 'binary') ?? null
   const notices = electronFiles.filter(file => file.role === 'notice').map(file => ({
     ...noticeRecord(file),
     role: path.posix.basename(file.path) === 'LICENSES.chromium.html' ? 'chromium' : 'electron',
@@ -555,6 +581,7 @@ function inventoryElectron(files, declaredVersion) {
   const traceable = Boolean(binary && version && notices.some(item => item.role === 'electron') && notices.some(item => item.role === 'chromium'))
   return {
     version,
+    versionSource: (packagedVersion ? versionFile.path : version ? plist?.path : null) ?? null,
     declaredVersion: declaredVersion ?? null,
     versionMatchesDeclared: declaredVersion ? version === declaredVersion : null,
     source: version ? `https://github.com/electron/electron/releases/tag/v${version}` : null,
@@ -578,11 +605,15 @@ export function inventoryFromPackageBytes({
   javascript,
   declaredElectronVersion = null,
 }) {
-  const host = hostIdentity(layout.packageDir)
+  let host = hostIdentity(layout.packageDir)
   const iconPath = path.join(root, 'frontend/design-desktop/assets/branding/futureox-desgin.icns')
   const brandIcon = isFile(iconPath) ? hashReadonlyFile(iconPath).sha256 : null
   const walked = walkPackage(layout.packageDir, layout.resourcesPrefix, brandIcon)
   const content = [...walked.files]
+  if (!host.triple && layout.style === 'mac-app') {
+    const framework = content.find(file => file.kind === 'electron' && file.role === 'framework-binary')
+    host = frameworkTarget(framework) ?? host
+  }
   const archives = walked.files.filter(file => file.kind === 'archive')
   let openedAppAsar = false
   for (const asarFile of archives) {
@@ -629,7 +660,7 @@ export function inventoryFromPackageBytes({
   const projectLicense = content.find(file => file.path.endsWith('project-license/LICENSE')) ?? null
   const resourceList = content.find(file => file.role === 'resource-list.json')
   const declaredList = readJson(resourceList)
-  const electron = inventoryElectron(content.filter(file => file.origin === 'file'), declaredElectronVersion)
+  const electron = inventoryElectron(content.filter(file => file.origin === 'file'), declaredElectronVersion, layout.style)
   const wasmFiles = content.filter(file => file.kind === 'wasm')
   const nativeFiles = content.filter(file => file.kind === 'native' && file.role === 'binary')
   const native = nativeFiles.map(file => {
