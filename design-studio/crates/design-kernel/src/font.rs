@@ -424,6 +424,8 @@ pub struct Glyph {
     /// Preview width adjustment for the bundled Chinese fallback.
     #[serde(skip)]
     pub(crate) width_scale: f64,
+    #[serde(skip)]
+    pub(crate) height_scale: f64,
     /// Variation coordinates this glyph was shaped with; outlines rebuild the
     /// same face so geometry matches the shaped advances exactly.
     #[serde(skip)]
@@ -432,7 +434,7 @@ pub struct Glyph {
 
 impl Glyph {
     pub(crate) fn has_variations(&self) -> bool {
-        !self.vars.is_empty() || self.width_scale != 1.
+        !self.vars.is_empty() || self.width_scale != 1. || self.height_scale != 1.
     }
 }
 #[derive(Serialize)]
@@ -665,6 +667,12 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
         }
         let n = doc.nodes.get_mut(&id).unwrap();
         n.kind = "group".into();
+        // Text keeps its text shadow rule after the renderer materializes
+        // per-color outlines. The authored text and effect are retained by
+        // the source document, including on Sketch roundtrip.
+        for effect in &mut n.effects {
+            effect.shadow_knockout = false;
+        }
         n.fills.clear();
         n.strokes.clear();
         n.children = children;
@@ -689,14 +697,31 @@ fn sketch_font_line_box(style: &TextStyle) -> bool {
     style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9
 }
 
-fn sketch_text_ascender(face: &ttf_parser::Face<'_>, builtin_fallback: bool) -> i16 {
-    // The built-in fallback uses a generous hhea ascender to cover its full
-    // CJK repertoire. Use its typographic ascender for the text baseline.
-    // Named faces retain their own natural metrics.
-    if builtin_fallback {
-        face.typographic_ascender().filter(|value| *value > 0).unwrap_or_else(|| face.ascender())
+const SKETCH_SYSTEM_TEXT_ASCENT: f64 = 15.46875 / 16.;
+const SKETCH_HAN_DISPLAY_ASCENT: f64 = 17.1990966796875 / 20.;
+
+fn sketch_fallback_ascent(character: char, size: f64) -> Option<f64> {
+    // Missing faces in Sketch's explicit line boxes use the macOS UI metrics.
+    // The simplified Chinese UI fallback switches to its display face at 20 pt.
+    // These ascenders were measured with CoreText at 16, 20, 26 and 46 pt.
+    if is_sketch_han(character) {
+        Some(size * if size < 20. { SKETCH_SYSTEM_TEXT_ASCENT } else { SKETCH_HAN_DISPLAY_ASCENT })
+    } else if character.is_ascii_graphic() {
+        Some(size * SKETCH_SYSTEM_TEXT_ASCENT)
     } else {
-        face.ascender()
+        None
+    }
+}
+
+fn sketch_han_scale(size: f64) -> (f64, f64) {
+    // Match the PingFang UI advance and approximate its glyph height relative
+    // to Noto Sans SC. The scales come from CoreText advances and path bounds
+    // for ordinary Han at 12–46 pt. Keep the same baseline and wrap decisions.
+    if size < 20. {
+        (0.9922178988326848, 0.955)
+    } else {
+        let optical = (size.clamp(20., 46.) - 20.) / 26.;
+        (0.9577067669172932 + optical * (0.9445488721804511 - 0.9577067669172932), 0.93)
     }
 }
 
@@ -1481,16 +1506,12 @@ impl Fonts {
                         .is_none_or(|next| next.cluster != glyph.cluster);
                     let byte = start + glyph.cluster as usize;
                     let cluster = utf16[base + byte];
-                    // Sketch's macOS display fallback renders wide Chinese
-                    // glyphs at about .945 em (measured with the system UI
-                    // font at display sizes). Keep Noto as the editable
-                    // fallback and approximate that width for custom titles.
-                    let width_scale = if sketch_display_fallback && id == "default" && size >= 20.
+                    let (width_scale, height_scale) = if sketch_display_fallback && id == "default"
                         && text[byte..].chars().next().is_some_and(is_sketch_han)
                     {
-                        0.945
+                        sketch_han_scale(size)
                     } else {
-                        1.
+                        (1., 1.)
                     };
                     glyphs.push(Glyph {
                         path_transform: None,
@@ -1510,6 +1531,7 @@ impl Fonts {
                             },
                         byte: base + byte,
                         width_scale,
+                        height_scale,
                         vars: variations.clone(),
                     });
                 }
@@ -1629,8 +1651,7 @@ impl Fonts {
         let use_builtin_text_metrics = sketch_spacing && self.face("default", 400.).ok().is_some_and(|face| {
             is_noto_sans_sc(face.borrow_face())
         });
-        let sketch_display_fallback = use_builtin_text_metrics
-            && uniform_sketch_line_height && style.writing_mode == "horizontal";
+        let sketch_display_fallback = use_builtin_text_metrics && style.writing_mode == "horizontal";
         let nearest_point = style.line_box_baseline == "nearest-point"
             || (style.line_box_baseline == "sketch-fixed-advance" && !uniform_sketch_line_height);
         let sketch_baseline = if paragraphs.len() > 1 && nearest_point && style.writing_mode != "vertical" {
@@ -1897,14 +1918,15 @@ impl Fonts {
                     if use_sketch_leading {
                         leading = leading.max(f64::from(face.line_gap()) * glyph.size / f64::from(face.units_per_em()));
                     }
-                    let face_ascent = if use_sketch_ascender {
-                        let use_typographic_ascent = use_builtin_text_metrics && glyph.font_id == "default"
-                            && (uniform_sketch_line_height || !text[glyph.byte..].chars().next().is_some_and(is_sketch_han));
-                        sketch_text_ascender(face, use_typographic_ascent)
-                    } else {
-                        face.ascender()
-                    };
-                    ascent = ascent.max(f64::from(face_ascent) * glyph.size / f64::from(face.units_per_em()));
+                    let natural_ascent = f64::from(face.ascender()) * glyph.size / f64::from(face.units_per_em());
+                    let character = text[glyph.byte..].chars().next();
+                    let fallback_ascent = if use_sketch_ascender && sketch_display_fallback && glyph.font_id == "default" {
+                        character.and_then(|ch| {
+                            if ch.is_ascii_whitespace() { Some(0.) }
+                            else { sketch_fallback_ascent(ch, glyph.size) }
+                        })
+                    } else { None };
+                    ascent = ascent.max(fallback_ascent.unwrap_or(natural_ascent));
                     let multiplier = if explicit_line_height {
                         cluster_line_multiplier(runs, glyph.cluster, style)
                     } else {
@@ -1918,6 +1940,9 @@ impl Fonts {
                     );
                 }
                 if let Some(p) = attributes {
+                    if ascent == 0. && use_sketch_ascender && sketch_display_fallback {
+                        ascent = size * SKETCH_SYSTEM_TEXT_ASCENT;
+                    }
                     if shaped.is_empty() {
                         let face = self.face(&style.font_id, style.weight)?;
                         let face = face.borrow_face();
@@ -1925,12 +1950,12 @@ impl Fonts {
                             + face.line_gap() as f64)
                             * size
                             / face.units_per_em() as f64;
-                        let face_ascent = if use_sketch_ascender {
-                            sketch_text_ascender(face, use_builtin_text_metrics && style.font_id == "default")
+                        ascent = if use_sketch_ascender && sketch_display_fallback && style.font_id == "default" {
+                            // An empty line inherits the primary UI line metric.
+                            size * SKETCH_SYSTEM_TEXT_ASCENT
                         } else {
-                            face.ascender()
+                            f64::from(face.ascender()) * size / f64::from(face.units_per_em())
                         };
-                        ascent = f64::from(face_ascent) * size / f64::from(face.units_per_em());
                         if use_sketch_leading {
                             leading = (f64::from(face.line_gap()) * size / f64::from(face.units_per_em())).max(0.);
                         }
@@ -2104,10 +2129,10 @@ impl Fonts {
                 };
                 glyph_outline.replay(&mut builder);
             }
-            if glyph.width_scale != 1. {
-                let sx = glyph.width_scale;
+            if glyph.width_scale != 1. || glyph.height_scale != 1. {
+                let (sx, sy) = (glyph.width_scale, glyph.height_scale);
                 crate::text_path::transform_outline(&mut outline, crate::math::Transform([
-                    sx, 0., 0., 1., glyph.x * (1. - sx), 0.,
+                    sx, 0., 0., sy, glyph.x * (1. - sx), glyph.y * (1. - sy),
                 ]));
             }
             for (enabled, offset) in [

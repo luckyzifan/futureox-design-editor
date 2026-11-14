@@ -452,7 +452,7 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
 // actual terminal input can use the idle CPU lane; it owns one one-use packet.
 let beginTerminalPreparation: ((next:ResidentPose)=>void) | undefined
 function waitingForPoseSubmission(pose:ResidentPose) {
-  return !pose.terminal && poseSession?.slot === pose.slot && poseSession.scene.interactionFixedMask === true &&
+  return !pose.terminal && poseSession?.slot === pose.slot && poseSession.native === true &&
     gpu?.driver.hasDeferredPosePresentation?.(pose.slot) === true
 }
 function schedulePose(){
@@ -531,13 +531,13 @@ function schedulePose(){
         }
         if(right<=x||bottom<=y){rebasePose(pose);break}
         const ownsSelection = ids.length===session.origins.size&&ids.every(id=>session.origins.has(id))
-        const fullNativeAffine = session.native===true && session.affine===true && coversDisplay && ownsSelection &&
+        const fullNativePose = session.native===true && coversDisplay && ownsSelection &&
           !session.scene.interactionLocalFootprint
         const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
           !session.scene.interactionLocalFootprint&&ownsSelection
         // A native absolute pose can replace queued work while the previous
         // accepted viewport remains visible. Submitted GPU work still fences.
-        terminalMaySupersede||=fullNativeAffine||viewportPatch
+        terminalMaySupersede||=fullNativePose||viewportPatch
         const window={x,y,w:right-x,h:bottom-y}
         const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
@@ -587,10 +587,11 @@ function schedulePose(){
             advance=undefined
           } else {
             // A real in-flight motion can become the terminal input before its native reply.
-            const direct=preparation && session.affine && session.canvasOwner && session.scene.interactionLocalFootprint &&
-              !session.softEffectPreview && ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]]) ? preparation : undefined
             const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))
-            if(!await (direct?direct.withPoseTransport(apply):apply())){
+            // Pointer motion uses the preparation port that goes straight
+            // to the existing worker. Returning the entire packet through
+            // the editor event loop delays the next visible pose.
+            if(!await (preparation ? preparation.withPoseTransport(apply) : apply())){
               if(!viewportPatch){rebasePose(pose);break}
               if(!current())continue
               // A Sketch mask or derived ancestor can reject the transform
@@ -610,7 +611,7 @@ function schedulePose(){
             if(!current())continue
             const compileStarted=performance.now()
             const compile=()=>compilePacket(kernel,session.options,session.controller.signal)
-            packet=await (direct?direct.withPoseTransport(compile):compile())
+            packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
             if(!current())continue
             poseCompileMs=performance.now()-compileStarted
           }
@@ -654,8 +655,8 @@ function schedulePose(){
           prepareDisplay()
           const localTerminal = session.canvasOwner && next.interactionLocalFootprint && !next.gestureSoftEffects &&
             ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
-          const onFinishStarted = poseKernel && session.affine && !pose.terminal &&
-            (localTerminal || fullNativeAffine && session.patch)
+          const onFinishStarted = poseKernel && !pose.terminal &&
+            (session.affine && localTerminal || fullNativePose && session.patch)
             ? () => {
               const kernel=poseKernel!
               beginTerminalPreparation=terminal=>{
@@ -809,12 +810,13 @@ self.onmessage = (e) => {
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
     if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
-    // A masked pose may already have requested this immutable image before
+    // The pose worker may already have submitted this immutable frame before
     // the main thread reflected its sample. Keep later poses from waiting
     // behind another transfer of the same texture, clip, and chrome.
-    if (poseSession?.scene.interactionFixedMask && !poseSession.stopped &&
+    if (poseSession?.native && !poseSession.stopped &&
         previous?.interaction && previous.input?.sequence && displayFrame?.interaction &&
         previous.input.sequence === displayFrame.input?.sequence &&
+        displayFrame.items.some(item => item.active && item.tile.gpuTile === poseSession?.slot) &&
         displayAttachment && displayAttachment.driver === gpu?.driver && !displayAttachment.driver.lost &&
         residentFrameSignature(previous) === residentFrameSignature(displayFrame) &&
         equalValue(previous.overlayAffines,displayFrame.overlayAffines) &&
