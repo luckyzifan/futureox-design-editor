@@ -4175,7 +4175,9 @@ export class GpuRenderer {
     // Submission is still mandatory. Only the completion wait may be omitted,
     // and the driver independently validates the already-completed epoch.
     const checkpointScratch = this.driver.scratchBytes || 0
-    const transientCohort = [...new Set([...this.retiredUploads, ...coordinates])]
+    // A late retirement has not been submitted to this fence.
+    const retiredUploadsAtFence = new Set(this.retiredUploads)
+    const transientCohort = [...new Set([...retiredUploadsAtFence, ...coordinates])]
     const retiringImageAssets = this.retiredImageAssetCohort()
     try {
       if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
@@ -4225,14 +4227,12 @@ export class GpuRenderer {
     // by the completed prior-frame release stamps checked above.
     let destroyed = 0,
       batchBytes = 0
-    while (
-      this.retiredUploads.length &&
-      destroyed < resourceLimit &&
-      batchBytes < batchLimit
-    ) {
-      const index = this.retiredUploads.findIndex(texture => !this.admissionPins.has(texture))
-      if (index < 0) break
-      const [texture] = this.retiredUploads.splice(index, 1)
+    for (const texture of retiredUploadsAtFence) {
+      if (destroyed >= resourceLimit || batchBytes >= batchLimit) break
+      if (this.admissionPins.has(texture)) continue
+      const index = this.retiredUploads.indexOf(texture)
+      if (index < 0) continue
+      this.retiredUploads.splice(index, 1)
       this.forgetUpload(texture)
       destroyed++
       batchBytes += texture.bytes

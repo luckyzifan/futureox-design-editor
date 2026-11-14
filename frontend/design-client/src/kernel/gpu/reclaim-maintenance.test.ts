@@ -116,6 +116,30 @@ test('a failed pressure fence destroys no resource or pool entry', async () => {
   expect(f.renderer.bytes).toBe(203 * MiB); expect(f.renderer.free.get('128:64')).toEqual([f.pooled])
 })
 
+test('an upload retired during an allocation fence waits for another completion', async () => {
+  const f = fixture(48 * MiB)
+  const early = { width: 1, height: 1, bytes: 16, resource: {} } as Texture
+  const late = { width: 1, height: 1, bytes: 16, resource: {} } as Texture
+  f.renderer.retireUpload(early)
+  const first = f.renderer.reclaimScratch(64 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  f.renderer.retireUpload(late)
+  f.complete()
+  await first
+  const destroyed = () => f.driver.destroy.mock.calls.map(([texture]) => texture)
+  expect(destroyed().some(texture => texture === early)).toBe(true)
+  expect(destroyed().some(texture => texture === f.pooled)).toBe(true)
+  expect(destroyed().some(texture => texture === late)).toBe(false)
+  expect(f.renderer.retiredUploads).toEqual([late])
+
+  const second = f.renderer.reclaimScratch(128 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledTimes(2)
+  f.complete()
+  await second
+  expect(destroyed().some(texture => texture === late)).toBe(true)
+  expect(f.renderer.retiredUploads).toHaveLength(0)
+})
+
 test('candidate maintenance retains a used immutable image without an unnecessary allocation or completion wait', async () => {
   vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
   const f = fixture(), image = { width: 1024, height: 1024, bytes: 16 * MiB, resource: {} } as Texture
