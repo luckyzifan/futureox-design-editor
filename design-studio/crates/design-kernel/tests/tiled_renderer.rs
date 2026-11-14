@@ -163,6 +163,39 @@ fn equal_instruction_rasterises_nothing() {
 }
 
 #[test]
+fn page_and_raster_options_rebuild_tiles_at_the_same_revision() {
+    let mut value: serde_json::Value = serde_json::from_str(&doc()).unwrap();
+    value["pages"].as_array_mut().unwrap().push(json!({
+        "id": "other", "name": "Other", "children": [], "background": "#cc3322"
+    }));
+    let mut engine = Engine::new();
+    engine.load_document(&value.to_string()).unwrap();
+    let mut options = frame(View { x: 0., y: 0., zoom: 1. }, 128, 96);
+    let original = engine.render_tiled_frame(&options, None).unwrap().rgba;
+    options.page_id = "other".into();
+    let other = engine.render_tiled_frame(&options, Some(&[])).unwrap();
+    assert_ne!(original, other.rgba);
+    assert_eq!(other.rgba, engine.render(&options).unwrap());
+    options.transparent = true;
+    let clear = engine.render_tiled_frame(&options, Some(&[])).unwrap();
+    assert!(clear.rgba.iter().all(|&channel| channel == 0));
+    options.page_id = "p".into();
+    options.transparent = false;
+    assert_eq!(engine.render_tiled_frame(&options, None).unwrap().rgba, original);
+}
+
+#[test]
+fn explicit_sequential_render_flags_survive_native_frame_requests() {
+    let mut engine = Engine::new();
+    engine.load_document(&doc()).unwrap();
+    let options = frame(View { x: 0., y: 0., zoom: 1. }, 48, 48);
+    let flags = RenderFeatureFlags::default();
+    engine.tiled_renderer_mut().set_flags(flags);
+    engine.render_tiled_frame(&options, None).unwrap();
+    assert_eq!(engine.tiled_renderer().unwrap().flags(), &flags);
+}
+
+#[test]
 fn pan_rasterises_only_newly_exposed_tiles() {
     let mut engine = Engine::new();
     engine.load_document(&doc()).expect("document");
@@ -580,6 +613,10 @@ fn remove_all_tiles_clears_residency_everywhere() {
     assert_eq!(renderer.resident_tile_count(), 4);
     renderer.remove_all_tiles_and_clear_dirty_regions();
     assert_eq!(renderer.resident_tile_count(), 0);
+    assert_eq!(renderer.caches().entry_count(), 0);
+    let replay = renderer.update_with_instruction(&mut source, &options, &first, None).unwrap();
+    assert_eq!(replay, UpdateStatus::Completed);
+    assert_eq!(renderer.resident_tile_count(), 4);
     assert_eq!(
         TILE_SIZE, 512,
         "tile geometry matches the kernel-wide tile stack"

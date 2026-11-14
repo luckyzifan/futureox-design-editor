@@ -228,6 +228,7 @@ fn tent_blur_impl(
         let mut sums = vec![[0_f64; 4]; len as usize + 1];
         let mut moments = sums.clone();
         for line in 0..lines {
+            crate::render_cancellation::checkpoint()?;
             for at in 0..len {
                 line_pixels[at as usize] = if horizontal {
                     current.at(rect.x + at, rect.y + line)
@@ -477,6 +478,7 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
     let mut source_line = vec![0_f32; len as usize];
     let width = rect.w as usize;
     for line in 0..lines {
+        crate::render_cancellation::checkpoint()?;
         let skip = solid_core.and_then(|core| {
             if horizontal {
                 let y = rect.y + line;
@@ -630,6 +632,7 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
         Some(out)
     };
     for line in 0..lines {
+        crate::render_cancellation::checkpoint()?;
         if horizontal {
             let row = line as usize * width;
             for at in 0..len as usize {

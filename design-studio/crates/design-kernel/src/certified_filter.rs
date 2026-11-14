@@ -147,6 +147,7 @@ pub(crate) fn blur_owned(
         let mut moments = sums.clone();
         let mut out = current.new_like(current.rect)?;
         for line in 0..lines {
+            crate::render_cancellation::checkpoint()?;
             let sample = |at: i32| {
                 let at = if clamp_edges {
                     at.clamp(0, len - 1)
@@ -369,6 +370,7 @@ fn blur_q64_prefix(mut current: Surface, kernel: &RationalKernel, plan: &Q64Pref
         let mut line = vec![Pixel::default(); len_usize];
         let mut out = current.new_like(current.rect)?;
         for line_index in 0..lines {
+            crate::render_cancellation::checkpoint()?;
             for at in 0..len {
                 line[at as usize] = if horizontal {
                     current.at(x + at, y + line_index)

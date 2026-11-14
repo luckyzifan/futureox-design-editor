@@ -86,6 +86,7 @@ pub struct InstructionOptions {
     /// Canvas checkerboard chrome: changes the background bytes, so tile
     /// identity must see it.
     pub checkerboard: bool,
+    animation: Option<(String, u64)>,
 }
 
 impl InstructionOptions {
@@ -96,6 +97,7 @@ impl InstructionOptions {
             raster_profile,
             interactive_effects: false,
             checkerboard: false,
+            animation: None,
         }
     }
     pub fn with_interactive_effects(mut self, on: bool) -> Self {
@@ -105,6 +107,16 @@ impl InstructionOptions {
     pub fn with_checkerboard(mut self, on: bool) -> Self {
         self.checkerboard = on;
         self
+    }
+    pub(crate) fn with_animation(mut self, sample: Option<&crate::animation::Sample>) -> Self {
+        self.animation = sample.map(|sample| (sample.clip_id.clone(), sample.time_ms.to_bits()));
+        self
+    }
+}
+
+impl RenderInstruction {
+    pub(crate) fn shares_tile_domain(&self, other: &Self) -> bool {
+        self.page_id == other.page_id && self.options == other.options && self.color_space == other.color_space
     }
 }
 
@@ -122,7 +134,7 @@ impl RenderInstruction {
         if self.content_revision != previous.content_revision {
             traits |= render_trait::CONTENT;
         }
-        if self.options != previous.options {
+        if self.page_id != previous.page_id || self.options != previous.options {
             traits |= render_trait::OPTIONS;
         }
         if self.color_space != previous.color_space {

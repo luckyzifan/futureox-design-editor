@@ -568,6 +568,7 @@ pub(crate) fn blur_owned(
         let Rect { x, y, w, h } = current.rect;
         let mut out = current.new_like(current.rect)?;
         for py in y..y + h as i32 {
+            crate::render_cancellation::checkpoint()?;
             for px in x..x + w as i32 {
                 let mut channels = [0.; 4];
                 for (channel, value) in channels.iter_mut().enumerate() {

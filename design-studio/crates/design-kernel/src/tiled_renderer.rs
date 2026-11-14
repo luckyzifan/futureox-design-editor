@@ -425,6 +425,9 @@ pub fn level_index_for_scale(scale: f64) -> usize {
 /// [`TileRasterSource`] for actual pixel work.
 pub struct TiledRenderer {
     levels: Vec<Option<TileMipLevel>>,
+    // An interrupted update may leave valid tiles before publishing the
+    // completed instruction. This records which domain owns those tiles.
+    tile_domain: Option<RenderInstruction>,
     rendered_instruction: Option<RenderInstruction>,
     composited_instruction: Option<RenderInstruction>,
     previous_level: Option<usize>,
@@ -432,6 +435,7 @@ pub struct TiledRenderer {
     force_sync_first_frame: bool,
     rasterisation_in_progress: bool,
     flags: RenderFeatureFlags,
+    flags_explicit: bool,
     telemetry: RenderingTelemetry,
     surfaces: RasterSurfacePool,
     caches: CacheManager,
@@ -444,7 +448,9 @@ pub struct TiledRenderer {
 
 impl Default for TiledRenderer {
     fn default() -> Self {
-        TiledRenderer::new(RenderFeatureFlags::default())
+        let mut renderer = TiledRenderer::new(RenderFeatureFlags::default());
+        renderer.flags_explicit = false;
+        renderer
     }
 }
 
@@ -452,6 +458,7 @@ impl TiledRenderer {
     pub fn new(flags: RenderFeatureFlags) -> Self {
         TiledRenderer {
             levels: Vec::new(),
+            tile_domain: None,
             rendered_instruction: None,
             composited_instruction: None,
             previous_level: None,
@@ -459,6 +466,7 @@ impl TiledRenderer {
             force_sync_first_frame: true,
             rasterisation_in_progress: false,
             flags,
+            flags_explicit: true,
             telemetry: RenderingTelemetry::new(32),
             surfaces: RasterSurfacePool::default(),
             caches: CacheManager::default(),
@@ -479,14 +487,16 @@ impl TiledRenderer {
 
     pub fn set_flags(&mut self, flags: RenderFeatureFlags) {
         self.flags = flags;
+        self.flags_explicit = true;
     }
 
     /// Native frames share one tile batch across cores. Wasm and an explicit
     /// single-thread or already-configured renderer stay as they were.
     pub fn enable_native_parallelism(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
-        if self.flags == RenderFeatureFlags::default() {
+        if !self.flags_explicit && !self.flags.rasterize_concurrently {
             self.flags.rasterize_concurrently = true;
+            self.flags.worker_limit = Some(default_worker_limit().min(4));
         }
     }
 
@@ -583,6 +593,15 @@ impl TiledRenderer {
                 instruction.content_revision
             ));
         }
+        crate::render_cancellation::checkpoint()?;
+        if !self.tile_domain.as_ref().is_some_and(|domain| domain.shares_tile_domain(instruction)) {
+            // Revision/damage can authorize reuse within one domain only.
+            // A page or raster option change can alter every byte at a fixed
+            // revision, including tiles left by a cancelled update.
+            self.remove_all_tiles_and_clear_dirty_regions();
+            self.tile_domain = Some(instruction.clone());
+        }
+        self.last_committed.clear();
         let traits = self
             .rendered_instruction
             .as_ref()
@@ -630,7 +649,6 @@ impl TiledRenderer {
                 instruction.content_revision,
             )?
         };
-        self.last_committed.clear();
         let mut addresses = Vec::with_capacity(queued.len());
         for address in queued {
             match self
@@ -818,9 +836,11 @@ impl TiledRenderer {
             .min(requests.len());
         let mut workers = Vec::with_capacity(worker_count);
         for _ in 0..worker_count {
+            crate::render_cancellation::checkpoint()?;
             match source.spawn_worker() {
                 Some(worker) => workers.push(worker),
                 None => {
+                    drop(workers);
                     self.rasterise_sequential(source, level_index, revision, requests)?;
                     return Ok(None);
                 }
@@ -878,7 +898,7 @@ impl TiledRenderer {
         let cancelled = cancel.load(Ordering::Acquire);
         let mut tiles = Vec::new();
         let mut real_error: Option<String> = None;
-        let mut stopped = false;
+        let mut stopped = cancelled;
         for (index, result) in results.into_iter().enumerate() {
             match result {
                 Some(Ok(bytes)) => {
@@ -1023,6 +1043,13 @@ impl TiledRenderer {
                 level.remove_all_tiles_and_clear_dirty_region();
             }
         }
+        self.caches.clear();
+        self.tile_domain = None;
+        self.rendered_instruction = None;
+        self.composited_instruction = None;
+        self.last_level = None;
+        self.previous_level = None;
+        self.last_committed.clear();
     }
 
     /// Bytes currently held across all levels (diagnostics for hosts sizing

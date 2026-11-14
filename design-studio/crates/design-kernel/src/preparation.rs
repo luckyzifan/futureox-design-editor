@@ -340,11 +340,7 @@ fn render_cpu_frame(
     engine.prepare_frame(options)?;
     let instruction = engine.render_instruction_for(options)?;
     let previous = engine.tiled_renderer().and_then(|r| r.rendered_instruction());
-    let same_domain = previous.is_some_and(|p| {
-        p.page_id == instruction.page_id
-            && p.options == instruction.options
-            && p.color_space == instruction.color_space
-    });
+    let same_domain = previous.is_some_and(|p| p.shares_tile_domain(&instruction));
     let next_revision = previous.is_some_and(|p| {
         p.content_revision.checked_add(1) == Some(instruction.content_revision)
     });
@@ -360,11 +356,6 @@ fn render_cpu_frame(
         r.iter().any(|v| !v.is_finite()) || r[2] < 0. || r[3] < 0.
     })) {
         return Err("Invalid CPU frame damage bounds".into());
-    }
-    if !same_domain {
-        // Page/options changes need fresh residency even at the same content
-        // revision; a paint certificate only describes document edits.
-        *engine.tiled_renderer_mut() = Default::default();
     }
     let bounded = if same_domain && next_revision { rects.as_deref() } else { None };
     Ok((engine.render_tiled_frame(options, bounded)?.rgba, "tiled-exact-aligned"))

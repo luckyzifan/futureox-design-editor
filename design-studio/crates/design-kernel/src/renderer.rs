@@ -2793,7 +2793,8 @@ impl Engine {
                 options.raster_profile.tag(),
             )
             .with_interactive_effects(options.interactive_effects)
-            .with_checkerboard(options.checkerboard),
+            .with_checkerboard(options.checkerboard)
+            .with_animation(options.animation.as_ref()),
             color_space: ColorSpaceId::of(&self.color_settings()),
         })
     }
