@@ -4,7 +4,7 @@ import { verifyPackagedMcpTransport } from '../test/runtime/packaged-mcp-transpo
 import { verifyWasmIdentity } from './wasm-identity.mjs'
 import { buildInputs } from './build-inputs.mjs'
 import { documentChildEnvironment } from '../src/document-capacity.mjs'
-import { verifyDeclaredResourceList } from './release-package-resources.mjs'
+import { ELECTRON_ATTRIBUTION_FILES, MAC_ELECTRON_NOTICES, hashReadonlyFile, verifyDeclaredResourceList } from './release-package-resources.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
@@ -208,6 +208,14 @@ try {
     arch: process.arch,
   })
   manifest.checks.push('unsigned resource list matches packaged JS, WASM and native bytes')
+  if (process.platform === 'darwin') {
+    const notices = path.join(resources, MAC_ELECTRON_NOTICES)
+    for (const name of ELECTRON_ATTRIBUTION_FILES) {
+      assert.ok(hashReadonlyFile(path.join(notices, name)).size > 0, `Empty Electron attribution file: ${name}`)
+    }
+    assert.equal((await readFile(path.join(notices, 'version'), 'utf8')).trim(), manifest.toolchain.electron)
+    manifest.checks.push('Electron and Chromium notices are present in the macOS app')
+  }
   for (const directory of [
     'frontend/design-desktop/src',
     'frontend/design-desktop/scripts',

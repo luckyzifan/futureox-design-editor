@@ -16,6 +16,10 @@ export function ffmpegExecutableName(platform = process.platform) {
   return platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
 }
 
+export function requiresBundledFfmpeg(platform, arch) {
+  return platform === 'linux' && arch === 'x64'
+}
+
 // Packaged names stay beside the binary. The source tarballs are the
 // corresponding source for this GPL executable, not optional documentation.
 export const FFMPEG_PACKAGE_NOTICES = [
@@ -49,7 +53,7 @@ export async function installBundledFfmpeg({
   const destDir = path.join(output, 'bin')
   await mkdir(destDir, { recursive: true })
   if (!existsSync(source)) {
-    if (platform === 'linux' && arch === 'x64') {
+    if (requiresBundledFfmpeg(platform, arch)) {
       throw new Error(`Bundled FFmpeg is required at ${source}`)
     }
     return { installed: false, triple, source }
@@ -60,7 +64,7 @@ export async function installBundledFfmpeg({
   for (const [fromName, toName] of FFMPEG_PACKAGE_NOTICES) {
     const from = path.join(sourceDir, fromName)
     if (!existsSync(from)) {
-      if (platform === 'linux' && arch === 'x64') {
+      if (requiresBundledFfmpeg(platform, arch)) {
         throw new Error(`Bundled FFmpeg notice is required at ${from}`)
       }
       continue
@@ -82,7 +86,7 @@ export async function assertPackagedFfmpeg({
   const exe = ffmpegExecutableName(platform)
   const packagedPath = path.join(resourcesBin, exe)
   const distPath = path.join(distBin, exe)
-  const required = platform === 'linux' && arch === 'x64'
+  const required = requiresBundledFfmpeg(platform, arch)
   let packaged
   try {
     packaged = await read(packagedPath)

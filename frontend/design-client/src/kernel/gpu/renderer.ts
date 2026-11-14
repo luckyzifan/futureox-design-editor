@@ -112,6 +112,7 @@ import {
   GradientPhaseFieldBuilder,
   rational_box_kernel_rgba,
   gaussian_box_radii,
+  small_gaussian_kernel_rgba,
   gaussian_region_box_radii,
   rational_region_box_kernel_rgba,
   motion_blur_kernel,
@@ -6496,7 +6497,28 @@ export class GpuRenderer {
     }
     if (fx.radius === 0) return input
     if (fx.kind === 'gaussian-blur') {
-      const sigma=fx.radius*scale(n.matrix),wide=await this.wideImageGaussian(input,n,sigma)
+      const sigma = fx.radius * scale(n.matrix)
+      if (sigma >= 0.1 && sigma <= 2) {
+        if (input.texture.transparentZero) return input
+        const reach = Math.ceil(3 * sigma)
+        const kernel = this.smallGaussianKernel(sigma)
+        const run = () => {
+          // Mode 22, policy 4 uses the supplied rational or Q24 weights.
+          // It bypasses the optional tent display approximation.
+          const expand = input.texture.uniformColor || input.texture.scalarCoverage
+          const source = expand ? this.copy(input) : input
+          let h: Surface | undefined
+          try {
+            h = this.run(22, input.rect, [source, kernel], u => u.set([reach, 0, 0, 4], 36))
+            return this.run(22, input.rect, [h, kernel], u => u.set([reach, 1, 0, 4], 36))
+          } finally {
+            this.release(h, expand ? source : undefined)
+          }
+        }
+        const copies = input.texture.uniformColor || input.texture.scalarCoverage ? 3 : 2
+        return await (this.admitSurface(input.rect, copies, false, false, [input, kernel], run) ?? run())
+      }
+      const wide=await this.wideImageGaussian(input,n,sigma)
       return wide || await this.foregroundBlur(input, n, fx, sigma)
     }
     const direction = [n.matrix[0],n.matrix[1],n.matrix[2],n.matrix[3],0,0]
@@ -6504,6 +6526,13 @@ export class GpuRenderer {
       () => motion_blur_kernel(fx.radius,fx.motionAngle??0,new Float64Array(direction)), values => [256,values.length/1024])
     const pending = this.admitSurface(input.rect,1,false,false,[input,kernel],()=>this.run(61,input.rect,[input,kernel]))
     return pending ? await pending : this.run(61,input.rect,[input,kernel])
+  }
+  private smallGaussianKernel(sigma: number): Surface {
+    return this.filterKernel('small-gaussian', sigma, () => {
+      const coefficients = small_gaussian_kernel_rgba(sigma, !this.driver.managed)
+      if (!coefficients) throw Error('Invalid small Gaussian sigma')
+      return coefficients
+    })
   }
   /** An isolated, opaque unit gradient under binary coverage has the mask's
    * alpha in each phase. Two inner shadows preserve that alpha. Resolve it
@@ -7709,7 +7738,7 @@ export class GpuRenderer {
     }
     return out
   }
-  private async filterBoxRegion(input: Surface, plan: BoxRegion, kind: Effect['kind'] = 'background-blur'): Promise<Surface> {
+  private async filterBoxRegion(input: Surface, plan: BoxRegion, kind: Effect['kind'] = 'background-blur', smallGaussianSigma?: number): Promise<Surface> {
     if (!plan.input.w || !plan.input.h) return this.empty(plan.output)
     if (!plan.axes.length || input.texture.transparentZero) return input
     const gaussian = kind === 'gaussian-blur'
@@ -7725,14 +7754,16 @@ export class GpuRenderer {
         if (pause) await pause
         await this.reclaimForSurface(output)
         this.checkFrameCurrent()
-        const kernel = radius <= 512
+        const kernel = smallGaussianSigma !== undefined
+          ? this.smallGaussianKernel(smallGaussianSigma)
+          : radius <= 512
           ? this.filterKernel('rational-box', radius, () => rational_box_kernel_rgba(radius))
           : this.filterKernel('rational-region-box', radius, () => rational_region_box_kernel_rgba(radius))
-        const certified = radius <= 512 ? this.certifiedKernel(radius, true) : undefined
+        const certified = smallGaussianSigma === undefined && radius <= 512 ? this.certifiedKernel(radius, true) : undefined
         // Authored Gaussians use the established full-density canvas
         // operator. Other boxes keep the original exact rational rounding.
         const next = this.run(22, output, certified ? [current, kernel, certified] : [current, kernel],
-          u => u.set([radius, axis, 0, gaussian ? 2 : this.prefixAllowed ? 3 : 1], 36), channels)
+          u => u.set([radius, axis, 0, smallGaussianSigma !== undefined ? 4 : gaussian ? 2 : this.prefixAllowed ? 3 : 1], 36), channels)
         if (current !== input) this.release(current)
         current = next
       }
@@ -7769,12 +7800,12 @@ export class GpuRenderer {
     }
     try {
     for (let index = 0; index < effects.length; index++) {
-      const fx = effects[index], { output, filter } = plan.effects[index]
+      const fx = effects[index], { output, filter, smallGaussianSigma } = plan.effects[index]
       const shadowKind = fx.kind === 'shadow' || fx.kind === 'inner-shadow'
       if (!shadowKind) releaseShadowBasis()
       else if (sharesShadowBasis && !shadowBasis) shadowBasis = this.retain(layer)
       const silhouette = shadowKind ? shadowBasis ?? layer : layer
-      const filtered = await this.filterBoxRegion(silhouette, filter, fx.kind)
+      const filtered = await this.filterBoxRegion(silhouette, filter, fx.kind, smallGaussianSigma)
       if (shadowKind) {
         const inner = fx.kind === 'inner-shadow'
         await this.reclaimForSurface(output, 2)

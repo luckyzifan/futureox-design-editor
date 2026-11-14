@@ -7,7 +7,7 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { packageSourceFilter } from './package-source.mjs'
-import { writeUnsignedResourceList } from './release-package-resources.mjs'
+import { stageMacElectronNotices, writeUnsignedResourceList } from './release-package-resources.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -66,9 +66,7 @@ const resourceList = writeUnsignedResourceList({ staging, desktop: root })
 if (resourceList.formalRelease !== false || resourceList.signature !== 'not_run') {
   throw new Error('Unsigned packager cannot write a formal release resource list')
 }
-// Electron's own LICENSE sits beside the runtime. This copy is the project MIT
-// text, so first-party binaries, host source, and icons can be traced from the
-// package directory without consulting the git checkout.
+// Ship the project MIT text alongside first-party binaries, host source and icons.
 const projectLicense = path.join(root, 'dist/project-license')
 await rm(projectLicense, { recursive: true, force: true })
 await mkdir(projectLicense, { recursive: true })
@@ -91,6 +89,9 @@ const outputs = await packager({
   electronVersion: metadata.devDependencies.electron,
   download: { cacheRoot: process.env.ELECTRON_CACHE || process.env.electron_config_cache },
   electronZipDir,
+  afterExtract: [({ buildPath, platform }) => {
+    if (platform === 'darwin' || platform === 'mas') stageMacElectronNotices(buildPath)
+  }],
   appVersion: metadata.version,
   out: path.join(root, 'release', ...(local ? ['local'] : exact ? ['exact'] : preview ? ['preview'] : []), ...(buildTag ? [buildTag] : [])),
   overwrite: true,

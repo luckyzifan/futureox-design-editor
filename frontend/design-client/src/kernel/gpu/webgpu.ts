@@ -101,7 +101,7 @@ function boundedDisplayRadius(radius: number, limit: number, channels = 15) {
 }
 function displayFilterPass(enabled: boolean, limit: number | undefined, prepared: boolean,
   u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}) {
-  if (!enabled || u[16] !== 22 || u[39] === 2) return false
+  if (!enabled || u[16] !== 22 || u[39] === 2 || u[39] === 4) return false
   if (limit === undefined) return true // Existing unbounded web display contract.
   // The rational and display coefficient textures have different layouts.
   // Keep the original radius, not just its rounded uniform, in the decision.

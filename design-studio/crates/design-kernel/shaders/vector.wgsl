@@ -1092,7 +1092,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
 
  if(mode==22){let radius=u(9).x;let reach=i32(ceil(radius));let axis=select(vec2<f32>(0,1),vec2<f32>(1,0),u(9).y<0.5);var total=vec4<f32>(0);
   // Gaussian byte surfaces use uniform boxes, never the legacy Q24 tent table.
-  if(u(9).w>1.5){var sum=vec4<u32>(0);for(var i=-reach;i<=reach;i=i+1){sum=sum+vec4<u32>(round(blurAt(p+axis*f32(i))*255.));}let denominator=u32(2*reach+1);return vec4<f32>((sum+vec4<u32>(denominator/2u))/vec4<u32>(denominator))/255.;}
+  if(u(9).w>1.5&&u(9).w!=4.){var sum=vec4<u32>(0);for(var i=-reach;i<=reach;i=i+1){sum=sum+vec4<u32>(round(blurAt(p+axis*f32(i))*255.));}let denominator=u32(2*reach+1);return vec4<f32>((sum+vec4<u32>(denominator/2u))/vec4<u32>(denominator))/255.;}
   if(u(9).w>0.5){var sum=vec4<u32>(0);for(var i=-reach;i<=reach;i=i+1){let v=vec4<u32>(round(textureLoad(sourceB,vec2<i32>(abs(i),0),0)*255.));let weight=v.x|(v.y<<8u)|(v.z<<16u)|(v.w<<24u);sum=sum+vec4<u32>(round(blurAt(p+axis*f32(i))*255.))*weight;}let q=sum>>vec4<u32>(24);let r=sum&vec4<u32>(0x00ffffffu);let up=(r>vec4<u32>(0x00800000u))|((r==vec4<u32>(0x00800000u))&((q&vec4<u32>(1))!=vec4<u32>(0)));return vec4<f32>(q+select(vec4<u32>(0),vec4<u32>(1),up))/255.;}
   if(radius==floor(radius)){return tentInteger(p,axis,reach);}
   for(var i=-reach;i<=reach;i=i+1){total=total+blurAt(p+axis*f32(i))*tentWeight(radius,abs(f32(i)));}

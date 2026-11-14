@@ -798,6 +798,10 @@ mod wasm {
             .map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub fn small_gaussian_kernel_rgba(sigma: f64, byte: bool) -> Option<Vec<u8>> {
+        effects::small_gaussian_kernel(sigma, byte)
+    }
+    #[wasm_bindgen]
     pub fn gaussian_region_box_radii(sigma: f64) -> Result<Vec<u32>, JsValue> {
         effects::gaussian_box_radii_region(sigma)
             .map(|r| r.to_vec())
