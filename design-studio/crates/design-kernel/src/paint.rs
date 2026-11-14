@@ -9,6 +9,10 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+
+const UNMANAGED_IMAGE_PIXEL_LIMIT: u64 = 16_777_216;
+const MANAGED_IMAGE_PIXEL_LIMIT: u64 = 8_388_608;
+
 #[derive(Clone, Default)]
 pub struct Images {
     #[cfg(not(target_arch="wasm32"))]
@@ -161,22 +165,17 @@ impl Images {
                 let cached = self.cache.get_mut(data).expect("decoded above");
                 cached.chain.last().unwrap_or(&cached.base).clone()
             };
+            let [w, h] = crate::image_mipmap::level_dimensions([source.rect.w, source.rect.h], 1);
+            if admit_image_pixels(w, h, self.settings, self.pixels).is_err() {
+                self.reclaim_unborrowed()?;
+                admit_image_pixels(w, h, self.settings, self.pixels)?;
+            }
             let down = if self.settings.is_some() {
                 crate::image_mipmap::downsample_linear(&source)?
             } else {
                 crate::image_mipmap::downsample_byte(&source)?
             };
-            let count = down.rect.pixels();
-            if self.pixels + count
-                > if self.settings.is_some() {
-                    8_388_608
-                } else {
-                    16_777_216
-                }
-            {
-                return Err("Decoded image budget exceeded".into());
-            }
-            self.pixels += count;
+            self.pixels += down.rect.pixels();
             self.cache
                 .get_mut(data)
                 .expect("decoded above")
@@ -195,10 +194,11 @@ impl Images {
             Some(self.source.as_ref().ok_or("Sketch source bitmap is not open")?.resolve(data)?)
         }else{None};
         if !self.cache.contains_key(data) {
+            let settings = self.settings;
             let decode_owned=|resident| {
                 #[cfg(not(target_arch="wasm32"))]
-                if let Some(asset)=&asset{return decode_bytes(asset.png()?,self.settings,resident);}
-                decode(data,self.settings,resident)
+                if let Some(asset)=&asset{return decode_bytes(asset.png()?,settings,resident);}
+                decode(data,settings,resident)
             };
             let decoded = decode_owned(self.pixels);
             let (surface, count) = match decoded {
@@ -208,14 +208,7 @@ impl Images {
                     // GPU uploads already own their copied bytes. Keep every
                     // CPU/fork borrower pinned, including borrowed mip levels,
                     // and reclaim only cache-owned surfaces before one retry.
-                    let mut released = 0;
-                    self.cache.retain(|_, image| {
-                        let borrowed = Arc::get_mut(&mut image.base).is_none() ||
-                            image.chain.iter_mut().any(|level| Arc::get_mut(level).is_none());
-                        if !borrowed { released += image.resident_pixels(); }
-                        borrowed
-                    });
-                    self.pixels = self.pixels.checked_sub(released).ok_or("Decoded image cache accounting underflow")?;
+                    self.reclaim_unborrowed()?;
                     if self.pixels == before { return Err(error); }
                     decode_owned(self.pixels)?
                 }
@@ -228,6 +221,19 @@ impl Images {
             });
         }
         Ok(self.cache.get_mut(data).expect("just inserted"))
+    }
+    fn reclaim_unborrowed(&mut self) -> Result<(), String> {
+        let mut released = 0;
+        self.cache.retain(|_, image| {
+            let borrowed = Arc::get_mut(&mut image.base).is_none()
+                || image.chain.iter_mut().any(|level| Arc::get_mut(level).is_none());
+            if !borrowed {
+                released += image.resident_pixels();
+            }
+            borrowed
+        });
+        self.pixels = self.pixels.checked_sub(released).ok_or("Decoded image cache accounting underflow")?;
+        Ok(())
     }
     pub fn clear(&mut self) {
         self.cache.clear();
@@ -312,7 +318,7 @@ fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resid
         crate::image_color::to_sdr(&mut image, space, profile.as_deref())?;
     }
     let size = image.width() as usize * image.height() as usize;
-    if resident + size > 16_777_216 {
+    if resident + size > UNMANAGED_IMAGE_PIXEL_LIMIT as usize {
         return Err("Decoded image budget exceeded".into());
     }
     let mut surface = Surface::new(Rect::new(0, 0, image.width(), image.height()))?;
@@ -335,7 +341,7 @@ fn admit_image_pixels(
     settings: Option<crate::color::ColorSettings>,
     resident: usize,
 ) -> Result<(), String> {
-    let allowance = if settings.is_some() { 8_388_608u64 } else { 16_777_216u64 };
+    let allowance = if settings.is_some() { MANAGED_IMAGE_PIXEL_LIMIT } else { UNMANAGED_IMAGE_PIXEL_LIMIT };
     let pixels = u64::from(width) * u64::from(height);
     if pixels > allowance.saturating_sub(resident as u64) {
         return Err(format!(
@@ -717,11 +723,23 @@ pub fn sketch_bitmap_mip_level(
     let stride = (next_x.x - source.x).abs().min((next_y.y - source.y).abs());
     // Cancel only arithmetic round-off at powers of two. An exact 2×
     // shrink must not choose the base because the affine subtraction lost an ulp.
-    Ok(if stride.is_finite() && stride >= 2. - 1e-9 {
-        ((stride + 1e-9).log2().floor() as u32).min(crate::image_mipmap::mip_levels(image) - 1)
-    } else {
-        0
-    })
+    if !stride.is_finite() || stride < 2. - 1e-9 {
+        return Ok(0);
+    }
+    let wanted = ((stride + 1e-9).log2().floor() as u32).min(crate::image_mipmap::mip_levels(image) - 1);
+    // The base must remain resident even when a mip is used. Large assets
+    // that already use the decoded-image budget keep a usable base level.
+    let mut available = UNMANAGED_IMAGE_PIXEL_LIMIT.saturating_sub(u64::from(image[0]) * u64::from(image[1]));
+    let mut dims = image;
+    for level in 1..=wanted {
+        dims = crate::image_mipmap::level_dimensions(dims, 1);
+        let pixels = u64::from(dims[0]) * u64::from(dims[1]);
+        if pixels > available {
+            return Ok(level - 1);
+        }
+        available -= pixels;
+    }
+    Ok(wanted)
 }
 /// Shared binary64 coordinate compilation; GPU samples its own decoded colors.
 pub fn image_sampling_grid(

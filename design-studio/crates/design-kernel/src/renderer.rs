@@ -682,7 +682,7 @@ impl Engine {
         self.images.image_at(uri, level)
     }
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn images_at_selected_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
+    pub(crate) fn image_at_selected_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
         self.images.image_at_selected_level(uri, level)
     }
     pub fn set_image_mips(&mut self, mips: bool) {

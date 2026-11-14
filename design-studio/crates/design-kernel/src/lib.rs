@@ -2031,7 +2031,7 @@ mod wasm {
         ) -> Result<Vec<f32>, JsValue> {
             let image = self
                 .inner
-                .images_at_selected_level(uri, level)
+                .image_at_selected_level(uri, level)
                 .map_err(|e| JsValue::from_str(&e))?;
             Ok(image.pixels.iter().flat_map(|p| p.0).collect())
         }
@@ -2043,7 +2043,7 @@ mod wasm {
             }
             let image = self
                 .inner
-                .images_at_selected_level(uri, level)
+                .image_at_selected_level(uri, level)
                 .map_err(|e| JsValue::from_str(&e))?;
             Ok(image
                 .pixels

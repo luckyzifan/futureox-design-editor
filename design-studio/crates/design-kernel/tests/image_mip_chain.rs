@@ -2,7 +2,7 @@ use base64::Engine as _;
 use futureox_design_kernel::math::{Rect, Transform};
 use futureox_design_kernel::paint::{
     Images, image_byte_sampling_grid, image_byte_sampling_grid_at_level, image_mip_level,
-    image_sampling_grid, image_sampling_grid_at_level,
+    image_sampling_grid, image_sampling_grid_at_level, sketch_bitmap_mip_level,
 };
 use futureox_design_kernel::scene::Paint;
 use serde_json::json;
@@ -352,4 +352,16 @@ fn sketch_bitmap_minifies_with_box_levels_and_keeps_intrinsic_pixels() {
         render(&imported, 0.5, false, "figma"),
         render(&ordinary, 0.5, false, "figma")
     );
+}
+
+#[test]
+fn sketch_bitmap_keeps_the_base_when_the_mip_cannot_fit_the_image_budget() {
+    let level = |side| {
+        sketch_bitmap_mip_level(
+            Rect::new(0, 0, 4, 4), identity(), [4., 4.], [side, side], &paint("stretch"),
+        )
+        .unwrap()
+    };
+    assert_eq!(level(4096), 0);
+    assert_eq!(level(2048), 9);
 }
