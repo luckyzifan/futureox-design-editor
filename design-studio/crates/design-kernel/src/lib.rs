@@ -1072,6 +1072,7 @@ mod wasm {
         sample: u32,
         level: u32,
         origin: &[i32],
+        sketch_bitmap: Option<bool>,
     ) -> Result<Vec<f32>, JsValue> {
         let rect = serde_json::from_str(rect).map_err(|e| JsValue::from_str(&format!("{e}")))?;
         let matrix: [f64; 6] = matrix
@@ -1090,7 +1091,7 @@ mod wasm {
         if sample > 4 {
             return Err(JsValue::from_str("Invalid image sample index"));
         }
-        crate::paint::image_sampling_grid_placed(
+        crate::paint::image_sampling_grid_with_sketch_sampling(
             rect,
             math::Transform(matrix),
             size,
@@ -1099,6 +1100,7 @@ mod wasm {
             (sample < 4).then_some(sample as usize),
             level,
             origin,
+            sketch_bitmap == Some(true),
         )
         .map_err(|e| JsValue::from_str(&e))
     }
@@ -1112,6 +1114,7 @@ mod wasm {
         sample: u32,
         level: u32,
         origin: &[i32],
+        sketch_bitmap: Option<bool>,
     ) -> Result<Vec<f32>, JsValue> {
         let rect = serde_json::from_str(rect).map_err(|e| JsValue::from_str(&format!("{e}")))?;
         let matrix: [f64; 6] = matrix
@@ -1130,7 +1133,7 @@ mod wasm {
         if sample > 4 {
             return Err(JsValue::from_str("Invalid image sample index"));
         }
-        crate::paint::image_sampling_axes_placed(
+        crate::paint::image_sampling_axes_with_sketch_sampling(
             rect,
             math::Transform(matrix),
             size,
@@ -1139,6 +1142,7 @@ mod wasm {
             (sample < 4).then_some(sample as usize),
             level,
             origin,
+            sketch_bitmap == Some(true),
         )
         .map_err(|e| JsValue::from_str(&e))
     }

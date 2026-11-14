@@ -58,6 +58,44 @@ test('macOS package inventory records framework aliases and identifies the repac
   }
 })
 
+test('an installed macOS app reports its framework version and architecture from package bytes', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'fx-installed-app-'))
+  try {
+    const root = fileURLToPath(new URL('../../../', import.meta.url))
+    const bundle = path.join(directory, 'futureox-desgin.app')
+    const contents = path.join(bundle, 'Contents')
+    const framework = path.join(contents, 'Frameworks/Electron Framework.framework/Versions/A')
+    await mkdir(path.join(contents, 'Resources'), { recursive: true })
+    await mkdir(path.join(framework, 'Resources'), { recursive: true })
+    await writeFile(path.join(contents, 'Resources/app.asar'), asarFromFiles([]))
+    await writeFile(path.join(contents, 'Info.plist'), '<plist><dict><key>CFBundleVersion</key><string>1.0.0</string></dict></plist>')
+    const plist = path.join(framework, 'Resources/Info.plist')
+    await writeFile(plist, '<plist><dict><key>CFBundleIdentifier</key><string>com.github.Electron.framework</string><key>CFBundleVersion</key><string>44.7.0</string></dict></plist>')
+    const header = Buffer.alloc(32)
+    header.writeUInt32LE(0xfeedfacf)
+    header.writeUInt32LE(0x0100000c, 4)
+    await writeFile(path.join(framework, 'Electron Framework'), header)
+    const inventory = () => inventoryFromPackageBytes({
+      root, layout: electronPackageLayout(bundle), openAsar, declaredElectronVersion: '44.7.0',
+      rust: { crates: [] }, javascript: { distributed: [], developmentOnly: [] },
+    })
+    const report = inventory()
+    assert.equal(report.triple, 'darwin-arm64')
+    assert.equal(report.electron.version, '44.7.0')
+    assert.equal(report.electron.versionMatchesDeclared, true)
+    assert.match(report.electron.versionSource, /Electron Framework\.framework\/Versions\/A\/Resources\/Info\.plist$/)
+    assert.equal(report.electron.binary.format, 'macho')
+    assert.match(report.electron.binary.packagePath, /\/Electron Framework$/)
+    assert.equal(report.electron.traceable, false, 'runtime identity alone cannot establish notice coverage')
+    assert.equal(report.electron.gap, 'electron_runtime_incomplete')
+    assert.equal(verifyPackageByteInventory(report, openAsar).ok, true)
+    await writeFile(plist, '<plist><dict><key>CFBundleVersion</key><string>45.0.0</string></dict></plist>')
+    assert.equal(inventory().electron.version, null, 'an unrelated plist cannot declare an Electron version')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('vendored linux ffmpeg matches the rebuilt corresponding source', () => {
   const report = ffmpegProvenance()
   assert.deepEqual(report.problems, [])

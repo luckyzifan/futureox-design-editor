@@ -282,6 +282,7 @@ struct ImageGridKey {
     height: u32,
     sample: usize,
     level: u32,
+    sketch_bitmap: bool,
 }
 #[derive(Hash, PartialEq, Eq)]
 struct GradientGridKey {
@@ -1400,6 +1401,7 @@ impl Compositor<'_, '_, '_> {
             atlased_image = origin != [0, 0];
             inputs.push(image);
             if self.scene.float_compositing || sample < 4 {
+                let sketch_bitmap = !self.mips && p.sketch_bitmap_sampling && p.adjust.is_none();
                 let key = ImageGridKey {
                     node: n.id.clone(),
                     fit: p.fit.clone(),
@@ -1412,6 +1414,7 @@ impl Compositor<'_, '_, '_> {
                         4
                     },
                     level,
+                    sketch_bitmap,
                 };
                 let known = self.image_grids.get(&key).copied();
                 let grid = if let Some((old_sample, grid)) = known.filter(|(old, _)| *old == sample)
@@ -1419,21 +1422,16 @@ impl Compositor<'_, '_, '_> {
                     debug_assert_eq!(old_sample, sample);
                     grid
                 } else {
-                    let compile_grid = if self.scene.float_compositing {
-                        futureox_design_kernel::paint::image_sampling_grid_placed
+                    let phase = (sample < 4).then_some(sample);
+                    let values = if self.scene.float_compositing {
+                        futureox_design_kernel::paint::image_sampling_grid_with_sketch_sampling(
+                            n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin, sketch_bitmap,
+                        )?
                     } else {
-                        futureox_design_kernel::paint::image_byte_sampling_field_placed
+                        futureox_design_kernel::paint::image_byte_sampling_field_placed(
+                            n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin,
+                        )?
                     };
-                    let values = compile_grid(
-                        n.rect,
-                        n.matrix,
-                        n.size,
-                        dims,
-                        &p.paint,
-                        (sample < 4).then_some(sample),
-                        level,
-                        origin,
-                    )?;
                     let grid = if let Some((_, grid)) = known {
                         // Only the next sample's addresses change. All previous
                         // reads are encoded before this ordered queue update.

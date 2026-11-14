@@ -4,6 +4,7 @@ import { blendModes, type DesignDocument, type DesignNode, type TextRun } from '
 import { allParents } from '../geometry'
 import { equalValue } from '../document-patch'
 import { replaceTextRange, styleTextRange } from '../text'
+import { sourceFonts, storeRemappedSourceFonts } from '../font-matching'
 import { AutomationError, type AutomationExtension } from './types'
 
 type Obj = Record<string, unknown>
@@ -156,7 +157,10 @@ export const granularExtensions: AutomationExtension[] = [
       if (n.kind !== 'text') err('invalid_kind', 'Range styling requires a text node')
       const start = p.start as number, end = p.end as number
       if (p.expectedText !== undefined && n.text.slice(start, end) !== p.expectedText) err('value_conflict', 'Expected range text no longer matches')
-      try { styleTextRange(n, start, end, p.patch as Partial<Omit<TextRun, 'start' | 'end'>>) }
+      try {
+        const fonts = styleTextRange(n, start, end, p.patch as Partial<Omit<TextRun, 'start' | 'end'>>, sourceFonts(doc, n))
+        storeRemappedSourceFonts(doc, n.id, fonts)
+      }
       catch (error) { err('invalid_text_range', error instanceof Error ? error.message : String(error)) }
       return { id: n.id, start, end }
     }),
@@ -168,7 +172,7 @@ export const granularExtensions: AutomationExtension[] = [
       unbound(doc, n, ['text'])
       const start = p.start as number, end = p.end as number, text = p.text as string
       if (n.text.slice(start, end) !== p.expectedText) err('value_conflict', 'Expected selected substring no longer matches')
-      try { replaceTextRange(n, start, end, text) }
+      try { storeRemappedSourceFonts(doc, n.id, replaceTextRange(n, start, end, text, sourceFonts(doc, n))) }
       catch (error) { err('invalid_text_range', error instanceof Error ? error.message : String(error)) }
       return { id: n.id, start, end, insertedEnd: start + text.length }
     }),

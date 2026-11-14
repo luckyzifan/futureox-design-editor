@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../engine'
-import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke, type DesignDocument, type TextRun } from '../model'
+import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke, uid, type DesignDocument, type TextRun } from '../model'
 import { Graph } from '../kernel/graph'
 import * as Picking from '../kernel/picking'
 import { createEditorDesignAutomation } from './index'
@@ -8,6 +8,9 @@ import { createDesignAutomation } from './core'
 import { designSystemExtensions } from './design-system'
 import { stampKeys } from '../components'
 import { CHANGE_SUMMARY_LIMITS, summarizeChanges } from './change-summary'
+import { import_sketch_json, export_sketch_json } from '../generated/design-kernel/design_kernel'
+import { decodeDocumentBinary, encodeDocumentBinary } from '../kernel/binfmt'
+import { sourceFonts } from '../font-matching'
 import type { AutomationResponse } from './types'
 
 const editors: Editor[] = []
@@ -43,6 +46,57 @@ function richFixture(text: string, textRuns?: TextRun[]) {
 }
 
 describe('explicit text replacement through native Editor transactions', () => {
+  it('keeps the imported two-face Sketch archive associated with copied and split ranges', () => {
+    const archive = readFileSync(new URL('../../../../testing/fixtures/design/sketch-legacy-mixed-text.bplist', import.meta.url))
+    const id = uid()
+    const pageId = uid()
+    const page = { _class: 'page', do_objectID: pageId, name: 'Mixed', layers: [{
+      _class: 'text', do_objectID: id, name: 'Archive', textBehaviour: 2,
+      frame: { x: 0, y: 0, width: 1000, height: 100 },
+      attributedString: { archivedAttributedString: { _archive: archive.toString('base64') } },
+    }] }
+    const input = zipSync({
+      'meta.json': strToU8('{}'),
+      'document.json': strToU8(JSON.stringify({ _class: 'document', pages: [{ _ref: 'pages/' + pageId }] })),
+      ['pages/' + pageId + '.json']: strToU8(JSON.stringify(page)),
+    })
+    const { document } = JSON.parse(import_sketch_json(input)) as { document: DesignDocument }
+    document.id = uid()
+    const editor = new Editor(document)
+    editors.push(editor)
+    const api = createEditorDesignAutomation(editor)
+    const call = (method: string, params: Record<string, unknown> = {}) => ok(api.execute({
+      method, params, documentId: editor.state.doc.id, session: editor.sessionGeneration, expectedRevision: editor.state.version,
+    }))
+    const exportedRanges = () => {
+      const saved = decodeDocumentBinary(encodeDocumentBinary(editor.state.doc)) as DesignDocument
+      const pageFile = Object.entries(unzipSync(export_sketch_json(JSON.stringify(saved))))
+        .find(([name]) => name.startsWith('pages/') && name.endsWith('.json'))!
+      const layer = JSON.parse(Buffer.from(pageFile[1]).toString()).layers[0]
+      return layer.attributedString.attributes.map((range: {
+        location: number; length: number; attributes: { MSAttributedStringFontAttribute: { attributes: { name: string } } }
+      }) => [range.location, range.length, range.attributes.MSAttributedStringFontAttribute.attributes.name])
+    }
+    const original = [[0, 131, 'Menlo-Regular'], [131, 3, 'Menlo-Bold']]
+    expect(exportedRanges()).toEqual(original)
+    call('text.replaceRange', { nodeId: id, start: 128, end: 130, text: 'X', expectedText: '😀' })
+    const replaced = [[0, 128, 'Menlo-Regular'], [128, 1, 'Menlo-Regular'], [129, 1, 'Menlo-Regular'], [130, 3, 'Menlo-Bold']]
+    expect(exportedRanges()).toEqual(replaced)
+    expect(sourceFonts(editor.state.doc, editor.state.doc.nodes[id]).runs).toMatchObject({ 2: 'Menlo-Regular', 3: 'Menlo-Bold' })
+    call('text.styleRange', { nodeId: id, start: 131, end: 132, patch: { color: '#006600' } })
+    expect(exportedRanges().slice(-3)).toEqual([[130, 1, 'Menlo-Bold'], [131, 1, 'Menlo-Bold'], [132, 1, 'Menlo-Bold']])
+    call('history.undo')
+    expect(exportedRanges()).toEqual(replaced)
+    call('history.undo')
+    expect(exportedRanges()).toEqual(original)
+    call('history.redo')
+    expect(exportedRanges()).toEqual(replaced)
+    call('text.styleRange', { nodeId: id, start: 131, end: 132, patch: { fontId: 'default' } })
+    expect(exportedRanges().slice(-3)).toEqual([[130, 1, 'Menlo-Bold'], [131, 1, 'HelveticaNeue'], [132, 1, 'Menlo-Bold']])
+    call('history.undo')
+    expect(exportedRanges()).toEqual(replaced)
+  })
+
   it('deletes the intended repeated substring and preserves all other document paths, then undoes once', () => {
     const f = richFixture('aaaa', [100, 200, 300, 400].map((weight, start) => ({ start, end: start + 1, weight }))), before = f.editor.state.doc
     const result = ok(f.call('text.replaceRange', { nodeId: f.target.id, start: 0, end: 1, text: '', expectedText: 'a' }))
@@ -413,3 +467,5 @@ describe('bounded pure authored preflight and session-local batch receipts', () 
     expect(new TextEncoder().encode(JSON.stringify(bounded)).byteLength).toBeLessThan(CHANGE_SUMMARY_LIMITS.maxBytes + 1024)
   })
 })
+import { readFileSync } from 'node:fs'
+import { strToU8, unzipSync, zipSync } from 'fflate'

@@ -7167,6 +7167,10 @@ fn export_layer_impl(
                         source.runs.get(&index.to_string()).map(|name| (source, name.as_str()))
                     }) {
                         exportable_sketch_source_face(source, Some(name))
+                    } else if run.font_id.is_some() && source_faces.is_some() {
+                        // An explicitly selected built-in face has no source
+                        // entry. Inheriting the layer face is a separate choice.
+                        None
                     } else {
                         requested_default
                     };

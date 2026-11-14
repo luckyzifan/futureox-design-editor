@@ -31,6 +31,35 @@ export function sourceFonts(document: DesignDocument, node: DesignNode): Source 
   } catch { return {} }
 }
 
+/** Source identities follow the old runs that supplied the new ranges. */
+export function remapSourceFontRuns(source: Source | undefined, origins: readonly number[]): Source | undefined {
+  const oldRuns = source?.runs
+  if (!source || !oldRuns || !Object.keys(oldRuns).length) return
+  const runs: Record<string, string> = {}, runDigests: Record<string, string> = {}
+  for (const [next, old] of origins.entries()) {
+    if (old < 0 || !oldRuns[old]) continue
+    runs[next] = oldRuns[old]
+    if (source.runDigests?.[old]) runDigests[next] = source.runDigests[old]
+  }
+  const keys = Object.keys(runs)
+  if (keys.length === Object.keys(oldRuns).length &&
+      keys.every(key => runs[key] === oldRuns[key] && runDigests[key] === source.runDigests?.[key])) return
+  const names = new Set([source.style, ...Object.values(runs)])
+  const resolved = source.resolved?.filter(name => names.has(name))
+  return {
+    ...(source.style ? { style: source.style } : {}),
+    ...(source.digest ? { digest: source.digest } : {}),
+    ...(keys.length ? { runs } : {}),
+    ...(Object.keys(runDigests).length ? { runDigests } : {}),
+    ...(resolved?.length ? { resolved } : {}),
+  }
+}
+
+/** An empty record masks the original archive's index table after deletion. */
+export function storeRemappedSourceFonts(document: DesignDocument, id: string, source: Source | undefined) {
+  if (source && document.designSystem) (document.designSystem.fontSources ??= {})[id] = source
+}
+
 /** Record an explicit replacement while keeping the imported face identities. */
 export function resolveSourceFonts(document: DesignDocument, node: DesignNode, source: Source, names: readonly string[]): number {
   const system = document.designSystem

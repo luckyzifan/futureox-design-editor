@@ -342,11 +342,16 @@ fn sketch_bitmap_minifies_with_box_levels_and_keeps_intrinsic_pixels() {
         render(&imported, 0.5, false, "analytic"),
         render(&ordinary, 0.5, true, "analytic")
     );
-    for zoom in [1., 2.] {
-        assert_eq!(
-            render(&imported, zoom, false, "analytic"),
-            render(&ordinary, zoom, false, "analytic")
-        );
+    let intrinsic = render(&imported, 1., false, "analytic");
+    assert_eq!(intrinsic, render(&ordinary, 1., false, "analytic"));
+    let enlarged = render(&imported, 2., false, "analytic");
+    let expected = intrinsic.chunks_exact(16 * 4).flat_map(|row| {
+        let double: Vec<u8> = row.chunks_exact(4).flat_map(|pixel| [pixel, pixel].concat()).collect();
+        [double.clone(), double].into_iter().flatten()
+    }).collect::<Vec<_>>();
+    assert_eq!(enlarged, expected, "Sketch replicates each 1× texel into a 2×2 square");
+    for zoom in [1.5, 2.25] {
+        assert!(render(&imported, zoom, false, "analytic") == render(&ordinary, zoom, false, "analytic"));
     }
     assert_eq!(
         render(&imported, 0.5, false, "figma"),

@@ -1549,7 +1549,7 @@ export class Editor {
   }
   update(
     ids: string[],
-    patch: Partial<DesignNode> | ((n: DesignNode) => void),
+    patch: Partial<DesignNode> | ((n: DesignNode, document: DesignDocument) => void),
     label = '修改属性',
     source?: 'properties',
   ) {
@@ -1564,7 +1564,7 @@ export class Editor {
           const n = d.nodes[id]
           if (n) {
             if (n.locked && source !== 'properties' && !['切换锁定', '切换可见性', '重命名图层'].includes(label)) continue
-            if (typeof patch === 'function') patch(n)
+            if (typeof patch === 'function') patch(n, d)
             else Object.assign(n, patch)
             if (!n.strokes.every(validStroke) || !validProfiles(n))
               throw new Error('描边参数无效，请检查宽度控制点、虚线或闭合接缝')
@@ -1581,7 +1581,7 @@ export class Editor {
   }
   /** The property panel can edit a layer selected explicitly in the layer tree.
    * Canvas gestures keep update()'s existing lock protection. */
-  updateProperties(ids: string[], patch: Partial<DesignNode> | ((n: DesignNode) => void), label = '修改属性') {
+  updateProperties(ids: string[], patch: Partial<DesignNode> | ((n: DesignNode, document: DesignDocument) => void), label = '修改属性') {
     this.update(ids, patch, label, 'properties')
   }
   remove() {
