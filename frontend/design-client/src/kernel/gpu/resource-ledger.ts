@@ -50,8 +50,10 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
   /** Bytes destroyed from the completed free pool. Peak stays the high-water
    * mark; this counter is the part of that peak that was spare residency. */
   completedFreeBytes = 0
-  private readonly aliases = new Map<Texture, number>()
-  private released = new WeakSet<Surface>()
+  /** Diagnostics and fault-injection probes observe these identities. Renderer
+   * ownership changes use the ledger's methods. */
+  readonly aliases = new Map<Texture, number>()
+  released = new WeakSet<Surface>()
   readonly poolEpochs = new WeakMap<Texture, number>()
   readonly classes: ByteBreakdown = emptyClasses()
   readonly lifeBytes: LifeBreakdown = emptyLife()

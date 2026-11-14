@@ -783,6 +783,8 @@ export class GpuRenderer {
   private free: Map<string,Texture[]> = new SurfacePool<Texture>()
   private busy = new Set<Texture>()
   private readonly ledger = new ResourceLedger<Texture, Surface>()
+  private get aliases() { return this.ledger.aliases }
+  private get releasedAliases() { return this.ledger.released }
   /** Class of the next `bytes` assignment. Scratch is the constructor charge;
    * every later assignment is unclassified until a callsite says otherwise. */
   private byteClass: ResourceClass = 'scratch'
