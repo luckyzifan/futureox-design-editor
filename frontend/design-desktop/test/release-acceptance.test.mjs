@@ -750,12 +750,18 @@ test('a release package inventory is read from package bytes, not from the lockf
     }
     fixtureEntries.push({ path: 'renderer/color-fixtures/PROVENANCE.json', bytes: await readFile(path.join(repoRoot, 'frontend/design-client/public/color-fixtures/PROVENANCE.json')) })
     fixtureEntries.push({ path: 'renderer/canvas-chrome-verify.html', bytes: Buffer.from('<html>figma-derived verify page</html>\n') })
+    const quickJsLicense = await readFile(new URL('../../design-client/public/licenses/quickjs-wasmfile-LICENSE.txt', import.meta.url))
+    const quickJsWasm = await readFile(new URL('../../design-client/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm', import.meta.url))
+    const unverifiedWasm = Buffer.concat([wasm, Buffer.from([0, 1, 0])])
     const archive = asarFromFiles([
       { path: 'renderer/licenses/react-LICENSE.txt', bytes: reactLicense },
+      { path: 'renderer/licenses/quickjs-wasmfile-LICENSE.txt', bytes: quickJsLicense },
       { path: 'renderer/assets/index.js', bytes: bundle },
       { path: 'assets/branding/mark.png', bytes: icon },
       { path: 'src/main.mjs', bytes: Buffer.from('export {}\n') },
-      { path: 'renderer/kernel.wasm', bytes: wasm },
+      { path: 'renderer/kernel/design_kernel_bg.wasm', bytes: wasm },
+      { path: 'renderer/assets/emscripten-module-Source.wasm', bytes: quickJsWasm },
+      { path: 'renderer/assets/emscripten-module-Unknown.wasm', bytes: unverifiedWasm },
       ...fixtureEntries,
     ])
     await writeFile(path.join(resources, 'app.asar'), archive)
@@ -813,7 +819,17 @@ test('a release package inventory is read from package bytes, not from the lockf
     assert.equal(backend.sha256, digest(nativeBinary))
     assert.equal(backend.format, 'elf')
     assert.equal(report.fromPackage.gaps.some(item => item.gap === 'binary_not_in_package'), false)
-    assert.equal(report.fromPackage.wasm[0].sha256, digest(wasm))
+    assert.ok(report.fromPackage.wasm.some(item => item.sha256 === digest(wasm)))
+    const wasmComponents = report.fromPackage.components.filter(item => item.kind === 'wasm')
+    const shippedQuickJs = wasmComponents.find(item => item.sha256 === digest(quickJsWasm))
+    assert.equal(shippedQuickJs.name, '@jitl/quickjs-wasmfile-release-sync')
+    assert.equal(shippedQuickJs.traceable, true)
+    assert.equal(shippedQuickJs.notices[0].sha256, digest(quickJsLicense))
+    const unknown = wasmComponents.find(item => item.sha256 === digest(unverifiedWasm))
+    assert.equal(unknown.traceable, false)
+    assert.equal(unknown.gap, 'wasm_source_unidentified')
+    assert.ok(report.fromPackage.gaps.some(item => item.kind === 'wasm' && item.id === unknown.packagePath))
+    assert.equal(serde.artifacts.some(item => item.sha256 === digest(quickJsWasm)), false)
     assert.ok(report.fromPackage.census.unclassified.some(item => item.path.endsWith('stray.bin')))
     assert.equal(report.fromPackage.components.some(item => item.kind === 'electron' && item.sha256 === digest(electronBinary)), true)
     const packagedProfiling = report.fromPackage.rust.distributed.find(item => item.id === 'profiling@1.0.18')

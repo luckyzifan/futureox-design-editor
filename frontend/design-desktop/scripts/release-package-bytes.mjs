@@ -7,6 +7,7 @@ import { closeSync, constants, existsSync, lstatSync, openSync, readdirSync, rea
 import path from 'node:path'
 import { ELECTRON_ATTRIBUTION_FILES, MAC_ELECTRON_NOTICES, hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
 import { FFMPEG_PACKAGE_NOTICES, requiresBundledFfmpeg } from './ffmpeg-bundle.mjs'
+import { verifyWasmIdentity } from './wasm-identity.mjs'
 
 const HOST_TARGETS = {
   'linux-x64': { platform: 'linux', arch: 'x64', target: 'x86_64-unknown-linux-gnu' },
@@ -17,6 +18,8 @@ const HOST_TARGETS = {
   'win32-arm64': { platform: 'win32', arch: 'arm64', target: 'aarch64-pc-windows-msvc' },
 }
 const EXPECTED_TRIPLES = ['linux-x64', 'darwin-arm64', 'win32-x64']
+const KERNEL_WASM = /^design_kernel_bg(?:-[A-Za-z0-9_-]+)?\.wasm$/
+const QUICKJS_WASM = /^emscripten-module(?:-[A-Za-z0-9_-]+)?\.wasm$/
 const NATIVE_CRATES = {
   'futureox-design-desktop-backend': 'futureox-design-desktop-backend',
   'design-render': 'futureox-design-gpu',
@@ -411,6 +414,54 @@ function artifactsFor(crate, hostTarget, binaries, wasmFiles) {
   return out.map(file => ({ packagePath: file.path, sha256: file.sha256, bytes: file.bytes, role: file.role }))
 }
 
+function inventoryWasm(root, files, packages, kernel, projectLicense) {
+  const inputRoot = path.join(root, 'frontend/design-client/node_modules')
+  const candidates = packages.filter(item => /^@jitl\/quickjs-wasmfile-(debug|release)-(sync|asyncify)$/.test(item.package))
+  const quickJsSources = []
+  for (const item of files.some(file => QUICKJS_WASM.test(path.posix.basename(file.path))) ? candidates : []) {
+    const dir = path.join(inputRoot, item.package)
+    const name = path.join('dist', 'emscripten-module.wasm')
+    const manifest = path.join(dir, 'package.json')
+    const file = path.join(dir, name)
+    if (!isFile(manifest) || !isFile(file)) continue
+    const installed = JSON.parse(readFileSync(manifest, 'utf8'))
+    if (installed.name !== item.package || installed.version !== item.version) continue
+    quickJsSources.push({ name: path.join(dir, name), sha256: hashReadonlyFile(file).sha256, item })
+  }
+  return files.map(file => {
+    const basename = path.posix.basename(file.path)
+    let name = null, version = null, source = null, license = null, notices = []
+    let gap = 'wasm_source_unidentified'
+    if (KERNEL_WASM.test(basename)) {
+      name = 'futureox-design-kernel'
+      version = kernel?.version ?? null
+      source = kernel?.source ?? 'wasm32-unknown-unknown'
+      license = projectLicense ? 'MIT' : null
+      notices = projectLicense ? [noticeRecord(projectLicense)] : []
+      gap = projectLicense ? null : 'project_license_not_in_package'
+    } else if (QUICKJS_WASM.test(basename)) {
+      let matched
+      try { matched = verifyWasmIdentity(basename, file.sha256, quickJsSources) }
+      catch { /* Unknown WASM stays in the byte census with an attribution gap. */ }
+      const input = quickJsSources.find(entry => entry.name === matched)
+      if (input) {
+        const item = input.item
+        name = item.package
+        version = item.version
+        source = item.source
+        license = item.license
+        notices = item.notices
+        gap = item.gap
+      }
+    }
+    return {
+      kind: 'wasm', id: file.path, name, version, source, license, notices,
+      packagePath: file.path, sha256: file.sha256, bytes: file.bytes,
+      distribution: 'in_release_package', traceable: gap === null, gap,
+    }
+  })
+}
+
 function readJson(file) {
   if (!file) return null
   const text = file.text?.()
@@ -685,6 +736,7 @@ export function inventoryFromPackageBytes({
   const declaredList = readJson(resourceList)
   const electron = inventoryElectron(content.filter(file => file.origin === 'file'), declaredElectronVersion, layout.style)
   const wasmFiles = content.filter(file => file.kind === 'wasm')
+  const kernelWasmFiles = wasmFiles.filter(file => KERNEL_WASM.test(path.posix.basename(file.path)))
   const nativeFiles = content.filter(file => file.kind === 'native' && file.role === 'binary')
   const native = nativeFiles.map(file => {
     const base = path.posix.basename(file.path).replace(/\.exe$/, '')
@@ -707,7 +759,7 @@ export function inventoryFromPackageBytes({
     }
   })
   const presentNative = new Set(native.map(item => item.name))
-  const selectedPlatforms = new Set([host.target, wasmFiles.length ? 'wasm32-unknown-unknown' : null].filter(Boolean))
+  const selectedPlatforms = new Set([host.target, kernelWasmFiles.length ? 'wasm32-unknown-unknown' : null].filter(Boolean))
   const rustDistributed = []
   const rustBuildOnly = []
   for (const crate of rust.crates) {
@@ -731,7 +783,7 @@ export function inventoryFromPackageBytes({
       platforms: crate.platforms.filter(platform => selectedPlatforms.has(platform)),
       procMacro: crate.procMacro,
       notices,
-      artifacts: artifactsFor(crate, host.target, nativeFiles, wasmFiles),
+      artifacts: artifactsFor(crate, host.target, nativeFiles, kernelWasmFiles),
       distribution: crate.procMacro ? 'proc_macro_build_input' : 'linked_into_packaged_binary',
       thirdParty: crate.thirdParty,
       traceable: Boolean(crate.license && notices.length && !differs && !missingRepo),
@@ -766,6 +818,8 @@ export function inventoryFromPackageBytes({
       gap: matches ? null : (notice ? 'notice_differs_from_record' : 'notice_text_not_in_package'),
     }
   })
+  const wasm = inventoryWasm(root, wasmFiles, javascriptPackages,
+    rust.crates.find(item => item.name === 'futureox-design-kernel'), projectLicense)
   const referenceNotices = (licenseInventory.referenceImplementations ?? []).map(item => {
     const file = content.find(entry => entry.kind === 'notice' && entry.path.endsWith(`/${item.file}`) && entry.sha256 === item.sha256)
     return {
@@ -854,7 +908,8 @@ export function inventoryFromPackageBytes({
   if (archives.some(file => file.role === 'app-asar') && !openedAppAsar) addGap('archive', 'app.asar', 'asar_unreadable')
   addGap('signature', layout.packageDir, signatureFile ? 'signature_file_present_not_verified' : 'not_run')
   for (const triple of EXPECTED_TRIPLES) if (triple !== host.triple) addGap('platform', triple, 'not_built')
-  if (!wasmFiles.length) addGap('wasm', 'futureox-design-kernel', 'wasm_not_in_package')
+  if (!kernelWasmFiles.length) addGap('wasm', 'futureox-design-kernel', 'wasm_not_in_package')
+  for (const item of wasm) addGap('wasm', item.packagePath, item.gap)
   const components = [
     {
       kind: 'electron',
@@ -899,20 +954,7 @@ export function inventoryFromPackageBytes({
       gap: item.gap,
     })),
     ...native.map(item => ({ kind: 'native', ...item })),
-    ...wasmFiles.map(file => ({
-      kind: 'wasm',
-      id: file.path,
-      name: 'futureox-design-kernel',
-      version: rust.crates.find(item => item.name === 'futureox-design-kernel')?.version ?? null,
-      source: 'wasm32-unknown-unknown',
-      license: projectLicense ? 'MIT' : null,
-      packagePath: file.path,
-      sha256: file.sha256,
-      notices: projectLicense ? [noticeRecord(projectLicense)] : [],
-      distribution: 'in_release_package',
-      traceable: Boolean(projectLicense),
-      gap: projectLicense ? null : 'project_license_not_in_package',
-    })),
+    ...wasm,
     ...fonts.map(item => ({ kind: 'font', name: path.posix.basename(item.packagePath), ...item })),
     ...icons.map(item => ({ kind: 'icon', name: path.posix.basename(item.packagePath), ...item })),
     ...colorFixtures.map(item => ({ kind: 'color-fixture', ...item })),
