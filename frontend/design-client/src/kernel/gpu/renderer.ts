@@ -555,7 +555,7 @@ export class GpuRenderer {
     if(!entry)return
     const texture=entry.plane.texture
     this.interactionTextures.delete(texture);this.busy.delete(texture);this.used.delete(texture)
-    this.lastUsed.delete(texture);this.aliases.delete(texture)
+    this.lastUsed.delete(texture);this.ledger.forgetAlias(texture)
       this.driver.destroy(texture);this.dischargeTexture(texture);this.interactionBytes-=texture.bytes
     this.stationaryBackdrop=undefined
   }
@@ -668,7 +668,7 @@ export class GpuRenderer {
   private retireInteractionPrefix() {
     for (const {texture} of this.interactionPrefix?.planes || []) {
       this.interactionTextures.delete(texture); this.busy.delete(texture); this.used.delete(texture)
-      this.lastUsed.delete(texture); this.aliases.delete(texture)
+      this.lastUsed.delete(texture); this.ledger.forgetAlias(texture)
       this.driver.destroy(texture); this.dischargeTexture(texture); this.interactionBytes -= texture.bytes
     }
     this.interactionPrefix = undefined
@@ -684,7 +684,7 @@ export class GpuRenderer {
     for (const [key, cached] of this.interactionRoots) if (!keep.has(key)) {
       for (const { texture } of cached.planes) {
         this.interactionTextures.delete(texture); this.busy.delete(texture); this.used.delete(texture)
-        this.lastUsed.delete(texture); this.aliases.delete(texture)
+        this.lastUsed.delete(texture); this.ledger.forgetAlias(texture)
         this.driver.destroy(texture); this.dischargeTexture(texture); this.interactionBytes -= texture.bytes
       }
       this.interactionRoots.delete(key)
@@ -786,9 +786,6 @@ export class GpuRenderer {
   /** Class of the next `bytes` assignment. Scratch is the constructor charge;
    * every later assignment is unclassified until a callsite says otherwise. */
   private byteClass: ResourceClass = 'scratch'
-  private get aliases() { return this.ledger.aliases }
-  private get releasedAliases() { return this.ledger.released }
-  private set releasedAliases(value: WeakSet<Surface>) { this.ledger.released = value }
   private constantTargets = new Map<string, Surface>()
   private prefixAllowed = true
   private get bytes() { return this.ledger.bytes }
@@ -832,7 +829,7 @@ export class GpuRenderer {
   private skippedPainterVisits=0
   get occludedPainterVisits(){return this.skippedPainterVisits}
   private identityClip(clip:Surface,bounds:Rect):boolean{
-    return this.uniformColorSurfaces&&!!this.driver.managed&&this.busy.has(clip.texture)&&!this.releasedAliases.has(clip)&&
+    return this.uniformColorSurfaces&&!!this.driver.managed&&this.busy.has(clip.texture)&&!this.ledger.isReleased(clip)&&
       containsRect(clip.rect,bounds)&&containsRect(clip.opaqueInterior,bounds)&&
       exactBlendLattice([clip.rect,clip.opaqueInterior!,bounds])
   }
@@ -1087,7 +1084,7 @@ export class GpuRenderer {
         {mask:32,items:this.interactionTextures},{mask:64,items:this.images.values(),surface:true},
         {mask:64,items:this.atlasPages,surface:true},{mask:16|64,items:this.retiredImageAssets.keys()},
         {mask:0,items:this.lastUsed.keys()}],
-      aliases:texture=>this.aliases.get(texture)||1,
+      aliases:texture=>this.ledger.aliasesFor(texture)||1,
       pinned:texture=>!!this.filterImageFields?.pinned.has(texture)||this.sequentialImagePins.has(texture)||this.pendingImageTableSources.has(texture)||this.admissionPins.has(texture),
       material:texture=>this.materialFields.has(texture),coverage:texture=>this.coverage.has(texture),
       tag:texture=>this.surfaceAllocationTags.get(texture),poolEpoch:texture=>this.poolReleaseEpoch.get(texture) })
@@ -1117,7 +1114,7 @@ export class GpuRenderer {
           console.debug('DESIGN_GPU_BUDGET ' + JSON.stringify({ node: this.activeNode,
             view: this.scene.view, bytes: this.bytes, required, allocation: r,
             busy: [...busy], surfaces: [...this.busy].map(t => ({ width:t.width,height:t.height,bytes:t.bytes,
-              binary:!!t.binaryCoverage,scalar:!!t.scalarCoverage,aliases:this.aliases.get(t)||1,...this.traceSurfaces.get(t) })),
+              binary:!!t.binaryCoverage,scalar:!!t.scalarCoverage,aliases:this.ledger.aliasesFor(t)||1,...this.traceSurfaces.get(t) })),
             coordinates: this.coordinateMaps.size, stack: new Error().stack }))
         }
         throw this.budgetError('GPU 表面内存预算超限', 1, 0, allocationSite, passMode)
@@ -1535,7 +1532,7 @@ export class GpuRenderer {
     const unchangedRect = (a: Rect, b: Rect) => Object.keys(a).every(key => Object.is(a[key as keyof Rect], b[key as keyof Rect]))
     const certifiedBand = !!bandDestination && allowsDisplayTentRadius(this.scene, this.driver, false, true) &&
       bandDestination.epoch === this.driver.resourceEpoch && bandDestination.source === inputs[0] && bandDestination.radius === filter?.radius &&
-      this.privateBandDestination(destination!) && this.busy.has(inputs[0].texture) && !this.releasedAliases.has(inputs[0]) &&
+      this.privateBandDestination(destination!) && this.busy.has(inputs[0].texture) && !this.ledger.isReleased(inputs[0]) &&
       bandDestination.sourceResource === inputs[0].texture.resource && bandDestination.targetResource === destination!.texture.resource &&
       unchangedRect(bandDestination.sourceRect, inputs[0].rect) && unchangedRect(bandDestination.targetRect, destination!.rect) &&
       bandDestination.sourceShape.every((value, index) => value === [inputs[0].texture.width, inputs[0].texture.height, inputs[0].texture.bytes][index]) &&
@@ -1545,7 +1542,7 @@ export class GpuRenderer {
         r.w <= 0 || r.h <= 0 || !exactBlendLattice([r, destination.rect]) && !certifiedBand || !Object.keys(r).every(key => Object.is(r[key as keyof Rect], destination.rect[key as keyof Rect])) ||
         destination.texture.width !== r.w || destination.texture.height !== r.h || destination.texture.bytes !== r.w * r.h * 16 ||
         destination.texture.binaryCoverage || destination.texture.scalarCoverage || !this.busy.has(destination.texture) ||
-        this.releasedAliases.has(destination) || (this.aliases.get(destination.texture) || 1) > 1 ||
+        this.ledger.isReleased(destination) || (this.ledger.aliasesFor(destination.texture) || 1) > 1 ||
         this.coverage.has(destination.texture) || this.materialFields.has(destination.texture) || this.interactionTextures.has(destination.texture) ||
         this.horizontalFilters.has(destination.texture) || this.staticImageBlurs.has(destination.texture) ||
         inputs.some(input => input.texture === destination.texture || input.texture.resource === destination.texture.resource)))
@@ -1802,7 +1799,7 @@ export class GpuRenderer {
    * Shared sample planes and texture feedback retain the full-target path. */
   private regionalOverPlan(bounds: Rect, dst: Surface, sources: Surface[]) {
     if (!this.optimized || !this.driver.managed) return
-    if((this.aliases.get(dst.texture)||1)>1){this.fastWork.add('fastRegionalSharedReject');return}
+    if((this.ledger.aliasesFor(dst.texture)||1)>1){this.fastWork.add('fastRegionalSharedReject');return}
     if(sources.some(s=>s.texture===dst.texture)){this.fastWork.add('fastRegionalFeedbackReject');return}
     if([bounds,dst.rect,...sources.map(s=>s.rect)].some(r=>Object.values(r).some(v=>!Number.isInteger(v)||Math.abs(v)>1048576))){this.fastWork.add('fastRegionalLatticeReject');return}
     const region = intersect(bounds, dst.rect)
@@ -2138,7 +2135,7 @@ export class GpuRenderer {
       this.fastWork.add('fastGradientColorReject')
       return this.paintOver(n,paint,mask,dst,clip,true,false,true)
     }
-    const privateTarget=(this.aliases.get(dst.texture)||1)===1&&[mask,second,field].every(s=>s.texture!==dst.texture)
+    const privateTarget=(this.ledger.aliasesFor(dst.texture)||1)===1&&[mask,second,field].every(s=>s.texture!==dst.texture)
     const plan=privateTarget&&import.meta.env.VITE_DESIGN_REGIONAL_BLEND!=='0'?normalMergeRegion(n.rect,dst.rect):undefined
     if(plan&&!plan.before)return dst
     const allocation=plan?.before||dst.rect
@@ -2182,7 +2179,7 @@ export class GpuRenderer {
     if(this.optimized&&this.driver.managed&&
       (exactNormalRegion || (this.driver.displayMath||import.meta.env.VITE_DESIGN_EXACT_REGIONAL_BLEND==='1'&&
         exactBlendLattice([src.rect,dst.rect,...(mask?[mask.rect]:[])]))&&this.scene.interactionRetained&&!this.scene.coherentSamples)&&
-      (this.aliases.get(dst.texture)||1)===1&&src.texture!==dst.texture&&mask?.texture!==dst.texture&&
+      (this.ledger.aliasesFor(dst.texture)||1)===1&&src.texture!==dst.texture&&mask?.texture!==dst.texture&&
       import.meta.env.VITE_DESIGN_REGIONAL_BLEND!=='0'){
       // Transient placement can be fractional. Align the affected rectangle
       // to the destination's own pixel lattice, retaining a bilinear halo on
@@ -3567,7 +3564,7 @@ export class GpuRenderer {
           }
           // A constant/aliased result of the ordinary span is immutable. Give
           // this batch its own full-size writable destination before replacing.
-          if((this.aliases.get(out.texture)||1)>1||out.texture.uniformColor||out.texture.transparentZero){
+          if((this.ledger.aliasesFor(out.texture)||1)>1||out.texture.uniformColor||out.texture.transparentZero){
             await this.reclaimForSurface(r)
             const copy=this.copy(out,r);this.release(out);out=copy;outputs[outputs.length-1]=out
           }
@@ -4048,7 +4045,7 @@ export class GpuRenderer {
     const retiredImageAssetBytes = this.retiredImageAssets.bytes
     const imageAssetPressure = pressure && retiredImageAssetBytes > 0
     if ((!imageTablePressure && !imageAssetPressure && this.bytes < this.frameBudget * .25) || !this.driver.checkpoint) return
-    for (const [key, surface] of this.constantTargets) if ((this.aliases.get(surface.texture) || 1) === 1) {
+    for (const [key, surface] of this.constantTargets) if ((this.ledger.aliasesFor(surface.texture) || 1) === 1) {
       this.constantTargets.delete(key)
       this.release(surface)
     }
@@ -4314,7 +4311,7 @@ export class GpuRenderer {
    * saving the current band. A missing alias counter is not ownership proof. */
   private privateBandDestination(surface: Surface) {
     const texture = surface.texture
-    return this.aliases.get(texture) === 1 && this.busy.has(texture) && !this.releasedAliases.has(surface) &&
+    return this.ledger.aliasesFor(texture) === 1 && this.busy.has(texture) && !this.ledger.isReleased(surface) &&
       !surface.logicalBounds && !texture.uniformColor && !texture.transparentZero &&
       !texture.binaryCoverage && !texture.scalarCoverage && texture.width === surface.rect.w && texture.height === surface.rect.h &&
       !this.coverage.has(texture) && !this.materialFields.has(texture) && !this.interactionTextures.has(texture) &&
@@ -5267,8 +5264,8 @@ export class GpuRenderer {
     // their original domains. Only current-frame, read-only RGBA8 resources
     // can cross the streaming awaits; target/clip feedback remains forbidden.
     if (clip && (!Array.isArray(clip) || clip.length !== 4 || Array.from(clip).some(surface => {
-      const texture = surface?.texture, references = texture && this.aliases.get(texture)
-      return !texture || !surface.rect || !texture.resource || this.releasedAliases.has(surface) || !this.used.has(texture) ||
+      const texture = surface?.texture, references = texture && this.ledger.aliasesFor(texture)
+      return !texture || !surface.rect || !texture.resource || this.ledger.isReleased(surface) || !this.used.has(texture) ||
         !(this.busy.has(texture) || this.coverage.has(texture)) ||
         references !== undefined && (!Number.isSafeInteger(references) || references < 1) ||
         !!surface.logicalBounds || !!texture.binaryCoverage || !!texture.scalarCoverage || !!texture.uniformColor || !!texture.transparentZero ||
@@ -6134,7 +6131,7 @@ export class GpuRenderer {
       n.fills.length!==1||paint?.kind!=='image'||!paint.visible||!paint.image||paint.blend!=='normal'||
       !Number.isFinite(paint.opacity)||paint.opacity<0||paint.opacity>1||
       n.effects.filter(e=>e.visible).length!==1||!n.effects.some(e=>e.visible&&e.kind==='gaussian-blur'&&!e.gradientBlur)||
-      !this.busy.has(texture)||this.releasedAliases.has(input)||input.logicalBounds||
+      !this.busy.has(texture)||this.ledger.isReleased(input)||input.logicalBounds||
       texture.uniformColor||texture.transparentZero||texture.scalarCoverage||texture.binaryCoverage||
       texture.width!==source.w||texture.height!==source.h||texture.bytes!==source.w*source.h*16||
       !exactBlendLattice([source])||source.w>16384||source.h>16384||source.w*source.h>16_777_216)return
@@ -6868,7 +6865,7 @@ export class GpuRenderer {
     const epoch = this.driver.resourceEpoch
     if (!Number.isFinite(radius) || Math.fround(radius) !== radius || typeof clamp !== 'boolean' ||
         !Number.isSafeInteger(epoch) || epoch! < 1 || !this.privateBandDestination(target) || !this.busy.has(source.texture) ||
-        this.releasedAliases.has(source) || target.texture === source.texture || target.texture.resource === source.texture.resource ||
+        this.ledger.isReleased(source) || target.texture === source.texture || target.texture.resource === source.texture.resource ||
         source.logicalBounds || source.texture.scalarCoverage || source.texture.binaryCoverage || source.texture.uniformColor || source.texture.transparentZero ||
         source.texture.width !== source.rect.w || source.texture.height !== source.rect.h || source.texture.bytes !== source.rect.w * source.rect.h * 16 ||
         !prefixSamplingGeometry(u, radius, true)) throw Error('Invalid display backdrop strip proof')
@@ -6883,11 +6880,11 @@ export class GpuRenderer {
     const surfaces: Surface[] = [], key = `${region.w}:${region.h}`
     try {
       while (surfaces.length < count && this.free.get(key)?.length) {
-        const surface = this.acquire(region, false, false, SurfaceAllocationSite.displayBackdropStripReuse); this.aliases.set(surface.texture, 1); surfaces.push(surface)
+        const surface = this.acquire(region, false, false, SurfaceAllocationSite.displayBackdropStripReuse); this.ledger.ownAlias(surface.texture); surfaces.push(surface)
       }
       await this.reclaimScratch((count - surfaces.length) * region.w * region.h * 16 + PREFIX_SCRATCH_BYTES)
       this.checkFrameCurrent()
-      while (surfaces.length < count) { const surface = this.acquire(region, false, false, SurfaceAllocationSite.displayBackdropStripNew); this.aliases.set(surface.texture, 1); surfaces.push(surface) }
+      while (surfaces.length < count) { const surface = this.acquire(region, false, false, SurfaceAllocationSite.displayBackdropStripNew); this.ledger.ownAlias(surface.texture); surfaces.push(surface) }
       return surfaces
     } catch (error) { this.release(...surfaces); throw error }
   }
@@ -6898,7 +6895,7 @@ export class GpuRenderer {
    */
   private async blurDisplayBackdropBands(input: Surface, sigma: number, node: GpuNode, clampEdges: boolean): Promise<Surface | undefined> {
     const radius = sigma * 2, texture = input.texture
-    if (!this.wideDisplayBackdropEligible(node, radius) || !this.busy.has(texture) || this.releasedAliases.has(input) ||
+    if (!this.wideDisplayBackdropEligible(node, radius) || !this.busy.has(texture) || this.ledger.isReleased(input) ||
         input.logicalBounds || texture.uniformColor || texture.transparentZero || texture.scalarCoverage || texture.binaryCoverage ||
         texture.width !== input.rect.w || texture.height !== input.rect.h || texture.bytes !== texture.width * texture.height * 16) return
     const selected = selectDisplayTentRadius(radius, true), plan = planDisplayBackdropBands(input.rect, selected, clampEdges)
@@ -7032,7 +7029,7 @@ export class GpuRenderer {
         this.scene.softwareRaster || alphaOnly ||
         !(radius > 512 && radius <= 2048) || !Number.isFinite(radius) || typeof clampEdges !== 'boolean' ||
         input.logicalBounds || input.compactMaxAbs || input.imageZeroOverIdentity ||
-        !this.busy.has(texture) || this.releasedAliases.has(input) || !exactBlendLattice([source]) ||
+        !this.busy.has(texture) || this.ledger.isReleased(input) || !exactBlendLattice([source]) ||
         source.w < 1 || source.h < 1 || source.w > 8192 || source.h > 8192 || source.w * source.h > 16777216 ||
         texture.width !== source.w || texture.height !== source.h || texture.bytes !== source.w * source.h * 16 ||
         !this.driver.supportsExactWholeTentSource?.(texture)) return
@@ -7079,7 +7076,7 @@ export class GpuRenderer {
   private async blurLargeExactBands(input: Surface, radius: number, clampEdges: boolean,
     plan: NonNullable<ReturnType<typeof planDisplayBackdropBands>>): Promise<Surface> {
     const scene = this.scene, source = input.texture, original = { ...input.rect }
-    const valid = () => this.scene === scene && this.busy.has(source) && !this.releasedAliases.has(input) &&
+    const valid = () => this.scene === scene && this.busy.has(source) && !this.ledger.isReleased(input) &&
       !input.logicalBounds && !input.compactMaxAbs && !input.imageZeroOverIdentity &&
       input.rect.x === original.x && input.rect.y === original.y && input.rect.w === original.w && input.rect.h === original.h &&
       source.width === original.w && source.height === original.h && source.bytes === original.w * original.h * 16 &&
@@ -8467,8 +8464,7 @@ export class GpuRenderer {
       if(retainedSamples){this.release(...retainedSamples);retainedSamples=undefined}
       for (const surface of this.constantTargets.values()) this.release(surface)
       this.constantTargets.clear()
-      this.aliases.clear()
-      this.releasedAliases = new WeakSet()
+      this.ledger.forgetOwners()
       if (!completed) {
         // An abort may advance the resource-retirement epoch even after
         // discarding an unsubmitted encoder. That never publishes its pixels.
@@ -8539,9 +8535,8 @@ export class GpuRenderer {
     this.textureMath = undefined
     this.replayParameters = undefined
     this.busy.clear()
-    this.aliases.clear()
+    this.ledger.forgetOwners()
     this.constantTargets.clear()
-    this.releasedAliases = new WeakSet()
     this.maskOwners.clear()
     this.bytes = 0
   }

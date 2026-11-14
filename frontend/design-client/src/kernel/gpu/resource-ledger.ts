@@ -50,8 +50,8 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
   /** Bytes destroyed from the completed free pool. Peak stays the high-water
    * mark; this counter is the part of that peak that was spare residency. */
   completedFreeBytes = 0
-  readonly aliases = new Map<Texture, number>()
-  released = new WeakSet<Surface>()
+  private readonly aliases = new Map<Texture, number>()
+  private released = new WeakSet<Surface>()
   readonly poolEpochs = new WeakMap<Texture, number>()
   readonly classes: ByteBreakdown = emptyClasses()
   readonly lifeBytes: LifeBreakdown = emptyLife()
@@ -130,6 +130,11 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
   retain(texture: Texture) {
     this.aliases.set(texture, (this.aliases.get(texture) || 1) + 1)
   }
+
+  aliasesFor(texture: Texture) { return this.aliases.get(texture) }
+  isReleased(surface: Surface) { return this.released.has(surface) }
+  ownAlias(texture: Texture) { this.aliases.set(texture, 1) }
+  forgetAlias(texture: Texture) { this.aliases.delete(texture) }
 
   /** One release of this surface. Alias holders stay out of the pool. The
    * caller still has to prove the texture is busy before recycling it. */

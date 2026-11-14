@@ -10,10 +10,11 @@ test('alias holders stay out of the pool and the last release returns it', () =>
   const first = { texture }, second = { texture }
   ledger.retain(texture)
   expect(ledger.beginRelease(first)).toBe('held')
-  expect(ledger.aliases.size).toBe(1)
+  expect(ledger.aliasesFor(texture)).toBe(1)
+  expect(ledger.isReleased(first)).toBe(true)
   expect(ledger.beginRelease(first)).toBe('skip')
   expect(ledger.beginRelease(second)).toBe('pool')
-  expect(ledger.aliases.size).toBe(0)
+  expect(ledger.aliasesFor(texture)).toBeUndefined()
 })
 
 test('pool return records the encode epoch and completion is a separate life', () => {
@@ -61,7 +62,8 @@ test('device loss forgets owners without pretending the bytes were destroyed', (
   ledger.beginRelease(surface)
   ledger.notePoolReturn(texture, 1)
   ledger.forgetOwners()
-  expect(ledger.aliases.size).toBe(0)
+  expect(ledger.aliasesFor(texture)).toBeUndefined()
+  expect(ledger.isReleased(surface)).toBe(false)
   expect(ledger.beginRelease(surface)).toBe('pool')
   expect(ledger.life({ busy: false, poolEpoch: ledger.poolEpochs.get(texture), completedEpoch: 1 })).toBe('reclaimable')
   expect(ledger.bytes).toBe(8)
