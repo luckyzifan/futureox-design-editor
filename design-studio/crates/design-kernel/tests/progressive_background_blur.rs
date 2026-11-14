@@ -4,6 +4,7 @@ use futureox_design_kernel::{
     Engine, RenderOptions,
 };
 use serde_json::{json, Value};
+use std::io::{Cursor, Read};
 
 fn scene() -> Value {
     json!({
@@ -113,4 +114,62 @@ fn glass_keeps_its_place_ahead_of_progressive_background_blur() {
     let mut hidden = glass_effect;
     hidden.visible = false;
     assert_eq!(selected_backdrop(&[hidden, progressive_effect]).unwrap().kind, "background-blur");
+}
+
+#[test]
+fn sketch_blur_array_keeps_progressive_endpoints_next_to_glass() {
+    let mut document = scene();
+    let progressive = json!({"kind":"background-blur","radius":1,"color":"#000000",
+        "colorControls":{"brightness":0,"contrast":1,"saturation":0.75,"hue":0},
+        "gradientBlur":{"start":[0,16],"end":[64,16],"startCount":0,"endCount":8,"smooth":true}});
+    let glass = json!({"kind":"glass","radius":2,"color":"#000000","glass":{
+        "depth":8,"refraction":0.4,"dispersion":0.2,"lightAngle":45,"lightIntensity":0.5}});
+    for effects in [json!([glass, progressive]), json!([progressive, glass])] {
+        let index = usize::from(effects[0]["kind"] == "glass");
+        document["nodes"]["lens"]["effects"] = effects;
+        let model = serde_json::from_value(document.clone()).unwrap();
+        let bytes = futureox_design_kernel::interop::export_sketch(&model).unwrap();
+        let mut zip = zip::ZipArchive::new(Cursor::new(&bytes)).unwrap();
+        let page = (0..zip.len())
+            .find_map(|i| {
+                let mut entry = zip.by_index(i).unwrap();
+                if !entry.name().unwrap().starts_with("pages/") {
+                    return None;
+                }
+                let mut bytes = Vec::new();
+                entry.read_to_end(&mut bytes).unwrap();
+                Some(serde_json::from_slice::<Value>(&bytes).unwrap())
+            })
+            .unwrap();
+        let layer = page["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|layer| layer["userInfo"]["com.futureox.design-kernel"]["originalId"] == "lens")
+            .unwrap();
+        let style = &layer["style"];
+        let blurs = style["blurs"].as_array().unwrap();
+        assert_eq!(blurs.len(), 2);
+        assert_eq!(blurs[1 - index]["type"], 4);
+        let blur = &blurs[index];
+        assert_eq!(blur["type"], 3);
+        assert_eq!(blur["progressive"], true);
+        assert_eq!(blur["radius"].as_f64(), Some(8.));
+        assert_eq!(blur["saturation"], 0.75);
+        let gradient = &blur["gradient"];
+        assert_eq!(gradient["from"], "{0, 0.5}");
+        assert_eq!(gradient["to"], "{1, 0.5}");
+        assert_eq!(gradient["stops"][0]["color"]["alpha"], 0.);
+        assert_eq!(gradient["stops"][1]["color"]["alpha"], 1.);
+        assert_eq!(style["blur"]["type"], blurs[0]["type"]);
+        let lossy = &layer["userInfo"]["com.futureox.design-kernel"]["lossy"];
+        assert!(!lossy.as_array().is_some_and(|notes| {
+            notes.iter().any(|note| note == "effect-background-blur-omitted")
+        }));
+        let reopened = futureox_design_kernel::interop::import_sketch(&bytes).unwrap();
+        assert_eq!(
+            reopened.nodes["lens"].effects[index].gradient_blur,
+            model.nodes["lens"].effects[index].gradient_blur,
+        );
+    }
 }
