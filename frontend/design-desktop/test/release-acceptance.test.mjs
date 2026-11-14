@@ -865,6 +865,53 @@ test('a release package inventory is read from package bytes, not from the lockf
   }
 })
 
+test('QuickJS WASM attribution uses lock-verified bytes without installed JS dependencies', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'fx-offline-wasm-inventory-'))
+  try {
+    const repoRoot = path.resolve(import.meta.dirname, '../../..')
+    const repoFile = name => path.join(repoRoot, name)
+    const licensesDir = 'frontend/design-client/public/licenses'
+    const inventoryPath = path.join(licensesDir, 'inventory.json')
+    const packageName = '@jitl/quickjs-wasmfile-release-sync'
+    const sourceNotice = JSON.parse(await readFile(repoFile(inventoryPath), 'utf8'))
+      .packages.find(item => item.package === packageName)
+    assert.ok(sourceNotice)
+    const line = (await readFile(repoFile('frontend/design-client/bun.lock'), 'utf8')).split('\n')
+      .find(line => line.trimStart().startsWith(JSON.stringify(packageName) + ':'))
+    const integrity = line?.match(/"(sha512-[^"]+)"/)?.[1]
+    assert.ok(integrity)
+    const wasm = await readFile(repoFile(`frontend/design-client/node_modules/${packageName}/dist/emscripten-module.wasm`))
+    const notice = await readFile(repoFile(path.join(licensesDir, sourceNotice.file)))
+    const changed = Buffer.from(wasm)
+    changed[changed.length - 1] ^= 0xff
+    const bundle = path.join(root, 'futureox-desgin-linux-x64')
+    await mkdir(path.join(bundle, 'resources'), { recursive: true })
+    await mkdir(path.join(root, licensesDir), { recursive: true })
+    await writeFile(path.join(bundle, 'version'), '44.7.0\n')
+    await writeFile(path.join(root, inventoryPath), JSON.stringify({ packages: [sourceNotice] }))
+    await writeFile(path.join(bundle, 'resources/app.asar'), asarFromFiles([
+      { path: `renderer/licenses/${sourceNotice.file}`, bytes: notice },
+      { path: 'renderer/assets/emscripten-module-Valid.wasm', bytes: wasm },
+      { path: 'renderer/assets/emscripten-module-Stale.wasm', bytes: changed },
+    ]))
+    const report = (lockedIntegrity = integrity) => inventoryFromPackageBytes({
+      root, layout: electronPackageLayout(bundle), openAsar, rust: { crates: [] },
+      javascript: { distributed: [{ package: packageName, version: sourceNotice.version, integrity: lockedIntegrity }], developmentOnly: [] },
+    }).components.filter(item => item.kind === 'wasm')
+    const files = report()
+    const [valid, stale] = ['Valid', 'Stale'].map(name => files.find(item => item.packagePath.includes(`-${name}.wasm`)))
+    assert.equal(valid.name, packageName)
+    assert.equal(valid.traceable, true)
+    assert.match(valid.source, /package\/dist\/emscripten-module\.wasm$/)
+    assert.equal(stale.traceable, false)
+    assert.equal(stale.gap, 'wasm_source_unidentified')
+    assert.equal(report('sha512-changed').filter(item => item.traceable).length, 0)
+    assert.equal(existsSync(path.join(root, 'frontend/design-client/node_modules')), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('component inventory lists bundle JS and WASM without calling them a closed SBOM', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'fx-release-inventory-'))
   try {
