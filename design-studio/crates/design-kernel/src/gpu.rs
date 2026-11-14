@@ -1984,7 +1984,7 @@ impl Compiler<'_> {
                 source_filter_field,
                 gaussian_region:reduced.map(|(plan,_)|plan).or(full_gaussian),
                 opaque_coverage,
-                shadow_paint_alpha: n.effects.iter().any(|effect| effect.visible && effect.shadow_knockout)
+                shadow_paint_alpha: n.effects.iter().any(|effect| effect.visible && n.knock_out_outer_shadow(effect))
                     .then(|| n.shadow_paint_alpha()).filter(|alpha| *alpha < 1.),
                 passthrough: n.passes_backdrop(),
                 backdrop_box: crate::coverage::backdrop_box(
@@ -2063,6 +2063,9 @@ impl Compiler<'_> {
                     })
                     .cloned()
                     .map(|mut e| {
+                        // The compiled shadow carries the painter operation;
+                        // the authored effect keeps its Sketch roundtrip data.
+                        e.shadow_knockout = n.knock_out_outer_shadow(&e);
                         // Normalize only the layer-blur activation here, before
                         // native/WebGPU/WebGL2 consume the shared scene contract.
                         if e.kind == "blur"

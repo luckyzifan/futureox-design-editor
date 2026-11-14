@@ -4303,8 +4303,9 @@ impl Painter<'_> {
                 }
             } else if fx.kind == "shadow" || fx.kind == "inner-shadow" {
                 let inner = fx.kind == "inner-shadow";
-                let paint_alpha = if fx.shadow_knockout { n.shadow_paint_alpha() } else { 1. };
-                let alpha = if fx.shadow_knockout && paint_alpha < 1. {
+                let knock_out = n.knock_out_outer_shadow(fx);
+                let paint_alpha = if knock_out { n.shadow_paint_alpha() } else { 1. };
+                let alpha = if paint_alpha < 1. {
                     effects::sketch_shadow_alpha(&resolved, fx.radius * scale / 2., fx.spread * scale, paint_alpha)?
                 } else {
                     self.shadow_mask(&resolved, fx.blur_radius() * scale, fx.spread * scale, inner)?
@@ -4350,7 +4351,7 @@ impl Painter<'_> {
                             inner,
                         )?
                     };
-                    if fx.shadow_knockout {
+                    if knock_out {
                         effects::knock_out_shadow(&mut shadow, &shadow_basis[i], paint_alpha);
                     }
                     if self.compatible {
@@ -4999,8 +5000,9 @@ impl Painter<'_> {
                         shadow_basis = Some(layer.try_clone()?);
                     }
                     let basis = shadow_basis.as_ref().unwrap_or(&layer);
-                    let paint_alpha = if fx.shadow_knockout { n.shadow_paint_alpha() } else { 1. };
-                    let mut shadow = if fx.shadow_knockout && paint_alpha < 1. {
+                    let knock_out = n.knock_out_outer_shadow(fx);
+                    let paint_alpha = if knock_out { n.shadow_paint_alpha() } else { 1. };
+                    let mut shadow = if paint_alpha < 1. {
                         let alpha = effects::sketch_shadow_alpha(basis, fx.radius * scale / 2., fx.spread * scale, paint_alpha)?;
                         let color = crate::color::pixel(self.doc.color_management, &fx.color, fx.opacity as f32)?;
                         effects::color_shadow_linear(basis, &alpha, color, offset.x, offset.y, false)?
@@ -5041,7 +5043,7 @@ impl Painter<'_> {
                             fx.kind == "inner-shadow",
                         )?
                     };
-                    if fx.shadow_knockout {
+                    if knock_out {
                         effects::knock_out_shadow(&mut shadow, basis, paint_alpha);
                     }
                     if self.compatible {

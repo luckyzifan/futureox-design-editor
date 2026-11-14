@@ -292,8 +292,9 @@ fn write_text_operators(
             let _ = writeln!(pdf.content, "{name} {} Tf", num(glyph.size)?);
             let _ = writeln!(
                 pdf.content,
-                "{} 0 0 -1 {} {} Tm <{:04x}> Tj",
+                "{} 0 0 {} {} {} Tm <{:04x}> Tj",
                 num(glyph.width_scale)?,
+                num(-glyph.height_scale)?,
                 num(glyph.x)?,
                 num(glyph.y)?,
                 glyph.id

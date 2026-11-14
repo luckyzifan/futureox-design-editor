@@ -700,6 +700,39 @@ test('nested motion retains native Retina density and sends live GPU poses witho
   expect(worker.jobs).toHaveLength(1)
 })
 
+test('overview bitmap drags use native poses and keep their last frame through exact page repair', async () => {
+  const document = blank(), frame = node('frame', 0, 0, 2000, 1000), bitmap = node('rectangle', 50, 30, 1200, 700)
+  frame.clip = true
+  frame.children = [bitmap.id]
+  bitmap.fills = [{ ...bitmap.fills[0], kind: 'image' }]
+  document.nodes[frame.id] = frame
+  document.nodes[bitmap.id] = bitmap
+  const pageId = document.pages[0].id
+  document.pages[0].children = [frame.id]
+  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared)
+  owners.push(owner)
+  const view = { x: 0, y: 0, zoom: .23 }, size = { width: 740, height: 560 }
+  const props: InteractionProps = { document, selection: [bitmap.id], active: true, gestureKind: 'move',
+    epoch: 1, control: { current: null }, onReady() {} }
+  owner.prepare(props, pageId, view, 2, 'analytic', 'webgpu', document, size)
+  expect(worker.jobs[0].options).toMatchObject({ interactionNative: true, view: { zoom: .46 } })
+  worker.jobs[0].resolve({ gpuTile: 105, residentInteraction: true })
+  await vi.waitFor(() => expect(owner.ready).toBe(true))
+  const transform: typeof bitmap.transform = [1, 0, 0, 1, 55.25, 30]
+  owner.control.apply(document, { [bitmap.id]: { transform } })
+  expect(worker.poses).toHaveLength(1)
+  owner.acceptResidentSample({ slot: 105, sequence: 1, at: 1, nativePose: true })
+  const committed = { ...document, nodes: { ...document.nodes, [bitmap.id]: { ...bitmap, transform } } }
+  owner.control.end(committed)
+  expect(worker.poses).toHaveLength(1)
+  expect(worker.stops).toContain(105)
+  expect(owner.items(view)?.[0].tile.gpuTile).toBe(105)
+  owner.prepare({ ...props, active: false, document: committed }, pageId, view, 2, 'analytic', 'webgpu', committed, size)
+  expect(owner.items(view)).toBeNull()
+  owner.dispose()
+  shared.dispose()
+})
+
 test('nested pointer feedback uses world displacement through a rotated scaled parent', () => {
   const doc = blank(), root = node('frame', 200, 200, 200, 200), child = node('rectangle', 30, 40, 20, 20)
   root.transform = [0, 2, -2, 0, 200, 200]; root.children = [child.id]; root.blend = 'normal'
