@@ -2401,7 +2401,11 @@ impl<'a> Importer<'a> {
                 if node.text_runs.iter().any(|run| {
                     run.paragraph.as_ref().and_then(crate::font::TextParagraph::fixed_line_height).is_some()
                 }) {
-                    style.line_box_baseline = "nearest-point".into();
+                    style.line_box_baseline = if matches!(raw_spacing_behaviour, Some(0 | 1)) {
+                        "sketch-font-leading".into()
+                    } else {
+                        "nearest-point".into()
+                    };
                 }
                 node.text_style = Some((style).into());
                 let parsed_style_font = node.text_style.as_ref().map(|style| style.font_id.clone());
@@ -2467,6 +2471,7 @@ impl<'a> Importer<'a> {
                 {
                     style.line_height_auto = true;
                 }
+                restore_legacy_sketch_line_box(&mut node, None);
             }
             "bitmap" => {
                 node.bindings.insert("sketchSourceBitmap".into(), "true".into());
@@ -7255,7 +7260,9 @@ fn export_layer_impl(
                     .get("sketchLineSpacingBehaviour")
                     .and_then(|s| s.parse::<i64>().ok())
                     .unwrap_or(
-                        if style.is_some_and(|s| {
+                        if style.is_some_and(|s| s.line_box_baseline == "sketch-font-leading") {
+                            1
+                        } else if style.is_some_and(|s| {
                             s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9
                         }) {
                             3
@@ -7534,9 +7541,10 @@ fn export_layer_impl(
                 serde_json::to_value(&inst.property_values).unwrap_or(Value::Null),
             );
         }
-        // Layout grid appearance (color/opacity) has no archived Sketch home;
-        // the full authored payload keeps kernel round-trips lossless.
-        if let Some(grid) = &n.layout_grid {
+        // Sketch symbol instances get their grids from the master. The
+        // editor's resolved frame also carries a grid, which the Sketch
+        // instance cannot own. The master preserves the original appearance.
+        if let Some(grid) = &n.layout_grid && n.instance.is_none() {
             user_info.insert(
                 "layoutGrid".into(),
                 serde_json::to_value(grid).unwrap_or(Value::Null),
@@ -7613,6 +7621,20 @@ fn adaptable_apply_shared_style(object: &mut Value, fidelity: &Value) {
 /// the raw entry kept at import.
 pub(crate) fn sketch_binding<'a>(doc: &'a Document, node: &'a Node, key: &str) -> Option<&'a str> {
     node.bindings.get(key).map(String::as_str).or_else(||doc.design_system.as_ref()?.sketch_containers.get("nodeMetadata")?.get(&node.id)?.get("bindings")?.get(key)?.as_str())
+}
+
+/// Older FD files stored the Sketch spacing code in format metadata but
+/// rendered all fixed boxes using the generic nearest-point fallback.
+pub(crate) fn restore_legacy_sketch_line_box(node: &mut Node, metadata: Option<&Value>) {
+    let Some(style) = node.text_style.as_mut().filter(|style| style.line_box_baseline == "nearest-point") else {
+        return;
+    };
+    let spacing = node.bindings.get("sketchLineSpacingBehaviour").map(String::as_str).or_else(|| {
+        metadata?.get(&node.id)?.get("bindings")?.get("sketchLineSpacingBehaviour")?.as_str()
+    });
+    if matches!(spacing, Some("0" | "1")) {
+        style.line_box_baseline = "sketch-font-leading".into();
+    }
 }
 fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<Vec<Value>> {
     let mut out = Vec::new();
@@ -8739,6 +8761,16 @@ mod tests {
                     .all(|n| n.children.len() <= 64)
             );
             let bytes = export_sketch(&document).unwrap();
+            let mut editor_document = document.clone();
+            crate::curve_boolean::resolve(&mut editor_document).unwrap();
+            assert_eq!(export_sketch(&editor_document).unwrap(), bytes);
+            let helper = editor_document.nodes["n"].children.iter().find(|id| {
+                editor_document.nodes[*id].boolean_operation.is_some()
+            }).unwrap().clone();
+            let cached = editor_document.nodes.get_mut(&helper).unwrap().network.as_mut().unwrap();
+            let cached = std::sync::Arc::make_mut(cached);
+            cached.fill_rule = if cached.fill_rule == "nonzero" { "evenodd" } else { "nonzero" }.into();
+            assert!(export_sketch(&editor_document).is_err());
             let parts = crate::sketch::archive::read(&bytes).unwrap();
             let page: Value = serde_json::from_slice(
                 parts
@@ -10316,6 +10348,35 @@ mod tests {
             Some(&json!(true)),
             "instance property values travel through userInfo"
         );
+    }
+
+    #[test]
+    fn export_resolved_symbol_keeps_grid_on_the_master() {
+        let mut doc = sample_document();
+        doc.schema_version = 12;
+        let mut master = crate::facet::sample_node("master", "frame");
+        master.component = Some(Default::default());
+        master.layout_grid = Some(serde_json::from_value(json!({
+            "axis":"uniform", "count":1, "gutter":0, "margin":0,
+            "color":"#ff0000", "opacity":0.25, "visible":true
+        })).unwrap());
+        let mut instance = master.clone();
+        instance.id = "instance".into();
+        instance.component = None;
+        instance.instance = Some(crate::components::Instance {
+            component_id: master.id.clone(),
+            slot_contents: Default::default(),
+            overrides: Default::default(),
+            property_values: Default::default(),
+        }.into());
+        doc.pages[0].children.extend([master.id.clone(), instance.id.clone()]);
+        doc.nodes.insert(master.id.clone(), master);
+        doc.nodes.insert(instance.id.clone(), instance);
+
+        let reopened = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
+        assert_eq!(reopened.nodes["master"].layout_grid, doc.nodes["master"].layout_grid);
+        assert!(reopened.nodes["instance"].layout_grid.is_none());
+        assert_eq!(reopened.nodes["instance"].instance.as_ref().unwrap().component_id, "master");
     }
 
     #[test]

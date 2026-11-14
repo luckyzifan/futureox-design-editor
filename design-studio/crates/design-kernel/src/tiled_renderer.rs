@@ -19,8 +19,10 @@ pub const GPU_OVERLAY: bool = false;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RenderFeatureFlags {
     /// `rasterizeConcurrently` — tile rasterisation may run on worker
-    /// threads. Off by default: single-threaded hosts (wasm) keep the
-    /// calling-thread path; native desktops opt in.
+    /// threads. Off on `TiledRenderer::default`, so wasm stays on the calling
+    /// thread. Native `Engine` frame entry points turn it on when the flags
+    /// are still that default. A running batch still stops when the caller's
+    /// probe fires; tiles that already returned stay resident.
     pub rasterize_concurrently: bool,
     /// `singleThreadedContentRendering` — force the calling thread even when
     /// concurrent rasterisation is enabled (diagnostics, byte-for-byte
@@ -423,6 +425,9 @@ pub fn level_index_for_scale(scale: f64) -> usize {
 /// [`TileRasterSource`] for actual pixel work.
 pub struct TiledRenderer {
     levels: Vec<Option<TileMipLevel>>,
+    // An interrupted update may leave valid tiles before publishing the
+    // completed instruction. This records which domain owns those tiles.
+    tile_domain: Option<RenderInstruction>,
     rendered_instruction: Option<RenderInstruction>,
     composited_instruction: Option<RenderInstruction>,
     previous_level: Option<usize>,
@@ -430,6 +435,7 @@ pub struct TiledRenderer {
     force_sync_first_frame: bool,
     rasterisation_in_progress: bool,
     flags: RenderFeatureFlags,
+    flags_explicit: bool,
     telemetry: RenderingTelemetry,
     surfaces: RasterSurfacePool,
     caches: CacheManager,
@@ -442,7 +448,9 @@ pub struct TiledRenderer {
 
 impl Default for TiledRenderer {
     fn default() -> Self {
-        TiledRenderer::new(RenderFeatureFlags::default())
+        let mut renderer = TiledRenderer::new(RenderFeatureFlags::default());
+        renderer.flags_explicit = false;
+        renderer
     }
 }
 
@@ -450,6 +458,7 @@ impl TiledRenderer {
     pub fn new(flags: RenderFeatureFlags) -> Self {
         TiledRenderer {
             levels: Vec::new(),
+            tile_domain: None,
             rendered_instruction: None,
             composited_instruction: None,
             previous_level: None,
@@ -457,6 +466,7 @@ impl TiledRenderer {
             force_sync_first_frame: true,
             rasterisation_in_progress: false,
             flags,
+            flags_explicit: true,
             telemetry: RenderingTelemetry::new(32),
             surfaces: RasterSurfacePool::default(),
             caches: CacheManager::default(),
@@ -477,6 +487,17 @@ impl TiledRenderer {
 
     pub fn set_flags(&mut self, flags: RenderFeatureFlags) {
         self.flags = flags;
+        self.flags_explicit = true;
+    }
+
+    /// Native frames share one tile batch across cores. Wasm and an explicit
+    /// single-thread or already-configured renderer stay as they were.
+    pub fn enable_native_parallelism(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if !self.flags_explicit && !self.flags.rasterize_concurrently {
+            self.flags.rasterize_concurrently = true;
+            self.flags.worker_limit = Some(default_worker_limit().min(4));
+        }
     }
 
     pub fn telemetry(&self) -> &RenderingTelemetry {
@@ -572,6 +593,15 @@ impl TiledRenderer {
                 instruction.content_revision
             ));
         }
+        crate::render_cancellation::checkpoint()?;
+        if !self.tile_domain.as_ref().is_some_and(|domain| domain.shares_tile_domain(instruction)) {
+            // Revision/damage can authorize reuse within one domain only.
+            // A page or raster option change can alter every byte at a fixed
+            // revision, including tiles left by a cancelled update.
+            self.remove_all_tiles_and_clear_dirty_regions();
+            self.tile_domain = Some(instruction.clone());
+        }
+        self.last_committed.clear();
         let traits = self
             .rendered_instruction
             .as_ref()
@@ -619,7 +649,6 @@ impl TiledRenderer {
                 instruction.content_revision,
             )?
         };
-        self.last_committed.clear();
         let mut addresses = Vec::with_capacity(queued.len());
         for address in queued {
             match self
@@ -735,8 +764,10 @@ impl TiledRenderer {
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let tiles = self.rasterise_parallel(source, requests)?;
-            self.note_rasterised(level_index, revision, tiles)
+            match self.rasterise_parallel(source, level_index, revision, requests)? {
+                Some(tiles) => self.note_rasterised(level_index, revision, tiles),
+                None => Ok(()),
+            }
         }
         #[cfg(target_arch = "wasm32")]
         {
@@ -775,20 +806,26 @@ impl TiledRenderer {
         Ok(())
     }
 
-    /// Bounded worker-pool rasterisation: workers pull tile indices from an
-    /// atomic cursor, results land in pre-slotted positions, and the return
-    /// order is the request order whatever the scheduling. Telemetry records
-    /// one span per tile with its pixel count; spans are booked after the
-    /// scope joins (workers cannot share the non-`Sync` telemetry), so
-    /// parallel durations are not wall-accurate — counts are exact.
+    /// Bounded worker-pool rasterisation. `Ok(None)` means the source could
+    /// not share workers and this thread already drew the tiles.
+    /// `Ok(Some)` is every tile, in request order, not yet committed.
+    ///
+    /// The calling thread owns the cancellation probe. Workers do not, so
+    /// this loop publishes a shared flag when the probe fires and stops
+    /// before the next tile. Tiles that already returned stay committed;
+    /// the batch itself is not a completed instruction. Telemetry spans are
+    /// booked after the join, so parallel durations are not wall-accurate.
     #[cfg(not(target_arch = "wasm32"))]
     fn rasterise_parallel(
         &mut self,
         source: &mut dyn TileRasterSource,
+        level_index: usize,
+        revision: u64,
         requests: Vec<TileRequest>,
-    ) -> Result<RasterisedTiles, String> {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::Mutex;
+    ) -> Result<Option<RasterisedTiles>, String> {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::{Arc, Condvar, Mutex};
+        use std::time::Duration;
         /// One worker's slot in the parallel rasterisation result vector.
         type RasterSlot = Option<Result<Vec<u8>, String>>;
         let worker_count = self
@@ -797,24 +834,48 @@ impl TiledRenderer {
             .unwrap_or_else(default_worker_limit)
             .max(1)
             .min(requests.len());
-        let workers: Vec<Box<dyn TileRasterizer + Send>> = (0..worker_count)
-            .map(|_| source.spawn_worker())
-            .collect::<Option<Vec<_>>>()
-            .ok_or("Raster source cannot spawn parallel workers")?;
+        let mut workers = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            crate::render_cancellation::checkpoint()?;
+            match source.spawn_worker() {
+                Some(worker) => workers.push(worker),
+                None => {
+                    drop(workers);
+                    self.rasterise_sequential(source, level_index, revision, requests)?;
+                    return Ok(None);
+                }
+            }
+        }
         let next = AtomicUsize::new(0);
         let slots: Mutex<Vec<RasterSlot>> = Mutex::new((0..requests.len()).map(|_| None).collect());
         let telemetry_pixels: Vec<u64> = requests.iter().map(|r| r.pixel_count).collect();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let arrived = Arc::new((Mutex::new(0usize), Condvar::new()));
+        struct Arrival<'a>(&'a (Mutex<usize>, Condvar));
+        impl Drop for Arrival<'_> {
+            fn drop(&mut self) {
+                let (lock, cvar) = self.0;
+                if let Ok(mut count) = lock.lock() {
+                    *count += 1;
+                    cvar.notify_one();
+                }
+            }
+        }
         std::thread::scope(|scope| {
             for mut worker in workers {
                 let next = &next;
                 let slots = &slots;
                 let requests = &requests;
+                let cancel = Arc::clone(&cancel);
+                let arrived = Arc::clone(&arrived);
                 scope.spawn(move || {
+                    let _arrived = Arrival(&arrived);
+                    let _guard = crate::render_cancellation::SharedCancelGuard::bind(Arc::clone(&cancel));
                     loop {
+                        if cancel.load(Ordering::Acquire) { break; }
                         let index = next.fetch_add(1, Ordering::Relaxed);
-                        if index >= requests.len() {
-                            break;
-                        }
+                        if index >= requests.len() { break; }
+                        if cancel.load(Ordering::Acquire) { break; }
                         let outcome = worker.rasterize_tile(&requests[index]);
                         if let Ok(mut guard) = slots.lock() {
                             guard[index] = Some(outcome);
@@ -822,19 +883,48 @@ impl TiledRenderer {
                     }
                 });
             }
+            let (lock, cvar) = &*arrived;
+            loop {
+                if crate::render_cancellation::checkpoint().is_err() {
+                    cancel.store(true, Ordering::Release);
+                }
+                let guard = lock.lock().expect("worker arrival lock");
+                if *guard == worker_count { break; }
+                let (guard, _) = cvar.wait_timeout(guard, Duration::from_millis(2)).expect("worker arrival wait");
+                drop(guard);
+            }
         });
         let results = slots.into_inner().expect("scope joined all lock guards");
-        let mut tiles = Vec::with_capacity(requests.len());
+        let cancelled = cancel.load(Ordering::Acquire);
+        let mut tiles = Vec::new();
+        let mut real_error: Option<String> = None;
+        let mut stopped = cancelled;
         for (index, result) in results.into_iter().enumerate() {
-            let bytes = result.unwrap_or_else(|| {
-                Err("Parallel rasterisation ended with an unanswered tile".into())
-            })?;
-            self.telemetry
-                .begin_rasterisation_with_pixel_count(telemetry_pixels[index]);
-            self.telemetry.end_rasterisation();
-            tiles.push((requests[index].address, bytes));
+            match result {
+                Some(Ok(bytes)) => {
+                    self.telemetry.begin_rasterisation_with_pixel_count(telemetry_pixels[index]);
+                    self.telemetry.end_rasterisation();
+                    tiles.push((requests[index].address, bytes));
+                }
+                Some(Err(error)) if error == "PREVIEW_CANCELLED" => stopped = true,
+                Some(Err(error)) => { if real_error.is_none() { real_error = Some(error); } }
+                None if cancelled => stopped = true,
+                None => {
+                    if real_error.is_none() {
+                        real_error = Some("Parallel rasterisation ended with an unanswered tile".into());
+                    }
+                }
+            }
         }
-        Ok(tiles)
+        if let Some(error) = real_error {
+            if !tiles.is_empty() { self.note_rasterised(level_index, revision, tiles)?; }
+            return Err(error);
+        }
+        if stopped {
+            if !tiles.is_empty() { self.note_rasterised(level_index, revision, tiles)?; }
+            return Err("PREVIEW_CANCELLED".into());
+        }
+        Ok(Some(tiles))
     }
 
     fn commit_rasterised(
@@ -953,6 +1043,13 @@ impl TiledRenderer {
                 level.remove_all_tiles_and_clear_dirty_region();
             }
         }
+        self.caches.clear();
+        self.tile_domain = None;
+        self.rendered_instruction = None;
+        self.composited_instruction = None;
+        self.last_level = None;
+        self.previous_level = None;
+        self.last_committed.clear();
     }
 
     /// Bytes currently held across all levels (diagnostics for hosts sizing

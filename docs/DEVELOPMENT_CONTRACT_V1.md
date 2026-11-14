@@ -210,7 +210,18 @@ Schema 21 adds optional per-run `letterSpacing` (design pixels) and `lineHeight`
 
 源文件容量与全源单画板的当前实现及未完成边界见[全源单画布容量契约](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)。内部工作粒度与可回收缓存不能作为源文档总量配额；此授权不改变精度、所有权、实际设备能力或验收证据要求。
 
+Fixed text boxes imported from Sketch spacing modes 0 and 1 use the effective
+font ascender for the baseline and include font leading in the authored line
+advance. The receiving text layer owns this policy when linked to a shared
+style. Earlier FD records recover the policy from their Sketch spacing code.
+
 ## Bounded native-source preparation pipeline
+
+Native CPU tiles share a bounded worker batch and keep completed tiles when a
+new request cancels the current frame. The caller still owns the completion
+fence. Page, raster options, color space and the sampled animation pose bound
+tile residency, including partial results. Explicit sequential mode stays
+sequential.
 
 NativeSourceSurface submits at most two tiles per batch, retaining one source raster request and the existing single speculative PrepareAhead job. Each completed tile may present immediately; cancellation considers unfinished tiles, and late/duplicate replies cannot replace the current owner or retire live textures. Sampling, effects, HDR/export, resource budgets and physical completion fences are unchanged.
 
@@ -219,6 +230,11 @@ NativeSourceSurface submits at most two tiles per batch, retaining one source ra
 ## Native source demand compilation increment
 
 Native source demand compilation creates private resolved render projections at the existing native compile entry. Selected records retain derived paths and IDs without another layout pass. Stripped authoring metadata and font declarations must never be saved, exported, edited or treated as document replacement; actual font resources remain in the compiler resource owner. Full source data remains resident for compatibility and unsupported operations.
+
+The complete source compiler and its resolved projection consume the same
+Sketch bitmap and backdrop provenance for demanded nodes. The projection
+retains only the render flags, while raw archive metadata stays with the
+complete source.
 
 A compiler candidate differs from general authored dependency acquisition. Only the reviewed legacy subpixel canvas contract closes producers against the actual scene extent before encoding transfer IDs. Stage-bound contributors do not automatically request an entire painter prefix. One extent replan is permitted; unresolved scopes fall back to full compilation. Preserve exact global margins/predicates and a monotonic wire-resource owner through projection changes, fallback, cancellation and mutation. New policies default to the complete path until reviewed.
 

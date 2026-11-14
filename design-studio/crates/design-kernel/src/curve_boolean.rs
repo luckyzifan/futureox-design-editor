@@ -311,18 +311,26 @@ thread_local! {
 }
 pub fn resolve(doc: &mut Document) -> Result<(), String> {resolve_roots(doc,None)}
 pub(crate) fn resolve_roots(doc:&mut Document,roots:Option<&std::collections::BTreeSet<String>>)->Result<(),String>{
+    let roots: Vec<_> = doc.pages.iter().flat_map(|page| page.children.iter())
+        .filter(|id| roots.is_none_or(|roots| roots.contains(*id))).cloned().collect();
+    resolve_subtrees(doc, roots)
+}
+
+pub(crate) fn resolve_subtrees(doc: &mut Document, roots: Vec<String>) -> Result<(), String> {
     RESOLUTION_MEMO.with(|memo| resolve_with_cache(doc, &mut memo.borrow_mut(), true, roots))
 }
 #[cfg(test)]
 fn resolve_cached(doc: &mut Document, memoize: bool) -> Result<(), String> {
-    resolve_with_cache(doc, &mut crate::curve_boolean_cache::Cache::default(), memoize, None)
+    let roots = doc.pages.iter().flat_map(|page| page.children.iter().cloned()).collect();
+    resolve_with_cache(doc, &mut crate::curve_boolean_cache::Cache::default(), memoize, roots)
 }
-fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool, selected:Option<&std::collections::BTreeSet<String>>) -> Result<(), String> {
+fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool, roots: Vec<String>) -> Result<(), String> {
     fn visit(doc: &mut Document, id: &str, depth: usize, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool) -> Result<(), String> {
         if depth > 64 {
             return Err("Boolean depth exceeded".into());
         }
-        let children = doc.nodes[id].children.clone();
+        let children = doc.nodes.get(id).ok_or_else(|| format!("Missing boolean subtree node {id}"))?
+            .children.clone();
         for child in &children {
             visit(doc, child, depth + 1, cache, memoize)?;
         }
@@ -406,9 +414,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
         }
         Ok(())
     }
-    let roots: Vec<_> = doc.pages.iter().flat_map(|p| p.children.clone()).collect();
     for id in roots {
-        if selected.is_some_and(|roots|!roots.contains(&id)){continue;}
         visit(doc, &id, 0, cache, memoize)?;
     }
     Ok(())

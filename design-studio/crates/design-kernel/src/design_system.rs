@@ -679,12 +679,15 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
 pub(crate) fn resolve_authored(doc: &mut Document) -> Result<(), String> {
     validate(doc)?;
     let contexts = node_mode_contexts(doc)?;
+    let sketch_metadata = doc.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get("nodeMetadata"));
     let mut boolean_resizes = Vec::new();
     for n in doc
         .nodes
         .values_mut()
         .filter(|n| n.instance_origin.is_none())
     {
+        crate::interop::restore_legacy_sketch_line_box(n, sketch_metadata);
         let old_size = (n.width, n.height);
         let modes = &contexts[&n.id].effective;
         let placement = n.instance.is_some();

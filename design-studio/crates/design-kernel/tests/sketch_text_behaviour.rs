@@ -141,6 +141,49 @@ fn explicit_and_trailing_newlines_survive_all_modes_and_round_trip() {
 }
 
 #[test]
+fn legacy_fixed_spacing_survives_shared_style_and_fd_round_trip() {
+    let raw = source(Some(2), "One line\nSecond line", 200.);
+    let mut files = interop::read_zip_public(&raw).unwrap();
+    let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
+    let layer = &mut page["layers"][0];
+    layer["lineSpacingBehaviour"] = json!(1);
+    layer["attributedString"]["attributes"][0]["attributes"]["paragraphStyle"] =
+        json!({"minimumLineHeight":24.5,"maximumLineHeight":24.5});
+    files.insert("pages/p.json".into(), serde_json::to_vec(&page).unwrap());
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, bytes) in files {
+        zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(&bytes).unwrap();
+    }
+    let mut imported = interop::import_sketch_report(&zip.finish().unwrap().into_inner()).unwrap().document;
+    let style = imported.nodes["caption"].text_style.as_ref().unwrap();
+    assert_eq!(style.line_box_baseline, "sketch-font-leading");
+    let system = imported.design_system.as_mut().unwrap();
+    system.styles.insert("shared".into(), serde_json::from_value(json!({
+        "name":"Shared","kind":"text","value":{"wrap":false}
+    })).unwrap());
+    system.sketch_containers.insert("sharedStyleFidelity".into(), json!({"shared":{}}));
+    let node = imported.nodes.get_mut("caption").unwrap();
+    node.style_refs.insert("textStyle".into(), "shared".into());
+    // Simulate an FD saved before the spacing behavior was materialized.
+    node.text_style.as_mut().unwrap().line_box_baseline = "nearest-point".into();
+    let before = serde_json::to_value(&imported).unwrap();
+    let encoded = futureox_design_kernel::binfmt::encode_value(&before).unwrap();
+    let mut reopened: Document = serde_json::from_value(futureox_design_kernel::binfmt::decode_value(&encoded).unwrap()).unwrap();
+    futureox_design_kernel::design_system::resolve(&mut reopened).unwrap();
+    let node = &reopened.nodes["caption"];
+    assert_eq!(node.text_style.as_ref().unwrap().line_box_baseline, "sketch-font-leading");
+    assert!(node.text_style.as_ref().unwrap().wrap);
+    let text = fonts().node_layout(node, Some(node.width)).unwrap();
+    assert_eq!(text.lines.len(), 2);
+    // The bundled font has zero leading. Its effective ascender rounds to
+    // the first baseline, independent of the 24.5-point authored line box.
+    assert_eq!(text.lines[1].y, 24.5);
+    assert_eq!(text.glyphs[0].y, 28.);
+    assert_eq!(exported_text(&reopened)["lineSpacingBehaviour"], 1);
+}
+
+#[test]
 fn absent_kernel_text_style_exports_flexible_instead_of_enabling_soft_wrap() {
     let mut document = import(None, "Long caption", 36.);
     document.nodes.get_mut("caption").unwrap().text_style = None;

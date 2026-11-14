@@ -433,6 +433,36 @@ test('an admitted thumbnail catalogue avoids a full scene and only refines the r
 
 })
 
+test('opening a visible Sketch thumbnail before the source is bound enters its original layers once ready',async()=>{
+ const owner={documentId:'source-early-edit',sessionEpoch:1}
+ const status={owner,revision:0,name:'sample.sketch',format:'sketch' as const,dirty:false,undoCount:0,redoCount:0,indexedObjects:1,expandedBytes:100,maxExpandedBytes:100000}
+ const bounds={x:0,y:0,width:100,height:100}
+ const doc=blank('Material'),layer=node('rectangle',0,0,80,80)
+ doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
+ const item={id:layer.id,name:'Material',kind:'artboard',pageId:doc.pages[0].id,pageName:'Page',source:bounds,placed:bounds,key:'1:1',bytes:100}
+ const scene=vi.fn(async()=>({status:'ok',json:JSON.stringify(doc),warnings:[],nodes:1,bytes:100}))
+ let finish!:(value:unknown)=>void
+ const bridge={
+  open:()=>new Promise(resolve=>{finish=resolve}),
+  status:async()=>({status:'error',message:'Source is still opening'}),
+  openingView:async()=>({status:'ok',phase:'available',owner,revision:0,bounds,total:1,
+   items:[{...item,key:'preview-0'}],pages:[[item.pageId,'Page',1]],offset:0,nextOffset:1,cursor:1,
+   images:[{index:0,png:'a'}],moreImages:false,finished:true,rendered:1,cacheHit:false}),
+  canvasLayout:async()=>({status:'ok',items:[item],total:1,hasMore:false}),
+  canvasSnapshot:vi.fn(),scene,
+ } as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=><div ref={s.canvas}>{workbench(s)}</div>} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ const preview=document.querySelector<HTMLButtonElement>('[data-source-material-id]')!
+ await act(async()=>preview.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})))
+ expect(scene).not.toHaveBeenCalled()
+ expect(binding.source!.error).toBe('')
+ await act(async()=>finish({status:'ok',...status}))
+ expect(scene).toHaveBeenCalledExactlyOnceWith({owner,expectedRevision:0,key:item.key})
+ expect(binding.source!.stageReport!.edit.status).toBe('ready')
+ expect(binding.editor!.authoredDocument.nodes[layer.id].width).toBe(80)
+ expect(bridge.canvasSnapshot).not.toHaveBeenCalled()
+})
+
 test('a failed open rebinds the host document so refine can show a native frame',async()=>{
  const owner={documentId:'3ab8effd-5db9-4ec9-80b9-ee76a9cb89d2',sessionEpoch:1}
  const status={owner,revision:0,name:'topology-verified-20261027.sketch',format:'sketch' as const,expandedBytes:100,maxExpandedBytes:1e12,indexedObjects:124000,dirty:false,undoCount:0,redoCount:0}
