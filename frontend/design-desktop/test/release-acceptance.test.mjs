@@ -124,6 +124,50 @@ test('an installed macOS app reports its framework version and architecture from
   }
 })
 
+test('renamed Windows and Linux packages identify their targets from the runtime', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'fx-runtime-target-'))
+  try {
+    const root = fileURLToPath(new URL('../../../', import.meta.url))
+    const pe = Buffer.alloc(164)
+    pe.write('MZ')
+    pe.writeUInt32LE(128, 60)
+    pe.writeUInt32LE(0x4550, 128)
+    pe.writeUInt16LE(0x8664, 132)
+    pe.writeUInt16LE(0x20b, 152)
+    const elf = Buffer.alloc(64)
+    elf.writeUInt32BE(0x7f454c46)
+    elf.set([2, 1, 1], 4)
+    elf.writeUInt16LE(62, 18)
+    for (const [name, binary, expected] of [
+      ['futureox-desgin.exe', pe, 'win32-x64'],
+      ['futureox-desgin', elf, 'linux-x64'],
+    ]) {
+      const bundle = path.join(directory, name)
+      await mkdir(path.join(bundle, 'resources'), { recursive: true })
+      await writeFile(path.join(bundle, 'resources/app.asar'), asarFromFiles([]))
+      await writeFile(path.join(bundle, 'version'), '44.7.0\n')
+      await writeFile(path.join(bundle, name), binary)
+      const report = location => inventoryFromPackageBytes({
+        root, layout: electronPackageLayout(location), openAsar,
+        rust: { crates: [] }, javascript: { distributed: [], developmentOnly: [] },
+      })
+      assert.equal(report(bundle).triple, expected)
+      assert.equal(report(bundle).vendor.ffmpeg.gap, expected === 'linux-x64' ? 'ffmpeg_not_in_package' : null)
+      if (name.endsWith('.exe')) {
+        const mislabeled = path.join(directory, 'runtime-linux-arm64')
+        await rename(bundle, mislabeled)
+        assert.equal(report(mislabeled).triple, 'win32-x64')
+        assert.ok(report(mislabeled).gaps.some(item => item.gap === 'package_name_target_differs_from_runtime'))
+        await writeFile(path.join(mislabeled, name), pe.subarray(0, 128))
+        await rename(mislabeled, bundle)
+        assert.ok(report(bundle).gaps.some(item => item.gap === 'package_target_unidentified'))
+      }
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('vendored linux ffmpeg matches the rebuilt corresponding source', () => {
   const report = ffmpegProvenance()
   assert.deepEqual(report.problems, [])
