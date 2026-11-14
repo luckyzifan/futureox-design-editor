@@ -334,8 +334,13 @@ impl CacheManager {
 
     /// Promote a fully covered level into the zoom-independent store.
     pub fn promote_level(&mut self, level: &TileMipLevel, revision: u64) {
-        self.zoom_level_for_shared_cache = Some(level.scale());
-        for entry in level.tiles() {
+        if self.zoom_level_for_shared_cache != Some(level.scale()) {
+            self.clear();
+            self.zoom_level_for_shared_cache = Some(level.scale());
+        }
+        // Coverage was checked for the viewport. Offscreen tiles in the
+        // same level may still have pixels from before the last edit.
+        for entry in level.tiles().filter(|entry| entry.content_revision == revision) {
             let key = (entry.address, revision);
             let bytes = entry.surface.stored_bytes();
             if !self.zoom_independent.contains_key(&key) {
@@ -612,20 +617,6 @@ impl TiledRenderer {
         }
         let index = self.ensure_level(instruction.level_scale, &instruction.color_space)?;
         let first_frame = self.rendered_instruction.is_none();
-        if !first_frame && traits & render_trait::ZOOM_BUCKET != 0 {
-            // The old level stays resident for upscaled display while the
-            // new one fills (`previousLevel` + `clearOtherLevels`).
-            self.previous_level = self.last_level;
-            if self.clear_other_levels {
-                for (other, slot) in self.levels.iter_mut().enumerate() {
-                    if other != index
-                        && let Some(level) = slot.as_mut()
-                    {
-                        level.remove_all_tiles_and_clear_dirty_region();
-                    }
-                }
-            }
-        }
         let content_moved = traits
             & (render_trait::CONTENT
                 | render_trait::OPTIONS
@@ -680,6 +671,18 @@ impl TiledRenderer {
             let outcome = self.rasterise_requests(source, index, instruction.content_revision, requests);
             self.rasterisation_in_progress = false;
             outcome?;
+        }
+        if !first_frame && traits & render_trait::ZOOM_BUCKET != 0 {
+            self.previous_level = self.last_level;
+            // Until the new bucket completes, a reversal can still request
+            // the old instruction and reuse its already presented tiles.
+            if self.clear_other_levels {
+                for (other, slot) in self.levels.iter_mut().enumerate() {
+                    if other != index && let Some(level) = slot.as_mut() {
+                        level.remove_all_tiles_and_clear_dirty_region();
+                    }
+                }
+            }
         }
         self.last_level = Some(index);
         self.rendered_instruction = Some(instruction.clone());

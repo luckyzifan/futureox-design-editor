@@ -273,6 +273,84 @@ fn damage_rasterises_only_dirty_tiles() {
 }
 
 #[test]
+fn panning_after_an_offscreen_edit_does_not_promote_stale_pixels() {
+    let original = json!({
+        "schemaVersion": 1, "id": "d", "name": "two tiles",
+        "pages": [{"id":"p", "name":"p", "children":["r"], "background":"#ffffff"}],
+        "nodes": {"r":{"id":"r", "kind":"rectangle", "width":80, "height":64,
+            "transform":[1,0,0,1,580,16], "fills":[{"kind":"solid","color":"#3366aa"}]}}
+    });
+    let mut engine = Engine::new();
+    engine.load_document(&original.to_string()).unwrap();
+    let mut source = CountingSource::new(engine);
+    let mut renderer = TiledRenderer::default();
+    let panned = frame(View { x: -512., y: 0., zoom: 1. }, 512, 512);
+    let home = frame(View { x: 0., y: 0., zoom: 1. }, 512, 512);
+    let right = [512., 0., 512., 512.];
+    let left = [0., 0., 512., 512.];
+    let first = instruction(&source.engine, right, 1.);
+    renderer.update_with_instruction(&mut source, &panned, &first, None).unwrap();
+
+    let mut edited = original;
+    edited["nodes"]["r"]["fills"][0]["color"] = json!("#da4014");
+    source.engine.load_document(&edited.to_string()).unwrap();
+    let after_edit = instruction(&source.engine, left, 1.);
+    let damage = [[580., 16., 80., 64.]];
+    renderer.update_with_instruction(&mut source, &home, &after_edit, Some(&damage)).unwrap();
+
+    let after_pan = instruction(&source.engine, right, 1.);
+    renderer.update_with_instruction(&mut source, &panned, &after_pan, None).unwrap();
+    let tile = renderer.level(3).unwrap().tile(&[1, 0]).unwrap();
+    let expected = source.engine.render(&panned).unwrap();
+    assert!(tile.surface.bytes() == expected, "returning pixels must match the new fill");
+    assert_eq!(source.rasterized(), 3);
+}
+
+#[test]
+fn returning_to_a_completed_camera_after_cancelled_zoom_recovers_its_tiles() {
+    use futureox_design_kernel::render_cancellation::with_probe;
+    let mut engine = Engine::new();
+    engine.load_document(&doc()).unwrap();
+    let mut source = CountingSource::new(engine);
+    let mut renderer = TiledRenderer::default();
+    renderer.set_clear_other_levels(true);
+    let home = frame(View { x: 0., y: 0., zoom: 1. }, 512, 512);
+    let detail = frame(View { x: 0., y: 0., zoom: 2. }, 512, 512);
+    let home_plan = instruction(&source.engine, [0., 0., 512., 512.], 1.);
+    let detail_plan = instruction(&source.engine, [0., 0., 256., 256.], 2.);
+    renderer.update_with_instruction(&mut source, &home, &home_plan, None).unwrap();
+    let checks = std::cell::Cell::new(0);
+    let cancel = with_probe(move || {
+        let count = checks.get();
+        checks.set(count + 1);
+        count > 0
+    }, || renderer.update_with_instruction(&mut source, &detail, &detail_plan, None));
+    assert_eq!(cancel.unwrap_err(), "PREVIEW_CANCELLED");
+    renderer.update_with_instruction(&mut source, &home, &home_plan, None).unwrap();
+    let tile = renderer.level(3).unwrap().tile(&[0, 0]).expect("return viewport has pixels");
+    let expected = source.engine.render(&home).unwrap();
+    assert!(tile.surface.bytes() == expected, "the completed viewport remains intact");
+}
+
+#[test]
+fn promotion_does_not_relabel_tiles_from_another_scale() {
+    use futureox_design_kernel::raster_surface::RasterSurface;
+    use futureox_design_kernel::tile_level::TileMipLevel;
+    use futureox_design_kernel::tiled_renderer::CacheManager;
+
+    let mut cache = CacheManager::new(1024);
+    let mut zoomed_out = TileMipLevel::new(1.);
+    zoomed_out.commit_tile([0, 0], RasterSurface::new(1, 1), 7);
+    let mut zoomed_in = TileMipLevel::new(2.);
+    zoomed_in.commit_tile([1, 0], RasterSurface::new(1, 1), 7);
+    cache.promote_level(&zoomed_out, 7);
+    assert!(cache.lookup([0, 0], 7, 1.).is_some());
+    cache.promote_level(&zoomed_in, 7);
+    assert!(cache.lookup([0, 0], 7, 2.).is_none());
+    assert!(cache.lookup([1, 0], 7, 2.).is_some());
+}
+
+#[test]
 fn zoom_bucket_switch_records_previous_level() {
     let mut engine = Engine::new();
     engine.load_document(&doc()).expect("document");
