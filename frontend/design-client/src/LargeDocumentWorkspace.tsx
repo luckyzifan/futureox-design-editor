@@ -490,13 +490,13 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     if(!started.current){started.current=true;openOutcome.current='pending';void run(async()=>{
       try{
         const result=await openSelectedFile(initialFile)
-        if(result.status==='cancelled'){openOutcome.current='cancelled';if(alive.current)onExit();return}
+        if(result.status==='cancelled'){pendingMaterial.current=null;openOutcome.current='cancelled';if(alive.current)onExit();return}
         const next=admitted(result);admittedOpen.current=next;openOutcome.current='ok'
         if(!alive.current)return
         updateStatus(next)
         if(next.saveWarning)setNotice(next.saveWarning)
         await openInitialCanvas()
-      }catch(error){openOutcome.current='error';throw error}
+      }catch(error){pendingMaterial.current=null;openOutcome.current='error';throw error}
     },true)}
     return()=>{alive.current=false;queueMicrotask(()=>{if(!alive.current){queuedLoad.current=null;abort.current?.abort();editor.dispose()}})}
   },[])
@@ -599,6 +599,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     let next:LargeDocumentStatus
     try{next=admitted(await openSelectedFile(file))}
     catch(error){
+      pendingMaterial.current=null
       openOutcome.current='error'
       const bound=await ensureStatus()
       if(!bound)throw error
@@ -667,13 +668,17 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   }
   const editMaterial=(row:SourceCanvasItem,afterLoad?:(id:string)=>void)=>{
     const exact=itemsForSnapshot.current.find(item=>item.id===row.id&&item.pageId===row.pageId)
-    if(exact&&statusRef.current){openMaterial(exact,afterLoad);return}
-    pendingMaterial.current={id:row.id,pageId:row.pageId,afterLoad}
+    if(exact&&statusRef.current){pendingMaterial.current=null;openMaterial(exact,afterLoad);return}
+    const pending={id:row.id,pageId:row.pageId,afterLoad}
+    pendingMaterial.current=pending
     setNotice(PREPARING_NOTICE)
     void (async()=>{
       if(!statusRef.current){
+        // Initial admission consumes this intent after loading the real
+        // catalogue. A preview can be clickable while that work is pending.
+        if(openOutcome.current==='pending')return
         const bound=await ensureStatus()
-        if(!alive.current)return
+        if(!alive.current||pendingMaterial.current!==pending)return
         if(!bound){pendingMaterial.current=null;setNotice('');setError('源文件尚未绑定，原始图层无法准备。');return}
       }
       const ready=itemsForSnapshot.current.find(item=>item.id===row.id&&item.pageId===row.pageId)
