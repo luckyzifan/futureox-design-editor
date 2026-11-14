@@ -38,6 +38,7 @@ export function PrototypePlayer({
     backdrop = useRef<HTMLDivElement>(null),
     closeButton = useRef<HTMLButtonElement>(null),
     exportingRef = useRef(false)
+  const [scrollPosition, setScrollPosition] = useState({ left: 0, top: 0 })
   exportingRef.current = exporting
   useModalOwnership(backdrop, closeButton)
   snapshot.current = source
@@ -113,8 +114,36 @@ export function PrototypePlayer({
   }
   visit(current)
   const frame = entry?.bounds || { x: 0, y: 0, width: n.width, height: n.height }
-  const zoom = Math.min(1, 900 / Math.max(1, frame.width)),
-    height = Math.min(720, frame.height * zoom)
+  const overflow = n.prototypeOverflow
+  const scrollX = overflow === 'horizontal' || overflow === 'both'
+  const scrollY = overflow === 'vertical' || overflow === 'both'
+  const zoom = Math.min(1, 900 / Math.max(1, frame.width), overflow === undefined ? 1 : 720 / Math.max(1, frame.height))
+  const width = Math.ceil(frame.width * zoom)
+  const height = Math.min(720, Math.ceil(frame.height * zoom))
+  // Keep the renderer viewport-sized. Only the scroll spacer grows with
+  // the visible descendants, and clipped nested frames constrain that growth.
+  let contentRight = frame.x + frame.width
+  let contentBottom = frame.y + frame.height
+  if (scrollX || scrollY) {
+    const bounds = new Map(entries.map(e => [e.id, e.bounds]))
+    for (const layer of entries) {
+      if (!layer.ancestors.includes(current)) continue
+      let right = layer.bounds.x + layer.bounds.width
+      let bottom = layer.bounds.y + layer.bounds.height
+      for (const parent of layer.ancestors.slice(layer.ancestors.indexOf(current) + 1)) {
+        const clip = bounds.get(parent)
+        if (clip && doc.nodes[parent].clip) {
+          right = Math.min(right, clip.x + clip.width)
+          bottom = Math.min(bottom, clip.y + clip.height)
+        }
+      }
+      contentRight = Math.max(contentRight, right)
+      contentBottom = Math.max(contentBottom, bottom)
+    }
+  }
+  const contentWidth = scrollX ? Math.ceil((contentRight - frame.x) * zoom) : width
+  const contentHeight = scrollY ? Math.ceil((contentBottom - frame.y) * zoom)
+    : overflow === undefined ? Math.ceil(frame.height * zoom) : height
   const slideProgress = prototypeEase(state.transitionEasing, progress)
   const slideOffset = state.transitionStyle?.startsWith('slide-') && progress < 1
     ? `${state.transitionStyle==='slide-left'?-(1-slideProgress)*100:state.transitionStyle==='slide-right'?(1-slideProgress)*100:0}%,${state.transitionStyle==='slide-top'?-(1-slideProgress)*100:state.transitionStyle==='slide-bottom'?(1-slideProgress)*100:0}%` : '0%,0%'
@@ -136,8 +165,11 @@ export function PrototypePlayer({
   useLayoutEffect(() => {
     if (!state.navigation) return
     const point = state.navigation.preserveScroll ? previousScroll.current : { left: 0, top: 0 }
-    scroll.current?.scrollTo({ ...point, behavior: 'instant' })
-  }, [state.navigation?.serial])
+    const element = scroll.current
+    if (!element) return
+    element.scrollTo({ left: scrollX ? point.left : 0, top: scrollY || overflow === undefined ? point.top : 0, behavior: 'instant' })
+    setScrollPosition({ left: element.scrollLeft, top: element.scrollTop })
+  }, [state.navigation?.serial, overflow, scrollX, scrollY])
   useEffect(() => {
     const timers: number[] = []
     for (const [id, events] of Object.entries(doc.prototype?.interactions || {}))
@@ -153,8 +185,8 @@ export function PrototypePlayer({
       const element=scroll.current
       if (target && element) {
         const cancel=animatePrototypeScroll(element,{
-          left: (target.bounds.x - frame.x) * zoom,
-          top: (target.bounds.y - frame.y) * zoom,
+          left: scrollX ? (target.bounds.x - frame.x) * zoom : 0,
+          top: scrollY || overflow === undefined ? (target.bounds.y - frame.y) * zoom : 0,
         },state.transitionMs,state.transitionEasing)
         const interrupt=()=>cancel()
         for(const event of ['wheel','touchstart','pointerdown'])element.addEventListener(event,interrupt,{passive:true})
@@ -163,7 +195,7 @@ export function PrototypePlayer({
     }
   }, [state.scrollTarget, state.current, state.scrollRequest])
   // Hide unrelated roots/siblings while retaining definitions for component resolution.
-  const visibleDoc = useMemo(() => prototypeFrameView(doc,current).document, [doc,current])
+  const visibleDoc = useMemo(() => prototypeFrameView(doc, current, scrollX || scrollY).document, [doc, current, scrollX, scrollY])
   useEffect(() => () => {
     if (videoAsset) URL.revokeObjectURL(videoAsset.url)
   }, [videoAsset])
@@ -220,7 +252,7 @@ export function PrototypePlayer({
       <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-modal="true" aria-label={tr('交互原型预览')} tabIndex={-1}>
         <header>
           <strong>{prototypeTitle(n.name, locale)}</strong>
-          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
+          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0); setScrollPosition({ left: 0, top: 0 }) }}>
             {tr('重新开始')}
           </button>
           <button
@@ -251,9 +283,13 @@ export function PrototypePlayer({
           <div
             ref={scroll}
             data-testid="prototype-scroll"
+            data-overflow={overflow ?? 'legacy'}
+            tabIndex={scrollX || scrollY ? 0 : undefined}
+            onScroll={event => setScrollPosition({ left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop })}
             style={{
-              overflow: 'auto',
-              width: frame.width * zoom,
+              overflowX: scrollX ? 'auto' : 'hidden',
+              overflowY: scrollY || overflow === undefined ? 'auto' : 'hidden',
+              width,
               height,
               position: 'relative',
               background: '#fff',
@@ -266,22 +302,24 @@ export function PrototypePlayer({
               key={current}
               style={{
                 position: 'relative',
-                width: frame.width * zoom,
-                height: frame.height * zoom,
+                width: contentWidth,
+                height: contentHeight,
                 transform: `translate(${slideOffset})`,
                 opacity: state.transitionStyle === 'dissolve' && progress < 1 ? slideProgress : lightweight && progress < 1 ? progress : 1,
                 background: '#fff',
               }}
             >
-              <StillFrame
-                document={visibleDoc}
-                pageId={page.id}
-                width={Math.ceil(frame.width * zoom)}
-                height={Math.ceil(frame.height * zoom)}
-                x={-frame.x * zoom}
-                y={-frame.y * zoom}
-                zoom={zoom}
-              />
+              <div style={{ position: 'absolute', left: scrollPosition.left, top: scrollPosition.top, pointerEvents: 'none' }}>
+                <StillFrame
+                  document={visibleDoc}
+                  pageId={page.id}
+                  width={width}
+                  height={height}
+                  x={-frame.x * zoom - scrollPosition.left}
+                  y={-frame.y * zoom - scrollPosition.top}
+                  zoom={zoom}
+                />
+              </div>
               {entries
                 .filter((e) => descendants.has(e.id) && doc.prototype?.interactions[e.id]?.length)
                 .map((e) => {

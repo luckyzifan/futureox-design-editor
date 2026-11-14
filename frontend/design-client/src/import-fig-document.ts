@@ -103,11 +103,12 @@ export function applyFigDocumentSemantics(
   warnings: Warnings,
 ) {
   const notes: string[] = []
+  doc.name = tools.fallbackName
   const internalPages = doc.pages.filter(page => [...records].some(([key, record]) => ids.get(key) === page.id && record.internalOnly === true)).map(page => page.id)
   const document = [...records.values()].find(record => record.type === 'DOCUMENT')
-  if (typeof document?.name === 'string' && document.name.trim() && document.name.length <= 200)
+  if (typeof document?.name === 'string' && document.name.trim() && document.name.length <= 200 && document.name !== 'Document')
     doc.name = document.name
-  else if (typeof document?.name === 'string' && document.name.trim())
+  else if (typeof document?.name === 'string' && document.name.length > 200)
     remember(notes, `document name exceeds 200 UTF-16 code units and was kept as ${tools.fallbackName}`)
 
   const styles = system(doc).styles

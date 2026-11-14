@@ -1,4 +1,4 @@
-import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, network_geometry_json, fig_mask_suffixes, fig_stroke_caps_json, fig_progressive_background_json } from './generated/design-kernel/design_kernel'
+import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, fig_boolean_outline_key_json, network_geometry_json, fig_mask_suffixes, fig_stroke_caps_json, fig_progressive_background_json } from './generated/design-kernel/design_kernel'
 import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
@@ -37,6 +37,7 @@ import { applyFigFacet, assertFigStructure, figNodeKind, figNote, importFigProto
 import { defaultColorSettings } from './color'
 import { figImageAdjust, figImageTile } from './import-fig-image'
 import { importFigComponents } from './import-fig-components'
+import { figExportSettings, figLayoutGrids, figPrototypeOverflow } from './import-fig-properties'
 import { applyFigDocumentSemantics, figGuides, importFigVariableNodes, includeFigRecord, storeFigVariables } from './import-fig-document'
 import { inverse } from './commands/affine'
 
@@ -768,6 +769,27 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       throw new Error(`FIG 蒙版 ${r.maskType} 暂不支持；原文件未修改`)
     n.maskType = r.maskType === 'OUTLINE' ? 'outline' : r.maskType === 'LUMINANCE' ? 'luminance' : 'alpha'
     n.clip = kind === 'frame' && !r.frameMaskDisabled
+    if (r.layoutGrids !== undefined) {
+      const { grids, incomplete } = figLayoutGrids(r.layoutGrids)
+      if (kind === 'frame' && grids.length) n.layoutGrids = grids
+      if (incomplete || kind !== 'frame' && grids.length) {
+        figNote(receipts, n.id, '部分布局网格不能编辑')
+        warnings.add('部分 FIG 布局网格超出支持范围')
+      }
+    }
+    if (r.exportSettings !== undefined) {
+      const { settings, incomplete } = figExportSettings(r.exportSettings)
+      if (settings.length) n.exportSettings = settings
+      if (incomplete) {
+        figNote(receipts, n.id, '部分导出预设选项不能执行')
+        warnings.add('部分 FIG 导出预设选项超出支持范围')
+      }
+    }
+    if (kind === 'frame' && r.scrollDirection !== undefined) {
+      const overflow = figPrototypeOverflow(r.scrollDirection)
+      if (overflow) n.prototypeOverflow = overflow
+      else figNote(receipts, n.id, `scrollDirection=${String(r.scrollDirection)}`)
+    }
     if (kind === 'polygon' || kind === 'star') { n.points = r.count ?? n.points; n.cornerRadius = r.cornerRadius ?? 0 }
     if (kind === 'ellipse' && r.arcData) {
       const start=r.arcData.startingAngle ?? 0
@@ -882,6 +904,14 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       const operation = r.booleanOperation ?? 'UNION'
       if (!(operation in operations)) throw new Error(`FIG 布尔运算 ${operation} 暂不支持；原文件未修改`)
       n.booleanOperation = operations[operation as keyof typeof operations]
+      if (Array.isArray(r.strokeGeometry) && r.strokeGeometry.length &&
+          !n.fills.some(p => p.visible && p.opacity > 0) && n.strokes.some(s => s.paint.visible && s.paint.opacity > 0)) {
+        n.fills = n.strokes.map(s => s.paint)
+        n.strokes = []
+        const source = receipts.get(n.id) ?? {}
+        source.figBooleanStrokeOperands = 'true'
+        receipts.set(n.id, source)
+      }
     }
     importLayout(n, r, records.get(guid(r.parentIndex?.guid)), reverseZ, (message) => {
       figNote(receipts, n.id, message)
@@ -904,6 +934,28 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       parent && (doc.nodes[parent]?.children || doc.pages.find((p) => p.id === parent)?.children)
     if (!children) throw new Error('FIG 图层父节点缺失')
     children.push(id)
+  }
+  for (const [key, record] of records) {
+    const layer = doc.nodes[ids.get(key)!]
+    if (!layer?.booleanOperation || layer.strokes.some(s => s.paint.visible) || !layer.children.length || layer.children.length > 64) continue
+    const source = receipts.get(layer.id) ?? {}
+    const entries = source.figBooleanStrokeOperands === 'true' ? record.strokeGeometry : record.fillGeometry
+    if (!Array.isArray(entries) || !entries.length || entries.some(item => (item.styleID ?? 0) !== 0)) continue
+    try {
+      const geometry = figBakedGeometry(entries, getBlob)
+      const proof = fig_boolean_outline_key_json(
+        JSON.stringify({ ...layer, vectorGeometry: geometry, network: undefined }),
+        JSON.stringify(layer.children.map(id => doc.nodes[id])),
+      )
+      if (proof) {
+        layer.vectorGeometry = geometry
+        delete layer.network
+        source.figBooleanOutlineKey = proof
+        receipts.set(layer.id, source)
+      }
+    } catch {
+      warnings.add('部分 FIG 布尔轮廓无法读取，已保留可编辑的组合图层')
+    }
   }
   for (const id of reverseZ) {
     const layer = doc.nodes[id]
@@ -990,7 +1042,14 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   assertFigStructure(doc)
   importFigPrototype(records, ids, doc, receipts)
   parkFigReceipts(doc, receipts)
-  applyFigDocumentSemantics(doc, records, ids, guid, { toPaint, effectsOf, strokesOf, fallbackName: name }, warnings)
+  let archiveName: string | undefined
+  if (files['meta.json'] && files['meta.json'].byteLength <= 64 * 1024) {
+    try {
+      const candidate = JSON.parse(new TextDecoder().decode(files['meta.json']))?.file_name
+      if (typeof candidate === 'string' && candidate.trim() && candidate.length <= 200 && new TextDecoder().decode(new TextEncoder().encode(candidate)) === candidate) archiveName = candidate
+    } catch { /* Older archives may omit optional display metadata. */ }
+  }
+  applyFigDocumentSemantics(doc, records, ids, guid, { toPaint, effectsOf, strokesOf, fallbackName: archiveName ?? name }, warnings)
   importFigVariableNodes(doc, records, ids)
   storeFigVariables(doc, data)
   const unhandledProps = new Set<string>()
@@ -1019,6 +1078,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>n.textRuns?.some(r=>r.letterSpacing !== undefined || r.lineHeight !== undefined))) doc.schemaVersion = Math.max(21, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasStrokeMarkers(doc) || hasLayerExports(doc)) doc.schemaVersion = Math.max(8, doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.nodes).some(n => n.layoutGrids?.length || n.prototypeOverflow !== undefined))
+    doc.schemaVersion = Math.max(12, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasLocalTools(doc)) doc.schemaVersion = Math.max(10, doc.schemaVersion) as typeof doc.schemaVersion
   if (doc.pages.some(page => page.guides?.length)) doc.schemaVersion = Math.max(11, doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.designSystem?.styles || {}).some(style => style.strokes?.length || style.effects?.length))

@@ -344,7 +344,7 @@ impl Projection<'_> {
         n.network = Some((network).into());
         Ok(())
     }
-    fn layer(&mut self, layer: &Layer) -> Result<String> {
+    fn layer(&mut self, layer: &Layer, inside_artboard: bool) -> Result<String> {
         if ["transform", "affineTransform"]
             .iter()
             .any(|key| layer.fields().contains_key(*key))
@@ -529,7 +529,10 @@ impl Projection<'_> {
             return Err(Error::Unsupported("Sketch image color controls".into()));
         }
         if ["rectangle", "oval", "shapePath"].contains(&class) {
-            self.geometry(&v, &mut n)?
+            self.geometry(&v, &mut n)?;
+            if class == "shapePath" && v.as_object().and_then(|fields| crate::sketch::path_field(fields, "isClosed")).and_then(Value::as_bool) == Some(false) {
+                for stroke in &mut n.strokes { stroke.align = "center".into(); }
+            }
         }
         if class == "artboard" {
             n.clip = true;
@@ -538,6 +541,10 @@ impl Projection<'_> {
                     0,
                     solid(format!("{id}:background"), color(&v["backgroundColor"])?),
                 );
+            } else if inside_artboard && v.get("backgroundColor").is_some()
+                && !v.pointer("/userInfo/com.futureox.design-kernel").is_some_and(Value::is_object)
+            {
+                n.fills.insert(0, solid(format!("{id}:background"), "#ffffff".into()));
             }
         }
         if class == "slice" {
@@ -548,7 +555,7 @@ impl Projection<'_> {
         if class == "text" {
             self.text(&v, &mut n)?
         }
-        n.children = self.children(layer)?;
+        n.children = self.children(layer, inside_artboard || class == "artboard")?;
         let compound = class == "shapeGroup"
             && layer.children().iter().all(|child| {
                 child
@@ -625,7 +632,7 @@ impl Projection<'_> {
         self.nodes.insert(id.clone(), n);
         Ok(id)
     }
-    fn children(&mut self, layer: &Layer) -> Result<Vec<String>> {
+    fn children(&mut self, layer: &Layer, inside_artboard: bool) -> Result<Vec<String>> {
         let mut output = vec![];
         let mut mask: Option<String> = None;
         for child in layer.children() {
@@ -633,7 +640,7 @@ impl Projection<'_> {
             if yes(&v, "shouldBreakMaskChain", false) {
                 mask = None
             }
-            let id = self.layer(child)?;
+            let id = self.layer(child, inside_artboard)?;
             if yes(&v, "hasClippingMask", false) {
                 let group_id = self.synthetic(layer.id());
                 let mut group = sample_node(&group_id, "group");
@@ -804,7 +811,7 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         warnings: BTreeSet::new(),
         serial: 0,
     };
-    let roots = p.children(page.root())?;
+    let roots = p.children(page.root(), false)?;
     let artboards = page
         .root()
         .children()

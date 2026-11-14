@@ -5,7 +5,7 @@ import { deflateSync, inflateSync } from 'fflate'
 import { figArchive, importFig } from './import-fig'
 import { uid, validateDocument } from './model'
 import { kernelSvgPaths, prepareDocumentForEditing } from './kernel/picking'
-import { export_sketch_json, import_sketch_json, VectorEngine } from './generated/design-kernel/design_kernel'
+import { export_sketch_json, import_sketch_json, forma_decode_json, forma_encode_json, VectorEngine } from './generated/design-kernel/design_kernel'
 import { createImportedCopy } from './import-identity'
 import { Editor } from './engine'
 
@@ -396,4 +396,59 @@ test('effect blends and prototype clicks are recorded without becoming executabl
   expect(JSON.parse(stored || '[]')).toEqual([{ trigger: 'ON_CLICK', destinationId: source.id, navigation: 'NAVIGATE', transition: 'DISSOLVE', duration: 1 }])
   expect(flow.warnings.some((w) => w.includes('原型'))).toBe(true)
   expect(flow.document.prototype).toBeUndefined()
+})
+
+test('FIG frame keeps simultaneous row/column guides, export settings, and overflow through FD', () => {
+  const { document } = importFig(encoded({
+    type: 'FRAME',
+    scrollDirection: 'VERTICAL',
+    layoutGrids: [
+      { type: 'MIN', pattern: 'STRIPES', axis: 'Y', numSections: 0x7fffffff, sectionSize: 30, gutterSize: 8, visible: false },
+      { type: 'MIN', pattern: 'STRIPES', axis: 'X', numSections: 2, sectionSize: 13, gutterSize: 5, offset: 1, visible: true },
+    ],
+    exportSettings: [{ imageType: 'PNG', suffix: '@2x', constraint: { type: 'CONTENT_SCALE', value: 2 } }],
+  }))
+  const reopened = validateDocument(JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(document)))))
+  const frame = Object.values(reopened.nodes).find(node => node.name === 'Subject')!
+  expect(frame.layoutGrids).toMatchObject([
+    { axis: 'row', count: 0, sectionSize: 30, gutter: 8, visible: false },
+    { axis: 'column', count: 2, sectionSize: 13, gutter: 5, margin: 1, visible: true },
+  ])
+  expect(frame.exportSettings).toEqual([{ id: 'fig-export-0', format: 'png', scale: 2, suffix: '@2x' }])
+  expect(frame.prototypeOverflow).toBe('vertical')
+})
+
+test('FIG stroke-only boolean renders the source outline and recomputes after an operand moves', () => {
+  const points = [[2, 4], [26, 4], [26, 9], [2, 9]]
+  const outline = new Uint8Array(points.length * 9 + 1)
+  const view = new DataView(outline.buffer)
+  points.forEach(([x, y], i) => {
+    outline[i * 9] = i ? 2 : 1
+    view.setFloat32(i * 9 + 1, x, true)
+    view.setFloat32(i * 9 + 5, y, true)
+  })
+  const strokePaints = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }]
+  const { document } = importFig(encoded({
+    type: 'BOOLEAN_OPERATION', booleanOperation: 'UNION', fillPaints: [],
+    strokeGeometry: [{ commandsBlob: 0, windingRule: 'NONZERO', styleID: 0 }],
+    strokePaints, strokeWeight: 2,
+  }, {}, [outline], [{
+    guid: guid(4), type: 'LINE', name: 'Stroke path', parentIndex: { guid: guid(3), position: 'a' },
+    size: { x: 24, y: 0 }, transform: { m00: 1, m01: 0, m02: 2, m10: 0, m11: 1, m12: 6 },
+    strokePaints, strokeWeight: 2,
+  }]))
+  const engine = new VectorEngine()
+  const render = (x: number, y: number) => {
+    engine.load_document(JSON.stringify(document))
+    const bytes = engine.render_rgba(JSON.stringify({ pageId: document.pages[0].id, width: 40, height: 24,
+      view: { x: 0, y: 0, zoom: 1 }, transparent: true }))
+    return bytes[(y * 40 + x) * 4 + 3]
+  }
+  try {
+    expect(render(12, 4)).toBe(255)
+    const operand = Object.values(document.nodes).find(node => node.name === 'Stroke path')!
+    operand.transform[5] += 8
+    expect(render(12, 4)).toBe(0)
+    expect(render(12, 14)).toBeGreaterThan(200)
+  } finally { engine.free() }
 })

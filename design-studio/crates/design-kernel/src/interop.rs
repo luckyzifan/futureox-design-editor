@@ -1591,7 +1591,7 @@ impl<'a> Importer<'a> {
         out
     }
 
-    fn layer(&mut self, layer: &Value) -> String {
+    fn layer(&mut self, layer: &Value, inside_artboard: bool) -> String {
         let class = layer
             .get("_class")
             .and_then(Value::as_str)
@@ -2033,6 +2033,21 @@ impl<'a> Importer<'a> {
                 let path_field = |key| layer.as_object().and_then(|fields| crate::sketch::path_field(fields, key));
                 if path_field("isClosed").and_then(Value::as_bool) == Some(false) {
                     node.bindings.insert("sketchOpenPath".into(), "true".into());
+                    let mut source_alignments = Map::new();
+                    for (index, stroke) in node.strokes.iter_mut().enumerate() {
+                        let position = match stroke.align.as_str() {
+                            "inside" => 1,
+                            "outside" => 2,
+                            _ => continue,
+                        };
+                        source_alignments.insert(index.to_string(), json!({"position":position,"width":stroke.width}));
+                        // Sketch ignores the archived inside/outside switch on
+                        // an open contour, which has no interior to clip to.
+                        stroke.align = "center".into();
+                    }
+                    if !source_alignments.is_empty() {
+                        node.bindings.insert("sketchOpenBorderPositions".into(), json!(source_alignments).to_string());
+                    }
                 }
                 if layer
                     .get("userInfo")
@@ -2556,6 +2571,15 @@ impl<'a> Importer<'a> {
                     && let Some(bg) = layer.get("backgroundColor")
                 {
                     node.fills.insert(0, solid_paint(bg, 1., "normal", self.color_space));
+                } else if inside_artboard && class == "artboard" && layer.get("backgroundColor").is_some()
+                    && !layer.pointer("/userInfo/com.futureox.design-kernel").is_some_and(Value::is_object)
+                {
+                    // A legacy Sketch artboard embedded in another artboard
+                    // contributes its white viewport even with the background
+                    // checkbox off. A top-level artboard remains transparent.
+                    node.fills.insert(0, solid_paint(&json!({"red":1.,"green":1.,"blue":1.,"alpha":1.}), 1., "normal", self.color_space));
+                    node.bindings.insert("sketchOmitFrameFillInExport".into(), "true".into());
+                    node.bindings.insert("sketchNestedArtboardViewport".into(), "true".into());
                 }
                 import_layout_grid(&mut node, layer, &mut import_lossy);
             }
@@ -2652,6 +2676,18 @@ impl<'a> Importer<'a> {
             && let Ok(g) = serde_json::from_value::<crate::scene::LayoutGrid>(grid.clone())
         {
             node.layout_grid = Some((g).into());
+        }
+        if let Some(grids) = user_ns.get("layoutGrids")
+            && let Ok(grids) = serde_json::from_value::<Vec<crate::scene::LayoutGrid>>(grids.clone())
+            && !grids.is_empty()
+        {
+            node.layout_grid = None;
+            node.layout_grids = grids.into();
+        }
+        if let Some(overflow) = user_ns.get("prototypeOverflow")
+            && let Ok(overflow) = serde_json::from_value(overflow.clone())
+        {
+            node.prototype_overflow = Some(overflow);
         }
         // Kernel-authored interactions beyond Sketch's one-flow-per-layer
         // classic model travel verbatim (resolved later, once all ids exist).
@@ -2816,7 +2852,7 @@ impl<'a> Importer<'a> {
         let mut children = Vec::new();
         if let Some(layers) = layer.get("layers").and_then(Value::as_array) {
             for child in layers {
-                children.push(self.layer(child));
+                children.push(self.layer(child, inside_artboard || class == "artboard"));
             }
         }
         node.children = children;
@@ -2940,6 +2976,8 @@ fn import_layout_grid(node: &mut Node, layer: &Value, lossy: &mut Vec<String>) {
             color: "#ff0000".into(),
             visible: true,
             opacity: 0.1,
+            alignment: None,
+            section_size: None,
         }).into());
     } else if let Some(sg) = layer.get("grid").filter(|g| bool_at(g, "isEnabled")) {
         let cell = f64_at(sg, "gridSize").max(1.);
@@ -2958,6 +2996,8 @@ fn import_layout_grid(node: &mut Node, layer: &Value, lossy: &mut Vec<String>) {
             color: "#ff0000".into(),
             visible: true,
             opacity: 0.1,
+            alignment: None,
+            section_size: None,
         }).into());
     }
 }
@@ -2982,7 +3022,7 @@ fn foreign_symbol_import(
             unresolved.push(entry.clone());
             continue;
         };
-        let id = importer.layer(master);
+        let id = importer.layer(master, false);
         let library_id = entry
             .get("libraryID")
             .and_then(Value::as_str)
@@ -3183,7 +3223,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
         let mut children = Vec::new();
         if let Some(layers) = page_json.get("layers").and_then(Value::as_array) {
             for layer in layers {
-                children.push(importer.layer(layer));
+                children.push(importer.layer(layer, false));
             }
         }
         page_node.children = children.clone();
@@ -3701,7 +3741,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
         version = version.max(10);
     }
     // layout grids and shared-style strokes/effects are schema-12 facets
-    if doc.nodes.values().any(|n| n.layout_grid.is_some())
+    if doc.nodes.values().any(|n| n.layout_grid.is_some() || !n.layout_grids.is_empty() || n.prototype_overflow.is_some())
         || doc.design_system.as_ref().is_some_and(|s| {
             s.styles
                 .values()
@@ -4845,6 +4885,21 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
             source_fonts.insert("runs".into(), Value::Object(runs));
         }
         if !source_fonts.is_empty() {
+            // Native custom line boxes can reflow fallback CJK across the
+            // archived width, even when the source text resizes to fit.
+            // Keep ordinary one-line labels and their font-driven sizing.
+            let custom_line_box = node.text_runs.iter().any(|run|
+                run.paragraph.as_ref().and_then(crate::font::TextParagraph::fixed_line_height).is_some())
+                && node.text_style.as_ref().is_some_and(|s| s.font_id == "default" && s.line_box_baseline == "nearest-point");
+            if custom_line_box
+                && node.sizing.as_ref().is_some_and(|s| s.width == crate::layout::SizeMode::Hug)
+                && node.width.is_finite() && (0.01..1e7).contains(&node.width)
+                && node.text.chars().any(|c| matches!(c as u32, 0x3400..=0x9fff | 0xf900..=0xfaff | 0x20000..=0x323af))
+            {
+                let sizing = node.sizing.as_mut().expect("flexible Sketch text");
+                sizing.max_width = node.width;
+                if let Some(style) = node.text_style.as_mut() { style.wrap = true; }
+            }
             node.bindings.insert(
                 "sketchSourceFonts".into(),
                 serde_json::to_string(&source_fonts)
@@ -6531,6 +6586,19 @@ fn export_layer_impl(
             [n.width, n.height],
             true,
         )?;
+        if let Some(positions) = n.bindings.get("sketchOpenBorderPositions")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        {
+            for (index, (border, stroke)) in borders.iter_mut().zip(&n.strokes).enumerate() {
+                let index = index.to_string();
+                let source = &positions[&index];
+                if stroke.align == "center" && source["width"].as_f64() == Some(stroke.width)
+                    && let Some(position @ (1 | 2)) = source["position"].as_u64()
+                {
+                    border["position"] = json!(position);
+                }
+            }
+        }
         if let Some(sources) = n
             .bindings
             .get("sketchSourceStrokeGradients")
@@ -7574,6 +7642,12 @@ fn export_layer_impl(
                 "layoutGrid".into(),
                 serde_json::to_value(grid).unwrap_or(Value::Null),
             );
+        }
+        if !n.layout_grids.is_empty() && n.instance.is_none() {
+            user_info.insert("layoutGrids".into(), json!(&n.layout_grids));
+        }
+        if let Some(overflow) = n.prototype_overflow {
+            user_info.insert("prototypeOverflow".into(), json!(overflow));
         }
         if let Some(events) = pending_user_prototype {
             user_info.insert("prototypeInteractions".into(), events);
@@ -10682,6 +10756,8 @@ mod tests {
             color: "#00a0ff".into(),
             visible: true,
             opacity: 0.3,
+            alignment: None,
+            section_size: None,
         }).into());
         let bytes = export_sketch(&doc).unwrap();
         let files = read_zip(&bytes).unwrap();
@@ -10731,6 +10807,8 @@ mod tests {
             color: "#ff0000".into(),
             visible: false,
             opacity: 0.1,
+            alignment: None,
+            section_size: None,
         }).into());
         let bytes = export_sketch(&doc).unwrap();
         let files = read_zip(&bytes).unwrap();

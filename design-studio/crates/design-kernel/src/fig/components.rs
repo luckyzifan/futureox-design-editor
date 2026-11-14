@@ -1556,65 +1556,11 @@ fn apply_export(
     ov: &Value,
     unsupported: &mut BTreeSet<String>,
 ) {
-    let Some(settings) = ov.get("exportSettings") else {
-        return;
-    };
-    let Some(settings) = settings.as_array() else {
-        unsupported.insert("exportSettings".into());
-        return;
-    };
-    let mut exported = Vec::new();
-    let mut failed = false;
-    for (index, setting) in settings.iter().enumerate() {
-        let format = match str_of(setting, "imageType") {
-            Some("PNG") => "png",
-            Some("JPG" | "JPEG") => "jpeg",
-            Some("SVG" | "SVG_STRING") => "svg",
-            Some("PDF") => "pdf",
-            Some("WEBP") => "webp",
-            Some("TIFF") => "tiff",
-            _ => {
-                failed = true;
-                continue;
-            }
-        };
-        let constraint = setting.get("constraint");
-        let scale = match constraint.and_then(|value| str_of(value, "type")) {
-            Some("SCALE" | "CONTENT_SCALE") => constraint
-                .and_then(|value| value.get("value"))
-                .and_then(Value::as_f64),
-            None => Some(1.),
-            _ => {
-                failed = true;
-                continue;
-            }
-        };
-        let Some(scale) = scale.filter(|scale| scale.is_finite() && (0. ..=128.).contains(scale))
-        else {
-            failed = true;
-            continue;
-        };
-        let suffix = str_of(setting, "suffix").unwrap_or("");
-        if suffix.encode_utf16().count() > 80
-            || suffix
-                .chars()
-                .any(|c| c.is_control() || "\\/:*?\"<>|".contains(c))
-        {
-            failed = true;
-            continue;
-        }
-        exported.push(json!({
-            "id": format!("fig-export-{index}"),
-            "format": format,
-            "scale": scale,
-            "suffix": suffix,
-        }));
-    }
-    if failed || exported.is_empty() && !settings.is_empty() {
-        unsupported.insert("exportSettings".into());
-    }
-    if !exported.is_empty() {
-        fields.insert("exportSettings".into(), json!(exported));
+    let Some(source) = ov.get("exportSettings") else { return; };
+    let (settings, incomplete) = super::properties::export_settings(source);
+    if incomplete { unsupported.insert("exportSettings".into()); }
+    if !settings.is_empty() || source.as_array().is_some_and(Vec::is_empty) {
+        fields.insert("exportSettings".into(), json!(settings));
     }
 }
 

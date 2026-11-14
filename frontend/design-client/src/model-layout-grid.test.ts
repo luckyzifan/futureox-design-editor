@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { blank, node, validateDocument, hasLayoutGrids, defaultLayoutGrid } from './model'
+import { blank, node, validateDocument, hasSchema12FrameProperties, defaultLayoutGrid } from './model'
 
 const frameWithGrid = () => {
   const d = blank()
@@ -14,8 +14,8 @@ const frameWithGrid = () => {
 test('layout grids validate on schema-12 frames and are detected', () => {
   const { d } = frameWithGrid()
   expect(() => validateDocument(d)).not.toThrow()
-  expect(hasLayoutGrids(d)).toBe(true)
-  expect(hasLayoutGrids(blank())).toBe(false)
+  expect(hasSchema12FrameProperties(d)).toBe(true)
+  expect(hasSchema12FrameProperties(blank())).toBe(false)
 })
 
 test('layout grids reject older schemas, non-frames and open ranges', () => {

@@ -3,6 +3,11 @@ import { useInterfacePreferences, type InterfaceLocale } from './interface-prefe
 import { surfaceEnglish } from './surface-dialog-catalog'
 /** Display-only allowlist. Never translate authored names, history labels or core identifiers. */
 const english: Readonly<Record<string, string>> = Object.freeze({
+  "溢出滚动": "Overflow",
+  "不滚动": "No scrolling",
+  "水平滚动": "Horizontal",
+  "垂直滚动": "Vertical",
+  "双向滚动": "Both directions",
   "形状构建器": "Shape builder",
   "关闭形状构建器": "Close shape builder",
   "拖过要合并的区域，或按住 Alt / Option 拖选要删除的区域。应用时可一次撤销。": "Drag across regions to merge, or hold Alt / Option to select regions to delete. Applying creates one undo step.",

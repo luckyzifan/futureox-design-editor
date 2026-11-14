@@ -16,6 +16,7 @@ import {
   defaultLayout,
   defaultSizing,
   defaultLayoutGrid,
+  MAX_LAYOUT_GRIDS,
   container,
 } from './model'
 import { NumberField } from './fields'
@@ -76,14 +77,21 @@ export function LayoutPanel({
     try { editor.autoLayout(mode, ids); setSuggestionError('') }
     catch (error) { setSuggestionError(error instanceof Error ? error.message : String(error)) }
   }
-  const updateGrid = (patch: Partial<LayoutGrid>) =>
-    editor.updateProperties(
-      ids,
-      (n) => {
-        n.layoutGrid = { ...defaultLayoutGrid(), ...n.layoutGrid, ...patch }
-      },
-      '修改布局网格',
-    )
+  const grids = n.layoutGrids ?? (n.layoutGrid ? [n.layoutGrid] : [])
+  const editGrids = (edit: (grids: LayoutGrid[]) => LayoutGrid[], label: string) =>
+    editor.updateProperties(ids, (target) => {
+      if (target.kind !== 'frame') return
+      const current = target.layoutGrids ?? (target.layoutGrid ? [target.layoutGrid] : [])
+      const next = edit(current)
+      delete target.layoutGrid
+      if (next.length === 1 && next[0].alignment === undefined) {
+        target.layoutGrid = next[0]
+        delete target.layoutGrids
+      } else if (next.length) target.layoutGrids = next
+      else delete target.layoutGrids
+    }, label)
+  const updateGrid = (index: number, patch: Partial<LayoutGrid>) =>
+    editGrids(current => current.map((grid, i) => i === index ? { ...grid, ...patch } : grid), '修改布局网格')
   const Tag = embedded ? 'div' : 'section'
   const Heading = embedded ? 'h4' : 'h3'
   return (
@@ -359,82 +367,55 @@ export function LayoutPanel({
       )}
       {n.kind === 'frame' && (
         <>
-          <h4>{tr("布局网格")}{' '}
-            {!n.layoutGrid && (
-              <button title={tr("添加布局网格")} onClick={() =>
-                editor.updateProperties(
-                  ids,
-                  (target) => {
-                    target.layoutGrid = defaultLayoutGrid()
-                  },
-                  '添加布局网格',
-                )
-              }>
-                ＋
-              </button>
-            )}
+          <h4 id="layout-grid-settings" tabIndex={-1}>{tr("布局网格")}{' '}
+            <button type="button" title={tr("添加布局网格")} disabled={n.locked || grids.length >= MAX_LAYOUT_GRIDS}
+              onClick={() => editGrids(current => current.length < MAX_LAYOUT_GRIDS
+                ? [...current, defaultLayoutGrid()] : current, '添加布局网格')}>＋</button>
           </h4>
-          {n.layoutGrid && (
-            <div className="layout-grid-editor" data-testid="layout-grid-editor">
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  aria-label={tr("显示布局网格")}
-                  checked={n.layoutGrid.visible}
-                  onChange={(e) => updateGrid({ visible: e.target.checked })}
-                />{tr("显示网格")}</label>
-              <label className="labeled-select">{tr("网格方向")}<select
-                  aria-label={tr("网格方向")}
-                  value={n.layoutGrid.axis}
-                  onChange={(e) => updateGrid({ axis: e.target.value as LayoutGrid['axis'] })}
-                >
-                  <option value="column">{tr("列")}</option>
-                  <option value="row">{tr("行")}</option>
-                  <option value="uniform">{tr("方块")}</option>
-                </select>
-              </label>
+          {grids.map((grid, index) => (
+            <fieldset key={index} className="layout-grid-editor" data-testid="layout-grid-editor" disabled={n.locked}>
+              <legend>{tr("布局网格")} {index + 1}</legend>
+              <label className="check-row"><input type="checkbox" aria-label={tr("显示布局网格")}
+                checked={grid.visible} onChange={e => updateGrid(index, { visible: e.target.checked })} />{tr("显示网格")}</label>
+              <label className="labeled-select">{tr("网格方向")}<select aria-label={tr("网格方向")} value={grid.axis}
+                onChange={e => updateGrid(index, { axis: e.target.value as LayoutGrid['axis'] })}>
+                <option value="column">{tr("列")}</option>
+                <option value="row">{tr("行")}</option>
+                <option value="uniform">{tr("方块")}</option>
+              </select></label>
+              <label className="labeled-select">{tr("网格对齐")}<select aria-label={tr("网格对齐")} value={grid.alignment ?? 'stretch'}
+                onChange={e => {
+                  const alignment = e.target.value as NonNullable<LayoutGrid['alignment']>
+                  updateGrid(index, alignment === 'stretch'
+                    ? { alignment, sectionSize: undefined, count: grid.count || 12 }
+                    : { alignment, sectionSize: grid.sectionSize ?? 32 })
+                }}>
+                <option value="start">{tr("起点")}</option>
+                <option value="center">{tr("居中")}</option>
+                <option value="end">{tr("终点")}</option>
+                <option value="stretch">{tr("拉伸")}</option>
+              </select></label>
               <div className="field-grid">
                 <NumberField historyLabel="数量" diagnosticFamily={2} unit="number"
-                  label={tr("数量")}
-                  value={n.layoutGrid.count}
-                  min={1}
-                  max={64}
-                  onChange={(count) => updateGrid({ count: Math.round(count) })}
-                />
-                <UnitNumberField historyLabel={n.layoutGrid.axis === 'row' ? '间距' : '列间距'} unit="length" diagnosticFamily={2} unitScale={units.x}
-                  label={tr(n.layoutGrid.axis === 'row' ? '间距' : '列间距')}
-                  value={n.layoutGrid.gutter}
-                  min={0}
-                  max={1e5}
-                  onChange={(gutter) => updateGrid({ gutter })}
-                />
-                <UnitNumberField historyLabel="边距" diagnosticFamily={2} unit="length" unitScale={units.x}
-                  label={tr("边距")}
-                  value={n.layoutGrid.margin}
-                  min={0}
-                  max={1e5}
-                  onChange={(margin) => updateGrid({ margin })}
-                />
-                <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
-                  label={tr("不透明度 %")}
-                  value={n.layoutGrid.opacity * 100}
-                  min={0}
-                  max={100}
-                  onChange={(v) => updateGrid({ opacity: v / 100 })}
-                />
+                  label={tr(grid.sectionSize === undefined ? "数量" : "数量（0 为自动）")} value={grid.count}
+                  min={grid.sectionSize === undefined ? 1 : 0} max={64}
+                  onChange={count => updateGrid(index, { count: Math.round(count) })} />
+                {grid.sectionSize !== undefined && <UnitNumberField unitScale={grid.axis === 'row' ? units.y : units.x}
+                  label={tr("区块尺寸")} value={grid.sectionSize} min={0.01}
+                  onChange={sectionSize => updateGrid(index, { sectionSize })} />}
+                <UnitNumberField historyLabel="间距" unit="length" diagnosticFamily={2} unitScale={grid.axis === 'row' ? units.y : units.x}
+                  label={tr("间距")} value={grid.gutter} min={0} max={1e5}
+                  onChange={gutter => updateGrid(index, { gutter })} />
+                <UnitNumberField historyLabel="边距" diagnosticFamily={2} unit="length" unitScale={grid.axis === 'row' ? units.y : units.x}
+                  label={tr("边距")} value={grid.margin} min={0} max={1e5}
+                  onChange={margin => updateGrid(index, { margin })} />
+                <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent" label={tr("不透明度 %")}
+                  value={grid.opacity * 100} min={0} max={100} onChange={v => updateGrid(index, { opacity: v / 100 })} />
               </div>
-              <ColorInput
-                label={tr("网格颜色")}
-                value={n.layoutGrid.color}
-                onChange={(color) => updateGrid({ color })}
-              />
-              <button type="button" onClick={() =>
-                editor.change('移除布局网格', (d) => {
-                  delete d.nodes[n.id]?.layoutGrid
-                })
-              }>{tr("移除网格")}</button>
-            </div>
-          )}
+              <ColorInput label={tr("网格颜色")} value={grid.color} onChange={color => updateGrid(index, { color })} />
+              <button type="button" onClick={() => editGrids(current => current.filter((_, i) => i !== index), '移除布局网格')}>{tr("移除网格")}</button>
+            </fieldset>
+          ))}
         </>
       )}
     </Tag>

@@ -711,3 +711,33 @@ fn sketch_absolute_size_zero_scale_roundtrips_and_native_zero_does_not() {
         Ok(_) => panic!("expected zero multiplier rejection, import succeeded"),
     }
 }
+
+#[test]
+fn sketch_legacy_nested_artboard_and_open_border_match_canvas_semantics() {
+    let shape = json!({"_class":"shapePath","do_objectID":"open","name":"Open border","isClosed":false,
+        "frame":{"width":10,"height":10},"points":[
+            {"point":"{0, 1}","curveMode":1},{"point":"{0, 0}","curveMode":1},{"point":"{1, 0}","curveMode":1}
+        ],"style":{"borders":[{"isEnabled":true,"fillType":0,"position":1,"thickness":2,
+            "color":{"red":0,"green":0,"blue":1,"alpha":1}}]}});
+    let nested = json!({"_class":"artboard","do_objectID":"nested","frame":{"x":4,"y":4,"width":20,"height":20},
+        "backgroundColor":{"red":1,"green":0,"blue":0,"alpha":1},"hasBackgroundColor":false,
+        "includeBackgroundColorInExport":false,"layers":[shape]});
+    let outer = json!({"_class":"artboard","do_objectID":"outer","frame":{"x":0,"y":0,"width":40,"height":40},
+        "backgroundColor":{"red":1,"green":0,"blue":0,"alpha":1},"hasBackgroundColor":false,
+        "includeBackgroundColorInExport":false,"layers":[nested]});
+    let bytes = archive(json!({"pages":[{"_ref":"pages/p"}]}), &[("p", page("p", vec![outer]))]);
+    let doc = interop::import_sketch_report(&bytes).unwrap().document;
+    assert_eq!(doc.nodes["open"].strokes[0].align, "center");
+    let mut engine = futureox_design_kernel::Engine::new();
+    engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    let png = engine.render_region_png(&futureox_design_kernel::export::RegionRequest {
+        page_id: doc.pages[0].id.clone(), bounds: futureox_design_kernel::export::ExportBounds {x:0.,y:0.,width:40.,height:40.},
+        scale:1., node_ids:Some(vec!["outer".into()]), raster_profile:None,color_output:None,
+    }).unwrap();
+    let actual = image::load_from_memory(&png).unwrap().to_rgba8();
+    assert_eq!(actual.get_pixel(20,20).0, [255;4]);
+    assert_eq!(actual.get_pixel(35,35).0[3], 0);
+    let back = interop::import_sketch_report(&interop::export_sketch(&doc).unwrap()).unwrap().document;
+    assert_eq!(back.nodes["open"].strokes[0].align, "center");
+    assert!(back.nodes["nested"].fills.iter().any(|paint| paint.visible));
+}

@@ -1,6 +1,6 @@
 import type { DesignDocument, LayoutGrid } from './model'
 import { apply, worldMatrix } from './geometry'
-import { layout_grid_tracks_json, layout_grid_frame_json } from './generated/design-kernel/design_kernel'
+import { authored_grid_spans_json, layout_grid_tracks_json, layout_grid_frame_json } from './generated/design-kernel/design_kernel'
 export type GridAxisSpans = {
   axis: { cutoff: number; stride: number; roundedSectionSize: number; unroundedSectionSize: number }
   spans: { start: number; end: number }[]
@@ -51,35 +51,18 @@ export function layoutGridRectangles(grid: LayoutGrid, frameId: string, doc: Des
       points,
     }
   }
-  const tracksFor = (extent: number) => {
-    const count = Math.max(1, Math.round(grid.count))
-    const track = (extent - 2 * grid.margin - (count - 1) * grid.gutter) / count
-    const tracks: number[] = []
-    for (let i = 0; i < count; i++) {
-      if (i > 0) tracks.push(grid.gutter)
-      tracks.push(Math.max(0, track))
-    }
-    return tracks
-  }
-  const spans = (tracks: number[]) => gridAxisSpans(tracks).spans
+  const spans = (extent: number) =>
+    JSON.parse(authored_grid_spans_json(JSON.stringify(grid), extent)) as GridAxisSpans['spans']
+  const legacyMargin = grid.sectionSize === undefined && grid.alignment === undefined ? grid.margin : 0
   if (grid.axis === 'column')
-    return spans(tracksFor(frame.width)).map((s) =>
-      rect(grid.margin + s.start, grid.margin, s.end - s.start, frame.height - 2 * grid.margin),
-    )
+    return spans(frame.width).map(s => rect(s.start, legacyMargin, s.end - s.start, frame.height - 2 * legacyMargin))
   if (grid.axis === 'row')
-    return spans(tracksFor(frame.height)).map((s) =>
-      rect(grid.margin, grid.margin + s.start, frame.width - 2 * grid.margin, s.end - s.start),
-    )
+    return spans(frame.height).map(s => rect(legacyMargin, s.start, frame.width - 2 * legacyMargin, s.end - s.start))
   const cells = []
-  for (const row of spans(tracksFor(frame.height)))
-    for (const col of spans(tracksFor(frame.width)))
-      cells.push(
-        rect(
-          grid.margin + col.start,
-          grid.margin + row.start,
-          col.end - col.start,
-          row.end - row.start,
-        ),
-      )
+  const cols = spans(frame.width), rows = spans(frame.height)
+  // A full set of small squares is bounded independently from stripes.
+  if (cols.length * rows.length > 4096) return []
+  for (const row of rows) for (const col of cols)
+    cells.push(rect(col.start, row.start, col.end - col.start, row.end - row.start))
   return cells
 }

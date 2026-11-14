@@ -18,7 +18,7 @@ import {
 } from './design-system'
 import { importFileInWorker } from './import-file-worker'
 import { download } from './persistence'
-import type { Interaction, PrototypeAction } from './prototype'
+import type { Interaction, PrototypeAction, PrototypeOverflow } from './prototype'
 import { hasSchemaExtras } from './prototype'
 import { PrototypePlayer } from './PrototypePlayer'
 import { jumpToNode } from './canvas-navigation'
@@ -302,6 +302,19 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
               </button>
               {n && (
                 <>
+                  {selection.length === 1 && n.kind === 'frame' && <label className="labeled-select">
+                    {tr('溢出滚动')}
+                    <select aria-label={tr('溢出滚动')} value={n.prototypeOverflow ?? 'none'} disabled={n.locked}
+                      onChange={event => {
+                        const overflow = event.target.value as PrototypeOverflow
+                        editor.updateProperties([n.id], frame => { frame.prototypeOverflow = overflow }, '设置原型溢出滚动')
+                      }}>
+                      <option value="none">{tr('不滚动')}</option>
+                      <option value="horizontal">{tr('水平滚动')}</option>
+                      <option value="vertical">{tr('垂直滚动')}</option>
+                      <option value="both">{tr('双向滚动')}</option>
+                    </select>
+                  </label>}
                   <h3>{interactionsHeading(n.name, locale)}</h3>
                   <button
                     type="button"

@@ -115,6 +115,7 @@ export type Interaction = {
   delayMs?: number
   condition?: { variable: string; equals: string | number | boolean }
 }
+export type PrototypeOverflow = 'none' | 'horizontal' | 'vertical' | 'both'
 export type Prototype = { startNode?: string; interactions: Record<string, Interaction[]> }
 /** Remove only references invalidated by this edit; reject newly invalid input normally. */
 export function prunePrototypeReferences(before: DesignDocument, after: DesignDocument) {
@@ -235,12 +236,13 @@ export function prototypeEase(kind: PrototypeEasing | undefined, t: number): num
 }
 /** Isolate a preview frame visually while retaining every graph/resource
  * owner required by native document admission and component resolution. */
-export function prototypeFrameView(doc: DesignDocument, root: string): {document: DesignDocument; pageId: string} {
+export function prototypeFrameView(doc: DesignDocument, root: string, allowOverflow = false): {document: DesignDocument; pageId: string} {
   if (!doc.nodes[root]) throw new Error('原型目标已删除')
   const parents=new Map<string,string>()
   for (const p of doc.pages) for (const id of p.children) parents.set(id,p.id)
   for (const n of Object.values(doc.nodes)) for (const id of n.children) parents.set(id,n.id)
   const nodes={...doc.nodes};let at=root
+  if (allowOverflow) nodes[root] = { ...nodes[root], clip: false }
   while (parents.has(at)) {
     const parent=parents.get(at)!, siblings=doc.nodes[parent]?.children || doc.pages.find(p=>p.id===parent)!.children
     for (const id of siblings) if(id!==at) nodes[id]={...nodes[id],visible:false}

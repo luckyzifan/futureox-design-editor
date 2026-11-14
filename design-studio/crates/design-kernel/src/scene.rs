@@ -152,11 +152,21 @@ pub struct LayoutGrid {
     pub visible: bool,
     #[serde(default = "one")]
     pub opacity: f64,
+    /// Absent keeps the legacy stretched layout grid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_size: Option<f64>,
 }
+pub const MAX_LAYOUT_GRIDS: usize = 16;
 impl LayoutGrid {
     pub fn validate(&self, management: Option<&crate::color::ColorSettings>) -> Result<(), String> {
         if !matches!(self.axis.as_str(), "column" | "row" | "uniform")
-            || !(1..=64).contains(&self.count)
+            || self.count > 64
+            || (self.count == 0 && self.section_size.is_none())
+            || self.alignment.as_deref().is_some_and(|a| !matches!(a, "start" | "end" | "center" | "stretch"))
+            || (matches!(self.alignment.as_deref(), Some("start" | "end" | "center")) && self.section_size.is_none())
+            || self.section_size.is_some_and(|size| !size.is_finite() || !(0.01..=1e7).contains(&size))
             || !self.gutter.is_finite()
             || self.gutter < 0.
             || self.gutter > 1e7
@@ -187,6 +197,35 @@ impl LayoutGrid {
         }
         tracks
     }
+    /// The archived fixed/auto grid keeps its track width when the frame resizes.
+    pub fn spans(&self, extent: f64) -> Vec<crate::layout_grid::Span> {
+        use crate::layout_grid::Span;
+        let Some(size) = self.section_size.filter(|_| self.alignment.as_deref() != Some("stretch")) else {
+            if extent <= 2. * self.margin { return Vec::new(); }
+            return crate::layout_grid::tracks_to_spans(&self.tracks(extent)).1.into_iter()
+                .map(|band| Span {start: band.start + self.margin, end: band.end + self.margin})
+                .collect();
+        };
+        let stride = size + self.gutter;
+        let count = if self.count == 0 {
+            ((extent - self.margin).max(0.) / stride).ceil().clamp(0., 256.) as usize
+        } else {
+            self.count as usize
+        };
+        let total = (count as f64 * stride - self.gutter).max(0.);
+        let start = match self.alignment.as_deref() {
+            Some("end") => extent - self.margin - total,
+            Some("center") => (extent - total) * 0.5,
+            _ => self.margin,
+        };
+        (0..count).filter_map(|i| {
+            let x = start + i as f64 * stride;
+            let lo = x.max(0.);
+            let hi = (x + size).min(extent);
+            (lo < hi).then_some(Span {start: lo, end: hi})
+        }).collect()
+    }
+
 }
 // Only cold, usually empty collections use this candidate. Hot paints,
 // children, paths and transfer buffers retain their existing representation.
@@ -222,6 +261,10 @@ pub struct Node {
     pub board: Option<Box<BoardContent>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout_grid: Option<Box<LayoutGrid>>,
+    #[serde(default, skip_serializing_if = "cold_node_vec_is_empty")]
+    pub layout_grids: ColdNodeVec<LayoutGrid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prototype_overflow: Option<crate::prototype::Overflow>,
     #[serde(default, skip_serializing_if = "cold_node_vec_is_empty")]
     pub export_settings: ColdNodeVec<ExportSetting>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1228,11 +1271,19 @@ impl Document {
             {
                 return Err("Invalid path offset".into());
             }
-            if let Some(grid) = &n.layout_grid {
+            if n.layout_grid.is_some() || !n.layout_grids.is_empty() {
                 if self.schema_version < 12 || n.kind != "frame" {
                     return Err("Layout grids require a schema 12 frame".into());
                 }
-                grid.validate(self.color_management.as_ref())?;
+                if n.layout_grids.len() > MAX_LAYOUT_GRIDS || (n.layout_grid.is_some() && !n.layout_grids.is_empty()) {
+                    return Err("Invalid layout grid list".into());
+                }
+                for grid in n.layout_grid.as_deref().into_iter().chain(n.layout_grids.iter()) {
+                    grid.validate(self.color_management.as_ref())?;
+                }
+            }
+            if n.prototype_overflow.is_some() && (self.schema_version < 12 || n.kind != "frame") {
+                return Err("Prototype overflow requires a schema 12 frame".into());
             }
             if let Some(board) = &n.board {
                 if self.schema_version < 10
@@ -1713,6 +1764,8 @@ mod layout_grid_tests {
             color: "#ff0000".into(),
             visible: true,
             opacity: 1.,
+            alignment: None,
+            section_size: None,
         };
         // (100 - 2*20 - 2*10) / 3 = 40/3
         let tracks = grid.tracks(100.);
@@ -1738,6 +1791,8 @@ mod layout_grid_tests {
             color: "#00ff00".into(),
             visible: true,
             opacity: 0.5,
+            alignment: None,
+            section_size: None,
         };
         assert!(base.validate(None).is_ok());
         for bad in [

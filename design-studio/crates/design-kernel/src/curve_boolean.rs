@@ -324,6 +324,49 @@ fn resolve_cached(doc: &mut Document, memoize: bool) -> Result<(), String> {
     let roots = doc.pages.iter().flat_map(|page| page.children.iter().cloned()).collect();
     resolve_with_cache(doc, &mut crate::curve_boolean_cache::Cache::default(), memoize, roots)
 }
+/// Tie the source outline to the complete editable geometry of a flat
+/// boolean. Any changed operand falls back to the ordinary boolean solver.
+pub(crate) fn fig_outline_key(node: &crate::scene::Node, children: &[&crate::scene::Node]) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let geometry = node.vector_geometry.as_ref()?;
+    if children.is_empty() || children.len() > 64 || children.iter().any(|child|
+        !child.children.is_empty() || child.boolean_operation.is_some() || child.instance.is_some() ||
+        child.kind == "text" || child.vector_brush.is_some() || !child.style_refs.is_empty() || !child.bindings.is_empty())
+    {
+        return None;
+    }
+    let mut hash = Sha256::new();
+    hash.update(serde_json::to_vec(&(node.width, node.height, node.boolean_operation, geometry)).ok()?);
+    for child in children {
+        let fills = child.fills.iter().any(|p| p.visible && p.opacity > 0.);
+        let strokes: Vec<_> = child.strokes.iter().map(|s| (
+            s.width, &s.align, &s.cap, &s.join, &s.dash, s.dash_offset, s.visible, s.paint.visible,
+            s.paint.opacity > 0., &s.width_profile, s.start_marker, s.end_marker,
+        )).collect();
+        hash.update(serde_json::to_vec(&(child.kind.as_str(), child.transform, child.width, child.height,
+            child.visible, child.radii, child.smoothing, child.arc, child.corner_radius, child.points, child.inner_radius,
+            &child.network, &child.vector_geometry, child.path_offset, fills, strokes)).ok()?);
+    }
+    Some(hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+// Figma can boolean-combine the painted area of an open stroke, whose fill
+// path is empty. Expand in local space before applying the operand transform.
+fn stroke_operand(node: &crate::scene::Node) -> Result<Option<Path>, String> {
+    let strokes = node.strokes.iter().filter(|s| s.visible && s.paint.visible && s.paint.opacity > 0. && s.width > 0.);
+    let mut outline = Path::default();
+    for stroke in strokes {
+        let local = node.paths()?.1.flatten(Transform::default(), 0.005)?;
+        for contour in crate::stroke::expand(&local, stroke, 0.005, 0.)? {
+            if outline.commands.len().saturating_add(contour.points.len()).saturating_add(1) > crate::vector_geometry::MAX_COMMANDS {
+                return Err("Boolean stroke command budget exceeded".into());
+            }
+            outline.commands.extend(Path::polygon(&contour.points, true).commands);
+        }
+    }
+    Ok((!outline.commands.is_empty()).then_some(outline))
+}
+
 fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool, roots: Vec<String>) -> Result<(), String> {
     fn visit(doc: &mut Document, id: &str, depth: usize, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool) -> Result<(), String> {
         if depth > 64 {
@@ -335,11 +378,23 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
             visit(doc, child, depth + 1, cache, memoize)?;
         }
         if let Some(op) = doc.nodes[id].boolean_operation {
+            let node = &doc.nodes[id];
+            if let Some(source) = crate::interop::sketch_binding(doc, node, "figBooleanOutlineKey")
+                && fig_outline_key(node, &children.iter().map(|id| &doc.nodes[id]).collect::<Vec<_>>()).as_deref() == Some(source)
+            {
+                return Ok(());
+            }
+            let stroke_operands = crate::interop::sketch_binding(doc, &doc.nodes[id], "figBooleanStrokeOperands") == Some("true");
             let inputs = children
                 .iter()
                 .filter(|c| doc.nodes[*c].visible)
                 .map(|c| {
                     let n = &doc.nodes[c];
+                    if stroke_operands && !n.fills.iter().any(|p| p.visible && p.opacity > 0.)
+                        && let Some(path) = stroke_operand(n)?
+                    {
+                        return Ok((path, n.transform, false));
+                    }
                     Ok((
                         if op.compound_rule().is_some() && n.boolean_operation.is_none() {
                             if let Some(network)=&n.network {

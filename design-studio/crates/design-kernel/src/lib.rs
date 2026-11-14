@@ -2717,6 +2717,24 @@ mod wasm {
         serde_json::to_string(&(axis, spans)).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    #[wasm_bindgen]
+    pub fn fig_boolean_outline_key_json(node: &str, children: &str) -> Result<Option<String>, JsValue> {
+        let node = serde_json::from_str(node).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+        let children: Vec<scene::Node> = serde_json::from_str(children).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+        Ok(curve_boolean::fig_outline_key(&node, &children.iter().collect::<Vec<_>>()))
+    }
+
+    #[wasm_bindgen]
+    pub fn authored_grid_spans_json(grid_json: &str, extent: f64) -> Result<String, JsValue> {
+        let grid: scene::LayoutGrid =
+            serde_json::from_str(grid_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        if !extent.is_finite() || !(0. ..=1e7).contains(&extent) {
+            return Err(JsValue::from_str("Invalid layout grid extent"));
+        }
+        grid.validate(Some(&color::ColorSettings::default())).map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&grid.spans(extent)).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Uniform pack for the one-pass GPU gradient-blur composite (shared
     /// WGSL mode 46): affine strength-field coefficients derived in f64,
     /// followed by the counts and the smooth-tier flag.
