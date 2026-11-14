@@ -867,7 +867,11 @@ pub(crate) fn legacy_sketch_group_blur(layer: &Value, style: &Value) -> bool {
 }
 
 pub(crate) fn sketch_fixed_line_baseline(spacing: Option<i64>) -> &'static str {
-    if matches!(spacing, Some(0 | 1)) { "sketch-font-leading" } else { "nearest-point" }
+    match spacing {
+        Some(0 | 1) => "sketch-font-leading",
+        Some(3) => "sketch-fixed-advance",
+        _ => "nearest-point",
+    }
 }
 
 pub(crate) fn sketch_vertical_alignment(layer: &Value, attributes: &Value) -> Option<i64> {
@@ -1005,7 +1009,7 @@ fn sketch_glass(blur: &Value, space: ColorSpace) -> Option<Effect> {
             refraction:number("distortion",0.5,1.)?, dispersion:number("chromaticAberrationMultiplier",0.,1.)?,
             bevel_size:None,light_angle:45.,light_intensity:if light {0.5} else {0.} }),
         color_controls: (!controls.is_identity()).then_some(controls),
-        texture:None,gradient_blur:None,zoom_blur:None,motion_angle:0.,show_shadow_behind_node:false })
+        texture:None,gradient_blur:None,zoom_blur:None,motion_angle:0.,show_shadow_behind_node:false,shadow_knockout:false,sketch_backdrop:false })
 }
 
 fn sketch_blur_value(e: &Effect) -> Value {
@@ -1581,6 +1585,8 @@ impl<'a> Importer<'a> {
                         texture: None,
                         gradient_blur: None,
                         show_shadow_behind_node: false,
+                        shadow_knockout: !inner,
+                        sketch_backdrop: false,
                         color_controls: None,
                         zoom_blur: None, motion_angle: 0.,
                     });
@@ -1633,8 +1639,12 @@ impl<'a> Importer<'a> {
                 amount: 0.,
                 glass: None,
                 texture: None,
+                sketch_backdrop: kind == "background-blur" && gradient_blur.is_none()
+                    && !blur.get("progressive").and_then(Value::as_bool).unwrap_or(false)
+                    && !blur.get("isProgressive").and_then(Value::as_bool).unwrap_or(false),
                 gradient_blur,
                 show_shadow_behind_node: false,
+                shadow_knockout: false,
                 color_controls: (kind == "background-blur").then(|| crate::color_controls::ColorControls {
                     space:Some(self.color_space), saturation: blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.), ..Default::default()
                 }).filter(|c| c.validate() && !c.is_identity()),
@@ -1655,7 +1665,7 @@ impl<'a> Importer<'a> {
             if controls.validate() {
                 out.push(Effect { id:String::new(),kind:"color-controls".into(),visible:true,
                     radius:0.,x:0.,y:0.,spread:0.,color:"#000000".into(),opacity:1.,amount:0.,
-                    glass:None,texture:None,gradient_blur:None,show_shadow_behind_node:false,color_controls:Some(controls),zoom_blur:None,motion_angle:0. });
+                    glass:None,texture:None,gradient_blur:None,show_shadow_behind_node:false,shadow_knockout:false,sketch_backdrop:false,color_controls:Some(controls),zoom_blur:None,motion_angle:0. });
             }
         }
         out
@@ -4957,7 +4967,10 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
             // Keep ordinary one-line labels and their font-driven sizing.
             let custom_line_box = node.text_runs.iter().any(|run|
                 run.paragraph.as_ref().and_then(crate::font::TextParagraph::fixed_line_height).is_some())
-                && node.text_style.as_ref().is_some_and(|s| s.font_id == "default" && s.line_box_baseline == "nearest-point");
+                && node.text_style.as_ref().is_some_and(|s| {
+                    s.font_id == "default"
+                        && matches!(s.line_box_baseline.as_str(), "nearest-point" | "sketch-fixed-advance")
+                });
             if custom_line_box
                 && node.sizing.as_ref().is_some_and(|s| s.width == crate::layout::SizeMode::Hug)
                 && node.width.is_finite() && (0.01..1e7).contains(&node.width)
@@ -7428,7 +7441,8 @@ fn export_layer_impl(
                         if style.is_some_and(|s| s.line_box_baseline == "sketch-font-leading") {
                             1
                         } else if style.is_some_and(|s| {
-                            s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9
+                            s.line_box_baseline == "sketch-fixed-advance"
+                                || (s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9)
                         }) {
                             3
                         } else {
@@ -9758,6 +9772,8 @@ mod tests {
             texture: None,
             gradient_blur: None,
             show_shadow_behind_node: false,
+            shadow_knockout: false,
+            sketch_backdrop: false,
             color_controls: None,
             zoom_blur: None, motion_angle: 0.,
         });
@@ -10427,6 +10443,8 @@ mod tests {
             texture: None,
             gradient_blur: None,
             show_shadow_behind_node: false,
+            shadow_knockout: false,
+            sketch_backdrop: false,
             color_controls: None,
             zoom_blur: None, motion_angle: 0.,
         }

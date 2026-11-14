@@ -1057,7 +1057,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                 <label className="check-row"><input aria-label={tr("渐变模糊")} type="checkbox" checked={!!fx.gradientBlur} onChange={e=>update(n=>{
                   const effect = n.effects[i]
                   const y = effect.kind === 'background-blur' ? n.height / 2 : 0
-                  if (e.target.checked) effect.gradientBlur = { start: [0,y], end: [n.width,y], startCount: 0, endCount: 4, smooth: true }
+                  if (e.target.checked) {
+                    delete effect.sketchBackdrop
+                    effect.gradientBlur = { start: [0,y], end: [n.width,y], startCount: 0, endCount: 4, smooth: true }
+                  }
                   else delete effect.gradientBlur
                 })}/>{tr("渐变模糊")}</label>
                 {fx.gradientBlur && <div className="field-grid effect-fields">

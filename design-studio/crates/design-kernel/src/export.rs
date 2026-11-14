@@ -419,6 +419,11 @@ fn single_backdrop_covered_by_root_halo(
     let Some((node, effect, matrix)) = consumer else {
         return false;
     };
+    if effect.sketch_backdrop {
+        // Sketch clamps to the entire captured shape, so the portable
+        // Gaussian proof for a cropped single consumer does not apply.
+        return false;
+    }
     let halo = crate::geometry_snapshot::effect_halo(node, matrix);
     if !(0..=2048).contains(&halo) {
         return false;
@@ -464,7 +469,7 @@ pub(crate) fn visit_backdrops(
         let matrix = parent.concat(n.transform);
         if let Some(fx) = n.backdrop_effect() {
             let (path, _) = n.paths()?;
-            emit(path.control_bounds(matrix), (fx.blur_radius() * 2. + fx.material_halo()) * matrix.max_scale());
+            emit(path.control_bounds(matrix), fx.backdrop_outset(matrix.max_scale()));
         }
         for child in &n.children { visit(doc, child, matrix, emit)?; }
         Ok(())

@@ -579,6 +579,27 @@ fn native_solid_fill_alpha_and_layer_opacity_apply_once_and_round_trip() {
 }
 
 #[test]
+fn sketch_shadow_casts_from_a_translucent_outline_without_darkening_its_fill() {
+    let shape = json!({"_class":"rectangle","do_objectID":"shape",
+        "frame":{"x":2,"y":2,"width":10,"height":10},
+        "style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":1,"green":0,"blue":0,"alpha":0.5}}],
+            "shadows":[{"isEnabled":true,"blurRadius":0,"offsetX":5,"offsetY":0,"spread":0,
+                "color":{"red":0,"green":0,"blue":1,"alpha":0.8}}]}});
+    let bytes = archive(json!({"pages":[{"_ref":"pages/p"}]}), &[("p", page("p", vec![shape]))]);
+    let doc = interop::import_sketch_report(&bytes).unwrap().document;
+    let exported = interop::export_sketch(&doc).unwrap();
+    let reopened = interop::import_sketch_report(&exported).unwrap().document;
+    for document in [&doc, &reopened] {
+        let pixels = render(document, 20, 20);
+        let alpha = |x: usize| pixels[(7 * 20 + x) * 4 + 3];
+        // A hard offset shadow is knocked out inside the shape, but still
+        // casts at its own opacity on the unpainted strip to the right.
+        assert_eq!(alpha(9), 128);
+        assert_eq!(alpha(15), 204);
+    }
+}
+
+#[test]
 fn ignored_legacy_group_blur_stays_inactive_after_compatibility_export() {
     let blur = json!({"_class":"blur","isEnabled":true,"radius":8,"type":0});
     for modern in [false, true] {

@@ -381,7 +381,10 @@ fn sketch_shared_typography_keeps_layer_owned_wrap_and_fixed_baseline() {
     let actual = resolve(&doc);
     let style = actual.text_style.as_ref().unwrap();
     assert!(style.wrap);
-    assert_eq!(style.line_box_baseline, "nearest-point");
+    // The archived layer uses Sketch spacing mode 1. Its line box policy
+    // comes from the receiving layer, even when a shared style is resolved.
+    assert_eq!(style.line_box_baseline, "sketch-font-leading");
+    assert_eq!(fonts.node_layout(&actual, Some(260.)).unwrap().lines.len(), 21);
     assert_eq!((actual.width, actual.height), (source.width, source.height));
     assert_eq!(actual.text, source.text);
     assert_eq!(actual.style_refs, source.style_refs);
@@ -407,6 +410,6 @@ fn sketch_shared_typography_keeps_layer_owned_wrap_and_fixed_baseline() {
     let updated = resolve(&local);
     let updated = updated.text_style.unwrap();
     assert!(!updated.wrap);
-    assert_eq!(updated.line_box_baseline, "nearest-point");
+    assert_eq!(updated.line_box_baseline, "sketch-font-leading");
     assert_eq!(updated.letter_spacing, 3.);
 }

@@ -103,7 +103,7 @@ fn demand(
                 return Ok(false);
             }
         } else if let Some(fx) = n.backdrop_effect() {
-            if fx.kind != "background-blur" || fx.gradient_blur.is_some() || fx.color_controls.is_some()
+            if fx.kind != "background-blur" || fx.sketch_backdrop || fx.gradient_blur.is_some() || fx.color_controls.is_some()
                 || visible.any(|other| !std::ptr::eq(fx, other))
             {
                 return Ok(false);

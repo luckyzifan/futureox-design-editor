@@ -634,6 +634,22 @@ export class GpuRenderer {
   private async interactionBackdropDisplay(n: GpuNode, backdrop: Surface, sigma: number): Promise<Surface> {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const effect = backdropEffect(n.effects)
+    if (effect?.sketchBackdrop) {
+      const [x, y, w, h] = n.backdropBox ?? [n.rect.x, n.rect.y, n.rect.w, n.rect.h]
+      const capture = rect(x, y, w, h)
+      await this.reclaimForSurface(capture)
+      this.checkFrameCurrent()
+      const source = this.copy(backdrop, capture)
+      let filtered: Surface | undefined
+      try {
+        filtered = await this.blurBackdropRegion(source, sigma, n)
+        await this.reclaimForSurface(n.rect)
+        this.checkFrameCurrent()
+        return this.run(27, n.rect, [filtered])
+      } finally {
+        this.release(source, filtered === source ? undefined : filtered)
+      }
+    }
     if (effect?.gradientBlur) {
       const support = this.scene.integratedBlur ? Math.ceil(sigma * 2) + 2 : gaussianRadii(sigma).reduce((sum, radius) => sum + radius, 2)
       const capture = import.meta.env.VITE_DESIGN_EFFECT_REGIONS !== '0' && !this.interactionCapturing
@@ -3899,6 +3915,7 @@ export class GpuRenderer {
   private shadow(source: Surface, blurredAlpha: Surface, n: GpuNode, fx: Effect, composite = false, boundedCorners = false, second?:{effect:Effect;alpha:Surface}) {
     return this.run(composite ? 50 : 6, n.rect, second ? [source,blurredAlpha,second.alpha] : [source,blurredAlpha], (u) => {
       if (boundedCorners) u[40] = 1
+      if (fx.shadowKnockout) u[41] = 1 / (n.shadowPaintAlpha ?? 1)
       if (second) {
         const e=second.effect
         u[40]=2
@@ -6713,25 +6730,32 @@ export class GpuRenderer {
         const resolved = resolvedFirstBlur || this.run(scalarAlpha ? 49 : 23, n.rect, basisPlanes, undefined, 15, undefined, scalarAlpha)
         resolvedFirstBlur = undefined
         const inner = fx.kind === 'inner-shadow'
+        const cast = fx.shadowKnockout ? n.shadowPaintAlpha : undefined
         const pointwise =
+          cast === undefined &&
           fx.radius === 0 &&
           fx.spread === 0 &&
           Number.isInteger(n.matrix[0] * fx.x + n.matrix[2] * fx.y) &&
           Number.isInteger(n.matrix[1] * fx.x + n.matrix[3] * fx.y)
+        const silhouette = cast === undefined ? resolved
+          : this.run(63, n.rect, [resolved], u => { u[41] = 1 / cast })
         const alpha =
           Math.abs(fx.spread * sc) >= 0.5 && !this.sourceShadowField(n,fx)
             ? this.morphology(
-                resolved,
+                silhouette,
                 Math.round(Math.abs(fx.spread * sc)),
                 inner ? fx.spread < 0 : fx.spread > 0,
               )
-            : resolved
-        const blurred = (pendingSurfaceAdmission = this.foregroundBlur(alpha, n, fx, fx.radius * sc / 2, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)
+            : silhouette
+        const blurred = cast === undefined
+          ? await this.foregroundBlur(alpha, n, fx, fx.radius * sc / 2, true)
+          : await this.blur(alpha, fx.radius * sc / 2, false, true, false, true, false, true)
         // Filtering has encoded the last read of its input. Shadow assembly
         // only needs the individual planes and blurred alpha, not the resolved
         // source/morphology intermediates. Keep aliases when blur is identity.
         if (resolved !== blurred) this.release(resolved)
-        if (alpha !== blurred) this.release(alpha)
+        if (silhouette !== resolved && silhouette !== blurred) this.release(silhouette)
+        if (alpha !== silhouette && alpha !== blurred) this.release(alpha)
         const outputs: Surface[] = [],
           shared = new Map<Texture, Surface>()
         for (let index = 0; index < planes.length; index++) {
@@ -6744,11 +6768,11 @@ export class GpuRenderer {
             // Inner coverage reads source alpha. After the first inner shadow
             // that alpha lives on the retained silhouette, not the composite.
             const separateShape = inner && shape.texture !== plane.texture
-            if (!separateShape && this.optimized && this.driver.managed && !this.driver.displayMath && this.driver.exactShadowOver &&
+            if (!fx.shadowKnockout && !separateShape && this.optimized && this.driver.managed && !this.driver.displayMath && this.driver.exactShadowOver &&
                 exactBlendLattice([n.rect, plane.rect, alphaSource.rect])) {
               next = this.shadow(plane, alphaSource, n, fx, true, boundedCorners)
             } else {
-              const shadow = this.shadow(separateShape ? shape : plane, alphaSource, n, fx)
+              const shadow = this.shadow(separateShape || fx.shadowKnockout ? shape : plane, alphaSource, n, fx)
               next = inner ? this.compose(shadow, plane) : this.compose(plane, shadow)
               this.release(shadow)
             }
@@ -6992,6 +7016,10 @@ export class GpuRenderer {
    * Bit-preserving strip copies retain signed underflow zeros between axes. */
   private async blurBackdropRegion(input: Surface, sigma: number, node: GpuNode): Promise<Surface> {
     const radius = sigma * 2
+    const sketchBlur = backdropEffect(node.effects)?.sketchBackdrop
+    if (sketchBlur) {
+      return this.blur(input, radius * Math.SQRT2, true, false, false, true, false, true)
+    }
     const backdrop = node.blend === 'normal' ? backdropEffect(node.effects || []) : undefined
     const displayEligible = backdrop?.kind === 'background-blur' && !backdrop.gradientBlur &&
       !node.effects.some(effect => effect.visible && effect.gradientBlur)
@@ -7244,7 +7272,7 @@ export class GpuRenderer {
       const kernel = this.filterKernel('rational-box', r, () => rational_box_kernel_rgba(r))
       const certified = this.certifiedKernel(r, true)
       for (const axis of [0, 1]) {
-        const next = this.run(22, input.rect, [current, kernel, ...(certified ? [certified] : [])], (u) => u.set([r, axis, 0, forceGaussian ? 2 : 1], 36), channels)
+        const next = this.run(22, input.rect, [current, kernel, ...(certified ? [certified] : [])], (u) => u.set([r, axis, Number(clampEdges && forceGaussian), forceGaussian ? 2 : 1], 36), channels)
         if (current !== input) this.release(current)
         current = next
       }
@@ -7819,9 +7847,10 @@ export class GpuRenderer {
       if (shadowKind) {
         const inner = fx.kind === 'inner-shadow'
         await this.reclaimForSurface(output, 2)
-        const shadow = this.run(6, output, [inner ? silhouette : layer, filtered], u => {
+        const shadow = this.run(6, output, [inner || fx.shadowKnockout ? silhouette : layer, filtered], u => {
           u.set([0, ...this.color(fx.color)], 28)
           u[32] = fx.opacity * this.alpha(fx.color)
+          if (fx.shadowKnockout) u[41] = 1 / (n.shadowPaintAlpha ?? 1)
           u.set([0, n.matrix[0] * fx.x + n.matrix[2] * fx.y,
             n.matrix[1] * fx.x + n.matrix[3] * fx.y, inner ? 1 : 0], 36)
         })
@@ -7874,7 +7903,7 @@ export class GpuRenderer {
     }
     if (n.fills.length || n.clip || background) fill = ((pendingSurfaceAdmission = this.fillMask(n), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
     if (background && fill && !directBackdrop) {
-      const raw = n.analyticRegion?.backdrop ? await this.analyticBackdrop(backdrop, n.analyticRegion.backdrop)
+      const raw = !background.sketchBackdrop && n.analyticRegion?.backdrop ? await this.analyticBackdrop(backdrop, n.analyticRegion.backdrop)
         : await this.interactionBackdropDisplay(n,backdrop,(backdropRadius(background) * scale(n.matrix)) / 2)
       const blur = this.colorControls(raw, background.colorControls)
       if (blur !== raw) this.release(raw)
@@ -7999,17 +8028,23 @@ export class GpuRenderer {
         if (sharesShadowBasis && !shadowBasis) shadowBasis = this.retain(layer)
         const silhouette = shadowBasis ?? layer
         const inner = fx.kind === 'inner-shadow'
-        let alpha = silhouette
+        const cast = fx.shadowKnockout ? n.shadowPaintAlpha : undefined
+        const shape = cast === undefined ? silhouette
+          : this.run(63, n.rect, [silhouette], u => { u[41] = 1 / cast })
+        let alpha = shape
         if (Math.abs(fx.spread * sc) >= 0.5 && !this.sourceShadowField(n,fx))
           alpha = this.morphology(
-            silhouette,
+            shape,
             Math.round(Math.abs(fx.spread * sc)),
             inner ? fx.spread < 0 : fx.spread > 0,
           )
-        const blur = (pendingSurfaceAdmission = this.foregroundBlur(alpha, n, fx, fx.radius * sc / 2, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)
-        const shadow = this.run(6, n.rect, [inner ? silhouette : layer, blur], (u) => {
+        const blur = cast === undefined
+          ? await this.foregroundBlur(alpha, n, fx, fx.radius * sc / 2, true)
+          : await this.blur(alpha, fx.radius * sc / 2, false, true, false, true, false, true)
+        const shadow = this.run(6, n.rect, [inner || fx.shadowKnockout ? silhouette : layer, blur], (u) => {
           u.set([0, ...this.color(fx.color)], 28)
           u[32] = fx.opacity * this.alpha(fx.color)
+          if (fx.shadowKnockout) u[41] = 1 / (n.shadowPaintAlpha ?? 1)
           u.set(
             [
               this.scene.integratedBlur ? 1 : 0,
@@ -8023,6 +8058,7 @@ export class GpuRenderer {
         const next = inner ? this.compose(shadow, layer) : this.compose(layer, shadow)
         const retiring: Surface[] = [layer, shadow]
         if (alpha !== shadowBasis) retiring.push(alpha)
+        if (shape !== silhouette && shape !== alpha) retiring.push(shape)
         if (blur !== alpha && blur !== shadowBasis) retiring.push(blur)
         this.release(...retiring)
         layer = next

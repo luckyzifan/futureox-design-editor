@@ -197,6 +197,8 @@ export function validZoomBlur(value:unknown):value is ZoomBlur {
     Array.isArray(z.center) && z.center.length===2 && z.center.every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)
 }
 export type Effect = {
+  shadowKnockout?: boolean
+  sketchBackdrop?: boolean
   zoomBlur?: ZoomBlur
   motionAngle?: number
   colorControls?: ColorControls
@@ -391,7 +393,7 @@ export type TextStyle = {
   weight: number
   lineHeight: number
   /** Sketch fixed line boxes use `nearest-point`. Omitted keeps unrounded half-leading. */
-  lineBoxBaseline?: '' | 'nearest-point' | 'sketch-font-leading'
+  lineBoxBaseline?: '' | 'nearest-point' | 'sketch-font-leading' | 'sketch-fixed-advance'
   /** Sketch text with no authored line box uses the font's own line metrics. */
   lineHeightAuto?: boolean
   letterSpacing: number
@@ -1121,6 +1123,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
             'motion-blur', 'zoom-blur',
           ].includes(e.kind) &&
           (e.showShadowBehindNode === undefined || typeof e.showShadowBehindNode === 'boolean') &&
+          (e.shadowKnockout === undefined || typeof e.shadowKnockout === 'boolean' && (!e.shadowKnockout || e.kind === 'shadow')) &&
+          (e.sketchBackdrop === undefined || typeof e.sketchBackdrop === 'boolean' && (!e.sketchBackdrop || e.kind === 'background-blur' && !e.gradientBlur)) &&
           (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
           (e.motionAngle === undefined || (finite(e.motionAngle,-1e7,1e7) && (e.kind==='motion-blur'||e.motionAngle===0))) &&
           (e.kind !== 'color-controls' || e.colorControls != null) &&

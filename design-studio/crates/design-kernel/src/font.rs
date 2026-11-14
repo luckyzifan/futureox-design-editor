@@ -94,6 +94,7 @@ pub struct TextStyle {
     /// is the Sketch fixed line box used by native text-preview matrices.
     /// `sketch-font-leading` uses the font ascender and includes font leading
     /// in the advance for the original Sketch spacing modes 0 and 1.
+    /// `sketch-fixed-advance` uses the ascender with an exact line advance.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub line_box_baseline: String,
     /// Sketch text with no authored line box uses the font's ascender,
@@ -420,6 +421,9 @@ pub struct Glyph {
     pub advance: f64,
     #[serde(skip)]
     byte: usize,
+    /// Preview width adjustment for the bundled Chinese fallback.
+    #[serde(skip)]
+    pub(crate) width_scale: f64,
     /// Variation coordinates this glyph was shaped with; outlines rebuild the
     /// same face so geometry matches the shaped advances exactly.
     #[serde(skip)]
@@ -428,7 +432,7 @@ pub struct Glyph {
 
 impl Glyph {
     pub(crate) fn has_variations(&self) -> bool {
-        !self.vars.is_empty()
+        !self.vars.is_empty() || self.width_scale != 1.
     }
 }
 #[derive(Serialize)]
@@ -486,7 +490,8 @@ impl TextStyle {
             || !(1. ..=1000.).contains(&self.weight)
             || !self.line_height.is_finite()
             || !(0.1..=10.).contains(&self.line_height)
-            || !["", "nearest-point", "sketch-font-leading"].contains(&self.line_box_baseline.as_str())
+            || !["", "nearest-point", "sketch-font-leading", "sketch-fixed-advance"]
+                .contains(&self.line_box_baseline.as_str())
             || !self.letter_spacing.is_finite()
             || self.letter_spacing.abs() > 1000.
             || !self.paragraph_spacing.is_finite()
@@ -682,6 +687,28 @@ fn sketch_font_line_box(style: &TextStyle) -> bool {
     // Sketch leaves an unspecified line box on the font's own metrics.
     // The editor default 1.35 stays in force once a line height is authored.
     style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9
+}
+
+fn sketch_text_ascender(face: &ttf_parser::Face<'_>, builtin_fallback: bool) -> i16 {
+    // The built-in fallback uses a generous hhea ascender to cover its full
+    // CJK repertoire. Use its typographic ascender for the text baseline.
+    // Named faces retain their own natural metrics.
+    if builtin_fallback {
+        face.typographic_ascender().filter(|value| *value > 0).unwrap_or_else(|| face.ascender())
+    } else {
+        face.ascender()
+    }
+}
+
+fn is_sketch_han(character: char) -> bool {
+    matches!(character as u32, 0x3400..=0x9fff | 0xf900..=0xfaff | 0x20000..=0x323af)
+}
+
+fn is_noto_sans_sc(face: &ttf_parser::Face<'_>) -> bool {
+    face.names().into_iter().any(|name| {
+        name.name_id == ttf_parser::name_id::POST_SCRIPT_NAME
+            && name.to_string().is_some_and(|name| name.starts_with("NotoSansSC-"))
+    })
 }
 fn cluster_line_multiplier(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 {
     run_covering(runs, cluster)
@@ -1331,6 +1358,7 @@ impl Fonts {
         style: &TextStyle,
         runs: &[TextRun],
         utf16: &[usize],
+        sketch_display_fallback: bool,
     ) -> Result<Vec<Glyph>, String> {
         if text.is_empty() {
             return Ok(vec![]);
@@ -1451,7 +1479,19 @@ impl Fonts {
                         .infos
                         .get(index + 1)
                         .is_none_or(|next| next.cluster != glyph.cluster);
-                    let cluster = utf16[base + start + glyph.cluster as usize];
+                    let byte = start + glyph.cluster as usize;
+                    let cluster = utf16[base + byte];
+                    // Sketch's macOS display fallback renders wide Chinese
+                    // glyphs at about .945 em (measured with the system UI
+                    // font at display sizes). Keep Noto as the editable
+                    // fallback and approximate that width for custom titles.
+                    let width_scale = if sketch_display_fallback && id == "default" && size >= 20.
+                        && text[byte..].chars().next().is_some_and(is_sketch_han)
+                    {
+                        0.945
+                    } else {
+                        1.
+                    };
                     glyphs.push(Glyph {
                         path_transform: None,
                         id: glyph.glyph_id as u16,
@@ -1460,15 +1500,16 @@ impl Fonts {
                         weight,
                         cluster,
                         cluster_end: 0,
-                        x: p.x_offset as f64 * scale,
+                        x: p.x_offset as f64 * scale * width_scale,
                         y: -p.y_offset as f64 * scale,
-                        advance: (p.x_advance as f64 * scale).abs()
+                        advance: (p.x_advance as f64 * scale * width_scale).abs()
                             + if last_in_cluster {
                                 cluster_tracking(runs, cluster, style)
                             } else {
                                 0.
                             },
-                        byte: base + start + glyph.cluster as usize,
+                        byte: base + byte,
+                        width_scale,
                         vars: variations.clone(),
                     });
                 }
@@ -1578,7 +1619,21 @@ impl Fonts {
         }
         paragraphs.push(start..text.len());
         let paragraph_at = |start: usize| run_covering(runs, utf16[start]).and_then(|run| run.paragraph.as_ref());
-        let sketch_baseline = if paragraphs.len() > 1 && style.line_box_baseline == "nearest-point" && style.writing_mode != "vertical" {
+        let first_line_height = paragraph_at(paragraphs[0].start).and_then(TextParagraph::fixed_line_height);
+        let uniform_sketch_line_height = style.line_box_baseline == "sketch-fixed-advance"
+            && first_line_height.is_some()
+            && paragraphs.iter().all(|p| {
+                paragraph_at(p.start).and_then(TextParagraph::fixed_line_height) == first_line_height
+            });
+        let sketch_spacing = uniform_sketch_line_height || style.line_box_baseline == "sketch-font-leading";
+        let use_builtin_text_metrics = sketch_spacing && self.face("default", 400.).ok().is_some_and(|face| {
+            is_noto_sans_sc(face.borrow_face())
+        });
+        let sketch_display_fallback = use_builtin_text_metrics
+            && uniform_sketch_line_height && style.writing_mode == "horizontal";
+        let nearest_point = style.line_box_baseline == "nearest-point"
+            || (style.line_box_baseline == "sketch-fixed-advance" && !uniform_sketch_line_height);
+        let sketch_baseline = if paragraphs.len() > 1 && nearest_point && style.writing_mode != "vertical" {
             let mut heights = paragraphs.iter().map_while(|range| paragraph_at(range.start)?.fixed_line_height());
             heights.next().and_then(|first| {
                 let (count, minimum) = heights.fold((1, first), |(count, min), h| (count + 1, min.min(h)));
@@ -1619,10 +1674,22 @@ impl Fonts {
                 style
             };
             let value = &text[paragraph.clone()];
-            let initial = self.shape(value, paragraph.start, size, style, runs, &utf16)?;
+            let initial = self.shape(value, paragraph.start, size, style, runs, &utf16, sketch_display_fallback)?;
+            // A fallback preview may be narrower while keeping the authored
+            // wrap decisions. Fit against the advances of the unscaled face.
             let mut clusters = BTreeMap::<usize, f64>::new();
-            for glyph in &initial {
-                *clusters.entry(glyph.byte).or_default() += glyph.advance;
+            for (i, glyph) in initial.iter().enumerate() {
+                let tracking = if initial.get(i + 1).is_none_or(|next| next.byte != glyph.byte) {
+                    cluster_tracking(runs, glyph.cluster, style)
+                } else {
+                    0.
+                };
+                let advance = if glyph.width_scale == 1. {
+                    glyph.advance
+                } else {
+                    (glyph.advance - tracking) / glyph.width_scale + tracking
+                };
+                *clusters.entry(glyph.byte).or_default() += advance;
             }
             let mut ranges = Vec::new();
             if let Some(maximum) = limit.filter(|_| !clusters.is_empty()) {
@@ -1687,7 +1754,7 @@ impl Fonts {
                 let mut shaped = if range == paragraph {
                     initial.take().expect("whole paragraph is one line")
                 } else {
-                    self.shape(&text[range.clone()], range.start, size, style, runs, &utf16)?
+                    self.shape(&text[range.clone()], range.start, size, style, runs, &utf16, sketch_display_fallback)?
                 };
                 if style.writing_mode == "vertical" {
                     // Conventional mixed vertical layout: CJK stays upright in
@@ -1818,8 +1885,11 @@ impl Fonts {
                     size * style.line_height
                 };
                 let mut natural = 0f64;
-                let use_sketch_leading = style.line_box_baseline == "sketch-font-leading"
+                let use_sketch_ascender = (style.line_box_baseline == "sketch-font-leading"
+                    || uniform_sketch_line_height)
                     && attributes.and_then(TextParagraph::fixed_line_height).is_some();
+                let use_sketch_leading = style.line_box_baseline == "sketch-font-leading"
+                    && use_sketch_ascender;
                 let mut leading = 0f64;
                 for glyph in &shaped {
                     let face = self.face(&glyph.font_id, glyph.weight)?;
@@ -1827,8 +1897,14 @@ impl Fonts {
                     if use_sketch_leading {
                         leading = leading.max(f64::from(face.line_gap()) * glyph.size / f64::from(face.units_per_em()));
                     }
-                    ascent = ascent
-                        .max(face.ascender() as f64 * glyph.size / face.units_per_em() as f64);
+                    let face_ascent = if use_sketch_ascender {
+                        let use_typographic_ascent = use_builtin_text_metrics && glyph.font_id == "default"
+                            && (uniform_sketch_line_height || !text[glyph.byte..].chars().next().is_some_and(is_sketch_han));
+                        sketch_text_ascender(face, use_typographic_ascent)
+                    } else {
+                        face.ascender()
+                    };
+                    ascent = ascent.max(f64::from(face_ascent) * glyph.size / f64::from(face.units_per_em()));
                     let multiplier = if explicit_line_height {
                         cluster_line_multiplier(runs, glyph.cluster, style)
                     } else {
@@ -1849,7 +1925,12 @@ impl Fonts {
                             + face.line_gap() as f64)
                             * size
                             / face.units_per_em() as f64;
-                        ascent = face.ascender() as f64 * size / face.units_per_em() as f64;
+                        let face_ascent = if use_sketch_ascender {
+                            sketch_text_ascender(face, use_builtin_text_metrics && style.font_id == "default")
+                        } else {
+                            face.ascender()
+                        };
+                        ascent = f64::from(face_ascent) * size / f64::from(face.units_per_em());
                         if use_sketch_leading {
                             leading = (f64::from(face.line_gap()) * size / f64::from(face.units_per_em())).max(0.);
                         }
@@ -1862,17 +1943,17 @@ impl Fonts {
                     // Authored paragraphs stay unrounded. A Sketch fixed line box
                     // (equal minimum and maximum) uses the nearest document point,
                     // which is where native text-preview matrices draw the baseline.
-                    if use_sketch_leading {
-                        // Sketch SVG and raster export place its legacy fixed
-                        // boxes on the rounded ascender. The line's leading
-                        // comes from the effective font at its shaped size.
+                    if use_sketch_ascender {
+                        // Sketch leaves the first baseline on the ascender
+                        // as the custom line height changes. Old spacing
+                        // modes additionally include the font's leading.
                         ascent = ascent.round_ties_even();
                         height += leading;
                     } else {
                         ascent += (height - natural) / 2.;
                         if let Some((_, baseline)) = sketch_baseline.filter(|(count, _)| paragraph_index < *count) {
                             ascent = baseline;
-                        } else if style.line_box_baseline == "nearest-point" && (p.fixed_line_height().is_some() || sketch_baseline.is_some()) {
+                        } else if nearest_point && (p.fixed_line_height().is_some() || sketch_baseline.is_some()) {
                             ascent = ascent.round_ties_even();
                         }
                     }
@@ -2022,6 +2103,12 @@ impl Fonts {
                     scale: glyph.size / glyph_outline.units_per_em as f64,
                 };
                 glyph_outline.replay(&mut builder);
+            }
+            if glyph.width_scale != 1. {
+                let sx = glyph.width_scale;
+                crate::text_path::transform_outline(&mut outline, crate::math::Transform([
+                    sx, 0., 0., 1., glyph.x * (1. - sx), 0.,
+                ]));
             }
             for (enabled, offset) in [
                 (run.is_some_and(|r| r.underline), glyph.size * 0.1),

@@ -454,6 +454,12 @@ pub struct Stroke {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Effect {
+    /// Sketch outer shadows are knocked out by the shape before compositing.
+    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    pub shadow_knockout: bool,
+    /// Sketch background blur uses a Gaussian over the captured backdrop.
+    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    pub sketch_backdrop: bool,
     #[serde(default, rename="zoomBlur", skip_serializing_if="Option::is_none")]
     pub zoom_blur: Option<crate::zoom_blur::ZoomBlur>,
     #[serde(default, rename="motionAngle", skip_serializing_if="is_zero")]
@@ -551,6 +557,11 @@ impl Effect {
                 .unwrap_or(1.)
     }
     pub fn validate_material(&self) -> Result<(), String> {
+        if (self.shadow_knockout && self.kind != "shadow")
+            || (self.sketch_backdrop && (self.kind != "background-blur" || self.gradient_blur.is_some()))
+        {
+            return Err("Invalid Sketch effect model".into());
+        }
         if (self.kind=="zoom-blur") != self.zoom_blur.is_some() || self.zoom_blur.is_some_and(|p|!p.validate()
             || self.radius!=0. || self.color_controls.is_some() || self.glass.is_some() || self.texture.is_some() || self.gradient_blur.is_some()) {
             return Err("Invalid zoom blur parameters".into());
@@ -645,6 +656,17 @@ impl Effect {
             self.radius.max(1.)
         } else {
             self.blur_radius()
+        }
+    }
+    pub fn sketch_backdrop_sigma(&self, scale: f64) -> f64 {
+        self.radius * scale * std::f64::consts::SQRT_2
+    }
+
+    pub(crate) fn backdrop_outset(&self, scale: f64) -> f64 {
+        if self.sketch_backdrop && self.radius > 0. {
+            3. * self.sketch_backdrop_sigma(scale) + 2.
+        } else {
+            (self.blur_radius() * 2. + self.material_halo()) * scale
         }
     }
     /// Modern glass fields, or the legacy zero-refraction subset.
@@ -742,11 +764,13 @@ impl Node {
     /// Native-sigma filters additionally reserve their complete 3-sigma support
     /// and bilinear neighbours in device pixels, even below unit zoom.
     pub fn effect_outset(&self, scale:f64) -> f64 {
-        let old=self.effects.iter().filter(|e|e.visible && !matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur"))
+        let old=self.effects.iter().filter(|e|e.visible && !e.sketch_backdrop && !matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur"))
             .map(|e|e.blur_radius()*2.+e.spread.abs()+e.x.abs()+e.y.abs()+e.material_halo()).sum::<f64>()*scale;
         old+self.effects.iter().filter(|e|e.visible && matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur"))
             .map(|e|if e.radius>0. {3.*e.radius*scale+2.} else {0.}).sum::<f64>()
             +self.effects.iter().filter(|e|e.visible).filter_map(|e|e.zoom_blur).map(|z|if z.amount>0. {3.*z.amount*scale+2.} else {0.}).sum::<f64>()
+            +self.effects.iter().filter(|e| e.visible && e.sketch_backdrop)
+                .map(|e| e.backdrop_outset(scale)).sum::<f64>()
     }
     pub fn fill_even_odd(&self) -> bool {
         self.vector_geometry
@@ -783,6 +807,26 @@ impl Node {
     }
     pub(crate) fn backdrop_effect(&self) -> Option<&Effect> {
         selected_backdrop(&self.effects)
+    }
+
+    /// Alpha of a simple, uniformly painted outline, for Sketch's shadow
+    /// silhouette. Complex layers use their rendered alpha as before.
+    pub(crate) fn shadow_paint_alpha(&self) -> f32 {
+        if !self.render_children().is_empty() || self.mask || self.clip
+            || self.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+            || self.effects.iter().any(|effect| effect.visible && effect.kind != "shadow")
+        {
+            return 1.;
+        }
+        let mut fills = self.fills.iter().filter(|paint| paint.visible && paint.opacity > 0.);
+        let Some(paint) = fills.next() else { return 1.; };
+        if paint.kind != "solid" || paint.blend != "normal" || fills.next().is_some() {
+            return 1.;
+        }
+        crate::color::parse(&paint.color, crate::color::ColorSpace::Srgb)
+            .ok().map(|(_, _, alpha)| (alpha * paint.opacity) as f32)
+            .filter(|alpha| *alpha >= 1. / 255.)
+            .unwrap_or(1.)
     }
     pub(crate) fn passes_backdrop(&self) -> bool {
         // Figma keeps group opacity non-isolating, but a visible effect creates

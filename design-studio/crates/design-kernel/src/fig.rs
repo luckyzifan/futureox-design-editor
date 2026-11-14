@@ -1742,6 +1742,8 @@ impl FigImporter {
                     }) } else { None },
                     gradient_blur,
                     show_shadow_behind_node,
+                    shadow_knockout: false,
+                    sketch_backdrop: false,
                     color_controls: None,
                     zoom_blur: None, motion_angle: 0.,
                 });
