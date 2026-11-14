@@ -122,9 +122,9 @@ export function coverageBeyondBacking<T extends RasterTile>(candidates: readonly
   return spills ? stack : undefined
 }
 
-/** Ready tiles can replace lower-density pixels at the current screen density.
- * Intermediate densities need a twofold gain to avoid swapping similar
- * samples each wheel tick. The backing still supplies the rest of the view. */
+/** A current or nearly current sample can replace a stretched region while
+ * input is moving. For a late tile, require that it cut the missing
+ * sampling density in half compared with the pixels already shown. */
 export function selectSharperCoverage<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
   size: { width: number; height: number; dpr?: number }, shown: readonly RasterTile[], limit = 24): T[] {
   if (!shown.length || !Number.isSafeInteger(limit) || limit < 1) return []
@@ -139,8 +139,16 @@ export function selectSharperCoverage<T extends RasterTile>(candidates: readonly
     if (chosen.length >= limit) break
     const rect = tileVisibleWorld(tile, view, size)
     if (!rect) continue
+    const residents = [...shown, ...chosen]
     const requiredDensity = tile.zoom >= screenDensity ? tile.zoom : tile.zoom / MAX_PREVIEW_SCALE_RATIO * (1 + 1e-9)
-    if (tilesCoverBounds([...shown, ...chosen], rect, requiredDensity)) continue
+    if (tilesCoverBounds(residents, rect, requiredDensity)) {
+      // A tile may finish one wheel step late. A backing already at least
+      // halfway to native density does not need a marginal update.
+      const halfwayToNative = 2 * tile.zoom - screenDensity
+      const acceptableBacking = Math.min(halfwayToNative,
+        screenDensity * (1 - 1 / (2 * MAX_PREVIEW_SCALE_RATIO)))
+      if (acceptableBacking <= requiredDensity || tilesCoverBounds(residents, rect, acceptableBacking)) continue
+    }
     chosen.push(tile)
   }
   return chosen
