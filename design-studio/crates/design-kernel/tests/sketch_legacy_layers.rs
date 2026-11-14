@@ -89,6 +89,18 @@ fn native_mixed_archive_preserves_utf16_ranges_and_run_styles() {
     assert_eq!(reimported.text, node.text);
     assert_eq!(reimported.text_runs[1].letter_spacing, Some(1.5));
     assert_eq!(reimported.text_runs[1].paragraph.as_ref(), Some(paragraph));
+    let reopened_names: Value = serde_json::from_str(
+        reimport
+            .document
+            .design_system
+            .as_ref()
+            .unwrap()
+            .sketch_containers["nodeMetadata"]["text"]["bindings"]["sketchSourceFonts"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reopened_names, names);
 
     // A length that bisects the emoji must not build a malformed kernel run.
     let mut damaged = plist::Value::from_reader(Cursor::new(archived)).unwrap();
@@ -219,6 +231,19 @@ fn legacy_semantic_ui_archives_restore_editable_text_and_style() {
     let restored =
         interop::import_sketch_report(&interop::export_sketch(editor.document()).unwrap()).unwrap();
     assert_eq!(restored.document.nodes[BUTTON].text, "Buttons");
+    let fonts: Value = serde_json::from_str(
+        restored
+            .document
+            .design_system
+            .as_ref()
+            .unwrap()
+            .sketch_containers["nodeMetadata"][BUTTON]["bindings"]["sketchSourceFonts"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(fonts["style"], "Lato-Bold");
+    assert_eq!(fonts["runs"]["0"], "Lato-Bold");
     assert_eq!(
         restored.document.nodes[BUTTON].text_runs[0]
             .color
