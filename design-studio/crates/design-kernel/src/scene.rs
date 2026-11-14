@@ -276,6 +276,8 @@ pub struct Node {
     /// Renderer-only glyph outlines; never serialized into authored documents.
     #[serde(skip)]
     pub(crate) derived_path: Option<std::sync::Arc<Path>>,
+    #[serde(skip)]
+    pub(crate) derived_text_paint: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub boolean_operation: Option<crate::boolean::Operation>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -813,7 +815,22 @@ impl Node {
         // Sketch draws text's blurred coverage behind a second draw of the
         // glyphs. The glyph's source-over already covers the shadow at its
         // edge. Applying shape knockout there a second time thins the glow.
-        effect.shadow_knockout && self.kind != "text"
+        effect.shadow_knockout && !self.paints_text()
+    }
+
+    fn paints_text(&self) -> bool {
+        self.kind == "text" || self.derived_text_paint
+    }
+
+    pub(crate) fn text_shadow_radius(&self, effect: &Effect, scale: f64) -> f64 {
+        let radius = effect.blur_radius() * scale;
+        if self.paints_text() && effect.shadow_knockout && effect.spread == 0. && (12. ..=96.).contains(&radius) {
+            // Sketch's text glow rolls off faster than the generic three-box
+            // shadow at export density. Measured on alpha at 1×, 2× and 3×.
+            radius * 0.88 + 1.28
+        } else {
+            radius
+        }
     }
 
     /// Alpha of a simple, uniformly painted outline, for Sketch's shadow
@@ -863,6 +880,7 @@ impl Node {
             && self.network == other.network
             && self.vector_geometry == other.vector_geometry
             && self.derived_path == other.derived_path
+            && self.derived_text_paint == other.derived_text_paint
             && self.text == other.text
             && self.font_size == other.font_size
             && self.text_style == other.text_style

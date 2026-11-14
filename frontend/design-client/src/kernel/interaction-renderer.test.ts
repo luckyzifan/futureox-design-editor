@@ -700,7 +700,7 @@ test('nested motion retains native Retina density and sends live GPU poses witho
   expect(worker.jobs).toHaveLength(1)
 })
 
-test('overview bitmap drags use native poses and keep their last frame through exact page repair', async () => {
+test('overview bitmap drags keep the native camera and finish on the same pose lease', async () => {
   const document = blank(), frame = node('frame', 0, 0, 2000, 1000), bitmap = node('rectangle', 50, 30, 1200, 700)
   frame.clip = true
   frame.children = [bitmap.id]
@@ -711,11 +711,14 @@ test('overview bitmap drags use native poses and keep their last frame through e
   document.pages[0].children = [frame.id]
   const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared)
   owners.push(owner)
-  const view = { x: 0, y: 0, zoom: .23 }, size = { width: 740, height: 560 }
+  const view = { x: 0.125, y: -0.375, zoom: .23 }, size = { width: 740, height: 560 }
   const props: InteractionProps = { document, selection: [bitmap.id], active: true, gestureKind: 'move',
     epoch: 1, control: { current: null }, onReady() {} }
   owner.prepare(props, pageId, view, 2, 'analytic', 'webgpu', document, size)
-  expect(worker.jobs[0].options).toMatchObject({ interactionNative: true, view: { zoom: .46 } })
+  expect(worker.jobs[0].options).toMatchObject({
+    interactionNative: true, view: { x: .25, y: -.75, zoom: .46 },
+    captureViewport: { w: worker.jobs[0].options.width, h: worker.jobs[0].options.height },
+  })
   worker.jobs[0].resolve({ gpuTile: 105, residentInteraction: true })
   await vi.waitFor(() => expect(owner.ready).toBe(true))
   const transform: typeof bitmap.transform = [1, 0, 0, 1, 55.25, 30]
@@ -724,8 +727,9 @@ test('overview bitmap drags use native poses and keep their last frame through e
   owner.acceptResidentSample({ slot: 105, sequence: 1, at: 1, nativePose: true })
   const committed = { ...document, nodes: { ...document.nodes, [bitmap.id]: { ...bitmap, transform } } }
   owner.control.end(committed)
-  expect(worker.poses).toHaveLength(1)
-  expect(worker.stops).toContain(105)
+  expect(worker.poses).toHaveLength(2)
+  expect(worker.poses[1]).toMatchObject([105, { [bitmap.id]: transform }, { sequence: 2 }, true])
+  expect(worker.stops).not.toContain(105)
   expect(owner.items(view)?.[0].tile.gpuTile).toBe(105)
   owner.prepare({ ...props, active: false, document: committed }, pageId, view, 2, 'analytic', 'webgpu', committed, size)
   expect(owner.items(view)).toBeNull()

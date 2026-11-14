@@ -638,6 +638,7 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         instance: None,
         instance_origin: None,
         derived_path: None,
+        derived_text_paint: false,
     }
 }
 

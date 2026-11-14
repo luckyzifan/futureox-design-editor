@@ -1,5 +1,5 @@
 import { poseTransformMatches } from './pose-transform-match'
-import { isInnerShadowFill } from './interaction-patch-transforms'
+import { isBitmapPoseLayer, isInnerShadowFill } from './interaction-patch-transforms'
 import { captureFailureCause, observedFailureCause, type FailedCaptureCause } from './pose-failed-cause'
 import { PoseActionCorrelation, type PoseActionToken } from './pose-action-correlation'
 import type { OverlayCaptureCohort, SurfaceProps } from './Surface'
@@ -476,11 +476,7 @@ export class InteractionRenderer {
           this.changed(); return
         }
         if (offsets) r.offsets = offsets
-        // An overview image move uses a dependent live capture. Its final
-        // texture cannot seed exact page tiles, so release the pose queue to
-        // the existing committed-page repair while holding the last frame.
-        const settleImageMoveOnPage = !!offsets && !r.affine && r.live && this.overviewImagePose(r)
-        if(!settleImageMoveOnPage&&(!r.containedForeground||exactInnerShadowGesture(r))&&r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
+        if((!r.containedForeground||exactInnerShadowGesture(r))&&r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
           // Finish the gesture through the already compiled pose session.
           // The settled document lane will apply its own patch; it must not
           // wait behind a redundant whole-viewport interaction render. Both
@@ -498,7 +494,7 @@ export class InteractionRenderer {
         }
         const contentRelease = this.props?.active && this.props.gestureKind === 'resize'
         if (this.sharedClient && r.live && (r.active || contentRelease) &&
-            (contentRelease || r.containedForeground || settleImageMoveOnPage || offsets && !r.workerPoses || affine) &&
+            (contentRelease || r.containedForeground || offsets && !r.workerPoses || affine) &&
             this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
             document.id === r.plan.document.id && this.props.document.id === document.id &&
             this.sameIds(this.props.selection) && document.pages.some(page => page.id === r.plan.pageId) &&
@@ -522,7 +518,7 @@ export class InteractionRenderer {
           // r.active describes visible preview ownership, not permission to
           // enqueue more work. Hiding it here would jump back to old page pixels.
           r.active = !contentRelease || r.tiles.length > 0
-          if (contentRelease || r.containedForeground || settleImageMoveOnPage) {
+          if (contentRelease || r.containedForeground) {
             // Keep the completed preview visible while ordinary page tiles
             // repair resized geometry or the borders of a local filter capture.
             if (r.tiles[0]?.gpuTile) this.sharedClient.stopResidentInteraction(r.tiles[0].gpuTile)
@@ -552,9 +548,7 @@ export class InteractionRenderer {
   private overviewImagePose(resident: ResidentInteraction) {
     if (this.profile !== 'analytic' || !this.viewport || !this.sharedClient ||
         !allowsReducedSampling(this.qualityZoom) || resident.plan.ids.length !== 1) return false
-    const node = resident.plan.document.nodes[resident.plan.ids[0]]
-    return node.children.length === 0 && node.fills.some(fill => fill.visible && fill.kind === 'image') &&
-      node.effects.every(effect => !effect.visible || effect.kind === 'color-controls')
+    return isBitmapPoseLayer(resident.plan.document.nodes[resident.plan.ids[0]])
   }
 
   private retainedOffsetsReusable(r: ResidentInteraction, offsets: Map<string, { x: number; y: number }>) {
@@ -1534,7 +1528,7 @@ export class InteractionRenderer {
                 this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:nativeDensity}):undefined
               const worldCapture=!!this.sharedClient && !reduced && this.profile!=='figma' && this.profile!=='figmaSoftware' &&
                 canonical?.camera.x===0 && canonical?.camera.y===0
-              const canonicalCapture = !!(maskedRotation && nativeDensity && canonical) ||
+              const canonicalCapture = !!((maskedRotation && nativeDensity || nativeImagePose) && canonical) ||
                 (import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||exactInnerShadowGesture(resident)||!!resident.foregroundExclusions&&foregroundSafe&&!resident.affine)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
                 this.profile==='figmaSubpixel'&&!!canonical
               phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0

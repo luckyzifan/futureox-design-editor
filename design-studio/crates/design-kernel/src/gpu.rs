@@ -2063,6 +2063,12 @@ impl Compiler<'_> {
                     })
                     .cloned()
                     .map(|mut e| {
+                        if e.kind == "shadow" && !rgba8 && self.doc.color_management.is_none() && scale > 0. {
+                            let radius = n.text_shadow_radius(&e, scale);
+                            if radius != e.radius * scale {
+                                e.radius = radius / scale;
+                            }
+                        }
                         // The compiled shadow carries the painter operation;
                         // the authored effect keeps its Sketch roundtrip data.
                         e.shadow_knockout = n.knock_out_outer_shadow(&e);
