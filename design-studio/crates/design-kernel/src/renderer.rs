@@ -745,10 +745,30 @@ impl Engine {
     pub(crate) fn resolved_source_compiler(&self, nodes:std::collections::BTreeMap<String,crate::scene::Node>, page_id:&str, revision:u64)->Result<Engine,String>{
         let source=self.doc.as_ref().ok_or("Missing resolved source")?;
         let page=source.pages.iter().find(|p|p.id==page_id).ok_or("Missing source page")?.clone();
-        // All authored metadata stays in the complete owner. This private
-        // scene is already resolved, keeps derived paths/IDs verbatim, and
-        // can only be used by the native source compiler, never edit/export.
-        let document=Document{fd_compatibility:None,reviews:vec![],design_system:None,prototype:None,
+        // Keep render-relevant Sketch provenance for the demanded nodes.
+        // Inert metadata outside this working set remains with the source.
+        let mut render_metadata = serde_json::Map::new();
+        for node in nodes.values() {
+            crate::render_cancellation::checkpoint()?;
+            let mut bindings = serde_json::Map::new();
+            if crate::interop::sketch_binding(source, node, "sketchSourceBitmap") == Some("true") {
+                bindings.insert("sketchSourceBitmap".into(), serde_json::json!("true"));
+            }
+            if node.backdrop_effect().is_some() && crate::interop::sketch_binding(source, node, "sketchSourceBlur").is_some() {
+                // The painter checks presence only. The raw archive payload
+                // belongs to the complete document's exporter.
+                bindings.insert("sketchSourceBlur".into(), serde_json::json!(""));
+            }
+            if !bindings.is_empty() {
+                render_metadata.insert(node.id.clone(), serde_json::json!({"bindings":bindings}));
+            }
+        }
+        let design_system = (!render_metadata.is_empty()).then(|| crate::design_system::DesignSystem {
+            sketch_containers: std::collections::BTreeMap::from([("nodeMetadata".into(), render_metadata.into())]),
+            ..Default::default()
+        });
+        // This already-resolved projection can compile but cannot edit/export.
+        let document=Document{fd_compatibility:None,reviews:vec![],design_system,prototype:None,
             schema_version:source.schema_version,color_management:source.color_management,raster_profile:source.raster_profile,
             id:source.id.clone(),name:source.name.clone(),pages:vec![page],nodes:nodes.into(),fonts:Default::default(),animations:vec![]};
         let mut compiler=Engine::new();compiler.fonts=self.fonts.clone();compiler.images=self.images.clone();

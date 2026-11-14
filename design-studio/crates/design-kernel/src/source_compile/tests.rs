@@ -141,6 +141,28 @@ fn analytic_overview_tiles_match_complete_packets_at_adjacent_crops() {
 }
 
 #[test]
+fn analytic_source_projection_preserves_sketch_bitmap_sampling() {
+    let mut d = document();
+    d.color_management = None;
+    d.nodes.get_mut("a").unwrap().fills[0] = serde_json::from_value(json!({
+        "kind": "image", "fit": "cover", "color": "#ffffff",
+        "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+    })).unwrap();
+    d.design_system = serde_json::from_value(json!({
+        "sketchContainers": {"nodeMetadata": {"a": {"bindings": {"sketchSourceBitmap": "true"}}}}
+    })).unwrap();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "bitmap-complete");
+    let mut actual = owner(d, "bitmap-demand");
+    let mut runtime = Runtime::default();
+    let mut r = request(-240.25, -240.375, 0.5);
+    r["rasterProfile"] = json!("analytic");
+    let packet = compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert_eq!(wire::scene(&packet)["nodes"]["a"]["fills"][0]["sketchBitmapSampling"], true);
+}
+
+#[test]
 fn maximum_ui_zoom_compiles_at_native_dpr_without_relaxing_pixel_budgets() {
     let d=document();let desc=descriptor(&d);
     let mut actual=owner(d.clone(),"high-zoom");let mut expected=owner(d,"high-zoom-reference");
