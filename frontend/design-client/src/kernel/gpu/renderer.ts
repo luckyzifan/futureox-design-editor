@@ -2774,7 +2774,8 @@ export class GpuRenderer {
     // origin so the coordinates land in the (atlas) level surface's texel space.
     const baseDims = p.image ? this.baseDims(p.image) : [image.rect.w, image.rect.h] as [number, number]
     const paintJson = JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile })
-    const arguments_: Parameters<typeof image_sampling_grid_placed> = [JSON.stringify((n.previewSource || n).rect), new Float64Array((n.previewSource || n).matrix),
+    const sketchBitmap = p.sketchBitmapSampling === true && !this.imageMips && !p.adjust
+    const arguments_: Parameters<typeof image_byte_sampling_field_placed> = [JSON.stringify((n.previewSource || n).rect), new Float64Array((n.previewSource || n).matrix),
       new Float64Array(n.size), new Uint32Array(baseDims), paintJson, sample, level, new Int32Array(origin)]
     // Separable axes carry the same binary64-derived cells/fractions as the
     // dense field. Preserve the original GPU budget check before a dense
@@ -2782,7 +2783,7 @@ export class GpuRenderer {
     const compact = this.driver.managed && this.driver.name === 'webgpu' && this.scene.compactImageFields !== false && import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0'
     const scope = compact && import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS !== '0' ? this.filterImageFields : undefined
     if (scope && containsRect(scope.rect, n.rect) && exactBlendLattice([scope.rect, n.rect])) {
-      const key = materialFieldKey([(n.previewSource || n).matrix, n.size, baseDims, paintJson, sample, level, origin])
+      const key = materialFieldKey([(n.previewSource || n).matrix, n.size, baseDims, paintJson, sample, level, origin, sketchBitmap])
       let field = scope.fields.get(key)
       if (field === undefined) {
         const inputs = ['image-axes-support', scope.rect, key]
@@ -2800,8 +2801,9 @@ export class GpuRenderer {
           const started = performance.now()
           let values: Float32Array = new Float32Array()
           try {
-            values = image_sampling_axes_placed(JSON.stringify(scope.rect), ...arguments_.slice(1) as
-              [Float64Array, Float64Array, Uint32Array, string, number, number, Int32Array])
+            const [, matrix, size, dimensions, paint, phase, mip, placement] = arguments_
+            values = image_sampling_axes_placed(JSON.stringify(scope.rect),
+              matrix, size, dimensions, paint, phase, mip, placement, sketchBitmap)
           } catch { /* bounded strip proof below remains authoritative */ }
           this.fieldBuildMs += performance.now() - started
           if (values.length && this.workingBytes + values.byteLength <= this.frameBudget) {
@@ -2827,13 +2829,13 @@ export class GpuRenderer {
     }
     let separated: boolean | undefined
     const surface = this.materialField(['image-grid',this.driver.managed,compact,[n.rect.w,n.rect.h],(n.previewSource || n).rect,
-      (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
+      (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin,sketchBitmap], n.rect, () => {
       trace.stage = 2
       let values = preparedAxes ?? new Float32Array()
       if (!values.length && compact) {
         // A span-only oversize proof may still admit the dense grid; keep the
         // kernel guard from failing the request before that cheaper check.
-        try { values = image_sampling_axes_placed(...arguments_) }
+        try { values = image_sampling_axes_placed(...arguments_, sketchBitmap) }
         catch (error) { if (!isSamplingFieldOverGuardError(error)) throw error }
       }
       trace.axes = values.length ? 1 : 2
@@ -2841,7 +2843,7 @@ export class GpuRenderer {
         trace.stage = 3
         if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限', 7)
         trace.stage = 4
-        values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
+        values = this.driver.managed ? image_sampling_grid_placed(...arguments_, sketchBitmap) : image_byte_sampling_field_placed(...arguments_)
       }
       trace.stage = 5
       separated = this.driver.managed ? values[3] === -1 : values[3] === 1
@@ -3265,7 +3267,7 @@ export class GpuRenderer {
     try { values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
       new Float64Array(n.size), new Uint32Array(this.baseDims(p.image || '')),
       JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile }),
-      this.sampleIndex ?? 4, level, new Int32Array([0, 0]))
+      this.sampleIndex ?? 4, level, new Int32Array([0, 0]), p.sketchBitmapSampling === true && !this.imageMips && !p.adjust)
     } catch (error) {
       // The kernel rejects a whole-support proof over its sampling-field
       // guards instead of shrinking it. The regional path below stays exact

@@ -3,6 +3,40 @@ use serde_json::{Value, json};
 use std::io::Write;
 
 #[test]
+fn sketch_motion_blur_keeps_a_one_texel_stripe_two_device_pixels_wide_at_2x() {
+    use futureox_design_kernel::export::{ExportBounds, RegionRequest};
+
+    let archive = include_bytes!("../../../../testing/fixtures/design/sketch-spatial-blur-modern.sketch");
+    let doc = interop::import_sketch_report(archive).unwrap().document;
+    let root = doc.nodes.values().find(|n| n.name == "t1-r10-a90-stripe").unwrap();
+    let bitmap = &doc.nodes[&root.children[0]];
+    assert_eq!(bitmap.effects[0].kind, "motion-blur");
+    let source = serde_json::to_string(&doc).unwrap();
+    let roundtrip = futureox_design_kernel::binfmt::decode_authored_json(
+        &futureox_design_kernel::binfmt::encode_authored_json(&source).unwrap(),
+    ).unwrap();
+    let mut engine = Engine::new();
+    engine.load_document(&roundtrip).unwrap();
+    let png = engine.render_region_png(&RegionRequest {
+        page_id: doc.pages[0].id.clone(),
+        bounds: ExportBounds {
+            x: root.transform.0[4], y: root.transform.0[5], width: root.width, height: root.height,
+        },
+        scale: 2.,
+        node_ids: Some(vec![root.id.clone()]),
+        raster_profile: Some(RasterProfile::Analytic),
+        color_output: None,
+    }).unwrap();
+    let image = image::load_from_memory(&png).unwrap().into_rgba8();
+    // Sketch's original 2× export has no spill on the axis normal to the
+    // effect. The Gaussian's along-axis quantization is a separate property.
+    let alpha = (255..259).map(|x| image.get_pixel(x, 192).0[3]).collect::<Vec<_>>();
+    assert_eq!(alpha[0], 0);
+    assert_eq!(alpha[3], 0);
+    assert!(alpha[1] > 250 && alpha[2] > 250, "{alpha:?}");
+}
+
+#[test]
 fn sketch_frame_fill_can_be_visible_in_canvas_and_omitted_from_its_own_export() {
     use futureox_design_kernel::export::{ExportBounds, RegionRequest};
 

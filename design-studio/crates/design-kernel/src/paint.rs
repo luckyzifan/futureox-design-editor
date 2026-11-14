@@ -360,6 +360,7 @@ struct ImageCoordinates {
     /// Active pattern tiling: replaces the fit placement with
     /// the repeating UV chain. `None` covers absent and `mode: none`.
     pattern: Option<crate::pattern_fill::PatternTile>,
+    sketch_integer_magnification: bool,
 }
 impl ImageCoordinates {
     fn place_linear_image(
@@ -401,7 +402,39 @@ impl ImageCoordinates {
             image,
             fit: paint.fit.clone(),
             pattern: paint.tile.clone().filter(|t| t.is_active()),
+            sketch_integer_magnification: false,
         })
+    }
+
+    fn with_sketch_magnification(mut self, matrix: Transform, imported: bool) -> Self {
+        if !imported || self.pattern.is_some() || self.paint_inverse.is_some() {
+            return self;
+        }
+        let [a, b, c, d, x, y] = matrix.0;
+        if b != 0. || c != 0. {
+            return self;
+        }
+        let (scale, inset) = self.linear_placement.map_or_else(
+            || ([self.size[0] / self.image[0], self.size[1] / self.image[1]], [0.; 2]),
+            |(ratio, inset)| ([ratio; 2], inset),
+        );
+        let aligned_integer = |value: f64| (value - value.round()).abs() <= 1e-9;
+        // At integral magnification Sketch copies each texel into a device
+        // rectangle. Fractional placements and rotated/pattern paints keep
+        // their existing sampling.
+        self.sketch_integer_magnification = [
+            (a * scale[0], (a * inset[0]) + x),
+            (d * scale[1], (d * inset[1]) + y),
+        ].into_iter().all(|(stride, origin)| {
+            stride.abs().round() >= 2. && aligned_integer(stride) && aligned_integer(origin)
+        });
+        self
+    }
+
+    #[inline]
+    fn linear_texel_center(&self, coordinate: f64, axis: usize) -> f64 {
+        let p = coordinate.clamp(0.5, self.image[axis] - 0.5);
+        if self.sketch_integer_magnification { p.floor() + 0.5 } else { p }
     }
     /// Pattern-fill phase for a device point, as texture UV in
     /// [0,1)². `Paint.transform` composes before the chain — the paired
@@ -527,7 +560,7 @@ impl ImageCoordinates {
         if self.fit == "contain" && (p.x < 0. || p.y < 0. || p.x >= iw || p.y >= ih) {
             None
         } else {
-            Some(Point::new(p.x.clamp(0.5, iw - 0.5), p.y.clamp(0.5, ih - 0.5)))
+            Some(Point::new(self.linear_texel_center(p.x, 0), self.linear_texel_center(p.y, 1)))
         }
     }
     fn linear_point(&self, device: Point) -> Point {
@@ -650,7 +683,7 @@ impl<'a> ImageLinearAxis<'a> {
         };
         if !q.is_finite() { return None; }
         let region = if !self.contain { 0 } else if q < 0. { -1 } else if q >= coordinates.image[axis] { 1 } else { 0 };
-        let value = q.clamp(0.5, coordinates.image[axis] - 0.5) - 0.5;
+        let value = coordinates.linear_texel_center(q, axis) - 0.5;
         let cell = value.floor();
         Some(ImageAxisSample { cell, fraction: (value - cell) as f32, region })
     }
@@ -782,6 +815,14 @@ pub fn image_sampling_grid_placed(
     level: u32,
     origin: [i32; 2],
 ) -> Result<Vec<f32>, String> {
+    image_sampling_grid_with_sketch_sampling(rect, matrix, size, image, paint, sample, level, origin, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn image_sampling_grid_with_sketch_sampling(
+    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
+    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2], sketch_bitmap: bool,
+) -> Result<Vec<f32>, String> {
     if image.contains(&0) || size.iter().any(|v| !v.is_finite() || *v <= 0.) {
         return Err("Invalid image sampling geometry".into());
     }
@@ -793,7 +834,8 @@ pub fn image_sampling_grid_placed(
             .ok_or("Invalid image sample index")?,
         None => (0.5, 0.5),
     };
-    let coordinates = ImageCoordinates::new(paint, size, matrix, rect, image)?;
+    let coordinates = ImageCoordinates::new(paint, size, matrix, rect, image)?
+        .with_sketch_magnification(matrix, sketch_bitmap && level == 0);
     let mut values =
         crate::sampling::coordinate_grid(rect, Rect::new(0, 0, image[0], image[1]), |x, y| {
             coordinates.at(Point::new(f64::from(x) + offset.0, f64::from(y) + offset.1))
@@ -820,6 +862,14 @@ pub fn image_sampling_axes_placed(
     rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
     paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2],
 ) -> Result<Vec<f32>, String> {
+    image_sampling_axes_with_sketch_sampling(rect, matrix, size, image, paint, sample, level, origin, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn image_sampling_axes_with_sketch_sampling(
+    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
+    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2], sketch_bitmap: bool,
+) -> Result<Vec<f32>, String> {
     if rect.w > i32::MAX as u32 || rect.h > i32::MAX as u32
         || i64::from(rect.x) + i64::from(rect.w) > i64::from(i32::MAX)
         || i64::from(rect.y) + i64::from(rect.h) > i64::from(i32::MAX) {
@@ -830,7 +880,8 @@ pub fn image_sampling_axes_placed(
     }
     let level = level.min(crate::image_mipmap::mip_levels(image) - 1);
     let dimensions = crate::image_mipmap::level_dimensions(image, level);
-    let coordinates = ImageCoordinates::new(paint, size, matrix, rect, dimensions)?;
+    let coordinates = ImageCoordinates::new(paint, size, matrix, rect, dimensions)?
+        .with_sketch_magnification(matrix, sketch_bitmap && level == 0);
     let axis_aligned = |m: Transform| m.0[1] == 0. && m.0[2] == 0.;
     if rect.w <= 2 || rect.h <= 2 || coordinates.pattern.is_some()
         || coordinates.paint_inverse.is_some_and(|m| !axis_aligned(m)) {
@@ -1508,6 +1559,10 @@ impl Sampler {
                     samples,
                     image.size(),
                 )
+                .map(|coords| coords.with_sketch_magnification(m,
+                    sketch_bitmap && !images.mips_enabled() && images.settings.is_none()
+                        && p.image.as_deref().is_some_and(|uri| uri.starts_with("data:"))
+                        && p.adjust.is_none()))
             })
             .transpose()?;
         let gradient_coordinates =
@@ -1813,7 +1868,7 @@ mod tests {
                 for paint_inverse in [None, Some(Transform([0.7, -0., 0., -1.1, 0.2, 0.4]))] {
                     for size in [[1920., 1080.], [31., 19.], [1e-300, 1e300]] {
                         for image in [[1920., 1080.], [1., 1.], [4_294_967_295., 7.]] {
-                            let coordinates = ImageCoordinates { inverse, paint_inverse, size, image, fit: fit.into(), pattern: None,
+                            let coordinates = ImageCoordinates { inverse, paint_inverse, size, image, fit: fit.into(), pattern: None, sketch_integer_magnification: false,
                                 linear_placement: ImageCoordinates::place_linear_image(paint_inverse, fit, size, image) };
                             for x in [-2_147_483_648., -0.5, -0., 0., f64::from_bits(0.5f64.to_bits() - 1), 0.5, f64::from_bits(0.5f64.to_bits() + 1), 2_147_483_646.875] {
                                 for y in [-1281.875, -0., 0.125, 0.5, 3480.875] {
