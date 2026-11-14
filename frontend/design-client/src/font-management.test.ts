@@ -1,4 +1,5 @@
 import { readFileSync, appendFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { unzipSync } from 'fflate'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -9,7 +10,8 @@ import { encodeDocumentBinary, decodeDocumentBinary } from './kernel/binfmt'
 import { registerPendingEdit } from './pending-edits'
 import { emptySystem } from './design-system'
 import { componentFixture, originNode } from './component-fixtures'
-import { VectorEngine, font_faces_json } from './generated/design-kernel/design_kernel'
+import { VectorEngine, export_sketch_json, font_faces_json, import_sketch_json } from './generated/design-kernel/design_kernel'
+import { sourceFonts } from './font-matching'
 import { fontTestBytes } from './font-test-fixtures'
 
 const bytes = fontTestBytes
@@ -68,6 +70,40 @@ test('whole-layer apply clears only run fonts and explicit selected locked text 
     expect(n.textRuns).toEqual(before.nodes[id].textRuns!.map(({ fontId: _fontId, ...run }) => run))
   }
   e.undo(); expect(e.state.doc).toEqual(before)
+})
+
+test('explicitly applying the built-in face overrides preserved Sketch font names through FD and Sketch export', () => {
+  const sketch = readFileSync(new URL('../../../testing/fixtures/sketch-public-20261105/semantic-ui-kit-for-sketch/semantic-ui-kit.sketch', import.meta.url))
+  const doc = JSON.parse(import_sketch_json(sketch)).document as DesignDocument
+  const id = '6F12C3D0-C82F-4114-85ED-1D0F233062DD'
+  const e = editor(doc), before = e.state.doc
+  const fontNames = (document: DesignDocument) => {
+    const pages = Object.entries(unzipSync(export_sketch_json(JSON.stringify(document))))
+      .filter(([path]) => path.startsWith('pages/'))
+    const idTag = `"originalId":"${id}"`
+    const page = pages.find(([, file]) => Buffer.from(file).toString().includes(idTag))!
+    const stack = JSON.parse(Buffer.from(page[1]).toString()).layers
+    while (stack.length) {
+      const layer = stack.pop()
+      if (layer.userInfo?.['com.futureox.design-kernel']?.originalId === id)
+        return layer.attributedString.attributes.map((range: { attributes: Record<string, { attributes: { name: string } }> }) =>
+          range.attributes.MSAttributedStringFontAttribute.attributes.name)
+      stack.push(...(layer.layers || []))
+    }
+    throw new Error('Exported text layer is missing')
+  }
+
+  expect(sourceFonts(before, before.nodes[id]).style).toBe('Lato-Bold')
+  expect(fontNames(before)).toEqual(['Lato-Bold'])
+  expect(applySelectionFont(e, [id], 'default').status).toBe('committed')
+  const result = e.state.doc
+  const reopened = decodeDocumentBinary(encodeDocumentBinary(result)) as DesignDocument
+  expect(sourceFonts(reopened, reopened.nodes[id])).toMatchObject({ style: 'Lato-Bold', resolved: ['Lato-Bold'] })
+  expect(fontNames(reopened)).toEqual(['HelveticaNeue'])
+  e.undo()
+  expect(fontNames(e.state.doc)).toEqual(['Lato-Bold'])
+  e.redo()
+  expect(fontNames(e.state.doc)).toEqual(['HelveticaNeue'])
 })
 
 test('document replacement honors ancestor locks, linked styles, and explicit fallback opt-in', () => {
