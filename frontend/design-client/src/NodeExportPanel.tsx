@@ -7,6 +7,7 @@ import { NumberField } from './fields'
 import { DraftInput } from './DraftInput'
 import { commitExportEdits, ExportOwner } from './export-ownership'
 import { commitPendingEdits } from './pending-edits'
+import { download } from './persistence'
 import { usePropertyText } from './property-interface-messages'
 
 type Preview = { name: string; url: string; pdf: boolean; pdfVector: boolean; tiff: boolean; heic: boolean }
@@ -42,12 +43,12 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     const inner = tr(wrapped[1])
     return inner === wrapped[1] ? value : inner
   }
-  async function generate() {
+  async function generate(save = false) {
     if(busy || !commitExportEdits(editor))return
     const request=owner.current.begin(editor,'layer-export');if(!request)return
     const target=node.kind==='slice' ? sliceExportTarget(request.document,node.id) : {kind:'selection' as const,nodeIds:[node.id]}
     const settings=request.document.nodes[node.id].exportSettings || []
-    if(!settings.length){owner.current.cancel(request);return}
+    if(!settings.length || save && settings.length !== 1){owner.current.cancel(request);return}
     setBusy(true);setMessage('正在生成导出预览…');release();setPreviews([])
     try {
       // Ordinary sRGB uses the same explicit clip encoding as the top bar.
@@ -64,8 +65,14 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
         const format=(setting.format==='jpg'?'jpeg':setting.format) as 'png'|'svg'|'jpeg'|'webp'|'pdf'|'pdf-vector'|'tiff'|'heic'
         const asset=await exportImage(request.document,request.page,format,setting.scale,colorOutput,request.signal,target)
         if(!request.isCurrent())throw new Error('导出已取消：图层或文档已变化')
-        const url=URL.createObjectURL(asset.blob);urls.current.push(url)
         const name=filename(request.document.nodes[node.id].name+(setting.suffix || (setting.scale===1?'':`@${setting.scale}x`)))+'.'+(setting.format==='jpeg'?'jpg':setting.format==='pdf-vector'?'pdf':setting.format)
+        if(save){
+          download(name,asset.blob)
+          desktopPet.event('export')
+          setMessage(`已生成 1 个文件`)
+          return
+        }
+        const url=URL.createObjectURL(asset.blob);urls.current.push(url)
         if(next.some(p=>p.name===name))throw new Error('导出设置生成了同名文件，请填写不同后缀')
         next.push({name,url,pdf:setting.format==='pdf'||setting.format==='pdf-vector',pdfVector:setting.format==='pdf-vector'&&!asset.fallback,tiff:setting.format==='tiff',heic:setting.format==='heic'})
       }
@@ -84,6 +91,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     {managed && <label className="node-export-encoding">{tr('输出编码')} <select aria-label={tr('图层导出输出编码')} value={selected} disabled={busy} onChange={event=>setEncoding(event.target.value as 'srgb' | 'display-p3' | '')}>{explicit && <option value="">{tr('请选择')}</option>}<option value="srgb">sRGB</option><option value="display-p3">Display P3</option></select></label>}
     {explicit && !selected && <p className="muted">{tr('此图层含广色域、HDR 或负值分量。请先选择与顶部导出相同的输出编码；未选择时不会导出，也不会把高光静默压成 8 位。')}</p>}
     {managed && !explicit && <p className="muted">{tr('输出编码为 sRGB，与顶部导出的 sRGB 使用同一显式编码。')}</p>}
+    {node.exportSettings?.length === 1 && <button type="button" className="wide-button" disabled={busy || (explicit && !selected)} onClick={()=>void generate(true)}>{tr('导出此图层…')}</button>}
     {!!node.exportSettings?.length && <button type="button" className="wide-button" disabled={busy || (explicit && !selected)} onClick={()=>void generate()}>{busy?tr('生成中…'):tr('预览并导出此图层')}</button>}
     {busy && <button type="button" className="wide-button" onClick={()=>owner.current.close()}>{tr('取消导出')}</button>}
     {node.exportSettings?.some(s=>s.format==='jpeg')&&<p className="muted">{tr('JPEG 使用质量 100，透明区域填充为白色。')}</p>}

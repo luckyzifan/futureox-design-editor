@@ -869,7 +869,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           modalOwnsFocus: modalOwnsKeyboard(document.activeElement) })) return
         if (!commitPendingEdits(editor)) return
         if (name === 'new') void switchDocument(blank())
-        else if (name === 'open') void openHomeFile().then(result => { if (result === true) resumeEditor() }).catch(error => editor.notify(String(error)))
+        else if (name === 'open') void openLocalDesign().then(result => { if (result === true) resumeEditor() }).catch(error => editor.notify(String(error)))
         else if (name === 'openPending' && desktopSession) void desktopSession.openPending().then(opened => { if (opened) resumeEditor() }).catch(error => editor.notify(String(error)))
         return
       }
@@ -883,7 +883,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (keyboardNudgeActive(editor) && !commitPendingEdits(editor)) return
       if (name === 'open' || name === 'openPending' || name === 'new' || name === 'recover') fileImports.invalidate()
       setMenu(false)
-      if (name === 'open') void desktopSession.open()
+      if (name === 'open') void openLocalDesign().catch(error => editor.notify(String(error)))
       else if (name === 'openPending') void desktopSession.openPending()
       else if (name === 'save') void desktopSession.save()
       else if (name === 'saveAs') void desktopSession.save(true)
@@ -972,10 +972,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     if(source){void source.leave();return}
     setHomeImportError(''); setShowHome(true)
   }
-  async function openHomeFile(): Promise<boolean | 'pending'> {
+  async function openLocalDesign(): Promise<boolean | 'pending'> {
     if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
     fileImports.invalidate()
-    if (desktopSession) {
+    if (desktopSession && !desktop?.openPickedFile) {
       const opened = await desktopSession.open()
       if (!opened && desktopSession.status.error) throw new Error(desktopSession.status.error)
       return opened
@@ -1074,12 +1074,17 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={moveTool.id === id} onClick={() => { chooseTool(id); setShowMove(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
               </ToolPopover>
-              <ToolPopover label={toolbarText.regionTools} icon={<RegionIcon size={18} />} open={showRegions} onOpenChange={open => openToolbarMenu('regions', open)}
+              <ToolPopover label={uiMode === 'sketch' ? (locale === 'en' ? 'Insert' : '置入') : toolbarText.regionTools} icon={<RegionIcon size={18} />} open={showRegions} onOpenChange={open => openToolbarMenu('regions', open)}
                 primary={{ label: regionTool.label, title: `${regionTool.label}${regionTool.key ? ` (${regionTool.key})` : ''}`, active: s.tool === regionTool.id, onClick: () => chooseTool(regionTool.id) }}>
                 {(['frame', 'section', 'slice'] as const).map(id => tools.find(tool => tool.id === id)!).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={regionTool.id === id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { if (!commitPendingEdits(editor)) return; setShowRegions(false); setShowFramePresets(true) }}>{toolbarText.devicePresets}</button>
+                {uiMode === 'sketch' && <>
+                  {shapeTools.map(({id, label, key, icon: Icon}) =>
+                    <button type="button" role="menuitem" tabIndex={-1} key={id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>)}
+                  <button type="button" role="menuitem" tabIndex={-1} onClick={() => { chooseTool('text'); setShowRegions(false) }}>{localizedToolLabel('text', locale, '文字')}</button>
+                </>}
               </ToolPopover>
               <ToolPopover label={toolbarText.shapeTools} icon={<ShapeIcon size={18} />} open={showShapes} onOpenChange={open => openToolbarMenu('shapes', open)}
                 primary={{ label: shapeTool.label, title: `${shapeTool.label}${shapeTool.key ? ` (${shapeTool.key})` : ''}`, active: s.tool === shapeTool.id, onClick: () => chooseTool(shapeTool.id) }}>
@@ -1115,7 +1120,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <div className="tool-group">
               {action('撤销', toolGlyph.undo, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
               {action('重做', toolGlyph.redo, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
-              <ToolPopover label={toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
+              <ToolPopover label={uiMode === 'sketch' ? (locale === 'en' ? 'Combine and arrange' : '结合与排列') : toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
                 {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
                 <strong>{toolbarText.whiteboardAndResponsive}</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, label)}</button>)}
                 <strong>{toolbarText.alignAndDistribute}</strong><div className="arrangement-grid">
@@ -1256,7 +1261,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
         onServerWorkspace={workspaceAvailable ? () => setShowCloudWorkspace(true) : undefined}
-        onOpenFile={openHomeFile} onSettings={() => {
+        onOpenFile={openLocalDesign} onSettings={() => {
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
           openSettings()
         }} />}
@@ -1391,7 +1396,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); setShowCatalog(true) }}>
                 <FolderOpen size={15} />{menuText.projectFolder}
               </button>
-              <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.open() }}>
+              <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { setMenu(false); void openLocalDesign().catch(error => editor.notify(String(error))) }}>
                 <FolderOpen size={15} />{menuText.openLocalDesign} <kbd>{formatShortcutCombo('Mod+O', shortcutContext.platform)}</kbd>
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.recover() }}>
@@ -1517,7 +1522,17 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           const f = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
           if (!f) return
-          if (RASTER_IMPORT_EXTENSION.test(f.name)) {
+          if (/\.fd$/i.test(f.name) && importMode.current === 'open' && desktopSession && desktop?.openPickedFile) {
+            setHomeImportError('')
+            try {
+              const opened = await desktopSession.openPicked(f)
+              if (opened) resumeEditor()
+              else if (showHome && desktopSession.status.error) setHomeImportError(desktopSession.status.error)
+            } catch (error) {
+              if (showHome) setHomeImportError(String(error))
+              else editor.notify(String(error))
+            }
+          } else if (RASTER_IMPORT_EXTENSION.test(f.name)) {
             if (showHome) editor.notify('请先打开画布，再导入图片', { key: 'openCanvasBeforeImageImport' })
             else await importImageFiles([f])
           } else await importDesignFile(f, importMode.current)

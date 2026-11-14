@@ -1,4 +1,8 @@
-import { useInterfaceText } from './interface-preference'
+import { dispatchEditorCommand } from './editor-commands'
+import { desktopBridge } from './desktop'
+import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
+import { useShortcutProfile } from './shortcut-preference'
+import { useInterfacePreferences, useInterfaceText } from './interface-preference'
 import type { Editor } from './engine'
 import { zoomAt, zoomStep, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM } from './canvas-camera'
 import { NumberField } from './fields'
@@ -17,6 +21,12 @@ export function ViewControls({
 }) {
   const text = useInterfaceText()
   const s = editor.state
+  const { locale, uiMode } = useInterfacePreferences()
+  const profile = useShortcutProfile()
+  const shortcut = { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }
+  const sketch = uiMode === 'sketch'
+  const label = (zh: string, en: string) => locale === 'en' ? en : zh
+  const centerKey = shortcutLabel('center-selection', shortcut)
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const menu = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
@@ -64,11 +74,37 @@ export function ViewControls({
             ))}
           </div>
           <button type="button" onClick={() => { fit(); if (menu.current) menu.current.open = false }}>
-            {text.fitAll}　⇧1
+            {text.fitAll}　{shortcutLabel('zoom-fit', shortcut)}
           </button>
           <button type="button" onClick={() => { fit(true); if (menu.current) menu.current.open = false }}>
-            {text.fitSelection}　⇧2
+            {text.fitSelection}　{shortcutLabel('zoom-selection', shortcut)}
           </button>
+          {sketch && <button type="button" disabled={!s.selection.length} onClick={() => {
+            void dispatchEditorCommand(editor, 'center-selection')
+            if (menu.current) menu.current.open = false
+          }}>{label('中心选择', 'Center selection')}{centerKey && `　${centerKey}`}</button>}
+          {sketch && <>
+            <label><input type="checkbox" checked={s.grid}
+              onChange={e => editor.set({ grid: e.target.checked })} />{label('显示网格', 'Show grid')}</label>
+            <button type="button" onClick={() => {
+              if (menu.current) menu.current.open = false
+              document.querySelector<HTMLButtonElement>('.app-settings-button')?.click()
+            }}>{label('网格设置…', 'Grid settings…')}</button>
+            <label><input type="checkbox" checked={s.showAuthoredLayout !== false}
+              onChange={e => editor.set({ showAuthoredLayout: e.target.checked })} />{label('显示布局', 'Show layout guides')}{profile === 'sketch-like' && shortcut.platform === 'mac' ? '　⌃ L' : ''}</label>
+            <label><input type="checkbox" checked={!!s.showOverview}
+              onChange={e => editor.set({ showOverview: e.target.checked })} />{label('显示迷你地图', 'Show minimap')}{profile === 'sketch-like' && shortcut.platform === 'mac' ? '　⌃ M' : ''}</label>
+            <button type="button" disabled={!s.selection.length || s.doc.nodes[s.selection[0]]?.kind !== 'frame'}
+              onClick={() => {
+                if (menu.current) menu.current.open = false
+                document.getElementById('design-properties-tab')?.click()
+                requestAnimationFrame(() => {
+                  const heading = document.getElementById('layout-grid-settings')
+                  heading?.scrollIntoView({ block: 'nearest' })
+                  heading?.focus({ preventScroll: true })
+                })
+              }}>{label('布局设置…', 'Layout settings…')}</button>
+          </>}
           <label><input type="checkbox" aria-label={text.wheelZoom} checked={s.scrollWheelZoom}
             onChange={e => editor.setScrollWheelZoom(e.target.checked)}/>{text.wheelZoom}</label>
           <small>{text.viewNavigationHelp}</small>

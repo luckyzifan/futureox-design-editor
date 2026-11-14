@@ -30,6 +30,11 @@ import { NumberField } from './fields'
 import { formatPercent } from './numeric-expression'
 import { LayoutPanel } from './LayoutPanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
+import { dispatchEditorCommand } from './editor-commands'
+import { desktopBridge } from './desktop'
+import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
+import { useShortcutProfile } from './shortcut-preference'
+import { useInterfacePreferences } from './interface-preference'
 import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus } from 'lucide-react'
@@ -407,6 +412,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
   blurEffectIndex?: number
   onEditBlur?: (index: number | null) => void
 }) {
+  const { uiMode } = useInterfacePreferences()
+  const shortcutProfile = useShortcutProfile()
   const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
@@ -651,6 +658,11 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                 }
               />{tr("裁剪超出内容")}</label>
           )}
+          {uiMode === 'sketch' && n.kind === 'frame' && ids.length === 1 && <button type="button"
+            disabled={n.locked || !!n.instance || !!n.instanceOrigin || !n.children.length || !!n.layout && n.layout.mode !== 'none'}
+            onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
+            {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
+          </button>}
           {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded />}
         </section>
         {n.kind!=='slice' && <section>

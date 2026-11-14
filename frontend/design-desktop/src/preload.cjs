@@ -189,6 +189,13 @@ contextBridge.exposeInMainWorld(
     scanCatalogDirectory: (value) => invoke('catalog-scan', value),
     openCatalogFile: (value) => invoke('catalog-open', value),
     openDocument: () => invoke('open'),
+    // Only a genuine Chromium file-picker/drop File has a filesystem path.
+    // The renderer cannot request arbitrary paths with this capability.
+    openPickedFile: file => {
+      const path = webUtils.getPathForFile(file)
+      if (!path) return Promise.reject(new Error('请选择本机 .fd 文件'))
+      return invoke('open-picked-fd', { path })
+    },
     inspectSketch: () => invoke('sketch-inspect'),
     largeDocument: Object.freeze({
       status: () => invoke('large-document-status'),

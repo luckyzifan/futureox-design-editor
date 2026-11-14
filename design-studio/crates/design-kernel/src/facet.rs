@@ -587,6 +587,8 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         guides: Default::default(),
         board: None,
         layout_grid: None,
+        layout_grids: Default::default(),
+        prototype_overflow: None,
         connector: None,
         path_offset: 0.,
         text_path: None,

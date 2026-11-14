@@ -19,6 +19,7 @@
 //! - arrays: uvarint count then items
 mod components;
 mod document;
+mod properties;
 
 use crate::math::Transform;
 use crate::scene::{Document, Effect, Node, Page, Paint, Stroke};
@@ -662,9 +663,19 @@ pub fn rewrite_fig(bytes: &[u8]) -> Result<Vec<u8>, Error> {
 /// blobs (zip `images/` entries + kiwi `blobs` payload), keyed by sha1 name.
 #[allow(clippy::type_complexity)]
 pub fn read_fig(bytes: &[u8]) -> Result<(Value, BTreeMap<String, Vec<u8>>, Vec<Vec<u8>>), Error> {
+    let (tree, images, blobs, _) = parse_fig_archive(bytes)?;
+    Ok((tree, images, blobs))
+}
+
+type FigArchive = (Value, BTreeMap<String, Vec<u8>>, Vec<Vec<u8>>, Option<String>);
+fn parse_fig_archive(bytes: &[u8]) -> Result<FigArchive, Error> {
     let files = if bytes.starts_with(b"fig-kiwi") {
         BTreeMap::from([("canvas.fig".into(), bytes.to_vec())])
     } else { crate::interop::read_zip_public(bytes).map_err(|e| Error::Io(e.to_string()))? };
+    let name = files.get("meta.json").filter(|bytes| bytes.len() <= 64 * 1024)
+        .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok())
+        .and_then(|meta| meta["file_name"].as_str().filter(|name|
+            !name.trim().is_empty() && name.encode_utf16().count() <= 200).map(str::to_owned));
     let canvas = files
         .get("canvas.fig")
         .ok_or(Error::NotAFig("canvas.fig missing".into()))?;
@@ -688,7 +699,7 @@ pub fn read_fig(bytes: &[u8]) -> Result<(Value, BTreeMap<String, Vec<u8>>, Vec<V
             }
         }
     }
-    Ok((tree, images, kiwi_blobs))
+    Ok((tree, images, kiwi_blobs, name))
 }
 
 // ---------------------------------------------------------------------------
@@ -1536,6 +1547,20 @@ impl FigImporter {
         }
         if kind == "frame" {
             node.clip = !bool_of(change, "frameMaskDisabled").unwrap_or(false);
+            if let Some(value) = change.get("layoutGrids") {
+                let (grids, incomplete) = properties::layout_grids(value);
+                node.layout_grids = grids.into();
+                if incomplete { untranslated.push("layoutGrids(partial)".into()); }
+            }
+            if let Some(value) = change.get("scrollDirection") {
+                node.prototype_overflow = properties::prototype_overflow(value);
+                if node.prototype_overflow.is_none() { untranslated.push(format!("scrollDirection={value}")); }
+            }
+        }
+        if let Some(value) = change.get("exportSettings") {
+            let (settings, incomplete) = properties::export_settings(value);
+            node.export_settings = settings.into();
+            if incomplete { untranslated.push("exportSettings(partial)".into()); }
         }
 
         // corners: per-corner radii with the scalar as fallback (TS :557-563).
@@ -1787,6 +1812,13 @@ impl FigImporter {
                     None | Some("UNION") => Some(crate::boolean::Operation::Union),
                     Some(other) => return Err(Error::Unsupported(format!("booleanOperation={other}"))),
                 };
+                if change.get("strokeGeometry").and_then(Value::as_array).is_some_and(|items| !items.is_empty())
+                    && !node.fills.iter().any(|p| p.visible && p.opacity > 0.)
+                    && node.strokes.iter().any(|s| s.paint.visible && s.paint.opacity > 0.)
+                {
+                    node.fills = node.strokes.drain(..).map(|s| s.paint).collect();
+                    node.bindings.insert("figBooleanStrokeOperands".into(), "true".into());
+                }
             }
             "SYMBOL" => {
                 if let Some(g) = change.get("guid") {
@@ -3056,6 +3088,26 @@ pub fn document_from_canvas(
             nodes.insert(outline.id.clone(), outline);
         }
     }
+    for (id, record) in &records {
+        let Some(mut node) = nodes.remove(id) else { continue; };
+        if node.boolean_operation.is_some() && (node.strokes.is_empty() || node.strokes.iter().all(|s| !s.paint.visible)) {
+            let field = if node.bindings.contains_key("figBooleanStrokeOperands") { "strokeGeometry" } else { "fillGeometry" };
+            if let Some(items) = record.get(field).and_then(Value::as_array)
+                .filter(|items| !items.is_empty() && items.iter().all(|item| item.get("styleID").and_then(Value::as_u64).unwrap_or(0) == 0))
+                && let Some(children) = node.children.iter().map(|id| nodes.get(id)).collect::<Option<Vec<_>>>()
+                && let Ok((fill, rule)) = importer.baked_geometry(items)
+                && let Ok(geometry) = crate::vector_geometry::VectorGeometry::from_paths(&fill, &fill, rule)
+            {
+                node.vector_geometry = Some(geometry.into());
+                if let Some(key) = crate::curve_boolean::fig_outline_key(&node, &children) {
+                    node.bindings.insert("figBooleanOutlineKey".into(), key);
+                } else {
+                    node.vector_geometry = None;
+                }
+            }
+        }
+        nodes.insert(id.clone(), node);
+    }
     // keep dropped-but-reported semantics visible on the node itself
     for (id, notes) in untranslated_by_id {
         if let Some(node) = nodes.get_mut(&id) {
@@ -3085,8 +3137,11 @@ pub fn document_from_canvas(
         version = version.max(4);
     }
     if doc.nodes.values().any(|n|n.arc.is_some() || n.corner_radius!=0.) {version=version.max(7);}
-    if crate::stroke::has_markers(&doc) {
+    if crate::stroke::has_markers(&doc) || doc.nodes.values().any(|n| !n.export_settings.is_empty()) {
         version = version.max(8);
+    }
+    if doc.nodes.values().any(|n| !n.layout_grids.is_empty() || n.prototype_overflow.is_some()) {
+        version = version.max(12);
     }
     if doc.nodes.values().any(|n| n.kind == "slice") {
         version = version.max(10);
@@ -3186,8 +3241,12 @@ fn attach_children(
 
 /// Native `.fig` import into the kernel document model.
 pub fn import_fig_native(bytes: &[u8]) -> Result<Document, Error> {
-    let (tree, images, kiwi_blobs) = read_fig(bytes)?;
-    document_from_canvas(&tree, images, kiwi_blobs)
+    let (tree, images, kiwi_blobs, name) = parse_fig_archive(bytes)?;
+    let mut doc = document_from_canvas(&tree, images, kiwi_blobs)?;
+    if doc.name == "Document" && let Some(name) = name {
+        doc.name = name;
+    }
+    Ok(doc)
 }
 
 #[cfg(test)]

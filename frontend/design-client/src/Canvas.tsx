@@ -30,6 +30,7 @@ import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { StartupPreview } from './StartupPreview'
 import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
 import { CanvasEditPreview, type RetainedMoveControl } from './CanvasEditPreview'
+import { CanvasOverview } from './CanvasOverview'
 import { CanvasScrollbars } from './CanvasScrollbars'
 import { supportsEditPreview } from './edit-preview'
 import { resizedNode, resizeGestureAxes } from './selection-properties'
@@ -300,9 +301,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   onOpenSourcePoint?:(point:Point)=>void
   onCapturePreview?: (document: import('./model').DesignDocument, version: number, pixels: PreviewPixels) => Promise<void>
 }) {
-  const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor'
+  const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.canvas-overview,.pencil-controls,.rich-text-editor'
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
-  const { locale } = useInterfacePreferences()
+  const { locale, uiMode } = useInterfacePreferences()
   const chromeCopy = canvasText[locale]
   const blurEditActive = useRef(false)
   const exitBlurEditor = useRef(onExitBlurEdit)
@@ -1237,6 +1238,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       const mod = e.metaKey || e.ctrlKey
+      if (shortcutContext.profile === 'sketch-like' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyL' && !drag.current) {
+        e.preventDefault()
+        if (!e.repeat) editor.set({ showAuthoredLayout: editor.state.showAuthoredLayout === false })
+        return
+      }
+      if (shortcutContext.profile === 'sketch-like' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyM' && !drag.current) {
+        e.preventDefault()
+        if (!e.repeat) editor.set({ showOverview: !editor.state.showOverview })
+        return
+      }
       if(!mod&&e.shiftKey&&e.code==='KeyR'&&!drag.current){e.preventDefault();editor.set({rulers:!editor.state.rulers});return}
       if(e.altKey&&!mod&&e.code==='KeyR'&&!drag.current&&editor.topSelection().length){e.preventDefault();setOrigin(origin.current.point,!origin.current.visible);return}
       const creation = drag.current
@@ -3192,13 +3203,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             // predicate, tinted with the grid's own color and opacity.
             if (selection.size !== 1) return null
             const frame = state.doc.nodes[[...selection][0]]
-            if (!frame || frame.kind !== 'frame' || !frame.layoutGrid?.visible) return null
-            const rects = layoutGridRectangles(frame.layoutGrid, frame.id, state.doc)
-            const tint = `${frame.layoutGrid.color.slice(0, 7)}${Math.round(Math.max(0, Math.min(1, frame.layoutGrid.opacity)) * 255).toString(16).padStart(2, '0')}`
-            return rects.map((r, i) => (
-              <polygon key={`layout-grid-${i}`} points={r.points.map(p => `${p.x},${p.y}`).join(" ")}
-                fill={tint} pointerEvents="none" data-testid="authored-layout-grid-band" />
-            ))
+            if (!frame || frame.kind !== 'frame' || state.showAuthoredLayout === false) return null
+            const grids = frame.layoutGrids ?? (frame.layoutGrid ? [frame.layoutGrid] : [])
+            return grids.flatMap((grid, index) => {
+              if (!grid.visible) return []
+              return layoutGridRectangles(grid, frame.id, state.doc).map((r, i) => (
+                <polygon key={`layout-grid-${index}-${i}`} points={r.points.map(p => `${p.x},${p.y}`).join(" ")}
+                  fill={grid.color} fillOpacity={grid.opacity} pointerEvents="none" data-testid="authored-layout-grid-band" />
+              ))
+            })
           })()}
           {hover &&
             !selection.has(hover) &&
@@ -3703,6 +3716,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           </button>
         </div>
       )}
+      {uiMode === 'sketch' && state.showOverview && <CanvasOverview editor={editor} entries={entries} view={state.view}
+        size={size} contentBounds={openingSource?.bounds ?? nativeSource?.bounds} label={locale === 'en' ? 'Canvas minimap' : '画布迷你地图'} />}
       <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} onPanGestureChange={setPanning} contentBounds={openingSource?.bounds??nativeSource?.bounds}/>
       {zoomControlsTarget ? createPortal(<ViewControls editor={editor} size={size} fit={fitView} compact />, zoomControlsTarget) : <ViewControls editor={editor} size={size} fit={fitView} compact={compactChrome} />}
     </div>

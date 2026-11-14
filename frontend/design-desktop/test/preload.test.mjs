@@ -8,7 +8,7 @@ const filename = process.env.CORE_DESKTOP_TEST_SOURCE
   ? new URL('preload.cjs', process.env.CORE_DESKTOP_TEST_SOURCE)
   : new URL('../src/preload.cjs', import.meta.url)
 const source = await readFile(filename, 'utf8')
-function load(argv = [], reply = { status: 'ok' }, window) {
+function load(argv = [], reply = { status: 'ok' }, window, webUtils) {
   const events = new EventEmitter()
   const calls = []
   let api
@@ -29,7 +29,7 @@ function load(argv = [], reply = { status: 'ok' }, window) {
     process: { argv }, window,
     require: (name) => {
       assert.equal(name, 'electron', 'Sandboxed preload must load no filesystem/process library')
-      return { ipcRenderer, contextBridge }
+      return { ipcRenderer, contextBridge, webUtils }
     },
   })
   vm.runInContext(source, context, { filename: String(filename), timeout: 1000 })
@@ -70,6 +70,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'scanCatalogDirectory',
       'openCatalogFile',
       'openDocument',
+      'openPickedFile',
       'inspectSketch',
       'sketchSession',
       'largeDocument',
@@ -122,6 +123,25 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
     assert.equal(Object.hasOwn(api, key), false)
   }
   assert.equal(api.process, undefined)
+})
+
+test('picked FD uses Chromium file provenance and refuses renderer-supplied paths', async () => {
+  const diskFile = {}
+  const fakeFile = {}
+  const { api, calls } = load([], { status: 'ok' }, undefined, {
+    getPathForFile(value) {
+      if (value === diskFile) return '/approved/example.fd'
+      if (value === fakeFile) return ''
+      throw new TypeError('not a File')
+    },
+  })
+  await assert.rejects(api.openPickedFile(fakeFile), /请选择本机/)
+  assert.throws(() => api.openPickedFile('/arbitrary/path.fd'), /not a File/)
+  assert.deepEqual(calls, [])
+  await api.openPickedFile(diskFile)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][0], 'design-desktop:open-picked-fd')
+  assert.equal(calls[0][1].path, '/approved/example.fd')
 })
 
 test('preload request methods map only to the fixed desktop IPC allowlist', async () => {

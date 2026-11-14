@@ -45,3 +45,15 @@ test('invisible grids render nothing', () => {
   frame.layoutGrid = { ...defaultLayoutGrid(), visible: false }
   expect(layoutGridRectangles(frame.layoutGrid, frame.id, d)).toEqual([])
 })
+
+test('fixed and auto guides keep their section sizes when the frame changes', () => {
+  const { d, frame } = documentWithFrame(1440, 1640)
+  const column = { ...defaultLayoutGrid(), axis: 'column', alignment: 'start', sectionSize: 93,
+    count: 12, gutter: 30 } as const
+  const row = { ...column, axis: 'row', sectionSize: 300, count: 0 } as const
+  expect(layoutGridRectangles(column, frame.id, d).map(rect => rect.width)).toEqual([...Array(11).fill(93),87])
+  expect(layoutGridRectangles(row, frame.id, d).map(rect => rect.y)).toEqual([0,330,660,990,1320])
+  frame.height = 1000
+  expect(layoutGridRectangles(row, frame.id, d).map(rect => [rect.y,rect.height]))
+    .toEqual([[0,300],[330,300],[660,300],[990,10]])
+})

@@ -177,11 +177,16 @@ impl Projection<'_> {
             }
         }
     }
-    fn paint(&mut self, v: &Value, id: String, size: [f64; 2]) -> Result<Paint> {
+    fn paint(&mut self, v: &Value, id: String, size: [f64; 2], is_border: bool) -> Result<Paint> {
         let mut p = solid(id, color(&v["color"])?);
-        p.opacity = number(&v["contextSettings"], "opacity", 1.)?;
+        let part_opacity = number(&v["contextSettings"], "opacity", 1.)?;
         p.blend = blend(&v["contextSettings"])?;
-        match num(v, "fillType", 0.) as i32 {
+        let fill_type = num(v, "fillType", 0.) as i32;
+        // Native solid fills (unlike solid borders) use color alpha alone.
+        if fill_type != 0 || is_border {
+            p.opacity = part_opacity;
+        }
+        match fill_type {
             0 => {}
             1 => {
                 let g = &v["gradient"];
@@ -344,7 +349,7 @@ impl Projection<'_> {
         n.network = Some((network).into());
         Ok(())
     }
-    fn layer(&mut self, layer: &Layer) -> Result<String> {
+    fn layer(&mut self, layer: &Layer, inside_artboard: bool) -> Result<String> {
         if ["transform", "affineTransform"]
             .iter()
             .any(|key| layer.fields().contains_key(*key))
@@ -403,14 +408,14 @@ impl Projection<'_> {
             .filter(|(_, p)| yes(p, "isEnabled", true))
         {
             n.fills
-                .push(self.paint(p, format!("{id}:fill{i}"), [n.width, n.height])?)
+                .push(self.paint(p, format!("{id}:fill{i}"), [n.width, n.height], false)?)
         }
         if class == "bitmap" {
             let mut p = v.clone();
             p["fillType"] = Value::from(4);
             p["patternFillType"] = Value::from(2);
             n.fills
-                .push(self.paint(&p, format!("{id}:bitmap"), [n.width, n.height])?)
+                .push(self.paint(&p, format!("{id}:bitmap"), [n.width, n.height], false)?)
         }
         let opts = &style["borderOptions"];
         for (i, p) in array(style, "borders")
@@ -418,7 +423,7 @@ impl Projection<'_> {
             .enumerate()
             .filter(|(_, p)| yes(p, "isEnabled", true))
         {
-            let paint = self.paint(p, format!("{id}:border-paint{i}"), [n.width, n.height])?;
+            let paint = self.paint(p, format!("{id}:border-paint{i}"), [n.width, n.height], true)?;
             n.strokes.push(Stroke {
                 id: format!("{id}:border{i}"),
                 paint,
@@ -469,7 +474,8 @@ impl Projection<'_> {
                     y: number(e, "offsetY", 0.)?,
                     spread: number(e, "spread", 0.)?,
                     color: color(&e["color"])?,
-                    opacity: number(&e["contextSettings"], "opacity", 1.)?,
+                    // The color already carries Sketch's shadow alpha.
+                    opacity: 1.,
                     amount: 0.,
                     glass: None,
                     texture: None,
@@ -481,15 +487,20 @@ impl Projection<'_> {
                 })
             }
         }
-        let blur = &style["blur"];
-        if yes(blur, "isEnabled", false) && num(blur, "radius", 0.) > 0. {
+        for (i, blur) in crate::interop::sketch_blurs(style).into_iter().enumerate() {
+            if crate::interop::legacy_sketch_group_blur(&v, style)
+                || !crate::interop::sketch_blur_enabled(blur)
+                || num(blur, "radius", 0.) <= 0.
+            {
+                continue;
+            }
             let kind = match num(blur, "type", 0.) as i32 {
-                0 => "blur",
+                0 => "gaussian-blur",
                 3 => "background-blur",
                 _ => return Err(Error::Unsupported("Sketch motion/zoom blur".into())),
             };
             let mut effect = Effect {
-                id: format!("{id}:blur"),
+                id: format!("{id}:blur{i}"),
                 kind: kind.into(),
                 radius: number(blur, "radius", 0.)?,
                 visible: true,
@@ -529,7 +540,10 @@ impl Projection<'_> {
             return Err(Error::Unsupported("Sketch image color controls".into()));
         }
         if ["rectangle", "oval", "shapePath"].contains(&class) {
-            self.geometry(&v, &mut n)?
+            self.geometry(&v, &mut n)?;
+            if class == "shapePath" && v.as_object().and_then(|fields| crate::sketch::path_field(fields, "isClosed")).and_then(Value::as_bool) == Some(false) {
+                for stroke in &mut n.strokes { stroke.align = "center".into(); }
+            }
         }
         if class == "artboard" {
             n.clip = true;
@@ -538,6 +552,10 @@ impl Projection<'_> {
                     0,
                     solid(format!("{id}:background"), color(&v["backgroundColor"])?),
                 );
+            } else if inside_artboard && v.get("backgroundColor").is_some()
+                && !v.pointer("/userInfo/com.futureox.design-kernel").is_some_and(Value::is_object)
+            {
+                n.fills.insert(0, solid(format!("{id}:background"), "#ffffff".into()));
             }
         }
         if class == "slice" {
@@ -548,7 +566,7 @@ impl Projection<'_> {
         if class == "text" {
             self.text(&v, &mut n)?
         }
-        n.children = self.children(layer)?;
+        n.children = self.children(layer, inside_artboard || class == "artboard")?;
         let compound = class == "shapeGroup"
             && layer.children().iter().all(|child| {
                 child
@@ -597,11 +615,9 @@ impl Projection<'_> {
                     .and_then(Value::as_i64)
                     .unwrap_or(-1);
                 let op = match code {
-                    -1 | 0 => Operation::Union,
-                    1 => Operation::Subtract,
-                    2 => Operation::Exclude,
-                    3 => Operation::Intersect,
-                    _ => return Err(Error::Unsupported("Sketch boolean operation".into())),
+                    -1 => Operation::Union,
+                    code => crate::sketch::geometry::boolean_operation(code)
+                        .ok_or_else(|| Error::Unsupported("Sketch boolean operation".into()))?,
                 };
                 if i == n.children.len() - 1 {
                     n.kind = "vector".into();
@@ -625,7 +641,7 @@ impl Projection<'_> {
         self.nodes.insert(id.clone(), n);
         Ok(id)
     }
-    fn children(&mut self, layer: &Layer) -> Result<Vec<String>> {
+    fn children(&mut self, layer: &Layer, inside_artboard: bool) -> Result<Vec<String>> {
         let mut output = vec![];
         let mut mask: Option<String> = None;
         for child in layer.children() {
@@ -633,7 +649,7 @@ impl Projection<'_> {
             if yes(&v, "shouldBreakMaskChain", false) {
                 mask = None
             }
-            let id = self.layer(child)?;
+            let id = self.layer(child, inside_artboard)?;
             if yes(&v, "hasClippingMask", false) {
                 let group_id = self.synthetic(layer.id());
                 let mut group = sample_node(&group_id, "group");
@@ -695,9 +711,19 @@ impl Projection<'_> {
         let minimum_line = num(p, "minimumLineHeight", 0.);
         let maximum_line = num(p, "maximumLineHeight", 0.);
         let line = minimum_line.max(maximum_line);
-        // Equal Sketch line limits are one fixed line box. Native text previews
-        // center the face in that box and draw the baseline on the nearest point.
+        // Equal Sketch line limits are one fixed line box. Its baseline depends
+        // on the archived spacing mode, just as in the editable import.
         let fixed_line = minimum_line > 0. && (minimum_line - maximum_line).abs() <= 1e-9;
+        let behaviour = v["textBehaviour"].as_i64().unwrap_or(0);
+        let vertical_align = if behaviour == 2 {
+            match crate::interop::sketch_vertical_alignment(v, first) {
+                Some(1) => "center",
+                Some(2) => "bottom",
+                _ => "top",
+            }
+        } else {
+            "top"
+        };
         let align = match num(p, "alignment", 0.) as i32 {
             1 => "end",
             2 => "center",
@@ -713,14 +739,15 @@ impl Projection<'_> {
                     1.35
                 },
                 line_box_baseline: if fixed_line {
-                    "nearest-point".into()
+                    crate::interop::sketch_fixed_line_baseline(v["lineSpacingBehaviour"].as_i64()).into()
                 } else {
                     String::new()
                 },
                 letter_spacing: num(first, "kerning", 0.),
                 line_height_auto: line <= 0.,
-                wrap: num(v, "textBehaviour", 0.) != 0.,
+                wrap: behaviour != 0,
                 align: align.into(),
+                vertical_align: vertical_align.into(),
                 paragraph_spacing: num(p, "paragraphSpacing", 0.),
                 ..TextStyle::default()
             })
@@ -804,7 +831,7 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         warnings: BTreeSet::new(),
         serial: 0,
     };
-    let roots = p.children(page.root())?;
+    let roots = p.children(page.root(), false)?;
     let artboards = page
         .root()
         .children()

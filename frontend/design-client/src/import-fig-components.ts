@@ -1,6 +1,7 @@
 import type { ComponentProperty, DesignDocument, Effect, Paint, Stroke } from './model'
 import { defaultLayout, defaultSizing, defaultTextStyle } from './model'
 import type { FigReceipts } from './import-fig-nodes'
+import { figExportSettings } from './import-fig-properties'
 import { figCollectionModes, figReferenceGuid } from './import-fig-document'
 const guid = (g: any): string => typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : ''
 function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,string>): string | boolean {
@@ -535,27 +536,11 @@ function distance(record: any, field: string, fallback = 0) {
 }
 
 function applyExport(fields: Record<string, unknown>, override: any, warnings?: { add(message: string): unknown }) {
-  if(override.exportSettings === undefined) return
-  if(!Array.isArray(override.exportSettings)) {
-    warnings?.add('FIG 实例覆盖 exportSettings 暂不能执行，其余覆盖已保留')
-    return
-  }
-  const formats: Record<string, string> = { PNG: 'png', JPG: 'jpeg', JPEG: 'jpeg', SVG: 'svg', SVG_STRING: 'svg', PDF: 'pdf', WEBP: 'webp', TIFF: 'tiff' }
-  const exported: { id: string; format: string; scale: number; suffix: string }[] = []
-  let failed = false
-  override.exportSettings.forEach((setting: any, index: number) => {
-    const format = formats[setting?.imageType]
-    const constraint = setting?.constraint
-    const scale = constraint?.type === 'SCALE' || constraint?.type === 'CONTENT_SCALE' ? constraint.value : constraint ? undefined : 1
-    const suffix = typeof setting?.suffix === 'string' ? setting.suffix : ''
-    if(!format || typeof scale !== 'number' || !Number.isFinite(scale) || scale < 0 || scale > 128 || suffix.length > 80) {
-      failed = true
-      return
-    }
-    exported.push({ id: `fig-export-${index}`, format, scale, suffix })
-  })
-  if(failed || (!exported.length && override.exportSettings.length)) warnings?.add('FIG 实例覆盖 exportSettings 暂不能执行，其余覆盖已保留')
-  if(exported.length) fields.exportSettings = exported
+  if (override.exportSettings === undefined) return
+  const { settings, incomplete } = figExportSettings(override.exportSettings)
+  if (incomplete) warnings?.add('FIG 实例覆盖 exportSettings 含暂不支持的选项')
+  if (settings.length || Array.isArray(override.exportSettings) && !override.exportSettings.length)
+    fields.exportSettings = settings
 }
 
 function applyLayout(fields: Record<string, unknown>, override: any, target: any, source: any, records: Map<string, any>, warnings?: { add(message: string): unknown }) {

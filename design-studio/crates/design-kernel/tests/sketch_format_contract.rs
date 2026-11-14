@@ -28,15 +28,15 @@ fn legacy_native_masks_map_supported_axes_and_retain_all_source_masks(){
  }
 }
 #[test]
-fn solid_color_alpha_and_context_opacity_are_distinct_native_channels(){
+fn solid_fill_uses_native_color_alpha_and_preserves_blend_mode(){
  for blend in [0,16,17] {
   let mut input=base();input["style"]["fills"][0]["color"]["alpha"]=json!(0.25);
   input["style"]["fills"][0]["contextSettings"]=json!({"opacity":0.5,"blendMode":blend});
   let doc=interop::import_sketch_report(&archive(input)).unwrap().document;
-  assert_eq!(doc.nodes[ID].fills[0].opacity,0.5);
+  assert_eq!(doc.nodes[ID].fills[0].opacity,0.25);
   let native=layer(&interop::export_sketch(&doc).unwrap());
   assert_eq!(native["style"]["fills"][0]["color"]["alpha"],0.25);
-  assert_eq!(native["style"]["fills"][0]["contextSettings"]["opacity"],0.5);
+  assert_eq!(native["style"]["fills"][0]["contextSettings"]["opacity"],1.);
   assert_eq!(native["style"]["fills"][0]["contextSettings"]["blendMode"],blend);
  }
 }

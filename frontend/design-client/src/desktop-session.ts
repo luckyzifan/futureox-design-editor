@@ -653,6 +653,10 @@ export class DesktopSession {
 
 
   open() { return this.openFile(() => this.bridge.openDocument()) }
+  openPicked(file: File) {
+    const open = this.bridge.openPickedFile
+    return open ? this.openFile(() => open(file)) : Promise.resolve(false)
+  }
   openPending() {
     if (!this.bridge.openPendingDocument) return Promise.resolve(false)
     let remaining = 0

@@ -27,8 +27,8 @@ fn canonical_shared_styles_are_live_after_import_export_edit_and_undo() {
     let mut doc = interop::import_sketch_report(&archive()).unwrap().document;
     assert_eq!(doc.design_system.as_ref().unwrap().styles.len(), 2);
     assert_eq!(doc.nodes["r"].style_refs["fills"], PAINT); assert_eq!(doc.nodes["t"].style_refs["textStyle"], TEXT);
-    design_system::resolve(&mut doc).unwrap(); assert_eq!(doc.nodes["r"].fills[0].opacity, 1.);
-    assert!(doc.nodes["r"].fills[0].color.ends_with("/ 0.5)"));
+    design_system::resolve(&mut doc).unwrap(); assert_eq!(doc.nodes["r"].fills[0].opacity, 0.5);
+    assert!(doc.nodes["r"].fills[0].color.ends_with("/ 1)"));
     let style = doc.nodes["t"].text_style.as_ref().unwrap();
     assert_eq!(style.align, "center"); assert_eq!(style.line_height, 1.5); assert_eq!(style.letter_spacing, 2.); assert_eq!(style.paragraph_spacing, 3.);
     let bytes = interop::export_sketch(&doc).unwrap(); let files = interop::read_zip_public(&bytes).unwrap();
@@ -51,7 +51,11 @@ fn canonical_shared_styles_are_live_after_import_export_edit_and_undo() {
     assert_eq!(resolved.nodes["r"].fills[0].color, "#00ff00"); assert_eq!(resolved.nodes["t"].text_style.as_ref().unwrap().align, "end");
     editor.undo().unwrap(); assert_eq!(editor.document(), &before); editor.redo().unwrap();
     let mut resolved = interop::import_sketch_report(&interop::export_sketch(editor.document()).unwrap()).unwrap().document;
-    design_system::resolve(&mut resolved).unwrap(); assert_eq!(resolved.nodes["r"].fills[0].color, "#00ff00"); assert_eq!(resolved.nodes["t"].text_style.as_ref().unwrap().align, "end");
+    design_system::resolve(&mut resolved).unwrap();
+    let paint = &resolved.nodes["r"].fills[0];
+    assert_eq!(paint.color, "color(srgb 0 1 0 / 1)");
+    assert_eq!(paint.opacity, 0.5);
+    assert_eq!(resolved.nodes["t"].text_style.as_ref().unwrap().align, "end");
 }
 #[test]
 fn kernel_style_ids_roundtrip_through_uuid_wire_ids() {

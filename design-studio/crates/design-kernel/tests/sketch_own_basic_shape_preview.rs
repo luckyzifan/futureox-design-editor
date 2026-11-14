@@ -152,7 +152,7 @@ fn own_rectangle_and_oval_export_admits_in_native_display_preview() {
         ],
     );
     assert_eq!(
-        layers[1]["style"]["fills"][0]["contextSettings"]["opacity"],
+        layers[1]["style"]["fills"][0]["color"]["alpha"],
         0.7
     );
 
@@ -184,7 +184,10 @@ fn own_rectangle_and_oval_export_admits_in_native_display_preview() {
         (imported_beta.transform.0[4], imported_beta.transform.0[5]),
         (100., 70.)
     );
-    assert_eq!(imported_beta.fills[0].color.to_ascii_lowercase(), "#3366dd");
+    close(
+        channels(&imported_beta.fills[0].color),
+        [0x33 as f64 / 255., 0x66 as f64 / 255., 0xDD as f64 / 255., 1.],
+    );
     assert_eq!(imported_beta.fills[0].opacity, 0.7);
     assert!(imported_alpha.boolean_operation.is_none());
     assert!(imported_beta.boolean_operation.is_none());
@@ -257,10 +260,10 @@ fn own_rectangle_and_oval_export_admits_in_native_display_preview() {
             0x33 as f64 / 255.,
             0x66 as f64 / 255.,
             0xDD as f64 / 255.,
-            1.,
+            0.7,
         ],
     );
-    assert_eq!(beta.fills[0].opacity, 0.7);
+    assert_eq!(beta.fills[0].opacity, 1.);
     let oval = beta.network.as_ref().unwrap();
     assert_eq!(oval.vertices.len(), 4);
     assert!(

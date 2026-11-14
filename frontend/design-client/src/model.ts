@@ -267,10 +267,8 @@ export type Constraints = {
   referenceWidth?: number | null
   referenceHeight?: number | null
 }
-/** Authored layout grid overlay on a frame (Sketch grid/layout dicts,
- * Figma layoutGrids). Track sizes derive from the frame extent:
- * (extent - 2*margin - (count-1)*gutter) / count, so "uniform" yields
- * square cells on both axes. */
+/** A missing alignment keeps the original stretched grid. Count 0 means Auto. */
+export const MAX_LAYOUT_GRIDS = 16
 export type LayoutGrid = {
   axis: 'column' | 'row' | 'uniform'
   count: number
@@ -279,6 +277,8 @@ export type LayoutGrid = {
   color: string
   visible: boolean
   opacity: number
+  alignment?: 'start' | 'end' | 'center' | 'stretch'
+  sectionSize?: number
 }
 export const defaultLayoutGrid = (): LayoutGrid => ({
   axis: 'column',
@@ -333,6 +333,8 @@ export type DesignNode = {
   board?: {kind:string;rows?:number;columns?:number;language?:string}
   repeat?: RepeatTransform
   layoutGrid?: LayoutGrid
+  layoutGrids?: LayoutGrid[]
+  prototypeOverflow?: import('./prototype').PrototypeOverflow
 
   exportSettings?: ExportSetting[]
   arc?: EllipseArc
@@ -677,9 +679,9 @@ export function copyName(name: string, suffix: string) {
 /** Empty node maps are legacy-compatible; an explicit override (even {}) has semantics. */
 export function hasLocalTools(d:DesignDocument){return !!d.reviews?.length || Object.values(d.nodes).some(n=>!!n.board||!!n.connector||!!n.textPath||!!n.pathOffset||n.kind==='slice'||n.network?.filledFaces!==undefined||n.exportSettings?.some(s=>!['png','svg'].includes(s.format)))}
 export function hasRulerGuides(d:DesignDocument){return d.pages.some(p=>!!p.guides?.length)||Object.values(d.nodes).some(n=>!!n.guides?.length)}
-/** Schema-12 authored layout grids (Sketch grid/layout dicts, Figma layoutGrids). */
-export function hasLayoutGrids(d: Pick<DesignDocument, 'nodes'>): boolean {
-  return Object.values(d.nodes).some(n => n?.layoutGrid != null)
+/** Frame guides and prototype overflow are frame-level schema 12 fields. */
+export function hasSchema12FrameProperties(d: Pick<DesignDocument, 'nodes'>): boolean {
+  return Object.values(d.nodes).some(n => n?.layoutGrid != null || n?.layoutGrids?.length || n?.prototypeOverflow != null)
 }
 export function hasGradientBlur(d: Pick<DesignDocument,'nodes'|'animations'|'designSystem'>): boolean {
   return Object.values(d.nodes).some(n => n.effects.some(e => e.gradientBlur) || Object.values(n.instance?.overrides || {}).some(o => Array.isArray(o.effects) && o.effects.some((e: Effect)=>e.gradientBlur))) || !!d.animations?.some(c=>c.tracks.some(t=>t.keyframes.some(k=>k.value.effects.some(e=>e.gradientBlur)))) || Object.values(d.designSystem?.styles || {}).some(s=>s.kind==='effect' && Array.isArray(s.value) && s.value.some(e=>e.gradientBlur))
@@ -1025,22 +1027,29 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     }
     // Layout grids mirror scene.rs: schema-12 frames only, finite ranges
     // and a parseable color.
-    if (n?.layoutGrid !== undefined) {
-      const g = { ...defaultLayoutGrid(), ...n.layoutGrid }
-      if (
-        d.schemaVersion < 12 ||
-        n.kind !== 'frame' ||
-        !['column', 'row', 'uniform'].includes(g.axis) ||
-        !Number.isInteger(g.count) ||
-        !(g.count >= 1 && g.count <= 64) ||
-        !finite(g.gutter, 0) ||
-        !finite(g.margin, 0) ||
-        !finite(g.opacity, 0, 1) ||
-        typeof g.visible !== 'boolean' ||
-        !color.test(g.color)
-      )
+    if (n?.layoutGrid !== undefined || n?.layoutGrids !== undefined) {
+      if (d.schemaVersion < 12 || n.kind !== 'frame' ||
+          (n.layoutGrids !== undefined && (!Array.isArray(n.layoutGrids) ||
+            n.layoutGrids.length > MAX_LAYOUT_GRIDS || n.layoutGrid !== undefined && n.layoutGrids.length > 0)))
         throw new Error('布局网格需要版本12，且只能属于画板')
+      const grids = n.layoutGrid === undefined ? n.layoutGrids ?? [] : [n.layoutGrid]
+      for (const grid of grids) {
+        if (!isObject(grid)) throw new Error('布局网格参数无效')
+        const g = { ...defaultLayoutGrid(), ...grid } as LayoutGrid
+        const fixed = g.alignment === 'start' || g.alignment === 'end' || g.alignment === 'center'
+        if (!['column', 'row', 'uniform'].includes(g.axis) || !Number.isInteger(g.count) ||
+            g.count < 0 || g.count > 64 || (g.count === 0 && g.sectionSize === undefined) ||
+            (g.alignment !== undefined && !fixed && g.alignment !== 'stretch') ||
+            (fixed && g.sectionSize === undefined) ||
+            (g.sectionSize !== undefined && !finite(g.sectionSize, 0.01)) ||
+            !finite(g.gutter, 0) || !finite(g.margin, 0) || !finite(g.opacity, 0, 1) ||
+            typeof g.visible !== 'boolean' || !color.test(g.color))
+          throw new Error('布局网格参数无效')
+      }
     }
+    if (n?.prototypeOverflow !== undefined && (d.schemaVersion < 12 || n.kind !== 'frame' ||
+      !['none','horizontal','vertical','both'].includes(n.prototypeOverflow)))
+      throw new Error('原型溢出设置需要版本12，且只能属于画板')
     if (n?.exportSettings !== undefined) {
       const settings = n.exportSettings
       if (!Array.isArray(settings) || settings.length > 16 || new Set(settings.map(s => s?.id)).size !== settings.length || settings.some(s =>

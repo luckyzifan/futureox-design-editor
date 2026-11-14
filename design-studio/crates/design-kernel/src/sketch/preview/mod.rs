@@ -283,13 +283,14 @@ fn style(layer: &Layer, scene: &mut GpuScene) -> Result<(Vec<GpuPaint>, f64)> {
             _ => return Err(unsupported("fill type")),
         };
         let linear = transform.is_some();
+        let part_opacity = context(fill)?;
         out.push(GpuPaint {
             paint: Paint {
                 transform,
                 id: format!("{}:{index}", layer.id()),
                 kind: if linear { "linear" } else { "solid" }.into(),
                 color: text.clone(),
-                opacity: context(fill)?,
+                opacity: if linear { part_opacity } else { 1. },
                 visible: true,
                 angle: 0.,
                 stops,

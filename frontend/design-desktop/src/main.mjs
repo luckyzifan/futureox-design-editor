@@ -518,13 +518,6 @@ registerVideoEncode(ipcMain, {
   assertSender: event => assertSender(event, window),
 })
 
-async function nativeOpenMenu() {
-  if (window && !window.isDestroyed()) { sendCommand('open'); return }
-  if (!hostReady || quitRequested) return
-  const selected = await dialog.showOpenDialog({ title: desktopText[interfaceLocale].openDesign, properties: ['openFile'], filters: fileFilters() })
-  if (!selected.canceled && selected.filePaths.length === 1) enqueueNativeFile(selected.filePaths[0])
-}
-
 function publicDirectory(entry, directory) {
   return { id: directory.id, projectId: directory.projectId, updatedAt: directory.updatedAt,
     displayName: path.basename(directory.path), directoryHandle: entry?.handle,
@@ -787,6 +780,16 @@ register('sketch-inspect', async (value) => {
   return { status: 'ok', ...sketchInspection(result, documentId, epoch, path.basename(selected)) }
 })
 
+async function readPortableDesign(selected) {
+  const opened = await backend.request('open', { path: requireFd(selected) })
+  return {
+    status: 'ok',
+    handle: grant(opened.path, opened.hash),
+    displayName: path.basename(opened.path),
+    documentJson: publishedDocumentJson(opened),
+  }
+}
+
 register('open', async (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   const selection = await dialog.showOpenDialog(window, {
@@ -795,15 +798,9 @@ register('open', async (value) => {
     filters: fileFilters(),
   })
   if (selection.canceled || selection.filePaths.length !== 1) return cancelled()
-  const selected = requireFd(selection.filePaths[0])
-  const opened = await backend.request('open', { path: selected })
-  return {
-    status: 'ok',
-    handle: grant(opened.path, opened.hash),
-    displayName: path.basename(opened.path),
-    documentJson: publishedDocumentJson(opened),
-  }
+  return readPortableDesign(selection.filePaths[0])
 })
+register('open-picked-fd', (value) => readPortableDesign(record(value, ['path']).path))
 register('open-pending', async (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   const selected = pendingFiles[0]
@@ -1383,7 +1380,7 @@ async function buildWindow() {
           { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => sendCommand('new') },
           // Profile-specific page chords belong to the renderer, not a global accelerator.
           { label: 'New Page', click: () => sendCommand('new-page') },
-          { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => { void nativeOpenMenu().catch(reportWindowError) } },
+          { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => sendCommand('open') },
           { label: 'Open Pending Finder File', click: () => sendCommand('openPending') },
           ...(process.platform === 'darwin' ? [{ role: 'recentDocuments', submenu: [
             { label: 'Clear Recent', role: 'clearRecentDocuments' },
