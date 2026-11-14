@@ -129,24 +129,7 @@ fn sketch_blur_array_keeps_progressive_endpoints_next_to_glass() {
         document["nodes"]["lens"]["effects"] = effects;
         let model = serde_json::from_value(document.clone()).unwrap();
         let bytes = futureox_design_kernel::interop::export_sketch(&model).unwrap();
-        let mut zip = zip::ZipArchive::new(Cursor::new(&bytes)).unwrap();
-        let page = (0..zip.len())
-            .find_map(|i| {
-                let mut entry = zip.by_index(i).unwrap();
-                if !entry.name().unwrap().starts_with("pages/") {
-                    return None;
-                }
-                let mut bytes = Vec::new();
-                entry.read_to_end(&mut bytes).unwrap();
-                Some(serde_json::from_slice::<Value>(&bytes).unwrap())
-            })
-            .unwrap();
-        let layer = page["layers"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|layer| layer["userInfo"]["com.futureox.design-kernel"]["originalId"] == "lens")
-            .unwrap();
+        let layer = archived_lens(&bytes);
         let style = &layer["style"];
         let blurs = style["blurs"].as_array().unwrap();
         assert_eq!(blurs.len(), 2);
@@ -172,4 +155,47 @@ fn sketch_blur_array_keeps_progressive_endpoints_next_to_glass() {
             model.nodes["lens"].effects[index].gradient_blur,
         );
     }
+}
+
+#[test]
+fn sketch_progressive_background_exports_authored_filter_support_and_sharp_limit() {
+    let mut document = scene();
+    for (base, endpoint, expected) in [(4., 8., 32.), (0., 8., 0.), (4., 0.75, 0.), (4., 1., 0.)] {
+        document["nodes"]["lens"]["effects"][0] = json!({
+            "kind":"background-blur", "radius":base, "color":"#000000",
+            "colorControls":{"brightness":0,"contrast":1,"saturation":0.5,"hue":0},
+            "gradientBlur":{"start":[0,16],"end":[64,16],"startCount":0,"endCount":endpoint,"smooth":true}
+        });
+        let model = serde_json::from_value(document.clone()).unwrap();
+        let bytes = futureox_design_kernel::interop::export_sketch(&model).unwrap();
+        let layer = archived_lens(&bytes);
+        let blur = &layer["style"]["blurs"][0];
+        assert_eq!(blur["radius"].as_f64(), Some(expected), "base {base}, end {endpoint}");
+        assert_eq!(blur["saturation"].as_f64(), Some(0.5));
+        assert_eq!(blur.get("progressive").and_then(Value::as_bool), (expected > 0.).then_some(true));
+        let restored = futureox_design_kernel::interop::import_sketch(&bytes).unwrap();
+        assert_eq!(restored.nodes["lens"].effects, model.nodes["lens"].effects);
+    }
+}
+
+fn archived_lens(bytes: &[u8]) -> Value {
+    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let page = (0..zip.len())
+        .find_map(|i| {
+            let mut entry = zip.by_index(i).unwrap();
+            if !entry.name().unwrap().starts_with("pages/") {
+                return None;
+            }
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes).unwrap();
+            Some(serde_json::from_slice::<Value>(&bytes).unwrap())
+        })
+        .unwrap();
+    page["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|layer| layer["userInfo"]["com.futureox.design-kernel"]["originalId"] == "lens")
+        .unwrap()
+        .clone()
 }

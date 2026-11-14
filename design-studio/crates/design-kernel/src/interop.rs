@@ -5284,16 +5284,25 @@ fn export_paint(
 // ---------------------------------------------------------------------------
 
 /// `Some(true)` is an exact inverse of the two-stop importer (base radius 1,
-/// smooth tier). `Some(false)` still writes that portable form; the FD receipt
-/// keeps a different base radius or tier. `None` leaves the uniform blur.
+/// smooth tier). A portable projection uses the actual filter support; the
+/// FD receipt preserves authored strengths, radius and blend tier.
 fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size: [f64; 2]) -> Option<bool> {
     let gradient = effect.gradient_blur.as_ref()?;
     if !(size[0] > 0. && size[1] > 0. && size.iter().all(|value| value.is_finite())) {
         return None;
     }
     let max_count = gradient.start_count.max(gradient.end_count);
-    if !(max_count.is_finite() && max_count > 0. && gradient.start_count >= 0. && gradient.end_count >= 0.) {
+    let radius = effect.backdrop_radius();
+    if !(max_count.is_finite() && gradient.start_count >= 0. && gradient.end_count >= 0.
+        && radius.is_finite() && radius >= 0.)
+    {
         return None;
+    }
+    if radius == 0. || max_count <= 1. {
+        // The strength curve leaves the backdrop sharp at both endpoints
+        // and between them. Sketch's radius-zero blur can still desaturate.
+        blur["radius"] = json!(0.);
+        return Some(false);
     }
     let normalize = |point: [f64; 2]| [point[0] / size[0], point[1] / size[1]];
     let from = normalize(gradient.start);
@@ -5307,7 +5316,7 @@ fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size:
         "color": {"_class": "color", "red": 0., "green": 0., "blue": 0., "alpha": alpha}
     });
     blur["progressive"] = json!(true);
-    blur["radius"] = json!(max_count);
+    blur["radius"] = json!(radius);
     blur["gradient"] = json!({
         "_class": "gradient", "gradientType": 0, "elipseLength": 0.,
         "from": point(from), "to": point(to),
@@ -5486,7 +5495,7 @@ fn export_style_parts(
             }
         }
         match progressive {
-            Some(false) => note_lossy(lossy, "progressive-background-blur-portable-sketch-keeps-strength-counts"),
+            Some(false) => note_lossy(lossy, "progressive-background-blur-portable-sketch-keeps-filter-support"),
             Some(true) => {}
             None if matches!(e.kind.as_str(), "texture" | "gradient-blur")
                 || e.texture.is_some() || e.gradient_blur.is_some() => {

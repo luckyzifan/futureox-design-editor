@@ -140,6 +140,47 @@ test('an upload retired during an allocation fence waits for another completion'
   expect(f.renderer.retiredUploads).toHaveLength(0)
 })
 
+test('a coordinate upload retired after submission survives that checkpoint', async () => {
+  const f = fixture(48 * MiB)
+  const texture = { width: 1, height: 1, bytes: 16, resource: {} } as Texture
+  f.renderer.coordinateMaps.addOwned(texture)
+  const first = f.renderer.reclaimScratch(64 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  f.renderer.retireUpload(texture)
+  f.complete()
+  await first
+
+  const releases = () => f.driver.destroy.mock.calls.filter(([resource]) => resource === texture)
+  expect(releases()).toHaveLength(0)
+  expect(f.renderer.retiredUploads).toContain(texture)
+  const next = f.renderer.reclaimScratch(128 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledTimes(2)
+  f.complete()
+  await next
+  expect(releases()).toHaveLength(1)
+  expect(f.renderer.retiredUploads).not.toContain(texture)
+})
+
+test('a free surface reused while a checkpoint is pending survives that checkpoint', async () => {
+  const f = fixture(48 * MiB)
+  const {width, height} = f.pooled
+  const first = f.renderer.reclaimScratch(64 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  const reused = f.renderer.acquire({x: 0, y: 0, w: width, h: height})
+  expect(reused.texture).toBe(f.pooled)
+  f.renderer.release(reused)
+
+  f.complete()
+  await first
+  const releases = () => f.driver.destroy.mock.calls.filter(([resource]) => resource === f.pooled)
+  expect(releases()).toHaveLength(0)
+  expect(f.renderer.free.get(`${width}:${height}`)).toContain(f.pooled)
+  const next = f.renderer.reclaimScratch(64 * MiB)
+  f.complete()
+  await next
+  expect(releases()).toHaveLength(1)
+})
+
 test('candidate maintenance retains a used immutable image without an unnecessary allocation or completion wait', async () => {
   vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
   const f = fixture(), image = { width: 1024, height: 1024, bytes: 16 * MiB, resource: {} } as Texture
