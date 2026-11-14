@@ -6,6 +6,7 @@
 //! a second application engine.
 #![forbid(unsafe_code)]
 pub(crate) mod archive;
+pub(crate) mod archived_text;
 mod curve;
 pub mod geometry;
 mod model;
@@ -15,6 +16,7 @@ mod session;
 pub mod preview;
 
 pub use curve::{CurveContour, CurvePoint, PathSink, Point};
+pub(crate) use curve::path_field;
 pub use model::{
     Document, Layer, LayerKind, NativePage, PinConstraints, TextOverrideTarget, TextOverrideValue,
 };

@@ -3,7 +3,7 @@
 // only attach version, source, and license to a file or to a binary that is
 // actually in the package. A missing signature stays not_run.
 import { createHash } from 'node:crypto'
-import { closeSync, constants, existsSync, lstatSync, openSync, readdirSync, readFileSync, readSync } from 'node:fs'
+import { closeSync, constants, existsSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
 import { FFMPEG_PACKAGE_NOTICES } from './ffmpeg-bundle.mjs'
@@ -205,8 +205,24 @@ function classifyDisk(relative, resourcesPrefix) {
   return { kind: 'electron', role: electronRole(relative) }
 }
 
-function walkPackage(packageDir, resourcesPrefix) {
+function macFrameworkLink(packageDir, relative) {
+  const framework = /^(?:[^/]+\.app\/)?Contents\/Frameworks\/[^/]+\.framework/.exec(relative)?.[0]
+  if (!framework || !relative.startsWith(framework + '/')) return null
+  try {
+    const file = path.join(packageDir, relative)
+    const target = readlinkSync(file)
+    if (path.isAbsolute(target) || target.split('/').includes('..')) return null
+    const resolved = path.relative(realpathSync(packageDir), realpathSync(file)).split(path.sep).join('/')
+    if (!resolved.startsWith(framework + '/')) return null
+    return { path: relative, target, resolved }
+  } catch {
+    return null
+  }
+}
+
+function walkPackage(packageDir, resourcesPrefix, brandIcon) {
   const files = []
+  const frameworkLinks = []
   const rejected = []
   const visit = directory => {
     let entries = []
@@ -220,7 +236,11 @@ function walkPackage(packageDir, resourcesPrefix) {
       const full = path.join(directory, entry.name)
       const relative = path.relative(packageDir, full).split(path.sep).join('/')
       if (entry.isSymbolicLink()) {
-        rejected.push({ path: relative, reason: 'symlink' })
+        // Inventory the alias and its in-bundle destination separately.
+        // The directory walk still never opens a file through a symlink.
+        const link = macFrameworkLink(packageDir, relative)
+        if (link) frameworkLinks.push(link)
+        else rejected.push({ path: relative, reason: 'symlink' })
         continue
       }
       if (entry.isDirectory()) {
@@ -233,7 +253,9 @@ function walkPackage(packageDir, resourcesPrefix) {
       }
       try {
         const hashed = hashReadonlyFile(full)
-        const classified = classifyDisk(relative, resourcesPrefix)
+        const classified = relative === `${resourcesPrefix}/electron.icns` && hashed.sha256 === brandIcon
+          ? { kind: 'icon', role: 'icon' }
+          : classifyDisk(relative, resourcesPrefix)
         files.push({
           path: relative,
           full,
@@ -252,7 +274,8 @@ function walkPackage(packageDir, resourcesPrefix) {
   }
   visit(packageDir)
   files.sort((left, right) => left.path.localeCompare(right.path))
-  return { files, rejected }
+  frameworkLinks.sort((left, right) => left.path.localeCompare(right.path))
+  return { files, rejected, frameworkLinks }
 }
 
 function packagedFfmpegName(repoRelative) {
@@ -556,7 +579,9 @@ export function inventoryFromPackageBytes({
   declaredElectronVersion = null,
 }) {
   const host = hostIdentity(layout.packageDir)
-  const walked = walkPackage(layout.packageDir, layout.resourcesPrefix)
+  const iconPath = path.join(root, 'frontend/design-desktop/assets/branding/futureox-desgin.icns')
+  const brandIcon = isFile(iconPath) ? hashReadonlyFile(iconPath).sha256 : null
+  const walked = walkPackage(layout.packageDir, layout.resourcesPrefix, brandIcon)
   const content = [...walked.files]
   const archives = walked.files.filter(file => file.kind === 'archive')
   let openedAppAsar = false
@@ -913,6 +938,7 @@ export function inventoryFromPackageBytes({
       byKind,
       unclassified: unclassified.map(file => ({ path: file.path, sha256: file.sha256, bytes: file.bytes, kind: file.kind, role: file.role })),
       rejected: walked.rejected,
+      frameworkLinks: walked.frameworkLinks,
       files: content.map(file => ({ path: file.path, sha256: file.sha256, bytes: file.bytes, kind: file.kind, role: file.role, origin: file.origin })),
     },
     gaps,
@@ -951,6 +977,13 @@ export function verifyPackageByteInventory(report, openAsar) {
   if (!report || report.producedFrom !== 'release_package_bytes') return { ok: false, reason: 'inventory was not produced from package bytes', mismatches: [] }
   const asarCache = new Map()
   const mismatches = []
+  const frameworkLinks = report.census?.frameworkLinks ?? []
+  for (const link of frameworkLinks) {
+    const actual = macFrameworkLink(report.packageDir, link.path)
+    if (actual?.target !== link.target || actual.resolved !== link.resolved) {
+      mismatches.push({ path: link.path, reason: 'framework_link_changed' })
+    }
+  }
   for (const file of report.census?.files ?? []) {
     if (!file.sha256) {
       mismatches.push({ path: file.path, reason: 'missing_hash' })
@@ -979,5 +1012,5 @@ export function verifyPackageByteInventory(report, openAsar) {
     }
     if (actual !== file.sha256) mismatches.push({ path: file.path, expected: file.sha256, actual })
   }
-  return { ok: mismatches.length === 0, checked: report.census?.files?.length ?? 0, mismatches: mismatches.slice(0, 20) }
+  return { ok: mismatches.length === 0, checked: (report.census?.files?.length ?? 0) + frameworkLinks.length, mismatches: mismatches.slice(0, 20) }
 }

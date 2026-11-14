@@ -47,7 +47,7 @@ pub(crate) fn segments_with_tolerance(
         // original curve independently in a 26-step f32 shader can put an
         // individual sample on the opposite side of the CPU fill boundary.
         let mut flattened = Path::default();
-        for contour in path.flatten_for_fill(m, tolerance, r)? {
+        for contour in path.flatten_for_fill(m, tolerance, r, false)? {
             if Rect::from_points(contour.points.iter().copied())
                 .expand(1)
                 .intersect(r)

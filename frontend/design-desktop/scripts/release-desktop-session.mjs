@@ -3,7 +3,7 @@
 // A linux .deb is installed with dpkg before launch. Other installers stay unopened.
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
@@ -11,7 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Sidecar } from '../src/sidecar.mjs'
 import { describePackage, hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
-import { assertProductName, bundleLaunchContract, readAsarJson, resolveInstalledBundle, workspaceSelectionSeed } from './release-deb-install.mjs'
+import { assertProductName, bundleLaunchContract, readAsarFile, readAsarJson, resolveInstalledBundle, workspaceSelectionSeed } from './release-deb-install.mjs'
 import { assessObservedDesktopSession, bindInstalledDeb, desktopFlowBaseline, inspectHostSignature, officialPackageBlockers, planReleaseLaunch } from './release-session-report.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -32,16 +32,14 @@ function directoryNames(directory) {
   return readdir(directory).then(names => names.sort())
 }
 
-function executableName() {
-  return process.platform === 'win32' ? 'futureox-desgin.exe' : 'futureox-desgin'
-}
-
-function bundleExecutable(bundle) {
-  if (process.platform === 'darwin' && existsSync(bundle)) {
+export function bundleExecutable(bundle, platform = process.platform) {
+  const name = platform === 'win32' ? 'futureox-desgin.exe' : 'futureox-desgin'
+  if (platform === 'darwin' && existsSync(bundle)) {
+    if (path.extname(bundle) === '.app') return path.join(bundle, 'Contents', 'MacOS', name)
     const apps = readdirSync(bundle).filter(name => name.endsWith('.app'))
-    if (apps.length === 1) return path.join(bundle, apps[0], 'Contents', 'MacOS', executableName())
+    if (apps.length === 1) return path.join(bundle, apps[0], 'Contents', 'MacOS', name)
   }
-  return path.join(bundle, executableName())
+  return path.join(bundle, name)
 }
 
 async function withSidecar(binary, recovery, fn) {
@@ -81,10 +79,14 @@ function launchEnv(profile, launch = {}) {
   env.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true'
   if (launch.privateHome) {
     delete env.FUTUREOX_ACCEPTANCE_PROFILE
-    env.HOME = launch.privateHome
-    env.XDG_CONFIG_HOME = path.join(launch.privateHome, '.config')
-    env.XDG_DATA_HOME = path.join(launch.privateHome, '.local', 'share')
-    env.XDG_CACHE_HOME = path.join(launch.privateHome, '.cache')
+    if (process.platform === 'darwin') {
+      env.CFFIXED_USER_HOME = launch.privateHome
+    } else {
+      env.HOME = launch.privateHome
+      env.XDG_CONFIG_HOME = path.join(launch.privateHome, '.config')
+      env.XDG_DATA_HOME = path.join(launch.privateHome, '.local', 'share')
+      env.XDG_CACHE_HOME = path.join(launch.privateHome, '.cache')
+    }
     return env
   }
   env.FUTUREOX_ACCEPTANCE_PROFILE = profile
@@ -332,10 +334,15 @@ async function installLinuxDeb(debPath, output, verifiedSha256) {
   }
 }
 
-async function preparePrivateHome(output, debInstall) {
-  const home = await mkdtemp(path.join(output, 'private-home-'))
+async function preparePrivateHome(output, productName) {
+  const outputPath = await realpath(output)
+  const userHome = await realpath(homedir())
+  const insideHome = outputPath === userHome || outputPath.startsWith(userHome + path.sep)
+  const directory = insideHome && process.platform === 'darwin' ? await realpath(tmpdir()) : outputPath
+  const home = await mkdtemp(path.join(directory, 'futureox-release-home-'))
   await chmod(home, 0o700)
-  const config = path.join(home, '.config', assertProductName(debInstall.productName))
+  const appData = process.platform === 'darwin' ? 'Library/Application Support' : '.config'
+  const config = path.join(home, appData, assertProductName(productName))
   await mkdir(config, { recursive: true, mode: 0o700 })
   await writeFile(path.join(config, 'workspace-selection-v1.json'), workspaceSelectionSeed(), { mode: 0o600 })
   return home
@@ -382,7 +389,7 @@ async function main() {
       debInstall = await installLinuxDeb(packagePath, output, verifiedSha256)
       bundlePath = debInstall.directory
       flowPackage = bundlePath
-      launchOptions = debInstall.contract.acceptanceProfile ? {} : { privateHome: await preparePrivateHome(output, debInstall) }
+      launchOptions = debInstall.contract.acceptanceProfile ? {} : { privateHome: await preparePrivateHome(output, debInstall.productName) }
     }
     const described = describePackage(bundlePath, { platform: process.platform, arch: process.arch })
     plan = planReleaseLaunch(described, { platform: process.platform, arch: process.arch })
@@ -411,6 +418,7 @@ async function main() {
       const installParent = await mkdtemp(path.join(output, 'install-'))
       installed = path.join(installParent, path.basename(packagePath))
       await cp(packagePath, installed, { recursive: true, verbatimSymlinks: true })
+      installed = await realpath(installed)
       installedHash = hashPackageIdentity(installed)
       frozenSha = frozen.sha256
       if (installedHash.sha256 !== frozenSha) throw Object.assign(new Error('Installed copy hash does not match the frozen package'), { code: 'INSTALL_MISMATCH' })
@@ -418,12 +426,21 @@ async function main() {
     const executable = bundleExecutable(installed)
     const resourcesRoot = debInstall?.resources || path.join(installed, described.resources.installRoot || 'resources')
     const sidecarBinary = path.join(resourcesRoot, 'sidecar', `futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`)
-    if (!debInstall) await chmod(executable, 0o755)
+    if (!debInstall && process.platform !== 'darwin') await chmod(executable, 0o755)
     const verificationPath = option('verification')
       || path.join(path.dirname(packagePath), 'package-verification.json')
     if (!existsSync(verificationPath)) throw Object.assign(new Error('package-verification.json is missing; run verify-package for this bundle first'), { code: 'VERIFICATION_MISSING' })
     observation.verification = await readVerification(verificationPath, resourcesRoot, debInstall ? packagePath : null)
     observation.expectedSidecarSha256 = hashReadonlyFile(sidecarBinary).sha256
+    let contract = debInstall?.contract
+    if (process.platform === 'darwin') {
+      const archive = path.join(resourcesRoot, 'app.asar')
+      const pkg = readAsarJson(archive, 'package.json')
+      contract = bundleLaunchContract(readAsarFile(archive, pkg.main))
+      if (!contract.acceptanceProfile) {
+        launchOptions = { privateHome: await preparePrivateHome(output, pkg.productName || pkg.name) }
+      }
+    }
     const profile = await mkdtemp(path.join(output, 'profile-'))
     await chmod(profile, 0o700)
     const originalSource = option('original')
@@ -480,7 +497,7 @@ async function main() {
     let app
     let page
     try {
-      const openOnArgv = !debInstall || debInstall.contract.argvFiles
+      const openOnArgv = contract?.argvFiles ?? true
       ;({ app, page } = await launchPackaged(electron, executable, profile, openOnArgv ? [originalPath] : [], logs, launchOptions))
       reached.open = true
       const runtime = await hostFacts(app, profile)
@@ -503,7 +520,7 @@ async function main() {
         chromiumSandbox: !runtime.argv.includes('--no-sandbox'),
       }
       if (runtime.argv.includes('--no-sandbox')) throw new Error('Chromium process sandbox was disabled')
-      if (!debInstall || debInstall.contract.acceptanceProfile) {
+      if (!launchOptions.privateHome) {
         observation.runtime.profileSource = runtime.userData === profileReal ? 'acceptance-profile' : 'other'
         observation.runtime.acceptanceHook = true
         if (observation.runtime.profileSource !== 'acceptance-profile') {
@@ -531,21 +548,11 @@ async function main() {
             return { canceled: false, filePaths: [file] }
           }
         }, originalPath)
-        await page.getByRole('button', { name: '打开设计文件' }).click()
+        if (process.platform === 'darwin') await clickMenu(app, 'CmdOrCtrl+O')
+        else await page.getByRole('button', { name: '打开设计文件' }).click()
         observation.openMethod = 'native_open_menu'
       } else {
         observation.openMethod = 'argv'
-      }
-      if (process.platform === 'darwin') {
-        await page.locator('.app-shell[data-desktop-ready="true"]').waitFor({ timeout: 60000 })
-        await app.evaluate(({ dialog }, file) => {
-          const original = dialog.showOpenDialog.bind(dialog)
-          dialog.showOpenDialog = async () => {
-            dialog.showOpenDialog = original
-            return { canceled: false, filePaths: [file] }
-          }
-        }, originalPath)
-        await clickMenu(app, 'CmdOrCtrl+O')
       }
       const opened = await waitFor(async () => readCanvas(page), value => value.ready && value.name === originalOpened.document.name, 90000, 'open document')
       await enterCanvas(page)

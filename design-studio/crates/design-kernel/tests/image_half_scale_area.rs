@@ -420,3 +420,386 @@ fn half_scale_bitmap_against_independent_area_filter() {
         "screen half-scale collapsed onto linear-light filtering ({screen_linear:.4}%)"
     );
 }
+
+/// Node-space footprint of device pixel `[x, x+1) × [y, y+1)`. Zoom maps
+/// device pixels into the authored frame. Cover uses the larger axis ratio,
+/// contain the smaller, stretch a per-axis ratio. This is not the renderer.
+fn placed_span(
+    fit: &str,
+    frame_w: f64,
+    frame_h: f64,
+    zoom: f64,
+    sw: u32,
+    sh: u32,
+    x: u32,
+    y: u32,
+) -> (f64, f64, f64, f64) {
+    let sw = f64::from(sw);
+    let sh = f64::from(sh);
+    let x0 = f64::from(x) / zoom;
+    let x1 = f64::from(x + 1) / zoom;
+    let y0 = f64::from(y) / zoom;
+    let y1 = f64::from(y + 1) / zoom;
+    if fit == "stretch" {
+        return (x0 * sw / frame_w, x1 * sw / frame_w, y0 * sh / frame_h, y1 * sh / frame_h);
+    }
+    let ratios = [frame_w / sw, frame_h / sh];
+    let ratio = if fit == "contain" {
+        ratios[0].min(ratios[1])
+    } else {
+        ratios[0].max(ratios[1])
+    };
+    let inset_x = (frame_w - sw * ratio) / 2.;
+    let inset_y = (frame_h - sh * ratio) / 2.;
+    (
+        (x0 - inset_x) / ratio,
+        (x1 - inset_x) / ratio,
+        (y0 - inset_y) / ratio,
+        (y1 - inset_y) / ratio,
+    )
+}
+
+fn accumulate_span(
+    src: &[u8],
+    sw: u32,
+    sh: u32,
+    x0: f64,
+    x1: f64,
+    y0: f64,
+    y1: f64,
+    linear: bool,
+    contain: bool,
+) -> [u8; 4] {
+    let mut sum = [0f64; 4];
+    let mut weight = 0f64;
+    let y_start = y0.floor().max(0.) as i32;
+    let y_end = y1.ceil().min(f64::from(sh)) as i32;
+    let x_start = x0.floor().max(0.) as i32;
+    let x_end = x1.ceil().min(f64::from(sw)) as i32;
+    for ty in y_start..y_end {
+        let yb = f64::from(ty);
+        let wy = y1.min(yb + 1.) - y0.max(yb);
+        if wy <= 0. {
+            continue;
+        }
+        for tx in x_start..x_end {
+            let xb = f64::from(tx);
+            let wx = x1.min(xb + 1.) - x0.max(xb);
+            if wx <= 0. {
+                continue;
+            }
+            let w = wx * wy;
+            let texel = source_at(src, sw, sh, tx, ty);
+            for c in 0..4 {
+                let sample = if linear && c < 3 {
+                    decode_byte(texel[c]) * 255.
+                } else {
+                    texel[c]
+                };
+                sum[c] += sample * w;
+            }
+            weight += w;
+        }
+    }
+    let full = (x1 - x0) * (y1 - y0);
+    if weight <= 0. || full <= 0. {
+        return [0; 4];
+    }
+    let denom = if contain { full } else { weight };
+    // The analytic buffer stores straight RGB. Contain coverage is the only
+    // partial-alpha case here; opaque cover/stretch pixels are unchanged.
+    let premul = std::array::from_fn(|c| {
+        let value = sum[c] / denom;
+        let encoded = if linear && c < 3 {
+            encode_unit(value / 255.) * 255.
+        } else {
+            value
+        };
+        encoded.round().clamp(0., 255.) as u8
+    });
+    let alpha = premul[3];
+    if alpha == 0 || alpha == 255 {
+        return premul;
+    }
+    std::array::from_fn(|c| {
+        if c == 3 {
+            alpha
+        } else {
+            ((f64::from(premul[c]) * 255. / f64::from(alpha)) + 0.5)
+                .floor()
+                .min(255.) as u8
+        }
+    })
+}
+
+fn area_placed(
+    src: &[u8],
+    sw: u32,
+    sh: u32,
+    frame_w: f64,
+    frame_h: f64,
+    zoom: f64,
+    x: u32,
+    y: u32,
+    fit: &str,
+    linear: bool,
+) -> [u8; 4] {
+    let (x0, x1, y0, y1) = placed_span(fit, frame_w, frame_h, zoom, sw, sh, x, y);
+    accumulate_span(src, sw, sh, x0, x1, y0, y1, linear, fit == "contain")
+}
+
+/// Historical centre tap for cover/contain. Uses the byte-index inset
+/// `(extent - 1) * ratio`, which is the pre-footprint sampler.
+fn centre_placed(
+    src: &[u8],
+    sw: u32,
+    sh: u32,
+    frame_w: f64,
+    frame_h: f64,
+    zoom: f64,
+    x: u32,
+    y: u32,
+    fit: &str,
+) -> [u8; 4] {
+    let px = (f64::from(x) + 0.5) / zoom;
+    let py = (f64::from(y) + 0.5) / zoom;
+    let (qx, qy) = if fit == "stretch" {
+        (
+            px * f64::from(sw) / frame_w - 0.5,
+            py * f64::from(sh) / frame_h - 0.5,
+        )
+    } else {
+        let ratios = [frame_w / f64::from(sw), frame_h / f64::from(sh)];
+        let ratio = if fit == "contain" {
+            ratios[0].min(ratios[1])
+        } else {
+            ratios[0].max(ratios[1])
+        };
+        let qx = (px - (frame_w - (f64::from(sw) - 1.) * ratio) * 0.5) / ratio;
+        let qy = (py - (frame_h - (f64::from(sh) - 1.) * ratio) * 0.5) / ratio;
+        (qx, qy)
+    };
+    if fit == "contain"
+        && (qx < -0.5 || qy < -0.5 || qx >= f64::from(sw) - 0.5 || qy >= f64::from(sh) - 0.5)
+    {
+        return [0; 4];
+    }
+    let qx = qx.clamp(0., f64::from(sw) - 1.);
+    let qy = qy.clamp(0., f64::from(sh) - 1.);
+    let x0 = qx.floor() as i32;
+    let y0 = qy.floor() as i32;
+    let u = qx - f64::from(x0);
+    let v = qy - f64::from(y0);
+    let sample = |x, y| source_at(src, sw, sh, x, y);
+    let (a, b, c, d) = (
+        sample(x0, y0),
+        sample(x0 + 1, y0),
+        sample(x0, y0 + 1),
+        sample(x0 + 1, y0 + 1),
+    );
+    std::array::from_fn(|ch| {
+        let top = a[ch] * (1. - u) + b[ch] * u;
+        let bottom = c[ch] * (1. - u) + d[ch] * u;
+        (top * (1. - v) + bottom * v).round().clamp(0., 255.) as u8
+    })
+}
+
+fn placed_buffers(
+    src: &[u8],
+    sw: u32,
+    sh: u32,
+    frame_w: f64,
+    frame_h: f64,
+    zoom: f64,
+    width: u32,
+    height: u32,
+    fit: &str,
+) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let mut area = vec![0u8; (width * height * 4) as usize];
+    let mut linear = vec![0u8; area.len()];
+    let mut centre = vec![0u8; area.len()];
+    for y in 0..height {
+        for x in 0..width {
+            let i = ((y * width + x) * 4) as usize;
+            area[i..i + 4].copy_from_slice(&area_placed(
+                src, sw, sh, frame_w, frame_h, zoom, x, y, fit, false,
+            ));
+            linear[i..i + 4].copy_from_slice(&area_placed(
+                src, sw, sh, frame_w, frame_h, zoom, x, y, fit, true,
+            ));
+            centre[i..i + 4].copy_from_slice(&centre_placed(
+                src, sw, sh, frame_w, frame_h, zoom, x, y, fit,
+            ));
+        }
+    }
+    (area, linear, centre)
+}
+
+fn assert_placed(case: &Case, src: &[u8], max_area: u8) {
+    let actual = run_case(case, src);
+    let (area, linear, centre) = placed_buffers(
+        src,
+        case.src_w,
+        case.src_h,
+        case.frame_w,
+        case.frame_h,
+        case.zoom,
+        case.out_w,
+        case.out_h,
+        case.fit,
+    );
+    let (area_pct, area_max, _) = over_threshold(&actual, &area);
+    let (linear_pct, _, _) = over_threshold(&actual, &linear);
+    let (centre_pct, centre_max, _) = over_threshold(&centre, &area);
+    println!(
+        "HALF_SCALE_PLACED {label} fit={fit} area_over16_pct={area_pct:.4} area_max={area_max} centre_vs_area_over16_pct={centre_pct:.4} centre_vs_area_max={centre_max} linear_over16_pct={linear_pct:.4}",
+        label = case.label,
+        fit = case.fit
+    );
+    assert!(
+        area_pct == 0. && area_max <= max_area,
+        "{} still exceeds the placed area oracle: {area_pct:.4}% max {area_max}",
+        case.label
+    );
+    let _ = linear_pct;
+}
+
+#[test]
+fn half_scale_cover_and_contain_match_independent_area() {
+    // Sketch Fill is cover and the kernel default. A previous stretch-only
+    // footprint left this placement on the centre tap. 48×31 → 24×16 is the
+    // rounded half frame; 500×749 → 250×375 is the issue's odd source.
+    let small = procedural(48, 31);
+    let native = Case {
+        label: "cover-native",
+        src_w: 48,
+        src_h: 31,
+        frame_w: 48.,
+        frame_h: 31.,
+        out_w: 48,
+        out_h: 31,
+        zoom: 1.,
+        fit: "cover",
+        profile: RasterProfile::Analytic,
+    };
+    assert_eq!(run_case(&native, &small), small, "cover at 1:1 must stay the source");
+
+    let cover = Case {
+        label: "cover-half-frame",
+        src_w: 48,
+        src_h: 31,
+        frame_w: 24.,
+        frame_h: 16.,
+        out_w: 24,
+        out_h: 16,
+        zoom: 1.,
+        fit: "cover",
+        profile: RasterProfile::Analytic,
+    };
+    assert_placed(&cover, &small, 1);
+    let screen = Case {
+        label: "cover-half-frame-subpixel",
+        profile: RasterProfile::FigmaSubpixel,
+        ..cover
+    };
+    assert_placed(&screen, &small, 1);
+
+    let contain = Case {
+        label: "contain-half-frame",
+        src_w: 48,
+        src_h: 31,
+        frame_w: 40.,
+        frame_h: 16.,
+        out_w: 40,
+        out_h: 16,
+        zoom: 1.,
+        fit: "contain",
+        profile: RasterProfile::Analytic,
+    };
+    assert_placed(&contain, &small, 1);
+    let contain_pixels = run_case(&contain, &small);
+    assert_eq!(
+        &contain_pixels[0..4],
+        &[0, 0, 0, 0],
+        "contain letterbox must stay empty"
+    );
+
+    let odd = procedural(500, 749);
+    let odd_case = Case {
+        label: "cover-500x749-half-frame",
+        src_w: 500,
+        src_h: 749,
+        frame_w: 250.,
+        frame_h: 375.,
+        out_w: 250,
+        out_h: 375,
+        zoom: 1.,
+        fit: "cover",
+        profile: RasterProfile::Analytic,
+    };
+    let odd_pixels = run_case(&odd_case, &odd);
+    let (area, linear, centre) = placed_buffers(&odd, 500, 749, 250., 375., 1., 250, 375, "cover");
+    let (area_pct, area_max, area_bad) = over_threshold(&odd_pixels, &area);
+    let (linear_pct, linear_max, _) = over_threshold(&odd_pixels, &linear);
+    let (centre_pct, centre_max, centre_bad) = over_threshold(&centre, &area);
+    println!(
+        "HALF_SCALE_METRIC cover-500x749-half-frame pixels={} area_over16_pct={area_pct:.4} area_max={area_max} area_bad={area_bad} centre_vs_area_over16_pct={centre_pct:.4} centre_vs_area_max={centre_max} centre_bad={centre_bad} linear_over16_pct={linear_pct:.4} linear_max={linear_max}",
+        odd_pixels.len() / 4
+    );
+    assert!(
+        area_pct == 0. && area_max <= 1,
+        "500×749 cover half frame still exceeds the area oracle: {area_pct:.4}% max {area_max}"
+    );
+    assert!(
+        linear_pct > 1.0,
+        "500×749 cover half frame collapsed onto linear-light filtering ({linear_pct:.4}%)"
+    );
+    assert!(
+        centre_pct > 1.0,
+        "centre tap already matched the area oracle on this odd frame ({centre_pct:.4}%), so the test does not show a filter change"
+    );
+
+    // Same aspect, exact device zoom 0.5, stays on the 2× fixed point and
+    // must not be a second downsample of an already-half frame.
+    let even = procedural(32, 24);
+    let exact = Case {
+        label: "cover-exact-half-zoom",
+        src_w: 32,
+        src_h: 24,
+        frame_w: 32.,
+        frame_h: 24.,
+        out_w: 16,
+        out_h: 12,
+        zoom: 0.5,
+        fit: "cover",
+        profile: RasterProfile::Analytic,
+    };
+    assert_placed(&exact, &even, 1);
+
+    for (label, zoom, out_w, out_h) in [
+        ("cover-zoom-0.75", 0.75, 24u32, 18u32),
+        ("cover-zoom-0.25", 0.25, 8, 6),
+        ("cover-zoom-2", 2., 64, 48),
+    ] {
+        let case = Case {
+            label,
+            src_w: 32,
+            src_h: 24,
+            frame_w: 32.,
+            frame_h: 24.,
+            out_w,
+            out_h,
+            zoom,
+            fit: "cover",
+            profile: RasterProfile::Analytic,
+        };
+        let actual = run_case(&case, &even);
+        let (_, _, centre) =
+            placed_buffers(&even, 32, 24, 32., 24., zoom, out_w, out_h, "cover");
+        let (pct, max_delta, _) = over_threshold(&actual, &centre);
+        assert!(
+            pct == 0. && max_delta <= 1,
+            "{label} left the historical centre tap: {pct:.4}% max {max_delta}"
+        );
+    }
+}

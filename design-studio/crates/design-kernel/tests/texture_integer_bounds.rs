@@ -21,15 +21,18 @@ fn texture_case() -> Value {
         .clone()
 }
 
-fn render(document: &Value, profile: &str) -> Vec<u8> {
+fn render(document: &Value, profile: &str, scale: usize) -> Vec<u8> {
     let case = texture_case();
     let mut options = case["options"].clone();
     options["rasterProfile"] = json!(profile);
+    options["width"] = json!(128 * scale);
+    options["height"] = json!(128 * scale);
+    options["view"]["zoom"] = json!(scale);
     let mut engine = Engine::new();
     engine.load_document(&document.to_string()).unwrap();
     let options = engine.parse_options(options).unwrap();
     let pixels = engine.render(&options).unwrap();
-    assert_eq!(pixels.len(), 128 * 128 * 4);
+    assert_eq!(pixels.len(), (128 * scale).pow(2) * 4);
     pixels
 }
 
@@ -41,8 +44,8 @@ fn legacy_texture_sampling_stays_inside_the_authored_integer_rectangle() {
     plain["nodes"]["a"]["effects"] = json!([]);
     let (x0, y0, x1, y1) = (20_i32, 20_i32, 108_i32, 108_i32);
     for profile in ["figma", "figmaSoftware", "analytic"] {
-        let textured = render(&authored, profile);
-        let untextured = render(&plain, profile);
+        let textured = render(&authored, profile, 1);
+        let untextured = render(&plain, profile, 1);
         let mut outside = 0_usize;
         let mut changed_outside = 0_usize;
         let mut changed_inside = 0_usize;
@@ -74,5 +77,41 @@ fn legacy_texture_sampling_stays_inside_the_authored_integer_rectangle() {
             changed_inside > 0,
             "{profile}: texture must still displace covered texels"
         );
+    }
+}
+
+#[test]
+fn legacy_texture_has_no_empty_texels_inside_an_opaque_shape() {
+    let case = texture_case();
+    let authored = &case["document"];
+    // The independently exported Figma reference has no white background
+    // pixels inside the integer rectangle. The random noise itself can differ.
+    let reference = image::load_from_memory(include_bytes!(
+        "../../../../frontend/design-client/public/fidelity/browser-2026-10-07/texture.png"
+    ))
+    .unwrap()
+    .into_rgba8();
+    assert_eq!(reference.dimensions(), (128, 128));
+    for y in 20..108 {
+        for x in 20..108 {
+            assert_ne!(reference.get_pixel(x, y).0, [255; 4]);
+        }
+    }
+    for profile in ["figma", "figmaSoftware", "figmaSubpixel"] {
+        for scale in [1, 2, 3] {
+            let textured = render(authored, profile, scale);
+            let mut holes = 0;
+            let mut outside = 0;
+            let edge = 20 * scale..108 * scale;
+            for (index, pixel) in textured.chunks_exact(4).enumerate() {
+                let x = index % (128 * scale);
+                let y = index / (128 * scale);
+                let inside = edge.contains(&x) && edge.contains(&y);
+                holes += usize::from(inside && pixel == [255; 4]);
+                outside += usize::from(!inside && pixel != [255; 4]);
+            }
+            assert_eq!(holes, 0, "{profile} at {scale}x: white texels inside");
+            assert_eq!(outside, 0, "{profile} at {scale}x: paint outside");
+        }
     }
 }

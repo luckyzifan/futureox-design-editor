@@ -232,6 +232,7 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
             0.015625
         },
         guard,
+        compatible,
     )?;
     // Analytic Sketch text uses a FreeType mask. Figma profiles keep the
     // outlines; WASM has no FreeType and also keeps them.

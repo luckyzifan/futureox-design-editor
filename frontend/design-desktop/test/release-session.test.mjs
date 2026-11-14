@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { buildDesktopFlowReport, DESKTOP_FLOW } from '../scripts/release-desktop-flow.mjs'
+import { bundleExecutable } from '../scripts/release-desktop-session.mjs'
 import {
   assessObservedDesktopSession,
   bindInstalledDeb,
@@ -16,6 +17,19 @@ import { describePackage } from '../scripts/release-package-resources.mjs'
 
 const HASH_A = 'a'.repeat(64)
 const SHA = 'c'.repeat(64)
+
+test('a mounted macOS app and its containing directory resolve the same executable', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'fx-macos-app-'))
+  try {
+    const app = path.join(root, 'futureox-desgin.app')
+    const executable = path.join(app, 'Contents', 'MacOS', 'futureox-desgin')
+    await mkdir(path.dirname(executable), { recursive: true })
+    await writeFile(executable, 'fixture')
+    assert.equal(bundleExecutable(app, 'darwin'), executable)
+    assert.equal(bundleExecutable(root, 'darwin'), executable)
+    assert.equal(bundleExecutable(root, 'linux'), path.join(root, 'futureox-desgin'))
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 
 async function bundle(profile) {
   const root = await mkdtemp(path.join(tmpdir(), 'fx-session-plan-'))

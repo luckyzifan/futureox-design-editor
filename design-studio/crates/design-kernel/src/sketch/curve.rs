@@ -80,8 +80,7 @@ impl CurveContour {
         if width < 0. || height < 0. {
             return Err(Error::Invalid("negative shape size".into()));
         }
-        let raw = fields
-            .get("points")
+        let raw = path_field(fields, "points")
             .and_then(Value::as_array)
             .ok_or_else(|| Error::Missing("curve points".into()))?;
         if raw.len() > 10_000 {
@@ -123,7 +122,7 @@ impl CurveContour {
                 incoming: control("hasCurveTo", "curveTo")?,
             });
         }
-        let closed = match fields.get("isClosed") {
+        let closed = match path_field(fields, "isClosed") {
             None => false,
             Some(v) => v
                 .as_bool()
@@ -159,4 +158,13 @@ impl CurveContour {
         }
         Ok(())
     }
+}
+
+/// Older Sketch archives wrap shape path points and closure in a path object.
+/// Modern top-level fields stay authoritative when both forms are present.
+pub(crate) fn path_field<'a>(
+    fields: &'a serde_json::Map<String, Value>,
+    key: &str,
+) -> Option<&'a Value> {
+    fields.get(key).or_else(|| fields.get("path")?.get(key))
 }

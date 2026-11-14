@@ -50,7 +50,7 @@ fn unsupported_authored_fields_are_rejected_even_beside_a_supported_change() {
     let baseline = modeled_sketch();
     for (id, field, value) in [
         (RECT, "smoothing", json!(0.6)),
-        (FRAME, "clip", json!(true)),
+        (FRAME, "clip", json!(!baseline.nodes[FRAME].clip)),
         (FRAME, "radii", json!([1., 2., 3., 4.])),
         (
             ELLIPSE,

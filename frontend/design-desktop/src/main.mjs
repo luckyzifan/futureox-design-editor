@@ -726,7 +726,7 @@ register('catalog-open', async (value) => {
   const opened = await backend.request('open', { path: selected.path, directoryId: selected.entry.directoryId })
   await directoryGrants.lookup(selected.entry.handle)
   return { status: 'ok', handle: grant(opened.path, opened.hash, selected.entry.handle),
-    displayName: path.basename(opened.path), documentJson: publishedDocumentJson({ document: opened.document }) }
+    displayName: path.basename(opened.path), documentJson: publishedDocumentJson(opened) }
 })
 
 register('sketch-session-open', value => sketchSessions.open(value))
@@ -801,7 +801,7 @@ register('open', async (value) => {
     status: 'ok',
     handle: grant(opened.path, opened.hash),
     displayName: path.basename(opened.path),
-    documentJson: publishedDocumentJson({ document: opened.document }),
+    documentJson: publishedDocumentJson(opened),
   }
 })
 register('open-pending', async (value) => {
@@ -817,7 +817,7 @@ register('open-pending', async (value) => {
     throw error
   }
   return { status: 'ok', handle: grant(opened.path, opened.hash, undefined, selected),
-    displayName: path.basename(opened.path), documentJson: publishedDocumentJson({ document: opened.document }), pendingCount: pendingFiles.length - 1 }
+    displayName: path.basename(opened.path), documentJson: publishedDocumentJson(opened), pendingCount: pendingFiles.length - 1 }
 })
 register('document-accept', async (value) => {
   const params = record(value, ['handle'])
@@ -1007,7 +1007,7 @@ register('recovery-read', async (value) => {
       status: 'ok',
       recoveryHandle,
       displayName: `${String(restored.name).slice(0, 160)} (Recovered)`,
-      documentJson: publishedDocumentJson({ document: restored.document }),
+      documentJson: publishedDocumentJson(restored),
     }
   }
   return cancelled()

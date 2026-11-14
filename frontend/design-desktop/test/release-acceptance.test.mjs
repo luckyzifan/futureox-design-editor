@@ -5,11 +5,58 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile, rm } from 'node:fs/promis
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { ffmpegProvenance } from '../scripts/ffmpeg-provenance.mjs'
 import { DESKTOP_FLOW, buildDesktopFlowReport, inspectReleasePackage } from '../scripts/release-desktop-flow.mjs'
 import { asarFromFiles, buildComponentInventory, openAsar, readAsarEntries, supplementalNoticeProblems } from '../scripts/release-component-inventory.mjs'
-import { assessColorFixtures, verifyPackageByteInventory } from '../scripts/release-package-bytes.mjs'
+import { assessColorFixtures, electronPackageLayout, inventoryFromPackageBytes, verifyPackageByteInventory } from '../scripts/release-package-bytes.mjs'
 import { hashPackageIdentity, verifyDeclaredResourceList, writeAsarArchive, writeUnsignedResourceList } from '../scripts/release-package-resources.mjs'
+
+test('macOS package inventory records framework aliases and identifies the repackaged app icon', { skip: process.platform === 'win32' }, async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'fx-framework-inventory-'))
+  try {
+    const root = fileURLToPath(new URL('../../../', import.meta.url))
+    const bundle = path.join(directory, 'futureox-desgin-darwin-arm64')
+    const contents = path.join(bundle, 'futureox-desgin.app', 'Contents')
+    const resources = path.join(contents, 'Resources')
+    const framework = path.join(contents, 'Frameworks', 'Test.framework')
+    await mkdir(resources, { recursive: true })
+    await mkdir(path.join(framework, 'Versions', 'A'), { recursive: true })
+    await writeFile(path.join(contents, 'Info.plist'), '<plist/>')
+    await writeFile(path.join(resources, 'app.asar'), asarFromFiles([]))
+    const branding = await readFile(path.join(root, 'frontend/design-desktop/assets/branding/futureox-desgin.icns'))
+    await writeFile(path.join(resources, 'electron.icns'), branding)
+    await writeFile(path.join(framework, 'Versions', 'A', 'Test'), 'packaged framework')
+    await symlink('A', path.join(framework, 'Versions', 'Current'), 'dir')
+    await symlink('Versions/Current/Test', path.join(framework, 'Test'))
+    const outside = path.join(directory, 'unpackaged')
+    await writeFile(outside, 'not part of the bundle')
+    await symlink(outside, path.join(framework, 'External'))
+    await symlink('../../../../unpackaged', path.join(framework, 'Traversal'))
+    await symlink('missing', path.join(framework, 'Dangling'))
+    const report = inventoryFromPackageBytes({
+      root, layout: electronPackageLayout(bundle), openAsar,
+      rust: { crates: [] }, javascript: { distributed: [], developmentOnly: [] },
+    })
+    assert.equal(report.census.frameworkLinks.length, 2)
+    const binary = report.census.frameworkLinks.find(link => link.path.endsWith('/Test'))
+    assert.equal(binary.target, 'Versions/Current/Test')
+    assert.ok(binary.resolved.endsWith('/Versions/A/Test'))
+    assert.equal(report.census.files.some(file => file.path === binary.path), false)
+    assert.ok(report.census.rejected.some(file => file.path.endsWith('/External')))
+    assert.ok(report.census.rejected.some(file => file.path.endsWith('/Traversal')))
+    assert.ok(report.census.rejected.some(file => file.path.endsWith('/Dangling')))
+    const icon = report.icons.find(file => file.packagePath.endsWith('/electron.icns'))
+    assert.equal(icon.sha256, createHash('sha256').update(branding).digest('hex'))
+    assert.equal(verifyPackageByteInventory(report, openAsar).ok, true)
+    const alias = path.join(framework, 'Test')
+    await rm(alias)
+    await symlink(outside, alias)
+    assert.equal(verifyPackageByteInventory(report, openAsar).ok, false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 test('vendored linux ffmpeg matches the rebuilt corresponding source', () => {
   const report = ffmpegProvenance()
