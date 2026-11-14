@@ -11,6 +11,7 @@ import { defaultTextStyle, defaultSizing, type DesignNode, type TextStyle, type 
 import type { Editor } from './engine'
 import { NumberField } from './fields'
 import { applyWholeTextStyle, styleTextRange } from './text'
+import { sourceFonts, storeRemappedSourceFonts } from './font-matching'
 
 /** Comma-separated draft -> string[]; empty items drop at save time only. */
 export function parseCommaList(text: string) {
@@ -64,7 +65,13 @@ export function TextStylePanel({
     || {align:node.textStyle?.align??'start',minimumLineHeight:0,maximumLineHeight:0,spacing:node.textStyle?.paragraphSpacing??0,indent:node.textStyle?.paragraphIndent??0}
   const updateParagraph = (patch: Partial<TextParagraph>) => {
     if (!paragraphRange) return
-    editor.change('修改段落样式',d=>{ const n=d.nodes[node.id]; if(n?.text===node.text) styleTextRange(n,paragraphRange.start,paragraphRange.end,{paragraph:{...paragraph,...patch}}) })
+    editor.change('修改段落样式', doc => {
+      const n = doc.nodes[node.id]
+      if (n?.text !== node.text) return
+      const fonts = styleTextRange(n, paragraphRange.start, paragraphRange.end,
+        { paragraph: { ...paragraph, ...patch } }, sourceFonts(doc, n))
+      storeRemappedSourceFonts(doc, n.id, fonts)
+    })
   }
   const { locale, tr } = usePropertyText()
   // Match the Inspector's camera-independent, bounded preview cadence. A

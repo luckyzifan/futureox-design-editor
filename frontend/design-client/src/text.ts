@@ -1,4 +1,5 @@
 import { defaultTextStyle, type DesignDocument, type DesignNode, type TextRun, type TextStyle } from './model'
+import { remapSourceFontRuns, type FontSourceRecord } from './font-matching'
 
 /** Inspector formatting applies to the entire layer; range formatting stays in styleTextRange. */
 export function applyWholeTextStyle(node: DesignNode, patch: Partial<TextStyle>) {
@@ -60,24 +61,33 @@ const boundaries = (text: string) =>
       (g) => g.index,
     ),
   ])
-export function styleTextRange(node:DesignNode,start:number,end:number,patch:Partial<Omit<TextRun,'start'|'end'>>) {
-  const valid=boundaries(node.text)
-  if(start>=end||!valid.has(start)||!valid.has(end))throw new Error('请选择完整字素范围')
-  const cuts=new Set([start,end,...(node.textRuns||[]).flatMap(r=>[r.start,r.end])])
-  const points=[...cuts].sort((a,b)=>a-b),runs:TextRun[]=[]
-  for(let i=0;i+1<points.length;i++){
-    const a=points[i],b=points[i+1],old=node.textRuns?.find(r=>r.start<=a&&b<=r.end)
-    if(!old&&(a<start||b>end))continue
-    const next={...old,...(a>=start&&b<=end?patch:{}),start:a,end:b}
-    runs.push(next)
+export function styleTextRange(
+  node: DesignNode, start: number, end: number, patch: Partial<Omit<TextRun, 'start' | 'end'>>,
+  source?: FontSourceRecord,
+) {
+  const valid = boundaries(node.text)
+  if (start >= end || !valid.has(start) || !valid.has(end)) throw new Error('请选择完整字素范围')
+  const cuts = new Set([start, end, ...(node.textRuns || []).flatMap(run => [run.start, run.end])])
+  const points = [...cuts].sort((a, b) => a - b), runs: TextRun[] = []
+  const origins: number[] = []
+  const setsFont = Object.hasOwn(patch, 'fontId')
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i], b = points[i + 1]
+    const origin = node.textRuns?.findIndex(run => run.start <= a && b <= run.end) ?? -1
+    const old = node.textRuns?.[origin]
+    const edited = a >= start && b <= end
+    if (!old && !edited) continue
+    runs.push({ ...old, ...(edited ? patch : {}), start: a, end: b })
+    if (source?.runs) origins.push(edited && setsFont ? -1 : origin)
   }
-  node.textRuns=runs
+  node.textRuns = runs
+  return remapSourceFontRuns(source, origins)
 }
 /** Explicit half-open UTF-16 edit; never infer its position from repeated text.
  * Inserted text inherits the run containing start (right-biased); at EOF only,
  * it inherits the immediately preceding run. A gap means layer-default style.
  * Reject cross-edge grapheme joins rather than consume any unselected text. */
-export function replaceTextRange(node: DesignNode, start: number, end: number, inserted: string) {
+export function replaceTextRange(node: DesignNode, start: number, end: number, inserted: string, source?: FontSourceRecord) {
   const old = node.text, valid = boundaries(old)
   if (node.kind !== 'text' || !Number.isInteger(start) || !Number.isInteger(end) || start > end || !valid.has(start) || !valid.has(end))
     throw new Error('请选择完整字素范围')
@@ -89,23 +99,34 @@ export function replaceTextRange(node: DesignNode, start: number, end: number, i
     throw new Error('插入或删除会连接选区外的字素；请扩大选区并显式提供完整字素')
   // Exact replacement is a true no-op, including the existing run segmentation.
   if (old.slice(start, end) === inserted) return
-  const delta = inserted.length - (end - start), runs: TextRun[] = []
-  const inherited = node.textRuns?.find(run => run.start <= start && start < run.end)
-    ?? (start === old.length ? node.textRuns?.find(run => run.end === start) : undefined)
-  for (const run of node.textRuns || []) {
-    if (run.start < start) runs.push({ ...run, end: Math.min(run.end, start) })
-    if (run.end > end) runs.push({ ...run, start: Math.max(run.start, end) + delta, end: run.end + delta })
-  }
-  if (inherited && inserted.length) runs.push({ ...inherited, start, end: nextEnd })
-  runs.sort((a, b) => a.start - b.start)
-  if (runs.length > 4096 || runs.some(run => !nextBoundaries.has(run.start) || !nextBoundaries.has(run.end)))
+  const inherited = (node.textRuns || []).findIndex(run => start === old.length
+    ? run.end === start
+    : run.start <= start && start < run.end)
+  const pieces = replaceRunRanges(node, start, end, nextEnd, inherited)
+  if (pieces.length > 4096 || pieces.some(({ run }) => !nextBoundaries.has(run.start) || !nextBoundaries.has(run.end)))
     throw new Error('文字样式区间必须位于完整字素边界且不超过 4096 段')
   // Publish only after all local checks; callers may also use this on a draft.
   node.text = text
-  if (node.textRuns) node.textRuns = runs
+  if (node.textRuns) node.textRuns = pieces.map(({ run }) => run)
+  if (source?.runs) return remapSourceFontRuns(source, pieces.map(({ origin }) => origin))
+}
+
+function replaceRunRanges(node: DesignNode, start: number, end: number, nextEnd: number, inherited: number) {
+  const pieces: { run: TextRun; origin: number }[] = []
+  const delta = nextEnd - end
+  for (const [origin, run] of (node.textRuns || []).entries()) {
+    if (run.start < start) pieces.push({ run: { ...run, end: Math.min(run.end, start) }, origin })
+    if (run.end > end) pieces.push({
+      run: { ...run, start: Math.max(run.start, end) + delta, end: run.end + delta }, origin,
+    })
+  }
+  const run = node.textRuns?.[inherited]
+  if (run && nextEnd > start) pieces.push({ run: { ...run, start, end: nextEnd }, origin: inherited })
+  pieces.sort((a, b) => a.run.start - b.run.start)
+  return pieces
 }
 /** Preserve styles outside the edit; inserted text inherits the insertion style. */
-export function replaceText(node: DesignNode, text: string) {
+export function replaceText(node: DesignNode, text: string, source?: FontSourceRecord) {
   const old = node.text,
     oldBoundaries = boundaries(old),
     nextBoundaries = boundaries(text)
@@ -122,16 +143,10 @@ export function replaceText(node: DesignNode, text: string) {
     end++
     nextEnd++
   }
-  const delta = nextEnd - end,
-    runs: TextRun[] = []
-  const inherited = node.textRuns?.find((run) => run.start <= start && start <= run.end)
-  for (const run of node.textRuns || []) {
-    if (run.start < start) runs.push({ ...run, end: Math.min(run.end, start) })
-    if (run.end > end)
-      runs.push({ ...run, start: Math.max(run.start, end) + delta, end: run.end + delta })
-  }
-  if (inherited && nextEnd > start) runs.push({ ...inherited, start, end: nextEnd })
-  runs.sort((a, b) => a.start - b.start)
+  const inherited = node.textRuns?.findIndex(run => run.start <= start && start <= run.end) ?? -1
+  const pieces = replaceRunRanges(node, start, end, nextEnd, inherited)
+    .filter(({ run }) => run.start < run.end)
   node.text = text
-  if (node.textRuns) node.textRuns = runs.filter((r) => r.start < r.end)
+  if (node.textRuns) node.textRuns = pieces.map(({ run }) => run)
+  if (source?.runs) return remapSourceFontRuns(source, pieces.map(({ origin }) => origin))
 }

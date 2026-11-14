@@ -9,6 +9,8 @@ import { kernelTextLayout } from './kernel/picking'
 import type { Editor } from './engine'
 import { registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { useProfessionalDialogText } from './professional-dialog-messages'
+import { sourceFonts, storeRemappedSourceFonts, type FontSourceRecord } from './font-matching'
+import { equalValue } from './document-patch'
 
 export function TextInput({
   node,
@@ -46,8 +48,12 @@ export function TextInput({
         editor.notify('文字已被其他操作修改；输入仍保留在编辑框，请复制或按 Esc 取消')
         return false
       }
-      if (canvas) editor.update([node.id], (n) => replaceText(n, value.current), '编辑文字')
-      else editor.updateProperties([node.id], (n) => replaceText(n, value.current), '编辑文字')
+      const replace = (n: DesignNode, doc: DesignDocument) => {
+        const source = replaceText(n, value.current, sourceFonts(doc, n))
+        storeRemappedSourceFonts(doc, n.id, source)
+      }
+      if (canvas) editor.update([node.id], replace, '编辑文字')
+      else editor.updateProperties([node.id], replace, '编辑文字')
       if (editor.state.doc.nodes[node.id]?.text !== value.current) {
         done.current = false
         diagnostic.finish(false, false)
@@ -139,7 +145,7 @@ export function TextInput({
 
 export function CanvasTextEditor({
   onPreview,
-  document: _doc,
+  document,
   node,
   editor,
   matrix,
@@ -173,6 +179,11 @@ export function CanvasTextEditor({
     blurred = useRef(false),
     anchor = useRef<number | null>(null),
     latest = useRef(draft)
+  const originalSource = useRef(sourceFonts(document, node))
+  const editedSource = useRef<FontSourceRecord | undefined>(undefined)
+  const draftChanged = () => latest.current.text !== original.current.text ||
+    !equalValue(latest.current.textRuns, original.current.textRuns) ||
+    (editedSource.current !== undefined && !equalValue(editedSource.current, originalSource.current))
   latest.current = draft
   useLayoutEffect(() => {
     const element = toolbar.current
@@ -210,7 +221,7 @@ export function CanvasTextEditor({
     if (isCurrent && !isCurrent()) return true
     if (done.current) return true
     if (composing.current) return false
-    const changed = latest.current.text !== original.current.text || JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns)
+    const changed = draftChanged()
     if (!cancel && changed) {
       diagnostic.start()
       if (editor.sessionGeneration !== session.current || editor.state.doc.nodes[node.id] !== original.current) {
@@ -220,13 +231,19 @@ export function CanvasTextEditor({
       }
       editor.update(
         [node.id],
-        (n) => {
+        (n, doc) => {
           n.text = latest.current.text
           n.textRuns = latest.current.textRuns
+          storeRemappedSourceFonts(doc, n.id, editedSource.current)
         },
         '编辑富文本',
       )
-      if (editor.state.doc.nodes[node.id]?.text !== latest.current.text || JSON.stringify(editor.state.doc.nodes[node.id]?.textRuns) !== JSON.stringify(latest.current.textRuns)) { diagnostic.finish(false, false); return false }
+      const committed = editor.state.doc.nodes[node.id]
+      if (committed?.text !== latest.current.text || !equalValue(committed.textRuns, latest.current.textRuns) ||
+          (editedSource.current && !equalValue(sourceFonts(editor.state.doc, committed), editedSource.current))) {
+        diagnostic.finish(false, false)
+        return false
+      }
     }
     if (cancel) diagnostic.cancel(); else diagnostic.finish(changed, true)
     done.current = true
@@ -237,13 +254,14 @@ export function CanvasTextEditor({
   const commit = useRef(finish)
   commit.current = finish
   useEffect(() => registerPendingEdit(editor, {
-    dirty: () => !done.current && (composing.current || latest.current.text !== original.current.text || JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns)),
+    dirty: () => !done.current && (composing.current || draftChanged()),
     commit: () => commit.current(),
   }), [editor, node.id])
   const change = (text: string) => {
     diagnostic.start()
     const n = structuredClone(latest.current)
-    replaceText(n, text)
+    const fonts = replaceText(n, text, editedSource.current ?? originalSource.current)
+    if (fonts) editedSource.current = fonts
     latest.current = n
     setDraft(n)
     pendingEditsChanged(editor)
@@ -254,7 +272,8 @@ export function CanvasTextEditor({
     diagnostic.start(); diagnostic.event(InputPhase.start, { fieldFamily: InputFamily.richStyle })
     try {
       const n = structuredClone(latest.current)
-      styleTextRange(n, ...selection, patch)
+      const fonts = styleTextRange(n, ...selection, patch, editedSource.current ?? originalSource.current)
+      if (fonts) editedSource.current = fonts
       latest.current = n
       setDraft(n)
       pendingEditsChanged(editor)
