@@ -414,20 +414,11 @@ function artifactsFor(crate, hostTarget, binaries, wasmFiles) {
   return out.map(file => ({ packagePath: file.path, sha256: file.sha256, bytes: file.bytes, role: file.role }))
 }
 
-function inventoryWasm(root, files, packages, kernel, projectLicense) {
-  const inputRoot = path.join(root, 'frontend/design-client/node_modules')
-  const candidates = packages.filter(item => /^@jitl\/quickjs-wasmfile-(debug|release)-(sync|asyncify)$/.test(item.package))
-  const quickJsSources = []
-  for (const item of files.some(file => QUICKJS_WASM.test(path.posix.basename(file.path))) ? candidates : []) {
-    const dir = path.join(inputRoot, item.package)
-    const name = path.join('dist', 'emscripten-module.wasm')
-    const manifest = path.join(dir, 'package.json')
-    const file = path.join(dir, name)
-    if (!isFile(manifest) || !isFile(file)) continue
-    const installed = JSON.parse(readFileSync(manifest, 'utf8'))
-    if (installed.name !== item.package || installed.version !== item.version) continue
-    quickJsSources.push({ name: path.join(dir, name), sha256: hashReadonlyFile(file).sha256, item })
-  }
+function inventoryWasm(files, packages, kernel, projectLicense) {
+  const quickJsSources = packages.flatMap(item => item.wasm &&
+    /^@jitl\/quickjs-wasmfile-(debug|release)-(sync|asyncify)$/.test(item.package)
+    ? [{ name: path.posix.join(item.package, 'dist/emscripten-module.wasm'), sha256: item.wasm.sha256, item }]
+    : [])
   return files.map(file => {
     const basename = path.posix.basename(file.path)
     let name = null, version = null, source = null, license = null, notices = []
@@ -448,7 +439,7 @@ function inventoryWasm(root, files, packages, kernel, projectLicense) {
         const item = input.item
         name = item.package
         version = item.version
-        source = item.source
+        source = item.source.replace(/ package\/LICENSE$/, ' package/dist/emscripten-module.wasm')
         license = item.license
         notices = item.notices
         gap = item.gap
@@ -805,12 +796,17 @@ export function inventoryFromPackageBytes({
       : []
     const notice = named.find(file => file.sha256 === recorded?.sha256) ?? named[0] ?? null
     const matches = Boolean(notice && recorded && notice.sha256 === recorded.sha256)
+    const wasm = recorded?.wasm
+    const verifiedWasm = typeof item.integrity === 'string' && recorded?.version === item.version &&
+      wasm?.integrity === item.integrity && /^[a-f0-9]{64}$/.test(wasm.sha256) ? wasm : undefined
     return {
       package: item.package,
       version: item.version,
       license: recorded?.license ?? item.license,
       source: recorded?.source ?? item.source,
       integrity: item.integrity,
+      // The WASM hash comes from the tarball verified against the lock entry.
+      wasm: verifiedWasm,
       notices: notice ? [noticeRecord(notice)] : [],
       bundleArtifacts: bundles.filter(file => file.role === 'bundle').map(file => ({ packagePath: file.path, sha256: file.sha256, bytes: file.bytes })),
       distribution: 'bundled_in_release_package',
@@ -818,7 +814,7 @@ export function inventoryFromPackageBytes({
       gap: matches ? null : (notice ? 'notice_differs_from_record' : 'notice_text_not_in_package'),
     }
   })
-  const wasm = inventoryWasm(root, wasmFiles, javascriptPackages,
+  const wasm = inventoryWasm(wasmFiles, javascriptPackages,
     rust.crates.find(item => item.name === 'futureox-design-kernel'), projectLicense)
   const referenceNotices = (licenseInventory.referenceImplementations ?? []).map(item => {
     const file = content.find(entry => entry.kind === 'notice' && entry.path.endsWith(`/${item.file}`) && entry.sha256 === item.sha256)

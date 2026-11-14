@@ -103,7 +103,11 @@
       "license": "MIT",
       "file": "quickjs-wasmfile-LICENSE.txt",
       "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
-      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-debug-asyncify/-/quickjs-wasmfile-debug-asyncify-0.32.0.tgz package/LICENSE"
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-debug-asyncify/-/quickjs-wasmfile-debug-asyncify-0.32.0.tgz package/LICENSE",
+      "wasm": {
+        "sha256": "e346c792a99a6a3a5886a1b173015b3a7839d6800a7378695eb49db1a470160c",
+        "integrity": "sha512-EX8zbXwGqCgAE764M+qvkHtyXDi/FUoMBea0JnES7vCM3P7a2+EOZOjGv85wtZ2sJhI1oJ+nekmqpOODFDY+hw=="
+      }
     },
     {
       "package": "@jitl/quickjs-wasmfile-debug-sync",
@@ -111,7 +115,11 @@
       "license": "MIT",
       "file": "quickjs-wasmfile-LICENSE.txt",
       "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
-      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-debug-sync/-/quickjs-wasmfile-debug-sync-0.32.0.tgz package/LICENSE"
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-debug-sync/-/quickjs-wasmfile-debug-sync-0.32.0.tgz package/LICENSE",
+      "wasm": {
+        "sha256": "4d2f9f8adf28c48ed273515b815e05ae9a698b54955f7348e951faf43b1febc3",
+        "integrity": "sha512-LeYWrPGC1uNCTBWvibo3ZLJj0CSVNYUXvJpXMCmuQ5Sap2cCACc3uvGvYV4homHHBAzfw5akoTqMMS4YFRtw+Q=="
+      }
     },
     {
       "package": "@jitl/quickjs-wasmfile-release-asyncify",
@@ -119,7 +127,11 @@
       "license": "MIT",
       "file": "quickjs-wasmfile-LICENSE.txt",
       "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
-      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-release-asyncify/-/quickjs-wasmfile-release-asyncify-0.32.0.tgz package/LICENSE"
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-release-asyncify/-/quickjs-wasmfile-release-asyncify-0.32.0.tgz package/LICENSE",
+      "wasm": {
+        "sha256": "b790f3842eef48d154984cea48d35303b5c3c3696fedab4dc79f314bde005dba",
+        "integrity": "sha512-3oSwPfja12ICz4aIblB58cuY8JlEq5Txt8Cut4VLo+LH47QN+mzCnSgnbB03hWzg1LBcc+VyyI9UOag7a1NF+Q=="
+      }
     },
     {
       "package": "@jitl/quickjs-wasmfile-release-sync",
@@ -127,7 +139,11 @@
       "license": "MIT",
       "file": "quickjs-wasmfile-LICENSE.txt",
       "sha256": "446a69ae534aa8612d8b16d3bfc670c5a5050597dca3ce9820441a60d5d04fbb",
-      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-release-sync/-/quickjs-wasmfile-release-sync-0.32.0.tgz package/LICENSE"
+      "source": "https://registry.npmmirror.com/@jitl/quickjs-wasmfile-release-sync/-/quickjs-wasmfile-release-sync-0.32.0.tgz package/LICENSE",
+      "wasm": {
+        "sha256": "105c3bed22d457e43e3d1c3c1c6959fda62a8fe06f0fc8a985303c3a2be72232",
+        "integrity": "sha512-BKNDI/TPBfGlLNGYpLrhcDGXmIk4xHm4MRAisOBnOzpXVn9HZWsfmMAc9WMBrAHjvvds6HOikKeaOBKdPdpVrg=="
+      }
     },
     {
       "package": "flo_curves",

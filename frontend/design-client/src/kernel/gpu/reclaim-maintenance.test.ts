@@ -161,6 +161,27 @@ test('a coordinate upload retired after submission survives that checkpoint', as
   expect(f.renderer.retiredUploads).not.toContain(texture)
 })
 
+test('maintenance defers a coordinate upload moved into retirement during its fence', async () => {
+  const f = fixture(128 * 1024)
+  f.renderer.bytes = 160 * MiB
+  const texture = { width: 1024, height: 3072, bytes: 48 * MiB, resource: {} } as Texture
+  f.renderer.coordinateMaps.addOwned(texture)
+  const first = f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  f.renderer.retireUpload(texture)
+  f.complete()
+  await first
+
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  expect(f.renderer.retiredUploads).toContain(texture)
+  const second = f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).toHaveBeenCalledTimes(2)
+  f.complete()
+  await second
+  expect(f.driver.destroy).toHaveBeenCalledExactlyOnceWith(texture)
+  expect(f.renderer.retiredUploads).not.toContain(texture)
+})
+
 test('a free surface reused while a checkpoint is pending survives that checkpoint', async () => {
   const f = fixture(48 * MiB)
   const {width, height} = f.pooled

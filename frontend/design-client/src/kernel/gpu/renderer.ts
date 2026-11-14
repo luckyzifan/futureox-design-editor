@@ -4213,9 +4213,10 @@ export class GpuRenderer {
       for (const texture of transientCohort) {
         if (count >= RECLAIM_BATCH_RESOURCES) break
         if (this.admissionPins.has(texture)) continue
-        const retiredIndex = this.retiredUploads.indexOf(texture)
-        if (retiredIndex >= 0) {
-          this.retiredUploads.splice(retiredIndex, 1)
+        if (retiredUploadsAtFence.has(texture)) {
+          const index = this.retiredUploads.indexOf(texture)
+          if (index < 0) continue
+          this.retiredUploads.splice(index, 1)
           this.forgetUpload(texture)
         } else if (this.coordinateMaps.has(texture) && !this.filterImageFields?.pinned.has(texture)) {
           this.forgetCoordinateTexture(texture)
