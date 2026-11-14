@@ -91,8 +91,9 @@ pub struct TextStyle {
     pub weight: f32,
     pub line_height: f64,
     /// Empty keeps the historical unrounded half-leading baseline. `nearest-point`
-    /// is the Sketch fixed line box: native text-preview matrices place that
-    /// baseline on the nearest document point and leave x fractional.
+    /// is the Sketch fixed line box used by native text-preview matrices.
+    /// `sketch-font-leading` uses the font ascender and includes font leading
+    /// in the advance for the original Sketch spacing modes 0 and 1.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub line_box_baseline: String,
     /// Sketch text with no authored line box uses the font's ascender,
@@ -485,7 +486,7 @@ impl TextStyle {
             || !(1. ..=1000.).contains(&self.weight)
             || !self.line_height.is_finite()
             || !(0.1..=10.).contains(&self.line_height)
-            || !["", "nearest-point"].contains(&self.line_box_baseline.as_str())
+            || !["", "nearest-point", "sketch-font-leading"].contains(&self.line_box_baseline.as_str())
             || !self.letter_spacing.is_finite()
             || self.letter_spacing.abs() > 1000.
             || !self.paragraph_spacing.is_finite()
@@ -1817,9 +1818,15 @@ impl Fonts {
                     size * style.line_height
                 };
                 let mut natural = 0f64;
+                let use_sketch_leading = style.line_box_baseline == "sketch-font-leading"
+                    && attributes.and_then(TextParagraph::fixed_line_height).is_some();
+                let mut leading = 0f64;
                 for glyph in &shaped {
                     let face = self.face(&glyph.font_id, glyph.weight)?;
                     let face = face.borrow_face();
+                    if use_sketch_leading {
+                        leading = leading.max(f64::from(face.line_gap()) * glyph.size / f64::from(face.units_per_em()));
+                    }
                     ascent = ascent
                         .max(face.ascender() as f64 * glyph.size / face.units_per_em() as f64);
                     let multiplier = if explicit_line_height {
@@ -1843,6 +1850,9 @@ impl Fonts {
                             * size
                             / face.units_per_em() as f64;
                         ascent = face.ascender() as f64 * size / face.units_per_em() as f64;
+                        if use_sketch_leading {
+                            leading = (f64::from(face.line_gap()) * size / f64::from(face.units_per_em())).max(0.);
+                        }
                     }
                     height = natural.max(p.minimum_line_height);
                     if p.maximum_line_height > 0. {
@@ -1852,11 +1862,19 @@ impl Fonts {
                     // Authored paragraphs stay unrounded. A Sketch fixed line box
                     // (equal minimum and maximum) uses the nearest document point,
                     // which is where native text-preview matrices draw the baseline.
-                    ascent += (height - natural) / 2.;
-                    if let Some((_, baseline)) = sketch_baseline.filter(|(count, _)| paragraph_index < *count) {
-                        ascent = baseline;
-                    } else if style.line_box_baseline == "nearest-point" && (p.fixed_line_height().is_some() || sketch_baseline.is_some()) {
+                    if use_sketch_leading {
+                        // Sketch SVG and raster export place its legacy fixed
+                        // boxes on the rounded ascender. The line's leading
+                        // comes from the effective font at its shaped size.
                         ascent = ascent.round_ties_even();
+                        height += leading;
+                    } else {
+                        ascent += (height - natural) / 2.;
+                        if let Some((_, baseline)) = sketch_baseline.filter(|(count, _)| paragraph_index < *count) {
+                            ascent = baseline;
+                        } else if style.line_box_baseline == "nearest-point" && (p.fixed_line_height().is_some() || sketch_baseline.is_some()) {
+                            ascent = ascent.round_ties_even();
+                        }
                     }
                 }
                 if font_line_box && attributes.is_none() && !explicit_line_height {

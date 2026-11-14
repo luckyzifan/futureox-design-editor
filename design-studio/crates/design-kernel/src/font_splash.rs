@@ -56,7 +56,7 @@ fn sketch_line_box(node: &Node) -> bool {
     node.kind == "text"
         && node.text_path.is_none()
         && style.writing_mode != "vertical"
-        && (style.line_box_baseline == "nearest-point"
+        && (matches!(style.line_box_baseline.as_str(), "nearest-point" | "sketch-font-leading")
             || (style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9))
 }
 

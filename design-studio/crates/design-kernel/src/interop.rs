@@ -2401,7 +2401,11 @@ impl<'a> Importer<'a> {
                 if node.text_runs.iter().any(|run| {
                     run.paragraph.as_ref().and_then(crate::font::TextParagraph::fixed_line_height).is_some()
                 }) {
-                    style.line_box_baseline = "nearest-point".into();
+                    style.line_box_baseline = if matches!(raw_spacing_behaviour, Some(0 | 1)) {
+                        "sketch-font-leading".into()
+                    } else {
+                        "nearest-point".into()
+                    };
                 }
                 node.text_style = Some((style).into());
                 let parsed_style_font = node.text_style.as_ref().map(|style| style.font_id.clone());
@@ -2467,6 +2471,7 @@ impl<'a> Importer<'a> {
                 {
                     style.line_height_auto = true;
                 }
+                restore_legacy_sketch_line_box(&mut node, None);
             }
             "bitmap" => {
                 node.bindings.insert("sketchSourceBitmap".into(), "true".into());
@@ -7255,7 +7260,9 @@ fn export_layer_impl(
                     .get("sketchLineSpacingBehaviour")
                     .and_then(|s| s.parse::<i64>().ok())
                     .unwrap_or(
-                        if style.is_some_and(|s| {
+                        if style.is_some_and(|s| s.line_box_baseline == "sketch-font-leading") {
+                            1
+                        } else if style.is_some_and(|s| {
                             s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9
                         }) {
                             3
@@ -7613,6 +7620,20 @@ fn adaptable_apply_shared_style(object: &mut Value, fidelity: &Value) {
 /// the raw entry kept at import.
 pub(crate) fn sketch_binding<'a>(doc: &'a Document, node: &'a Node, key: &str) -> Option<&'a str> {
     node.bindings.get(key).map(String::as_str).or_else(||doc.design_system.as_ref()?.sketch_containers.get("nodeMetadata")?.get(&node.id)?.get("bindings")?.get(key)?.as_str())
+}
+
+/// Older FD files stored the Sketch spacing code in format metadata but
+/// rendered all fixed boxes using the generic nearest-point fallback.
+pub(crate) fn restore_legacy_sketch_line_box(node: &mut Node, metadata: Option<&Value>) {
+    let Some(style) = node.text_style.as_mut().filter(|style| style.line_box_baseline == "nearest-point") else {
+        return;
+    };
+    let spacing = node.bindings.get("sketchLineSpacingBehaviour").map(String::as_str).or_else(|| {
+        metadata?.get(&node.id)?.get("bindings")?.get("sketchLineSpacingBehaviour")?.as_str()
+    });
+    if matches!(spacing, Some("0" | "1")) {
+        style.line_box_baseline = "sketch-font-leading".into();
+    }
 }
 fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<Vec<Value>> {
     let mut out = Vec::new();
