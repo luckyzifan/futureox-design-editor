@@ -1209,12 +1209,12 @@ export class GpuRenderer {
   /** Remove one texture from its free list and destroy it. Only call this for
    * textures whose GPU commands provably completed. */
   private destroyFree(texture: Texture) {
-    if (this.admissionPins.has(texture)) return
+    if (this.admissionPins.has(texture)) return false
     const key = `${texture.scalarCoverage ? 'scalar:' : texture.binaryCoverage ? 'binary:' : ''}${texture.width}:${texture.height}`,
       list = this.free.get(key)
-    if (!list) return
+    if (!list) return false
     const at = list.indexOf(texture)
-    if (at < 0) return
+    if (at < 0) return false
     list.splice(at, 1)
     ;(this.free as SurfacePool<Texture>).removed?.(texture)
     if (!list.length) this.free.delete(key)
@@ -1222,6 +1222,7 @@ export class GpuRenderer {
     this.lastUsed.delete(texture)
     this.driver.destroy(texture)
     this.dischargeTexture(texture)
+    return true
   }
   /** Evict least-recently-used images until `required` bytes are free. Outside
    * a completed checkpoint only images unreferenced by this frame's commands
@@ -4178,6 +4179,13 @@ export class GpuRenderer {
     // A late retirement has not been submitted to this fence.
     const retiredUploadsAtFence = new Set(this.retiredUploads)
     const transientCohort = [...new Set([...retiredUploadsAtFence, ...coordinates])]
+    const poolTouchesAtFence = new Map(pooled.map(texture => [texture, this.lastUsed.get(texture)]))
+    const destroyCoveredFree = (texture: Texture) => {
+      // The same texture can leave and re-enter the pool after submission.
+      // Its latest use then belongs to a later checkpoint.
+      if (poolTouchesAtFence.get(texture) !== this.lastUsed.get(texture)) return false
+      return this.destroyFree(texture)
+    }
     const retiringImageAssets = this.retiredImageAssetCohort()
     try {
       if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
@@ -4240,7 +4248,7 @@ export class GpuRenderer {
     // The preselected oldest-first order leaves survivor free-list LIFO intact.
     for (const texture of pooled) {
       if (destroyed >= resourceLimit || batchBytes >= batchLimit) break
-      this.destroyFree(texture)
+      if (!destroyCoveredFree(texture)) continue
       destroyed++
       batchBytes += texture.bytes
     }
@@ -4249,6 +4257,8 @@ export class GpuRenderer {
     )
     for (const texture of uploads) {
       if (destroyed >= resourceLimit || batchBytes >= batchLimit) break
+      if (!this.coordinateMaps.has(texture) || this.admissionPins.has(texture) ||
+          this.filterImageFields?.pinned.has(texture)) continue
       this.forgetCoordinateTexture(texture)
       destroyed++
       batchBytes += texture.bytes
@@ -4260,7 +4270,7 @@ export class GpuRenderer {
     if (preserveImmutableImages && pressure)
       for (const texture of pooled) {
         if (this.workingBytes + required <= this.frameBudget) break
-        this.destroyFree(texture)
+        destroyCoveredFree(texture)
       }
     // Legacy maintenance policy remains the control. The candidate keeps
     // immutable assets whenever the actual allocation already fits; real
