@@ -91,6 +91,10 @@ describe('explicit text replacement through native Editor transactions', () => {
     expect(exportedRanges()).toEqual(original)
     call('history.redo')
     expect(exportedRanges()).toEqual(replaced)
+    call('text.styleRange', { nodeId: id, start: 131, end: 132, patch: { fontId: 'default' } })
+    expect(exportedRanges().slice(-3)).toEqual([[130, 1, 'Menlo-Bold'], [131, 1, 'HelveticaNeue'], [132, 1, 'Menlo-Bold']])
+    call('history.undo')
+    expect(exportedRanges()).toEqual(replaced)
   })
 
   it('deletes the intended repeated substring and preserves all other document paths, then undoes once', () => {

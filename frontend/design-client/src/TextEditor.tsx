@@ -179,11 +179,11 @@ export function CanvasTextEditor({
     blurred = useRef(false),
     anchor = useRef<number | null>(null),
     latest = useRef(draft)
-  const originalSource = useRef(sourceFonts(document, node))
+  const [originalSource] = useState(() => sourceFonts(document, node))
   const editedSource = useRef<FontSourceRecord | undefined>(undefined)
   const draftChanged = () => latest.current.text !== original.current.text ||
-    !equalValue(latest.current.textRuns, original.current.textRuns) ||
-    (editedSource.current !== undefined && !equalValue(editedSource.current, originalSource.current))
+    JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns) ||
+    (editedSource.current !== undefined && !equalValue(editedSource.current, originalSource))
   latest.current = draft
   useLayoutEffect(() => {
     const element = toolbar.current
@@ -229,6 +229,7 @@ export function CanvasTextEditor({
         setError('图层已被修改，当前输入保留；请复制文字后取消')
         return false
       }
+      const resultVersion = editor.state.version
       editor.update(
         [node.id],
         (n, doc) => {
@@ -239,8 +240,10 @@ export function CanvasTextEditor({
         '编辑富文本',
       )
       const committed = editor.state.doc.nodes[node.id]
-      if (committed?.text !== latest.current.text || !equalValue(committed.textRuns, latest.current.textRuns) ||
-          (editedSource.current && !equalValue(sourceFonts(editor.state.doc, committed), editedSource.current))) {
+      const versionUpdated = resultVersion !== editor.state.version
+      if (committed?.text !== latest.current.text ||
+          JSON.stringify(committed.textRuns) !== JSON.stringify(latest.current.textRuns) ||
+          (editedSource.current && !versionUpdated)) {
         diagnostic.finish(false, false)
         return false
       }
@@ -260,7 +263,7 @@ export function CanvasTextEditor({
   const change = (text: string) => {
     diagnostic.start()
     const n = structuredClone(latest.current)
-    const fonts = replaceText(n, text, editedSource.current ?? originalSource.current)
+    const fonts = replaceText(n, text, editedSource.current ?? originalSource)
     if (fonts) editedSource.current = fonts
     latest.current = n
     setDraft(n)
@@ -272,7 +275,7 @@ export function CanvasTextEditor({
     diagnostic.start(); diagnostic.event(InputPhase.start, { fieldFamily: InputFamily.richStyle })
     try {
       const n = structuredClone(latest.current)
-      const fonts = styleTextRange(n, ...selection, patch, editedSource.current ?? originalSource.current)
+      const fonts = styleTextRange(n, ...selection, patch, editedSource.current ?? originalSource)
       if (fonts) editedSource.current = fonts
       latest.current = n
       setDraft(n)
