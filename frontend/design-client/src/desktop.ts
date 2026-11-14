@@ -216,6 +216,7 @@ export interface DesktopBridge {
   openCatalogFile(request: { directoryHandle: string; fileId: string }): Promise<DesktopResult<DesktopFile>>
   openPendingDocument?(): Promise<DesktopResult<DesktopFile>>
   openDocument(): Promise<DesktopResult<DesktopFile>>
+  openPickedFile?(file: File): Promise<DesktopResult<DesktopFile>>
   inspectSketch?(): Promise<DesktopResult<import('./sketch-inspection').SketchInspection>>
   acceptDocument(request: { handle: string }): Promise<DesktopResult>
   saveDocument(request: {

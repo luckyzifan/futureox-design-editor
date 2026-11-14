@@ -869,7 +869,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           modalOwnsFocus: modalOwnsKeyboard(document.activeElement) })) return
         if (!commitPendingEdits(editor)) return
         if (name === 'new') void switchDocument(blank())
-        else if (name === 'open') void openHomeFile().then(result => { if (result === true) resumeEditor() }).catch(error => editor.notify(String(error)))
+        else if (name === 'open') void openLocalDesign().then(result => { if (result === true) resumeEditor() }).catch(error => editor.notify(String(error)))
         else if (name === 'openPending' && desktopSession) void desktopSession.openPending().then(opened => { if (opened) resumeEditor() }).catch(error => editor.notify(String(error)))
         return
       }
@@ -883,7 +883,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (keyboardNudgeActive(editor) && !commitPendingEdits(editor)) return
       if (name === 'open' || name === 'openPending' || name === 'new' || name === 'recover') fileImports.invalidate()
       setMenu(false)
-      if (name === 'open') void desktopSession.open()
+      if (name === 'open') void openLocalDesign().catch(error => editor.notify(String(error)))
       else if (name === 'openPending') void desktopSession.openPending()
       else if (name === 'save') void desktopSession.save()
       else if (name === 'saveAs') void desktopSession.save(true)
@@ -972,10 +972,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     if(source){void source.leave();return}
     setHomeImportError(''); setShowHome(true)
   }
-  async function openHomeFile(): Promise<boolean | 'pending'> {
+  async function openLocalDesign(): Promise<boolean | 'pending'> {
     if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
     fileImports.invalidate()
-    if (desktopSession) {
+    if (desktopSession && !desktop?.openPickedFile) {
       const opened = await desktopSession.open()
       if (!opened && desktopSession.status.error) throw new Error(desktopSession.status.error)
       return opened
@@ -1261,11 +1261,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
         onServerWorkspace={workspaceAvailable ? () => setShowCloudWorkspace(true) : undefined}
-        onOpenFile={openHomeFile} onImportFile={desktopSession ? () => {
-          fileImports.invalidate()
-          importMode.current = 'open'
-          file.current?.click()
-        } : undefined} onSettings={() => {
+        onOpenFile={openLocalDesign} onSettings={() => {
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
           openSettings()
         }} />}
@@ -1400,7 +1396,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); setShowCatalog(true) }}>
                 <FolderOpen size={15} />{menuText.projectFolder}
               </button>
-              <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.open() }}>
+              <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { setMenu(false); void openLocalDesign().catch(error => editor.notify(String(error))) }}>
                 <FolderOpen size={15} />{menuText.openLocalDesign} <kbd>{formatShortcutCombo('Mod+O', shortcutContext.platform)}</kbd>
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.recover() }}>
@@ -1526,7 +1522,17 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           const f = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
           if (!f) return
-          if (RASTER_IMPORT_EXTENSION.test(f.name)) {
+          if (/\.fd$/i.test(f.name) && importMode.current === 'open' && desktopSession && desktop?.openPickedFile) {
+            setHomeImportError('')
+            try {
+              const opened = await desktopSession.openPicked(f)
+              if (opened) resumeEditor()
+              else if (showHome && desktopSession.status.error) setHomeImportError(desktopSession.status.error)
+            } catch (error) {
+              if (showHome) setHomeImportError(String(error))
+              else editor.notify(String(error))
+            }
+          } else if (RASTER_IMPORT_EXTENSION.test(f.name)) {
             if (showHome) editor.notify('请先打开画布，再导入图片', { key: 'openCanvasBeforeImageImport' })
             else await importImageFiles([f])
           } else await importDesignFile(f, importMode.current)

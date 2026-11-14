@@ -16,10 +16,9 @@ export function HomeCanvasGate({home,children}:{home:boolean;children:ReactNode}
  return !home||admitted?children:null
 }
 
-export function LocalHome({source,ready,busy=false,startupError,importError,currentName,onResume,onNew,onOpenFile,onImportFile,onSettings,onServerWorkspace}: {
+export function LocalHome({source,ready,busy=false,startupError,importError,currentName,onResume,onNew,onOpenFile,onSettings,onServerWorkspace}: {
  source:HomeSource;ready:boolean;busy?:boolean;startupError?:string;importError?:string;currentName:string
- onResume:()=>void;onNew:()=>Promise<boolean>;onImportFile?: () => void
- onOpenFile:()=>Promise<boolean|'pending'>;onSettings:()=>void;onServerWorkspace?:()=>void
+ onResume:()=>void;onNew:()=>Promise<boolean>;onOpenFile:()=>Promise<boolean|'pending'>;onSettings:()=>void;onServerWorkspace?:()=>void
 }) {
  const { locale } = useInterfacePreferences()
  const text = useInterfaceText()
@@ -72,7 +71,7 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
    <p>{text.localIdentityNote}</p>
   </aside>
   <div className="local-home-content"><header><div><h1>{text.recentDesignsTitle}</h1><p>{savedWhere}</p></div><button type="button" disabled={disabled} onClick={onResume}>{continueLabel}</button></header>
-   <div className="local-home-actions"><button type="button" disabled={disabled} onClick={()=>void run(onNew)}><Plus size={17}/>{text.newDesign}</button><button type="button" disabled={disabled} onClick={()=>void run(onOpenFile)}><FolderOpen size={17}/>{text.openDesignFile}</button>{onImportFile && <button type="button" disabled={disabled} onClick={onImportFile}><FolderOpen size={17}/>{locale === 'en' ? 'Import Sketch / FIG / SVG / PDF' : '导入 Sketch / FIG / SVG / PDF'}</button>}</div>
+   <div className="local-home-actions"><button type="button" disabled={disabled} onClick={()=>void run(onNew)}><Plus size={17}/>{text.newDesign}</button><button type="button" disabled={disabled} onClick={()=>void run(onOpenFile)}><FolderOpen size={17}/>{text.openDesignFile}</button></div>
    <div className="local-home-filter"><label><Search size={16}/><input ref={search} aria-label={text.searchRecentDesigns} placeholder={text.searchDesignNames} value={query} onChange={e=>setQuery(e.target.value)}/></label><button type="button" disabled={loading||disabled} onClick={()=>void refresh()}>{text.refresh}</button><div role="group" aria-label={text.fileDisplay}><button type="button" aria-label={text.gridDisplay} aria-pressed={layout==='grid'} onClick={()=>setLayout('grid')}><Grid2X2 size={17}/></button><button type="button" aria-label={text.listDisplay} aria-pressed={layout==='list'} onClick={()=>setLayout('list')}><List size={17}/></button></div></div>
    {(error||importError)&&<p role="alert" className="local-home-error">{shown(error||importError||'')}</p>}{notice&&<p role="status">{shown(notice)}</p>}
    {!ready?<p className="activity-line" role={startupError?"alert":"status"}>{shown(startupError||"正在读取本机设计…")} {shown("文档操作暂不可用，仍可调整本机设置。")}{!startupError&&<span className="activity-track" aria-hidden="true"><i/></span>}</p>:loading?<p className="activity-line" role="status">{shown("正在读取本机设计…")}<span className="activity-track" aria-hidden="true"><i/></span></p>:<div className={`local-home-files ${layout}`} aria-label={text.recentDesignList}>{visible.map(entry=>{

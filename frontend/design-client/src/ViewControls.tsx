@@ -86,6 +86,10 @@ export function ViewControls({
           {sketch && <>
             <label><input type="checkbox" checked={s.grid}
               onChange={e => editor.set({ grid: e.target.checked })} />{label('显示网格', 'Show grid')}</label>
+            <button type="button" onClick={() => {
+              if (menu.current) menu.current.open = false
+              document.querySelector<HTMLButtonElement>('.app-settings-button')?.click()
+            }}>{label('网格设置…', 'Grid settings…')}</button>
             <label><input type="checkbox" checked={s.showAuthoredLayout !== false}
               onChange={e => editor.set({ showAuthoredLayout: e.target.checked })} />{label('显示布局', 'Show layout guides')}{profile === 'sketch-like' && shortcut.platform === 'mac' ? '　⌃ L' : ''}</label>
             <label><input type="checkbox" checked={!!s.showOverview}
@@ -99,7 +103,7 @@ export function ViewControls({
                   heading?.scrollIntoView({ block: 'nearest' })
                   heading?.focus({ preventScroll: true })
                 })
-              }}>{label('布局网格设置…', 'Layout grid settings…')}</button>
+              }}>{label('布局设置…', 'Layout settings…')}</button>
           </>}
           <label><input type="checkbox" aria-label={text.wheelZoom} checked={s.scrollWheelZoom}
             onChange={e => editor.setScrollWheelZoom(e.target.checked)}/>{text.wheelZoom}</label>
