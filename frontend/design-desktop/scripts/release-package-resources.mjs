@@ -1,7 +1,7 @@
 // Identity and resource listing for a release package. This does not install,
 // launch, sign, or accept a formal desktop package. GUI steps stay not_run.
 import { createHash } from 'node:crypto'
-import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, writeFileSync } from 'node:fs'
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 // Tree identity is path, size, and content SHA-256, each length-prefixed.
@@ -11,6 +11,19 @@ import path from 'node:path'
 const TREE_DOMAIN = 'futureox-release-tree-v2\n'
 const HEADER_LIMIT = 8 * 1024 * 1024
 const INSTALLER_EXTENSIONS = new Set(['.dmg', '.pkg', '.mpkg', '.msi', '.exe', '.deb', '.rpm', '.appimage'])
+
+export const MAC_ELECTRON_NOTICES = 'electron-runtime-notices'
+export const ELECTRON_ATTRIBUTION_FILES = ['LICENSE', 'LICENSES.chromium.html', 'version']
+
+export function stageMacElectronNotices(buildPath) {
+  // Electron's macOS archive places these next to Electron.app. The installer
+  // can distribute the .app on its own, so carry the original bytes inside it.
+  const bundled = path.join(buildPath, 'Electron.app', 'Contents', 'Resources', MAC_ELECTRON_NOTICES)
+  mkdirSync(bundled)
+  for (const name of ELECTRON_ATTRIBUTION_FILES) {
+    renameSync(path.join(buildPath, name), path.join(bundled, name))
+  }
+}
 
 export function expectedNativeInstallPaths(platform) {
   const suffix = platform === 'win32' ? '.exe' : ''

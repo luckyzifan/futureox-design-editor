@@ -5,8 +5,8 @@
 import { createHash } from 'node:crypto'
 import { closeSync, constants, existsSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync } from 'node:fs'
 import path from 'node:path'
-import { hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
-import { FFMPEG_PACKAGE_NOTICES } from './ffmpeg-bundle.mjs'
+import { ELECTRON_ATTRIBUTION_FILES, MAC_ELECTRON_NOTICES, hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
+import { FFMPEG_PACKAGE_NOTICES, requiresBundledFfmpeg } from './ffmpeg-bundle.mjs'
 
 const HOST_TARGETS = {
   'linux-x64': { platform: 'linux', arch: 'x64', target: 'x86_64-unknown-linux-gnu' },
@@ -49,8 +49,7 @@ export function electronPackageLayout(directory) {
   if (isFile(path.join(macResources, 'app.asar')) && (isFile(path.join(directory, 'Contents/Info.plist')) || isFile(path.join(directory, 'Contents/Frameworks/Electron Framework.framework/Electron Framework')))) {
     return { packageDir: directory, resourcesRoot: macResources, resourcesPrefix: 'Contents/Resources', style: 'mac-app' }
   }
-  // Electron Packager puts the macOS app and the runtime notices next to
-  // each other. Keep the enclosing directory as the byte-inventory root.
+  // Keep support for older packager outputs with notices next to the .app.
   const apps = childDirectories(directory).filter(entry => entry.endsWith('.app'))
   if (apps.length === 1 && isFile(path.join(apps[0], 'Contents/Resources/app.asar')) &&
       isFile(path.join(apps[0], 'Contents/Info.plist'))) {
@@ -168,6 +167,9 @@ function frameworkTarget(binary) {
 
 function classifyResource(inner) {
   const base = path.posix.basename(inner)
+  if (inner === `${MAC_ELECTRON_NOTICES}/${base}` && ELECTRON_ATTRIBUTION_FILES.includes(base)) {
+    return { kind: 'electron', role: electronRole(inner) }
+  }
   if (inner.endsWith('.asar')) return { kind: 'archive', role: inner === 'app.asar' ? 'app-asar' : 'asar' }
   if (inner.startsWith('app.asar.unpacked/')) return classifyApp(inner.slice('app.asar.unpacked/'.length))
   if (inner.startsWith('app/')) return classifyApp(inner.slice('app/'.length))
@@ -492,12 +494,15 @@ export function assessColorFixtures(files, { provenanceSha256 = null } = {}) {
   return results
 }
 
-function inventoryVendor(files) {
+function inventoryVendor(files, required) {
   const binary = files.find(file => file.kind === 'vendor' && file.role === 'binary') ?? null
   const sourceJson = files.find(file => file.kind === 'vendor' && file.path.endsWith('/ffmpeg-source.json')) ?? null
   const meta = readJson(sourceJson)
   const related = files.filter(file => file.kind === 'vendor' && file !== binary)
-  if (!binary && !meta) return { present: false, traceable: false, gap: 'ffmpeg_not_in_package', binary: null, notices: [], correspondingSource: [] }
+  if (!binary && !related.length) return {
+    present: false, traceable: false, gap: required ? 'ffmpeg_not_in_package' : null,
+    binary: null, notices: [], correspondingSource: [],
+  }
   const problems = []
   if (!binary) problems.push('binary_missing')
   else if (meta?.sha256 && binary.sha256 !== meta.sha256) problems.push('binary_hash')
@@ -800,7 +805,7 @@ export function inventoryFromPackageBytes({
     traceable: Boolean(projectLicense),
     gap: projectLicense ? null : 'project_license_not_in_package',
   }))
-  const vendor = inventoryVendor(content)
+  const vendor = inventoryVendor(content, requiresBundledFfmpeg(host.platform, host.arch))
   const provenanceRecord = path.join(root, 'frontend/design-client/public/color-fixtures/PROVENANCE.json')
   const colorFixtures = assessColorFixtures(content, {
     provenanceSha256: isFile(provenanceRecord) ? hashReadonlyFile(provenanceRecord).sha256 : null,

@@ -127,6 +127,14 @@ pub(crate) struct Q64Prefix {
     pub intercept: i128,
 }
 impl RationalKernel {
+    pub(crate) fn from_q24(weights: &[u32]) -> Self {
+        let scale = crate::effects::TENT_WEIGHT_SCALE;
+        Self {
+            denominator: Nat::from_u64(u64::from(scale)),
+            weights: weights.iter().map(|&weight| Nat::from_u64(u64::from(weight))).collect(),
+            approximations: weights.iter().map(|&weight| f64::from(weight) / f64::from(scale)).collect(),
+        }
+    }
     pub fn tent(radius: f64) -> Result<Self, String> {
         if !radius.is_finite() || radius <= 0. || radius > 2048. {
             return Err("Exact blur radius must be in (0,2048]".into());

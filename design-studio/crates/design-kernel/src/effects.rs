@@ -891,7 +891,47 @@ pub fn blur(surface: &Surface, sigma: f64) -> Result<Surface, String> {
 pub fn gaussian_surface(surface: &Surface, sigma: f64, byte: bool) -> Result<Surface, String> {
     gaussian_surface_owned(surface.try_clone()?, sigma, byte)
 }
+
+/// At small device sigmas a stack of integer boxes can reduce to a single
+/// uniform window. Integrate the Gaussian over each pixel instead, within
+/// the same three-sigma support already reserved for authored Gaussian blur.
+/// Historical tent, shadow, background and large Gaussian paths keep their kernels.
+pub fn small_gaussian_reach(sigma: f64) -> Option<u32> {
+    (0.1..=2.).contains(&sigma).then(|| (3. * sigma).ceil() as u32)
+}
+
+fn small_gaussian_weights(sigma: f64) -> Option<Vec<u32>> {
+    let reach = small_gaussian_reach(sigma)?;
+    // Three-point Gaussian quadrature over one device pixel.
+    let offset = (3_f64 / 5.).sqrt() / 2.;
+    let weight_at = |offset: f64| (-0.5 * (offset / sigma).powi(2)).exp();
+    let masses = (0..=reach).map(|distance| {
+        let x = f64::from(distance);
+        (5. * (weight_at(x - offset) + weight_at(x + offset)) + 8. * weight_at(x)) / 18.
+    }).collect::<Vec<_>>();
+    let total = masses[0] + 2. * masses[1..].iter().sum::<f64>();
+    let mut weights = masses.iter().map(|mass| {
+        (mass / total * f64::from(TENT_WEIGHT_SCALE)).round_ties_even() as u32
+    }).collect::<Vec<_>>();
+    weights[0] = TENT_WEIGHT_SCALE - 2 * weights[1..].iter().sum::<u32>();
+    Some(weights)
+}
+
+/// Byte targets use packed Q24 weights. Float targets use the same coefficients
+/// in the existing exact rational packet and keep extended values.
+pub fn small_gaussian_kernel(sigma: f64, byte: bool) -> Option<Vec<u8>> {
+    let weights = small_gaussian_weights(sigma)?;
+    Some(if byte {
+        weights.into_iter().flat_map(u32::to_le_bytes).collect()
+    } else {
+        crate::rational_filter::RationalKernel::from_q24(&weights).encoded()
+    })
+}
+
 pub(crate) fn gaussian_surface_owned(mut out: Surface, sigma: f64, byte: bool) -> Result<Surface, String> {
+    if let Some(weights) = small_gaussian_weights(sigma) {
+        return small_gaussian_owned(out, &weights, byte);
+    }
     for r in gaussian_box_radii(sigma)? {
         if r == 0 { continue; }
         for horizontal in [true, false] {
@@ -900,6 +940,70 @@ pub(crate) fn gaussian_surface_owned(mut out: Surface, sigma: f64, byte: bool) -
         }
     }
     Ok(out)
+}
+
+fn small_gaussian_owned(mut out: Surface, weights: &[u32], byte: bool) -> Result<Surface, String> {
+    let [width, height] = [out.rect.w as usize, out.rect.h as usize];
+    let reach = weights.len() - 1;
+    let kernel = (!byte).then(|| crate::rational_filter::RationalKernel::from_q24(weights));
+    // With sigma <= 2 the maximum support is six pixels on either side.
+    let mut taps = [0_f32; 13];
+    for horizontal in [true, false] {
+        let (lines, len) = if horizontal { (height, width) } else { (width, height) };
+        let _scratch = out.reserve_scratch::<Pixel>(len + 2 * reach)?;
+        let mut line = vec![Pixel::default(); len + 2 * reach];
+        for scan in 0..lines {
+            crate::render_cancellation::checkpoint()?;
+            let index = |i| if horizontal { scan * width + i } else { i * width + scan };
+            for i in 0..len {
+                line[i + reach] = out.pixels[index(i)];
+            }
+            for i in 0..len {
+                let mut result = [0.; 4];
+                for (channel, value) in result.iter_mut().enumerate() {
+                    let samples = line[i..i + 2 * reach + 1].iter().map(|pixel| pixel.0[channel]);
+                    *value = if let Some(kernel) = &kernel {
+                        let taps = &mut taps[..2 * reach + 1];
+                        for (tap, sample) in taps.iter_mut().zip(samples) { *tap = sample; }
+                        kernel.convolve(taps)?
+                    } else {
+                        let sum: u32 = samples.enumerate().map(|(tap, sample)| {
+                            let byte = (sample.clamp(0., 1.) * 255.).round_ties_even() as u32;
+                            byte * weights[tap.abs_diff(reach)]
+                        }).sum();
+                        let whole = sum / TENT_WEIGHT_SCALE;
+                        let remainder = sum % TENT_WEIGHT_SCALE;
+                        let up = remainder > TENT_WEIGHT_SCALE / 2 ||
+                            remainder == TENT_WEIGHT_SCALE / 2 && whole & 1 == 1;
+                        (whole + u32::from(up)) as f32 / 255.
+                    };
+                }
+                out.pixels[index(i)] = Pixel(result);
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[test]
+fn small_gaussian_spreads_an_impulse_without_losing_extended_values() {
+    for sigma in [0.1, 0.5, 1., 1.5, 2.] {
+        let weights = small_gaussian_weights(sigma).unwrap();
+        assert_eq!(weights[0] + 2 * weights[1..].iter().sum::<u32>(), TENT_WEIGHT_SCALE);
+        assert!(weights.windows(2).all(|pair| pair[0] >= pair[1]));
+    }
+    let mut input = Surface::new(Rect::new(-6, -4, 13, 9)).unwrap();
+    input.pixels[input.rect.index(0, 0).unwrap()] = Pixel([16., -4., 0., 1.]);
+    let blurred = gaussian_surface(&input, 1., false).unwrap();
+    assert!(blurred.at(0, 0).0[0] > 1.);
+    assert!(blurred.at(0, 0).0[1] < 0.);
+    assert!(blurred.at(0, 0).0[3] > blurred.at(1, 0).0[3]);
+    assert!(blurred.at(2, 0).0[3] > 0.);
+    assert_eq!(blurred.at(4, 0), Pixel::default());
+    let reverse = gaussian_surface(&input, 1., true).unwrap();
+    assert_eq!(reverse.at(1, 2), reverse.at(-1, -2));
+    assert_eq!(reverse.at(0, 0).0[1], 0.);
+    assert!(small_gaussian_reach(2.0000000000000004).is_none());
 }
 fn blur_owned<const CHANNELS: usize>(mut out: Surface, sigma: f64) -> Result<Surface, String> {
     for radius in gaussian_box_radii(sigma)? {

@@ -293,6 +293,12 @@ struct GradientGridKey {
     offsets: Vec<u64>,
     sample: usize,
 }
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+enum BlurKernelKey {
+    Box(u32),
+    Tent(u64),
+    SmallGaussian(u64),
+}
 struct Compositor<'a, 'b, 'c> {
     frame: &'a mut Frame<'b>,
     scene: &'c GpuScene,
@@ -301,7 +307,7 @@ struct Compositor<'a, 'b, 'c> {
     image_dims: HashMap<String, [u32; 2]>,
     image_slots: HashMap<String, [i32; 2]>,
     mips: bool,
-    blur_kernels: HashMap<u64, Surface>,
+    blur_kernels: HashMap<BlurKernelKey, Surface>,
     motion_kernels: HashMap<[u64;6],Surface>,
     zoom_kernels: HashMap<[u64;15],Surface>,
     image_grids: HashMap<ImageGridKey, (usize, Surface)>,
@@ -1958,7 +1964,29 @@ impl Compositor<'_, '_, '_> {
             return self.frame.run(62.,input.rect,&[input,self.zoom_kernels[&key]], |_|{})
         }
         if fx.radius==0. {return Ok(input)}
-        if fx.kind=="gaussian-blur" {return self.blur_mode(input,2.*fx.radius*n.matrix.max_scale(),false,true)}
+        if fx.kind == "gaussian-blur" {
+            let scale = n.matrix.max_scale();
+            let sigma = fx.radius * scale;
+            if let Some(reach) = futureox_design_kernel::effects::small_gaussian_reach(sigma) {
+                let key = BlurKernelKey::SmallGaussian(sigma.to_bits());
+                if !self.blur_kernels.contains_key(&key) {
+                    let bytes = futureox_design_kernel::effects::small_gaussian_kernel(sigma, self.frame.byte_targets())
+                        .expect("admitted Gaussian kernel");
+                    let kernel = self.frame.upload(Rect::new(0, 0, (bytes.len() / 4) as u32, 1), &bytes)?;
+                    self.blur_kernels.insert(key, kernel);
+                }
+                let kernel = self.blur_kernels[&key];
+                let h = self.frame.run(22., input.rect, &[input, kernel], |u| {
+                    u[36..40].copy_from_slice(&[reach as f32, 0., 0., 1.]);
+                })?;
+                let result = self.frame.run(22., input.rect, &[h, kernel], |u| {
+                    u[36..40].copy_from_slice(&[reach as f32, 1., 0., 1.]);
+                });
+                self.frame.release(&[h]);
+                return result;
+            }
+            return self.blur_mode(input, 2. * fx.radius * scale, false, true);
+        }
         let key=[fx.radius.to_bits(),fx.motion_angle.to_bits(),n.matrix.0[0].to_bits(),n.matrix.0[1].to_bits(),n.matrix.0[2].to_bits(),n.matrix.0[3].to_bits()];
         if !self.motion_kernels.contains_key(&key) {
             let data=futureox_design_kernel::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,n.matrix)?.encoded();
@@ -1983,7 +2011,7 @@ impl Compositor<'_, '_, '_> {
                 if r == 0 {
                     continue;
                 }
-                let key = (-f64::from(r) - 1.).to_bits();
+                let key = BlurKernelKey::Box(r);
                 if !self.blur_kernels.contains_key(&key) {
                     let bytes =
                         futureox_design_kernel::rational_filter::RationalKernel::uniform_box(r)?
@@ -2017,7 +2045,7 @@ impl Compositor<'_, '_, '_> {
             f64::from(radius as f32)
         };
         let kernel = if managed || radius.fract() != 0. {
-            let key = radius.to_bits();
+            let key = BlurKernelKey::Tent(radius.to_bits());
             if !self.blur_kernels.contains_key(&key) {
                 let bytes = if managed {
                     futureox_design_kernel::rational_filter::RationalKernel::tent(radius)?.encoded()

@@ -3333,11 +3333,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   if (gradient) {
                     const a = worldPoint({ x: gradient.start[0], y: gradient.start[1] })
                     const b = worldPoint({ x: gradient.end[0], y: gradient.end[1] })
+                    // At low zoom or coincident anchors the end can cover the
+                    // start entirely. Give the start an exposed ring without
+                    // shifting either authored control point.
+                    const overlap = Math.hypot(a.x - b.x, a.y - b.y) * zoom < 13
                     return <g data-testid="blur-edit-handles">
                       <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#0d99ff" strokeWidth={1 / zoom} pointerEvents="none" />
                       {([['start', a], ['end', b]] as const).map(([endpoint, point]) =>
                         <circle key={endpoint} data-testid={`blur-${endpoint}-handle`}
-                          cx={point.x} cy={point.y} r={6 / zoom} fill="white" stroke="#0d99ff" strokeWidth={1 / zoom}
+                          cx={point.x} cy={point.y} r={(endpoint === 'start' && overlap ? 11 : 6) / zoom} fill="white" stroke="#0d99ff" strokeWidth={1 / zoom}
                           style={{ cursor: 'crosshair' }} onPointerDown={(event) => {
                             beginMaterial(event, 'blurEndpoint', blurEffectIndex, '调整模糊端点')
                             if (drag.current?.kind === 'parameter') drag.current.blurEndpoint = endpoint

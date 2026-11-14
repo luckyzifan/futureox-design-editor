@@ -92,7 +92,7 @@ export type PathMesh = {
 export type SourceFilterField={factor:number;effectIndex:number;sharpHalo:number;radius:number;gaussian:boolean;input:Rect;output:Rect;masks:{path:PathMesh;opacity:number;paint?:GpuPaint}[];groupRoots?:string[];additional?:SourceFilterField[]}
 export type BoxRegion = { input: Rect; output: Rect; axes: { output: Rect; radius: number; axis: 0 | 1 }[] }
 export type GpuNode = {
-  analyticRegion?: { output: Rect; effects: { output: Rect; filter: BoxRegion }[]; backdrop?: BoxRegion }
+  analyticRegion?: { output: Rect; effects: { output: Rect; filter: BoxRegion; smallGaussianSigma?: number }[]; backdrop?: BoxRegion }
   /** Adjacent consumer sees this lens's ordinary paints without its optics. */
   opticalPrefixNext?:string
   sourceFilterField?:SourceFilterField

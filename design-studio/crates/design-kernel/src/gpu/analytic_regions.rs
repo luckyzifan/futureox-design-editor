@@ -29,6 +29,8 @@ pub struct BoxRegion {
 pub struct EffectRegion {
     pub output: Rect,
     pub filter: BoxRegion,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small_gaussian_sigma: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -171,7 +173,12 @@ impl Walk<'_> {
         for effect in visible.into_iter().filter(|_| !omit_shadow) {
             if effect.gradient_blur.is_some() || effect.spread != 0. || !bounded_color(&effect.color)
                 || !matches!(effect.kind.as_str(), "blur" | "gaussian-blur" | "shadow" | "inner-shadow") { return None; }
-            let weights = radii(effect, scale)?;
+            let sigma = effect.radius * scale;
+            let gaussian = (effect.kind == "gaussian-blur").then(|| effects::small_gaussian_reach(sigma)).flatten();
+            let weights = match gaussian {
+                Some(reach) => [reach, 0, 0],
+                None => radii(effect, scale)?,
+            };
             let reach = weights.into_iter().sum::<u32>() as i32;
             let dx = (p.matrix.0[0] * effect.x + p.matrix.0[2] * effect.y) as f32 as f64;
             let dy = (p.matrix.0[1] * effect.x + p.matrix.0[3] * effect.y) as f32 as f64;
@@ -182,19 +189,19 @@ impl Walk<'_> {
                 "inner-shadow" => bounds,
                 _ => filtered,
             };
-            stages.push((effect, weights, bounds, dx, dy));
+            stages.push((effect, weights, bounds, dx, dy, gaussian.map(|_| sigma)));
             bounds = next;
         }
         let output = output.intersect(bounds);
         if output.empty() { return Some(None); }
         let mut need = output;
         let mut effects = Vec::new();
-        for (effect, weights, source, dx, dy) in stages.into_iter().rev() {
+        for (effect, weights, source, dx, dy, small_gaussian_sigma) in stages.into_iter().rev() {
             let shadow = matches!(effect.kind.as_str(), "shadow" | "inner-shadow");
             let filter_output = if shadow { shift(need, -dx, -dy).expand(2).intersect(domain) } else { need };
             let filter = box_region(weights, source, filter_output, domain)?;
             let filtered_input = filter.input;
-            effects.push(EffectRegion { output: need, filter });
+            effects.push(EffectRegion { output: need, filter, small_gaussian_sigma });
             need = if shadow { need.intersect(source).union(filtered_input) } else { filtered_input };
         }
         if need.empty() { return Some(None); }

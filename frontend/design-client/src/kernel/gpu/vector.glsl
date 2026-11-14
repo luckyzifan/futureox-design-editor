@@ -1001,7 +1001,7 @@ vec4 shade(vec2 p){
  }
 
  if(mode==22){float radius=u[9].x;int reach=int(ceil(radius));vec2 axis=u[9].y<.5?vec2(1,0):vec2(0,1);vec4 total=vec4(0);
-  if(u[9].w>1.5){uvec4 sum=uvec4(0);for(int i=-reach;i<=reach;i++){sum+=uvec4(round(blurAt(p+axis*float(i))*255.));}uint denominator=uint(2*reach+1);return vec4((sum+uvec4(denominator/2u))/denominator)/255.;}
+  if(u[9].w>1.5&&u[9].w!=4.){uvec4 sum=uvec4(0);for(int i=-reach;i<=reach;i++){sum+=uvec4(round(blurAt(p+axis*float(i))*255.));}uint denominator=uint(2*reach+1);return vec4((sum+uvec4(denominator/2u))/denominator)/255.;}
   if(u[9].w>.5){uvec4 sum=uvec4(0);for(int i=-reach;i<=reach;i++){uvec4 v=uvec4(roundEven(texelFetch(sourceB,ivec2(abs(i),0),0)*255.));uint weight=v.x|(v.y<<8u)|(v.z<<16u)|(v.w<<24u);sum+=uvec4(roundEven(blurAt(p+axis*float(i))*255.))*weight;}uvec4 q=sum>>24u,r=sum&0x00ffffffu;uvec4 up=uvec4(greaterThan(r,uvec4(0x00800000u)))+(uvec4(equal(r,uvec4(0x00800000u)))&(q&1u));return vec4(q+up)/255.;}
   if(radius==floor(radius))return tentInteger(p,axis,reach);
   for(int i=-reach;i<=reach;i++)total+=blurAt(p+axis*float(i))*tentWeight(radius,abs(float(i)));

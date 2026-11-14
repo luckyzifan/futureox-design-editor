@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, symlink, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rename, symlink, writeFile, rm } from 'node:fs/promises'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import path from 'node:path'
@@ -10,7 +10,7 @@ import { ffmpegProvenance } from '../scripts/ffmpeg-provenance.mjs'
 import { DESKTOP_FLOW, buildDesktopFlowReport, inspectReleasePackage } from '../scripts/release-desktop-flow.mjs'
 import { asarFromFiles, buildComponentInventory, openAsar, readAsarEntries, supplementalNoticeProblems } from '../scripts/release-component-inventory.mjs'
 import { assessColorFixtures, electronPackageLayout, inventoryFromPackageBytes, verifyPackageByteInventory } from '../scripts/release-package-bytes.mjs'
-import { hashPackageIdentity, verifyDeclaredResourceList, writeAsarArchive, writeUnsignedResourceList } from '../scripts/release-package-resources.mjs'
+import { hashPackageIdentity, stageMacElectronNotices, verifyDeclaredResourceList, writeAsarArchive, writeUnsignedResourceList } from '../scripts/release-package-resources.mjs'
 
 test('macOS package inventory records framework aliases and identifies the repackaged app icon', { skip: process.platform === 'win32' }, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'fx-framework-inventory-'))
@@ -91,6 +91,34 @@ test('an installed macOS app reports its framework version and architecture from
     assert.equal(verifyPackageByteInventory(report, openAsar).ok, true)
     await writeFile(plist, '<plist><dict><key>CFBundleVersion</key><string>45.0.0</string></dict></plist>')
     assert.equal(inventory().electron.version, null, 'an unrelated plist cannot declare an Electron version')
+
+    // Simulate the extracted runtime and move the resulting .app away from
+    // the packager directory. An installed app must carry its own notices.
+    const extracted = path.join(directory, 'extracted')
+    await mkdir(extracted)
+    const electronApp = path.join(extracted, 'Electron.app')
+    await rename(bundle, electronApp)
+    const license = 'Electron MIT License\n'
+    const chromiumLicense = '<html>Chromium notices</html>\n'
+    await writeFile(path.join(extracted, 'LICENSE'), license)
+    await writeFile(path.join(extracted, 'LICENSES.chromium.html'), chromiumLicense)
+    await writeFile(path.join(extracted, 'version'), '44.7.0\n')
+    stageMacElectronNotices(extracted)
+    await rename(electronApp, bundle)
+    assert.deepEqual(readdirSync(extracted), [])
+    const installed = inventory()
+    assert.equal(installed.electron.traceable, true)
+    assert.equal(installed.electron.versionSource, 'Contents/Resources/electron-runtime-notices/version')
+    assert.deepEqual(installed.electron.notices.map(({ role, sha256 }) => [role, sha256]), [
+      ['electron', createHash('sha256').update(license).digest('hex')],
+      ['chromium', createHash('sha256').update(chromiumLicense).digest('hex')],
+    ])
+    assert.equal(installed.vendor.ffmpeg.present, false)
+    assert.equal(installed.gaps.some(item => item.kind === 'vendor'), false)
+    assert.equal(verifyPackageByteInventory(installed, openAsar).ok, true)
+    await mkdir(path.join(contents, 'Resources/bin'))
+    await writeFile(path.join(contents, 'Resources/bin/ffmpeg-LICENSE.txt'), 'incomplete FFmpeg distribution')
+    assert.equal(inventory().vendor.ffmpeg.gap, 'ffmpeg_notice_or_source_mismatch')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
