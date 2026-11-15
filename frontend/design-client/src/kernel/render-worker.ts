@@ -380,7 +380,7 @@ function yieldPreviewTask() {
 }
 const queue = new RenderWorkQueue()
 type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
-type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;bitmapPreviewOnly?:boolean;reuse?:ResidentPoseReuse;nativePosePending?:boolean;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
@@ -392,7 +392,7 @@ const frozenOverlayPoses=new FrozenResidentOverlayPoses()
  * window only. The canvas kernel independently supplies the damage. */
 function localRepairSource(session: PoseSession | undefined, next:DesignDocument | undefined, driver:Driver,
   view:KernelOptions['view'], contract:string, damage:Rect, canvasOwner:object, overviewBitmap=false) {
-  if (!session?.native || session.canvasOwner!==canvasOwner || !session.input || !session.reuse || !next) return
+  if (!session?.native || session.bitmapPreviewOnly || session.canvasOwner!==canvasOwner || !session.input || !session.reuse || !next) return
   const scene=session.scene, window=scene.interactionWindow, output=scene.output, ids=scene.interactionSelection
   const content=scene.interactionContentWindow??window
   if ((!overviewBitmap && !scene.interactionLocalFootprint) || scene.gestureSoftEffects || scene.displayFilters || scene.displayMaterialSource ||
@@ -545,7 +545,7 @@ function schedulePose(){
         const texture=gpu.driver.presentedContentToken?.(session.slot)
         // A terminal receipt can reuse a full-quality frame. A soft preview
         // of that same transform still owes the canvas its full filter.
-        if((!pose.terminal || !session.scene.gestureSoftEffects) && session.native&&!session.nativePosePending&&
+        if((!pose.terminal || !session.scene.gestureSoftEffects && !session.bitmapPreviewOnly) && session.native&&!session.nativePosePending&&
             session.bounds&&session.reuse?.matches({scene:session.scene,driver:gpu.driver,texture,window,transforms:pose.transforms})){
           // This newer input requests the exact already-rendered pixels. Only
           // advance its presentation cohort; no new native mutation, packet,
@@ -567,9 +567,9 @@ function schedulePose(){
         }
         const translationStarted=performance.now()
         let poseCompileMs=0, sceneUpdateBytes=0
-        let patchedPose=false
+        let patchedPose=false, clippedBitmapPose=false
         let compileStats:Record<string,unknown>|undefined
-        let next: GpuScene | null, poseKernel: RenderKernel | undefined
+        let next: GpuScene | null, poseKernel: RenderKernel | undefined, bitmapRepairScene: GpuScene | undefined
         if(session.native){
           const capture=session.scene.output||{x:0,y:0,w:session.scene.width,h:session.scene.height}
           if(x<capture.x||y<capture.y||right>capture.x+capture.w||bottom>capture.y+capture.h){rebasePose(pose,true);break}
@@ -608,6 +608,8 @@ function schedulePose(){
               await kernel.apply_document_patch_with_damage(JSON.stringify(patch))
               patchedPose=true
               document=applyDocumentPatch(session.document,patch)
+              clippedBitmapPose=coversDisplay&&session.fixedWindow===true&&!session.affine&&!!displayFrame&&
+                allowsReducedSampling(displayFrame.view.zoom)&&isBitmapTranslationPatch(session.document,document,patch)
             }
             if(!current())continue
             const compileStarted=performance.now()
@@ -618,12 +620,14 @@ function schedulePose(){
           }
           sceneUpdateBytes=packet.transport.scenePacketBytes
           const compiled=decodeScenePacket(packet)
+          if(clippedBitmapPose||session.bitmapPreviewOnly)bitmapRepairScene=compiled
           compileStats=kernel.compileStats
           next={...preparePreviewSelection(compiled,session.scene.interactionSelection||[]),
             interactionLocalFootprint:session.scene.interactionLocalFootprint,
             interactionFixedMask:session.scene.interactionFixedMask,
             gestureSoftEffects:session.softEffectPreview === true && !pose.terminal,
-            interactionSelection:session.scene.interactionSelection,interactionRetained:true,nativeInteraction:true,interactionLease:session.scene.interactionLease,interactionWindow:window,
+            interactionSelection:session.scene.interactionSelection,interactionRetained:true,nativeInteraction:true,
+            interactionLease:session.scene.interactionLease,interactionWindow:window,
             floatCompositing:session.scene.floatCompositing,pairedDisplayFilters:session.scene.pairedDisplayFilters,
             compactImageFields:session.scene.compactImageFields,displayFilters:session.scene.displayFilters,
             displayFilterRadiusLimit:session.scene.displayFilterRadiusLimit,
@@ -645,6 +649,10 @@ function schedulePose(){
         }
         const translationMs=performance.now()-translationStarted,posePrepareMs=performance.now()-started
         if(!next){rebasePose(pose);break}
+        // The fast moving preview can differ at mask edges. Only the final
+        // canonical raster can supply exact texels to the canvas damage lane.
+        if(bitmapRepairScene && pose.terminal) next={...next,nodes:bitmapRepairScene.nodes,
+          interactionRetained:false,nativeInteraction:false,repairOutput:true}
         next.gestureSoftEffects = session.softEffectPreview === true && !pose.terminal
         const visible=innerShadowContentWindow(session,next,window,ids)
         // Canvas repair rounds damage outwards and samples integer neighbours.
@@ -689,6 +697,7 @@ function schedulePose(){
           // slot. Small/unsupported effects can be admitted as exact pixels.
           next.gestureSoftEffects = result.gestureBlurPixels > 0
           session.scene=next
+          session.bitmapPreviewOnly=!!bitmapRepairScene&&!pose.terminal
           if (session.native) session.nativePosePending = false
           if(session.patch)session.patch.accept(next,pose.transforms)
             else if(document){
@@ -1486,10 +1495,18 @@ self.onmessage = (e) => {
               if (admitAction(liveChoice(false)) === 'cancel') throw Error('PREVIEW_CANCELLED')
             }
             const settledPose = poseSession
+            const overviewBitmapCommit = bitmapViewportCommit && !!displayFrame && allowsReducedSampling(displayFrame.view.zoom)
+            // For clipped bitmap translation, repair on the existing canvas
+            // lattice. The native pose can supply the changed texels directly;
+            // avoid making the composited preview the backing for the viewport.
+            const clippedBitmapRepair = overviewBitmapCommit && settledPose?.fixedWindow && !settledPose.affine &&
+              !!priorRepairOwner && !!gpu?.driver.beginViewportRepair && paintDamage &&
+              viewportDamage(paintDamage,renderOptions.view,renderOptions.width,renderOptions.height)
             if (channel === 'canvas' && request.documentPatch && !tileViewport.length &&
+                !clippedBitmapRepair &&
                 renderIntent === 'canvas' && !request.readback && !renderOptions.grid && !renderOptions.checkerboard &&
                 !renderOptions.pixelPreview && allowsResidentSdr(executionPolicy) &&
-                laneState.interactionDocument && settledPose?.input && displayFrame && gpu?.driver.snapshotPresented &&
+                laneState.interactionDocument && settledPose?.input && !settledPose.bitmapPreviewOnly && displayFrame && gpu?.driver.snapshotPresented &&
                 renderOptions.view.zoom === settledPose.scene.view.zoom &&
                 renderOptions.width === Math.ceil(displayFrame.width * displayFrame.dpr) &&
                 renderOptions.height === Math.ceil(displayFrame.height * displayFrame.dpr) &&
@@ -1512,7 +1529,6 @@ self.onmessage = (e) => {
               }
               if (snapshot) gpu.driver.releasePresented?.([snapshot.gpuTile])
             }
-            const overviewBitmapCommit = bitmapViewportCommit && !!displayFrame && allowsReducedSampling(displayFrame.view.zoom)
             if (priorRepairOwner && paintDamage && !tileViewport.length && displayFrame && renderIntent==='canvas' &&
                 (renderOptions.rasterProfile==='figmaSubpixel' || overviewBitmapCommit) &&
                 backend==='webgpu' && allowsResidentSdr(executionPolicy) &&

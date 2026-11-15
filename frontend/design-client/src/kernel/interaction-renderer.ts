@@ -476,7 +476,9 @@ export class InteractionRenderer {
           this.changed(); return
         }
         if (offsets) r.offsets = offsets
-        if((!r.containedForeground||exactInnerShadowGesture(r))&&r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
+        const interruptedBitmapMove = !!offsets && !r.affine && this.overviewImagePose(r) &&
+          (this.inlineDisabled || this.liveRunning || !!this.livePending)
+        if(!interruptedBitmapMove&&(!r.containedForeground||exactInnerShadowGesture(r))&&r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
           // Finish the gesture through the already compiled pose session.
           // The settled document lane will apply its own patch; it must not
           // wait behind a redundant whole-viewport interaction render. Both
@@ -494,7 +496,7 @@ export class InteractionRenderer {
         }
         const contentRelease = this.props?.active && this.props.gestureKind === 'resize'
         if (this.sharedClient && r.live && (r.active || contentRelease) &&
-            (contentRelease || r.containedForeground || offsets && !r.workerPoses || affine) &&
+            (contentRelease || r.containedForeground || interruptedBitmapMove || offsets && !r.workerPoses || affine) &&
             this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
             document.id === r.plan.document.id && this.props.document.id === document.id &&
             this.sameIds(this.props.selection) && document.pages.some(page => page.id === r.plan.pageId) &&
@@ -518,9 +520,9 @@ export class InteractionRenderer {
           // r.active describes visible preview ownership, not permission to
           // enqueue more work. Hiding it here would jump back to old page pixels.
           r.active = !contentRelease || r.tiles.length > 0
-          if (contentRelease || r.containedForeground) {
+          if (contentRelease || r.containedForeground || interruptedBitmapMove) {
             // Keep the completed preview visible while ordinary page tiles
-            // repair resized geometry or the borders of a local filter capture.
+            // repair the released document, without queuing another preview.
             if (r.tiles[0]?.gpuTile) this.sharedClient.stopResidentInteraction(r.tiles[0].gpuTile)
             this.inlineDisabled = true
           }
@@ -1387,6 +1389,13 @@ export class InteractionRenderer {
             : unionBounds(scene(document, resident.plan.pageId).map(e => e.bounds))
           const pad = this.viewport ? 16 : Math.max(16, ...Object.values(document.nodes).flatMap(n => n.effects.filter(e => e.visible)
             .map(e => e.radius * 3 + Math.abs(e.x || 0) + Math.abs(e.y || 0) + Math.abs(e.spread || 0))))
+          const paddedWidth = Math.ceil((bounds.width + 2 * pad) * resident.scale) + 1
+          const paddedHeight = Math.ceil((bounds.height + 2 * pad) * resident.scale) + 1
+          // A clipped bitmap can require the ordinary native patch path.
+          // Keep it on one full viewport lease when that fits at the current DPR.
+          const bitmapViewport = this.viewport && !resident.affine && this.overviewImagePose(resident) &&
+            resident.fixedBounds?.has(resident.plan.ids[0]) && paddedWidth <= 8192 && paddedHeight <= 8192 &&
+            paddedWidth * paddedHeight <= 4_194_304
           const maskedRotation = this.viewport && resident.affine && resident.maskedRotationBounds &&
             this.settledViewportMatches(resident.plan.document, this.viewport.view) ? resident.maskedRotationBounds : undefined
           const rotationBounds=maskedRotation ?? (this.viewport&&resident.affine&&(!resident.foregroundExclusions||import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')?rigidInteractionCapture(resident.plan,transforms,roots,
@@ -1397,7 +1406,7 @@ export class InteractionRenderer {
             const bottom=Math.min(bounds.y+bounds.height,rotationBounds.y+rotationBounds.height+pad)
             if(right>x&&bottom>y)bounds={x,y,width:right-x,height:bottom-y}
           }
-          if (this.viewport && !resident.affine && foregroundSafe && offsets && roots && resident.plan.ids.every(id => roots.has(id))) {
+          if (this.viewport && !bitmapViewport && !resident.affine && foregroundSafe && offsets && roots && resident.plan.ids.every(id => roots.has(id))) {
             // Re-render the swept selection plus its backdrop dependency halo.
             // Unaffected pixels continue using the settled resident tile stack.
             const affected = unionBounds(resident.plan.ids.flatMap(id => {
@@ -1437,12 +1446,12 @@ export class InteractionRenderer {
             const localizedDesktop = !!(this.viewport && this.allowIdleWarm && this.sharedClient &&
               this.profile === 'figmaSubpixel' && resident.plan.ids.every(id => resident.localizedBounds?.has(id) && !resident.fixedBounds?.has(id)))
             const shortTravel = this.profile === 'analytic' && resident.plan.ids.every(id => resident.shortTravelBounds?.has(id))
-            let guard = maskedRotation ? pad :
+            let guard = maskedRotation || bitmapViewport ? pad :
               shortTravel && this.viewport ? pad + Math.max(16 / this.viewport.view.zoom, bounds.width * .05, bounds.height * .05) :
               finalForeground ? pad + Math.max(32 / this.viewport!.view.zoom, bounds.width * .05) :
               localizedDesktop ? pad + Math.max(48 / this.viewport!.view.zoom, bounds.width * .05, bounds.height * .05) :
               pad + Math.max(64, this.viewport ? 96 / this.viewport.view.zoom : 0, bounds.width * .05, bounds.height * .05)
-            if (!finalForeground && !localizedDesktop && !shortTravel && this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
+            if (!bitmapViewport && !finalForeground && !localizedDesktop && !shortTravel && this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
               const travelGuard = Math.max(guard, pad + 256 / this.viewport.view.zoom)
               if ((bounds.width + 2 * travelGuard) * (bounds.height + 2 * travelGuard) * resident.scale ** 2 <= 4_194_304)
                 guard = travelGuard
@@ -1545,7 +1554,7 @@ export class InteractionRenderer {
                 worldCapture?{x:originX,y:originY,w:width,h:height}:boundedCapture?{x:0,y:0,w:width,h:height}:undefined
               causePhase=2;causeBranch=3
               result = await client.render(document, { pageId: resident.plan.pageId, width, height,
-                view:captureCamera,transparent:false,grid:false,...(exactInnerShadowGesture(resident)?{checkerboard:false}:{}),
+                view:captureCamera,transparent:false,grid:false,...(bitmapViewport||exactInnerShadowGesture(resident)?{checkerboard:false}:{}),
                 ...(captureViewport?{captureViewport}:{}),
                 interactionOwner: this.interactionOwner, interactionGeneration: token, interactionBranch: 3,
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
