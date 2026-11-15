@@ -9716,6 +9716,48 @@ mod tests {
     }
 
     #[test]
+    fn nested_sketch_graphic_resizes_the_position_of_flexible_text_by_its_center() {
+        let layers = json!([{
+            "_class": "group", "do_objectID": "outer", "groupBehavior": 2,
+            "frame": {"width": 72, "height": 21},
+            "layers": [{
+                "_class": "group", "do_objectID": "inner", "groupBehavior": 2,
+                "frame": {"width": 72, "height": 21},
+                "layers": [{
+                    "_class": "text", "do_objectID": "caption", "textBehaviour": 0,
+                    "frame": {"x": 12, "y": 3, "width": 72, "height": 21},
+                    "attributedString": {"string": "Caption"}
+                }]
+            }]
+        }]);
+        let files = BTreeMap::from([
+            ("meta.json".into(), br#"{"version":168}"#.to_vec()),
+            ("document.json".into(), br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),
+            ("pages/p.json".into(), serde_json::to_vec(&json!({"_class":"page","layers":layers})).unwrap()),
+        ]);
+        let mut doc = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap().document;
+        let mut fonts = crate::font::Fonts::new();
+        fonts.load(include_bytes!("../../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap();
+        crate::layout::resolve(&mut doc, &fonts).unwrap();
+        let caption = doc.nodes["caption"].clone();
+        let outer = doc.nodes.get_mut("outer").unwrap();
+        outer.width = 216.;
+        outer.height = 42.;
+        crate::layout::resolve(&mut doc, &fonts).unwrap();
+
+        assert_eq!((doc.nodes["inner"].width, doc.nodes["inner"].height), (216., 42.));
+        let resized = doc.nodes["caption"].clone();
+        assert_eq!((resized.width, resized.height), (caption.width, caption.height));
+        assert_eq!(resized.sizing, caption.sizing);
+        assert_eq!(resized.font_size, caption.font_size);
+        let [_, _, _, _, x, y] = resized.transform.0;
+        assert!((x - (3. * caption.transform.0[4] + caption.width)).abs() < 1e-8);
+        assert!((y - (2. * caption.transform.0[5] + 0.5 * caption.height)).abs() < 1e-8);
+        crate::layout::resolve(&mut doc, &fonts).unwrap();
+        assert_eq!(doc.nodes["caption"].transform, resized.transform);
+    }
+
+    #[test]
     fn modern_sketch_stack_flows_in_reverse_without_reordering_paint() {
         for vertical in [false, true] {
             let frame = json!({"_class":"group","groupBehavior":1,"do_objectID":"stack",

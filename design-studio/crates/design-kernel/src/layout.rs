@@ -757,7 +757,19 @@ fn resize_graphic_member(doc: &mut Document, id: &str, sx: f64, sy: f64, parent_
     let node = doc.nodes.get_mut(id).unwrap();
     let (old_width, old_height) = (node.width, node.height);
     let center = node.transform.point(crate::math::Point::new(old_width * 0.5, old_height * 0.5));
-    resize(node, old_width * sx, old_height * sy);
+    let (mut width, mut height) = (old_width * sx, old_height * sy);
+    if node.kind == "text" {
+        // Graphic resizing moves the measured text box by its center.
+        // Hug axes are still sized by text layout, including wrapping.
+        let sizing = node.sizing_value();
+        if sizing.width == SizeMode::Hug {
+            width = old_width;
+        }
+        if sizing.height == SizeMode::Hug {
+            height = old_height;
+        }
+    }
+    resize(node, width, height);
     let (width, height) = (node.width, node.height);
     let [a, b, c, d, _, _] = node.transform.0;
     node.transform.0[4] = center.x * sx - (a * width + c * height) * 0.5;

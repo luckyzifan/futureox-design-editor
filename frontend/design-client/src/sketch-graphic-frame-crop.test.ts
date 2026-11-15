@@ -74,8 +74,12 @@ test('frame cropping changes only its bounds, even with end pins and a rotated p
     expect(editor.state.doc.nodes[child.id]).toMatchObject({ width: 24, height: 16, locked: true,
       constraints: { horizontal: 'end', vertical: 'center', referenceWidth: 140, referenceHeight: 55 } })
     expect(worldMatrix(editor.state.doc, child.id)).toEqual(world)
+    const cropped = editor.state.doc
     editor.undo()
     expect(editor.state.doc.nodes[frame.id].transform).toEqual(frame.transform)
+    expect(worldMatrix(editor.state.doc, child.id)).toEqual(world)
+    editor.redo()
+    expect(editor.state.doc).toEqual(cropped)
     expect(worldMatrix(editor.state.doc, child.id)).toEqual(world)
   } finally { editor.dispose() }
 })
