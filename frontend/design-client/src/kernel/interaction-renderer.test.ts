@@ -737,6 +737,68 @@ test('overview bitmap drags keep the native camera and finish on the same pose l
   shared.dispose()
 })
 
+test.each([true, false])('a clipped bitmap drag reserves the full native window only when it fits (%s)', async fits => {
+  const doc = blank(), board = node('frame', 0, 0, 2000, 1000), bitmap = node('rectangle', 50, 30, 1200, 700)
+  board.clip = true
+  board.effects = [{ ...effect('background-blur'), radius: 8 }]
+  board.children = [bitmap.id]
+  bitmap.fills = [{ ...bitmap.fills[0], kind: 'image' }]
+  doc.nodes = { [board.id]: board, [bitmap.id]: bitmap }
+  doc.pages[0].children = [board.id]
+  const owner = new InteractionRenderer(vi.fn(), new KernelClient())
+  owners.push(owner)
+  const view = { x: 0.125, y: -0.375, zoom: .23 }
+  const size = fits ? { width: 740, height: 560 } : { width: 1600, height: 1300 }
+  const props: InteractionProps = { document: doc, selection: [bitmap.id], active: true,
+    gestureKind: 'move', epoch: 1, control: { current: null }, onReady() {} }
+  owner.prepare(props, doc.pages[0].id, view, 2, 'analytic', 'webgpu', doc, size)
+  const { view: camera, interactionNative, interactionWindowFixed, interactionWindow: window } = worker.jobs[0].options
+  expect(interactionNative).toBe(true)
+  expect(interactionWindowFixed).toBe(true)
+  expect(camera).toEqual({ x: .25, y: -.75, zoom: .46 })
+  if (fits) {
+    expect(window.x).toBeCloseTo(0)
+    expect(window.y).toBeCloseTo(0)
+    expect(window.w).toBeCloseTo(size.width * 2)
+    expect(window.h).toBeCloseTo(size.height * 2)
+  } else {
+    expect(window.w).toBeLessThan(size.width * 2)
+    expect(window.h).toBeLessThan(size.height * 2)
+  }
+})
+
+test('releasing an overview bitmap drag abandons its rebase capture and keeps the last visible texture', async () => {
+  const doc = blank(), board = node('frame', 0, 0, 2000, 1000), bitmap = node('rectangle', 50, 30, 1200, 700)
+  board.clip = true
+  board.children = [bitmap.id]
+  bitmap.fills = [{ ...bitmap.fills[0], kind: 'image' }]
+  doc.nodes = { [board.id]: board, [bitmap.id]: bitmap }
+  doc.pages[0].children = [board.id]
+  const owner = new InteractionRenderer(vi.fn(), new KernelClient())
+  owners.push(owner)
+  const view = { x: 0.125, y: -0.375, zoom: .23 }, size = { width: 740, height: 560 }
+  const props: InteractionProps = { document: doc, selection: [bitmap.id], active: true,
+    gestureKind: 'move', epoch: 1, control: { current: null }, onReady() {} }
+  owner.prepare(props, doc.pages[0].id, view, 2, 'analytic', 'webgpu', doc, size)
+  worker.jobs[0].resolve({ gpuTile: 105, residentInteraction: true })
+  await vi.waitFor(() => expect(owner.ready).toBe(true))
+  const transform: typeof bitmap.transform = [1, 0, 0, 1, 74, 32]
+  owner.control.apply(doc, { [bitmap.id]: { transform } })
+  owner.acceptResidentSample({ slot: 105, sequence: 1, at: 1, needsRebase: true })
+  await vi.waitFor(() => expect(worker.jobs).toHaveLength(2))
+  const rebase = worker.jobs[1]
+  const committed = { ...doc, nodes: { ...doc.nodes, [bitmap.id]: { ...bitmap, transform } } }
+  owner.control.end(committed)
+  expect(rebase.signal.aborted).toBe(true)
+  expect(owner.items(view)?.[0].tile.gpuTile).toBe(105)
+  rebase.resolve({ gpuTile: 106, residentInteraction: true })
+  await vi.waitFor(() => expect(worker.released).toContain(106))
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.poses).toHaveLength(1)
+  owner.prepare({ ...props, active: false, document: committed }, doc.pages[0].id, view, 2, 'analytic', 'webgpu', committed, size)
+  expect(owner.items(view)).toBeNull()
+})
+
 test('nested pointer feedback uses world displacement through a rotated scaled parent', () => {
   const doc = blank(), root = node('frame', 200, 200, 200, 200), child = node('rectangle', 30, 40, 20, 20)
   root.transform = [0, 2, -2, 0, 200, 200]; root.children = [child.id]; root.blend = 'normal'
