@@ -2,6 +2,7 @@ import type { Editor } from './engine'
 import { node, type DesignDocument, type Matrix } from './model'
 import { apply, bounds, boxPoints, multiply } from './geometry'
 import { commitPendingEdits } from './pending-edits'
+import { createShapeSeed } from './shape-creation'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 
 export const frameCategories = { phone: '手机', tablet: '平板', desktop: '桌面', watch: '手表', social: '社交媒体', plugin: '插件' } as const
@@ -45,7 +46,7 @@ export function framePlacementRight(doc: DesignDocument, pageId: string): number
   }
   return right
 }
-export function createPresetFrame(editor: Editor, size: { name: string; width: number; height: number }) {
+export function createPresetFrame(editor: Editor, size: { name: string; width: number; height: number }, kind: 'frame' | 'graphic' = 'frame') {
   const trace = canvasActions(editor), token = trace.begin(CanvasAction.create, ActionSource.menu, { commandCode: 204, targetCount: 1 })
   let outcome: typeof ActionOutcome[keyof typeof ActionOutcome] = ActionOutcome.rejected
   let reason: typeof ActionReason[keyof typeof ActionReason] = ActionReason.validation
@@ -58,13 +59,30 @@ export function createPresetFrame(editor: Editor, size: { name: string; width: n
     }
     const { doc, page, view } = editor.state, owner = doc.pages.find(p => p.id === page)
     if (!owner) return { ok: false, error: '当前页面不可用' }
-    let right: number
-    try { right = framePlacementRight(doc,page) }
-    catch { return {ok:false,error:'页面层级无效，无法安全放置画板'} }
-    const x = Math.max((80-view.x)/view.zoom, Number.isFinite(right) ? right+64 : -Infinity), y = (80-view.y)/view.zoom
+    let x = (80 - view.x) / view.zoom, y = (80 - view.y) / view.zoom
+    if (kind === 'graphic') {
+      const frames = owner.children.map(id => doc.nodes[id]).filter(layer => layer?.kind === 'frame' && layer.visible)
+      const firstFrame = frames[0]
+      const anchor = frames.reverse().find(layer => layer.graphic) ?? firstFrame
+      if (anchor) {
+        const box = bounds(boxPoints({x:0,y:0,width:anchor.width,height:anchor.height}).map(point => apply(anchor.transform,point)))
+        x = Math.round(box.x + box.width + 100)
+        y = Math.round(box.y)
+      }
+    } else {
+      let right: number
+      try { right = framePlacementRight(doc,page) }
+      catch { return {ok:false,error:'页面层级无效，无法安全放置画板'} }
+      if (Number.isFinite(right)) x = Math.max(x, right + 64)
+    }
     if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false, error: '当前画布位置不可用' }
-    const frame = node('frame',x,y,size.width,size.height); frame.name = size.name || '自定义画板'
-    const result = editor.change('创建设备画板', draft => {
+    const frame = kind === 'graphic' ? createShapeSeed('graphic') : node('frame',x,y,size.width,size.height)
+    if (frame.graphic) {
+      Object.assign(frame, {width:size.width, height:size.height, transform:[1,0,0,1,x,y]})
+    }
+    frame.name = size.name || '自定义画板'
+    const result = editor.change(frame.graphic ? '创建图形模板' : '创建设备画板', draft => {
+      if (frame.graphic) draft.schemaVersion = 23
       draft.nodes[frame.id] = frame
       draft.pages.find(p => p.id === page)!.children.push(frame.id)
     },[frame.id])
@@ -72,6 +90,7 @@ export function createPresetFrame(editor: Editor, size: { name: string; width: n
     const actual = editor.state.doc.nodes[frame.id]
     widthComparison = actual.width === size.width ? 1 : 2; heightComparison = actual.height === size.height ? 1 : 2
     outcome = ActionOutcome.committed; reason = ActionReason.none
+    if (frame.graphic) editor.set({tool:'select'})
     editor.requestReveal([frame.id])
     return { ok:true,id:frame.id }
   } finally {

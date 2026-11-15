@@ -1696,6 +1696,21 @@ footer button {
 .glass-settings-header button, .glass-settings-trigger { display: grid; place-items: center; padding: 4px; }
 .glass-settings-popover .glass-fields { grid-template-columns: minmax(0, 1fr); padding: 8px 12px 12px; }
 .glass-light-toggle { display: flex; align-items: center; gap: 6px; }
+.graphic-template-list { display: grid; gap: 3px; }
+.graphic-template-list button {
+  display: flex; align-items: center; gap: 10px; padding: 5px 6px;
+  text-align: left; border-radius: 7px;
+}
+.graphic-template-list button:hover, .graphic-template-list button:focus-visible {
+  background: var(--workspace-selected);
+}
+.graphic-template-preview {
+  width: 40px; height: 40px; display: grid; place-items: center; flex: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, #44caba 32%, var(--workspace-field));
+  color: var(--workspace-text);
+}
+.vector-corner-fields { display: grid; gap: 5px; }
 .effect-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .properties-content .effect-fields .number-field {
   display: grid;

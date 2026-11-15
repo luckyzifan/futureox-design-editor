@@ -2079,10 +2079,12 @@ impl FigImporter {
             } else {
                 fill.clone()
             };
-            node.vector_geometry = Some(
-                crate::vector_geometry::VectorGeometry::from_paths(&fill, &stroke, rule)
-                    .map_err(Error::Malformed)?.into(),
-            );
+            let mut geometry = crate::vector_geometry::VectorGeometry::from_paths(&fill, &stroke, rule)
+                .map_err(Error::Malformed)?;
+            if fig_type == "VECTOR" && change.get("strokeBrushGuid").is_none() {
+                geometry.corner_source = node.vector_geometry.as_ref().and_then(|g| g.corner_source.clone());
+            }
+            node.vector_geometry = Some(geometry.into());
             node.network = None;
         }
         if fig_type == "BRUSH" {

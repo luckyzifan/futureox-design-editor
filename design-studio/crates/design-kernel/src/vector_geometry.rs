@@ -27,6 +27,70 @@ pub struct VectorGeometry {
     /// None shares the fill curves; Some(empty) explicitly has no stroke.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stroke: Option<Vec<Curve>>,
+    /// Source of a supported native rounded contour. The curves above remain
+    /// authoritative until an explicit corner edit rebuilds them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub corner_source: Option<std::sync::Arc<CornerSource>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CornerSource {
+    pub network: Network,
+    pub radii: Vec<f64>,
+    pub smoothing: f64,
+    pub scale: [f64; 2],
+}
+
+impl CornerSource {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let n = self.network.vertices.len();
+        if !(3..=10000).contains(&n) || self.network.edges.len() != n || self.radii.len() != n
+            || !matches!(self.network.fill_rule.as_str(), "evenodd" | "nonzero")
+            || self.radii.iter().any(|r| !(0. ..=1e7).contains(r))
+            || !(0. ..=1.).contains(&self.smoothing)
+            || self.scale.iter().any(|scale| !scale.is_finite() || *scale <= 0.)
+            || self.network.vertices.iter().any(|v| !v.x.is_finite() || !v.y.is_finite()
+                || v.x.abs() > 1e7 || v.y.abs() > 1e7)
+            || self.network.edges.iter().any(|e| e.c1.is_some() || e.c2.is_some())
+            || self.network.filled_faces.as_ref().is_some_and(|f| f.len() != 1 || f[0].len() != n)
+        {
+            return Err("Invalid editable vector corner source".into());
+        }
+        Ok(())
+    }
+
+    /// Analytic glass may use these parameters when the source contour is
+    /// exactly an axis-aligned rectangle with four fitted circular corners.
+    pub(crate) fn rectangle_radii(&self, width: f64, height: f64) -> Option<[f64; 4]> {
+        if self.network.vertices.len() != 4 || self.scale[0] != self.scale[1]
+            || self.smoothing != 0. || self.validate().is_err()
+        {
+            return None;
+        }
+        let scale = self.scale[0];
+        let coords = [[0., 0.], [width, 0.], [width, height], [0., height]];
+        let mut radii = [0.; 4];
+        let mut vertices = std::collections::HashMap::new();
+        let mut seen = [false; 4];
+        for (vertex, radius) in self.network.vertices.iter().zip(&self.radii) {
+            let i = coords.iter().position(|[x, y]| {
+                (vertex.x * scale - x).abs() < 1e-8 && (vertex.y * scale - y).abs() < 1e-8
+            })?;
+            if seen[i] || vertices.insert(vertex.id.as_str(), i).is_some() { return None; }
+            seen[i] = true;
+            radii[i] = radius * scale;
+        }
+        let mut sides = [false; 4];
+        for edge in &self.network.edges {
+            let a = *vertices.get(edge.from.as_str())?;
+            let b = *vertices.get(edge.to.as_str())?;
+            let side = if (a + 1) % 4 == b { a } else if (b + 1) % 4 == a { b } else { return None; };
+            if sides[side] { return None; }
+            sides[side] = true;
+        }
+        Some(radii)
+    }
 }
 fn point(p: [f64; 2]) -> Point {
     Point::new(p[0], p[1])
@@ -113,11 +177,13 @@ impl VectorGeometry {
             fill_rule: rule.into(),
             stroke: if fill == line { None } else { Some(line) },
             fill,
+            corner_source: None,
         };
         value.validate()?;
         Ok(value)
     }
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(source) = &self.corner_source { source.validate()?; }
         if !matches!(self.fill_rule.as_str(), "evenodd" | "nonzero")
             || self
                 .fill
@@ -170,6 +236,11 @@ impl VectorGeometry {
         ))
     }
     pub fn scale(&mut self, sx: f64, sy: f64) {
+        if let Some(source) = &mut self.corner_source {
+            let source = std::sync::Arc::make_mut(source);
+            source.scale[0] *= sx;
+            source.scale[1] *= sy;
+        }
         for curve in self.fill.iter_mut().chain(self.stroke.iter_mut().flatten()) {
             let values: &mut [f64] = match curve {
                 Curve::Move(p) | Curve::Line(p) => p,
@@ -182,6 +253,19 @@ impl VectorGeometry {
                 pair[1] *= sy;
             }
         }
+    }
+
+    pub fn edit_corners(&self, radii: &[f64], smoothing: f64) -> Result<Self, String> {
+        let mut source = self.corner_source.as_deref().ok_or("No editable vector corners")?.clone();
+        source.radii = radii.to_vec();
+        source.smoothing = smoothing;
+        source.validate()?;
+        let mut geometry = crate::fig_geometry::corner_geometry(&source.network, &source.radii, smoothing)?
+            .ok_or("Vector corner source is not a closed straight contour")?;
+        geometry.scale(source.scale[0], source.scale[1]);
+        geometry.corner_source = Some(source.into());
+        geometry.validate()?;
+        Ok(geometry)
     }
     /// Materialize only for explicit point editing or a bounded format encoder.
     /// No command is flattened or rounded. Independent fill/stroke topology must
@@ -326,6 +410,7 @@ impl Eq for GeometryKey {}
 pub struct GeometryPool { values:std::collections::HashSet<GeometryKey> }
 impl GeometryPool {
     pub fn intern(&mut self,value:&mut std::sync::Arc<VectorGeometry>){
+        if value.corner_source.is_some() { return; }
         let key=GeometryKey(value.clone());
         if let Some(known)=self.values.get(&key){*value=known.0.clone()}else{self.values.insert(key);}
     }
@@ -334,7 +419,7 @@ impl GeometryPool {
 #[cfg(test)] mod sharing_tests {
     use super::*;
     use std::sync::Arc;
-    fn geometry()->VectorGeometry {VectorGeometry{fill_rule:"nonzero".into(),fill:vec![Curve::Move([-0.,1.]),Curve::Line([10.,0.]),Curve::Line([10.,10.]),Curve::Close],stroke:None}}
+    fn geometry()->VectorGeometry {VectorGeometry{fill_rule:"nonzero".into(),fill:vec![Curve::Move([-0.,1.]),Curve::Line([10.,0.]),Curve::Line([10.,10.]),Curve::Close],stroke:None,corner_source:None}}
     #[test] fn immutable_curves_share_and_a_resize_detaches_only_the_edited_value(){
         let mut a=Arc::new(geometry());let mut b=Arc::new(geometry());let mut pool=GeometryPool::default();
         pool.intern(&mut a);pool.intern(&mut b);assert!(Arc::ptr_eq(&a,&b));
@@ -352,13 +437,17 @@ impl GeometryPool {
 
 #[cfg(not(target_arch="wasm32"))]
 pub(crate) mod packed {
-    use super::{Curve,VectorGeometry,MAX_COMMANDS,curve_words};
+    use super::{CornerSource,Curve,VectorGeometry,MAX_COMMANDS,curve_words};
     use base64::Engine as _;
     use serde::{Serialize,Deserialize};
     const MAX_BYTES:usize=4+MAX_COMMANDS*49;
     #[derive(Serialize,Deserialize)]
     #[serde(rename_all="camelCase",deny_unknown_fields)]
-    pub(crate) struct PackedGeometry {fill_rule:String,fill:String,stroke:Option<String>}
+    pub(crate) struct PackedGeometry {
+        fill_rule:String,fill:String,stroke:Option<String>,
+        #[serde(default,skip_serializing_if="Option::is_none")]
+        corner_source:Option<std::sync::Arc<CornerSource>>,
+    }
     fn encode(curves:&[Curve])->Result<String,String>{
         if curves.len()>MAX_COMMANDS{return Err("Packed geometry command budget exceeded".into())}
         let mut bytes=Vec::new();bytes.try_reserve_exact(4+curves.len()*17).map_err(|e|e.to_string())?;
@@ -389,10 +478,10 @@ pub(crate) mod packed {
     }
     impl PackedGeometry {
         pub(crate) fn new(geometry:&VectorGeometry)->Result<Self,String>{
-            Ok(Self{fill_rule:geometry.fill_rule.clone(),fill:encode(&geometry.fill)?,stroke:geometry.stroke.as_ref().map(|s|encode(s)).transpose()?})
+            Ok(Self{fill_rule:geometry.fill_rule.clone(),fill:encode(&geometry.fill)?,stroke:geometry.stroke.as_ref().map(|s|encode(s)).transpose()?,corner_source:geometry.corner_source.clone()})
         }
         pub(crate) fn unpack(self)->Result<VectorGeometry,String>{
-            let geometry=VectorGeometry{fill_rule:self.fill_rule,fill:decode(&self.fill)?,stroke:self.stroke.as_deref().map(decode).transpose()?};
+            let geometry=VectorGeometry{fill_rule:self.fill_rule,fill:decode(&self.fill)?,stroke:self.stroke.as_deref().map(decode).transpose()?,corner_source:self.corner_source};
             if geometry.fill.len().saturating_add(geometry.stroke.as_ref().map_or(0,Vec::len))>MAX_COMMANDS{return Err("Packed geometry command budget exceeded".into())}Ok(geometry)
         }
     }
@@ -400,7 +489,7 @@ pub(crate) mod packed {
         use super::*;
         #[test]fn binary_curves_keep_every_f64_bit_and_stroke_presence(){
             for stroke in [None,Some(vec![]),Some(vec![Curve::Move([-0.,-1e-200]),Curve::Cubic([1.25,2.5,-3.,4.,-0.,5.])])]{
-                let source=VectorGeometry{fill_rule:"evenodd".into(),fill:vec![Curve::Move([-0.,f64::MIN_POSITIVE]),Curve::Line([1e-200,9e99]),Curve::Quad([1.,2.,3.,4.]),Curve::Close],stroke};
+                let source=VectorGeometry{fill_rule:"evenodd".into(),fill:vec![Curve::Move([-0.,f64::MIN_POSITIVE]),Curve::Line([1e-200,9e99]),Curve::Quad([1.,2.,3.,4.]),Curve::Close],stroke,corner_source:None};
                 let decoded=PackedGeometry::new(&source).unwrap().unpack().unwrap();assert_eq!(serde_json::to_vec(&source).unwrap(),serde_json::to_vec(&decoded).unwrap());
             }
         }

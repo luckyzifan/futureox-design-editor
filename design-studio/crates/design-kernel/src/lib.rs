@@ -567,6 +567,13 @@ mod wasm {
         serde_json::to_string(&result).map_err(|e|error(e.to_string()))
     }
     #[wasm_bindgen]
+    pub fn edit_vector_corners_json(geometry: &str, radii: &[f64], smoothing: f64) -> Result<String, JsValue> {
+        let error = |e: String| JsValue::from_str(&e);
+        let geometry: vector_geometry::VectorGeometry = serde_json::from_str(geometry).map_err(|e| error(e.to_string()))?;
+        let edited = geometry.edit_corners(radii, smoothing).map_err(error)?;
+        serde_json::to_string(&edited).map_err(|e| error(e.to_string()))
+    }
+    #[wasm_bindgen]
     pub fn decode_fig_commands_json(bytes:&[u8])->Result<String,JsValue>{
         let path=fig_geometry::decode_commands(bytes).map_err(|e|JsValue::from_str(&e))?;
         let commands=vector_geometry::encode(&path).map_err(|e|JsValue::from_str(&e))?;

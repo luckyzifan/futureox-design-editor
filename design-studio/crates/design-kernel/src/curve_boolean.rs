@@ -571,7 +571,7 @@ mod memo_tests {
         use crate::vector_geometry::{Curve,VectorGeometry};
         let mut fill=vec![Curve::Move([0.,0.])];
         for side in 0..4 {for step in 1..=2200 {let t=step as f64/2200.;fill.push(Curve::Line(match side {0=>[40.*t,0.],1=>[40.,40.*t],2=>[40.*(1.-t),40.],_=>[0.,40.*(1.-t)]}));}}
-        fill.push(Curve::Close);let geometry=VectorGeometry{fill_rule:"nonzero".into(),fill,stroke:None};
+        fill.push(Curve::Close);let geometry=VectorGeometry{fill_rule:"nonzero".into(),fill,stroke:None,corner_source:None};
         let mut doc:Document=serde_json::from_value(serde_json::json!({"schemaVersion":16,"id":"d","name":"dense","pages":[{"id":"p","name":"p","background":"#ffffff","children":["b"]}],"nodes":{
             "b":{"id":"b","kind":"vector","width":40,"height":40,"booleanOperation":"union","children":["a"]},
             "a":{"id":"a","kind":"vector","width":40,"height":40,"vectorGeometry":geometry}}})).unwrap();

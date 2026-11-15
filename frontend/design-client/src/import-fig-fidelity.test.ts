@@ -5,7 +5,7 @@ import { deflateSync, inflateSync } from 'fflate'
 import { figArchive, importFig } from './import-fig'
 import { uid, validateDocument } from './model'
 import { kernelSvgPaths, prepareDocumentForEditing } from './kernel/picking'
-import { export_sketch_json, import_sketch_json, forma_decode_json, forma_encode_json, VectorEngine } from './generated/design-kernel/design_kernel'
+import { edit_vector_corners_json, export_sketch_json, import_sketch_json, forma_decode_json, forma_encode_json, VectorEngine } from './generated/design-kernel/design_kernel'
 import { createImportedCopy } from './import-identity'
 import { Editor } from './engine'
 
@@ -148,6 +148,18 @@ test('actual FIG vector card radius is rendered rather than silently kept as unu
  const {document,warnings}=importFig(encoded({type:'VECTOR',size:{x:548,y:409},cornerRadius:6,vectorData:{normalizedSize:{x:548,y:409},vectorNetworkBlob:0}}, {},[bytes]))
  const n=Object.values(document.nodes).find(n=>n.name==='Subject')!
  expect(n.kind).toBe('vector');expect(n.vectorGeometry).toBeDefined();expect(n.network).toBeUndefined()
+ const original=n.vectorGeometry!
+ expect(original.cornerSource?.radii).toEqual([6,6,6,6])
+ expect(original.cornerSource?.network.vertices).toHaveLength(4)
+ const wider=JSON.parse(edit_vector_corners_json(JSON.stringify(original),Float64Array.of(12,6,0,6),0))
+ expect(wider.cornerSource.network).toEqual(original.cornerSource!.network)
+ expect(wider.cornerSource.radii).toEqual([12,6,0,6])
+ expect(wider.fill).not.toEqual(original.fill)
+ expect(() => edit_vector_corners_json(JSON.stringify(original),Float64Array.of(-1,6,0,6),0)).toThrow(/corner/)
+ const stored=structuredClone(document)
+ stored.nodes[n.id].vectorGeometry=wider
+ const fd=forma_decode_json(forma_encode_json(JSON.stringify(stored)))
+ expect(JSON.parse(fd).nodes[n.id].vectorGeometry.cornerSource).toEqual(wider.cornerSource)
  expect(warnings.some(w=>w.includes('圆角'))).toBe(false)
  const engine=new VectorEngine()
  try{engine.load_document(JSON.stringify(document));const pixels=engine.render_rgba(JSON.stringify({pageId:document.pages[0].id,width:12,height:12,view:{x:0,y:0,zoom:1},transparent:true,grid:false,rasterProfile:'analytic'}))

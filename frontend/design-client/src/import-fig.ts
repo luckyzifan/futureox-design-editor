@@ -855,7 +855,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       // current file has no stroke paint yet.
       const strokePath = source && !r.strokeBrushGuid && (r.type === 'VECTOR' || n.strokes.length)
         ? { stroke: source.stroke ?? source.fill } : {}
-      n.vectorGeometry = { ...outline, ...strokePath }
+      const cornerSource = r.type === 'VECTOR' && !r.strokeBrushGuid ? n.vectorGeometry?.cornerSource : undefined
+      n.vectorGeometry = { ...outline, ...strokePath, ...(cornerSource ? { cornerSource } : {}) }
       delete n.network
     }
     if (r.type === 'BRUSH') {

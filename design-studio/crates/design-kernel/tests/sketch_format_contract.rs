@@ -74,7 +74,7 @@ fn baked_export_collapses_independent_stroke_topology(){
  let node=doc.nodes.get_mut(ID).unwrap();
  let fill=vec![Curve::Move([0.,0.]),Curve::Line([40.,0.]),Curve::Line([40.,40.]),Curve::Line([0.,40.]),Curve::Close];
  node.kind="vector".into();
- node.vector_geometry=Some(std::sync::Arc::new(VectorGeometry{fill_rule:"nonzero".into(),fill:fill.clone(),stroke:Some(vec![Curve::Move([5.,5.]),Curve::Line([35.,5.]),Curve::Close])}));
+ node.vector_geometry=Some(std::sync::Arc::new(VectorGeometry{fill_rule:"nonzero".into(),fill:fill.clone(),stroke:Some(vec![Curve::Move([5.,5.]),Curve::Line([35.,5.]),Curve::Close]),corner_source:None}));
  assert!(interop::export_sketch(&doc).is_err(),"default export keeps refusing independent stroke topology");
  let (bytes,baked)=interop::export_sketch_baked(&doc).unwrap();
  assert_eq!(baked,1,"the independent stroke collapses onto the fill outline");

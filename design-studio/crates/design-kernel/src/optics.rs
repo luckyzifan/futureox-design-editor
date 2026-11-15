@@ -26,22 +26,26 @@ pub struct GlassShape {
 }
 impl GlassShape {
     pub fn from_node(node: &Node) -> Option<Self> {
-        if !matches!(node.kind.as_str(), "rectangle" | "frame" | "section")
-            || node.network.is_some()
-            || node.derived_path.is_some()
-            || node.smoothing != 0.
-        {
+        if node.network.is_some() || node.derived_path.is_some() || node.smoothing != 0. {
             return None;
         }
-        let uniform = node.radii.iter().all(|r| *r == node.radii[0]);
+        let radii = if node.kind == "vector" {
+            if node.path_offset != 0. { return None; }
+            node.vector_geometry.as_ref()?.corner_source.as_ref()?.rectangle_radii(node.width, node.height)?
+        } else if matches!(node.kind.as_str(), "rectangle" | "frame" | "section") {
+            node.radii
+        } else {
+            return None;
+        };
+        let uniform = radii.iter().all(|r| *r == radii[0]);
         if uniform {
             return Some(Self {
                 size: [node.width, node.height],
-                radius: node.radii[0].min(node.width.min(node.height) * 0.5),
+                radius: radii[0].min(node.width.min(node.height) * 0.5),
                 radii: None,
             });
         }
-        let fitted = crate::rounded::fitted_radii(node.width, node.height, node.radii);
+        let fitted = crate::rounded::fitted_radii(node.width, node.height, radii);
         if fitted.iter().any(|r| !r.is_finite()) {
             return None;
         }
