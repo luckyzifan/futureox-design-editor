@@ -15,7 +15,7 @@ import { pluginLaunchGrant, requestOpenPlugins } from './plugins/open-plugins'
 import { commandSearchText } from './command-search'
 import { requestCommandSearch } from './command-search-session'
 
-export type CanvasLayerCandidate = { id: string; name: string; locked: boolean }
+export type CanvasLayerCandidate = { id: string; name: string; locked: boolean; hidden?: boolean }
 export type CanvasContextMenuProps = {
   editor: Editor
   /** Browser client coordinates; the menu is portaled outside the canvas clip. */
@@ -49,6 +49,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
   const visible = candidates.filter((candidate) => {
     let id: string | undefined = candidate.id
     if (!state.doc.nodes[id]) return false
+    if (candidate.hidden && figma && state.outlines && state.outlineHiddenLayers !== false) return true
     while (id && state.doc.nodes[id]) { if (!state.doc.nodes[id].visible) return false; id = parents.get(id) }
     return true
   })

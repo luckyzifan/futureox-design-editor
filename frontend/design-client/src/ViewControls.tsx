@@ -13,9 +13,11 @@ export function ViewControls({
   size,
   fit,
   compact = false,
+  outlineAvailable = true,
 }: {
   editor: Editor
   compact?: boolean
+  outlineAvailable?: boolean
   size: { width: number; height: number }
   fit: (selection?: boolean) => void
 }) {
@@ -166,6 +168,21 @@ export function ViewControls({
             {text.snap}
           </label>
           <label><input type="checkbox" checked={!!s.rulers} onChange={e=>editor.set({rulers:e.target.checked})}/>{text.rulers}　⇧R</label>
+          {!sketch && outlineAvailable && <details className="view-outline-options">
+            <summary>{label('轮廓', 'Outlines')}</summary>
+            <label><input type="checkbox" checked={!!s.outlines} disabled={editor.interactionActive}
+              onChange={e => editor.set({ outlines: e.target.checked })} />
+              {label('显示轮廓', 'Show outlines')} <kbd>{shortcutLabel('toggle-outlines', shortcut)}</kbd>
+            </label>
+            <label><input type="checkbox" checked={s.outlineHiddenLayers !== false}
+              onChange={e => editor.set({ outlineHiddenLayers: e.target.checked })} />
+              {label('包含隐藏图层', 'Include hidden layers')}
+            </label>
+            <label><input type="checkbox" checked={!!s.outlineObjectBounds}
+              onChange={e => editor.set({ outlineObjectBounds: e.target.checked })} />
+              {label('包含对象边界', 'Include object bounds')}
+            </label>
+          </details>}
         </div>
       </details>
       {!compact && <><button type="button" title={text.zoomIn} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>

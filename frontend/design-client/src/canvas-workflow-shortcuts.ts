@@ -5,7 +5,7 @@ import type { DesignDocument } from './model'
 import { allParents } from './geometry'
 import { propertyUnits } from './property-units'
 import { interactivePath, marqueeScope } from './selection-hierarchy'
-import { resizeNodeDimension, selectionMetric } from './selection-properties'
+import { editableFrameCrop, frameCropPatches, resizeNodeDimension, selectionMetric } from './selection-properties'
 import type { ShortcutProfile } from './shortcut-profiles'
 
 const dimensionNudges = {
@@ -44,9 +44,15 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
     return value === current ? [] : [[id, { value, units }] as const]
   }))
   if (!edits.size) return
-  editor.update([...edits.keys()], node => {
+  const crop = editableFrameCrop(editor)
+  editor.update([...edits.keys()], (node, draft) => {
     const { value, units } = edits.get(node.id)!
     resizeNodeDimension(node, axis, value, document, units)
+    if (node.id === crop && editor.state.frameCrop === crop) {
+      const { transform, width, height } = node
+      const patches = frameCropPatches(document, node.id, { transform, width, height })
+      for (const id of node.children) if (patches[id]) Object.assign(draft.nodes[id], patches[id])
+    }
   }, '键盘调整图层尺寸')
 }
 

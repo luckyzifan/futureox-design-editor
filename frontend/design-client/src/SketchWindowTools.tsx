@@ -1,5 +1,5 @@
 import { type ReactNode, useRef, useState, useSyncExternalStore } from 'react'
-import { ArrowDownToLine, ArrowUpToLine, Component, Group, PenTool, Plus, Search, Shapes, SlidersHorizontal, TextCursor } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpToLine, Component, Crop, Group, PenTool, Plus, Search, Shapes, SlidersHorizontal, TextCursor } from 'lucide-react'
 import { DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import type { Editor, Tool } from './engine'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
@@ -13,6 +13,7 @@ import { localizedToolLabel } from './tool-registry'
 import { RASTER_FILE_ACCEPT } from './image-import'
 import { canEnterOutlineEdit } from './figma-basic-ops'
 import { commitPendingEdits } from './pending-edits'
+import { editableFrameCrop } from './selection-properties'
 
 type Menu = 'insert' | 'group' | 'tools' | 'combine'
 
@@ -36,19 +37,21 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
   const label = (zh: string, en: string) => locale === 'en' ? en : zh
   const available: Partial<Record<EditorCommand, boolean>> = {
     'bring-forward': canBringForward, 'send-backward': canSendBackward,
-    group: canGroup, 'frame-selection': canGroup, ungroup: canUngroup,
+    group: canGroup, 'frame-selection': canGroup, 'graphic-selection': canGroup, ungroup: canUngroup,
   }
   const allowed = (id: EditorCommand) => available[id] ?? commands.some(command => command.command === id && !command.disabled)
   const focusCanvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
   const invoke = (id: EditorCommand) => { setOpen(null); focusCanvas(); void dispatchEditorCommand(editor, id) }
   const tool = (id: Tool) => { setOpen(null); void activateTool(editor, id); focusCanvas() }
   const editLabel = label('编辑', 'Edit')
+  const cropFrame = editableFrameCrop(editor)
   const canEdit = !!node && !s.busy && !editor.interactionActive && !lockedSelectionIds(editor).length &&
-    (node.kind === 'text' ? node.visible : canEnterOutlineEdit(node))
+    (!!cropFrame || (node.kind === 'text' ? node.visible : canEnterOutlineEdit(node)))
   const edit = () => {
     setOpen(null)
     if (!node || !canEdit || !commitPendingEdits(editor) || editor.state.selection[0] !== node.id) return
-    if (node.kind === 'text') onEditText(node.id)
+    if (cropFrame === node.id) invoke('edit-frame-bounds')
+    else if (node.kind === 'text') onEditText(node.id)
     else if (s.tool === 'vector') tool('select')
     else { editor.set({ tool: 'vector', editingVertex: null, editingVertices: [] }); focusCanvas() }
   }
@@ -83,13 +86,14 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
       {action('send-backward', label('后置一层', 'Send backward'), <ArrowDownToLine size={17} />, true)}
       {menu('group', text.group, <Group size={17} />, <>
         {menuAction('frame-selection', label('画框', 'Frame'))}
+        {menuAction('graphic-selection', label('图形', 'Graphic'))}
         {menuAction('group', text.group)}
         {menuAction('auto-layout', label('层叠', 'Stack'))}
         {menuAction('ungroup', label('取消编组', 'Ungroup'))}
       </>, canGroup || canUngroup)}
-      <button type="button" className="sketch-secondary-tool" aria-pressed={s.tool === 'vector' && node?.kind !== 'text'}
+      <button type="button" className="sketch-secondary-tool" aria-pressed={!!s.frameCrop || s.tool === 'vector' && node?.kind !== 'text'}
         aria-label={editLabel} data-tooltip={editLabel} disabled={!canEdit} onClick={edit}>
-        {node?.kind === 'text' ? <TextCursor size={17} /> : <PenTool size={17} />}
+        {cropFrame ? <Crop size={17} /> : node?.kind === 'text' ? <TextCursor size={17} /> : <PenTool size={17} />}
       </button>
       {menu('tools', label('工具', 'Tools'), <SlidersHorizontal size={17} />, <>
         {(['select', 'hand', 'scale', 'zoom', 'pencil', 'brush', 'eraser', 'comments', 'eyedropper'] as const).map(menuTool)}

@@ -183,6 +183,10 @@ export type EditorState = {
   snapPixels: boolean
   pixelGrid: boolean
   rulers?: boolean
+  outlines?: boolean
+  outlineHiddenLayers?: boolean
+  outlineObjectBounds?: boolean
+  frameCrop?: string | null
   showAuthoredLayout?: boolean
   showOverview?: boolean
   pixelPreview: 0 | 1 | 2
@@ -545,6 +549,10 @@ export class Editor {
       patch={...patch,view:savedCamera(patch.view)||this.state.view}
     }
     const next = { ...this.state, ...patch }
+    if (next.frameCrop && (navigationChanged || next.tool !== 'select' ||
+        next.selection.length !== 1 || next.selection[0] !== next.frameCrop ||
+        next.doc.nodes[next.frameCrop]?.kind !== 'frame' || next.doc.nodes[next.frameCrop]?.graphic))
+      next.frameCrop = null
     // Explicit raw messages supersede presentation tags even when text is equal.
     // Selection/camera updates do not shorten the existing notification lifetime.
     if (Object.prototype.hasOwnProperty.call(patch, 'message') &&
@@ -1323,6 +1331,8 @@ export class Editor {
       doc,
       page:saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id)),
       selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):[],
+      frameCrop: null,
+      outlines: false,
       hover: null,
       hoverSource: null,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
@@ -1974,7 +1984,7 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  group(mask = false, booleanOperation?: BooleanOp, kind: 'group' | 'frame' = 'group') {
+  group(mask = false, booleanOperation?: BooleanOp, kind: 'group' | 'frame' | 'graphic' = 'group') {
     const action = beginEditorAction(this, CanvasAction.group, ActionSource.unknown, 220)
     try {
       if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
@@ -1992,13 +2002,15 @@ export class Editor {
       }
       const plan = prepareSelectionWrap(base, this.state.selection, { fresh: true })
       if (mask && plan.ids.length < 2) throw new SelectionCommandError('invalid_params', 'Mask grouping requires at least two nodes')
-      const group = node(kind, 0, 0, plan.width, plan.height)
+      const group = node(kind === 'graphic' ? 'frame' : kind, 0, 0, plan.width, plan.height)
       configureSelectionWrapper(group, plan)
-      group.name = mask ? '蒙版组' : kind === 'frame' ? '画板' : '编组'
-      return this.change(mask ? '创建蒙版' : kind === 'frame' ? '创建选区画板' : '编组', draft => {
+      if (kind === 'graphic') group.graphic = true
+      group.name = mask ? '蒙版组' : kind === 'graphic' ? '图形' : kind === 'frame' ? '画板' : '编组'
+      return this.change(mask ? '创建蒙版' : kind === 'graphic' ? '编组图形' : kind === 'frame' ? '创建选区画板' : '编组', draft => {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
           throw new SelectionCommandError('superseded', 'Selection owner changed before grouping')
         if (mask) draft.nodes[plan.ids[0]].mask = true
+        if (group.graphic) draft.schemaVersion = 23
         applySelectionWrap(draft, plan, group)
       }, [group.id])
     } catch (error) {

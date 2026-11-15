@@ -2,8 +2,10 @@ import { defaultSizing, defaultTextStyle, type DesignDocument, type DesignNode, 
 import { localBounds, parentBounds, selectionLocalBounds, selectionParentBounds } from './canvas-view'
 import { figmaRotationDegrees } from './rotation-field'
 import { propertyUnits, type PropertyUnits } from './property-units'
-import { multiply } from './geometry'
+import { inverse, multiply } from './geometry'
 import { kernelScaleGeometry } from './kernel/picking'
+import type { Editor } from './engine'
+import { interactivePath } from './selection-hierarchy'
 
 export function commonValue<T>(values: T[]): T | undefined {
   return values.length && values.every((value) => Object.is(value, values[0])) ? values[0] : undefined
@@ -59,6 +61,38 @@ export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', 
     const scale = axis === 'width' ? Math.hypot(node.transform[0], node.transform[1]) : Math.hypot(node.transform[2], node.transform[3])
     node[axis] = value / (units * scale)
   }
+}
+
+export function editableFrameCrop(editor: Editor): string | undefined {
+  const { doc, page, selection } = editor.state
+  if (selection.length !== 1) return
+  const id = selection[0], frame = doc.nodes[id], parents = editor.parentMap(doc)
+  if (!frame || frame.kind !== 'frame' || frame.graphic || frame.instance || frame.instanceOrigin ||
+      frame.layout && frame.layout.mode !== 'none' || !interactivePath(doc, page, id, false, parents).length) return
+  const parent = doc.nodes[parents.get(id) || '']
+  if (parent?.layout && parent.layout.mode !== 'none' && !frame.sizing?.absolute) return
+  return id
+}
+
+/** Resize the frame in its own axes. Rebase direct children so their world
+ * transforms and the pin modes used by the next ordinary resize stay intact. */
+export function frameCropPatches(doc: DesignDocument, id: string, patch: Partial<DesignNode>): Record<string, Partial<DesignNode>> {
+  const frame = doc.nodes[id]
+  const width = patch.width ?? frame.width, height = patch.height ?? frame.height
+  const transform = patch.transform ?? frame.transform
+  const offset = transform.every((value, index) => value === frame.transform[index])
+    ? undefined : multiply(inverse(transform), frame.transform)
+  const patches: Record<string, Partial<DesignNode>> = { [id]: patch }
+  for (const id of frame.children) {
+    const child = doc.nodes[id]
+    if (offset || child.constraints && (width !== frame.width || height !== frame.height)) {
+      patches[id] = {
+        ...(offset && { transform: multiply(offset, child.transform) }),
+        ...(child.constraints && { constraints: { ...child.constraints, referenceWidth: width, referenceHeight: height } }),
+      }
+    }
+  }
+  return patches
 }
 
 /** One resize contract for canvas handles and Inspector dimensions. Groups

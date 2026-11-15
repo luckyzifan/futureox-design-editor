@@ -275,14 +275,16 @@ export type SceneEntry = {
   depth: number
   ancestors: string[]
   locked: boolean
+  hidden?: boolean
 }
-export function scene(d: DesignDocument, pageId: string, roots?: ReadonlySet<string>): SceneEntry[] {
+export function scene(d: DesignDocument, pageId: string, roots?: ReadonlySet<string>, includeHidden = false): SceneEntry[] {
   const result: SceneEntry[] = []
   const page = d.pages.find((p) => p.id === pageId)
   if (!page) return result
-  const visit = (id: string, parent: string, m: Matrix, ancestors: string[], locked: boolean) => {
+  const visit = (id: string, parent: string, m: Matrix, ancestors: string[], locked: boolean, ancestorHidden = false) => {
     const n = d.nodes[id]
-    if (!n || !n.visible) return
+    if (!n || !n.visible && !includeHidden) return
+    const hidden = includeHidden && (ancestorHidden || !n.visible)
     const wm = multiply(m, n.transform)
     const localPoints = n.network
       ? [
@@ -310,12 +312,13 @@ export function scene(d: DesignDocument, pageId: string, roots?: ReadonlySet<str
       depth: ancestors.length,
       ancestors,
       locked: locked || n.locked,
+      ...(hidden && { hidden: true }),
     }
     result.push(entry)
     const childBounds: Bounds[] = []
     n.children.forEach((c) => {
       const start = result.length
-      visit(c, id, wm, [...ancestors, id], locked || n.locked)
+      visit(c, id, wm, [...ancestors, id], locked || n.locked, hidden)
       if (result.length > start) childBounds.push(result[start].bounds)
     })
     if (n.kind === 'group' && n.children.length) {

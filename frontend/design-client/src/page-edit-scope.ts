@@ -94,11 +94,11 @@ function crossNode(n: DesignNode | undefined): boolean {
 }
 
 function needsLayout(n: DesignNode): boolean {
-  return !!(n.constraints || (n.layout && n.layout.mode !== 'none') ||
+  return !!(n.graphic || n.constraints || (n.layout && n.layout.mode !== 'none') ||
     (n.sizing && (n.sizing.width !== 'fixed' || n.sizing.height !== 'fixed')))
 }
 
-const geometryKeys = ['kind', 'width', 'height', 'transform', 'children', 'text', 'fontSize', 'textStyle', 'textRuns', 'layout', 'sizing', 'constraints', 'visible', 'network', 'vectorGeometry'] as const
+const geometryKeys = ['kind', 'width', 'height', 'transform', 'children', 'text', 'fontSize', 'textStyle', 'textRuns', 'graphic', 'layout', 'sizing', 'constraints', 'visible', 'network', 'vectorGeometry'] as const
 
 function geometryChange(before: DesignNode, after: DesignNode): boolean {
   return geometryKeys.some(key => before[key] !== after[key])
