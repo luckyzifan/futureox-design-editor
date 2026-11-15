@@ -111,11 +111,23 @@ test('FIG brush assets and baked strokes keep the ordinary page and the visible 
   } finally { engine.free() }
 })
 
-test('FIG automatic-width text stays on its authored line; fixed-width text retains wrapping',()=>{
- for(const textAutoResize of ['WIDTH_AND_HEIGHT','HEIGHT','NONE']){
-  const {node}=subject({type:'TEXT',textAutoResize,textData:{characters:'Completed Tasks'},fontSize:14,size:{x:123,y:20}})
+test('FIG automatic axes retain the original measured box until a text edit',()=>{
+ for(const [textAutoResize, width, height] of [
+   ['WIDTH_AND_HEIGHT', 'hug', 'hug'], ['HEIGHT', 'fixed', 'hug'], ['NONE', 'fixed', 'fixed'],
+ ]){
+  const {node,document}=subject({type:'TEXT',textAutoResize,textData:{characters:'Completed Tasks'},fontSize:14,size:{x:123,y:20}})
   expect(node.textStyle?.wrap).toBe(textAutoResize!=='WIDTH_AND_HEIGHT')
-  expect(node.width).toBe(123);expect(node.height).toBe(20)
+  expect([node.sizing?.width ?? 'fixed', node.sizing?.height ?? 'fixed']).toEqual([width, height])
+  const prepared=prepareDocumentForEditing(document)
+  expect(prepared.nodes[node.id]).toMatchObject({ width:123, height:20 })
+  const editor=new Editor(prepared)
+  editor.updateProperties([node.id], { text:'This edited text has several words that are wider than the source box' },'编辑文字')
+  if(width==='hug') expect(editor.state.doc.nodes[node.id].width).toBeGreaterThan(123)
+  else expect(editor.state.doc.nodes[node.id].width).toBe(123)
+  if(height==='hug' && width==='fixed') expect(editor.state.doc.nodes[node.id].height).toBeGreaterThan(20)
+  editor.undo()
+  expect(editor.state.doc.nodes[node.id]).toMatchObject({ width:123, height:20, text:'Completed Tasks' })
+  editor.dispose()
  }
 })
 

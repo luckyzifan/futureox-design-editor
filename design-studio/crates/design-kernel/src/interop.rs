@@ -6073,7 +6073,7 @@ fn sketch_text_behaviour(node: &Node) -> i64 {
 fn native_text_projection(layer: &Value) -> Value {
     json!({"attributedString":layer.get("attributedString"),"verticalAlignment":layer.pointer("/style/textStyle/verticalAlignment"),"textBehaviour":layer.get("textBehaviour"),"lineSpacingBehaviour":layer.get("lineSpacingBehaviour")})
 }
-fn text_layout_signature(node: &Node) -> Value {
+pub(crate) fn text_layout_signature(node: &Node) -> Value {
     json!({"text":node.text,"fontSize":node.font_size,"textStyle":node.text_style,
         "textRuns":node.text_runs,"sizing":node.sizing})
 }
@@ -6088,8 +6088,7 @@ struct TextLayoutSignature {
     sizing: Option<crate::layout::Sizing>,
 }
 
-fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool {
-    let Some(source) = source else { return false };
+pub(crate) fn text_layout_signature_matches(node: &Node, source: &Value) -> bool {
     // JS/IndexedDB/FD producers serialize integral doubles as integers. Compare
     // canonical typed fields rather than serde_json::Number's storage variant.
     let Some(signature) = source
@@ -6105,9 +6104,12 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
         text_runs: node.text_runs.to_vec(),
         sizing: node.sizing.clone(),
     };
-    if signature != current {
-        return false;
-    }
+    signature == current
+}
+
+fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool {
+    let Some(source) = source else { return false };
+    if !text_layout_signature_matches(node, source) { return false; }
     let (Some(width), Some(height), Some(transform), Some(sizing)) = (
         source.get("width").and_then(Value::as_f64),
         source.get("height").and_then(Value::as_f64),

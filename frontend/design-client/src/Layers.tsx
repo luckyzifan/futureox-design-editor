@@ -479,7 +479,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
       </div>
       </div>
       {context && s.doc.nodes[context.id] && <CanvasContextMenu editor={editor} x={context.x} y={context.y}
-        worldPoint={{ x: editor.selectionBounds().x, y: editor.selectionBounds().y }} candidates={[{ id: context.id, name: s.doc.nodes[context.id].name, locked: s.doc.nodes[context.id].locked }]} onClose={() => setContext(null)} />}
+        origin="layers" worldPoint={editor.selectionBounds()} onClose={() => setContext(null)} />}
     </aside>
   )
 }

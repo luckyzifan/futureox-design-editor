@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank, node, stroke, uid, type DesignDocument } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
-import { canvasContextItems, canvasMenuItems, clampContextMenu, moveToPageIndex, pluginsMenuIndex } from './canvas-menu-model'
+import { canvasContextItems, canvasMenuItems, clampContextMenu, moveToPageIndex, pluginsMenuIndex, sketchSelectionCommands } from './canvas-menu-model'
 import { interfacePreference } from './interface-preference'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { createClip } from './animation'
@@ -207,7 +207,32 @@ test('the canvas right-click list follows the Mac desktop order for a selected s
     expect(commands, absent).not.toContain(absent)
   editor.select([])
   expect(canvasContextItems(editor, { profile: 'figma-like', platform: 'mac' }).map(item => item.command))
-    .toEqual(['paste-here', 'select-all'])
+    .toEqual(['paste-here'])
+  editor.dispose()
+})
+
+test('context origin and layout choose the menu while the shortcut preference supplies key labels', () => {
+  const { editor, parent, a, b } = rotatedFixture()
+  const keys = { profile: 'figma-like', platform: 'mac', desktop: true } as const
+  editor.select([parent.id])
+  const layers = canvasContextItems(editor, keys, 'figma', 'layers').map(item => item.command)
+  expect(layers).not.toContain('paste-here')
+  expect(layers).toContain('convert-section')
+  expect(layers.indexOf('rename')).toBeGreaterThan(layers.indexOf('ungroup'))
+  expect(canvasContextItems(editor, keys, 'figma', 'empty-canvas').map(item => item.command)).toEqual(['paste-here'])
+  expect(editor.state.selection).toEqual([parent.id])
+  expect(sketchSelectionCommands(editor)).toMatchObject({ canBringForward: false, canSendBackward: false, canCombine: false })
+  editor.select([a.id])
+  const sketch = canvasContextItems(editor, keys, 'sketch', 'layers')
+  expect(sketch.slice(0, 6).map(item => item.command)).toEqual(['cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete'])
+  expect(sketch.find(item => item.command === 'ungroup')?.disabled).toBe(true)
+  expect(sketchSelectionCommands(editor)).toMatchObject({ canBringForward: true, canSendBackward: false, canCombine: false })
+  editor.select([a.id, b.id])
+  expect(sketchSelectionCommands(editor)).toMatchObject({ canBringForward: false, canSendBackward: false, canCombine: true })
+  editor.update([b.id], { kind: 'text' }, 'text')
+  expect(sketchSelectionCommands(editor).canCombine).toBe(false)
+  editor.clearSelection()
+  expect(sketchSelectionCommands(editor)).toMatchObject({ canGroup: false, canUngroup: false, canCombine: false })
   editor.dispose()
 })
 

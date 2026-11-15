@@ -152,17 +152,6 @@ export function TextStylePanel({
     text ? <p role="alert" style={{ color: '#bf3d34', margin: 0 }}>{text}</p> : null
   return (
     <div className="text-style-panel" onCompositionStartCapture={() => { composing.current = true; pendingEditsChanged(editor) }} onCompositionEndCapture={() => { composing.current = false; pendingEditsChanged(editor) }}>
-      <label className="labeled-select">{tr("文字尺寸")}<select aria-label={tr("文字尺寸模式")} value={node.sizing?.width === 'hug' ? 'width' : node.sizing?.height === 'hug' ? 'height' : 'fixed'}
-          onChange={event => {
-            const mode = event.target.value
-            editor.updateProperties(ids, n => {
-              applyWholeTextStyle(n, { wrap: mode !== 'width' })
-              n.sizing = { ...defaultSizing(), ...n.sizing, width: mode === 'width' ? 'hug' : 'fixed', height: mode === 'fixed' ? 'fixed' : 'hug' }
-            }, '调整文字尺寸模式')
-          }}>
-          <option value="width">{tr("自动宽度")}</option><option value="height">{tr("自动高度")}</option><option value="fixed">{tr("固定尺寸")}</option>
-        </select>
-      </label>
       <label>{tr("字体")}<select
           aria-label={tr("文字字体")}
           value={style.fontId}

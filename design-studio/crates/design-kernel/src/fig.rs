@@ -2596,6 +2596,20 @@ impl FigImporter {
 
         let mut sizing = Sizing::default();
         let mut has_sizing = has_layout;
+        if node.kind == "text" {
+            match str_of(record, "textAutoResize") {
+                Some("WIDTH_AND_HEIGHT") => {
+                    sizing.width = SizeMode::Hug;
+                    sizing.height = SizeMode::Hug;
+                    has_sizing = true;
+                }
+                Some("HEIGHT") => {
+                    sizing.height = SizeMode::Hug;
+                    has_sizing = true;
+                }
+                _ => {}
+            }
+        }
         if has_layout {
             // Native frames commonly omit primary sizing; hug/fixed are the
             // fig2sketch defaults (TS :320-328)
@@ -3216,6 +3230,19 @@ pub fn document_from_canvas(
     // whose property and variable kind the design system can execute.
     document::import_variables(&mut doc, &records, &mut document_notes);
     document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
+    let text_layouts: serde_json::Map<_, _> = doc.nodes.values().filter_map(|node| {
+        let sizing = node.sizing.as_ref()?;
+        (node.kind == "text" && (sizing.width == SizeMode::Hug || sizing.height == SizeMode::Hug)).then(|| {
+            (node.id.clone(), serde_json::json!({
+                "format":"fig", "signature":crate::interop::text_layout_signature(node),
+                "width":node.width, "height":node.height, "transform":node.transform
+            }))
+        })
+    }).collect();
+    if !text_layouts.is_empty() {
+        doc.design_system.get_or_insert_with(Default::default).sketch_containers
+            .insert("textSourceLayouts".into(), Value::Object(text_layouts));
+    }
     version = version.max(components::schema_floor(&doc));
     document::raise_schema(&doc, &mut version);
     doc.schema_version = version;

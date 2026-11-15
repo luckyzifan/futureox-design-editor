@@ -1,9 +1,9 @@
 import { type ReactNode, useRef, useState, useSyncExternalStore } from 'react'
-import { ArrowDownToLine, ArrowUpToLine, Component, Group, PenTool, Plus, Search, Shapes, SlidersHorizontal } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpToLine, Component, Group, PenTool, Plus, Search, Shapes, SlidersHorizontal, TextCursor } from 'lucide-react'
 import { DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import type { Editor, Tool } from './engine'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
-import { canvasMenuItems } from './canvas-menu-model'
+import { canvasMenuItems, lockedSelectionIds, sketchSelectionCommands } from './canvas-menu-model'
 import { activateTool } from './tool-activation'
 import { canvasText } from './canvas-interface-messages'
 import { commandSearchText } from './command-search'
@@ -11,10 +11,12 @@ import { requestCommandSearch } from './command-search-session'
 import { useInterfacePreferences } from './interface-preference'
 import { localizedToolLabel } from './tool-registry'
 import { RASTER_FILE_ACCEPT } from './image-import'
+import { canEnterOutlineEdit } from './figma-basic-ops'
+import { commitPendingEdits } from './pending-edits'
 
 type Menu = 'insert' | 'group' | 'tools' | 'combine'
 
-export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSystems, onShapeBuilder, onSection }: {
+export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSystems, onShapeBuilder, onSection, onEditText }: {
   editor: Editor
   disabled: boolean
   onPresets: () => void
@@ -22,6 +24,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
   onSystems: () => void
   onShapeBuilder: () => void
   onSection: (section: WorkspaceSection) => void
+  onEditText: (id: string) => void
 }) {
   const { locale } = useInterfacePreferences(), text = canvasText[locale]
   const [open, setOpen] = useState<Menu | null>(null)
@@ -29,18 +32,26 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const selected = editor.topSelection(), node = selected.length === 1 ? s.doc.nodes[selected[0]] : undefined
   const commands = canvasMenuItems(editor)
+  const { canBringForward, canSendBackward, canGroup, canUngroup, canCombine } = sketchSelectionCommands(editor)
   const label = (zh: string, en: string) => locale === 'en' ? en : zh
-  const allowed = (id: EditorCommand) => id === 'undo' ? editor.canUndo && !s.busy :
-    id === 'redo' ? editor.canRedo && !s.busy : commands.some(command => command.command === id && !command.disabled)
+  const available: Partial<Record<EditorCommand, boolean>> = {
+    'bring-forward': canBringForward, 'send-backward': canSendBackward,
+    group: canGroup, 'frame-selection': canGroup, ungroup: canUngroup,
+  }
+  const allowed = (id: EditorCommand) => available[id] ?? commands.some(command => command.command === id && !command.disabled)
   const focusCanvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
   const invoke = (id: EditorCommand) => { setOpen(null); focusCanvas(); void dispatchEditorCommand(editor, id) }
   const tool = (id: Tool) => { setOpen(null); void activateTool(editor, id); focusCanvas() }
+  const editLabel = label('编辑', 'Edit')
+  const canEdit = !!node && !s.busy && !editor.interactionActive && !lockedSelectionIds(editor).length &&
+    (node.kind === 'text' ? node.visible : canEnterOutlineEdit(node))
   const edit = () => {
     setOpen(null)
-    if (s.tool === 'vector') tool('select')
-    else if (node && !node.locked) { editor.set({ tool: 'vector', editingVertex: null }); focusCanvas() }
+    if (!node || !canEdit || !commitPendingEdits(editor) || editor.state.selection[0] !== node.id) return
+    if (node.kind === 'text') onEditText(node.id)
+    else if (s.tool === 'vector') tool('select')
+    else { editor.set({ tool: 'vector', editingVertex: null, editingVertices: [] }); focusCanvas() }
   }
-  const canEdit = !!node && !node.locked && !s.busy && !['frame', 'section', 'group', 'text', 'slice'].includes(node.kind)
   const action = (id: EditorCommand, name: string, icon: ReactNode, secondary = false) =>
     <button type="button" aria-label={name} data-tooltip={name} disabled={!allowed(id)}
       className={secondary ? 'sketch-secondary-tool' : undefined} onClick={() => invoke(id)}>{icon}</button>
@@ -49,8 +60,9 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
   const menuTool = (id: Tool) =>
     <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-checked={s.tool === id}
       onClick={() => tool(id)}>{localizedToolLabel(id, locale)}</button>
-  const menu = (id: Menu, name: string, icon: ReactNode, children: ReactNode) =>
-    <ToolPopover label={name} icon={icon} open={open === id} onOpenChange={next => setOpen(next ? id : null)}>{children}</ToolPopover>
+  const menu = (id: Menu, name: string, icon: ReactNode, children: ReactNode, enabled = true) =>
+    <ToolPopover label={name} icon={icon} disabled={!enabled} open={enabled && open === id}
+      onOpenChange={next => setOpen(next ? id : null)}>{children}</ToolPopover>
   return <DesignToolbar className="sketch-window-tools" disabled={disabled}>
     <div className="tool-group">
       <button type="button" className="sketch-secondary-tool command-search-trigger" aria-label={commandSearchText[locale].label}
@@ -70,19 +82,25 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
       {action('bring-forward', label('前置一层', 'Bring forward'), <ArrowUpToLine size={17} />, true)}
       {action('send-backward', label('后置一层', 'Send backward'), <ArrowDownToLine size={17} />, true)}
       {menu('group', text.group, <Group size={17} />, <>
+        {menuAction('frame-selection', label('画框', 'Frame'))}
         {menuAction('group', text.group)}
-        {menuAction('ungroup', text.ungroup)}
-        {menuAction('frame-selection', label('将所选图层放入画板', 'Frame selection'))}
-      </>)}
-      <button type="button" className="sketch-secondary-tool" aria-pressed={s.tool === 'vector'}
-        aria-label={text.editVector} data-tooltip={text.editVector} disabled={!canEdit} onClick={edit}><PenTool size={17} /></button>
+        {menuAction('auto-layout', label('层叠', 'Stack'))}
+        {menuAction('ungroup', label('取消编组', 'Ungroup'))}
+      </>, canGroup || canUngroup)}
+      <button type="button" className="sketch-secondary-tool" aria-pressed={s.tool === 'vector' && node?.kind !== 'text'}
+        aria-label={editLabel} data-tooltip={editLabel} disabled={!canEdit} onClick={edit}>
+        {node?.kind === 'text' ? <TextCursor size={17} /> : <PenTool size={17} />}
+      </button>
       {menu('tools', label('工具', 'Tools'), <SlidersHorizontal size={17} />, <>
         {(['select', 'hand', 'scale', 'zoom', 'pencil', 'brush', 'eraser', 'comments', 'eyedropper'] as const).map(menuTool)}
-        <button type="button" role="menuitem" tabIndex={-1} disabled={!canEdit} onClick={edit}>{text.editVector}</button>
+        <button type="button" role="menuitem" tabIndex={-1} disabled={!canEdit} onClick={edit}>{editLabel}</button>
         {menuAction('bring-forward', label('前置一层', 'Bring forward'))}
         {menuAction('send-backward', label('后置一层', 'Send backward'))}
         {menuAction('create-component', label('创建组件', 'Create component'))}
         {menuAction('undo', text.undo)}{menuAction('redo', text.redo)}
+        {menuAction('mask-selection', text.maskGroup)}
+        <button type="button" role="menuitem" tabIndex={-1} disabled={!selected.length || s.busy}
+          onClick={() => { setOpen(null); onShapeBuilder() }}>{text.shapeBuilder}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onSection('layers') }}>{label('显示画布', 'Show canvas')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onSection('assets') }}>{label('显示组件', 'Show components')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); requestCommandSearch() }}>{commandSearchText[locale].label}</button>
@@ -90,12 +108,9 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
       </>)}
       {menu('combine', label('结合', 'Combine'), <Shapes size={17} />, <>
         {([['union', text.union], ['subtract', text.subtract], ['intersect', text.intersect], ['exclude', text.exclude], ['divide', text.divideLegacy]] as const)
-          .map(([operation, name]) => <button type="button" role="menuitem" tabIndex={-1} key={operation} disabled={selected.length < 2 || s.busy}
+          .map(([operation, name]) => <button type="button" role="menuitem" tabIndex={-1} key={operation}
             onClick={() => { setOpen(null); void editor.geometry(operation) }}>{name}</button>)}
-        {menuAction('mask-selection', text.maskGroup)}
-        <button type="button" role="menuitem" tabIndex={-1} disabled={!selected.length || s.busy}
-          onClick={() => { setOpen(null); onShapeBuilder() }}>{text.shapeBuilder}</button>
-      </>)}
+      </>, canCombine)}
     </div>
   </DesignToolbar>
 }

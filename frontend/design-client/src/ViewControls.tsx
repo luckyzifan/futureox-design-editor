@@ -29,6 +29,7 @@ export function ViewControls({
   const centerKey = shortcutLabel('center-selection', shortcut)
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const menu = useRef<HTMLDetailsElement>(null)
+  const closeMenu = () => { if (menu.current) menu.current.open = false }
   useEffect(() => {
     const dismiss = (event: Event) => { if (menu.current && !menu.current.contains(event.target as Node)) menu.current.open = false }
     const blur = () => { if (menu.current) menu.current.open = false }
@@ -43,6 +44,21 @@ export function ViewControls({
   }
   const preview = (value: 0 | 1 | 2) =>
     editor.set({ pixelPreview: value, ...(value ? { lastPixelPreview: value } : {}) })
+  const zoomSteps = compact && <div className="zoom-steps">
+    {(sketch ? [-1, 1] : [1, -1]).map(direction => {
+      const title = direction === 1 ? text.zoomIn : text.zoomOut
+      return <button type="button" key={direction} title={title}
+        onClick={() => zoom(zoomStep(editor.effectiveView().zoom, direction === 1 ? 1 : -1))}>
+        {sketch ? direction === 1 ? '＋' : '−' : title}
+      </button>
+    })}
+  </div>
+  const fitButtons = <>
+    <button type="button" onClick={() => { fit(); closeMenu() }}>{text.fitAll}　{shortcutLabel('zoom-fit', shortcut)}</button>
+    {(sketch || !!s.selection.length) && <button type="button" onClick={() => { fit(true); closeMenu() }}>
+      {text.fitSelection}　{shortcutLabel('zoom-selection', shortcut)}
+    </button>}
+  </>
   return (
     <div
       className={`canvas-controls ${compact ? 'compact-controls' : ''}`}
@@ -53,10 +69,12 @@ export function ViewControls({
       {!compact && <button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>
         −
       </button>}
-      <details ref={menu} className="view-menu">
+      <details ref={menu} className="view-menu" onToggle={event => {
+        if (!sketch && event.currentTarget.open) event.currentTarget.querySelector<HTMLInputElement>('input[role="spinbutton"]')?.focus()
+      }}>
         <summary aria-label={text.zoomView} data-testid="zoom-readout">{Number((liveZoom * 100).toFixed(1))}%</summary>
         <div className="view-menu-body">
-          {compact && <div className="zoom-steps"><button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>−</button><button type="button" title={text.zoomIn} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>＋</button></div>}
+          {sketch && zoomSteps}
           <PendingEditContext.Provider value={null}><NumberField
             label={text.zoomRatio}
             // Preserve the existing numeric semantics independently of the translated label.
@@ -66,19 +84,17 @@ export function ViewControls({
             max={MAX_CANVAS_ZOOM * 100}
             onChange={(v) => zoom(v / 100)}
           /></PendingEditContext.Provider>
-          <div className="zoom-presets">
-            {[25, 50, 100, 200, 400, 800].map((p) => (
-              <button type="button" key={p} onClick={() => { zoom(p / 100); if (menu.current) menu.current.open = false }}>
-                {p}%
+          {!sketch && zoomSteps}
+          {!sketch && fitButtons}
+          <div className={sketch ? "zoom-presets" : "zoom-presets figma-zoom-presets"}>
+            {(sketch ? [25, 50, 100, 200, 400, 800] : [50, 100, 200]).map((p) => (
+              <button type="button" key={p} aria-pressed={Math.abs(liveZoom * 100 - p) < .05}
+                onClick={() => { zoom(p / 100); closeMenu() }}>
+                {sketch ? `${p}%` : label(`缩放到 ${p}%`, `Zoom to ${p}%`)}
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => { fit(); if (menu.current) menu.current.open = false }}>
-            {text.fitAll}　{shortcutLabel('zoom-fit', shortcut)}
-          </button>
-          <button type="button" onClick={() => { fit(true); if (menu.current) menu.current.open = false }}>
-            {text.fitSelection}　{shortcutLabel('zoom-selection', shortcut)}
-          </button>
+          {sketch && fitButtons}
           {sketch && <button type="button" disabled={!s.selection.length} onClick={() => {
             void dispatchEditorCommand(editor, 'center-selection')
             if (menu.current) menu.current.open = false
@@ -137,6 +153,10 @@ export function ViewControls({
             />
             {text.snapPixels}
           </label>
+          {!sketch && <label><input type="checkbox" checked={s.showAuthoredLayout !== false}
+            onChange={event => editor.set({ showAuthoredLayout: event.target.checked })} />
+            {label('布局参考线', 'Layout guides')}
+          </label>}
           <label>
             <input
               type="checkbox"

@@ -97,10 +97,10 @@ function assertUnwrap(doc: DesignDocument, index: SelectionIndex) {
 }
 /** Cheap toolbar/Inspector availability shares admission, not a second geometry
  * implementation. Exact overlap/bounds checks still run at execution time. */
-export function selectionCommandAdmission(doc: DesignDocument, ids: readonly string[], command: 'align' | 'distribute' | 'wrap' | 'unwrap', parents?: ParentMap) {
+export function selectionCommandAdmission(doc: DesignDocument, ids: readonly string[], command: 'align' | 'distribute' | 'wrap' | 'boolean-wrap' | 'unwrap', parents?: ParentMap) {
   try {
     const index = indexSelection(doc, ids, false, parents)
-    if (command === 'wrap') assertWrap(doc, index)
+    if (command === 'wrap' || command === 'boolean-wrap') assertWrap(doc, index, command === 'boolean-wrap')
     else if (command === 'unwrap') assertUnwrap(doc, index)
     else {
       assertPositionable(doc, index)

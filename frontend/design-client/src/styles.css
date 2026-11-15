@@ -1488,6 +1488,8 @@ footer button {
   padding: 6px !important;
   width: 100% !important;
 }
+.figma-zoom-presets { grid-template-columns: 1fr; }
+.figma-zoom-presets button { justify-content: flex-start; }
 .pixel-preview-badge {
   font-size: 10px;
   color: var(--workspace-accent);
@@ -2018,6 +2020,11 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .geometry-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
 [data-geometry-mode="sketch"] .geometry-position { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 [data-geometry-mode="sketch"] .geometry-dimensions { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+.inspector .geometry-dimensions.geometry-multiple-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.text-sizing-axes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.text-sizing-axes label { display: grid; gap: 4px; }
+.text-sizing-axes select { width: 100%; min-width: 0; }
+.calculated-dimension input:disabled { color: var(--workspace-muted); cursor: default; }
 .properties-content .geometry-position .number-field,
 .properties-content .geometry-rotation .number-field,
 .properties-content .geometry-dimensions .number-field { min-width: 0; height: 27px; padding-inline: 5px; gap: 4px; border-radius: 5px; }

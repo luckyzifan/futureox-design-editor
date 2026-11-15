@@ -185,6 +185,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       if (content) {
         if(content.text?.startsWith(PROPERTY_PREFIX)){
           if (command === 'paste-over-selection') throw Error('覆盖粘贴需要图层、图片或文字内容，不支持属性剪贴板')
+          if (command === 'paste-here') throw Error('粘贴到此处需要图层、图片或文字内容')
           applyProperties(content.text);return
         }
         const encoded = content.forma !== undefined ? content.forma : (content.text?.startsWith(TEXT_PREFIX) ? content.text.slice(TEXT_PREFIX.length) : undefined)
@@ -305,7 +306,15 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'create-component': editor.createComponent(); break
       case 'detach-instance': if (editor.state.selection.length === 1 && editor.state.doc.nodes[editor.state.selection[0]]?.instance) editor.detachInstance(); break
       case 'mask-selection': editor.group(true); break
-      case 'convert-section': editor.update(editor.topSelection(), n => { if (n.kind === 'frame' && !n.instance && !n.component && !n.componentSet) n.kind = 'section' }, '转换为分区'); break
+      case 'convert-section': editor.update(editor.topSelection(), n => {
+        if (n.kind !== 'frame' || n.instance || n.component || n.componentSet) return
+        n.kind = 'section'
+        // Frame guides and scrolling are frame-only. Undo restores these
+        // along with the original kind and preserves the child geometry.
+        delete n.layoutGrid
+        delete n.layoutGrids
+        delete n.prototypeOverflow
+      }, '转换为分区'); break
       case 'move-to-page': {
         if (!options.pageId || options.pageId === editor.state.page || !editor.state.doc.pages.some(p => p.id === options.pageId)) return
         const before = editor.state.doc

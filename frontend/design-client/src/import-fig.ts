@@ -22,7 +22,7 @@ import {
   hasLocalTools,
   hasSchema20Features,
   hasGradientBlur,
-  type DesignNode,
+  type DesignDocument, type DesignNode,
   type Matrix,
   type Paint,
   type StrokeMarker,
@@ -347,6 +347,11 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord
   }
   const sizing = defaultSizing()
   let hasSizing = hasLayout
+  if (n.kind === 'text' && (r.textAutoResize === 'WIDTH_AND_HEIGHT' || r.textAutoResize === 'HEIGHT')) {
+    sizing.width = r.textAutoResize === 'WIDTH_AND_HEIGHT' ? 'hug' : 'fixed'
+    sizing.height = 'hug'
+    hasSizing = true
+  }
   if (hasLayout) {
     // Native calibration frames 44:3, 52:3, 62:2, 62:191 and 79:2 omit
     // primary sizing and use WITH_IMPLICIT_SIZE on the counter axis. The same
@@ -1088,5 +1093,21 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     doc.schemaVersion = Math.max(15, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasSchema20Features(doc)) doc.schemaVersion = Math.max(20, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasGradientBlur(doc)) doc.schemaVersion = Math.max(9, doc.schemaVersion) as typeof doc.schemaVersion
+  retainFigTextBoxes(doc)
   return { document: doc, backend: 'typescript-fig', ...warnings.result() }
+}
+
+/** Font resolution may replace resource IDs before the imported document is
+ * adopted. Capture the reference again after that import-only substitution. */
+export function retainFigTextBoxes(doc: DesignDocument) {
+  const layouts: Record<string, object> = {}
+  for (const node of Object.values(doc.nodes)) {
+    if (node.kind !== 'text' || (node.sizing?.width !== 'hug' && node.sizing?.height !== 'hug')) continue
+    const { text, fontSize, textStyle, textRuns = [], sizing, width, height, transform } = node
+    layouts[node.id] = { format: 'fig', signature: { text, fontSize, textStyle, textRuns, sizing }, width, height, transform }
+  }
+  if (!Object.keys(layouts).length) return
+  const system = doc.designSystem ??= emptySystem()
+  const metadata = system.sketchContainers ??= {}
+  metadata.textSourceLayouts = layouts
 }

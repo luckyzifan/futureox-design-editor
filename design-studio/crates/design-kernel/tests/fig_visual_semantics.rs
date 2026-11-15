@@ -41,11 +41,35 @@ fn import_layers(layer:Value,blobs:Vec<Vec<u8>>,extra:Vec<Value>)->futureox_desi
  assert_eq!(forward.point(Point::new(0.,0.5)),Point::new(0.5,0.));
  assert_eq!(forward.point(Point::new(1.,0.5)),Point::new(0.5,1.));
 }
-#[test]fn automatic_width_text_does_not_wrap(){
- for mode in ["WIDTH_AND_HEIGHT","HEIGHT","NONE"]{
-  let doc=import(json!({"type":"TEXT","textAutoResize":mode,"textData":{"characters":"Completed Tasks"},"fontSize":14}),vec![]);
-  assert_eq!(doc.nodes["fig-1-3"].text_style.as_ref().unwrap().wrap,mode!="WIDTH_AND_HEIGHT");
- }
+#[test]
+fn automatic_text_sizes_preserve_the_source_box_until_the_content_changes() {
+    use futureox_design_kernel::{font::Fonts, layout::{self, SizeMode}};
+    let mut fonts = Fonts::new();
+    fonts.load(&std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"), "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+    )).unwrap()).unwrap();
+    for (mode, width, height) in [
+        ("WIDTH_AND_HEIGHT", SizeMode::Hug, SizeMode::Hug),
+        ("HEIGHT", SizeMode::Fixed, SizeMode::Hug),
+        ("NONE", SizeMode::Fixed, SizeMode::Fixed),
+    ] {
+        let mut doc = import(json!({
+            "type":"TEXT", "textAutoResize":mode, "textData":{"characters":"Completed Tasks"},
+            "size":{"x":123, "y":20}, "fontSize":14
+        }), vec![]);
+        let id = "fig-1-3";
+        let node = &doc.nodes[id];
+        let sizing = node.sizing_value();
+        assert_eq!((sizing.width, sizing.height), (width, height));
+        assert_eq!(node.text_style.as_ref().unwrap().wrap, width != SizeMode::Hug);
+        layout::resolve(&mut doc, &fonts).unwrap();
+        assert_eq!((doc.nodes[id].width, doc.nodes[id].height), (123., 20.));
+        doc.nodes.get_mut(id).unwrap().text = "This edited text has several words that are wider than the source box".into();
+        layout::resolve(&mut doc, &fonts).unwrap();
+        let node = &doc.nodes[id];
+        if width == SizeMode::Hug { assert!(node.width > 123.); } else { assert_eq!(node.width, 123.); }
+        if height == SizeMode::Hug && width == SizeMode::Fixed { assert!(node.height > 20.); }
+    }
 }
 #[cfg(futureox_has_fig_corner_blobs)]
 #[test]fn actual_card_corners_execute_in_the_native_importer(){

@@ -164,6 +164,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "穿透": "Pass through",
   "智能选择": "Smart selection",
   "多选文字": "Multi-selection text",
+  "排版": "Typography",
+  "字符": "Text",
   "文字": "Text",
   "字重": "Font weight",
   "文字对齐": "Text alignment",

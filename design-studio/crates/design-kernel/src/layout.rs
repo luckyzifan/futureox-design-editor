@@ -842,10 +842,27 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
     // scalars per constrained Hug text, keyed by this document's stable map ID;
     // discard them on return, before any subsequent edits or component rebuild.
     let scoped_state=|doc:&Document|ordered.iter().map(|id|{let n=&doc.nodes[id];(n.transform,n.width,n.height)}).collect::<Vec<_>>();
+    // FIG carries the measured text boxes. Use that measurement until an edit
+    // changes the layout inputs or a parent supplies different dimensions.
+    let mut source_text_boxes = BTreeMap::new();
+    if let Some(layouts) = doc.design_system.as_ref().and_then(|system| system.sketch_containers.get("textSourceLayouts")) {
+        for id in &ordered {
+            let n = &doc.nodes[id];
+            if n.kind != "text" { continue; }
+            let Some(source) = layouts.get(id) else { continue; };
+            if source.get("format").and_then(serde_json::Value::as_str) != Some("fig") { continue; }
+            let width = source.get("width").and_then(serde_json::Value::as_f64);
+            let height = source.get("height").and_then(serde_json::Value::as_f64);
+            if width == Some(n.width) && height == Some(n.height) && crate::interop::text_layout_signature_matches(n, source) {
+                source_text_boxes.insert(id.clone(), (n.width, n.height));
+            }
+        }
+    }
+    let retains_text_box = |id: &String, n: &Node| source_text_boxes.get(id) == Some(&(n.width, n.height));
     let mut constrained_text_sizes = BTreeMap::new();
     let mut initial_size = |id: &String, n: &mut Node| -> Result<(), String> {
         resize(n, n.width, n.height);
-        if size_text(n, fonts)? {
+        if !retains_text_box(id, n) && size_text(n, fonts)? {
             constrained_text_sizes.insert(id.clone(), (n.width, n.height));
         }
         Ok(())
@@ -870,7 +887,7 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
                 // Replay resizing, since parent constraints/stretch can change
                 // the current dimensions between bottom-up layout passes.
                 resize(n, width, height);
-            } else {
+            } else if !retains_text_box(id, n) {
                 size_text(n, fonts)?;
             }
             if let Some(l) = doc.nodes[id].layout.clone() {
