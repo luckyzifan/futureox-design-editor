@@ -8,6 +8,7 @@ export type LiveBlur = {
   nodeId: string
   effectId: string
   gradient?: { start: [number, number]; end: [number, number] }
+  blurStopOffsets?: number[]
   zoomCenter?: [number, number]
 }
 
@@ -23,6 +24,8 @@ export function sameLiveBlur(a: LiveBlur | null, b: LiveBlur | null) {
   return a.session === b.session && a.page === b.page && a.documentId === b.documentId
     && a.nodeId === b.nodeId && a.effectId === b.effectId
     && samePair(a.gradient?.start, b.gradient?.start) && samePair(a.gradient?.end, b.gradient?.end)
+    && a.blurStopOffsets?.length === b.blurStopOffsets?.length
+    && (a.blurStopOffsets?.every((value, index) => value === b.blurStopOffsets?.[index]) ?? true)
     && samePair(a.zoomCenter, b.zoomCenter)
     && !!a.gradient === !!b.gradient
 }

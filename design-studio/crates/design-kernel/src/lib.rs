@@ -82,6 +82,7 @@ mod text_case;
 pub mod glass_capture;
 pub mod gpu;
 pub mod gradient_blur;
+pub mod sketch_progressive_blur;
 pub mod graph_api;
 pub mod handles;
 mod image_color;
@@ -2771,6 +2772,22 @@ mod wasm {
             field.start_count,
             field.end_count,
         ])
+    }
+
+    #[wasm_bindgen]
+    pub fn sketch_blur_ramp_uniforms(
+        rect_json: &str, matrix: &[f64], params_json: &str,
+    ) -> Result<Vec<f32>, JsValue> {
+        let rect = serde_json::from_str(rect_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let matrix = matrix.try_into().map_err(|_| JsValue::from_str("Invalid gradient matrix"))?;
+        let params: scene::GradientBlurParameters = serde_json::from_str(params_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let effect: scene::Effect = serde_json::from_value(serde_json::json!({
+            "kind": "gaussian-blur", "color": "#000000", "gradientBlur": params
+        })).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        effect.validate_material().map_err(|error| JsValue::from_str(&error))?;
+        let gradient = effect.gradient_blur.as_ref().ok_or_else(|| JsValue::from_str("Missing blur ramp"))?;
+        sketch_progressive_blur::uniforms(gradient, math::Transform(matrix), rect)
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     /// Gradient-blur single-pixel evaluation: strength + blend weights +

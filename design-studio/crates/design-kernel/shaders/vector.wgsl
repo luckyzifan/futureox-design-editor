@@ -216,6 +216,46 @@ fn gradientBlurComposite(p:vec2<f32>)->vec4<f32>{
   divideRN(addRN(mulRN(wb,blurred.z),mulRN(ws,sharp.z)),total),
   divideRN(addRN(mulRN(wb,blurred.w),mulRN(ws,sharp.w)),total));
 }
+fn sketchBlurStop(index:u32)->vec2<f32>{
+ let pair=u(16u+index/2u);
+ return select(pair.xy,pair.zw,index%2u!=0u);
+}
+fn sketchBlurBox(p:vec2<f32>)->vec4<f32>{
+ let a=u(9);let b=u(10);let settings=u(11);
+ let q=p+vec2<f32>(settings.w,u(12).x);
+ let x=fmaRN(a.x,q.x,fmaRN(a.y,q.y,a.z));
+ let y=fmaRN(b.x,q.x,fmaRN(b.y,q.y,b.z));
+ let position=clamp(select(x,sqrt(x*x+y*y),a.w>0.5),0.,1.);
+ var previous=sketchBlurStop(0u);
+ var strength=previous.y;
+ for(var i=1u;i<u32(b.w);i++){
+  let stop=sketchBlurStop(i);
+  if(position<stop.x){
+   if(position>previous.x){strength=previous.y+(stop.y-previous.y)*((position-previous.x)/(stop.x-previous.x));}
+   break;
+  }
+  previous=stop;strength=stop.y;
+ }
+ let sigma=settings.x*strength;
+ let variance=sigma*sigma/3.;
+ let r=floor((sqrt(4.*sigma*sigma+1.)-1.)*0.5);
+ let edge=r+1.;
+ let fraction=clamp((2.*r+1.)*(variance-r*edge/3.)/(2.*(edge*edge-variance)),0.,1.);
+ let axis=select(vec2<f32>(1.,0.),vec2<f32>(0.,1.),settings.y>0.5);
+ let bounds=u(1);
+ var sum=vec4<f32>(0.);
+ for(var tap=-i32(r);tap<=i32(r);tap++){
+  var q=p+axis*f32(tap);
+  if(settings.z>0.5){q=clamp(q,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);}
+  sum+=at(sourceA,q,bounds);
+ }
+ var left=p-axis*edge;var right=p+axis*edge;
+ if(settings.z>0.5){
+  left=clamp(left,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
+  right=clamp(right,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
+ }
+ return (sum+fraction*(at(sourceA,left,bounds)+at(sourceA,right,bounds)))/(2.*r+1.+2.*fraction);
+}
 override COMPOSITOR_MODE:i32=-1;
 struct Params { values:array<vec4<f32>,64> }
 @group(0) @binding(0) var<uniform> params:Params;
@@ -1069,7 +1109,7 @@ fn halfScaleStretch(p:vec2<f32>)->vec4<f32>{
  if(managed){return sum/denom;}
  return clamp(floor(sum/denom+vec4<f32>(0.5)),vec4<f32>(0.),vec4<f32>(255.))/255.;
 }
-fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
+fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==64){return sketchBlurBox(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
  // Managed surfaces preserve extended-range linear light in RGBA32F.
  if(u(60).x>0.5){
   if(mode==3||mode==15){var opacity=u(4).z;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceC,p,u(3)).a);}let src=mulRN4(a,vec4<f32>(opacity));if(mode==15){return src;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}

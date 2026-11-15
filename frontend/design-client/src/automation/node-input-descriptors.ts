@@ -39,6 +39,10 @@ const colorControls = obj({ space: en('srgb','display-p3'), brightness: num(-1,1
 const gradientBlur = obj({
   start: tuple(num(-1e7, 1e7), 2), end: tuple(num(-1e7, 1e7), 2),
   startCount: num(0, 64), endCount: num(0, 64), smooth: bool,
+  sketch: obj({
+    shape: en('linear', 'radial'), ellipse: num(0, 1e6),
+    stops: array(obj({ offset: unit, strength: unit }, ['offset', 'strength']), 64),
+  }, ['shape', 'ellipse', 'stops']),
 }, ['start', 'end', 'startCount', 'endCount', 'smooth'])
 const effect = obj({ motionZoomOrigin: nullable(describe(tuple(num(-1e6, 1e6), 2), 'Retained normalized zoom origin while motion blur is active.')), zoomBlur: describe(obj({amount:num(0,1000),center:tuple(num(-1e6,1e6),2)}, ['amount','center']), 'Zoom-blur only: dimensionless amount, normalized node-local focal point; radius must be zero.'), colorControls, motionAngle: describe(num(-1e7,1e7), "Motion blur direction in node-local degrees, also retained while zoom blur is active. For motion blur radius is Gaussian sigma."), id: str(), kind: en('shadow', 'inner-shadow', 'blur', 'background-blur', 'glass', 'noise', 'texture', 'color-controls', 'gaussian-blur', 'motion-blur', 'zoom-blur'), visible: bool, radius: num(0, 1000), x: num(), y: num(), spread: num(), color, opacity: unit, amount: num(),
   showShadowBehindNode: describe(bool, 'Optional FIG drop-shadow flag. Preserved on import; the renderer does not yet branch shadow clipping on this value.'),

@@ -504,7 +504,7 @@ impl Compositor<'_, '_, '_> {
         };
         let fill = self.mask(&n.fill, 4)?;
         if let Some(fx) = futureox_design_kernel::scene::selected_backdrop(&n.effects) {
-            let mixed = if fx.sketch_backdrop {
+            let mixed = if fx.sketch_backdrop || fx.gradient_blur.as_ref().is_some_and(|g| g.sketch.is_some()) {
                 let [x, y, w, h] = n.backdrop_box;
                 let capture = Rect::new(x as i32, y as i32, w as u32, h as u32);
                 let copy = self.frame.acquire(capture)?;
@@ -735,7 +735,7 @@ impl Compositor<'_, '_, '_> {
         fx: &Effect,
         origin: [f64; 2],
     ) -> Result<Surface, String> {
-        let Some(params) = fx.gradient_blur else {
+        let Some(params) = &fx.gradient_blur else {
             return Ok(blurred);
         };
         let a = self.frame.read_surface(sharp)?;
@@ -755,7 +755,7 @@ impl Compositor<'_, '_, '_> {
             &mut target,
             &full,
             &n.matrix.inverse_composed(sharp.rect)?,
-            &params,
+            params,
             futureox_design_kernel::math::Point::new(origin[0], origin[1]),
         );
         if !self.scene.float_compositing {
@@ -1984,6 +1984,9 @@ impl Compositor<'_, '_, '_> {
         if fx.kind == "gaussian-blur" {
             let scale = n.matrix.max_scale();
             let sigma = fx.radius * scale;
+            if fx.gradient_blur.as_ref().is_some_and(|g| g.sketch.is_some()) {
+                return self.sketch_blur_ramp(input, n, fx, sigma, false, [0., 0.]);
+            }
             if let Some(reach) = futureox_design_kernel::effects::small_gaussian_reach(sigma) {
                 let key = BlurKernelKey::SmallGaussian(sigma.to_bits());
                 if !self.blur_kernels.contains_key(&key) {
@@ -2103,6 +2106,35 @@ impl Compositor<'_, '_, '_> {
         self.frame.release(&[h]);
         Ok(v)
     }
+    fn sketch_blur_ramp(
+        &mut self, input: Surface, node: &GpuNode, effect: &Effect,
+        sigma: f64, clamp_edges: bool, origin: [f64; 2],
+    ) -> Result<Surface, String> {
+        if !(0. ..=512.).contains(&sigma) {
+            return Err("Sketch progressive blur sigma must be in [0,512]".into());
+        }
+        if sigma == 0. || input.rect.empty() {
+            return Ok(input);
+        }
+        let ramp = effect.gradient_blur.as_ref().ok_or("Missing Sketch blur ramp")?;
+        let field = futureox_design_kernel::sketch_progressive_blur::uniforms(ramp, node.matrix, input.rect.expand(1))?;
+        let mut current = input;
+        for pass in 0..6 {
+            let next = self.frame.run(64., input.rect, &[current], |u| {
+                u[36..44].copy_from_slice(&field[..8]);
+                u[44..49].copy_from_slice(&[
+                    sigma as f32, (pass % 2) as f32, f32::from(clamp_edges),
+                    origin[0] as f32, origin[1] as f32,
+                ]);
+                u[64..64 + field.len() - 8].copy_from_slice(&field[8..]);
+            });
+            if current.id != input.id {
+                self.frame.release(&[current]);
+            }
+            current = next?;
+        }
+        Ok(current)
+    }
     fn backdrop_blur(
         &mut self,
         input: Surface,
@@ -2112,17 +2144,20 @@ impl Compositor<'_, '_, '_> {
         b: [f64; 4],
     ) -> Result<Surface, String> {
         let sharp = input;
-        let blurred = if fx.sketch_backdrop {
-            self.blur_mode(sharp, fx.sketch_backdrop_sigma(n.matrix.max_scale()) * 2., true, true)?
-        } else {
-            self.blur(sharp, fx.backdrop_radius() * n.matrix.max_scale(), cropped)?
-        };
         let origin = if cropped {
             [b[0] - f64::from(sharp.rect.x), b[1] - f64::from(sharp.rect.y)]
         } else {
             [0., 0.]
         };
-        let mut background = if fx.gradient_blur.is_some() {
+        let sketch_ramp = fx.gradient_blur.as_ref().is_some_and(|g| g.sketch.is_some());
+        let blurred = if sketch_ramp {
+            self.sketch_blur_ramp(sharp, n, fx, fx.sketch_backdrop_sigma(n.matrix.max_scale()), true, origin)?
+        } else if fx.sketch_backdrop {
+            self.blur_mode(sharp, fx.sketch_backdrop_sigma(n.matrix.max_scale()) * 2., true, true)?
+        } else {
+            self.blur(sharp, fx.backdrop_radius() * n.matrix.max_scale(), cropped)?
+        };
+        let mut background = if fx.gradient_blur.is_some() && !sketch_ramp {
             self.gradient_blur_at(sharp, blurred, n, fx, origin)?
         } else {
             blurred

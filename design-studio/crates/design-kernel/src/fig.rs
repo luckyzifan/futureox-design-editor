@@ -4876,7 +4876,7 @@ mod tests {
                 let fx = &node_of(&doc, 1, 2).effects[0];
                 assert_eq!(fx.kind, "background-blur");
                 assert_eq!(fx.radius, 1.);
-                let gradient = fx.gradient_blur.expect("two-end ramp");
+                let gradient = fx.gradient_blur.as_ref().expect("two-end ramp");
                 assert_eq!(gradient.start, [0., 20.]);
                 assert_eq!(gradient.end, [80., 20.]);
                 assert_eq!((gradient.start_count, gradient.end_count, gradient.smooth), (0., 8., true));

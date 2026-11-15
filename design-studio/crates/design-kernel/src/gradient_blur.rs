@@ -158,7 +158,7 @@ impl CompositeField {
 /// field. Counts are those radii and the caller sets the effect radius to 1,
 /// so the filter support is the larger radius. This is not a claim that a
 /// Figma or Sketch framebuffer matches the strength curve.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TwoEndAdmission {
     /// The endpoints name one shared radius, including values the strength
     /// field cannot store. Keep the existing uniform blur of this radius.
@@ -199,6 +199,7 @@ pub fn admit_two_end_progressive(
         end_count: end_radius,
         // Same tier the background-blur card writes when progressive mode is enabled.
         smooth: true,
+        sketch: None,
     }))
 }
 
@@ -296,6 +297,7 @@ mod tests {
             start_count: 0.5,
             end_count: 7.25,
             smooth: true,
+            sketch: None,
         }
     }
 

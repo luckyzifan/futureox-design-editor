@@ -526,21 +526,22 @@ impl Projection<'_> {
                 motion_angle: 0.,
                 motion_zoom_origin: None,
             };
-            if effect.kind == "background-blur" {
-                match crate::interop::sketch_background_progressive(blur, Some([n.width, n.height])) {
-                    Ok(crate::interop::SketchProgressiveBackground::Ramp(params)) => {
-                        effect.radius = 1.;
+            if matches!(effect.kind.as_str(), "background-blur" | "gaussian-blur") {
+                match crate::interop::sketch_progressive_blur(blur, Some([n.width, n.height])) {
+                    Ok(crate::interop::SketchProgressiveBlur::Ramp(radius, params)) => {
+                        effect.radius = radius;
+                        effect.sketch_backdrop = effect.kind == "background-blur" && params.sketch.is_some();
                         effect.gradient_blur = Some(params);
                     }
-                    Ok(crate::interop::SketchProgressiveBackground::Uniform(radius)) => {
+                    Ok(crate::interop::SketchProgressiveBlur::Uniform(radius)) => {
                         effect.radius = radius;
                         self.warnings.insert("progressive-background-blur-equal-radii-kept-uniform".into());
                     }
                     Err(note) => {
                         self.warnings.insert(note.into());
                     }
-                    Ok(crate::interop::SketchProgressiveBackground::NotProgressive) => {
-                        effect.sketch_backdrop = true;
+                    Ok(crate::interop::SketchProgressiveBlur::NotProgressive) => {
+                        effect.sketch_backdrop = effect.kind == "background-blur";
                     }
                 }
             }

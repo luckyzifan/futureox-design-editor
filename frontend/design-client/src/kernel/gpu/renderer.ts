@@ -57,7 +57,7 @@ import { DEFAULT_GPU_WORKING_BUDGET_BYTES, workingSetBudget, usesNativeNavigatio
 import {rectangleBorder} from './rect-partition'
 import {disjointNeutralGroup} from './neutral-group'
 import { localPoseDemand, backdropOverlap, exactBlendLattice, glassBackdropWindow, guardedPixelWindow, normalMergeRegion, interactionEffectRegion, interactionHalo } from './effect-region'
-import { gradient_blur_composite_uniforms, straight_srgb8_table } from '../../generated/design-kernel/design_kernel'
+import { gradient_blur_composite_uniforms, sketch_blur_ramp_uniforms, straight_srgb8_table } from '../../generated/design-kernel/design_kernel'
 import { inverse } from '../../geometry'
 import { EncodeYield } from './encode-yield'
 import { RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
@@ -635,7 +635,7 @@ export class GpuRenderer {
   private async interactionBackdropDisplay(n: GpuNode, backdrop: Surface, sigma: number): Promise<Surface> {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const effect = backdropEffect(n.effects)
-    if (effect?.sketchBackdrop) {
+    if (effect?.sketchBackdrop || effect?.gradientBlur?.sketch) {
       const [x, y, w, h] = n.backdropBox ?? [n.rect.x, n.rect.y, n.rect.w, n.rect.h]
       const capture = rect(x, y, w, h)
       await this.reclaimForSurface(capture)
@@ -4867,8 +4867,9 @@ export class GpuRenderer {
           if (!background) break
           const blurred = cropped ? await this.blurBackdropRegion(background, (backdropRadius(fx) * scale(n.matrix)) / 2, n)
             : this.blur(background, (backdropRadius(fx) * scale(n.matrix)) / 2, false)
-          const filtered = fx.gradientBlur ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
-          if (!fx.gradientBlur && blurred !== background) this.release(background)
+          const legacyGradient = fx.gradientBlur && !fx.gradientBlur.sketch
+          const filtered = legacyGradient ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
+          if (!legacyGradient && blurred !== background) this.release(background)
           background = this.colorControls(filtered, fx.colorControls)
           if (background !== filtered) this.release(filtered)
           if (fx.kind === 'glass' && !(n.glassShape && fx.glass)) {
@@ -5167,8 +5168,9 @@ export class GpuRenderer {
     let background = this.run(26, capture, opticalInputs ?? targets)
     this.backdropReads++
     const blurred = cropped ? await this.blurBackdropRegion(background, sigma, n) : this.blur(background, sigma, false)
-    const filtered = fx.gradientBlur ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
-    if (!fx.gradientBlur && blurred !== background) this.release(background)
+    const legacyGradient = fx.gradientBlur && !fx.gradientBlur.sketch
+    const filtered = legacyGradient ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
+    if (!legacyGradient && blurred !== background) this.release(background)
     background = this.colorControls(filtered, fx.colorControls)
     if (background !== filtered) this.release(filtered)
     if (cropped) {
@@ -6526,6 +6528,7 @@ export class GpuRenderer {
     if (fx.radius === 0) return input
     if (fx.kind === 'gaussian-blur') {
       const sigma = fx.radius * scale(n.matrix)
+      if (fx.gradientBlur?.sketch) return this.sketchBlurRamp(input, n, fx, sigma, false)
       if (sigma >= 0.1 && sigma <= 2) {
         if (input.texture.transparentZero) return input
         const reach = Math.ceil(3 * sigma)
@@ -7017,8 +7020,9 @@ export class GpuRenderer {
    * Bit-preserving strip copies retain signed underflow zeros between axes. */
   private async blurBackdropRegion(input: Surface, sigma: number, node: GpuNode): Promise<Surface> {
     const radius = sigma * 2
-    const sketchBlur = backdropEffect(node.effects)?.sketchBackdrop
-    if (sketchBlur) {
+    const effect = backdropEffect(node.effects)
+    if (effect?.gradientBlur?.sketch) return this.sketchBlurRamp(input, node, effect, radius * Math.SQRT2, true)
+    if (effect?.sketchBackdrop) {
       return this.blur(input, radius * Math.SQRT2, true, false, false, true, false, true)
     }
     const backdrop = node.blend === 'normal' ? backdropEffect(node.effects || []) : undefined
@@ -7304,6 +7308,31 @@ export class GpuRenderer {
       current = next
     }
     return current
+  }
+  private async sketchBlurRamp(input: Surface, node: GpuNode, effect: Effect, sigma: number, clampEdges: boolean): Promise<Surface> {
+    if (!Number.isFinite(sigma) || sigma < 0 || sigma > 512) throw Error('Sketch progressive blur sigma must be in [0,512]')
+    if (sigma === 0 || input.texture.transparentZero) return input
+    const field = sketch_blur_ramp_uniforms(
+      JSON.stringify(guardedPixelWindow(input.rect)), new Float64Array(node.matrix), JSON.stringify(effect.gradientBlur),
+    )
+    let current = input
+    try {
+      for (let pass = 0; pass < 6; pass++) {
+        if (this.surfaceNeedsAdmission(input.rect)) await this.reclaimForSurface(input.rect)
+        this.checkFrameCurrent()
+        const next = this.run(64, input.rect, [current], params => {
+          params.set(field.subarray(0, 8), 36)
+          params.set([sigma, pass % 2, Number(clampEdges), 0, 0], 44)
+          params.set(field.subarray(8), 64)
+        })
+        if (current !== input) this.release(current)
+        current = next
+      }
+      return current
+    } catch (error) {
+      if (current !== input) this.release(current)
+      throw error
+    }
   }
   private async gradientBlur(sharp:Surface, blurred:Surface, n:GpuNode, fx:Effect):Promise<Surface> {
     if(!fx.gradientBlur)return blurred

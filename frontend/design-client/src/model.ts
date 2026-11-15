@@ -196,19 +196,33 @@ export function validZoomBlur(value:unknown):value is ZoomBlur {
   return Object.keys(value).every(k=>['amount','center'].includes(k)) && Number.isFinite(z.amount) && z.amount>=0 && z.amount<=1000 &&
     Array.isArray(z.center) && z.center.length===2 && z.center.every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)
 }
+export const MAX_BLUR_STOPS = 64
+export type BlurStop = { offset: number; strength: number }
+export type SketchBlurRamp = { shape: 'linear' | 'radial'; ellipse: number; stops: BlurStop[] }
 export type GradientBlur = {
   start: [number, number]
   end: [number, number]
   startCount: number
   endCount: number
   smooth: boolean
+  sketch?: SketchBlurRamp
 }
 function validGradientBlur(gradient: GradientBlur | undefined): boolean {
   if (!gradient) return false
   return [gradient.start, gradient.end].every(point => Array.isArray(point) && point.length === 2 &&
     point.every(value => Number.isFinite(value) && Math.abs(value) <= 1e7)) &&
     [gradient.startCount, gradient.endCount].every(count => Number.isFinite(count) && count >= 0 && count <= 64) &&
-    typeof gradient.smooth === 'boolean'
+    typeof gradient.smooth === 'boolean' && (!gradient.sketch || validSketchBlurRamp(gradient.sketch))
+}
+function validSketchBlurRamp(ramp: SketchBlurRamp): boolean {
+  const bounded = (value: number, max: number) => Number.isFinite(value) && value >= 0 && value <= max
+  return (ramp.shape === 'linear' || ramp.shape === 'radial') && bounded(ramp.ellipse, 1e6) &&
+    Array.isArray(ramp.stops) && ramp.stops.length >= 2 && ramp.stops.length <= MAX_BLUR_STOPS &&
+    ramp.stops.every((stop, index) => bounded(stop.offset, 1) && bounded(stop.strength, 1) &&
+      (index === 0 || ramp.stops[index - 1].offset <= stop.offset))
+}
+function validBlurKind(kind: Effect['kind'], gradient: GradientBlur): boolean {
+  return kind === 'background-blur' || kind === (gradient.sketch ? 'gaussian-blur' : 'blur')
 }
 export type Effect = {
   shadowKnockout?: boolean
@@ -1150,7 +1164,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
           ].includes(e.kind) &&
           (e.showShadowBehindNode === undefined || typeof e.showShadowBehindNode === 'boolean') &&
           (e.shadowKnockout === undefined || typeof e.shadowKnockout === 'boolean' && (!e.shadowKnockout || e.kind === 'shadow')) &&
-          (e.sketchBackdrop === undefined || typeof e.sketchBackdrop === 'boolean' && (!e.sketchBackdrop || e.kind === 'background-blur' && !e.gradientBlur)) &&
+          (e.sketchBackdrop === undefined || typeof e.sketchBackdrop === 'boolean' && (!e.sketchBackdrop || e.kind === 'background-blur' && (!e.gradientBlur || !!e.gradientBlur.sketch))) &&
           (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
           (e.motionAngle === undefined || (finite(e.motionAngle, -1e7, 1e7) &&
             (e.kind === 'motion-blur' || e.kind === 'zoom-blur' || e.motionAngle === 0))) &&
@@ -1161,9 +1175,9 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
           finite(e.radius, 0, 1000) &&
           [e.x, e.y, e.spread, e.amount].every((v) => finite(v)) &&
           finite(e.opacity, 0, 1) &&
-          (e.gradientBlur == null || (['blur', 'background-blur'].includes(e.kind) && !e.glass && !e.texture &&
+          (e.gradientBlur == null || (validBlurKind(e.kind, e.gradientBlur) && !e.glass && !e.texture &&
             validGradientBlur(e.gradientBlur))) &&
-          (e.inactiveGradientBlur == null || (['blur', 'background-blur'].includes(e.kind) && !e.glass && !e.texture &&
+          (e.inactiveGradientBlur == null || (validBlurKind(e.kind, e.inactiveGradientBlur.parameters) && !e.glass && !e.texture &&
             !e.gradientBlur && finite(e.inactiveGradientBlur.baseRadius, 0, 1000) &&
             validGradientBlur(e.inactiveGradientBlur.parameters))) &&
           (!e.glass ||

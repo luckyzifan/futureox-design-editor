@@ -1539,10 +1539,26 @@ impl Sampler {
             };
             #[cfg(not(target_arch="wasm32"))]
             {
-                let rows=if crate::source_bitmap_pixels::is_source(uri) && !images.mips_enabled(){
-                    images.source.as_ref().ok_or("Sketch source bitmap is not open")?.resolve(uri)?.raw(images.settings)?
-                }else{None};
-                if let Some(rows)=rows {Some(SampleImage::Rows(rows))} else {ordinary(images)?}
+                if crate::source_bitmap_pixels::is_source(uri) && !images.mips_enabled() {
+                    let asset = images.source.as_ref().ok_or("Sketch source bitmap is not open")?.resolve(uri)?;
+                    // The large-document editor keeps its PNG in the owned
+                    // source directory. Use the same admitted shrink policy
+                    // as an inline Sketch bitmap before choosing streamed rows.
+                    let level = if sketch_bitmap && images.settings.is_none() {
+                        sketch_bitmap_mip_level(samples, m, [n.width, n.height], asset.size(), p)?
+                    } else {
+                        0
+                    };
+                    if level > 0 {
+                        Some(SampleImage::Surface(images.image_at_selected_level(uri, level)?))
+                    } else if let Some(rows) = asset.raw(images.settings)? {
+                        Some(SampleImage::Rows(rows))
+                    } else {
+                        ordinary(images)?
+                    }
+                } else {
+                    ordinary(images)?
+                }
             }
             #[cfg(target_arch="wasm32")]
             ordinary(images)?

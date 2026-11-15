@@ -1938,6 +1938,7 @@ mod gradient_blur_pipeline_tests {
             start_count: 0.,
             end_count: 8.,
             smooth: true,
+            sketch: None,
         };
         gradient_blur_composite(&mut target, &blurred, &Transform::default(), &params);
         let px = |x: i32| target.pixels[rect.index(x, 0).unwrap()].0;
@@ -1967,6 +1968,7 @@ mod gradient_blur_pipeline_tests {
             start_count: 0.,
             end_count: 8.,
             smooth: true,
+            sketch: None,
         };
         gradient_blur_composite(&mut target, &blurred, &Transform::default(), &params);
         // same x ⇒ same strength regardless of y (projection semantics)

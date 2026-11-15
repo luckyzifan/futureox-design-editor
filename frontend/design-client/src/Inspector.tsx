@@ -4,7 +4,7 @@ import {BoardPanel} from './BoardPanel'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
 import { SketchLayerStyle } from './SketchLayerStyle'
 import { BlurEffectPanel } from './BlurEffectPanel'
-import { canAddSketchEffect, isMotionZoomBlur, setProgressiveMode } from './blur-settings'
+import { canAddSketchEffect, isMotionZoomBlur, isSketchProgressiveBlur, setProgressiveMode } from './blur-settings'
 import { GlassEffectPanel, createGlassEffect, prepareGlassFill } from './GlassEffectPanel'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { propertyUnits, dashInUnits, styleUnitDescription } from './property-units'
@@ -412,9 +412,11 @@ function PaintEditor({
 }
 // Camera presentation updates re-render the parent shell. The controls consume
 // the editor's independent panel snapshot and must not rebuild for those frames.
-export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEditBlur }: {
+export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blurStopIndex, onSelectBlurStop, onEditBlur }: {
   editor: Editor
   blurEffectIndex?: number
+  blurStopIndex?: number
+  onSelectBlurStop?: (index: number) => void
   onEditBlur?: (index: number | null) => void
 }) {
   const { uiMode } = useInterfacePreferences()
@@ -599,8 +601,9 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
       value="100" opacity label={tr('调整填充不透明度')} buttonText={tr('调整填充不透明度')}
     />
   </div>
+  const usesSketchRamp = (effect: Effect) => !!(effect.gradientBlur?.sketch || effect.inactiveGradientBlur?.parameters.sketch)
   const nativeBlurSettings = (kind: Effect['kind']) =>
-    uiMode === 'figma' ? kind === 'blur' || kind === 'background-blur' : isMotionZoomBlur(kind)
+    uiMode === 'figma' ? kind === 'blur' || kind === 'background-blur' : isMotionZoomBlur(kind) || isSketchProgressiveBlur(kind)
   return (
     <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
       {uiMode === 'sketch' && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
@@ -972,6 +975,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                 if (!kind || n.effects.length >= 16) return
                 if (uiMode === 'sketch' && !canAddSketchEffect(kind, n.effects)) return
                 const added = kind === 'glass' ? createGlassEffect(uiMode) : effect(kind)
+                if (uiMode === 'sketch' && kind === 'background-blur') added.sketchBackdrop = true
                 if (nativeBlurSettings(kind)) added.radius = uiMode === 'figma' ? 4 : 10
                 update(target => {
                   if (target.effects.length >= 16 || uiMode === 'sketch' && !canAddSketchEffect(kind, target.effects)) return
@@ -992,9 +996,13 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
               ))}
             </select>
           </h3>
-          {n.effects.map((fx, i) => nativeBlurSettings(fx.kind) ?
+          {n.effects.map((fx, i) => nativeBlurSettings(fx.kind) || usesSketchRamp(fx) ?
             <BlurEffectPanel key={`${uiMode}:${fx.id}`} effect={fx} layer={n}
-              label={uiMode === 'sketch' ? '运动和缩放模糊' : effects[fx.kind]}
+              label={uiMode === 'sketch' && isMotionZoomBlur(fx.kind) ? '运动和缩放模糊' :
+                uiMode === 'sketch' && fx.kind === 'gaussian-blur' ? effects.blur : effects[fx.kind]}
+              sketchModes={usesSketchRamp(fx) || uiMode === 'sketch' && isSketchProgressiveBlur(fx.kind)}
+              blurStopIndex={blurEffectIndex === i ? blurStopIndex : undefined}
+              onSelectBlurStop={blurEffectIndex === i ? onSelectBlurStop : undefined}
               styleScale={units.style} coordinateScale={[units.x, units.y]} styleDescription={styleDescription}
               openOnCreate={fx.id === blurToOpen} onOpened={() => setBlurToOpen(null)}
               readout={blurReadout?.effectId === fx.id ? blurReadout : undefined}

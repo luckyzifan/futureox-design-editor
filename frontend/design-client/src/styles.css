@@ -2989,3 +2989,12 @@ html[data-reduced-motion=true] .animation-modal * {
   padding: 0 7px;
   background: var(--workspace-field);
 }
+
+.sketch-blur-ramp { display: grid; grid-template-columns: 24px minmax(0, 1fr) 24px; align-items: center; gap: 8px; padding: 5px 0; }
+.sketch-blur-ramp > button { display: grid; min-height: 25px; place-items: center; border-radius: 5px; }
+.sketch-blur-stop-track { position: relative; height: 16px; border-radius: 4px; cursor: crosshair; background: repeating-conic-gradient(var(--workspace-field) 0 25%, var(--workspace-border) 0 50%) 0 / 10px 10px; }
+.sketch-blur-stop-track button { position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; padding: 0; transform: translate(-50%, -50%); border: 2px solid var(--workspace-panel); box-shadow: 0 0 0 1px var(--workspace-border); }
+.sketch-blur-stop-track button[aria-pressed=true] { box-shadow: 0 0 0 2px var(--sketch-effect-accent, var(--workspace-accent)); z-index: 1; }
+.sketch-blur-stop-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+
+.blur-stop-selected { stroke: var(--sketch-effect-accent, var(--workspace-accent)); fill: var(--sketch-effect-accent, var(--workspace-accent)); }

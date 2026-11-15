@@ -418,7 +418,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   ) : undefined)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [blurEdit, setBlurEdit] = useState<{
-    session: number; document: string; page: string; node: string; index: number; effect: string; count: number
+    session: number; document: string; page: string; node: string; index: number; effect: string; count: number; stop?: number
   } | null>(null)
   const blurNode = blurEdit && s.doc.nodes[blurEdit.node]
   const blurEffect = blurEdit && blurNode && blurNode.effects[blurEdit.index]
@@ -428,6 +428,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     && s.tool === 'select' && s.selection.length === 1 && s.selection[0] === blurEdit.node
     && blurNode.effects.length === blurEdit.count && blurEffect.id === blurEdit.effect
     ? blurEdit.index : undefined
+  const blurStopIndex = blurEffectIndex === undefined ? undefined : blurEdit?.stop
+  const selectBlurStop = useCallback((stop: number) => {
+    setBlurEdit(current => current ? { ...current, stop } : current)
+  }, [])
   const exitBlurEdit = useCallback(() => setBlurEdit(null), [])
   useEffect(() => {
     if (blurEdit && blurEffectIndex === undefined) exitBlurEdit()
@@ -1627,7 +1631,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}
             editTextRef={editText} onToggleUi={toggleUi}
-            blurEffectIndex={blurEffectIndex} onExitBlurEdit={exitBlurEdit}
+            blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex} onSelectBlurStop={selectBlurStop} onExitBlurEdit={exitBlurEdit}
             onSelectSourcePoint={source?.selectMaterialAt} selectedMaterialBox={source?.selectedMaterialBox} pickSourceMaterial={source?.pickMaterial} prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={uiMode === 'sketch' ? sketchZoomHost : figmaZoomHost} /></HomeCanvasGate>
@@ -1650,7 +1654,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             {figmaZoomDocked && figmaZoom}
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
-            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} blurEffectIndex={blurEffectIndex} onEditBlur={editBlur} /></PendingEditContext.Provider>
+            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex} onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} /></PendingEditContext.Provider>
               : <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />}
           </div>
           <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />
