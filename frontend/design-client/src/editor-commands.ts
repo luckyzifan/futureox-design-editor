@@ -77,7 +77,15 @@ export function selectionCameraBox(editor: Editor): Bounds | undefined {
   }
   return finiteBox(direct) ? direct : finiteBox(sceneBox) ? sceneBox : undefined
 }
-export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; nodeId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile; actionSource?: ActionSourceCode } = {}): Promise<void> {
+export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: {
+  worldPoint?: Point
+  pageId?: string
+  nodeId?: string
+  zoomAnchor?: Point
+  shortcutProfile?: ShortcutProfile
+  actionSource?: ActionSourceCode
+  preserveFrameContents?: boolean
+} = {}): Promise<void> {
   const category = command === 'copy' ? CanvasAction.copy : command === 'cut' ? CanvasAction.cut : command.startsWith('paste') ? CanvasAction.paste : command === 'undo' ? CanvasAction.undo : command === 'redo' ? CanvasAction.redo : command === 'delete' ? CanvasAction.delete : command === 'duplicate' ? CanvasAction.duplicate : command === 'group' || command === 'frame-selection' || command === 'graphic-selection' ? CanvasAction.group : command === 'ungroup' ? CanvasAction.ungroup : command === 'select-all' ? CanvasAction.selectAll : CanvasAction.command
   const action = beginEditorAction(editor, category, options.actionSource ?? ActionSource.unknown, editorCommands.indexOf(command) + 1)
   try {
@@ -139,7 +147,10 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
   const stopFence = editor.subscribe(() => { if (!matches()) invalidated = true })
   const current = () => !invalidated && matches()
   try {
-    if (isDimensionNudgeCommand(command)) { nudgeSelectionDimensions(editor, command); return }
+    if (isDimensionNudgeCommand(command)) {
+      nudgeSelectionDimensions(editor, command, false, options.preserveFrameContents)
+      return
+    }
     if(['fill','stroke','effect','text','font','instance','properties','matching','inverse'].some(q=>command===`select-${q}`)){
       editor.select(querySelection(editor.state.doc,editor.state.page,editor.state.selection,command.slice(7) as SelectionQuery));return
     }
@@ -281,7 +292,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'fit-frame-content': {
         const ids = editor.topSelection()
         const frame = ids.length === 1 ? before.nodes[ids[0]] : undefined
-        if (!frame || frame.kind !== 'frame' || frame.graphic || frame.locked || frame.instance || frame.instanceOrigin ||
+        if (!frame || frame.kind !== 'frame' || frame.locked || frame.instance || frame.instanceOrigin ||
             frame.layout && frame.layout.mode !== 'none' || lockedSelectionIds(editor).length) break
         const children = frame.children.filter(id => before.nodes[id].visible)
         if (!children.length) break

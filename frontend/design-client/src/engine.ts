@@ -551,7 +551,7 @@ export class Editor {
     const next = { ...this.state, ...patch }
     if (next.frameCrop && (navigationChanged || next.tool !== 'select' ||
         next.selection.length !== 1 || next.selection[0] !== next.frameCrop ||
-        next.doc.nodes[next.frameCrop]?.kind !== 'frame' || next.doc.nodes[next.frameCrop]?.graphic))
+        next.doc.nodes[next.frameCrop]?.kind !== 'frame'))
       next.frameCrop = null
     // Explicit raw messages supersede presentation tags even when text is equal.
     // Selection/camera updates do not shorten the existing notification lifetime.
@@ -2004,7 +2004,10 @@ export class Editor {
       if (mask && plan.ids.length < 2) throw new SelectionCommandError('invalid_params', 'Mask grouping requires at least two nodes')
       const group = node(kind === 'graphic' ? 'frame' : kind, 0, 0, plan.width, plan.height)
       configureSelectionWrapper(group, plan)
-      if (kind === 'graphic') group.graphic = true
+      if (kind === 'graphic') {
+        group.graphic = true
+        group.clip = true
+      }
       group.name = mask ? '蒙版组' : kind === 'graphic' ? '图形' : kind === 'frame' ? '画板' : '编组'
       return this.change(mask ? '创建蒙版' : kind === 'graphic' ? '编组图形' : kind === 'frame' ? '创建选区画板' : '编组', draft => {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)

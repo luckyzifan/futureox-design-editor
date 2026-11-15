@@ -1439,10 +1439,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       if (penRef.current && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && e.code !== 'Space') finishPen()
       if (shortcut && isDimensionNudgeCommand(shortcut.command)) {
+        const preserveFrameContents = !!shortcut.preserveFrameContents
+        if (preserveFrameContents && !editableFrameCrop(editor)) return
         e.preventDefault()
         if (['select', 'scale'].includes(editor.state.tool) && editor.topSelection().length) {
           const command = shortcut.command
-          nudge.step(e, '键盘调整图层尺寸', () => nudgeSelectionDimensions(editor, command, true))
+          nudge.step(e, preserveFrameContents ? '裁切画框' : '键盘调整图层尺寸',
+            () => nudgeSelectionDimensions(editor, command, true, preserveFrameContents))
         }
         return
       }
