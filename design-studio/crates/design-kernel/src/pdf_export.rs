@@ -295,8 +295,8 @@ fn write_text_operators(
                 "{} 0 0 {} {} {} Tm <{:04x}> Tj",
                 num(glyph.width_scale)?,
                 num(-glyph.height_scale)?,
-                num(glyph.x + glyph.ink_offset_x)?,
-                num(glyph.y)?,
+                num(glyph.x + glyph.ink_offset.x)?,
+                num(glyph.y + glyph.ink_offset.y)?,
                 glyph.id
             );
         }

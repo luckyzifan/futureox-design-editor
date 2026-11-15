@@ -427,7 +427,7 @@ pub struct Glyph {
     #[serde(skip)]
     pub(crate) height_scale: f64,
     #[serde(skip)]
-    pub(crate) ink_offset_x: f64,
+    pub(crate) ink_offset: Point,
     #[serde(skip)]
     wrap_advance: f64,
     /// Variation coordinates this glyph was shaped with; outlines rebuild the
@@ -438,7 +438,7 @@ pub struct Glyph {
 
 impl Glyph {
     pub(crate) fn has_variations(&self) -> bool {
-        !self.vars.is_empty() || self.width_scale != 1. || self.height_scale != 1. || self.ink_offset_x != 0.
+        !self.vars.is_empty() || self.width_scale != 1. || self.height_scale != 1. || self.ink_offset != Point::default()
     }
 }
 #[derive(Serialize)]
@@ -728,7 +728,7 @@ fn sketch_han_scale(size: f64) -> (f64, f64) {
 // gave every digit the same width, which is especially visible in clocks.
 // Columns are normalized advance, ink left, ink right, and ink ascent at
 // 16 pt (UI text), 20 pt and 26 pt (display optical sizes).
-const SKETCH_UI_FIGURES: [[[f64; 4]; 13]; 3] = [
+const SKETCH_UI_FIGURES: [[[f64; 4]; 14]; 3] = [
     [
         [0.624, 0.063, 0.565, 0.719],
         [0.444, 0.064, 0.339, 0.705],
@@ -743,6 +743,7 @@ const SKETCH_UI_FIGURES: [[[f64; 4]; 13]; 3] = [
         [0.277, 0.085, 0.212, 0.500],
         [0.277, 0.058, 0.197, 0.099],
         [0.906, 0.066, 0.859, 0.714],
+        [0.277, 0.085, 0.212, 0.122],
     ],
     [
         [0.602, 0.061, 0.564, 0.720],
@@ -758,6 +759,7 @@ const SKETCH_UI_FIGURES: [[[f64; 4]; 13]; 3] = [
         [0.255, 0.077, 0.201, 0.496],
         [0.255, 0.049, 0.187, 0.099],
         [0.875, 0.061, 0.837, 0.713],
+        [0.255, 0.077, 0.201, 0.118],
     ],
     [
         [0.617, 0.046, 0.562, 0.717],
@@ -773,8 +775,68 @@ const SKETCH_UI_FIGURES: [[[f64; 4]; 13]; 3] = [
         [0.231, 0.055, 0.168, 0.484],
         [0.231, 0.024, 0.157, 0.101],
         [0.827, 0.046, 0.773, 0.711],
+        [0.231, 0.055, 0.168, 0.106],
     ],
 ];
+
+// Regular UI face advances at 16, 20 and 26 pt, in 1/2048 em. This keeps
+// proportional Latin letters and spaces in the same optical sizes as figures.
+const SKETCH_UI_LATIN_ADVANCES: [[u16; 53]; 3] = [
+    [
+        1340, 1306, 1426, 1448, 1180, 1132, 1489, 1480, 508, 1062, 1309, 1123, 1750,
+        1480, 1540, 1261, 1540, 1298, 1265, 1258, 1470, 1340, 1942, 1350, 1302, 1315,
+        1090, 1218, 1106, 1218, 1130, 701, 1208, 1165, 466, 465, 1072, 478, 1742,
+        1155, 1170, 1210, 1208, 740, 1032, 704, 1155, 1070, 1546, 1034, 1072, 1064, 536,
+    ],
+    [
+        1315, 1274, 1406, 1419, 1153, 1104, 1464, 1453, 481, 1035, 1275, 1096, 1723,
+        1453, 1515, 1227, 1515, 1266, 1238, 1226, 1444, 1313, 1915, 1323, 1275, 1287,
+        1060, 1183, 1072, 1183, 1095, 667, 1173, 1135, 440, 439, 1038, 448, 1704,
+        1122, 1135, 1174, 1173, 699, 998, 668, 1122, 1035, 1511, 1001, 1039, 1023, 493,
+    ],
+    [
+        1325, 1265, 1428, 1416, 1156, 1106, 1471, 1457, 485, 1039, 1258, 1099, 1727,
+        1457, 1522, 1211, 1522, 1254, 1240, 1217, 1451, 1317, 1917, 1325, 1279, 1288,
+        1054, 1162, 1054, 1162, 1077, 650, 1152, 1130, 447, 445, 1022, 444, 1674,
+        1107, 1115, 1153, 1152, 662, 981, 646, 1107, 1017, 1493, 986, 1024, 988, 451,
+    ],
+];
+
+fn sketch_optical_sizes(size: f64) -> (usize, usize, f64) {
+    if size < 20. {
+        (0, 1, (size.clamp(16., 20.) - 16.) / 4.)
+    } else {
+        (1, 2, (size.min(26.) - 20.) / 6.)
+    }
+}
+
+/// Advance, horizontal scale, vertical scale and horizontal ink displacement.
+fn sketch_latin_metrics(character: char, size: f64, weight: f32, face: &ttf_parser::Face<'_>,
+    id: ttf_parser::GlyphId) -> Option<(f64, f64, f64, f64)> {
+    let index = match character {
+        'A'..='Z' => (character as u8 - b'A') as usize,
+        'a'..='z' => 26 + (character as u8 - b'a') as usize,
+        ' ' => 52,
+        _ => return sketch_figure_metrics(character, size, face, id),
+    };
+    if weight != 400. { return None; }
+    let (lower, upper, blend) = sketch_optical_sizes(size);
+    let a = f64::from(SKETCH_UI_LATIN_ADVANCES[lower][index]);
+    let b = f64::from(SKETCH_UI_LATIN_ADVANCES[upper][index]);
+    let advance = (a + blend * (b - a)) / 2048.;
+    let natural = f64::from(face.glyph_hor_advance(id)?) / f64::from(face.units_per_em());
+    if natural <= 0. { return None; }
+    // Match the observed x-height or cap height while keeping the fallback's
+    // outline and letting the shaper supply pair positioning.
+    let (height, target) = if "acegmnopqrsuvwxyz".contains(character) {
+        let optical_x_height = [0.5264, 0.5225, 0.5098];
+        (face.x_height(), optical_x_height[lower] + blend * (optical_x_height[upper] - optical_x_height[lower]))
+    } else {
+        (face.capital_height(), 0.7046)
+    };
+    let vertical = height.filter(|h| *h > 0).map_or(1., |h| target * f64::from(face.units_per_em()) / f64::from(h));
+    Some((advance * size, advance / natural, vertical, 0.))
+}
 
 fn sketch_figure_metrics(character: char, size: f64, face: &ttf_parser::Face<'_>,
     id: ttf_parser::GlyphId) -> Option<(f64, f64, f64, f64)> {
@@ -783,10 +845,10 @@ fn sketch_figure_metrics(character: char, size: f64, face: &ttf_parser::Face<'_>
         ':' => 10,
         ',' => 11,
         '%' => 12,
+        '.' => 13,
         _ => return None,
     };
-    let (lower, upper, blend) = if size < 20. { (0, 1, (size.clamp(16., 20.) - 16.) / 4.) }
-        else { (1, 2, (size.min(26.) - 20.) / 6.) };
+    let (lower, upper, blend) = sketch_optical_sizes(size);
     let [advance, left, right, ascent] = std::array::from_fn(|i| {
         let a = SKETCH_UI_FIGURES[lower][index][i];
         a + blend * (SKETCH_UI_FIGURES[upper][index][i] - a)
@@ -1583,26 +1645,34 @@ impl Fonts {
                     let byte = start + glyph.cluster as usize;
                     let cluster = utf16[base + byte];
                     let mut raw_advance = (p.x_advance as f64 * scale).abs();
-                    let (width_scale, height_scale, ink_offset_x, advance) = if sketch_display_fallback && id == "default" {
+                    let (width_scale, height_scale, ink_offset, advance) = if sketch_display_fallback && id == "default" {
                         let character = text[byte..].chars().next().unwrap_or_default();
                         if is_sketch_han(character) {
                             let (width, height) = sketch_han_scale(size);
-                            (width, height, 0., raw_advance * width)
+                            // Native PNGs put the fallback ink below the SVG
+                            // baseline. Fixed display-size line boxes add more
+                            // space above the ink. Keep the caret and line box.
+                            let drop = if size >= 20. && style.line_box_baseline == "sketch-fixed-advance" {
+                                0.064
+                            } else {
+                                0.019
+                            };
+                            (width, height, Point::new(0., size * drop), raw_advance * width)
                         } else if p.x_advance > 0
                             && style.features.is_empty() && variations.is_empty()
                             && face.borrow_face().glyph_index(character) == Some(ttf_parser::GlyphId(glyph.glyph_id as u16))
-                            && let Some((target, width, height, left)) = sketch_figure_metrics(character, size, face.borrow_face(), ttf_parser::GlyphId(glyph.glyph_id as u16))
+                            && let Some((target, width, height, left)) = sketch_latin_metrics(character, size, weight, face.borrow_face(), ttf_parser::GlyphId(glyph.glyph_id as u16))
                         {
                             // Keep any pair positioning from the shaper. Only
                             // replace the advance of the unpositioned glyph.
                             let natural = face.borrow_face().glyph_hor_advance(ttf_parser::GlyphId(glyph.glyph_id as u16))
                                 .map(|units| f64::from(units) * scale).unwrap_or(raw_advance);
-                            (width, height, left, (target + raw_advance - natural).max(0.))
+                            (width, height, Point::new(left, 0.), (target + raw_advance - natural).max(0.))
                         } else {
-                            (1., 1., 0., raw_advance)
+                            (1., 1., Point::default(), raw_advance)
                         }
                     } else {
-                        (1., 1., 0., raw_advance)
+                        (1., 1., Point::default(), raw_advance)
                     };
                     let tracking = if last_in_cluster { cluster_tracking(runs, cluster, style) } else { 0. };
                     raw_advance += tracking;
@@ -1620,7 +1690,7 @@ impl Fonts {
                         byte: base + byte,
                         width_scale,
                         height_scale,
-                        ink_offset_x,
+                        ink_offset,
                         wrap_advance: raw_advance,
                         vars: variations.clone(),
                     });
@@ -2209,10 +2279,10 @@ impl Fonts {
                 };
                 glyph_outline.replay(&mut builder);
             }
-            if glyph.width_scale != 1. || glyph.height_scale != 1. || glyph.ink_offset_x != 0. {
+            if glyph.width_scale != 1. || glyph.height_scale != 1. || glyph.ink_offset != Point::default() {
                 let (sx, sy) = (glyph.width_scale, glyph.height_scale);
                 crate::text_path::transform_outline(&mut outline, crate::math::Transform([
-                    sx, 0., 0., sy, glyph.x * (1. - sx) + glyph.ink_offset_x, glyph.y * (1. - sy),
+                    sx, 0., 0., sy, glyph.x * (1. - sx) + glyph.ink_offset.x, glyph.y * (1. - sy) + glyph.ink_offset.y,
                 ]));
             }
             for (enabled, offset) in [

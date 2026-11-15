@@ -824,10 +824,14 @@ impl Node {
 
     pub(crate) fn text_shadow_radius(&self, effect: &Effect, scale: f64) -> f64 {
         let radius = effect.blur_radius() * scale;
-        if self.paints_text() && effect.shadow_knockout && effect.spread == 0. && (12. ..=96.).contains(&radius) {
-            // Sketch's text glow rolls off faster than the generic three-box
-            // shadow at export density. Measured on alpha at 1×, 2× and 3×.
-            radius * 0.88 + 1.28
+        if self.paints_text() && effect.kind == "shadow" && effect.shadow_knockout
+            && effect.spread == 0. && (3. ..=96.).contains(&radius)
+        {
+            // Native alpha at 1×, 2× and 3× shows a tighter glow outside the
+            // glyphs. Ease in the shoulder as the blur gets wide enough to
+            // resolve it on the device grid.
+            let shoulder = ((radius - 8.) / 7.).clamp(0., 1.);
+            radius * 0.88 + 0.9 * shoulder
         } else {
             radius
         }

@@ -137,6 +137,7 @@ fn sketch_custom_line_height_changes_the_advance_without_moving_the_first_baseli
             assert_eq!(laid.glyphs[0].y, 40.);
             assert!((laid.glyphs[4].y - 40. - advance).abs() < 1e-9);
             assert!((laid.glyphs[0].advance - 43.4492481203).abs() < 1e-9);
+            assert!(laid.bounds.as_ref().is_some_and(|ink| (6. ..=9.).contains(&ink.y)));
         }
     }
 }
@@ -148,6 +149,7 @@ fn legacy_line_boxes_follow_the_observed_system_baseline_and_han_advance() {
         ("指标名称", 16., 15., Some(15.8754863813)),
         ("我是小标题名称", 20., 17., Some(19.1541353383)),
         ("14:37:30", 26., 25., Some(0.454 * 26.)),
+        ("T", 20., 19., Some(1226. / 2048. * 20.)),
     ] {
         let mut files = interop::read_zip_public(&source(Some(1), text, 240.)).unwrap();
         let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
@@ -202,7 +204,7 @@ fn sketch_text_shadow_compiles_as_source_over_and_keeps_its_archive_fields() {
         }).to_string()).unwrap();
         let compiled = &scene.nodes["caption"].effects[0];
         assert!(!compiled.shadow_knockout, "colored run: {colored_run}");
-        assert!((compiled.radius - 14.48).abs() < 1e-9);
+        assert!((compiled.radius - 14.1).abs() < 1e-9);
         assert_eq!(compiled.opacity, 0.8);
         let archived = exported_text(&doc);
         assert_eq!(archived["style"]["shadows"][0]["blurRadius"].as_f64(), Some(15.));
