@@ -474,7 +474,8 @@ export class GpuRenderer {
       return targets
     }finally{this.release(...contribution!)}
   }
-  private interactionRoots = new Map<GpuNode, { anchor: Rect; planes: Surface[]; source?: boolean }>()
+  private interactionRoots = new Map<GpuNode, { anchor: Rect; planes: Surface[]; source?: boolean; batch?: object }>()
+  private interactionRootBatch?: object
   private interactionArithmetic = ''
   private interactionCapturing = false
   private interactionTextures = new Set<Texture>()
@@ -782,7 +783,7 @@ export class GpuRenderer {
           try {
             for (const plane of contribution) planes.push(this.copyInteractionSource(plane))
           } catch (error) { this.release(...planes, ...contribution); throw error }
-          this.interactionRoots.set(key, { anchor: { ...n.rect }, planes })
+          this.interactionRoots.set(key, { anchor: { ...n.rect }, planes, batch: this.interactionRootBatch })
           for (const { texture } of planes) { this.interactionTextures.add(texture); this.interactionBytes += texture.bytes }
         }
       }
@@ -3902,7 +3903,7 @@ export class GpuRenderer {
     if (source && this.interactionBytes + source.rect.w*source.rect.h*16 <= this.interactionBudget &&
         !this.overBudget(source.rect.w*source.rect.h*16)) {
       const saved = this.copyInteractionSource(source)
-      this.interactionRoots.set(key, { anchor: { ...n.rect }, planes: [saved], source: true })
+      this.interactionRoots.set(key, { anchor: { ...n.rect }, planes: [saved], source: true, batch: this.interactionRootBatch })
       this.interactionTextures.add(saved.texture); this.interactionBytes += saved.texture.bytes
     }
     return source
@@ -8246,6 +8247,7 @@ export class GpuRenderer {
         while(parent){this.nativeChanging.add(parent);parent=index.parents.get(parent)}}
     }
     const retainRoots = this.optimized && this.driver.managed && scene.interactionRetained === true
+    const rootBatch = this.interactionRootBatch = retainRoots && scene.nativeInteraction && scene.interactionLease ? {} : undefined
     if (this.interactionInvalid || !retainRoots || this.nestedPrefix?.plan.lease !== scene.interactionLease)
       this.retireNestedPrefix()
     // Canvas tiles and transient movement share this renderer/device. A
@@ -8548,7 +8550,24 @@ export class GpuRenderer {
         // An abort may advance the resource-retirement epoch even after
         // discarding an unsubmitted encoder. That never publishes its pixels.
         if (this.displayMaterial && !this.displayMaterial.published) this.retireDisplayMaterial()
-        this.retireNestedPrefix(); this.retireCoherentSubtrees(); this.horizontalFilters.clear(); this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear(); if(!cancelledUploadsComplete)this.materialFields.clear(); this.interactionInvalid = true
+        this.retireNestedPrefix(); this.retireCoherentSubtrees(); this.horizontalFilters.clear()
+        this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear()
+        if (!cancelledUploadsComplete) this.materialFields.clear()
+        if (cancelledUploadsComplete && rootBatch) {
+          // Earlier isolated captures are immutable and the abort fence has
+          // completed their queue reads. Drop this frame's unpublished writes;
+          // the next scene still has to prove source and arithmetic identity.
+          const settled = new Set<GpuNode>()
+          for (const [source, entry] of this.interactionRoots) {
+            if (entry.batch !== rootBatch) settled.add(source)
+          }
+          this.retireInteractionRoots(settled)
+          this.retireInteractionPrefix()
+          this.releaseMovingBackdrop()
+          this.retireStationaryBackdrop()
+        } else {
+          this.interactionInvalid = true
+        }
       }
       if(this.denseAtlas){this.admissionPins.delete(this.denseAtlas.texture);this.denseAtlas=undefined}
       for (const texture of this.coordinateMaps) {
