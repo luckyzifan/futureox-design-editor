@@ -1742,11 +1742,12 @@ impl FigImporter {
                         noise: None,
                     }) } else { None },
                     gradient_blur,
+                    inactive_gradient_blur: None,
                     show_shadow_behind_node,
                     shadow_knockout: false,
                     sketch_backdrop: false,
                     color_controls: None,
-                    zoom_blur: None, motion_angle: 0.,
+                    zoom_blur: None, motion_angle: 0., motion_zoom_origin: None,
                 });
             }
         }

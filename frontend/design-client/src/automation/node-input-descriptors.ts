@@ -36,13 +36,19 @@ const stroke = obj({ id: str(), paint, width: num(0, 10000), align: en('inside',
   widthProfile: describe(array(obj({ position: unit, left: num(0, 4), right: num(0, 4) }, ['position', 'left', 'right']), 512), 'Positions must increase by at least 1e-6. Branched networks/text are unsupported; closed paths require matching endpoint widths.'),
 }, ['paint', 'width', 'align', 'cap', 'join', 'dash'])
 const colorControls = obj({ space: en('srgb','display-p3'), brightness: num(-1,1), contrast: num(0,4), saturation: num(0,4), hue: describe(num(), "Hue angle in radians, bounded to +/- 1e7.") }, ["brightness","contrast","saturation","hue"])
-const effect = obj({ zoomBlur: describe(obj({amount:num(0,1000),center:tuple(num(-1e6,1e6),2)}, ['amount','center']), 'Zoom-blur only: dimensionless amount, normalized node-local focal point; radius must be zero.'), colorControls, motionAngle: describe(num(-1e7,1e7), "Motion blur direction in node-local degrees; radius is Gaussian sigma."), id: str(), kind: en('shadow', 'inner-shadow', 'blur', 'background-blur', 'glass', 'noise', 'texture', 'color-controls', 'gaussian-blur', 'motion-blur', 'zoom-blur'), visible: bool, radius: num(0, 1000), x: num(), y: num(), spread: num(), color, opacity: unit, amount: num(),
+const gradientBlur = obj({
+  start: tuple(num(-1e7, 1e7), 2), end: tuple(num(-1e7, 1e7), 2),
+  startCount: num(0, 64), endCount: num(0, 64), smooth: bool,
+}, ['start', 'end', 'startCount', 'endCount', 'smooth'])
+const effect = obj({ motionZoomOrigin: nullable(describe(tuple(num(-1e6, 1e6), 2), 'Retained normalized zoom origin while motion blur is active.')), zoomBlur: describe(obj({amount:num(0,1000),center:tuple(num(-1e6,1e6),2)}, ['amount','center']), 'Zoom-blur only: dimensionless amount, normalized node-local focal point; radius must be zero.'), colorControls, motionAngle: describe(num(-1e7,1e7), "Motion blur direction in node-local degrees, also retained while zoom blur is active. For motion blur radius is Gaussian sigma."), id: str(), kind: en('shadow', 'inner-shadow', 'blur', 'background-blur', 'glass', 'noise', 'texture', 'color-controls', 'gaussian-blur', 'motion-blur', 'zoom-blur'), visible: bool, radius: num(0, 1000), x: num(), y: num(), spread: num(), color, opacity: unit, amount: num(),
   showShadowBehindNode: describe(bool, 'Optional FIG drop-shadow flag. Preserved on import; the renderer does not yet branch shadow clipping on this value.'),
   glass: describe(obj({ bevelSize: num(0.001, 1000), depth: num(0, 1000), refraction: unit, dispersion: unit, lightAngle: num(), lightIntensity: unit, splay: unit }, ['depth', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity']), 'Glass kind only; mutually exclusive with texture/gradientBlur.'),
   texture: describe(obj({ noiseSize: tuple(num(0.001, 10000), 2), clipToShape: bool, noise: en('figma', 'gabor', 'perlin') }, ['noiseSize', 'clipToShape']), 'Texture kind only; mutually exclusive with glass/gradientBlur.'),
-  gradientBlur: describe(obj({ start: tuple(num(), 2), end: tuple(num(), 2), startCount: num(0, 64), endCount: num(0, 64), smooth: bool }, ['start', 'end', 'startCount', 'endCount', 'smooth']), 'Layer or background blur only, with node-local endpoints. Mutually exclusive with glass and texture.'),
+  gradientBlur: describe(gradientBlur, 'Layer or background blur only, with node-local endpoints. Mutually exclusive with glass and texture.'),
+  inactiveGradientBlur: describe(obj({ baseRadius: num(0, 1000), parameters: gradientBlur }, ['baseRadius', 'parameters']),
+    'Retained progressive settings while a layer or background blur uses uniform radius.'),
 }, ['kind', 'radius', 'x', 'y', 'spread', 'color', 'opacity', 'amount'])
-for (const key of ['glass', 'texture', 'gradientBlur', 'colorControls']) {
+for (const key of ['glass', 'texture', 'gradientBlur', 'inactiveGradientBlur', 'colorControls']) {
   const properties = effect.properties as Record<string, Schema>
   properties[key] = nullable(properties[key])
 }

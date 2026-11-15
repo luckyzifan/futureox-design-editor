@@ -62,7 +62,7 @@ import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
 import { createBox, forcedPixelSnap, localClockwiseAfter, resizeInBasis, snapLocalClockwise, snapMove, selectionLocalBounds } from './canvas-view'
-import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
+import { fitBounds, fitSelectedBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
 import {
@@ -1069,6 +1069,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // snapshot must not hide them; starting a gesture still waits for that snapshot.
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && state.selection.length > 0)
+  const editingBlur = blurEffectIndex !== undefined
+  const showSelectionChrome = uiMode !== 'figma' || !editingBlur
+  const showTransformHandles = canTransform && !editingBlur
   const frameTitles = useMemo(() => entries.filter(e => {
     const n = state.doc.nodes[e.id]
     const parentId = e.ancestors.at(-1)
@@ -1076,10 +1079,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }), [entries, state.doc, selection])
   const overlay = useMemo(() => canvasOverlayCommands({
     document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:state.pixelGrid,
-    canTransform,selected,owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
+    canTransform:showTransformHandles,selected:showSelectionChrome ? selected : [],owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
     measurementTarget:measurementTarget&&measurementBounds?{id:measurementTarget,bounds:measurementBounds}:null,
     zoom,
-  }), [state.doc,state.page,state.tool,state.pixelGrid,editor.sessionGeneration,frameTitles,canTransform,selected,
+  }), [state.doc,state.page,state.tool,state.pixelGrid,editor.sessionGeneration,frameTitles,showSelectionChrome,showTransformHandles,selected,
     measurementTarget,measurementBounds,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom])
   const measurements = overlay.commands.measurements || []
   const marqueeChrome = useMemo(() => {
@@ -1629,7 +1632,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const relevant = onlySelection ? selected : entries.filter((e) => e.depth === 0)
     if (!relevant.length) return
     const b = unionBounds(relevant.map((e) => e.bounds))
-    editor.set({ view: fitBounds(b, size) })
+    editor.set({ view: onlySelection ? fitSelectedBounds(b, size, uiMode) : fitBounds(b, size) })
   }
   function creationPointer(d: Drag, p: Point) {
     if (space.current && d.spaceAnchor && d.spacePointer)
@@ -3036,7 +3039,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches} uiMode={uiMode}/>
       <CanvasSmartSelection editor={editor} view={displayView} size={size} entries={entries} visible={exactOverlayMatches}/>
       <CanvasGuides editor={editor} view={displayView} size={size} entries={entries} intercept={e=>{
-        if(!canTransform||e.button!==0)return false
+        if(!showTransformHandles||e.button!==0)return false
         const p=world(e)
         for(const h of transformHandles){
           if(pointInContours(p,[h.resizePoints])){start(e,'resize',h.index);return true}
@@ -3305,7 +3308,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
                   fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
               })}
-              <polygon
+              {showSelectionChrome && <polygon
                 data-testid="canvas-selection-outline"
                 data-selection-role={selected.length > 1 ? 'union' : 'object'}
                 data-selection-held={heldRotationMembers ? 'texture' : undefined}
@@ -3319,7 +3322,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 vectorEffect="non-scaling-stroke"
                 shapeRendering="crispEdges"
                 pointerEvents="none"
-              />
+              />}
               {measurements.length > 0 && <g data-testid="canvas-measurement" pointerEvents="none" opacity={gpuOverlay?0:1}>
                 {measurements.map((m, i) => <g key={`line-${i}`}>
                   <line data-measure={m.role || 'gap'} x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y} stroke={SPACING_RED} strokeWidth={1/zoom}/>
@@ -3330,16 +3333,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     x={label.anchor.x + label.offset.x / zoom} y={label.anchor.y + label.offset.y / zoom}
                     text={label.text} size={label.size} zoom={zoom} fill="#ffffff" />)}
               </g>}
-              {canTransform && drawnHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
+              {showTransformHandles && drawnHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
                 x1={h.point.x} y1={h.point.y} x2={h.next.x} y2={h.next.y}
                 stroke="transparent" strokeWidth={8/zoom} pointerEvents="stroke" style={{cursor:h.edgeCursor}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'resize',h.index+4)}} />)}
-              {canTransform && state.tool!=='scale' && drawnHandles.map(h => <g key={`rotate-${h.index}`} className="selection-rotate">
+              {showTransformHandles && state.tool!=='scale' && drawnHandles.map(h => <g key={`rotate-${h.index}`} className="selection-rotate">
                 <polygon data-testid={`rotate-corner-${h.index}`} data-anchor-x={h.rotateAnchor.x} data-anchor-y={h.rotateAnchor.y}
                   points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
                   style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
               </g>)}
-              {canTransform && drawnHandles.map((h, i) => (
+              {showTransformHandles && drawnHandles.map((h, i) => (
                 <polygon
                   key={i}
                   data-testid={`resize-${i}`}
@@ -3350,7 +3353,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   strokeWidth={1 / zoom}
                   strokeLinejoin="miter"
                   shapeRendering="crispEdges"
-                  pointerEvents={canTransform?'all':'none'}
+                  pointerEvents={showTransformHandles?'all':'none'}
                   style={{ cursor: h.resizeCursor }}
                   onPointerDown={(e) => {
                     e.stopPropagation()
@@ -3358,13 +3361,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   }}
                 />
               ))}
-              {canTransform&&origin.current.visible&&(()=>{const p=drag.current?.kind==='rotate'?drag.current.rotationCenter!:originWorld();return <g
+              {showTransformHandles&&origin.current.visible&&(()=>{const p=drag.current?.kind==='rotate'?drag.current.rotationCenter!:originWorld();return <g
                 data-testid="rotation-origin" transform={`translate(${p.x} ${p.y}) scale(${1/zoom})`} style={{cursor:'move'}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'pivot')}} onDoubleClick={e=>{e.stopPropagation();setOrigin({x:.5,y:.5},true)}}>
                 <circle r={10} fill="transparent" pointerEvents="all"/><circle r={5} fill="white" stroke={SELECTION_BLUE} strokeWidth={1}/>
                 <path d="M-9 0H9 M0 -9V9" fill="none" stroke={SELECTION_BLUE} strokeWidth={1}/><title>{chromeCopy.rotateOrigin}</title>
               </g>})()}
-              {canTransform && state.tool !== 'scale' && selected.length === 1 && ['ellipse', 'polygon', 'star'].includes(state.doc.nodes[selected[0].id].kind) && !state.doc.nodes[selected[0].id].network && (() => {
+              {showTransformHandles && state.tool !== 'scale' && selected.length === 1 && ['ellipse', 'polygon', 'star'].includes(state.doc.nodes[selected[0].id].kind) && !state.doc.nodes[selected[0].id].network && (() => {
                 const n = state.doc.nodes[selected[0].id]
                 const angle = Math.PI / n.points - Math.PI / 2
                 const arc = n.arc ?? { startAngle: 0, sweepAngle: Math.PI * 2, innerRadius: 0 }
@@ -3415,10 +3418,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     // shifting either authored control point.
                     const overlap = Math.hypot(a.x - b.x, a.y - b.y) * zoom < 13
                     return <g data-testid="blur-edit-handles">
-                      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#0d99ff" strokeWidth={1 / zoom} pointerEvents="none" />
+                      <line className="blur-axis" x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={1 / zoom} pointerEvents="none" />
                       {([['start', a], ['end', b]] as const).map(([endpoint, point]) =>
-                        <circle key={endpoint} data-testid={`blur-${endpoint}-handle`}
-                          cx={point.x} cy={point.y} r={(endpoint === 'start' && overlap ? 11 : 6) / zoom} fill="white" stroke="#0d99ff" strokeWidth={1 / zoom}
+                        <circle key={endpoint} className="blur-anchor" data-testid={`blur-${endpoint}-handle`}
+                          cx={point.x} cy={point.y} r={(endpoint === 'start' && overlap ? 11 : 6) / zoom} strokeWidth={1 / zoom}
                           style={{ cursor: 'crosshair' }} onPointerDown={(event) => {
                             beginMaterial(event, 'blurEndpoint', blurEffectIndex, '调整模糊端点')
                             if (drag.current?.kind === 'parameter') drag.current.blurEndpoint = endpoint
@@ -3430,11 +3433,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   const [x, y] = activeBlur.zoomBlur!.center
                   const origin = worldPoint({ x: x * n.width, y: y * n.height })
                   return <g data-testid="blur-edit-handles">
-                    <circle data-testid="zoom-blur-origin-handle" cx={origin.x} cy={origin.y} r={7 / zoom}
-                      fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
+                    <circle className="blur-anchor zoom-blur-origin" data-testid="zoom-blur-origin-handle" cx={origin.x} cy={origin.y} r={7 / zoom}
+                      strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
                       onPointerDown={(event) => beginMaterial(event, 'zoomBlurCenter', blurEffectIndex, '调整缩放模糊焦点')}>
                       <title>{locale === 'en' ? 'Zoom blur origin' : '缩放模糊焦点'}</title>
                     </circle>
+                    <path className="zoom-blur-crosshair" pointerEvents="none" strokeWidth={1 / zoom}
+                      d={`M ${origin.x - 10 / zoom} ${origin.y} h ${20 / zoom}
+                          M ${origin.x} ${origin.y - 10 / zoom} v ${20 / zoom}`} />
                   </g>
                 }
                 const marks: React.ReactNode[] = []
@@ -3486,11 +3492,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 }
                 return marks.length ? <g data-testid="material-handles">{marks}</g> : null
               })()}
-              <SelectionChromeChip testId="canvas-selection-size" opacity={gpuOverlay ? 0 : 1} centered tone="accent"
+              {showSelectionChrome && <SelectionChromeChip testId="canvas-selection-size" opacity={gpuOverlay ? 0 : 1} centered tone="accent"
                 x={selectionBox.x + selectionBox.width / 2}
                 y={selectionBox.y + selectionBox.height + 21 / zoom}
                 text={selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
-                size={10} zoom={zoom} fill={SIZE_PILL_TEXT} />
+                size={10} zoom={zoom} fill={SIZE_PILL_TEXT} />}
               {(overlay.commands.labels ?? []).filter(label => label.kind === 'selection-name').map(label => (
                 <SelectionChromeChip key="selection-name" testId="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
                   x={label.anchor.x} y={label.anchor.y + label.offset.y / zoom}

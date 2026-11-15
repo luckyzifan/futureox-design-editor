@@ -12,7 +12,7 @@ import { assertClipboardSize as assertSize, CLIPBOARD_TEXT_PREFIX as TEXT_PREFIX
 import { commitPendingEdits } from './pending-edits'
 import { blank, defaultSizing, node, paint, type Bounds, type DesignNode, type DesignDocument, type Point } from './model'
 import { lockedSelectionIds } from './canvas-menu-model'
-import { fitBounds, zoomAt, zoomStep } from './canvas-camera'
+import { fitBounds, fitSelectedBounds, zoomAt, zoomStep } from './canvas-camera'
 import { jumpFrame, jumpPage, jumpToNode } from './canvas-navigation'
 import { togglePrototypeTab } from './prototype-chrome'
 import { allParents, apply, bounds, unionBounds, worldMatrix } from './geometry'
@@ -272,7 +272,14 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       const view = editor.flushPendingView()
       if (command === 'zoom-fit' || command === 'zoom-selection') {
         const entries = editor.entries().filter(e => command === 'zoom-fit' ? e.depth === 0 : editor.state.selection.includes(e.id))
-        if (entries.length) editor.set({ view: fitBounds(unionBounds(entries.map(e => e.bounds)), {width,height}) })
+        if (entries.length) {
+          const box = unionBounds(entries.map(entry => entry.bounds))
+          const size = { width, height }
+          const view = command === 'zoom-selection'
+            ? fitSelectedBounds(box, size, interfacePreference.getSnapshot().uiMode)
+            : fitBounds(box, size)
+          editor.set({ view })
+        }
       } else {
         const anchor = options.zoomAnchor && Number.isFinite(options.zoomAnchor.x) && Number.isFinite(options.zoomAnchor.y) ? options.zoomAnchor : { x: width / 2, y: height / 2 }
         editor.set({ view: zoomAt(view, command === 'zoom-100' ? 1 : zoomStep(view.zoom, command === 'zoom-in' ? 1 : -1), anchor) })

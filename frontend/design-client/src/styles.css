@@ -2903,3 +2903,89 @@ html[data-reduced-motion=true] .animation-modal * {
   background: #0063cc;
   color: #ffffff;
 }
+
+.blur-effect-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-block: 4px;
+}
+.blur-settings-trigger {
+  min-width: 0;
+  min-height: 28px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--workspace-field);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  text-align: start;
+}
+.blur-settings-trigger svg { flex: none; }
+.blur-settings-trigger span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blur-settings-trigger[aria-expanded=true] {
+  color: var(--workspace-accent);
+  border-color: var(--workspace-accent);
+  background: var(--workspace-selected);
+}
+.blur-settings-body { display: grid; gap: 6px; padding: 10px 12px 12px; grid-template-columns: minmax(0, 1fr); }
+.blur-settings-modes {
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 6px;
+  background: var(--workspace-field);
+}
+.blur-settings-modes button { flex: 1; min-height: 24px; border: 1px solid transparent; border-radius: 4px; }
+.blur-settings-modes button[aria-pressed=true] {
+  color: var(--workspace-text);
+  border-color: var(--workspace-border);
+  background: var(--workspace-panel);
+}
+.editor-shell[data-ui-mode=sketch] {
+  --sketch-effect-accent: #5954f3;
+}
+.editor-shell[data-ui-mode=sketch] .blur-settings-popover { border-radius: 14px; }
+.editor-shell[data-ui-mode=sketch] .blur-settings-modes { border-radius: 8px; }
+.editor-shell[data-ui-mode=sketch] .blur-settings-modes button { border-radius: 7px; }
+.editor-shell[data-ui-mode=sketch] .blur-settings-modes button[aria-pressed=true] {
+  background: var(--sketch-effect-accent);
+  color: #fff;
+  border-color: transparent;
+}
+.blur-coordinates { font-size: 11px; }
+.blur-coordinates summary { color: var(--workspace-muted); cursor: pointer; padding: 3px 0; }
+.blur-coordinates .number-field { margin-top: 3px; }
+.blur-axis { stroke: #bcbcbc; }
+.blur-anchor { fill: #fff; stroke: #bcbcbc; }
+.zoom-blur-origin, .zoom-blur-crosshair { stroke: var(--workspace-accent); }
+.zoom-blur-crosshair { fill: none; }
+.editor-shell[data-ui-mode=sketch] .blur-axis,
+.editor-shell[data-ui-mode=sketch] .blur-anchor,
+.editor-shell[data-ui-mode=sketch] .zoom-blur-crosshair { stroke: var(--sketch-effect-accent); }
+.editor-shell[data-ui-mode=sketch] .blur-settings-body input[type=range] {
+  accent-color: var(--sketch-effect-accent);
+  min-height: 24px;
+}
+.editor-shell[data-ui-mode=figma] .blur-settings-body > .number-field {
+  grid-template-columns: minmax(58px, .6fr) minmax(0, 1fr);
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.editor-shell[data-ui-mode=figma] .blur-settings-body > .number-field .number-scrub {
+  grid-column: 1;
+  padding-inline: 2px;
+}
+.editor-shell[data-ui-mode=figma] .blur-settings-body > .number-field input {
+  grid-column: 2;
+  min-height: 28px;
+  border-radius: 5px;
+  padding: 0 7px;
+  background: var(--workspace-field);
+}

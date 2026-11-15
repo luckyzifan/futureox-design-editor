@@ -14,6 +14,8 @@ import { blank, effect, node, type DesignNode } from './model'
 import { PendingEditContext } from './pending-edit-context'
 import { interfacePreference } from './interface-preference'
 import { shortcutPreference } from './shortcut-preference'
+import { readFile } from 'node:fs/promises'
+import init, { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
 
 const bootstrap = await vi.hoisted(async () => {
   // React's input listener is chosen once, when this module first loads.
@@ -140,9 +142,9 @@ function field(label: string) {
   return mount.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)
 }
 async function enterEdit() {
-  const control = button('在画布上编辑模糊')
+  const control = mount.querySelector<HTMLButtonElement>('.blur-settings-trigger') ?? button('在画布上编辑模糊')
   expect(control).toBeTruthy()
-  await act(async () => control!.click())
+  if (control!.getAttribute('aria-expanded') !== 'true') await act(async () => control!.click())
 }
 function endpoint(id: string, which: 'start' | 'end') {
   return editor.state.doc.nodes[id].effects[0].gradientBlur![which]
@@ -174,7 +176,10 @@ test('gradient endpoints drag in a flipped rotated nest, stay in sync, and undo 
   expect(mount.querySelector('[data-testid="corner-radius-0"]')).toBeTruthy()
   expect(mount.querySelector('[data-testid="glass-light-handle"]')).toBeTruthy()
   await enterEdit()
-  expect(button('完成画布编辑')).toBeTruthy()
+  expect(mount.querySelector('.blur-settings-trigger')?.getAttribute('aria-expanded')).toBe('true')
+  expect(mount.querySelector('[data-testid="canvas-selection-outline"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="resize-0"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="rotate-corner-0"]')).toBeNull()
   expect(mount.querySelector('[data-testid="corner-radius-0"]')).toBeNull()
   expect(mount.querySelector('[data-testid="glass-light-handle"]')).toBeNull()
   const handle = mount.querySelector('[data-testid="blur-end-handle"]')!
@@ -303,4 +308,90 @@ test('coincident blur endpoints keep separate hit areas and the start drags with
   await act(async () => editor.undo())
   expect(endpoint(shape.id, 'start')).toEqual([10, 40])
   expect(editor.canUndo).toBe(false)
+})
+
+
+async function changeField(label: string, value: number) {
+  const input = field(label)!
+  expect(input).toBeTruthy()
+  await act(async () => {
+    input.focus()
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, String(value))
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
+}
+
+test('Figma progressive settings opens the guide and restores the edited start and end through uniform FD', async () => {
+  const shape = node('rectangle', 10, 20, 120, 80)
+  const effectId = effect('background-blur')
+  effectId.radius = 4
+  shape.effects = [effectId]
+  await show([shape], [shape.id])
+  await act(async () => editor.select([shape.id]))
+  await enterEdit()
+  const fx = () => editor.state.doc.nodes[shape.id].effects[0]
+  expect(field('模糊')!.value).toBe('4')
+  expect(mount.querySelector('[data-testid="blur-edit-handles"]')).toBeNull()
+  await act(async () => button('渐进')!.click())
+  expect(fx().gradientBlur).toMatchObject({ start: [60, 0], end: [60, 80], startCount: 0, endCount: 4 })
+  expect(mount.querySelector('[data-testid="blur-end-handle"]')).toBeTruthy()
+  await changeField('起点强度', 7)
+  await changeField('终点强度', 3)
+  await changeField('终点 X', 53)
+  await act(async () => button('均匀')!.click())
+  expect(fx().radius).toBe(3)
+  expect(fx().gradientBlur).toBeUndefined()
+  expect(mount.querySelector('[data-testid="blur-end-handle"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="canvas-selection-outline"]')).toBeTruthy()
+  expect(mount.querySelector('[data-testid="resize-0"]')).toBeTruthy()
+  await changeField('模糊', 9)
+  await init({ module_or_path: await readFile(new URL('../public/kernel/design_kernel_bg.wasm', import.meta.url)) })
+  const bytes = forma_encode_json(JSON.stringify(editor.authoredDocument))
+  const reopened = JSON.parse(forma_decode_json(bytes))
+  expect(reopened.nodes[shape.id].effects[0]).toEqual(fx())
+  await act(async () => { editor.load(reopened); editor.select([shape.id]) })
+  await enterEdit()
+  await act(async () => button('渐进')!.click())
+  expect(fx().gradientBlur).toMatchObject({ start: [60, 0], end: [53, 80], startCount: 7, endCount: 9 })
+  await act(async () => editor.undo())
+  expect(fx().radius).toBe(9)
+  expect(fx().gradientBlur).toBeUndefined()
+  await act(async () => editor.redo())
+  expect(fx().gradientBlur?.end).toEqual([53, 80])
+  expect(mount.querySelector('[data-testid="blur-end-handle"]')).toBeTruthy()
+})
+
+test('Sketch adds one motion and zoom effect and preserves angle and canvas origin across a reversible switch', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const shape = node('rectangle', 12, 24, 100, 60)
+  await show([shape], [shape.id])
+  await act(async () => editor.select([shape.id]))
+  const add = mount.querySelector<HTMLSelectElement>('select[aria-label="添加效果"]')!
+  expect(add.querySelectorAll('option[value="zoom-blur"]')).toHaveLength(0)
+  await act(async () => {
+    add.value = 'motion-blur'
+    add.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const fx = () => editor.state.doc.nodes[shape.id].effects[0]
+  expect(fx()).toMatchObject({kind: 'motion-blur', radius: 10})
+  expect(add.querySelector<HTMLOptionElement>('option[value="background-blur"]')!.disabled).toBe(true)
+  expect(add.querySelector<HTMLOptionElement>('option[value="motion-blur"]')!.disabled).toBe(true)
+  await changeField('角度', 45)
+  const zoom = () => mount.querySelector<HTMLButtonElement>('.blur-settings-modes button:last-child')!
+  const motion = () => mount.querySelector<HTMLButtonElement>('.blur-settings-modes button:first-child')!
+  await act(async () => zoom().click())
+  expect(fx()).toMatchObject({ kind: 'zoom-blur', radius: 0, motionAngle: 45, zoomBlur: { amount: 10, center: [0.5, 0.5] } })
+  expect(field('角度')).toBeNull()
+  expect(mount.querySelector('[data-testid="zoom-blur-origin-handle"]')).toBeTruthy()
+  await changeField('焦点 X %', 70)
+  await act(async () => motion().click())
+  expect(fx()).toMatchObject({ kind: 'motion-blur', radius: 10, motionAngle: 45, motionZoomOrigin: [0.7, 0.5] })
+  expect(mount.querySelector('[data-testid="zoom-blur-origin-handle"]')).toBeNull()
+  await act(async () => editor.undo())
+  expect(fx().zoomBlur?.center).toEqual([0.7, 0.5])
+  await act(async () => editor.redo())
+  await act(async () => zoom().click())
+  expect(fx().zoomBlur?.center).toEqual([0.7, 0.5])
+  expect(mount.querySelector('[data-testid="zoom-blur-origin-handle"]')).toBeTruthy()
 })

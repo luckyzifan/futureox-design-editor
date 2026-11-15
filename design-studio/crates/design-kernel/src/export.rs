@@ -222,7 +222,7 @@ impl Engine {
                 Ok(space) => {
                     let doc = self.doc.as_ref().expect("document checked");
                     let coherent = options.raster_profile != RasterProfile::Analytic
-                        && region_correlated_samples(doc, page_index);
+                        && region_correlated_samples(doc, page_index, options.raster_profile);
                     let (tile_width, rows) = if options.raster_profile == RasterProfile::Analytic {
                         // Share overlapping filter input across a wider tile
                         // while keeping the PNG row band within eight MiB.
@@ -268,7 +268,7 @@ impl Engine {
     }
 }
 
-fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize) -> bool {
+fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize, profile: RasterProfile) -> bool {
     fn visit(
         doc: &crate::scene::Document,
         id: &str,
@@ -313,9 +313,11 @@ fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize) ->
         .fold(true, |supported, id| {
             visit(doc, id, &mut count, &mut backdrop, &mut progressive_backdrop) && supported
         });
-    // A progressive backdrop consumes the same four correlated samples as
-    // the Figma canvas, including when the export contains a zoom/motion blur.
-    progressive_backdrop || supported && (count > 1 || backdrop)
+    // The hardware profile must preserve its accumulated edge coverage for
+    // an isolated paint too. The software export keeps its established
+    // single-paint resolve. A progressive backdrop needs the four planes
+    // even when the same export contains spatial blur effects.
+    progressive_backdrop || supported && (backdrop || count > 1 || count == 1 && profile == RasterProfile::Figma)
 }
 
 #[derive(serde::Serialize)]
