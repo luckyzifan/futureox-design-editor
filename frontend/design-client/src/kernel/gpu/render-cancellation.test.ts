@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
-import type { Driver, GpuScene, Texture } from './types'
+import type { Driver, GpuNode, GpuScene, Texture } from './types'
 
 function setup() {
   let current = true, fenced = false
@@ -81,6 +81,47 @@ test('freshness is rechecked after asynchronous pipeline preparation', async () 
   expect(s.driver.finish).not.toHaveBeenCalled()
   expect(s.driver.abortFrameAndReleaseFilterScratch).not.toHaveBeenCalled()
   expect((s.renderer as any).frameCurrent).toBeUndefined()
+})
+
+test('a cancelled native pose drops its new root captures and reuses the previously completed ones', async () => {
+  const s = setup(), renderer = s.renderer as any
+  Object.assign(s.driver, { managed: true, captureDisplay: true })
+  const region = { x: 0, y: 0, w: 8, h: 8 }
+  const root = (id: string) => ({ id, rect: region, opacity: 1, blend: 'normal',
+    fills: [], strokes: [], children: [], effects: [] }) as unknown as GpuNode
+  const stable = root('stable'), added = root('added')
+  const first: GpuScene = { ...s.scene, floatCompositing: true, nativeInteraction: true,
+    interactionRetained: true, interactionLease: {}, roots: [stable.id], nodes: { stable } }
+  const second = { ...first, roots: [stable.id, added.id], nodes: { stable, added } }
+  const paint = vi.spyOn(renderer, 'drawList').mockImplementation(async (_ids: unknown, target: unknown) => target)
+
+  await s.renderer.render(first, false, true, s.isCurrent)
+  const warm = renderer.interactionRoots.get(stable) as { planes: Array<{ texture: Texture }> }
+  expect(warm).toBeDefined()
+  const merge = renderer.merge.bind(renderer)
+  let abandoned: Texture | undefined
+  vi.spyOn(renderer, 'merge').mockImplementationOnce((...args: unknown[]) => merge(...args))
+    .mockImplementationOnce((...args: unknown[]) => {
+      const result = merge(...args)
+      const capture = renderer.interactionRoots.get(added)
+      abandoned = capture?.planes[0].texture
+      s.cancel()
+      return result
+    })
+  await expect(s.renderer.render(second, false, true, s.isCurrent)).rejects.toThrow('PREVIEW_CANCELLED')
+  expect(abandoned).toBeDefined()
+  expect(s.live.has(abandoned!)).toBe(false)
+  expect(renderer.interactionRoots.get(stable)).toBe(warm)
+  expect(renderer.interactionRoots.has(added)).toBe(false)
+  expect(s.driver.finish).toHaveBeenCalledOnce()
+
+  s.resume()
+  paint.mockClear()
+  const committed = await s.renderer.render(second, false, true, s.isCurrent)
+  expect(committed.retainedGroupHits).toBe(1)
+  expect(paint.mock.calls.map(([ids]) => ids)).toEqual([[added.id]])
+  expect(renderer.interactionRoots.get(stable)).toBe(warm)
+  expect(s.live.has(warm.planes[0].texture)).toBe(true)
 })
 
 test('continued supersession admits control tasks and the quiet latest frame settles', async () => {
