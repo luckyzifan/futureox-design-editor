@@ -20,6 +20,7 @@ import type { SolidFillTarget } from './property-preview'
 import { StrokeProfilePanel } from './StrokeProfilePanel'
 import { TextInput } from './TextEditor'
 import { TextStylePanel } from './TextStylePanel'
+import { TextSizingControls } from './TextSizingControls'
 import { clearWholeTextRunColor, setWholeTextFontSize } from './text'
 import { selectionParentBounds, rotateNode, selectionLocalBounds } from './canvas-view'
 import { formatAngleDegrees } from './selection-handles'
@@ -27,7 +28,7 @@ import { figmaRotationDegrees, nodeDegreesForFigmaAngle, type LiveRotation } fro
 import { nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
 import { CornerRadiusFields } from './corner-radius-fields'
-import { NumberField } from './fields'
+import { CalculatedDimension, NumberField } from './fields'
 import { formatPercent } from './numeric-expression'
 import { LayoutPanel } from './LayoutPanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
@@ -493,10 +494,12 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
   const angleField = <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle" label={tr("旋转 °")}
     caption="∠" formatValue={formatAngleDegrees} value={angle}
     onChange={v => update(node => rotateNode(node, nodeDegreesForFigmaAngle(v), selectionLocalBounds(editor.state.doc, node.id)))} />
-  const dimensionField = (field: 'width' | 'height') => <NumberField historyLabel={field === 'width' ? 'W' : 'H'}
-    diagnosticFamily={field === 'width' ? 3 : 4} unit="length" label={field === 'width' ? 'W' : 'H'}
-    value={selectionMetric(n, field, s.doc, units)} min={0.01}
-    onChange={v => update(node => resizeNodeDimension(node, field, v, s.doc))} />
+  const dimensionField = (field: 'width' | 'height') => {
+    const label = field === 'width' ? 'W' : 'H', value = selectionMetric(n, field, s.doc, units)
+    if (uiMode === 'figma' && n.kind === 'text' && n.sizing?.[field] === 'hug') return <CalculatedDimension label={label} value={value} />
+    return <NumberField historyLabel={label} diagnosticFamily={field === 'width' ? 3 : 4} unit="length" label={label}
+      value={value} min={0.01} onChange={v => update(node => resizeNodeDimension(node, field, v, s.doc))} />
+  }
   const proportion = <label className="geometry-proportion" title={tr("锁定宽高比")}>
     <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
       onChange={event => update(node => { node.constrainProportions = event.target.checked }, '锁定宽高比')} />
@@ -587,6 +590,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
           {uiMode === 'sketch' ? <>
             <div className="geometry-position">{positionFields}{angleField}</div>
             {dimensions}
+            {n.kind === 'text' && <TextSizingControls editor={editor} nodes={[n]} sketch />}
           </> : <>
             <h3>{tr("位置")}</h3>
             <AlignmentControls editor={editor} compact />
@@ -646,7 +650,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
             onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
           </button>}
-          {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded geometry={uiMode === 'figma' ? dimensions : undefined} />}
+          {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded geometry={uiMode === 'figma' ? <>
+            {dimensions}
+            {n.kind === 'text' && <TextSizingControls editor={editor} nodes={[n]} />}
+          </> : undefined} />}
         </section>
         {n.kind!=='slice' && <section>
           <h3>{tr("外观")}</h3>
@@ -722,8 +729,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
               }
             />
           )}
-          {n.kind === 'text' && (
-            <>
+        </section>}
+        {n.kind === 'text' && (
+            <section>
+              <h3>{tr(uiMode === 'sketch' ? '字符' : '排版')}</h3>
               <TextInput key={`${editor.sessionGeneration}:${n.id}`} node={n} editor={editor} />
               {n.textPath&&<><NumberField historyLabel="沿路径偏移" diagnosticFamily={2} unit="number" label={tr("沿路径偏移")} value={n.textPath.offset} onChange={v=>update(n=>{n.textPath!.offset=v})}/><NumberField historyLabel="路径基线偏移" diagnosticFamily={2} unit="number" label={tr("路径基线偏移")} value={n.textPath.normal} onChange={v=>update(n=>{n.textPath!.normal=v})}/><label><input type="checkbox" checked={n.textPath.reverse} onChange={e=>update(n=>{n.textPath!.reverse=e.target.checked})}/>{tr("反向路径")}</label></>}
               <TextStylePanel editor={editor} node={n} ids={ids} />
@@ -738,9 +747,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                   })
                 }
               />
-            </>
-          )}
-        </section>}
+            </section>
+        )}
         {n.mask && (
           <label>{tr("蒙版类型")}<select
               aria-label={tr("蒙版类型")}
@@ -1168,7 +1176,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
         </>}
         <NodeExportPanel key={n.id} editor={editor} node={n} />
       </div>
-      {context && <CanvasContextMenu editor={editor} x={context.x} y={context.y} worldPoint={editor.selectionBounds()} candidates={[{ id: n.id, name: n.name, locked: n.locked }]} onClose={() => setContext(null)} />}
+      {context && <CanvasContextMenu editor={editor} x={context.x} y={context.y} origin="inspector" worldPoint={editor.selectionBounds()} onClose={() => setContext(null)} />}
     </aside>
   )
 })

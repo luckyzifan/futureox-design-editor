@@ -241,6 +241,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const setShowInspector = adaptivePanels.setRightOpen
   const [desktop] = useState(desktopBridge)
   const [editor] = useState(() => source?.editor || new Editor(blank()))
+  const editText = useRef<((id: string) => void) | null>(null)
+  const toggleUi = useCallback(() => {
+    if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value)
+  }, [editor])
   useEffect(() => {
     if (!desktop?.setInterfaceLocale) return
     let disposed = false, previous: string | undefined
@@ -1300,13 +1304,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {!figmaNameInSidebar && documentNameField}
           <span className="draft-badge">{panelText.localBadge}</span>
           <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
-            aria-pressed={uiMinimized} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value) }}>
+            aria-pressed={uiMinimized} onClick={toggleUi}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
 
         </div>
         {inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
         {uiMode === 'sketch' && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
+          onEditText={id => editText.current?.(id)}
           onSection={switchWorkspaceSection} onImages={files => void importImageFiles(files)}
           onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets(true) }}
           onSystems={() => setShowTools(true)} onShapeBuilder={() => setShowShapeBuilder(true)} />}
@@ -1621,6 +1626,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {source&&<SourceDocumentStatus source={source}/>}
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}
+            editTextRef={editText} onToggleUi={toggleUi}
             blurEffectIndex={blurEffectIndex} onExitBlurEdit={exitBlurEdit}
             onSelectSourcePoint={source?.selectMaterialAt} selectedMaterialBox={source?.selectedMaterialBox} pickSourceMaterial={source?.pickMaterial} prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}

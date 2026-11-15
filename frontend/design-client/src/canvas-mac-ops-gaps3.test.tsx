@@ -169,9 +169,9 @@ test('the selected rectangle menu follows the Mac order and opens plugins withou
   window.addEventListener(OPEN_PLUGINS_EVENT, hear)
   await act(async () => root.render(<CanvasContextMenu editor={editor} x={40} y={40} worldPoint={{ x: 30, y: 40 }} candidates={[{ id: rect.id, name: rect.name, locked: false }]} onClose={() => {}} />))
   expect(labels()).toEqual([
-    '复制', '粘贴到此处', '粘贴替换', '复制／粘贴为', '移动到页面',
+    '复制', '粘贴到此处', '粘贴替换', '复制／粘贴为', '选择图层', '移动到页面',
     '置于顶层', '置于底层', '编组', '创建选区画板', '展平', '轮廓化描边', '用作蒙版',
-    '添加自动布局', '创建组件', '插件', '显示/隐藏', '锁定/解锁', '水平翻转', '垂直翻转', '选择图层',
+    '添加自动布局', '创建组件', '插件', '显示/隐藏', '锁定/解锁', '水平翻转', '垂直翻转',
   ])
   const outline = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.getAttribute('aria-label') === '轮廓化描边')
   expect(outline?.disabled).toBe(true)

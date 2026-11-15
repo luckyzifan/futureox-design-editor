@@ -250,6 +250,7 @@ export function LayoutPanel({
           </label>
         </>
       )}
+      {(n.kind !== 'text' || (!!geometry && flow)) && <>
       <h4>{tr("响应式尺寸")}</h4>
       {(['width', 'height'] as const).map((axis) => (
         <label className="labeled-select" key={axis}>
@@ -265,6 +266,7 @@ export function LayoutPanel({
           </select>
         </label>
       ))}
+      </>}
       <details>
         <summary>{tr("最小 / 最大尺寸")}</summary>
         <div className="field-grid">

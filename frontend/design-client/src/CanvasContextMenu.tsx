@@ -6,12 +6,14 @@ import { ChevronLeft, ChevronRight, Lock } from 'lucide-react'
 import type { Editor } from './engine'
 import type { Point } from './model'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
-import { canvasContextItems, clampContextMenu, lockedSelectionIds, moveToPageIndex, pluginsMenuIndex } from './canvas-menu-model'
+import { canvasContextItems, clampContextMenu, lockedSelectionIds, moveToPageIndex, pluginsMenuIndex, type ContextMenuOrigin } from './canvas-menu-model'
 import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform } from './shortcut-profiles'
 import { desktopBridge } from './desktop'
 import { userPages } from './fig-document'
 import { pluginLaunchGrant, requestOpenPlugins } from './plugins/open-plugins'
+import { commandSearchText } from './command-search'
+import { requestCommandSearch } from './command-search-session'
 
 export type CanvasLayerCandidate = { id: string; name: string; locked: boolean }
 export type CanvasContextMenuProps = {
@@ -20,13 +22,16 @@ export type CanvasContextMenuProps = {
   x: number
   y: number
   worldPoint: Point
-  candidates: CanvasLayerCandidate[]
+  origin?: ContextMenuOrigin
+  candidates?: CanvasLayerCandidate[]
   onClose: () => void
   onEditText?: (id: string) => void
+  onToggleUi?: () => void
 }
 
-export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClose, onEditText }: CanvasContextMenuProps) {
-  const { locale } = useInterfacePreferences(), text = canvasText[locale]
+export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.state.selection.length ? 'canvas' : 'empty-canvas',
+  candidates = [], onClose, onEditText, onToggleUi }: CanvasContextMenuProps) {
+  const { locale, uiMode } = useInterfacePreferences(), text = canvasText[locale]
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const root = useRef<HTMLDivElement>(null), close = useRef(onClose)
   const previousFocus = useRef(document.activeElement), restoreFocus = useRef(false)
@@ -38,7 +43,9 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
   const groupName=(id:string)=>id==='copy-as'?text.copyAs:text.selectSame
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
   const profile = useShortcutProfile()
-  const items = canvasContextItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = editor.parentMap(state.doc)
+  const figma = uiMode === 'figma', empty = origin === 'empty-canvas'
+  const items = canvasContextItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }, uiMode, origin)
+  const parents = editor.parentMap(state.doc), locked = !!lockedSelectionIds(editor).length
   const visible = candidates.filter((candidate) => {
     let id: string | undefined = candidate.id
     if (!state.doc.nodes[id]) return false
@@ -105,8 +112,15 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
       void dispatchEditorCommand(editor, command, { worldPoint: { ...worldPoint }, pageId })
     })
   }
+  const layerPicker = origin === 'canvas' && visible.length > 0 && <>
+    <div role="separator" />
+    <button type="button" role="menuitem" aria-haspopup="menu" data-layer-picker="true" onClick={() => setLayers(true)}><span>{text.selectLayer}</span><ChevronRight size={14} /></button>
+  </>
+  const pluginPicker = <button type="button" role="menuitem" aria-haspopup="menu" data-plugin-picker="true"
+    disabled={state.busy || editor.interactionActive} onClick={() => setPlugins(true)}><span>{text.plugins}</span><ChevronRight size={14} /></button>
   let previousGroup = ''
-  return createPortal(<div ref={root} role="menu" aria-label={layers ? text.selectLayer : pages ? text.moveToPage : plugins ? text.plugins : group?groupName(group):text.menu} className="canvas-context-menu"
+  const menuLabel = origin === 'layers' ? text.layerMenu : origin === 'inspector' ? text.layerActions : text.menu
+  return createPortal(<div ref={root} role="menu" aria-label={layers ? text.selectLayer : pages ? text.moveToPage : plugins ? text.plugins : group ? groupName(group) : menuLabel} className="canvas-context-menu"
     style={{ left: position.x, top: position.y }} tabIndex={-1}
     onPointerDown={(event) => event.stopPropagation()} onPointerMove={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}
     onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}
@@ -150,7 +164,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
       <button type="button" role="menuitem" className="context-back" onClick={()=>setGroup(null)}><ChevronLeft size={14}/><span>{groupName(group)}</span></button><div role="separator"/>
       {items.filter(item=>item.group===group).map(item=><button type="button" role="menuitem" key={item.command} disabled={item.disabled} onClick={()=>action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut&&<kbd>{item.shortcut}</kbd>}</button>)}
     </> : <>
-      {onEditText && selected?.kind === 'text' && !lockedSelectionIds(editor).length && <><button type="button" role="menuitem" onClick={() => { close.current(); queueMicrotask(() => onEditText(selected.id)) }}>{text.editText}</button><div role="separator" /></>}
+      {!empty && onEditText && selected?.kind === 'text' && !locked && <><button type="button" role="menuitem" onClick={() => { close.current(); onEditText(selected.id) }}>{text.editText}</button><div role="separator" /></>}
       {items.filter((item,index)=>!['copy-as','selection'].includes(item.group)||!state.selection.length||items.findIndex(other=>other.group===item.group)===index).map((item, index, visibleItems) => {
         if(state.selection.length&&['copy-as','selection'].includes(item.group)){
           const submenuBreak = previousGroup && previousGroup !== item.group
@@ -160,18 +174,24 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
         const separator = previousGroup && previousGroup !== item.group
         previousGroup = item.group
         const commands = visibleItems.map(entry => entry.command)
-        const pageSlot = !!state.selection.length && index === moveToPageIndex(commands)
-        const pluginSlot = !!state.selection.length && index === pluginsMenuIndex(commands)
+        const pageSlot = figma && !empty && index === moveToPageIndex(commands)
+        const pluginSlot = figma && !empty && index === pluginsMenuIndex(commands)
         return <div key={item.command} role="none">
-          {pageSlot && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button><div role="separator" /></>}
-          {pluginSlot && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-plugin-picker="true" disabled={state.busy || editor.interactionActive} onClick={() => setPlugins(true)}><span>{text.plugins}</span><ChevronRight size={14} /></button></>}
+          {pageSlot && <>{layerPicker || <div role="separator" />}<button type="button" role="menuitem" aria-haspopup="menu" data-page-picker="true" disabled={state.busy || editor.interactionActive || locked || userPages(state.doc).length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button></>}
+          {pluginSlot && <><div role="separator" />{pluginPicker}</>}
           {separator && <div role="separator" />}
           <button type="button" role="menuitem" aria-label={item.label} disabled={item.disabled} className={item.danger ? 'context-danger' : undefined}
             onPointerMove={(event) => { if (!item.disabled) event.currentTarget.focus({ preventScroll: true }) }}
             onClick={() => action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>
         </div>
       })}
-      {visible.length > 0 && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-layer-picker="true" onClick={() => setLayers(true)}><span>{text.selectLayer}</span><ChevronRight size={14} /></button></>}
+      {!figma && layerPicker}
+      {figma && empty && <>
+        <div role="separator" />
+        {onToggleUi && <button type="button" role="menuitem" onClick={() => { close.current(); onToggleUi() }}>{text.toggleUi}</button>}
+        <button type="button" role="menuitem" onClick={() => { close.current(); requestCommandSearch(previousFocus.current) }}>{commandSearchText[locale].label}</button>
+        {pluginPicker}
+      </>}
     </>}
   </div>, document.body)
 }

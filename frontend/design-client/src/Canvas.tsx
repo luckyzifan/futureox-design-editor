@@ -56,7 +56,7 @@ import { scheduleCanvasView } from './canvas-view-schedule'
 import { gridOverlayRectangles, layoutGridRectangles } from './grid-overlay'
 import { canvasDropFrame, insideParentFrame } from './canvas-drop'
 import { dispatchEditorCommand } from './editor-commands'
-import { pendingOperationEpoch, registerPendingEdit, pendingEditsChanged } from './pending-edits'
+import { commitPendingEdits, pendingOperationEpoch, registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
@@ -76,7 +76,7 @@ import {
   type StrokeHandle,
 } from './kernel/picking'
 import { profileTopology } from './stroke-profile'
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import React, { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor, Tool } from './engine'
 import { KernelSurface, type PresentedFrame } from './kernel/Surface'
 import { NativeSourceSurface, type NativeSourceStatus } from './kernel/NativeSourceSurface'
@@ -124,7 +124,7 @@ import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } fro
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, type CornerIndex } from './canvas-material-handles'
-import { CanvasContextMenu } from './CanvasContextMenu'
+import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
 import {
   PEN_BLUE, PEN_HIT_PX, constrainToAngles, penAffordance, penCurvePath, penHandleMove, penHitsNetwork,
@@ -283,9 +283,11 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   </g>
 }
 
-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, onExitBlurEdit }: {
+export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, onExitBlurEdit, editTextRef, onToggleUi }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
   blurEffectIndex?: number; onExitBlurEdit?: () => void
+  editTextRef?: React.Ref<(id: string) => void>
+  onToggleUi?: () => void
   startupPreview?: StartupPixels; loading?: boolean
   focusedMaterial?:number;onSourceDetail?:(roots:number[])=>void;onSourceViewport?:(box:import('./desktop').SourceCanvasBox,anchor?:Point,density?:number)=>void;hideNative?:boolean;parkNative?:boolean
   openingPage?:string
@@ -550,18 +552,26 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }, [loading, onCapturePreview, exactCurrent, state.doc, state.version, state.page, state.view, state.grid, state.checkerboard, state.pixelPreview, size.width, size.height, editor])
   const [textEntry, setTextEntry] = useState<TextEditEntry | null>(null)
   const textEntryOwner = useRef<TextEditEntry | null>(null), textEntrySequence = useRef(0)
-  function ownsTextEntry(entry: TextEditEntry | null) {
+  const ownsTextEntry = useCallback((entry: TextEditEntry | null) => {
     return !!entry && textEntryOwner.current === entry &&
       entry.session === editor.sessionGeneration && entry.page === editor.state.page
-  }
-  function setTextEdit(id: string | null) {
+  }, [editor])
+  const setTextEdit = useCallback((id: string | null) => {
     // A bubbled double-click on the active rich-text surface re-enters the same
     // node. Keep its draft/DOM; a closed or different entry still gets a token.
     if (id && textEntryOwner.current?.id === id && ownsTextEntry(textEntryOwner.current)) return
     const entry = id ? { id, session: editor.sessionGeneration, page: editor.state.page, token: ++textEntrySequence.current } : null
     textEntryOwner.current = entry
     setTextEntry(entry)
-  }
+  }, [editor, ownsTextEntry])
+  const editSelectedText = useCallback((id: string) => {
+    if (!commitPendingEdits(editor) || editor.interactionActive || editor.state.busy) return
+    const { doc, page, selection } = editor.state
+    if (selection.length !== 1 || selection[0] !== id || doc.nodes[id]?.kind !== 'text' ||
+        !interactivePath(doc, page, id, false, editor.parentMap()).length) return
+    setTextEdit(id)
+  }, [editor, setTextEdit])
+  useImperativeHandle(editTextRef, () => editSelectedText, [editSelectedText])
   // Reject a stale entry during render, before its textarea can mount/autofocus
   // in a replacement document. Passive cleanup alone is too late.
   const textEdit = ownsTextEntry(textEntry) ? textEntry!.id : null
@@ -834,7 +844,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     hoverTimer.current = setTimeout(() => { hoverTimer.current = null; navigationUntil.current = 0; refreshHover.current() }, 150)
   }
   useEffect(() => () => { if (hoverTimer.current !== null) clearTimeout(hoverTimer.current) }, [])
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldPoint: Point; candidates: { id: string; name: string; locked: boolean }[] } | null>(null)
+  const [contextMenu, setContextMenu] = useState<Pick<CanvasContextMenuProps, 'x' | 'y' | 'worldPoint' | 'origin' | 'candidates'> | null>(null)
   useEffect(() => setContextMenu(null), [state.page, editor.sessionGeneration])
   const [pen, setPen] = useState<Pen | null>(null)
   const [penShift, setPenShift] = useState(false)
@@ -1234,7 +1244,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const center = bounds ? worldToScreen(view, { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }) : { x: rect.width / 2, y: rect.height / 2 }
         const anchor = { x: Math.max(8, Math.min(center.x, rect.width - 8)), y: Math.max(8, Math.min(center.y, rect.height - 8)) }
         const parents = editor.parentMap()
-        setContextMenu({ x: rect.left + anchor.x, y: rect.top + anchor.y, worldPoint: screenToWorld(view, anchor), candidates: editor.state.selection.map(id => ({ id, name: editor.state.doc.nodes[id].name, locked: !interactivePath(editor.state.doc, editor.state.page, id, false, parents).length })) })
+        setContextMenu({ x: rect.left + anchor.x, y: rect.top + anchor.y, worldPoint: screenToWorld(view, anchor),
+          origin: editor.state.selection.length ? 'canvas' : 'empty-canvas',
+          candidates: editor.state.selection.map(id => ({ id, name: editor.state.doc.nodes[id].name, locked: !interactivePath(editor.state.doc, editor.state.page, id, false, parents).length })) })
         return
       }
       const mod = e.metaKey || e.ctrlKey
@@ -2900,8 +2912,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           locked: entry.locked || !interactivePath(editor.state.doc, editor.state.page, entry.id, false, parents).length }))
         const hit = (candidates[0]?.locked ? candidates[0].id : displayedHit(point)) || candidates[0]?.id
         if (hit && !editor.state.selection.includes(hit)) editor.select([hit])
-        else if (!hit) editor.select([])
-        setContextMenu({ x: e.clientX, y: e.clientY, worldPoint: point, candidates })
+        else if (!hit && uiMode === 'sketch') editor.select([])
+        setContextMenu({ x: e.clientX, y: e.clientY, worldPoint: point, candidates, origin: hit ? 'canvas' : 'empty-canvas' })
       }}
       onDoubleClick={(e) => {
         if(nativeSource||openingSource){
@@ -2945,9 +2957,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         style={{left:cursor.x*zoom+displayView.x+18,top:cursor.y*zoom+displayView.y+18}}>
         {formatAngleDegrees(drag.current.rotationDegrees)}
       </div>}
-      {contextMenu && <CanvasContextMenu editor={editor} {...contextMenu} onEditText={() => {
-        if (editor.state.selection.length === 1) setTextEdit(editor.state.selection[0])
-      }} onClose={() => { setContextMenu(null); host.current?.focus({ preventScroll: true }) }} />}
+      {contextMenu && <CanvasContextMenu editor={editor} {...contextMenu} onEditText={editSelectedText}
+        onToggleUi={onToggleUi} onClose={() => setContextMenu(null)} />}
       {textEdit && state.doc.nodes[textEdit] && (
         <CanvasTextEditor
           viewport={size}

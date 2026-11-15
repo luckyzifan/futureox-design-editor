@@ -178,12 +178,13 @@ function menuStyle(position: { left: number; top: number } | null, host: HTMLEle
 
 /** A menu owns keyboard input while open. Portaling avoids the canvas clip;
  * only Escape/Tab restore the trigger, so outside inputs retain normal focus. */
-export function ToolPopover({ label, children, open, onOpenChange, icon, primary }: {
+export function ToolPopover({ label, children, open, onOpenChange, icon, primary, disabled = false }: {
   label: string
   children: ReactNode
   open: boolean
   onOpenChange: (open: boolean) => void
   icon: ReactNode
+  disabled?: boolean
   primary?: { label: string; title?: string; active: boolean; onClick: () => void }
 }) {
   const host = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null)
@@ -242,7 +243,8 @@ export function ToolPopover({ label, children, open, onOpenChange, icon, primary
     } else if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); dismiss(true) }
   }}>
     {primary && <button type="button" aria-label={primary.label} data-tooltip={primary.title || primary.label} aria-pressed={primary.active} className={primary.active ? 'active' : ''} onClick={() => { dismiss(); primary.onClick() }}>{icon}</button>}
-    <button ref={trigger} type="button" className={primary ? 'tool-picker-arrow' : undefined} data-tooltip={label} aria-label={label} aria-haspopup="menu" aria-controls={open ? id : undefined} aria-expanded={open} onClick={() => change.current(!open)}>{primary ? <ChevronDown size={10} /> : icon}</button>
+    <button ref={trigger} type="button" className={primary ? 'tool-picker-arrow' : undefined} data-tooltip={label} aria-label={label}
+      disabled={disabled} aria-haspopup="menu" aria-controls={open ? id : undefined} aria-expanded={open} onClick={() => change.current(!open)}>{primary ? <ChevronDown size={10} /> : icon}</button>
     {open && createPortal(<div ref={menu} id={id} className="tool-popover-content" role="menu" aria-label={label} tabIndex={-1}
       style={menuStyle(position, host.current)}
       onPointerDown={event => event.stopPropagation()} onPointerMove={event => {

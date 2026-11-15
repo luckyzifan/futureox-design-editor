@@ -1,6 +1,6 @@
 import { assertImportInputBytes } from './import-input-policy'
 import { pinDocumentCapacity } from './document-capacity'
-import { importFig } from './import-fig'
+import { importFig, retainFigTextBoxes } from './import-fig'
 import { finalizeFigWarnings } from './import-warnings'
 import { abeezeeLineBreakDiagnostic, fontDigestDiagnostic, fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
 import { initializeKernelModule } from './kernel/module'
@@ -110,6 +110,7 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       importStage = 233 // decode
       const result=importFig(bytes,event.data.name)
       const fonts=await matchBundledImportFonts(result.document)
+      if (fonts.changed) retainFigTextBoxes(result.document)
       const warnings=retainedFontWarnings(result.warnings, fonts)
       for(const item of fonts.digestMismatches){
         const message=fontDigestDiagnostic(item.name, item.digest)

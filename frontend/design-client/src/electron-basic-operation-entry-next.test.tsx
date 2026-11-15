@@ -67,8 +67,9 @@ afterEach(async () => {
   vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
-async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRoots: string[] = []) {
+async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRoots: string[] = [], schemaVersion: Editor['state']['doc']['schemaVersion'] = 2) {
   const doc = blank('Selection workflows'); doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
+  doc.schemaVersion = schemaVersion
   if (otherRoots.length) doc.pages.push({ ...doc.pages[0], id: uid(), name: 'Other page', children: otherRoots })
   editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
   await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 6; i++) await Promise.resolve() })
@@ -110,10 +111,14 @@ async function history(before: typeof editor.state.doc) {
 
 test('convert-section: actual dispatcher preserves frame descendants/world geometry in one reversible edit', async () => {
   const frame = node('frame', 100, 100, 200, 160), child = node('rectangle', 20, 30, 40, 50)
-  frame.children = [child.id]; await render([frame, child], [frame.id]); await act(async () => editor.select([frame.id]))
+  frame.layoutGrids = [{ axis: 'column', count: 3, gutter: 16, margin: 20, color: '#ff0000', opacity: 0.1, visible: false }]
+  frame.prototypeOverflow = 'vertical'
+  frame.children = [child.id]; await render([frame, child], [frame.id], [], 12); await act(async () => editor.select([frame.id]))
   const before = editor.state.doc, world = worldMatrix(before, child.id)
   await activate('convert-section')
   expect(editor.state.doc.nodes[frame.id].kind).toBe('section'); expect(editor.state.doc.nodes[frame.id].children).toEqual([child.id])
+  expect(editor.state.doc.nodes[frame.id].layoutGrids).toBeUndefined()
+  expect(editor.state.doc.nodes[frame.id].prototypeOverflow).toBeUndefined()
   expect(worldMatrix(editor.state.doc, child.id)).toEqual(world); expect(editor.state.doc.nodes[child.id]).toEqual(before.nodes[child.id])
   await history(before)
 })

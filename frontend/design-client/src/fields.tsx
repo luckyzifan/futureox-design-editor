@@ -5,6 +5,14 @@ import { numericExpression, propertyUnit, type NumericUnit } from './numeric-exp
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { PendingEditContext } from './pending-edit-context'
 import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
+export function CalculatedDimension({ label, value }: { label: 'W' | 'H'; value: number | undefined }) {
+  const { tr } = usePropertyText()
+  return <label className="number-field calculated-dimension"><span>{label}</span>
+    <input type="text" role="spinbutton" aria-label={label} disabled
+      value={value === undefined ? '' : Number(value.toFixed(2))} placeholder={tr('混合')} />
+  </label>
+}
+
 export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption, sliderLabel }: {
   label: string
   value: number

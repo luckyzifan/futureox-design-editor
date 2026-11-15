@@ -1,4 +1,4 @@
-import { interfacePreference } from './interface-preference'
+import { interfacePreference, type UiMode } from './interface-preference'
 import { canvasCommandLabel } from './canvas-interface-messages'
 import type { Editor } from './engine'
 import type { EditorCommand } from './editor-commands'
@@ -7,8 +7,10 @@ import { userPages } from './fig-document'
 import { shortcutLabel, shortcutPlatform, type ShortcutContext } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
 import { desktopBridge } from './desktop'
+import { selectionCommandAdmission } from './commands/selection-command'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
+export type ContextMenuOrigin = 'canvas' | 'empty-canvas' | 'layers' | 'inspector'
 export function lockedSelectionIds(editor: Editor): string[] {
   const doc = editor.state.doc, parents = editor.parentMap(), locked = new Set<string>()
   for (const selected of editor.state.selection) {
@@ -99,21 +101,67 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   return items.map(item => ({ ...item, label: canvasCommandLabel(item.command, item.label, locale, nodes.length > 1, locks.some(id => !selection.includes(id))), shortcut: shortcutLabel(item.command, context), disabled: !!item.disabled || busy || editor.interactionActive }))
 }
 
+export function sketchSelectionCommands(editor: Editor) {
+  const { doc, selection, busy } = editor.state
+  const roots = editor.topSelection(), chosen = new Set(roots), parents = editor.parentMap()
+  const mutable = roots.length > 0 && !busy && !editor.interactionActive && !lockedSelectionIds(editor).length
+  const parentsOfSelection = new Set(roots.map(id => parents.get(id)))
+  const canStep = (step: 1 | -1) => mutable && [...parentsOfSelection].some(parent => {
+    const siblings = (parent && doc.nodes[parent]?.children) || doc.pages.find(page => page.id === parent)?.children
+    return siblings?.some((id, index) => {
+      const neighbor = siblings[index + step]
+      return chosen.has(id) && neighbor !== undefined && !chosen.has(neighbor)
+    })
+  })
+  const canGroup = mutable && selectionCommandAdmission(doc, selection, 'wrap', parents).ok
+  return {
+    canBringForward: canStep(1),
+    canSendBackward: canStep(-1),
+    canGroup,
+    canUngroup: mutable && selectionCommandAdmission(doc, selection, 'unwrap', parents).ok,
+    canCombine: mutable && roots.length >= 2 && roots.length <= 64 &&
+      roots.every(id => {
+        const node = doc.nodes[id]
+        return (!container(node) || !!node.booleanOperation) && node.kind !== 'text' && node.kind !== 'slice'
+      }) && selectionCommandAdmission(doc, selection, 'boolean-wrap', parents).ok,
+  }
+}
+
 /** Mac desktop right-click on a selected shape, top to bottom. Cloud-only
  * rows (Figma Make, Find similar, Add motion, Widgets) are omitted. Move to
  * page sits between Copy/Paste as and Bring to front. Plugins sits between
  * Create component and Show/Hide. The menu component inserts those two rows. */
 const contextOrder: EditorCommand[] = [
-  'copy', 'paste-here', 'paste-to-replace', 'paste-over-selection',
+  'copy', 'paste-here', 'paste-to-replace',
   'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
-  'bring-to-front', 'send-to-back',
-  'group', 'frame-selection', 'ungroup', 'flatten', 'outline-stroke', 'mask-selection',
+  'bring-to-front', 'send-to-back', 'convert-section',
+  'group', 'frame-selection', 'ungroup', 'rename', 'flatten', 'outline-stroke', 'mask-selection',
   'auto-layout', 'remove-auto-layout',
   'create-component', 'detach-instance',
   'hide-selection', 'show-selection', 'lock-selection', 'unlock-selection',
   'flip-horizontal', 'flip-vertical',
-  'select-all',
 ]
+const sketchContextOrder: EditorCommand[] = [
+  'cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete',
+  'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
+  'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
+  'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
+  'flip-horizontal', 'flip-vertical', 'mask-selection', 'convert-vector', 'outline-stroke',
+]
+const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
+  'copy': ['拷贝', 'Copy'],
+  'duplicate': ['复制', 'Duplicate'],
+  'bring-forward': ['前置一层', 'Bring Forward'],
+  'send-backward': ['后置一层', 'Send Backward'],
+  'copy-properties': ['拷贝样式', 'Copy Style'],
+  'paste-properties': ['粘贴样式', 'Paste Style'],
+  'group': ['编组', 'Group'],
+  'frame-selection': ['编组画框', 'Group as Frame'],
+  'ungroup': ['取消编组', 'Ungroup'],
+  'auto-layout': ['添加层叠布局', 'Add Stack Layout'],
+  'remove-auto-layout': ['移除层叠布局', 'Remove Stack Layout'],
+  'create-component': ['创建控件', 'Create Symbol'],
+}
 function contextPresentation(item: CanvasMenuItem, locale: 'zh-CN' | 'en'): CanvasMenuItem {
   if (item.command === 'hide-selection' || item.command === 'show-selection')
     return { ...item, label: locale === 'en' ? 'Show/Hide' : '显示/隐藏' }
@@ -134,15 +182,41 @@ function disabledOutlineItem(editor: Editor, context: ShortcutContext): CanvasMe
     shortcut: shortcutLabel('outline-stroke', context),
   }
 }
-export function canvasContextItems(editor: Editor, context: ShortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }): CanvasMenuItem[] {
+export function canvasContextItems(editor: Editor, context: ShortcutContext, uiMode: UiMode = 'figma',
+  origin: ContextMenuOrigin = editor.state.selection.length ? 'canvas' : 'empty-canvas'): CanvasMenuItem[] {
   const available = new Map(canvasMenuItems(editor, context).map(item => [item.command, item]))
+  const { busy, selection } = editor.state
+  const disabled = busy || editor.interactionActive
+  const locale = interfacePreference.getSnapshot().locale
+  if (origin === 'empty-canvas') {
+    const paste = available.get('paste-here')!
+    return uiMode === 'figma' ? [paste] : [paste, ...(['paste-in-place', 'select-all', 'zoom-fit'] as const).flatMap(command => {
+      const item = available.get(command)
+      return item ? [item] : []
+    })]
+  }
+  if (uiMode === 'sketch') {
+    const commands = sketchSelectionCommands(editor)
+    available.set('paste', { command: 'paste', label: locale === 'en' ? 'Paste' : '粘贴', group: 'clipboard',
+      disabled, shortcut: shortcutLabel('paste', context) })
+    if (selection.length && !available.has('ungroup'))
+      available.set('ungroup', { command: 'ungroup', label: '', group: 'structure', shortcut: shortcutLabel('ungroup', context) })
+    return sketchContextOrder.flatMap(command => {
+      const item = available.get(command), label = sketchLabels[command]
+      if (!item || (command === 'detach-instance' && item.disabled)) return []
+      const allowed = command === 'bring-forward' ? commands.canBringForward :
+        command === 'send-backward' ? commands.canSendBackward : command === 'ungroup' ? commands.canUngroup :
+        command === 'group' || command === 'frame-selection' ? commands.canGroup : !item.disabled
+      return [{ ...item, label: label?.[locale === 'en' ? 1 : 0] ?? item.label, disabled: !allowed }]
+    })
+  }
   if (!available.has('outline-stroke')) {
     const outline = disabledOutlineItem(editor, context)
     if (outline) available.set('outline-stroke', outline)
   }
-  const locale = interfacePreference.getSnapshot().locale
   return contextOrder.flatMap(command => {
-    if (command === 'paste-over-selection' && context.profile !== 'sketch-like') return []
+    if ((command === 'paste-here' && origin !== 'canvas')
+        || (command === 'rename' && origin === 'canvas')) return []
     const item = available.get(command)
     if (!item || (command === 'detach-instance' && item.disabled)) return []
     return [contextPresentation(item, locale)]
