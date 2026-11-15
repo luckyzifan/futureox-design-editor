@@ -507,6 +507,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
       'fontSize',
       'textStyle',
       'textRuns',
+      'graphic',
       'layout',
       'sizing',
       'constraints',
@@ -537,7 +538,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
     )
   if (
     !components && !connectors &&
-    !documentNodes.some((n) => n.layout || n.sizing || n.constraints)
+    !documentNodes.some((n) => n.graphic || n.layout || n.sizing || n.constraints)
   )
     return document
   if (
@@ -560,6 +561,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
       'fontSize',
       'textStyle',
       'textRuns',
+      'graphic',
       'layout',
       'sizing',
       'constraints',

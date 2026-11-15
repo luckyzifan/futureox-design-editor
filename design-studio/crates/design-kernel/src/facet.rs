@@ -597,6 +597,7 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         arc: None,
         corner_radius: 0.,
         constrain_proportions: false,
+        graphic: false,
         boolean_operation: None,
         bindings: BTreeMap::new(),
         variable_modes: BTreeMap::new(),

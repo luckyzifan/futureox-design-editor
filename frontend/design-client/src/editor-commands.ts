@@ -10,13 +10,15 @@ import type { Editor } from './engine'
 import { desktopBridge } from './desktop'
 import { assertClipboardSize as assertSize, CLIPBOARD_TEXT_PREFIX as TEXT_PREFIX, readEditorClipboard as readClipboard, writeWebGraphClipboard } from './clipboard-adapter'
 import { commitPendingEdits } from './pending-edits'
-import { blank, defaultSizing, node, paint, type Bounds, type DesignDocument, type Point } from './model'
+import { blank, defaultSizing, node, paint, type Bounds, type DesignNode, type DesignDocument, type Point } from './model'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { fitBounds, zoomAt, zoomStep } from './canvas-camera'
 import { jumpFrame, jumpPage, jumpToNode } from './canvas-navigation'
 import { togglePrototypeTab } from './prototype-chrome'
 import { allParents, apply, bounds, unionBounds, worldMatrix } from './geometry'
 import { selectionParentBounds } from './canvas-view'
+import { editableFrameCrop, frameCropPatches } from './selection-properties'
+import { interfacePreference } from './interface-preference'
 import { interactivePath } from './selection-hierarchy'
 import {querySelection,type SelectionQuery} from './selection-queries'
 import { dimensionNudgeCommands, isDimensionNudgeCommand, nudgeSelectionDimensions, selectAllCanvasIds, type DimensionNudgeCommand } from './canvas-workflow-shortcuts'
@@ -28,8 +30,8 @@ import type { ShortcutProfile } from './shortcut-profiles'
 import { toolForCommand, unavailableReason, TOOL_COMMANDS } from './tool-registry'
 
 export type SetToolCommand = `set-tool-${string}`
-export type EditorCommand = DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'zoom-next-frame' | 'zoom-previous-frame' | 'next-page' | 'previous-page' | 'eraser-or-prototype' | 'jump-to-node' | 'center-selection' | 'fit-frame-content' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'flatten' | 'convert-vector'
-export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','flatten','convert-vector','new-page','zoom-next-frame','zoom-previous-frame','next-page','previous-page','eraser-or-prototype','jump-to-node','fit-frame-content']
+export type EditorCommand = 'graphic-selection' | 'edit-frame-bounds' | 'toggle-outlines' | DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'zoom-next-frame' | 'zoom-previous-frame' | 'next-page' | 'previous-page' | 'eraser-or-prototype' | 'jump-to-node' | 'center-selection' | 'fit-frame-content' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'flatten' | 'convert-vector'
+export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','flatten','convert-vector','new-page','zoom-next-frame','zoom-previous-frame','next-page','previous-page','eraser-or-prototype','jump-to-node','fit-frame-content','graphic-selection','edit-frame-bounds','toggle-outlines']
 /** Normalize the native menu/accelerator bridge at one renderer boundary.
  * Focus ownership remains in dispatchEditorCommand, not in the native host. */
 export function resolveDesktopEditorCommand(name: string): EditorCommand | undefined {
@@ -76,7 +78,7 @@ export function selectionCameraBox(editor: Editor): Bounds | undefined {
   return finiteBox(direct) ? direct : finiteBox(sceneBox) ? sceneBox : undefined
 }
 export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; nodeId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile; actionSource?: ActionSourceCode } = {}): Promise<void> {
-  const category = command === 'copy' ? CanvasAction.copy : command === 'cut' ? CanvasAction.cut : command.startsWith('paste') ? CanvasAction.paste : command === 'undo' ? CanvasAction.undo : command === 'redo' ? CanvasAction.redo : command === 'delete' ? CanvasAction.delete : command === 'duplicate' ? CanvasAction.duplicate : command === 'group' || command === 'frame-selection' ? CanvasAction.group : command === 'ungroup' ? CanvasAction.ungroup : command === 'select-all' ? CanvasAction.selectAll : CanvasAction.command
+  const category = command === 'copy' ? CanvasAction.copy : command === 'cut' ? CanvasAction.cut : command.startsWith('paste') ? CanvasAction.paste : command === 'undo' ? CanvasAction.undo : command === 'redo' ? CanvasAction.redo : command === 'delete' ? CanvasAction.delete : command === 'duplicate' ? CanvasAction.duplicate : command === 'group' || command === 'frame-selection' || command === 'graphic-selection' ? CanvasAction.group : command === 'ungroup' ? CanvasAction.ungroup : command === 'select-all' ? CanvasAction.selectAll : CanvasAction.command
   const action = beginEditorAction(editor, category, options.actionSource ?? ActionSource.unknown, editorCommands.indexOf(command) + 1)
   try {
   const active = typeof document === 'undefined' ? null : document.activeElement
@@ -99,6 +101,11 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
   // keyboard boundary. Unrelated text fields/dialogs cannot settle its draft.
   const propertyCommand = ownsPropertyPopover && (command === 'undo' || command.startsWith('set-tool-'))
   if ((editable || modalOwnsKeyboard(active)) && !propertyCommand) { action.result(ActionOutcome.blocked, ActionReason.wrongOwner); return }
+  if (command === 'toggle-outlines') {
+    if (!editor.interactionActive && interfacePreference.getSnapshot().uiMode === 'figma')
+      editor.set({ outlines: !editor.state.outlines })
+    return
+  }
   if (command === 'undo' && editor.propertyPreviewActive) { editor.undo(); action.result(ActionOutcome.cancelled, ActionReason.escape); return }
   if (editor.propertyPreviewActive && !editor.settleOwnedPropertyPreview(command.startsWith('set-tool-') ? 'tool' : 'edit')) {
     action.result(ActionOutcome.blocked, ActionReason.validation); return
@@ -274,33 +281,31 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'fit-frame-content': {
         const ids = editor.topSelection()
         const frame = ids.length === 1 ? before.nodes[ids[0]] : undefined
-        if (!frame || frame.kind !== 'frame' || frame.locked || frame.instance || frame.instanceOrigin ||
+        if (!frame || frame.kind !== 'frame' || frame.graphic || frame.locked || frame.instance || frame.instanceOrigin ||
             frame.layout && frame.layout.mode !== 'none' || lockedSelectionIds(editor).length) break
         const children = frame.children.filter(id => before.nodes[id].visible)
         if (!children.length) break
         const box = unionBounds(children.map(id => selectionParentBounds(before, id)))
         if (!(box.width > 0 && box.height > 0)) break
+        const origin = apply(frame.transform, box)
+        const patches = frameCropPatches(before, frame.id, {
+          transform: [...frame.transform.slice(0, 4), origin.x, origin.y] as DesignNode['transform'],
+          width: box.width, height: box.height,
+          sizing: { ...defaultSizing(), ...frame.sizing, width: 'fixed', height: 'fixed' },
+        })
         editor.change('调整尺寸以适应内容', draft => {
-          const resized = draft.nodes[frame.id]
-          const origin = apply(resized.transform, box)
-          resized.transform[4] = origin.x
-          resized.transform[5] = origin.y
-          resized.width = box.width
-          resized.height = box.height
-          resized.sizing = { ...defaultSizing(), ...resized.sizing, width: 'fixed', height: 'fixed' }
-          for (const id of resized.children) {
-            const child = draft.nodes[id]
-            child.transform[4] -= box.x
-            child.transform[5] -= box.y
-            if (child.constraints) {
-              child.constraints.referenceWidth = resized.width
-              child.constraints.referenceHeight = resized.height
-            }
-          }
+          for (const [id, patch] of Object.entries(patches)) Object.assign(draft.nodes[id], patch)
         })
         break
       }
       case 'frame-selection': editor.group(false, undefined, 'frame'); break
+      case 'graphic-selection': editor.group(false, undefined, 'graphic'); break
+      case 'edit-frame-bounds': {
+        const id = editableFrameCrop(editor)
+        if (id && interfacePreference.getSnapshot().uiMode === 'sketch')
+          editor.set({ tool: 'select', frameCrop: editor.state.frameCrop === id ? null : id })
+        break
+      }
       case 'auto-layout': editor.autoLayout(); break
       case 'remove-auto-layout': editor.autoLayout('none'); break
       case 'create-component': editor.createComponent(); break
@@ -309,6 +314,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'convert-section': editor.update(editor.topSelection(), n => {
         if (n.kind !== 'frame' || n.instance || n.component || n.componentSet) return
         n.kind = 'section'
+        delete n.graphic
         // Frame guides and scrolling are frame-only. Undo restores these
         // along with the original kind and preserves the child geometry.
         delete n.layoutGrid

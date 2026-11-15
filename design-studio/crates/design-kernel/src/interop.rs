@@ -1695,6 +1695,7 @@ impl<'a> Importer<'a> {
                 || clipping == Some(1));
         let kind = if modern_frame { "frame" } else { kind_for_class(class) };
         let mut node = crate::facet::sample_node(&id, kind);
+        node.graphic = kind == "frame" && layer.get("groupBehavior").and_then(Value::as_i64) == Some(2);
         if kind == "frame" {
             // Artboards and Frames clip by default. Symbol masters only clip
             // when explicitly enabled. This is separate from sibling masks.
@@ -3847,6 +3848,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if doc.requires_schema19() { version=version.max(19); }
     if doc.requires_schema21() { version=version.max(21); }
     if doc.requires_schema22() { version=version.max(22); }
+    if doc.nodes.values().any(|n| n.graphic) { version=version.max(23); }
     doc.schema_version = version;
     Ok(doc)
 }
@@ -6363,6 +6365,7 @@ fn export_layer_impl(
     // must ride userInfo (written near the end of the node branch).
     let mut pending_user_prototype: Option<Value> = None;
     if let Some(n) = node {
+        if n.graphic { class = "group"; }
         // Admission represents native bitmaps as ordinary image-filled
         // rectangles. Restore that native class while the geometry/paint can
         // still express it, otherwise Sketch ignores bitmap color controls.
@@ -6821,6 +6824,10 @@ fn export_layer_impl(
                                           "isProgressive": false}),
         );
         layer.insert("style".into(), Value::Object(style));
+        if n.graphic {
+            layer.insert("groupBehavior".into(), json!(2));
+            layer.insert("clippingBehavior".into(), json!(if n.clip { 1 } else { 2 }));
+        }
         match class {
             "rectangle" => {
                 layer.insert(
@@ -9667,6 +9674,45 @@ mod tests {
         let reopened = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
         assert!(reopened.nodes["legacy"].clip);
         assert!(!reopened.nodes["legacy-open"].clip);
+    }
+
+    #[test]
+    fn sketch_graphic_resize_preserves_editable_geometry_and_archive_type() {
+        let layers = json!([{
+            "_class": "group", "do_objectID": "graphic", "groupBehavior": 2, "clippingBehavior": 2,
+            "frame": { "x": 8, "y": 11, "width": 100, "height": 80 },
+            "layers": [{ "_class": "rectangle", "do_objectID": "shape",
+                "frame": { "x": 12, "y": 18, "width": 24, "height": 16 } }]
+        }]);
+        let files = BTreeMap::from([
+            ("meta.json".into(), br#"{"version":168}"#.to_vec()),
+            ("document.json".into(), br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),
+            ("pages/p.json".into(), serde_json::to_vec(&json!({"_class":"page","layers":layers})).unwrap()),
+        ]);
+        let mut doc = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap().document;
+        assert!(doc.nodes["graphic"].graphic);
+        assert_eq!(doc.schema_version, 23);
+        let fonts = crate::font::Fonts::new();
+        crate::layout::resolve(&mut doc, &fonts).unwrap();
+        let before = doc.nodes["shape"].clone();
+        doc.nodes.get_mut("graphic").unwrap().width = 150.;
+        doc.nodes.get_mut("graphic").unwrap().height = 40.;
+        crate::layout::resolve(&mut doc, &fonts).unwrap();
+        let mut expected = before.transform;
+        expected.0[4] *= 1.5;
+        expected.0[5] *= 0.5;
+        assert_eq!(doc.nodes["shape"].transform, expected);
+        assert_eq!((doc.nodes["shape"].width, doc.nodes["shape"].height), (before.width * 1.5, before.height * 0.5));
+        crate::layout::resolve(&mut doc, &fonts).unwrap();
+        assert_eq!(doc.nodes["shape"].transform, expected);
+        let native = export_sketch_layer_fields(&doc, "graphic").unwrap();
+        assert_eq!(native["_class"], "group");
+        assert_eq!(native["groupBehavior"], 2);
+        let reopened = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
+        assert!(reopened.nodes["graphic"].graphic);
+        assert_eq!(reopened.nodes["graphic"].width, 150.);
+        assert_eq!(reopened.nodes["shape"].transform, expected);
+        assert_eq!((reopened.nodes["shape"].width, reopened.nodes["shape"].height), (36., 8.));
     }
 
     #[test]

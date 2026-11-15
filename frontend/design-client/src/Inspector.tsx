@@ -37,7 +37,7 @@ import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
-import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
+import { editableFrameCrop, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
 import type { Editor } from './engine'
@@ -484,12 +484,22 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
     position = selectionParentBounds(s.doc, n.id)
   const constraintParent = editor.state.doc.nodes[editor.parentMap(s.doc).get(n.id) || '']
   const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
-  const showConstraints = !!constraintParent && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
+  const showConstraints = !!constraintParent && !constraintParent.graphic && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
+  const updateBounds = (edit: (node: DesignNode) => void) => {
+    const source = editor.state.doc
+    if (s.frameCrop !== n.id || editableFrameCrop(editor) !== n.id) { update(edit); return }
+    editor.updateProperties(ids, (node, draft) => {
+      edit(node)
+      const { transform, width, height, sizing } = node
+      const patches = frameCropPatches(source, node.id, { transform, width, height, sizing })
+      for (const id of node.children) if (patches[id]) Object.assign(draft.nodes[id], patches[id])
+    }, '裁切画框')
+  }
   const positionFields = <>
     <NumberField historyLabel="X" diagnosticFamily={2} unit="length" label="X" value={position.x * units.parentX}
-      onChange={v => update(node => setNodePosition(node, 'x', v, editor.state.doc))} />
+      onChange={v => updateBounds(node => setNodePosition(node, 'x', v, editor.state.doc))} />
     <NumberField historyLabel="Y" diagnosticFamily={2} unit="length" label="Y" value={position.y * units.parentY}
-      onChange={v => update(node => setNodePosition(node, 'y', v, editor.state.doc))} />
+      onChange={v => updateBounds(node => setNodePosition(node, 'y', v, editor.state.doc))} />
   </>
   const angleField = <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle" label={tr("旋转 °")}
     caption="∠" formatValue={formatAngleDegrees} value={angle}
@@ -498,7 +508,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
     const label = field === 'width' ? 'W' : 'H', value = selectionMetric(n, field, s.doc, units)
     if (uiMode === 'figma' && n.kind === 'text' && n.sizing?.[field] === 'hug') return <CalculatedDimension label={label} value={value} />
     return <NumberField historyLabel={label} diagnosticFamily={field === 'width' ? 3 : 4} unit="length" label={label}
-      value={value} min={0.01} onChange={v => update(node => resizeNodeDimension(node, field, v, s.doc))} />
+      value={value} min={0.01} onChange={v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc))} />
   }
   const proportion = <label className="geometry-proportion" title={tr("锁定宽高比")}>
     <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
@@ -581,7 +591,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
     <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
       {uiMode === 'sketch' && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
       <div className="panel-tabs">
-        <span>{ids.length > 1 ? propertyLayerCount(ids.length, locale) : tr({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>
+        <span>{n.graphic ? tr('图形容器') : ids.length > 1 ? propertyLayerCount(ids.length, locale) : tr({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>
         <button type="button" aria-label={tr("更多图层操作")} onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
       </div>
       <div className="inspector-scroll">
@@ -590,7 +600,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
           {uiMode === 'sketch' ? <>
             <div className="geometry-position">{positionFields}{angleField}</div>
             {dimensions}
-            {n.kind === 'text' && <TextSizingControls editor={editor} nodes={[n]} sketch />}
+            {n.kind === 'text' && !constraintParent?.graphic && <TextSizingControls editor={editor} nodes={[n]} sketch />}
           </> : <>
             <h3>{tr("位置")}</h3>
             <AlignmentControls editor={editor} compact />
@@ -645,14 +655,14 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
           )}
           {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} historyLabel="顶点圆角" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("顶点圆角")} min={0} value={n.cornerRadius ?? 0}
             onChange={v => update(n => { n.cornerRadius = v })} />}
-          {uiMode === 'sketch' && n.kind === 'frame' && ids.length === 1 && <button type="button"
+          {uiMode === 'sketch' && n.kind === 'frame' && !n.graphic && ids.length === 1 && <button type="button"
             disabled={n.locked || !!n.instance || !!n.instanceOrigin || !n.children.length || !!n.layout && n.layout.mode !== 'none'}
             onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
           </button>}
           {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded geometry={uiMode === 'figma' ? <>
             {dimensions}
-            {n.kind === 'text' && <TextSizingControls editor={editor} nodes={[n]} />}
+            {n.kind === 'text' && !constraintParent?.graphic && <TextSizingControls editor={editor} nodes={[n]} />}
           </> : undefined} />}
         </section>
         {n.kind!=='slice' && <section>

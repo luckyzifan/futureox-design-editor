@@ -366,6 +366,7 @@ export type DesignNode = {
   radii: [number, number, number, number]
   smoothing: number
   clip: boolean
+  graphic?: boolean
   mask: boolean
   points: number
   innerRadius: number
@@ -468,7 +469,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
   id: string
   name: string
   pages: Page[]
@@ -793,7 +794,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1029,6 +1030,9 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     }
     // Layout grids mirror scene.rs: schema-12 frames only, finite ranges
     // and a parseable color.
+    if (n.graphic !== undefined && (typeof n.graphic !== 'boolean' ||
+        n.graphic && (d.schemaVersion < 23 || n.kind !== 'frame' || n.layout && n.layout.mode !== 'none')))
+      throw new Error('图形容器需要版本 23，且不能同时使用堆叠布局')
     if (n?.layoutGrid !== undefined || n?.layoutGrids !== undefined) {
       if (d.schemaVersion < 12 || n.kind !== 'frame' ||
           (n.layoutGrids !== undefined && (!Array.isArray(n.layoutGrids) ||

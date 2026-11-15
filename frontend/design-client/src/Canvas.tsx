@@ -33,7 +33,7 @@ import { CanvasEditPreview, type RetainedMoveControl } from './CanvasEditPreview
 import { CanvasOverview } from './CanvasOverview'
 import { CanvasScrollbars } from './CanvasScrollbars'
 import { supportsEditPreview } from './edit-preview'
-import { resizedNode, resizeGestureAxes } from './selection-properties'
+import { editableFrameCrop, frameCropPatches, resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
 import {formatAngleDegrees, selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
 import { figmaRotationDegrees, formatFigmaAngle } from './rotation-field'
@@ -142,6 +142,7 @@ import { constrainAngle, penHandle } from './pen-constraints'
 import { hitPrototypeHead, hitPrototypeLink, jumpToNode, prototypeLinks } from './canvas-navigation'
 import { usePrototypeTab } from './prototype-chrome'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
+import { CanvasOutlines, createOutlineScene, outlineHits } from './CanvasOutlines'
 type TextEditEntry = { id: string; session: number; page: string; token: number }
 type Drag = {
   renderFallbackCount?: number
@@ -156,6 +157,7 @@ type Drag = {
   pointerId: number
   session: number
   page: string
+  cropFrame?: string
   kind: 'pan' | 'zoom' | 'move' | 'scale' | 'resize' | 'rotate' | 'pivot' | 'marquee' | 'create' | 'vertex' | 'handle' | 'width' | 'parameter' | 'crop'
   start: Point
   screen: Point
@@ -306,6 +308,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.canvas-overview,.pencil-controls,.rich-text-editor'
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale, uiMode } = useInterfacePreferences()
+  const outlineAvailable = !nativeSource && !openingSource
+  const outlines = uiMode === 'figma' && outlineAvailable && !!state.outlines
+  const outlineScene = useMemo(() => outlines ? createOutlineScene(state.doc, state.page,
+    state.outlineHiddenLayers !== false, !!state.outlineObjectBounds) : null,
+  [outlines, state.doc, state.page, state.outlineHiddenLayers, state.outlineObjectBounds])
+  const cropFrame = uiMode === 'sketch' ? state.frameCrop : null
+  useEffect(() => {
+    if (state.frameCrop && uiMode !== 'sketch') editor.set({ frameCrop: null })
+  }, [editor, state.frameCrop, uiMode])
   const chromeCopy = canvasText[locale]
   const blurEditActive = useRef(false)
   const exitBlurEditor = useRef(onExitBlurEdit)
@@ -977,11 +988,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     ? { ...presented!, document: state.doc, view: displayView, preview: true } : presented : null,
     [presentationScopeMatches, editPreviewVisible, presented, state.doc, displayView])
   const displayedIndex = snapshots.displayedScene(displayedSnapshot?.document, displayedSnapshot?.pageId)?.index ?? null
-  const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) => displayedSnapshot && displayedIndex
-    ? editor.hit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot,eligible) : null
-  const displayedHoverHit = (point: Point, deep = measureKeys.deep) => displayedSnapshot && displayedIndex
-    // Same target as the click: group until entered, frame child, or empty frame.
-    ? editor.selectionHit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null
+  const hitOutline = (point: Point, eligible?: (node: DesignNode) => boolean) =>
+    outlineScene && outlineHits(outlineScene, point, displayViewRef.current.zoom)
+      .find(entry => !entry.locked && (!eligible || eligible(outlineScene.document.nodes[entry.id])))?.id
+  const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) =>
+    hitOutline(point, eligible) || (displayedSnapshot && displayedIndex
+      ? editor.hit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot, eligible) : null)
+  // Same target as the click: group until entered, frame child, or empty frame.
+  const displayedHoverHit = (point: Point, deep = measureKeys.deep) =>
+    hitOutline(point) || (displayedSnapshot && displayedIndex
+      ? editor.selectionHit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
   refreshHover.current = () => {
     const client = hoverPoint.current, rect = host.current?.getBoundingClientRect()
     const point = client && rect ? { x: client.x - rect.left, y: client.y - rect.top } : null
@@ -1335,6 +1351,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
         cancelQueuedMove()
         marqueeHeld.current = false; setMarqueeKeyHeld(false)
+        if (editor.state.frameCrop && !drag.current) {
+          editor.set({ frameCrop: null })
+          return
+        }
         const cancelOnly = !!drag.current || !!pencil.current || !!penRef.current || editor.state.tool !== 'select'
           || blurEditActive.current
         flushView()
@@ -1363,6 +1383,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       if (e.key === 'Enter') {
         e.preventDefault()
+        if (shortcut?.command === 'edit-frame-bounds' && editableFrameCrop(editor)) {
+          if (!e.repeat) void dispatchEditorCommand(editor, 'edit-frame-bounds')
+          return
+        }
         if (e.shiftKey) {
           if (penRef.current) finishPen()
           editor.set({ tool: 'select', editingVertex: null })
@@ -1449,7 +1473,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         e.preventDefault()
         if (editor.state.busy || (editor.interactionActive && !nudge.active)) return
         const preference = nudgePreference.getSnapshot(), amount = e.shiftKey ? preference.big : preference.small
-        if (editor.state.tool === 'vector' && editor.state.editingVertex) {
+        const crop = editor.state.frameCrop
+        if (crop && editableFrameCrop(editor) === crop) {
+          nudge.step(e, '移动画框边界', () => {
+            const doc = editor.state.doc
+            const dx = e.key === 'ArrowLeft' ? -amount : e.key === 'ArrowRight' ? amount : 0
+            const dy = e.key === 'ArrowUp' ? -amount : e.key === 'ArrowDown' ? amount : 0
+            const parent = worldMatrix(doc, editor.parentMap(doc).get(crop)!)
+            const transform = multiply(inverse(parent), multiply(translate(dx, dy), worldMatrix(doc, crop)))
+            editor.change('移动画框边界', draft => {
+              for (const [id, patch] of Object.entries(frameCropPatches(doc, crop, { transform }))) Object.assign(draft.nodes[id], patch)
+            })
+          })
+        } else if (editor.state.tool === 'vector' && editor.state.editingVertex) {
           const vertices=editor.state.editingVertices?.length?editor.state.editingVertices:[editor.state.editingVertex]
           nudge.step(e, '微移矢量节点', () => editor.update(editor.topSelection(), n => {
             const inv = inverse(worldMatrix(editor.state.doc, n.id))
@@ -1809,8 +1845,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         ? target.closest('[data-frame-title]')?.getAttribute('data-frame-title') : null
       const title = frameTitleHit(s.doc,s.page,titleId)
       if(titleId&&!title){host.current?.releasePointerCapture(e.pointerId);return}
-      const hit = title || (displayedSnapshot && displayedIndex
-        ? editor.selectionHit(p, deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector', displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
+      const hit = title || displayedHoverHit(p, deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector')
       const selectedNode = s.selection.length === 1 && ids.length === 1 ? s.doc.nodes[ids[0]] : null
       const intentOptions = { inside: pointInContours(p, [selectionCorners]), deep: deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector',
         additive: e.shiftKey || s.tool === 'multiselect',
@@ -1853,6 +1888,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       pointerId: e.pointerId,
       session: editor.sessionGeneration, page: s.page,
       kind: dragKind,
+      cropFrame: s.frameCrop && ids.length === 1 && ids[0] === s.frameCrop &&
+        (dragKind === 'resize' || dragKind === 'move') ? editableFrameCrop(editor) : undefined,
       creationTool: s.tool,
       start: p,
       screen,
@@ -1924,7 +1961,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       editor.begin(
         {
           move: '移动图层',
-          resize: '缩放图层',
+          resize: drag.current.cropFrame ? '裁切画框' : '缩放图层',
           scale: '等比缩放图层',
           rotate: '旋转图层',
           vertex: '移动矢量节点',
@@ -2416,7 +2453,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.moved = dragThresholdPassed(d.screen, pointerScreen, !!d.moved)
       if (d.actionToken) actionTrace.sample(d.actionToken, { thresholdPassed: !!d.moved })
       if (!d.moved) return
-      if (e.altKey !== !!d.duplicating) {
+      if (!d.cropFrame && e.altKey !== !!d.duplicating) {
         dropGestureFollow()
         try {
           d.ids = editor.moveDuplication(e.altKey, d.originalIds || d.ids)
@@ -2457,34 +2494,36 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.kind === 'rotate') d.rotationDegrees = visual.degrees
     }
     if (d.kind === 'rotate') publishRotation(d, transform)
-    if (['move', 'rotate', 'scale', 'resize'].includes(d.kind))
+    if (!d.cropFrame && ['move', 'rotate', 'scale', 'resize'].includes(d.kind))
       placeGestureFollow(d, transform, pointerScreen, d.rotationDegrees)
     const parents = d.kind === 'move' && d.sourceParents || editor.parentMap(),
-      patches: Record<string, Partial<DesignNode>> = {}
+      basePatches: Record<string, Partial<DesignNode>> = {}
     for (const id of d.ids) {
       const parent = d.kind === 'move' && d.parentMatrices?.[id] || worldMatrix(editor.state.doc, parents.get(id)!, parents)
-      patches[id] = { transform: multiply(inverse(parent), multiply(transform, d.matrices[id])) }
+      basePatches[id] = { transform: multiply(inverse(parent), multiply(transform, d.matrices[id])) }
       if (d.kind === 'resize') {
         const original = d.sourceDocument?.nodes[id]
         if (original) {
           const proportional = !e.ctrlKey && (e.shiftKey || !!d.basis && !!original.constrainProportions)
           const axes = resizeGestureAxes(d.handle ?? 0, proportional, d.basis ? undefined : d.matrices[id])
-          patches[id] = resizedNode(original, patches[id].transform!, axes)
+          basePatches[id] = resizedNode(original, basePatches[id].transform!, axes)
         }
       }
     }
+    const patches = d.cropFrame && d.sourceDocument
+      ? frameCropPatches(d.sourceDocument, d.cropFrame, basePatches[d.cropFrame]) : basePatches
     if (d.actionToken && d.actionBefore) {
       d.actionProposal = actionGeometry(editor.state.doc, d.ids, patches)
       actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
     }
-    const placement = d.kind==='move'?{ids:d.ids,point:p,
+    const placement = d.kind==='move'&&!d.cropFrame?{ids:d.ids,point:p,
       force:/Mac|iPhone|iPad/.test(navigator.platform)?e.metaKey:e.ctrlKey,preserveParent:space.current}:undefined
     const movePreview=placement?editor.canvasMovePreview(patches,placement):undefined
     const retainsParents = !placement || movePreview!.retainsParents
     // Independent complete boards can follow the pointer on the compositor.
     // Keep one final authored mutation, using the same snapping/placement math.
     // Overlap, reparenting and Option-copy immediately use the regular path.
-    if ((d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey ||
+    if (!d.cropFrame && (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
       // Own paint is already on the pointer. A native capture here would
       // convert, upload and redraw the same image on every sample.
@@ -2514,7 +2553,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.actionToken && gpuMove.current?.previewFailure?.())
         actionTrace.sample(d.actionToken, { poseFallbackReason: gpuMove.current.previewFailure() })
     }
-    if (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && d.ids.length === 1 &&
+    if (!d.cropFrame && d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && d.ids.length === 1 &&
       retainedMove.current?.apply(editor.state.doc, d.ids[0], (movePreview?.patches||patches)[d.ids[0]].transform!)) {
       gpuMove.current?.end(editor.state.doc); restoreGpuOverlays()
       clearFallbackMove()
@@ -2532,7 +2571,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     guidePoses.current.clear()
     guideDocuments.current.set(editor.state.doc, { drag:d, guides:moveGuides })
     if (geometryReady && !gpuPreviewAvailable && vectorPreviewSupported) showMoveGuides(moveGuides)
-    if (d.kind === 'move' && !(geometryReady && !gpuPreviewAvailable && vectorPreviewSupported)) awaitFallbackMove()
+    if (!d.cropFrame && d.kind === 'move' && !(geometryReady && !gpuPreviewAvailable && vectorPreviewSupported)) awaitFallbackMove()
     else clearFallbackMove()
     restoreGpuOverlays()
     if (host.current) host.current.dataset.inputTiming = JSON.stringify(editor.lastPreviewTiming)
@@ -2831,6 +2870,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       className={`canvas canvas-${state.tool}${state.tool==='zoom'&&measureKeys.alt?' canvas-zoom-out':''}${(ownedDrag?.duplicating||(measureKeys.alt&&state.tool==='select'&&!spaceHeld))?' canvas-alt-duplicate':''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved&&!ownedDrag.duplicating?' canvas-object-dragging':''}`}
       data-testid="canvas" data-pen-affordance={affordance || undefined} aria-busy={state.busy}
       data-creation-kind={shapePreview?.kind}
+      data-frame-crop={cropFrame || undefined}
       data-transform-gesture={drag.current?.kind}
       style={marqueeKeyHeld ? { cursor: 'crosshair' } : drag.current?.kind==='rotate'?{cursor:transformHandles[drag.current.handle ?? 0]?.rotateCursor}:undefined}
       onPointerDownCapture={e => {
@@ -2901,7 +2941,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         host.current?.focus({ preventScroll: true })
         const point = world(e)
         const shown = displayedSnapshot.document, parents = editor.parentMap(), shownParents = editor.parentMap(shown)
-        const candidates = displayedIndex.query({ x: point.x - 3 / zoom, y: point.y - 3 / zoom, width: 6 / zoom, height: 6 / zoom }).reverse().filter(entry => {
+        const outlinesAtPoint = outlineScene ? outlineHits(outlineScene, point, zoom) : []
+        const candidates = outlinesAtPoint.length ? outlinesAtPoint.map(entry => ({
+          id: entry.id, name: state.doc.nodes[entry.id].name, locked: entry.locked, hidden: entry.hidden,
+        })) : displayedIndex.query({ x: point.x - 3 / zoom, y: point.y - 3 / zoom, width: 6 / zoom, height: 6 / zoom }).reverse().filter(entry => {
           if (!interactivePath(editor.state.doc, editor.state.page, entry.id, true, parents).length) return false
           const n = shown.nodes[entry.id]
           return kernelHitWorld(n, point, entry.matrix, zoom) && !entry.ancestors.some(id => {
@@ -2927,7 +2970,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           finishPen()
           return
         }
-        const result = editor.selectDeeper(world(e), displayedIndex, displayViewRef.current.zoom, displayedSnapshot)
+        const outlined = hitOutline(world(e))
+        const changed = !!outlined && editor.state.selection[0] !== outlined
+        if (outlined) editor.select([outlined])
+        const result = outlined ? { id: outlined, changed } :
+          editor.selectDeeper(world(e), displayedIndex, displayViewRef.current.zoom, displayedSnapshot)
         const id = result?.id
         const n = id ? state.doc.nodes[id] : null
         const followUp = doubleClickFollowUp(result, n, !!id && editor.topSelection().includes(id))
@@ -3033,6 +3080,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
       {editPreviewVisible && <span className="canvas-edit-status" role="status">{chromeCopy.editPreviewRefining}</span>}
+      {outlineScene && <CanvasOutlines source={outlineScene} view={displayView} size={size} selected={selection} />}
       {['pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
         <div
           className="pencil-controls"
@@ -3257,11 +3305,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 data-testid="canvas-selection-outline"
                 data-selection-role={selected.length > 1 ? 'union' : 'object'}
                 data-selection-held={heldRotationMembers ? 'texture' : undefined}
-                opacity={documentChromeOpacity}
+                opacity={cropFrame ? 1 : documentChromeOpacity}
                 points={drawnCorners.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke={SELECTION_BLUE}
                 strokeWidth={SELECTION_UNION_STROKE_PX}
+                strokeDasharray={cropFrame ? '5 3' : undefined}
                 strokeLinejoin="miter"
                 vectorEffect="non-scaling-stroke"
                 shapeRendering="crispEdges"
@@ -3730,7 +3779,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       {uiMode === 'sketch' && state.showOverview && <CanvasOverview editor={editor} entries={entries} view={state.view}
         size={size} contentBounds={openingSource?.bounds ?? nativeSource?.bounds} label={locale === 'en' ? 'Canvas minimap' : '画布迷你地图'} />}
       <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} onPanGestureChange={setPanning} contentBounds={openingSource?.bounds??nativeSource?.bounds}/>
-      {zoomControlsTarget ? createPortal(<ViewControls editor={editor} size={size} fit={fitView} compact />, zoomControlsTarget) : <ViewControls editor={editor} size={size} fit={fitView} compact={compactChrome} />}
+      {zoomControlsTarget ? createPortal(<ViewControls editor={editor} size={size} fit={fitView} compact outlineAvailable={outlineAvailable} />, zoomControlsTarget) :
+        <ViewControls editor={editor} size={size} fit={fitView} compact={compactChrome} outlineAvailable={outlineAvailable} />}
     </div>
   )
 }

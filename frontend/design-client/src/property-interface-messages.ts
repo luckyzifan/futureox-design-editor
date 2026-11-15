@@ -75,6 +75,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "复合路径（非零绕组）": "Compound path (nonzero winding)",
   "复合路径（奇偶规则）": "Compound path (even-odd)",
   "释放原图形": "Release original shapes",
+  "图形容器": "Graphic",
   "填充": "Fill",
   "添加填充": "Add fill",
   "无填充": "No fill",

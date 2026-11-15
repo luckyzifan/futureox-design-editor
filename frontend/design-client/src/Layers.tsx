@@ -316,7 +316,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                   : container(n)
                     ? n.kind === 'group'
                       ? uiMode === 'sketch' ? Folder : LayersIcon
-                      : Frame
+                      : n.graphic ? Square : Frame
                     : n.kind === 'text'
                       ? Type
                       : n.kind === 'vector'

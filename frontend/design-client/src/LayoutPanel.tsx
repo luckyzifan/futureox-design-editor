@@ -98,7 +98,7 @@ export function LayoutPanel({
   const Heading = embedded ? 'h4' : 'h3'
   return (
     <Tag className="layout-panel">
-      <Heading>{tr("自动布局")}{' '}
+      {!n.graphic && <Heading>{tr("自动布局")}{' '}
         {!active && (
           <button title={tr("添加自动布局 Shift+A")} onClick={() => setLayoutMode()}>
             ＋
@@ -109,7 +109,7 @@ export function LayoutPanel({
             −
           </button>
         )}
-      </Heading>
+      </Heading>}
       {container(n) && ids.length === 1 && <div className="layout-suggestions">
         <button type="button" disabled={n.locked} onClick={() => {
           try { setSuggestion(editor.previewSuggestedLayout(n.id)); setSuggestionError('') }
@@ -250,6 +250,7 @@ export function LayoutPanel({
           </label>
         </>
       )}
+      {!parent?.graphic && <>
       {(n.kind !== 'text' || (!!geometry && flow)) && <>
       <h4>{tr("响应式尺寸")}</h4>
       {(['width', 'height'] as const).map((axis) => (
@@ -296,6 +297,7 @@ export function LayoutPanel({
           ))}
         </div>
       </details>
+      </>}
       {flow && (
         <>
           <label className="check-row">
@@ -349,7 +351,7 @@ export function LayoutPanel({
           )}
         </>
       )}
-      {parent && (parent.kind === 'frame' || parent.kind === 'section') && (!flow || sizing.absolute) && (
+      {parent && !parent.graphic && (parent.kind === 'frame' || parent.kind === 'section') && (!flow || sizing.absolute) && (
         <>
           <h4>{tr("父画板尺寸约束")}</h4>
           {(['horizontal', 'vertical'] as const).map((axis, i) => (

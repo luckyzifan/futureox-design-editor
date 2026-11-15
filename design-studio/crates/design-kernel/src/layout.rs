@@ -751,12 +751,48 @@ pub(crate) fn pose_constraint_fixed(node:&crate::scene::Node,parent:Option<&crat
     let (y,height)=anchor(node.transform.0[5],node.height,h,parent.height,c.vertical);
     same(x,node.transform.0[4])&&same(y,node.transform.0[5])&&same(width,node.width)&&same(height,node.height)
 }
+/// Resize the editable boxes within a Graphic. Keep a rotated child's basis
+/// and appearance so Sketch can represent it as its original layer type.
+fn resize_graphic_member(doc: &mut Document, id: &str, sx: f64, sy: f64, parent_width: f64, parent_height: f64) {
+    let node = doc.nodes.get_mut(id).unwrap();
+    let (old_width, old_height) = (node.width, node.height);
+    let center = node.transform.point(crate::math::Point::new(old_width * 0.5, old_height * 0.5));
+    resize(node, old_width * sx, old_height * sy);
+    let (width, height) = (node.width, node.height);
+    let [a, b, c, d, _, _] = node.transform.0;
+    node.transform.0[4] = center.x * sx - (a * width + c * height) * 0.5;
+    node.transform.0[5] = center.y * sy - (b * width + d * height) * 0.5;
+    if let Some(c) = &mut node.constraints {
+        c.reference_width = Some(parent_width);
+        c.reference_height = Some(parent_height);
+    }
+    if node.layout.as_ref().is_none_or(|layout| layout.mode == Flow::None) {
+        let children = node.children.clone();
+        for child in children {
+            resize_graphic_member(doc, &child, width / old_width, height / old_height, width, height);
+        }
+    }
+}
+
 fn constrain(doc: &mut Document, parent: &str) {
     let p = &doc.nodes[parent];
     let (w, h) = (p.width, p.height);
+    let graphic = p.graphic;
     let flow = p.layout.as_ref().is_some_and(|l| l.mode != Flow::None);
     let children = p.children.clone();
     for id in children {
+        if graphic {
+            let mut c = doc.nodes[&id].constraints.clone().unwrap_or_default();
+            let sx = w / c.reference_width.unwrap_or(w);
+            let sy = h / c.reference_height.unwrap_or(h);
+            if sx != 1. || sy != 1. {
+                resize_graphic_member(doc, &id, sx, sy, w, h);
+            }
+            c.reference_width = Some(w);
+            c.reference_height = Some(h);
+            doc.nodes.get_mut(&id).unwrap().constraints = Some(c);
+            continue;
+        }
         let n = doc.nodes.get_mut(&id).unwrap();
         let flow_item = flow && !n.sizing_value().absolute;
         if let Some(mut c) = n.constraints.clone() {
@@ -820,7 +856,7 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
     if !doc
         .nodes
         .values()
-        .any(|n| n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some())
+        .any(|n| n.graphic || n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some())
     {
         return if roots.is_none(){crate::connectors::resolve(doc)}else{Ok(())};
     }

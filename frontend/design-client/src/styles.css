@@ -571,6 +571,16 @@ main {
   touch-action: none;
   user-select: none;
 }
+.canvas-outlines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.view-outline-options { padding-block: 4px; }
+.view-outline-options label { display: flex; align-items: center; gap: 6px; padding: 4px 0 4px 10px; }
+.view-outline-options kbd { margin-inline-start: auto; }
 .canvas-hand {
   cursor: grab;
 }

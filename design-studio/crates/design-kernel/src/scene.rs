@@ -273,6 +273,9 @@ pub struct Node {
     pub corner_radius: f64,
     #[serde(default, skip_serializing_if = "crate::components::is_false")]
     pub constrain_proportions: bool,
+    /// Sketch Graphic: the frame owns proportional positioning of its contents.
+    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    pub graphic: bool,
     /// Renderer-only glyph outlines; never serialized into authored documents.
     #[serde(skip)]
     pub(crate) derived_path: Option<std::sync::Arc<Path>>,
@@ -1552,6 +1555,10 @@ impl Document {
             if self.schema_version < 22 && n.layout.as_ref().is_some_and(|layout| layout.reverse_flow) {
                 return Err("Reverse stack flow requires schema 22".into());
             }
+            if n.graphic && (self.schema_version < 23 || n.kind != "frame"
+                || n.layout.as_ref().is_some_and(|layout| layout.mode != crate::layout::Flow::None)) {
+                return Err("Graphics require a non-stack frame and schema 23".into());
+            }
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1769,7 +1776,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=22).contains(&self.schema_version)
+        if !(1..=23).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32
