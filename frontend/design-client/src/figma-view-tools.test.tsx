@@ -1,6 +1,4 @@
-// Mounted production App. Proves Figma hand/zoom live on the bottom pill,
-// and that Sketch keeps zoom in the window toolbar.
-import { readFileSync } from 'node:fs'
+// The mounted workspace uses the native layouts' view and insert entry points.
 // @ts-expect-error jsdom is a test-only runtime dependency.
 import { JSDOM } from 'jsdom'
 import React, { act } from 'react'
@@ -55,7 +53,6 @@ afterEach(async () => {
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(value => value.textContent?.includes(text))!
 const group = () => document.querySelector<HTMLElement>('[data-testid="figma-view-tools"]')
 const readout = () => document.querySelector<HTMLElement>('[data-testid="zoom-readout"]')
-const hand = () => group()?.querySelector<HTMLButtonElement>('button[aria-label="平移"]') ?? null
 
 async function openEditor() {
   await act(async () => { root.render(<App />); for (let i = 0; i < 40; i++) await Promise.resolve() })
@@ -66,61 +63,35 @@ async function openEditor() {
   for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
-test('Figma places hand and zoom above the pill and leaves the inspector tab row', async () => {
-  const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
-  const placed = css.match(/\.editor-shell\[data-ui-mode="figma"\] \.figma-view-tools \{[^}]+\}/)?.[0]
-  expect(placed).toContain('position: absolute')
-  expect(placed).toContain('bottom: calc(100% + 8px)')
-  expect(placed).toContain('width: max-content')
-  expect(placed).not.toContain('width: 100%')
-  const pill = css.match(/\.editor-shell\[data-ui-mode="figma"\] \.floating-toolbar \{[^}]+\}/)?.[0]
-  expect(pill).toContain('bottom: 12px')
-  expect(pill).toContain('transform: translateX(-50%)')
-  expect(css).toContain('.editor-shell[data-ui-mode="figma"] .figma-view-tools .view-menu-body')
-  expect(css).toMatch(/\.editor-shell\[data-ui-mode="figma"\] \.figma-view-tools \.view-menu-body \{[^}]*top: auto;/)
-  const sketch = css.match(/\.editor-shell\[data-ui-mode="sketch"\] \.floating-toolbar \{\s*position:[^}]+\}/)?.[0]
-  expect(sketch).toContain('position: relative')
-  expect(sketch).not.toContain('figma-view-tools')
-
+test('Figma zoom follows the inspector and Sketch insert opens the top tool menu', async () => {
   await openEditor()
-  expect(document.querySelector('.editor-shell')!.getAttribute('data-ui-mode')).toBe('figma')
-  const tools = group()
-  expect(tools).not.toBeNull()
-  expect(tools!.closest('.floating-toolbar')).not.toBeNull()
-  expect(tools!.closest('.properties-tabs')).toBeNull()
-  expect(hand()).not.toBeNull()
-  expect(hand()!.getAttribute('aria-pressed')).toBe('false')
-  const zoom = readout()
-  expect(zoom).not.toBeNull()
-  expect(zoom!.textContent).toMatch(/%$/)
-  expect(zoom!.closest('[data-testid="figma-view-tools"]')).toBe(tools)
-  expect(zoom!.closest('.properties-tabs,.properties-zoom')).toBeNull()
-  expect(document.querySelector('.properties-tabs [data-testid="zoom-readout"]')).toBeNull()
-
-  await act(async () => { hand()!.click(); for (let i = 0; i < 10; i++) await Promise.resolve() })
-  expect(editor!.state.tool).toBe('hand')
-  expect(hand()!.getAttribute('aria-pressed')).toBe('true')
-  expect(readout()!.closest('[data-testid="figma-view-tools"]')).toBe(group())
+  expect(document.querySelector('.editor-shell')?.getAttribute('data-ui-mode')).toBe('figma')
+  expect(readout()?.textContent).toMatch(/%$/)
+  expect(group()?.closest('.properties-tabs')).not.toBeNull()
+  expect(readout()?.closest('[data-testid="figma-view-tools"]')).toBe(group())
+  expect(document.querySelector('.canvas-workspace .floating-toolbar')).not.toBeNull()
 
   const toggle = document.querySelector<HTMLButtonElement>('.canvas-panel-toggle.right')!
-  expect(toggle.getAttribute('aria-expanded')).toBe('true')
   await act(async () => toggle.click())
-  expect(document.querySelector('.editor-shell')!.classList.contains('chrome-hide-inspector')).toBe(true)
-  expect(readout()!.closest('[data-testid="figma-view-tools"]')).not.toBeNull()
-  expect(readout()!.closest('.properties-zoom')).toBeNull()
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(readout()?.closest('.editor-header')).not.toBeNull()
   await act(async () => toggle.click())
-  expect(document.querySelector('.editor-shell')!.classList.contains('chrome-hide-inspector')).toBe(false)
-  expect(readout()!.closest('.properties-zoom')).toBeNull()
+  expect(readout()?.closest('.properties-tabs')).not.toBeNull()
 
   await act(async () => button('Sketch').click())
-  expect(document.querySelector('.editor-shell')!.getAttribute('data-ui-mode')).toBe('sketch')
+  expect(document.querySelector('.editor-shell')?.getAttribute('data-ui-mode')).toBe('sketch')
   expect(group()).toBeNull()
-  expect(readout()!.closest('.editor-header')).not.toBeNull()
-  expect(document.querySelector('.floating-toolbar')).not.toBeNull()
+  expect(readout()?.closest('.sketch-window-zoom')).not.toBeNull()
+  const title = document.querySelector('.document-title')!, tools = document.querySelector('.sketch-window-tools')!
+  expect(title.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  const insert = tools.querySelector<HTMLButtonElement>('button[aria-label="置入"]')!
+  await act(async () => insert.click())
+  const menu = document.querySelector('[role="menu"][aria-label="置入"]')!
+  const rect = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(item => item.textContent === '矩形')!
+  await act(async () => rect.click())
+  expect(editor?.state.tool).toBe('rectangle')
 
   await act(async () => button('Figma').click())
-  expect(document.querySelector('.editor-shell')!.getAttribute('data-ui-mode')).toBe('figma')
-  expect(group()?.closest('.floating-toolbar')).not.toBeNull()
-  expect(readout()!.closest('[data-testid="figma-view-tools"]')).not.toBeNull()
-  expect(readout()!.closest('.properties-tabs')).toBeNull()
+  expect(readout()?.closest('.properties-tabs')).not.toBeNull()
+  expect(document.querySelector('.sketch-window-tools')).toBeNull()
 })

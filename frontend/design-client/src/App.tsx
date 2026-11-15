@@ -48,6 +48,7 @@ import { DesignAgentDock } from './design-ai/DesignAgentDock'
 import { getAgentDock, subscribeAgentDock } from './design-ai/design-agent-dock'
 import { AnchoredMenu } from './anchored-menu'
 import { UiModeSwitch } from './UiModeSwitch'
+import { SketchWindowTools } from './SketchWindowTools'
 import { canvasStatusLabel } from './canvas-status-label'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -1015,7 +1016,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   )
   const shapeTools = ['rectangle', 'line', 'arrow', 'ellipse', 'polygon', 'star'].map(id => tools.find(tool => tool.id === id)!)
   const moveTool = tools.find(({ id }) => id === s.tool && ['select', 'hand', 'scale', 'zoom'].includes(id)) || tools.find(({ id }) => id === lastMoveTool)!
-  const handTool = tools.find(({ id }) => id === 'hand')!
   const regionTool = tools.find(({ id }) => id === s.tool && ['frame', 'section', 'slice'].includes(id)) || tools.find(({ id }) => id === lastRegionTool)!
   const shapeTool = shapeTools.find(({ id }) => id === s.tool) || tools.find(({ id }) => id === lastShapeTool)!
   const drawingTool = tools.find(({ id }) => id === s.tool && ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)) || tools.find(({ id }) => id === lastDrawingTool)!
@@ -1059,8 +1059,34 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       ? translateProfessional(desktopStatus.warning || desktopStatus.recoveryWarning || '编辑自动保存到独立工作副本，原文件保持不变', locale)
       : ''
   const saveStatusTitle = saveStatusHelp && saveStatusHelp !== saveStatusText ? `${saveStatusText} — ${saveStatusHelp}` : saveStatusText
+  const toolbarDisabled = !ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas ||
+    !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)
+  const switchWorkspaceSection = (section: WorkspaceSection) => {
+    if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
+    setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
+  }
+  const inlineFigmaTabs = uiMode === 'figma' && !source && !!desktopSession?.supportsWorkspace
+  const figmaNameInSidebar = inlineFigmaTabs && showLayers && !uiMinimized
+  const figmaZoomDocked = uiMode === 'figma' && (uiMinimized ? !!s.selection.length : showInspector)
+  const documentNameField = <input
+            aria-label={menuText.documentName}
+            value={source?.name === '正在打开文件' ? translateProfessional(source.name, locale) : (source?.name || s.doc.name)}
+            readOnly={!!source}
+            onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
+            onCompositionEnd={() => { titleComposing.current = false; pendingEditsChanged(editor) }}
+            onChange={(e) =>
+              editor.change('重命名文档', (d) => {
+                d.name = e.target.value
+              })
+            }
+          />
+  const previewPrototype = <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
+            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
+  const figmaZoom = <div ref={setFigmaZoomHost} className="properties-zoom" data-testid="figma-view-tools"
+    onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
+    onKeyDown={event => event.stopPropagation()} />
   const designToolbar = (
-          <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)}>
+          <DesignToolbar disabled={toolbarDisabled}>
             {ready && !showHome && !source?.nativeCanvas && !source?.openingPreview && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow', 'pen', 'eraser'].includes(s.tool) && (
               <div className="creation-tool-hint" role="status">
                 <b>{localizedToolLabel(s.tool, locale)}</b>
@@ -1074,17 +1100,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={moveTool.id === id} onClick={() => { chooseTool(id); setShowMove(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
               </ToolPopover>
-              <ToolPopover label={uiMode === 'sketch' ? (locale === 'en' ? 'Insert' : '置入') : toolbarText.regionTools} icon={<RegionIcon size={18} />} open={showRegions} onOpenChange={open => openToolbarMenu('regions', open)}
+              <ToolPopover label={toolbarText.regionTools} icon={<RegionIcon size={18} />} open={showRegions} onOpenChange={open => openToolbarMenu('regions', open)}
                 primary={{ label: regionTool.label, title: `${regionTool.label}${regionTool.key ? ` (${regionTool.key})` : ''}`, active: s.tool === regionTool.id, onClick: () => chooseTool(regionTool.id) }}>
                 {(['frame', 'section', 'slice'] as const).map(id => tools.find(tool => tool.id === id)!).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={regionTool.id === id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { if (!commitPendingEdits(editor)) return; setShowRegions(false); setShowFramePresets(true) }}>{toolbarText.devicePresets}</button>
-                {uiMode === 'sketch' && <>
-                  {shapeTools.map(({id, label, key, icon: Icon}) =>
-                    <button type="button" role="menuitem" tabIndex={-1} key={id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>)}
-                  <button type="button" role="menuitem" tabIndex={-1} onClick={() => { chooseTool('text'); setShowRegions(false) }}>{localizedToolLabel('text', locale, '文字')}</button>
-                </>}
               </ToolPopover>
               <ToolPopover label={toolbarText.shapeTools} icon={<ShapeIcon size={18} />} open={showShapes} onOpenChange={open => openToolbarMenu('shapes', open)}
                 primary={{ label: shapeTool.label, title: `${shapeTool.label}${shapeTool.key ? ` (${shapeTool.key})` : ''}`, active: s.tool === shapeTool.id, onClick: () => chooseTool(shapeTool.id) }}>
@@ -1101,8 +1122,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>{toolbarText.editVector}</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>{toolbarText.outlineStroke}</button>
               </ToolPopover>
-              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} className={s.tool === 'comments' ? 'active' : ''} onClick={()=>chooseTool('comments')}><toolGlyph.comments size={18} /></button>
               <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><toolGlyph.text size={18} /></button>
+              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} className={s.tool === 'comments' ? 'active' : ''} onClick={()=>chooseTool('comments')}><toolGlyph.comments size={18} /></button>
               <ToolPopover label={toolbarText.utilityTools} icon={<UtilityIcon size={18} />} open={showUtility} onOpenChange={open => openToolbarMenu('utility', open)}
                 primary={{ label: utilityTool.label, title: `${utilityTool.label}${utilityTool.key ? ` (${utilityTool.key})` : ''}`, active: s.tool === utilityTool.id, onClick: () => chooseTool(utilityTool.id) }}>
                 {utilityTools.map(({ id, label, key, icon: Icon }) => (
@@ -1120,7 +1141,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <div className="tool-group">
               {action('撤销', toolGlyph.undo, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
               {action('重做', toolGlyph.redo, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
-              <ToolPopover label={uiMode === 'sketch' ? (locale === 'en' ? 'Combine and arrange' : '结合与排列') : toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
+              <ToolPopover label={toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
                 {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
                 <strong>{toolbarText.whiteboardAndResponsive}</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, label)}</button>)}
                 <strong>{toolbarText.alignAndDistribute}</strong><div className="arrangement-grid">
@@ -1148,14 +1169,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <Search size={18} />
               </button>
             </div>
-            {uiMode === 'figma' && <div className="figma-view-tools" data-testid="figma-view-tools" onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-              <button type="button" aria-label={handTool.label} aria-pressed={s.tool === 'hand'} className={s.tool === 'hand' ? 'active' : ''}
-                data-tooltip={`${handTool.label}${handTool.key ? ` (${handTool.key})` : ''}`}
-                onClick={() => chooseTool('hand')}>
-                <handTool.icon size={16} />
-              </button>
-              <div ref={setFigmaZoomHost} className="figma-view-zoom" />
-            </div>}
     </DesignToolbar>
   )
   return (
@@ -1265,9 +1278,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
           openSettings()
         }} />}
-      <header className={`editor-header${uiMode === 'sketch' ? ' sketch-window-toolbar' : ''}`}>
+      <header className={`editor-header${uiMode === 'sketch' ? ' sketch-window-toolbar' : ''}`} data-inline-tabs={inlineFigmaTabs || undefined}>
         <span className="header-divider" />
-        {uiMode === 'sketch' ? designToolbar : null}
+        {uiMode === 'sketch' && <div className="sketch-workspace-switch" role="group" aria-label={panelText.sidebarContent}>
+          <button type="button" aria-label={locale === 'en' ? 'Show canvas' : '显示画布'}
+            title={locale === 'en' ? 'Show canvas' : '显示画布'} aria-pressed={workspaceSection === 'layers'}
+            onClick={() => switchWorkspaceSection('layers')}><PanelLeftOpen size={16} /></button>
+          <button type="button" aria-label={locale === 'en' ? 'Show components' : '显示组件'}
+            title={locale === 'en' ? 'Show components' : '显示组件'} aria-pressed={workspaceSection === 'assets'}
+            onClick={() => switchWorkspaceSection('assets')}><Puzzle size={16} /></button>
+        </div>}
         <div className="document-title">
           <button ref={fileMenuTrigger} className="brand" aria-label={panelText.fileMenu} aria-expanded={menu} onClick={() => setMenu(!menu)}>
             <img className="brand-mark" src={webPath('/branding/futureox-desgin.svg')} width="28" height="28" alt="" aria-hidden="true" />
@@ -1277,18 +1297,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <button type="button" className="document-location" title={desktopSession?.supportsWorkspace ? menuText.openLibrary : undefined}
             aria-haspopup={desktopSession?.supportsWorkspace ? 'dialog' : undefined} onClick={openPersistentLibrary}>{desktopSession ? menuText.localDesign : menuText.myDesigns}</button>
           <b>/</b>
-          <input
-            aria-label={menuText.documentName}
-            value={source?.name === '正在打开文件' ? translateProfessional(source.name, locale) : (source?.name || s.doc.name)}
-            readOnly={!!source}
-            onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
-            onCompositionEnd={() => { titleComposing.current = false; pendingEditsChanged(editor) }}
-            onChange={(e) =>
-              editor.change('重命名文档', (d) => {
-                d.name = e.target.value
-              })
-            }
-          />
+          {!figmaNameInSidebar && documentNameField}
           <span className="draft-badge">{panelText.localBadge}</span>
           <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value) }}>
@@ -1296,6 +1305,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button>
 
         </div>
+        {inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
+        {uiMode === 'sketch' && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
+          onSection={switchWorkspaceSection} onImages={files => void importImageFiles(files)}
+          onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets(true) }}
+          onSystems={() => setShowTools(true)} onShapeBuilder={() => setShowShapeBuilder(true)} />}
         <div className="header-right">
           <details ref={workspaceActions} className="workspace-actions" onKeyDown={event => {
             event.stopPropagation()
@@ -1348,8 +1362,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </label>
           <DesignAgentLauncher editor={editor} desktop={desktop} disabled={!ready || switching || s.busy} onImport={(file, mode) => void importDesignFile(file, mode)} />
           {uiMode === 'sketch' && <div ref={setSketchZoomHost} className="sketch-window-zoom" />}
-          <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
-            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
+          {uiMode === 'figma' && !figmaZoomDocked && figmaZoom}
+          {!figmaZoomDocked && previewPrototype}
           <button
             className="primary"
             aria-label={locale === 'en' ? 'Export' : '导出'}
@@ -1369,7 +1383,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <span className="avatar">{translateProfessional('我', locale)}</span>
         </div>
       </header>
-      {desktopSession?.supportsWorkspace && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
+      {desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
       {menu && createPortal(
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
@@ -1586,13 +1600,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         />
       )}
       <main className={`editor-workspace ${showLayers && !uiMinimized ? '' : 'hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'hide-inspector'} ${uiMinimized ? 'ui-minimized' : ''}`} >
-        <WorkspaceRail section={workspaceSection} onSection={(section) => {
-          if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
-          setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
-        }}
+        <WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
           onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
+        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}
+            documentTitle={figmaNameInSidebar ? documentNameField : undefined}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace" ref={source?.canvas}>
           {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
@@ -1618,6 +1630,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
         <div ref={rightPanel} className="properties-workspace">
           <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
+          {figmaZoomDocked && <div className="figma-properties-actions">{previewPrototype}</div>}
           <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={menuText.propertiesWorkspace} onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault(); event.stopPropagation()
@@ -1628,6 +1641,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <button type="button" role="tab" id="design-properties-tab" tabIndex={propertiesTab === 'design' ? 0 : -1} aria-selected={propertiesTab === 'design'} aria-controls="design-properties" onClick={() => setPropertiesTab('design')}>{panelText.design}</button>
             <button type="button" role="tab" id="prototype-properties-tab" tabIndex={propertiesTab === 'prototype' ? 0 : -1} aria-selected={propertiesTab === 'prototype'} aria-controls="prototype-properties" onClick={() => setPropertiesTab('prototype')}>{panelText.prototype}</button>
             </div>
+            {figmaZoomDocked && figmaZoom}
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
             {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} blurEffectIndex={blurEffectIndex} onEditBlur={editBlur} /></PendingEditContext.Provider>

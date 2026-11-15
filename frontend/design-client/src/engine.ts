@@ -1914,17 +1914,16 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  removePage() {
+  removePage(page = this.state.page) {
     const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 213)
     try {
     const session = this.sessionGeneration, documentId = this.state.doc.id
     const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
     if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
-    if (!canDeletePage(this.state.doc, this.state.page)) {
+    if (!canDeletePage(this.state.doc, page)) {
       this.notify('至少保留一个页面')
       return false
     }
-    const page = this.state.page
     const result = this.change(
       '删除页面',
       (d) => {
@@ -1936,11 +1935,11 @@ export class Editor {
         p.children.forEach(del)
         d.pages = d.pages.filter((p) => p.id !== page)
       },
-      [],
+      this.state.page === page ? [] : this.state.selection,
     )
     if (result.status !== 'committed') return false
     if (!ownsDocument()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
-    this.set({ page: userPages(this.state.doc)[0].id })
+    if (this.state.page === page) this.set({ page: userPages(this.state.doc)[0].id })
     return ownsDocument()
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }

@@ -1,6 +1,6 @@
 import { layoutSuggestionText, layoutSuggestionError } from './layout-suggestion-messages'
 import { usePropertyText } from './property-interface-messages'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import type { LayoutSuggestionPreview } from './layout-suggestions'
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits } from './property-units'
@@ -34,11 +34,13 @@ export function LayoutPanel({
   node: n,
   ids,
   embedded = false,
+  geometry,
 }: {
   editor: Editor
   node: DesignNode
   ids: string[]
   embedded?: boolean
+  geometry?: ReactNode
 }) {
   const { tr, locale } = usePropertyText()
   const [suggestion, setSuggestion] = useState<LayoutSuggestionPreview | null>(null)
@@ -134,6 +136,7 @@ export function LayoutPanel({
           <button key={mode} type="button" role="radio" aria-label={tr(label)} title={tr(label)} aria-checked={(active ? layout.mode : 'none') === mode}
             onClick={() => { if ((active ? layout.mode : 'none') !== mode) setLayoutMode(mode) }}><Icon size={16} /></button>)}
       </div>}
+      {geometry}
       {active && (layout.mode === 'horizontal' || layout.mode === 'vertical') && <div className="align-pad" role="group" aria-label={tr("对齐")}>
         {packed.flatMap(row => packed.map(col => {
           const justify = layout.mode === 'vertical' ? row : col

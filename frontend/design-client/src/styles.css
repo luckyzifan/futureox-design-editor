@@ -2001,6 +2001,47 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .alignment-controls button { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:5px; background:transparent; color:inherit; }
 .alignment-controls button:hover:not(:disabled) { background:var(--workspace-hover, #edf2f8); }
 .alignment-controls button:disabled { opacity:.3; }
+.compact-alignment { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin: 0 0 8px; }
+.compact-alignment button { width: 100%; height: 25px; }
+.alignment-more { position: relative; }
+.alignment-more > summary { display: grid; height: 25px; place-items: center; border-radius: 5px; cursor: pointer; list-style: none; }
+.alignment-more > summary::-webkit-details-marker { display: none; }
+.alignment-more > summary:hover { background: var(--workspace-hover); }
+.alignment-more > div { position: absolute; z-index: 12; right: 0; top: 100%; display: flex; padding: 4px;
+  background: var(--workspace-panel); border: 1px solid var(--workspace-border); border-radius: 6px; box-shadow: 0 4px 12px #0002; }
+.alignment-more > div > button { width: 26px; }
+.sketch-inspector-alignment { flex: none; padding: 6px 10px 0; }
+.sketch-inspector-alignment .compact-alignment { margin: 0; }
+.geometry-position, .geometry-rotation, .geometry-dimensions { display: grid; gap: 6px; align-items: center; margin: 4px 0 8px; }
+.geometry-position { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.geometry-rotation { grid-template-columns: minmax(0, 1fr) auto; }
+.geometry-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
+[data-geometry-mode="sketch"] .geometry-position { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+[data-geometry-mode="sketch"] .geometry-dimensions { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+.properties-content .geometry-position .number-field,
+.properties-content .geometry-rotation .number-field,
+.properties-content .geometry-dimensions .number-field { min-width: 0; height: 27px; padding-inline: 5px; gap: 4px; border-radius: 5px; }
+.properties-content .geometry-position .number-field input,
+.properties-content .geometry-rotation .number-field input,
+.properties-content .geometry-dimensions .number-field input { min-width: 0; flex: 1 1 0; }
+.geometry-actions { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+.geometry-actions button, .geometry-proportion { display: grid; place-items: center; width: 23px; height: 27px; padding: 0; border-radius: 5px; }
+.geometry-actions button:hover:not(:disabled), .geometry-proportion:hover { background: var(--workspace-hover); }
+.geometry-proportion { position: relative; cursor: pointer; color: var(--workspace-muted); }
+.geometry-proportion:has(input:checked) { color: var(--workspace-text); }
+.geometry-proportion:focus-within { outline: 2px solid var(--workspace-accent); outline-offset: -2px; }
+.geometry-proportion input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.sketch-appearance-opacity { margin: 8px 0; }
+.number-field-with-slider { display: grid; grid-template-columns: minmax(0, 1fr) minmax(72px, 38%); gap: 8px; align-items: center; }
+.number-field-with-slider > input[type="range"] { margin: 0; width: 100%; min-width: 0; cursor: ew-resize; accent-color: #ec6427; }
+.number-field-with-slider .number-field input { min-width: 0; flex: 1; }
+.sketch-layer-style { display: grid; gap: 6px; margin: 0 0 10px; }
+.sketch-layer-style > label { display: grid; gap: 4px; color: var(--workspace-muted); font-size: 12px; }
+.sketch-layer-style select { width: 100%; }
+.sketch-layer-style-actions { display: flex; justify-content: space-between; gap: 3px; }
+.sketch-layer-style-actions button { min-width: 0; padding: 3px; font-size: 11px; white-space: nowrap; }
+.sketch-layer-style form { display: flex; flex-wrap: wrap; gap: 4px; }
+.sketch-layer-style form input { flex: 1 1 94px; min-width: 0; padding: 4px; }
 .canvas-edit-status { position:absolute; left:12px; bottom:12px; pointer-events:none; font-size:11px; color:#667085; background:rgba(255,255,255,.92); padding:4px 8px; border-radius:4px; }
 .layer-row[data-search-context="true"] { color:var(--muted, #8b93a2); }
 
@@ -2025,6 +2066,9 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .panel-resize-right { left: -4px; }
 .panel-resize-handle:hover, .panel-resize-handle:focus-visible { background: var(--workspace-selected); outline: 1px solid var(--workspace-accent); }
 .panel-resize-handle[aria-disabled=true] { cursor: default; }
+/* A view menu may cross the inspector edge. Its buttons keep the pointer
+   until the menu closes, then the divider resumes handling drags. */
+.editor-shell:has(.view-menu[open]) .panel-resize-handle { pointer-events: none; }
 .editor-shell .floating-toolbar { border: 1px solid var(--workspace-border); border-radius: 16px; background: var(--workspace-panel); box-shadow: var(--workspace-shadow); backdrop-filter: none; max-width: calc(100% - 24px); padding: 5px 6px; }
 .editor-shell .floating-toolbar button { transition: background-color 160ms var(--workspace-ease), color 160ms var(--workspace-ease); }
 .editor-shell .floating-toolbar button:active:not(:disabled) { transform: none; background: var(--workspace-hover); }
@@ -2397,8 +2441,20 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell .adaptive-layers-shell { overflow: visible; min-width: 0; height: 100%; }
 .editor-shell .adaptive-layers-shell .layers-panel { width: 100%; height: 100%; min-width: 0; max-width: none; overflow: hidden; }
 .editor-shell .adaptive-layers-shell > :not(.panel-resize-handle) { min-width: 0; max-width: 100%; overflow: hidden; }
-.layers-pages { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 34%; overflow: hidden; }
+.layers-pages { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 57%; overflow: hidden; }
+.layers-pages > .pages-heading { flex: none; min-height: 34px; padding: 4px 10px; }
+.pages-heading .pages-current { flex: 1; min-width: 0; justify-content: flex-start; }
+.page-list-body { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.page-list-body[hidden] { display: none; }
 .layers-pages .pages { flex: 1 1 auto; min-height: 0; max-height: none; }
+.page-list-divider { flex: none; height: 7px; margin-bottom: -3px; position: relative; z-index: 1; cursor: row-resize; touch-action: none; }
+.page-list-divider::after { content: ''; position: absolute; inset: 3px 0; background: var(--workspace-border); }
+.page-list-divider:hover::after, .page-list-divider:focus-visible::after { background: var(--workspace-accent); }
+.layers-document-title { flex: none; padding: 13px 16px 11px; border-bottom: 1px solid var(--workspace-border);
+  color: var(--workspace-text); font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layers-document-title input { display: block; width: 100%; padding: 1px 0; border: 0; background: transparent; color: inherit;
+  font: inherit; text-overflow: ellipsis; }
+.editor-shell[data-ui-mode="sketch"] .layers-panel > .layer-search { margin: 8px 8px 5px; flex: none; }
 .pages-actions { flex: none; }
 .pages-actions button { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
 .workspace-title > div { min-width: 0; }
@@ -2455,6 +2511,19 @@ html[data-reduced-motion=true] .animation-modal * {
   height: 32px;
   padding: 0 4px;
 }
+.editor-shell[data-ui-mode="figma"]:has(> .editor-header[data-inline-tabs]) { grid-template-rows: var(--editor-chrome-row) 0px minmax(0, 1fr) auto; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] { grid-row: 1; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title { display: flex; flex: 0 1 auto; min-width: 0; gap: 4px; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title input { max-width: 130px; min-width: 70px; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .workspace-tabs {
+  flex: 1 1 auto; min-width: 60px; height: 100%; background: transparent; border: 0; align-items: stretch;
+  scrollbar-width: none; -webkit-app-region: no-drag;
+}
+.editor-shell[data-ui-mode="figma"] .figma-properties-actions {
+  display: flex; justify-content: flex-end; align-items: center; flex: none; height: 34px; padding: 0 9px;
+}
+.figma-properties-actions .prototype-preview-button { display: grid; place-items: center; width: 30px; height: 29px; padding: 0; }
+.figma-properties-actions .prototype-preview-button span { display: none; }
 .editor-shell[data-ui-mode="figma"] .document-title > button[aria-pressed] {
   width: 32px;
   height: 32px;
@@ -2498,67 +2567,6 @@ html[data-reduced-motion=true] .animation-modal * {
 /* The group is taken out of the pill's flow so the pill stays bottom-center.
    8px keeps it against the pill without sharing the pill's border box. The
    menu opens upward so a short window cannot clip it on the bottom edge. */
-.editor-shell[data-ui-mode="figma"] .figma-view-tools {
-  position: absolute;
-  z-index: 3;
-  left: 0;
-  bottom: calc(100% + 8px);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  width: max-content;
-  max-width: calc(100% - 4px);
-  min-height: 36px;
-  padding: 2px;
-  border: 1px solid var(--workspace-border);
-  border-radius: 10px;
-  background: var(--workspace-panel);
-  box-shadow: 0 4px 16px #00000014, 0 1px 2px #0000000a;
-  pointer-events: auto;
-}
-.editor-shell[data-ui-mode="figma"] .figma-view-tools > button {
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
-  padding: 4px;
-  border-radius: 7px;
-  color: var(--workspace-text);
-}
-.editor-shell[data-ui-mode="figma"] .figma-view-tools > button[aria-pressed="true"] {
-  color: var(--workspace-selected-ink);
-  background: var(--workspace-selected);
-}
-.editor-shell[data-ui-mode="figma"] .figma-view-tools .canvas-controls {
-  position: static;
-  inset: auto;
-  display: flex;
-  align-items: center;
-  height: 30px;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  border: 0;
-  border-radius: 0;
-  z-index: auto;
-  color: var(--workspace-text);
-  font-size: 12px;
-}
-.editor-shell[data-ui-mode="figma"] .figma-view-tools .compact-controls > .view-menu > summary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 30px;
-  min-width: 58px;
-  padding: 0 8px;
-  box-sizing: border-box;
-}
-.editor-shell[data-ui-mode="figma"] .figma-view-tools .view-menu-body {
-  top: auto;
-  bottom: calc(100% + 6px);
-  left: 0;
-  right: auto;
-  max-height: min(420px, calc(100dvh - 200px));
-}
 .editor-shell[data-ui-mode="figma"] .floating-toolbar .creation-tool-hint {
   bottom: calc(100% + 56px);
 }
@@ -2577,7 +2585,6 @@ html[data-reduced-motion=true] .animation-modal * {
     height: 40px;
   }
 }
-.editor-shell[data-ui-mode="figma"] .layers-pages { max-height: 28%; }
 .editor-shell[data-ui-mode="figma"] .properties-content .inspector > section { border-bottom: 1px solid var(--workspace-border); }
 
 /* Sketch: macOS document toolbar across the top of the canvas, no left tool rail,
@@ -2783,11 +2790,29 @@ html[data-reduced-motion=true] .animation-modal * {
   min-width: 0;
   max-width: none;
 }
+/* Sketch window commands follow the document title. The Tools menu keeps
+   the contextual commands reachable when horizontal space is limited. */
+.sketch-workspace-switch { display: flex; gap: 2px; flex: none; -webkit-app-region: no-drag; }
+.sketch-workspace-switch button { display: grid; place-items: center; width: 30px; height: 28px; padding: 0; border-radius: 6px; }
+.sketch-workspace-switch button[aria-pressed="true"] { background: var(--workspace-hover); color: var(--workspace-text); }
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-group { gap: 2px; }
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-group > button,
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-popover > button { width: 29px; height: 32px; padding: 4px; }
+@media (max-width: 1180px) {
+  .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .sketch-secondary-tool { display: none; }
+}
+@media (max-width: 980px) {
+  .editor-shell[data-ui-mode="sketch"] .sketch-workspace-switch { display: none; }
+  .editor-shell[data-ui-mode="sketch"] > .editor-header { gap: 3px; }
+}
+.editor-shell[data-ui-mode="figma"] .properties-tabs { position: relative; z-index: 4; }
+.editor-shell .properties-zoom { flex: none; }
 .editor-shell[data-ui-mode="sketch"] .floating-toolbar .creation-tool-hint {
   top: calc(100% + 8px);
   bottom: auto;
 }
-.editor-shell[data-ui-mode="sketch"] .layers-pages { max-height: 46%; background: #ffffff; }
+.editor-shell[data-ui-mode="sketch"] .layers-pages { background: var(--workspace-panel); }
+.editor-shell[data-ui-mode="sketch"] .pages .page { height: 27px; min-height: 27px; }
 .editor-shell[data-ui-mode="sketch"] .layer-heading { background: #ececec; }
 .editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 0; grid-row: 3; }
 @media (max-width: 900px) {

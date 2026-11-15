@@ -8,7 +8,7 @@ import { clampAnchoredMenu } from './anchored-menu'
 
 /** Canvas and toolbelt form a two-region F6 cycle. Text fields, open menus,
  * modal dialogs and active gestures retain ownership of their own input. */
-export function DesignToolbar({ children, disabled = false }: { children: ReactNode; disabled?: boolean }) {
+export function DesignToolbar({ children, disabled = false, className = '' }: { children: ReactNode; disabled?: boolean; className?: string }) {
   const { locale } = useInterfacePreferences(), text = canvasText[locale]
   const host = useRef<HTMLDivElement>(null), tooltip = useRef<HTMLDivElement>(null), blocked = useRef(disabled)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), candidate = useRef<HTMLButtonElement | null>(null)
@@ -20,7 +20,6 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     const toolbar = host.current, canvas = toolbar?.closest('.canvas-workspace')
     if (!toolbar || !canvas) return
     const shell = toolbar.closest<HTMLElement>('.editor-shell')
-    const viewTools = toolbar.querySelector<HTMLElement>('.figma-view-tools')
     const place = () => {
       // This `left` value is the visual center and only matches a bottom toolbar
       // shifted with translateX(-50%). This effect runs on the canvas toolbar.
@@ -30,15 +29,13 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
       if (shell?.getAttribute('data-ui-mode') === 'figma') {
         const bottom = Number.parseFloat(window.getComputedStyle(toolbar).bottom)
         const box = toolbar.getBoundingClientRect()
-        const height = viewTools ? box.bottom - Math.min(box.top, viewTools.getBoundingClientRect().top) : box.height
-        const clearance = figmaStatusClearance(bottom, height)
+        const clearance = figmaStatusClearance(bottom, box.height)
         if (clearance > 0) shell.style.setProperty('--floating-toolbar-status-clearance', `${clearance}px`)
         else shell.style.removeProperty('--floating-toolbar-status-clearance')
       }
     }
     const observer = new ResizeObserver(place)
     observer.observe(toolbar); observer.observe(canvas)
-    if (viewTools) observer.observe(viewTools)
     window.addEventListener('resize', place)
     place()
     return () => {
@@ -47,7 +44,7 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     }
   }, [])
   const buttons = () => [...(host.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || [])]
-    .filter(button => !button.closest('.figma-view-tools'))
+    .filter(button => button.getClientRects().length || !button.closest('.sketch-secondary-tool'))
   const show = (button: HTMLButtonElement, immediate: boolean) => {
     if (!host.current?.contains(button) || !button.dataset.tooltip || button.getAttribute('aria-expanded') === 'true') return
     if (candidate.current === button && !immediate) return
@@ -96,7 +93,7 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     if (hint?.button.isConnected && hint.button.dataset.tooltip && hint.text !== hint.button.dataset.tooltip)
       setHint({ button: hint.button, text: hint.button.dataset.tooltip })
   }, [locale, hint])
-  return <div ref={host} className="toolbar floating-toolbar" role="toolbar" aria-label={text.designTools}
+  return <div ref={host} className={`toolbar floating-toolbar ${className}`} role="toolbar" aria-label={text.designTools}
     onPointerOver={event => {
       const button = (event.target as Element).closest<HTMLButtonElement>('button[data-tooltip]')
       if (button) show(button, false)
