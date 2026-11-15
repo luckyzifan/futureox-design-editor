@@ -3,6 +3,7 @@ import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
 import { requestCommandSearch } from './command-search-session'
+import { editableFrameCrop } from './selection-properties'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
   return editableOwnsKeyboard(target) || modalOwnsKeyboard(target)
@@ -11,7 +12,7 @@ export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean 
 export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey & { target: EventTarget | null; preventDefault(): void }, context: ShortcutContext): Promise<boolean> {
   if (shortcutTargetOwnsKeyboard(event.target)) return false
   const binding = resolveShortcut(event, context)
-  if (!binding) return false
+  if (!binding || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
   // Command search is shell state. It must not enter dispatch or document history.
   if (binding.command === 'open-command-search') {
@@ -22,6 +23,10 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   if ((event.repeat && !binding.repeat) || editor.state.busy || editor.interactionActive) return true
   const command: EditorCommand = binding.command === 'toggle-lock' ? (lockedSelectionIds(editor).length ? 'unlock-selection' : 'lock-selection') :
     binding.command === 'toggle-visibility' ? (editor.state.selection.some(id => !editor.state.doc.nodes[id]?.visible) ? 'show-selection' : 'hide-selection') : binding.command
-  await dispatchEditorCommand(editor, command, { zoomAnchor: editor.pointerScreen || undefined, shortcutProfile: context.profile })
+  await dispatchEditorCommand(editor, command, {
+    zoomAnchor: editor.pointerScreen || undefined,
+    shortcutProfile: context.profile,
+    preserveFrameContents: binding.preserveFrameContents,
+  })
   return true
 }

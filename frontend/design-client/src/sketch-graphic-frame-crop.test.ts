@@ -25,7 +25,7 @@ test('graphic is created around the selection and its width and height scale des
     const world = worldMatrix(editor.state.doc, child.id)
     await dispatchEditorCommand(editor, 'graphic-selection')
     const id = editor.state.selection[0]
-    expect(editor.state.doc.nodes[id]).toMatchObject({ kind: 'frame', graphic: true, children: [child.id] })
+    expect(editor.state.doc.nodes[id]).toMatchObject({ kind: 'frame', graphic: true, clip: true, children: [child.id] })
     expect(editor.state.doc.nodes[frame.id].children).toEqual([id])
     expect(worldMatrix(editor.state.doc, child.id)).toEqual(world)
     const initial = editor.state.doc.nodes[id]
@@ -39,6 +39,20 @@ test('graphic is created around the selection and its width and height scale des
     expect(worldMatrix(editor.state.doc, child.id)).toEqual(world)
     editor.redo()
     expect(editor.state.doc.nodes[child.id].width).toBe(member.width * 2)
+
+    const resized = editor.state.doc
+    const childWorld = worldMatrix(resized, child.id)
+    const patches = frameCropPatches(resized, id, { transform: multiply(resized.nodes[id].transform, translate(1, 0)) })
+    editor.change('裁切画框', draft => {
+      for (const [layer, patch] of Object.entries(patches)) Object.assign(draft.nodes[layer], patch)
+    })
+    const cropped = editor.state.doc
+    expect(worldMatrix(cropped, child.id)).toEqual(childWorld)
+    await dispatchEditorCommand(editor, 'fit-frame-content')
+    expect(editor.state.doc.nodes[id]).toMatchObject({ transform: resized.nodes[id].transform, width: member.width * 2, clip: true })
+    expect(worldMatrix(editor.state.doc, child.id)).toEqual(childWorld)
+    editor.undo()
+    expect(editor.state.doc).toEqual(cropped)
   } finally { editor.dispose() }
 })
 

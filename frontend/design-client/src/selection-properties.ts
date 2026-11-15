@@ -67,7 +67,7 @@ export function editableFrameCrop(editor: Editor): string | undefined {
   const { doc, page, selection } = editor.state
   if (selection.length !== 1) return
   const id = selection[0], frame = doc.nodes[id], parents = editor.parentMap(doc)
-  if (!frame || frame.kind !== 'frame' || frame.graphic || frame.instance || frame.instanceOrigin ||
+  if (!frame || frame.kind !== 'frame' || frame.instance || frame.instanceOrigin ||
       frame.layout && frame.layout.mode !== 'none' || !interactivePath(doc, page, id, false, parents).length) return
   const parent = doc.nodes[parents.get(id) || '']
   if (parent?.layout && parent.layout.mode !== 'none' && !frame.sizing?.absolute) return

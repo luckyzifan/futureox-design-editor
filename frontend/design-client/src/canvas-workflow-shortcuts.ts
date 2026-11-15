@@ -27,8 +27,10 @@ export function isDimensionNudgeCommand(command: string): command is DimensionNu
 /** Keyboard dimensions share the Inspector/canvas resize contract. Compute all
  * values against one immutable snapshot before publishing a single history step.
  * This is per-layer sizing, not Scale-tool stretching or a multi-box transform. */
-export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudgeCommand, ownedGesture = false): void {
+export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudgeCommand, ownedGesture = false, preserveFrameContents = false): void {
   if (editor.state.busy || (editor.interactionActive && !(ownedGesture && keyboardNudgeActive(editor))) || !['select', 'scale'].includes(editor.state.tool)) return
+  const crop = preserveFrameContents || editor.state.frameCrop ? editableFrameCrop(editor) : undefined
+  if (preserveFrameContents && !crop) return
   const { axis, direction, large } = dimensionNudges[command]
   const preference = nudgePreference.getSnapshot()
   const delta = direction * (large ? preference.big : preference.small)
@@ -44,11 +46,10 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
     return value === current ? [] : [[id, { value, units }] as const]
   }))
   if (!edits.size) return
-  const crop = editableFrameCrop(editor)
   editor.update([...edits.keys()], (node, draft) => {
     const { value, units } = edits.get(node.id)!
     resizeNodeDimension(node, axis, value, document, units)
-    if (node.id === crop && editor.state.frameCrop === crop) {
+    if (node.id === crop) {
       const { transform, width, height } = node
       const patches = frameCropPatches(document, node.id, { transform, width, height })
       for (const id of node.children) if (patches[id]) Object.assign(draft.nodes[id], patches[id])

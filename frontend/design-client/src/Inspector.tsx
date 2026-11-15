@@ -655,7 +655,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
           )}
           {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} historyLabel="顶点圆角" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("顶点圆角")} min={0} value={n.cornerRadius ?? 0}
             onChange={v => update(n => { n.cornerRadius = v })} />}
-          {uiMode === 'sketch' && n.kind === 'frame' && !n.graphic && ids.length === 1 && <button type="button"
+          {uiMode === 'sketch' && n.kind === 'frame' && ids.length === 1 && <button type="button"
             disabled={n.locked || !!n.instance || !!n.instanceOrigin || !n.children.length || !!n.layout && n.layout.mode !== 'none'}
             onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}

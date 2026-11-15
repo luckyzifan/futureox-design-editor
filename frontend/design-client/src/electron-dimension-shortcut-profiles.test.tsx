@@ -206,6 +206,46 @@ for(const profile of ['figma-like','sketch-like'] as const){
   await act(async()=>{key('ArrowRight',{metaKey:true,altKey:true});key('ArrowRight',{metaKey:true,altKey:true},'keyup')});expect(editor.state.doc).toBe(reset)
  })
 }
+test('Mac Sketch quick crop handles held and single arrows while retaining the child box', async () => {
+  shortcutPreference.set('sketch-like')
+  interfacePreference.set({ uiMode: 'sketch' })
+  const frame = node('frame', 100, 100, 120, 80)
+  const child = node('rectangle', 16, 12, 40, 24)
+  child.constraints = { horizontal: 'scale', vertical: 'scale', referenceWidth: 120, referenceHeight: 80 }
+  frame.children = [child.id]
+  const before = await render([frame, child], [frame.id])
+  await act(async () => editor.select([frame.id]))
+  const chord = { metaKey: true, altKey: true }
+  await act(async () => {
+    key('ArrowRight', chord)
+    key('ArrowRight', { ...chord, repeat: true })
+    key('ArrowRight', { ...chord, repeat: true })
+  })
+  expect(editor.state.doc.nodes[frame.id].width).toBe(123)
+  expect(editor.interactionActive).toBe(true)
+  expect(editor.state.frameCrop).toBeNull()
+  await act(async () => key('ArrowRight', chord, 'keyup'))
+  expect(editor.state.doc.nodes[child.id]).toMatchObject({ width: 40, height: 24 })
+  delta(before, child.id, 0, 0)
+  await oneHistory(before)
+
+  for (const [arrow, width, height] of [
+    ['ArrowLeft', 122, 80], ['ArrowDown', 122, 81], ['ArrowUp', 122, 80],
+  ] as const) {
+    await act(async () => { key(arrow, chord); key(arrow, chord, 'keyup') })
+    expect(editor.state.doc.nodes[frame.id]).toMatchObject({ width, height })
+    expect(editor.state.doc.nodes[child.id]).toMatchObject({ width: 40, height: 24 })
+    delta(before, child.id, 0, 0)
+  }
+  const after = editor.state.doc
+  await act(async () => {
+    shortcutPreference.set('figma-like')
+    key('ArrowRight', chord)
+    key('ArrowRight', chord, 'keyup')
+  })
+  expect(editor.state.doc).toBe(after)
+})
+
 test('dimension chord registry has no duplicate mac chord and does not expand unobserved non-mac Figma bindings',()=>{
  for(const profile of ['figma-like','sketch-like'] as const)for(const desktop of [false,true]){
   const bindings=shortcutBindings({profile,platform:'mac',desktop})

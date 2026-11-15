@@ -5,7 +5,7 @@ export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
 export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean }
-export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean }
+export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
 export function shortcutPlatform(platform = typeof navigator === 'undefined' ? '' : navigator.platform): ShortcutPlatform {
   return /Mac|iPhone|iPad/.test(platform) ? 'mac' : /Win/.test(platform) ? 'windows' : 'linux'
@@ -76,8 +76,12 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   // inferred from the observed macOS keyboard behavior.
   if (profile === 'sketch-like' || platform === 'mac') {
     for (const [key, dimension, direction] of [['ArrowRight', 'width', 'increase'], ['ArrowLeft', 'width', 'decrease'], ['ArrowDown', 'height', 'increase'], ['ArrowUp', 'height', 'decrease']] as const) {
-      bindings.push({ command: `resize-${dimension}-${direction}`, combo: `Mod+${key}`, repeat: true },
+      const command = `resize-${dimension}-${direction}` as const
+      bindings.push({ command, combo: `Mod+${key}`, repeat: true },
         { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+${key}`, repeat: true })
+      if (profile === 'sketch-like' && platform === 'mac') {
+        bindings.push({ command, combo: `Mod+Alt+${key}`, repeat: true, preserveFrameContents: true })
+      }
     }
   }
   if (desktop) bindings.push({ command: 'ungroup', combo: 'Mod+Backspace' }, { command: 'ungroup', combo: 'Mod+Delete' })
