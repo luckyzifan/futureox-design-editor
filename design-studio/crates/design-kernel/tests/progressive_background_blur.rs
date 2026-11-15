@@ -59,7 +59,7 @@ fn uniform_background_blur_reopens_and_a_progressive_edit_undoes() {
     assert!(editor.document().nodes["lens"].effects[0].gradient_blur.is_none());
     assert_eq!(render(&serde_json::to_value(editor.document()).unwrap()), reopened);
     editor.redo().unwrap();
-    assert_eq!(editor.document().nodes["lens"].effects[0].gradient_blur.unwrap().end_count, 8.);
+    assert_eq!(editor.document().nodes["lens"].effects[0].gradient_blur.as_ref().unwrap().end_count, 8.);
 }
 
 #[test]

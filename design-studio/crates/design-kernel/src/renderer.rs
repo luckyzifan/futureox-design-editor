@@ -3633,22 +3633,28 @@ impl Painter<'_> {
                 None
             };
             if replay.is_none() {
-                let radius = fx.backdrop_radius() * scale;
-                let blurred = if fx.sketch_backdrop {
-                    effects::gaussian_backdrop(background.try_clone()?, fx.sketch_backdrop_sigma(scale), self.compatible)?
-                } else if cropped && !self.compatible {
-                    effects::linear_tent_blur(&background, radius, true)?
-                } else if cropped {
-                    effects::portable_tent_blur_edge(&background, radius, true)?
+                if let Some(gradient) = fx.sketch_ramp() {
+                    background = crate::sketch_progressive_blur::apply(
+                        background, gradient, m, origin, fx.sketch_backdrop_sigma(scale), true, self.compatible,
+                    )?;
                 } else {
-                    self.blur_filter(radius).apply(&background)?
-                };
-                if let Some(gradient) = &fx.gradient_blur {
-                    let inverse = m.inverse_composed(r)?;
-                    effects::gradient_blur_composite_at(&mut background, &blurred, &inverse, gradient, origin);
-                    if self.compatible { background.quantize_rgba8(); }
-                } else {
-                    background = blurred;
+                    let radius = fx.backdrop_radius() * scale;
+                    let blurred = if fx.sketch_backdrop {
+                        effects::gaussian_backdrop(background.try_clone()?, fx.sketch_backdrop_sigma(scale), self.compatible)?
+                    } else if cropped && !self.compatible {
+                        effects::linear_tent_blur(&background, radius, true)?
+                    } else if cropped {
+                        effects::portable_tent_blur_edge(&background, radius, true)?
+                    } else {
+                        self.blur_filter(radius).apply(&background)?
+                    };
+                    if let Some(gradient) = &fx.gradient_blur {
+                        let inverse = m.inverse_composed(r)?;
+                        effects::gradient_blur_composite_at(&mut background, &blurred, &inverse, gradient, origin);
+                        if self.compatible { background.quantize_rgba8(); }
+                    } else {
+                        background = blurred;
+                    }
                 }
                 if let Some(controls) = &fx.color_controls { controls.apply(&mut background, self.doc.color_management.is_some()); }
                 if legacy_glass {
@@ -4251,7 +4257,9 @@ impl Painter<'_> {
                 let filter=|source:&Surface| -> Result<Surface,String> {
                     let mut value=if let Some(z)=fx.zoom_blur {crate::zoom_blur::apply(source,z,m,[n.width,n.height])?}
                         else if let Some(kernel)=&kernel {kernel.apply(source)?}
-                        else {effects::gaussian_surface(source,fx.radius*scale,compatible)?};
+                        else if let Some(gradient) = fx.sketch_ramp() {
+                            crate::sketch_progressive_blur::apply(source.try_clone()?, gradient, m, Point::default(), fx.radius * scale, false, compatible)?
+                        } else {effects::gaussian_surface(source,fx.radius*scale,compatible)?};
                     if compatible {value.quantize_rgba8();} Ok(value)
                 };
                 let out=Arc::new(filter(&resolved)?);planes=std::array::from_fn(|_|out.clone());
@@ -4814,7 +4822,7 @@ impl Painter<'_> {
             apply_effects && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))
         }) {
             let resolved_glass = fx.evaluated_glass();
-            if fx.sketch_backdrop {
+            if fx.sketch_backdrop || fx.sketch_ramp().is_some() {
                 // Native Sketch clamps to its frame capture. Capture the
                 // same texel phase in the single-plane analytic painter.
                 let [x, y, w, h] = crate::coverage::backdrop_box(prepared.fill_bounds, self.extent);
@@ -4826,7 +4834,12 @@ impl Painter<'_> {
                             target.sample_linear(x + f64::from(column) + 0.5, y + f64::from(row) + 0.5);
                     }
                 }
-                let mut filtered = effects::gaussian_backdrop(surface, fx.sketch_backdrop_sigma(scale), self.compatible)?;
+                let mut filtered = if let Some(gradient) = fx.sketch_ramp() {
+                    crate::sketch_progressive_blur::apply(surface, gradient, m, Point::new(x, y),
+                        fx.sketch_backdrop_sigma(scale), true, self.compatible)?
+                } else {
+                    effects::gaussian_backdrop(surface, fx.sketch_backdrop_sigma(scale), self.compatible)?
+                };
                 if let Some(controls) = &fx.color_controls {
                     controls.apply(&mut filtered, self.doc.color_management.is_some());
                 }
@@ -4980,7 +4993,14 @@ impl Painter<'_> {
             }
             match fx.kind.as_str() {
                 "zoom-blur" => { shadow_basis=None; layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
-                "gaussian-blur" => { shadow_basis=None; layer=effects::gaussian_surface_owned(layer,fx.radius*scale,self.compatible)?; }
+                "gaussian-blur" => {
+                    shadow_basis = None;
+                    layer = if let Some(gradient) = fx.sketch_ramp() {
+                        crate::sketch_progressive_blur::apply(layer, gradient, m, Point::default(), fx.radius * scale, false, self.compatible)?
+                    } else {
+                        effects::gaussian_surface_owned(layer, fx.radius * scale, self.compatible)?
+                    };
+                }
                 "motion-blur" => { shadow_basis=None; layer=crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?.apply(&layer)?; }
                 "color-controls" => {
                     shadow_basis = None;

@@ -520,7 +520,43 @@ pub struct Effect {
     )]
     pub show_shadow_behind_node: bool,
 }
+pub const MAX_BLUR_STOPS: usize = 64;
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum BlurRampShape {
+    Linear,
+    Radial,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BlurStop {
+    pub offset: f64,
+    pub strength: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SketchBlurRamp {
+    pub shape: BlurRampShape,
+    /// Sketch stores zero for a circular ramp.
+    pub ellipse: f64,
+    pub stops: Vec<BlurStop>,
+}
+
+impl SketchBlurRamp {
+    fn validate(&self) -> bool {
+        (0. ..=1e6).contains(&self.ellipse)
+            && (2..=MAX_BLUR_STOPS).contains(&self.stops.len())
+            && self.stops.iter().all(|stop| {
+                (0. ..=1.).contains(&stop.offset) && (0. ..=1.).contains(&stop.strength)
+            })
+            && self.stops.windows(2).all(|pair| pair[0].offset <= pair[1].offset)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GradientBlurParameters {
     pub start: [f64; 2],
@@ -529,16 +565,19 @@ pub struct GradientBlurParameters {
     pub end_count: f64,
     #[serde(default)]
     pub smooth: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sketch: Option<SketchBlurRamp>,
 }
 
 impl GradientBlurParameters {
     fn validate(&self) -> bool {
         self.start.iter().chain(&self.end).all(|v| v.is_finite() && v.abs() <= 1e7)
             && [self.start_count, self.end_count].iter().all(|v| (0. ..=64.).contains(v))
+            && self.sketch.as_ref().is_none_or(SketchBlurRamp::validate)
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InactiveGradientBlur {
     pub base_radius: f64,
@@ -575,17 +614,22 @@ pub struct TextureParameters {
     pub noise: Option<String>,
 }
 impl Effect {
+    pub(crate) fn sketch_ramp(&self) -> Option<&GradientBlurParameters> {
+        self.gradient_blur.as_ref().filter(|gradient| gradient.sketch.is_some())
+    }
+
     pub fn blur_radius(&self) -> f64 {
         self.radius
             * self
                 .gradient_blur
                 .as_ref()
-                .map(|g| g.start_count.max(g.end_count).max(1.))
+                .map(|g| if g.sketch.is_some() { 1. } else { g.start_count.max(g.end_count).max(1.) })
                 .unwrap_or(1.)
     }
     pub fn validate_material(&self) -> Result<(), String> {
         if (self.shadow_knockout && self.kind != "shadow")
-            || (self.sketch_backdrop && (self.kind != "background-blur" || self.gradient_blur.is_some()))
+            || (self.sketch_backdrop && (self.kind != "background-blur"
+                || self.gradient_blur.as_ref().is_some_and(|gradient| gradient.sketch.is_none())))
         {
             return Err("Invalid Sketch effect model".into());
         }
@@ -611,11 +655,17 @@ impl Effect {
                 || (self.gradient_blur.is_some() && self.kind != "background-blur")) {
             return Err("Invalid color controls".into());
         }
-        let gradient_kind = matches!(self.kind.as_str(), "blur" | "background-blur")
-            && self.glass.is_none() && self.texture.is_none();
-        if self.gradient_blur.is_some_and(|parameters| !gradient_kind || !parameters.validate())
-            || self.inactive_gradient_blur.is_some_and(|inactive| {
-                !gradient_kind || self.gradient_blur.is_some()
+        let gradient_kind = |parameters: &GradientBlurParameters| {
+            let supported = if parameters.sketch.is_some() {
+                matches!(self.kind.as_str(), "gaussian-blur" | "background-blur")
+            } else {
+                matches!(self.kind.as_str(), "blur" | "background-blur")
+            };
+            supported && self.glass.is_none() && self.texture.is_none()
+        };
+        if self.gradient_blur.as_ref().is_some_and(|parameters| !gradient_kind(parameters) || !parameters.validate())
+            || self.inactive_gradient_blur.as_ref().is_some_and(|inactive| {
+                !gradient_kind(&inactive.parameters) || self.gradient_blur.is_some()
                     || !(0. ..=1000.).contains(&inactive.base_radius) || !inactive.parameters.validate()
             })
         {
@@ -694,8 +744,8 @@ impl Effect {
     }
 
     pub(crate) fn backdrop_outset(&self, scale: f64) -> f64 {
-        if self.sketch_backdrop && self.radius > 0. {
-            3. * self.sketch_backdrop_sigma(scale) + 2.
+        if (self.sketch_backdrop || self.sketch_ramp().is_some()) && self.radius > 0. {
+            3. * self.sketch_backdrop_sigma(scale) + if self.sketch_ramp().is_some() { 3. } else { 2. }
         } else {
             (self.blur_radius() * 2. + self.material_halo()) * scale
         }

@@ -982,8 +982,41 @@ vec4 zoomBlurPixel(vec2 p){
   }
  }return meanFourRN(groups[0],groups[1],groups[2],groups[3]);
 }
+vec2 sketchBlurStop(int index){vec4 pair=u[16+index/2];return index%2==0?pair.xy:pair.zw;}
+vec4 sketchBlurBox(vec2 p){
+ vec4 a=u[9],b=u[10],settings=u[11];
+ vec2 q=p+vec2(settings.w,u[12].x);
+ float x=fmaRN(a.x,q.x,fmaRN(a.y,q.y,a.z)),y=fmaRN(b.x,q.x,fmaRN(b.y,q.y,b.z));
+ float position=clamp(a.w>0.5?sqrt(x*x+y*y):x,0.,1.);
+ vec2 previous=sketchBlurStop(0);
+ float strength=previous.y;
+ for(int i=1;i<int(b.w);i++){
+  vec2 stop=sketchBlurStop(i);
+  if(position<stop.x){
+   if(position>previous.x)strength=previous.y+(stop.y-previous.y)*((position-previous.x)/(stop.x-previous.x));
+   break;
+  }
+  previous=stop;strength=stop.y;
+ }
+ float sigma=settings.x*strength,variance=sigma*sigma/3.;
+ float r=floor((sqrt(4.*sigma*sigma+1.)-1.)*0.5),edge=r+1.;
+ float fraction=clamp((2.*r+1.)*(variance-r*edge/3.)/(2.*(edge*edge-variance)),0.,1.);
+ vec2 axis=settings.y>0.5?vec2(0.,1.):vec2(1.,0.);
+ vec4 bounds=u[1],sum=vec4(0.);
+ for(int tap=-int(r);tap<=int(r);tap++){
+  vec2 q=p+axis*float(tap);
+  if(settings.z>0.5)q=clamp(q,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
+  sum+=at(sourceA,q,bounds);
+ }
+ vec2 left=p-axis*edge,right=p+axis*edge;
+ if(settings.z>0.5){
+  left=clamp(left,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
+  right=clamp(right,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
+ }
+ return (sum+fraction*(at(sourceA,left,bounds)+at(sourceA,right,bounds)))/(2.*r+1.+2.*fraction);
+}
 vec4 shade(vec2 p){
- int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
+ int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
  if(u[60].x>.5){
   if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
   if(mode==8){return legacyTexture(p,true);}

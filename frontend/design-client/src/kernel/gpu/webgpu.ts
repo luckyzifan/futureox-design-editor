@@ -1449,7 +1449,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   }
   private async prepareCanvasSpatialBlur(modes: Set<number>) {
     if (!this.displayImageBaseSource) return
-    for (const mode of [61, 62]) {
+    for (const mode of [61, 62, 64]) {
       if (!modes.has(mode) || this.canvasSpatialPipelines.has(mode) || this.canvasSpatialFailed.has(mode)) continue
       try {
         const device = this.device
@@ -3312,7 +3312,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0
         ? (integerCentres ? this.normalCornerPipeline! : this.normalPipeline!) :
       this.managed && u[16] === 0 ? (integerCentres ? this.copyCornerPipeline! : this.copyPipeline!) :
-      (this.managed || u[16] === 61 || u[16] === 62) ? this.modePipelines.get(u[16])! : this.paintPipeline]
+      (this.managed || u[16] === 61 || u[16] === 62 || u[16] === 64) ? this.modePipelines.get(u[16])! : this.paintPipeline]
     if (!pipelines.length || pipelines.some((pipeline) => !pipeline)) throw new Error(`Exact compositor pipeline ${u[16]} not prepared`)
     // Channel pipelines read only source textures, never this attachment,
     // and write disjoint channels without blending. Keep the selected four

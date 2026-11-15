@@ -136,6 +136,10 @@ pub(crate) struct Asset {
     totals: Arc<SampleTotals>,
 }
 impl Asset {
+    pub(crate) fn size(&self) -> [u32; 2] {
+        [self.width, self.height]
+    }
+
     fn open(&self, path: &Path) -> Result<File, String> {
         if std::fs::symlink_metadata(path)
             .map_err(|e| e.to_string())?
@@ -425,9 +429,9 @@ mod pose_cost {
     use super::*;
     use std::time::Instant;
 
-    fn pose_file(width: u32, height: u32) -> (std::path::PathBuf, String, Access) {
+    fn pose_file(name: &str, width: u32, height: u32) -> (std::path::PathBuf, String, Access) {
         let root =
-            std::env::temp_dir().join(format!("futureox-rotate-pose-{}", std::process::id()));
+            std::env::temp_dir().join(format!("futureox-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let dir = root.join("bitmaps");
         std::fs::create_dir_all(&dir).unwrap();
@@ -452,10 +456,43 @@ mod pose_cost {
     }
 
     #[test]
+    fn minified_owned_sketch_bitmap_matches_the_inline_shrink_path() {
+        use base64::Engine as _;
+        let (root, uri, access) = pose_file("sketch-mip", 24, 18);
+        let asset = access.resolve(&uri).unwrap();
+        let pixels = std::fs::read(asset.base.with_extension("rgba")).unwrap();
+        let png = crate::export::encode_rgba(24, 18, &pixels).unwrap();
+        std::fs::write(&asset.base, &png).unwrap();
+        let inline = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png));
+        let render = |image: &str, native: bool, sketch: bool| {
+            let mut engine = crate::Engine::new();
+            if native { engine.set_source_bitmaps(Some(access.clone())); }
+            let doc = serde_json::json!({
+                "schemaVersion":7,"id":"d","name":"Bitmap",
+                "pages":[{"id":"p","name":"p","children":["b"],"background":"#ffffff"}],
+                "nodes":{"b":{"id":"b","kind":"rectangle","width":24,"height":18,
+                    "fills":[{"kind":"image","color":"#000000","image":image,"fit":"stretch"}]}},
+                "designSystem":{"sketchContainers":{"nodeMetadata":{
+                    "b":{"bindings":{"sketchSourceBitmap": if sketch { "true" } else { "false" }},"styleRefs":{}}
+                }}}
+            });
+            engine.load_document(&doc.to_string()).unwrap();
+            engine.render_region_png(&crate::export::RegionRequest {
+                page_id: "p".into(), scale: 1. / 3., node_ids: Some(vec!["b".into()]),
+                raster_profile: Some(crate::fidelity::RasterProfile::Analytic), color_output: None,
+                bounds: crate::export::ExportBounds { x: 0., y: 0., width: 24., height: 18. }
+            }).unwrap()
+        };
+        assert_eq!(render(&uri, true, true), render(&inline, false, true));
+        assert_ne!(render(&uri, true, false), render(&uri, true, true));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn rotated_source_bitmap_reads_each_row_once() {
         let image_w = 4096u32;
         let image_h = 3072u32;
-        let (root, uri, access) = pose_file(image_w, image_h);
+        let (root, uri, access) = pose_file("rotate-pose", image_w, image_h);
         let covered = access.resolve(&uri).unwrap().raw(None).unwrap().unwrap();
         covered.cover_rows(0, image_h, None).unwrap();
         let streaming = access.resolve(&uri).unwrap().raw(None).unwrap().unwrap();

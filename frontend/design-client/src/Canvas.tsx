@@ -1,3 +1,4 @@
+import { blurStopOffset, insertBlurStop } from './blur-settings'
 import {SourceMaterialHover} from './SourceMaterialHover'
 import {SourceOverviewImage} from './source-overview-image'
 import {SourceOpeningSurface,sourcePageClip,type OpeningView} from './source-opening-preview'
@@ -203,10 +204,11 @@ type Drag = {
   layoutPointerOrigin?: Point
   creationSeed?: ShapeCreationSeed
   creationTool?: Tool
-  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'zoomBlurCenter'
+  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'blurStop' | 'zoomBlurCenter'
   materialFill?: number
   materialStop?: number
   blurEndpoint?: 'start' | 'end'
+  blurStop?: number
   pointer?: Point
   sourceTap?: boolean
   screenDistance?: number
@@ -285,9 +287,9 @@ function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, ce
   </g>
 }
 
-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, onExitBlurEdit, editTextRef, onToggleUi }: {
+export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint, pickSourceMaterial, onSelectSourcePoint, selectedMaterialBox, blurEffectIndex, blurStopIndex, onSelectBlurStop, onExitBlurEdit, editTextRef, onToggleUi }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
-  blurEffectIndex?: number; onExitBlurEdit?: () => void
+  blurEffectIndex?: number; blurStopIndex?: number; onSelectBlurStop?: (index: number) => void; onExitBlurEdit?: () => void
   editTextRef?: React.Ref<(id: string) => void>
   onToggleUi?: () => void
   startupPreview?: StartupPixels; loading?: boolean
@@ -2279,7 +2281,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
         return
       }
-      if ((d.parameter === 'blurEndpoint' || d.parameter === 'zoomBlurCenter') && d.handle !== undefined) {
+      if ((d.parameter === 'blurEndpoint' || d.parameter === 'blurStop' || d.parameter === 'zoomBlurCenter') && d.handle !== undefined) {
         const inverseMatrix = inverse(d.matrices[d.node.id])
         const at = apply(inverseMatrix, p), start = apply(inverseMatrix, d.start)
         const dx = at.x - start.x, dy = at.y - start.y
@@ -2289,6 +2291,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (d.parameter === 'blurEndpoint' && d.blurEndpoint && effect?.gradientBlur) {
           const [x, y] = effect.gradientBlur[d.blurEndpoint]
           effect.gradientBlur[d.blurEndpoint] = [bound(x + dx, 1e7), bound(y + dy, 1e7)]
+          if (effect.gradientBlur.sketch?.shape === 'radial' && d.blurEndpoint === 'start') {
+            const [endX, endY] = effect.gradientBlur.end
+            effect.gradientBlur.end = [bound(endX + dx, 1e7), bound(endY + dy, 1e7)]
+          }
+        } else if (d.parameter === 'blurStop' && d.blurStop !== undefined && effect?.gradientBlur?.sketch) {
+          const stops = effect.gradientBlur.sketch.stops
+          const index = d.blurStop
+          if (!stops[index]) return
+          stops[index].offset = Math.max(stops[index - 1]?.offset ?? 0,
+            Math.min(stops[index + 1]?.offset ?? 1, blurStopOffset(effect.gradientBlur, at)))
         } else if (d.parameter === 'zoomBlurCenter' && effect?.zoomBlur) {
           const [x, y] = effect.zoomBlur.center
           effect.zoomBlur.center = [bound(x + dx / d.node.width, 1e6), bound(y + dy / d.node.height, 1e6)]
@@ -2301,6 +2313,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               start: [live.gradientBlur.start[0], live.gradientBlur.start[1]],
               end: [live.gradientBlur.end[0], live.gradientBlur.end[1]],
             },
+            blurStopOffsets: live.gradientBlur?.sketch?.stops.map(stop => stop.offset),
             zoomCenter: live.zoomBlur && [live.zoomBlur.center[0], live.zoomBlur.center[1]],
           } : null)
         }
@@ -3417,12 +3430,42 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     // start entirely. Give the start an exposed ring without
                     // shifting either authored control point.
                     const overlap = Math.hypot(a.x - b.x, a.y - b.y) * zoom < 13
+                    const stops = gradient.sketch?.stops
+                    const addStop = (event: React.PointerEvent<SVGLineElement>) => {
+                      if (event.button !== 0 || editor.interactionActive) return
+                      event.stopPropagation()
+                      const local = apply(inverse(selected[0].matrix), world(event))
+                      let index: number | undefined
+                      editor.updateProperties([n.id], node => {
+                        const current = node.effects[blurEffectIndex!]
+                        const ramp = current?.gradientBlur
+                        if (current?.id === activeBlur.id && ramp?.sketch)
+                          index = insertBlurStop(ramp.sketch.stops, blurStopOffset(ramp, local))
+                      }, '添加模糊停靠点')
+                      if (index !== undefined) onSelectBlurStop?.(index)
+                    }
                     return <g data-testid="blur-edit-handles">
                       <line className="blur-axis" x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={1 / zoom} pointerEvents="none" />
+                      {stops && <line data-testid="blur-stop-axis" x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                        stroke="transparent" strokeWidth={12 / zoom} pointerEvents="stroke"
+                        style={{ cursor: 'crosshair' }} onPointerDown={addStop} />}
+                      {stops?.map((stop, index) => {
+                        if (stop.offset === 0 || stop.offset === 1) return null
+                        return <circle key={index} className={`blur-anchor${index === blurStopIndex ? ' blur-stop-selected' : ''}`}
+                          data-testid={`blur-stop-${index}`} cx={a.x + (b.x - a.x) * stop.offset}
+                          cy={a.y + (b.y - a.y) * stop.offset} r={5 / zoom} strokeWidth={1 / zoom}
+                          style={{ cursor: 'move' }} onPointerDown={event => {
+                            onSelectBlurStop?.(index)
+                            beginMaterial(event, 'blurStop', blurEffectIndex, '调整模糊停靠点')
+                            if (drag.current?.kind === 'parameter') drag.current.blurStop = index
+                          }} />
+                      })}
                       {([['start', a], ['end', b]] as const).map(([endpoint, point]) =>
                         <circle key={endpoint} className="blur-anchor" data-testid={`blur-${endpoint}-handle`}
                           cx={point.x} cy={point.y} r={(endpoint === 'start' && overlap ? 11 : 6) / zoom} strokeWidth={1 / zoom}
                           style={{ cursor: 'crosshair' }} onPointerDown={(event) => {
+                            const edge = stops?.findIndex(stop => stop.offset === (endpoint === 'start' ? 0 : 1)) ?? -1
+                            if (edge >= 0) onSelectBlurStop?.(edge)
                             beginMaterial(event, 'blurEndpoint', blurEffectIndex, '调整模糊端点')
                             if (drag.current?.kind === 'parameter') drag.current.blurEndpoint = endpoint
                           }}>

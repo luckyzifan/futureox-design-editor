@@ -2436,9 +2436,19 @@ impl Engine {
         // retained once per camera. Flattening is guard-dependent, so the
         // retained map is not what the tile publishes. `tile_guard` is the
         // guard `prepare=None` would use for this viewport.
-        let zoom_extent=if properties.has_zoom{Some(crate::zoom_support::scene_guard_active(doc,&page.children,camera,viewport,&self.fonts)?)}else{None};
-        let base_prepare=prepare_viewport.unwrap_or(viewport);
-        let zoom_prepare=if !properties.has_zoom||base_prepare==viewport{zoom_extent}else{Some(crate::zoom_support::scene_guard_active(doc,&page.children,camera,base_prepare,&self.fonts)?)};
+        let base_prepare = prepare_viewport.unwrap_or(viewport);
+        let (zoom_extent, zoom_prepare) = if properties.has_zoom {
+            // Both domains share one resolved camera and scene. The bounds
+            // walk can shape text and traverse nested masks, so reuse its
+            // immutable result while admitting each rectangle separately.
+            let bounds = crate::dirty_region::render_bounds_map(doc, &page.children, camera, &self.fonts)?;
+            let guard = |region| crate::zoom_support::scene_guard_with_bounds(doc, &page.children, region, &bounds);
+            let visible = guard(viewport)?;
+            let prepared = if viewport == base_prepare { visible } else { guard(base_prepare)? };
+            (Some(visible), Some(prepared))
+        } else {
+            (None, None)
+        };
         let prepare_guard=zoom_prepare.map_or(base_prepare.expand(padding),|z|z.union(base_prepare.expand(padding)));
         let tile_guard=zoom_extent.map_or_else(||viewport.expand(padding),|z|z.union(viewport.expand(padding)));
         // Full native interaction captures share the same geometry/program
