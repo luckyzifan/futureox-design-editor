@@ -1,3 +1,4 @@
+import { wide_image_gaussian_pixels } from '../../generated/design-kernel/design_kernel'
 import {compactSourceAxes,hostedDenseByteFrame,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
@@ -7021,7 +7022,8 @@ export class GpuRenderer {
   private async blurBackdropRegion(input: Surface, sigma: number, node: GpuNode): Promise<Surface> {
     const radius = sigma * 2
     const effect = backdropEffect(node.effects)
-    if (effect?.gradientBlur?.sketch) return this.sketchBlurRamp(input, node, effect, radius * Math.SQRT2, true)
+    // Match Effect::sketch_backdrop_sigma for the variable-radius operator.
+    if (effect?.gradientBlur?.sketch) return this.sketchBlurRamp(input, node, effect, radius * Math.SQRT2 * 0.75, true)
     if (effect?.sketchBackdrop) {
       return this.blur(input, radius * Math.SQRT2, true, false, false, true, false, true)
     }
@@ -7902,10 +7904,35 @@ export class GpuRenderer {
     } finally { releaseShadowBasis() }
   }
 
+  private async projectedImageGaussian(n: GpuNode): Promise<Surface> {
+    const plan = n.wideImageGaussian!, paint = n.fills[0], output = plan.output
+    if (this.driver.name !== 'webgpu' || !this.driver.managed || this.driver.hdr || this.driver.displayMath ||
+        this.scene.coherentSamples || this.scene.colorManagement || !this.driver.uploadLinear ||
+        !this.managedImageLoader || !paint?.image || paint.sketchBitmapSampling ||
+        this.scene.resolve || this.scene.presentation || this.imageMips || this.sampleIndex !== undefined)
+      throw Error('Unsupported bounded image Gaussian renderer')
+    if (!exactBlendLattice([output]) || output.w < 1 || output.h < 1 ||
+        output.w > 1024 || output.h > 1024 || output.w * output.h > 524288)
+      throw Error('Invalid bounded image Gaussian output')
+    const source = this.managedImageLoader(paint.image, false, 0)
+    let pixels: Float32Array
+    try {
+      pixels = wide_image_gaussian_pixels(JSON.stringify(plan), new Float64Array(n.matrix),
+        new Float64Array(n.size), new Uint32Array([source.width, source.height]), JSON.stringify(paint), source.pixels)
+    } finally { source.dispose?.() }
+    await this.reclaimForSurface(output, 2)
+    this.checkFrameCurrent()
+    const texture = this.driver.uploadLinear(pixels, output.w, output.h)
+    const upload = this.retainTextureData(texture, output)
+    try { return this.copy(upload, output) }
+    finally { this.retireUpload(texture) }
+  }
+
   private async node(id: string, backdrop: Surface, skipEffects = false): Promise<Surface | undefined> {
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const n = this.scene.nodes[id]
     if (!n) return
+    if (!skipEffects && n.wideImageGaussian) return this.projectedImageGaussian(n)
     // Analytic tiles keep one plane. A regional Gaussian plan is the bounded
     // source for sigma in (512, 1024]; the normal blur asks the whole-surface
     // cap and fails the frame.

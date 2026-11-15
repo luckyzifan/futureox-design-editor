@@ -505,6 +505,7 @@ fn visit(
         id.clone(),
         GpuNode {
             analytic_region: None,
+            wide_image_gaussian: None,
             optical_prefix_next: None,
             source_filter_field:None,
             gaussian_region:None,

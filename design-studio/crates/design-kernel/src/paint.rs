@@ -853,6 +853,26 @@ pub fn image_sampling_grid_with_sketch_sampling(
     }
     Ok(values)
 }
+/// The analytic canvas samples image color at device pixel centres. Return
+/// just the two one-dimensional rows for a bounded, separable Gaussian.
+pub(crate) fn image_gaussian_axes(
+    rect: Rect, matrix: Transform, size: [f64; 2], image: [u32;2], paint: &Paint,
+) -> Result<[Vec<(usize, f32)>;2], String> {
+    let coords = ImageCoordinates::new(paint, size, matrix, rect, image)?;
+    let mut axes = [Vec::with_capacity(rect.w as usize), Vec::with_capacity(rect.h as usize)];
+    let center = Point::new(f64::from(rect.x) + f64::from(rect.w) / 2., f64::from(rect.y) + f64::from(rect.h) / 2.);
+    for (axis, (start, length)) in [(rect.x, rect.w), (rect.y, rect.h)].into_iter().enumerate() {
+        let source = ImageLinearAxis::new(&coords, axis);
+        for i in 0..length {
+            let at = f64::from(start) + f64::from(i) + 0.5;
+            let sample = source.sample(if axis == 0 { Point::new(at, center.y) } else { Point::new(center.x, at) })
+                .ok_or("Invalid Gaussian image sample")?;
+            axes[axis].push((sample.cell as usize, sample.fraction));
+        }
+    }
+    Ok(axes)
+}
+
 /// Exact compact linear-image coordinates. W=-1 tags two independent rows;
 /// X/Y/Z contain cell, fractional part and validity. Empty means the caller
 /// must use the dense grid for this sample plane; another phase is certified

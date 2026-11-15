@@ -15,6 +15,40 @@ fn active(n: &Node) -> bool {
             .iter()
             .any(|e| e.visible && e.zoom_blur.is_some_and(|z| !z.is_identity()))
 }
+/// Tile input and output currently share one texture. For a lone radial
+/// filter on a leaf, retain the entire still-admitted source as well as every
+/// possible non-zero destination. Use the actual control hull instead of the
+/// legacy amount-scaled margin, which overallocates around tiny shapes.
+pub(crate) fn isolated_leaf_extent(n: &Node, matrix: Transform, hull: Rect, legacy: Rect) -> Rect {
+    if n.mask || n.clip || !n.render_children().is_empty()
+        || n.strokes.iter().any(|stroke| stroke.visible) || hull.empty() || legacy.empty() {
+        return legacy;
+    }
+    let mut effects = n.effects.iter().filter(|effect| effect.visible);
+    let Some(zoom) = effects.next().and_then(|effect| effect.zoom_blur) else { return legacy; };
+    if effects.next().is_some() || zoom.is_identity() { return legacy; }
+    let focal = matrix.point(Point::new(n.width * zoom.center[0], n.height * zoom.center[1]));
+    let stretch = (f64::from(zoom.amount as f32) / 50.).exp();
+    if !focal.finite() || focal.x.abs().max(focal.y.abs()) > 1_048_576. || stretch > 64. {
+        return legacy;
+    }
+    // The bilinear source basis reaches one pixel past its non-zero samples.
+    // Outward integer rounding plus an extra device pixel per side covers
+    // coverage and binary32 fractions at the crop boundary.
+    if [Some(hull.x), Some(hull.y), hull.checked_right(), hull.checked_bottom()]
+        .into_iter().any(|value| value.is_none_or(|v| v.abs_diff(0) > 1_048_576)) {
+        return legacy;
+    }
+    let source = hull.expand(2);
+    let limits = [f64::from(source.x), f64::from(source.y),
+        f64::from(source.right()), f64::from(source.bottom())];
+    let x = |v| focal.x + (v - focal.x) * stretch;
+    let y = |v| focal.y + (v - focal.y) * stretch;
+    checked_rect(limits[0].min(x(limits[0])) - 1., limits[1].min(y(limits[1])) - 1.,
+        limits[2].max(x(limits[2])) + 1., limits[3].max(y(limits[3])) + 1.)
+        .map_or(legacy, |extent| legacy.intersect(extent))
+}
+
 fn checked_rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Result<Rect, String> {
     if [x0, y0, x1, y1]
         .iter()
@@ -102,6 +136,8 @@ struct Planner<'a> {
     bounds: &'a ZoomBounds,
     extent: Rect,
     viewport: Rect,
+    project_images: bool,
+    images: HashMap<String, crate::wide_image_gaussian::Plan>,
 }
 pub(crate) type ZoomBounds = HashMap<String, ([f64; 4], Transform)>;
 impl Planner<'_> {
@@ -174,7 +210,13 @@ impl Planner<'_> {
             if output.empty() {
                 continue;
             }
-            let source = foreground_source(n, m, bounds, output)?;
+            let image = self.project_images.then(|| crate::wide_image_gaussian::plan(self.doc, n, m, output)).flatten();
+            let source = if let Some(plan) = image {
+                self.images.insert(id.clone(), plan);
+                output
+            } else {
+                foreground_source(n, m, bounds, output)?
+            };
             self.include(source)?;
             let (prefix, children_read) = self.siblings(n.render_children(), source)?;
             // A child's backdrop can sample the node's own fills farther away.
@@ -221,12 +263,24 @@ pub(crate) fn scene_guard_active(doc:&Document,roots:&[String],camera:Transform,
     scene_guard_with_bounds(doc, roots, viewport, &bounds)
 }
 pub(crate) fn scene_guard_with_bounds(doc: &Document, roots: &[String], viewport: Rect, bounds: &ZoomBounds) -> Result<Rect, String> {
+    Ok(scene_plan_with_bounds(doc, roots, viewport, bounds, false)?.extent)
+}
+
+pub(crate) struct ScenePlan {
+    pub extent: Rect,
+    pub images: HashMap<String, crate::wide_image_gaussian::Plan>,
+}
+
+pub(crate) fn scene_plan_with_bounds(doc: &Document, roots: &[String], viewport: Rect,
+    bounds: &ZoomBounds, project_images: bool) -> Result<ScenePlan, String> {
     let mut planner = Planner {
         doc,
         bounds,
         extent: viewport,
         viewport,
+        project_images,
+        images: HashMap::new(),
     };
     planner.siblings(roots, viewport)?;
-    Ok(planner.extent)
+    Ok(ScenePlan { extent: planner.extent, images: planner.images })
 }

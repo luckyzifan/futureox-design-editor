@@ -839,6 +839,21 @@ fn solid_paint(color: &Value, base_opacity: f64, blend: &str, space: ColorSpace)
     paint
 }
 
+/// A plain bitmap is drawn into its whole layer frame. Restrict this mapping
+/// to the default crop rectangle; cropped archives keep their existing path.
+fn sketch_bitmap_uses_full_image(layer: &Value) -> bool {
+    match layer.get("clippingMask") {
+        None | Some(Value::Null) => true,
+        Some(Value::String(mask)) if mask.len() <= 80 => {
+            let values = mask.split(|c: char| c == '{' || c == '}' || c == ',')
+                .map(str::trim).filter(|v| !v.is_empty())
+                .map(str::parse::<f64>).collect::<std::result::Result<Vec<_>, _>>();
+            values.is_ok_and(|values| values == [0., 0., 1., 1.])
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn sketch_blurs(style: &Value) -> Vec<&Value> {
     if let Some(blurs) = style.get("blurs").and_then(Value::as_array) { blurs.iter().collect() }
     else { style.get("blur").into_iter().collect() }
@@ -2600,6 +2615,7 @@ impl<'a> Importer<'a> {
                     node.fills.push({
                         let mut p = blank_paint("image");
                         p.image = Some(uri.into());
+                        if sketch_bitmap_uses_full_image(layer) { p.fit = "stretch".into(); }
                         p
                     });
                 }
@@ -9690,6 +9706,35 @@ mod tests {
         doc.nodes.insert("n1".into(), frame);
         doc.nodes.insert("n2".into(), text);
         doc
+    }
+
+    #[test]
+    fn native_bitmap_without_a_crop_stretches_the_complete_image_to_its_frame() {
+        use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        DynamicImage::ImageRgba8(RgbaImage::from_fn(2, 3, |x,y| {
+            Rgba([255 * x as u8, (96 * y) as u8, 0, 255])
+        })).write_to(&mut bytes, ImageFormat::Png).unwrap();
+        let layer = |id, mask| json!({
+            "_class":"bitmap","do_objectID":id,"frame":{"width":24,"height":7,"x":-3.5,"y":4.25},
+            "image":{"_class":"MSJSONFileReference","_ref_class":"MSImageData","_ref":"images/check.png"},
+            "clippingMask":mask,"isFlippedHorizontal":true
+        });
+        let layers = [layer("full", "{{0, 0}, {1, 1}}"), layer("cropped", "{{0.1, 0}, {0.9, 1}}")];
+        let files = BTreeMap::from([
+            ("meta.json".into(), br#"{"version":168}"#.to_vec()),
+            ("document.json".into(), br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),
+            ("pages/p.json".into(), serde_json::to_vec(&json!({"_class":"page","layers":layers})).unwrap()),
+            ("images/check.png".into(), bytes.into_inner()),
+        ]);
+        let doc = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap().document;
+        assert_eq!(doc.nodes["full"].fills[0].fit, "stretch");
+        assert_eq!(doc.nodes["cropped"].fills[0].fit, "cover");
+        let reopened = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
+        let n = &reopened.nodes["full"];
+        assert_eq!(n.fills[0].fit, "stretch");
+        assert_eq!([n.width, n.height], [24., 7.]);
+        assert_eq!(n.transform, doc.nodes["full"].transform);
     }
 
     #[test]

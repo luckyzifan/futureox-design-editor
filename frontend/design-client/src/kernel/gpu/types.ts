@@ -96,6 +96,7 @@ export type GpuNode = {
   /** Adjacent consumer sees this lens's ordinary paints without its optics. */
   opticalPrefixNext?:string
   sourceFilterField?:SourceFilterField
+  wideImageGaussian?: { output: Rect; radii: [number, number, number] }
   gaussianRegion?:import('./gaussian-region').GaussianRegion
   /** Worker-local transient placement identity; never serialized by the kernel. */
   previewSource?: GpuNode

@@ -40,7 +40,7 @@ import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
-import { editableFrameCrop, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
+import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
 import type { Editor } from './engine'
@@ -473,7 +473,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         <div className="local-badge">{tr("独立工作空间 · 本地优先")}</div>
       </aside>
     )
-  const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
+  const parents = editor.parentMap(s.doc)
+  const units = propertyUnits(s.doc, n.id, parents)
   const blurReadout = liveBlur && editor.interactionActive
     && liveBlur.session === editor.sessionGeneration && liveBlur.page === s.page
     && liveBlur.documentId === s.doc.id && liveBlur.nodeId === n.id
@@ -484,12 +485,13 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     && visibleFills[0].blend === 'normal' && visibleFills[0].opacity === 1
     && /^#[0-9a-f]{6}$/i.test(visibleFills[0].color) ? visibleFills[0] : undefined
   const activeBackdrop = opaqueFill && backdropEffect(n.effects)
-  const styleDescription = styleUnitDescription(s.doc, [n.id], editor.parentMap(s.doc))
+  const styleDescription = styleUnitDescription(s.doc, [n.id], parents)
   const liveText = live && editor.interactionActive && live.session === editor.sessionGeneration && live.page === s.page && live.documentId === s.doc.id
     ? live.textById[n.id] : undefined
   const angle = liveText !== undefined ? Number(liveText) : figmaRotationDegrees(n.transform),
     position = selectionParentBounds(s.doc, n.id)
-  const constraintParent = editor.state.doc.nodes[editor.parentMap(s.doc).get(n.id) || '']
+  const constraintParent = s.doc.nodes[parents.get(n.id) || '']
+  const positionOffset = uiMode === 'figma' ? figmaPositionOffset(s.doc, n.id, parents) : { x: 0, y: 0 }
   const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
   const showConstraints = !!constraintParent && !constraintParent.graphic && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
   const updateBounds = (edit: (node: DesignNode) => void) => {
@@ -503,10 +505,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     }, '裁切画框')
   }
   const positionFields = <>
-    <NumberField historyLabel="X" diagnosticFamily={2} unit="length" label="X" value={position.x * units.parentX}
-      onChange={v => updateBounds(node => setNodePosition(node, 'x', v, editor.state.doc))} />
-    <NumberField historyLabel="Y" diagnosticFamily={2} unit="length" label="Y" value={position.y * units.parentY}
-      onChange={v => updateBounds(node => setNodePosition(node, 'y', v, editor.state.doc))} />
+    <NumberField historyLabel="X" diagnosticFamily={2} unit="length" label="X" value={(position.x + positionOffset.x) * units.parentX}
+      onChange={v => updateBounds(node => setNodePosition(node, 'x', v - positionOffset.x * units.parentX, editor.state.doc, units))} />
+    <NumberField historyLabel="Y" diagnosticFamily={2} unit="length" label="Y" value={(position.y + positionOffset.y) * units.parentY}
+      onChange={v => updateBounds(node => setNodePosition(node, 'y', v - positionOffset.y * units.parentY, editor.state.doc, units))} />
   </>
   const angleField = <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle" label={tr("旋转 °")}
     caption="∠" formatValue={formatAngleDegrees} value={angle}
