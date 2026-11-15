@@ -469,6 +469,9 @@ pub struct Effect {
     pub zoom_blur: Option<crate::zoom_blur::ZoomBlur>,
     #[serde(default, rename="motionAngle", skip_serializing_if="is_zero")]
     pub motion_angle: f64,
+    /// Retained Sketch zoom origin while motion blur is the active mode.
+    #[serde(default, rename = "motionZoomOrigin", skip_serializing_if = "Option::is_none")]
+    pub motion_zoom_origin: Option<[f64; 2]>,
     #[serde(default, rename = "colorControls", skip_serializing_if = "Option::is_none")]
     pub color_controls: Option<crate::color_controls::ColorControls>,
     #[serde(default)]
@@ -502,6 +505,9 @@ pub struct Effect {
         skip_serializing_if = "Option::is_none"
     )]
     pub gradient_blur: Option<GradientBlurParameters>,
+    /// Previous endpoints and strength scale while a uniform blur is active.
+    #[serde(default, rename = "inactiveGradientBlur", skip_serializing_if = "Option::is_none")]
+    pub inactive_gradient_blur: Option<InactiveGradientBlur>,
     /// kiwi `Effect.showShadowBehindNode` (ordinal 8): the drop shadow also
     /// draws behind the node's own pixels instead of being clipped to the
     /// silhouette. Carried verbatim from FIG; the renderer's shadow clip
@@ -523,6 +529,20 @@ pub struct GradientBlurParameters {
     pub end_count: f64,
     #[serde(default)]
     pub smooth: bool,
+}
+
+impl GradientBlurParameters {
+    fn validate(&self) -> bool {
+        self.start.iter().chain(&self.end).all(|v| v.is_finite() && v.abs() <= 1e7)
+            && [self.start_count, self.end_count].iter().all(|v| (0. ..=64.).contains(v))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InactiveGradientBlur {
+    pub base_radius: f64,
+    pub parameters: GradientBlurParameters,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -573,8 +593,15 @@ impl Effect {
             || self.radius!=0. || self.color_controls.is_some() || self.glass.is_some() || self.texture.is_some() || self.gradient_blur.is_some()) {
             return Err("Invalid zoom blur parameters".into());
         }
-        if !self.motion_angle.is_finite() || self.motion_angle.abs()>1e7 || (self.motion_angle!=0. && self.kind!="motion-blur") {
+        if !self.motion_angle.is_finite() || self.motion_angle.abs() > 1e7
+            || (self.motion_angle != 0. && !matches!(self.kind.as_str(), "motion-blur" | "zoom-blur"))
+        {
             return Err("Invalid motion blur angle".into());
+        }
+        if self.motion_zoom_origin.is_some_and(|point| {
+            self.kind != "motion-blur" || point.iter().any(|value| !(-1e6..=1e6).contains(value))
+        }) {
+            return Err("Invalid retained zoom blur origin".into());
         }
 
         if self.kind == "color-controls" && self.color_controls.is_none() { return Err("Color controls parameters required".into()); }
@@ -584,17 +611,13 @@ impl Effect {
                 || (self.gradient_blur.is_some() && self.kind != "background-blur")) {
             return Err("Invalid color controls".into());
         }
-        if let Some(g) = &self.gradient_blur
-            && (!matches!(self.kind.as_str(), "blur" | "background-blur")
-                || self.glass.is_some()
-                || self.texture.is_some()
-                || g.start
-                    .iter()
-                    .chain(g.end.iter())
-                    .any(|v| !v.is_finite() || v.abs() > 1e7)
-                || [g.start_count, g.end_count]
-                    .iter()
-                    .any(|v| !v.is_finite() || !(0. ..=64.).contains(v)))
+        let gradient_kind = matches!(self.kind.as_str(), "blur" | "background-blur")
+            && self.glass.is_none() && self.texture.is_none();
+        if self.gradient_blur.is_some_and(|parameters| !gradient_kind || !parameters.validate())
+            || self.inactive_gradient_blur.is_some_and(|inactive| {
+                !gradient_kind || self.gradient_blur.is_some()
+                    || !(0. ..=1000.).contains(&inactive.base_radius) || !inactive.parameters.validate()
+            })
         {
             return Err("Invalid gradient blur parameters".into());
         }
@@ -1703,13 +1726,13 @@ impl Document {
         let has_gradient = self
             .nodes
             .values()
-            .any(|n| n.effects.iter().any(|e| e.gradient_blur.is_some()))
+            .any(|n| n.effects.iter().any(|e| e.gradient_blur.is_some() || e.inactive_gradient_blur.is_some()))
             || self
                 .animations
                 .iter()
                 .flat_map(|c| &c.tracks)
                 .flat_map(|t| &t.keyframes)
-                .any(|k| k.value.effects.iter().any(|e| e.gradient_blur.is_some()));
+                .any(|k| k.value.effects.iter().any(|e| e.gradient_blur.is_some() || e.inactive_gradient_blur.is_some()));
         let has_gradient = has_gradient
             || self.nodes.values().any(|n| {
                 n.instance.as_ref().is_some_and(|i| {
@@ -1718,7 +1741,7 @@ impl Document {
                             .and_then(|v| v.as_array())
                             .is_some_and(|es| {
                                 es.iter()
-                                    .any(|e| e.get("gradientBlur").is_some_and(|g| !g.is_null()))
+                                    .any(|e| ["gradientBlur", "inactiveGradientBlur"].iter().any(|key| e.get(*key).is_some_and(|g| !g.is_null())))
                             })
                     })
                 })
@@ -1728,7 +1751,7 @@ impl Document {
                     s.kind == "effect"
                         && s.value.as_array().is_some_and(|es| {
                             es.iter()
-                                .any(|e| e.get("gradientBlur").is_some_and(|g| !g.is_null()))
+                                .any(|e| ["gradientBlur", "inactiveGradientBlur"].iter().any(|key| e.get(*key).is_some_and(|g| !g.is_null())))
                         })
                 })
             });

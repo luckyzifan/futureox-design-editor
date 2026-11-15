@@ -212,3 +212,37 @@ fn integrated_blur_has_no_seam_at_a_cpu_sampling_tile_boundary() {
         "blur differs when crossing the 512-pixel tile seam"
     );
 }
+
+#[test]
+fn isolated_rounded_layer_and_region_strips_use_the_frame_sample_resolve() {
+    use futureox_design_kernel::export::{ExportBounds, RegionRequest};
+    let document = json!({
+        "schemaVersion": 1, "id": "d", "name": "isolated rounded layer",
+        "pages": [{"id": "p", "name": "Page", "children": ["r"], "background": "#ffffff"}],
+        "nodes": {"r": {"id": "r", "kind": "rectangle", "width": 548, "height": 36,
+            "transform": [1, 0, 0, 1, 0.125, 0], "radii": [6, 6, 6, 6],
+            "fills": [{"kind": "solid", "color": "#ffffff"}]}}
+    });
+    let mut engine = Engine::new();
+    engine.load_document(&document.to_string()).unwrap();
+    let profile = RasterProfile::Figma;
+    let options = RenderOptions {
+        width: 548, height: 48, transparent: true, raster_profile: profile, ..options()
+    };
+    let frame = engine.render(&options).unwrap();
+    for (x, width) in [(0, 548), (0, 512), (512, 36)] {
+        let request = RegionRequest {
+            page_id: "p".into(),
+            bounds: ExportBounds { x: x as f64, y: 0., width: width as f64, height: 48. },
+            scale: 1., node_ids: Some(vec!["r".into()]),
+            raster_profile: Some(profile), color_output: None,
+        };
+        let png = engine.render_region_png(&request).unwrap();
+        let region = image::load_from_memory(&png).unwrap().into_rgba8();
+        for (row, (actual, full)) in region.chunks_exact(width * 4)
+            .zip(frame.chunks_exact(548 * 4)).enumerate()
+        {
+            assert!(actual == &full[x * 4..(x + width) * 4], "resolve mismatch for {profile:?} at x={x}, y={row}");
+        }
+    }
+}

@@ -30,6 +30,7 @@ export function ViewControls({
   const label = (zh: string, en: string) => locale === 'en' ? en : zh
   const centerKey = shortcutLabel('center-selection', shortcut)
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
+  const zoomPercentage = sketch ? Math.floor(liveZoom * 100 + 1e-9) : Number((liveZoom * 100).toFixed(1))
   const menu = useRef<HTMLDetailsElement>(null)
   const closeMenu = () => { if (menu.current) menu.current.open = false }
   useEffect(() => {
@@ -74,7 +75,7 @@ export function ViewControls({
       <details ref={menu} className="view-menu" onToggle={event => {
         if (!sketch && event.currentTarget.open) event.currentTarget.querySelector<HTMLInputElement>('input[role="spinbutton"]')?.focus()
       }}>
-        <summary aria-label={text.zoomView} data-testid="zoom-readout">{Number((liveZoom * 100).toFixed(1))}%</summary>
+        <summary aria-label={text.zoomView} data-testid="zoom-readout">{zoomPercentage}%</summary>
         <div className="view-menu-body">
           {sketch && zoomSteps}
           <PendingEditContext.Provider value={null}><NumberField

@@ -50,12 +50,12 @@ export function zoomAt(view: CanvasCamera, zoom: number, anchor: Point): CanvasC
 export function fitBounds(
   bounds: Bounds,
   size: CanvasSize,
-  { padding = 40, maxZoom = Infinity } = {},
+  { padding = 40, worldPadding = 0, maxZoom = Infinity } = {},
 ): CanvasCamera {
   const requested = Math.min(
     maxZoom,
-    (size.width - padding * 2) / Math.max(1, bounds.width),
-    (size.height - padding * 2) / Math.max(1, bounds.height),
+    (size.width - padding * 2) / Math.max(1, bounds.width + worldPadding * 2),
+    (size.height - padding * 2) / Math.max(1, bounds.height + worldPadding * 2),
   )
   const zoom = requested > 0 && Number.isFinite(requested) ? clampCanvasZoom(requested) : 1
   return {
@@ -63,6 +63,12 @@ export function fitBounds(
     x: size.width / 2 - (bounds.x + bounds.width / 2) * zoom,
     y: size.height / 2 - (bounds.y + bounds.height / 2) * zoom,
   }
+}
+
+// Sketch fits a selection with 25 document points on each side. Applying
+// that margin before scaling also keeps handles on tiny layers accessible.
+export function fitSelectedBounds(bounds: Bounds, size: CanvasSize, mode: 'figma' | 'sketch'): CanvasCamera {
+  return mode === 'sketch' ? fitBounds(bounds, size, { padding: 0, worldPadding: 25 }) : fitBounds(bounds, size)
 }
 
 /** Minimal camera pan bringing `bounds` fully into the viewport with a

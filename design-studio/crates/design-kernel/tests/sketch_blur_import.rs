@@ -160,8 +160,13 @@ fn topology_numeric_blur_enable_flags_render_and_preserve_the_source_value() {
                 (json!(false), false), (json!(2), false), (json!(-1), false), (json!("1"), false)] {
                 let mut blur = source_blur(kind); blur["isEnabled"] = flag;
                 let report = interop::import_sketch_report(&archive_style(&blur, modern)).unwrap();
-                assert_eq!(report.document.nodes["frosted"].effects.len(), usize::from(enabled),
+                let hidden = matches!(kind, 1 | 2) && [json!(false), json!(0)].contains(&blur["isEnabled"]);
+                let effects = &report.document.nodes["frosted"].effects;
+                assert_eq!(effects.len(), usize::from(enabled || hidden),
                     "modern={modern} kind={kind} flag={}", blur["isEnabled"]);
+                if let Some(effect) = effects.first() {
+                    assert_eq!(effect.visible, enabled);
+                }
                 assert_eq!(exported_blur(&report.document), blur);
             }
         }
@@ -263,7 +268,7 @@ fn edited_background_blur_exports_native_type_three_instead_of_gaussian() {
 #[test]
 fn linear_progressive_background_blur_imports_two_strengths_and_keeps_saturation() {
     let mut source = source_blur(3);
-    source["progressive"] = json!(true);
+    source["isProgressive"] = json!(true);
     source["saturation"] = json!(0.25);
     source["radius"] = json!(8);
     source["gradient"] = json!({
@@ -295,7 +300,7 @@ fn linear_progressive_background_blur_imports_two_strengths_and_keeps_saturation
 
     let progressive = render(&report.document);
     let mut uniform = source.clone();
-    uniform.as_object_mut().unwrap().remove("progressive");
+    uniform.as_object_mut().unwrap().remove("isProgressive");
     uniform.as_object_mut().unwrap().remove("gradient");
     let uniform = render(&interop::import_sketch_report(&archive(&uniform)).unwrap().document);
     let red = |pixels: &[u8], x: usize, y: usize| pixels[(y * 64 + x) * 4] as i16;
@@ -353,6 +358,9 @@ fn edited_progressive_background_blur_reopens_through_the_fd_receipt() {
     effect.radius = 2.;
     effect.gradient_blur.as_mut().unwrap().end_count = 6.;
     effect.gradient_blur.as_mut().unwrap().smooth = false;
+    let native = exported_blur(&report.document);
+    assert_eq!(native["isProgressive"], true);
+    assert_eq!(native["gradient"]["from"], "{0, 0.5}");
     let exported = interop::export_sketch(&report.document).unwrap();
     let reopened = interop::import_sketch_report(&exported).unwrap();
     let effect = &reopened.document.nodes["frosted"].effects[0];
@@ -371,5 +379,32 @@ fn motion_and_zoom_blurs_keep_distinct_executable_kinds_and_native_source() {
         assert_eq!(report.document.nodes["frosted"].effects[0].kind,expected);
         assert!(!report.warnings.iter().any(|value| value.contains(&format!("{expected}-not-modeled"))));
         assert_eq!(exported_blur(&report.document), source);
+    }
+}
+
+
+#[test]
+fn sketch_motion_and_zoom_keep_the_other_modes_angle_or_origin_on_export() {
+    for (kind, angle, center) in [(1, -45., [0.2, 0.75]), (2, -34., [0.8, 0.42])] {
+        let mut source = source_blur(kind);
+        source["motionAngle"] = json!(angle);
+        source["center"] = json!({"x": center[0], "y": center[1]});
+        let mut report = interop::import_sketch_report(&archive(&source)).unwrap();
+        let effect = &mut report.document.nodes.get_mut("frosted").unwrap().effects[0];
+        assert_eq!(effect.motion_angle, -angle);
+        assert_eq!(effect.zoom_blur.map(|zoom| zoom.center).or(effect.motion_zoom_origin), Some(center));
+        let expected_center = format!("{{{}, {}}}", center[0], center[1]);
+        // Change supported data so the writer builds a new native dictionary.
+        if let Some(zoom) = &mut effect.zoom_blur { zoom.amount = 12.; }
+        else { effect.radius = 12.; }
+        effect.visible = false;
+        let native = exported_blur(&report.document);
+        assert_eq!(native["isEnabled"], false);
+        assert_eq!(native["motionAngle"], angle);
+        assert_eq!(native["center"], expected_center);
+        assert_eq!(native["radius"], 12.);
+        let export = interop::export_sketch(&report.document).unwrap();
+        let reopened = interop::import_sketch_report(&export).unwrap();
+        assert_eq!(reopened.document.nodes["frosted"].effects[0], report.document.nodes["frosted"].effects[0]);
     }
 }

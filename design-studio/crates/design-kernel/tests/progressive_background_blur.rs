@@ -136,7 +136,7 @@ fn sketch_blur_array_keeps_progressive_endpoints_next_to_glass() {
         assert_eq!(blurs[1 - index]["type"], 4);
         let blur = &blurs[index];
         assert_eq!(blur["type"], 3);
-        assert_eq!(blur["progressive"], true);
+        assert_eq!(blur["isProgressive"], true);
         assert_eq!(blur["radius"].as_f64(), Some(8.));
         assert_eq!(blur["saturation"], 0.75);
         let gradient = &blur["gradient"];
@@ -172,7 +172,7 @@ fn sketch_progressive_background_exports_authored_filter_support_and_sharp_limit
         let blur = &layer["style"]["blurs"][0];
         assert_eq!(blur["radius"].as_f64(), Some(expected), "base {base}, end {endpoint}");
         assert_eq!(blur["saturation"].as_f64(), Some(0.5));
-        assert_eq!(blur.get("progressive").and_then(Value::as_bool), (expected > 0.).then_some(true));
+        assert_eq!(blur.get("isProgressive").and_then(Value::as_bool), (expected > 0.).then_some(true));
         let restored = futureox_design_kernel::interop::import_sketch(&bytes).unwrap();
         assert_eq!(restored.nodes["lens"].effects, model.nodes["lens"].effects);
     }

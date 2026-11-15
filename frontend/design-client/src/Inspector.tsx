@@ -3,6 +3,8 @@ import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
 import { SketchLayerStyle } from './SketchLayerStyle'
+import { BlurEffectPanel } from './BlurEffectPanel'
+import { canAddSketchEffect, isMotionZoomBlur, setProgressiveMode } from './blur-settings'
 import { GlassEffectPanel, createGlassEffect, prepareGlassFill } from './GlassEffectPanel'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { propertyUnits, dashInUnits, styleUnitDescription } from './property-units'
@@ -419,6 +421,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
   const shortcutProfile = useShortcutProfile()
   const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
+  const [blurToOpen, setBlurToOpen] = useState<string | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
     n = s.doc.nodes[ids[0]]
@@ -589,6 +592,15 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
       </button>
     </div>
   )
+  const backdropFillNotice = (effect: Effect) => effect === activeBackdrop && opaqueFill && <div className="effect-fill-notice">
+    <p>{tr('不透明填充遮住了此效果')}</p>
+    <SolidFillColorInput
+      target={{ kind: 'solid-fill', nodeId: n.id, fillId: opaqueFill.id, fillIndex: authoredFills.indexOf(opaqueFill) }}
+      value="100" opacity label={tr('调整填充不透明度')} buttonText={tr('调整填充不透明度')}
+    />
+  </div>
+  const nativeBlurSettings = (kind: Effect['kind']) =>
+    uiMode === 'figma' ? kind === 'blur' || kind === 'background-blur' : isMotionZoomBlur(kind)
   return (
     <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
       {uiMode === 'sketch' && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
@@ -958,24 +970,40 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
               onChange={(e) => {
                 const kind = e.currentTarget.value as Effect['kind'] | ''
                 if (!kind || n.effects.length >= 16) return
+                if (uiMode === 'sketch' && !canAddSketchEffect(kind, n.effects)) return
                 const added = kind === 'glass' ? createGlassEffect(uiMode) : effect(kind)
+                if (nativeBlurSettings(kind)) added.radius = uiMode === 'figma' ? 4 : 10
                 update(target => {
-                  if (target.effects.length >= 16) return
+                  if (target.effects.length >= 16 || uiMode === 'sketch' && !canAddSketchEffect(kind, target.effects)) return
                   if (added.glass) prepareGlassFill(target, uiMode)
                   target.effects.push(added)
                 }, '添加效果')
                 if (added.glass) setGlassToOpen(added.id)
+                else if (nativeBlurSettings(kind)) setBlurToOpen(added.id)
               }}
             >
               <option value="">{tr("＋ 添加")}</option>
-              {Object.entries(effects).map(([k, label]) => (
-                <option key={k} value={k}>
-                  {tr(label)}
+              {(Object.keys(effects) as Effect['kind'][]).filter(kind =>
+                uiMode !== 'sketch' || kind !== 'blur' && kind !== 'zoom-blur').map(kind => (
+                <option key={kind} value={kind} disabled={uiMode === 'sketch' && !canAddSketchEffect(kind, n.effects)}>
+                  {tr(uiMode === 'sketch' && kind === 'motion-blur' ? '运动和缩放模糊' :
+                    uiMode === 'sketch' && kind === 'gaussian-blur' ? effects.blur : effects[kind])}
                 </option>
               ))}
             </select>
           </h3>
-          {n.effects.map((fx, i) => (
+          {n.effects.map((fx, i) => nativeBlurSettings(fx.kind) ?
+            <BlurEffectPanel key={`${uiMode}:${fx.id}`} effect={fx} layer={n}
+              label={uiMode === 'sketch' ? '运动和缩放模糊' : effects[fx.kind]}
+              styleScale={units.style} coordinateScale={[units.x, units.y]} styleDescription={styleDescription}
+              openOnCreate={fx.id === blurToOpen} onOpened={() => setBlurToOpen(null)}
+              readout={blurReadout?.effectId === fx.id ? blurReadout : undefined}
+              onEdit={onEditBlur && (enable => onEditBlur(enable ? i : null))}
+              onChange={(label, apply) => update(node => {
+                const current = node.effects.find(effect => effect.id === fx.id)
+                if (current) apply(current)
+              }, label)}
+              actions={listControls('effects', i)} fillNotice={backdropFillNotice(fx)} /> :
             <div className="property-card" key={fx.id}>
               <div className="property-title">
                 <b>{tr(effects[fx.kind])}</b>
@@ -1046,13 +1074,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                     />
                   ))}
               </div>}
-              {fx === activeBackdrop && opaqueFill && <div className="effect-fill-notice">
-                <p>{tr('不透明填充遮住了此效果')}</p>
-                <SolidFillColorInput
-                  target={{ kind: 'solid-fill', nodeId: n.id, fillId: opaqueFill.id, fillIndex: authoredFills.indexOf(opaqueFill) }}
-                  value="100" opacity label={tr('调整填充不透明度')} buttonText={tr('调整填充不透明度')}
-                />
-              </div>}
+              {backdropFillNotice(fx)}
               {(fx.kind === 'background-blur' || (fx.colorControls && !(fx.glass && uiMode === 'sketch'))) && <div className="field-grid effect-fields">
                 {(['brightness','contrast','saturation','hue'] as const).filter(key => fx.kind !== 'background-blur' || key === 'saturation').map(key => {
                   const controls = fx.colorControls || { space:'srgb' as const, brightness:0, contrast:1, saturation:1, hue:0 }
@@ -1072,13 +1094,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
               {fx.kind === 'motion-blur' && <NumberField label={tr('方向 °')} historyLabel="运动模糊方向" unit="number" diagnosticFamily={2} min={-1e7} max={1e7} value={fx.motionAngle??0} onChange={v=>update(n=>{n.effects[i].motionAngle=v})}/>}
               {(fx.kind === 'blur' || fx.kind === 'background-blur') && <>
                 <label className="check-row"><input aria-label={tr("渐变模糊")} type="checkbox" checked={!!fx.gradientBlur} onChange={e=>update(n=>{
-                  const effect = n.effects[i]
-                  const y = effect.kind === 'background-blur' ? n.height / 2 : 0
-                  if (e.target.checked) {
-                    delete effect.sketchBackdrop
-                    effect.gradientBlur = { start: [0,y], end: [n.width,y], startCount: 0, endCount: 4, smooth: true }
-                  }
-                  else delete effect.gradientBlur
+                  setProgressiveMode(n.effects[i], e.target.checked, n.width, n.height)
                 })}/>{tr("渐变模糊")}</label>
                 {fx.gradientBlur && <div className="field-grid effect-fields">
                   {(['start','end'] as const).flatMap(anchor=>([0,1] as const).map(axis=>{
@@ -1149,7 +1165,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                 />
               )}
             </div>
-          ))}
+          )}
           {!n.effects.length && <p className="muted">{tr("用光影和质感表达层次")}</p>}
         </section>
         <SelectionColorsPanel editor={editor} />

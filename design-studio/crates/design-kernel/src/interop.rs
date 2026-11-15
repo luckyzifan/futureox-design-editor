@@ -900,14 +900,18 @@ pub(crate) enum SketchProgressiveBackground {
     Ramp(crate::scene::GradientBlurParameters),
 }
 
-/// Sketch 2025.2 exposes `Blur.progressive` and `Blur.gradient`. Stop alpha is
-/// the published progression channel; this importer treats two linear stops as
-/// fractions of `radius`. `isProgressive` is a different graphics flag.
-/// Radial and non-two-stop gradients stay uniform and are named. The published
-/// file schema does not list these fields, so this is the plugin shape, not a
-/// framebuffer oracle.
+fn sketch_progressive_enabled(blur: &Value) -> bool {
+    // Current archives use isProgressive on the blur itself. The earlier
+    // interchange used the Sketch Plugin API name, progressive.
+    blur.get("progressive").and_then(Value::as_bool) == Some(true)
+        || blur.get("isProgressive").and_then(Value::as_bool) == Some(true)
+            && matches!(blur.get("type").and_then(Value::as_i64), Some(0 | 3))
+}
+
+/// Stop alpha scales the two endpoint radii. Radial and multi-stop curves
+/// retain their source dictionaries and produce an explicit import diagnostic.
 pub(crate) fn sketch_background_progressive(blur: &Value, size: Option<[f64; 2]>) -> std::result::Result<SketchProgressiveBackground, &'static str> {
-    if blur.get("progressive") != Some(&Value::Bool(true)) {
+    if !sketch_progressive_enabled(blur) {
         return Ok(SketchProgressiveBackground::NotProgressive);
     }
     if blur.get("type").and_then(Value::as_i64).unwrap_or(0) != 3 {
@@ -1009,12 +1013,13 @@ fn sketch_glass(blur: &Value, space: ColorSpace) -> Option<Effect> {
             refraction:number("distortion",0.5,1.)?, dispersion:number("chromaticAberrationMultiplier",0.,1.)?,
             bevel_size:None,splay:None,light_angle:45.,light_intensity:if light {0.5} else {0.} }),
         color_controls: (!controls.is_identity()).then_some(controls),
-        texture:None,gradient_blur:None,zoom_blur:None,motion_angle:0.,show_shadow_behind_node:false,shadow_knockout:false,sketch_backdrop:false })
+        texture:None,gradient_blur:None,inactive_gradient_blur:None,zoom_blur:None,motion_angle:0.,motion_zoom_origin:None,show_shadow_behind_node:false,shadow_knockout:false,sketch_backdrop:false })
 }
 
 fn sketch_blur_value(e: &Effect) -> Value {
+    let [x, y] = e.zoom_blur.map(|zoom| zoom.center).or(e.motion_zoom_origin).unwrap_or([0.5, 0.5]);
     let mut value=json!({"_class":"blur","isEnabled":e.visible,
-        "center":e.zoom_blur.map_or_else(||"{0.5, 0.5}".to_string(),|z|format!("{{{}, {}}}",z.center[0],z.center[1])),
+        "center": format!("{{{x}, {y}}}"),
         "motionAngle":if e.motion_angle == 0. { 0. } else { -e.motion_angle },
         "radius":e.zoom_blur.map_or(e.radius.max(0.),|z|z.amount),
         "saturation":e.color_controls.map_or(1.,|c|c.saturation),
@@ -1584,25 +1589,30 @@ impl<'a> Importer<'a> {
                         glass: None,
                         texture: None,
                         gradient_blur: None,
+                        inactive_gradient_blur: None,
                         show_shadow_behind_node: false,
                         shadow_knockout: !inner,
                         sketch_backdrop: false,
                         color_controls: None,
-                        zoom_blur: None, motion_angle: 0.,
+                        zoom_blur: None, motion_angle: 0., motion_zoom_origin: None,
                     });
                 }
             }
         };
         push_shadow(style.get("shadows").and_then(Value::as_array), false);
         push_shadow(style.get("innerShadows").and_then(Value::as_array), true);
-        for blur in sketch_blurs(style).into_iter().filter(|blur| !skip_legacy_group_blur && sketch_blur_enabled(blur)) {
+        for blur in sketch_blurs(style).into_iter().filter(|_| !skip_legacy_group_blur) {
+            let enabled = sketch_blur_enabled(blur);
+            let motion_or_zoom = matches!(blur.get("type").and_then(Value::as_i64), Some(1 | 2));
+            let retained = motion_or_zoom && (blur.get("isEnabled").and_then(Value::as_bool) == Some(false)
+                || blur.get("isEnabled").and_then(Value::as_u64) == Some(0));
+            if !enabled && !retained { continue; }
             if blur.get("type").and_then(Value::as_i64)==Some(4) {
                 if let Some(effect)=sketch_glass(blur,self.color_space) { out.push(effect); }
                 continue;
             }
-            if sketch_blur_enabled(blur)
-            && (f64_at(blur, "radius") > 0. || blur.get("type").and_then(Value::as_i64)==Some(2) || (blur.get("type").and_then(Value::as_i64) == Some(3)
-                && blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.) != 1.))
+            if motion_or_zoom || f64_at(blur, "radius") > 0. || (blur.get("type").and_then(Value::as_i64) == Some(3)
+                && blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.) != 1.)
         {
             let kind = match blur.get("type").and_then(Value::as_i64).unwrap_or(0) {
                 0 => Some("gaussian-blur"),
@@ -1629,7 +1639,7 @@ impl<'a> Importer<'a> {
                 out.push(Effect {
                 id: String::new(),
                 kind: kind.into(),
-                visible: true,
+                visible: enabled,
                 radius,
                 x: 0.,
                 y: 0.,
@@ -1639,10 +1649,9 @@ impl<'a> Importer<'a> {
                 amount: 0.,
                 glass: None,
                 texture: None,
-                sketch_backdrop: kind == "background-blur" && gradient_blur.is_none()
-                    && !blur.get("progressive").and_then(Value::as_bool).unwrap_or(false)
-                    && !blur.get("isProgressive").and_then(Value::as_bool).unwrap_or(false),
+                sketch_backdrop: kind == "background-blur" && !sketch_progressive_enabled(blur),
                 gradient_blur,
+                inactive_gradient_blur: None,
                 show_shadow_behind_node: false,
                 shadow_knockout: false,
                 color_controls: (kind == "background-blur").then(|| crate::color_controls::ColorControls {
@@ -1650,7 +1659,13 @@ impl<'a> Importer<'a> {
                 }).filter(|c| c.validate() && !c.is_identity()),
                 zoom_blur,
                 // Sketch stores this angle in a y-up coordinate system.
-                motion_angle: if kind=="motion-blur" {-f64_at(blur,"motionAngle")} else {0.},
+                motion_angle: if matches!(kind, "motion-blur" | "zoom-blur") {
+                    let angle = -f64_at(blur, "motionAngle");
+                    if angle.abs() <= 1e7 { angle } else { 0. }
+                } else { 0. },
+                motion_zoom_origin: if kind == "motion-blur" {
+                    sketch_zoom_parameters(blur).map(|params| params.center).filter(|center| *center != [0.5, 0.5])
+                } else { None },
             }); }
             }
         }
@@ -1665,7 +1680,7 @@ impl<'a> Importer<'a> {
             if controls.validate() {
                 out.push(Effect { id:String::new(),kind:"color-controls".into(),visible:true,
                     radius:0.,x:0.,y:0.,spread:0.,color:"#000000".into(),opacity:1.,amount:0.,
-                    glass:None,texture:None,gradient_blur:None,show_shadow_behind_node:false,shadow_knockout:false,sketch_backdrop:false,color_controls:Some(controls),zoom_blur:None,motion_angle:0. });
+                    glass:None,texture:None,gradient_blur:None,inactive_gradient_blur:None,show_shadow_behind_node:false,shadow_knockout:false,sketch_backdrop:false,color_controls:Some(controls),zoom_blur:None,motion_angle:0.,motion_zoom_origin:None });
             }
         }
         out
@@ -5452,7 +5467,7 @@ fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size:
         "_class": "gradientStop", "position": position,
         "color": {"_class": "color", "red": 0., "green": 0., "blue": 0., "alpha": alpha}
     });
-    blur["progressive"] = json!(true);
+    blur["isProgressive"] = json!(true);
     blur["radius"] = json!(radius);
     blur["gradient"] = json!({
         "_class": "gradient", "gradientType": 0, "elipseLength": 0.,
@@ -9861,11 +9876,12 @@ mod tests {
             glass: None,
             texture: None,
             gradient_blur: None,
+            inactive_gradient_blur: None,
             show_shadow_behind_node: false,
             shadow_knockout: false,
             sketch_backdrop: false,
             color_controls: None,
-            zoom_blur: None, motion_angle: 0.,
+            zoom_blur: None, motion_angle: 0., motion_zoom_origin: None,
         });
         let back = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
         let node = back.nodes.get("n1").unwrap();
@@ -10533,11 +10549,12 @@ mod tests {
             glass: None,
             texture: None,
             gradient_blur: None,
+            inactive_gradient_blur: None,
             show_shadow_behind_node: false,
             shadow_knockout: false,
             sketch_backdrop: false,
             color_controls: None,
-            zoom_blur: None, motion_angle: 0.,
+            zoom_blur: None, motion_angle: 0., motion_zoom_origin: None,
         }
     }
 

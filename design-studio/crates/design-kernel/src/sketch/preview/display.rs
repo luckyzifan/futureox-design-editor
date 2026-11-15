@@ -480,12 +480,14 @@ impl Projection<'_> {
                     glass: None,
                     texture: None,
                     gradient_blur: None,
+                    inactive_gradient_blur: None,
                     show_shadow_behind_node: false,
                     shadow_knockout: kind == "shadow",
                     sketch_backdrop: false,
                     color_controls: None,
                     zoom_blur: None,
                     motion_angle: 0.,
+                    motion_zoom_origin: None,
                 })
             }
         }
@@ -515,12 +517,14 @@ impl Projection<'_> {
                 glass: None,
                 texture: None,
                 gradient_blur: None,
+                inactive_gradient_blur: None,
                 show_shadow_behind_node: false,
                 shadow_knockout: false,
                 sketch_backdrop: false,
                 color_controls: None,
                 zoom_blur: None,
                 motion_angle: 0.,
+                motion_zoom_origin: None,
             };
             if effect.kind == "background-blur" {
                 match crate::interop::sketch_background_progressive(blur, Some([n.width, n.height])) {

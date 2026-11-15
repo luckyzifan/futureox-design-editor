@@ -7,6 +7,7 @@ import { ViewControls } from './ViewControls'
 import { interfacePreference, interfaceText } from './interface-preference'
 import {
   fitBounds,
+  fitSelectedBounds,
   revealInView,
   screenToWorld,
   wheelDeltaPixels,
@@ -216,6 +217,17 @@ test('fit centers tiny and huge scenes within the explicit zoom range', () => {
         { x: viewport.width / 2, y: viewport.height / 2 },
       )
     }
+  }
+})
+
+test('Sketch fits tiny, rotated and artboard selections with the native document margin', () => {
+  const viewport = { width: 786, height: 608 }
+  for (const [width, height, percentage] of [[5, 5, 1105], [238, 118, 272], [8.0769, 10.23077, 1009], [1922, 1080, 39]]) {
+    const bounds = { x: -70, y: 210, width, height }
+    const view = fitSelectedBounds(bounds, viewport, 'sketch')
+    expect(Math.floor(view.zoom * 100)).toBe(percentage)
+    closePoint(worldToScreen(view, { x: bounds.x + width / 2, y: bounds.y + height / 2 }), { x: 393, y: 304 })
+    expect(fitSelectedBounds(bounds, viewport, 'figma')).toEqual(fitBounds(bounds, viewport))
   }
 })
 

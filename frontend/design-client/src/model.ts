@@ -196,11 +196,26 @@ export function validZoomBlur(value:unknown):value is ZoomBlur {
   return Object.keys(value).every(k=>['amount','center'].includes(k)) && Number.isFinite(z.amount) && z.amount>=0 && z.amount<=1000 &&
     Array.isArray(z.center) && z.center.length===2 && z.center.every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)
 }
+export type GradientBlur = {
+  start: [number, number]
+  end: [number, number]
+  startCount: number
+  endCount: number
+  smooth: boolean
+}
+function validGradientBlur(gradient: GradientBlur | undefined): boolean {
+  if (!gradient) return false
+  return [gradient.start, gradient.end].every(point => Array.isArray(point) && point.length === 2 &&
+    point.every(value => Number.isFinite(value) && Math.abs(value) <= 1e7)) &&
+    [gradient.startCount, gradient.endCount].every(count => Number.isFinite(count) && count >= 0 && count <= 64) &&
+    typeof gradient.smooth === 'boolean'
+}
 export type Effect = {
   shadowKnockout?: boolean
   sketchBackdrop?: boolean
   zoomBlur?: ZoomBlur
   motionAngle?: number
+  motionZoomOrigin?: ZoomBlur['center']
   colorControls?: ColorControls
   id: string
   kind: 'shadow' | 'inner-shadow' | 'blur' | 'background-blur' | 'glass' | 'noise' | 'texture' | 'color-controls' | 'gaussian-blur' | 'motion-blur' | 'zoom-blur'
@@ -222,7 +237,8 @@ export type Effect = {
     lightIntensity: number
   }
   texture?: { noiseSize: [number, number]; clipToShape: boolean; noise?: 'figma' | 'gabor' | 'perlin' }
-  gradientBlur?: {start:[number,number];end:[number,number];startCount:number;endCount:number;smooth:boolean}
+  gradientBlur?: GradientBlur
+  inactiveGradientBlur?: { baseRadius: number; parameters: GradientBlur }
   /** kiwi Effect.showShadowBehindNode. Preserved on import; shadow clipping does not branch on it yet. */
   showShadowBehindNode?: boolean
 }
@@ -689,7 +705,11 @@ export function hasSchema12FrameProperties(d: Pick<DesignDocument, 'nodes'>): bo
   return Object.values(d.nodes).some(n => n?.layoutGrid != null || n?.layoutGrids?.length || n?.prototypeOverflow != null)
 }
 export function hasGradientBlur(d: Pick<DesignDocument,'nodes'|'animations'|'designSystem'>): boolean {
-  return Object.values(d.nodes).some(n => n.effects.some(e => e.gradientBlur) || Object.values(n.instance?.overrides || {}).some(o => Array.isArray(o.effects) && o.effects.some((e: Effect)=>e.gradientBlur))) || !!d.animations?.some(c=>c.tracks.some(t=>t.keyframes.some(k=>k.value.effects.some(e=>e.gradientBlur)))) || Object.values(d.designSystem?.styles || {}).some(s=>s.kind==='effect' && Array.isArray(s.value) && s.value.some(e=>e.gradientBlur))
+  const hasSettings = (effect: Effect) => !!(effect.gradientBlur || effect.inactiveGradientBlur)
+  return Object.values(d.nodes).some(n => n.effects.some(hasSettings) ||
+    Object.values(n.instance?.overrides || {}).some(o => Array.isArray(o.effects) && o.effects.some(hasSettings))) ||
+    !!d.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => k.value.effects.some(hasSettings)))) ||
+    Object.values(d.designSystem?.styles || {}).some(s => s.kind === 'effect' && Array.isArray(s.value) && s.value.some(hasSettings))
 }
 export function hasLocalVariableModes(d: Pick<DesignDocument, 'nodes'>): boolean {
   return Object.values(d.nodes).some(
@@ -1132,15 +1152,20 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
           (e.shadowKnockout === undefined || typeof e.shadowKnockout === 'boolean' && (!e.shadowKnockout || e.kind === 'shadow')) &&
           (e.sketchBackdrop === undefined || typeof e.sketchBackdrop === 'boolean' && (!e.sketchBackdrop || e.kind === 'background-blur' && !e.gradientBlur)) &&
           (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
-          (e.motionAngle === undefined || (finite(e.motionAngle,-1e7,1e7) && (e.kind==='motion-blur'||e.motionAngle===0))) &&
+          (e.motionAngle === undefined || (finite(e.motionAngle, -1e7, 1e7) &&
+            (e.kind === 'motion-blur' || e.kind === 'zoom-blur' || e.motionAngle === 0))) &&
+          (e.motionZoomOrigin == null || (e.kind === 'motion-blur' && Array.isArray(e.motionZoomOrigin) &&
+            e.motionZoomOrigin.length === 2 && e.motionZoomOrigin.every(value => finite(value, -1e6, 1e6)))) &&
           (e.kind !== 'color-controls' || e.colorControls != null) &&
           (e.colorControls == null || (d.schemaVersion >= 17 && (['color-controls','background-blur'].includes(e.kind) || e.kind==='glass' && !!e.glass) && validColorControls(e.colorControls) && !e.texture && (!e.gradientBlur || e.kind === 'background-blur'))) &&
           finite(e.radius, 0, 1000) &&
           [e.x, e.y, e.spread, e.amount].every((v) => finite(v)) &&
           finite(e.opacity, 0, 1) &&
-          (!e.gradientBlur || (['blur','background-blur'].includes(e.kind) && !e.glass && !e.texture &&
-            [e.gradientBlur.start,e.gradientBlur.end].every(a=>Array.isArray(a)&&a.length===2&&a.every(v=>finite(v,-1e7,1e7))) &&
-            [e.gradientBlur.startCount,e.gradientBlur.endCount].every(v=>finite(v,0,64)) && typeof e.gradientBlur.smooth==='boolean')) &&
+          (e.gradientBlur == null || (['blur', 'background-blur'].includes(e.kind) && !e.glass && !e.texture &&
+            validGradientBlur(e.gradientBlur))) &&
+          (e.inactiveGradientBlur == null || (['blur', 'background-blur'].includes(e.kind) && !e.glass && !e.texture &&
+            !e.gradientBlur && finite(e.inactiveGradientBlur.baseRadius, 0, 1000) &&
+            validGradientBlur(e.inactiveGradientBlur.parameters))) &&
           (!e.glass ||
             (e.kind === 'glass' &&
               !e.texture &&
