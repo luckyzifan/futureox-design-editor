@@ -144,6 +144,9 @@ pub(crate) fn unpainted_lens(n: &Node) -> bool {
 }
 
 fn ramp(start: f64, end: f64, value: f64) -> f64 {
+    if start == end {
+        return if value <= end { 0. } else { 1. };
+    }
     ((value - start) / (end - start)).clamp(0., 1.)
 }
 fn smooth(start: f64, end: f64, value: f64) -> f64 {
@@ -381,8 +384,9 @@ impl Geometry {
         let alignment = dot(normal);
         let edge = smooth(-bevel - 0.001, -bevel * 0.2, distance);
         let broad = ramp(-depth, -bevel + 0.0001, distance);
+        let light_start = 0.35 * (1. - glass.splay.unwrap_or(0.));
         let light = glass.light_intensity
-            * (edge * (smooth(0.35, 1., -alignment) + 0.6 * smooth(0.35, 1., alignment))
+            * (edge * (smooth(light_start, 1., -alignment) + 0.6 * smooth(light_start, 1., alignment))
                 + (dot(bend_normal) * broad * broad) * 0.05);
         let m = self.matrix.0;
         [

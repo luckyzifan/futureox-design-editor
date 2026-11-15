@@ -1729,6 +1729,7 @@ impl FigImporter {
                     amount: 0.,
                     glass: if kind == "glass" { Some(crate::scene::GlassParameters {
                         bevel_size: e.get("bevelSize").and_then(Value::as_f64),
+                        splay: e.get("reflectionDistance").and_then(Value::as_f64).filter(|value| *value != 0.),
                         depth: f64_of(Some(e), "refractionRadius"),
                         refraction: f64_of(Some(e), "refractionIntensity"),
                         dispersion: f64_of(Some(e), "chromaticAberration"),

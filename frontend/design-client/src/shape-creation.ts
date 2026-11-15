@@ -48,13 +48,19 @@ export function translateCreationAnchor(anchor: Point, origin: Point, pointer: P
 
 /** Allocate once on pointerdown. All subsequent previews and the commit keep
  * this node's identity, paints, strokes and line vertex/edge identities. */
-export function createShapeSeed(kind: ShapeCreationKind, id: string = uid(), points?: number): ShapeCreationSeed {
-  const seed = node(kind === 'arrow' ? 'line' : kind, 0, 0, CLICK_DEFAULT_SIZE, ['line', 'arrow'].includes(kind) ? 1 : CLICK_DEFAULT_SIZE) as ShapeCreationSeed
+export function createShapeSeed(kind: ShapeCreationKind | 'graphic', id: string = uid(), points?: number): ShapeCreationSeed {
+  const seed = node(kind === 'arrow' ? 'line' : kind === 'graphic' ? 'frame' : kind, 0, 0, CLICK_DEFAULT_SIZE, ['line', 'arrow'].includes(kind) ? 1 : CLICK_DEFAULT_SIZE) as ShapeCreationSeed
   seed.id = id
   // Fresh geometric tools use the neutral fill observed in the reference UI.
   // Existing documents and explicitly styled board/pencil tools retain their paints.
   if (['rectangle','ellipse','polygon','star'].includes(kind)) seed.fills[0].color = '#d9d9d9'
   if (kind === 'arrow') { seed.name = '箭头'; seed.strokes[0].endMarker = 'arrow' }
+  if (kind === 'graphic') {
+    seed.name = '图形'
+    seed.graphic = true
+    seed.clip = true
+    seed.fills = []
+  }
   if (kind === 'polygon' || kind === 'star') seed.points = creationPointCount(points ?? (kind === 'polygon' ? 3 : 5), 0)
   return seed
 }

@@ -1005,9 +1005,9 @@ fn sketch_glass(blur: &Value, space: ColorSpace) -> Option<Effect> {
         brightness: number("brightness",1.,2.)?-1., saturation: number("saturation",1.,2.)?, ..Default::default() };
     Some(Effect { id: String::new(), kind: "glass".into(), visible: true,
         radius: number("radius",0.,1000.)?, x:0., y:0., spread:0., color:"#000000".into(), opacity:1., amount:0.,
-        glass: Some(crate::scene::GlassParameters { depth:(number("depth",0.5,1.)? * SKETCH_GLASS_DEPTH_SCALE).max(1.),
+        glass: Some(crate::scene::GlassParameters { depth:number("depth",0.5,1.)? * SKETCH_GLASS_DEPTH_SCALE,
             refraction:number("distortion",0.5,1.)?, dispersion:number("chromaticAberrationMultiplier",0.,1.)?,
-            bevel_size:None,light_angle:45.,light_intensity:if light {0.5} else {0.} }),
+            bevel_size:None,splay:None,light_angle:45.,light_intensity:if light {0.5} else {0.} }),
         color_controls: (!controls.is_identity()).then_some(controls),
         texture:None,gradient_blur:None,zoom_blur:None,motion_angle:0.,show_shadow_behind_node:false,shadow_knockout:false,sketch_backdrop:false })
 }
@@ -10489,6 +10489,7 @@ mod tests {
             radius: 4.,
             glass: Some(crate::scene::GlassParameters {
                 bevel_size: None,
+                splay: None,
                 depth: 2.,
                 refraction: 0.75,
                 dispersion: 0.2,

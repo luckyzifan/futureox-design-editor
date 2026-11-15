@@ -136,7 +136,9 @@ pub fn recipe(
     }
     // This bound avoids the not-yet-identified extra corner/depth limiting
     // branch. It is structural and independent of reference case identities.
-    if glass.bevel_size() != 1. || glass.depth > node.width.min(node.height) * 0.5 - node.radii[0] {
+    if glass.bevel_size() != 1. || glass.splay.unwrap_or(0.) != 0. || glass.depth == 0.
+        || glass.depth > node.width.min(node.height) * 0.5 - node.radii[0]
+    {
         return Ok(None);
     }
     let Some(parent) = doc

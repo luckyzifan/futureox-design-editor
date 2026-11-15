@@ -214,6 +214,7 @@ export type Effect = {
   amount: number
   glass?: {
     bevelSize?: number
+    splay?: number
     depth: number
     refraction: number
     dispersion: number
@@ -1143,7 +1144,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
           (!e.glass ||
             (e.kind === 'glass' &&
               !e.texture &&
-              finite(e.glass.depth, 1, 1000) &&
+              finite(e.glass.depth, 0, 1000) &&
+              (e.glass.splay === undefined || finite(e.glass.splay, 0, 1)) &&
               (e.glass.bevelSize === undefined || finite(e.glass.bevelSize, 0.001, 1000)) &&
               finite(e.glass.lightAngle, -1e7, 1e7) &&
               [e.glass.refraction, e.glass.dispersion, e.glass.lightIntensity].every((v) =>

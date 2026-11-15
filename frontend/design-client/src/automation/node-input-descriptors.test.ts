@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Editor } from '../engine'
-import { blank, paint, stroke, effect } from '../model'
+import { blank, paint, stroke, effect, defaultLayoutGrid } from '../model'
 import { createEditorDesignAutomation } from './index'
 import type { AutomationResponse } from './types'
 import { OperationBackend } from '../../../design-mcp/src/operation-backend.mjs'
@@ -89,12 +89,26 @@ describe('Typed native node inputs over real MCP JSON-RPC', () => {
   const patch = update.properties.params.properties.patch
   expect(patch).toEqual(create.properties.params.properties.patch)
   expect(patch.additionalProperties).toBe(false)
-  expect(Object.keys(patch.properties).sort()).toEqual('repeat vectorBrush vectorGeometry name transform width height visible locked opacity blend fills strokes effects radii smoothing clip mask maskType points innerRadius network text fontSize textStyle textRuns layout sizing constraints layoutGrid guides arc cornerRadius constrainProportions booleanOperation exportSettings textPath pathOffset connector board'.split(' ').sort())
+  expect(Object.keys(patch.properties).sort()).toEqual('repeat vectorBrush vectorGeometry name transform width height visible locked opacity blend fills strokes effects radii smoothing clip mask maskType points innerRadius network text fontSize textStyle textRuns layout sizing constraints layoutGrid layoutGrids prototypeOverflow guides arc cornerRadius constrainProportions booleanOperation exportSettings textPath pathOffset connector board'.split(' ').sort())
   for (const descriptor of Object.values(patch.properties) as Json[]) expect(descriptor.type || descriptor.anyOf).toBeTruthy()
   expect(patch.properties.width).toMatchObject({type:'number',minimum:0.000001,maximum:10000000})
   expect(patch.properties.transform).toMatchObject({type:'array',minItems:6,maxItems:6,items:{minimum:-10000000,maximum:10000000}})
   expect(patch.properties.textStyle.anyOf[0].properties.letterSpacing).toMatchObject({minimum:-1000,maximum:1000})
   expect(patch.properties.fills.items.properties.stops.maxItems).toBe(64)
+  expect(patch.properties.layoutGrids.anyOf[0]).toMatchObject({type:'array',maxItems:16})
+  expect(patch.properties.prototypeOverflow.anyOf[0].enum).toEqual(['none','horizontal','vertical','both'])
+  const id = '32000000-0000-4000-8000-000000000010'
+  const grids = [defaultLayoutGrid(), { ...defaultLayoutGrid(), axis: 'row', count: 5 }]
+  const made = await f.mutate('node.create', {id, kind:'frame', patch:{layoutGrids:grids,prototypeOverflow:'horizontal'}})
+  expect(made.isError).toBe(false)
+  const changed = await f.mutate('node.update', {ids:[id],patch:{prototypeOverflow:'vertical'}})
+  expect(changed.isError).toBe(false)
+  expect(f.editor.state.doc.nodes[id]).toMatchObject({layoutGrids:grids,prototypeOverflow:'vertical'})
+  const before = f.editor.authoredDocument, revision = f.editor.state.version
+  const rejected = await f.mutate('node.update', {ids:[id],patch:{layoutGrid:defaultLayoutGrid()}})
+  expect(rejected.isError).toBe(true)
+  expect(f.editor.authoredDocument).toBe(before)
+  expect(f.editor.state.version).toBe(revision)
  })
  it('accepts negative coordinates/reflections, precise line extents and native nested boundary values', async () => {
   const f=await fixture(); const id='32000000-0000-4000-8000-000000000001', textId='32000000-0000-4000-8000-000000000002'; const created=await f.mutate('node.create',{id,kind:'rectangle',patch:{transform:[-2,0,0,3,-10000000,10000000],width:0.01,height:10000000,opacity:0,radii:[0,1,2,10000000]}})
