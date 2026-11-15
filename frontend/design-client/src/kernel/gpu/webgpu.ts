@@ -282,6 +282,7 @@ export class WebGpuDriver implements Driver {
   }
   acceptPresentation(token:number,accepted=true){this.presenter?.acceptPresentation(token,accepted)}
   hasDeferredPosePresentation(slot:number){return this.presenter?.hasDeferredPosePresentation(slot) ?? false}
+  waitForQueuedFrame(frame:ResidentFrame, signal?:AbortSignal) { return this.presenter?.waitForQueuedFrame(frame, signal) }
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}

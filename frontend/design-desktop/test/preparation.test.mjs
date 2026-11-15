@@ -149,6 +149,11 @@ test('pose transport binds one native interaction owner and retains the physical
  send({...packet,id:4});assert.equal(jobs.length,1);send({cancel:2});send({cancel:3});assert.deepEqual(cancels,[3])
  resolve({value:new Uint8Array([3])});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value[0],3)
  send(packet);assert.match(sent.at(-1).error,/Invalid/);assert.equal(jobs.length,1)
- send({...packet,id:5});port.close();assert.equal(retired,1)
- const count=sent.length;resolve({value:new Uint8Array([5])});await new Promise(done=>setImmediate(done));assert.equal(sent.length,count)
+ const patch={id:5,lane:'interaction',method:'apply_document_patch_with_damage',args:['{"fields":{},"nodes":{}}']}
+ send({...patch,lane:'canvas'});assert.match(sent.at(-1).error,/Invalid/)
+ send({...patch,args:[patch.args[0],{expectedBaseReceipt:{}}]});assert.match(sent.at(-1).error,/Invalid/)
+ send(patch);assert.equal(jobs.length,2);assert.equal(jobs.at(-1).method,patch.method)
+ resolve({value:'paint damage'});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value,'paint damage')
+ send({...packet,id:6});port.close();assert.equal(retired,1)
+ const count=sent.length;resolve({value:new Uint8Array([6])});await new Promise(done=>setImmediate(done));assert.equal(sent.length,count)
 })

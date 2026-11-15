@@ -40,7 +40,13 @@ pub(crate) fn starts(n: &Node) -> bool {
 /// A bitmap in this lowered two-sibling chain has one authoritative render
 /// node. Updating its transform leaves the stationary mask and its private
 /// silhouette intact. A higher mask would also have cloned this geometry.
-pub(crate) fn stable_bitmap_pose(source: &Document, resolved: &Document, parents: &crate::render_index::Parents, id: &str) -> bool {
+pub(crate) fn stable_bitmap_pose(
+    source: &Document,
+    resolved: &Document,
+    parents: &crate::render_index::Parents,
+    id: &str,
+    allow_vector_mask: bool,
+) -> bool {
     let Some(image) = source.nodes.get(id) else { return false; };
     if image.mask || image.mask_chain == Some(MaskChain::Break) || !image.children.is_empty() ||
         !image.fills.iter().any(|paint| paint.visible && paint.kind == "image") {
@@ -55,8 +61,14 @@ pub(crate) fn stable_bitmap_pose(source: &Document, resolved: &Document, parents
     }
     let mask_id = &parent.children[0];
     let mask = &source.nodes[mask_id];
+    // A plain vector is also lowered to an independent silhouette. Rotation
+    // can retain it as long as the mask has no derived or effect geometry.
+    let vector_mask = allow_vector_mask && mask.kind == "vector" && mask.network.is_some()
+        && mask.boolean_operation.is_none() && mask.instance.is_none()
+        && mask.effects.iter().all(|effect| !effect.visible)
+        && mask.strokes.iter().all(|stroke| !stroke.visible);
     if !mask.mask || mask.mask_type.as_deref() != Some("shape") ||
-        mask.kind != "rectangle" || !mask.children.is_empty() {
+        !(mask.kind == "rectangle" || vector_mask) || !mask.children.is_empty() {
         return false;
     }
     let group_id = crate::repeat::derived_id(&format!("sketch-mask-chain/{mask_id}"));

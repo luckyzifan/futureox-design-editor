@@ -125,7 +125,7 @@ export function bindPosePreparationPort(port,worker,current,retire){
   if(data?.cancel!==undefined){if(active&&data.cancel===active)worker.cancel(active);return}
   const {id,lane,method,args,cancellable,diagnostics}=data??{}
   if(active||!Number.isSafeInteger(id)||id<=last||lane!=='interaction'||
-     !['apply_interaction_transforms','compile_gpu_packet'].includes(method)||
+     !['apply_interaction_transforms','apply_document_patch_with_damage','compile_gpu_packet'].includes(method)||
      !Array.isArray(args)||args.length!==1||typeof args[0]!=='string'){
    port.postMessage({id,error:'Invalid terminal preparation request'});return
   }

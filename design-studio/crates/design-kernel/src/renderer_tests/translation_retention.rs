@@ -37,8 +37,7 @@ fn options() -> RenderOptions {
         "view":{"x":0.25,"y":0.5,"zoom":1.2},"transparent":false,"grid":false})).unwrap()
 }
 
-#[test]
-fn retained_bitmap_pose_invalidates_the_private_sketch_clip_and_matches_fresh_pixels() {
+fn masked_bitmap_document(mask_kind: &str) -> Document {
     use base64::Engine as _;
     let mut original = source();
     original.schema_version = 20;
@@ -46,11 +45,23 @@ fn retained_bitmap_pose_invalidates_the_private_sketch_clip_and_matches_fresh_pi
     frame.kind = "group".into();
     frame.clip = false;
     frame.children.insert(0, "mask".into());
-    let mut mask = crate::facet::sample_node("mask", "rectangle");
+    let mut mask = crate::facet::sample_node("mask", mask_kind);
     mask.mask = true;
     mask.mask_type = Some("shape".into());
     mask.width = 28.;
     mask.height = 24.;
+    if mask_kind == "vector" {
+        mask.network = Some(serde_json::from_value(json!({
+            "vertices":[{"id":"a","x":14,"y":0},{"id":"b","x":28,"y":12},{"id":"c","x":14,"y":24},{"id":"d","x":0,"y":12}],
+            "edges":[
+                {"id":"ab","from":"a","to":"b","c1":{"x":22,"y":0},"c2":{"x":28,"y":5}},
+                {"id":"bc","from":"b","to":"c","c1":{"x":28,"y":19},"c2":{"x":22,"y":24}},
+                {"id":"cd","from":"c","to":"d","c1":{"x":6,"y":24},"c2":{"x":0,"y":19}},
+                {"id":"da","from":"d","to":"a","c1":{"x":0,"y":5},"c2":{"x":6,"y":0}}
+            ],
+            "fillRule":"evenodd"
+        })).unwrap());
+    }
     original.nodes.insert(mask.id.clone(), mask);
     let mut png = Vec::new();
     {
@@ -60,8 +71,13 @@ fn retained_bitmap_pose_invalidates_the_private_sketch_clip_and_matches_fresh_pi
     let image = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png));
     original.nodes.get_mut("child").unwrap().fills[0] =
         serde_json::from_value(json!({"kind":"image","color":"#ffffff","image":image})).unwrap();
+    original
+}
+
+#[test]
+fn retained_bitmap_pose_invalidates_the_private_sketch_clip_and_matches_fresh_pixels() {
     let mut engine = Engine::new();
-    engine.install_document(original).unwrap();
+    engine.install_document(masked_bitmap_document("rectangle")).unwrap();
     engine.compile_gpu(&options()).unwrap();
     for transform in [Transform([0.,1.,-1.,0.,31.5,8.]), Transform([1.,0.,0.,1.,-8.,-6.]), Transform([1.,0.,0.,1.,10.,10.])] {
         assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
@@ -72,6 +88,29 @@ fn retained_bitmap_pose_invalidates_the_private_sketch_clip_and_matches_fresh_pi
         assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
     }
     assert!(!engine.apply_interaction_transforms(&[("mask".into(), Transform([1.,0.,0.,1.,2.,1.]))].into()).unwrap());
+}
+
+#[test]
+fn retained_bitmap_rotation_under_a_vector_mask_matches_a_clean_compile() {
+    let mut expected = masked_bitmap_document("vector");
+    let mut engine = Engine::new();
+    engine.install_document(expected.clone()).unwrap();
+    let before = engine.render(&options()).unwrap();
+    engine.compile_gpu(&options()).unwrap();
+    assert!(!engine.apply_interaction_transforms(&[("child".into(), Transform([1.,0.,0.,1.,2.,1.]))].into()).unwrap());
+    assert_eq!(engine.render(&options()).unwrap(), before);
+
+    for transform in [Transform([0.8,0.6,-0.6,0.8,19.5,6.25]),
+        Transform([0.8,-0.6,0.6,0.8,4.25,16.5]), Transform([1.,0.,0.,1.,10.,10.])] {
+        expected.nodes.get_mut("child").unwrap().transform = transform;
+        assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
+        let mut fresh = Engine::new();
+        fresh.install_document(expected.clone()).unwrap();
+        assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),
+            fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+        assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
+    }
+    assert_eq!(engine.render(&options()).unwrap(), before);
 }
 
 #[test]
