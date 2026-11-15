@@ -177,6 +177,7 @@ impl Walk<'_> {
             let gaussian = (effect.kind == "gaussian-blur").then(|| effects::small_gaussian_reach(sigma)).flatten();
             let weights = match gaussian {
                 Some(reach) => [reach, 0, 0],
+                None if effect.kind == "shadow" => effects::gaussian_box_radii(n.text_shadow_radius(effect, scale) / 2.).ok()?,
                 None => radii(effect, scale)?,
             };
             let reach = weights.into_iter().sum::<u32>() as i32;

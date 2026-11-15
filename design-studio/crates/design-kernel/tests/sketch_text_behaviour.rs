@@ -147,7 +147,7 @@ fn legacy_line_boxes_follow_the_observed_system_baseline_and_han_advance() {
     for (text, size, baseline, advance) in [
         ("指标名称", 16., 15., Some(15.8754863813)),
         ("我是小标题名称", 20., 17., Some(19.1541353383)),
-        ("14:37:30", 26., 25., None),
+        ("14:37:30", 26., 25., Some(0.454 * 26.)),
     ] {
         let mut files = interop::read_zip_public(&source(Some(1), text, 240.)).unwrap();
         let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
@@ -164,6 +164,10 @@ fn legacy_line_boxes_follow_the_observed_system_baseline_and_han_advance() {
         assert_eq!(layout.glyphs[0].y, baseline, "{text}");
         if let Some(expected) = advance {
             assert!((layout.glyphs[0].advance - expected).abs() < 1e-9);
+        }
+        if text == "14:37:30" {
+            assert!(layout.glyphs[0].advance < layout.glyphs[1].advance);
+            assert!(layout.bounds.as_ref().is_some_and(|bounds| bounds.x < 1.5));
         }
         assert_eq!(layout.lines[0].height, 32.);
         assert!(exported_text(&document)["attributedString"].to_string().contains("MissingPreviewFace"));
@@ -198,7 +202,8 @@ fn sketch_text_shadow_compiles_as_source_over_and_keeps_its_archive_fields() {
         }).to_string()).unwrap();
         let compiled = &scene.nodes["caption"].effects[0];
         assert!(!compiled.shadow_knockout, "colored run: {colored_run}");
-        assert_eq!((compiled.radius, compiled.opacity), (15., 0.8));
+        assert!((compiled.radius - 14.48).abs() < 1e-9);
+        assert_eq!(compiled.opacity, 0.8);
         let archived = exported_text(&doc);
         assert_eq!(archived["style"]["shadows"][0]["blurRadius"].as_f64(), Some(15.));
     }

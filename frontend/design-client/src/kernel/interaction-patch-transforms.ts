@@ -27,6 +27,24 @@ export function isInnerShadowFill(n: DesignNode | undefined): boolean {
     n.effects.some(e => e.visible) && n.effects.every(e => !e.visible || e.kind === 'inner-shadow')
 }
 
+export function isBitmapPoseLayer(node: DesignNode | undefined): boolean {
+  return !!node && node.children.length === 0 &&
+    node.fills.some(fill => fill.visible && fill.kind === 'image') &&
+    node.effects.every(effect => !effect.visible || effect.kind === 'color-controls')
+}
+
+/** Only an authored translation, with its source paint and parent graph
+ * intact. The committed viewport is re-rasterized by the page compiler. */
+export function isBitmapTranslationPatch(before: DesignDocument, after: DesignDocument, patch: DocumentPatch): boolean {
+  const ids = Object.keys(patch.nodes)
+  if (ids.length !== 1 || Object.keys(patch.fields).length) return false
+  const [id] = ids
+  const old = before.nodes[id], next = after.nodes[id]
+  if (!patch.nodes[id] || !next || !isBitmapPoseLayer(old) ||
+      !old.transform.slice(0, 4).every((value, i) => Object.is(value, next.transform[i]))) return false
+  return !!interactionPatchTransforms(before, { nodes: { [id]: next }, fields: {} }, ids)
+}
+
 /** Compare the two authored projections after applyDocumentPatch. A wire
  * image:null on a solid paint has already been normalized on this lane. */
 export function isInnerShadowPosePatch(before:DesignDocument, after:DesignDocument, patch:DocumentPatch):boolean {

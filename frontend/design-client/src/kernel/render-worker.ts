@@ -16,7 +16,7 @@ import type { PreparationStateReceiptV1 } from './preparation-state'
 import { displayRasterBackpressure } from './display-raster-scheduling'
 import { cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
 import { samePreparationReceipt } from './authored-preparation-binding'
-import { renderQualityContract } from './render-quality'
+import { allowsReducedSampling, renderQualityContract } from './render-quality'
 import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
 import { stampDisplayTentRadius, usesDisplayTentRadiusIntent } from './display-tent-radius-intent'
 import { usesNativePreviewTiles } from './native-preview-tiles-policy'
@@ -68,7 +68,7 @@ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../docume
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
 import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
-import { interactionPatchTransforms, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
+import { interactionPatchTransforms, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
@@ -391,13 +391,14 @@ const frozenOverlayPoses=new FrozenResidentOverlayPoses()
  * pixel lattice. Its retained texture is authoritative inside the declared
  * window only. The canvas kernel independently supplies the damage. */
 function localRepairSource(session: PoseSession | undefined, next:DesignDocument | undefined, driver:Driver,
-  view:KernelOptions['view'], contract:string, damage:Rect, canvasOwner:object) {
+  view:KernelOptions['view'], contract:string, damage:Rect, canvasOwner:object, overviewBitmap=false) {
   if (!session?.native || session.canvasOwner!==canvasOwner || !session.input || !session.reuse || !next) return
   const scene=session.scene, window=scene.interactionWindow, output=scene.output, ids=scene.interactionSelection
   const content=scene.interactionContentWindow??window
-  if (!scene.interactionLocalFootprint || scene.gestureSoftEffects || scene.displayFilters || scene.displayMaterialSource ||
+  if ((!overviewBitmap && !scene.interactionLocalFootprint) || scene.gestureSoftEffects || scene.displayFilters || scene.displayMaterialSource ||
       scene.displayImageSource || scene.displayTentRadius || scene.linearRetainedCapture || scene.resolve || scene.presentation ||
-      scene.softwareRaster || !window || !output || ids?.length!==1 || !isInnerShadowFill(next.nodes[ids[0]]) ||
+      scene.softwareRaster || !window || !output || ids?.length!==1 ||
+      (!overviewBitmap && !isInnerShadowFill(next.nodes[ids[0]])) ||
       scene.view.x!==view.x || scene.view.y!==view.y || scene.view.zoom!==view.zoom ||
       !content || content.x>damage.x || content.y>damage.y || content.x+content.w<damage.x+damage.w || content.y+content.h<damage.y+damage.h) return
   // gpuPageBackground only asks the compiler for support metadata.
@@ -690,7 +691,7 @@ function schedulePose(){
           session.scene=next
           if (session.native) session.nativePosePending = false
           if(session.patch)session.patch.accept(next,pose.transforms)
-          else if(document){
+            else if(document){
             session.document=laneState.interactionDocument=document
             if(patchedPose)laneState.synchronizedInteractionDocument=document
             laneState.deferredInteractionDocument=patchedPose?undefined:document
@@ -1131,6 +1132,7 @@ self.onmessage = (e) => {
       // whether the last displayed pose is exactly the patch being committed.
       let paintDamage: PaintDamage | undefined
       let priorRepairOwner: object | undefined
+      let bitmapViewportCommit = false
       let translatedPageCommit:{sourceOwner:object;targetOwner:object;offset:{x:number;y:number}}|undefined
       let derived = false
       let derivedSource: { document: DesignDocument; json?: string } | undefined
@@ -1319,6 +1321,15 @@ self.onmessage = (e) => {
           // though these exact synchronized pixels and native translation proof
           // remain valid. A deferred/unsynchronized source cannot qualify.
           const synchronizedPixels=!wasDeferred&&!!actualBefore&&actualBefore===priorAuthoredDocument
+          bitmapViewportCommit = synchronizedPixels && !!laneState.interactionDocument &&
+            renderOptions.rasterProfile === 'analytic' &&
+            isBitmapTranslationPatch(actualBefore, laneState.interactionDocument, patch)
+          if (bitmapViewportCommit && !damage.full) {
+            priorRepairOwner = priorPixelOwner
+            const session = poseSession
+            if (session?.native && session.canvasOwner === priorPixelOwner && session.scene.interactionSelection?.length === 1 &&
+                Object.hasOwn(patch.nodes, session.scene.interactionSelection[0])) session.canvasOwner = kernel.contentIdentity
+          }
           if (synchronizedPixels && !damage.full && laneState.interactionDocument &&
               isInnerShadowPosePatch(actualBefore,laneState.interactionDocument,patch)) {
             priorRepairOwner = priorPixelOwner
@@ -1501,8 +1512,10 @@ self.onmessage = (e) => {
               }
               if (snapshot) gpu.driver.releasePresented?.([snapshot.gpuTile])
             }
+            const overviewBitmapCommit = bitmapViewportCommit && !!displayFrame && allowsReducedSampling(displayFrame.view.zoom)
             if (priorRepairOwner && paintDamage && !tileViewport.length && displayFrame && renderIntent==='canvas' &&
-                renderOptions.rasterProfile==='figmaSubpixel' && backend==='webgpu' && allowsResidentSdr(executionPolicy) &&
+                (renderOptions.rasterProfile==='figmaSubpixel' || overviewBitmapCommit) &&
+                backend==='webgpu' && allowsResidentSdr(executionPolicy) &&
                 !request.png && !request.readback && !exportFormat && !request.sourceSnapshot && !renderOptions.animation &&
                 !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.exportRegion && !renderOptions.pixelPreview &&
                 !canvasDisplayFilters && !previewDisplayFilters && !canvasMath && !canvasTentRadius &&
@@ -1520,7 +1533,7 @@ self.onmessage = (e) => {
                 try {
                   repair=driver.beginViewportRepair!(priorRepairOwner,owner,contract,view,width,height,region)
                   if(repair){
-                    const pose=localRepairSource(settledPose,laneState.interactionDocument,driver,view,contract,region,owner)
+                    const pose=localRepairSource(settledPose,laneState.interactionDocument,driver,view,contract,region,owner,overviewBitmapCommit)
                     if (pose) output=repair.finish(pose.id,pose)
                     if (!output) {
                       const at=performance.now()
@@ -1559,14 +1572,17 @@ self.onmessage = (e) => {
             // A small exact viewport capture can replace dozens of repeated
             // tile graphs after a page translation. It uses the same native
             // camera/phase and full filter support; failure keeps tiled repair.
-            if(import.meta.env.VITE_DESIGN_COMMIT_CAPTURE==='1'&&channel==='canvas'&&translatedPageCommit&&!tileViewport.length&&
+            if((overviewBitmapCommit || import.meta.env.VITE_DESIGN_COMMIT_CAPTURE==='1'&&translatedPageCommit)&&channel==='canvas'&&!tileViewport.length&&
                 renderIntent==='canvas'&&backend==='webgpu'&&displayFrame&&!request.readback&&!request.png&&!exportFormat&&
                 !renderOptions.exportRegion&&!renderOptions.grid&&!renderOptions.checkerboard&&!renderOptions.pixelPreview&&
                 allowsResidentSdr(executionPolicy)&&!canvasDisplayFilters&&!previewDisplayFilters&&!canvasMath&&!canvasTentRadius&&
                 !canvasImageSource&&!canvasMaterialSource&&renderOptions.width*renderOptions.height<=4_194_304){
               const frame=displayFrame,physical={x:frame.view.x*frame.dpr,y:frame.view.y*frame.dpr,zoom:frame.view.zoom*frame.dpr}
-              const crop={x:renderOptions.view.x-physical.x,y:renderOptions.view.y-physical.y,width:renderOptions.width,height:renderOptions.height}
-              if(renderOptions.view.zoom===physical.zoom&&Number.isSafeInteger(crop.x)&&Number.isSafeInteger(crop.y)&&
+              const width=renderOptions.width,height=renderOptions.height
+              const x=renderOptions.view.x-physical.x,y=renderOptions.view.y-physical.y
+              const crop={x:Math.round(x),y:Math.round(y),width,height}
+              if(renderOptions.view.zoom===physical.zoom&&Math.abs(crop.x-x)<=1e-7&&Math.abs(crop.y-y)<=1e-7&&
+                  Number.isSafeInteger(crop.x)&&Number.isSafeInteger(crop.y)&&
                   crop.width===Math.ceil(frame.width*frame.dpr)&&crop.height===Math.ceil(frame.height*frame.dpr)){
                 let captured:TileRender|undefined
                 try{
@@ -1579,6 +1595,7 @@ self.onmessage = (e) => {
                     reportRasterProgress,previewCurrent,hydrateImages,undefined,false,undefined,false,false,undefined,displayBackpressure)
                   if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
                   if(!captured.gpuTile)throw Error('Exact commit capture unavailable')
+                  gpu?.driver.tagExactTile?.(captured.gpuTile,kernel.contentIdentity,pixelSourceContract(renderOptions),0)
                   self.postMessage({id:request.id,tile:{key:`commit-capture:${laneState.loadedRevision}:${captured.gpuTile}`,
                     x:-physical.x,y:-physical.y,width:crop.width,height:crop.height,zoom:physical.zoom,gutter:0,
                     committedViewport:true,viewportPreview:true,gpuTile:captured.gpuTile,backend,description:'native commit viewport',cached:false}})
@@ -2136,7 +2153,8 @@ self.onmessage = (e) => {
           prepareDisplay(!request.png && !request.readback)
           const previewReadback = !!(request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')))
           // Bind the canonical source before allocating or submitting the gesture texture.
-          const canvasOwner=retainInteraction && scene!.interactionLocalFootprint
+          const canvasOwner=retainInteraction && (scene!.interactionLocalFootprint ||
+            (scene!.nativeInteraction && renderOptions.rasterProfile==='analytic' && !!renderOptions.captureViewport))
             ? (await lanes.get('canvas').enginePromise)?.contentIdentity : undefined
           if (retainInteraction && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
           const t = performance.now(),

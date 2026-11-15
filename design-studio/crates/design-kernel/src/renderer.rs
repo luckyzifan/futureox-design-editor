@@ -4305,10 +4305,15 @@ impl Painter<'_> {
                 let inner = fx.kind == "inner-shadow";
                 let knock_out = n.knock_out_outer_shadow(fx);
                 let paint_alpha = if knock_out { n.shadow_paint_alpha() } else { 1. };
-                let alpha = if paint_alpha < 1. {
-                    effects::sketch_shadow_alpha(&resolved, fx.radius * scale / 2., fx.spread * scale, paint_alpha)?
+                let shadow_radius = if !self.compatible && self.doc.color_management.is_none() {
+                    n.text_shadow_radius(fx, scale)
                 } else {
-                    self.shadow_mask(&resolved, fx.blur_radius() * scale, fx.spread * scale, inner)?
+                    fx.blur_radius() * scale
+                };
+                let alpha = if paint_alpha < 1. {
+                    effects::sketch_shadow_alpha(&resolved, shadow_radius / 2., fx.spread * scale, paint_alpha)?
+                } else {
+                    self.shadow_mask(&resolved, shadow_radius, fx.spread * scale, inner)?
                 };
                 let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
                 let pointwise = paint_alpha == 1. && fx.radius == 0.
@@ -5036,7 +5041,11 @@ impl Painter<'_> {
                                 &fx.color,
                                 fx.opacity as f32,
                             )?,
-                            self.blur_filter(fx.radius * scale),
+                            self.blur_filter(if self.doc.color_management.is_none() {
+                                n.text_shadow_radius(fx, scale)
+                            } else {
+                                fx.radius * scale
+                            }),
                             fx.spread * scale,
                             offset.x,
                             offset.y,

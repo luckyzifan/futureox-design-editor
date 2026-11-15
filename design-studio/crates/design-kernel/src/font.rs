@@ -426,6 +426,10 @@ pub struct Glyph {
     pub(crate) width_scale: f64,
     #[serde(skip)]
     pub(crate) height_scale: f64,
+    #[serde(skip)]
+    pub(crate) ink_offset_x: f64,
+    #[serde(skip)]
+    wrap_advance: f64,
     /// Variation coordinates this glyph was shaped with; outlines rebuild the
     /// same face so geometry matches the shaped advances exactly.
     #[serde(skip)]
@@ -434,7 +438,7 @@ pub struct Glyph {
 
 impl Glyph {
     pub(crate) fn has_variations(&self) -> bool {
-        !self.vars.is_empty() || self.width_scale != 1. || self.height_scale != 1.
+        !self.vars.is_empty() || self.width_scale != 1. || self.height_scale != 1. || self.ink_offset_x != 0.
     }
 }
 #[derive(Serialize)]
@@ -667,12 +671,7 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
         }
         let n = doc.nodes.get_mut(&id).unwrap();
         n.kind = "group".into();
-        // Text keeps its text shadow rule after the renderer materializes
-        // per-color outlines. The authored text and effect are retained by
-        // the source document, including on Sketch roundtrip.
-        for effect in &mut n.effects {
-            effect.shadow_knockout = false;
-        }
+        n.derived_text_paint = true;
         n.fills.clear();
         n.strokes.clear();
         n.children = children;
@@ -723,6 +722,83 @@ fn sketch_han_scale(size: f64) -> (f64, f64) {
         let optical = (size.clamp(20., 46.) - 20.) / 26.;
         (0.9577067669172932 + optical * (0.9445488721804511 - 0.9577067669172932), 0.93)
     }
+}
+
+// CoreText's regular UI face uses proportional figures. The old fallback
+// gave every digit the same width, which is especially visible in clocks.
+// Columns are normalized advance, ink left, ink right, and ink ascent at
+// 16 pt (UI text), 20 pt and 26 pt (display optical sizes).
+const SKETCH_UI_FIGURES: [[[f64; 4]; 13]; 3] = [
+    [
+        [0.624, 0.063, 0.565, 0.719],
+        [0.444, 0.064, 0.339, 0.705],
+        [0.583, 0.068, 0.529, 0.716],
+        [0.607, 0.069, 0.563, 0.716],
+        [0.624, 0.057, 0.586, 0.705],
+        [0.598, 0.069, 0.552, 0.705],
+        [0.626, 0.063, 0.565, 0.719],
+        [0.550, 0.047, 0.514, 0.705],
+        [0.619, 0.063, 0.570, 0.716],
+        [0.626, 0.064, 0.566, 0.719],
+        [0.277, 0.085, 0.212, 0.500],
+        [0.277, 0.058, 0.197, 0.099],
+        [0.906, 0.066, 0.859, 0.714],
+    ],
+    [
+        [0.602, 0.061, 0.564, 0.720],
+        [0.437, 0.060, 0.335, 0.705],
+        [0.572, 0.068, 0.532, 0.720],
+        [0.596, 0.063, 0.558, 0.716],
+        [0.612, 0.052, 0.585, 0.705],
+        [0.588, 0.070, 0.554, 0.705],
+        [0.610, 0.058, 0.571, 0.720],
+        [0.542, 0.045, 0.512, 0.705],
+        [0.607, 0.059, 0.571, 0.716],
+        [0.610, 0.061, 0.574, 0.720],
+        [0.255, 0.077, 0.201, 0.496],
+        [0.255, 0.049, 0.187, 0.099],
+        [0.875, 0.061, 0.837, 0.713],
+    ],
+    [
+        [0.617, 0.046, 0.562, 0.717],
+        [0.454, 0.049, 0.324, 0.705],
+        [0.578, 0.054, 0.523, 0.717],
+        [0.603, 0.047, 0.542, 0.716],
+        [0.616, 0.040, 0.578, 0.705],
+        [0.596, 0.059, 0.551, 0.705],
+        [0.627, 0.046, 0.563, 0.717],
+        [0.557, 0.038, 0.504, 0.705],
+        [0.611, 0.045, 0.558, 0.716],
+        [0.627, 0.056, 0.573, 0.717],
+        [0.231, 0.055, 0.168, 0.484],
+        [0.231, 0.024, 0.157, 0.101],
+        [0.827, 0.046, 0.773, 0.711],
+    ],
+];
+
+fn sketch_figure_metrics(character: char, size: f64, face: &ttf_parser::Face<'_>,
+    id: ttf_parser::GlyphId) -> Option<(f64, f64, f64, f64)> {
+    let index = match character {
+        '0'..='9' => (character as u8 - b'0') as usize,
+        ':' => 10,
+        ',' => 11,
+        '%' => 12,
+        _ => return None,
+    };
+    let (lower, upper, blend) = if size < 20. { (0, 1, (size.clamp(16., 20.) - 16.) / 4.) }
+        else { (1, 2, (size.min(26.) - 20.) / 6.) };
+    let [advance, left, right, ascent] = std::array::from_fn(|i| {
+        let a = SKETCH_UI_FIGURES[lower][index][i];
+        a + blend * (SKETCH_UI_FIGURES[upper][index][i] - a)
+    });
+    let bounds = face.glyph_bounding_box(id)?;
+    let unit = f64::from(face.units_per_em());
+    let min = f64::from(bounds.x_min) / unit;
+    let width = (f64::from(bounds.x_max) - f64::from(bounds.x_min)) / unit;
+    let top = f64::from(bounds.y_max) / unit;
+    if width <= 0. || top <= 0. { return None; }
+    let scale = (right - left) / width;
+    Some((advance * size, scale, ascent / top, (left - min * scale) * size))
 }
 
 fn is_sketch_han(character: char) -> bool {
@@ -1506,13 +1582,30 @@ impl Fonts {
                         .is_none_or(|next| next.cluster != glyph.cluster);
                     let byte = start + glyph.cluster as usize;
                     let cluster = utf16[base + byte];
-                    let (width_scale, height_scale) = if sketch_display_fallback && id == "default"
-                        && text[byte..].chars().next().is_some_and(is_sketch_han)
-                    {
-                        sketch_han_scale(size)
+                    let mut raw_advance = (p.x_advance as f64 * scale).abs();
+                    let (width_scale, height_scale, ink_offset_x, advance) = if sketch_display_fallback && id == "default" {
+                        let character = text[byte..].chars().next().unwrap_or_default();
+                        if is_sketch_han(character) {
+                            let (width, height) = sketch_han_scale(size);
+                            (width, height, 0., raw_advance * width)
+                        } else if p.x_advance > 0
+                            && style.features.is_empty() && variations.is_empty()
+                            && face.borrow_face().glyph_index(character) == Some(ttf_parser::GlyphId(glyph.glyph_id as u16))
+                            && let Some((target, width, height, left)) = sketch_figure_metrics(character, size, face.borrow_face(), ttf_parser::GlyphId(glyph.glyph_id as u16))
+                        {
+                            // Keep any pair positioning from the shaper. Only
+                            // replace the advance of the unpositioned glyph.
+                            let natural = face.borrow_face().glyph_hor_advance(ttf_parser::GlyphId(glyph.glyph_id as u16))
+                                .map(|units| f64::from(units) * scale).unwrap_or(raw_advance);
+                            (width, height, left, (target + raw_advance - natural).max(0.))
+                        } else {
+                            (1., 1., 0., raw_advance)
+                        }
                     } else {
-                        (1., 1.)
+                        (1., 1., 0., raw_advance)
                     };
+                    let tracking = if last_in_cluster { cluster_tracking(runs, cluster, style) } else { 0. };
+                    raw_advance += tracking;
                     glyphs.push(Glyph {
                         path_transform: None,
                         id: glyph.glyph_id as u16,
@@ -1523,15 +1616,12 @@ impl Fonts {
                         cluster_end: 0,
                         x: p.x_offset as f64 * scale * width_scale,
                         y: -p.y_offset as f64 * scale,
-                        advance: (p.x_advance as f64 * scale * width_scale).abs()
-                            + if last_in_cluster {
-                                cluster_tracking(runs, cluster, style)
-                            } else {
-                                0.
-                            },
+                        advance: advance + tracking,
                         byte: base + byte,
                         width_scale,
                         height_scale,
+                        ink_offset_x,
+                        wrap_advance: raw_advance,
                         vars: variations.clone(),
                     });
                 }
@@ -1699,18 +1789,8 @@ impl Fonts {
             // A fallback preview may be narrower while keeping the authored
             // wrap decisions. Fit against the advances of the unscaled face.
             let mut clusters = BTreeMap::<usize, f64>::new();
-            for (i, glyph) in initial.iter().enumerate() {
-                let tracking = if initial.get(i + 1).is_none_or(|next| next.byte != glyph.byte) {
-                    cluster_tracking(runs, glyph.cluster, style)
-                } else {
-                    0.
-                };
-                let advance = if glyph.width_scale == 1. {
-                    glyph.advance
-                } else {
-                    (glyph.advance - tracking) / glyph.width_scale + tracking
-                };
-                *clusters.entry(glyph.byte).or_default() += advance;
+            for glyph in &initial {
+                *clusters.entry(glyph.byte).or_default() += glyph.wrap_advance;
             }
             let mut ranges = Vec::new();
             if let Some(maximum) = limit.filter(|_| !clusters.is_empty()) {
@@ -2129,10 +2209,10 @@ impl Fonts {
                 };
                 glyph_outline.replay(&mut builder);
             }
-            if glyph.width_scale != 1. || glyph.height_scale != 1. {
+            if glyph.width_scale != 1. || glyph.height_scale != 1. || glyph.ink_offset_x != 0. {
                 let (sx, sy) = (glyph.width_scale, glyph.height_scale);
                 crate::text_path::transform_outline(&mut outline, crate::math::Transform([
-                    sx, 0., 0., sy, glyph.x * (1. - sx), glyph.y * (1. - sy),
+                    sx, 0., 0., sy, glyph.x * (1. - sx) + glyph.ink_offset_x, glyph.y * (1. - sy),
                 ]));
             }
             for (enabled, offset) in [
