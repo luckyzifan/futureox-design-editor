@@ -238,6 +238,7 @@ export type LayoutAlign =
   | 'space-evenly'
   | 'unsafe-center'
   | 'unsafe-end'
+export const LAYOUT_GAP_LIMIT = 1e5
 export type AutoLayout = {
   mode: 'none' | 'horizontal' | 'vertical' | 'grid'
   gap: number
@@ -1180,8 +1181,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
       if (l.reverseFlow === true && d.schemaVersion < 22) throw new Error('反向堆栈流需要设计文件版本 22')
       if (
         !['none', 'horizontal', 'vertical', 'grid'].includes(l.mode) ||
-        !finite(l.gap, -1e5, 1e5) ||
-        !finite(l.lineGap, -1e5, 1e5) ||
+        !finite(l.gap, -LAYOUT_GAP_LIMIT, LAYOUT_GAP_LIMIT) ||
+        !finite(l.lineGap, -LAYOUT_GAP_LIMIT, LAYOUT_GAP_LIMIT) ||
         !Array.isArray(l.padding) ||
         l.padding.length !== 4 ||
         !l.padding.every((v) => finite(v, 0, 1e5)) ||

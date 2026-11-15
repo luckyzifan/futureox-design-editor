@@ -1,6 +1,12 @@
 import { interfacePreference, type UiMode } from './interface-preference'
 import { shortcutPreference } from './shortcut-preference'
 import type { ShortcutProfile } from './shortcut-profiles'
+import { LAYOUT_GAP_LIMIT, type AutoLayout } from './model'
+
+/** Grid tracks and Figma's cross-axis spacing stop at zero in their controls. */
+export function layoutGapMinimum(mode: AutoLayout['mode'], field: 'gap' | 'lineGap', uiMode: UiMode) {
+  return mode === 'grid' || (field === 'lineGap' && uiMode === 'figma') ? 0 : -LAYOUT_GAP_LIMIT
+}
 
 /** Layout chords. Checked against shortcut-profiles: Mod+F is Sketch
  * frame-selection on desktop, Mod+Alt+G frames a selection, and Mod+0/1/2/3

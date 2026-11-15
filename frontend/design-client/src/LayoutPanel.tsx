@@ -4,6 +4,8 @@ import { type ReactNode, useState } from 'react'
 import type { LayoutSuggestionPreview } from './layout-suggestions'
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits } from './property-units'
+import { layoutGapMinimum } from './interface-layout'
+import type { UiMode } from './interface-preference'
 import { DraftInput } from './DraftInput'
 import type { Editor } from './engine'
 import {
@@ -17,6 +19,7 @@ import {
   defaultSizing,
   defaultLayoutGrid,
   MAX_LAYOUT_GRIDS,
+  LAYOUT_GAP_LIMIT,
   container,
 } from './model'
 import { NumberField } from './fields'
@@ -33,12 +36,14 @@ export function LayoutPanel({
   editor,
   node: n,
   ids,
+  uiMode = 'figma',
   embedded = false,
   geometry,
 }: {
   editor: Editor
   node: DesignNode
   ids: string[]
+  uiMode?: UiMode
   embedded?: boolean
   geometry?: ReactNode
 }) {
@@ -51,6 +56,8 @@ export function LayoutPanel({
     layout = n.layout || defaultLayout(),
     active = !!n.layout && n.layout.mode !== 'none',
     sizing = { ...defaultSizing(), ...n.sizing }
+  const gapMin = layoutGapMinimum(layout.mode, 'gap', uiMode)
+  const lineGapMin = layoutGapMinimum(layout.mode, 'lineGap', uiMode)
   const updateLayout = (patch: Partial<AutoLayout>) =>
     editor.updateProperties(
       ids,
@@ -164,15 +171,17 @@ export function LayoutPanel({
             <UnitNumberField historyLabel={layout.mode === 'grid' ? '列间距' : '项目间距'} unit="length" diagnosticFamily={2} unitScale={layout.mode === 'vertical' ? units.y : units.x}
               label={tr(layout.mode === 'grid' ? '列间距' : '项目间距')}
               value={layout.gap}
-              min={0}
-              max={1e5}
+              min={gapMin}
+              max={LAYOUT_GAP_LIMIT}
+              clampMinimum={gapMin === 0}
               onChange={(gap) => updateLayout({ gap })}
             />
             <UnitNumberField historyLabel={layout.mode === 'grid' ? '行间距' : '换行间距'} unit="length" diagnosticFamily={2} unitScale={layout.mode === 'vertical' ? units.x : units.y}
               label={tr(layout.mode === 'grid' ? '行间距' : '换行间距')}
               value={layout.lineGap}
-              min={0}
-              max={1e5}
+              min={lineGapMin}
+              max={LAYOUT_GAP_LIMIT}
+              clampMinimum={lineGapMin === 0}
               onChange={(lineGap) => updateLayout({ lineGap })}
             />
           </div>

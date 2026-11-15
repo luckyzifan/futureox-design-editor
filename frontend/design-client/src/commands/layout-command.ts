@@ -1,4 +1,4 @@
-import { defaultLayout, defaultSizing, node, type AutoLayout, type DesignDocument, type DesignNode } from '../model'
+import { defaultLayout, defaultSizing, LAYOUT_GAP_LIMIT, node, type AutoLayout, type DesignDocument, type DesignNode } from '../model'
 import { equalValue } from '../document-patch'
 import { indexSelection, assertUnlocked, assertStructuralParent, SelectionCommandError,
   prepareSelectionWrap, configureSelectionWrapper, applySelectionWrap, type SelectionGeometryState, type SelectionWrap } from './selection-command'
@@ -75,15 +75,24 @@ export interface LayoutAddPlan { pageId: string; target: string; wrapper?: Desig
 export function prepareLayoutAdd(doc: DesignDocument, ids: readonly string[], options: LayoutAddOptions, state: SelectionGeometryState): LayoutAddPlan {
   const index = layoutCommandAdmission(doc, ids); fresh(state)
   if (!['horizontal', 'vertical'].includes(options.mode) || (options.order !== undefined && !['scene', 'axis'].includes(options.order))) reject('invalid_params', 'Invalid layout mode or child order')
-  const numeric = (value: number) => { if (!Number.isFinite(value) || value < 0 || value > 1e5) reject('invalid_params', 'Gap and padding must be within 0–100000'); return value }
   const selected = index.ids.map(id => doc.nodes[id]), target = selected[0]
   if (selected.some(n => n.booleanOperation || (n.mask && n.children.length))) reject('unsupported_layout_topology', 'Boolean and mask containers require their dedicated operations')
   const inplace = selected.length === 1 && ['frame', 'group'].includes(target.kind)
   if (inplace && (target.booleanOperation || target.mask)) reject('unsupported_layout_topology', 'Boolean and mask groups cannot be converted to layout frames')
   if (inplace && (options.id !== undefined || options.name !== undefined)) reject('invalid_params', 'id and name apply only to newly created wrappers')
   const layout = { ...defaultLayout(), ...(inplace ? target.layout : undefined), mode: options.mode }
-  if (options.gap !== undefined) layout.gap = numeric(options.gap)
-  if (options.padding) layout.padding = [numeric(options.padding.top), numeric(options.padding.right), numeric(options.padding.bottom), numeric(options.padding.left)]
+  if (options.gap !== undefined) {
+    if (!Number.isFinite(options.gap) || Math.abs(options.gap) > LAYOUT_GAP_LIMIT)
+      reject('invalid_params', 'Gap must be within -100000 to 100000')
+    layout.gap = options.gap
+  }
+  if (options.padding) {
+    const { top, right, bottom, left } = options.padding
+    const padding = [top, right, bottom, left] as AutoLayout['padding']
+    if (padding.some(value => !Number.isFinite(value) || value < 0 || value > 1e5))
+      reject('invalid_params', 'Padding must be within 0 to 100000')
+    layout.padding = padding
+  }
   if (inplace) {
     const children = childOrder(doc, target.children, options.mode, options.order ?? 'scene')
     return { pageId: index.pageId, target: target.id, layout, childOrder: children, changed: target.kind !== 'frame' || !equalValue(target.layout, layout) || !equalValue(target.children, children) }

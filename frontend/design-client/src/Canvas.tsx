@@ -3032,7 +3032,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           }}
         />
       )}
-      <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches}/>
+      <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches} uiMode={uiMode}/>
       <CanvasSmartSelection editor={editor} view={displayView} size={size} entries={entries} visible={exactOverlayMatches}/>
       <CanvasGuides editor={editor} view={displayView} size={size} entries={entries} intercept={e=>{
         if(!canTransform||e.button!==0)return false

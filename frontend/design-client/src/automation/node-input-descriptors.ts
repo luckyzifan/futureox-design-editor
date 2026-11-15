@@ -3,7 +3,7 @@
  * These are whole-property replacements, not recursive merge patches.
  * Document/kind/reference and cross-field constraints remain model-authoritative.
  */
-import { MAX_GRADIENT_STOPS, blendModes, type DesignNode } from '../model'
+import { MAX_GRADIENT_STOPS, LAYOUT_GAP_LIMIT, blendModes, type DesignNode } from '../model'
 type Schema = Record<string, unknown>
 const num = (minimum = -1e7, maximum = 1e7): Schema => ({ type: 'number', minimum, maximum })
 const integer = (minimum: number, maximum: number): Schema => ({ type: 'integer', minimum, maximum })
@@ -70,7 +70,7 @@ const fields = {
   points: describe(num(0, 128), 'Polygon/star require at least 3; other kinds allow 0.'), innerRadius: describe(unit, 'Star requires at least 0.01; other kinds allow 0.'), network,
   text: str(100000), fontSize: num(1, 4096), textStyle,
   textRuns: describe(array(obj({ start: integer(0, 100000), end: integer(0, 100000), fontId: id, fontSize: num(1, 4096), weight: num(1, 1000), paragraph: textParagraph, color, underline: bool, strikethrough: bool, link: describe(str(4096), 'http://, https:// or mailto: URL.'), textCase, letterSpacing: describe(num(-1000, 1000), 'Extra design pixels after each cluster in this run. Requires schema 21.'), lineHeight: describe(num(0.1, 10), 'Line-box multiplier of this run font size. Requires schema 21.') }, ['start', 'end']), 4096), 'Ordered nonoverlapping [start,end) UTF-16 intervals on complete grapheme boundaries of the node text; start must be less than end. letterSpacing and lineHeight require schema 21.'),
-  layout: describe(obj({ mode: en('none', 'horizontal', 'vertical', 'grid'), gap: num(0, 1e5), lineGap: num(0, 1e5), padding: tuple(num(0, 1e5), 4), wrap: bool, reverseFlow: bool, justify: en('start', 'center', 'end', 'stretch', 'space-between', 'space-around', 'space-evenly', 'unsafe-center', 'unsafe-end'), align: en('start','center','end','stretch','unsafe-center','unsafe-end'), columns: integer(1, 64), fillRows: bool }), 'Containers only. Omitted fields use native defaults.'),
+  layout: describe(obj({ mode: en('none', 'horizontal', 'vertical', 'grid'), gap: num(-LAYOUT_GAP_LIMIT, LAYOUT_GAP_LIMIT), lineGap: num(-LAYOUT_GAP_LIMIT, LAYOUT_GAP_LIMIT), padding: tuple(num(0, 1e5), 4), wrap: bool, reverseFlow: bool, justify: en('start', 'center', 'end', 'stretch', 'space-between', 'space-around', 'space-evenly', 'unsafe-center', 'unsafe-end'), align: en('start','center','end','stretch','unsafe-center','unsafe-end'), columns: integer(1, 64), fillRows: bool }), 'Containers only. Omitted fields use native defaults.'),
   sizing: describe(obj({ width: en('fixed', 'hug', 'fill'), height: en('fixed', 'hug', 'fill'), minWidth: num(0.01), minHeight: num(0.01), maxWidth: num(0.01), maxHeight: num(0.01), absolute: bool, alignSelf: nullable(align), columnSpan: integer(1, 64), rowSpan: integer(1, 64) }), 'Maxima must be >= minima. Hug requires text or active auto-layout. Omitted fields use native defaults.'),
   constraints: obj({ horizontal: en('start', 'center', 'end', 'stretch', 'scale'), vertical: en('start', 'center', 'end', 'stretch', 'scale'), referenceWidth: nullable(num(0.01)), referenceHeight: nullable(num(0.01)) }),
   layoutGrid: describe(layoutGrid, 'Single frame grid. Count 0 uses Auto with a fixed section size.'),

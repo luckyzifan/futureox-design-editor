@@ -660,7 +660,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
             onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
           </button>}
-          {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded geometry={uiMode === 'figma' ? <>
+          {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} uiMode={uiMode} embedded geometry={uiMode === 'figma' ? <>
             {dimensions}
             {n.kind === 'text' && !constraintParent?.graphic && <TextSizingControls editor={editor} nodes={[n]} />}
           </> : undefined} />}
