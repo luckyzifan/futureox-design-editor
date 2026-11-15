@@ -2031,6 +2031,17 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .geometry-proportion:has(input:checked) { color: var(--workspace-text); }
 .geometry-proportion:focus-within { outline: 2px solid var(--workspace-accent); outline-offset: -2px; }
 .geometry-proportion input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.sketch-appearance-opacity { margin: 8px 0; }
+.number-field-with-slider { display: grid; grid-template-columns: minmax(0, 1fr) minmax(72px, 38%); gap: 8px; align-items: center; }
+.number-field-with-slider > input[type="range"] { margin: 0; width: 100%; min-width: 0; cursor: ew-resize; accent-color: #ec6427; }
+.number-field-with-slider .number-field input { min-width: 0; flex: 1; }
+.sketch-layer-style { display: grid; gap: 6px; margin: 0 0 10px; }
+.sketch-layer-style > label { display: grid; gap: 4px; color: var(--workspace-muted); font-size: 12px; }
+.sketch-layer-style select { width: 100%; }
+.sketch-layer-style-actions { display: flex; justify-content: space-between; gap: 3px; }
+.sketch-layer-style-actions button { min-width: 0; padding: 3px; font-size: 11px; white-space: nowrap; }
+.sketch-layer-style form { display: flex; flex-wrap: wrap; gap: 4px; }
+.sketch-layer-style form input { flex: 1 1 94px; min-width: 0; padding: 4px; }
 .canvas-edit-status { position:absolute; left:12px; bottom:12px; pointer-events:none; font-size:11px; color:#667085; background:rgba(255,255,255,.92); padding:4px 8px; border-radius:4px; }
 .layer-row[data-search-context="true"] { color:var(--muted, #8b93a2); }
 
@@ -2441,6 +2452,8 @@ html[data-reduced-motion=true] .animation-modal * {
 .page-list-divider:hover::after, .page-list-divider:focus-visible::after { background: var(--workspace-accent); }
 .layers-document-title { flex: none; padding: 13px 16px 11px; border-bottom: 1px solid var(--workspace-border);
   color: var(--workspace-text); font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layers-document-title input { display: block; width: 100%; padding: 1px 0; border: 0; background: transparent; color: inherit;
+  font: inherit; text-overflow: ellipsis; }
 .editor-shell[data-ui-mode="sketch"] .layers-panel > .layer-search { margin: 8px 8px 5px; flex: none; }
 .pages-actions { flex: none; }
 .pages-actions button { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
@@ -2498,6 +2511,19 @@ html[data-reduced-motion=true] .animation-modal * {
   height: 32px;
   padding: 0 4px;
 }
+.editor-shell[data-ui-mode="figma"]:has(> .editor-header[data-inline-tabs]) { grid-template-rows: var(--editor-chrome-row) 0px minmax(0, 1fr) auto; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] { grid-row: 1; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title { display: flex; flex: 0 1 auto; min-width: 0; gap: 4px; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .document-title input { max-width: 130px; min-width: 70px; }
+.editor-shell[data-ui-mode="figma"] > .editor-header[data-inline-tabs] .workspace-tabs {
+  flex: 1 1 auto; min-width: 60px; height: 100%; background: transparent; border: 0; align-items: stretch;
+  scrollbar-width: none; -webkit-app-region: no-drag;
+}
+.editor-shell[data-ui-mode="figma"] .figma-properties-actions {
+  display: flex; justify-content: flex-end; align-items: center; flex: none; height: 34px; padding: 0 9px;
+}
+.figma-properties-actions .prototype-preview-button { display: grid; place-items: center; width: 30px; height: 29px; padding: 0; }
+.figma-properties-actions .prototype-preview-button span { display: none; }
 .editor-shell[data-ui-mode="figma"] .document-title > button[aria-pressed] {
   width: 32px;
   height: 32px;

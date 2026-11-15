@@ -147,6 +147,57 @@ test('a collapsed native-style tree reveals selected ancestors and remembers dis
   editor.dispose()
 })
 
+test('Sketch layer styles can be created, applied, updated and detached without changing the resolved paint', async () => {
+  const doc = blank('样式'), first = node('rectangle', 0, 0, 120, 60), second = node('rectangle', 140, 0, 120, 60)
+  first.fills[0].color = '#cc3311'
+  doc.nodes = { [first.id]: first, [second.id]: second }; doc.pages[0].children = [first.id, second.id]
+  const editor = new Editor(doc), host = document.createElement('div')
+  document.body.append(host); root = createRoot(host)
+  await act(async () => {
+    interfacePreference.set({ uiMode:'sketch' })
+    editor.select([first.id])
+    root!.render(<PendingEditContext.Provider value={editor}><Inspector editor={editor} /></PendingEditContext.Provider>)
+  })
+  const action = (name: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!
+  await act(async () => action('创建图层样式').click())
+  const title = host.querySelector<HTMLInputElement>('input[aria-label="图层样式名称"]')!
+  await act(async () => {
+    title.focus()
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(title, '工作区样式')
+    title.dispatchEvent(new Event('input', { bubbles:true }))
+  })
+  const submit = host.querySelector<HTMLButtonElement>('.sketch-layer-style button[type="submit"]')!
+  expect(submit.disabled).toBe(false)
+  await act(async () => submit.click())
+  expect(editor.state.doc.nodes[first.id].styleRefs, editor.state.message).toBeDefined()
+  const id = editor.state.doc.nodes[first.id].styleRefs!.fills
+  expect(editor.state.doc.designSystem!.styles[id].name).toBe('工作区样式')
+  await act(async () => editor.select([second.id]))
+  const select = host.querySelector<HTMLSelectElement>('select[aria-label="图层样式"]')!
+  await act(async () => { select.value = id; select.dispatchEvent(new Event('change', { bubbles:true })) })
+  expect(editor.state.doc.nodes[second.id].styleRefs?.fills).toBe(id)
+  expect(editor.state.doc.nodes[second.id].fills[0].color).toBe('#cc3311')
+  await act(async () => action('解除图层样式').click())
+  expect(editor.state.doc.nodes[second.id].styleRefs?.fills).toBeUndefined()
+  expect(editor.state.doc.nodes[second.id].fills[0].color).toBe('#cc3311')
+  await act(async () => {
+    const edited = editor.change('修改填充', draft => { draft.nodes[second.id].fills[0].color = '#2980dd' })
+    expect(edited.status, editor.state.message).toBe('committed')
+  })
+  expect(editor.state.doc.nodes[second.id].fills[0].color).toBe('#2980dd')
+  await act(async () => action('更新图层样式').click())
+  const target = host.querySelector<HTMLSelectElement>('select[aria-label="用所选图层更新样式"]')!
+  await act(async () => { target.value = id; target.dispatchEvent(new Event('change', { bubbles:true })) })
+  expect((editor.state.doc.designSystem!.styles[id].value as typeof first.fills)[0].color, editor.state.message).toBe('#2980dd')
+  expect(editor.state.doc.designSystem!.styles[id].value).toEqual(editor.state.doc.nodes[second.id].fills)
+  expect(editor.state.doc.nodes[second.id].styleRefs?.fills).toBeUndefined()
+  expect(editor.state.doc.nodes[first.id].styleRefs?.fills).toBe(id)
+  await act(async () => editor.undo())
+  expect((editor.state.doc.designSystem!.styles[id].value as typeof first.fills)[0].color).toBe('#cc3311')
+  expect(editor.state.doc.nodes[second.id].fills[0].color).toBe('#2980dd')
+  editor.dispose()
+})
+
 test('opaque srgb page color and memory errors are display strings, not raw engine text', () => {
   expect(displayColorHex('color(srgb 0.949019610 0.949019610 0.949019610)')).toBe('#F2F2F2')
   expect(canvasStatusLabel('The document exceeds the available WASM memory allowance. Close other documents or use a machine with more memory.')).toBe('内存不足，当前画面已保留')

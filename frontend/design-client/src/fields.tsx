@@ -5,7 +5,7 @@ import { numericExpression, propertyUnit, type NumericUnit } from './numeric-exp
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { PendingEditContext } from './pending-edit-context'
 import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
-export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption }: {
+export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption, sliderLabel }: {
   label: string
   value: number
   onChange: (v: number) => void
@@ -21,6 +21,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
   formatValue?: (value: number) => string
   /** Short mark shown in the field. `label` remains the accessible name. */
   caption?: string
+  sliderLabel?: string
 }) {
   const { locale, tr } = usePropertyText()
   const editor = useContext(PendingEditContext)
@@ -129,7 +130,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
   const shownCaption = caption === undefined ? shownLabel : tr(caption)
   const scrubHelp = tr("拖动调整数值；Shift 加速，Option 精细调整")
   const shownUnit = unitDescription ? tr(unitDescription) : undefined
-  return <label className="number-field">
+  const field = <label className="number-field">
     <span className="number-scrub" title={`${shownLabel}: ${scrubHelp}`} tabIndex={0} role="button" aria-label={locale === 'en' ? `Adjust ${shownLabel} by dragging` : `拖动调整 ${shownLabel}`} aria-description={shownUnit ? `${scrubHelp}；${shownUnit}` : undefined}
       onPointerDown={event => {
         if (event.button !== 0 || !event.isPrimary || composing.current || !finish() || editor?.interactionActive) return
@@ -174,4 +175,28 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     />
     {unit === 'percent' && <span className="number-unit" aria-hidden="true">%</span>}
   </label>
+  if (!sliderLabel) return field
+  return <div className="number-field-with-slider">
+    <input type="range" aria-label={tr(sliderLabel)} min={min} max={max} step={step} value={value}
+      onPointerDown={event => {
+        if (event.button !== 0 || !event.isPrimary || editor?.interactionActive || editor?.state.busy || !finish()) { event.preventDefault(); return }
+        event.stopPropagation()
+        scrub.current = { pointer: event.pointerId, x: event.clientX, base: value, session: editor?.sessionGeneration }
+        editor?.begin(`调整 ${historyLabel}`)
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+      }}
+      onChange={event => {
+        if (editor?.interactionActive && scrub.current?.session !== editor.sessionGeneration) return
+        const next = Number(event.target.value)
+        if (!dirty.current && Number.isFinite(next)) onChange(next)
+      }}
+      onPointerUp={event => { if (scrub.current?.pointer === event.pointerId) stopScrub(false) }}
+      onPointerCancel={event => { if (scrub.current?.pointer === event.pointerId) stopScrub(true) }}
+      onLostPointerCapture={event => { if (scrub.current?.pointer === event.pointerId) stopScrub(true) }}
+      onKeyDown={event => {
+        if (event.key === 'Escape' && scrub.current) { event.preventDefault(); event.stopPropagation(); stopScrub(true) }
+      }}
+    />
+    {field}
+  </div>
 }

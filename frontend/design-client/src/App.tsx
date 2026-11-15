@@ -1065,7 +1065,23 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
     setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
   }
+  const inlineFigmaTabs = uiMode === 'figma' && !source && !!desktopSession?.supportsWorkspace
+  const figmaNameInSidebar = inlineFigmaTabs && showLayers && !uiMinimized
   const figmaZoomDocked = uiMode === 'figma' && (uiMinimized ? !!s.selection.length : showInspector)
+  const documentNameField = <input
+            aria-label={menuText.documentName}
+            value={source?.name === '正在打开文件' ? translateProfessional(source.name, locale) : (source?.name || s.doc.name)}
+            readOnly={!!source}
+            onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
+            onCompositionEnd={() => { titleComposing.current = false; pendingEditsChanged(editor) }}
+            onChange={(e) =>
+              editor.change('重命名文档', (d) => {
+                d.name = e.target.value
+              })
+            }
+          />
+  const previewPrototype = <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
+            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
   const figmaZoom = <div ref={setFigmaZoomHost} className="properties-zoom" data-testid="figma-view-tools"
     onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
     onKeyDown={event => event.stopPropagation()} />
@@ -1262,7 +1278,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
           openSettings()
         }} />}
-      <header className={`editor-header${uiMode === 'sketch' ? ' sketch-window-toolbar' : ''}`}>
+      <header className={`editor-header${uiMode === 'sketch' ? ' sketch-window-toolbar' : ''}`} data-inline-tabs={inlineFigmaTabs || undefined}>
         <span className="header-divider" />
         {uiMode === 'sketch' && <div className="sketch-workspace-switch" role="group" aria-label={panelText.sidebarContent}>
           <button type="button" aria-label={locale === 'en' ? 'Show canvas' : '显示画布'}
@@ -1281,18 +1297,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <button type="button" className="document-location" title={desktopSession?.supportsWorkspace ? menuText.openLibrary : undefined}
             aria-haspopup={desktopSession?.supportsWorkspace ? 'dialog' : undefined} onClick={openPersistentLibrary}>{desktopSession ? menuText.localDesign : menuText.myDesigns}</button>
           <b>/</b>
-          <input
-            aria-label={menuText.documentName}
-            value={source?.name === '正在打开文件' ? translateProfessional(source.name, locale) : (source?.name || s.doc.name)}
-            readOnly={!!source}
-            onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
-            onCompositionEnd={() => { titleComposing.current = false; pendingEditsChanged(editor) }}
-            onChange={(e) =>
-              editor.change('重命名文档', (d) => {
-                d.name = e.target.value
-              })
-            }
-          />
+          {!figmaNameInSidebar && documentNameField}
           <span className="draft-badge">{panelText.localBadge}</span>
           <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value) }}>
@@ -1300,6 +1305,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button>
 
         </div>
+        {inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
         {uiMode === 'sketch' && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
           onSection={switchWorkspaceSection} onImages={files => void importImageFiles(files)}
           onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets(true) }}
@@ -1357,8 +1363,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <DesignAgentLauncher editor={editor} desktop={desktop} disabled={!ready || switching || s.busy} onImport={(file, mode) => void importDesignFile(file, mode)} />
           {uiMode === 'sketch' && <div ref={setSketchZoomHost} className="sketch-window-zoom" />}
           {uiMode === 'figma' && !figmaZoomDocked && figmaZoom}
-          <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
-            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
+          {!figmaZoomDocked && previewPrototype}
           <button
             className="primary"
             aria-label={locale === 'en' ? 'Export' : '导出'}
@@ -1378,7 +1383,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <span className="avatar">{translateProfessional('我', locale)}</span>
         </div>
       </header>
-      {desktopSession?.supportsWorkspace && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
+      {desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
       {menu && createPortal(
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
@@ -1598,7 +1603,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
           onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
+        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}
+            documentTitle={figmaNameInSidebar ? documentNameField : undefined}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace" ref={source?.canvas}>
           {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
@@ -1624,6 +1630,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
         <div ref={rightPanel} className="properties-workspace">
           <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
+          {figmaZoomDocked && <div className="figma-properties-actions">{previewPrototype}</div>}
           <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={menuText.propertiesWorkspace} onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault(); event.stopPropagation()

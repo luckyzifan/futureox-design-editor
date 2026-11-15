@@ -2,6 +2,7 @@ import { usePropertyText, propertyOwnerLabel, propertyLayerCount } from './prope
 import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
+import { SketchLayerStyle } from './SketchLayerStyle'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { propertyUnits, dashInUnits, styleUnitDescription } from './property-units'
 import { UnitNumberField } from './UnitNumberField'
@@ -649,9 +650,11 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
         </section>
         {n.kind!=='slice' && <section>
           <h3>{tr("外观")}</h3>
-          <div className="field-grid">
+          {uiMode === 'sketch' && ids.length === 1 && <SketchLayerStyle key={n.id} editor={editor} node={n} />}
+          <div className={uiMode === 'sketch' ? 'sketch-appearance-opacity' : 'field-grid'}>
             <NumberField historyLabel="透明度 %" diagnosticFamily={10} unit="percent"
               label={tr("透明度 %")}
+              sliderLabel={uiMode === 'sketch' ? '图层不透明度滑块' : undefined}
               value={n.opacity * 100}
               min={0}
               max={100}

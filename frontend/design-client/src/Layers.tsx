@@ -3,7 +3,7 @@ import { layerExpanded, LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
 import { AssetsPanel } from './AssetsPanel'
-import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
+import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId, type ReactNode } from 'react'
 import {
   Plus as PlusGlyph,
   ChevronDown as ChevronDownGlyph,
@@ -47,7 +47,9 @@ import { layerSelection } from './layer-selection'
 import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosition } from './layer-drop'
 import type { WorkspaceSection } from './EditorChrome'
 import { type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
-export function Layers({ editor, section, onSection, showPages=true }: { editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean }) {
+export function Layers({ editor, section, onSection, showPages=true, documentTitle }: {
+  editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean; documentTitle?: ReactNode
+}) {
   const text = useInterfaceText()
   const { uiMode } = useInterfacePreferences()
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
@@ -251,7 +253,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
   </label>
   return (
     <aside className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
-      {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{s.doc.name}</div>}
+      {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{documentTitle || s.doc.name}</div>}
       {uiMode === 'sketch' && tab === 'layers' && layerSearch}
       {showPages && <PageList editor={editor} onRename={renameIntendedPage} />}
       <div className="layer-heading">
