@@ -23,7 +23,7 @@ import { CHANGE_SUMMARY_LIMITS, summarizeChanges } from './change-summary'
 import { isEmbeddedRasterUri } from '../embedded-raster'
 import {
   container, defaultLayout, defaultSizing, defaultTextStyle, node, uid,
-  validateStructure,
+  validateStructure, LAYOUT_GAP_LIMIT,
   type DesignDocument, type DesignNode, type Kind, type Matrix, type Page,
 } from '../model'
 import { allParents, inverse, multiply, worldMatrix, bounds, boxPoints, apply } from '../geometry'
@@ -346,7 +346,7 @@ const coreExtensions: AutomationExtension[] = [
     return { ids: result.roots, idMap: Object.fromEntries(result.ids) }
   }),
   operation('layout.add', 'Add horizontal/vertical auto layout with Core defaults (gap 12, padding 16). Ordinary selections wrap and reflow; one frame/group updates in place. Wrapper order defaults to axis; existing containers default to scene. Hidden/absolute slots remain fixed. UI inference is a separate strategy.', schema({ ids: idsSchema,
-    mode: { enum: ['horizontal', 'vertical'] }, gap: { type: 'number', minimum: 0, maximum: 1e5 },
+    mode: { enum: ['horizontal', 'vertical'] }, gap: { type: 'number', minimum: -LAYOUT_GAP_LIMIT, maximum: LAYOUT_GAP_LIMIT },
     padding: schema({ top: { type: 'number', minimum: 0, maximum: 1e5 }, right: { type: 'number', minimum: 0, maximum: 1e5 }, bottom: { type: 'number', minimum: 0, maximum: 1e5 }, left: { type: 'number', minimum: 0, maximum: 1e5 } }, ['top', 'right', 'bottom', 'left']),
     order: { enum: ['scene', 'axis'] }, id: stringSchema, name: { type: 'string', minLength: 1, maxLength: 200 },
   }, ['ids', 'mode']), true, (doc, p, ctx) => {

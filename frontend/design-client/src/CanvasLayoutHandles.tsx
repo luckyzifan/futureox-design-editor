@@ -1,7 +1,9 @@
 import { utilityAction, runUtilityAction, ActionSource, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
 import {useEffect,useRef,useState} from 'react'
 import type {Editor} from './engine'
-import type {AutoLayout,Matrix,Point} from './model'
+import { LAYOUT_GAP_LIMIT, type AutoLayout, type Matrix, type Point } from './model'
+import { layoutGapMinimum } from './interface-layout'
+import type { UiMode } from './interface-preference'
 import {apply,inverse,worldMatrix} from './geometry'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
@@ -9,16 +11,22 @@ import {adjustLayoutHandle,layoutHandles,type LayoutHandle} from './canvas-layou
 import {NumberField} from './fields'
 import {useProfessionalDialogText} from './professional-dialog-messages'
 
-export function CanvasLayoutHandles({editor,view,size,visible}:{editor:Editor;view:CanvasCamera;size:CanvasSize;visible:boolean}){
+export function CanvasLayoutHandles({editor,view,size,visible,uiMode='figma'}:{editor:Editor;view:CanvasCamera;size:CanvasSize;visible:boolean;uiMode?:UiMode}){
   const {tr}=useProfessionalDialogText()
   const host=useRef<HTMLDivElement>(null),[input,setInput]=useState<{handle:LayoutHandle;alt:boolean;shift:boolean}|null>(null),[feedback,setFeedback]=useState<string|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;id:string;handle:LayoutHandle;layout:AutoLayout;inverse:Matrix;view:CanvasCamera;start:Point;moved:boolean}|null>(null)
   const ids=editor.topSelection(),id=ids.length===1?ids[0]:null,n=id?editor.state.doc.nodes[id]:undefined
   const cancel=()=>{const a=active.current;active.current=null;setFeedback(null);if(a?.session===editor.sessionGeneration&&a.page===editor.state.page)editor.cancel();a?.action.cancel()}
-  useEffect(()=>{cancel();setInput(null)},[editor.sessionGeneration,editor.state.page,id,editor.state.tool])
+  useEffect(()=>{cancel();setInput(null)},[editor.sessionGeneration,editor.state.page,id,editor.state.tool,uiMode])
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&(active.current||input)){e.preventDefault();e.stopImmediatePropagation();cancel();setInput(null)}};window.addEventListener('keydown',key,true);window.addEventListener('blur',cancel);return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('blur',cancel)}},[editor,input])
   if(!id||!n?.layout||n.layout.mode==='none'||n.instanceOrigin||n.instance||editor.state.tool!=='select')return null
   const matrix=worldMatrix(editor.state.doc,id),handles=layoutHandles(editor.state.doc,id)
+  // When the layers overlap, the geometric gap can disappear during preview.
+  // Keep the captured element mounted until the drag commits or cancels.
+  const drag = active.current
+  if (drag?.id === id && !handles.some(handle => handle.key === drag.handle.key)) handles.push(drag.handle)
+  const inputProperty = input?.handle.property
+  const inputMin = inputProperty ? layoutGapMinimum(n.layout.mode, inputProperty, uiMode) : 0
   const point=(e:{clientX:number;clientY:number},camera=view)=>{const b=host.current!.getBoundingClientRect();return screenToWorld(camera,{x:e.clientX-b.left,y:e.clientY-b.top})}
   const start=(e:React.PointerEvent,h:LayoutHandle)=>{
     e.stopPropagation();const action=utilityAction(editor,CanvasAction.layoutHandle);if(e.button!==0||editor.interactionActive||editor.state.busy){action.block(ActionReason.busy);return}
@@ -30,7 +38,8 @@ export function CanvasLayoutHandles({editor,view,size,visible}:{editor:Editor;vi
     a.action.sample({snapEnabled:!e.ctrlKey})
     const local=apply(a.inverse,point(e,a.view)),delta=local[a.handle.axis]-a.start[a.handle.axis]
     a.moved ||= Math.abs(delta)*a.view.zoom>2;if(!a.moved)return
-    const layout=adjustLayoutHandle(a.layout,a.handle,delta,{alt:e.altKey,shift:e.shiftKey,ctrl:e.ctrlKey});editor.preview({[a.id]:{layout}})
+    const gapMin = a.handle.property ? layoutGapMinimum(a.layout.mode, a.handle.property, uiMode) : 0
+    const layout=adjustLayoutHandle(a.layout,a.handle,delta,{alt:e.altKey,shift:e.shiftKey,ctrl:e.ctrlKey,gapMin});editor.preview({[a.id]:{layout}})
     setFeedback(String(a.handle.padding===undefined?layout[a.handle.property!]:layout.padding[a.handle.padding]))
   }
   const end=(e:React.PointerEvent)=>{const a=active.current;if(!a||a.pointer!==e.pointerId)return;move(e);active.current=null;setFeedback(null);if(a.session!==editor.sessionGeneration||a.page!==editor.state.page){a.action.cancel(ActionReason.staleSession);return};const resolved=JSON.stringify(editor.state.doc.nodes[a.id]?.layout);editor.commit();a.action.finish(false,{motionObserved:a.moved,resolvedCommittedComparison:resolved===JSON.stringify(editor.state.doc.nodes[a.id]?.layout)?1:2});if(!a.moved)setInput({handle:a.handle,alt:e.altKey,shift:e.shiftKey})}
@@ -41,6 +50,19 @@ export function CanvasLayoutHandles({editor,view,size,visible}:{editor:Editor;vi
       <line x1={p.x-(h.axis==='y'?5:0)} y1={p.y-(h.axis==='x'?5:0)} x2={p.x+(h.axis==='y'?5:0)} y2={p.y+(h.axis==='x'?5:0)} stroke="#f24eaa" strokeWidth={2.5}/>
     </g>})}</svg>
     {feedback&&<div className="layout-handle-input">{feedback}</div>}
-    {input&&<div className="layout-handle-input" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}><NumberField label={input.handle.padding===undefined?'间距':'内边距'} value={input.handle.padding===undefined?n.layout[input.handle.property!]:n.layout.padding[input.handle.padding]} min={input.handle.padding===undefined?-1e6:0} onChange={value=>{const h=input.handle;runUtilityAction(editor,CanvasAction.layoutHandle,ActionSource.properties,()=>editor.update([id],{layout:adjustLayoutHandle(n.layout!,{...h,value},0,{alt:input.alt,shift:input.shift,ctrl:true})},'设置自动布局'));setInput(null)}}/><button onClick={()=>setInput(null)}>{tr('完成')}</button></div>}
+    {input&&<div className="layout-handle-input" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
+      <NumberField label={inputProperty?'间距':'内边距'}
+        value={inputProperty?n.layout[inputProperty]:n.layout.padding[input.handle.padding!]}
+        min={inputMin} max={inputProperty?LAYOUT_GAP_LIMIT:1e6}
+        clampMinimum={!!inputProperty && inputMin===0}
+        onChange={value=>{
+          const layout = adjustLayoutHandle(n.layout!, {...input.handle,value}, 0, {
+            alt:input.alt, shift:input.shift, ctrl:true, gapMin:inputMin,
+          })
+          runUtilityAction(editor,CanvasAction.layoutHandle,ActionSource.properties,()=>editor.update([id],{layout},'设置自动布局'))
+          setInput(null)
+        }}/>
+      <button onClick={()=>setInput(null)}>{tr('完成')}</button>
+    </div>}
   </div>
 }

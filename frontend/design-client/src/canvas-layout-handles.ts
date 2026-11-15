@@ -1,4 +1,4 @@
-import type {AutoLayout,DesignDocument,Point} from './model'
+import {LAYOUT_GAP_LIMIT,type AutoLayout,type DesignDocument,type Point} from './model'
 import {apply,boxPoints,bounds} from './geometry'
 export type LayoutHandle={key:string;point:Point;axis:'x'|'y';padding?:number;property?:'gap'|'lineGap';sign:number;value:number}
 export function layoutHandles(doc:DesignDocument,id:string):LayoutHandle[]{
@@ -25,10 +25,10 @@ export function layoutHandles(doc:DesignDocument,id:string):LayoutHandle[]{
   }
   return handles
 }
-export function adjustLayoutHandle(layout:AutoLayout,h:LayoutHandle,delta:number,{alt,shift,ctrl}:{alt:boolean;shift:boolean;ctrl:boolean}):AutoLayout{
+export function adjustLayoutHandle(layout:AutoLayout,h:LayoutHandle,delta:number,{alt,shift,ctrl,gapMin}:{alt:boolean;shift:boolean;ctrl:boolean;gapMin:number}):AutoLayout{
   let value=h.value+delta*h.sign
   if(!ctrl)value=Math.round(value/(shift&&!alt?10:1))*(shift&&!alt?10:1)
-  value=Math.min(1e6,Math.max(h.padding===undefined?-1e6:0,value))
+  value=h.padding===undefined?Math.min(LAYOUT_GAP_LIMIT,Math.max(gapMin,value)):Math.min(1e6,Math.max(0,value))
   const next={...layout,padding:[...layout.padding] as AutoLayout['padding']}
   if(h.padding!==undefined){next.padding[h.padding]=value;if(alt)next.padding[(h.padding+2)%4]=value;if(alt&&shift)next.padding=[value,value,value,value]}
   else if(h.property)next[h.property]=value

@@ -13,12 +13,13 @@ export function CalculatedDimension({ label, value }: { label: 'W' | 'H'; value:
   </label>
 }
 
-export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption, sliderLabel }: {
+export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, clampMinimum = false, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption, sliderLabel }: {
   label: string
   value: number
   onChange: (v: number) => void
   min?: number
   max?: number
+  clampMinimum?: boolean
   step?: number
   unitDescription?: string
   /** Stable semantic label for history; independent from localized presentation. */
@@ -63,6 +64,8 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     diagnostic.start()
     let v: number
     try { v = numericExpression(draft.current, original.current, unit) } catch { v = NaN }
+    const clamped = clampMinimum && v < min
+    if (clamped) v = min
     if (!draft.current.trim() || !Number.isFinite(v) || v < min || v > max ||
       (editor && (!ownsDraft() || value !== original.current))) {
       diagnostic.valid(false)
@@ -92,6 +95,10 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     diagnostic.finish(changedValue, !!editor || !changedValue, compare())
     if (draftRevision.current !== revision || (editor &&
       (editor.sessionGeneration !== ownerSession || target() !== ownerTarget))) return false
+    if (clamped) {
+      draft.current = String(v)
+      if (input.current) input.current.value = shown(v)
+    }
     input.current?.setCustomValidity('')
     committingValue.current = v
     try { changed() } finally { committingValue.current = null }

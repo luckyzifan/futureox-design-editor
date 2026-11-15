@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { Editor } from '../engine'
-import { blank, defaultLayout, defaultSizing, node, type DesignDocument } from '../model'
+import { blank, defaultLayout, defaultSizing, LAYOUT_GAP_LIMIT, node, type DesignDocument } from '../model'
 import { createEditorDesignAutomation } from '../automation/index'
 import { prepareLayoutAdd, prepareLayoutRemove } from './layout-command'
 const request = (e: Editor, method: string, params: Record<string, unknown>) => ({ method, params, expectedRevision: e.state.version, documentId: e.state.doc.id, session: e.sessionGeneration })
@@ -37,6 +37,36 @@ test('ordinary scattered selection reflows, stable axis ties ignore request orde
   expect(wrapper.layout).toMatchObject({ gap: 12, padding: [16, 16, 16, 16] })
   expect(after.nodes[f.b.id].transform[4]).toBe(16)
   expect(after.nodes[f.c.id].transform[5]).toBe(16)
+})
+test('layout automation authors signed gaps and rejects invalid bounds atomically', () => {
+  const { doc, frame, a, b } = fixture()
+  const editor = new Editor(doc), api = createEditorDesignAutomation(editor)
+  const execute = (method: string, params: Record<string, unknown>) =>
+    api.execute(request(editor, method, { ids: [frame.id], ...params }))
+  try {
+    expect(execute('layout.add', { mode: 'horizontal', gap: -16 }).ok).toBe(true)
+    expect(editor.state.doc.nodes[frame.id].layout?.gap).toBe(-16)
+    const separation = () => {
+      const first = editor.state.doc.nodes[a.id], second = editor.state.doc.nodes[b.id]
+      return second.transform[4] - first.transform[4] - first.width
+    }
+    expect(separation()).toBe(-16)
+    expect(execute('layout.patch', { patch: { layout: { gap: -8, lineGap: -2 } } }).ok).toBe(true)
+    expect(separation()).toBe(-8)
+    expect(editor.state.doc.nodes[frame.id].layout).toMatchObject({ gap: -8, lineGap: -2 })
+    editor.undo()
+    expect(separation()).toBe(-16)
+    editor.redo()
+    expect(separation()).toBe(-8)
+
+    expect(execute('node.update', { patch: { layout: { ...defaultLayout(), gap: -4, lineGap: -3 } } }).ok).toBe(true)
+    expect(separation()).toBe(-4)
+    const before = editor.authoredDocument, revision = editor.state.version
+    expect(execute('layout.patch', { patch: { layout: { gap: -LAYOUT_GAP_LIMIT - 1 } } }).ok).toBe(false)
+    expect(execute('layout.add', { mode: 'horizontal', padding: { top: -1, right: 0, bottom: 0, left: 0 } }).ok).toBe(false)
+    expect(editor.authoredDocument).toBe(before)
+    expect(editor.state.version).toBe(revision)
+  } finally { api.dispose(); editor.dispose() }
 })
 test.each(['horizontal', 'vertical'] as const)('frame add and remove %s preserve normalized geometry and fill->fixed', mode => {
   const f = fixture(); f.frame.layout = { ...defaultLayout(), mode }; f.a.sizing = { ...defaultSizing(), width: 'fill' }
