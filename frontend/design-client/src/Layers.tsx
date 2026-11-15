@@ -1,8 +1,7 @@
 import { dispatchEditorCommand } from './editor-commands'
-import { LayerRowsCache } from './layer-tree'
+import { layerExpanded, LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
-import { userPages } from './fig-document'
 import { AssetsPanel } from './AssetsPanel'
 import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
 import {
@@ -19,8 +18,7 @@ import {
   Type as TypeGlyph,
   PenTool as PenToolGlyph,
   Search as SearchGlyph,
-  Trash2 as Trash2Glyph,
-  Copy as CopyGlyph,
+  Folder as FolderGlyph,
   Diamond as DiamondGlyph,
 } from 'lucide-react'
 // Layer hover/property publications do not change most glyph props. Keep
@@ -38,8 +36,7 @@ const Square = memo(SquareGlyph)
 const Type = memo(TypeGlyph)
 const PenTool = memo(PenToolGlyph)
 const Search = memo(SearchGlyph)
-const Trash2 = memo(Trash2Glyph)
-const Copy = memo(CopyGlyph)
+const Folder = memo(FolderGlyph)
 const Diamond = memo(DiamondGlyph)
 
 import type { Editor } from './engine'
@@ -49,9 +46,10 @@ import { DraftInput } from './DraftInput'
 import { layerSelection } from './layer-selection'
 import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosition } from './layer-drop'
 import type { WorkspaceSection } from './EditorChrome'
-import { useInterfaceText } from './interface-preference'
+import { type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
 export function Layers({ editor, section, onSection, showPages=true }: { editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean }) {
   const text = useInterfaceText()
+  const { uiMode } = useInterfacePreferences()
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
@@ -62,10 +60,17 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
     setLocalTab(next); onSection?.(next)
     return true
   }
-  const [collapsed, setCollapsed] = useState(new Set<string>()),
+  const [disclosure, setDisclosure] = useState<Record<UiMode, ReadonlyMap<string, boolean>>>(() => ({ figma: new Map(), sketch: new Map() })),
     [search, setSearch] = useState(''),
     [scroll, setScroll] = useState(0),
     [height, setHeight] = useState(500)
+  const [showLayerSearch, setShowLayerSearch] = useState(false)
+  const searchField = useRef<HTMLInputElement>(null), searchToggle = useRef<HTMLButtonElement>(null)
+  const expansion = useMemo(() => ({ rootFramesOpen: uiMode === 'sketch', overrides: disclosure[uiMode] }), [disclosure, uiMode])
+  const rowHeight = uiMode === 'sketch' ? 26 : 32
+  const setLayerExpanded = (id: string, expanded: boolean) => setDisclosure(old => ({
+    ...old, [uiMode]: new Map(old[uiMode]).set(id, expanded),
+  }))
   const list = useRef<HTMLDivElement>(null)
   const renaming = s.renamingLayer, setRenaming = (id: string | null) => editor.set({ renamingLayer: id })
   const [context, setContext] = useState<{ x: number; y: number; id: string } | null>(null)
@@ -132,17 +137,23 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
     setSearch(''); setScroll(0)
     if (list.current) list.current.scrollTop = 0
   }, [editor, renderSession, s.doc.id, s.page])
+  useEffect(() => setDisclosure({ figma: new Map(), sketch: new Map() }), [editor, renderSession, s.doc.id])
+  useEffect(() => {
+    if (uiMode === 'figma' && showLayerSearch && tab === 'layers') searchField.current?.focus()
+  }, [uiMode, showLayerSearch, tab])
   useEffect(() => {
     if (!s.selection.length) { reveal.current = null; return }
     const parents = editor.parentMap(s.doc), ancestors = new Set<string>()
     for (const selected of s.selection)
       for (let id = parents.get(selected); id && s.doc.nodes[id]; id = parents.get(id)) ancestors.add(id)
-    setCollapsed(old => {
-      if (![...ancestors].some(id => old.has(id))) return old
-      return new Set([...old].filter(id => !ancestors.has(id)))
+    setDisclosure(old => {
+      if ([...ancestors].every(id => old[uiMode].get(id) === true)) return old
+      const next = new Map(old[uiMode])
+      for (const id of ancestors) next.set(id, true)
+      return { ...old, [uiMode]: next }
     })
     if (!reveal.current || !s.selection.includes(reveal.current)) reveal.current = s.selection.at(-1) || null
-  }, [s.selection, s.page, editor.sessionGeneration])
+  }, [s.selection, s.page, editor.sessionGeneration, uiMode])
   useEffect(() => {
     const o = new ResizeObserver(([e]) => setHeight(e.contentRect.height))
     o.observe(list.current!)
@@ -178,21 +189,22 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
   }
   // A session owns one cache; unmount/editor replacement releases it.
   const rowCache = useMemo(() => new LayerRowsCache(), [editor, renderSession])
-  const rows = useMemo(() => rowCache.read(s.doc, s.page, collapsed, search), [rowCache, s.doc, s.page, collapsed, search])
+  const layerQuery = uiMode === 'sketch' || showLayerSearch ? search : ''
+  const rows = useMemo(() => rowCache.read(s.doc, s.page, expansion, layerQuery), [rowCache, s.doc, s.page, expansion, layerQuery])
 
   useEffect(() => {
     const id = reveal.current
     if (!id || !list.current) return
     const index = rows.findIndex(row => row.id === id)
     if (index < 0) return
-    const top = index * 32, bottom = top + 32
+    const top = index * rowHeight, bottom = top + rowHeight
     if (top < list.current.scrollTop) list.current.scrollTop = top
     else if (bottom > list.current.scrollTop + height) list.current.scrollTop = bottom - height
     setScroll(list.current.scrollTop)
     reveal.current = null
-  }, [rows, s.selection, height])
-  const start = Math.max(0, Math.floor(scroll / 32) - 6),
-    end = Math.min(rows.length, start + Math.ceil(height / 32) + 12)
+  }, [rows, s.selection, height, rowHeight])
+  const start = Math.max(0, Math.floor(scroll / rowHeight) - 6),
+    end = Math.min(rows.length, start + Math.ceil(height / rowHeight) + 12)
   function choose(id: string, range = false, toggle = false, focus = false) {
     const session = editor.sessionGeneration, documentId = editor.state.doc.id, page = editor.state.page
     if (session !== renderSession || documentId !== s.doc.id || page !== s.page) return
@@ -207,7 +219,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
     if (!range) selectionAnchor.current = id
     setFocused(id)
     if (focus) {
-      const index = rows.findIndex((row) => row.id === id), top = index * 32, bottom = top + 32
+      const index = rows.findIndex((row) => row.id === id), top = index * rowHeight, bottom = top + rowHeight
       if (list.current && top < list.current.scrollTop) list.current.scrollTop = top
       if (list.current && bottom > list.current.scrollTop + height) list.current.scrollTop = bottom - height
       if (list.current) setScroll(list.current.scrollTop)
@@ -223,30 +235,25 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
     if (!payload || payload.session !== editor.sessionGeneration || payload.page !== editor.state.page || payload.document !== editor.state.doc.id) return
     return layerDropPlan(editor.state.doc, editor.state.page, payload.ids, id, position, editor.parentMap())
   }
+  const layerSearch = <label className="layer-search">
+    <Search size={13} />
+    <input ref={searchField} aria-label={text.searchLayers} placeholder={text.searchLayersPlaceholder} value={search}
+      onChange={event => {
+        setSearch(event.target.value); setScroll(0)
+        if (list.current) list.current.scrollTop = 0
+      }}
+      onKeyDown={event => {
+        if (event.key !== 'Escape') return
+        event.stopPropagation()
+        setSearch('')
+        if (uiMode === 'figma') { setShowLayerSearch(false); searchToggle.current?.focus() }
+      }} />
+  </label>
   return (
     <aside className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
-      <div className="workspace-title">
-        <span className="workspace-icon">F</span>
-        <div>
-          <b>{text.localWorkspace}</b>
-          <small title={s.doc.name}>{s.doc.name}</small>
-        </div>
-      </div>
-      {showPages&&<div className="layers-pages"><PageList editor={editor} onRename={renameIntendedPage} />
-      <div className="pages-actions">
-        <button
-          title={text.deletePageTitle}
-          disabled={userPages(s.doc).length === 1}
-          onClick={() => {
-            if (editor.interactionActive || editor.state.busy) return
-            if (confirm(text.deletePageConfirm) &&
-                !editor.interactionActive && !editor.state.busy) editor.removePage()
-          }}
-        >
-          <Trash2 size={12} />
-          {text.deletePage}
-        </button>
-      </div></div>}
+      {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{s.doc.name}</div>}
+      {uiMode === 'sketch' && tab === 'layers' && layerSearch}
+      {showPages && <PageList editor={editor} onRename={renameIntendedPage} />}
       <div className="layer-heading">
         <div role="tablist" aria-label={text.sidebarContent} className="layer-tabs">
           {(['layers', 'assets'] as const).map((name, index) => <button key={name} type="button"
@@ -261,30 +268,23 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
               if (setTab(next)) document.getElementById(`${tabId}-${next}-tab`)?.focus()
             }}>{name === 'layers' ? text.layerTree : text.componentsTab}</button>)}
         </div>
-        <button title={text.collapseAllLayers} onClick={() => {
-          const parents = editor.parentMap(s.doc), keep = new Set(s.selection)
-          for (const id of s.selection) for (let parent = parents.get(id); parent && s.doc.nodes[parent]; parent = parents.get(parent)) keep.add(parent)
-          setCollapsed(old => new Set([...old, ...Object.values(s.doc.nodes).filter(n => n.children.length && !keep.has(n.id)).map(n => n.id)]))
-        }}><ChevronDown size={13} /></button>
-        <span title={String(rows.length)}>{rows.length}</span>
+        {uiMode === 'figma' && tab === 'layers' && <button type="button" ref={searchToggle} aria-label={text.searchLayers}
+          title={text.searchLayers} aria-expanded={showLayerSearch} onClick={() => {
+            if (showLayerSearch) setSearch('')
+            setShowLayerSearch(open => !open)
+          }}><Search size={14} /></button>}
+        {tab === 'layers' && <button type="button" title={text.collapseAllLayers} aria-label={text.collapseAllLayers} onClick={() => {
+          const parents = editor.parentMap(s.doc), next = new Map<string, boolean>()
+          for (const id of s.doc.pages.find(page => page.id === s.page)?.children || []) next.set(id, false)
+          for (const id of s.selection) for (let parent = parents.get(id); parent && s.doc.nodes[parent]; parent = parents.get(parent)) next.set(parent, true)
+          setDisclosure(old => ({ ...old, [uiMode]: next }))
+        }}><ChevronDown size={13} /></button>}
       </div>
       <div id={`${tabId}-assets-panel`} role="tabpanel" className="layers-tabpanel" hidden={tab !== 'assets'} aria-labelledby={`${tabId}-assets-tab`}>
         {tab === 'assets' && <AssetsPanel editor={editor} />}
       </div>
       <div id={`${tabId}-layers-panel`} role="tabpanel" className="layers-tabpanel" hidden={tab !== 'layers'} aria-labelledby={`${tabId}-layers-tab`}>
-      <label className="layer-search">
-        <Search size={13} />
-        <input
-          aria-label={text.searchLayers}
-          placeholder={text.searchLayersPlaceholder}
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setScroll(0)
-            if (list.current) list.current.scrollTop = 0
-          }}
-        />
-      </label>
+      {uiMode === 'figma' && tab === 'layers' && showLayerSearch && layerSearch}
       <div
         className="layer-list"
         role="tree" aria-label={text.layerTree} aria-multiselectable="true"
@@ -303,16 +303,17 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
           dragged.current = null; setDrop(null)
         }}
       >
-        <div style={{ height: rows.length * 32, position: 'relative' }}>
+        <div style={{ height: rows.length * rowHeight, position: 'relative' }}>
           {rows.slice(start, end).map(({ id, depth }, offset) => {
             const n = s.doc.nodes[id],
               selected = s.selection.includes(id),
+              expanded = layerExpanded(n, depth, expansion),
               Icon =
                 n.component || n.instance || n.componentSet
                   ? Diamond
                   : container(n)
                     ? n.kind === 'group'
-                      ? LayersIcon
+                      ? uiMode === 'sketch' ? Folder : LayersIcon
                       : Frame
                     : n.kind === 'text'
                       ? Type
@@ -327,7 +328,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                 aria-label={n.name}
                 aria-selected={selected}
                 aria-level={depth + 1}
-                aria-expanded={n.children.length ? !!search.trim() || !collapsed.has(id) : undefined}
+                aria-expanded={n.children.length ? !!layerQuery.trim() || expanded : undefined}
                 onKeyDown={(e) => {
                   if (e.target !== e.currentTarget) return
                   if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
@@ -339,7 +340,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                     e.preventDefault(); e.stopPropagation()
                     const expand = e.key === 'ArrowRight'
-                    if (n.children.length && collapsed.has(id) === expand) setCollapsed((old) => { const next = new Set(old); expand ? next.delete(id) : next.add(id); return next })
+                    if (n.children.length && !layerQuery.trim() && expanded !== expand) setLayerExpanded(id, expand)
                     else {
                       const parent = expand ? undefined : editor.parentMap(s.doc).get(id)
                       const next = expand ? rows[rows.findIndex((row) => row.id === id) + 1] : rows.find((row) => row.id === parent)
@@ -362,8 +363,8 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                 className={`layer-row ${selected ? 'selected' : ''} ${!n.visible ? 'hidden-layer' : ''}`}
                 style={{
                   position: 'absolute',
-                  top: (start + offset) * 32,
-                  height: 32,
+                  top: (start + offset) * rowHeight,
+                  height: rowHeight,
                   left: 0,
                   right: 0,
                   paddingLeft: 10 + Math.min(depth, 8) * 14,
@@ -416,19 +417,16 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
               >
                 <button
                   className="disclosure"
-                  aria-label={`${collapsed.has(id) ? text.expandLayer : text.collapseLayer} ${n.name}`}
+                  aria-label={`${expanded ? text.collapseLayer : text.expandLayer} ${n.name}`}
+                  disabled={!n.children.length || !!layerQuery.trim()}
                   tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation()
-                    setCollapsed((old) => {
-                      const next = new Set(old)
-                      next.has(id) ? next.delete(id) : next.add(id)
-                      return next
-                    })
+                    setLayerExpanded(id, !expanded)
                   }}
                 >
                   {n.children.length ? (
-                    collapsed.has(id) ? (
+                    !expanded && !layerQuery.trim() ? (
                       <ChevronRight size={11} />
                     ) : (
                       <ChevronDown size={11} />
@@ -477,16 +475,6 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
           })}
         </div>
       </div>
-      </div>
-      <div className="layer-footer">
-        <button onClick={() => editor.group()} disabled={!s.selection.length}>
-          <LayersIcon size={14} />
-          {text.groupLayers}
-        </button>
-        <button onClick={() => editor.duplicate()} disabled={!s.selection.length}>
-          <Copy size={14} />
-          {text.duplicateLayers}
-        </button>
       </div>
       {context && s.doc.nodes[context.id] && <CanvasContextMenu editor={editor} x={context.x} y={context.y}
         worldPoint={{ x: editor.selectionBounds().x, y: editor.selectionBounds().y }} candidates={[{ id: context.id, name: s.doc.nodes[context.id].name, locked: s.doc.nodes[context.id].locked }]} onClose={() => setContext(null)} />}

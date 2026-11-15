@@ -45,6 +45,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "旋转 °": "Rotation °",
   "布局": "Layout",
   "锁定宽高比": "Lock aspect ratio",
+  "更多对齐选项": "More alignment options",
+  "顺时针旋转 90°": "Rotate 90° right",
   "圆弧起始 °": "Arc start °",
   "圆弧扫过 °": "Arc sweep °",
   "圆环内径 %": "Inner diameter %",

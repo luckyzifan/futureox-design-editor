@@ -1,7 +1,7 @@
 import { usePropertyText, propertyOwnerLabel, propertyLayerCount } from './property-interface-messages'
 import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
-import { AlignmentControls } from './AlignmentControls'
+import { AlignmentControls, FlipControls } from './AlignmentControls'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { propertyUnits, dashInUnits, styleUnitDescription } from './property-units'
 import { UnitNumberField } from './UnitNumberField'
@@ -37,7 +37,7 @@ import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
 import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
 import type { Editor } from './engine'
 import { VectorBrushPanel } from './VectorBrushPanel'
 import {
@@ -483,6 +483,36 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
   const constraintParent = editor.state.doc.nodes[editor.parentMap(s.doc).get(n.id) || '']
   const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
   const showConstraints = !!constraintParent && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
+  const positionFields = <>
+    <NumberField historyLabel="X" diagnosticFamily={2} unit="length" label="X" value={position.x * units.parentX}
+      onChange={v => update(node => setNodePosition(node, 'x', v, editor.state.doc))} />
+    <NumberField historyLabel="Y" diagnosticFamily={2} unit="length" label="Y" value={position.y * units.parentY}
+      onChange={v => update(node => setNodePosition(node, 'y', v, editor.state.doc))} />
+  </>
+  const angleField = <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle" label={tr("旋转 °")}
+    caption="∠" formatValue={formatAngleDegrees} value={angle}
+    onChange={v => update(node => rotateNode(node, nodeDegreesForFigmaAngle(v), selectionLocalBounds(editor.state.doc, node.id)))} />
+  const dimensionField = (field: 'width' | 'height') => <NumberField historyLabel={field === 'width' ? 'W' : 'H'}
+    diagnosticFamily={field === 'width' ? 3 : 4} unit="length" label={field === 'width' ? 'W' : 'H'}
+    value={selectionMetric(n, field, s.doc, units)} min={0.01}
+    onChange={v => update(node => resizeNodeDimension(node, field, v, s.doc))} />
+  const proportion = <label className="geometry-proportion" title={tr("锁定宽高比")}>
+    <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
+      onChange={event => update(node => { node.constrainProportions = event.target.checked }, '锁定宽高比')} />
+    {n.constrainProportions ? <Link2 size={14} aria-hidden /> : <Unlink2 size={14} aria-hidden />}
+  </label>
+  const dimensions = <>
+    <div className="geometry-dimensions">
+      {dimensionField('width')}
+      {uiMode === 'sketch' && proportion}
+      {dimensionField('height')}
+      {uiMode === 'sketch' ? <div className="geometry-actions"><FlipControls editor={editor} /></div> : proportion}
+    </div>
+    {container(n) && <label className="check-row geometry-clip">
+      <input type="checkbox" checked={n.clip} onChange={event => update(node => { node.clip = event.target.checked })} />
+      {tr("裁剪超出内容")}
+    </label>}
+  </>
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
     <div className="mini-actions" onClickCapture={field === 'effects' ? () => onEditBlur?.(null) : undefined}>
       <button
@@ -544,49 +574,33 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
     </div>
   )
   return (
-    <aside className="inspector" data-node-id={n.id} data-node-name={n.name} aria-label={propertyOwnerLabel(n.name, locale)}>
+    <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
+      {uiMode === 'sketch' && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
       <div className="panel-tabs">
         <span>{ids.length > 1 ? propertyLayerCount(ids.length, locale) : tr({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>
         <button type="button" aria-label={tr("更多图层操作")} onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
       </div>
       <div className="inspector-scroll">
         {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
-        <section>
-
-          <h3>{tr("位置")}</h3>
-          <AlignmentControls editor={editor}/>
-          <div className="field-grid position-grid">
-            <NumberField historyLabel="X" diagnosticFamily={2} unit="length"
-              label="X"
-              value={position.x * units.parentX}
-              onChange={(v) =>
-                update((n) => {
-                  setNodePosition(n, 'x', v, editor.state.doc)
-                })
-              }
-            />
-            <NumberField historyLabel="Y" diagnosticFamily={2} unit="length"
-              label="Y"
-              value={position.y * units.parentY}
-              onChange={(v) =>
-                update((n) => {
-                  setNodePosition(n, 'y', v, editor.state.doc)
-                })
-              }
-            />
-            <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle"
-              label={tr("旋转 °")}
-              caption="∠"
-              formatValue={formatAngleDegrees}
-              value={angle}
-              onChange={(v) =>
-                update((n) => {
-                  rotateNode(n, nodeDegreesForFigmaAngle(v), selectionLocalBounds(editor.state.doc, n.id))
-                })
-              }
-            />
-
-          </div>
+        <section className="geometry-position-section">
+          {uiMode === 'sketch' ? <>
+            <div className="geometry-position">{positionFields}{angleField}</div>
+            {dimensions}
+          </> : <>
+            <h3>{tr("位置")}</h3>
+            <AlignmentControls editor={editor} compact />
+            <div className="geometry-position">{positionFields}</div>
+            <div className="geometry-rotation">
+              {angleField}
+              <div className="geometry-actions">
+                <button type="button" aria-label={tr("顺时针旋转 90°")} title={tr("顺时针旋转 90°")}
+                  disabled={s.busy || editor.interactionActive || n.locked}
+                  onClick={() => update(node => rotateNode(node, figmaRotationDegrees(node.transform) + 90,
+                    selectionLocalBounds(editor.state.doc, node.id)), '旋转 90°')}><RotateCw size={15} /></button>
+                <FlipControls editor={editor} />
+              </div>
+            </div>
+          </>}
           {showConstraints && <div className="constraint-box" role="group" aria-label={tr("父画板尺寸约束")}>
             {([
               ['top', 'vertical', 'start', tr('顶部')],
@@ -613,27 +627,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
         </section>
         <section>
           <h3>{tr("布局")}</h3>
-          <div className="field-grid">
-            <NumberField historyLabel="W" diagnosticFamily={3} unit="length"
-              label="W"
-              value={selectionMetric(n, 'width', s.doc, units)}
-              min={0.01}
-              onChange={(v) =>
-                update((n) => resizeNodeDimension(n, 'width', v, s.doc))
-              }
-            />
-            <NumberField historyLabel="H" diagnosticFamily={4} unit="length"
-              label="H"
-              value={selectionMetric(n, 'height', s.doc, units)}
-              min={0.01}
-              onChange={(v) =>
-                update((n) => resizeNodeDimension(n, 'height', v, s.doc))
-              }
-            />
-          </div>
-          <label className="check-row">
-            <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
-              onChange={e => update(n => { n.constrainProportions = e.target.checked }, '锁定宽高比')} />{tr("锁定宽高比")}</label>
+          {n.kind==='slice' && uiMode === 'figma' && dimensions}
           {n.kind === 'ellipse' && !n.network && (
             <div className="field-grid">
               <NumberField historyLabel="圆弧起始 °" diagnosticFamily={2} unit="angle" label={tr("圆弧起始 °")} value={(n.arc?.startAngle ?? 0) * 180 / Math.PI}
@@ -646,24 +640,12 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
           )}
           {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} historyLabel="顶点圆角" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("顶点圆角")} min={0} value={n.cornerRadius ?? 0}
             onChange={v => update(n => { n.cornerRadius = v })} />}
-          {container(n) && (
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={n.clip}
-                onChange={(e) =>
-                  update((n) => {
-                    n.clip = e.target.checked
-                  })
-                }
-              />{tr("裁剪超出内容")}</label>
-          )}
           {uiMode === 'sketch' && n.kind === 'frame' && ids.length === 1 && <button type="button"
             disabled={n.locked || !!n.instance || !!n.instanceOrigin || !n.children.length || !!n.layout && n.layout.mode !== 'none'}
             onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
           </button>}
-          {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded />}
+          {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded geometry={uiMode === 'figma' ? dimensions : undefined} />}
         </section>
         {n.kind!=='slice' && <section>
           <h3>{tr("外观")}</h3>
