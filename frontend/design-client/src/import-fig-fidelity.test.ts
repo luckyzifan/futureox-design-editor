@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import { compileSchema, decodeBinarySchema } from 'kiwi-schema'
 import { deflateSync, inflateSync } from 'fflate'
@@ -142,10 +142,9 @@ test('FIG vertical fading gradient uses node-to-gradient coordinates, including 
  }finally{engine.free()}
 })
 
-const cardCorners = new URL('../../../testing/fixtures/design/fig-card-corners.bin', import.meta.url)
-test.skipIf(!existsSync(cardCorners))('actual FIG vector card radius is rendered rather than silently kept as unused rectangle radii',()=>{
- // fig-card-corners.bin was never committed. Skipping is not a corner result.
- const bytes=new Uint8Array(readFileSync(cardCorners))
+test('actual FIG vector card radius is rendered rather than silently kept as unused rectangle radii',()=>{
+ // The 200-byte network is the geometry shared by the native 548×409 dashboard cards.
+ const bytes=new Uint8Array(readFileSync(new URL('../../../testing/fixtures/design/fig-card-corners.bin', import.meta.url)))
  const {document,warnings}=importFig(encoded({type:'VECTOR',size:{x:548,y:409},cornerRadius:6,vectorData:{normalizedSize:{x:548,y:409},vectorNetworkBlob:0}}, {},[bytes]))
  const n=Object.values(document.nodes).find(n=>n.name==='Subject')!
  expect(n.kind).toBe('vector');expect(n.vectorGeometry).toBeDefined();expect(n.network).toBeUndefined()
@@ -323,11 +322,12 @@ test('non-uniform FIG border weights keep strokeWeight and record the independen
   expect(layer.bindings).toBeUndefined()
 })
 
-test('FIG glass bevel width survives import and Rust reopening', () => {
+test('FIG glass bevel width and independent Splay survive import and Rust reopening', () => {
   const glass = { type: 'GLASS', radius: 1, bevelSize: 2.5, refractionRadius: 8,
-    refractionIntensity: 0.5, chromaticAberration: 0.2, specularAngle: 45, specularIntensity: 0.5 }
-  expect(subject({ effects: [glass] }).node.effects[0].glass?.bevelSize).toBe(2.5)
+    refractionIntensity: 0.5, chromaticAberration: 0.2, specularAngle: 45, specularIntensity: 0.5, reflectionDistance: 0.5 }
+  expect(subject({ effects: [glass] }).node.effects[0].glass).toMatchObject({ bevelSize: 2.5, splay: 0.5 })
   expect(() => importFig(encoded({ effects: [{ ...glass, bevelSize: -1 }] }))).toThrow(/倒角/)
+  expect(() => importFig(encoded({ effects: [{ ...glass, reflectionDistance: 2 }] }))).toThrow(/光线扩散/)
 })
 
 test('native v106 XOR and OUTLINE retain their executable semantics', () => {

@@ -3,6 +3,7 @@ import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
 import { SketchLayerStyle } from './SketchLayerStyle'
+import { GlassEffectPanel, createGlassEffect, prepareGlassFill } from './GlassEffectPanel'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { propertyUnits, dashInUnits, styleUnitDescription } from './property-units'
 import { UnitNumberField } from './UnitNumberField'
@@ -424,6 +425,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
   const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation) as LiveRotation | null
   const liveBlur = useSyncExternalStore(editor.subscribeLiveBlur, () => editor.liveBlur)
   const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
+  const [glassToOpen, setGlassToOpen] = useState<string | null>(null)
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
   if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
   if (!n)
@@ -954,11 +956,15 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
               aria-label={tr("添加效果")}
               value=""
               onChange={(e) => {
-                if (e.target.value)
-                  update((n) => {
-                    if (n.effects.length < 16)
-                      n.effects.push(effect(e.target.value as Effect['kind']))
-                  }, '添加效果')
+                const kind = e.currentTarget.value as Effect['kind'] | ''
+                if (!kind || n.effects.length >= 16) return
+                const added = kind === 'glass' ? createGlassEffect(uiMode) : effect(kind)
+                update(target => {
+                  if (target.effects.length >= 16) return
+                  if (added.glass) prepareGlassFill(target, uiMode)
+                  target.effects.push(added)
+                }, '添加效果')
+                if (added.glass) setGlassToOpen(added.id)
               }}
             >
               <option value="">{tr("＋ 添加")}</option>
@@ -973,9 +979,17 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
             <div className="property-card" key={fx.id}>
               <div className="property-title">
                 <b>{tr(effects[fx.kind])}</b>
+                {fx.glass && <GlassEffectPanel effect={fx} mode={uiMode} styleScale={units.style}
+                  styleDescription={styleDescription}
+                  documentSpace={s.doc.colorManagement?.documentSpace === 'display-p3' ? 'display-p3' : 'srgb'}
+                  openOnCreate={fx.id === glassToOpen} onOpened={() => setGlassToOpen(null)}
+                  onChange={apply => update(node => {
+                    const current = node.effects.find(effect => effect.id === fx.id)
+                    if (current?.glass) apply(current)
+                  }, '修改玻璃效果')}/>}
                 {listControls('effects', i)}
               </div>
-              <div className="field-grid effect-fields">
+              {!fx.glass && <div className="field-grid effect-fields">
                 {(['radius', 'x', 'y', 'spread', 'opacity', 'amount'] as const)
                   .filter((k) =>
                     ['color-controls','zoom-blur'].includes(fx.kind) ? false : fx.glass || fx.texture
@@ -1031,7 +1045,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                       }
                     />
                   ))}
-              </div>
+              </div>}
               {fx === activeBackdrop && opaqueFill && <div className="effect-fill-notice">
                 <p>{tr('不透明填充遮住了此效果')}</p>
                 <SolidFillColorInput
@@ -1039,7 +1053,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                   value="100" opacity label={tr('调整填充不透明度')} buttonText={tr('调整填充不透明度')}
                 />
               </div>}
-              {(fx.colorControls || fx.kind === 'background-blur') && <div className="field-grid effect-fields">
+              {(fx.kind === 'background-blur' || (fx.colorControls && !(fx.glass && uiMode === 'sketch'))) && <div className="field-grid effect-fields">
                 {(['brightness','contrast','saturation','hue'] as const).filter(key => fx.kind !== 'background-blur' || key === 'saturation').map(key => {
                   const controls = fx.colorControls || { space:'srgb' as const, brightness:0, contrast:1, saturation:1, hue:0 }
                   const label = {brightness:'亮度',contrast:'对比度',saturation:'饱和度',hue:'色相（弧度）'}[key]
@@ -1080,50 +1094,6 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, onEd
                   onClick={() => onEditBlur(blurEffectIndex === i ? null : i)}>
                   {tr(blurEffectIndex === i ? '完成画布编辑' : '在画布上编辑模糊')}
                 </button>}
-              {fx.glass && (
-                <div className="field-grid glass-fields effect-fields">
-                  {(
-                    ['lightAngle', 'lightIntensity', 'refraction', 'depth', 'dispersion', 'bevelSize'] as const
-                  ).map((key) => {
-                    const percentage =
-                      key === 'refraction' || key === 'dispersion' || key === 'lightIntensity'
-                    return (
-                      <UnitNumberField unitDescription={key === 'depth' || key === 'bevelSize' ? styleDescription : undefined} historyLabel={
-                          {
-                            depth: '深度',
-                            bevelSize: '倒角宽度',
-                            refraction: '折射 %',
-                            dispersion: '色散 %',
-                            lightAngle: '光线角度',
-                            lightIntensity: '照明 %',
-                          }[key]
-                        } unit={percentage ? 'percent' : key === 'lightAngle' ? 'angle' : key === 'bevelSize' ? 'length' : 'number'} diagnosticFamily={2} unitScale={key === 'depth' || key === 'bevelSize' ? units.style : 1}
-                        key={key}
-                        label={
-                          tr({
-                            depth: '深度',
-                            bevelSize: '倒角宽度',
-                            refraction: '折射 %',
-                            dispersion: '色散 %',
-                            lightAngle: '光线角度',
-                            lightIntensity: '照明 %',
-                          }[key])
-                        }
-                        value={(fx.glass?.[key] ?? (key === 'bevelSize' ? 1 : 0)) * (percentage ? 100 : 1)}
-                        min={key === 'lightAngle' ? -360 : key === 'depth' ? 1 : key === 'bevelSize' ? 0.001 : 0}
-                        max={percentage ? 100 : key === 'depth' || key === 'bevelSize' ? 1000 : 360}
-                        step={1}
-                        onChange={(value) =>
-                          update((n) => {
-                            const g = n.effects[i]?.glass
-                            if (g) g[key] = value / (percentage ? 100 : 1)
-                          })
-                        }
-                      />
-                    )
-                  })}
-                </div>
-              )}
               {fx.texture && (
                 <>
                   <label>{tr("纹理样式")}<select aria-label={tr("纹理样式")} value={fx.texture.noise ?? 'figma'} onChange={event => {

@@ -17,6 +17,7 @@ export const TOOL_COMMANDS: ToolCommand[] = [
   { id: 'set-tool-hand', label: '抓手', category: 'core', tool: 'hand', shortcut: 'H' },
   { id: 'set-tool-zoom', label: '区域缩放', category: 'core', tool: 'zoom', shortcut: 'Z' },
   { id: 'set-tool-frame', label: '画板', category: 'core', tool: 'frame', shortcut: 'F' },
+  { id: 'set-tool-graphic', label: '图形', category: 'core', tool: 'graphic' },
   { id: 'set-tool-section', label: '分区', category: 'core', tool: 'section', shortcut: 'Shift+S' },
   { id: 'set-tool-rectangle', label: '矩形', category: 'shape', tool: 'rectangle', shortcut: 'R' },
   { id: 'set-tool-ellipse', label: '椭圆', category: 'shape', tool: 'ellipse', shortcut: 'O' },
@@ -90,7 +91,7 @@ export function unavailableReason(commandId: string, locale: InterfaceLocale = '
 
 /** Explicit presentation lookup, independent of command/shortcut dispatch and authored node names. */
 const englishToolLabels: Readonly<Record<string, string>> = {
-  'set-tool-default': 'Move', 'set-tool-hand': 'Hand', 'set-tool-zoom': 'Zoom area', 'set-tool-frame': 'Frame',
+  'set-tool-default': 'Move', 'set-tool-hand': 'Hand', 'set-tool-zoom': 'Zoom area', 'set-tool-frame': 'Frame', 'set-tool-graphic': 'Graphic',
   'set-tool-section': 'Section', 'set-tool-rectangle': 'Rectangle', 'set-tool-ellipse': 'Ellipse',
   'set-tool-regular-polygon': 'Polygon', 'set-tool-star': 'Star', 'set-tool-line': 'Line', 'set-tool-arrow': 'Arrow',
   'set-tool-text': 'Text', 'set-tool-pen': 'Pen', 'set-tool-pencil': 'Pencil', 'set-tool-brush': 'Brush',

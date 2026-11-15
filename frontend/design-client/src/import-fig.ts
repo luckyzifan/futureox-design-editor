@@ -665,6 +665,9 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     if (!kind) throw new Error(`FIG 效果 ${x.type} 暂不支持`)
     if (kind === 'glass' && x.bevelSize !== undefined && (!Number.isFinite(x.bevelSize) || x.bevelSize < 0.001 || x.bevelSize > 1000))
       throw new Error('FIG 玻璃倒角宽度无效；原文件未修改')
+    if (kind === 'glass' && x.reflectionDistance !== undefined &&
+      (!Number.isFinite(x.reflectionDistance) || x.reflectionDistance < 0 || x.reflectionDistance > 1))
+      throw new Error('FIG 玻璃光线扩散无效；原文件未修改')
     if (
       kind === 'glass' &&
       ![
@@ -699,6 +702,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         ? {
             glass: {
               ...(x.bevelSize !== undefined && x.bevelSize !== 1 ? { bevelSize: x.bevelSize } : {}),
+              ...(x.reflectionDistance ? { splay: x.reflectionDistance } : {}),
               depth: x.refractionRadius,
               refraction: x.refractionIntensity,
               dispersion: x.chromaticAberration,

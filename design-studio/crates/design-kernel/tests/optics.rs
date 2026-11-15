@@ -9,6 +9,7 @@ use serde_json::json;
 fn glass() -> GlassParameters {
     GlassParameters {
         bevel_size: None,
+        splay: None,
         depth: 8.,
         refraction: 0.5,
         dispersion: 0.5,
@@ -38,6 +39,23 @@ fn bevel_default_is_compatible_and_custom_width_changes_the_optical_field() {
     assert!(wide.iter().all(|v| v.is_finite()));
     let stored = serde_json::to_string(&changed).unwrap();
     assert_eq!(serde_json::from_str::<GlassParameters>(&stored).unwrap(), changed);
+}
+
+#[test]
+fn splay_changes_the_light_without_shifting_the_refracted_background() {
+    let rect = Rect::new(0, 0, 96, 96);
+    let mut material = glass();
+    let base = field(rect, shape(), Transform::default(), &material, None).unwrap();
+    material.splay = Some(0.);
+    assert_eq!(base, field(rect, shape(), Transform::default(), &material, None).unwrap());
+    material.splay = Some(0.5);
+    let spread = field(rect, shape(), Transform::default(), &material, None).unwrap();
+    assert!(base.chunks_exact(4).zip(spread.chunks_exact(4)).all(|(a,b)| a[..2] == b[..2]));
+    assert!(base.chunks_exact(4).zip(spread.chunks_exact(4)).any(|(a,b)| a[2] < b[2]));
+    material.depth = 0.;
+    let zero = field(rect, shape(), Transform([1., 0., 0., 1., 0.5, 0.5]), &material, None).unwrap();
+    assert!(zero.iter().all(|v| v.is_finite()));
+    assert!(zero.chunks_exact(4).all(|p| p[0] == 0. && p[1] == 0.));
 }
 
 #[test]

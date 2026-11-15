@@ -1949,7 +1949,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       } : {}),
       ...(dragKind === 'marquee' && displayedIndex ? { pickIndex: displayedIndex } : {}),
       ...(dragKind === 'create' ? {
-        creationSeed: createShapeSeed(s.tool as ShapeCreationKind), creationTool:s.tool, pointer: p,
+        creationSeed: createShapeSeed(s.tool as ShapeCreationKind | 'graphic'), creationTool:s.tool, pointer: p,
         screenDistance: 0, modifiers: { shift: e.shiftKey, alt: e.altKey },
       } : {}),
     }
@@ -2645,6 +2645,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const n = updateCreation(d, { shift: e.shiftKey, alt: e.altKey })!
       editor.cancel()
       editor.change(`创建${n.name}`, document => {
+        if (n.graphic) document.schemaVersion = 23
         document.nodes[n.id] = n
         const page = document.pages.find(page => page.id === editor.state.page)!
         page.children.push(n.id)

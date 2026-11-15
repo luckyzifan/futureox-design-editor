@@ -13,6 +13,7 @@ import {
   Lock as LockGlyph,
   Unlock as UnlockGlyph,
   Frame as FrameGlyph,
+  Focus as FocusGlyph,
   Layers as LayersGlyph,
   Square as SquareGlyph,
   Type as TypeGlyph,
@@ -31,6 +32,7 @@ const EyeOff = memo(EyeOffGlyph)
 const Lock = memo(LockGlyph)
 const Unlock = memo(UnlockGlyph)
 const Frame = memo(FrameGlyph)
+const Focus = memo(FocusGlyph)
 const LayersIcon = memo(LayersGlyph)
 const Square = memo(SquareGlyph)
 const Type = memo(TypeGlyph)
@@ -51,7 +53,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean; documentTitle?: ReactNode
 }) {
   const text = useInterfaceText()
-  const { uiMode } = useInterfacePreferences()
+  const { uiMode, locale } = useInterfacePreferences()
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
@@ -67,6 +69,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     [scroll, setScroll] = useState(0),
     [height, setHeight] = useState(500)
   const [showLayerSearch, setShowLayerSearch] = useState(false)
+  const [relatedOnly, setRelatedOnly] = useState(false)
   const searchField = useRef<HTMLInputElement>(null), searchToggle = useRef<HTMLButtonElement>(null)
   const expansion = useMemo(() => ({ rootFramesOpen: uiMode === 'sketch', overrides: disclosure[uiMode] }), [disclosure, uiMode])
   const rowHeight = uiMode === 'sketch' ? 26 : 32
@@ -136,13 +139,29 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     // Searches describe this page/workset. Carrying an old query into a newly
     // loaded source page can hide every layer and make a successful switch
     // look like data loss. Ordinary edits/camera changes keep the query.
-    setSearch(''); setScroll(0)
+    setSearch(''); setScroll(0); setRelatedOnly(false)
     if (list.current) list.current.scrollTop = 0
   }, [editor, renderSession, s.doc.id, s.page])
   useEffect(() => setDisclosure({ figma: new Map(), sketch: new Map() }), [editor, renderSession, s.doc.id])
   useEffect(() => {
     if (uiMode === 'figma' && showLayerSearch && tab === 'layers') searchField.current?.focus()
   }, [uiMode, showLayerSearch, tab])
+  useEffect(() => {
+    if (uiMode !== 'sketch' || tab !== 'layers') return
+    const toggle = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.code !== 'KeyF' ||
+          !event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !editor.state.selection.length ||
+          editor.state.busy || editor.interactionActive) return
+      const target = event.target
+      if (target instanceof HTMLElement && target !== searchField.current &&
+          (target.isContentEditable || target.matches('input, textarea, select'))) return
+      event.preventDefault()
+      event.stopPropagation()
+      setRelatedOnly(value => !value)
+    }
+    window.addEventListener('keydown', toggle, true)
+    return () => window.removeEventListener('keydown', toggle, true)
+  }, [editor, tab, uiMode])
   useEffect(() => {
     if (!s.selection.length) { reveal.current = null; return }
     const parents = editor.parentMap(s.doc), ancestors = new Set<string>()
@@ -192,7 +211,30 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   // A session owns one cache; unmount/editor replacement releases it.
   const rowCache = useMemo(() => new LayerRowsCache(), [editor, renderSession])
   const layerQuery = uiMode === 'sketch' || showLayerSearch ? search : ''
-  const rows = useMemo(() => rowCache.read(s.doc, s.page, expansion, layerQuery), [rowCache, s.doc, s.page, expansion, layerQuery])
+  const filterRelated = uiMode === 'sketch' && relatedOnly && s.selection.length > 0
+  const allRows = useMemo(() => rowCache.read(s.doc, s.page, expansion, layerQuery), [rowCache, s.doc, s.page, expansion, layerQuery])
+  const rows = useMemo(() => {
+    if (!filterRelated) return allRows
+    const parents = editor.parentMap(s.doc), related = new Set<string>()
+    const pending = [...s.selection]
+    while (pending.length) {
+      const id = pending.pop()!
+      if (!s.doc.nodes[id] || related.has(id)) continue
+      related.add(id)
+      for (const child of s.doc.nodes[id].children) pending.push(child)
+    }
+    for (const target of s.selection)
+      for (let id = parents.get(target); id && s.doc.nodes[id]; id = parents.get(id)) related.add(id)
+    return allRows.filter(row => related.has(row.id))
+  }, [allRows, editor, filterRelated, s.doc, s.selection])
+  useEffect(() => {
+    if (!s.selection.length) setRelatedOnly(false)
+  }, [s.selection.length])
+  useEffect(() => {
+    if (list.current) list.current.scrollTop = 0
+    setScroll(0)
+    reveal.current = editor.state.selection.at(-1) || null
+  }, [filterRelated])
 
   useEffect(() => {
     const id = reveal.current
@@ -251,10 +293,10 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
         if (uiMode === 'figma') { setShowLayerSearch(false); searchToggle.current?.focus() }
       }} />
   </label>
+  const relatedLabel = locale === 'en' ? 'Show only selected and related layers' : '仅显示所选内容及相关图层'
   return (
     <aside className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
       {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{documentTitle || s.doc.name}</div>}
-      {uiMode === 'sketch' && tab === 'layers' && layerSearch}
       {showPages && <PageList editor={editor} onRename={renameIntendedPage} />}
       <div className="layer-heading">
         <div role="tablist" aria-label={text.sidebarContent} className="layer-tabs">
@@ -477,6 +519,12 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
           })}
         </div>
       </div>
+      {uiMode === 'sketch' && tab === 'layers' && <footer className="sketch-layer-search">
+        {layerSearch}
+        <button type="button" aria-label={relatedLabel} aria-pressed={filterRelated} aria-keyshortcuts="Control+F"
+          title={`${relatedLabel} (Ctrl+F)`} disabled={!s.selection.length || s.busy}
+          onClick={() => setRelatedOnly(value => !value)}><Focus size={15}/></button>
+      </footer>}
       </div>
       {context && s.doc.nodes[context.id] && <CanvasContextMenu editor={editor} x={context.x} y={context.y}
         origin="layers" worldPoint={editor.selectionBounds()} onClose={() => setContext(null)} />}

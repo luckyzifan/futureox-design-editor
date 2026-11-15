@@ -144,6 +144,7 @@ export type Tool =
   | 'hand'
   | 'zoom'
   | 'frame'
+  | 'graphic'
   | 'section'
   | 'rectangle'
   | 'ellipse'

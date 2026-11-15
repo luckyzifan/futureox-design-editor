@@ -1,5 +1,5 @@
 import { type ReactNode, useRef, useState, useSyncExternalStore } from 'react'
-import { ArrowDownToLine, ArrowUpToLine, Component, Crop, Group, PenTool, Plus, Search, Shapes, SlidersHorizontal, TextCursor } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpToLine, Component, Crop, Frame, Group, PenTool, Plus, Search, Shapes, SlidersHorizontal, SquareDashed, TextCursor, Type } from 'lucide-react'
 import { DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import type { Editor, Tool } from './engine'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
@@ -15,7 +15,7 @@ import { canEnterOutlineEdit } from './figma-basic-ops'
 import { commitPendingEdits } from './pending-edits'
 import { editableFrameCrop } from './selection-properties'
 
-type Menu = 'insert' | 'group' | 'tools' | 'combine'
+type Menu = 'insert' | 'shapes' | 'group' | 'tools' | 'combine'
 
 export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSystems, onShapeBuilder, onSection, onEditText }: {
   editor: Editor
@@ -62,7 +62,9 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
     <button type="button" role="menuitem" tabIndex={-1} disabled={!allowed(id)} onClick={() => invoke(id)}>{name}</button>
   const menuTool = (id: Tool) =>
     <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-checked={s.tool === id}
-      onClick={() => tool(id)}>{localizedToolLabel(id, locale)}</button>
+      onClick={() => tool(id)}>{id === 'frame' ? label('画框','Frame') : localizedToolLabel(id, locale)}</button>
+  const insertTool = (id: Tool, name: string, icon: ReactNode) =>
+    <button type="button" aria-label={name} data-tooltip={name} aria-pressed={s.tool === id} onClick={() => tool(id)}>{icon}</button>
   const menu = (id: Menu, name: string, icon: ReactNode, children: ReactNode, enabled = true) =>
     <ToolPopover label={name} icon={icon} disabled={!enabled} open={enabled && open === id}
       onOpenChange={next => setOpen(next ? id : null)}>{children}</ToolPopover>
@@ -71,7 +73,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
       <button type="button" className="sketch-secondary-tool command-search-trigger" aria-label={commandSearchText[locale].label}
         data-tooltip={`${commandSearchText[locale].label} (S)`} onClick={() => requestCommandSearch()}><Search size={17} /></button>
       {menu('insert', label('置入', 'Insert'), <Plus size={18} />, <>
-        {(['frame', 'section', 'slice', 'rectangle', 'ellipse', 'line', 'arrow', 'polygon', 'star', 'pen', 'text'] as const).map(menuTool)}
+        {(['frame', 'graphic', 'section', 'slice', 'rectangle', 'ellipse', 'line', 'arrow', 'polygon', 'star', 'pen', 'text'] as const).map(menuTool)}
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); imageInput.current?.click() }}>{label('图片…', 'Image…')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onPresets() }}>{text.devicePresets}</button>
       </>)}
@@ -80,6 +82,14 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
         if (files.length) onImages(files)
       }} />
     </div>
+    {!selected.length && <div className="tool-group">
+      {insertTool('frame', label('画框','Frame'), <Frame size={17}/>)}
+      {insertTool('graphic', label('图形','Graphic'), <SquareDashed size={17}/>)}
+      {insertTool('text', label('字符','Text'), <Type size={17}/>)}
+      {menu('shapes', label('形状','Shapes'), <Shapes size={17}/>,
+        (['rectangle','ellipse','line','arrow','polygon','star'] as const).map(menuTool))}
+      {insertTool('pen', label('矢量','Vector'), <PenTool size={17}/>)}
+    </div>}
     <div className="tool-group">
       {action('create-component', label('创建组件', 'Create component'), <Component size={17} />, true)}
       {action('bring-forward', label('前置一层', 'Bring forward'), <ArrowUpToLine size={17} />, true)}

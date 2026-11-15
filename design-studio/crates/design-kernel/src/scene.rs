@@ -530,6 +530,8 @@ pub struct GradientBlurParameters {
 pub struct GlassParameters {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bevel_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub splay: Option<f64>,
     pub depth: f64,
     pub refraction: f64,
     pub dispersion: f64,
@@ -602,7 +604,8 @@ impl Effect {
                 || g.bevel_size
                     .is_some_and(|b| !b.is_finite() || !(0.001..=1000.).contains(&b))
                 || !g.depth.is_finite()
-                || !(1. ..=1000.).contains(&g.depth)
+                || !(0. ..=1000.).contains(&g.depth)
+                || g.splay.is_some_and(|v| !(0. ..=1.).contains(&v))
                 || !g.light_angle.is_finite()
                 || g.light_angle.abs() > 1e7
                 || [g.refraction, g.dispersion, g.light_intensity]
@@ -693,6 +696,7 @@ impl Effect {
         if self.amount == 0. && self.opacity == 0. && self.radius > 0. {
             return Some(GlassParameters {
                 bevel_size: None,
+                splay: None,
                 depth: 8.,
                 refraction: 0.,
                 dispersion: 0.,
