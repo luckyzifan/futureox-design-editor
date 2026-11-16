@@ -3,6 +3,22 @@ import type { DesignDocument, DesignNode } from './model'
 export type ColorUse = { id: string; path: string; field: string; linked: boolean }
 export type SelectionColor = { color: string; uses: ColorUse[] }
 
+/** Layers that contribute to one existing color entry, first reference first.
+ * The entry is the authored color string already shown in the row: the same
+ * hex at different paint or effect opacities stays one entry, and a gradient
+ * stop uses that entry without becoming a separate gradient swatch. Hidden
+ * and locked layers stay included. This does not read or write document state. */
+export function selectionColorLayerIds(group: SelectionColor): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  for (const use of group.uses) {
+    if (seen.has(use.id)) continue
+    seen.add(use.id)
+    ids.push(use.id)
+  }
+  return ids
+}
+
 export function selectionColors(document: DesignDocument, selection: readonly string[]): SelectionColor[] {
   const seen = new Set<string>(), colors = new Map<string, SelectionColor>()
   const visit = (id: string) => {
