@@ -141,6 +141,18 @@ test('screen-density detail can replace a preview during a small zoom-in step', 
   expect(selectSharperCoverage([detail], view, display, [backing, { ...detail, key: 'ready' }])).toEqual([])
 })
 
+test('a slightly late native tile can replace a visibly stretched backing during zoom-in', () => {
+  const camera = { x: 0, y: 0, zoom: 1.45 }
+  const display = { ...size, dpr: 2 }
+  const backing = tile('backing', 2, 0, 0, 2048)
+  const late = tile('late-native', 2.6, 0, 0, 512)
+  const stale = tile('stale', 2.2, 220, 0, 512)
+
+  expect(selectSharperCoverage([late, stale], camera, display, [backing])).toEqual([late])
+  expect(selectSharperCoverage([late], camera, display, [backing, { ...late, key: 'shown' }])).toEqual([])
+  expect(selectSharperCoverage([late], camera, size, [backing])).toEqual([])
+})
+
 test('zooming out from 3200% keeps the crop and fills the new viewport from a cached coarse page', () => {
   const low = { x: 0, y: 0, zoom: 1 }
   const crop = tile('crop', 32, 0, 0, 64)
