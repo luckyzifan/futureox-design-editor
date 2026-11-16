@@ -178,7 +178,7 @@ export type KernelOptions = {
   interactionBaseFill?: { x:number;y:number;width:number;height:number }
   gpuPageBackground?: boolean;
   gpuAnalyticRegions?: boolean;
-  settledZoomFocus?: string;
+  zoomFocusCapture?: string;
   /** Native render-only root visibility; authored document/receipts stay intact. */
   gpuRoots?: string[];
   gpuNeutralPageGroup?: boolean;

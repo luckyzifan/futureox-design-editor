@@ -2102,15 +2102,15 @@ export function ProgressiveSurfaceImpl(
         // Damage messages precede this zero-tile completion, including when
         // earlier cancelled requests had already applied their patches. Thus
         // stale resident keys captured before damage never skip real work.
-        const focus = renderScale >= 32 ? props.settledZoomFocus : undefined
-        const settleFocus = focus && focusCaptureAttempt.current !== frameKey ? focus : undefined
-        if (syncedDoc.current !== doc || settleFocus) {
-          if (settleFocus) focusCaptureAttempt.current = frameKey
+        const focus = renderScale >= 32 ? props.zoomFocusCapture : undefined
+        const captureFocus = focus && focusCaptureAttempt.current !== frameKey ? focus : undefined
+        if (syncedDoc.current !== doc || captureFocus) {
+          if (captureFocus) focusCaptureAttempt.current = frameKey
           const committedKeys = new Set<string>()
           const synchronized = await render(doc, { pageId, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
             view: renderCamera, transparent: false, grid: props.grid, checkerboard: props.checkerboard,
             pixelPreview: props.pixelPreview || undefined, rasterProfile, tileViewport: [], renderIntent: 'canvas',
-            ...(settleFocus && { settledZoomFocus: settleFocus }),
+            ...(captureFocus && { zoomFocusCapture: captureFocus }),
             ...(props.presentationEpoch === undefined ? {} : {
               tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
             }),
@@ -2447,7 +2447,7 @@ export function ProgressiveSurfaceImpl(
     props.overview?.y,
     props.overview?.width,
     props.overview?.height,
-    props.settledZoomFocus,
+    props.zoomFocusCapture,
   ])
   // Cached canvases stay mounted offscreen, so a revisit does not repaint pixels.
   const activeResidents = [...new Set([...tiles.values(), ...(displayed?.residents.values() || [])])]
@@ -3029,7 +3029,7 @@ export const ProgressiveSurface = memo(ProgressiveSurfaceImpl, (prev, next) =>
   prev.checkerboard === next.checkerboard &&
   prev.pixelPreview === next.pixelPreview &&
   prev.rasterProfile === next.rasterProfile &&
-  prev.settledZoomFocus === next.settledZoomFocus &&
+  prev.zoomFocusCapture === next.zoomFocusCapture &&
   prev.animation === next.animation &&
   prev.interaction === next.interaction &&
   prev.overlay === next.overlay &&

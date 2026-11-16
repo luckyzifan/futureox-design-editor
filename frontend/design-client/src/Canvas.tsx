@@ -395,11 +395,21 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const presented = useSyncExternalStore(presentedSignal.subscribe, presentedSignal.getSnapshot).frame
   const presentationScopeMatches = presented?.epoch === editor.sessionGeneration &&
     presented.pageId === state.page && presented.document.id === state.doc.id
-  const gpuPreviewAvailable = !!gpuMove.current?.covers(state.doc, state.selection, state.view)
+  const focusEffect = blurEffectIndex !== undefined && state.selection.length === 1
+    ? state.doc.nodes[state.selection[0]]?.effects[blurEffectIndex]
+    : undefined
+  const zoomFocusCanvas = state.view.zoom >= 32 && state.doc.rasterProfile === 'analytic' &&
+    !state.doc.colorManagement && !!focusEffect?.visible && (focusEffect.zoomBlur?.amount || 0) > 0
+  // A zoom focus changes the filter's source footprint rather than the
+  // layer pose. At high density the analytic canvas planner supports that
+  // footprint. Do not also capture a legacy transform preview.
+  const gpuPreviewAvailable = !zoomFocusCanvas && !!gpuMove.current?.covers(state.doc, state.selection, state.view)
   const vectorPreviewSupport = useMemo(() => ({ document: state.doc, pageId: state.page,
-    supported: !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }), [state.doc, state.page, gpuPreviewAvailable])
+    supported: !zoomFocusCanvas && !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }),
+    [state.doc, state.page, gpuPreviewAvailable, zoomFocusCanvas])
   const vectorPreviewSupported = vectorPreviewSupport.supported
-  const editPreviewSupported = gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view)
+  const editPreviewSupported = !zoomFocusCanvas &&
+    (gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view))
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
@@ -1072,8 +1082,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && state.selection.length > 0)
   const editingBlur = blurEffectIndex !== undefined
-  const zoomFocusTarget = editingBlur && !editor.interactionActive && state.selection.length === 1 &&
-    state.doc.nodes[state.selection[0]]?.effects[blurEffectIndex]?.zoomBlur ? state.selection[0] : undefined
+  const zoomFocusTarget = focusEffect?.zoomBlur && (zoomFocusCanvas || !editor.interactionActive)
+    ? state.selection[0]
+    : undefined
   const showSelectionChrome = uiMode !== 'figma' || !editingBlur
   const showTransformHandles = canTransform && !editingBlur
   const frameTitles = useMemo(() => entries.filter(e => {
@@ -3076,13 +3087,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         navigationInputOwner={editor}
         panGestureActive={panning}
         overlay={overlay}
-        interaction={gpuInteraction}
+        interaction={zoomFocusCanvas ? undefined : gpuInteraction}
         onPresentation={recordPresentation}
         overview={refineOverview} overviewNodes={entries.length}
         presentationEpoch={editor.sessionGeneration}
         document={surfaceDocument}
         interactionPreview={editPreviewVisible}
-        settledZoomFocus={zoomFocusTarget}
+        zoomFocusCapture={zoomFocusTarget}
         pageId={state.page}
         width={size.width}
         height={size.height}

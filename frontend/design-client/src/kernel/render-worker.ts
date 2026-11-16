@@ -912,9 +912,9 @@ self.onmessage = (e) => {
   }
   const generation = previewGenerations[channel]
   const fillGeneration = tileFillGeneration
-  const focusSettlement = request.options?.renderIntent === 'canvas' && request.options.tileViewport?.length === 0 &&
-    typeof request.options.settledZoomFocus === 'string'
-  const cancellablePacket = (focusSettlement || request.options?.renderIntent === 'preview' &&
+  const focusCaptureRequest = request.options?.renderIntent === 'canvas' && request.options.tileViewport?.length === 0 &&
+    typeof request.options.zoomFocusCapture === 'string'
+  const cancellablePacket = (focusCaptureRequest || request.options?.renderIntent === 'preview' &&
     (request.options.livePreview === true || !!request.options.tileViewport)) &&
     !request.png && !request.readback && !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
   const packetWait = cancellablePacket ? { requestId: request.id, channel, tiled: !!request.options.tileViewport, controller: new AbortController() } : undefined
@@ -1023,7 +1023,7 @@ self.onmessage = (e) => {
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionFixedMask, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, settledZoomFocus, ...renderOptions } = request.options
+        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, zoomFocusCapture, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
@@ -1587,10 +1587,10 @@ self.onmessage = (e) => {
                 }
               }
             }
-            // A focus edit can repaint the settled viewport with a few larger
+            // A focus edit can repaint the viewport with a few larger
             // native-density captures. Publish the group only when every
             // region belongs to the same current revision and device.
-            const target = typeof settledZoomFocus === 'string' && laneState.synchronizedInteractionDocument?.nodes[settledZoomFocus]
+            const target = typeof zoomFocusCapture === 'string' && laneState.synchronizedInteractionDocument?.nodes[zoomFocusCapture]
             const focusCapture = renderOptions.gpuAnalyticRegions === true && !request.sourceSnapshot &&
               !!target && target.effects.some(effect => effect.visible && effect.zoomBlur && effect.zoomBlur.amount > 0) &&
               Math.max(renderOptions.width, renderOptions.height) <= 2048
@@ -1610,35 +1610,42 @@ self.onmessage = (e) => {
                   width === Math.ceil(frame.width * frame.dpr) && height === Math.ceil(frame.height * frame.dpr)) {
                 const regions = [crop]
                 if (focusCapture && width * height > 524288) {
-                  const columns = Math.ceil(width / 1024)
-                  const cellWidth = Math.ceil(width / columns)
-                  const rows = Math.ceil(cellWidth * height / 960_000)
+                  const rows = Math.ceil(width * height / 1_750_000)
                   const cellHeight = Math.ceil(height / rows)
                   regions.length = 0
-                  for (let dy = 0; dy < height; dy += cellHeight)
-                    for (let dx = 0; dx < width; dx += cellWidth)
-                      regions.push({ x: crop.x + dx, y: crop.y + dy,
-                        width: Math.min(cellWidth, width - dx), height: Math.min(cellHeight, height - dy) })
+                  for (let dy = 0; dy < height; dy += cellHeight) {
+                    regions.push({ x: crop.x, y: crop.y + dy, width, height: Math.min(cellHeight, height - dy) })
+                  }
                 }
                 const rendered: { region: typeof crop; result: TileRender; driver?: Driver }[] = []
                 const owner = kernel.contentIdentity
+                const current = () => previewCurrent() && owner === kernel.contentIdentity
+                const ahead = new PrepareAhead<{ packet: ScenePacket; compileMs: number }>()
+                const prepare = async (region: typeof crop) => {
+                  if (!current()) throw Error('PREVIEW_CANCELLED')
+                  const at = performance.now()
+                  const packet = await compilePacket(kernel, JSON.stringify({
+                    ...renderOptions,
+                    captureViewport: { x: region.x, y: region.y, w: region.width, h: region.height },
+                    ...(focusCapture && { prepareViewport: { x: crop.x, y: crop.y, w: width, h: height } }),
+                    gpuAnalyticRegions: focusCapture && renderOptions.gpuAnalyticRegions,
+                  }), packetWait?.controller.signal)
+                  return { packet, compileMs: performance.now() - at }
+                }
                 let compileMs = 0, graphMs = 0, finishMs = 0, checkpointMs = 0, drawCalls = 0, peakTextureBytes = 0
                 try {
-                  for (const region of regions) {
-                    const at = performance.now()
-                    const packet = await compilePacket(kernel, JSON.stringify({
-                      ...renderOptions,
-                      captureViewport: { x: region.x, y: region.y, w: region.width, h: region.height },
-                      ...(focusCapture && { prepareViewport: { x: crop.x, y: crop.y, w: width, h: height } }),
-                      gpuAnalyticRegions: focusCapture && renderOptions.gpuAnalyticRegions,
-                    }), packetWait?.controller.signal)
-                    compileMs += performance.now() - at
-                    if (!previewCurrent() || owner !== kernel.contentIdentity) throw Error('PREVIEW_CANCELLED')
+                  for (let index = 0; index < regions.length; index++) {
+                    const region = regions[index]
+                    const prepared = await ahead.take(index) ?? await prepare(region)
+                    compileMs += prepared.compileMs
+                    if (!current()) throw Error('PREVIEW_CANCELLED')
+                    const next = regions[index + 1]
+                    if (next && kernel.canPrepareConcurrently) ahead.start(index + 1, () => prepare(next))
                     const result = await renderTiledPreview(kernel, renderOptions, backend, color, settingsJson,
-                      Math.max(region.width, region.height), region, decodeScenePacket(packet), false, undefined, true, false, false,
+                      Math.max(region.width, region.height), region, decodeScenePacket(prepared.packet), false, undefined, true, false, false,
                       reportRasterProgress, previewCurrent, hydrateImages, undefined, false, undefined, false, false, undefined, displayBackpressure)
                     rendered.push({ region, result, driver: gpu?.driver })
-                    if (!previewCurrent() || owner !== kernel.contentIdentity) throw Error('PREVIEW_CANCELLED')
+                    if (!current()) throw Error('PREVIEW_CANCELLED')
                     if (!result.gpuTile || rendered[0].driver !== gpu?.driver) throw Error('Exact commit capture unavailable')
                     graphMs += result.graphMs ?? 0
                     finishMs += result.finishMs ?? 0
@@ -1662,6 +1669,7 @@ self.onmessage = (e) => {
                   if (!isDisplayBudgetError(error) && !isAnalyticProgramBudget(error) && !isScenePathBudget(error) &&
                       !/GPU surface budget exceeded|Exact commit capture unavailable|Invalid native capture/.test(String(error))) throw error
                 } finally {
+                  await ahead.drain()
                   for (const { result, driver } of rendered) {
                     result.bitmap?.close()
                     if (result.gpuTile !== undefined) driver?.releasePresented?.([result.gpuTile])
