@@ -26,6 +26,8 @@ Sketch 布局的命令搜索复用现有编辑命令、对齐和几何入口，�
 
 浏览器保留 Cmd/Ctrl+R、Shift+Cmd/Ctrl+R、Cmd/Ctrl+F、Cmd/Ctrl+0/1/2/3；重命名用 F2，粘贴替换用菜单。桌面 Figma 方案的 Mod+F 打开左侧查找：默认当前页，可切到全部页面，按类型筛选，设置里有匹配大小写和全词匹配，上一条 / 下一条定位页面和图层，Escape 关闭并恢复焦点。查找和跳转不写入文档历史。文本输入、文本编辑和模态框仍拥有该快捷键。桌面 Sketch 的 Mod+F 仍是框选成画板，底栏 Ctrl+F 仍是相关图层过滤，Mod+Alt+F 仍是布局切换。Ctrl+Alt 输入在 Windows/Linux 原生入口交由 DOM 的 AltGraph 判断，避免把文本输入误当复制属性。
 
+Sketch 布局且快捷键方案为默认 Sketch-like 时，Option/Alt+Mod+F 聚焦左栏底部「搜索图层」，不切换界面布局、页面或选区。布局按钮和 Mod+Alt+S 仍切换布局。用户把快捷键方案改成 Figma-like 后，Mod+Alt+F 仍归布局切换。Ctrl+F 仍只切换相关图层过滤。文本输入、菜单和模态继续拥有键盘。Figma 布局的 Cmd/Ctrl+F 查找不在此变更内。
+
 ## 安全与一致性
 
 - 编辑器命令沿用 `dispatchEditorCommand` 和工具注册表，不新增第二套编辑操作。已有 Rust `ShortcutApi` 仍可单独验证解码能力，活动画布不再绕过当前预设调用旧工具表。

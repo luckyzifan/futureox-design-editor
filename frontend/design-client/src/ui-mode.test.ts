@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, FIGMA_INSPECTOR_WIDTH, FIGMA_LAYERS_WIDTH, INTERFACE_PREFERENCE_KEY, interfacePreference, LEGACY_SHARED_INSPECTOR_WIDTH, LEGACY_SHARED_LAYERS_WIDTH, SKETCH_INSPECTOR_WIDTH, SKETCH_LAYERS_WIDTH } from './interface-preference'
-import { applyInterfaceLayout, interfaceLayoutFromShortcut, FIGMA_LAYOUT_COMBO, SKETCH_LAYOUT_COMBO } from './interface-layout'
+import { applyInterfaceLayout, interfaceLayoutFromShortcut, sketchLayerFindOwnsChord, FIGMA_LAYOUT_COMBO, SKETCH_LAYOUT_COMBO } from './interface-layout'
 import { shortcutPreference } from './shortcut-preference'
 import { shortcutBindings } from './shortcut-profiles'
 import { displayColorHex } from './color'
@@ -54,6 +54,23 @@ test('layout chords switch the shell and the matching editor shortcut profile', 
     expect(combos).not.toContain(FIGMA_LAYOUT_COMBO)
     expect(combos).not.toContain(SKETCH_LAYOUT_COMBO)
   }
+})
+
+test('the default Sketch scheme owns Option+Command+F and other chords stay layout switches', () => {
+  const figma = { key: 'f', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false }
+  const macSymbol = { key: 'ƒ', code: 'KeyF', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false }
+  const ctrlAlt = { key: 'f', code: 'KeyF', metaKey: false, ctrlKey: true, altKey: true, shiftKey: false }
+  expect(sketchLayerFindOwnsChord(figma, 'sketch-like', 'sketch')).toBe(true)
+  expect(sketchLayerFindOwnsChord(macSymbol, 'sketch-like', 'sketch')).toBe(true)
+  expect(sketchLayerFindOwnsChord(ctrlAlt, 'sketch-like', 'sketch')).toBe(true)
+  expect(sketchLayerFindOwnsChord(figma, 'figma-like', 'sketch')).toBe(false)
+  expect(sketchLayerFindOwnsChord(figma, 'sketch-like', 'figma')).toBe(false)
+  expect(sketchLayerFindOwnsChord({ ...figma, shiftKey: true }, 'sketch-like', 'sketch')).toBe(false)
+  expect(sketchLayerFindOwnsChord({ ...figma, repeat: true }, 'sketch-like', 'sketch')).toBe(false)
+  expect(sketchLayerFindOwnsChord({ ...figma, metaKey: true, ctrlKey: true }, 'sketch-like', 'sketch')).toBe(false)
+  expect(sketchLayerFindOwnsChord({ key: 's', code: 'KeyS', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false }, 'sketch-like', 'sketch')).toBe(false)
+  expect(sketchLayerFindOwnsChord({ key: 'ƒ', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false }, 'sketch-like', 'sketch')).toBe(false)
+  expect(sketchLayerFindOwnsChord({ key: 'f', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }, 'sketch-like', 'sketch')).toBe(false)
 })
 
 test('each layout keeps its own pages and layers width, and the old shared 248 migrates', () => {
