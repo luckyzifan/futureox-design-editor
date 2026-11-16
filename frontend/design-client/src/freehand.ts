@@ -1,4 +1,5 @@
 import { freehand_json } from './generated/design-kernel/design_kernel'
+import { applyDrawBrushStyle, type DrawBrushStyle } from './draw-brush-style'
 import {
   node,
   paint,
@@ -11,7 +12,8 @@ import {
 } from './model'
 export type FreehandSample = Point & { pressure: number }
 export type FreehandTool = 'pencil' | 'brush' | 'marker' | 'washi-tape'
-export type PencilSettings = { width: number; color: string; smoothing: number; pressure: boolean }
+export type { DrawBrushStyle }
+export type PencilSettings = { width: number; color: string; smoothing: number; pressure: boolean; style?: DrawBrushStyle }
 export const defaultPencil = (): PencilSettings => ({
   width: 1,
   color: '#000000',
@@ -79,6 +81,7 @@ export function freehandNode(
   if(tool==='marker'){n.name='马克笔路径';n.opacity=.4}
   if(tool==='washi-tape'){n.name='和纸胶带';n.effects=[{...effect('noise'),opacity:.12,amount:.45}]}
   n.strokes = [{ ...stroke(settings.color, settings.width),...(tool==='washi-tape'?{cap:'square' as const,join:'bevel' as const}:{}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
+  if (tool === 'brush') applyDrawBrushStyle(n, settings)
   return n
 }
 /** One pointer owns a stroke. Release events do not append a synthetic zero pressure. */

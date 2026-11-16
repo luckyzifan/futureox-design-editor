@@ -122,6 +122,7 @@ import { GIF_FIRST_FRAME_RULE } from './image-import'
 import { currentPreparedDocumentJson } from './prepared-document'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
+import { brushPreviewSettings } from './draw-brush-style'
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, type CornerIndex } from './canvas-material-handles'
@@ -762,7 +763,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const draft = pencil.current
     if (!draft) return
     try {
-      setPencilPreview(freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool))
+      setPencilPreview(freehandNode(draft.id, draft.input.samples, draft.tool === 'brush' ? brushPreviewSettings(draft.settings) : draft.settings, draft.zoom, draft.tool))
     } catch (error) {
       cancelPencil()
       editor.notify(String(error))
@@ -1733,7 +1734,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const input = new PencilInput(e.pointerId, s[tool].pressure)
       input.append([e.nativeEvent], map)
       editor.begin(tool === 'pencil' ? '绘制铅笔路径' : '绘制画笔路径')
-      pencil.current = { actionToken: actionTrace.begin(CanvasAction.create, ActionSource.pointer, {routeSupported:true,geometrySupported:false}), actionRevision:editor.state.version, input, map, id: uid(), settings: { ...s[tool] }, tool, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
+      const settings = tool === 'brush' && uiMode === 'figma' ? { ...s[tool] } : brushPreviewSettings({ ...s[tool] })
+      pencil.current = { actionToken: actionTrace.begin(CanvasAction.create, ActionSource.pointer, {routeSupported:true,geometrySupported:false}), actionRevision:editor.state.version, input, map, id: uid(), settings, tool, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
       pencilFrame.current = requestAnimationFrame(pencilPreviewFrame)
       return
     }
@@ -3110,6 +3112,27 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           onPointerDown={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
         >
+          {state.tool === 'brush' && uiMode === 'figma' && (
+            <select
+              aria-label={chromeCopy.brushStyle}
+              value={state.brush.style ?? ''}
+              onChange={(event) => {
+                const brush = { ...state.brush }
+                const value = event.target.value
+                if (value === 'heist' || value === 'bubblegum') brush.style = value
+                else delete brush.style
+                editor.set({ brush })
+              }}
+            >
+              <option value="">{chromeCopy.brushStyleBasic}</option>
+              <optgroup label={chromeCopy.brushStyleStretch}>
+                <option value="heist">Heist</option>
+              </optgroup>
+              <optgroup label={chromeCopy.brushStyleScatter}>
+                <option value="bubblegum">Bubblegum</option>
+              </optgroup>
+            </select>
+          )}
           <NumberField
             label={chromeCopy.brushWidth}
             historyLabel="笔宽"
