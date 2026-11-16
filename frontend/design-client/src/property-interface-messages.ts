@@ -153,6 +153,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "网格方向": "Grid direction",
   "网格对齐": "Grid alignment",
   "调整尺寸以适应内容": "Resize to fit content",
+  "画框尺寸预设": "Frame dimension presets",
+  "选择模板": "Choose template",
   "导出此图层…": "Export this layer…",
   "数量（0 为自动）": "Count (0 for Auto)",
   "区块尺寸": "Section size",

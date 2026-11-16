@@ -1,5 +1,5 @@
 import type { Editor } from './engine'
-import { node, type DesignDocument, type Matrix } from './model'
+import { defaultSizing, node, type DesignDocument, type DesignNode, type Matrix } from './model'
 import { apply, bounds, boxPoints, multiply } from './geometry'
 import { commitPendingEdits } from './pending-edits'
 import { createShapeSeed } from './shape-creation'
@@ -96,4 +96,92 @@ export function createPresetFrame(editor: Editor, size: { name: string; width: n
   } finally {
     trace.finish(token,outcome,reason,{expectedWidthComparison:widthComparison,expectedHeightComparison:heightComparison})
   }
+}
+
+export type FrameSizePresetGate = 'ready' | 'locked' | 'instance' | 'graphic' | 'unavailable' | 'stale'
+const framePresetRefusalText: Record<Exclude<FrameSizePresetGate, 'ready'>, string> = {
+  locked: '画板已锁定',
+  instance: '组件实例不能直接套用画板尺寸预设',
+  graphic: '图形容器不使用画板尺寸预设',
+  unavailable: '请先选中一个画板',
+  stale: '所选画板已变化，请关闭后重新打开',
+}
+function chainLocked(doc: DesignDocument, id: string, parents: ReadonlyMap<string, string>) {
+  const seen = new Set<string>()
+  for (let current: string | undefined = id; current && doc.nodes[current]; current = parents.get(current)) {
+    if (!seen.add(current)) return true
+    if (doc.nodes[current].locked) return true
+  }
+  return false
+}
+function owningPage(doc: DesignDocument, id: string, parents: ReadonlyMap<string, string>) {
+  const seen = new Set<string>()
+  let current = id
+  while (doc.nodes[current]) {
+    if (!seen.add(current)) return
+    const parent = parents.get(current)
+    if (!parent) return
+    if (!doc.nodes[parent]) return parent
+    current = parent
+  }
+}
+/** Ordinary selected frames only. Graphic containers stay on their own template path. */
+export function frameSizePresetGate(doc: DesignDocument, page: string, selection: readonly string[], parents: ReadonlyMap<string, string>, frameId?: string): FrameSizePresetGate {
+  const id = frameId ?? (selection.length === 1 ? selection[0] : '')
+  if (!id || selection.length !== 1 || selection[0] !== id) return frameId ? 'stale' : 'unavailable'
+  const target = doc.nodes[id]
+  if (!target || target.kind !== 'frame') return frameId ? 'stale' : 'unavailable'
+  if (target.graphic) return 'graphic'
+  if (target.instance || target.instanceOrigin) return 'instance'
+  if (chainLocked(doc, id, parents)) return 'locked'
+  if (owningPage(doc, id, parents) !== page) return 'stale'
+  return 'ready'
+}
+function presetExceedsLimits(target: DesignNode, width: number, height: number) {
+  if (!target.sizing) return false
+  const limits = { ...defaultSizing(), ...target.sizing }
+  return width < limits.minWidth || width > limits.maxWidth || height < limits.minHeight || height > limits.maxHeight
+}
+function parentStretchOwnsSize(doc: DesignDocument, id: string, parents: ReadonlyMap<string, string>) {
+  const parent = doc.nodes[parents.get(id) || '']
+  const target = doc.nodes[id]
+  if (!parent?.layout || parent.layout.mode === 'none' || !target) return false
+  const sizing = { ...defaultSizing(), ...target.sizing }
+  if (sizing.absolute) return false
+  return (sizing.alignSelf ?? parent.layout.align) === 'stretch'
+}
+/** Resize the selected frame to a logical preset. Children stay on the existing
+ * layout solve: constraints for free frames, auto layout for flow frames.
+ * A result that does not keep the requested size is refused before history. */
+export function applyFrameSizePreset(editor: Editor, size: { width: number; height: number }, frameId?: string) {
+  if (!validFrameSize(size.width, size.height)) return { ok: false as const, error: '宽高必须为 1–100000 的整数' }
+  if (editor.state.busy || editor.interactionActive || !commitPendingEdits(editor))
+    return { ok: false as const, error: '请先结束当前输入或操作' }
+  const id = frameId ?? (editor.state.selection.length === 1 ? editor.state.selection[0] : '')
+  const gate = frameSizePresetGate(editor.state.doc, editor.state.page, editor.state.selection, editor.parentMap(), frameId)
+  if (gate !== 'ready') return { ok: false as const, error: framePresetRefusalText[gate] }
+  const target = editor.state.doc.nodes[id]
+  if (!target) return { ok: false as const, error: framePresetRefusalText.stale }
+  if (presetExceedsLimits(target, size.width, size.height))
+    return { ok: false as const, error: '预设尺寸超出该画板的最小或最大尺寸' }
+  if (parentStretchOwnsSize(editor.state.doc, id, editor.parentMap()))
+    return { ok: false as const, error: '父级自动布局会改写该画板尺寸，预设未应用' }
+  const result = editor.change('应用画板尺寸预设', draft => {
+    const node = draft.nodes[id]
+    if (!node || node.kind !== 'frame' || node.graphic || node.instance || node.instanceOrigin || node.locked)
+      throw new Error(framePresetRefusalText.stale)
+    node.width = size.width
+    node.height = size.height
+    if (node.sizing || node.layout && node.layout.mode !== 'none')
+      node.sizing = { ...defaultSizing(), ...node.sizing, width: 'fixed', height: 'fixed' }
+  }, undefined, [id], 'user', 'resize', document => {
+    const laid = document.nodes[id]
+    if (!laid || laid.width !== size.width || laid.height !== size.height)
+      throw new Error('预设尺寸未能按原样应用到当前画板')
+  })
+  if (result.status === 'rejected') return { ok: false as const, error: result.message || '画板尺寸未应用' }
+  if (result.status !== 'committed' && result.status !== 'unchanged')
+    return { ok: false as const, error: '画板尺寸未应用' }
+  if (result.status === 'committed' && editor.state.frameCrop === id) editor.set({ frameCrop: null })
+  return { ok: true as const }
 }

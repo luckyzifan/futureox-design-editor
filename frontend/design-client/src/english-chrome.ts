@@ -592,6 +592,7 @@ const phrases: Record<string, string> = {
   "创建副本": "Duplicate",
   "创建路径文本": "Create text on path",
   "创建设备画板": "Create device frame",
+  "应用画板尺寸预设": "Apply frame size preset",
   "创建主组件": "Create main component",
   "创建自动布局": "Create auto layout",
   "创建组件集": "Create component set",

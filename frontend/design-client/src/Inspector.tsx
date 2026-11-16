@@ -14,7 +14,7 @@ import { ScaleInspector } from './ScaleInspector'
 import { NodeExportPanel } from './NodeExportPanel'
 import { SelectionColorsPanel } from './SelectionColorsPanel'
 import { PendingEditContext } from './pending-edit-context'
-import { pendingOperationEpoch } from './pending-edits'
+import { commitPendingEdits, pendingOperationEpoch } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { ColorInput } from './ColorInput'
 import { LoosePaintColor, SolidFillColorInput } from './ColorPickerPopover'
@@ -42,6 +42,8 @@ import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
+import { FramePresetPanel } from './FramePresetPanel'
+import { frameSizePresetGate } from './frame-presets'
 import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
@@ -426,6 +428,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const shortcutProfile = useShortcutProfile()
   const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
+  const [presetFrameId, setPresetFrameId] = useState<string | null>(null)
   const [blurToOpen, setBlurToOpen] = useState<string | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
@@ -478,6 +481,13 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       </aside>
     )
   const parents = editor.parentMap(s.doc)
+  const presetGate = frameSizePresetGate(s.doc, s.page, ids, parents)
+  const showFramePreset = presetGate === 'ready' || presetGate === 'locked' || presetGate === 'instance'
+  const framePresetButton = showFramePreset ? <button type="button" className="frame-size-preset"
+    disabled={presetGate !== 'ready' || s.busy || editor.interactionActive}
+    onClick={() => { if (commitPendingEdits(editor) && frameSizePresetGate(editor.state.doc, editor.state.page, editor.state.selection, editor.parentMap()) === 'ready') setPresetFrameId(n.id) }}>
+    {tr(uiMode === 'sketch' ? '选择模板' : '画框尺寸预设')}
+  </button> : null
   const units = propertyUnits(s.doc, n.id, parents)
   const blurReadout = liveBlur && editor.interactionActive
     && liveBlur.session === editor.sessionGeneration && liveBlur.page === s.page
@@ -634,6 +644,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const nativeBlurSettings = (kind: Effect['kind']) =>
     uiMode === 'figma' ? kind === 'blur' || kind === 'background-blur' : isMotionZoomBlur(kind) || isSketchProgressiveBlur(kind)
   return (
+    <>
     <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
       {uiMode === 'sketch' && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
       <div className="panel-tabs">
@@ -643,6 +654,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       <div className="inspector-scroll">
         {styleDescription && <p role="note" className="property-unit-notice">{tr('＊ 最大缩放系数换算。')}{tr(styleDescription)}</p>}
         <section className="geometry-position-section">
+          {uiMode === 'sketch' && framePresetButton}
           {uiMode === 'sketch' ? <>
             <div className="geometry-position">{positionFields}{angleField}</div>
             {frameEdgeFields}
@@ -708,6 +720,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
           </button>}
           {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} uiMode={uiMode} embedded geometry={uiMode === 'figma' ? <>
+            {framePresetButton}
             {dimensions}
             {n.kind === 'text' && !constraintParent?.graphic && <TextSizingControls editor={editor} nodes={[n]} />}
           </> : undefined} />}
@@ -1215,5 +1228,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       </div>
       {context && <CanvasContextMenu editor={editor} x={context.x} y={context.y} origin="inspector" worldPoint={editor.selectionBounds()} onClose={() => setContext(null)} />}
     </aside>
+    {presetFrameId === n.id && presetGate === 'ready' && <FramePresetPanel editor={editor} intent="apply" onClose={() => setPresetFrameId(null)} />}
+    </>
   )
 })
