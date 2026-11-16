@@ -32,6 +32,7 @@ pub mod editing;
 pub mod effects;
 pub mod spatial_blur;
 pub mod zoom_blur;
+mod wide_image_gaussian;
 pub mod zoom_refine_schedule;
 mod zoom_support;
 pub mod noise_fill;
@@ -937,6 +938,22 @@ mod wasm {
             (sample < 4).then_some(sample as usize),
         )
         .map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn wide_image_gaussian_pixels(
+        plan: &str, matrix: &[f64], size: &[f64], image: &[u32], paint: &str, pixels: &[f32],
+    ) -> Result<Vec<f32>, JsValue> {
+        let render = || -> Result<Vec<f32>, String> {
+            crate::wide_image_gaussian::pixels(
+                serde_json::from_str(plan).map_err(|e| e.to_string())?,
+                math::Transform(matrix.try_into().map_err(|_| "Invalid Gaussian image transform")?),
+                size.try_into().map_err(|_| "Invalid Gaussian node dimensions")?,
+                image.try_into().map_err(|_| "Invalid Gaussian image dimensions")?,
+                &serde_json::from_str(paint).map_err(|e| e.to_string())?,
+                pixels,
+            )
+        };
+        render().map_err(|error| JsValue::from_str(&error))
     }
     #[wasm_bindgen]
     pub fn image_byte_sampling_grid(

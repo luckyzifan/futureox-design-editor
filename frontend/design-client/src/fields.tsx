@@ -163,7 +163,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, cla
       }} onPointerCancel={() => stopScrub(true)} onLostPointerCapture={() => stopScrub(true)}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); stopScrub(true) } }}
     >{shownCaption}{shownUnit && <small title={shownUnit}>＊</small>}</span>
-    <input ref={input} aria-label={shownLabel} aria-description={shownUnit} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={shownUnit ? `${value}；${shownUnit}` : shown(value)} defaultValue={shown(value)}
+    <input ref={input} aria-label={shownLabel} aria-description={shownUnit} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={shownUnit ? `${value}；${shownUnit}` : String(value)} defaultValue={shown(value)}
       onFocus={(e) => { diagnostic.event(InputPhase.focus); if (!dirty.current) e.currentTarget.select() }}
       onChange={(e) => { startDraft(); draftRevision.current++; diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
       onCompositionStart={() => { startDraft(); draftRevision.current++; diagnostic.start(); diagnostic.event(InputPhase.compositionStart); composing.current = true; changed() }}

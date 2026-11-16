@@ -740,7 +740,11 @@ impl Effect {
         }
     }
     pub fn sketch_backdrop_sigma(&self, scale: f64) -> f64 {
-        self.radius * scale * std::f64::consts::SQRT_2
+        let uniform = self.radius * scale * std::f64::consts::SQRT_2;
+        // With the fractional three-box ramp, Sketch's progressive control
+        // has less spread than its uniform background operator. Native step
+        // exports at radii 4.5, 12 and 22 (1×/2×) distinguish the two.
+        if self.sketch_ramp().is_some() { uniform * 0.75 } else { uniform }
     }
 
     pub(crate) fn backdrop_outset(&self, scale: f64) -> f64 {

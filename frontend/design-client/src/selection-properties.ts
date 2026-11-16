@@ -15,6 +15,23 @@ export function commonValue<T>(values: T[]): T | undefined {
 export function selectionPropertyBounds(node: DesignNode, doc?: DesignDocument) {
   return doc ? selectionParentBounds(doc, node.id, node.transform) : parentBounds(node)
 }
+/** Figma measures positions through ordinary translated groups up to the
+ * containing frame. A transformed/Graphic container keeps its own coordinate
+ * system; don't change authored group matrices to make the fields match. */
+export function figmaPositionOffset(doc: DesignDocument, id: string, parents: ReadonlyMap<string, string>) {
+  let x = 0, y = 0
+  for (let parent = parents.get(id); parent !== undefined; parent = parents.get(parent)) {
+    const group = doc.nodes[parent]
+    if (!group || group.kind === 'frame' || group.kind === 'section') break
+    if (group.kind !== 'group' || group.graphic || group.repeat || group.booleanOperation ||
+      group.instance || group.mask || (group.layout && group.layout.mode !== 'none')) return { x: 0, y: 0 }
+    const [a,b,c,d,dx,dy] = group.transform
+    if (a !== 1 || b !== 0 || c !== 0 || d !== 1) return { x: 0, y: 0 }
+    x += dx
+    y += dy
+  }
+  return { x, y }
+}
 /** Handle intent is explicit; a zero movement in one axis of a corner drag
  * still authors both axes. For a world-axis multi-selection edge, map that
  * axis to each node's local dimension directions. */

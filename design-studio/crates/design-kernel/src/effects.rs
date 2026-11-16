@@ -867,7 +867,7 @@ fn regional_gaussian_keeps_original_radius_math_and_separate_admission() {
         assert!(gaussian_box_radii_region(sigma).is_err());
     }
 }
-fn gaussian_box_radii_bounded(sigma:f64,limit:f64)->Result<[u32;3],String> {
+pub(crate) fn gaussian_box_radii_bounded(sigma:f64,limit:f64)->Result<[u32;3],String> {
     if !sigma.is_finite() || !(0. ..=limit).contains(&sigma) {
         return Err(format!("Gaussian sigma must be in [0,{limit}]"));
     }

@@ -198,3 +198,50 @@ fn clipped_offscreen_zoom_does_not_reject_unrelated_visible_content() {
     doc.pages[0].children.push("f".into());
     assert_eq!(pixels(&doc), expected);
 }
+
+#[test]
+fn ordinary_wide_image_does_not_spend_a_siblings_zoom_halo() {
+    let mut doc = fixture();
+    let bg = serde_json::from_value(json!({
+        "id":"bg","kind":"rectangle","width":240,"height":240,"transform":[1.,0.,0.,1.,-100.,-100.],
+        "fills":[{"kind":"image","color":"#000000","image":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGOUs4n6z8DAwMAEIkAYABksAbdASTMTAAAAAElFTkSuQmCC","fit":"stretch"}],
+        "effects":[{"kind":"gaussian-blur","radius":9.564871788024902,"color":"#000000"}]
+    })).unwrap();
+    doc.nodes.insert("bg".into(), bg);
+    doc.pages[0].children.insert(0,"bg".into());
+    let n=doc.nodes.get_mut("n").unwrap();
+    n.width=5.; n.height=5.;
+    n.effects[0].zoom_blur.as_mut().unwrap().amount=10.;
+    n.effects[0].zoom_blur.as_mut().unwrap().center=[0.5,0.5];
+    let request = json!({
+        "pageId":"p","width":256,"height":252,"rasterProfile":"analytic","gpuAnalyticRegions":true,
+        "gpuViewport":{"x":-128,"y":-122,"w":256,"h":252},
+        "view":{"x":-6630.4,"y":-6624.7,"zoom":301.2},"grid":false
+    });
+    let compile = |doc:&Document, request:&serde_json::Value| {
+        let mut e=Engine::new();
+        e.load_document(&serde_json::to_string(doc).unwrap()).unwrap();
+        e.compile_gpu_request(&request.to_string()).map(|scene| serde_json::to_value(scene).unwrap())
+    };
+    let scene=compile(&doc,&request).unwrap();
+    let b=&scene["nodes"]["bg"]["wideImageGaussian"];
+    assert_eq!(b["radii"],json!([2880,2880,2881]));
+    assert_eq!(b["output"],request["gpuViewport"]);
+    assert!(!scene["nodes"]["n"].is_null());
+
+    // A foreground effect on the Zoom node itself is not a separable image
+    // source. The real radial dependency cap must still reject it.
+    let fx=doc.nodes["bg"].effects[0].clone();
+    doc.nodes.get_mut("n").unwrap().effects.insert(0,fx);
+    assert!(compile(&doc,&request).unwrap_err().contains("exceeds 2048"));
+    doc.nodes.get_mut("n").unwrap().effects.remove(0);
+
+    // A reachable image edge removes full coverage and retains the original
+    // admission error, as does switching off the analytic-canvas lane.
+    let mut with_edge=doc.clone();
+    with_edge.nodes.get_mut("bg").unwrap().transform.0[4]=20.;
+    assert!(compile(&with_edge,&request).unwrap_err().contains("exceeds 2048"));
+    let mut ordinary=request.clone();
+    ordinary["gpuAnalyticRegions"]=json!(false);
+    assert!(compile(&doc,&ordinary).unwrap_err().contains("exceeds 2048"));
+}

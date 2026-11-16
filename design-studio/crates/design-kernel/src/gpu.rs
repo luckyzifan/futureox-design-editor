@@ -83,6 +83,7 @@ pub(crate) struct CameraPrepare {
     program_guard: Option<(i32, i32, u32, u32)>,
     fragments: fragments::FragmentCache,
     metadata: Option<CameraMetadata>,
+    zoom_bounds: Option<Arc<crate::zoom_support::ZoomBounds>>,
     reuses: u64,
     incomplete: bool,
     retained_nodes: usize,
@@ -92,7 +93,8 @@ impl CameraPrepare {
     fn retained_bytes(&self) -> usize {
         let contours = |cs: &Vec<crate::path::Contour>| cs.capacity()*std::mem::size_of::<crate::path::Contour>() +
             cs.iter().map(|c|c.points.capacity()*std::mem::size_of::<Point>()).sum::<usize>();
-        self.programs.bytes + self.fragments.bytes + self.prepared.capacity()*192 + self.prepared.iter().map(|(id,p)|
+        self.programs.bytes + self.fragments.bytes + self.zoom_bounds.as_ref().map_or(0, |map|
+            map.capacity() * 144 + map.keys().map(|id| id.capacity()).sum::<usize>()) + self.prepared.capacity()*192 + self.prepared.iter().map(|(id,p)|
             id.capacity()+contours(&p.fill)+p.strokes.iter().map(|s|contours(s)).sum::<usize>()).sum::<usize>()
     }
     pub(crate) fn paint_changed(&mut self, revision: u64, doc:&Document, ids:impl Iterator<Item=String>, parents:&impl crate::render_index::ParentLookup) {
@@ -100,6 +102,7 @@ impl CameraPrepare {
         // Opacity can change whether a backdrop chain is active. Refresh this
         // summary even when all exact coverage programs remain reusable.
         self.metadata = None;
+        self.zoom_bounds = None;
         self.fragments.invalidate_tree(doc,ids,parents); self.programs.reserve(self.fragments.bytes);
         self.incremental=true;
     }
@@ -133,6 +136,7 @@ impl CameraPrepare {
         self.programs.retain_nodes(&dirty);
         self.fragments.invalidate(&dirty); self.programs.reserve(self.fragments.bytes);
         self.key.0 = revision;
+        self.zoom_bounds = None;
         // Rigid translation leaves effect radii, linear transforms and
         // dependency topology unchanged; camera metadata stays valid.
         self.incomplete = true;
@@ -562,6 +566,8 @@ fn reduced_gaussian_source(n:&Node,matrix:Transform,plan:&GaussianRegion,path:&c
 pub struct GpuNode {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub analytic_region: Option<analytic_regions::NodeRegion>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wide_image_gaussian: Option<crate::wide_image_gaussian::Plan>,
     #[serde(skip_serializing_if="Option::is_none")]
     pub optical_prefix_next: Option<String>,
     #[serde(skip_serializing_if="Option::is_none")]
@@ -1669,6 +1675,7 @@ struct Compiler<'a> {
     shadow_outputs: HashMap<String, Rect>,
     stages: Option<PainterStages>,
     analytic_regions: Option<HashMap<String, analytic_regions::NodeRegion>>,
+    wide_image_gaussians: HashMap<String, crate::wide_image_gaussian::Plan>,
     curves: Vec<f32>,
     area_paths: HashMap<ProgramIdentity, AreaPath>,
     fragments: fragments::FragmentCache,
@@ -1846,7 +1853,9 @@ impl Compiler<'_> {
                 .fold(0_i32, i32::saturating_add)
         } else { halo(n, matrix) };
         let source_region = requested.map(|r| r.expand(own_halo.saturating_add(2)));
-        let extent = analytic_region.as_ref().map(|region| region.input)
+        let wide_image_gaussian = self.wide_image_gaussians.get(id).copied().filter(|_| !geometric);
+        let extent = wide_image_gaussian.as_ref().map(|plan| plan.output)
+            .or(analytic_region.as_ref().map(|region| region.input))
             .or(staged_region).unwrap_or_else(|| source_region.unwrap_or(self.extent));
         // Preparation already includes this leaf's strokes and effect support.
         // Reuse its exact final rejection before rereading paths/control bounds
@@ -1911,6 +1920,9 @@ impl Compiler<'_> {
             .as_ref()
             .map_or_else(|| rect.expand(margin), |p| p.bounds)
             .intersect(extent);
+        let rect = if self.profile == crate::fidelity::RasterProfile::Analytic {
+            crate::zoom_support::isolated_leaf_extent(n, matrix, own, rect)
+        } else { rect };
         if rect.empty() {
             return Ok(rect);
         }
@@ -1980,6 +1992,7 @@ impl Compiler<'_> {
             id.to_owned(),
             GpuNode {
                 analytic_region: analytic_region.clone(),
+                wide_image_gaussian,
                 optical_prefix_next: None,
                 source_filter_field,
                 gaussian_region:reduced.map(|(plan,_)|plan).or(full_gaussian),
@@ -2437,17 +2450,46 @@ impl Engine {
         // retained map is not what the tile publishes. `tile_guard` is the
         // guard `prepare=None` would use for this viewport.
         let base_prepare = prepare_viewport.unwrap_or(viewport);
-        let (zoom_extent, zoom_prepare) = if properties.has_zoom {
-            // Both domains share one resolved camera and scene. The bounds
-            // walk can shape text and traverse nested masks, so reuse its
-            // immutable result while admitting each rectangle separately.
-            let bounds = crate::dirty_region::render_bounds_map(doc, &page.children, camera, &self.fonts)?;
-            let guard = |region| crate::zoom_support::scene_guard_with_bounds(doc, &page.children, region, &bounds);
-            let visible = guard(viewport)?;
-            let prepared = if viewport == base_prepare { visible } else { guard(base_prepare)? };
-            (Some(visible), Some(prepared))
+        // Only an analytic SDR canvas tile may replace a wide isolated image
+        // filter by a projected basis. Exports, HDR, readback and whole-frame
+        // compatibility captures keep their established filter admission.
+        let project_images = analytic_regions && has_region && options.view.zoom >= 32.
+            && options.raster_profile == crate::fidelity::RasterProfile::Analytic
+            && doc.color_management.is_none() && options.pixel_preview.is_none()
+            && options.animation.is_none() && metadata.noise_guard.is_none()
+            && page_has_large_gaussian(doc, &page.children, camera);
+        let mut zoom_bounds_for_prepare = None;
+        let (zoom_extent, zoom_prepare, wide_image_gaussians) = if properties.has_zoom || project_images {
+            // Both domains share one resolved camera and scene. Independently
+            // admit their actual read footprints, reusing only the geometry.
+            let cacheable = self.source_compile_context.is_none() && options.animation.is_none() && doc.nodes.len() <= 4096;
+            let cached = self.camera_prepare.as_ref().filter(|cache| cacheable &&
+                cache.key.0 == self.geo_revision && cache.key.1 == options.page_id &&
+                cache.key.2 == (options.view.x, options.view.y, options.view.zoom) &&
+                cache.key.4 == compatible && cache.key.5 == options.animation)
+                .and_then(|cache| cache.zoom_bounds.clone());
+            let bounds = match cached {
+                Some(bounds) => bounds,
+                None => Arc::new(crate::dirty_region::render_bounds_map(doc, &page.children, camera, &self.fonts)?),
+            };
+            let plan = |r| crate::zoom_support::scene_plan_with_bounds(doc, &page.children, r, &bounds, project_images);
+            match plan(viewport) {
+                Ok(visible) if properties.has_zoom || !visible.images.is_empty() => {
+                    let prepared = if viewport == base_prepare { visible.extent } else {
+                        match plan(base_prepare) {
+                            Ok(plan) => plan.extent,
+                            Err(error) if properties.has_zoom => return Err(error),
+                            Err(_) => visible.extent.union(base_prepare),
+                        }
+                    };
+                    if cacheable { zoom_bounds_for_prepare = Some(bounds); }
+                    (Some(visible.extent), Some(prepared), visible.images)
+                }
+                Err(error) if properties.has_zoom => return Err(error),
+                _ => (None, None, HashMap::new()),
+            }
         } else {
-            (None, None)
+            (None, None, HashMap::new())
         };
         let prepare_guard=zoom_prepare.map_or(base_prepare.expand(padding),|z|z.union(base_prepare.expand(padding)));
         let tile_guard=zoom_extent.map_or_else(||viewport.expand(padding),|z|z.union(viewport.expand(padding)));
@@ -2517,10 +2559,14 @@ impl Engine {
                 } else {
                     self.camera_prepare = Some(CameraPrepare {
                         key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(), program_guard: None, fragments: fragments::FragmentCache::default(),
-                        metadata: Some(metadata), reuses: 0, incomplete: false, retained_nodes: 0, incremental:false,
+                        metadata: Some(metadata), zoom_bounds: None, reuses: 0, incomplete: false, retained_nodes: 0, incremental:false,
                     });
                 }
             }
+        }
+        if let Some(bounds) = zoom_bounds_for_prepare
+            && let Some(cache) = &mut self.camera_prepare {
+            cache.zoom_bounds = Some(bounds);
         }
         let built_guard=self.camera_prepare.as_ref().map(|cache|{
             let (x,y,w,h)=cache.key.3; Rect::new(x,y,w,h)
@@ -2662,7 +2708,7 @@ impl Engine {
             let guard = Rect::new(x, y, w, h);
             (guard != tile_guard).then(|| (guard, Arc::clone(&cache.prepared)))
         });
-        let mut painter_support = if painter_support && has_region && !regional_foreground {
+        let mut painter_support = if painter_support && has_region && !regional_foreground && wide_image_gaussians.is_empty() {
             // Try the tile first so a chain that already fits keeps the
             // tile-local contours. A wider proved window may then admit a
             // larger extent. Rebuild the emitted map for that extent alone:
@@ -2773,6 +2819,7 @@ impl Engine {
         }).collect()}else{Default::default()};
         let mut compiler = Compiler {
             analytic_regions: analytic.map(|plan| plan.nodes),
+            wide_image_gaussians,
             doc,
             fonts: &self.fonts,
             paths: &mut self.paths,
