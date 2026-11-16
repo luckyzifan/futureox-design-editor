@@ -1029,6 +1029,11 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               <DraftInput aria-description={styleDescription} title={styleDescription} aria-label={tr("虚线")} placeholder={tr("虚线，如 8 4")} value={dashInUnits(st.dash, units.style)}
                 validate={value => { try { dashInUnits(value, 1 / units.style); return true } catch { return false } }}
                 onCommit={(value) => update((n) => { if (n.strokes[i]) n.strokes[i].dash = dashInUnits(value, 1 / units.style) })} />
+              <label className="check-row">
+                <input type="checkbox" aria-label={tr("在拐角居中")} checked={!!st.centerDashes}
+                  onChange={event => update(n => { if (n.strokes[i]) n.strokes[i].centerDashes = event.target.checked }, '在拐角居中')} />
+                {tr("在拐角居中")}
+              </label>
               <StrokeProfilePanel n={n} index={i} editor={editor} update={update} />
               <UnitNumberField unitDescription={styleDescription} historyLabel="虚线偏移" diagnosticFamily={2} unit="number" unitScale={units.style}
                 label={tr("虚线偏移")}

@@ -812,6 +812,7 @@ fn strokes_from_paints(
                 join: join.into(),
                 dash: dash.clone(),
                 dash_offset: 0.,
+                center_dashes: false,
                 visible: true,
                 width_profile: Vec::new(),
             });

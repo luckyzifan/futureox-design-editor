@@ -161,6 +161,304 @@ pub(super) fn dash_geometry(
     }
     Ok(out)
 }
+
+/// Turns at least this sharp are corners for Sketch "center on corners".
+/// Flattened samples of a smooth curve stay under it; the control polylines
+/// turn 90 degrees.
+const SHARP_CORNER: f64 = 20. * std::f64::consts::PI / 180.;
+
+pub(super) struct IndexSpan {
+    pub indices: Vec<usize>,
+    pub start_corner: bool,
+    pub end_corner: bool,
+}
+
+fn sharp_turn(prev: Point, at: Point, next: Point) -> bool {
+    let incoming = at - prev;
+    let outgoing = next - at;
+    let incoming_len = incoming.length();
+    let outgoing_len = outgoing.length();
+    if incoming_len < 1e-8 || outgoing_len < 1e-8 {
+        return false;
+    }
+    let sin_t = incoming.cross(outgoing) / (incoming_len * outgoing_len);
+    let cos_t = incoming.dot(outgoing) / (incoming_len * outgoing_len);
+    sin_t.atan2(cos_t).abs() >= SHARP_CORNER
+}
+
+/// `points` are unique vertices. Closed contours do not repeat the first point.
+pub(super) fn corner_index_spans(points: &[Point], closed: bool) -> Option<Vec<IndexSpan>> {
+    let n = points.len();
+    if n < 2 || (closed && n < 3) {
+        return None;
+    }
+    let mut corners = Vec::new();
+    for i in 0..n {
+        if !closed && (i == 0 || i + 1 == n) {
+            continue;
+        }
+        let prev = points[(i + n - 1) % n];
+        let next = points[(i + 1) % n];
+        if sharp_turn(prev, points[i], next) {
+            corners.push(i);
+        }
+    }
+    if corners.is_empty() {
+        return None;
+    }
+    let mut spans = Vec::new();
+    if !closed {
+        let mut anchors = vec![0];
+        anchors.extend(corners.iter().copied());
+        if *anchors.last().expect("anchor") != n - 1 {
+            anchors.push(n - 1);
+        }
+        for pair in anchors.windows(2) {
+            if pair[0] == pair[1] {
+                continue;
+            }
+            spans.push(IndexSpan {
+                indices: (pair[0]..=pair[1]).collect(),
+                start_corner: corners.binary_search(&pair[0]).is_ok(),
+                end_corner: corners.binary_search(&pair[1]).is_ok(),
+            });
+        }
+    } else {
+        for i in 0..corners.len() {
+            let start = corners[i];
+            let end = corners[(i + 1) % corners.len()];
+            let mut indices = vec![start];
+            let mut at = start;
+            for _ in 0..n {
+                if at == end && indices.len() > 1 {
+                    break;
+                }
+                at = (at + 1) % n;
+                indices.push(at);
+                if at == end {
+                    break;
+                }
+            }
+            if indices.len() >= 2 {
+                spans.push(IndexSpan {
+                    indices,
+                    start_corner: true,
+                    end_corner: true,
+                });
+            }
+        }
+    }
+    (!spans.is_empty()).then_some(spans)
+}
+
+pub(super) enum CenterFit {
+    Pattern(Vec<f64>, f64),
+    Solid,
+}
+
+fn adjusted_gaps(pattern: &[f64], target_period: f64) -> Option<Vec<f64>> {
+    if !target_period.is_finite() || target_period <= 0. {
+        return None;
+    }
+    let dashes: f64 = pattern
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % 2 == 0)
+        .map(|(_, v)| *v)
+        .sum();
+    let gaps: f64 = pattern
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % 2 == 1)
+        .map(|(_, v)| *v)
+        .sum();
+    if target_period + 1e-8 < dashes {
+        return None;
+    }
+    let extra = target_period - dashes;
+    let mut out = pattern.to_vec();
+    if gaps > 1e-12 {
+        let scale = extra / gaps;
+        for (i, value) in out.iter_mut().enumerate() {
+            if i % 2 == 1 {
+                *value *= scale;
+            }
+        }
+    } else if extra > 1e-6 {
+        return None;
+    }
+    out.iter().all(|value| value.is_finite() && *value >= 0.).then_some(out)
+}
+
+/// Keep authored dash lengths. Adjust only the gaps so each corner that bounds
+/// the span sits at the center of a dash. `user_offset` is the stroke offset.
+pub(super) fn fit_center_span(
+    length: f64,
+    pattern: &[f64],
+    user_offset: f64,
+    start_corner: bool,
+    end_corner: bool,
+) -> CenterFit {
+    let half = pattern[0] * 0.5;
+    let base: f64 = pattern.iter().sum();
+    if !(length.is_finite() && base.is_finite()) || base <= 0. || length <= 1e-8 {
+        return CenterFit::Solid;
+    }
+    if start_corner && end_corner {
+        let mut periods = (length / base).round().max(1.) as usize;
+        loop {
+            if let Some(fitted) = adjusted_gaps(pattern, length / periods as f64) {
+                return CenterFit::Pattern(fitted, half + user_offset);
+            }
+            if periods == 1 {
+                break;
+            }
+            periods -= 1;
+        }
+        return if user_offset == 0. {
+            CenterFit::Solid
+        } else {
+            CenterFit::Pattern(pattern.to_vec(), user_offset)
+        };
+    }
+    if end_corner && !start_corner {
+        if length <= half {
+            return CenterFit::Pattern(pattern.to_vec(), half - length + user_offset);
+        }
+        let travel = length - half;
+        let mut periods = (travel / base).round().max(1.) as usize;
+        loop {
+            if let Some(fitted) = adjusted_gaps(pattern, travel / periods as f64) {
+                return CenterFit::Pattern(fitted, user_offset);
+            }
+            if periods == 1 {
+                break;
+            }
+            periods -= 1;
+        }
+        return CenterFit::Pattern(pattern.to_vec(), half - length + user_offset);
+    }
+    CenterFit::Pattern(pattern.to_vec(), half + user_offset)
+}
+
+fn points_touch(a: Point, b: Point) -> bool {
+    (a - b).length() < 1e-4
+}
+
+fn merge_dash_parts(parts: &mut Vec<Contour>, mut incoming: Vec<Contour>) {
+    let touch = parts.last().zip(incoming.first()).is_some_and(|(prev, first)| {
+        prev.points.len() > 1
+            && first.points.len() > 1
+            && prev
+                .points
+                .last()
+                .zip(first.points.first())
+                .is_some_and(|(a, b)| points_touch(*a, *b))
+    });
+    if touch {
+        let mut head = incoming.remove(0);
+        let prev = parts.last_mut().expect("previous dash");
+        *prev.points.last_mut().expect("end") = head.points[0];
+        prev.points.extend(head.points.drain(1..));
+    }
+    parts.extend(incoming);
+}
+
+fn merge_closed_dashes(parts: &mut Vec<Contour>) {
+    if parts.is_empty() {
+        return;
+    }
+    if parts.len() == 1 {
+        let part = &mut parts[0];
+        if part.points.len() > 2
+            && points_touch(part.points[0], *part.points.last().expect("end"))
+        {
+            part.points.pop();
+            part.closed = true;
+        }
+        return;
+    }
+    let start = parts[0].points[0];
+    let end = *parts.last().expect("last").points.last().expect("end");
+    if points_touch(start, end) {
+        let mut tail = parts.pop().expect("tail");
+        *tail.points.last_mut().expect("end") = start;
+        tail.points.extend_from_slice(&parts[0].points[1..]);
+        parts[0] = tail;
+    }
+}
+
+fn snap_span_end(parts: &mut [Contour], end_corner: bool, end: Point) {
+    if !end_corner {
+        return;
+    }
+    let Some(last) = parts.last_mut().and_then(|part| part.points.last_mut()) else {
+        return;
+    };
+    if points_touch(*last, end) {
+        *last = end;
+    }
+}
+
+/// Sketch centers a dash on each sharp corner by changing gap size per span.
+/// Paths with no sharp corner keep the ordinary phase so a straight dash does
+/// not move. Dash lengths, caps and joins are left to the outline step.
+pub(super) fn dash_centered(
+    cs: &[Contour],
+    pattern: &[f64],
+    offset: f64,
+    count: &mut usize,
+) -> Result<Vec<Contour>, String> {
+    if pattern.is_empty() || pattern[0] <= 0. {
+        return dash_geometry(cs, pattern, offset, count);
+    }
+    let mut out = Vec::new();
+    for contour in cs {
+        let mut ring = contour.points.clone();
+        ring.dedup_by(|a, b| (*a - *b).length() < 1e-10);
+        if contour.closed && ring.len() > 1 && (ring[0] - *ring.last().expect("end")).length() < 1e-10
+        {
+            ring.pop();
+        }
+        let Some(spans) = corner_index_spans(&ring, contour.closed) else {
+            out.extend(dash_geometry(std::slice::from_ref(contour), pattern, offset, count)?);
+            continue;
+        };
+        let mut parts = Vec::new();
+        for span in spans {
+            let points: Vec<Point> = span.indices.iter().map(|index| ring[*index]).collect();
+            let length = points.windows(2).map(|pair| (pair[1] - pair[0]).length()).sum();
+            let piece = Contour {
+                points: points.clone(),
+                closed: false,
+            };
+            let mut dashed = match fit_center_span(
+                length,
+                pattern,
+                offset,
+                span.start_corner,
+                span.end_corner,
+            ) {
+                CenterFit::Solid => vec![piece],
+                CenterFit::Pattern(fitted, phase) => {
+                    if fitted.iter().all(|value| *value <= 1e-12) {
+                        vec![piece]
+                    } else {
+                        dash_geometry(&[piece], &fitted, phase, count)?
+                    }
+                }
+            };
+            snap_span_end(&mut dashed, span.end_corner, *points.last().expect("end"));
+            merge_dash_parts(&mut parts, dashed);
+        }
+        if contour.closed {
+            merge_closed_dashes(&mut parts);
+        }
+        out.extend(parts);
+    }
+    Ok(out)
+}
+
 pub fn outline(
     cs: &[Contour],
     width: f64,

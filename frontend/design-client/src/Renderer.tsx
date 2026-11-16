@@ -5,7 +5,7 @@ import { kernelTextLayout, kernelStrokePaths, kernelSvgPaths } from './kernel/pi
 import React, { useMemo, useRef } from 'react'
 import { maskChild } from './model'
 import { outlineMaskForRendering, sketchMaskScene } from './render-outline-mask'
-import type { DesignDocument, DesignNode, Paint, Effect, Matrix, Bounds, Point } from './model'
+import type { DesignDocument, DesignNode, Paint, Effect, Matrix, Bounds, Point, Stroke } from './model'
 import {
   shapeD as approximateShapeD,
   matrixString,
@@ -210,7 +210,8 @@ function Filter({ id, effects }: { id: string; effects: Effect[] }) {
 const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignNode; fonts?: DesignDocument['fonts']; textMode?: 'outlines' | 'editable' }) {
   const fillD = shapeD(n, true),
     strokeD = shapeD(n)
-  const expanded = n.strokes.some((s) => (s.widthProfile?.length || (s.startMarker && s.startMarker !== 'none') || (s.endMarker && s.endMarker !== 'none'))) ? kernelStrokePaths(n) : null
+  const outlineStroke = (s: Stroke) => !!(s.widthProfile?.length || s.centerDashes || (s.startMarker && s.startMarker !== 'none') || (s.endMarker && s.endMarker !== 'none'))
+  const expanded = n.strokes.some(outlineStroke) ? kernelStrokePaths(n) : null
   const shape = (props: React.SVGProps<SVGPathElement>, key: string) =>
     n.kind === 'text' && textMode === 'editable' ? <EditableSvgText key={key} n={n} fonts={fonts} paintProps={props} /> : n.kind === 'text' && props.fill !== 'none' && n.textRuns?.some(r=>r.color||r.underline||r.strikethrough||r.link) ? <g key={key}>{kernelTextLayout(n).spans.map((span,i)=>span.link?<a key={i} href={span.link} target="_blank" rel="noopener noreferrer"><path d={span.path} {...props} fill={span.color||props.fill}/></a>:<path key={i} d={span.path} {...props} fill={span.color||props.fill}/>)}</g> : n.kind === 'text' && !kernelSvgPaths(n) ? (
       <text
@@ -248,7 +249,7 @@ const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignN
       {n.strokes
         .filter((s) => s.visible)
         .map((s, i) =>
-          (s.widthProfile?.length || (s.startMarker && s.startMarker !== 'none') || (s.endMarker && s.endMarker !== 'none')) ? (
+          outlineStroke(s) ? (
             <path
               key={s.id}
               d={expanded![n.strokes.indexOf(s)]}

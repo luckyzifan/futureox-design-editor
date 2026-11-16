@@ -362,7 +362,11 @@ fn expand_geometry(
 ) -> Result<Vec<Contour>, String> {
     let width = s.width * if s.align == "center" { 1. } else { 2. };
     if s.width_profile.is_empty() {
-        let dashed = super::dash_geometry(cs, pattern, s.dash_offset, &mut budget.dash)?;
+        let dashed = if s.center_dashes {
+            super::dash_centered(cs, pattern, s.dash_offset, &mut budget.dash)?
+        } else {
+            super::dash_geometry(cs, pattern, s.dash_offset, &mut budget.dash)?
+        };
         return super::outline_geometry(
             &dashed,
             width + dilation * 2.,
@@ -435,7 +439,14 @@ fn expand_geometry(
         } else {
             &mut local_dash_count
         };
-        let parts = split_dashes(&samples, c.closed, pattern, s.dash_offset, dash_count)?;
+        let parts = split_dashes(
+            &samples,
+            c.closed,
+            pattern,
+            s.dash_offset,
+            s.center_dashes,
+            dash_count,
+        )?;
         for (ps, closed) in parts {
             emit(&ps, closed, s, tolerance, &mut out, &mut budget.output)?;
         }
@@ -444,6 +455,121 @@ fn expand_geometry(
 }
 
 fn split_dashes(
+    samples: &[Sample],
+    closed: bool,
+    pattern: &[f64],
+    offset: f64,
+    centered: bool,
+    count: &mut usize,
+) -> Result<Vec<(Vec<Sample>, bool)>, String> {
+    if centered && !pattern.is_empty() && pattern[0] > 0. {
+        if let Some(parts) = split_centered_dashes(samples, closed, pattern, offset, count)? {
+            return Ok(parts);
+        }
+    }
+    split_linear_dashes(samples, closed, pattern, offset, count)
+}
+
+fn split_centered_dashes(
+    samples: &[Sample],
+    closed: bool,
+    pattern: &[f64],
+    offset: f64,
+    count: &mut usize,
+) -> Result<Option<Vec<(Vec<Sample>, bool)>>, String> {
+    let stripped = closed
+        && samples.len() > 1
+        && (samples[0].p - samples.last().expect("end").p).length() < 1e-8;
+    let ring = if stripped {
+        &samples[..samples.len() - 1]
+    } else {
+        samples
+    };
+    let points: Vec<Point> = ring.iter().map(|sample| sample.p).collect();
+    let Some(spans) = super::corner_index_spans(&points, closed) else {
+        return Ok(None);
+    };
+    let mut result: Vec<(Vec<Sample>, bool)> = Vec::new();
+    for span in spans {
+        let piece: Vec<Sample> = span.indices.iter().map(|index| ring[*index]).collect();
+        let length = piece
+            .windows(2)
+            .map(|pair| (pair[1].p - pair[0].p).length())
+            .sum();
+        let end = *piece.last().expect("span end");
+        let mut parts = match super::fit_center_span(
+            length,
+            pattern,
+            offset,
+            span.start_corner,
+            span.end_corner,
+        ) {
+            super::CenterFit::Solid => vec![(piece, false)],
+            super::CenterFit::Pattern(fitted, phase) => {
+                if fitted.iter().all(|value| *value <= 1e-12) {
+                    vec![(piece, false)]
+                } else {
+                    split_linear_dashes(&piece, false, &fitted, phase, count)?
+                }
+            }
+        };
+        if span.end_corner {
+            if let Some((last, _)) = parts.last_mut() {
+                if last.last().is_some_and(|sample| (sample.p - end.p).length() < 1e-4) {
+                    *last.last_mut().expect("end") = end;
+                }
+            }
+        }
+        merge_sample_runs(&mut result, parts);
+    }
+    if closed {
+        merge_closed_samples(&mut result);
+    }
+    Ok(Some(result))
+}
+
+fn merge_sample_runs(parts: &mut Vec<(Vec<Sample>, bool)>, mut incoming: Vec<(Vec<Sample>, bool)>) {
+    let touch = parts.last().zip(incoming.first()).is_some_and(|(prev, first)| {
+        prev.0.len() > 1
+            && first.0.len() > 1
+            && prev
+                .0
+                .last()
+                .zip(first.0.first())
+                .is_some_and(|(a, b)| (a.p - b.p).length() < 1e-4)
+    });
+    if touch {
+        let (mut head, _) = incoming.remove(0);
+        let prev = &mut parts.last_mut().expect("previous dash").0;
+        *prev.last_mut().expect("end") = head[0];
+        prev.extend(head.drain(1..));
+    }
+    parts.extend(incoming);
+}
+
+fn merge_closed_samples(parts: &mut Vec<(Vec<Sample>, bool)>) {
+    if parts.is_empty() {
+        return;
+    }
+    if parts.len() == 1 {
+        let (samples, closed) = &mut parts[0];
+        if samples.len() > 2 && (samples[0].p - samples.last().expect("end").p).length() < 1e-4 {
+            samples.pop();
+            *closed = true;
+        }
+        return;
+    }
+    let start = parts[0].0[0];
+    let end = *parts.last().expect("last").0.last().expect("end");
+    if (start.p - end.p).length() < 1e-4 {
+        let (mut tail, _) = parts.pop().expect("tail");
+        *tail.last_mut().expect("end") = start;
+        tail.extend_from_slice(&parts[0].0[1..]);
+        parts[0] = (tail, false);
+    }
+}
+
+fn split_linear_dashes(
     samples: &[Sample],
     closed: bool,
     pattern: &[f64],

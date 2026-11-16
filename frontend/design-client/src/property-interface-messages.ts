@@ -103,6 +103,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "虚线": "Dashes",
   "虚线，如 8 4": "Dashes, e.g. 8 4",
   "虚线偏移": "Dash offset",
+  "在拐角居中": "Center on corners",
   "效果": "Effects",
   "添加效果": "Add effect",
   "纹理样式": "Texture style",
