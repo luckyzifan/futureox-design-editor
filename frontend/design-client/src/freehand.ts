@@ -11,13 +11,23 @@ import {
 } from './model'
 export type FreehandSample = Point & { pressure: number }
 export type FreehandTool = 'pencil' | 'brush' | 'marker' | 'washi-tape'
-export type PencilSettings = { width: number; color: string; smoothing: number; pressure: boolean }
+export type PencilSettings = {
+  width: number
+  color: string
+  smoothing: number
+  pressure: boolean
+  /** Set when the user samples a stroke. Absent means the layout default. */
+  cap?: 'butt' | 'round' | 'square'
+  join?: 'miter' | 'round' | 'bevel'
+}
 export const defaultPencil = (): PencilSettings => ({
   width: 1,
   color: '#000000',
   smoothing: 0.8,
   pressure: false,
 })
+/** Sketch 2026.3.1 clean-prefs pencil border color. Width stays 1. */
+export const SKETCH_PENCIL_COLOR = '#979797'
 export const defaultBrush = (): PencilSettings => ({
   width: 12,
   color: '#7451ca',
@@ -38,12 +48,24 @@ export type FittedStroke = {
 export function fitFreehand(samples: FreehandSample[], tolerance: number): FittedStroke {
   return JSON.parse(freehand_json(JSON.stringify({ samples, tolerance, pressureTolerance: 0.015 })))
 }
+function pencilEnds(
+  tool: FreehandTool | undefined,
+  settings: PencilSettings,
+  uiMode?: 'figma' | 'sketch',
+): { cap: 'butt' | 'round' | 'square'; join: 'miter' | 'round' | 'bevel' } | undefined {
+  if (tool === 'washi-tape') return { cap: 'square', join: 'bevel' }
+  if (tool !== 'pencil') return undefined
+  if (settings.cap && settings.join) return { cap: settings.cap, join: settings.join }
+  if (uiMode === 'sketch') return { cap: 'butt', join: 'miter' }
+  return { cap: 'round', join: 'round' }
+}
 export function freehandNode(
   id: string,
   samples: FreehandSample[],
   settings: PencilSettings,
   zoom: number,
   tool?: FreehandTool,
+  uiMode?: 'figma' | 'sketch',
 ): DesignNode {
   if (
     !Number.isFinite(settings.width) ||
@@ -78,7 +100,8 @@ export function freehandNode(
   n.fills = []
   if(tool==='marker'){n.name='马克笔路径';n.opacity=.4}
   if(tool==='washi-tape'){n.name='和纸胶带';n.effects=[{...effect('noise'),opacity:.12,amount:.45}]}
-  n.strokes = [{ ...stroke(settings.color, settings.width),...(tool==='washi-tape'?{cap:'square' as const,join:'bevel' as const}:{}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
+  const ends = pencilEnds(tool, settings, uiMode)
+  n.strokes = [{ ...stroke(settings.color, settings.width), ...(ends ?? {}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
   return n
 }
 /** One pointer owns a stroke. Release events do not append a synthetic zero pressure. */

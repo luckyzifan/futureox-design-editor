@@ -41,7 +41,7 @@ import { pruneAnimations } from './animation'
 import { prunePrototypeReferences, prototypeNeedsSchema12 } from './prototype'
 import { applyClipboardSemantics, captureClipboardSemantics, clipboardDependencyNodes, hasClipboardSemantics } from './clipboard-semantics'
 import { editableNetwork } from './editable-network'
-import { defaultPencil, defaultBrush, defaultMarker, defaultTape, type PencilSettings } from './freehand'
+import { defaultPencil, defaultBrush, defaultMarker, defaultTape, SKETCH_PENCIL_COLOR, type PencilSettings } from './freehand'
 import { wrappedInsertion } from './layout-order'
 import { sketchMaskScene } from './render-outline-mask'
 import { isEmptyLeafAlphaMask } from './mask-coverage'
@@ -479,7 +479,25 @@ export class Editor {
       .some(key => next[key] !== this.panelState![key])) this.panelState = next
     return this.panelState
   }
-  set(patch: Partial<EditorState>) { this.setState(patch) }
+  private pencilColorTuned = false
+  private applyingPencilLayout = false
+  set(patch: Partial<EditorState>) {
+    if (patch.pencil && !this.applyingPencilLayout && this.pencilAppearanceEdited(this.state.pencil, patch.pencil))
+      this.pencilColorTuned = true
+    this.setState(patch)
+  }
+  private pencilAppearanceEdited(previous: PencilSettings, next: PencilSettings) {
+    return previous.color.toLowerCase() !== next.color.toLowerCase() || previous.cap !== next.cap || previous.join !== next.join
+  }
+  /** Untouched pencil color follows the layout. A hand-set or sampled color stays. */
+  applyPencilLayout(uiMode: 'figma' | 'sketch') {
+    if (this.disposed || this.pencilColorTuned) return
+    const color = uiMode === 'sketch' ? SKETCH_PENCIL_COLOR : '#000000'
+    if (this.state.pencil.color.toLowerCase() === color.toLowerCase()) return
+    this.applyingPencilLayout = true
+    try { this.set({ pencil: { ...this.state.pencil, color } }) }
+    finally { this.applyingPencilLayout = false }
+  }
   /** Only accepted commit publications opt into this notification-error channel.
    * Public set and all failures before the listener loop retain throwing behavior. */
   private setState(patch: Partial<EditorState>, onSubscriberError?: (error: unknown) => void) {

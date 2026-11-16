@@ -672,6 +672,7 @@ const phrases: Record<string, string> = {
   "已复制图层": "Layers copied",
   "已恢复未保存的设计副本；原文件未改动": "Restored an unsaved design copy. The original file was not changed",
   "已取样描边颜色与宽度": "Sampled stroke color and width",
+  "已取样描边颜色、宽度、端点与连接": "Sampled stroke color, width, cap and join",
   "应用建议布局": "Apply suggested layout",
   "应用所选文字字体": "Apply the selected text font",
   "粘贴目标包含锁定图层，请先解锁": "The paste target includes a locked layer. Unlock it first",

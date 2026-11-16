@@ -319,6 +319,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useEffect(() => {
     if (state.frameCrop && uiMode !== 'sketch') editor.set({ frameCrop: null })
   }, [editor, state.frameCrop, uiMode])
+  useEffect(() => { editor.applyPencilLayout(uiMode) }, [editor, uiMode])
   const chromeCopy = canvasText[locale]
   const blurEditActive = useRef(false)
   const exitBlurEditor = useRef(onExitBlurEdit)
@@ -736,6 +737,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     id: string
     settings: PencilSettings
     tool: FreehandTool
+    uiMode: 'figma' | 'sketch'
     session: number
     page: string
     zoom: number
@@ -762,7 +764,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const draft = pencil.current
     if (!draft) return
     try {
-      setPencilPreview(freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool))
+      setPencilPreview(freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool, draft.uiMode))
     } catch (error) {
       cancelPencil()
       editor.notify(String(error))
@@ -1721,8 +1723,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const hit = displayedHit(p, true)
         const stroke = hit && displayedSnapshot?.document.nodes[hit]?.strokes.find(stroke => stroke.paint.visible)
         if (stroke && stroke.paint.kind === 'solid' && /^#[0-9a-f]{6}$/i.test(stroke.paint.color)) {
-          editor.set({ [tool]: { ...s[tool], width: Math.max(0.5, Math.min(200, stroke.width)), color: stroke.paint.color } })
-          editor.notify('已取样描边颜色与宽度')
+          const width = Math.max(0.5, Math.min(200, stroke.width))
+          if (tool === 'pencil' && uiMode === 'sketch') {
+            editor.set({ pencil: { ...s.pencil, width, color: stroke.paint.color, cap: stroke.cap, join: stroke.join } })
+            editor.notify('已取样描边颜色、宽度、端点与连接')
+          } else {
+            editor.set({ [tool]: { ...s[tool], width, color: stroke.paint.color } })
+            editor.notify('已取样描边颜色与宽度')
+          }
         } else editor.notify('请点击带有纯色描边的图层取样')
         return
       }
@@ -1733,7 +1741,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const input = new PencilInput(e.pointerId, s[tool].pressure)
       input.append([e.nativeEvent], map)
       editor.begin(tool === 'pencil' ? '绘制铅笔路径' : '绘制画笔路径')
-      pencil.current = { actionToken: actionTrace.begin(CanvasAction.create, ActionSource.pointer, {routeSupported:true,geometrySupported:false}), actionRevision:editor.state.version, input, map, id: uid(), settings: { ...s[tool] }, tool, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
+      pencil.current = { actionToken: actionTrace.begin(CanvasAction.create, ActionSource.pointer, {routeSupported:true,geometrySupported:false}), actionRevision:editor.state.version, input, map, id: uid(), settings: { ...s[tool] }, tool, uiMode, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
       pencilFrame.current = requestAnimationFrame(pencilPreviewFrame)
       return
     }
@@ -2608,7 +2616,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (e.pointerId !== draft.input.pointerId) return
       try {
         draft.input.append([e.nativeEvent], draft.map, true, e.shiftKey)
-        const n = freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool)
+        const n = freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool, draft.uiMode)
         cancelPencil(false)
         if (n.opacity > 0) editor.addFreehand(n)
         if (draft.actionToken) actionTrace.finish(draft.actionToken, editor.state.version !== draft.actionRevision ? ActionOutcome.committed : ActionOutcome.unchanged, ActionReason.none)
