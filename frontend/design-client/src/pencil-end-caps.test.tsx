@@ -210,9 +210,10 @@ test('the Figma right rail sets each pencil cap before the stroke and can still 
     expect(capButton(labels.round)!.getAttribute('aria-checked')).toBe('true')
     expect(document.querySelector('.pencil-controls [aria-label="No end cap"]')).toBeNull()
     expect(document.querySelector('.pencil-controls input[aria-label="Stroke width"]')).not.toBeNull()
+    const initialCap = editor.state.pencil.cap
     await act(async () => { interfacePreference.set({ uiMode: 'sketch' }) })
     expect(capButton(labels.butt)).toBeNull()
-    expect(editor.state.pencil.cap).toBe('round')
+    expect(editor.state.pencil.cap).toBe(initialCap)
     await act(async () => { interfacePreference.set({ uiMode: 'figma', locale: 'zh-CN' }) })
     expect(capButton('无端点')).not.toBeNull()
     expect(capButton('端点方形')).not.toBeNull()
@@ -220,7 +221,7 @@ test('the Figma right rail sets each pencil cap before the stroke and can still 
     await act(async () => { interfacePreference.set({ locale: 'en' }) })
     await act(async () => { await dispatchEditorCommand(editor, 'set-tool-brush') })
     expect(capButton(labels.butt)).toBeNull()
-    expect(editor.state.pencil.cap).toBe('round')
+    expect(editor.state.pencil.cap).toBe(initialCap)
     await act(async () => { await dispatchEditorCommand(editor, 'set-tool-pencil') })
 
     await choose('butt')

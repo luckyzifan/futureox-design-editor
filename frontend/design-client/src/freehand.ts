@@ -12,14 +12,23 @@ import {
 export type FreehandSample = Point & { pressure: number }
 export type FreehandTool = 'pencil' | 'brush' | 'marker' | 'washi-tape'
 export type PencilCap = 'butt' | 'round' | 'square'
-export type PencilSettings = { width: number; color: string; smoothing: number; pressure: boolean; cap?: PencilCap }
+export type PencilSettings = {
+  width: number
+  color: string
+  smoothing: number
+  pressure: boolean
+  /** Use the layout defaults until the user chooses or samples an appearance. */
+  cap?: PencilCap
+  join?: 'miter' | 'round' | 'bevel'
+}
 export const defaultPencil = (): PencilSettings => ({
   width: 1,
   color: '#000000',
   smoothing: 0.8,
   pressure: false,
-  cap: 'round',
 })
+/** Sketch 2026.3.1 clean-prefs pencil border color. Width stays 1. */
+export const SKETCH_PENCIL_COLOR = '#979797'
 export const defaultBrush = (): PencilSettings => ({
   width: 12,
   color: '#7451ca',
@@ -40,14 +49,25 @@ export type FittedStroke = {
 export function fitFreehand(samples: FreehandSample[], tolerance: number): FittedStroke {
   return JSON.parse(freehand_json(JSON.stringify({ samples, tolerance, pressureTolerance: 0.015 })))
 }
+function pencilEnds(
+  tool: FreehandTool | undefined,
+  settings: PencilSettings,
+  uiMode?: 'figma' | 'sketch',
+): { cap: 'butt' | 'round' | 'square'; join: 'miter' | 'round' | 'bevel' } | undefined {
+  if (tool === 'washi-tape') return { cap: 'square', join: 'bevel' }
+  if (tool !== 'pencil') return undefined
+  const sketch = uiMode === 'sketch'
+  return { cap: settings.cap ?? (sketch ? 'butt' : 'round'), join: settings.join ?? (sketch ? 'miter' : 'round') }
+}
 export function freehandNode(
   id: string,
   samples: FreehandSample[],
   settings: PencilSettings,
   zoom: number,
   tool?: FreehandTool,
+  uiMode?: 'figma' | 'sketch',
 ): DesignNode {
-  const cap = settings.cap ?? 'round'
+  const cap = settings.cap
   if (
     !Number.isFinite(settings.width) ||
     settings.width < 0.5 ||
@@ -55,7 +75,7 @@ export function freehandNode(
     !/^#[0-9a-f]{6}$/i.test(settings.color) ||
     !Number.isFinite(settings.smoothing) || settings.smoothing <= 0 ||
     !Number.isFinite(zoom) || zoom <= 0 ||
-    (tool === 'pencil' && cap !== 'butt' && cap !== 'round' && cap !== 'square')
+    (tool === 'pencil' && cap !== undefined && cap !== 'butt' && cap !== 'round' && cap !== 'square')
   )
     throw new Error('无效的画笔设置')
   const pressure = (tool === undefined || tool === 'brush') && settings.pressure
@@ -82,7 +102,8 @@ export function freehandNode(
   n.fills = []
   if(tool==='marker'){n.name='马克笔路径';n.opacity=.4}
   if(tool==='washi-tape'){n.name='和纸胶带';n.effects=[{...effect('noise'),opacity:.12,amount:.45}]}
-  n.strokes = [{ ...stroke(settings.color, settings.width),...(tool==='pencil'?{cap}:{}),...(tool==='washi-tape'?{cap:'square' as const,join:'bevel' as const}:{}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
+  const ends = pencilEnds(tool, settings, uiMode)
+  n.strokes = [{ ...stroke(settings.color, settings.width), ...(ends ?? {}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
   return n
 }
 /** One pointer owns a stroke. Release events do not append a synthetic zero pressure. */
