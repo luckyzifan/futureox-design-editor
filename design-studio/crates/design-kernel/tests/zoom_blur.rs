@@ -267,3 +267,62 @@ fn ordinary_wide_image_does_not_spend_a_siblings_zoom_halo() {
     ordinary["gpuAnalyticRegions"]=json!(false);
     assert!(compile(&doc,&ordinary).unwrap_err().contains("exceeds 2048"));
 }
+
+fn fnv(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3))
+}
+
+#[test]
+fn distant_zoom_blur_does_not_retarget_figma_export_samples() {
+    use futureox_design_kernel::export::RegionRequest;
+    fn page(zoom_at: Option<f64>) -> Document {
+        let mut doc = fixture();
+        let shape = doc.nodes.get_mut("n").unwrap();
+        shape.effects.clear();
+        shape.transform = futureox_design_kernel::math::Transform([0.92, 0.28, -0.28, 0.96, 10.5, 6.25]);
+        shape.width = 24.;
+        shape.height = 20.;
+        if let Some(x) = zoom_at {
+            let far = serde_json::from_value(json!({
+                "id":"z","kind":"rectangle","width":40,"height":30,"transform":[1,0,0,1,x,0],
+                "fills":[{"kind":"solid","color":"#e07020"}],
+                "effects":[{"kind":"zoom-blur","radius":0,"color":"#000000","zoomBlur":{"amount":40,"center":[0.2,0.8]}}]
+            })).unwrap();
+            doc.nodes.insert("z".into(), far);
+            doc.pages[0].children.push("z".into());
+        }
+        doc
+    }
+    let bounds = json!({"x":0,"y":0,"width":48,"height":40});
+    let export = |doc: &Document, profile: &str| {
+        let mut engine = Engine::new();
+        engine.load_document(&serde_json::to_string(doc).unwrap()).unwrap();
+        engine.render_region_png(&RegionRequest {
+            page_id: "p".into(), bounds: serde_json::from_value(bounds.clone()).unwrap(), scale: 2.,
+            node_ids: None, raster_profile: Some(serde_json::from_value(json!(profile)).unwrap()), color_output: None,
+        }).unwrap()
+    };
+    let alone = page(None);
+    let distant = page(Some(400.));
+    let near = page(Some(100.));
+    let alone_png = export(&alone, "figma");
+    assert_eq!(export(&distant, "figma"), alone_png, "a zoom blur outside the export hull changed unrelated coverage");
+    let mut grouped = distant.clone();
+    let zoom = std::mem::take(&mut grouped.nodes.get_mut("z").unwrap().effects);
+    grouped.pages[0].children.retain(|id| id != "z");
+    grouped.nodes.insert("g".into(), serde_json::from_value(json!({"id":"g","kind":"group","width":40,"height":30,"children":["z"],"effects":zoom})).unwrap());
+    grouped.pages[0].children.push("g".into());
+    assert_eq!(export(&grouped, "figma"), alone_png, "a grouped zoom blur outside the export hull changed unrelated coverage");
+    assert_ne!(export(&near, "figma"), alone_png, "a zoom blur whose hull meets the export must keep the existing sample graph");
+    let mut view_engine = Engine::new();
+    view_engine.load_document(&serde_json::to_string(&alone).unwrap()).unwrap();
+    let view = view_engine.parse_options(json!({"pageId":"p","width":96,"height":80,"transparent":true,"rasterProfile":"figma","view":{"x":0,"y":0,"zoom":2}})).unwrap();
+    let alone_view = view_engine.render(&view).unwrap();
+    view_engine.load_document(&serde_json::to_string(&distant).unwrap()).unwrap();
+    assert_eq!(view_engine.render(&view).unwrap(), alone_view);
+    let mut inside = fixture();
+    inside.nodes.get_mut("n").unwrap().transform = futureox_design_kernel::math::Transform([0.92, 0.28, -0.28, 0.96, 10.5, 6.25]);
+    let inside_png = export(&inside, "figma");
+    assert_eq!(inside_png.len(), 6740);
+    assert_eq!(fnv(&inside_png), 0x5d8025f11895b508, "in-bounds zoom blur export changed sample graph");
+}
