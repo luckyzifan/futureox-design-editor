@@ -11,6 +11,7 @@ import { translateOverlay, transformOverlay, type CanvasOverlay } from './gpu/ca
 import type { CanvasCamera } from '../canvas-camera'
 import { allowsReducedSampling } from './render-quality'
 import { interactionAdaptiveScale } from './interaction-adaptive-density'
+import { zoomSourceHaloRejection, zoomSourcePreviewExceedsHalo } from './zoom-preview-admission'
 import { renderFailureFields } from './render-failure-telemetry'
 import { interactionCaptureTiles, recoverableInteractionBudget } from './interaction-capture-tiles'
 import { canvasRasterPlan } from './canvas-raster-plan'
@@ -1064,6 +1065,7 @@ export class InteractionRenderer {
           let scale = reduced ? Math.min(view.zoom * dpr, 8192 / Math.max(b.width, b.height),
             Math.sqrt(pixelsPerLayer / Math.max(1, b.width * b.height))) : view.zoom*dpr
           const targetScale=scale
+          const layerEntries = this.props?.scene?.entriesFor(layer.document, pageId, this.props.epoch)
           let phaseX=0,phaseY=0
           let width = 1, height = 1, originX = 0, originY = 0, result: KernelResult | undefined
           for (let attempt = 0; attempt < 5 && current(); attempt++) {
@@ -1077,6 +1079,13 @@ export class InteractionRenderer {
             width = Math.max(1, Math.ceil((b.x + b.width) * scale+phaseX) - originX)
             height = Math.max(1, Math.ceil((b.y + b.height) * scale+phaseY) - originY)
             try {
+              if (layerEntries && zoomSourcePreviewExceedsHalo(layer.document, pageId, layer.bounds, scale, layerEntries, layer.roots)) {
+                // This layer's regular preview is rejected by the existing 2048
+                // device-pixel zoom-source guard. Leave the exact canvas to
+                // paint it; do not compile or resend the document.
+                this.warming = false
+                return
+              }
               result = await client.render(layer.document, { pageId, width, height,
                 gpuRoots: layer.roots,
                 view: { x: -originX + phaseX, y: -originY + phaseY, zoom: scale },
@@ -1122,6 +1131,7 @@ export class InteractionRenderer {
         this.warming = false; this.props?.onReady(); this.changed()
       } catch (error) {
         if (!current()) return
+        if (zoomSourceHaloRejection(error)) { this.warming = false; return }
         this.warming = false; this.error = String(error); this.props?.onReady(); this.changed()
       } finally {
         if(!accepted){for(const tile of tiles)tile.bitmap?.close();this.sharedClient?.releasePresented(tiles.flatMap(tile=>tile.gpuTile?[tile.gpuTile]:[]))}
@@ -1475,6 +1485,7 @@ export class InteractionRenderer {
           let scale = reduced ? Math.min(resident.scale, 8192 / Math.max(1, b.width, b.height),
             Math.sqrt(4_194_304 / Math.max(1, b.width * b.height))) : gestureScale
           const targetScale=scale
+          const previewEntries = this.props?.scene?.entriesFor(document, resident.plan.pageId, this.props.epoch)
           this.lastSamplePrepareMs = performance.now() - started
           let result: KernelResult | undefined, width = 1, height = 1, originX = 0, originY = 0, phaseX = 0, phaseY = 0
           let capturedTiles: CompositeTile[] | undefined
@@ -1488,6 +1499,13 @@ export class InteractionRenderer {
             width = Math.max(1, Math.ceil((b.x + b.width) * scale) - originX)
             height = Math.max(1, Math.ceil((b.y + b.height) * scale) - originY)
             b = resident.captureBounds = { x: originX / scale, y: originY / scale, width: width / scale, height: height / scale }
+            if (previewEntries && zoomSourcePreviewExceedsHalo(document, resident.plan.pageId, b, scale, previewEntries)) {
+              // The whole capture asks the zoom-source planner for a filter halo
+              // past 2048 device pixels. Exact canvas tiles keep a smaller
+              // prepare window and can still draw this focus. Do not submit
+              // the preview, and do not keep a cancelled copy ahead of them.
+              return
+            }
             // HQ resolve also has screen-anchored byte dithering. Use the
             // settled tile compiler/camera instead of relocating a whole
             // resolved snapshot or applying an unscaled interaction window.
@@ -1687,6 +1705,11 @@ export class InteractionRenderer {
             // and would turn repeated cancellations into a self-retry loop.
             this.liveCancelled = true
             this.liveRequested = undefined
+          } else if (zoomSourceHaloRejection(error)) {
+            // A late kernel rejection is the same gate. Keep the last valid
+            // tiles and do not fail the gesture or queue the document again.
+            this.liveRequested = undefined
+            this.livePending = undefined
           } else if (failedIdleWarm && !deviceLost) {
             // Optional preparation must not disable a selection before its
             // first gesture. Keep this context's failed attempt (no idle loop),

@@ -23,6 +23,7 @@ import { usesNativePreviewTiles } from './native-preview-tiles-policy'
 import { createRenderDiagnostics, snapshotResourceFields, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
+import { zoomSourceHaloRejection } from './zoom-source-halo'
 import { readAuthoredSnapshot } from './authored-snapshot'
 import {
   transcode_export_png as raw_transcode_export_png,
@@ -2345,6 +2346,12 @@ self.onmessage = (e) => {
           return
         } catch (error) {
           if (String(error).includes('PREVIEW_CANCELLED')) throw error
+          if (livePreview && !tileViewport && zoomSourceHaloRejection(error)) {
+            // The exact canvas still compiles. Keep this device and the loaded
+            // document; a whole-frame preview that the halo guard rejects must
+            // not dispose residents or force the next request to resend them.
+            throw renderErrorWithBudget(error, `PREVIEW_BUDGET: ${backend}: ${error instanceof Error ? error.message : String(error)}`)
+          }
           if (canvasSequentialDisplay) {
             if (error instanceof Error && error.message === 'SEQUENTIAL_DISPLAY_UNSUPPORTED') throw error
             if (isRecoverablePreviewBudget(error, gpu?.driver.lost)) {

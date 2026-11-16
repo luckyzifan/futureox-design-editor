@@ -2029,6 +2029,77 @@ test('desktop captures keep the settled native camera and its exact fractional s
 })
 
 
+test('15060% zoom-blur focus drag skips the doomed whole-viewport preview', async () => {
+  const zoom = 150.6
+  const focus = (center: [number, number], neighbor: boolean) => {
+    const doc = blank()
+    doc.schemaVersion = 19
+    const ellipse = node('ellipse', 0, 0, 5, 5)
+    ellipse.name = '椭圆 66'
+    const blur = effect('zoom-blur')
+    blur.zoomBlur = { amount: 24, center }
+    ellipse.effects = [blur]
+    const group = node('group', 0, 0, 20, 20)
+    group.children = [ellipse.id]
+    const nodes = [group, ellipse]
+    if (neighbor) {
+      const near = node('rectangle', 10, 0.2, 1.5, 1.5)
+      const gaussian = effect('gaussian-blur')
+      gaussian.radius = 2.5
+      near.effects = [gaussian]
+      nodes.push(near)
+    }
+    doc.nodes = Object.fromEntries(nodes.map(item => [item.id, item]))
+    doc.pages[0].children = nodes.filter(item => item !== ellipse).map(item => item.id)
+    return doc
+  }
+  const failed = vi.fn()
+  const owner = new InteractionRenderer(() => {}, new KernelClient())
+  owners.push(owner)
+  const view = { x: 0, y: 0, zoom }
+  const size = { width: zoom * 8, height: zoom * 3 }
+  const props = (doc: ReturnType<typeof focus>, active = true) => {
+    const pageId = doc.pages[0].id
+    const store = new CanvasSceneSnapshots()
+    store.begin({}, 1, pageId, true)
+    store.currentScene(doc, pageId)
+    const group = doc.nodes[doc.pages[0].children[0]]
+    return {
+      document: doc, selection: [group.children[0]],
+      active, gestureKind: 'parameter' as const, epoch: 1, control: { current: null }, onReady: () => {}, onPreviewFailed: failed,
+      scene: store.borrowCurrentScene(doc, pageId, 1),
+    }
+  }
+  const wide = (job: { options: { width: number; view: { zoom: number } } }) => job.options.width / job.options.view.zoom > 6.5
+  let doc = focus([0.5, 0.5], true)
+  owner.prepare(props(doc), doc.pages[0].id, view, 2, 'analytic', 'webgpu', undefined, size)
+  await Promise.resolve()
+  for (const center of [[0.2, 0.8], [0.9, 0.1], [0.4, 0.6], [0.7, 0.3]] as [number, number][]) {
+    doc = focus(center, true)
+    owner.prepare(props(doc), doc.pages[0].id, view, 2, 'analytic', 'webgpu', undefined, size)
+    await Promise.resolve()
+  }
+  expect(worker.jobs.filter(wide)).toEqual([])
+  expect(owner.error).toBe('')
+  expect(failed).not.toHaveBeenCalled()
+  owner.prepare(props(doc, false), doc.pages[0].id, view, 2, 'analytic', 'webgpu', doc, size)
+  expect(owner.error).toBe('')
+  const beforePlain = worker.jobs.length
+  const plain = focus([0.5, 0.5], false)
+  const open = new InteractionRenderer(() => {}, new KernelClient())
+  owners.push(open)
+  open.prepare(props(plain), plain.pages[0].id, view, 2, 'analytic', 'webgpu', undefined, size)
+  await Promise.resolve()
+  expect(worker.jobs.length).toBeGreaterThan(beforePlain)
+  worker.jobs.length = 0
+  const low = focus([0.5, 0.5], true)
+  const near = new InteractionRenderer(() => {}, new KernelClient())
+  owners.push(near)
+  near.prepare(props(low), low.pages[0].id, { x: 0, y: 0, zoom: 1 }, 2, 'analytic', 'webgpu', undefined, { width: 800, height: 600 })
+  await Promise.resolve()
+  expect(worker.jobs.length).toBeGreaterThan(0)
+})
+
 test('only an owner-valid capture-boundary rebase retains the old crop for bounded growth',async()=>{
  for(const expandCapture of [false,true]){
   const f=pendingRetainedFixture(true)
