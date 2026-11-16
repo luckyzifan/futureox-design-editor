@@ -62,7 +62,19 @@ const english: Readonly<Record<string, string>> = Object.freeze({
   "当前页面不可用": "The current page is unavailable.",
   "页面层级无效，无法安全放置画板": "The page hierarchy is invalid. The frame cannot be placed safely.",
   "当前画布位置不可用": "The current canvas position is unavailable.",
-  "画板未创建，请结束当前编辑后重试": "The frame was not created. Finish the current edit and try again."
+  "画板未创建，请结束当前编辑后重试": "The frame was not created. Finish the current edit and try again.",
+  "画框尺寸预设": "Frame dimension presets",
+  "选择模板": "Choose template",
+  "将所选画板改为该逻辑尺寸。名称、位置和裁剪不变；直接子图层按已有约束调整，自动布局按现有规则重排。不会新建画板，也不模拟设备硬件。": "Applies this logical size to the selected frame. Its name, position and clipping stay unchanged; direct children follow their existing constraints, and auto layout uses its current rules. This does not create a frame or simulate device hardware.",
+  "请先选中一个画板": "Select a frame first.",
+  "画板已锁定": "The frame is locked.",
+  "图形容器不使用画板尺寸预设": "Graphic containers do not use frame size presets.",
+  "组件实例不能直接套用画板尺寸预设": "A component instance cannot take a frame size preset directly.",
+  "所选画板已变化，请关闭后重新打开": "The selected frame changed. Close and reopen this dialog.",
+  "预设尺寸超出该画板的最小或最大尺寸": "The preset is outside this frame's minimum or maximum size.",
+  "父级自动布局会改写该画板尺寸，预设未应用": "The parent auto layout would overwrite this frame size. The preset was not applied.",
+  "预设尺寸未能按原样应用到当前画板": "The preset size was not applied to the current frame as requested.",
+  "画板尺寸未应用": "The frame size was not applied."
 })
 function catalogValue(source: string): string | undefined {
   if (Object.prototype.hasOwnProperty.call(english, source)) return english[source]

@@ -695,6 +695,12 @@ main {
   min-height: 0;
   flex: 1;
 }
+.inspector .frame-size-preset {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
+  text-align: start;
+}
 .inspector section {
   padding: 19px 17px;
   border-bottom: 1px solid var(--workspace-border);
