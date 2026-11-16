@@ -20,6 +20,7 @@ import { allowsReducedSampling, renderQualityContract } from './render-quality'
 import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
 import { stampDisplayTentRadius, usesDisplayTentRadiusIntent } from './display-tent-radius-intent'
 import { usesNativePreviewTiles } from './native-preview-tiles-policy'
+import { ANALYTIC_ZOOM_TILE_SIDE, withAnalyticZoomPreview, zoomPreviewEffects } from './zoom-focus-preview'
 import { createRenderDiagnostics, snapshotResourceFields, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
@@ -1127,7 +1128,8 @@ self.onmessage = (e) => {
       // Canvas chrome is never authored/exported content.
       if (request.png || exportFormat || renderOptions.exportRegion) renderOptions.checkerboard = false
       const disableExactCache = request.debug?.disableExactTileCache === true
-      const options = JSON.stringify({...renderOptions,...(renderOptions.captureViewport&&requestedPrepareViewport?{prepareViewport:requestedPrepareViewport}:{})})
+      let options = JSON.stringify({...renderOptions,...(renderOptions.captureViewport&&requestedPrepareViewport?{prepareViewport:requestedPrepareViewport}:{})})
+      let analyticZoomLane: string | undefined
       const synchronizeDeferred = async () => {
         if (!laneState.deferredInteractionDocument) return
         if(laneState.synchronizedInteractionDocument?.id===laneState.deferredInteractionDocument.id)
@@ -2102,6 +2104,35 @@ self.onmessage = (e) => {
           // CPU-only runs never even load the graphics drivers.
           const { createGpu, straightAlpha } = await import('./gpu/factory')
           if (!scene) {
+            const zoomAdmission = withAnalyticZoomPreview(JSON.parse(options) as KernelOptions, {
+              backend, analyticRegionsEnabled: import.meta.env.VITE_DESIGN_ANALYTIC_REGIONS !== '0',
+              effects: zoomPreviewEffects(laneState.interactionDocument?.nodes),
+            })
+            if (zoomAdmission) {
+              // The regionless compile is the one that returns the 2048 halo.
+              // Admit the output as the same analytic capture the exact canvas uses.
+              options = JSON.stringify(zoomAdmission.options)
+              analyticZoomLane = zoomAdmission.kind === 'tiles' ? 'analytic-zoom-tiles' : 'analytic-zoom-capture'
+              if (zoomAdmission.kind === 'tiles') {
+                if (!previewCurrent()) throw Error('PREVIEW_CANCELLED')
+                await synchronizeDeferred()
+                const result = await renderTiledPreview(
+                  kernel, zoomAdmission.options, backend, color, settingsJson, ANALYTIC_ZOOM_TILE_SIDE,
+                  undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath,
+                  undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit,
+                  canvasMaterialSource, canvasTentRadius, undefined, displayBackpressure, false, false,
+                  packetWait?.controller.signal,
+                )
+                self.postMessage(
+                  { id: request.id, ...result, loadMs, previewLane: analyticZoomLane, previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
+                  { transfer: [result.buffer, ...(result.linearBuffer ? [result.linearBuffer] : []), ...(result.bitmap ? [result.bitmap] : [])] },
+                )
+                return
+              }
+            }
+            // A preview cancelled while the previous sample was still compiling
+            // must not start another whole-scene or analytic compile.
+            if (analyticZoomLane && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
             if (
               cacheScene &&
               laneState.compiledScene?.revision === laneState.loadedRevision &&
@@ -2280,7 +2311,7 @@ self.onmessage = (e) => {
             {
               id: request.id,
               gpuTile: result.gpuTile,
-              previewLane: livePreview ? 'whole-scene' : undefined,
+              previewLane: analyticZoomLane ?? (livePreview ? 'whole-scene' : undefined),
               previewReadback: livePreview ? previewReadback : undefined,
               residentAttached: !!displayCanvas,
               residentInteraction:poseSession?.slot===result.gpuTile&&!!result.gpuTile,
@@ -2622,6 +2653,7 @@ async function renderTiledPreview(
   displayBackpressure=false,
   sourceDetailTile=false,
   sourceImageDisplay=false,
+  signal?: AbortSignal,
 ) {
   const regionChannel=activeLane
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
@@ -2810,7 +2842,7 @@ async function renderTiledPreview(
           view: options.view, gpuViewport: { x: (crop?.x || 0) + tile.x,
             y: (crop?.y || 0) + tile.y, w: tile.width, h: tile.height },
           ...(prepareViewport ? { prepareViewport } : {}) }
-          try { return await compilePacket(kernel,JSON.stringify(regionOptions)) }
+          try { return await compilePacket(kernel,JSON.stringify(regionOptions), signal) }
           catch(error){
             const allowed=regionalGaussianDisplay({backend,channel:regionChannel,profile:options.rasterProfile,colorSpace:color?.documentSpace,
               displayOnly:presentOnly&&!managedOutput,regional:options.gpuGaussianRegions,hdr:executionPolicy?.hdrCompositing,
@@ -2818,7 +2850,7 @@ async function renderTiledPreview(
               {auto:import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO,prefix:import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX,regions:import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS})
             if(!allowed||!regionalGaussianAllocationFailure(error))throw error
             checkCurrent()
-            return compilePacket(kernel,JSON.stringify({...regionOptions,gpuGaussianRegions:true,gpuGaussianReduction:0}))
+            return compilePacket(kernel,JSON.stringify({...regionOptions,gpuGaussianRegions:true,gpuGaussianReduction:0}), signal)
           }
         }
         let scene = prepared
