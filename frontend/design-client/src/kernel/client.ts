@@ -22,6 +22,7 @@ import { recordRenderProfile } from './render-profile'
 import { connectNativePreparation } from './native-preparation'
 import { currentPreparedDocumentJson } from '../prepared-document'
 import { interactionDocumentSource } from './interaction-document-source'
+import { isZoomSourceHaloAdmission } from './zoom-source-preview'
 import { sourceRenderSnapshot, type SourceRenderSnapshot } from './source-render-snapshot'
 
 // The immutable preload bridge is installed before this module evaluates.
@@ -1006,8 +1007,13 @@ export class KernelClient {
             const optionalDisplayDeclined = options.sequentialViewport === true && !interaction &&
               error instanceof Error && error.message === 'SEQUENTIAL_DISPLAY_UNSUPPORTED' &&
               this.worker === worker && !!this.authoredPreparation.receiptFor(document)
+            // The worker already loaded this interaction document before the
+            // zoom-source halo rejection. Dropping the snapshot makes the next
+            // preview resend the whole document and hold the exact canvas.
+            const admittedZoomHalo = interaction && isZoomSourceHaloAdmission(error)
             if (
               !optionalDisplayDeclined &&
+              !admittedZoomHalo &&
               !/PREVIEW_CANCELLED|PREVIEW_BUDGET|GPU.*(?:budget|预算)/i.test(String(error)) &&
               (interaction ? this.interactionSnapshot : this.documentSnapshot) === document &&
               (interaction ? this.interactionRevision : this.documentRevision) === revision

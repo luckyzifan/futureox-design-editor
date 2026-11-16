@@ -13,6 +13,7 @@ import { allowsReducedSampling } from './render-quality'
 import { interactionAdaptiveScale } from './interaction-adaptive-density'
 import { renderFailureFields } from './render-failure-telemetry'
 import { interactionCaptureTiles, recoverableInteractionBudget } from './interaction-capture-tiles'
+import { isZoomSourceHaloAdmission, zoomSourcePreviewExceedsDeviceHalo, type WorldRect } from './zoom-source-preview'
 import { canvasRasterPlan } from './canvas-raster-plan'
 import { expandedInteractionCapture } from './interaction-capture-window'
 import { tilePlacementAtView } from './tile-preview'
@@ -144,6 +145,23 @@ export class InteractionRenderer {
   private liveCancelled = false
   private liveDeferred = false
   private viewport?: { view: CanvasCamera; width: number; height: number; dpr: number }
+  /** Whole-page preview world rect, when this prepare has a finite camera. */
+  private previewWorld(): WorldRect | undefined {
+    const frame = this.viewport
+    if (!frame || !(frame.view.zoom > 0)) return undefined
+    return {
+      x: -frame.view.x / frame.view.zoom, y: -frame.view.y / frame.view.zoom,
+      width: frame.width / frame.view.zoom, height: frame.height / frame.view.zoom,
+    }
+  }
+  private wholePageZoomPreviewRejected(document: DesignDocument, pageId: string, scale: number) {
+    return zoomSourcePreviewExceedsDeviceHalo(document, pageId, scale, this.previewWorld())
+  }
+  private layersFit(plan: InteractionPlan, viewZoom: number, dpr: number) {
+    if (allowsReducedSampling(viewZoom)) return true
+    const limit = 8_388_608 / Math.max(1, plan.layers.length)
+    return !plan.layers.some(layer => layer.bounds.width * layer.bounds.height * (viewZoom * dpr) ** 2 > limit)
+  }
   private settledViewport?: { document:DesignDocument; pageId:string; epoch:number;
     view:CanvasCamera; width:number; height:number; dpr:number; profile:KernelOptions['rasterProfile']; backend:BackendPreference }
   private settledViewportMatches(document:DesignDocument,view:CanvasCamera) {
@@ -444,6 +462,17 @@ export class InteractionRenderer {
         // They must not dispose a warmed worker before the first pointer-down.
         if (!r?.active) return
         if(this.endedDocument===document)return
+        // A whole-page zoom preview at this scale is rejected before it
+        // produces pixels. Retire the empty cover so the exact canvas can
+        // publish the released focus without waiting for that rejection.
+        if (r.live && !r.tiles.length && this.wholePageZoomPreviewRejected(document, r.plan.pageId, Math.max(r.scale, this.viewport ? this.viewport.view.zoom * this.viewport.dpr : 0))) {
+          this.nextGeneration()
+          this.livePending = this.liveRequested = undefined
+          this.endedDocument = document
+          r.active = false
+          this.changed()
+          return
+        }
         this.endedMove=this.props?.gestureKind==='move'
         this.latestPatch=undefined;this.latestCandidate=document
         if (this.error && r.live && !r.retainedFallback) {
@@ -999,17 +1028,45 @@ export class InteractionRenderer {
     const pad = 128 / view.zoom
     const captureViewport = viewport ? { x: viewport.x - pad, y: viewport.y - pad,
       width: viewport.width + 2 * pad, height: viewport.height + 2 * pad } : undefined
-    let plan = contentGesture || props.document.colorManagement && !this.sharedClient
-      ? null : this.layerPlanner.plan(props.document, pageId, props.selection, captureViewport,
-        {scene:props.scene,epoch:props.epoch,
-          neutralPageGroup:import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&this.allowIdleWarm&&!!this.sharedClient&&
-          profile==='figmaSubpixel'&&(backend==='webgpu'||backend==='auto')})
-    if(plan&&!allowsReducedSampling(view.zoom)&&plan.layers.some(layer=>
-      layer.bounds.width*layer.bounds.height*(view.zoom*dpr)**2>8_388_608/Math.max(1,plan!.layers.length)))plan=null
+    const layerOptions = {scene:props.scene,epoch:props.epoch,
+      neutralPageGroup:import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&this.allowIdleWarm&&!!this.sharedClient&&
+      profile==='figmaSubpixel'&&(backend==='webgpu'||backend==='auto')}
+    const managedBytes = props.document.colorManagement && !this.sharedClient
+    let plan = contentGesture || managedBytes
+      ? null : this.layerPlanner.plan(props.document, pageId, props.selection, captureViewport, layerOptions)
+    if (plan && !this.layersFit(plan, view.zoom, dpr)) plan = null
+    // A zoom-blur center edit is not a transform, so it used to drop the
+    // scoped layer plan and compile the whole page. That page preview is the
+    // request rejected with "Zoom source filter halo exceeds 2048 device
+    // pixels". Keep the layer the preview actually hits when it still fits.
+    const wholePageHalo = zoomSourcePreviewExceedsDeviceHalo(props.document, pageId, view.zoom * dpr, viewport)
+    if (!plan && wholePageHalo && contentGesture && !managedBytes) {
+      const layered = this.layerPlanner.plan(props.document, pageId, props.selection, captureViewport, layerOptions)
+      if (layered && this.layersFit(layered, view.zoom, dpr)) plan = layered
+    }
     // Idle root-layer warming competed with exact viewport repair after every
     // zoom. Install a callable live lease now, but leave capture to the gesture
     // while the current page is incomplete. Nested plans already do this.
     if (plan && this.sharedClient && size && !props.active && !r?.active && settledDocument !== props.document) plan = null
+    if (!plan && wholePageHalo) {
+      // No scoped layer can paint this focus. Do not submit the whole-page
+      // preview: it fails admission, drops the interaction snapshot, and
+      // resends the document ahead of the exact canvas. While the gesture is
+      // active, an empty cover keeps the last exact frame on screen.
+      this.closeResidents(); this.warming = false
+      this.pending = undefined; this.pendingDensity = undefined
+      this.livePending = undefined; this.liveRequested = undefined; this.liveDeferred = false
+      this.error = ''
+      if (props.active && props.selection.length && props.selection.length <= 16 && props.selection.every(id => props.document.nodes[id])) {
+        const livePlan = { document: props.document, pageId, ids: [...props.selection], layers: [] }
+        const offsets = interactionOffsets(livePlan, props.document)
+        if (offsets) {
+          this.resident = { plan: livePlan, tiles: [], scale: view.zoom * dpr, offsets, active: true, live: true, affine: false }
+          this.liveAuthored = props.document
+        }
+      }
+      props.onReady(); this.changed(); return
+    }
     if (!plan) {
       this.closeResidents(); this.warming = false
       // Dependency-sensitive/nested selections keep the complete kernel scene.
@@ -1338,6 +1395,14 @@ export class InteractionRenderer {
   private renderLive(document: DesignDocument, order = this.sourceOrder) {
     const handoff = this.handoff
     if (handoff && handoff.resident === this.resident && handoff.document === document) return
+    const currentResident = this.resident
+    const scale = this.viewport ? this.viewport.view.zoom * this.viewport.dpr : currentResident?.scale ?? 0
+    if (currentResident && this.wholePageZoomPreviewRejected(document, currentResident.plan.pageId, scale)) {
+      // The queued whole-page sample cannot be admitted. Leave the last exact
+      // frame in place and do not chain another document payload behind it.
+      this.livePending = undefined
+      return
+    }
     if (this.liveRequested === document && this.liveRequestedOrder === order) return
     this.liveRequestedOrder = order; this.livePendingOrder = order
     this.liveRequested = document; this.livePending = document
@@ -1687,6 +1752,13 @@ export class InteractionRenderer {
             // and would turn repeated cancellations into a self-retry loop.
             this.liveCancelled = true
             this.liveRequested = undefined
+          } else if (isZoomSourceHaloAdmission(error)) {
+            // The document was synchronized. The whole-page pixel plan was
+            // rejected. Keep the last valid focus and do not queue the release
+            // sample that would resend the document before the exact canvas.
+            this.livePending = undefined
+            this.liveRequested = undefined
+            this.changed()
           } else if (failedIdleWarm && !deviceLost) {
             // Optional preparation must not disable a selection before its
             // first gesture. Keep this context's failed attempt (no idle loop),
