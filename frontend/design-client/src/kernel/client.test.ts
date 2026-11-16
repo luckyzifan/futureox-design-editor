@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { KernelClient, backendPreference } from './client'
-import { blank } from '../model'
+import { blank, type DesignNode } from '../model'
 class WorkerStub {
   static instances: WorkerStub[] = []
   messages: {
@@ -432,14 +432,14 @@ test('completed capture removes abort listener and later abort sends no cancella
 
 test('a zoom-source halo rejection keeps the interaction document and patches the next focus', async () => {
   const client = new KernelClient(), doc = blank()
-  const node = {
+  const node: DesignNode = {
     id: 'ellipse-66', kind: 'ellipse' as const, name: '椭圆 66', transform: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number],
     width: 5, height: 5, children: [], visible: true, locked: false, opacity: 1, blend: 'normal', fills: [], strokes: [], radii: [0, 0, 0, 0] as [number, number, number, number],
     smoothing: 0, clip: false, mask: false, points: 3, innerRadius: 0.45, text: '', fontSize: 28,
     effects: [{ id: 'zoom', kind: 'zoom-blur' as const, visible: true, radius: 0, x: 0, y: 0, spread: 0, color: '#000000', opacity: 1, amount: 0, zoomBlur: { amount: 10, center: [0.5, 0.5] as [number, number] } }],
   }
   const image = 'data:image/png;base64,' + 'A'.repeat(5_470_000)
-  const picture = { ...node, id: 'picture', kind: 'rectangle' as const, name: '底图', width: 240, height: 240, transform: [1, 0, 0, 1, -100, -100] as typeof node.transform, effects: [], fills: [{ id: 'fill', kind: 'image' as const, color: '#000', opacity: 1, visible: true, angle: 0, stops: [], fit: 'stretch' as const, blend: 'normal', image }] }
+  const picture: DesignNode = { ...node, id: 'picture', kind: 'rectangle', name: '底图', width: 240, height: 240, transform: [1, 0, 0, 1, -100, -100], effects: [], fills: [{ id: 'fill', kind: 'image', color: '#000', opacity: 1, visible: true, angle: 0, stops: [], fit: 'stretch', blend: 'normal', image }] }
   const source = { ...doc, schemaVersion: 19 as const, nodes: { [picture.id]: picture, [node.id]: node }, pages: [{ ...doc.pages[0], children: [picture.id, node.id] }] }
   const options = { pageId: source.pages[0].id, width: 256, height: 252, view: { x: -6630.4, y: -6624.7, zoom: 301.2 }, transparent: false, grid: false, livePreview: true, renderIntent: 'preview' as const, interactionChannel: true }
   try {

@@ -255,7 +255,8 @@ test('both interface layouts export the snapped group PNG from the layer control
       await act(async () => { root!.render(null) })
     }
   } finally {
-    if (root) await act(async () => root.unmount())
+    const mounted = root
+    if (mounted) await act(async () => mounted.unmount())
     if (previousCreate) urlApi.createObjectURL = previousCreate
     if (previousRevoke) urlApi.revokeObjectURL = previousRevoke
     dom.window.close()
