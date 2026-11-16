@@ -10,7 +10,7 @@ export type ExportTarget =
 /** Sketch snaps the document bounds of a group out to whole points before
  * applying the PNG scale. Preserve the fractional position of its contents. */
 export function sketchGroupPngBounds(doc: DesignDocument, target: ExportTarget, bounds: Bounds): Bounds {
-  if (doc.rasterProfile !== 'analytic' || doc.colorManagement || target.kind !== 'selection' ||
+  if ((doc.rasterProfile ?? 'analytic') !== 'analytic' || doc.colorManagement || target.kind !== 'selection' ||
       target.nodeIds.length !== 1) return bounds
   const id = target.nodeIds[0]
   if (doc.nodes[id]?.kind !== 'group') return bounds

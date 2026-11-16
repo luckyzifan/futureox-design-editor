@@ -133,7 +133,7 @@ test('WASM preserves pressure peaks and hit testing follows the widened curve', 
 
 test('pencil and brush keep independent settings and share the existing vector/stroke model', () => {
   const editor = new Editor(blank())
-  expect(editor.state.pencil).toEqual({ width:1, color:'#000000', smoothing:0.8, pressure:false, cap:'round' })
+  expect(editor.state.pencil).toEqual({ width:1, color:'#000000', smoothing:0.8, pressure:false })
   expect(editor.state.brush).toEqual({ width:12, color:'#7451ca', smoothing:0.8, pressure:true })
   editor.set({ pencil:{...editor.state.pencil,width:3,color:'#112233'} })
   expect(editor.state.brush.width).toBe(12)

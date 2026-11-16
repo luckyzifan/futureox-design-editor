@@ -87,6 +87,25 @@ test('a fitting zoom-focus edit keeps the scoped layer preview and skips the who
   expect(worker.jobs.every(job => Array.isArray(job.options.gpuRoots) && job.options.gpuRoots.length > 0)).toBe(true)
 })
 
+test('preparing the same unrenderable idle viewport publishes its state once', () => {
+  const { doc, ellipse } = scene('extreme')
+  const owner = new InteractionRenderer(vi.fn(), new KernelClient())
+  owners.push(owner)
+  const onReady = vi.fn()
+  const props: InteractionProps = { document: doc, selection: [ellipse.id], active: false,
+    epoch: 1, gestureKind: 'parameter', control: { current: null }, onReady }
+  const prepare = (current: InteractionProps) => owner.prepare(current, doc.pages[0].id,
+    { x: 0, y: 0, zoom: 150.6 }, 2, 'analytic', 'webgpu', doc, { width: 800, height: 600 })
+  prepare(props)
+  prepare(props)
+  prepare(props)
+  expect(onReady).toHaveBeenCalledOnce()
+  expect(worker.jobs).toEqual([])
+  prepare({ ...props, active: true })
+  expect(owner.control.isActive()).toBe(true)
+  expect(worker.jobs).toEqual([])
+})
+
 test('an effect outside the preview viewport still uses the ordinary preview', () => {
   const { doc, ellipse } = scene('remote')
   const owner = new InteractionRenderer(vi.fn(), new KernelClient())

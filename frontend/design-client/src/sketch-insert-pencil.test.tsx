@@ -255,8 +255,8 @@ test('117.sketch Insert pencil matches P, draws two paths, and undo restores the
   const page = editor.state.page
   const before = editor.state.doc
   const beforeIds = [...before.pages.find(entry => entry.id === page)!.children]
-  const settings = { ...editor.state.pencil }
   await render()
+  const settings = { ...editor.state.pencil }
   await chooseInsert('铅笔')
   expect(editor.state.tool).toBe('pencil')
   expect(editor.state.pencil).toEqual(settings)

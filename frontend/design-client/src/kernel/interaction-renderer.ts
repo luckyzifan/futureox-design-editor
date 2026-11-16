@@ -102,7 +102,7 @@ export class InteractionRenderer {
     this.captureAbort.abort(); this.captureAbort = new AbortController()
     return ++this.generation
   }
-  private pending?: { document: DesignDocument; pageId: string; ids: string; scale: number; viewportRevision:number }
+  private pending?: { document: DesignDocument; pageId: string; ids: string; scale: number; viewportRevision:number; idleHaloRejected?: true }
   private pendingDensity?: Parameters<InteractionRenderer['prepare']>
   private resident?: ResidentInteraction
   private readonly layerPlanner = new InteractionLayerPlanner()
@@ -1008,6 +1008,7 @@ export class InteractionRenderer {
     }
     if (samePolicy && this.pending?.document === props.document && this.pending.pageId === pageId && this.pending.ids === key &&
         (!needsViewport||this.pending.viewportRevision===this.viewportRevision) &&
+        !(props.active && this.pending.idleHaloRejected) &&
         (!this.error || this.pending.scale === requestedScale)) {
       // Preserve one useful capture and remember only the latest higher
       // density. Recompiling/cancelling on every small zoom input would turn
@@ -1054,7 +1055,12 @@ export class InteractionRenderer {
       // resends the document ahead of the exact canvas. While the gesture is
       // active, an empty cover keeps the last exact frame on screen.
       this.closeResidents(); this.warming = false
-      this.pending = undefined; this.pendingDensity = undefined
+      // Keep the rejected idle request deduplicated when onReady causes the
+      // surface to prepare again. A new gesture may still install a live cover.
+      if (props.active) this.pending = undefined
+      else this.pending = { document: props.document, pageId, ids: key, scale: requestedScale,
+        viewportRevision: this.viewportRevision, idleHaloRejected: true }
+      this.pendingDensity = undefined
       this.livePending = undefined; this.liveRequested = undefined; this.liveDeferred = false
       this.error = ''
       if (props.active && props.selection.length && props.selection.length <= 16 && props.selection.every(id => props.document.nodes[id])) {
