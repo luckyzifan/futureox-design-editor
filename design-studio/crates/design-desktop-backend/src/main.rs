@@ -5,6 +5,7 @@ use futureox_design_desktop_backend::{
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    futureox_design_kernel::font::register_host_system_cascade();
     let mut args = std::env::args_os().skip(1);
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--recovery-dir")) {
         return Err("Usage: futureox-design-desktop-backend --recovery-dir <absolute app-owned directory> [--catalog-db <absolute app-owned file>] [--workspace-db <absolute app-owned file>]".into());

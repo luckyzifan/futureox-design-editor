@@ -16,6 +16,11 @@ use std::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+pub use crate::system_cascade::{
+    is_render_only_face, prepare_system_cascade_face, register_host_system_cascade,
+    set_system_cascade_resolver, SystemCascadeResolver,
+};
+
 /// Inspect only the selected file. Browser/local file imports use these face
 /// indices instead of assuming a collection's first face matches its name.
 pub fn faces_json(bytes: &[u8]) -> Result<String, String> {
@@ -390,6 +395,11 @@ pub struct Fonts {
     /// positions). At zoom 1 with an integer camera this is device-pixel
     /// quantisation, the crisp-text case Sketch presents at 100%.
     quantize_glyph_origins: bool,
+    /// Render-only system-UI fallback faces. They are not document resources
+    /// and are never written into FD or Sketch font references.
+    cascade_text: Option<FontData>,
+    cascade_display: Option<FontData>,
+    cascade_signature: Option<[u8; 32]>,
 }
 /// Small immutable identity of the font inputs, independent of mutable caches.
 #[derive(Clone, PartialEq, Eq)]
@@ -397,6 +407,8 @@ pub(crate) struct FontSourceStamp {
     default: [u8; 32],
     named: BTreeMap<String, ([u8; 32], u32)>,
     quantized: bool,
+    cascade_text: Option<[u8; 32]>,
+    cascade_display: Option<[u8; 32]>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OutlineOutput {
@@ -867,6 +879,26 @@ fn is_sketch_han(character: char) -> bool {
     matches!(character as u32, 0x3400..=0x9fff | 0xf900..=0xfaff | 0x20000..=0x323af)
 }
 
+fn set_cascade_slot(slot: &mut Option<FontData>, bytes: Option<&[u8]>) -> Result<bool, String> {
+    let Some(bytes) = bytes else {
+        let changed = slot.is_some();
+        *slot = None;
+        return Ok(changed);
+    };
+    if bytes.is_empty() || bytes.len() > crate::system_cascade::MAX_CASCADE_BYTES || bytes.starts_with(b"ttcf") {
+        return Err("System cascade face must be one sfnt under 8 MiB".into());
+    }
+    if ttf_parser::Face::parse(bytes, 0).is_err() {
+        return Err("System cascade face is unreadable".into());
+    }
+    let digest: [u8; 32] = Sha256::digest(bytes).into();
+    if slot.as_ref().is_some_and(|font| font.digest == digest && font.index == 0) {
+        return Ok(false);
+    }
+    *slot = Some(FontData { bytes: Arc::new(bytes.to_vec()), digest, index: 0 });
+    Ok(true)
+}
+
 fn is_noto_sans_sc(face: &ttf_parser::Face<'_>) -> bool {
     face.names().into_iter().any(|name| {
         name.name_id == ttf_parser::name_id::POST_SCRIPT_NAME
@@ -897,12 +929,57 @@ impl Fonts {
             }
             return Some((Arc::clone(&self.data), 0, self.data_digest));
         }
+        if let Some(data) = self.cascade_data(font_id) {
+            return Some((Arc::clone(&data.bytes), data.index, data.digest));
+        }
         let data = self.named.get(font_id)?;
         Some((Arc::clone(&data.bytes), data.index, data.digest))
     }
+    fn cascade_data(&self, id: &str) -> Option<&FontData> {
+        if id == crate::system_cascade::TEXT_FACE { self.cascade_text.as_ref() }
+        else if id == crate::system_cascade::DISPLAY_FACE { self.cascade_display.as_ref() }
+        else { None }
+    }
+    fn cascade_face_id(&self, size: f64) -> Option<&'static str> {
+        if !size.is_finite() || size <= 0. { return None; }
+        if size >= 20. && self.cascade_display.is_some() { Some(crate::system_cascade::DISPLAY_FACE) }
+        else if size < 20. && self.cascade_text.is_some() { Some(crate::system_cascade::TEXT_FACE) }
+        else { None }
+    }
+    /// Install render-only fallback faces. `None` clears that optical class.
+    /// Identical bytes do not flush shaping caches.
+    pub fn install_system_cascade(&mut self, text: Option<&[u8]>, display: Option<&[u8]>) -> Result<bool, String> {
+        let changed = self.install_cascade_slots(text, display)?;
+        self.cascade_signature = None;
+        if changed { self.text_paths = Default::default(); }
+        Ok(changed)
+    }
+    fn install_cascade_slots(&mut self, text: Option<&[u8]>, display: Option<&[u8]>) -> Result<bool, String> {
+        let text_changed = set_cascade_slot(&mut self.cascade_text, text)?;
+        let display_changed = set_cascade_slot(&mut self.cascade_display, display)?;
+        Ok(text_changed || display_changed)
+    }
+    pub(crate) fn refresh_system_cascade(&mut self, doc: &crate::scene::Document) -> Result<bool, String> {
+        let Some(resolve) = crate::system_cascade::current_resolver() else { return Ok(false) };
+        self.refresh_system_cascade_with(doc, resolve)
+    }
+    pub fn refresh_system_cascade_with(&mut self, doc: &crate::scene::Document, resolve: SystemCascadeResolver) -> Result<bool, String> {
+        let request = crate::system_cascade::request_for(doc);
+        if self.cascade_signature == Some(request.signature) { return Ok(false); }
+        let text = if request.text.is_empty() { None } else { resolve(&request.text, request.text_size)? };
+        let display = if request.display.is_empty() { None } else { resolve(&request.display, request.display_size)? };
+        let changed = self.install_cascade_slots(text.as_deref(), display.as_deref())?;
+        self.cascade_signature = Some(request.signature);
+        if changed { self.text_paths = Default::default(); }
+        Ok(changed)
+    }
     pub(crate) fn source_stamp(&self) -> FontSourceStamp {
-        FontSourceStamp { default:self.data_digest, quantized:self.quantize_glyph_origins,
-            named:self.named.iter().map(|(id,font)|(id.clone(),(font.digest,font.index))).collect() }
+        FontSourceStamp {
+            default: self.data_digest, quantized: self.quantize_glyph_origins,
+            named: self.named.iter().map(|(id, font)| (id.clone(), (font.digest, font.index))).collect(),
+            cascade_text: self.cascade_text.as_ref().map(|font| font.digest),
+            cascade_display: self.cascade_display.as_ref().map(|font| font.digest),
+        }
     }
     pub fn load(&mut self, data: &[u8]) -> Result<(), String> {
         check_font(data)?;
@@ -927,10 +1004,14 @@ impl Fonts {
             shaped_runs: self.shaped_runs.clone(),
             named: BTreeMap::new(),
             quantize_glyph_origins: self.quantize_glyph_origins,
+            cascade_text: self.cascade_text.clone(),
+            cascade_display: self.cascade_display.clone(),
+            cascade_signature: self.cascade_signature,
         };
         let mut total = 0;
         for (id, resource) in resources {
             if id == "default"
+                || crate::system_cascade::is_render_only_face(id)
                 || !valid_font_id(id)
                 || resource.family.trim().is_empty()
                 || resource.family.encode_utf16().count() > 200
@@ -988,6 +1069,9 @@ impl Fonts {
     /// Raw font file bytes of one resource, shared with the vector PDF
     /// exporter's whole-file embedding.
     pub(crate) fn bytes(&self, id: &str) -> Result<&[u8], String> {
+        if crate::system_cascade::is_render_only_face(id) {
+            return Err("System cascade faces are render-only and are not embedded".into());
+        }
         if id == "default" {
             Ok(&self.data)
         } else {
@@ -1001,7 +1085,7 @@ impl Fonts {
         self.face_with(id, weight, &[])
     }
     fn face_index(&self, id: &str) -> u32 {
-        if id == "default" {
+        if id == "default" || crate::system_cascade::is_render_only_face(id) {
             0
         } else {
             self.named.get(id).map_or(0, |f| f.index)
@@ -1015,6 +1099,8 @@ impl Fonts {
     ) -> Result<Arc<ParsedFontFace>, String> {
         let (bytes, digest, index) = if id == "default" {
             (&self.data, self.data_digest, 0)
+        } else if let Some(font) = self.cascade_data(id) {
+            (&font.bytes, font.digest, font.index)
         } else {
             let font = self
                 .named
@@ -1181,6 +1267,8 @@ impl Fonts {
         use crate::font_glyph_cache::{Key, Outline};
         let digest = if glyph.font_id == "default" {
             self.data_digest
+        } else if let Some(font) = self.cascade_data(&glyph.font_id) {
+            font.digest
         } else {
             self.named
                 .get(&glyph.font_id)
@@ -1568,7 +1656,15 @@ impl Fonts {
                 // The chain always ends at the embedded default font (the
                 // NotoSansSC resource the host installs): a Latin-only system
                 // font must still render CJK instead of failing the canvas.
-                let mut chain: Vec<&str> = Vec::with_capacity(style.fallbacks.len() + 2);
+                let mut chain: Vec<&str> = Vec::with_capacity(style.fallbacks.len() + 3);
+                // Missing Sketch faces try the host system-UI cascade before the
+                // packaged face. A face without the glyph, including Times from
+                // CTFontCreateWithName, is skipped and the packaged metrics remain.
+                if sketch_display_fallback && font_id == "default" {
+                    if let Some(cascade) = self.cascade_face_id(size) {
+                        chain.push(cascade);
+                    }
+                }
                 chain.push(font_id);
                 chain.extend(style.fallbacks.iter().map(String::as_str));
                 if !self.data.is_empty() && !chain.iter().any(|id| *id == "default") {

@@ -13,7 +13,9 @@
 //!   (/FontFile2 TrueType or /FontFile3 OpenType-CFF), never subsetted.
 //!   Path text, rotated Latin runs inside vertical writing and
 //!   underline/strikethrough runs fall back to glyph outlines, as do text
-//!   nodes with non-solid fills, strokes or clip usage. Embedded variable
+//!   nodes with non-solid fills, strokes or clip usage. Render-only system
+//!   cascade faces are also drawn as outlines so a missing source font is
+//!   not embedded. Embedded variable
 //!   fonts render at their default instance (PDF carries no variation
 //!   state), while /W widths and glyph positions follow the shaped
 //!   instance. Without resident fonts (`encode_pdf_vector`) the free
@@ -238,7 +240,7 @@ fn write_text_operators(
     layer_opacity: f64,
 ) -> Result<bool, String> {
     let layout = fonts.node_layout(node, Some(node.width))?;
-    if layout.glyphs.iter().any(|g| g.path_transform.is_some()) {
+    if layout.glyphs.iter().any(|g| g.path_transform.is_some() || crate::font::is_render_only_face(&g.font_id)) {
         return Ok(false);
     }
     // Glyph ids and per-instance advances grouped per font resource.

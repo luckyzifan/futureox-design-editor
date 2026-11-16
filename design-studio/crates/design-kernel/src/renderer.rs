@@ -1387,6 +1387,22 @@ impl Engine {
         self.world_support = None;
         self.source_compile_context = None;
         self.pose_prefix = None;
+        if self.fonts.refresh_system_cascade(self.doc.as_deref().expect("installed document")).unwrap_or(false) {
+            self.paths.clear();
+            self.pose_prefix = None;
+            self.geo_revision = self.geo_revision.wrapping_add(1);
+        }
+        Ok(())
+    }
+    /// Replace the render-only system fallback faces and drop cached outlines.
+    pub fn install_system_cascade(&mut self, text: Option<&[u8]>, display: Option<&[u8]>) -> Result<(), String> {
+        if self.fonts.install_system_cascade(text, display)? {
+            self.paths.clear();
+            self.pose_prefix = None;
+            self.layout_dirty = true;
+            self.camera_prepare = None;
+            self.geo_revision = self.geo_revision.wrapping_add(1);
+        }
         Ok(())
     }
     pub fn stats(&self) -> &Stats {

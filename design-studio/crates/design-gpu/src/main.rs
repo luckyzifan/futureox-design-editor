@@ -158,6 +158,7 @@ async fn main() {
     }
 }
 async fn run() -> Result<(), String> {
+    futureox_design_kernel::font::register_host_system_cascade();
     let a = args()?;
     if a.serve {
         return serve(a).await;

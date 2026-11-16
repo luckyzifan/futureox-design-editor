@@ -53,6 +53,7 @@ pub mod ruler_units;
 pub mod svg_export;
 pub mod fixed_gradient;
 pub mod font;
+mod system_cascade;
 #[cfg(not(target_arch = "wasm32"))]
 mod font_splash;
 #[cfg(target_arch = "wasm32")]

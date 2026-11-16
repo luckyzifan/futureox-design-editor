@@ -621,6 +621,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "futureox-coretext-fallback"
+version = "0.1.0"
+dependencies = [
+ "ttf-parser",
+]
+
+[[package]]
 name = "futureox-design-agent"
 version = "0.1.0"
 dependencies = [
@@ -675,6 +682,7 @@ dependencies = [
  "bytemuck",
  "either",
  "flo_curves",
+ "futureox-coretext-fallback",
  "half",
  "im",
  "image",

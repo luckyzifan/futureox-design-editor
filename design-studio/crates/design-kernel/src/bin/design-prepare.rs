@@ -16,6 +16,7 @@ struct Request {
     source_bitmaps:Option<futureox_design_kernel::source_bitmap_pixels::Directory>,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    futureox_design_kernel::font::register_host_system_cascade();
     let mut args = std::env::args().skip(1);
     if args.next().as_deref() != Some("--font") {
         return Err("--font required".into());
