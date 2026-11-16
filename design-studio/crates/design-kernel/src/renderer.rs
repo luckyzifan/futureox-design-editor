@@ -1039,12 +1039,15 @@ impl Engine {
             || index.has_connectors || index.has_instance_slots { return false; }
         let parents = &index.parents;
         patch.nodes.iter().all(|(id, next)| {
+            let (Some(old), Some(next), Some(derived)) = (source.nodes.get(id), next, resolved.nodes.get(id)) else { return false; };
+            let changes_linear_transform = old.transform.0[..4] != next.transform.0[..4];
             if index.in_sketch_mask_chain(id) &&
-                (patch.nodes.len() != 1 || !crate::sketch_masks::stable_bitmap_pose(source, resolved, parents, id)) {
+                (patch.nodes.len() != 1 || !crate::sketch_masks::stable_bitmap_pose(
+                    source, resolved, parents, id, affine && changes_linear_transform,
+                )) {
                 return false;
             }
-            let (Some(old), Some(next), Some(derived)) = (source.nodes.get(id), next, resolved.nodes.get(id)) else { return false; };
-            if !affine && old.transform.0[..4] != next.transform.0[..4] || derived.transform != old.transform { return false; }
+            if !affine && changes_linear_transform || derived.transform != old.transform { return false; }
             let mut translated = old.clone(); translated.transform = next.transform;
             if translated != *next { return false; }
             for id in std::iter::once(id.as_str()).chain(parents.ancestors(id)) {

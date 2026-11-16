@@ -124,7 +124,8 @@ export class PreparationChannel {
     return new Promise((resolve, reject) => {
       const job: Job = { id: ++this.sequence, lane, method, args, resolve, reject, cancellable: !!signal }
       if(this.terminalDepth && this.terminalReady && lane==='interaction' &&
-          (method==='apply_interaction_transforms'||method==='compile_gpu_packet'))job.terminal=this.terminalPort
+          (method==='apply_interaction_transforms'||method==='compile_gpu_packet'||
+           method==='apply_document_patch_with_damage'&&args.length===1))job.terminal=this.terminalPort
       if (signal && !job.terminal && typeof SharedArrayBuffer !== 'undefined') job.cancellation = new Int32Array(new SharedArrayBuffer(4))
       if (this.diagnostics?.enabled()) { job.owner = this.diagnostics.owner(); job.queuedAt = performance.now() }
       this.trace(job, 1)

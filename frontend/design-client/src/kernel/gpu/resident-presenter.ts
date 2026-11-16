@@ -18,6 +18,8 @@ import { PresenterAlphaTrace } from './presenter-alpha-trace'
 import { cameraPreviewCoverage, cameraPreviewShader, type CameraPreview } from './camera-preview'
 import { retainedPreviewUnderlay } from '../zoom-underlay'
 
+const QUEUED_FRAME_WAIT_MS = 150
+
 export type ResidentItem = Omit<CompositeItem, 'tile'> & {
   tile: Omit<CompositeItem['tile'], 'bytes' | 'bitmap'> & { gpuTile: number }
 }
@@ -142,11 +144,13 @@ export class ResidentPresenter {
   private navigationBacking?: PayloadToken
   private bitmapVisible?: PayloadToken
   private bitmapReserved?: PayloadToken
-  private bitmapPending?: { token:number; payload:PayloadToken; frame:ResidentFrame; sent:boolean }
+  private bitmapPending?: { token:number; payload:PayloadToken; frame:ResidentFrame; sent:boolean; onReleased?: () => void }
   private clearBitmapPresentation() {
-    if(this.bitmapPending)this.payload.retire(this.bitmapPending.payload)
+    const pending = this.bitmapPending
+    if(pending)this.payload.retire(pending.payload)
     if(this.bitmapVisible)this.payload.retire(this.bitmapVisible)
     this.bitmapPending=undefined;this.bitmapVisible=undefined
+    pending?.onReleased?.()
   }
   acceptPresentation(token:number,accepted=true) {
     const pending=this.bitmapPending
@@ -156,7 +160,27 @@ export class ResidentPresenter {
       this.bitmapVisible=pending.payload
     }else this.payload.retire(pending.payload)
     this.bitmapPending=undefined
-    if(this.latest!==pending.frame)this.repaint()
+    try { if(this.latest!==pending.frame)this.repaint() }
+    finally { pending.onReleased?.() }
+  }
+  /** An exact pose can be queued behind the browser's previous image. Resume
+   * the commit after that handoff submits the latest draw. The caller still
+   * validates the actual snapshot, including on cancellation or timeout. */
+  waitForQueuedFrame(frame: ResidentFrame, signal?: AbortSignal): Promise<void> | undefined {
+    const pending = this.bitmapPending
+    if (this.disposed || !pending || pending.onReleased || this.latest !== frame ||
+        this.drawn === frame || signal?.aborted) return
+    return new Promise(resolve => {
+      const finish = () => {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', finish)
+        pending.onReleased = undefined
+        resolve()
+      }
+      const timer = setTimeout(finish, QUEUED_FRAME_WAIT_MS)
+      pending.onReleased = finish
+      signal?.addEventListener('abort', finish, { once: true })
+    })
   }
   hasDeferredPosePresentation(slot:number) {
     const pending = this.bitmapPending, frame = this.latest
@@ -812,7 +836,8 @@ export class ResidentPresenter {
     }
     this.drawnContent = complete && !preview && !frame.interaction && !frame.linearBlend ? content : undefined
     this.drawnUnderlay = usedZoomUnderlay
-    const pending=bitmapPayload?{token:++nextPresentationToken,payload:bitmapPayload,frame,sent:false}:undefined
+    const pending: typeof this.bitmapPending = bitmapPayload
+      ? {token:++nextPresentationToken,payload:bitmapPayload,frame,sent:false} : undefined
     if(pending){this.payload.commit(pending.payload);this.bitmapPending=pending;this.bitmapReserved=undefined}
     const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
@@ -921,6 +946,7 @@ export class ResidentPresenter {
     }).catch(error=>{
       if(this.bitmapPending!==pending||this.disposed)return
       this.bitmapPending=undefined;this.payload.retire(pending.payload)
+      pending.onReleased?.()
       this.report({error:String(error)})
     })
   }

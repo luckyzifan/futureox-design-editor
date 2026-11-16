@@ -50,6 +50,45 @@ test('only a pose waiting to submit its display copy holds the next raster', asy
  current.bitmap.close()
  f.presenter.acceptPresentation(current.presented.presentationToken)
 })
+test('a queued exact snapshot waits for the browser to hand off the previous frame', async () => {
+ const f = fixture()
+ const previous = {...f.frame(0), interaction:true, input:{sequence:4,at:1}}
+ const exact = {...f.frame(0), interaction:true, input:{sequence:5,at:2}}
+ f.presenter.draw(previous)
+ const previousEpoch = f.queue.epoch
+ f.presenter.draw(exact)
+ let resumed = false
+ const pending = f.presenter.waitForQueuedFrame(exact)?.then(() => { resumed = true })
+ expect(pending).toBeDefined()
+ f.queue.completeThrough(previousEpoch)
+ await flush()
+ expect(resumed).toBe(false)
+ expect(f.queue.epoch).toBe(previousEpoch)
+ const image = f.reports.at(-1) as any
+ image.bitmap.close()
+ f.presenter.acceptPresentation(image.presented.presentationToken)
+ await pending
+ const snapshot = f.presenter.snapshot()
+ expect(snapshot?.frame).toBe(exact)
+ expect(f.queue.epoch).toBeGreaterThan(previousEpoch)
+ if (snapshot) f.presenter.release([snapshot.gpuTile])
+ f.presenter.dispose()
+})
+test('a cancelled snapshot wait leaves the existing presentation available', async () => {
+ const f = fixture()
+ f.presenter.draw(f.frame(0))
+ const next = f.frame(1)
+ f.presenter.draw(next)
+ const controller = new AbortController()
+ const waiting = f.presenter.waitForQueuedFrame(next, controller.signal)
+ expect(waiting).toBeDefined()
+ controller.abort()
+ await waiting
+ const other = f.presenter.waitForQueuedFrame(next)
+ expect(other).toBeDefined()
+ f.presenter.dispose()
+ await other
+})
 test('discarded handoffs cannot retire the image the browser is still displaying',async()=>{
  const f=fixture();f.presenter.draw(f.frame(0));f.queue.completeThrough(f.queue.epoch);await flush()
  const first=f.reports.at(-1) as any;first.bitmap.close();f.presenter.acceptPresentation(first.presented.presentationToken)

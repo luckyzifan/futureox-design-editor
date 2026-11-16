@@ -327,6 +327,7 @@ export interface Driver {
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic?:boolean): void
   acceptPresentation?(token:number,accepted?:boolean):void
   hasDeferredPosePresentation?(slot:number):boolean
+  waitForQueuedFrame?(frame: import('./resident-presenter').ResidentFrame, signal?: AbortSignal): Promise<void> | undefined
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
   replacePresented?(slot:number,next:number):void

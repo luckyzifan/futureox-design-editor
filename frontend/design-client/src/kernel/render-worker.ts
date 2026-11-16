@@ -497,8 +497,17 @@ function schedulePose(){
         if(!ids.length||ids.length>16||ids.some(id=>!session.scene.nodes[id]||!session.document.nodes[id]||!Array.isArray(pose.transforms[id])||
           pose.transforms[id].length!==6||!Array.from(pose.transforms[id]).every(Number.isFinite))){rebasePose(pose);break}
         const documentStarted=performance.now()
-        let document=session.patch||session.native&&!pose.terminal&&!session.scene.interactionFixedMask?undefined:{...session.document,nodes:{...session.document.nodes,...Object.fromEntries(ids.map(id=>
-          [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}}
+        const authoredPose = () => ({
+          ...session.document,
+          nodes: {
+            ...session.document.nodes,
+            ...Object.fromEntries(ids.map(id => [
+              id, { ...session.document.nodes[id], transform: pose.transforms[id] },
+            ])),
+          },
+        })
+        const nativePreview = session.native && !pose.terminal && !session.scene.interactionFixedMask
+        let document = session.patch || nativePreview ? undefined : authoredPose()
         const documentMs=performance.now()-documentStarted
         const scale=session.scene.view.zoom,base=session.window
         const affine = ids.some(id => pose.transforms[id].slice(0, 4).some((value, i) => value !== session.baseDocument.nodes[id]?.transform[i]))
@@ -557,6 +566,14 @@ function schedulePose(){
             if(!current())continue
             advance=undefined
           }
+          // A nonterminal native pose may only have updated the kernel.
+          // The matching terminal texture also needs its authored snapshot
+          // for the canvas commit's document equality check.
+          if (pose.terminal && document && ids.some(id =>
+            pose.transforms[id].some((value, index) => !Object.is(value, session.document.nodes[id].transform[index])))) {
+            session.document = laneState.interactionDocument = document
+            laneState.deferredInteractionDocument = document
+          }
           const bounds=session.bounds
           presentSampledPose(session,pose,bounds)
           reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
@@ -605,7 +622,8 @@ function schedulePose(){
               laneState.deferredInteractionDocument=session.document
               laneState.synchronizedInteractionDocument=undefined
               laneState.compiledScene=undefined
-              await kernel.apply_document_patch_with_damage(JSON.stringify(patch))
+              const applyPatch = () => kernel.apply_document_patch_with_damage(JSON.stringify(patch))
+              await (preparation ? preparation.withPoseTransport(applyPatch) : applyPatch())
               patchedPose=true
               document=applyDocumentPatch(session.document,patch)
               clippedBitmapPose=coversDisplay&&session.fixedWindow===true&&!session.affine&&!!displayFrame&&
@@ -645,7 +663,12 @@ function schedulePose(){
           // Only a release hint can discard an obsolete preparation; moving
           // pointers keep normal sampling progress and cannot starve rendering.
           if(disposition==='changed')continue
-          if(disposition==='same'&&ending){pose.input=ending.input;pose.terminal=true;pendingPose=undefined}
+          if(disposition==='same'&&ending){
+            pose.input=ending.input;pose.terminal=true;pendingPose=undefined
+            // A pose that began as a native preview acquires its document
+            // when the matching pointer-up turns it into the terminal pose.
+            if (!session.patch && !document) document = authoredPose()
+          }
         }
         const translationMs=performance.now()-translationStarted,posePrepareMs=performance.now()-started
         if(!next){rebasePose(pose);break}
@@ -1516,10 +1539,22 @@ self.onmessage = (e) => {
                 JSON.parse(settledPose.options).rasterProfile === renderOptions.rasterProfile &&
                 canCommitResidentFrame(settledPose.scene, () => settledPose.patch?.snapshot() ?? settledPose.document,
                   laneState.interactionDocument, displayFrame, settledPose.input)) {
-              let snapshot: ReturnType<NonNullable<typeof gpu.driver.snapshotPresented>>
-              try { snapshot = gpu.driver.snapshotPresented() }
-              catch (error) { if (!isDisplayBudgetError(error)) throw error }
-              if (snapshot && matchesResidentFrame(settledPose.scene, snapshot.frame, settledPose.input)) {
+              const driver = gpu.driver
+              const frame = displayFrame, input = settledPose.input
+              const waiting = settledPose.native && settledPose.affine &&
+                driver.waitForQueuedFrame?.(frame, packetWait?.controller.signal)
+              if (waiting) {
+                await waiting
+                if (admitAction(liveChoice(false)) === 'cancel') throw Error('PREVIEW_CANCELLED')
+              }
+              let snapshot: ReturnType<NonNullable<Driver['snapshotPresented']>>
+              if (gpu?.driver === driver && poseSession === settledPose && settledPose.input === input) {
+                try { snapshot = driver.snapshotPresented?.() }
+                catch (error) { if (!isDisplayBudgetError(error)) throw error }
+              }
+              if (snapshot && equalValue(snapshot.frame.view, frame.view) && snapshot.frame.width === frame.width &&
+                  snapshot.frame.height === frame.height && snapshot.frame.dpr === frame.dpr &&
+                  matchesResidentFrame(settledPose.scene, snapshot.frame, input)) {
                 const { view, dpr, width, height } = snapshot.frame
                 self.postMessage({ id: request.id, tile: { key: `commit:${laneState.loadedRevision}:${snapshot.gpuTile}`,
                   x: -view.x * dpr, y: -view.y * dpr, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
@@ -1529,7 +1564,7 @@ self.onmessage = (e) => {
                   compileMs: 0, loadMs, retainedCommit: true })
                 return
               }
-              if (snapshot) gpu.driver.releasePresented?.([snapshot.gpuTile])
+              if (snapshot) driver.releasePresented?.([snapshot.gpuTile])
             }
             if (priorRepairOwner && paintDamage && !tileViewport.length && displayFrame && renderIntent==='canvas' &&
                 (renderOptions.rasterProfile==='figmaSubpixel' || overviewBitmapCommit) &&

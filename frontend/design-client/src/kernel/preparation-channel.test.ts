@@ -222,5 +222,13 @@ test('native pose port shares the physical queue, ignores foreign replies and dr
   const next=client.request('canvas','stats');server.postMessage({id,value:'foreign'})
   await new Promise(resolve=>setTimeout(resolve,10));expect(published).toBe(false)
   direct.port2.postMessage({id,value:new Uint8Array([1])});await expect(next).resolves.toMatchObject({value:'live'})
+  const patchRequest = wait(direct.port2)
+  const patch = client.withPoseTransport(() => client.request(
+    'interaction', 'apply_document_patch_with_damage', ['{"fields":{},"nodes":{}}'],
+  ))
+  const patchEnvelope = (await patchRequest).data
+  expect(patchEnvelope).toMatchObject({ lane:'interaction', method:'apply_document_patch_with_damage' })
+  direct.port2.postMessage({ id:patchEnvelope.id, value:'damage' })
+  await expect(patch).resolves.toMatchObject({ value:'damage' })
   direct.port2.close()
 })
