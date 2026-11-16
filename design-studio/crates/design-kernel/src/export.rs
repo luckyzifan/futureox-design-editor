@@ -201,7 +201,7 @@ impl Engine {
                 Ok(space) => {
                     let doc = self.doc.as_ref().expect("document checked");
                     let coherent = options.raster_profile != RasterProfile::Analytic
-                        && region_correlated_samples(doc, page_index, options.raster_profile);
+                        && region_correlated_samples(doc, page_index, options.raster_profile, request.bounds, plan.view.zoom);
                     let (tile_width, rows) = if options.raster_profile == RasterProfile::Analytic {
                         // Share overlapping filter input across a wider tile
                         // while keeping the PNG row band within eight MiB.
@@ -304,13 +304,49 @@ impl RegionSelection<'_, '_> {
     }
 }
 
-fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize, profile: RasterProfile) -> bool {
+/// An effect with no primitive hull stays inclusive. Unknown geometry must
+/// not enable a sample graph that filter has not been admitted on.
+fn effect_can_change_export(doc: &crate::scene::Document, id: &str, matrix: crate::math::Transform, export: ExportBounds, camera_scale: f64) -> bool {
+    let node = &doc.nodes[id];
+    if !camera_scale.is_finite() || camera_scale <= 0. { return true; }
+    let Some(bounds) = painted_bounds(doc, id, matrix) else { return true; };
+    let halo = node.effect_outset(matrix.max_scale() * camera_scale);
+    let stroke = node.strokes.iter().filter(|stroke| stroke.visible).map(crate::stroke::maximum_width).fold(0., f64::max) * matrix.max_scale();
+    if !halo.is_finite() || !stroke.is_finite() { return true; }
+    let margin = halo / camera_scale + stroke;
+    if !margin.is_finite() || margin < 0. || margin > i32::MAX as f64 { return true; }
+    let pad = margin.ceil() as i32;
+    let Some(x0) = bounds.x.checked_sub(pad) else { return true };
+    let Some(y0) = bounds.y.checked_sub(pad) else { return true };
+    let Some(x1) = bounds.checked_right().and_then(|edge| edge.checked_add(pad)) else { return true };
+    let Some(y1) = bounds.checked_bottom().and_then(|edge| edge.checked_add(pad)) else { return true };
+    let (ex0, ey0) = (export.x.floor(), export.y.floor());
+    let (ex1, ey1) = ((export.x + export.width).ceil(), (export.y + export.height).ceil());
+    if ![ex0, ey0, ex1, ey1].into_iter().all(f64::is_finite) { return true; }
+    f64::from(x1) >= ex0 && f64::from(y1) >= ey0 && ex1 >= f64::from(x0) && ey1 >= f64::from(y0)
+}
+
+fn painted_bounds(doc: &crate::scene::Document, id: &str, matrix: crate::math::Transform) -> Option<crate::math::Rect> {
+    let node = &doc.nodes[id];
+    if !node.visible || node.opacity <= 0. { return Some(crate::math::Rect::default()); }
+    let own = crate::geometry_support::leaf_control_bounds(node, matrix);
+    if node.children.is_empty() { return own; }
+    if own.is_none() && (node.fills.iter().any(|paint| paint.visible && paint.opacity > 0.)
+        || node.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.))
+    {
+        return None;
+    }
+    let mut bounds = own.unwrap_or_default();
+    for child in &node.children {
+        bounds = bounds.union(painted_bounds(doc, child, matrix.concat(doc.nodes[child].transform))?);
+    }
+    Some(bounds)
+}
+
+fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize, profile: RasterProfile, export: ExportBounds, scale: f64) -> bool {
     fn visit(
-        doc: &crate::scene::Document,
-        id: &str,
-        count: &mut usize,
-        backdrop: &mut bool,
-        progressive_backdrop: &mut bool,
+        doc: &crate::scene::Document, id: &str, count: &mut usize, backdrop: &mut bool, progressive_backdrop: &mut bool,
+        parent: crate::math::Transform, export: ExportBounds, scale: f64,
     ) -> bool {
         let node = &doc.nodes[id];
         if !node.visible || node.opacity <= 0. {
@@ -330,15 +366,16 @@ fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize, pr
         let effect = node.backdrop_effect();
         *backdrop |= effect.is_some();
         *progressive_backdrop |= effect.is_some_and(|effect| effect.gradient_blur.is_some());
-        let mut supported = node.effects.iter().all(|effect| {
-            !effect.visible
-                || matches!(
-                    effect.kind.as_str(),
-                    "blur" | "shadow" | "inner-shadow" | "background-blur" | "glass"
-                )
-        });
+        let matrix = parent.concat(node.transform);
+        // Spatial filters keep single-plane export when they can paint into
+        // this region. A filter whose conservative hull misses the export
+        // must not switch the sample graph of unrelated geometry.
+        let blocks = node.effects.iter().any(|effect| {
+            effect.visible && !matches!(effect.kind.as_str(), "blur" | "shadow" | "inner-shadow" | "background-blur" | "glass")
+        }) && effect_can_change_export(doc, id, matrix, export, scale);
+        let mut supported = !blocks;
         for child in &node.children {
-            supported &= visit(doc, child, count, backdrop, progressive_backdrop);
+            supported &= visit(doc, child, count, backdrop, progressive_backdrop, matrix, export, scale);
         }
         supported
     }
@@ -347,7 +384,7 @@ fn region_correlated_samples(doc: &crate::scene::Document, page_index: usize, pr
         .children
         .iter()
         .fold(true, |supported, id| {
-            visit(doc, id, &mut count, &mut backdrop, &mut progressive_backdrop) && supported
+            visit(doc, id, &mut count, &mut backdrop, &mut progressive_backdrop, crate::math::Transform::default(), export, scale) && supported
         });
     // The hardware profile must preserve its accumulated edge coverage for
     // an isolated paint too. The software export keeps its established
