@@ -51,6 +51,7 @@ import { useUtilityTools, translateVertices } from './utility-tools'
 import { resolveShortcut, shortcutPlatform } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
 import { requestCommandSearch } from './command-search-session'
+import { closeLayerFind, layerFindSnapshot, requestLayerFind } from './layer-find-session'
 import { dispatchEditorShortcut, shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { createPortal, flushSync } from 'react-dom'
 import { scheduleCanvasView } from './canvas-view-schedule'
@@ -1344,6 +1345,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
         e.preventDefault()
       }
+      if (e.key === 'Escape' && !drag.current && !pencil.current && !penRef.current && layerFindSnapshot()) {
+        e.preventDefault()
+        if (!e.repeat) closeLayerFind()
+        return
+      }
       if (e.key === 'Escape' && penRef.current?.network.edges.length && (!drag.current || (drag.current.kind === 'vertex' && !drag.current.node))) {
         e.preventDefault()
         finishPen('deselect')
@@ -1450,9 +1456,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       // Open command search before any pen commit. The chord itself must not edit the document.
-      if (shortcut?.command === 'open-command-search') {
+      if (shortcut?.command === 'open-command-search' || shortcut?.command === 'open-layer-find') {
+        // textEntryOwner is current; this listener is not rebound on each text-edit render.
+        if (shortcut.command === 'open-layer-find' && ownsTextEntry(textEntryOwner.current)) return
         e.preventDefault()
-        if (!e.repeat && !editor.interactionActive && !drag.current && !pencil.current) requestCommandSearch(e.target)
+        if (!e.repeat && !editor.interactionActive && !drag.current && !pencil.current) {
+          if (shortcut.command === 'open-command-search') requestCommandSearch(e.target)
+          else requestLayerFind(e.target)
+        }
         return
       }
       if (penRef.current && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && e.code !== 'Space') finishPen()

@@ -4,12 +4,13 @@ import { screenToWorld } from './canvas-camera'
 import { blank, node } from './model'
 import { editorCommands } from './editor-commands'
 import { closeCommandSearch, commandSearchSnapshot } from './command-search-session'
+import { closeLayerFind } from './layer-find-session'
 import { dispatchEditorShortcut } from './editor-shortcuts'
 import { canvasMenuItems } from './canvas-menu-model'
 import { createShortcutPreference, SHORTCUT_PROFILE_KEY } from './shortcut-preference'
 import { resolveShortcut, shortcutBindings, shortcutLabel, shortcutPlatform, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 const editors: Editor[] = []
-afterEach(() => { closeCommandSearch(); editors.splice(0).forEach(editor => editor.dispose()); vi.unstubAllGlobals() })
+afterEach(() => { closeCommandSearch(); closeLayerFind(); editors.splice(0).forEach(editor => editor.dispose()); vi.unstubAllGlobals() })
 function fixture() {
   const doc = blank('Shortcuts'), a = node('rectangle', 10, 20, 30, 40), b = node('rectangle', 100, 90, 50, 60)
   doc.nodes[a.id] = a; doc.nodes[b.id] = b; doc.pages[0].children = [a.id, b.id]
@@ -25,9 +26,11 @@ describe('bounded keyboard presets', () => {
   test.each(contexts)('$profile $platform desktop=$desktop has unique chords and existing commands only', context => {
     const bindings = shortcutBindings(context)
     expect(new Set(bindings.map(binding => binding.combo)).size).toBe(bindings.length)
-    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search']).toContain(binding.command)
+    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find']).toContain(binding.command)
     const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()
     expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : [])
+    const find = bindings.filter(binding => binding.command === 'open-layer-find').map(binding => binding.combo)
+    expect(find).toEqual(context.profile === 'figma-like' && context.desktop ? ['Mod+F'] : [])
     expect(bindings.some(binding => binding.command === 'set-tool-slice' && binding.combo === (context.profile === 'figma-like' ? 'S' : 'E'))).toBe(true)
   })
   test.each(contexts)('$profile $platform desktop=$desktop dispatches real tool, duplicate, undo, group and visibility state', async context => {
