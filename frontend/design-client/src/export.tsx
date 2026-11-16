@@ -10,7 +10,7 @@ import { sketchMaskScene } from './render-outline-mask'
 import { scene, unionBounds, boxPoints, apply, bounds as pointBounds, inverse, multiply, translate } from './geometry'
 import { maskChild, container, type DesignDocument, type Bounds } from './model'
 import { KernelClient } from './kernel/client'
-import { pdfVectorIssues, type ExportTarget } from './export-metadata'
+import { pdfVectorIssues, sketchGroupPngBounds, type ExportTarget } from './export-metadata'
 // Keep the existing synchronous public exports; UI-only metadata callers can
 // use the light module without pulling React's SVG serializer into startup.
 export { pdfVectorIssues, sliceExportTarget, type ExportTarget } from './export-metadata'
@@ -470,7 +470,8 @@ export async function exportRasterBatch(
   if (signal?.aborted) throw new Error('已取消导出')
   ;({doc,target} = repeatExport(kernelLayout(doc),target))
   doc = projectSlice(doc,pageId,target)
-  const box = targetBounds(doc, pageId, target)
+  const bounds = targetBounds(doc, pageId, target)
+  const box = format === 'png' ? sketchGroupPngBounds(doc, target, bounds) : bounds
   const plans = scales.map((scale) => {
     if (!Number.isFinite(scale) || scale < 0.001 || scale > 128)
       throw new Error('导出倍率必须在 0.001–128 之间')

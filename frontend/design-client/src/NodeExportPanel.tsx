@@ -1,5 +1,5 @@
 import { desktopPet } from './desktop-pet'
-import { layerExportColorOutput, pdfVectorIssues, sliceExportTarget, subtreeNeedsExplicitColorEncoding } from './export-metadata'
+import { layerExportColorOutput, pdfVectorIssues, sketchGroupPngBounds, sliceExportTarget, subtreeNeedsExplicitColorEncoding } from './export-metadata'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from './engine'
 import { exportSuffixHasForbiddenCharacters, uid, type DesignNode, type ExportSetting } from './model'
@@ -58,7 +58,11 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       if(settings.some(s=>s.format==='eps'||s.scale===0))throw new Error('包含仅用于 Sketch 往返的格式或零倍率设置；请改用可执行格式和正倍率')
       const {exportImage,targetBounds,filename}=await import('./export')
       const bounds=targetBounds(request.document,request.page,target)
-      const pixels=settings.filter(s=>s.format!=='svg'&&s.format!=='pdf-vector').reduce((n,s)=>n+Math.ceil(bounds.width*s.scale)*Math.ceil(bounds.height*s.scale),0)
+      const pngBounds=sketchGroupPngBounds(request.document,target,bounds)
+      const pixels=settings.filter(s=>s.format!=='svg'&&s.format!=='pdf-vector').reduce((n,s)=>{
+        const box=s.format==='png'?pngBounds:bounds
+        return n+Math.ceil(box.width*s.scale)*Math.ceil(box.height*s.scale)
+      },0)
       if(pixels>64_000_000)throw new Error('批量导出总尺寸超过 6400 万像素，请拆分设置')
       const next:Preview[]=[]
       for(const setting of settings) {

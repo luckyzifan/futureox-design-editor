@@ -7,6 +7,20 @@ export type ExportTarget =
   | { kind: 'selection'; nodeIds: string[] }
   | { kind: 'slice'; bounds: Bounds; transform?: Matrix }
 
+/** Sketch snaps the document bounds of a group out to whole points before
+ * applying the PNG scale. Preserve the fractional position of its contents. */
+export function sketchGroupPngBounds(doc: DesignDocument, target: ExportTarget, bounds: Bounds): Bounds {
+  if (doc.rasterProfile !== 'analytic' || doc.colorManagement || target.kind !== 'selection' ||
+      target.nodeIds.length !== 1) return bounds
+  const id = target.nodeIds[0]
+  if (doc.nodes[id]?.kind !== 'group') return bounds
+  const sources = doc.designSystem?.sketchContainers?.nodeMetadata as
+    Record<string, { bindings?: Record<string, string> }> | undefined
+  if (sources?.[id]?.bindings?.sketchSourceGroup !== 'true') return bounds
+  const x = Math.floor(bounds.x), y = Math.floor(bounds.y)
+  return { x, y, width: Math.ceil(bounds.x + bounds.width) - x, height: Math.ceil(bounds.y + bounds.height) - y }
+}
+
 /** An authored slice exports in its own axes; an AABB would change its
  * dimensions and include unwanted pixels after rotation. */
 export function sliceExportTarget(doc: DesignDocument, id: string): ExportTarget {
