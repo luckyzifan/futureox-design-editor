@@ -1,8 +1,13 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { afterEach, expect, test } from 'vitest'
 import { Editor } from './engine'
-import { apply, worldMatrix } from './geometry'
+import { apply, scene, worldMatrix } from './geometry'
+import { decodeFig } from './import-fig'
 import { blank, node, uid } from './model'
 import { componentFixture, originNode } from './component-fixtures'
+import { interactivePath } from './selection-hierarchy'
 
 const editors: Editor[] = []
 afterEach(() => editors.splice(0).forEach(editor => editor.dispose()))
@@ -83,13 +88,43 @@ test('Enter on a group selects both children and Shift+Enter returns to the grou
   expect(editor.canUndo).toBe(false)
 })
 
-test('Enter selects visible unlocked direct children, Shift+Enter deduplicates their parent, roots stay selected', () => {
-  const { editor, outer, group, inner, a, b } = fixture()
+test('Enter selects direct children including hidden and locked, Shift+Enter returns to the parent', () => {
+  const { editor, outer, group, inner, a, b, hidden, locked } = fixture()
+  const original = editor.state.doc, version = editor.state.version
   editor.select([outer.id]); expect(editor.selectChildren()).toBe(true); expect(editor.state.selection).toEqual([group.id])
   expect(editor.selectChildren()).toBe(true); expect(editor.state.selection).toEqual([inner.id])
-  expect(editor.selectChildren()).toBe(true); expect(editor.state.selection).toEqual([b.id, a.id])
+  expect(editor.selectChildren()).toBe(true); expect(editor.state.selection).toEqual([locked.id, hidden.id, b.id, a.id])
+  expect(hidden.visible).toBe(false); expect(locked.locked).toBe(true)
+  expect(editor.state.doc).toBe(original); expect(editor.state.version).toBe(version); expect(editor.canUndo).toBe(false)
+  expect(interactivePath(editor.state.doc, editor.state.page, hidden.id)).toEqual([])
+  expect(interactivePath(editor.state.doc, editor.state.page, locked.id)).toEqual([])
+  expect(scene(editor.state.doc, editor.state.page).some(entry => entry.id === hidden.id)).toBe(false)
+  expect(scene(editor.state.doc, editor.state.page).find(entry => entry.id === locked.id)?.locked).toBe(true)
   expect(editor.selectParent()).toBe(true); expect(editor.state.selection).toEqual([inner.id])
+  editor.select([hidden.id]); expect(editor.selectParent()).toBe(true); expect(editor.state.selection).toEqual([inner.id])
+  editor.select([locked.id]); expect(editor.selectParent()).toBe(true); expect(editor.state.selection).toEqual([inner.id])
   editor.select([outer.id]); expect(editor.selectParent()).toBe(false); expect(editor.state.selection).toEqual([outer.id])
+  expect(editor.state.doc).toBe(original); expect(editor.canUndo).toBe(false)
+})
+
+test('an authored locked container does not open and its children do not climb or cycle', () => {
+  const document = blank(), inner = node('frame'), a = node('rectangle'), b = node('rectangle')
+  inner.locked = true
+  inner.children = [a.id, b.id]
+  for (const n of [inner, a, b]) document.nodes[n.id] = n
+  document.pages[0].children = [inner.id]
+  const editor = new Editor(document); editors.push(editor)
+  const original = editor.state.doc, version = editor.state.version
+  editor.select([inner.id])
+  expect(editor.selectChildren()).toBe(false)
+  expect(editor.state.selection).toEqual([inner.id])
+  editor.select([a.id])
+  expect(editor.selectSibling(1)).toBe(false)
+  expect(editor.selectParent()).toBe(false)
+  expect(editor.state.selection).toEqual([a.id])
+  expect(editor.state.doc).toBe(original)
+  expect(editor.state.version).toBe(version)
+  expect(editor.canUndo).toBe(false)
 })
 
 test('sibling navigation follows visible Layers order, skips hidden/locked layers and does not edit history', () => {
@@ -232,4 +267,84 @@ test('scoped picking excludes hidden, inherited locked, and clipped children', (
   expect(editor.selectionHit(p)).toBeNull()
   editor.update([frame.id], { width: 400, height: 300, locked: true }, '切换锁定')
   expect(editor.selectionHit(p)).toBeNull()
+})
+
+const DASHBOARD_FIG = fileURLToPath(new URL('../../../testing/fixtures/user-regression-20261109/01有料素材 (Copy).fig', import.meta.url))
+const DASHBOARD_FIG_SHA256 = '701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46'
+// Mac desktop Figma 126.10.13, layers-panel order after Return on 01_Dashboard.
+const DASHBOARD_CHILD_ORDER = ['1440x12xGrid', 'Header', 'Menu Panel', 'Cards', 'Monthly Chart', 'Bar Chart', 'Posting Tasks', 'Top Performance', 'Simple Chart']
+const figGuid = (value: { sessionID?: number; localID?: number } | string | undefined) =>
+  typeof value === 'string' ? value : value ? `${value.sessionID}:${value.localID}` : ''
+
+function dashboardRecords(bytes: Uint8Array) {
+  const { data } = decodeFig(bytes)
+  const records = new Map<string, Record<string, any>>()
+  for (const change of data.nodeChanges || []) {
+    const id = figGuid(change.guid)
+    if (change.phase === 'REMOVED') records.delete(id)
+    else records.set(id, { ...records.get(id), ...change })
+  }
+  return records
+}
+
+test('Return on imported 01_Dashboard selects the hidden grid and Shift+Return returns to the artboard', () => {
+  const bytes = readFileSync(DASHBOARD_FIG)
+  expect(bytes.subarray(0, 8).toString(), 'fixture must be the FIG bytes, not a Git LFS pointer').not.toBe('version ')
+  expect(createHash('sha256').update(bytes).digest('hex')).toBe(DASHBOARD_FIG_SHA256)
+  const records = dashboardRecords(bytes)
+  const boards = [...records.values()].filter(record => record.name === '01_Dashboard' && record.type === 'FRAME')
+  expect(boards.length).toBeGreaterThan(0)
+  for (const board of boards) {
+    expect(board.stackReverseZIndex).not.toBe(true)
+    expect(board.stackMode === undefined || board.stackMode === 'NONE').toBe(true)
+    expect(board.visible).not.toBe(false)
+    expect(board.locked).not.toBe(true)
+    const stored = [...records.values()].filter(record => figGuid(record.parentIndex?.guid) === figGuid(board.guid))
+    stored.sort((left, right) => {
+      const a = String(left.parentIndex?.position || ''), b = String(right.parentIndex?.position || '')
+      return a < b ? -1 : a > b ? 1 : 0
+    })
+    expect(stored.map(record => record.name)).toEqual([...DASHBOARD_CHILD_ORDER].reverse())
+    expect(stored.every(record => record.internalOnly !== true && record.mask !== true)).toBe(true)
+    expect(stored.filter(record => record.visible === false).map(record => record.name)).toEqual(['1440x12xGrid'])
+    expect(stored.some(record => record.locked === true)).toBe(false)
+    const document = blank('01有料素材 (Copy)'), frame = node('frame')
+    frame.name = '01_Dashboard'
+    const children = stored.map(record => {
+      const child = node('frame')
+      child.name = record.name
+      child.visible = record.visible !== false
+      child.locked = !!record.locked
+      return child
+    })
+    frame.children = children.map(child => child.id)
+    document.nodes = Object.fromEntries([frame, ...children].map(child => [child.id, child]))
+    document.pages[0].children = [frame.id]
+    const editor = new Editor(document); editors.push(editor)
+    const original = editor.state.doc, version = editor.state.version
+    const grid = children.find(child => child.name === '1440x12xGrid')!
+    const top = children.find(child => child.name === 'Top Performance')!
+    editor.select([frame.id])
+    expect(editor.selectChildren()).toBe(true)
+    expect(editor.state.selection.map(id => editor.state.doc.nodes[id].name)).toEqual(DASHBOARD_CHILD_ORDER)
+    expect(editor.state.doc.nodes[grid.id].visible).toBe(false)
+    expect(editor.state.doc).toBe(original)
+    expect(editor.state.version).toBe(version)
+    expect(editor.canUndo).toBe(false)
+    expect(scene(editor.state.doc, editor.state.page).some(entry => entry.id === grid.id)).toBe(false)
+    expect(editor.selectParent()).toBe(true)
+    expect(editor.state.selection).toEqual([frame.id])
+    expect(editor.state.doc).toBe(original)
+    expect(editor.canUndo).toBe(false)
+    editor.select([top.id])
+    expect(editor.selectParent()).toBe(true)
+    expect(editor.state.selection).toEqual([frame.id])
+    editor.select([grid.id])
+    expect(editor.selectParent()).toBe(true)
+    expect(editor.state.selection).toEqual([frame.id])
+    expect(editor.state.doc.nodes[grid.id].visible).toBe(false)
+    expect(editor.state.doc).toBe(original)
+    expect(editor.state.version).toBe(version)
+    expect(editor.canUndo).toBe(false)
+  }
 })
