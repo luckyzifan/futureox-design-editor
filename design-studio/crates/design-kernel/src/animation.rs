@@ -683,6 +683,8 @@ pub(crate) fn interpolate(
     for ((s, a), b) in out.strokes.iter_mut().zip(&a.strokes).zip(&b.strokes) {
         s.width = mix(a.width, b.width, t).clamp(0., 4096.);
         s.dash_offset = mix(a.dash_offset, b.dash_offset, t).clamp(-1e7, 1e7);
+        // A corner-centering switch has no intermediate state.
+        s.center_dashes = a.center_dashes;
         s.paint = paint(&a.paint, &b.paint, t, settings);
     }
     for ((e, a), b) in out.effects.iter_mut().zip(&a.effects).zip(&b.effects) {

@@ -453,6 +453,7 @@ impl Projection<'_> {
                     .collect::<Vec<_>>()
                     .join(" "),
                 dash_offset: 0.,
+                center_dashes: crate::interop::sketch_center_dashes(opts),
                 visible: true,
                 width_profile: vec![],
                 start_marker: Default::default(),

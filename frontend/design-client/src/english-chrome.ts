@@ -117,6 +117,7 @@ const phrases: Record<string, string> = {
   "行高为文档单位，0 表示不限制。": "Line height uses document units. 0 means no limit.",
   "＊ 最大缩放系数换算。": "＊ Converted by the largest scale factor. ",
   "虚线：最大缩放系数换算": "Dash: converted by the largest scale factor",
+  "在拐角居中": "Center on corners",
   "非等比或斜切变换：此数值按最大缩放系数换算，不代表各方向的实际尺寸。编辑仍按同一系数换回局部作者值。": "Non-uniform or skewed transform: this value is converted by the largest scale factor and is not the real size on every axis. Edits convert back to the local authored value with the same factor.",
   "本段段后间距": "Space after this paragraph",
   "本段首行缩进": "First-line indent of this paragraph",

@@ -38,6 +38,7 @@ export function validStroke(s: Stroke): boolean {
     s.width > 10000 ||
     !Number.isFinite(s.dashOffset ?? 0) ||
     Math.abs(s.dashOffset ?? 0) > 1e7 ||
+    (s.centerDashes !== undefined && typeof s.centerDashes !== 'boolean') ||
     !['center', 'inside', 'outside'].includes(s.align) ||
     !['butt', 'round', 'square'].includes(s.cap) ||
     !['round', 'miter', 'bevel'].includes(s.join) ||

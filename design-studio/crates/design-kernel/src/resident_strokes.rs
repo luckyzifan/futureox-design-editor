@@ -20,8 +20,8 @@ impl ResidentStrokes {
     pub(crate) fn get(&mut self,paths:&crate::path::SharedPaths,stroke:&Stroke,flat:f64,expansion:f64)->Result<Arc<Vec<Contour>>,String>{
         // Exhaustive destructuring requires revisiting this proof when Stroke
         // gains a field. Material/id/visibility do not enter stroke::expand.
-        let Stroke {paint:_,id:_,visible:_,width,align,cap,join,dash,dash_offset,width_profile,start_marker,end_marker}=stroke;
-        let style=serde_json::to_vec(&(width.to_bits(),align,cap,join,dash,dash_offset.to_bits(),start_marker,end_marker,
+        let Stroke {paint:_,id:_,visible:_,width,align,cap,join,dash,dash_offset,center_dashes,width_profile,start_marker,end_marker}=stroke;
+        let style=serde_json::to_vec(&(width.to_bits(),align,cap,join,dash,dash_offset.to_bits(),center_dashes,start_marker,end_marker,
             width_profile.iter().map(|p|[p.position.to_bits(),p.left.to_bits(),p.right.to_bits()]).collect::<Vec<_>>())).map_err(|e|e.to_string())?;
         let key=Key{owner:Arc::as_ptr(paths) as usize,flat:flat.to_bits(),expansion:expansion.to_bits(),style:style.into()};
         if self.stamp==u64::MAX {self.clear();self.stamp=0;} self.stamp+=1;

@@ -2068,6 +2068,7 @@ impl<'a, 'f> Runner<'a, 'f> {
                 join: "miter".into(),
                 dash: String::new(),
                 dash_offset: 0.,
+                center_dashes: false,
                 visible: true,
                 width_profile: Vec::new(),
             });

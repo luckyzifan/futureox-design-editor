@@ -451,6 +451,10 @@ pub struct Stroke {
     pub dash: String,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub dash_offset: f64,
+    /// Sketch `borderOptions.centerDashes`. Gaps are adjusted so each sharp
+    /// corner falls on a dash center. Authored dash lengths stay put.
+    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    pub center_dashes: bool,
     #[serde(default = "yes")]
     pub visible: bool,
     /// Multipliers of half the base width, at normalized local arc lengths.

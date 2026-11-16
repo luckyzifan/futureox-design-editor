@@ -436,6 +436,16 @@ fn bool_at(v: &Value, key: &str) -> bool {
     v.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// Sketch 2026 writes `centerDashes` as a bool. Older files omit it, which
+/// keeps the historical uncentered dash. A 0/1 number is accepted as well.
+pub(crate) fn sketch_center_dashes(options: &Value) -> bool {
+    match options.get("centerDashes") {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::Number(value)) => value.as_f64() == Some(1.),
+        _ => false,
+    }
+}
+
 /// Archived borderOptions marker code → kernel stroke marker. The enum is
 /// the Sketch 74–93 / fig2sketch archive set (fig2sketch `MarkerType`, 8
 /// values): 0=None, 1=FilledArrow, 2=Line, 3=OpenCircle, 4=FilledCircle,
@@ -1585,6 +1595,7 @@ impl<'a> Importer<'a> {
                 join: join.into(),
                 dash: dash.clone(),
                 dash_offset: 0.,
+                center_dashes: sketch_center_dashes(options),
                 visible: bool_at(part, "isEnabled"),
                 width_profile: Vec::new(),
             }));
@@ -5636,9 +5647,13 @@ fn export_style_parts(
             if strokes.iter().any(|s| s.dash_offset != 0.) {
                 note_lossy(lossy, "border-dash-offset-omitted");
             }
+            if strokes.iter().any(|s| s.center_dashes != first.center_dashes) {
+                note_lossy(lossy, "border-center-dashes-mixed-per-stroke");
+            }
             json!({"_class": "borderOptions",
                    "lineCapStyle": cap_code(&first.cap), "lineJoinStyle": join_code(&first.join),
                    "dashPattern": dash_pattern(&first.dash),
+                   "centerDashes": first.center_dashes,
                    "startMarkerType": marker_code(first.start_marker, lossy),
                    "endMarkerType": marker_code(first.end_marker, lossy),
                    "miterLimit": 10, "windingRule": 0})

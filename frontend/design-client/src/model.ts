@@ -126,6 +126,8 @@ export type Stroke = {
   join: 'miter' | 'round' | 'bevel'
   dash: string
   dashOffset?: number
+  /** Sketch borderOptions.centerDashes. Gaps change so each sharp corner sits on a dash center. */
+  centerDashes?: boolean
   widthProfile?: WidthPoint[]
   visible: boolean
 }
