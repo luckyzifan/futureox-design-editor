@@ -14,6 +14,7 @@
 | 铅笔 | Shift+P，保留 Alt+P 别名 | P |
 | 切片 | S | E |
 | 命令搜索 | 无（S 仍是切片） | S 与 Mod+K 打开命令搜索，不写入文档 |
+| 查找图层 | 桌面 Mod+F 打开左侧查找，不写入文档。浏览器保留 Mod+F | 底栏搜索过滤图层树；Ctrl+F 仅显示相关图层。桌面 Mod+F 仍是框选成画板 |
 | 评论 | C | N |
 | 添加 / 移除自动布局 | Shift+A / Alt+Shift+A | Shift+S / Alt+Shift+S |
 | 键盘尺寸微调 | macOS：Cmd+方向键 1；Cmd+Shift+方向键 10；Windows/Linux 本批未增加绑定 | Mod+方向键 1；Mod+Shift+方向键 10 |
@@ -23,7 +24,7 @@
 
 Sketch 布局的命令搜索复用现有编辑命令、对齐和几何入口，按名称、别名和完整快捷键过滤，并显示禁用原因。查询、高亮和焦点只留在界面会话里，不进入文档历史。Figma 布局的 S 仍是切片。Sketch 文档已改为 F=Frame；不是旧版 Artboard 的 A。Windows/Linux 用 Ctrl 替代 Cmd。Sketch 的 stack layout 在此只对应已有自动布局命令，不代表布局语义完全一致。双方原有的本地编组、复制属性、导出 PNG、反选等命令继续保留；例如 Cmd+Shift+C 仍是复制 PNG，不能理解为 Sketch 的复制在线链接。抓手 H、区域缩放 Z、画笔 B 等已有本地工具仍可使用。Sketch-like 的 E 归切片使用，橡皮不再显示错误的 E 提示。
 
-浏览器保留 Cmd/Ctrl+R、Shift+Cmd/Ctrl+R、Cmd/Ctrl+F、Cmd/Ctrl+0/1/2/3；重命名用 F2，粘贴替换用菜单。桌面保留相应本地编辑命令。Ctrl+Alt 输入在 Windows/Linux 原生入口交由 DOM 的 AltGraph 判断，避免把文本输入误当复制属性。
+浏览器保留 Cmd/Ctrl+R、Shift+Cmd/Ctrl+R、Cmd/Ctrl+F、Cmd/Ctrl+0/1/2/3；重命名用 F2，粘贴替换用菜单。桌面 Figma 方案的 Mod+F 打开左侧查找：默认当前页，可切到全部页面，按类型筛选，设置里有匹配大小写和全词匹配，上一条 / 下一条定位页面和图层，Escape 关闭并恢复焦点。查找和跳转不写入文档历史。文本输入、文本编辑和模态框仍拥有该快捷键。桌面 Sketch 的 Mod+F 仍是框选成画板，底栏 Ctrl+F 仍是相关图层过滤，Mod+Alt+F 仍是布局切换。Ctrl+Alt 输入在 Windows/Linux 原生入口交由 DOM 的 AltGraph 判断，避免把文本输入误当复制属性。
 
 ## 安全与一致性
 

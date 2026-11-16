@@ -3,7 +3,7 @@ import { TOOL_COMMANDS } from './tool-registry'
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search'
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -93,6 +93,8 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
   // Sketch's command bar. S stays the slice tool in the Figma profile.
   if (profile === 'sketch-like') bindings.push({ command: 'open-command-search', combo: 'Mod+K' }, { command: 'open-command-search', combo: 'S' })
+  // Desktop Figma Find. Browsers keep Mod+F. Sketch desktop Mod+F remains frame-selection.
+  if (profile === 'figma-like' && desktop) bindings.push({ command: 'open-layer-find', combo: 'Mod+F' })
   if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
   if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
   const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))

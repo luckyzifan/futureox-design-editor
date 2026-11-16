@@ -3,6 +3,7 @@ import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
 import { requestCommandSearch } from './command-search-session'
+import { requestLayerFind } from './layer-find-session'
 import { editableFrameCrop } from './selection-properties'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
@@ -15,8 +16,11 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   if (!binding || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
   // Command search is shell state. It must not enter dispatch or document history.
-  if (binding.command === 'open-command-search') {
-    if (!event.repeat && !editor.interactionActive) requestCommandSearch(event.target)
+  if (binding.command === 'open-command-search' || binding.command === 'open-layer-find') {
+    if (!event.repeat && !editor.interactionActive) {
+      if (binding.command === 'open-command-search') requestCommandSearch(event.target)
+      else requestLayerFind(event.target)
+    }
     return true
   }
   // Consume held destructive chords without creating additional history entries.

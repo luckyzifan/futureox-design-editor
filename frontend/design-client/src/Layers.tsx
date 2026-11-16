@@ -3,7 +3,7 @@ import { layerExpanded, LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
 import { AssetsPanel } from './AssetsPanel'
-import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId, type ReactNode } from 'react'
+import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId, useLayoutEffect, type ReactNode } from 'react'
 import {
   Plus as PlusGlyph,
   ChevronDown as ChevronDownGlyph,
@@ -43,12 +43,14 @@ const Diamond = memo(DiamondGlyph)
 
 import type { Editor } from './engine'
 import { container } from './model'
-import { commitPendingEdits } from './pending-edits'
+import { commitPendingEdits, hasPendingEdits } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { layerSelection } from './layer-selection'
 import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosition } from './layer-drop'
 import type { WorkspaceSection } from './EditorChrome'
-import { type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
+import { interfacePreference, type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
+import { LayerFindPanel } from './LayerFindPanel'
+import { closeLayerFind, layerFindRefocus, layerFindReturnTarget, layerFindSnapshot, requestLayerFind, subscribeLayerFind } from './layer-find-session'
 export function Layers({ editor, section, onSection, showPages=true, documentTitle }: {
   editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean; documentTitle?: ReactNode
 }) {
@@ -68,8 +70,12 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     [search, setSearch] = useState(''),
     [scroll, setScroll] = useState(0),
     [height, setHeight] = useState(500)
-  const [showLayerSearch, setShowLayerSearch] = useState(false)
   const [relatedOnly, setRelatedOnly] = useState(false)
+  const findGeneration = useSyncExternalStore(subscribeLayerFind, layerFindSnapshot)
+  const findRefocus = useSyncExternalStore(subscribeLayerFind, layerFindRefocus)
+  const findOpen = uiMode === 'figma' && findGeneration > 0
+  const findWasOpen = useRef(false)
+  const findDocument = useRef({ editor, session: renderSession, id: s.doc.id })
   const searchField = useRef<HTMLInputElement>(null), searchToggle = useRef<HTMLButtonElement>(null)
   const expansion = useMemo(() => ({ rootFramesOpen: uiMode === 'sketch', overrides: disclosure[uiMode] }), [disclosure, uiMode])
   const rowHeight = uiMode === 'sketch' ? 26 : 32
@@ -144,8 +150,29 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   }, [editor, renderSession, s.doc.id, s.page])
   useEffect(() => setDisclosure({ figma: new Map(), sketch: new Map() }), [editor, renderSession, s.doc.id])
   useEffect(() => {
-    if (uiMode === 'figma' && showLayerSearch && tab === 'layers') searchField.current?.focus()
-  }, [uiMode, showLayerSearch, tab])
+    const previous = findDocument.current
+    findDocument.current = { editor, session: renderSession, id: s.doc.id }
+    if (previous.editor !== editor || previous.session !== renderSession || previous.id !== s.doc.id) closeLayerFind()
+  }, [editor, renderSession, s.doc.id])
+  useLayoutEffect(() => {
+    if (!findGeneration) {
+      if (!findWasOpen.current) return
+      findWasOpen.current = false
+      if (uiMode !== 'figma') return
+      const target = layerFindReturnTarget()
+      if (target?.isConnected) target.focus()
+      return
+    }
+    if (uiMode !== 'figma') return
+    const opening = !findWasOpen.current
+    findWasOpen.current = true
+    if (!opening) return
+    if (!interfacePreference.getSnapshot().leftOpen) interfacePreference.set({ leftOpen: true })
+    if (tab !== 'layers' && !editor.interactionActive && !editor.state.busy && !hasPendingEdits(editor)) {
+      setLocalTab('layers')
+      onSection?.('layers')
+    }
+  }, [findGeneration, uiMode, tab, editor, onSection])
   useEffect(() => {
     if (uiMode !== 'sketch' || tab !== 'layers') return
     const toggle = (event: KeyboardEvent) => {
@@ -210,7 +237,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   }
   // A session owns one cache; unmount/editor replacement releases it.
   const rowCache = useMemo(() => new LayerRowsCache(), [editor, renderSession])
-  const layerQuery = uiMode === 'sketch' || showLayerSearch ? search : ''
+  const layerQuery = uiMode === 'sketch' ? search : ''
   const filterRelated = uiMode === 'sketch' && relatedOnly && s.selection.length > 0
   const allRows = useMemo(() => rowCache.read(s.doc, s.page, expansion, layerQuery), [rowCache, s.doc, s.page, expansion, layerQuery])
   const rows = useMemo(() => {
@@ -290,7 +317,6 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
         if (event.key !== 'Escape') return
         event.stopPropagation()
         setSearch('')
-        if (uiMode === 'figma') { setShowLayerSearch(false); searchToggle.current?.focus() }
       }} />
   </label>
   const relatedLabel = locale === 'en' ? 'Show only selected and related layers' : '仅显示所选内容及相关图层'
@@ -313,9 +339,9 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
             }}>{name === 'layers' ? text.layerTree : text.componentsTab}</button>)}
         </div>
         {uiMode === 'figma' && tab === 'layers' && <button type="button" ref={searchToggle} aria-label={text.searchLayers}
-          title={text.searchLayers} aria-expanded={showLayerSearch} onClick={() => {
-            if (showLayerSearch) setSearch('')
-            setShowLayerSearch(open => !open)
+          title={text.searchLayers} aria-expanded={findOpen} onClick={() => {
+            if (findOpen) closeLayerFind()
+            else requestLayerFind(searchToggle.current)
           }}><Search size={14} /></button>}
         {tab === 'layers' && <button type="button" title={text.collapseAllLayers} aria-label={text.collapseAllLayers} onClick={() => {
           const parents = editor.parentMap(s.doc), next = new Map<string, boolean>()
@@ -328,8 +354,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
         {tab === 'assets' && <AssetsPanel editor={editor} />}
       </div>
       <div id={`${tabId}-layers-panel`} role="tabpanel" className="layers-tabpanel" hidden={tab !== 'layers'} aria-labelledby={`${tabId}-layers-tab`}>
-      {uiMode === 'figma' && tab === 'layers' && showLayerSearch && layerSearch}
-      <div
+      {findOpen ? <LayerFindPanel editor={editor} generation={findGeneration} refocus={findRefocus} /> : <div
         className="layer-list"
         role="tree" aria-label={text.layerTree} aria-multiselectable="true"
         ref={list}
@@ -518,7 +543,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
             )
           })}
         </div>
-      </div>
+      </div>}
       {uiMode === 'sketch' && tab === 'layers' && <footer className="sketch-layer-search">
         {layerSearch}
         <button type="button" aria-label={relatedLabel} aria-pressed={filterRelated} aria-keyshortcuts="Control+F"

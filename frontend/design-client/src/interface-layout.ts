@@ -8,9 +8,9 @@ export function layoutGapMinimum(mode: AutoLayout['mode'], field: 'gap' | 'lineG
   return mode === 'grid' || (field === 'lineGap' && uiMode === 'figma') ? 0 : -LAYOUT_GAP_LIMIT
 }
 
-/** Layout chords. Checked against shortcut-profiles: Mod+F is Sketch
- * frame-selection on desktop, Mod+Alt+G frames a selection, and Mod+0/1/2/3
- * and Shift+0/1/2 are zoom. Alt is what keeps these free. */
+/** Layout chords. Checked against shortcut-profiles: desktop Sketch Mod+F
+ * frames a selection, desktop Figma Mod+F opens Find, Mod+Alt+G frames a
+ * selection, and Mod+0/1/2/3 and Shift+0/1/2 are zoom. Alt keeps these free. */
 export const FIGMA_LAYOUT_COMBO = 'Mod+Alt+F'
 export const SKETCH_LAYOUT_COMBO = 'Mod+Alt+S'
 

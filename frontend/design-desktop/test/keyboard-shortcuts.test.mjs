@@ -18,7 +18,11 @@ for (const platform of ['darwin', 'win32', 'linux']) {
   })
   test(`${platform}: native aliases and renderer profile commands remain distinct`, () => {
     for (const [key, extra, expected] of [['z', { shift: true }, 'redo'], ['v', { shift: true }, 'paste-over-selection'], ['r', { shift: true }, 'paste-to-replace'], ['g', { shift: true }, 'ungroup'], ['c', {}, 'copy']]) assert.equal(nativeShortcutRoute(input(key, { ...mod, ...extra }), platform).command, expected)
-    for (const key of ['1', '2', 'f', 'p', 'e']) assert.equal(nativeShortcutRoute(input(key, mod), platform).command, undefined)
+    for (const key of ['1', '2', 'f', 'p', 'e']) {
+      const route = nativeShortcutRoute(input(key, mod), platform)
+      assert.equal(route.command, undefined)
+      assert.equal(route.consume, false, 'Mod+F stays with the renderer so Find can honor text editing and the active profile')
+    }
     if (platform === 'darwin') {
       assert.equal(nativeShortcutRoute(input('ç', { ...mod, alt: true, code: 'KeyC' }), platform).command, 'copy-properties')
       assert.equal(nativeShortcutRoute(input('ç', { ...mod, alt: true, shift: true, code: 'KeyC' }), platform).command, undefined)
