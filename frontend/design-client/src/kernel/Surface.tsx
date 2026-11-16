@@ -69,7 +69,7 @@ export type SurfaceProps = {
   overlay?: { document: DesignDocument; pageId: string; epoch: number; uiIdentity?: string; selectionIdentity?: string; commands: import('./gpu/canvas-overlay').CanvasOverlay }
   interaction?: import('./interaction-layers').InteractionProps
   interactionPreview?: boolean
-  settledZoomFocus?: string
+  zoomFocusCapture?: string
   onRenderFailure?: () => void
   /** Latest input camera; view may be the exact frame currently in flight. */
   requestedView?: KernelOptions['view']

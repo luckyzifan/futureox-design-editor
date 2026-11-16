@@ -2976,6 +2976,9 @@ impl<'a> Importer<'a> {
             }
         }
         node.children = children;
+        if class == "group" && node.kind == "group" {
+            node.bindings.insert("sketchSourceGroup".into(), "true".into());
+        }
         if class == "shapeGroup" {
             node.bindings.insert("sketchSourceShapeGroup".into(), json!({
                 "parentOperation":layer.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1),

@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, expect, test, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { blank, node } from './model'
+import { emptySystem } from './design-system'
 import { exportImage, exportPngBatch, targetBounds } from './export'
 import { initializePicking, kernelExportPlan } from './kernel/picking'
 import type { KernelOptions } from './kernel/client'
@@ -144,6 +145,30 @@ test('existing whole-page PNG remains 2x with explicit 40-unit presentation marg
   const asset = await exportImage(doc, page, 'png')
   expect(await dimensions(asset.blob)).toEqual([208, 208])
   expect(requests[0].backend).toBe('cpu')
+})
+test('a single imported Sketch group rounds its PNG bounds before scaling', async () => {
+  installWorker()
+  const doc = blank()
+  doc.schemaVersion = 4
+  const group = node('group', 2.5, -1.5, 41.25, 28.6)
+  const child = node('rectangle', 0, 0, group.width, group.height)
+  group.children = [child.id]
+  doc.designSystem = { ...emptySystem(), sketchContainers: {
+    nodeMetadata: { [group.id]: { bindings: { sketchSourceGroup: 'true' } } },
+  } }
+  doc.nodes = { [group.id]: group, [child.id]: child }
+  const page = doc.pages[0]
+  page.children = [group.id]
+  const target = { kind: 'selection' as const, nodeIds: [group.id] }
+  const assets = await exportPngBatch(doc, page.id, [0.2, 0.5, 1, 2], target)
+  expect(await Promise.all(assets.map((asset) => dimensions(asset.blob)))).toEqual([
+    [9, 6], [21, 15], [42, 30], [84, 60],
+  ])
+  expect(requests[0].options.exportRegion?.bounds).toEqual({ x: 2, y: -2, width: 42, height: 30 })
+  expect(await dimensions((await exportImage(doc, page.id, 'png', 2, undefined, undefined,
+    { kind: 'selection', nodeIds: [child.id] })).blob)).toEqual([83, 58])
+  expect(await dimensions((await exportImage({ ...doc, rasterProfile: 'figma' }, page.id, 'png', 2,
+    undefined, undefined, target)).blob)).toEqual([83, 58])
 })
 test('fractional manual slices preserve origin and never stretch to fit rounded dimensions', async () => {
   installWorker()
