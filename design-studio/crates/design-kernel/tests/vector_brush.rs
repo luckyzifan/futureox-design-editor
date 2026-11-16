@@ -32,6 +32,55 @@ fn distance_to_contour(path:&futureox_design_kernel::path::Path,point:Point)->f6
     best
 }
 #[test]
+fn ordinary_tight_freehand_curve_accepts_stretch_at_brush_width() {
+    let points = [
+        (0., 139.91392705680448),
+        (15.18987341772152, 204.2155475480214),
+        (48.10126582278481, 279.66492820627514),
+        (75.9493670886076, 235.91273836890232),
+        (118.9873417721519, 61.2683070918966),
+        (154.43037974683546, 1.267801750654229),
+        (184.81012658227849, 75.61230656558757),
+        (200., 139.91392705680445),
+    ];
+    let controls = [
+        ((4.887441484154995, 161.38736177833155), (9.72310468327689, 182.8800974733091)),
+        ((18.66548578423579, 217.780005407304), (32.22583752549734, 275.5067618855794)),
+        ((62.04895641646677, 283.318172464765), (73.31066015201237, 244.35133408680954)),
+        ((93.84966636629822, 178.66750710086114), (103.08808619021956, 119.05952905816474)),
+        ((121.34717394606005, 52.690698897432156), (136.60751199916672, -9.596085104156629)),
+        ((169.64249083010156, 10.540308059468288), (180.6575883182446, 59.405973881820245)),
+        ((190.2768953167231, 96.94775664029981), (195.11255851584497, 118.44049233527744)),
+    ];
+    let mut guide = network(&points, false);
+    for (edge, ((x1, y1), (x2, y2))) in guide.edges.iter_mut().zip(controls) {
+        edge.c1 = Some(Point::new(x1, y1));
+        edge.c2 = Some(Point::new(x2, y2));
+    }
+    let heist = network(
+        &[
+            (0., 0.),
+            (4., -2.),
+            (16., -8.),
+            (28., -5.),
+            (40., -1.),
+            (40., 1.),
+            (28., 5.),
+            (16., 8.),
+            (4., 2.),
+        ],
+        true,
+    );
+    for width in [12., 24.] {
+        let mut art = brush();
+        art.mode = "stretch".into();
+        art.width = width;
+        art.source = heist.clone();
+        let mapped = paths(&guide, &art).unwrap_or_else(|error| panic!("width {width}: {error}"));
+        assert!(mapped.commands.len() > 2, "{}", mapped.commands.len());
+    }
+}
+#[test]
 fn curved_scatter_preserves_beziers_and_curved_stretch_follows_the_frame(){
     let mut g=network(&[(0.,0.),(40.,0.)],false);g.edges[0].c1=Some(Point::new(0.,40.));g.edges[0].c2=Some(Point::new(40.,40.));
     let mut b=brush();b.source.edges[0].c1=Some(Point::new(-1.,-1.));b.source.edges[0].c2=Some(Point::new(1.,-1.));

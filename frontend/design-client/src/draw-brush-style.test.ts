@@ -53,6 +53,29 @@ test('a basic brush stroke stays a pressure stroke and a pencil ignores a brush 
   expect(dot.vectorBrush).toBeUndefined()
 })
 
+test('an ordinary tight freehand curve with Stretch Heist commits a layer', () => {
+  const samples = Array.from({ length: 80 }, (_, i) => {
+    const t = i / 79
+    return { x: t * 200, y: 140 * Math.sin(t * Math.PI * 2), pressure: 0.5 }
+  })
+  const editor = new Editor(blank())
+  editors.push(editor)
+  const plain = freehandNode(uid(), samples, { ...defaultBrush(), width: 12 }, 1, 'brush')
+  editor.addFreehand(plain)
+  expect(editor.state.doc.nodes[plain.id].vectorBrush).toBeUndefined()
+  expect(editor.state.doc.nodes[plain.id].strokes[0].widthProfile?.length).toBeGreaterThan(0)
+  const draft = freehandNode(uid(), samples, settings('heist', 12), 1, 'brush')
+  editor.addFreehand(draft)
+  const node = editor.state.doc.nodes[draft.id]
+  expect(node, editor.state.message).toBeDefined()
+  expect(node.vectorBrush?.mode, editor.state.message).toBe('stretch')
+  expect(node.network!.edges.length).toBeGreaterThan(0)
+  expect(kernelSvgPaths(node)!.fill.length, editor.state.message).toBeGreaterThan(0)
+  editor.undo()
+  expect(editor.state.doc.nodes[draft.id]).toBeUndefined()
+  expect(editor.state.doc.nodes[plain.id].strokes[0].width).toBe(12)
+})
+
 test('gesture preview keeps the centerline and the commit applies the selected family', () => {
   const live = settings('bubblegum')
   const preview = brushPreviewSettings(live)

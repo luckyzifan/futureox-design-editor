@@ -1331,7 +1331,9 @@ impl Mapper {
                 return push_command(out, Command::Cubic(c1, c2, g1));
             }
         }
-        if depth >= 16 || du < 1e-7 {
+        // Depth 16 still missed an ordinary freehand bend whose radius stayed
+        // above half the brush width. The fit tolerance and work limit are unchanged.
+        if depth >= 24 || du < 1e-7 {
             let speed = self.speed_bound(kind, u0, u1);
             if speed.is_finite() && speed * du <= FIT_ERROR {
                 let end_incoming = self.corner_side_is_incoming(kind, u1, u0);
