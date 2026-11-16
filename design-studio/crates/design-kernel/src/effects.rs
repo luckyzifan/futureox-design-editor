@@ -917,16 +917,31 @@ pub(crate) fn gaussian_backdrop(mut surface: Surface, sigma: f64, byte: bool) ->
     Ok(surface)
 }
 
+/// Sketch's layer Gaussian matches `sigma = radius` on the three-box path.
+/// Radii 5, 10 and 20 on `sketch-spatial-blur-modern` stay within a few
+/// codes of that sigma, so those stacks are not rescaled.
+///
+/// Device sigma in `[0.1, 2]` is where the integer stack collapses (radius 1
+/// is a single box and stays opaque one pixel inside the corner). The
+/// pixel-integrated Gaussian at `sigma = radius` rounds that corner to 222.
+/// Sketch 2025.1.3's published 1× sample is alpha 210 at the same pixel.
+/// `2/sqrt(π)` is the scale inside that one-code window. It is applied only
+/// to this small-device kernel, including its three-sigma support.
+fn sketch_small_gaussian_sigma(sigma: f64) -> f64 {
+    sigma * 2. / std::f64::consts::PI.sqrt()
+}
+
 /// At small device sigmas a stack of integer boxes can reduce to a single
-/// uniform window. Integrate the Gaussian over each pixel instead, within
-/// the same three-sigma support already reserved for authored Gaussian blur.
+/// uniform window. Integrate the calibrated Gaussian over each pixel instead.
 /// Historical tent, shadow, background and large Gaussian paths keep their kernels.
 pub fn small_gaussian_reach(sigma: f64) -> Option<u32> {
-    (0.1..=2.).contains(&sigma).then(|| (3. * sigma).ceil() as u32)
+    (0.1..=2.).contains(&sigma)
+        .then(|| (3. * sketch_small_gaussian_sigma(sigma)).ceil() as u32)
 }
 
 fn small_gaussian_weights(sigma: f64) -> Option<Vec<u32>> {
     let reach = small_gaussian_reach(sigma)?;
+    let sigma = sketch_small_gaussian_sigma(sigma);
     // Three-point Gaussian quadrature over one device pixel.
     let offset = (3_f64 / 5.).sqrt() / 2.;
     let weight_at = |offset: f64| (-0.5 * (offset / sigma).powi(2)).exp();
@@ -971,8 +986,9 @@ fn small_gaussian_owned(mut out: Surface, weights: &[u32], byte: bool) -> Result
     let [width, height] = [out.rect.w as usize, out.rect.h as usize];
     let reach = weights.len() - 1;
     let kernel = (!byte).then(|| crate::rational_filter::RationalKernel::from_q24(weights));
-    // With sigma <= 2 the maximum support is six pixels on either side.
-    let mut taps = [0_f32; 13];
+    // Authored sigma 2 scales by 2/sqrt(π); ceil(6.770…) is 7, so 15 taps.
+    let mut taps = [0_f32; 15];
+    assert!(2 * reach + 1 <= taps.len(), "small Gaussian support exceeds its tap buffer");
     for horizontal in [true, false] {
         let (lines, len) = if horizontal { (height, width) } else { (width, height) };
         let _scratch = out.reserve_scratch::<Pixel>(len + 2 * reach)?;
@@ -1024,7 +1040,10 @@ fn small_gaussian_spreads_an_impulse_without_losing_extended_values() {
     assert!(blurred.at(0, 0).0[1] < 0.);
     assert!(blurred.at(0, 0).0[3] > blurred.at(1, 0).0[3]);
     assert!(blurred.at(2, 0).0[3] > 0.);
-    assert_eq!(blurred.at(4, 0), Pixel::default());
+    assert!(blurred.at(4, 0).0[3] > 0.);
+    assert_eq!(blurred.at(5, 0), Pixel::default());
+    assert_eq!(small_gaussian_reach(1.), Some(4));
+    assert_eq!(small_gaussian_reach(2.), Some(7));
     let reverse = gaussian_surface(&input, 1., true).unwrap();
     assert_eq!(reverse.at(1, 2), reverse.at(-1, -2));
     assert_eq!(reverse.at(0, 0).0[1], 0.);

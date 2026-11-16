@@ -389,6 +389,79 @@ fn motion_and_zoom_blurs_keep_distinct_executable_kinds_and_native_source() {
 
 
 #[test]
+fn sketch_gaussian_radius1_corner_matches_the_published_native_alpha() {
+    use futureox_design_kernel::blend::{Pixel, Surface};
+    use futureox_design_kernel::effects::gaussian_surface;
+    use futureox_design_kernel::export::{ExportBounds, RegionRequest};
+    use futureox_design_kernel::math::Rect;
+
+    // Hard 64×64 white rect, the fixture bitmap. Sigma 1 is the radius-1
+    // kernel; the inset corner is the published native sample.
+    let mut kernel = Surface::new(Rect::new(0, 0, 64, 64)).unwrap();
+    kernel.pixels.fill(Pixel([1., 1., 1., 1.]));
+    let blurred = gaussian_surface(&kernel, 1., false).unwrap();
+    let byte = |x, y| (blurred.at(x, y).0[3] * 255.).round_ties_even() as u8;
+    assert_eq!(byte(1, 1), 210);
+    // Sigma 5 stays on the unscaled three-box path.
+    let wide = gaussian_surface(&kernel, 5., false).unwrap();
+    assert_eq!((wide.at(1, 1).0[3] * 255.).round_ties_even() as u8, 56);
+
+    let source = include_bytes!("../../../../testing/fixtures/design/sketch-spatial-blur-modern.sketch");
+    let doc = interop::import_sketch_report(source).unwrap().document;
+    let page_id = doc.pages[0].id.clone();
+    let mut engine = Engine::new();
+    engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    let render = |engine: &mut Engine, name: &str, scale: f64| {
+        let frame = doc.nodes.values().find(|node| node.name == name).unwrap();
+        let png = engine.render_region_png(&RegionRequest {
+            page_id: page_id.clone(),
+            bounds: ExportBounds {
+                x: frame.transform.0[4], y: frame.transform.0[5],
+                width: frame.width, height: frame.height,
+            },
+            scale,
+            node_ids: Some(vec![frame.id.clone()]),
+            raster_profile: Some(RasterProfile::Analytic),
+            color_output: None,
+        }).unwrap();
+        image::load_from_memory(&png).unwrap().into_rgba8()
+    };
+    let row = |image: &image::RgbaImage, scale: f64| -> Vec<u8> {
+        let y = (65. * scale) as u32;
+        (90..=110).map(|x| image.get_pixel((x as f64 * scale) as u32, y).0[3]).collect()
+    };
+    // Frame export omits the group white fill, which is the diagnostic that
+    // exposes edge alpha. Black-backdrop source-over of straight white equals
+    // this alpha row. White-backdrop source-over stays white because RGB is 255.
+    let r1 = render(&mut engine, "t0-r1-a0-box", 1.);
+    assert_eq!(r1.get_pixel(97, 65).0, [255, 255, 255, 210]);
+    assert_eq!(
+        row(&r1, 1.),
+        [0, 0, 0, 3, 21, 76, 155, 210, 228, 231, 232, 232, 232, 232, 232, 232, 232, 232, 232, 232, 232]
+    );
+    let r1_2x = render(&mut engine, "t0-r1-a0-box", 2.);
+    assert_eq!(r1_2x.get_pixel(194, 130).0, [255, 255, 255, 191]);
+    assert_eq!(
+        row(&r1_2x, 2.),
+        [0, 0, 0, 2, 13, 56, 130, 191, 216, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221]
+    );
+    // Radii 5/10/20 were measured on main 678fe3c0 before this kernel change.
+    let unchanged = [
+        ("t0-r5-a0-box", 1., [21, 29, 38, 49, 60, 72, 84, 96, 108, 118, 128, 136, 142, 147, 151, 153, 155, 156, 157, 157, 157]),
+        ("t0-r5-a0-box", 2., [19, 27, 35, 45, 56, 67, 79, 90, 101, 112, 121, 129, 135, 140, 144, 147, 149, 151, 151, 152, 152]),
+        ("t0-r10-a0-box", 1., [42, 47, 52, 58, 63, 68, 74, 79, 84, 90, 95, 100, 105, 109, 113, 117, 121, 124, 127, 129, 132]),
+        ("t0-r10-a0-box", 2., [41, 45, 50, 55, 61, 66, 71, 76, 82, 87, 92, 97, 101, 106, 110, 114, 117, 121, 124, 126, 128]),
+        ("t0-r20-a0-box", 1., [53, 56, 58, 61, 64, 66, 69, 71, 74, 76, 79, 81, 84, 86, 89, 91, 93, 95, 98, 100, 102]),
+        ("t0-r20-a0-box", 2., [52, 55, 57, 60, 62, 65, 67, 70, 72, 75, 77, 80, 82, 85, 87, 89, 92, 94, 96, 98, 100]),
+    ];
+    for (name, scale, expected) in unchanged {
+        let image = render(&mut engine, name, scale);
+        assert_eq!(row(&image, scale), expected, "{name} {scale}x");
+        assert_eq!(image.get_pixel(0, 0).0, [0, 0, 0, 0], "{name} keeps the clear corner");
+    }
+}
+
+#[test]
 fn sketch_motion_and_zoom_keep_the_other_modes_angle_or_origin_on_export() {
     for (kind, angle, center) in [(1, -45., [0.2, 0.75]), (2, -34., [0.8, 0.42])] {
         let mut source = source_blur(kind);

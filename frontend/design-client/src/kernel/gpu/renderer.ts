@@ -6536,7 +6536,8 @@ export class GpuRenderer {
       if (fx.gradientBlur?.sketch) return this.sketchBlurRamp(input, n, fx, sigma, false)
       if (sigma >= 0.1 && sigma <= 2) {
         if (input.texture.transparentZero) return input
-        const reach = Math.ceil(3 * sigma)
+        // Match effects::sketch_small_gaussian_sigma (2/sqrt(π)) and its reach.
+        const reach = Math.ceil(3 * sigma * 2 / Math.sqrt(Math.PI))
         const kernel = this.smallGaussianKernel(sigma)
         const run = () => {
           // Mode 22, policy 4 uses the supplied rational or Q24 weights.
