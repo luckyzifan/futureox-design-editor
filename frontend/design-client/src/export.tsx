@@ -457,6 +457,43 @@ export async function exportPngBatch(
 ) {
   return exportRasterBatch(doc, pageId, scales, target, colorOutput, signal, 'png')
 }
+
+const DOCUMENT_POINT_SLOP = 1e-8
+function outwardDocumentEdge(value: number, direction: 'floor' | 'ceil') {
+  const nearest = Math.round(value)
+  const aligned = Math.abs(value - nearest) <= DOCUMENT_POINT_SLOP ? nearest : value
+  return direction === 'floor' ? Math.floor(aligned) : Math.ceil(aligned)
+}
+/** Expand a document rectangle outward onto integer points. The export scale
+ * is applied afterwards by the existing raster plan. */
+function outwardIntegerDocumentBounds(box: Bounds): Bounds {
+  const x = outwardDocumentEdge(box.x, 'floor')
+  const y = outwardDocumentEdge(box.y, 'floor')
+  const right = outwardDocumentEdge(box.x + box.width, 'ceil')
+  const bottom = outwardDocumentEdge(box.y + box.height, 'ceil')
+  const width = right - x
+  const height = bottom - y
+  if (!(width > 0) || !(height > 0) || !Number.isFinite(width) || !Number.isFinite(height)) return box
+  return { x, y, width, height }
+}
+function figmaRasterContract(doc: DesignDocument) {
+  return doc.rasterProfile === 'figma' || doc.rasterProfile === 'figmaSoftware' || doc.colorManagement !== undefined
+}
+function ordinaryGroupNode(node: DesignDocument['nodes'][string] | undefined) {
+  return !!node && node.kind === 'group' && !node.booleanOperation && !node.mask
+}
+/** Sketch ordinary groups snap their document bounds outward to integer points,
+ * then the raster plan applies the export scale. Direct bitmaps, slices,
+ * frames, pages and Figma raster contracts keep the tight region. */
+export function rasterTargetBounds(doc: DesignDocument, pageId: string, target: ExportTarget): Bounds {
+  const box = targetBounds(doc, pageId, target)
+  if (target.kind !== 'selection' || figmaRasterContract(doc)) return box
+  const selected = new Set(target.nodeIds)
+  const roots = scene(doc, pageId).filter(entry =>
+    selected.has(repeatSourceId(doc, entry.id)) && !entry.ancestors.some(id => selected.has(repeatSourceId(doc, id))))
+  if (!roots.length || roots.some(entry => !ordinaryGroupNode(doc.nodes[entry.id]))) return box
+  return outwardIntegerDocumentBounds(box)
+}
 export async function exportRasterBatch(
   doc: DesignDocument, pageId: string, scales: number[], target: ExportTarget = { kind: 'page' },
   colorOutput?: import('./color').ColorOutput, signal?: AbortSignal,
@@ -470,7 +507,7 @@ export async function exportRasterBatch(
   if (signal?.aborted) throw new Error('已取消导出')
   ;({doc,target} = repeatExport(kernelLayout(doc),target))
   doc = projectSlice(doc,pageId,target)
-  const box = targetBounds(doc, pageId, target)
+  const box = rasterTargetBounds(doc, pageId, target)
   const plans = scales.map((scale) => {
     if (!Number.isFinite(scale) || scale < 0.001 || scale > 128)
       throw new Error('导出倍率必须在 0.001–128 之间')

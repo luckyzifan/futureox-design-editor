@@ -346,11 +346,11 @@ export async function captureDesignPreview(document: DesignDocument, options: Pr
   if (!['png', 'jpeg', 'webp'].includes(format)) throw new AutomationError('invalid_params', 'Preview format must be png, jpeg or webp')
   if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < PREVIEW_LIMITS.minScale || scale > PREVIEW_LIMITS.maxScale) throw new AutomationError('invalid_params', 'Preview scale must be between 0.1 and 4')
   if (options.nodeIds && options.nodeIds.length > PREVIEW_LIMITS.nodeIds) throw new AutomationError('invalid_params', 'Preview supports at most 256 node ids')
-  const { exportImage, targetBounds } = await import('../export')
+  const { exportImage, rasterTargetBounds } = await import('../export')
   options.signal?.throwIfAborted()
   const prepared = kernelLayout(document)
   const target = options.nodeIds ? { kind: 'selection' as const, nodeIds: selection.roots } : { kind: 'page' as const, padding: 0 }
-  const bounds = targetBounds(prepared, selection.page.id, target)
+  const bounds = rasterTargetBounds(prepared, selection.page.id, target)
   const plannedWidth = Math.ceil(bounds.width * scale), plannedHeight = Math.ceil(bounds.height * scale)
   if (![plannedWidth, plannedHeight].every(Number.isSafeInteger) || plannedWidth > PREVIEW_LIMITS.maxSide || plannedHeight > PREVIEW_LIMITS.maxSide || plannedWidth * plannedHeight > PREVIEW_LIMITS.pixels) throw new AutomationError('preview_limit', 'Preview exceeds 16 megapixels or 16384 pixels per side; select a smaller region or explicit lower scale')
   const { width, height } = kernelExportPlan(bounds, scale)

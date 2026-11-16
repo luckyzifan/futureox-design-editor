@@ -56,8 +56,8 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       // is made; the working space is not an implicit uint16 conversion.
       const colorOutput=layerExportColorOutput(request.document,node.id,selected)
       if(settings.some(s=>s.format==='eps'||s.scale===0))throw new Error('包含仅用于 Sketch 往返的格式或零倍率设置；请改用可执行格式和正倍率')
-      const {exportImage,targetBounds,filename}=await import('./export')
-      const bounds=targetBounds(request.document,request.page,target)
+      const {exportImage,rasterTargetBounds,filename}=await import('./export')
+      const bounds=rasterTargetBounds(request.document,request.page,target)
       const pixels=settings.filter(s=>s.format!=='svg'&&s.format!=='pdf-vector').reduce((n,s)=>n+Math.ceil(bounds.width*s.scale)*Math.ceil(bounds.height*s.scale),0)
       if(pixels>64_000_000)throw new Error('批量导出总尺寸超过 6400 万像素，请拆分设置')
       const next:Preview[]=[]
