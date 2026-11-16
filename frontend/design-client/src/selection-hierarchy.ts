@@ -75,27 +75,60 @@ export function deeperSelectionHit(document: DesignDocument, selection: readonly
   return at >= 0 && at + 1 < path.length ? path[at + 1] : shallow
 }
 
+function ancestorIds(document: DesignDocument, page: string, id: string, parents: ParentMap): string[] {
+  const chain: string[] = []
+  const seen = new Set<string>()
+  let at = parents.get(id)
+  while (at && at !== page && !seen.has(at)) {
+    if (!document.nodes[at]) return chain
+    seen.add(at)
+    chain.push(at)
+    at = parents.get(at)
+  }
+  return chain
+}
+
 export function navigateSelection(document: DesignDocument, page: string, selection: readonly string[],
   action: 'children' | 'parent' | 'next' | 'previous', parents: ParentMap = allParents(document)): string[] | null {
-  const eligible = (id: string) => interactivePath(document, page, id, false, parents).length > 0
-  const roots = [...new Set(selection)].filter(id => eligible(id) &&
-    !interactivePath(document, page, id, false, parents).slice(0, -1).some(parent => selection.includes(parent)))
+  // Canvas hits. Hidden and locked layers, and anything under them, stay out.
+  const canvasEligible = (id: string) => interactivePath(document, page, id, false, parents).length > 0
+  // Shift+Return may start from a hidden or locked layer selected in the tree.
+  // A hidden or locked ancestor still blocks the climb.
+  const canClimb = (id: string) => {
+    if (!document.nodes[id]) return false
+    const seen = new Set<string>()
+    let at = parents.get(id)
+    while (at && at !== page) {
+      const parent = document.nodes[at]
+      if (!parent || !parent.visible || parent.locked || seen.has(at)) return false
+      seen.add(at)
+      at = parents.get(at)
+    }
+    return at === page
+  }
+  const selected = new Set(selection)
+  const roots = [...selected].filter(id =>
+    (action === 'parent' ? canClimb(id) : canvasEligible(id)) &&
+    !ancestorIds(document, page, id, parents).some(parent => selected.has(parent)))
   if (!roots.length) return null
   let consumed = false
   const result = roots.flatMap(id => {
     if (action === 'children') {
-      const children = [...document.nodes[id].children].reverse().filter(eligible)
+      // Mac desktop Figma Return selects every direct child, front to back,
+      // including visibility-off and locked children. Storage is back to front.
+      const children = [...document.nodes[id].children].reverse().filter(child =>
+        !!document.nodes[child] && parents.get(child) === id)
       if (children.length) { consumed = true; return children }
       return [id]
     }
     if (action === 'parent') {
       const parent = parents.get(id)
-      if (parent && eligible(parent)) { consumed = true; return [parent] }
+      if (parent && canvasEligible(parent)) { consumed = true; return [parent] }
       return [id]
     }
     const parent = parents.get(id)
     const siblings = [...(document.nodes[parent || '']?.children ||
-      document.pages.find(value => value.id === parent)?.children || [])].reverse().filter(eligible)
+      document.pages.find(value => value.id === parent)?.children || [])].reverse().filter(canvasEligible)
     const at = siblings.indexOf(id)
     if (at < 0 || siblings.length < 2) return [id]
     consumed = true
