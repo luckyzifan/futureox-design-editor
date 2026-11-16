@@ -2053,6 +2053,7 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .geometry-rotation { grid-template-columns: minmax(0, 1fr) auto; }
 .geometry-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
 [data-geometry-mode="sketch"] .geometry-position { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.geometry-frame-edges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 8px; }
 [data-geometry-mode="sketch"] .geometry-dimensions { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
 .inspector .geometry-dimensions.geometry-multiple-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .text-sizing-axes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }

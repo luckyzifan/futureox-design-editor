@@ -41,6 +41,7 @@ import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
 import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
+import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
 import type { Editor } from './engine'
@@ -491,9 +492,16 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const angle = liveText !== undefined ? Number(liveText) : figmaRotationDegrees(n.transform),
     position = selectionParentBounds(s.doc, n.id)
   const constraintParent = s.doc.nodes[parents.get(n.id) || '']
-  const positionOffset = uiMode === 'figma' ? figmaPositionOffset(s.doc, n.id, parents) : { x: 0, y: 0 }
+  const frameDistance = uiMode === 'sketch' ? sketchFrameDistance(s.doc, n.id, parents) : undefined
+  const frameNode = frameDistance ? s.doc.nodes[frameDistance.frameId] : undefined
+  const positionOffset = uiMode === 'figma'
+    ? figmaPositionOffset(s.doc, n.id, parents)
+    : frameDistance ? { x: frameDistance.offsetX, y: frameDistance.offsetY } : { x: 0, y: 0 }
   const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
-  const showConstraints = !!constraintParent && !constraintParent.graphic && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
+  const directFrameConstraints = !!constraintParent && !constraintParent.graphic
+    && (constraintParent.kind === 'frame' || constraintParent.kind === 'section')
+    && (!constraintFlow || !!n.sizing?.absolute)
+  const showConstraints = directFrameConstraints || (uiMode === 'sketch' && sketchNestedFramePins(s.doc, n.id, parents))
   const updateBounds = (edit: (node: DesignNode) => void) => {
     const source = editor.state.doc
     if (s.frameCrop !== n.id || editableFrameCrop(editor) !== n.id) { update(edit); return }
@@ -510,6 +518,22 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     <NumberField historyLabel="Y" diagnosticFamily={2} unit="length" label="Y" value={(position.y + positionOffset.y) * units.parentY}
       onChange={v => updateBounds(node => setNodePosition(node, 'y', v - positionOffset.y * units.parentY, editor.state.doc, units))} />
   </>
+  const writeFrameEdge = (edge: 'right' | 'bottom', value: number) => updateBounds(node => {
+    const doc = editor.state.doc
+    const distance = sketchFrameDistance(doc, node.id, parents)
+    const frame = distance && doc.nodes[distance.frameId]
+    if (!distance || !frame) throw new Error('当前图层没有可写的画框距离')
+    const box = selectionParentBounds(doc, node.id, node.transform)
+    const { axis, displayLocal } = frameEdgeDisplayLocal(edge, value, box, distance, frame, units.parentX, units.parentY)
+    setNodePosition(node, axis, displayLocal, doc, units)
+  })
+  const frameEdges = frameDistance && frameNode ? sketchFrameEdges(position, frameDistance, frameNode) : undefined
+  const frameEdgeFields = frameEdges ? <div className="geometry-frame-edges">
+    <NumberField historyLabel="距画框右边" diagnosticFamily={2} unit="length" label="距画框右边" caption="右"
+      value={frameEdges.right * units.parentX} onChange={value => writeFrameEdge('right', value)} />
+    <NumberField historyLabel="距画框下边" diagnosticFamily={2} unit="length" label="距画框下边" caption="下"
+      value={frameEdges.bottom * units.parentY} onChange={value => writeFrameEdge('bottom', value)} />
+  </div> : null
   const angleField = <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle" label={tr("旋转 °")}
     caption="∠" formatValue={formatAngleDegrees} value={angle}
     onChange={v => update(node => rotateNode(node, nodeDegreesForFigmaAngle(v), selectionLocalBounds(editor.state.doc, node.id)))} />
@@ -618,6 +642,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         <section className="geometry-position-section">
           {uiMode === 'sketch' ? <>
             <div className="geometry-position">{positionFields}{angleField}</div>
+            {frameEdgeFields}
             {dimensions}
             {n.kind === 'text' && !constraintParent?.graphic && <TextSizingControls editor={editor} nodes={[n]} sketch />}
           </> : <>
