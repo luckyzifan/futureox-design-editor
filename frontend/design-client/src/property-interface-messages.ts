@@ -511,6 +511,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "所选文字引用共享样式；请先勾选「转为本地文字样式」": "The selected text uses a shared style. Enable Convert to local text style first.",
   "关闭": "Close",
   "选区颜色": "Selection color",
+  "选择使用此颜色的图层": "Select layers using this color",
   "缩放": "Scale",
   "宽度": "Width",
   "高度": "Height",

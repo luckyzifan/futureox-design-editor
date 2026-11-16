@@ -1723,6 +1723,7 @@ footer button {
 .selection-color-row { display:flex; align-items:center; gap:8px; margin:6px 0; }
 .selection-color-row .linked-color { flex:1; overflow:hidden; text-overflow:ellipsis; }
 .selection-color-row button { font-size:11px; }
+.selection-color-row .selection-color-select { display:inline-flex; align-items:center; justify-content:center; width:23px; height:24px; padding:3px; flex:none; }
 
 .canvas-arrow { cursor: crosshair; }
 
