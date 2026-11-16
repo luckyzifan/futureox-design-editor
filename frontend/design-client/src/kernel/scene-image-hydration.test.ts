@@ -47,6 +47,26 @@ for (const linear of [false, true]) test(`one compiled scene reads unique depend
   expect(s.kernel.image_info).not.toHaveBeenCalled()
 })
 
+test('projected Gaussian reuse follows the exact decoder scope, source and placement', () => {
+  let current = true
+  const s = setup({ current: () => current })
+  const first = s.load(uri(1)).pixels
+  const output = { x: 5, y: 10, w: 2, h: 2 }
+  const project = vi.fn(() => new Float32Array(16))
+  const get = s.load.projectGaussian!
+  const pixels = get(uri(1), first, output, 'position-a', project)
+  expect(get(uri(1), first, output, 'position-a', project)).toBe(pixels)
+  expect(project).toHaveBeenCalledTimes(1)
+  expect(get(uri(1), first, output, 'position-b', project)).not.toBe(pixels)
+  expect(get(uri(2), first, output, 'position-a', project)).not.toBe(pixels)
+  s.context.scope = 'different-source-owner'
+  const second = s.load(uri(1)).pixels
+  expect(get(uri(1), second, output, 'position-a', project)).not.toBe(pixels)
+  current = false
+  expect(() => get(uri(1), second, output, 'position-a', project)).toThrow('PREVIEW_CANCELLED')
+  expect(project).toHaveBeenCalledTimes(4)
+})
+
 test('color management selects linear even without floatCompositing, and later tile format changes remain independent', async () => {
   const s = setup(), compiled = scene([uri(1)])
   compiled.colorManagement = defaultColorSettings()

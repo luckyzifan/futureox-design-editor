@@ -136,3 +136,42 @@ fn transparent_hidden_and_moved_masks_preserve_clip_and_undo_pixels() {
     patch(&mut e, "next", &original["nodes"]["next"]);
     assert_eq!(e.render(&opts).unwrap(), baseline);
 }
+
+#[test]
+fn isolated_export_keeps_the_sketch_mask_and_prunes_unselected_paint() {
+    use futureox_design_kernel::export::{ExportBounds, RegionRequest};
+    use futureox_design_kernel::fidelity::RasterProfile;
+    let mut authored = document(true);
+    authored["nodes"]["mask"]["visible"] = json!(false);
+    authored["nodes"]["next"]["maskType"] = json!("alpha");
+    authored["nodes"]["next"]["maskChain"] = json!("start");
+    authored["nodes"]["next"]["opacity"] = json!(0.5);
+    authored["nodes"]["g"]["transform"] = json!([1, 0, 0, 1, 3, 2]);
+    authored["nodes"]["first"] = json!({
+        "id":"first","kind":"group","width":90,"height":5,
+        "transform":[1,0,0,1,0,5],"children":["selected"]
+    });
+    authored["nodes"]["selected"] = rect("selected", 0, 0, 90, 5, "#0000ff");
+
+    let mut engine = Engine::new();
+    engine.load_document(&authored.to_string()).unwrap();
+    let page_options = options("analytic");
+    let before = engine.render(&page_options).unwrap();
+    let request = RegionRequest {
+        page_id: "p".into(),
+        bounds: ExportBounds { x: 0., y: 0., width: 110., height: 32. },
+        scale: 1.,
+        node_ids: Some(vec!["selected".into(), "second".into(), "last".into()]),
+        raster_profile: Some(RasterProfile::Analytic),
+        color_output: None,
+    };
+    let output = engine.render_region_png(&request).unwrap();
+    let png = image::load_from_memory(&output).unwrap().into_rgba8();
+    assert_eq!(png.get_pixel(17, 9).0, [0, 0, 255, 255]);
+    assert_eq!(png.get_pixel(60, 9).0[3], 0, "Hidden shape mask still clips the nested child");
+    assert_eq!(png.get_pixel(43, 24).0, [0, 255, 255, 128]);
+    assert_eq!(png.get_pixel(68, 24).0[3], 0, "Alpha mask contributes coverage only");
+    assert_eq!(png.get_pixel(95, 4).0, [0, 0, 0, 255], "The mask chain ends at the break");
+    assert_eq!(png.get_pixel(77, 4).0[3], 0, "An unselected sibling is not a paint source");
+    assert_eq!(engine.render(&page_options).unwrap(), before, "Export restores all placements and children");
+}

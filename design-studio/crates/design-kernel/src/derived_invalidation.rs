@@ -3,7 +3,7 @@
 use crate::scene::Node;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum PaintChange { Material, Bounds }
+pub(crate) enum PaintChange { Material, ZoomFocus, Bounds }
 
 pub(crate) fn paint_change(old: &Node, next: &Node) -> Option<PaintChange> {
     // Rich text paint is expanded into generated children; keep its resolver
@@ -19,7 +19,26 @@ pub(crate) fn paint_change(old: &Node, next: &Node) -> Option<PaintChange> {
         stroke.paint = new.paint.clone();
     }
     if candidate != *next { return None; }
-    Some(if old.effects == next.effects { PaintChange::Material } else { PaintChange::Bounds })
+    if old.effects == next.effects {
+        return Some(PaintChange::Material);
+    }
+    // Moving only the center changes radial sample coordinates, not the
+    // authored outset, geometry, active-effect flags or backdrop predicates.
+    // The compiler still replans each tile for the new sampling center.
+    if old.fills == next.fills && old.opacity == next.opacity && old.strokes == next.strokes
+        && old.effects.len() == next.effects.len()
+        && old.effects.iter().zip(&next.effects).all(|(before, after)| {
+            if before == after { return true; }
+            let (Some(mut blur), Some(new_blur)) = (before.zoom_blur, after.zoom_blur) else { return false; };
+            blur.center = new_blur.center;
+            let mut equivalent = before.clone();
+            equivalent.zoom_blur = Some(blur);
+            equivalent == *after
+        })
+    {
+        return Some(PaintChange::ZoomFocus);
+    }
+    Some(PaintChange::Bounds)
 }
 
 pub(crate) fn apply_paint(target: &mut Node, next: &Node) {

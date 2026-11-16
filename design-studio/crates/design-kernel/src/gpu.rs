@@ -74,6 +74,19 @@ use std::{
 /// One active entry plus bounded inactive camera variants are retained. All
 /// variants remain keyed by exact document/font geometry lineage.
 type CameraPrepareKey = (u64, String, (f64, f64, f64), (i32, i32, u32, u32), bool, Option<crate::animation::Sample>);
+type PreparedGeometry = HashMap<String, crate::geometry_snapshot::Prepared>;
+
+fn prepared_bytes(prepared: &PreparedGeometry) -> usize {
+    let contours = |cs: &Vec<crate::path::Contour>| {
+        cs.capacity() * std::mem::size_of::<crate::path::Contour>()
+            + cs.iter().map(|c| c.points.capacity() * std::mem::size_of::<Point>()).sum::<usize>()
+    };
+    prepared.capacity() * 192
+        + prepared.iter().map(|(id, entry)| {
+            id.capacity() + contours(&entry.fill) + entry.strokes.iter().map(|s| contours(s)).sum::<usize>()
+        }).sum::<usize>()
+}
+
 pub(crate) struct CameraPrepare {
     pub(crate) key: CameraPrepareKey,
     pub(crate) prepared: Arc<HashMap<String, crate::geometry_snapshot::Prepared>>,
@@ -91,18 +104,18 @@ pub(crate) struct CameraPrepare {
 }
 impl CameraPrepare {
     fn retained_bytes(&self) -> usize {
-        let contours = |cs: &Vec<crate::path::Contour>| cs.capacity()*std::mem::size_of::<crate::path::Contour>() +
-            cs.iter().map(|c|c.points.capacity()*std::mem::size_of::<Point>()).sum::<usize>();
         self.programs.bytes + self.fragments.bytes + self.zoom_bounds.as_ref().map_or(0, |map|
-            map.capacity() * 144 + map.keys().map(|id| id.capacity()).sum::<usize>()) + self.prepared.capacity()*192 + self.prepared.iter().map(|(id,p)|
-            id.capacity()+contours(&p.fill)+p.strokes.iter().map(|s|contours(s)).sum::<usize>()).sum::<usize>()
+            map.capacity() * 144 + map.keys().map(|id| id.capacity()).sum::<usize>()) + prepared_bytes(&self.prepared)
     }
-    pub(crate) fn paint_changed(&mut self, revision: u64, doc:&Document, ids:impl Iterator<Item=String>, parents:&impl crate::render_index::ParentLookup) {
+    pub(crate) fn paint_changed(&mut self, revision: u64, doc:&Document, ids:impl Iterator<Item=String>,
+        parents:&impl crate::render_index::ParentLookup, focus_only: bool) {
         self.key.0 = revision;
-        // Opacity can change whether a backdrop chain is active. Refresh this
-        // summary even when all exact coverage programs remain reusable.
-        self.metadata = None;
-        self.zoom_bounds = None;
+        // Opacity and other effects can change backdrop/geometry predicates.
+        // Radial focus alone changes neither this metadata nor the outset map.
+        if !focus_only {
+            self.metadata = None;
+            self.zoom_bounds = None;
+        }
         self.fragments.invalidate_tree(doc,ids,parents); self.programs.reserve(self.fragments.bytes);
         self.incremental=true;
     }
@@ -152,6 +165,13 @@ impl CameraPrepare {
     }
 }
 
+struct PreparedCrop {
+    key: CameraPrepareKey,
+    support: Option<std::sync::Weak<crate::world_support::WorldSupport>>,
+    geometry: Arc<PreparedGeometry>,
+    bytes: usize,
+}
+
 /// Keep exact camera variants across zoom levels. Never warp a coverage
 /// program into a different sampling lattice. The active entry keeps its
 /// existing budget; inactive variants share a separate bounded LRU.
@@ -162,6 +182,9 @@ pub(crate) struct CameraResidency {
     restores: u64,
     evictions: u64,
     frame_resource_bytes: usize,
+    crops: std::collections::VecDeque<PreparedCrop>,
+    crop_bytes: usize,
+    crop_hits: u64,
 }
 impl CameraResidency {
     const LIMIT:usize=64*1024*1024;
@@ -171,6 +194,8 @@ impl CameraResidency {
         // active cache may already have received the precise dirty-node patch.
         self.entries.retain(|(c,_)|c.key.0==revision);
         self.bytes=self.entries.iter().map(|(_,bytes)|*bytes).sum();
+        self.crops.retain(|crop| crop.key.0 == revision && crop.key.1 == page && crop.key.2 == view && crop.key.4 == compatible && &crop.key.5 == animation);
+        self.crop_bytes = self.crops.iter().map(|crop| crop.bytes).sum();
         let covers=|c:&CameraPrepare| {
             let padding=c.metadata.map_or(0,|m|m.padding);
             let guard=window.expand(padding);
@@ -184,6 +209,9 @@ impl CameraResidency {
         if let Some(old)=active.take().filter(|c|c.key.0==revision) {
             let bytes=old.retained_bytes();
             if bytes<=Self::LIMIT.saturating_sub(self.frame_resource_bytes) {
+                while self.crop_bytes > Self::LIMIT.saturating_sub(self.frame_resource_bytes).saturating_sub(self.bytes).saturating_sub(bytes) {
+                    if !self.evict_crop() { break; }
+                }
                 while self.entries.len()>=4 || self.bytes+bytes>Self::LIMIT.saturating_sub(self.frame_resource_bytes) {
                     if let Some((_,bytes))=self.entries.pop_front(){self.bytes-=bytes;self.evictions+=1;}else{break;}
                 }
@@ -192,13 +220,68 @@ impl CameraResidency {
         }
         *active=next;
     }
-    pub(crate) fn reserve_frame_resources(&mut self,bytes:usize) {
-        self.frame_resource_bytes=bytes;
-        while self.bytes>Self::LIMIT.saturating_sub(bytes) {if let Some((_,size))=self.entries.pop_front(){self.bytes-=size;self.evictions+=1;}else{break;}}
+    fn evict_crop(&mut self) -> bool {
+        let Some(crop) = self.crops.pop_front() else { return false; };
+        self.crop_bytes -= crop.bytes;
+        true
     }
-    pub(crate) fn clear(&mut self) {self.entries.clear();self.bytes=0;}
+
+    pub(crate) fn reserve_frame_resources(&mut self, bytes: usize) {
+        self.frame_resource_bytes = bytes;
+        let available = Self::LIMIT.saturating_sub(bytes);
+        while self.crop_bytes > available.saturating_sub(self.bytes) {
+            if !self.evict_crop() { break; }
+        }
+        while self.bytes > available {
+            let Some((_, size)) = self.entries.pop_front() else { break; };
+            self.bytes -= size;
+            self.evictions += 1;
+        }
+    }
+
+    pub(crate) fn retain_zoom_focus(&mut self, before: u64, after: u64) {
+        for crop in &mut self.crops {
+            if crop.key.0 == before { crop.key.0 = after; }
+        }
+    }
+
+    fn crop(&mut self, key: &CameraPrepareKey, support: Option<&Arc<crate::world_support::WorldSupport>>) -> Option<Arc<PreparedGeometry>> {
+        let slot = self.crops.iter().position(|crop| &crop.key == key && match (&crop.support, support) {
+            (Some(previous), Some(current)) => previous.as_ptr() == Arc::as_ptr(current),
+            (None, None) => true,
+            _ => false,
+        })?;
+        let crop = self.crops.remove(slot)?;
+        self.crop_hits += 1;
+        let geometry = crop.geometry.clone();
+        self.crops.push_back(crop);
+        Some(geometry)
+    }
+
+    fn retain_crop(&mut self, key: CameraPrepareKey, support: Option<&Arc<crate::world_support::WorldSupport>>, geometry: Arc<PreparedGeometry>) {
+        // These crops share the existing inactive-camera and frame-resource
+        // allowance. Keep room for current packet and world-index owners.
+        let available = Self::LIMIT.saturating_sub(self.frame_resource_bytes).saturating_sub(self.bytes)
+            .min(16 * 1024 * 1024);
+        let bytes = prepared_bytes(&geometry) + key.1.capacity() + 256;
+        if bytes > available { return; }
+        while self.crops.len() >= 32 || self.crop_bytes > available - bytes {
+            if !self.evict_crop() { return; }
+        }
+        self.crop_bytes += bytes;
+        self.crops.push_back(PreparedCrop { key, support: support.map(Arc::downgrade), geometry, bytes });
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.entries.clear();
+        self.bytes = 0;
+        self.crops.clear();
+        self.crop_bytes = 0;
+    }
+
     fn stats(&self)->serde_json::Value {
-        serde_json::json!({"entries":self.entries.len(),"bytes":self.bytes,"restores":self.restores,"evictions":self.evictions})
+        serde_json::json!({"entries":self.entries.len(),"bytes":self.bytes,"restores":self.restores,"evictions":self.evictions,
+            "cropHits":self.crop_hits,"cropBytes":self.crop_bytes})
     }
 }
 
@@ -2179,7 +2262,7 @@ impl Engine {
         let capture_reads = capture_reads && !options.raster_profile.is_export() && options.pixel_preview.is_none();
         let mut scene = if let Some(capture) = capture {
             if options.pixel_preview.is_some() || options.raster_profile.is_export() { return Err("Native capture is a canvas operation".into()); }
-            self.compile_gpu_region_impl(&options,capture,prepare.or(Some(capture)),true,painter_support,capture_reads,gaussian_regions,gaussian_reduction,source_filter_fields,false)?
+            self.compile_gpu_region_impl(&options,capture,prepare.or(Some(capture)),true,painter_support,capture_reads,gaussian_regions,gaussian_reduction,source_filter_fields,analytic_regions)?
         } else { match region {
             Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads,gaussian_regions,gaussian_reduction,source_filter_fields,analytic_regions),
             None => self.compile_gpu(&options),
@@ -2575,16 +2658,27 @@ impl Engine {
             // Chord replacement outside the retained guard changes flattened
             // bounds. Publishing those bounds makes a real FIG node rect follow
             // the union instead of the tile. Rebuild only the emitted map.
-            let mut local=HashMap::new();
-            let mut tile_segments=0usize;
-            for root in &page.children {
-                crate::geometry_snapshot::prepare_node_geometry_indexed(
-                    root,camera,(doc,&self.fonts,tile_guard,compatible),
-                    &mut self.paths,&mut self.local_strokes,&mut local,&mut tile_segments,
-                    world_support.as_deref(),
-                )?;
-            }
-            prepared=Arc::new(local);
+            let crop_key = (properties.has_zoom && project_images && self.source_compile_context.is_none())
+                .then(|| (self.geo_revision, options.page_id.clone(), (options.view.x, options.view.y, options.view.zoom),
+                    (tile_guard.x, tile_guard.y, tile_guard.w, tile_guard.h), compatible, None));
+            prepared = if let Some(hit) = crop_key.as_ref().and_then(|key| self.camera_residency.crop(key, world_support.as_ref())) {
+                hit
+            } else {
+                let mut local = HashMap::new();
+                let mut tile_segments = 0;
+                for root in &page.children {
+                    crate::geometry_snapshot::prepare_node_geometry_indexed(
+                        root, camera, (doc, &self.fonts, tile_guard, compatible),
+                        &mut self.paths, &mut self.local_strokes, &mut local, &mut tile_segments,
+                        world_support.as_deref(),
+                    )?;
+                }
+                let local = Arc::new(local);
+                if let Some(key) = crop_key {
+                    self.camera_residency.retain_crop(key, world_support.as_ref(), local.clone());
+                }
+                local
+            };
         }
         if has_region && !regional_foreground && doc.color_management.is_some() && metadata.noise_guard.is_none() {
             regional_foreground = page.children.iter().all(|id|

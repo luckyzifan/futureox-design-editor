@@ -125,69 +125,48 @@ impl Engine {
             if selected.is_empty() || selected.len() > 1000 {
                 return Err("Export selection requires 1–1000 nodes".into());
             }
-            fn visit(
-                doc: &crate::scene::Document,
-                id: &str,
-                parent: crate::math::Transform,
-                selected: &BTreeSet<&str>,
-                found: &mut BTreeSet<String>,
-                roots: &mut Vec<(String, crate::math::Transform)>,
-                inside: bool,
-            ) {
-                let node = &doc.nodes[id];
-                if !node.visible {
-                    return;
-                }
-                let matrix = parent.concat(node.transform);
-                let source_id = node.repeat_origin.as_deref().unwrap_or(id);
-                let chosen = selected.contains(source_id);
-                if chosen {
-                    found.insert(source_id.to_owned());
-                    if !inside {
-                        roots.push((id.to_owned(), matrix));
-                    }
-                }
-                for child in &node.children {
-                    visit(doc, child, matrix, selected, found, roots, inside || chosen);
-                }
-            }
+            let mask_groups = self.authored_document().into_iter()
+                .flat_map(|source| source.nodes.values())
+                .filter(|node| crate::sketch_masks::starts(node))
+                .map(|node| crate::repeat::derived_id(&format!("sketch-mask-chain/{}", node.id)))
+                .collect();
+            let mut selection = RegionSelection {
+                doc,
+                selected,
+                mask_groups,
+                found: BTreeSet::new(),
+                group_children: Vec::new(),
+                local_transforms: Vec::new(),
+            };
             let mut roots = Vec::new();
-            let mut found = BTreeSet::new();
             for id in &doc.pages[page_index].children {
-                visit(
-                    doc,
-                    id,
-                    crate::math::Transform::default(),
-                    &selected,
-                    &mut found,
-                    &mut roots,
-                    false,
-                );
+                selection.visit(id, crate::math::Transform::default(), false, &mut roots);
             }
-            if found.len() != selected.len() {
-                return Err(
-                    "Export selection contains hidden nodes or nodes outside this page".into(),
-                );
+            if selection.found.len() != selection.selected.len() {
+                return Err("Export selection contains hidden nodes or nodes outside this page".into());
             }
-            Some(roots)
+            Some((roots, selection.group_children, selection.local_transforms))
         } else {
             None
         };
         let mut restore = None;
-        if let Some(roots) = roots {
+        if let Some((roots, groups, local_transforms)) = roots {
             let doc = self.doc.as_mut().expect("document checked");
             let children = std::mem::replace(
                 &mut doc.pages[page_index].children,
                 roots.iter().map(|(id, _)| id.clone()).collect(),
             );
-            let transforms: Vec<_> = roots
-                .into_iter()
+            let transforms: Vec<_> = roots.into_iter().chain(local_transforms)
                 .map(|(id, matrix)| {
                     let node = doc.nodes.get_mut(&id).expect("selected node checked");
                     (id, std::mem::replace(&mut node.transform, matrix))
                 })
                 .collect();
-            restore = Some((children, transforms));
+            let groups: Vec<_> = groups.into_iter().map(|(id, children)| {
+                let node = doc.nodes.get_mut(&id).expect("mask wrapper checked");
+                (id, std::mem::replace(&mut node.children, children))
+            }).collect();
+            restore = Some((children, transforms, groups));
         }
         let omitted_fills = {
             let doc = self.doc.as_mut().expect("document checked");
@@ -254,9 +233,12 @@ impl Engine {
                 doc.nodes.get_mut(&id).expect("render preserves nodes").fills = fills;
             }
         }
-        if let Some((children, transforms)) = restore {
+        if let Some((children, transforms, groups)) = restore {
             let doc = self.doc.as_mut().expect("render preserves document");
             doc.pages[page_index].children = children;
+            for (id, children) in groups {
+                doc.nodes.get_mut(&id).expect("render preserves nodes").children = children;
+            }
             for (id, transform) in transforms {
                 doc.nodes
                     .get_mut(&id)
@@ -265,6 +247,60 @@ impl Engine {
             }
         }
         result
+    }
+}
+
+type ExportPlacement = (String, crate::math::Transform);
+
+struct RegionSelection<'a, 'id> {
+    doc: &'a crate::scene::Document,
+    selected: std::collections::BTreeSet<&'id str>,
+    mask_groups: std::collections::HashSet<String>,
+    found: std::collections::BTreeSet<String>,
+    group_children: Vec<(String, Vec<String>)>,
+    local_transforms: Vec<ExportPlacement>,
+}
+
+impl RegionSelection<'_, '_> {
+    fn contains_selected(&self, id: &str) -> bool {
+        let node = &self.doc.nodes[id];
+        self.selected.contains(node.repeat_origin.as_deref().unwrap_or(id))
+            || node.children.iter().any(|child| self.contains_selected(child))
+    }
+
+    fn visit(&mut self, id: &str, parent: crate::math::Transform, inside: bool, roots: &mut Vec<ExportPlacement>) {
+        let doc = self.doc;
+        let node = &doc.nodes[id];
+        if !node.visible { return; }
+        let matrix = parent.concat(node.transform);
+        let source_id = node.repeat_origin.as_deref().unwrap_or(id);
+        let chosen = self.selected.contains(source_id);
+        if chosen {
+            self.found.insert(source_id.to_owned());
+            if !inside { roots.push((id.to_owned(), matrix)); }
+        }
+        if !inside && !chosen && self.mask_groups.contains(id)
+            && let Some((mask, children)) = node.children.split_first()
+            && doc.nodes[mask].mask && !self.contains_selected(mask)
+        {
+            // The resolved Sketch group supplies coverage without displaying
+            // the mask as paint. Keep only selected branches in that group.
+            // Descendant placement stays relative to its original mask scope.
+            let mut clipped = Vec::new();
+            for child in children {
+                self.visit(child, crate::math::Transform::default(), false, &mut clipped);
+            }
+            if !clipped.is_empty() {
+                let children = std::iter::once(mask.clone()).chain(clipped.iter().map(|(id, _)| id.clone())).collect();
+                self.group_children.push((id.to_owned(), children));
+                self.local_transforms.extend(clipped);
+                roots.push((id.to_owned(), matrix));
+            }
+            return;
+        }
+        for child in &node.children {
+            self.visit(child, matrix, inside || chosen, roots);
+        }
     }
 }
 
