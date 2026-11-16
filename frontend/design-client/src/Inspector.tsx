@@ -6,6 +6,7 @@ import { SketchLayerStyle } from './SketchLayerStyle'
 import { BlurEffectPanel } from './BlurEffectPanel'
 import { canAddSketchEffect, isMotionZoomBlur, isSketchProgressiveBlur, setProgressiveMode } from './blur-settings'
 import { GlassEffectPanel, createGlassEffect, prepareGlassFill } from './GlassEffectPanel'
+import { GraphicTemplatePanel } from './GraphicTemplatePanel'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { propertyUnits, dashInUnits, styleUnitDescription } from './property-units'
 import { UnitNumberField } from './UnitNumberField'
@@ -31,6 +32,7 @@ import { figmaRotationDegrees, nodeDegreesForFigmaAngle, type LiveRotation } fro
 import { nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
 import { CornerRadiusFields } from './corner-radius-fields'
+import { VectorCornerFields } from './VectorCornerFields'
 import { CalculatedDimension, NumberField } from './fields'
 import { formatPercent } from './numeric-expression'
 import { LayoutPanel } from './LayoutPanel'
@@ -431,6 +433,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const liveBlur = useSyncExternalStore(editor.subscribeLiveBlur, () => editor.liveBlur)
   const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
   const [glassToOpen, setGlassToOpen] = useState<string | null>(null)
+  if (uiMode === 'sketch' && s.tool === 'graphic') return <GraphicTemplatePanel editor={editor}/>
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
   if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
   if (!n)
@@ -732,6 +735,9 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               />
             </>
           )}
+          {n.kind === 'vector' && n.vectorGeometry?.cornerSource &&
+            <VectorCornerFields key={n.id} geometry={n.vectorGeometry} styleScale={units.style}
+              styleDescription={styleDescription} update={update}/>}
           {['star', 'polygon'].includes(n.kind) && (
             <NumberField historyLabel="顶点数量" diagnosticFamily={2} unit="number"
               label={tr("顶点数量")}

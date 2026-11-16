@@ -17,6 +17,10 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
   const managed=!!editor.state.doc.colorManagement
   const explicit=managed && subtreeNeedsExplicitColorEncoding(editor.state.doc, node.id)
   const [encoding,setEncoding]=useState<'srgb' | 'display-p3' | ''>('')
+  const [pngSampling,setPngSampling]=useState<'figma' | 'document' | null>(null)
+  const supportsNativePng = !managed && !!node.vectorGeometry?.cornerSource
+  const savedProfile = editor.state.doc.rasterProfile
+  const selectedSampling = pngSampling ?? (savedProfile && savedProfile !== 'analytic' ? 'document' : 'figma')
   const selected=encoding==='srgb'||encoding==='display-p3'?encoding:(explicit?'':'srgb')
   const owner=useRef(new ExportOwner()),urls=useRef<string[]>([]),mounted=useRef(true)
   // A vector preset is only offered when the node's own subtree stays inside
@@ -67,7 +71,11 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       const next:Preview[]=[]
       for(const setting of settings) {
         const format=(setting.format==='jpg'?'jpeg':setting.format) as 'png'|'svg'|'jpeg'|'webp'|'pdf'|'pdf-vector'|'tiff'|'heic'
-        const asset=await exportImage(request.document,request.page,format,setting.scale,colorOutput,request.signal,target)
+        const document = format === 'png' && selectedSampling === 'figma' && !request.document.colorManagement &&
+          request.document.nodes[node.id].vectorGeometry?.cornerSource
+          ? { ...request.document, rasterProfile: 'figma' as const }
+          : request.document
+        const asset=await exportImage(document,request.page,format,setting.scale,colorOutput,request.signal,target)
         if(!request.isCurrent())throw new Error('导出已取消：图层或文档已变化')
         const name=filename(request.document.nodes[node.id].name+(setting.suffix || (setting.scale===1?'':`@${setting.scale}x`)))+'.'+(setting.format==='jpeg'?'jpg':setting.format==='pdf-vector'?'pdf':setting.format)
         if(save){
@@ -92,6 +100,13 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       <DraftInput aria-label={indexed('导出后缀', 'Export suffix', i)} placeholder={tr('后缀')} value={setting.suffix} validate={v=>v.length<=80&&!exportSuffixHasForbiddenCharacters(v)} onCommit={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.suffix=value})}/>
       <button type="button" aria-label={indexed('删除导出设置', 'Remove export setting', i)} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.splice(s.findIndex(s=>s.id===setting.id),1))}}>−</button>
     </div>)}
+    {supportsNativePng && node.exportSettings?.some(setting => setting.format === 'png') &&
+      <label className="node-export-encoding">{tr('PNG 采样')} <select aria-label={tr('PNG 采样')}
+        value={selectedSampling} disabled={busy}
+        onChange={event=>setPngSampling(event.currentTarget.value as 'figma' | 'document')}>
+        <option value="figma">{tr('Figma 兼容')}</option>
+        <option value="document">{tr('文档采样')}</option>
+      </select></label>}
     {managed && <label className="node-export-encoding">{tr('输出编码')} <select aria-label={tr('图层导出输出编码')} value={selected} disabled={busy} onChange={event=>setEncoding(event.target.value as 'srgb' | 'display-p3' | '')}>{explicit && <option value="">{tr('请选择')}</option>}<option value="srgb">sRGB</option><option value="display-p3">Display P3</option></select></label>}
     {explicit && !selected && <p className="muted">{tr('此图层含广色域、HDR 或负值分量。请先选择与顶部导出相同的输出编码；未选择时不会导出，也不会把高光静默压成 8 位。')}</p>}
     {managed && !explicit && <p className="muted">{tr('输出编码为 sRGB，与顶部导出的 sRGB 使用同一显式编码。')}</p>}

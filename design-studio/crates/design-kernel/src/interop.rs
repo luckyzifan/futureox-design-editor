@@ -8304,6 +8304,7 @@ fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Optio
                     fill_rule: "nonzero".into(),
                     fill,
                     stroke: None,
+                    corner_source: None,
                 }));
             }
         }

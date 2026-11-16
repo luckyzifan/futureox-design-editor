@@ -348,7 +348,8 @@ export const defaultSizing = (): Sizing => ({
 })
 export type EllipseArc = { startAngle: number; sweepAngle: number; innerRadius: number }
 export type CurveCommand = {move:[number,number]}|{line:[number,number]}|{quad:[number,number,number,number]}|{cubic:[number,number,number,number,number,number]}|'close'
-export type VectorGeometry = {fillRule:'evenodd'|'nonzero';fill:CurveCommand[];stroke?:CurveCommand[]}
+export type VectorCornerSource = { network: Network; radii: number[]; smoothing: number; scale: [number, number] }
+export type VectorGeometry = {fillRule:'evenodd'|'nonzero';fill:CurveCommand[];stroke?:CurveCommand[];cornerSource?:VectorCornerSource}
 export type ExportSetting = { id: string; format: 'png' | 'svg' | 'jpeg' | 'jpg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff' | 'heic' | 'eps'; scale: number; suffix: string }
 export function exportSuffixHasForbiddenCharacters(value: string): boolean {
   return Array.from(value).some(character => {
@@ -1299,7 +1300,16 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     }
     if(n.vectorGeometry!==undefined) {
       const geometry=n.vectorGeometry
-      if(d.schemaVersion<16||n.kind!=='vector'||n.network||n.vectorBrush||!isObject(geometry)||Object.keys(geometry).some(key=>!['fillRule','fill','stroke'].includes(key))||!['evenodd','nonzero'].includes(geometry.fillRule)||!Array.isArray(geometry.fill)||(geometry.stroke!==undefined&&!Array.isArray(geometry.stroke))||geometry.fill.length+(geometry.stroke?.length??0)>131072)throw Error('矢量路径需要版本 16，且必须只有一个权威几何表示')
+      if(d.schemaVersion<16||n.kind!=='vector'||n.network||n.vectorBrush||!isObject(geometry)||Object.keys(geometry).some(key=>!['fillRule','fill','stroke','cornerSource'].includes(key))||!['evenodd','nonzero'].includes(geometry.fillRule)||!Array.isArray(geometry.fill)||(geometry.stroke!==undefined&&!Array.isArray(geometry.stroke))||geometry.fill.length+(geometry.stroke?.length??0)>131072)throw Error('矢量路径需要版本 16，且必须只有一个权威几何表示')
+      if (geometry.cornerSource !== undefined) {
+        const source = geometry.cornerSource
+        if (!isObject(source) || !Array.isArray(source.network?.vertices) || !Array.isArray(source.network?.edges) ||
+            !Array.isArray(source.radii) || source.radii.length < 3 || source.radii.length > 10000 ||
+            source.radii.length !== source.network.vertices.length || source.radii.length !== source.network.edges.length ||
+            !source.radii.every(radius => finite(radius, 0, 1e7)) || !finite(source.smoothing, 0, 1) ||
+            !Array.isArray(source.scale) || source.scale.length !== 2 || !source.scale.every(v => Number.isFinite(v) && v > 0))
+          throw Error('可编辑矢量圆角数据无效')
+      }
       // Missing stroke reuses this exact fill array. Validate each carrier once,
       // and avoid allocating an entries array and opcode map per curve. Dense
       // imported geometry still visits every coordinate on every admission.

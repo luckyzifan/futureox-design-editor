@@ -5,7 +5,7 @@ use crate::{
     math::Point,
     path::{Command, Path},
     scene::{Edge, Network, Vertex},
-    vector_geometry::{MAX_COMMANDS, VectorGeometry},
+    vector_geometry::{CornerSource, MAX_COMMANDS, VectorGeometry},
 };
 use serde::Serialize;
 
@@ -132,13 +132,42 @@ pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde
         decoded.corner_skip=Some(if region_styled{"region-style"}else{"contour"}.into());
         return Ok(false);
     }
+    let Some(mut geometry) = corner_geometry(network, &vertex_radii, smoothing)? else {
+        return Ok(false);
+    };
+    let (stroke_cap, stroke_join) = metadata();
+    geometry.corner_source = Some(CornerSource {
+        network: network.clone(),
+        radii: vertex_radii,
+        smoothing: smoothing.clamp(0., 1.),
+        scale: [1., 1.],
+    }.into());
+    decoded.vector_geometry = Some(geometry.into());
+    decoded.network=None;
+    decoded.stroke_cap=stroke_cap;
+    decoded.stroke_join=stroke_join;
+    decoded.vertex_styles.fill(0);
+    Ok(true)
+}
+
+pub(crate) fn corner_geometry(
+    network: &Network,
+    vertex_radii: &[f64],
+    smoothing: f64,
+) -> Result<Option<VectorGeometry>, String> {
+    if network.vertices.len() < 3 || network.vertices.len() != network.edges.len()
+        || vertex_radii.len() != network.vertices.len()
+        || network.edges.iter().any(|edge| edge.c1.is_some() || edge.c2.is_some())
+    {
+        return Ok(None);
+    }
     let mut corners=std::collections::HashMap::new();
-    for (vertex,r) in network.vertices.iter().zip(&vertex_radii){
-        if corners.insert((vertex.x.to_bits(),vertex.y.to_bits()),*r).is_some(){decoded.corner_skip=Some("coincident".into());return Ok(false);}
+    for (vertex,r) in network.vertices.iter().zip(vertex_radii){
+        if corners.insert((vertex.x.to_bits(),vertex.y.to_bits()),*r).is_some(){return Ok(None);}
     }
     if let Some(faces)=&network.filled_faces{
         if faces.len()!=1||faces[0].len()!=network.edges.len()||
-            faces[0].iter().collect::<std::collections::HashSet<_>>().len()!=network.edges.len(){return Ok(false);}
+            faces[0].iter().collect::<std::collections::HashSet<_>>().len()!=network.edges.len(){return Ok(None);}
     }
     let (fill,_)=network.paths()?;
     let mut points=Vec::new();let mut closed=false;
@@ -147,14 +176,13 @@ pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde
             Command::Move(p) if points.is_empty()=>points.push(*p),
             Command::Line(p) if !closed=>points.push(*p),
             Command::Close if !closed=>closed=true,
-            _=>return Ok(false),
+            _=>return Ok(None),
         }
     }
     if points.first()==points.last(){points.pop();}
-    if !closed||points.len()!=network.vertices.len(){return Ok(false);}
+    if !closed||points.len()!=network.vertices.len(){return Ok(None);}
     let radii:Option<Vec<_>>=points.iter().map(|p|corners.get(&(p.x.to_bits(),p.y.to_bits())).copied()).collect();
-    let Some(radii)=radii else{return Ok(false)};
-    let (stroke_cap, stroke_join) = metadata();
+    let Some(radii)=radii else{return Ok(None)};
     let circular=crate::authoring_shapes::rounded_polygon_radii_smoothed(&points,&radii,smoothing.clamp(0.,1.))?;
     // Native Figma circular vector corners export as cubic Beziers (the
     // quarter-circle control length is radius * 4/3*tan(pi/8)). Convert only
@@ -177,12 +205,7 @@ pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde
             command=>path.commands.push(command),
         }
     }
-    decoded.vector_geometry=Some(VectorGeometry::from_paths(&path,&path,&network.fill_rule)?.into());
-    decoded.network=None;
-    decoded.stroke_cap=stroke_cap;
-    decoded.stroke_join=stroke_join;
-    decoded.vertex_styles.fill(0);
-    Ok(true)
+    Ok(Some(VectorGeometry::from_paths(&path, &path, &network.fill_rule)?))
 }
 fn emit(
     path: &mut Path,

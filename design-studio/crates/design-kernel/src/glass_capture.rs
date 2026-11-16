@@ -123,6 +123,7 @@ pub fn recipe(
         return Ok(None);
     };
     if doc.color_management.is_some()
+        || node.kind == "vector"
         || node.opacity != 1.
         || node.mask
         || node.composite_blend() != "normal"

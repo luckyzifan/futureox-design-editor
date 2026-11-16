@@ -48,6 +48,7 @@ fn source_f64_values_and_signed_zero_survive_json_without_f32_rounding() {
             Curve::Close,
         ],
         stroke: None,
+        corner_source: None,
     };
     let json = serde_json::to_string(&geometry).unwrap();
     let restored: VectorGeometry = serde_json::from_str(&json).unwrap();
@@ -148,6 +149,7 @@ fn malformed_sequences_nonfinite_and_command_overflow_fail_before_render() {
         fill_rule: "nonzero".into(),
         fill: vec![Curve::Line([0., 0.])],
         stroke: None,
+        corner_source: None,
     };
     assert!(geometry.validate().is_err());
     geometry.fill = vec![Curve::Move([0., f64::NAN]), Curve::Close];

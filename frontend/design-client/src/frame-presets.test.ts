@@ -45,6 +45,25 @@ test('successive creations are separated, orientation dimensions remain authored
   }finally{editor.dispose()}
 })
 
+test('Sketch template insertion uses the native 100-unit gap and keeps an editable root Graphic',()=>{
+  const doc=blank(), first=node('frame',-410,358,1922,1080)
+  const later=node('frame',2400,500,460,400)
+  doc.nodes={[first.id]:first,[later.id]:later}
+  doc.pages[0].children=[first.id,later.id]
+  const editor=new Editor(doc)
+  try {
+    const make=(size:number)=>createPresetFrame(editor,{name:`${size}x${size}`,width:size,height:size},'graphic').id!
+    const a=make(32), b=make(128)
+    expect(editor.state.doc.nodes[a]).toMatchObject({kind:'frame',graphic:true,clip:true,width:32,height:32,transform:[1,0,0,1,1612,358]})
+    expect(editor.state.doc.nodes[b]).toMatchObject({kind:'frame',graphic:true,clip:true,width:128,height:128,transform:[1,0,0,1,1744,358]})
+    expect(editor.state.doc.pages[0].children).toContain(b)
+    editor.undo()
+    expect(editor.state.doc.nodes[b]).toBeUndefined()
+    editor.redo()
+    expect(editor.state.doc.nodes[b].graphic).toBe(true)
+  } finally { editor.dispose() }
+})
+
 test('placement walk handles pathological import depth iteratively and rejects cycles or missing links',()=>{
   const doc=blank(),depth=15000
   for(let i=0;i<depth;i++){
