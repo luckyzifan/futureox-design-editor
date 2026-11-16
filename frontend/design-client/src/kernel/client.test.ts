@@ -429,3 +429,41 @@ test('completed capture removes abort listener and later abort sends no cancella
     expect(w.messages.some(m => m.command === 'cancel-request')).toBe(false)
   } finally { client.dispose() }
 })
+
+test('a zoom-source halo rejection keeps the interaction document and patches the next focus', async () => {
+  const client = new KernelClient(), doc = blank()
+  const node = {
+    id: 'ellipse-66', kind: 'ellipse' as const, name: '椭圆 66', transform: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number],
+    width: 5, height: 5, children: [], visible: true, locked: false, opacity: 1, blend: 'normal', fills: [], strokes: [], radii: [0, 0, 0, 0] as [number, number, number, number],
+    smoothing: 0, clip: false, mask: false, points: 3, innerRadius: 0.45, text: '', fontSize: 28,
+    effects: [{ id: 'zoom', kind: 'zoom-blur' as const, visible: true, radius: 0, x: 0, y: 0, spread: 0, color: '#000000', opacity: 1, amount: 0, zoomBlur: { amount: 10, center: [0.5, 0.5] as [number, number] } }],
+  }
+  const image = 'data:image/png;base64,' + 'A'.repeat(5_470_000)
+  const picture = { ...node, id: 'picture', kind: 'rectangle' as const, name: '底图', width: 240, height: 240, transform: [1, 0, 0, 1, -100, -100] as typeof node.transform, effects: [], fills: [{ id: 'fill', kind: 'image' as const, color: '#000', opacity: 1, visible: true, angle: 0, stops: [], fit: 'stretch' as const, blend: 'normal', image }] }
+  const source = { ...doc, schemaVersion: 19 as const, nodes: { [picture.id]: picture, [node.id]: node }, pages: [{ ...doc.pages[0], children: [picture.id, node.id] }] }
+  const options = { pageId: source.pages[0].id, width: 256, height: 252, view: { x: -6630.4, y: -6624.7, zoom: 301.2 }, transparent: false, grid: false, livePreview: true, renderIntent: 'preview' as const, interactionChannel: true }
+  try {
+    const first = client.render(source, options, false, 'cpu')
+    const worker = WorkerStub.instances[0]
+    const fullBytes = worker.messages[0].document?.length ?? 0
+    worker.reply(0, 'webgpu: Zoom source filter halo exceeds 2048 device pixels')
+    await expect(first).rejects.toThrow(/2048/)
+    const moved = { ...source, nodes: { ...source.nodes, [node.id]: { ...node, effects: [{ ...node.effects[0], zoomBlur: { amount: 10, center: [0.62, 0.41] as [number, number] } }] } } }
+    const second = client.render(moved, options, false, 'cpu')
+    const patchBytes = worker.messages[1].documentPatch?.length ?? 0
+    const resendBytes = worker.messages[1].document?.length ?? 0
+    expect(resendBytes).toBe(0)
+    expect(fullBytes).toBeGreaterThan(5_400_000)
+    expect(patchBytes).toBeGreaterThan(0)
+    expect(patchBytes).toBeLessThan(100_000)
+    worker.reply(1)
+    await second
+    const unrelated = client.render(moved, options, false, 'cpu')
+    worker.reply(2, 'webgpu: shader exploded')
+    await expect(unrelated).rejects.toThrow(/shader exploded/)
+    const again = client.render(source, options, false, 'cpu')
+    expect(worker.messages[3].document?.length).toBeGreaterThan(5_400_000)
+    worker.reply(3)
+    await again
+  } finally { client.dispose() }
+})
