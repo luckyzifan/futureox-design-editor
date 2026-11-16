@@ -716,7 +716,6 @@ impl Engine {
         self.camera_prepare=None;self.world_support=None;self.camera_residency.clear();self.paths.clear();
         self.local_strokes=Default::default();self.page_support=None;self.pose_prefix=None;
     }
-    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn authored_document(&self)->Option<&Document>{self.source_doc.as_deref()}
     #[cfg(not(target_arch="wasm32"))]
     pub(crate) fn cold_source_shell(&self,settings:Option<crate::color::ColorSettings>)->Result<Engine,String> {
@@ -848,7 +847,7 @@ impl Engine {
             });
         }
         let retained_paint = self.retainable_paint_changes(patch);
-        let mut damage = if retained_paint.as_ref().is_some_and(Vec::is_empty) {
+        let mut damage = if retained_paint.as_ref().is_some_and(|(dirty, _)| dirty.is_empty()) {
             // Certify once from resolved placement. The exact material proof
             // preserves geometry, effect support and optical isolation.
             crate::dirty_region::resolved_material_damage(self.doc.as_ref().unwrap(), patch, &self.fonts)
@@ -893,7 +892,7 @@ impl Engine {
                 cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
             }
             damage.translation_only = Some(true);
-        } else if let Some(bounds_dirty) = retained_paint {
+        } else if let Some((bounds_dirty, focus_only)) = retained_paint {
             self.pose_prefix = None;
             for id in patch.nodes.keys() {
                 let node = &next.nodes[id];
@@ -906,12 +905,21 @@ impl Engine {
             self.source_doc = Some(SharedDocument::from_edit(next));
             self.source_doc_bytes = None;
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
+            let prior_revision = self.geo_revision;
             self.geo_revision += 1;
+            if focus_only {
+                self.camera_residency.retain_zoom_focus(prior_revision, self.geo_revision);
+                if let Some(support) = &mut self.world_support
+                    && support.revision == prior_revision
+                {
+                    support.revision = self.geo_revision;
+                }
+            }
             if let Some(cache) = &mut self.camera_prepare {
                 if !bounds_dirty.is_empty() {
                     cache.translated(self.doc.as_ref().unwrap(), bounds_dirty.into_iter(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
                 }
-                cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents);
+                cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents,focus_only);
             }
         } else if !damage.full && let Some(proof) = pose {
             // Leaf certificates decline when any backdrop shares the page, even
@@ -975,7 +983,7 @@ impl Engine {
         self.source_doc_bytes = None;
         self.source_doc = Some(source);
     }
-    fn retainable_paint_changes(&self, patch: &crate::editing::DocumentPatch) -> Option<Vec<String>> {
+    fn retainable_paint_changes(&self, patch: &crate::editing::DocumentPatch) -> Option<(Vec<String>, bool)> {
         let source = self.source_doc.as_ref()?;
         if crate::repeat::has_repeats(source) { return None; }
         let resolved = self.doc.as_ref()?;
@@ -984,6 +992,7 @@ impl Engine {
             || !source.animations.is_empty()
             || !patch.fields.is_empty() || patch.nodes.is_empty() { return None; }
         let mut bounds = Vec::new();
+        let mut focus_only = true;
         for (id, next) in &patch.nodes {
             if index.in_sketch_mask_chain(id) { return None; }
             let (old, next) = (source.nodes.get(id)?, next.as_ref()?);
@@ -1002,8 +1011,9 @@ impl Engine {
                     || node.boolean_operation.is_some() { return None; }
             }
             if change == crate::derived_invalidation::PaintChange::Bounds { bounds.push(id.clone()); }
+            focus_only &= change == crate::derived_invalidation::PaintChange::ZoomFocus;
         }
-        Some(bounds)
+        Some((bounds, focus_only))
     }
     /// Shared interaction-lane validation. `affine` admits linear-part changes
     /// (rotation/scale): the moved subtree's prepared entries and aggregate

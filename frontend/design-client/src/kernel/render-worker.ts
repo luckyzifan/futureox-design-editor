@@ -912,8 +912,10 @@ self.onmessage = (e) => {
   }
   const generation = previewGenerations[channel]
   const fillGeneration = tileFillGeneration
-  const cancellablePacket = request.options?.renderIntent === 'preview' &&
-    (request.options?.livePreview === true || !!request.options?.tileViewport) &&
+  const focusSettlement = request.options?.renderIntent === 'canvas' && request.options.tileViewport?.length === 0 &&
+    typeof request.options.settledZoomFocus === 'string'
+  const cancellablePacket = (focusSettlement || request.options?.renderIntent === 'preview' &&
+    (request.options.livePreview === true || !!request.options.tileViewport)) &&
     !request.png && !request.readback && !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
   const packetWait = cancellablePacket ? { requestId: request.id, channel, tiled: !!request.options.tileViewport, controller: new AbortController() } : undefined
   if (packetWait) packetWaits.add(packetWait)
@@ -1021,7 +1023,7 @@ self.onmessage = (e) => {
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionFixedMask, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, settledZoomFocus, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
@@ -1585,45 +1587,86 @@ self.onmessage = (e) => {
                 }
               }
             }
-            // A small exact viewport capture can replace dozens of repeated
-            // tile graphs after a page translation. It uses the same native
-            // camera/phase and full filter support; failure keeps tiled repair.
-            if((overviewBitmapCommit || import.meta.env.VITE_DESIGN_COMMIT_CAPTURE==='1'&&translatedPageCommit)&&channel==='canvas'&&!tileViewport.length&&
-                renderIntent==='canvas'&&backend==='webgpu'&&displayFrame&&!request.readback&&!request.png&&!exportFormat&&
-                !renderOptions.exportRegion&&!renderOptions.grid&&!renderOptions.checkerboard&&!renderOptions.pixelPreview&&
-                allowsResidentSdr(executionPolicy)&&!canvasDisplayFilters&&!previewDisplayFilters&&!canvasMath&&!canvasTentRadius&&
-                !canvasImageSource&&!canvasMaterialSource&&renderOptions.width*renderOptions.height<=4_194_304){
-              const frame=displayFrame,physical={x:frame.view.x*frame.dpr,y:frame.view.y*frame.dpr,zoom:frame.view.zoom*frame.dpr}
-              const width=renderOptions.width,height=renderOptions.height
-              const x=renderOptions.view.x-physical.x,y=renderOptions.view.y-physical.y
-              const crop={x:Math.round(x),y:Math.round(y),width,height}
-              if(renderOptions.view.zoom===physical.zoom&&Math.abs(crop.x-x)<=1e-7&&Math.abs(crop.y-y)<=1e-7&&
-                  Number.isSafeInteger(crop.x)&&Number.isSafeInteger(crop.y)&&
-                  crop.width===Math.ceil(frame.width*frame.dpr)&&crop.height===Math.ceil(frame.height*frame.dpr)){
-                let captured:TileRender|undefined
-                try{
-                  const at=performance.now(),captureViewport={x:crop.x,y:crop.y,w:crop.width,h:crop.height}
-                  const packet=await compilePacket(kernel,JSON.stringify({...renderOptions,captureViewport}),packetWait?.controller.signal)
-                  const compileMs=performance.now()-at
-                  if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
-                  captured=await renderTiledPreview(kernel,renderOptions,backend,color,settingsJson,
-                    Math.max(crop.width,crop.height),crop,decodeScenePacket(packet),false,undefined,true,false,false,
-                    reportRasterProgress,previewCurrent,hydrateImages,undefined,false,undefined,false,false,undefined,displayBackpressure)
-                  if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
-                  if(!captured.gpuTile)throw Error('Exact commit capture unavailable')
-                  gpu?.driver.tagExactTile?.(captured.gpuTile,kernel.contentIdentity,pixelSourceContract(renderOptions),0)
-                  self.postMessage({id:request.id,tile:{key:`commit-capture:${laneState.loadedRevision}:${captured.gpuTile}`,
-                    x:-physical.x,y:-physical.y,width:crop.width,height:crop.height,zoom:physical.zoom,gutter:0,
-                    committedViewport:true,viewportPreview:true,gpuTile:captured.gpuTile,backend,description:'native commit viewport',cached:false}})
-                  self.postMessage({id:request.id,backend,milliseconds:performance.now()-start,compileMs,loadMs,retainedCommit:true,
-                    graphMs:captured.graphMs,finishMs:captured.finishMs,checkpointMs:captured.checkpointMs,drawCalls:captured.drawCalls,peakTextureBytes:captured.peakTextureBytes})
-                  captured=undefined
+            // A focus edit can repaint the settled viewport with a few larger
+            // native-density captures. Publish the group only when every
+            // region belongs to the same current revision and device.
+            const target = typeof settledZoomFocus === 'string' && laneState.synchronizedInteractionDocument?.nodes[settledZoomFocus]
+            const focusCapture = renderOptions.gpuAnalyticRegions === true && !request.sourceSnapshot &&
+              !!target && target.effects.some(effect => effect.visible && effect.zoomBlur && effect.zoomBlur.amount > 0) &&
+              Math.max(renderOptions.width, renderOptions.height) <= 2048
+            if ((focusCapture || overviewBitmapCommit || import.meta.env.VITE_DESIGN_COMMIT_CAPTURE === '1' && translatedPageCommit) &&
+                channel === 'canvas' && !tileViewport.length && renderIntent === 'canvas' && backend === 'webgpu' &&
+                displayFrame && !request.readback && !request.png && !exportFormat && !renderOptions.exportRegion &&
+                !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.pixelPreview &&
+                allowsResidentSdr(executionPolicy) && !canvasDisplayFilters && !previewDisplayFilters && !canvasMath &&
+                !canvasTentRadius && !canvasImageSource && !canvasMaterialSource && renderOptions.width * renderOptions.height <= 4_194_304) {
+              const frame = displayFrame
+              const physical = { x: frame.view.x * frame.dpr, y: frame.view.y * frame.dpr, zoom: frame.view.zoom * frame.dpr }
+              const { width, height, view } = renderOptions
+              const x = view.x - physical.x, y = view.y - physical.y
+              const crop = { x: Math.round(x), y: Math.round(y), width, height }
+              if (view.zoom === physical.zoom && Math.abs(crop.x - x) <= 1e-7 && Math.abs(crop.y - y) <= 1e-7 &&
+                  Number.isSafeInteger(crop.x) && Number.isSafeInteger(crop.y) &&
+                  width === Math.ceil(frame.width * frame.dpr) && height === Math.ceil(frame.height * frame.dpr)) {
+                const regions = [crop]
+                if (focusCapture && width * height > 524288) {
+                  const columns = Math.ceil(width / 1024)
+                  const cellWidth = Math.ceil(width / columns)
+                  const rows = Math.ceil(cellWidth * height / 960_000)
+                  const cellHeight = Math.ceil(height / rows)
+                  regions.length = 0
+                  for (let dy = 0; dy < height; dy += cellHeight)
+                    for (let dx = 0; dx < width; dx += cellWidth)
+                      regions.push({ x: crop.x + dx, y: crop.y + dy,
+                        width: Math.min(cellWidth, width - dx), height: Math.min(cellHeight, height - dy) })
+                }
+                const rendered: { region: typeof crop; result: TileRender; driver?: Driver }[] = []
+                const owner = kernel.contentIdentity
+                let compileMs = 0, graphMs = 0, finishMs = 0, checkpointMs = 0, drawCalls = 0, peakTextureBytes = 0
+                try {
+                  for (const region of regions) {
+                    const at = performance.now()
+                    const packet = await compilePacket(kernel, JSON.stringify({
+                      ...renderOptions,
+                      captureViewport: { x: region.x, y: region.y, w: region.width, h: region.height },
+                      ...(focusCapture && { prepareViewport: { x: crop.x, y: crop.y, w: width, h: height } }),
+                      gpuAnalyticRegions: focusCapture && renderOptions.gpuAnalyticRegions,
+                    }), packetWait?.controller.signal)
+                    compileMs += performance.now() - at
+                    if (!previewCurrent() || owner !== kernel.contentIdentity) throw Error('PREVIEW_CANCELLED')
+                    const result = await renderTiledPreview(kernel, renderOptions, backend, color, settingsJson,
+                      Math.max(region.width, region.height), region, decodeScenePacket(packet), false, undefined, true, false, false,
+                      reportRasterProgress, previewCurrent, hydrateImages, undefined, false, undefined, false, false, undefined, displayBackpressure)
+                    rendered.push({ region, result, driver: gpu?.driver })
+                    if (!previewCurrent() || owner !== kernel.contentIdentity) throw Error('PREVIEW_CANCELLED')
+                    if (!result.gpuTile || rendered[0].driver !== gpu?.driver) throw Error('Exact commit capture unavailable')
+                    graphMs += result.graphMs ?? 0
+                    finishMs += result.finishMs ?? 0
+                    checkpointMs += result.checkpointMs ?? 0
+                    drawCalls += result.drawCalls ?? 0
+                    peakTextureBytes = Math.max(peakTextureBytes, result.peakTextureBytes ?? 0)
+                  }
+                  for (const { region, result, driver } of rendered) {
+                    driver?.tagExactTile?.(result.gpuTile!, owner, pixelSourceContract(renderOptions), 0)
+                    self.postMessage({ id: request.id, tile: { key: `commit-capture:${request.id}:${result.gpuTile}`,
+                      x: region.x - physical.x, y: region.y - physical.y, width: region.width, height: region.height,
+                      zoom: physical.zoom, gutter: 0, committedViewport: true, viewportPreview: true, gpuTile: result.gpuTile, backend,
+                      description: focusCapture ? 'exact zoom focus viewport' : 'native commit viewport', cached: false } })
+                  }
+                  rendered.length = 0
+                  self.postMessage({ id: request.id, backend, milliseconds: performance.now() - start, compileMs, loadMs,
+                    retainedCommit: true, graphMs, finishMs, checkpointMs, drawCalls, peakTextureBytes })
                   return
-                }catch(error){
-                  if(!previewCurrent()||String(error).includes('PREVIEW_CANCELLED'))throw error
-                  if(!isDisplayBudgetError(error)&&!isAnalyticProgramBudget(error)&&!isScenePathBudget(error)&&
-                      !/GPU surface budget exceeded|Exact commit capture unavailable|Invalid native capture/.test(String(error)))throw error
-                }finally{captured?.bitmap?.close();if(captured?.gpuTile)gpu?.driver.releasePresented?.([captured.gpuTile])}
+                } catch (error) {
+                  if (!previewCurrent() || String(error).includes('PREVIEW_CANCELLED')) throw error
+                  if (!isDisplayBudgetError(error) && !isAnalyticProgramBudget(error) && !isScenePathBudget(error) &&
+                      !/GPU surface budget exceeded|Exact commit capture unavailable|Invalid native capture/.test(String(error))) throw error
+                } finally {
+                  for (const { result, driver } of rendered) {
+                    result.bitmap?.close()
+                    if (result.gpuTile !== undefined) driver?.releasePresented?.([result.gpuTile])
+                  }
+                }
               }
             }
             // Native source tiles use preview intent through the last tile

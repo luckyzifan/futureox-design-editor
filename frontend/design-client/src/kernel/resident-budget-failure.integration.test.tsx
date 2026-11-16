@@ -50,8 +50,9 @@ test('required-frame budget rejection reaches explicit surface failure and exist
   const worker=readFileSync(new URL('./render-worker.ts',import.meta.url),'utf8')
   const handler=worker.slice(worker.indexOf('displayTasks.port1.onmessage=()=>{'),worker.indexOf('\nconst navigationJournal'))
   const error=Error('GPU display resident budget exceeded (required payload cannot fit)'),present=vi.fn(()=>{throw error})
-  const run=new Function('gpu','reportDisplay',`let displayFramePending=true, displayFrame={}, displayTasks={port1:{}};${handler};return displayTasks.port1.onmessage`)
-    ({driver:{presentFrame:present}},(presentation:unknown)=>(h.client as any).onPresentation(presentation))
+  const canvas = {}
+  const run=new Function('displayAttachment','displayCanvas','reportDisplay',`let displayFramePending=true, displayFrame={}, displayTasks={port1:{}};${handler};return displayTasks.port1.onmessage`)
+    ({driver:{presentFrame:present},canvas},canvas,(presentation:unknown)=>(h.client as any).onPresentation(presentation))
   await act(async()=>run())
   expect(present).toHaveBeenCalledOnce();expect(failures).toEqual([String(error)])
   expect(onRenderFailure).toHaveBeenCalledOnce();expect(onFallback).toHaveBeenCalledExactlyOnceWith(`PREVIEW_CPU_FALLBACK: ${error}`)
@@ -73,7 +74,8 @@ test.each(['display-read-pixel','display-capture-content','display-navigation-ti
   const close=vi.fn(),release=vi.fn(),bitmap={close},messages:any[]=[],request={id:74,command}
   const self={postMessage(message:any){if(!message.error)throw Error('synthetic transport failure');messages.push(message)}}
   const driver={readContentPixel:async()=>({pixel:[0,0,0,255]}),captureContentBitmap:async()=>({bitmap,contentFrame:{}}),captureNavigationTile:async()=>({bitmap,navigationToken:63}),releaseNavigationTransfer:release}
-  new Function('request','gpu','self',block)(request,{driver},self)
+  const canvas = {}
+  new Function('request','displayAttachment','displayCanvas','self',block)(request,{driver,canvas},canvas,self)
   await vi.waitFor(()=>expect(messages).toHaveLength(1))
   expect(close).toHaveBeenCalledTimes(command==='display-read-pixel'?0:1)
   expect(release).toHaveBeenCalledTimes(command==='display-navigation-tile'?1:0)

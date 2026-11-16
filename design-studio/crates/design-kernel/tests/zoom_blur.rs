@@ -229,6 +229,28 @@ fn ordinary_wide_image_does_not_spend_a_siblings_zoom_halo() {
     assert_eq!(b["output"],request["gpuViewport"]);
     assert!(!scene["nodes"]["n"].is_null());
 
+    // The wider preparation guard must still emit each tile from its original
+    // contours. Move the focus and compare every field to an independent engine.
+    let mut windowed = request.clone();
+    windowed["prepareViewport"] = json!({"x":-192,"y":-180,"w":384,"h":368});
+    let mut warm = Engine::new();
+    warm.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    warm.compile_gpu_request(&windowed.to_string()).unwrap();
+    let before_hits = warm.gpu_compile_cache_stats()["cameraResidency"]["cropHits"].as_u64().unwrap();
+    let mut moved = doc.clone();
+    moved.nodes.get_mut("n").unwrap().effects[0].zoom_blur.as_mut().unwrap().center = [0.53, 0.49];
+    let patch = futureox_design_kernel::editing::DocumentPatch::between(&doc, &moved).unwrap();
+    warm.apply_document_patch_with_damage(&patch).unwrap();
+    let reused = serde_json::to_value(warm.compile_gpu_request(&windowed.to_string()).unwrap()).unwrap();
+    assert_eq!(reused, compile(&moved, &windowed).unwrap());
+    assert!(warm.gpu_compile_cache_stats()["cameraResidency"]["cropHits"].as_u64().unwrap() > before_hits);
+
+    let mut invalid = moved.clone();
+    invalid.nodes.get_mut("n").unwrap().effects[0].zoom_blur.as_mut().unwrap().center = [200., 0.49];
+    let patch = futureox_design_kernel::editing::DocumentPatch::between(&moved, &invalid).unwrap();
+    warm.apply_document_patch_with_damage(&patch).unwrap();
+    assert!(warm.compile_gpu_request(&windowed.to_string()).err().unwrap().contains("exceeds 2048"));
+
     // A foreground effect on the Zoom node itself is not a separable image
     // source. The real radial dependency cap must still reject it.
     let fx=doc.nodes["bg"].effects[0].clone();

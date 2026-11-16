@@ -153,7 +153,34 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
   })
   const windows=new Map<string,Map<string,string>>()
   let windowScope=''
-  return Object.assign(load,{straightSrgb8:(uri:string)=>{
+  const projectionIds = new WeakMap<Float32Array, number>()
+  let nextProjectionId = 0
+  const projectGaussian = (uri: string, pixels: Float32Array, output: Rect, parameters: string, project: () => Float32Array) => {
+    const next = context()
+    const current = () => {
+      checkRequest(next)
+      if (next.ownerCurrent && !next.ownerCurrent()) throw Error('PREVIEW_CANCELLED')
+    }
+    current()
+    // Only the canonical decoded pixels of this worker-owned source can
+    // anchor a projection. Each result shares the decoded image byte limit.
+    // The decoded allocation's identity keeps the data URI out of each key.
+    const source = cache.get(next.scope, 'f:' + sourceBitmapPayload(uri))
+    if (source?.data !== pixels) return project()
+    let id = projectionIds.get(pixels)
+    if (id === undefined) {
+      id = ++nextProjectionId
+      projectionIds.set(pixels, id)
+    }
+    const key = `gaussian:${id}:${parameters}`
+    const hit = cache.get(next.scope, key)
+    if (hit?.width === output.w && hit.height === output.h && hit.data instanceof Float32Array) return hit.data
+    const data = project()
+    current()
+    cache.set(next.scope, key, { width: output.w, height: output.h, data })
+    return data
+  }
+  return Object.assign(load,{projectGaussian,straightSrgb8:(uri:string)=>{
     const next=context(),current=()=>{checkRequest(next);if(next.ownerCurrent&&!next.ownerCurrent())throw Error('PREVIEW_CANCELLED')}
     current();cache.begin(next.scope);uri=sourceBitmapPayload(uri)
     const key='straight-srgb8:'+uri,hit=cache.get(next.scope,key)

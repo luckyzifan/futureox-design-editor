@@ -452,6 +452,7 @@ export function ProgressiveSurfaceImpl(
   /** Document whose patch the worker has most recently applied (confirmed by
    * a damage report or a clean render). Residents are trusted until then. */
   const syncedDoc = useRef<SurfaceProps['document'] | null>(null)
+  const focusCaptureAttempt = useRef<string | undefined>(undefined)
   // Immutable coarse canvases are borrowed by mounted Tiles. Cache eviction
   // never invalidates a render-selected source before its effect can draw it.
   const [lodSnapshots] = useState(() => new LodSnapshotCache())
@@ -2101,24 +2102,33 @@ export function ProgressiveSurfaceImpl(
         // Damage messages precede this zero-tile completion, including when
         // earlier cancelled requests had already applied their patches. Thus
         // stale resident keys captured before damage never skip real work.
-        if (syncedDoc.current !== doc) {
+        const focus = renderScale >= 32 ? props.settledZoomFocus : undefined
+        const settleFocus = focus && focusCaptureAttempt.current !== frameKey ? focus : undefined
+        if (syncedDoc.current !== doc || settleFocus) {
+          if (settleFocus) focusCaptureAttempt.current = frameKey
+          const committedKeys = new Set<string>()
           const synchronized = await render(doc, { pageId, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
             view: renderCamera, transparent: false, grid: props.grid, checkerboard: props.checkerboard,
             pixelPreview: props.pixelPreview || undefined, rasterProfile, tileViewport: [], renderIntent: 'canvas',
+            ...(settleFocus && { settledZoomFocus: settleFocus }),
             ...(props.presentationEpoch === undefined ? {} : {
               tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
             }),
-          }, false, backend, false, false, undefined, receive)
+          }, false, backend, false, false, undefined, tile => {
+            receive(tile)
+            if (tile.committedViewport) committedKeys.add(tile.key)
+          })
           if (!current()) return
           syncedDoc.current = doc
           if (synchronized.retainedCommit) {
-            const committed = [...tileRef.current.values()].find(tile => tile.committedViewport &&
-              tile.document === doc && tile.revision === contract.revision && tile.zoom >= detailLevel * .999 &&
-              tilesCoverBounds([tile], viewport))
-            if (committed && activePlan.current?.key === frameKey) {
-              desired.current = [committed.key]
+            const committed = [...committedKeys].map(key => tileRef.current.get(key)).filter((tile): tile is PaintedTile =>
+              !!tile && tile.document === doc && tile.revision === contract.revision && tile.zoom >= detailLevel * .999)
+            if (committed.length === committedKeys.size && committed.length && tilesCoverBounds(committed, viewport) &&
+                activePlan.current?.key === frameKey) {
+              desired.current = committed.map(tile => tile.key)
               activePlan.current.ids = new Set(desired.current)
-              setStats(s => ({ ...s, ms: synchronized.milliseconds, compileMs: synchronized.compileMs || 0, completeKey: frameKey }))
+              setStats(s => ({ ...s, ms: synchronized.milliseconds, compileMs: synchronized.compileMs || 0,
+                graphMs: synchronized.graphMs || 0, finishMs: synchronized.finishMs || 0, completeKey: frameKey }))
               commitRef.current()
               return
             }
@@ -2437,6 +2447,7 @@ export function ProgressiveSurfaceImpl(
     props.overview?.y,
     props.overview?.width,
     props.overview?.height,
+    props.settledZoomFocus,
   ])
   // Cached canvases stay mounted offscreen, so a revisit does not repaint pixels.
   const activeResidents = [...new Set([...tiles.values(), ...(displayed?.residents.values() || [])])]
@@ -3018,6 +3029,7 @@ export const ProgressiveSurface = memo(ProgressiveSurfaceImpl, (prev, next) =>
   prev.checkerboard === next.checkerboard &&
   prev.pixelPreview === next.pixelPreview &&
   prev.rasterProfile === next.rasterProfile &&
+  prev.settledZoomFocus === next.settledZoomFocus &&
   prev.animation === next.animation &&
   prev.interaction === next.interaction &&
   prev.overlay === next.overlay &&

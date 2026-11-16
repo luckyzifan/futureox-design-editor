@@ -193,8 +193,11 @@ export type ManagedImageLoader = ((uri: string, byte?: boolean, level?: number) 
   linearWindow?:(x:number,y:number,w:number,h:number)=>Float32Array
   linearRowReason?:1|2
   dispose?: () => void
-}) & {sampleWindow?:(uri:string,dims:readonly number[],window:Rect)=>Float32Array;
-  straightSrgb8?:(uri:string)=>{width:number;height:number;bytes:Uint8Array}|undefined}
+}) & {
+  sampleWindow?: (uri:string,dims:readonly number[],window:Rect)=>Float32Array
+  straightSrgb8?: (uri:string)=>{width:number;height:number;bytes:Uint8Array}|undefined
+  projectGaussian?: (uri: string, source: Float32Array, output: Rect, parameters: string, project: () => Float32Array) => Float32Array
+}
 /** Mirror of the kernel's `image_mipmap::mip_levels`: the base plus one level
  * per ceil-halving until both extents reach one texel. Kept inline so the
  * selected level always clamps against the same chain the kernel builds. */
@@ -7912,20 +7915,53 @@ export class GpuRenderer {
         this.scene.resolve || this.scene.presentation || this.imageMips || this.sampleIndex !== undefined)
       throw Error('Unsupported bounded image Gaussian renderer')
     if (!exactBlendLattice([output]) || output.w < 1 || output.h < 1 ||
-        output.w > 1024 || output.h > 1024 || output.w * output.h > 524288)
+        output.w * output.h > 4_194_304)
       throw Error('Invalid bounded image Gaussian output')
-    const source = this.managedImageLoader(paint.image, false, 0)
-    let pixels: Float32Array
+    const { image: uri, ...placement } = paint
+    const source = this.managedImageLoader(uri, false, 0)
     try {
-      pixels = wide_image_gaussian_pixels(JSON.stringify(plan), new Float64Array(n.matrix),
-        new Float64Array(n.size), new Uint32Array([source.width, source.height]), JSON.stringify(paint), source.pixels)
+      const upload = (region: Rect) => {
+        const stripe = { ...plan, output: region }
+        const project = () => wide_image_gaussian_pixels(JSON.stringify(stripe), new Float64Array(n.matrix),
+          new Float64Array(n.size), new Uint32Array([source.width, source.height]), JSON.stringify(placement), source.pixels)
+        const parameters = exactFilterKey([stripe, n.matrix, n.size, placement])
+        const pixels = parameters && this.managedImageLoader!.projectGaussian
+          ? this.managedImageLoader!.projectGaussian(uri, source.pixels, region, parameters, project)
+          : project()
+        const texture = this.driver.uploadLinear!(pixels, region.w, region.h)
+        return this.retainTextureData(texture, region)
+      }
+      if (output.w <= 1024 && output.h <= 1024 && output.w * output.h <= 524288) {
+        await this.reclaimForSurface(output, 2)
+        this.checkFrameCurrent()
+        const stripe = upload(output)
+        try { return this.copy(stripe, output) }
+        finally { this.retireUpload(stripe.texture) }
+      }
+      const copy = this.driver.copyRegion
+      if (!copy) throw Error('Unsupported bounded image Gaussian capture')
+      await this.reclaimForSurface(output)
+      this.checkFrameCurrent()
+      const surface = this.acquire(output)
+      try {
+        // Keep the existing finite projection and upload size for each
+        // window. Assemble them at native density in the current target.
+        for (let dy = 0; dy < output.h; dy += 256) {
+          for (let dx = 0; dx < output.w; dx += 512) {
+            const region = rect(output.x + dx, output.y + dy, Math.min(512, output.w - dx), Math.min(256, output.h - dy))
+            await this.reclaimForSurface(region)
+            this.checkFrameCurrent()
+            const stripe = upload(region)
+            try { copy.call(this.driver, surface.texture, stripe.texture, rect(0, 0, region.w, region.h), [dx, dy]) }
+            finally { this.retireUpload(stripe.texture) }
+          }
+        }
+        return surface
+      } catch (error) {
+        this.release(surface)
+        throw error
+      }
     } finally { source.dispose?.() }
-    await this.reclaimForSurface(output, 2)
-    this.checkFrameCurrent()
-    const texture = this.driver.uploadLinear(pixels, output.w, output.h)
-    const upload = this.retainTextureData(texture, output)
-    try { return this.copy(upload, output) }
-    finally { this.retireUpload(texture) }
   }
 
   private async node(id: string, backdrop: Surface, skipEffects = false): Promise<Surface | undefined> {

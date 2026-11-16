@@ -1072,6 +1072,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && state.selection.length > 0)
   const editingBlur = blurEffectIndex !== undefined
+  const zoomFocusTarget = editingBlur && !editor.interactionActive && state.selection.length === 1 &&
+    state.doc.nodes[state.selection[0]]?.effects[blurEffectIndex]?.zoomBlur ? state.selection[0] : undefined
   const showSelectionChrome = uiMode !== 'figma' || !editingBlur
   const showTransformHandles = canTransform && !editingBlur
   const frameTitles = useMemo(() => entries.filter(e => {
@@ -3080,6 +3082,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         presentationEpoch={editor.sessionGeneration}
         document={surfaceDocument}
         interactionPreview={editPreviewVisible}
+        settledZoomFocus={zoomFocusTarget}
         pageId={state.page}
         width={size.width}
         height={size.height}
