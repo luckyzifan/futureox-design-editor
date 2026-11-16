@@ -244,6 +244,56 @@ export function targetBounds(doc: DesignDocument, pageId: string, target: Export
   )
 }
 
+/** An edge already on a whole point stays there. Nearby binary noise does not
+ * open an extra point; authored fractions still expand outward. */
+function wholePoint(value: number): number | undefined {
+  const whole = Math.round(value)
+  const slack = 8 * Number.EPSILON * Math.max(1, Math.abs(value))
+  return Math.abs(value - whole) <= slack ? whole : undefined
+}
+
+function integralPointBounds(box: Bounds): Bounds {
+  const left = wholePoint(box.x) ?? Math.floor(box.x)
+  const top = wholePoint(box.y) ?? Math.floor(box.y)
+  const right = wholePoint(box.x + box.width) ?? Math.ceil(box.x + box.width)
+  const bottom = wholePoint(box.y + box.height) ?? Math.ceil(box.y + box.height)
+  const width = right - left
+  const height = bottom - top
+  if (!(width > 0) || !(height > 0) || !Number.isFinite(width) || !Number.isFinite(height)) return box
+  return { x: left, y: top, width, height }
+}
+
+function sketchProvenance(doc: DesignDocument): boolean {
+  if (doc.id === 'imported-sketch' || doc.name.startsWith('Imported from Sketch')) return true
+  const metadata = doc.designSystem?.sketchContainers?.nodeMetadata
+  if (metadata && typeof metadata === 'object') {
+    for (const entry of Object.values(metadata as Record<string, unknown>)) {
+      if (!entry || typeof entry !== 'object') continue
+      const bindings = (entry as { bindings?: unknown }).bindings
+      if (bindings && typeof bindings === 'object' && Object.keys(bindings).some(key => key.startsWith('sketch'))) return true
+    }
+  }
+  return Object.values(doc.nodes).some(node => Object.keys(node.bindings ?? {}).some(key => key.startsWith('sketch')))
+}
+
+/** Native Sketch groups enclose the document bounds on whole points before the
+ * export scale. Direct bitmaps, slices, frames, symbol instances, and Figma
+ * raster profiles keep the tight bounds the existing pixel plan already uses. */
+function sketchGroupPointExport(doc: DesignDocument, target: ExportTarget): boolean {
+  if (target.kind !== 'selection' || target.nodeIds.length !== 1) return false
+  if (doc.rasterProfile === 'figma' || doc.rasterProfile === 'figmaSoftware') return false
+  const node = doc.nodes[target.nodeIds[0]]
+  if (!node || node.kind !== 'group' || node.booleanOperation || node.instance || node.component) return false
+  return sketchProvenance(doc)
+}
+
+/** Raster layer export bounds. Sketch groups snap outward to integer points
+ * and then use the same scale plan as every other region. */
+export function rasterExportBounds(doc: DesignDocument, pageId: string, target: ExportTarget): Bounds {
+  const box = targetBounds(doc, pageId, target)
+  return sketchGroupPointExport(doc, target) ? integralPointBounds(box) : box
+}
+
 function targetName(doc: DesignDocument, target: ExportTarget) {
   if (target.kind === 'page') return doc.name
   if (target.kind === 'slice')
@@ -470,7 +520,7 @@ export async function exportRasterBatch(
   if (signal?.aborted) throw new Error('已取消导出')
   ;({doc,target} = repeatExport(kernelLayout(doc),target))
   doc = projectSlice(doc,pageId,target)
-  const box = targetBounds(doc, pageId, target)
+  const box = rasterExportBounds(doc, pageId, target)
   const plans = scales.map((scale) => {
     if (!Number.isFinite(scale) || scale < 0.001 || scale > 128)
       throw new Error('导出倍率必须在 0.001–128 之间')

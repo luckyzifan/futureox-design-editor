@@ -37,9 +37,9 @@ export async function captureRaster(document: DesignDocument, input: Record<stri
   if (!doc.pages.some(p => p.id === pageId)) throw new AutomationError('invalid_params', 'Raster page does not exist')
   if (options.sliceId && !scene(doc, pageId).some(e => e.id === options.sliceId)) throw new AutomationError('invalid_params', 'Slice is not on the selected page')
   const target: ExportTarget = options.sliceId ? sliceExportTarget(doc, options.sliceId) : options.nodeIds ? { kind: 'selection', nodeIds: options.nodeIds } : { kind: 'page', padding: options.padding ?? 0 }
-  const { targetBounds, exportRasterBatch } = await import('../export')
+  const { rasterExportBounds, exportRasterBatch } = await import('../export')
   signal.throwIfAborted()
-  const bounds = targetBounds(doc, pageId, target)
+  const bounds = rasterExportBounds(doc, pageId, target)
   const plans = options.scales.map(scale => {
     const width = Math.ceil(bounds.width * scale), height = Math.ceil(bounds.height * scale)
     if (![width, height].every(n => Number.isSafeInteger(n) && n >= 1 && n <= RASTER_LIMITS.maxSide) || width * height > RASTER_LIMITS.pixels) throw new AutomationError('raster_limit', 'Raster dimensions exceed 16384 per side or 64 MP')
