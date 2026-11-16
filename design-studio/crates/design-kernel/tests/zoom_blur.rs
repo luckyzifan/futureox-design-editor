@@ -267,3 +267,37 @@ fn ordinary_wide_image_does_not_spend_a_siblings_zoom_halo() {
     ordinary["gpuAnalyticRegions"]=json!(false);
     assert!(compile(&doc,&ordinary).unwrap_err().contains("exceeds 2048"));
 }
+
+#[test]
+fn one_viewport_focus_move_reuses_fragments_and_matches_a_fresh_engine() {
+    use futureox_design_kernel::editing::DocumentPatch;
+    let mut doc = fixture();
+    let sibling: futureox_design_kernel::scene::Node = serde_json::from_value(json!({
+        "id":"s","kind":"rectangle","width":30,"height":18,"transform":[1,0,0,1,8,8],
+        "fills":[{"kind":"solid","color":"#222222"}]
+    })).unwrap();
+    doc.nodes.insert("s".into(), sibling);
+    doc.pages[0].children.insert(0, "s".into());
+    let request = json!({
+        "pageId":"p","width":640,"height":480,"rasterProfile":"analytic","gpuAnalyticRegions":true,
+        "captureViewport":{"x":-40,"y":-40,"w":640,"h":480},
+        "prepareViewport":{"x":-40,"y":-40,"w":640,"h":480},
+        "view":{"x":0,"y":0,"zoom":8},"grid":false,"transparent":false
+    }).to_string();
+    let mut warm = Engine::new();
+    warm.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    warm.compile_gpu_request(&request).unwrap();
+    let mut moved = doc.clone();
+    moved.nodes.get_mut("n").unwrap().effects[0].zoom_blur.as_mut().unwrap().center = [0.4, 0.6];
+    warm.apply_document_patch_with_damage(&DocumentPatch::between(&doc, &moved).unwrap()).unwrap();
+    warm.compile_gpu_request(&request).unwrap();
+    let before = warm.gpu_compile_cache_stats()["fragmentHits"].as_u64().unwrap();
+    let previous = moved.clone();
+    moved.nodes.get_mut("n").unwrap().effects[0].zoom_blur.as_mut().unwrap().center = [0.2, 0.8];
+    warm.apply_document_patch_with_damage(&DocumentPatch::between(&previous, &moved).unwrap()).unwrap();
+    let packet = warm.compile_gpu_packet_request(&request).unwrap();
+    assert!(warm.gpu_compile_cache_stats()["fragmentHits"].as_u64().unwrap() > before);
+    let mut fresh = Engine::new();
+    fresh.load_document(&serde_json::to_string(&moved).unwrap()).unwrap();
+    assert_eq!(packet, fresh.compile_gpu_packet_request(&request).unwrap());
+}
