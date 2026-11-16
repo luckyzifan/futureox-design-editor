@@ -10,7 +10,11 @@ export function layoutGapMinimum(mode: AutoLayout['mode'], field: 'gap' | 'lineG
 
 /** Layout chords. Checked against shortcut-profiles: Mod+F is Sketch
  * frame-selection on desktop, Mod+Alt+G frames a selection, and Mod+0/1/2/3
- * and Shift+0/1/2 are zoom. Alt is what keeps these free. */
+ * and Shift+0/1/2 are zoom. Alt is what keeps these free of those commands.
+ * The default Sketch scheme claims Mod+Alt+F for the layer find field while
+ * the Sketch layout is showing, so that chord is not a layout switch then.
+ * The layout buttons and Mod+Alt+S still switch. A Figma-like shortcut
+ * profile keeps Mod+Alt+F as the Figma layout chord. */
 export const FIGMA_LAYOUT_COMBO = 'Mod+Alt+F'
 export const SKETCH_LAYOUT_COMBO = 'Mod+Alt+S'
 
@@ -44,4 +48,20 @@ export function interfaceLayoutFromShortcut(event: {
   if (letter === 'f') return 'figma'
   if (letter === 's') return 'sketch'
   return null
+}
+
+/** Native Sketch Option+Command+F focuses layer find. It owns that chord only
+ * for the default Sketch shortcut scheme on the Sketch layout. Figma-like
+ * profiles keep the layout switch, and the Figma layout does not take the
+ * chord (Figma find is a different shortcut). */
+export function sketchLayerFindOwnsChord(event: {
+  key: string
+  code?: string
+  metaKey: boolean
+  ctrlKey: boolean
+  altKey: boolean
+  shiftKey: boolean
+  repeat?: boolean
+}, profile: ShortcutProfile, uiMode: UiMode): boolean {
+  return profile === 'sketch-like' && uiMode === 'sketch' && interfaceLayoutFromShortcut(event) === 'figma'
 }

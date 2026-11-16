@@ -35,7 +35,7 @@ import { DesktopCloudSettings } from './DesktopCloudSettings'
 import { cloudResult, desktopCloudWorkspace } from './desktop-cloud'
 import { PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
 import { interfaceText, interfacePreference, useInterfacePreferences } from './interface-preference'
-import { applyInterfaceLayout, interfaceLayoutFromShortcut } from './interface-layout'
+import { applyInterfaceLayoutShortcut } from './layout-shortcut'
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
@@ -903,13 +903,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (command) void dispatchEditorCommand(editor, command)
       }
     }
-    const layout = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target)) return
-      const mode = interfaceLayoutFromShortcut(e)
-      if (!mode) return
-      e.preventDefault()
-      applyInterfaceLayout(mode)
-    }
+    const layout = (e: KeyboardEvent) => { applyInterfaceLayoutShortcut(e) }
     const shortcut = (e: KeyboardEvent) => {
       if (largeDocument || source) return
       const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey

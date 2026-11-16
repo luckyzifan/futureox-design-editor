@@ -1,4 +1,7 @@
 import { dispatchEditorCommand } from './editor-commands'
+import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
+import { sketchLayerFindOwnsChord } from './interface-layout'
+import { shortcutPreference } from './shortcut-preference'
 import { layerExpanded, LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
@@ -71,6 +74,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   const [showLayerSearch, setShowLayerSearch] = useState(false)
   const [relatedOnly, setRelatedOnly] = useState(false)
   const searchField = useRef<HTMLInputElement>(null), searchToggle = useRef<HTMLButtonElement>(null)
+  const pendingFindFocus = useRef(false)
   const expansion = useMemo(() => ({ rootFramesOpen: uiMode === 'sketch', overrides: disclosure[uiMode] }), [disclosure, uiMode])
   const rowHeight = uiMode === 'sketch' ? 26 : 32
   const setLayerExpanded = (id: string, expanded: boolean) => setDisclosure(old => ({
@@ -147,6 +151,14 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     if (uiMode === 'figma' && showLayerSearch && tab === 'layers') searchField.current?.focus()
   }, [uiMode, showLayerSearch, tab])
   useEffect(() => {
+    if (!pendingFindFocus.current || uiMode !== 'sketch' || tab !== 'layers') return
+    pendingFindFocus.current = false
+    const field = searchField.current
+    if (!field) return
+    field.focus({ preventScroll: true })
+    field.select()
+  }, [uiMode, tab])
+  useEffect(() => {
     if (uiMode !== 'sketch' || tab !== 'layers') return
     const toggle = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.isComposing || event.code !== 'KeyF' ||
@@ -161,6 +173,30 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     }
     window.addEventListener('keydown', toggle, true)
     return () => window.removeEventListener('keydown', toggle, true)
+  }, [editor, tab, uiMode])
+  useEffect(() => {
+    // Capture runs before the window bubble layout chord. Only the default
+    // Sketch scheme takes Option+Command+F; text and dialogs keep the key.
+    if (uiMode !== 'sketch') return
+    const find = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat || event.shiftKey || !event.altKey) return
+      if (!(event.metaKey || event.ctrlKey) || (event.metaKey && event.ctrlKey)) return
+      if (!sketchLayerFindOwnsChord(event, shortcutPreference.getSnapshot(), uiMode)) return
+      if (shortcutTargetOwnsKeyboard(event.target)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (editor.state.busy || editor.interactionActive) return
+      if (tab !== 'layers') {
+        pendingFindFocus.current = true
+        if (!setTab('layers')) pendingFindFocus.current = false
+        return
+      }
+      const field = searchField.current
+      field?.focus({ preventScroll: true })
+      field?.select()
+    }
+    window.addEventListener('keydown', find, true)
+    return () => window.removeEventListener('keydown', find, true)
   }, [editor, tab, uiMode])
   useEffect(() => {
     if (!s.selection.length) { reveal.current = null; return }
