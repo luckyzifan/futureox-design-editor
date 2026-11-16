@@ -11,12 +11,14 @@ import {
 } from './model'
 export type FreehandSample = Point & { pressure: number }
 export type FreehandTool = 'pencil' | 'brush' | 'marker' | 'washi-tape'
-export type PencilSettings = { width: number; color: string; smoothing: number; pressure: boolean }
+export type PencilCap = 'butt' | 'round' | 'square'
+export type PencilSettings = { width: number; color: string; smoothing: number; pressure: boolean; cap?: PencilCap }
 export const defaultPencil = (): PencilSettings => ({
   width: 1,
   color: '#000000',
   smoothing: 0.8,
   pressure: false,
+  cap: 'round',
 })
 export const defaultBrush = (): PencilSettings => ({
   width: 12,
@@ -45,13 +47,15 @@ export function freehandNode(
   zoom: number,
   tool?: FreehandTool,
 ): DesignNode {
+  const cap = settings.cap ?? 'round'
   if (
     !Number.isFinite(settings.width) ||
     settings.width < 0.5 ||
     settings.width > 200 ||
     !/^#[0-9a-f]{6}$/i.test(settings.color) ||
     !Number.isFinite(settings.smoothing) || settings.smoothing <= 0 ||
-    !Number.isFinite(zoom) || zoom <= 0
+    !Number.isFinite(zoom) || zoom <= 0 ||
+    (tool === 'pencil' && cap !== 'butt' && cap !== 'round' && cap !== 'square')
   )
     throw new Error('无效的画笔设置')
   const pressure = (tool === undefined || tool === 'brush') && settings.pressure
@@ -78,7 +82,7 @@ export function freehandNode(
   n.fills = []
   if(tool==='marker'){n.name='马克笔路径';n.opacity=.4}
   if(tool==='washi-tape'){n.name='和纸胶带';n.effects=[{...effect('noise'),opacity:.12,amount:.45}]}
-  n.strokes = [{ ...stroke(settings.color, settings.width),...(tool==='washi-tape'?{cap:'square' as const,join:'bevel' as const}:{}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
+  n.strokes = [{ ...stroke(settings.color, settings.width),...(tool==='pencil'?{cap}:{}),...(tool==='washi-tape'?{cap:'square' as const,join:'bevel' as const}:{}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
   return n
 }
 /** One pointer owns a stroke. Release events do not append a synthetic zero pressure. */

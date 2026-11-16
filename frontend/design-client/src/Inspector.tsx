@@ -40,6 +40,7 @@ import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
+import type { PencilCap } from './freehand'
 import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
@@ -410,6 +411,37 @@ function PaintEditor({
     </div>
   )
 }
+const pencilCapChoices = [
+  ['butt', '无端点'],
+  ['square', '端点方形'],
+  ['round', '端点圆形'],
+] as const
+function PencilCapSection({ editor, cap }: { editor: Editor; cap: PencilCap }) {
+  const { tr } = usePropertyText()
+  return (
+    <section className="pencil-cap-section">
+      <h3>{tr('描边')}</h3>
+      <div className="pencil-cap-choices" role="radiogroup" aria-label={tr('描边')}>
+        {pencilCapChoices.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={cap === value}
+            aria-label={tr(label)}
+            onClick={() => {
+              const pencil = editor.state.pencil
+              if ((pencil.cap ?? 'round') === value) return
+              editor.set({ pencil: { ...pencil, cap: value } })
+            }}
+          >
+            {tr(label)}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
 // Camera presentation updates re-render the parent shell. The controls consume
 // the editor's independent panel snapshot and must not rebuild for those frames.
 export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blurStopIndex, onSelectBlurStop, onEditBlur }: {
@@ -467,9 +499,9 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               onChange={(e) => editor.set({ snap: e.target.checked })}
             />{tr("智能吸附")}</label>
         </section>
-        <section className="empty-inspector">
-          <p>{tr("选中图层后，在这里编辑颜色、形状与约束。")}</p>
-        </section>
+        {uiMode === 'figma' && s.tool === 'pencil'
+          ? <PencilCapSection editor={editor} cap={s.pencil.cap ?? 'round'} />
+          : <section className="empty-inspector"><p>{tr("选中图层后，在这里编辑颜色、形状与约束。")}</p></section>}
         <div className="local-badge">{tr("独立工作空间 · 本地优先")}</div>
       </aside>
     )

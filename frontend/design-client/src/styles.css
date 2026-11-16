@@ -911,6 +911,22 @@ main {
   background: var(--workspace-selected);
   color: var(--workspace-accent);
 }
+.pencil-cap-choices {
+  display: grid;
+  gap: 2px;
+}
+.pencil-cap-choices button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 11px;
+  text-align: left;
+}
+.pencil-cap-choices button[aria-checked="true"] {
+  background: var(--workspace-selected);
+  color: var(--workspace-selected-ink, var(--workspace-accent));
+}
 .property-card > input:not([type="color"]) {
   width: 100%;
   font-size: 10px;
