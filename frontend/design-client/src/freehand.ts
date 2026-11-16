@@ -1,4 +1,5 @@
 import { freehand_json } from './generated/design-kernel/design_kernel'
+import { applyDrawBrushStyle, type DrawBrushStyle } from './draw-brush-style'
 import {
   node,
   paint,
@@ -12,6 +13,7 @@ import {
 export type FreehandSample = Point & { pressure: number }
 export type FreehandTool = 'pencil' | 'brush' | 'marker' | 'washi-tape'
 export type PencilCap = 'butt' | 'round' | 'square'
+export type { DrawBrushStyle }
 export type PencilSettings = {
   width: number
   color: string
@@ -20,6 +22,7 @@ export type PencilSettings = {
   /** Use the layout defaults until the user chooses or samples an appearance. */
   cap?: PencilCap
   join?: 'miter' | 'round' | 'bevel'
+  style?: DrawBrushStyle
 }
 export const defaultPencil = (): PencilSettings => ({
   width: 1,
@@ -104,6 +107,7 @@ export function freehandNode(
   if(tool==='washi-tape'){n.name='和纸胶带';n.effects=[{...effect('noise'),opacity:.12,amount:.45}]}
   const ends = pencilEnds(tool, settings, uiMode)
   n.strokes = [{ ...stroke(settings.color, settings.width), ...(ends ?? {}), ...(pressure ? { widthProfile: fitted.widthProfile } : {}) }]
+  if (tool === 'brush') applyDrawBrushStyle(n, settings)
   return n
 }
 /** One pointer owns a stroke. Release events do not append a synthetic zero pressure. */
