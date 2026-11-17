@@ -4,7 +4,6 @@ import type {Editor,Tool} from './engine'
 import type {DesignDocument} from './model'
 import {desktopBridge} from './desktop'
 import {commitPendingEdits} from './pending-edits'
-import { setPrototypeTab } from './prototype-chrome'
 let codeFont: {id:string;resource:NonNullable<DesignDocument['fonts']>[string]}|undefined
 let loading:Promise<void>|undefined
 export function codeFontResource(){if(!codeFont)throw new Error('请先载入本机等宽字体');return codeFont}
@@ -36,7 +35,6 @@ export async function activateTool(editor:Editor,tool:Tool){
   finally{if(owners.get(editor)===owner)owners.delete(editor)}
  }else {
   editor.set({tool})
-  if (tool === 'hotspot') setPrototypeTab('prototype')
  }
  } finally {action.finish()}
 }

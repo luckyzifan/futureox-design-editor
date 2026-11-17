@@ -932,6 +932,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [pen, setPen] = useState<Pen | null>(null)
   const [penShift, setPenShift] = useState(false)
   const prototypeTab = usePrototypeTab()
+  const figmaPrototype = uiMode === 'figma' && prototypeTab === 'prototype'
+  const sketchInteraction = uiMode === 'sketch' && (state.tool === 'hotspot' ||
+    state.selection.length === 1 && isSketchHotspot(state.doc, state.doc.nodes[state.selection[0]]))
   const penRef = useRef(pen)
   penRef.current = pen
   const [penKeys, setPenKeys] = useState({ shift: false, alt: false })
@@ -972,13 +975,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   snapshots.begin(editor, editor.sessionGeneration, state.page, geometryReady)
   const currentScene = snapshots.currentScene(state.doc, state.page)
   const entries = currentScene.entries
-  const hotspots = useMemo(() => uiMode === 'sketch' && prototypeTab === 'prototype'
+  const hotspots = useMemo(() => sketchInteraction
     ? entries.filter(entry => isSketchHotspot(state.doc, state.doc.nodes[entry.id])) : [],
-  [uiMode, prototypeTab, entries, state.doc])
-  const links = useMemo(
-    () => prototypeTab === 'prototype' ? prototypeLinks(state.doc, state.page, entries) : [],
-    [prototypeTab, state.doc, state.page, entries],
-  )
+  [sketchInteraction, entries, state.doc])
+  const links = useMemo(() => {
+    if (!figmaPrototype && !sketchInteraction) return []
+    const links = prototypeLinks(state.doc, state.page, entries)
+    return figmaPrototype ? links : links.filter(link => isSketchHotspot(state.doc, state.doc.nodes[link.sourceId]))
+  }, [figmaPrototype, sketchInteraction, state.doc, state.page, entries])
   const gridFrameId = state.selection.length === 1 && state.doc.nodes[state.selection[0]]?.kind === 'frame' &&
     state.doc.nodes[state.selection[0]].layout?.mode === 'grid' ? state.selection[0] : undefined
   // This publication also changes when the picking/font geometry epoch changes.
@@ -2064,7 +2068,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       beginDragTrace(drag.current, e)
       return
     }
-    if (!kind && s.tool === 'select' && prototypeTab === 'prototype' && e.button === 0 && !space.current) {
+    if (!kind && s.tool === 'select' && (figmaPrototype || sketchInteraction) && e.button === 0 && !space.current) {
       const link = hitPrototypeLink(links, p, zoom)
       if (link) {
         if (hitPrototypeHead(link, p, zoom)) jumpToNode(editor, link.targetId, size)

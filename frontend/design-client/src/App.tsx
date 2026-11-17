@@ -77,6 +77,7 @@ import { PendingEditContext } from './pending-edit-context'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit, subscribePendingEdits } from './pending-edits'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesignTools } from './DesignTools'
+import { SketchInteractionPanel } from './SketchInteractionPanel'
 import { WorkspaceRail, DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
 import { PrototypePlayer } from './PrototypePlayer'
 import { WorkspaceLibrary } from './WorkspaceLibrary'
@@ -242,7 +243,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [propertiesTab, setPropertiesTabState] = useState<'design' | 'prototype'>('design')
   const setPropertiesTab = useCallback((next: 'design' | 'prototype') => { setPropertiesTabState(next); setPrototypeTab(next) }, [])
   useEffect(() => subscribePrototypeTab(() => setPropertiesTabState(getPrototypeTab())), [])
+  const activeProperties = uiMode === 'figma' ? propertiesTab : 'design'
   const [showPrototype, setShowPrototype] = useState(false)
+  useEffect(() => { if (uiMode !== 'figma') setShowPrototype(false) }, [uiMode])
   const [showCommands, setShowCommands] = useState(false)
   const [showShapeBuilder, setShowShapeBuilder] = useState(false)
   const [showMove, setShowMove] = useState(false)
@@ -603,7 +606,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const panelFocusCurrent = (focus: PanelFocus) => focus.element.isConnected &&
     panelHost.current?.contains(focus.element) && (focus.side === 'left' ? leftPanel : rightPanel).current?.contains(focus.element) &&
     !focus.element.closest('[hidden],[aria-hidden="true"]') &&
-    focus.section === (focus.side === 'left' ? workspaceSection : propertiesTab) &&
+    focus.section === (focus.side === 'left' ? workspaceSection : activeProperties) &&
     focus.session === editor.sessionGeneration && focus.page === editor.state.page &&
     focus.selection === JSON.stringify(editor.state.selection)
   // Only these live App controls can reveal a hidden panel without committing
@@ -1047,8 +1050,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         const ids = editor.topSelection()
         if (!ids.length || ids.some(id => editor.state.doc.nodes[id].kind !== 'text') ||
             ['comments', 'annotate'].includes(editor.state.tool) || !commitPendingEdits(editor)) return
-        flushSync(() => { setShowInspector(true); setUiMinimized(false); setPropertiesTab('design') })
-        if (openTypefaceSelect(document.querySelector<HTMLSelectElement>('#design-properties select[data-layer-typeface]'))) {
+        flushSync(() => { setShowInspector(true); setUiMinimized(false) })
+        if (openTypefaceSelect(document.querySelector<HTMLSelectElement>('.properties-content select[data-layer-typeface]'))) {
           event.preventDefault()
           event.stopPropagation()
         }
@@ -1074,7 +1077,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', shortcut, true)
     return () => window.removeEventListener('keydown', shortcut, true)
-  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, openSketchInsertion, switchSketchWorkspace, sketchComponentsVisible, editor, setShowInspector, setPropertiesTab])
+  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, openSketchInsertion, switchSketchWorkspace, sketchComponentsVisible, editor, setShowInspector])
   const saveCurrentDesign = useCallback(() => {
     if (source) {
       if (source.ready && !source.busy && !source.locked) void source.save()
@@ -1310,7 +1313,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               })
             }
           />
-  const previewPrototype = <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
+  const previewPrototype = uiMode === 'figma' && <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
             disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
   const figmaZoom = <div ref={setFigmaZoomHost} className="properties-zoom" data-testid="figma-view-tools"
     onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
@@ -1421,7 +1424,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         const element = event.target as HTMLElement
         if (!element.matches('input,textarea,select,[contenteditable="true"]')) return
         const side = leftPanel.current?.contains(element) ? 'left' : rightPanel.current?.contains(element) ? 'right' : null
-        if (side) panelFocus.current[side] = { element, side, session: editor.sessionGeneration, page: editor.state.page, selection: JSON.stringify(editor.state.selection), section: side === 'left' ? workspaceSection : propertiesTab }
+        if (side) panelFocus.current[side] = { element, side, session: editor.sessionGeneration, page: editor.state.page, selection: JSON.stringify(editor.state.selection), section: side === 'left' ? workspaceSection : activeProperties }
       }}
       style={adaptivePanels.style}
       data-host={desktop ? 'electron' : 'web'}
@@ -1820,8 +1823,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{translateProfessional(desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件', locale)}</button>
       </div>}
       {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} initialTarget={exportEntry === 'merged' ? undefined : exportEntry} onClose={() => { setShowExport(false); setExportEntry('merged') }} />}
-      {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
-      {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
+      {showTools&&<DesignTools editor={editor} allowPrototype={uiMode === 'figma'} onClose={()=>setShowTools(false)}/>}
+      {uiMode === 'figma' && showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
       {showCloudWorkspace && cloudWorkspace && desktopSession && <CloudWorkspacePanel workspace={cloudWorkspace} status={cloudStatusInWorkspace} documentId={s.doc.id}
         canSync={ready && !showHome && !switching} locale={locale}
@@ -1904,7 +1907,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <div ref={rightPanel} className="properties-workspace">
           <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
           {figmaZoomDocked && <div className="figma-properties-actions">{previewPrototype}</div>}
-          <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={menuText.propertiesWorkspace} onKeyDown={(event) => {
+          {uiMode === 'figma' && <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={menuText.propertiesWorkspace} onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault(); event.stopPropagation()
             const next = event.key === 'Home' ? 'design' : event.key === 'End' ? 'prototype' : propertiesTab === 'design' ? 'prototype' : 'design'
@@ -1915,9 +1918,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <button type="button" role="tab" id="prototype-properties-tab" tabIndex={propertiesTab === 'prototype' ? 0 : -1} aria-selected={propertiesTab === 'prototype'} aria-controls="prototype-properties" onClick={() => setPropertiesTab('prototype')}>{panelText.prototype}</button>
             </div>
             {figmaZoomDocked && figmaZoom}
-          </div>
-          <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
-            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex} onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} /></PendingEditContext.Provider>
+          </div>}
+          <div className="properties-content" {...(uiMode === 'figma'
+            ? { id: `${activeProperties}-properties`, role: 'tabpanel', 'aria-labelledby': `${activeProperties}-properties-tab` }
+            : { role: 'region', 'aria-label': menuText.propertiesWorkspace })}>
+            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : activeProperties === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}>{uiMode === 'sketch' && <SketchInteractionPanel editor={editor} doc={s.doc} selection={s.selection} armed={s.tool === 'hotspot'} />}<Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex} onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} /></PendingEditContext.Provider>
               : <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />}
           </div>
           <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />
