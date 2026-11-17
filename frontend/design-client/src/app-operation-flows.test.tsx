@@ -2375,3 +2375,44 @@ test('Figma property labels reveal only icon captions and preserve document and 
   expect(current.state.selection).toEqual([child.id])
   expect(current.canUndo).toBe(false)
 })
+
+
+test('Figma Command+K opens Quick Actions without taking keys from Find, text or menus', async () => {
+  applyInterfaceLayout('figma')
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  await render()
+  const current = editor!, doc = blank(), layer = node('rectangle')
+  doc.nodes[layer.id] = layer; doc.pages[0].children = [layer.id]
+  await act(async () => { current.load(doc); current.select([layer.id]); canvas().focus() })
+  const before = current.authoredDocument, view = { ...current.state.view }
+  const dock = () => document.querySelector('.command-search-dialog')
+  const shortcut = (target: HTMLElement) => act(async () => target.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'k', code: 'KeyK', metaKey: true, bubbles: true, cancelable: true,
+  })))
+  await shortcut(canvas())
+  expect(dock()?.querySelector('h2')?.textContent).toBe('快速操作')
+  expect(dock()?.querySelector('[data-command="convert-section"]')).not.toBeNull()
+  expect(dock()?.querySelector('[data-command="set-tool-graphic"]')).toBeNull()
+  const search = dock()!.querySelector('input')!
+  expect(document.activeElement).toBe(search)
+  await act(async () => search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  expect(dock()).toBeNull()
+  expect(document.activeElement).toBe(canvas())
+
+  const name = document.querySelector<HTMLInputElement>('input[aria-label="文档名称"]')!
+  await act(async () => name.focus())
+  await shortcut(name)
+  expect(dock()).toBeNull()
+  await act(async () => canvas().focus())
+  await key('ContextMenu')
+  const menu = document.querySelector<HTMLElement>('.canvas-context-menu')!
+  await shortcut(menu)
+  expect(dock()).toBeNull()
+  await act(async () => menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  await act(async () => canvas().focus())
+  await key('s', { code: 'KeyS' })
+  expect(current.state.tool).toBe('slice')
+  expect(current.authoredDocument).toBe(before)
+  expect(current.state.view).toEqual(view)
+  expect(current.canUndo).toBe(false)
+})
