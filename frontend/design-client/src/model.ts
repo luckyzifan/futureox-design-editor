@@ -282,6 +282,7 @@ export type AutoLayout = {
   padding: [number, number, number, number]
   wrap: boolean
   reverseFlow?: boolean
+  bordersAffectLayout?: boolean
   justify: LayoutAlign
   align: LayoutAlign
   columns: number
@@ -518,7 +519,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30
   id: string
   name: string
   pages: Page[]
@@ -847,7 +848,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1261,6 +1262,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
       if (!isObject(n.layout) || !container(n)) throw new Error('自动布局只能应用于容器')
       const l = { ...defaultLayout(), ...n.layout }
       if (l.reverseFlow === true && d.schemaVersion < 22) throw new Error('反向堆栈流需要设计文件版本 22')
+      if (l.bordersAffectLayout === true && d.schemaVersion < 30) throw new Error('边框计入布局需要设计文件版本 30')
       if (
         !['none', 'horizontal', 'vertical', 'grid'].includes(l.mode) ||
         !finite(l.gap, -LAYOUT_GAP_LIMIT, LAYOUT_GAP_LIMIT) ||
@@ -1270,6 +1272,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
         !l.padding.every((v) => finite(v, 0, 1e5)) ||
         typeof l.wrap !== 'boolean' ||
         (l.reverseFlow !== undefined && typeof l.reverseFlow !== 'boolean') ||
+        (l.bordersAffectLayout !== undefined && typeof l.bordersAffectLayout !== 'boolean') ||
         typeof l.fillRows !== 'boolean' ||
         !Number.isInteger(l.columns) ||
         !finite(l.columns, 1, 64) ||

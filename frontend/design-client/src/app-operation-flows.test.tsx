@@ -349,6 +349,67 @@ test('Sketch stack percentage modes persist, reflow with the parent and undo wit
   expect(editor!.authoredDocument).toEqual(proportional)
 })
 
+test('Sketch stack border option reflows rendered stroke extents and undoes the layout change', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Stack border layout QA')
+  const frame = node('frame', 50, 60, 300, 200)
+  const outside = node('rectangle', 0, 0, 55, 80)
+  const center = node('rectangle', 0, 0, 40, 60)
+  const clean = node('frame', 350, 60, 200, 120)
+  const plain = node('rectangle', 0, 0, 60, 40)
+  frame.layout = { ...defaultLayout(), padding: [10, 10, 10, 10], gap: 10 }
+  frame.sizing = { ...defaultSizing(), width: 'hug', height: 'hug' }
+  frame.children = [outside.id, center.id]
+  clean.layout = frame.layout
+  clean.sizing = frame.sizing
+  clean.children = [plain.id]
+  outside.strokes = [{ ...stroke('#222222', 10), align: 'outside' }]
+  center.strokes = [{ ...stroke('#333333', 10), align: 'center' }]
+  doc.nodes = Object.fromEntries([frame, outside, center, clean, plain].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [frame.id, clean.id]
+  await act(async () => { editor!.load(doc); editor!.select([frame.id]) })
+  const authored = () => editor!.authoredDocument
+  const boxes = (ids: string[]) => ids.map(id => {
+    const layer = authored().nodes[id]
+    return [layer.transform[4], layer.transform[5], layer.width, layer.height]
+  })
+  const toggle = () => act(async () => {
+    const label = [...document.querySelectorAll('.layout-panel label')].find(element => element.textContent === '边框计入布局')
+    expect(label).toBeDefined()
+    label!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
+  })
+  const ids = [frame.id, outside.id, center.id]
+  const initial = authored(), originalBoxes = boxes(ids)
+  expect(originalBoxes).toEqual([[50, 60, 125, 100], [10, 10, 55, 80], [75, 10, 40, 60]])
+  const revision = editor!.state.version
+  await toggle()
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(boxes(ids)).toEqual([[50, 60, 155, 120], [20, 20, 55, 80], [100, 15, 40, 60]])
+  const enabled = authored()
+  expect(enabled.schemaVersion).toBe(30)
+  expect(enabled.nodes[frame.id].layout?.bordersAffectLayout).toBe(true)
+  expect(JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(enabled))))).toEqual(enabled)
+  await act(async () => editor!.updateProperties([outside.id], {
+    strokes: [{ ...enabled.nodes[outside.id].strokes[0], width: 15 }],
+  }))
+  expect(boxes(ids)).toEqual([[50, 60, 165, 130], [25, 25, 55, 80], [110, 15, 40, 60]])
+  await act(async () => editor!.undo())
+  expect(authored()).toEqual(enabled)
+
+  await toggle()
+  expect(boxes(ids)).toEqual(originalBoxes)
+  await act(async () => editor!.undo())
+  expect(authored()).toEqual(enabled)
+  await act(async () => editor!.undo())
+  expect(authored()).toEqual(initial)
+  expect(editor!.canUndo).toBe(false)
+  await act(async () => editor!.select([clean.id]))
+  const noStrokeBoxes = boxes([clean.id, plain.id])
+  await toggle()
+  expect(boxes([clean.id, plain.id])).toEqual(noStrokeBoxes)
+})
+
 test('Sketch rich-text shortcuts format the selected range and later input at a collapsed caret', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

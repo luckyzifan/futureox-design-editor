@@ -2093,6 +2093,7 @@ impl<'a> Importer<'a> {
                 // Sketch 2025 stores the modern Stack's first item last in
                 // its layer array. Keep that array for painting and masking.
                 reverse_flow: layer.get("groupBehavior").and_then(Value::as_i64).is_some(),
+                borders_affect_layout: bool_at(group_layout, "bordersAffectLayout"),
                 justify: axis(justify(f64_at(group_layout, "justifyContent") as i64), "justify"),
                 align: axis(align(f64_at(group_layout, "alignItems") as i64), "align"),
                 ..crate::layout::Layout::default()
@@ -3934,6 +3935,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if doc.nodes.values().any(|n| n.graphic) { version=version.max(23); }
     if doc.nodes.values().any(|n| n.sizing.as_ref().is_some_and(crate::layout::Sizing::has_relative_sizing)) {
         version = version.max(29);
+    }
+    if doc.nodes.values().any(|n| n.layout.as_ref().is_some_and(|layout| layout.borders_affect_layout)) {
+        version = version.max(30);
     }
     doc.schema_version = version;
     Ok(doc)
@@ -7635,15 +7639,17 @@ fn export_layer_impl(
         {
             let justify = flex_justify(l.justify, &mut lossy);
             let align = flex_align(l.align, &mut lossy);
-            layer.insert(
-                "groupLayout".into(),
-                json!({
-                    "_class": "MSImmutableFlexGroupLayout",
-                    "flexDirection": if l.mode == crate::layout::Flow::Vertical { 1 } else { 0 },
-                    "justifyContent": justify, "alignItems": align,
-                    "allGuttersGap": l.gap, "crossAxisGutterGap": l.line_gap, "wrappingEnabled": l.wrap
-                }),
-            );
+            let mut group = json!({
+                "_class": "MSImmutableFlexGroupLayout",
+                "flexDirection": if l.mode == crate::layout::Flow::Vertical { 1 } else { 0 },
+                "justifyContent": justify, "alignItems": align,
+                "allGuttersGap": l.gap, "crossAxisGutterGap": l.line_gap, "wrappingEnabled": l.wrap
+            });
+            if l.borders_affect_layout {
+                group["bordersAffectLayout"] = json!(true);
+                group["version"] = json!(1);
+            }
+            layer.insert("groupLayout".into(), group);
             layer.insert("topPadding".into(), json!(l.padding[0]));
             layer.insert("rightPadding".into(), json!(l.padding[1]));
             layer.insert("bottomPadding".into(), json!(l.padding[2]));
@@ -10990,6 +10996,7 @@ mod tests {
             padding: [8., 4., 6., 2.],
             wrap: false,
             reverse_flow: false,
+            borders_affect_layout: false,
             justify: crate::layout::Align::SpaceBetween,
             align: crate::layout::Align::Center,
             columns: 0,

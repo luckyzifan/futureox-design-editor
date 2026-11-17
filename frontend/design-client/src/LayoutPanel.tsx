@@ -210,6 +210,12 @@ export function LayoutPanel({
                 onChange={(e) => updateLayout({ wrap: e.target.checked })}
               />{tr("自动换行")}</label>
           )}
+          {(layout.mode === 'horizontal' || layout.mode === 'vertical') &&
+            (uiMode === 'sketch' || layout.bordersAffectLayout) && <label className="check-row">
+              <input type="checkbox" checked={!!layout.bordersAffectLayout}
+                onChange={e => updateLayout({ bordersAffectLayout: e.currentTarget.checked || undefined })} />
+              {tr('边框计入布局')}
+            </label>}
           <h4>{tr("内边距")}</h4>
           <div className="field-grid">
             {layout.padding.map((v, i) => (

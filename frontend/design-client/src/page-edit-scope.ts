@@ -162,7 +162,8 @@ function scopeFrom(before: DesignDocument, after: DesignDocument, ids: readonly 
     if (!old || !next) return
     if (old.children.length !== next.children.length || old.children.some((child, index) => child !== next.children[index])) return
     if (crossNode(old) || crossNode(next)) return
-    let at = index.parents.get(id)
+    const directParent = index.parents.get(id)
+    let at = directParent
     const seen = new Set<string>([id])
     while (at && after.nodes[at] && !seen.has(at)) {
       seen.add(at)
@@ -173,7 +174,10 @@ function scopeFrom(before: DesignDocument, after: DesignDocument, ids: readonly 
     if (!page) return
     if (!pageId) pageId = page
     else if (pageId !== page) return
-    const geometry = forceLayout ?? geometryChange(old, next)
+    const parentLayout = directParent ? after.nodes[directParent]?.layout : undefined
+    const affectsStackBorder = old.strokes !== next.strokes && parentLayout?.bordersAffectLayout &&
+      (parentLayout.mode === 'horizontal' || parentLayout.mode === 'vertical')
+    const geometry = forceLayout ?? (geometryChange(old, next) || affectsStackBorder)
     if (geometry) {
       if (subtree(after, id, crossNode)) return
       if (index.externalRefs.size && subtree(after, id, n => index.externalRefs.has(n.id))) return

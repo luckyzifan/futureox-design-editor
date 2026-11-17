@@ -142,6 +142,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "固定": "Fixed",
   "内容自适应": "Hug contents",
   "填满容器": "Fill container",
+  "边框计入布局": "Include borders in layout",
   "相对尺寸 (%)": "Relative (%)",
   "相对宽度 %": "Relative width %",
   "相对高度 %": "Relative height %",

@@ -81,6 +81,8 @@ pub struct Layout {
     /// Storage remains in painter order even when the flow runs in reverse.
     #[serde(skip_serializing_if = "crate::components::is_false")]
     pub reverse_flow: bool,
+    #[serde(skip_serializing_if = "crate::components::is_false")]
+    pub borders_affect_layout: bool,
     pub justify: Align,
     pub align: Align,
     pub columns: usize,
@@ -95,6 +97,7 @@ impl Default for Layout {
             padding: [16.; 4],
             wrap: false,
             reverse_flow: false,
+            borders_affect_layout: false,
             justify: Align::Start,
             align: Align::Start,
             columns: 3,
@@ -273,18 +276,39 @@ fn size_text(n: &mut Node, fonts: &Fonts) -> Result<bool, String> {
     resize(n, width, height);
     Ok(constrained)
 }
-fn metrics(n: &Node) -> [f64; 4] {
+fn border_outset(n: &Node) -> f64 {
+    n.strokes.iter()
+        .filter(|s| s.visible && s.paint.visible && s.paint.opacity > 0.)
+        .map(|s| {
+            let width = crate::stroke::maximum_width(s);
+            match s.align.as_str() {
+                "outside" => width,
+                "inside" => 0.,
+                _ => width / 2.,
+            }
+        })
+        .fold(0., f64::max)
+}
+fn projected_outset(n: &Node, border: f64) -> [f64; 2] {
+    if border == 0. {
+        return [0., 0.];
+    }
     let [a, b, c, d, _, _] = n.transform.0;
+    [border * (a.abs() + c.abs()), border * (b.abs() + d.abs())]
+}
+fn metrics(n: &Node, border: f64) -> [f64; 4] {
+    let [a, b, c, d, _, _] = n.transform.0;
+    let [x, y] = projected_outset(n, border);
     [
-        0f64.min(a * n.width) + 0f64.min(c * n.height),
-        0f64.min(b * n.width) + 0f64.min(d * n.height),
-        a.abs() * n.width + c.abs() * n.height,
-        b.abs() * n.width + d.abs() * n.height,
+        0f64.min(a * n.width) + 0f64.min(c * n.height) - x,
+        0f64.min(b * n.width) + 0f64.min(d * n.height) - y,
+        a.abs() * n.width + c.abs() * n.height + 2. * x,
+        b.abs() * n.width + d.abs() * n.height + 2. * y,
     ]
 }
 // Relative sizing sets the local dimension. Account for the transformed box
 // when reserving its place in the line, like the other stack size modes.
-fn relative_size(n: &Node, axis: usize, available: f64) -> Option<(f64, f64)> {
+fn relative_size(n: &Node, axis: usize, available: f64, border: f64) -> Option<(f64, f64)> {
     let s = n.sizing.as_ref()?;
     let (ratio, min, max, a, b, other) = if axis == 0 && s.width == SizeMode::Relative {
         (s.width_ratio?, s.min_width, s.max_width, n.transform.0[0], n.transform.0[2], n.height)
@@ -293,8 +317,10 @@ fn relative_size(n: &Node, axis: usize, available: f64) -> Option<(f64, f64)> {
     } else {
         return None;
     };
-    let size = (available * ratio).clamp(min, max);
-    Some((size, a.abs() * size + b.abs() * other))
+    // The ratio covers the whole layout box, while the stored size is the
+    // content dimension the inspector and renderer use.
+    let size = (available * ratio - 2. * border).clamp(min, max);
+    Some((size, a.abs() * size + b.abs() * other + 2. * projected_outset(n, border)[axis]))
 }
 fn resize_axis(n: &mut Node, axis: usize, size: f64) {
     if axis == 0 {
@@ -303,12 +329,12 @@ fn resize_axis(n: &mut Node, axis: usize, size: f64) {
         resize(n, n.width, size)
     }
 }
-fn place(n: &mut Node, x: f64, y: f64) {
-    let m = metrics(n);
+fn place(n: &mut Node, x: f64, y: f64, border: f64) {
+    let m = metrics(n, border);
     n.transform.0[4] = x - m[0];
     n.transform.0[5] = y - m[1];
 }
-fn fit_axis(n: &mut Node, axis: usize, extent: f64) {
+fn fit_axis(n: &mut Node, axis: usize, extent: f64, border: f64) {
     let [a, b, c, d, _, _] = n.transform.0;
     let (coeff, other) = if axis == 0 {
         (a.abs(), c.abs() * n.height)
@@ -316,25 +342,26 @@ fn fit_axis(n: &mut Node, axis: usize, extent: f64) {
         (d.abs(), b.abs() * n.width)
     };
     if coeff > 1e-9 {
-        let size = ((extent - other) / coeff).max(0.01);
+        let size = ((extent - other - 2. * projected_outset(n, border)[axis]) / coeff).max(0.01);
         resize_axis(n, axis, size);
     }
 }
 fn mode(s: &Sizing, axis: usize) -> SizeMode {
     if axis == 0 { s.width } else { s.height }
 }
-fn limits(n: &Node, axis: usize) -> (f64, f64) {
+fn limits(n: &Node, axis: usize, border: f64) -> (f64, f64) {
     let s = n.sizing_value();
     let [a, b, c, d, _, _] = n.transform.0;
+    let outset = 2. * projected_outset(n, border)[axis];
     if axis == 0 {
         (
-            a.abs() * s.min_width + c.abs() * n.height,
-            a.abs() * s.max_width + c.abs() * n.height,
+            a.abs() * s.min_width + c.abs() * n.height + outset,
+            a.abs() * s.max_width + c.abs() * n.height + outset,
         )
     } else {
         (
-            d.abs() * s.min_height + b.abs() * n.width,
-            d.abs() * s.max_height + b.abs() * n.width,
+            d.abs() * s.min_height + b.abs() * n.width + outset,
+            d.abs() * s.max_height + b.abs() * n.width + outset,
         )
     }
 }
@@ -361,19 +388,27 @@ fn distribution(align: Align, free: f64, count: usize, gap: f64, min_extent: f64
         _ => (align.offset(free), gap),
     }
 }
-fn fit_relative_line(doc: &mut Document, ids: &[String], axis: usize, capacity: f64, gap: f64) {
+fn fit_relative_line(
+    doc: &mut Document,
+    ids: &[String],
+    axis: usize,
+    capacity: f64,
+    gap: f64,
+    outset: impl Fn(&str) -> f64,
+) {
     let mut space = capacity - gap * ids.len().saturating_sub(1) as f64;
     let mut requested = 0.;
     let mut relative = Vec::new();
     for id in ids {
         let node = &doc.nodes[id];
-        if let Some((size, extent)) = relative_size(node, axis, capacity) {
-            relative.push((id, size, extent, limits(node, axis).0));
+        let border = outset(id);
+        if let Some((size, extent)) = relative_size(node, axis, capacity, border) {
+            relative.push((id, size, extent, limits(node, axis, border).0));
             requested += extent;
         } else if mode(&node.sizing_value(), axis) == SizeMode::Fill {
-            space -= limits(node, axis).0;
+            space -= limits(node, axis, border).0;
         } else {
-            space -= metrics(node)[axis + 2];
+            space -= metrics(node, border)[axis + 2];
         }
     }
     if requested <= space || requested == 0. {
@@ -396,7 +431,7 @@ fn fit_relative_line(doc: &mut Document, ids: &[String], axis: usize, capacity: 
         }
         let node = doc.nodes.get_mut(id).unwrap();
         if extent > minimum + 1e-9 {
-            fit_axis(node, axis, minimum);
+            fit_axis(node, axis, minimum, outset(id));
         } else {
             resize_axis(node, axis, size);
         }
@@ -408,7 +443,7 @@ fn fit_relative_line(doc: &mut Document, ids: &[String], axis: usize, capacity: 
     for &(id, size, extent, minimum) in remaining {
         let n = doc.nodes.get_mut(id).unwrap();
         if scale < 1. && extent > minimum + 1e-9 {
-            fit_axis(n, axis, extent * scale);
+            fit_axis(n, axis, extent * scale, outset(id));
         } else {
             resize_axis(n, axis, size);
         }
@@ -420,15 +455,16 @@ fn fill_sizes(
     axis: usize,
     available: f64,
     gap: f64,
+    outset: impl Fn(&str) -> f64,
 ) -> Vec<f64> {
     let mut sizes: Vec<_> = ids
         .iter()
         .map(|id| {
             let n = &nodes[id];
             if mode(&n.sizing_value(), axis) == SizeMode::Fill {
-                limits(n, axis).0
+                limits(n, axis, outset(id)).0
             } else {
-                metrics(n)[axis + 2]
+                metrics(n, outset(id))[axis + 2]
             }
         })
         .collect();
@@ -444,10 +480,11 @@ fn fill_sizes(
         let share = remaining / active.len() as f64;
         let mut next = Vec::new();
         for i in active {
-            let add = share.min((limits(&nodes[&ids[i]], axis).1 - sizes[i]).max(0.));
+            let max = limits(&nodes[&ids[i]], axis, outset(&ids[i])).1;
+            let add = share.min((max - sizes[i]).max(0.));
             sizes[i] += add;
             remaining -= add;
-            if sizes[i] + 1e-7 < limits(&nodes[&ids[i]], axis).1 {
+            if sizes[i] + 1e-7 < max {
                 next.push(i)
             }
         }
@@ -508,6 +545,15 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     if l.reverse_flow {
         ids.reverse();
     }
+    let borders: BTreeMap<_, _> = if l.borders_affect_layout {
+        ids.iter().filter_map(|id| {
+            let border = border_outset(&doc.nodes[id]);
+            (border > 0.).then(|| (id.clone(), border))
+        }).collect()
+    } else {
+        BTreeMap::new()
+    };
+    let outset = |id: &str| borders.get(id).copied().unwrap_or(0.);
     // Resolve the hug/fill dependency explicitly, as a fixed parent axis.
     for a in 0..2 {
         if mode(&sizing, a) == SizeMode::Hug
@@ -533,7 +579,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         let cross_size = if cross == 0 { parent.width } else { parent.height };
         let capacity = (cross_size - pad_start[cross] - pad_end[cross]).max(0.);
         for child in &ids {
-            if let Some((size, _)) = relative_size(&doc.nodes[child], cross, capacity) {
+            if let Some((size, _)) = relative_size(&doc.nodes[child], cross, capacity, outset(child)) {
                 resize_axis(doc.nodes.get_mut(child).unwrap(), cross, size);
             }
         }
@@ -548,10 +594,11 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     let mut used = 0.;
     for child in ids {
         let c = &doc.nodes[&child];
+        let border = outset(&child);
         let natural = if mode(&c.sizing_value(), axis) == SizeMode::Fill {
-            limits(c, axis).0
+            limits(c, axis, border).0
         } else {
-            relative_size(c, axis, capacity).map_or_else(|| metrics(c)[axis + 2], |(_, extent)| extent)
+            relative_size(c, axis, capacity, border).map_or_else(|| metrics(c, border)[axis + 2], |(_, extent)| extent)
         };
         let row = lines.last_mut().unwrap();
         if l.wrap && !row.is_empty() && used + l.gap + natural > capacity + 1e-7 {
@@ -569,7 +616,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         .iter()
         .map(|line| {
             line.iter()
-                .map(|c| metrics(&doc.nodes[c])[axis + 2])
+                .map(|c| metrics(&doc.nodes[c], outset(c))[axis + 2])
                 .sum::<f64>()
                 + l.gap * line.len().saturating_sub(1) as f64
         })
@@ -577,7 +624,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     // A percentage needs a definite reference. Keep the current container
     // extent on that axis while it has relative children.
     if mode(&sizing, axis) == SizeMode::Hug && !relative_axes[axis] {
-        let (lo, hi) = limits(&doc.nodes[id], axis);
+        let (lo, hi) = limits(&doc.nodes[id], axis, 0.);
         let extent = (intrinsic_main + pad_start[axis] + pad_end[axis]).clamp(lo, hi);
         let p = doc.nodes.get_mut(id).unwrap();
         if axis == 0 {
@@ -594,12 +641,12 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     let capacity = (main - pad_start[axis] - pad_end[axis]).max(0.);
     for line in &lines {
         if relative_axes[axis] {
-            fit_relative_line(doc, line, axis, capacity, l.gap);
+            fit_relative_line(doc, line, axis, capacity, l.gap, outset);
         }
-        let sizes = fill_sizes(&doc.nodes, line, axis, capacity, l.gap);
+        let sizes = fill_sizes(&doc.nodes, line, axis, capacity, l.gap, outset);
         for (child, extent) in line.iter().zip(sizes) {
             if mode(&doc.nodes[child].sizing_value(), axis) == SizeMode::Fill {
-                fit_axis(doc.nodes.get_mut(child).unwrap(), axis, extent);
+                fit_axis(doc.nodes.get_mut(child).unwrap(), axis, extent, outset(child));
             }
         }
     }
@@ -607,14 +654,14 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         .iter()
         .map(|line| {
             line.iter()
-                .map(|c| metrics(&doc.nodes[c])[cross + 2])
+                .map(|c| metrics(&doc.nodes[c], outset(c))[cross + 2])
                 .fold(0., f64::max)
         })
         .collect();
     let intrinsic_cross =
         line_cross.iter().sum::<f64>() + l.line_gap * lines.len().saturating_sub(1) as f64;
     if mode(&sizing, cross) == SizeMode::Hug && !relative_axes[cross] {
-        let (lo, hi) = limits(&doc.nodes[id], cross);
+        let (lo, hi) = limits(&doc.nodes[id], cross, 0.);
         let extent = (intrinsic_cross + pad_start[cross] + pad_end[cross]).clamp(lo, hi);
         let p = doc.nodes.get_mut(id).unwrap();
         if cross == 0 {
@@ -640,12 +687,12 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     for (line, span) in lines.iter().zip(line_cross) {
         let total = line
             .iter()
-            .map(|c| metrics(&doc.nodes[c])[axis + 2])
+            .map(|c| metrics(&doc.nodes[c], outset(c))[axis + 2])
             .sum::<f64>()
             + l.gap * line.len().saturating_sub(1) as f64;
         let min_extent = line
             .iter()
-            .map(|c| metrics(&doc.nodes[c])[axis + 2])
+            .map(|c| metrics(&doc.nodes[c], outset(c))[axis + 2])
             .fold(f64::INFINITY, f64::min)
             .max(0.);
         let (offset, gap) =
@@ -653,18 +700,19 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         let mut cursor = pad_start[axis] + offset;
         for child in line {
             let c = doc.nodes.get_mut(child).unwrap();
+            let border = outset(child);
             let s = c.sizing_value();
             let align = s.align_self.unwrap_or(l.align);
             let cross_mode = mode(&s, cross);
             if cross_mode == SizeMode::Fill || (align == Align::Stretch && cross_mode != SizeMode::Relative) {
-                fit_axis(c, cross, span)
+                fit_axis(c, cross, span, border)
             }
-            let m = metrics(c);
+            let m = metrics(c, border);
             let shift = align.offset(span - m[cross + 2]);
             let mut p = [0., 0.];
             p[axis] = cursor;
             p[cross] = cross_cursor + shift;
-            place(c, p[0], p[1]);
+            place(c, p[0], p[1], border);
             cursor += m[axis + 2] + gap;
         }
         cross_cursor += span + l.line_gap;
@@ -766,7 +814,7 @@ fn grid_node_tracks(nodes: &mut crate::scene::DocumentNodes, id: &str, l: &Layou
     let intrinsic_col = slots
         .iter()
         .map(|(c, _, _, _, span)| {
-            ((metrics(&nodes[c])[2] - l.gap * (*span - 1) as f64) / *span as f64).max(0.)
+            ((metrics(&nodes[c], 0.)[2] - l.gap * (*span - 1) as f64) / *span as f64).max(0.)
         })
         .fold(0., f64::max);
     if sizing.width == SizeMode::Hug {
@@ -791,9 +839,9 @@ fn grid_node_tracks(nodes: &mut crate::scene::DocumentNodes, id: &str, l: &Layou
         if n.sizing_value().width == SizeMode::Fill
             || n.sizing_value().align_self.unwrap_or(l.align) == Align::Stretch
         {
-            fit_axis(n, 0, cell * *cols as f64 + l.gap * (*cols - 1) as f64)
+            fit_axis(n, 0, cell * *cols as f64 + l.gap * (*cols - 1) as f64, 0.)
         }
-        let need = (metrics(n)[3]
+        let need = (metrics(n, 0.)[3]
             - l.line_gap * (*span - 1) as f64
             - heights[*row..row + span].iter().sum::<f64>())
         .max(0.)
@@ -823,9 +871,9 @@ fn grid_node_tracks(nodes: &mut crate::scene::DocumentNodes, id: &str, l: &Layou
         let n = nodes.get_mut(&child).unwrap();
         let s = n.sizing_value();
         if s.height == SizeMode::Fill || s.align_self.unwrap_or(l.align) == Align::Stretch {
-            fit_axis(n, 1, h)
+            fit_axis(n, 1, h, 0.)
         }
-        let m = metrics(n);
+        let m = metrics(n, 0.);
         let align = s.align_self.unwrap_or(l.align);
         let dx = align.offset(w - m[2]);
         let dy = align.offset(h - m[3]);
@@ -833,6 +881,7 @@ fn grid_node_tracks(nodes: &mut crate::scene::DocumentNodes, id: &str, l: &Layou
             n,
             l.padding[3] + col as f64 * (cell + l.gap) + dx,
             l.padding[0] + heights[..row].iter().sum::<f64>() + row as f64 * l.line_gap + dy,
+            0.,
         );
     }
     enforce_node_layout_invariants(nodes, id, &children_before)?;
@@ -1324,7 +1373,7 @@ mod wrap_tests {
 
     fn place_of(doc: &Document, id: &str) -> (f64, f64) {
         // Placed origin lives in the transform's translation column.
-        let m = metrics(&doc.nodes[id]);
+        let m = metrics(&doc.nodes[id], 0.);
         (
             doc.nodes[id].transform.0[4] + m[0],
             doc.nodes[id].transform.0[5] + m[1],

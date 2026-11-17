@@ -110,3 +110,55 @@ fn sketch_round_trip_persists_relative_modes_and_fd_admission_checks_ratios() {
     sizing.width_ratio = None;
     assert!(doc.validate().is_ok());
 }
+
+#[test]
+fn relative_stack_border_option_counts_the_largest_protruding_border_and_round_trips() {
+    let mut doc: Document = serde_json::from_value(json!({
+        "schemaVersion": 30, "id": "d", "name": "Stack border geometry",
+        "pages": [{"id":"p","name":"Page","background":"#ffffff","children":["stack"]}],
+        "nodes": {
+            "stack": {
+                "id":"stack","kind":"frame","width":300,"height":200,
+                "children":["outside","center","inside"],
+                "layout":{"mode":"horizontal","padding":[10,30,20,20],"gap":10}
+            },
+            "outside": {
+                "id":"outside","kind":"rectangle","width":50,"height":60,
+                "strokes":[{"width":10,"align":"outside","paint":{"kind":"solid","color":"#222222"}}]
+            },
+            "center": {
+                "id":"center","kind":"rectangle","width":50,"height":60,
+                "sizing":{"width":"relative","widthRatio":0.5,"height":"relative","heightRatio":0.5},
+                "strokes":[
+                    {"width":10,"align":"center","paint":{"kind":"solid","color":"#222222"}},
+                    {"width":3,"align":"outside","paint":{"kind":"solid","color":"#333333"}},
+                    {"width":90,"align":"outside","visible":false,"paint":{"kind":"solid","color":"#555555"}}
+                ]
+            },
+            "inside": {
+                "id":"inside","kind":"rectangle","width":50,"height":60,
+                "strokes":[{"width":10,"align":"inside","paint":{"kind":"solid","color":"#222222"}}]
+            }
+        }
+    })).unwrap();
+    doc.validate().unwrap();
+    let fonts = Fonts::new();
+    layout::resolve(&mut doc, &fonts).unwrap();
+    assert_box(&doc, "outside", [20., 10., 50., 60.]);
+    assert_box(&doc, "center", [80., 10., 125., 85.]);
+    assert_box(&doc, "inside", [215., 10., 50., 60.]);
+
+    doc.nodes.get_mut("stack").unwrap().layout.as_mut().unwrap().borders_affect_layout = true;
+    layout::resolve(&mut doc, &fonts).unwrap();
+    // Detached native Sketch 2026.3.1, with a 10pt outside/center/inside border.
+    assert_box(&doc, "outside", [30., 20., 50., 60.]);
+    assert_box(&doc, "center", [105., 15., 100., 75.]);
+    assert_box(&doc, "inside", [220., 10., 50., 60.]);
+    let fields = export_sketch_layer_fields(&doc, "stack").unwrap();
+    assert_eq!(fields["groupLayout"]["bordersAffectLayout"], true);
+    let reopened = import_sketch_report(&export_sketch(&doc).unwrap()).unwrap().document;
+    assert!(reopened.nodes["stack"].layout.as_ref().unwrap().borders_affect_layout);
+    assert_eq!(reopened.schema_version, 30);
+    doc.schema_version = 29;
+    assert!(doc.validate().is_err());
+}
