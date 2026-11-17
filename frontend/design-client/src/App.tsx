@@ -5,6 +5,8 @@ import { operationStatusText } from './operation-status-messages'
 import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
 import { SketchInsertionDialog, type SketchInsertionAnchor } from './SketchInsertionDialog'
+import { SketchSymbolDialog, type SketchSymbolTarget } from './SketchSymbolDialog'
+import { bindSketchSymbolDialog, sketchSymbolSelection } from './sketch-symbol'
 import { keyboardPlacementPoint } from './keyboard-placement'
 import { defaultLayerExportSetting } from './export-metadata'
 import { SketchComponentsView, sketchComponentCategories, type SketchComponentCategory } from './SketchComponentsView'
@@ -236,6 +238,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showFramePresets, setShowFramePresets] = useState<'create' | 'apply' | null>(null)
   const [sketchReplacement, setSketchReplacement] = useState<SketchReplacementTarget | null>(null)
   const [sketchInsertion, setSketchInsertion] = useState<SketchInsertionAnchor | null>(null)
+  const [sketchSymbol, setSketchSymbol] = useState<SketchSymbolTarget | null>(null)
   const [showDrawing, setShowDrawing] = useState(false)
   const [showUtility, setShowUtility] = useState(false)
   const [lastShapeTool, setLastShapeTool] = useState<Tool>('rectangle')
@@ -916,6 +919,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     !source?.openingPreview && !desktopStatus.busy && !desktopStatus.transitioning && !editor.state.busy &&
     !editor.interactionActive && !modalOwnsKeyboard(document.activeElement),
   [uiMode, ready, switching, showHome, largeDocument, source, desktopStatus.busy, desktopStatus.transitioning, editor])
+  useEffect(() => bindSketchSymbolDialog(editor, () => {
+    if (!canUseSketchSelectionCommand() || sketchComponentsVisible || !commitPendingEdits(editor)) return false
+    const ids = sketchSymbolSelection(editor)
+    if (!ids.length) return false
+    setSketchSymbol({ ids, documentId: editor.state.doc.id, page: editor.state.page, generation: editor.sessionGeneration })
+    return true
+  }), [editor, canUseSketchSelectionCommand, sketchComponentsVisible])
   const replaceSketchTemplate = useCallback(() => {
     if (!canUseSketchSelectionCommand()) return false
     const canApply = () => frameSizePresetGate(editor.state.doc, editor.state.page, editor.state.selection, editor.parentMap()) === 'ready'
@@ -1790,6 +1800,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showFramePresets && <FramePresetPanel editor={editor} intent={showFramePresets} onClose={() => setShowFramePresets(null)} />}
       {sketchReplacement && <SketchReplacementDialog editor={editor} target={sketchReplacement} onClose={() => setSketchReplacement(null)} />}
       {sketchInsertion && <SketchInsertionDialog editor={editor} anchor={sketchInsertion} onClose={() => setSketchInsertion(null)} />}
+      {sketchSymbol && <SketchSymbolDialog editor={editor} target={sketchSymbol} onClose={() => setSketchSymbol(null)} />}
       {showHistory && !source && (
         <DocumentHistoryDialog
           key={s.doc.id}

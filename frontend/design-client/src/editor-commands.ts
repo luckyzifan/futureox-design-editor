@@ -6,6 +6,7 @@ import { requestBatchRename } from './batch-rename-session'
 import {activateTool} from './tool-activation'
 import { copySelectionAsset } from './clipboard-export'
 import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
+import { requestSketchSymbolDialog } from './sketch-symbol'
 import type { Editor } from './engine'
 import { desktopBridge } from './desktop'
 import { assertClipboardSize as assertSize, CLIPBOARD_TEXT_PREFIX as TEXT_PREFIX, readEditorClipboard as readClipboard, writeWebGraphClipboard } from './clipboard-adapter'
@@ -367,7 +368,10 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       }
       case 'auto-layout': editor.autoLayout(); break
       case 'remove-auto-layout': editor.autoLayout('none'); break
-      case 'create-component': editor.createComponent(); break
+      case 'create-component':
+        if (interfacePreference.getSnapshot().uiMode !== 'sketch' || requestSketchSymbolDialog(editor) === undefined)
+          editor.createComponent()
+        break
       case 'detach-instance': if (editor.state.selection.length === 1 && editor.state.doc.nodes[editor.state.selection[0]]?.instance) editor.detachInstance(); break
       case 'mask-selection': editor.group(true); break
       case 'convert-section': editor.update(editor.topSelection(), n => {

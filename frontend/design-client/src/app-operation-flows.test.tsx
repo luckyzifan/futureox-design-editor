@@ -270,6 +270,55 @@ test('Sketch Control-T inserts a linked text style with the archived size and pa
   expect(editor!.canUndo).toBe(false)
 })
 
+test('Sketch Command-Y creates an in-place instance and a source in one undo step', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Create Symbol')
+  const parent = node('frame', 30, 60, 600, 340)
+  const beforeSibling = node('rectangle', 1, 1, 16, 16)
+  const selected = node('frame', 90, 80, 120, 75)
+  const child = node('rectangle', 10, 13, 30, 26)
+  const afterSibling = node('rectangle', 230, 85, 16, 16)
+  selected.name = 'QA Symbol'
+  selected.transform = [0.8, 0.6, -0.6, 0.8, 90, 80]
+  selected.children = [child.id]
+  parent.children = [beforeSibling.id, selected.id, afterSibling.id]
+  doc.nodes = Object.fromEntries([parent, beforeSibling, selected, child, afterSibling].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [parent.id]
+  await act(async () => { editor!.load(doc); editor!.select([selected.id]); canvas().focus() })
+  const initial = editor!.authoredDocument
+  const open = () => key('y', { code: 'KeyY', metaKey: true })
+  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="创建控件"]')!
+  await open()
+  expect(dialog()).toBeTruthy()
+  expect(editor!.authoredDocument).toBe(initial)
+  await act(async () => dialog().querySelector('header button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+  expect(editor!.authoredDocument).toBe(initial)
+  for (const send of [false, true]) {
+    await act(async () => { editor!.select([selected.id]); canvas().focus() })
+    await open()
+    if (send) await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
+    const version = editor!.state.version
+    await act(async () => dialog().querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+    expect(dialog()).toBeNull()
+    expect(editor!.state.version).toBe(version + 1)
+    const result = editor!.authoredDocument, instance = result.nodes[editor!.state.selection[0]]
+    expect(instance.instance?.componentId).toBe(selected.id)
+    expect(instance.transform).toEqual(selected.transform)
+    expect(result.nodes[parent.id].children).toEqual([beforeSibling.id, instance.id, afterSibling.id])
+    expect(result.nodes[selected.id].component).toBeDefined()
+    expect(result.nodes[selected.id].children).toEqual([child.id])
+    expect(result.pages.find(page => page.children.includes(selected.id))?.name).toBe(send ? 'Symbols' : initial.pages[0].name)
+    const displayed = editor!.state.doc
+    const instanceChild = displayed.nodes[instance.id].children[0]
+    expect(worldMatrix(displayed, instanceChild)).toEqual(worldMatrix(initial, child.id))
+    await act(async () => editor!.undo())
+    expect(editor!.authoredDocument).toEqual(initial)
+    expect(editor!.canUndo).toBe(false)
+  }
+})
+
 test('Sketch Y opens the symbol picker and inserts an existing source only after confirmation', async () => {
   applyInterfaceLayout('sketch')
   await render()
