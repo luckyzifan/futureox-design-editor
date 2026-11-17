@@ -279,6 +279,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       }
       if (normalized) editor.importClipboard(normalized)
       if(command==='paste' || command==='paste-to-replace') editor.pasteToSelection(command==='paste-to-replace')
+      else if (command === 'paste-in-place' && interfacePreference.getSnapshot().uiMode === 'sketch') editor.pasteToSelection(false, true)
       else editor.paste(command === 'paste-in-place', command === 'paste-here' ? options.worldPoint : undefined)
       return
     }

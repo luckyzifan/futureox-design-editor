@@ -2977,7 +2977,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         let containerId: string | undefined
         if (!space.current && n.kind!=='slice') {
           const center = apply(n.transform,{x:n.width/2,y:n.height/2})
-          const parent = canvasDropFrame(document,page.id,[n.id],center,e.metaKey || e.ctrlKey)
+          const sketchDrawnShape = uiMode === 'sketch' && !d.creationClick &&
+            ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow'].some(tool => tool === d.creationTool)
+          const placementPoint = sketchDrawnShape ? d.start : center
+          const parent = canvasDropFrame(document,page.id,[n.id],placementPoint,e.metaKey || e.ctrlKey)
           if (parent) {
             containerId = parent
             page.children.splice(page.children.indexOf(n.id),1)

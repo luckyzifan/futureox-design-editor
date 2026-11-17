@@ -313,6 +313,39 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch parents a drawn shape at its start point while Figma uses its center', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Shape placement'), frame = node('frame', 100, 60, 200, 180)
+  doc.nodes[frame.id] = frame; doc.pages[0].children = [frame.id]
+  await act(async () => { editor!.load(doc) })
+  const before = editor!.authoredDocument
+  await act(async () => editor!.set({ view: { x: 0, y: 0, zoom: 1 } }))
+  dom.window.HTMLElement.prototype.setPointerCapture = () => undefined
+  dom.window.HTMLElement.prototype.hasPointerCapture = () => false
+  const draw = async () => {
+    await act(async () => { editor!.set({ tool: 'rectangle' }); canvas().focus() })
+    for (const [type, x, y] of [['pointerdown', 275, 190], ['pointerup', 365, 220]] as const) {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y })
+      Object.defineProperties(event, { pointerId: { value: 1 }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
+      await act(async () => canvas().dispatchEvent(event))
+    }
+    return editor!.state.selection[0]
+  }
+  const sketch = await draw()
+  expect(editor!.state.doc.nodes[frame.id].children).toEqual([sketch])
+  expect(worldMatrix(editor!.state.doc, sketch).slice(4)).toEqual([275, 190])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  await act(async () => applyInterfaceLayout('figma'))
+  const figma = await draw()
+  expect(editor!.state.doc.pages[0].children).toEqual([frame.id, figma])
+  expect(worldMatrix(editor!.state.doc, figma).slice(4)).toEqual([275, 190])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('changing editor layouts retires tools missing from the target toolbar', async () => {
   applyInterfaceLayout('sketch')
   await render()

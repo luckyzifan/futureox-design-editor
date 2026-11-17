@@ -151,7 +151,7 @@ const contextOrder: EditorCommand[] = [
   'flip-horizontal', 'flip-vertical',
 ]
 const sketchContextOrder: EditorCommand[] = [
-  'cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete',
+  'cut', 'copy', 'paste', 'paste-in-place', 'paste-to-replace', 'duplicate', 'delete',
   'move-to-page', 'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
   'paste-properties-no-corners',
   'swap-fills-and-strokes',

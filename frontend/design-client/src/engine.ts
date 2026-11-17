@@ -2356,7 +2356,7 @@ export class Editor {
       this.duplicateOffset = 10
     } finally { activateDocumentFonts(this.state.doc) }
   }
-  pasteToSelection(replace = false) {
+  pasteToSelection(replace = false, inPlace = false) {
     const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 225)
     try {
     if (!this.clipboard || this.interactionActive) return
@@ -2365,9 +2365,10 @@ export class Editor {
     const shared = selected.length && selected.every(id => parents.get(id) === parents.get(selected[0])) ? parents.get(selected[0]) : undefined
     const selectedContainers = !!selected.length && selected.every(id => container(before.nodes[id]) && !content.roots.includes(id))
     const targets=replace?selected:selectedContainers ? selected
-      : shared && before.nodes[shared] && !content.roots.includes(shared) ? [shared] : []
+      : !inPlace && shared && before.nodes[shared] && !content.roots.includes(shared) ? [shared] : []
     if(!targets.length){
       if(replace){this.notify('请选择要替换的图层');return}
+      if (inPlace) { this.paste(true); return }
       if(this.pasteUnderSourceParents(content, before))return
       this.paste(false);return
     }
@@ -2383,17 +2384,15 @@ export class Editor {
       targets.forEach(visit)
       try{captureClipboardSemantics(before,removed,targets,{cut:true})}catch(error){this.notify(String(error));return}
     }
-    this.begin(replace?'粘贴替换':'粘贴到选中容器')
+    this.begin(replace ? '粘贴替换' : inPlace ? '粘贴到原位' : '粘贴到选中容器')
     const selection:string[]=[]
     // Mac Figma steps the inspector X/Y by 10, then 20, then 30 from the
     // copied local position. Restoring the placement alone leaves that delta
     // at (0, 0). Paste in place first, then add the step in parent space.
-    // Sketch ordinary paste into each selected frame centers the copied bounds
-    // in that frame's own width and height. Every copied root gets the same
-    // shift, so layers keep their internal offsets. Groups, sections, sibling
-    // paste, and paste-replace stay on the Figma placement above.
-    const step = replace ? 0 : this.duplicateOffset
-    const centerSelectedFrames = !replace && selectedContainers && interfacePreference.getSnapshot().uiMode === 'sketch'
+    // Sketch ordinary paste centers in each selected frame. In-place
+    // paste keeps the copied container-local position and does not step it.
+    const step = replace || inPlace ? 0 : this.duplicateOffset
+    const centerSelectedFrames = !replace && !inPlace && selectedContainers && interfacePreference.getSnapshot().uiMode === 'sketch'
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
@@ -2437,7 +2436,7 @@ export class Editor {
         if(!roots.every(id=>allParents(this.state.doc).get(id)===destination))throw new Error(this.state.message)
         selection.push(...roots)
       }
-      if(!replace) this.duplicateOffset += 10
+      if(!replace && !inPlace) this.duplicateOffset += 10
       if(replace){this.select(targets);this.remove();if(targets.some(id=>this.state.doc.nodes[id]))throw new Error('替换目标无法删除')}
       this.select(selection);this.commit()
     } catch(error){this.cancel();this.notify(error instanceof Error?error.message:String(error))}
