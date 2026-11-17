@@ -1175,8 +1175,23 @@ pub(crate) fn shadow_alpha(
 
 pub(crate) fn knock_out_shadow(shadow: &mut Surface, silhouette: &Surface, paint_alpha: f32) {
     debug_assert_eq!(shadow.rect, silhouette.rect);
+    // The shape is source-over this shadow, so it already hides
+    // (1 - shape_alpha) of it. Scaling by (1 - coverage) as well squares
+    // that term and thins antialiased edges. Keep the visible weight at
+    // (1 - coverage): a translucent fill's interior still goes to zero,
+    // and an opaque edge keeps the uncovered fraction of the shadow.
+    let paint_alpha = paint_alpha.max(1e-6);
     for (pixel, shape) in shadow.pixels.iter_mut().zip(&silhouette.pixels) {
-        *pixel = pixel.opacity(1. - (shape.0[3] / paint_alpha).min(1.));
+        let shape_a = shape.0[3];
+        if !(shape_a > 0.) {
+            continue;
+        }
+        if shape_a >= 1. {
+            *pixel = Pixel::default();
+            continue;
+        }
+        let coverage = (shape_a / paint_alpha).min(1.);
+        *pixel = pixel.opacity((1. - coverage) / (1. - shape_a));
     }
 }
 

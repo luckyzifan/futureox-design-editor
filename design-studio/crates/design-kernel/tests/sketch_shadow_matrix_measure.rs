@@ -843,6 +843,99 @@ fn misclassified_outer_class_is_not_an_inner_shadow_defect() {
     );
 }
 
+fn coverage_supersampled(cell: &Cell, samples: i32) -> Vec<f32> {
+    let mut cover = vec![0f32; W * W];
+    let page = layer_transform([40., 48., 96., 64.], cell.rotation, [false, false]);
+    let inverse = page.inverse().unwrap();
+    let step = 1. / f64::from(samples);
+    for y in 0..W as i32 {
+        for x in 0..W as i32 {
+            let mut hit = 0i32;
+            for sy in 0..samples {
+                for sx in 0..samples {
+                    let px = (f64::from(x) + (f64::from(sx) + 0.5) * step) / ZOOM;
+                    let py = (f64::from(y) + (f64::from(sy) + 0.5) * step) / ZOOM;
+                    let point = inverse.point(Point::new(px, py));
+                    if (0. ..96.).contains(&point.x) && (0. ..64.).contains(&point.y) {
+                        hit += 1;
+                    }
+                }
+            }
+            cover[y as usize * W + x as usize] = hit as f32 / (samples * samples) as f32;
+        }
+    }
+    cover
+}
+
+fn oracle_coverage(cell: &Cell, shape: &[f32]) -> Vec<u8> {
+    let mut image = vec![0f64; W * W * 4];
+    for spec in specs(cell).iter().filter(|spec| !spec.inner) {
+        paint_shadow(&mut image, shape, cell, spec);
+    }
+    for i in 0..W * W {
+        let cover = f64::from(shape[i]);
+        if cover > 0. {
+            let o = i * 4;
+            let (br, bg, bb, ba) = (image[o], image[o + 1], image[o + 2], image[o + 3]);
+            let sa = cover;
+            image[o] = FILL[0] / 255. * sa + br * (1. - sa);
+            image[o + 1] = FILL[1] / 255. * sa + bg * (1. - sa);
+            image[o + 2] = FILL[2] / 255. * sa + bb * (1. - sa);
+            image[o + 3] = sa + ba * (1. - sa);
+        }
+    }
+    for spec in specs(cell).iter().filter(|spec| spec.inner) {
+        paint_shadow(&mut image, shape, cell, spec);
+    }
+    let opacity = cell.layer_opacity;
+    let mut bytes = vec![255u8; W * W * 4];
+    for i in 0..W * W {
+        let o = i * 4;
+        let (r, g, b, a) = (
+            image[o] * opacity,
+            image[o + 1] * opacity,
+            image[o + 2] * opacity,
+            image[o + 3] * opacity,
+        );
+        let over = |c: f64| (c + 1. * (1. - a)).clamp(0., 1.);
+        bytes[o] = (over(r) * 255.).round() as u8;
+        bytes[o + 1] = (over(g) * 255.).round() as u8;
+        bytes[o + 2] = (over(b) * 255.).round() as u8;
+        bytes[o + 3] = 255;
+    }
+    bytes
+}
+
+#[test]
+#[test]
+fn diagnose_rotated_shadow_against_area_coverage() {
+    let cell = cells()
+        .into_iter()
+        .find(|cell| cell.name == "drop-rotated37")
+        .unwrap();
+    let doc = import_cell(&cell);
+    let pixels = render(&doc, RasterProfile::Analytic).unwrap();
+    let binary = oracle(&cell);
+    let area = oracle_coverage(&cell, &coverage_supersampled(&cell, 8));
+    let (over_b, mae_b, max_b) = score(&pixels, &binary);
+    let (over_a, mae_a, max_a) = score(&pixels, &area);
+    println!(
+        "ROTATED\tbinary\tover={over_b:.4}\tmae={mae_b:.4}\tmax={max_b}\tarea\tover={over_a:.4}\tmae={mae_a:.4}\tmax={max_a}"
+    );
+    // Measured after the knockout scale fix, against an 8×8 area-coverage
+    // Gaussian. The previous CPU frame was max 32 and 0.0633% above 16/255.
+    // The binary point oracle has no edge coverage; its max is not this gate.
+    assert!(
+        max_a <= 4,
+        "rotated shadow left the area-coverage reference by {max_a}"
+    );
+    assert!(
+        over_a <= 0.001,
+        "rotated shadow still exceeds 16/255 on {over_a:.4}% of the frame"
+    );
+    let _ = (over_b, mae_b, mae_a);
+}
+
 #[test]
 fn inner_shadow_edit_undo_reopen_and_scaled_export_keep_the_effect() {
     let cell = cells()
