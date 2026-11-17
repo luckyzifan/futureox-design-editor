@@ -4218,7 +4218,8 @@ impl Painter<'_> {
         let sketch_bitmap = p.kind == "image" && self.profile == crate::fidelity::RasterProfile::Analytic
             && crate::interop::sketch_binding(self.doc, n, "sketchSourceBitmap") == Some("true");
         let mut sampler = if sketch_bitmap {
-            Sampler::with_sketch_bitmap(p, n, m, basis, self.images, true)?
+            let motion_axis = crate::paint::sketch_motion_phase_axis(self.doc, n);
+            Sampler::with_sketch_bitmap(p, n, m, basis, self.images, true, motion_axis)?
         } else {
             Sampler::new(p, n, m, basis, self.images)?
         };

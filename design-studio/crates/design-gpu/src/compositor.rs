@@ -284,6 +284,7 @@ struct ImageGridKey {
     sample: usize,
     level: u32,
     sketch_bitmap: bool,
+    motion_axis: Option<u8>,
 }
 #[derive(Hash, PartialEq, Eq)]
 struct GradientGridKey {
@@ -1480,6 +1481,7 @@ impl Compositor<'_, '_, '_> {
             inputs.push(image);
             if self.scene.float_compositing || sample < 4 {
                 let sketch_bitmap = !self.mips && p.sketch_bitmap_sampling && p.adjust.is_none();
+                let motion_axis = sketch_bitmap.then_some(n.sketch_motion_phase_axis).flatten();
                 let key = ImageGridKey {
                     node: n.id.clone(),
                     fit: p.fit.clone(),
@@ -1493,6 +1495,7 @@ impl Compositor<'_, '_, '_> {
                     },
                     level,
                     sketch_bitmap,
+                    motion_axis,
                 };
                 let known = self.image_grids.get(&key).copied();
                 let grid = if let Some((old_sample, grid)) = known.filter(|(old, _)| *old == sample)
@@ -1503,7 +1506,7 @@ impl Compositor<'_, '_, '_> {
                     let phase = (sample < 4).then_some(sample);
                     let values = if self.scene.float_compositing {
                         futureox_design_kernel::paint::image_sampling_grid_with_sketch_sampling(
-                            n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin, sketch_bitmap,
+                            n.rect, n.matrix, n.size, dims, &p.paint, phase, level, origin, sketch_bitmap, motion_axis,
                         )?
                     } else {
                         futureox_design_kernel::paint::image_byte_sampling_field_placed(

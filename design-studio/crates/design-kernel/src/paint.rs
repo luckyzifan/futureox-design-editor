@@ -362,6 +362,7 @@ struct ImageCoordinates {
     /// the repeating UV chain. `None` covers absent and `mode: none`.
     pattern: Option<crate::pattern_fill::PatternTile>,
     sketch_integer_magnification: bool,
+    sketch_motion_phase: Option<(u8, f64, f64)>,
 }
 impl ImageCoordinates {
     fn place_linear_image(
@@ -404,6 +405,7 @@ impl ImageCoordinates {
             fit: paint.fit.clone(),
             pattern: paint.tile.clone().filter(|t| t.is_active()),
             sketch_integer_magnification: false,
+            sketch_motion_phase: None,
         })
     }
 
@@ -430,6 +432,37 @@ impl ImageCoordinates {
             stride.abs().round() >= 2. && aligned_integer(stride) && aligned_integer(origin)
         });
         self
+    }
+
+    fn with_sketch_motion_phase(mut self, matrix: Transform, axis: Option<u8>) -> Self {
+        let Some(axis @ 0..=1) = axis else { return self; };
+        let [a, b, c, d, x, y] = matrix.0;
+        if b != 0. || c != 0. || self.fit != "stretch" || self.pattern.is_some()
+            || self.paint_inverse.is_some() || self.size != self.image || a <= 0. || d <= 0.
+        {
+            return self;
+        }
+        let index = usize::from(axis);
+        let stride = [a,d][index] * self.size[index] / self.image[index];
+        if stride < 1. || (stride - stride.round()).abs() > 1e-9 { return self; }
+        let origin = [x,y][index];
+        let phase = origin - origin.floor();
+        // Measured with a transparent stripe at nine subpixel positions.
+        // Resolve the two half-pixel coverage ramps before looking up the
+        // replicated device texels, on the axis perpendicular to motion.
+        let shift = 0.5 * ((2. * phase - 0.25).clamp(0., 1.) + (2. * phase - 0.75).clamp(0., 1.));
+        self.sketch_motion_phase = Some((axis, origin.floor() + shift, stride.round()));
+        self
+    }
+
+    fn motion_coordinate(&self, axis: usize, device: Point, original: f64) -> f64 {
+        let Some((corrected, origin, stride)) = self.sketch_motion_phase else { return original; };
+        if axis != usize::from(corrected) { return original; }
+        let p = (if axis == 0 { device.x } else { device.y }) - origin - 0.5;
+        let cell = p.floor();
+        let lo = ((cell + 0.5) / stride).floor();
+        let hi = ((cell + 1.5) / stride).floor();
+        lo + 0.5 + (hi - lo) * (p - cell)
     }
 
     fn sketch_small_residual_shrink(&self) -> bool {
@@ -567,7 +600,8 @@ impl ImageCoordinates {
                 (uv.y * ih).clamp(0.5, ih - 0.5),
             ));
         }
-        let p = self.linear_point(device);
+        let q = self.linear_point(device);
+        let p = Point::new(self.motion_coordinate(0, device, q.x), self.motion_coordinate(1, device, q.y));
         let (iw, ih) = (self.image[0], self.image[1]);
         if self.fit == "contain" && (p.x < 0. || p.y < 0. || p.x >= iw || p.y >= ih) {
             None
@@ -693,6 +727,7 @@ impl<'a> ImageLinearAxis<'a> {
                 (local / coordinates.size[axis]) * coordinates.image[axis]
             }
         };
+        let q = coordinates.motion_coordinate(axis, device, q);
         if !q.is_finite() { return None; }
         let region = if !self.contain { 0 } else if q < 0. { -1 } else if q >= coordinates.image[axis] { 1 } else { 0 };
         let value = coordinates.linear_texel_center(q, axis) - 0.5;
@@ -745,6 +780,19 @@ pub fn image_mip_level(
         return Ok(0);
     }
     Ok((ratio.log2().floor() as u32).min(u32::MAX - 1))
+}
+
+pub(crate) fn sketch_motion_phase_axis(doc: &Document, n: &Node) -> Option<u8> {
+    if doc.color_management.is_some() || crate::interop::sketch_binding(doc, n, "sketchSourceBlur").is_none() {
+        return None;
+    }
+    let mut visible = n.effects.iter().filter(|e| e.visible);
+    match (visible.next(), visible.next()) {
+        (Some(e), None) if e.kind == "motion-blur" && e.radius > 0. => match e.motion_angle.rem_euclid(180.) {
+            90. => Some(0), 0. => Some(1), _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// For imported Sketch bitmap layers choose the offline box mip when both
@@ -827,13 +875,13 @@ pub fn image_sampling_grid_placed(
     level: u32,
     origin: [i32; 2],
 ) -> Result<Vec<f32>, String> {
-    image_sampling_grid_with_sketch_sampling(rect, matrix, size, image, paint, sample, level, origin, false)
+    image_sampling_grid_with_sketch_sampling(rect, matrix, size, image, paint, sample, level, origin, false, None)
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn image_sampling_grid_with_sketch_sampling(
     rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
-    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2], sketch_bitmap: bool,
+    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2], sketch_bitmap: bool, motion_axis: Option<u8>,
 ) -> Result<Vec<f32>, String> {
     if image.contains(&0) || size.iter().any(|v| !v.is_finite() || *v <= 0.) {
         return Err("Invalid image sampling geometry".into());
@@ -847,7 +895,8 @@ pub fn image_sampling_grid_with_sketch_sampling(
         None => (0.5, 0.5),
     };
     let coordinates = ImageCoordinates::new(paint, size, matrix, rect, image)?
-        .with_sketch_magnification(matrix, sketch_bitmap && level == 0);
+        .with_sketch_magnification(matrix, sketch_bitmap && level == 0)
+        .with_sketch_motion_phase(matrix, if sketch_bitmap && level == 0 { motion_axis } else { None });
     let mut values =
         crate::sampling::coordinate_grid(rect, Rect::new(0, 0, image[0], image[1]), |x, y| {
             coordinates.at(Point::new(f64::from(x) + offset.0, f64::from(y) + offset.1))
@@ -894,13 +943,13 @@ pub fn image_sampling_axes_placed(
     rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
     paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2],
 ) -> Result<Vec<f32>, String> {
-    image_sampling_axes_with_sketch_sampling(rect, matrix, size, image, paint, sample, level, origin, false)
+    image_sampling_axes_with_sketch_sampling(rect, matrix, size, image, paint, sample, level, origin, false, None)
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn image_sampling_axes_with_sketch_sampling(
     rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
-    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2], sketch_bitmap: bool,
+    paint: &Paint, sample: Option<usize>, level: u32, origin: [i32; 2], sketch_bitmap: bool, motion_axis: Option<u8>,
 ) -> Result<Vec<f32>, String> {
     if rect.w > i32::MAX as u32 || rect.h > i32::MAX as u32
         || i64::from(rect.x) + i64::from(rect.w) > i64::from(i32::MAX)
@@ -913,7 +962,8 @@ pub(crate) fn image_sampling_axes_with_sketch_sampling(
     let level = level.min(crate::image_mipmap::mip_levels(image) - 1);
     let dimensions = crate::image_mipmap::level_dimensions(image, level);
     let coordinates = ImageCoordinates::new(paint, size, matrix, rect, dimensions)?
-        .with_sketch_magnification(matrix, sketch_bitmap && level == 0);
+        .with_sketch_magnification(matrix, sketch_bitmap && level == 0)
+        .with_sketch_motion_phase(matrix, if sketch_bitmap && level == 0 { motion_axis } else { None });
     let axis_aligned = |m: Transform| m.0[1] == 0. && m.0[2] == 0.;
     if rect.w <= 2 || rect.h <= 2 || coordinates.pattern.is_some()
         || coordinates.paint_inverse.is_some_and(|m| !axis_aligned(m)) {
@@ -1525,10 +1575,11 @@ impl Sampler {
         samples: Rect,
         images: &mut Images,
     ) -> Result<Self, String> {
-        Self::with_sketch_bitmap(p, n, m, samples, images, false)
+        Self::with_sketch_bitmap(p, n, m, samples, images, false, None)
     }
     pub(crate) fn with_sketch_bitmap(
         p: &Paint, n: &Node, m: Transform, samples: Rect, images: &mut Images, sketch_bitmap: bool,
+        motion_axis: Option<u8>,
     ) -> Result<Self, String> {
         if !p.opacity.is_finite() || !p.angle.is_finite() {
             return Err("Invalid paint".into());
@@ -1612,7 +1663,10 @@ impl Sampler {
                 .map(|coords| coords.with_sketch_magnification(m,
                     sketch_bitmap && !images.mips_enabled() && images.settings.is_none()
                         && p.image.as_deref().is_some_and(|uri| uri.starts_with("data:"))
-                        && p.adjust.is_none()))
+                        && p.adjust.is_none())
+                    .with_sketch_motion_phase(m, if p.adjust.is_none() && images.settings.is_none()
+                        && p.image.as_deref().is_some_and(|uri| uri.starts_with("data:")) && !images.mips_enabled()
+                        { motion_axis } else { None }))
             })
             .transpose()?;
         let sketch_png_footprint = first_sketch_mip && images.sketch_png_footprint
@@ -1942,6 +1996,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn motion_bitmap_phase_keeps_native_replicated_stripe_taps_in_both_fields() {
+        let paint: Paint = serde_json::from_value(serde_json::json!({
+            "kind":"image","fit":"stretch","color":"#000000"
+        })).unwrap();
+        for scale in [1, 2] {
+            let x = scale * 128;
+            let rect = Rect::new(x, scale * 96, 4, 3);
+            let s = f64::from(scale);
+            let matrix = Transform([s, 0., 0., s, 96. * s + 0.25, 64. * s + 0.375]);
+            let args = (rect, matrix, [64.,64.], [64,64], &paint, None, 0, [0,0], true, Some(0));
+            let (r,m,size,source,paint,phase,level,origin,sketch,axis) = args;
+            let grid = image_sampling_grid_with_sketch_sampling(r,m,size,source,paint,phase,level,origin,sketch,axis).unwrap();
+            let axes = image_sampling_axes_with_sketch_sampling(r,m,size,source,paint,phase,level,origin,sketch,axis).unwrap();
+            // The quarter-device-pixel control places 7/8 of the stripe in
+            // the first sample and 1/8 beyond the trailing edge, at both DPIs.
+            assert_eq!([grid[0],grid[2]], [31.,0.875]);
+            for i in 0..4 {
+                assert_eq!([grid[i*4],grid[i*4+2]], [axes[i*4],axes[i*4+1]]);
+            }
+            let trail = scale as usize * 4;
+            assert_eq!([grid[trail],grid[trail+2]], [32.,0.875]);
+        }
+    }
+
+    #[test]
     fn prepared_linear_axes_match_original_point_chain_at_float_boundaries() {
         for fit in ["cover", "contain", "stretch"] {
             for inverse in [
@@ -1953,7 +2032,7 @@ mod tests {
                 for paint_inverse in [None, Some(Transform([0.7, -0., 0., -1.1, 0.2, 0.4]))] {
                     for size in [[1920., 1080.], [31., 19.], [1e-300, 1e300]] {
                         for image in [[1920., 1080.], [1., 1.], [4_294_967_295., 7.]] {
-                            let coordinates = ImageCoordinates { inverse, paint_inverse, size, image, fit: fit.into(), pattern: None, sketch_integer_magnification: false,
+                            let coordinates = ImageCoordinates { inverse, paint_inverse, size, image, fit: fit.into(), pattern: None, sketch_integer_magnification: false, sketch_motion_phase: None,
                                 linear_placement: ImageCoordinates::place_linear_image(paint_inverse, fit, size, image) };
                             for x in [-2_147_483_648., -0.5, -0., 0., f64::from_bits(0.5f64.to_bits() - 1), 0.5, f64::from_bits(0.5f64.to_bits() + 1), 2_147_483_646.875] {
                                 for y in [-1281.875, -0., 0.125, 0.5, 3480.875] {
