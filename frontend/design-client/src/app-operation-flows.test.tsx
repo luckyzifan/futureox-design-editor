@@ -312,6 +312,53 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test.each([false, true])('Sketch zooms a nested selection to its top-level frame (desktop: %s)', async desktop => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  if (desktop) Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true }, onCommand: () => () => {}, onCloseRequested: () => () => {},
+    setDirty: async () => ({}), readRecovery: async () => ({ status: 'cancelled' }), writeRecovery: async () => ({ status: 'ok' }),
+  } as unknown as DesktopBridge })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Frame zoom')
+  const frame = node('frame', 430, 190, 340, 240)
+  const nested = node('frame', 15, 30, 170, 120)
+  const child = node('rectangle', 8, 19, 25, 30)
+  const outside = node('rectangle', 45, 60, 60, 40)
+  frame.children = [nested.id]; nested.children = [child.id]
+  for (const n of [frame, nested, child, outside]) doc.nodes[n.id] = n
+  doc.pages[0].children = [frame.id, outside.id]
+  await act(async () => { editor!.load(doc) })
+  const view = { x: -38, y: 72, zoom: 1.25 }
+  await act(async () => { editor!.select([frame.id]); canvas().focus() })
+  await key('2', { code: 'Digit2', shiftKey: true })
+  const fitted = editor!.state.view
+  expect(fitted).not.toEqual(view)
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  await act(async () => { editor!.select([child.id]); editor!.set({ view }) })
+  const cmd4 = async () => {
+    const event = new KeyboardEvent('keydown', { key: '4', code: 'Digit4', metaKey: true, bubbles: true, cancelable: true })
+    await act(async () => canvas().dispatchEvent(event))
+    return event.defaultPrevented
+  }
+  expect(await cmd4()).toBe(desktop)
+  expect(editor!.state.view).toEqual(desktop ? fitted : view)
+  if (!desktop) {
+    const zoom = document.querySelector<HTMLDetailsElement>('.view-menu')!
+    await act(async () => { zoom.open = true; button('缩放到顶层画框').click() })
+    expect(editor!.state.view).toEqual(fitted)
+  }
+  expect(editor!.state.selection).toEqual([child.id])
+
+  await act(async () => { editor!.select([outside.id]); editor!.set({ view }); canvas().focus() })
+  if (desktop) await cmd4()
+  else await act(async () => button('缩放到顶层画框').click())
+  expect(editor!.state.view).toEqual(view)
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch held zoom uses the pointer or center and restores each page’s original camera', async () => {
   applyInterfaceLayout('sketch')
   await render()
