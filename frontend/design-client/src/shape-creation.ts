@@ -11,6 +11,7 @@ export type ShapeCreationOptions = {
   shift?: boolean
   alt?: boolean
   snap?: boolean
+  clickSize?: Readonly<{ width: number; height: number }>
 }
 export type ShapeCreationResult = {
   node: ShapeCreationSeed
@@ -76,8 +77,8 @@ export function resolveShapeCreation(seed: ShapeCreationSeed, options: ShapeCrea
   const a = snap ? kernelSnapPoint(anchor) : { ...anchor }
   let delta: Point
   if (click) {
-    const width = CLICK_DEFAULT_SIZE
-    const height = seed.kind === 'line' ? 0 : CLICK_DEFAULT_SIZE
+    const width = options.clickSize?.width ?? CLICK_DEFAULT_SIZE
+    const height = seed.kind === 'line' ? 0 : options.clickSize?.height ?? CLICK_DEFAULT_SIZE
     delta = { x: width / (alt ? 2 : 1), y: height / (alt ? 2 : 1) }
   } else {
     const b = snap ? kernelSnapPoint(pointer) : pointer

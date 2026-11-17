@@ -524,3 +524,41 @@ test('holding Alt shows the duplicate cursor without changing the document', asy
   expect(host().className).toContain('canvas-alt-duplicate')
   expect(editor.state.doc).toBe(before)
 })
+
+test('Figma frame clicks remember top-level creation size for the file session, including after changing pages', async () => {
+  applyInterfaceLayout('figma')
+  const existing = node('frame', 510, 80, 125, 100), onOtherPage = node('rectangle', 600, 600, 20, 20)
+  const doc = await render([existing, onOtherPage], [existing.id], [onOtherPage.id])
+  const click = async (x: number, y: number) => {
+    await act(async () => pointer('pointerdown', x, y))
+    await act(async () => pointer('pointerup', x, y))
+    return editor.authoredDocument.nodes[editor.state.selection[0]]
+  }
+  const size = (layer: DesignNode) => [layer.width, layer.height]
+  await act(async () => editor.set({ tool: 'frame' }))
+  expect(size(await click(20, 20))).toEqual([100, 100])
+  await act(async () => pointer('pointerdown', 180, 290))
+  await act(async () => pointer('pointermove', 365, 416))
+  await act(async () => pointer('pointerup', 365, 416))
+  expect(size(editor.authoredDocument.nodes[editor.state.selection[0]])).toEqual([185, 126])
+
+  const nested = await click(630, 175)
+  expect(size(nested)).toEqual([100, 100])
+  expect(editor.authoredDocument.nodes[existing.id].children).toContain(nested.id)
+  const previous = editor.authoredDocument
+  const remembered = await click(400, 220)
+  expect(size(remembered)).toEqual([185, 126])
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(previous)
+
+  await act(async () => {
+    editor.switchPage(doc.pages[1].id)
+    editor.set({ view: { x: 0, y: 0, zoom: 1 }, tool: 'frame' })
+  })
+  expect(size(await click(40, 40))).toEqual([185, 126])
+  await act(async () => editor.set({ tool: 'rectangle' }))
+  expect(size(await click(280, 250))).toEqual([100, 100])
+
+  await act(async () => { editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, tool: 'frame' }) })
+  expect(size(await click(60, 40))).toEqual([100, 100])
+})

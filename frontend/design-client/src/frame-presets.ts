@@ -1,3 +1,4 @@
+import { rememberFigmaFrameSize } from './figma-frame-size'
 import type { Editor } from './engine'
 import { defaultSizing, node, type DesignDocument, type DesignNode, type Matrix } from './model'
 import { apply, bounds, boxPoints, multiply } from './geometry'
@@ -88,6 +89,7 @@ export function createPresetFrame(editor: Editor, size: { name: string; width: n
       draft.pages.find(p => p.id === page)!.children.push(frame.id)
     },[frame.id])
     if (result.status !== 'committed') return { ok:false,error:'画板未创建，请结束当前编辑后重试' }
+    rememberFigmaFrameSize(editor, frame.id)
     const actual = editor.state.doc.nodes[frame.id]
     widthComparison = actual.width === size.width ? 1 : 2; heightComparison = actual.height === size.height ? 1 : 2
     outcome = ActionOutcome.committed; reason = ActionReason.none
