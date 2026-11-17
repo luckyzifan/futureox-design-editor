@@ -16,6 +16,7 @@ import { interfacePreference } from './interface-preference'
 import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
 import { blank, defaultTextStyle, node, paint, stroke } from './model'
 import { nudgePreference } from './nudge-preference'
+import * as persistence from './persistence'
 import { shortcutPreference } from './shortcut-preference'
 import * as localStore from './local-store'
 import * as startupPreview from './startup-preview'
@@ -253,9 +254,14 @@ test('mounted App capture preserves held-key one-undo and both toolbar/Inspector
   await act(async () => editor!.undo()); expect(editor!.state.doc).toEqual(before)
 })
 
-test.each([false, true])('mounted file menu gates native Sketch with desktop=%s and uses Windows shortcut labels', async desktop => {
+test.each([
+  { desktop: false, layout: 'figma' }, { desktop: true, layout: 'figma' },
+  { desktop: false, layout: 'sketch' }, { desktop: true, layout: 'sketch' },
+] as const)('mounted $layout menu gates native Sketch with desktop=$desktop and uses Windows shortcuts', async ({ desktop, layout }) => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })
+  applyInterfaceLayout(layout)
   const inspectSketch = vi.fn(async () => ({ status: 'cancelled' as const })), save = vi.fn(async () => ({ status: 'cancelled' as const }))
+  const exportFd = vi.spyOn(persistence, 'exportDocument').mockImplementation(() => {})
   let nativeCommand: ((name: any) => void) | undefined
   if (desktop) Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
     version: 1, renderPolicy: { cpuOnly: true }, inspectSketch, saveDocument: save,
@@ -263,11 +269,20 @@ test.each([false, true])('mounted file menu gates native Sketch with desktop=%s 
     readRecovery: async () => ({ status: 'cancelled' }), writeRecovery: async () => ({ status: 'ok' }),
   } as unknown as DesktopBridge })
   await render()
+  await act(async () => canvas().focus())
+  await key('s', { code: 'KeyS', ctrlKey: true })
+  if (desktop) {
+    expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ saveAs: false }))
+    expect(exportFd).not.toHaveBeenCalled()
+    save.mockClear()
+  } else {
+    expect(exportFd).toHaveBeenCalledExactlyOnceWith(editor!.authoredDocument)
+    expect(save).not.toHaveBeenCalled()
+  }
   const menu = document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!
   await act(async () => menu.click())
   const inspect = button('预览原生 Sketch（只读）'), edit = button('编辑原生 Sketch（有限支持）')
   expect(inspect.disabled).toBe(!desktop); expect(edit.disabled).toBe(true)
-  expect(button('保存设计文件').textContent).toContain('Ctrl+S')
   if (!desktop) { expect(inspect.title).toContain('当前宿主未提供'); return }
   expect(button('打开本机设计文件').textContent).toContain('Ctrl+O')
   await act(async () => inspect.click()); expect(document.querySelector('[role="dialog"]')).not.toBeNull()
@@ -397,8 +412,7 @@ test('source workset uses normal App panels and never enters FD recovery or brow
  await act(async()=>new Promise(resolve=>setTimeout(resolve,450)))
  expect(start).not.toHaveBeenCalled();expect(localStore.localOpen).not.toHaveBeenCalled()
  expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled();expect(startupPreview.readStartupPreview).not.toHaveBeenCalled()
- const saveButton=[...document.querySelectorAll<HTMLButtonElement>('.header-right>button')].find(b=>b.textContent==='保存')!
- await act(async()=>saveButton.click());expect(save).toHaveBeenCalledOnce()
+ expect(document.querySelector('.header-right .save-status')).not.toBeNull()
  await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!.click())
  await act(async()=>button('导出完整文件…').click());expect(exportFile).toHaveBeenCalledOnce()
  expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled()

@@ -1093,17 +1093,23 @@ test('native commands after last-window close wait for the new renderer handshak
   } finally { await state.dispose() }
 })
 
-test('native Open while no window uses its own file dialog and the same acceptance queue', async () => {
+test('native Open with no window waits for the new renderer before opening the picked file', async () => {
   const state = await host()
   try {
       assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
     state.window.close()
     await state.invoke('close-response', { requestId: state.sent.at(-1)[1].requestId, allow: true })
     state.finishClose()
-    state.open.push({ canceled: false, filePaths: ['/tmp/menu-reopen.fd'] })
+    state.sent.length = 0
     state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Open…').click()
     await state.waitFor(() => state.windows.length === 2)
-    assert.equal((await state.invoke('open-pending')).displayName, 'menu-reopen.fd')
+    assert.deepEqual(state.sent, [])
+    assert.equal((await state.invoke('renderer-ready')).status, 'ok')
+    assert.deepEqual(state.sent, [['design-desktop:command', 'open']])
+    const opened = await state.invoke('open-picked-fd', { path: '/tmp/menu-reopen.fd' })
+    assert.equal(opened.status, 'ok')
+    assert.equal(opened.displayName, 'menu-reopen.fd')
+    assert.equal((await state.invoke('document-accept', { handle: opened.handle })).status, 'ok')
   } finally { await state.dispose() }
 })
 
