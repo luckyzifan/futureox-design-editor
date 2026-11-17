@@ -628,7 +628,11 @@ mod wasm {
         serde_json::to_string(&projections).map_err(|e| JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
-    pub fn spatial_export_document_json(json: &str, selection_json: &str) -> Result<String, JsValue> {
+    pub fn spatial_export_document_json(
+        json: &str,
+        selection_json: &str,
+        refine_inset_stroke: Option<bool>,
+    ) -> Result<String, JsValue> {
         capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
         let mut doc: scene::Document = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let selection: Vec<String> = serde_json::from_str(selection_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -636,7 +640,7 @@ mod wasm {
             return Err(JsValue::from_str("Invalid spatial export roots"));
         }
         doc.validate().map_err(|e| JsValue::from_str(&e))?;
-        let outlines=crate::spatial::export_view(&mut doc,&selection).map_err(|e| JsValue::from_str(&e))?;
+        let outlines=crate::spatial::export_view(&mut doc, &selection, refine_inset_stroke.unwrap_or(false)).map_err(|e| JsValue::from_str(&e))?;
         #[derive(serde::Serialize)]
         struct ExportView<'a> { document: &'a scene::Document, outlines: serde_json::Value }
         let output=serde_json::to_string(&ExportView { document:&doc,outlines }).map_err(|e| JsValue::from_str(&e.to_string()))?;

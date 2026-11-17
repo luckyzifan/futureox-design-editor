@@ -308,6 +308,22 @@ test.each([
   }
   const menu = document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!
   await act(async () => menu.click())
+  const manualSave = button('保存设计文件')
+  if (layout === 'sketch') {
+    expect(manualSave.textContent).toContain('Ctrl+S')
+    exportFd.mockClear()
+    await act(async () => manualSave.click())
+    if (desktop) {
+      expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ saveAs: false }))
+      save.mockClear()
+    } else {
+      expect(exportFd).toHaveBeenCalledExactlyOnceWith(editor!.authoredDocument)
+    }
+    await act(async () => menu.click())
+  } else {
+    expect(manualSave).toBeUndefined()
+    expect(button('导出副本…')).toBeDefined()
+  }
   const inspect = button('预览原生 Sketch（只读）'), edit = button('编辑原生 Sketch（有限支持）')
   expect(inspect.disabled).toBe(!desktop); expect(edit.disabled).toBe(true)
   if (!desktop) { expect(inspect.title).toContain('当前宿主未提供'); return }
@@ -440,7 +456,10 @@ test('source workset uses normal App panels and never enters FD recovery or brow
  expect(start).not.toHaveBeenCalled();expect(localStore.localOpen).not.toHaveBeenCalled()
  expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled();expect(startupPreview.readStartupPreview).not.toHaveBeenCalled()
  expect(document.querySelector('.header-right .save-status')).not.toBeNull()
- await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!.click())
+ const menu=document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!
+ await act(async()=>menu.click())
+ await act(async()=>button('保存修改').click());expect(save).toHaveBeenCalledOnce()
+ await act(async()=>menu.click())
  await act(async()=>button('导出完整文件…').click());expect(exportFile).toHaveBeenCalledOnce()
  expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled()
 })

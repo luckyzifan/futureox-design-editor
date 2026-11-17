@@ -249,6 +249,9 @@ pub struct Node {
     /// Disposable render-scene selection ownership; never authored or serialized.
     #[serde(skip)]
     pub(crate) repeat_origin: Option<String>,
+    /// Coverage for a resolved 3D fill/stroke boundary, regenerated for rendering.
+    #[serde(skip)]
+    pub(crate) projected_inset_stroke: Option<Box<crate::spatial_material::InsetStroke>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vector_brush: Option<Box<crate::vector_brush::VectorBrush>>,
     #[serde(default, skip_serializing_if = "cold_node_vec_is_empty")]

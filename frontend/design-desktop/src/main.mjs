@@ -247,6 +247,7 @@ app.on('child-process-gone', (_event,details)=>{
 })
 let hostReady = false
 let windowOpening
+let detachedOpenDialog = false
 let sessionConfigured = false
 let windowStateTimer
 let windowStateWrites = Promise.resolve()
@@ -478,6 +479,29 @@ function launchDeclaredPlugin(grant) {
   pendingPluginLaunch = grant
   sendCommand('plugins')
   flushPluginLaunch()
+}
+async function openFromFileMenu() {
+  if (detachedOpenDialog || closePending || quitRequested || shutdownComplete) return
+  if ((window && !window.isDestroyed()) || windowOpening) {
+    sendCommand('open')
+    return
+  }
+  if (!hostReady) return
+  // Without a window there is no renderer user activation for a file input.
+  // Queue the native picker result with Finder items before creating a window.
+  detachedOpenDialog = true
+  try {
+    const selected = await dialog.showOpenDialog({
+      title: desktopText[interfaceLocale].openDesign,
+      properties: ['openFile'],
+      filters: fileFilters(),
+    })
+    if (!selected.canceled && selected.filePaths.length === 1 && !quitRequested && !shutdownComplete) {
+      enqueueNativeFile(selected.filePaths[0])
+    }
+  } finally {
+    detachedOpenDialog = false
+  }
 }
 function sendCommand(command) {
   if (closePending || quitRequested || shutdownComplete) return
@@ -1389,18 +1413,21 @@ async function buildWindow() {
           { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => sendCommand('new') },
           // Profile-specific page chords belong to the renderer, not a global accelerator.
           { label: 'New Page', click: () => sendCommand('new-page') },
-          { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => sendCommand('open') },
+          { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => { void openFromFileMenu().catch(reportWindowError) } },
           { label: 'Open Pending Finder File', click: () => sendCommand('openPending') },
           ...(process.platform === 'darwin' ? [{ role: 'recentDocuments', submenu: [
             { label: 'Clear Recent', role: 'clearRecentDocuments' },
           ] }] : []),
           { type: 'separator' },
           { label: 'Edits are saved automatically', enabled: false },
-          ...(interfaceMode === 'sketch' ? [{
-            label: 'Duplicate document',
-            accelerator: 'CmdOrCtrl+Shift+S',
-            click: () => sendCommand('duplicate-document'),
-          }] : []),
+          ...(interfaceMode === 'sketch' ? [
+            { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendCommand('save') },
+            {
+              label: 'Duplicate document',
+              accelerator: 'CmdOrCtrl+Shift+S',
+              click: () => sendCommand('duplicate-document'),
+            },
+          ] : []),
           {
             label: 'Export copy…',
             accelerator: interfaceMode === 'sketch' ? 'CmdOrCtrl+Alt+Shift+S' : 'CmdOrCtrl+Shift+S',

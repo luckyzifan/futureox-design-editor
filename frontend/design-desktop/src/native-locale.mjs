@@ -1,6 +1,6 @@
 /** Presentation only. Never translate authored names, paths, command IDs or diagnostic codes. */
 const menuLabels = {
-  'Edits are saved automatically': '编辑会自动保存', 'Export copy…': '导出副本…', 'Duplicate document': '复制文档',
+  'Edits are saved automatically': '编辑会自动保存', 'Export copy…': '导出副本…', 'Save': '保存', 'Duplicate document': '复制文档',
   'File': '文件', 'New': '新建', 'New Page': '新建页面', 'Open…': '打开…', 'Open Pending Finder File': '打开等待中的 Finder 文件',
   'Clear Recent': '清除最近记录', 'Save': '保存', 'Save As…': '另存为…', 'Recover unsaved design…': '恢复未保存的设计…',
   'Edit': '编辑', 'Settings… / 设置': '设置…', 'Undo': '撤销', 'Redo': '重做', 'Cut': '剪切', 'Copy': '复制',

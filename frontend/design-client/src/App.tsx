@@ -923,6 +923,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     window.addEventListener('keydown', shortcut, true)
     return () => window.removeEventListener('keydown', shortcut, true)
   }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, editor])
+  const saveCurrentDesign = useCallback(() => {
+    if (source) {
+      if (source.ready && !source.busy && !source.locked) void source.save()
+    } else if (desktopSession) {
+      void desktopSession.save()
+    } else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) {
+      exportDocument(editor.authoredDocument)
+    }
+  }, [source, desktopSession, editor])
   useEffect(() => {
     const command = (name: DesktopCommand) => {
       if (largeDocument || source) return
@@ -951,7 +960,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       setMenu(false)
       if (name === 'open') void openLocalDesign().catch(error => editor.notify(String(error)))
       else if (name === 'openPending') void desktopSession.openPending()
-      else if (name === 'save') void desktopSession.save()
+      else if (name === 'save') saveCurrentDesign()
       else if (name === 'saveAs') void desktopSession.save(true)
       else if (name === 'duplicate-document' && uiMode === 'sketch') void desktopSession.duplicateDocument()
       else if (name === 'new') void desktopSession.replace(blank())
@@ -978,7 +987,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (key === 's') {
         e.preventDefault()
         if (desktopSession) command(!e.shiftKey ? 'save' : sketchWorkspace && !e.altKey ? 'duplicate-document' : 'saveAs')
-        else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) exportDocument(editor.authoredDocument)
+        else saveCurrentDesign()
       } else if (desktopSession && key === 'o' && !e.shiftKey) {
         e.preventDefault(); command('open')
       } else if (desktopSession && key === 'n' && !e.shiftKey) {
@@ -1024,7 +1033,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         })
     })
     return () => { window.removeEventListener('keydown', allAssetsShortcut, true); window.removeEventListener('keydown', layout); window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source, uiMode])
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source, uiMode, saveCurrentDesign])
   function resumeEditor() {
     if (!ready) return
     setShowHome(false)
@@ -1534,6 +1543,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 {menuText.figmaExportQuality}
               </button>
             </div>
+            {(source || uiMode === 'sketch') && <button type="button"
+              disabled={!ready || switching || desktopStatus.busy || !!source?.busy || !!source?.locked}
+              onClick={() => { setMenu(false); saveCurrentDesign() }}>
+              {source ? menuText.saveChanges : menuText.saveDesign} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
+            </button>}
             {uiMode === 'sketch' && desktopSession?.supportsWorkspace && !source && <button type="button"
               disabled={!ready || switching || desktopStatus.busy} onClick={() => { setMenu(false); void desktopSession.duplicateDocument() }}>
               {menuText.duplicateDocument} <kbd>{formatShortcutCombo('Mod+Shift+S', shortcutContext.platform)}</kbd>

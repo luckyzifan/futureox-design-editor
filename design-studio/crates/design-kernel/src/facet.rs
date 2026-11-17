@@ -585,6 +585,7 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         spatial: None,
         repeat: None,
         repeat_origin: None,
+        projected_inset_stroke: None,
         guides: Default::default(),
         board: None,
         layout_grid: None,

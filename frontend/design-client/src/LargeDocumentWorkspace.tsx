@@ -564,17 +564,18 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     return()=>{buffer.cancel();off();offActivity();offDrafts()}
   },[editor,bridge,active,busy,error])
   useEffect(()=>{const release=registerPendingEdit(parentEditor,{dirty:()=>true,commit:()=>false});pendingEditsChanged(parentEditor);return release},[parentEditor])
+  const saveSource = () => afterAutosave(save, true)
   const leave=()=>afterAutosave(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));onExit()},true)
   const exportFile=()=>afterAutosave(async()=>{await save();const result=await bridge.export(request());if(result.status==='cancelled')return;const next=admitted(result);updateStatus(next);setNotice(`完整文件已导出：${next.displayName}`)})
   useEffect(()=>{
     const desktop=desktopBridge()
     const off=desktop?.onCommand(command=>{
       if(busyRef.current)return
-      if(command==='save')void run(save)
+      if(command==='save')void saveSource()
       else if(command==='saveAs')void exportFile()
       else{const action=resolveDesktopEditorCommand(command);if(action)void dispatchEditorCommand(editor,action)}
     })
-    const key=(event:KeyboardEvent)=>{if(event.defaultPrevented||event.isComposing||event.repeat||!(event.metaKey||event.ctrlKey)||event.key.toLowerCase()!=='s')return;event.preventDefault();if(event.shiftKey)void exportFile();else void run(save)}
+    const key=(event:KeyboardEvent)=>{if(event.defaultPrevented||event.isComposing||event.repeat||!(event.metaKey||event.ctrlKey)||event.key.toLowerCase()!=='s')return;event.preventDefault();if(event.shiftKey)void exportFile();else void saveSource()}
     window.addEventListener('keydown',key)
     const close=desktop?.onCloseRequested(({requestId})=>{void afterAutosave(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));flushSync(onExit);await onWindowClose(requestId)},true).then(()=>{if(alive.current)void desktop.respondToClose({requestId,allow:false})})})
     return()=>{off?.();close?.();window.removeEventListener('keydown',key)}
@@ -813,5 +814,5 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       openPoint:openPreviewPoint,
     }:undefined,
     dismissWarnings:()=>setWarnings([]),dismissError:()=>setError(''),cancel:()=>{abort.current?.abort();void bridge.cancel().catch(error=>setError(String(error)))},
-    save:()=>run(save),exportFile,leave,openFile})
+    save:saveSource,exportFile,leave,openFile})
 }

@@ -1093,23 +1093,33 @@ test('native commands after last-window close wait for the new renderer handshak
   } finally { await state.dispose() }
 })
 
-test('native Open with no window waits for the new renderer before opening the picked file', async () => {
+test('native Open with no window asks first, then opens the FD through the Finder acceptance queue', async () => {
   const state = await host()
   try {
-      assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
+    assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
     state.window.close()
     await state.invoke('close-response', { requestId: state.sent.at(-1)[1].requestId, allow: true })
     state.finishClose()
     state.sent.length = 0
-    state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Open…').click()
+    const open = state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Open…')
+    state.open.push({ canceled: true, filePaths: [] })
+    open.click()
+    await state.waitFor(() => state.open.length === 0)
+    assert.equal(state.windows.length, 1, 'Cancelling did not create an editor window')
+    state.open.push({ canceled: false, filePaths: ['/tmp/menu-reopen.fd'] })
+    open.click()
     await state.waitFor(() => state.windows.length === 2)
     assert.deepEqual(state.sent, [])
     assert.equal((await state.invoke('renderer-ready')).status, 'ok')
-    assert.deepEqual(state.sent, [['design-desktop:command', 'open']])
-    const opened = await state.invoke('open-picked-fd', { path: '/tmp/menu-reopen.fd' })
+    assert.deepEqual(state.sent, [['design-desktop:command', 'openPending']])
+    const opened = await state.invoke('open-pending')
     assert.equal(opened.status, 'ok')
     assert.equal(opened.displayName, 'menu-reopen.fd')
     assert.equal((await state.invoke('document-accept', { handle: opened.handle })).status, 'ok')
+    assert.equal((await state.invoke('open-pending')).status, 'cancelled')
+    state.sent.length = 0
+    open.click()
+    assert.deepEqual(state.sent, [['design-desktop:command', 'open']])
   } finally { await state.dispose() }
 })
 
@@ -1481,18 +1491,20 @@ for (const platform of ['darwin', 'win32', 'linux']) {
       }
       assert.deepEqual(await state.invoke('set-interface-mode', 'sketch'), { status: 'ok' })
       const sketchFile = state.menu.find(item => item.label === 'File').submenu
+      const manualSave = sketchFile.find(item => item.label === 'Save')
+      assert.equal(manualSave.accelerator, 'CmdOrCtrl+S')
       const duplicateDocument = sketchFile.find(item => item.label === 'Duplicate document')
       const exportCopy = sketchFile.find(item => item.label === 'Export copy…')
       assert.equal(duplicateDocument.accelerator, 'CmdOrCtrl+Shift+S')
       assert.equal(exportCopy.accelerator, 'CmdOrCtrl+Alt+Shift+S')
-      state.sent = []; duplicateDocument.click(); exportCopy.click()
-      assert.deepEqual(state.sent, [['design-desktop:command', 'duplicate-document'], ['design-desktop:command', 'saveAs']])
+      state.sent = []; manualSave.click(); duplicateDocument.click(); exportCopy.click()
+      assert.deepEqual(state.sent, ['save', 'duplicate-document', 'saveAs'].map(command => ['design-desktop:command', command]))
       const sketchMenu = state.menu
       assert.equal((await state.invoke('set-interface-mode', 'other')).status, 'error')
       assert.equal(state.menu, sketchMenu)
       assert.deepEqual(await state.invoke('set-interface-mode', 'figma'), { status: 'ok' })
       const figmaFile = state.menu.find(item => item.label === 'File').submenu
-      assert.equal(figmaFile.some(item => item.label === 'Duplicate document'), false)
+      assert.equal(figmaFile.some(item => item.label === 'Save' || item.label === 'Duplicate document'), false)
       assert.equal(figmaFile.find(item => item.label === 'Export copy…').accelerator, 'CmdOrCtrl+Shift+S')
       assert.equal(state.requests.length, beforeRequests, 'Locale and menu dispatch do not create sidecar document mutations')
       assert.equal(state.prompts.length, beforePrompts)

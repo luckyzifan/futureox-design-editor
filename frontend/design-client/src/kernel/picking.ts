@@ -61,8 +61,8 @@ export function requiresSpatialRaster(doc: DesignDocument, selected: readonly st
   }
   return meets(selected, roots) || meets(roots, new Set(selected))
 }
-export function kernelSpatialRasterDocument(doc: DesignDocument, selected: readonly string[]) {
-  const result = JSON.parse(spatial_export_document_json(JSON.stringify(doc), JSON.stringify(selected))) as
+export function kernelSpatialRasterDocument(doc: DesignDocument, selected: readonly string[], refineInsetStroke: boolean) {
+  const result = JSON.parse(spatial_export_document_json(JSON.stringify(doc), JSON.stringify(selected), refineInsetStroke)) as
     { document: DesignDocument; outlines: Record<string, SpatialPatch> }
   return { document: result.document, geometry: applySpatialPatches(doc, result.outlines) }
 }
