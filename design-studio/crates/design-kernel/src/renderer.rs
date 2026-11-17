@@ -565,6 +565,7 @@ pub struct Engine {
     pub(crate) doc: Option<SharedDocument>,
     pub fonts: Fonts,
     images: Images,
+    rendering_png_region: bool,
     pub(crate) paths: HashMap<String, crate::path::SharedPaths>,
     pub(crate) local_strokes: crate::resident_strokes::ResidentStrokes,
     pub(crate) stats: Stats,
@@ -644,6 +645,7 @@ impl Engine {
             doc: None,
             fonts,
             images: Images::default(),
+            rendering_png_region: false,
             paths: HashMap::new(),
             local_strokes: Default::default(),
             stats: Stats::default(),
@@ -723,10 +725,12 @@ impl Engine {
     pub(crate) fn image_at_selected_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
         self.images.image_at_selected_level(uri, level)
     }
-    pub(crate) fn with_sketch_png_footprint<T>(&mut self, enabled: bool, render: impl FnOnce(&mut Self) -> T) -> T {
-        let previous = std::mem::replace(&mut self.images.sketch_png_footprint, enabled);
+    pub(crate) fn with_png_region<T>(&mut self, sketch_footprint: bool, render: impl FnOnce(&mut Self) -> T) -> T {
+        let region = std::mem::replace(&mut self.rendering_png_region, true);
+        let footprint = std::mem::replace(&mut self.images.sketch_png_footprint, sketch_footprint);
         let result = render(self);
-        self.images.sketch_png_footprint = previous;
+        self.images.sketch_png_footprint = footprint;
+        self.rendering_png_region = region;
         result
     }
 
@@ -2329,6 +2333,13 @@ impl Engine {
             interactive_effects: options.interactive_effects,
             display_degrade: self.display_degrade,
             clipped_export_target: clipped_export_target.is_some(),
+            flush_backdrop_frame: (self.rendering_png_region && options.raster_profile.is_export() && compatible)
+                .then(|| match page.children.as_slice() {
+                    [id] => doc.nodes.get(id).filter(|n| n.kind == "frame" && !n.clip && !n.mask
+                        && n.visible && n.opacity == 1. && n.blend == "normal"
+                        && prepared.get(id).is_some_and(|p| p.matrix.0[1] == 0. && p.matrix.0[2] == 0.)),
+                    _ => None,
+                }).flatten(),
             compact_export_groups: required.is_some(),
             sample: None,
             raster_workspace: RasterWorkspace::default(),
@@ -3059,6 +3070,7 @@ impl Engine {
             doc: self.doc.clone(),
             fonts: self.fonts.clone(),
             images: self.images.clone(),
+            rendering_png_region: self.rendering_png_region,
             paths: self.paths.clone(),
             local_strokes: self.local_strokes.clone(),
             stats: Stats::default(),
@@ -3250,6 +3262,7 @@ struct Painter<'a> {
     interactive_effects: bool,
     display_degrade: bool,
     clipped_export_target: bool,
+    flush_backdrop_frame: Option<&'a Node>,
     compact_export_groups: bool,
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
@@ -3734,7 +3747,24 @@ impl Painter<'_> {
                     } else if cropped && !self.compatible {
                         effects::linear_tent_blur(&background, radius, true)?
                     } else if cropped {
-                        effects::portable_tent_blur_edge(&background, radius, true)?
+                        let guard = self.flush_backdrop_frame.filter(|frame| {
+                            n.kind == "vector" && n.transform == Transform::default()
+                                && n.width == frame.width && n.height == frame.height
+                                && frame.render_children().iter().any(|child| child == id)
+                                && self.prepared[&frame.id].fill_bounds.is_some_and(|b| {
+                                    let right = origin.x + f64::from(capture.w);
+                                    (b.x + b.width - right).abs() <= 1e-8
+                                        && (right.round() - right).abs() <= 1e-8
+                                })
+                        }).map(|_| {
+                            self.resolve_backdrop(
+                                Rect::new(0, 0, 1, capture.h),
+                                Point::new(origin.x + f64::from(capture.w) - 0.5, origin.y),
+                                clean_backdrop.unwrap_or(targets), None,
+                            )
+                        }).transpose()?;
+                        effects::portable_tent_blur_with_right_sample(&background, radius, true,
+                            guard.as_ref().map(|g| g.pixels.as_slice()))?
                     } else {
                         self.blur_filter(radius).apply(&background)?
                     };

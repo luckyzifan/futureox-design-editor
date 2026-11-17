@@ -225,7 +225,7 @@ impl Engine {
                     let reduced = request.scale < 1.
                         && options.raster_profile == RasterProfile::Analytic
                         && space == crate::color::ColorSpace::Srgb;
-                    self.with_sketch_png_footprint(reduced, |engine| {
+                    self.with_png_region(reduced, |engine| {
                         render_tiles(engine, &options, tile_width, rows, coherent, space)
                     })
                 }
@@ -1227,6 +1227,50 @@ fn write_export_tile(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn figma_flush_vector_blur_preserves_partial_backing_at_a_png_edge() {
+        let doc = json!({
+            "schemaVersion":19,"id":"d","name":"Flush backdrop",
+            "pages":[{"id":"p","name":"Page","children":["frame"],"background":"#ffffff"}],
+            "nodes":{
+                "frame":{"id":"frame","kind":"frame","width":64,"height":48,"children":["stripe","lens"],
+                    "fills":[{"kind":"solid","color":"#242424"}]},
+                "stripe":{"id":"stripe","kind":"rectangle","width":12,"height":48,"transform":[1,0,0,1,24,0],
+                    "fills":[{"kind":"solid","color":"#dddddd"}]},
+                "lens":{"id":"lens","kind":"vector","width":64,"height":48,
+                    "vectorGeometry":{"fillRule":"nonzero","fill":[{"move":[0,8]},
+                        {"cubic":[0,3,3,0,8,0]},{"line":[56,0]},{"cubic":[61,0,64,3,64,8]},
+                        {"line":[64,40]},{"cubic":[64,45,61,48,56,48]},{"line":[8,48]},
+                        {"cubic":[3,48,0,45,0,40]},"close"]},
+                    "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+                    "effects":[{"kind":"background-blur","radius":4,"color":"#000000"}]}
+            }
+        });
+        for radius in [4, 12] {
+            let mut doc = doc.clone();
+            doc["nodes"]["lens"]["effects"][0]["radius"] = json!(radius);
+            let mut engine = Engine::new();
+            engine.load_document(&doc.to_string()).unwrap();
+            let export = |engine: &mut Engine, x, width| {
+                let data = engine.render_region_png(&RegionRequest {
+                    page_id: "p".into(), scale: 1., node_ids: None, color_output: None,
+                    bounds: ExportBounds { x, y: 0., width, height: 48. },
+                    raster_profile: Some(RasterProfile::Figma),
+                }).unwrap();
+                image::load_from_memory(&data).unwrap().into_rgba8()
+            };
+            let frame = export(&mut engine, 0., 64.);
+            assert_eq!(frame.get_pixel(32, 24)[3], 255);
+            assert!(frame.get_pixel(63, 24)[3] < 253);
+            let crop = export(&mut engine, 48., 16.);
+            assert_eq!(crop, image::imageops::crop_imm(&frame, 48, 0, 16, 48).to_image());
+            // A wider frame supplies opaque backing past the vector's capture edge.
+            doc["nodes"]["frame"]["width"] = json!(72);
+            engine.load_document(&doc.to_string()).unwrap();
+            assert_eq!(export(&mut engine, 0., 64.).get_pixel(63, 24)[3], 255);
+        }
+    }
 
     #[test]
     fn rotated_sketch_backdrop_clamps_capture_and_replaces_revealed_alpha() {

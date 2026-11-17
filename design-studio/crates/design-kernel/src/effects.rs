@@ -256,7 +256,7 @@ pub fn tent_blur_edge(
     radius: f64,
     clamp_edges: bool,
 ) -> Result<Surface, String> {
-    tent_blur_impl(surface.try_clone()?, radius, clamp_edges, false, false)
+    tent_blur_impl(surface.try_clone()?, radius, clamp_edges, false, false, None)
 }
 pub const TENT_WEIGHT_SCALE: u32 = 1 << 24;
 /// Symmetric Q24 coefficients with exact unit mass. The same bytes are uploaded
@@ -279,6 +279,17 @@ pub fn portable_tent_blur_edge(
     radius: f64,
     clamp_edges: bool,
 ) -> Result<Surface, String> {
+    portable_tent_blur_with_right_sample(surface, radius, clamp_edges, None)
+}
+
+/// The first tap across a flush frame edge may sample backing coverage.
+/// Taps farther away retain the usual cropped-capture extension.
+pub(crate) fn portable_tent_blur_with_right_sample(
+    surface: &Surface,
+    radius: f64,
+    clamp_edges: bool,
+    right_sample: Option<&[Pixel]>,
+) -> Result<Surface, String> {
     let radius = f64::from(radius as f32);
     tent_blur_impl(
         surface.try_clone()?,
@@ -286,6 +297,7 @@ pub fn portable_tent_blur_edge(
         clamp_edges,
         radius > 0. && radius <= 512. && radius.fract() != 0.,
         false,
+        right_sample,
     )
 }
 pub fn linear_tent_blur(
@@ -308,6 +320,7 @@ fn tent_blur_impl(
     clamp_edges: bool,
     portable: bool,
     linear: bool,
+    right_sample: Option<&[Pixel]>,
 ) -> Result<Surface, String> {
     if radius <= 0. {
         return Ok(current);
@@ -389,6 +402,11 @@ fn tent_blur_impl(
                     current.at(rect.x + line, rect.y + at)
                 };
             }
+            let byte = |p: Pixel| {
+                if integer || portable {
+                    Pixel(p.0.map(|v| (v * 255.).round_ties_even()))
+                } else { p }
+            };
             let sample = |at: i32| {
                 let at = if clamp_edges {
                     at.clamp(0, len - 1)
@@ -400,12 +418,9 @@ fn tent_blur_impl(
                 } else {
                     line_pixels[at as usize]
                 };
-                if integer || portable {
-                    Pixel(p.0.map(|v| (v * 255.).round_ties_even()))
-                } else {
-                    p
-                }
+                byte(p)
             };
+            let guard = if horizontal { right_sample.and_then(|row| row.get(line as usize)).copied().map(byte) } else { None };
             for at in 0..len {
                 let value = sample(at);
                 let i = at as usize;
@@ -453,6 +468,18 @@ fn tent_blur_impl(
                         *v += (f64::from(a.0[c]) + f64::from(b.0[c])) * weight;
                     }
                 }
+                if let Some(guard) = guard && len - at <= reach {
+                    let offset = len - at;
+                    let weight = if integer {
+                        if offset == reach { 1. } else { 6. * (radius - f64::from(offset)) }
+                    } else {
+                        tent_weight(radius, offset as u32)
+                    };
+                    let border = sample(len);
+                    for (c, value) in value.iter_mut().enumerate() {
+                        *value += (f64::from(guard.0[c]) - f64::from(border.0[c])) * weight;
+                    }
+                }
                 let index = if horizontal {
                     line as usize * rect.w as usize + at as usize
                 } else {
@@ -489,6 +516,9 @@ fn tent_blur_impl(
                             sides += f64::from((at + reach + 1 - len).max(0))
                                 * f64::from(sample(len - 1).0[c]);
                         }
+                        if let Some(guard) = guard && len - at <= reach {
+                            sides += f64::from((guard.0[c] - sample(len).0[c]).max(0.));
+                        }
                         distance <= center_error * center + side_error * sides + arithmetic_error
                     });
                 if let Some(weights) = kernel.as_ref().filter(|_| uncertain) {
@@ -496,7 +526,8 @@ fn tent_blur_impl(
                     let mut exact = center.map(|v| v as u32 * weights[0]);
                     for (offset, weight) in weights.iter().enumerate().skip(1) {
                         let a = sample(at - offset as i32).0;
-                        let b = sample(at + offset as i32).0;
+                        let right = at + offset as i32;
+                        let b = if right == len { guard.unwrap_or_else(|| sample(right)) } else { sample(right) }.0;
                         for c in 0..4 {
                             exact[c] += (a[c] as u32 + b[c] as u32) * weight;
                         }
@@ -1417,9 +1448,10 @@ fn blur_shadow_alpha(alpha: Surface, filter: BlurFilter) -> Result<Surface, Stri
                 false,
                 radius > 0. && radius <= 512. && radius.fract() != 0.,
                 false,
+                None,
             )
         }
-        BlurFilter::IntegratedTent(radius) => tent_blur_impl(alpha, radius, false, false, false),
+        BlurFilter::IntegratedTent(radius) => tent_blur_impl(alpha, radius, false, false, false, None),
         BlurFilter::LinearTent(radius) => linear_tent_blur_owned(alpha, radius, false),
     }
 }
