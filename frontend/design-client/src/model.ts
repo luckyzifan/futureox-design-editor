@@ -464,6 +464,7 @@ export type TextRun = {
   textCase?: 'original' | 'upper' | 'lower'
   color?: string
   underline?: boolean
+  italic?: boolean
   strikethrough?: boolean
   link?: string
   start: number
@@ -513,7 +514,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27
   id: string
   name: string
   pages: Page[]
@@ -842,7 +843,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1047,6 +1048,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
           run.start < end ||
           (run.paragraph !== undefined && !validTextParagraph(run.paragraph)) ||
           run.start >= run.end ||
+          (run.italic !== undefined && (typeof run.italic !== 'boolean' || (run.italic && d.schemaVersion < 27))) ||
           (run.fontSize !== undefined && !finite(run.fontSize, 1, 4096)) ||
           (run.weight !== undefined && !finite(run.weight, 1, 1000)) ||
           (run.letterSpacing !== undefined && !finite(run.letterSpacing, -1000, 1000)) ||

@@ -2422,6 +2422,7 @@ impl<'a> Importer<'a> {
                             end: start + len,
                             color: color.clone(),
                             underline,
+                            italic: false,
                             strikethrough,
                             link: None,
                             font_id: font_name,
@@ -7400,6 +7401,9 @@ fn export_layer_impl(
                     if end <= start {
                         continue;
                     }
+                    if run.italic {
+                        note_lossy(&mut lossy, "synthetic-text-italic");
+                    }
                     if let Some(case) = run.text_case.as_ref()
                         && !matches!(
                             case,
@@ -10353,6 +10357,7 @@ mod tests {
                 end: 8,
                 color: Some("#ff0000".into()),
                 underline: true,
+                italic: false,
                 strikethrough: false,
                 link: None,
                 font_id: Some("Inter-SemiBold".into()),
@@ -10368,6 +10373,7 @@ mod tests {
                 end: 13,
                 color: Some("#00ff00".into()),
                 underline: false,
+                italic: false,
                 strikethrough: true,
                 link: None,
                 font_id: None,

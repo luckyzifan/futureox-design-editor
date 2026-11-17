@@ -95,6 +95,19 @@ fn weight_and_styled_ranges_share_the_outline_and_measurement_pipeline() {
     assert!(measured.path.commands.is_empty());
 }
 #[test]
+fn italic_shears_ink_and_preserves_the_shaped_line() {
+    let f = fonts();
+    let mut n = text("H", 100.);
+    let plain = f.node_layout(&n, Some(100.)).unwrap();
+    n.text_runs = vec![TextRun { start: 0, end: 1, italic: true, ..Default::default() }].into();
+    let italic = f.node_layout(&n, Some(100.)).unwrap();
+    assert_eq!((italic.width, italic.height), (plain.width, plain.height));
+    assert_eq!((italic.glyphs[0].x, italic.glyphs[0].y, italic.glyphs[0].advance),
+        (plain.glyphs[0].x, plain.glyphs[0].y, plain.glyphs[0].advance));
+    assert_ne!(italic.path.svg_data(), plain.path.svg_data());
+}
+
+#[test]
 fn missing_fonts_and_split_grapheme_ranges_are_errors() {
     let f = fonts();
     let mut n = text("e\u{301}", 100.);

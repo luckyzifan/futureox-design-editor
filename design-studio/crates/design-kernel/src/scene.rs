@@ -1367,6 +1367,9 @@ impl Document {
         nodes: impl IntoIterator<Item = (&'a String, &'a Node)>,
     ) -> Result<(), String> {
         for (id, n) in nodes {
+            if self.schema_version < 27 && n.text_runs.iter().any(|run| run.italic) {
+                return Err("Italic text runs require schema 27".into());
+            }
             if self.schema_version < 16
                 && n.boolean_operation
                     .is_some_and(|op| op.compound_rule().is_some())
@@ -1873,7 +1876,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=26).contains(&self.schema_version)
+        if !(1..=27).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

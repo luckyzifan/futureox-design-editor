@@ -3,8 +3,8 @@ import { createInputDiagnostics, InputFamily, InputPhase } from './input-diagnos
 import {apply,matrixString} from './geometry'
 import { propertyUnits } from './property-units'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { DesignDocument, DesignNode, Matrix } from './model'
-import { replaceText, styleTextRange } from './text'
+import type { DesignDocument, DesignNode, Matrix, TextRun } from './model'
+import { replaceText, replaceTextRange, styleTextRange } from './text'
 import { kernelTextLayout } from './kernel/picking'
 import type { Editor } from './engine'
 import { registerPendingEdit, pendingEditsChanged } from './pending-edits'
@@ -13,6 +13,7 @@ import { sourceFonts, storeRemappedSourceFonts, type FontSourceRecord } from './
 import { equalValue } from './document-patch'
 import { interfacePreference } from './interface-preference'
 import { matchesTypefaceShortcut, openTypefaceSelect } from './typeface-shortcut'
+import { shortcutPlatform } from './shortcut-profiles'
 
 export function TextInput({
   node,
@@ -184,6 +185,8 @@ export function CanvasTextEditor({
     latest = useRef(draft)
   const [originalSource] = useState(() => sourceFonts(document, node))
   const editedSource = useRef<FontSourceRecord | undefined>(undefined)
+  const beforeInputRange = useRef<[number, number] | null>(null)
+  const typingStyle = useRef<{ offset: number; patch: Partial<TextRun> } | null>(null)
   const draftChanged = () => latest.current.text !== original.current.text ||
     JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns) ||
     (editedSource.current !== undefined && !equalValue(editedSource.current, originalSource))
@@ -212,10 +215,26 @@ export function CanvasTextEditor({
     input.current?.focus()
     input.current?.setSelectionRange(0, node.text.length)
   }, [node.id])
+  useEffect(() => {
+    const field = input.current
+    if (!field) return
+    const capture = () => { beforeInputRange.current = [field.selectionStart, field.selectionEnd] }
+    field.addEventListener('beforeinput', capture)
+    return () => field.removeEventListener('beforeinput', capture)
+  }, [])
+  const clearMovedTypingStyle = (start: number, end: number) => {
+    const pending = typingStyle.current
+    if (pending && (start !== end || start !== pending.offset)) typingStyle.current = null
+  }
   const sync = () => {
-    if (input.current) setSelection([input.current.selectionStart, input.current.selectionEnd])
+    if (input.current) {
+      const { selectionStart, selectionEnd } = input.current
+      clearMovedTypingStyle(selectionStart, selectionEnd)
+      setSelection([selectionStart, selectionEnd])
+    }
   }
   const select = (a: number, b = a) => {
+    clearMovedTypingStyle(a, b)
     input.current?.focus()
     input.current?.setSelectionRange(Math.min(a, b), Math.max(a, b), a > b ? 'backward' : 'forward')
     setSelection([Math.min(a, b), Math.max(a, b)])
@@ -265,8 +284,28 @@ export function CanvasTextEditor({
   }), [editor, node.id])
   const change = (text: string) => {
     diagnostic.start()
-    const n = structuredClone(latest.current)
-    const fonts = replaceText(n, text, editedSource.current ?? originalSource)
+    let n = structuredClone(latest.current)
+    const pending = typingStyle.current, source = editedSource.current ?? originalSource
+    const [start, end] = beforeInputRange.current ?? selection
+    beforeInputRange.current = null
+    const addedEnd = text.length - (n.text.length - end)
+    const atTypingCaret = pending && start === end && start === pending.offset
+    const isInsertion = atTypingCaret && addedEnd > start &&
+      text.slice(0, start) === n.text.slice(0, start) && text.slice(addedEnd) === n.text.slice(end)
+    let fonts: FontSourceRecord | undefined
+    if (isInsertion) {
+      try {
+        fonts = replaceTextRange(n, start, end, text.slice(start, addedEnd), source)
+        fonts = styleTextRange(n, start, addedEnd, pending.patch, fonts ?? source) ?? fonts
+        if ((n.textRuns?.length ?? 0) > 4096) throw new Error('文字样式区间超过 4096 段')
+        pending.offset = addedEnd
+      } catch {
+        // Browser input can join graphemes across the caret. Keep the actual
+        // input under the existing text edit path when the range is ambiguous.
+        n = structuredClone(latest.current)
+        fonts = replaceText(n, text, source)
+      }
+    } else fonts = replaceText(n, text, source)
     if (fonts) editedSource.current = fonts
     latest.current = n
     setDraft(n)
@@ -274,19 +313,31 @@ export function CanvasTextEditor({
     setError('')
     sync()
   }
-  const style = (patch: Partial<import('./model').TextRun>) => {
+  const style = (patch: Partial<TextRun>, range = selection) => {
     diagnostic.start(); diagnostic.event(InputPhase.start, { fieldFamily: InputFamily.richStyle })
     try {
       const n = structuredClone(latest.current)
-      const fonts = styleTextRange(n, ...selection, patch, editedSource.current ?? originalSource)
+      const fonts = styleTextRange(n, ...range, patch, editedSource.current ?? originalSource)
       if (fonts) editedSource.current = fonts
       latest.current = n
       setDraft(n)
       pendingEditsChanged(editor)
-      select(...selection)
+      select(...range)
     } catch (e) {
       setError(String(e))
     }
+  }
+  const formatShortcut = (letter: string, field: HTMLTextAreaElement) => {
+    const start = field.selectionStart, end = field.selectionEnd, node = latest.current
+    const run = node.textRuns?.find(run => run.start <= start && (start < run.end || start === node.text.length && run.end === start))
+    const pending = start === end && typingStyle.current?.offset === start ? typingStyle.current.patch : {}
+    const weight = pending.weight ?? run?.weight ?? node.textStyle?.weight ?? 400
+    const italic = Object.hasOwn(pending, 'italic') ? pending.italic : run?.italic
+    const underline = Object.hasOwn(pending, 'underline') ? pending.underline : run?.underline
+    const patch: Partial<TextRun> = letter === 'b' ? { weight: weight >= 600 ? 400 : 700 }
+      : letter === 'i' ? { italic: italic ? undefined : true } : { underline: underline ? undefined : true }
+    if (start < end) style(patch, [start, end])
+    else typingStyle.current = { offset: start, patch: { ...pending, ...patch } }
   }
   const point = (offset: number) => {
     const l =
@@ -587,12 +638,20 @@ export function CanvasTextEditor({
         }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing || composing.current) return
-          if (interfacePreference.getSnapshot().uiMode === 'sketch' && matchesTypefaceShortcut(e.nativeEvent)) {
+          const sketch = interfacePreference.getSnapshot().uiMode === 'sketch'
+          if (sketch && matchesTypefaceShortcut(e.nativeEvent)) {
             const { selectionStart, selectionEnd } = e.currentTarget
             if (openTypefaceSelect(typeface.current)) {
               e.preventDefault()
               setSelection([selectionStart, selectionEnd])
             }
+            return
+          }
+          const letter = e.key.toLowerCase()
+          const primary = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+          if (sketch && primary && !e.altKey && !e.shiftKey && e.nativeEvent.keyCode !== 229 && ['b', 'i', 'u'].includes(letter)) {
+            e.preventDefault()
+            if (!e.repeat && !done.current && (!isCurrent || isCurrent())) formatShortcut(letter, e.currentTarget)
             return
           }
           navigate(e)

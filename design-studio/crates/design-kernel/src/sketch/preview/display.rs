@@ -804,6 +804,7 @@ impl Projection<'_> {
                     400.
                 }),
                 underline: num(a, "underlineStyle", 0.) > 0.,
+                italic: false,
                 strikethrough: num(a, "strikethroughStyle", 0.) > 0.,
                 link: None,
                 letter_spacing: None,

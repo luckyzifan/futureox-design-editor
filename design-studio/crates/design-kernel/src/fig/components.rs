@@ -1511,6 +1511,7 @@ fn apply_text(
                     text_case: None,
                     color: None,
                     underline,
+                    italic: false,
                     strikethrough: !underline,
                     link: None,
                     start: 0,

@@ -220,7 +220,7 @@ fn text_operators_apply(node: &Node) -> bool {
         && node
             .text_runs
             .iter()
-            .all(|r| !r.underline && !r.strikethrough)
+            .all(|r| !r.underline && !r.strikethrough && !r.italic)
 }
 
 /// Emits one BT/ET block per visible solid fill, placing every glyph with

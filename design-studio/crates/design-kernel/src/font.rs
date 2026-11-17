@@ -237,6 +237,8 @@ pub struct TextRun {
     #[serde(default, skip_serializing_if = "crate::components::is_false")]
     pub underline: bool,
     #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    pub italic: bool,
+    #[serde(default, skip_serializing_if = "crate::components::is_false")]
     pub strikethrough: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<String>,
@@ -1217,6 +1219,7 @@ impl Fonts {
                     .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
             }),
             us_weight: face.weight().to_number(),
+            italic_face: face.is_italic() || face.is_oblique(),
             ..Outline::default()
         };
         face.outline_glyph(ttf_parser::GlyphId(glyph.id), &mut outline);
@@ -2283,6 +2286,14 @@ impl Fonts {
                 let (sx, sy) = (glyph.width_scale, glyph.height_scale);
                 crate::text_path::transform_outline(&mut outline, crate::math::Transform([
                     sx, 0., 0., sy, glyph.x * (1. - sx) + glyph.ink_offset.x, glyph.y * (1. - sy) + glyph.ink_offset.y,
+                ]));
+            }
+            if run.is_some_and(|r| r.italic) && !glyph_outline.italic_face {
+                // Shear the ink about the shaped baseline. Layout advances
+                // and decorations still follow the original line.
+                let shear = 0.2;
+                crate::text_path::transform_outline(&mut outline, crate::math::Transform([
+                    1., 0., -shear, 1., shear * glyph.y, 0.,
                 ]));
             }
             for (enabled, offset) in [

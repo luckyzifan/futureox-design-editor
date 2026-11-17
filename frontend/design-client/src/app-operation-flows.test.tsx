@@ -235,6 +235,59 @@ test('Sketch Control-S and Inspector Update sync the selected style without reli
   expect(editor!.authoredDocument).toEqual(afterSync)
 })
 
+test('Sketch rich-text shortcuts format the selected range and later input at a collapsed caret', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Text formatting QA'), text = node('text', 60, 80, 240, 60)
+  text.text = 'Sketch ABC'
+  text.textStyle = defaultTextStyle()
+  doc.nodes[text.id] = text
+  doc.pages[0].children = [text.id]
+  await act(async () => { editor!.load(doc); editor!.select([text.id]); canvas().focus() })
+  const before = editor!.authoredDocument
+  await key('i', { code: 'KeyI', metaKey: true })
+  expect(editor!.authoredDocument).toBe(before)
+  const enter = async () => {
+    await act(async () => canvas().focus())
+    await key('Enter')
+    const field = document.querySelector<HTMLTextAreaElement>('.rich-text-editor textarea')!
+    expect(document.activeElement).toBe(field)
+    return field
+  }
+  const send = (input: HTMLElement, value: string) => act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {
+    key: value, code: value.length === 1 ? `Key${value.toUpperCase()}` : value, metaKey: true, bubbles: true, cancelable: true,
+  })))
+  let input = await enter()
+  await act(async () => input.setSelectionRange(0, 6))
+  for (const letter of ['b', 'i', 'u']) await send(input, letter)
+  await send(input, 'Enter')
+  expect(editor!.authoredDocument.schemaVersion).toBe(27)
+  expect(editor!.authoredDocument.nodes[text.id].textRuns).toEqual([{ start: 0, end: 6, weight: 700, italic: true, underline: true }])
+  expect(JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(editor!.authoredDocument))))).toEqual(editor!.authoredDocument)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+
+  input = await enter()
+  await act(async () => input.setSelectionRange(3, 3))
+  for (const letter of ['b', 'i', 'u']) await send(input, letter)
+  expect(editor!.authoredDocument).toEqual(before)
+  await act(async () => {
+    input.dispatchEvent(new dom.window.InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: 'k' }))
+    Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')!.set!.call(input, 'Ske' + 'k' + text.text.slice(3))
+    input.setSelectionRange(4, 4)
+    input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'k' }))
+  })
+  await send(input, 'Enter')
+  expect(editor!.authoredDocument.nodes[text.id]).toMatchObject({
+    text: 'Skektch ABC', textRuns: [{ start: 3, end: 4, weight: 700, italic: true, underline: true }],
+  })
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch Command-T opens the contextual typeface picker and keeps the edit range on Escape', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

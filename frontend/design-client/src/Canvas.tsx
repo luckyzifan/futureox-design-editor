@@ -1184,7 +1184,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const utility=useUtilityTools(editor,state.tool,displayedHit,displayView.zoom)
   const previewFonts=useMemo(()=>utility.preview?.fonts?{...state.doc.fonts,...utility.preview.fonts}:state.doc.fonts,[state.doc.fonts,utility.preview?.fonts])
   const renderedDocument=useMemo(()=>{
-    if(textPreview&&state.doc.nodes[textPreview.id])return kernelLayout({...state.doc,nodes:{...state.doc.nodes,[textPreview.id]:textPreview}})
+    if (textPreview && state.doc.nodes[textPreview.id]) {
+      return kernelLayout({ ...state.doc, schemaVersion: textPreview.textRuns?.some(run => run.italic) ? 27 : state.doc.schemaVersion,
+        nodes: { ...state.doc.nodes, [textPreview.id]: textPreview } })
+    }
     if(utility.preview){const preview=utility.preview;return kernelLayout({...state.doc,schemaVersion:Math.max(10,state.doc.schemaVersion) as typeof state.doc.schemaVersion,fonts:previewFonts,nodes:{...state.doc.nodes,...Object.fromEntries(preview.nodes.map(n=>[n.id,n]))},pages:state.doc.pages.map(p=>p.id===state.page?{...p,children:[...p.children,preview.root]}:p)})}
     return !drawingPreview?state.doc:{...state.doc,schemaVersion:drawingPreview.kind==='slice'?Math.max(10,state.doc.schemaVersion) as typeof state.doc.schemaVersion:state.doc.schemaVersion,nodes:{...state.doc.nodes,[drawingPreview.id]:drawingPreview},pages:state.doc.pages.map(p=>p.id===state.page?{...p,children:[...p.children,drawingPreview.id]}:p)}
   },[state.doc,state.page,drawingPreview,utility.preview,textPreview,previewFonts])

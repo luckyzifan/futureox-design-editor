@@ -29,7 +29,7 @@ export function EditableSvgText({ n, fonts, paintProps }: { n: DesignNode; fonts
       return <tspan key={i} x={x} y={glyph?.y ?? line.y + n.fontSize}>{cuts.slice(0,-1).map((start,j) => {
         const run = n.textRuns?.find(r => r.start <= start && r.end > start)
         const runFont = run?.fontId || n.textStyle?.fontId || 'default'
-        return <tspan key={j} fontFamily={cssFamily(run?.fontId)} fontSize={run?.fontSize || n.fontSize} fontStyle={cssFontStyle(family(runFont))} fontWeight={run?.weight || n.textStyle?.weight || 400} fill={run?.color || paintProps.fill} textDecoration={[run?.underline?'underline':'',run?.strikethrough?'line-through':''].filter(Boolean).join(' ') || undefined}>{n.text.slice(start,cuts[j+1]).replace(/\n/g,'')}</tspan>
+        return <tspan key={j} fontFamily={cssFamily(run?.fontId)} fontSize={run?.fontSize || n.fontSize} fontStyle={run?.italic ? 'italic' : cssFontStyle(family(runFont))} fontWeight={run?.weight || n.textStyle?.weight || 400} fill={run?.color || paintProps.fill} textDecoration={[run?.underline?'underline':'',run?.strikethrough?'line-through':''].filter(Boolean).join(' ') || undefined}>{n.text.slice(start,cuts[j+1]).replace(/\n/g,'')}</tspan>
       })}</tspan>
     })}
   </text>
