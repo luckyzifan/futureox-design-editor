@@ -2255,7 +2255,8 @@ export class Editor {
     const content=this.clipboard, before=this.state.doc, parents=allParents(before), selected=this.topSelection()
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
     const shared = selected.length && selected.every(id => parents.get(id) === parents.get(selected[0])) ? parents.get(selected[0]) : undefined
-    const targets=replace?selected:selected.length && selected.every(id=>container(before.nodes[id]) && !content.roots.includes(id)) ? selected
+    const selectedContainers = !!selected.length && selected.every(id => container(before.nodes[id]) && !content.roots.includes(id))
+    const targets=replace?selected:selectedContainers ? selected
       : shared && before.nodes[shared] && !content.roots.includes(shared) ? [shared] : []
     if(!targets.length){
       if(replace){this.notify('请选择要替换的图层');return}
@@ -2279,7 +2280,12 @@ export class Editor {
     // Mac Figma steps the inspector X/Y by 10, then 20, then 30 from the
     // copied local position. Restoring the placement alone leaves that delta
     // at (0, 0). Paste in place first, then add the step in parent space.
+    // Sketch ordinary paste into each selected frame centers the copied bounds
+    // in that frame's own width and height. Every copied root gets the same
+    // shift, so layers keep their internal offsets. Groups, sections, sibling
+    // paste, and paste-replace stay on the Figma placement above.
     const step = replace ? 0 : this.duplicateOffset
+    const centerSelectedFrames = !replace && selectedContainers && interfacePreference.getSnapshot().uiMode === 'sketch'
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
@@ -2295,12 +2301,13 @@ export class Editor {
           const at=replace?list.indexOf(target):anchor?list.indexOf(anchor)+1:list.length
           list.splice(at<0?list.length:at,0,...roots)
           const parentWorld=d.nodes[destination]?worldMatrix(d,destination):[1,0,0,1,0,0] as Matrix
+          const centerFrame = centerSelectedFrames && box.kind === 'frame'
           for(const [i,id] of roots.entries()) {
             const source=content.roots[i],placement=content.placements?.[source]
             const placed = placement ? cloneValue(placement.transform)
               : d.nodes[destination] ? multiply(inverse(parentWorld), d.nodes[id].transform) : d.nodes[id].transform
             d.nodes[id].transform = replace && placement ? cloneValue(placement.transform)
-              : multiply(translate(step, step), placed)
+              : multiply(translate(centerFrame ? 0 : step, centerFrame ? 0 : step), placed)
           }
           const measure=(id:string,parent:Matrix): import('./model').Bounds => {
             const n=d.nodes[id],matrix=multiply(parent,n.transform)
@@ -2310,8 +2317,10 @@ export class Editor {
           const localBounds=unionBounds(roots.map(id=>measure(id,identity())))
           const targetBounds=replace?bounds(boxPoints({x:0,y:0,width:box.width,height:box.height}).map(p=>apply(box.transform,p))):null
           const outsideX=content.roots.some(id=>content.placements?.[id]?.outsideX),outsideY=content.roots.some(id=>content.placements?.[id]?.outsideY)
-          const dx=replace?(targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0):0
-          const dy=replace?(targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0):0
+          const dx=centerFrame ? (box.width - localBounds.width) / 2 - localBounds.x
+            : replace?(targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0):0
+          const dy=centerFrame ? (box.height - localBounds.height) / 2 - localBounds.y
+            : replace?(targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0):0
           for(const id of roots) {
             const n=d.nodes[id];n.transform[4]+=dx;n.transform[5]+=dy
             if(replace){n.constraints=cloneValue(box.constraints);n.sizing=cloneValue(box.sizing)}
