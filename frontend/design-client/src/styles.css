@@ -1398,6 +1398,10 @@ footer button {
 .pencil-controls .number-field {
   width: 94px;
 }
+.pencil-controls select {
+  max-width: 11rem;
+  font: inherit;
+}
 .pencil-controls input[type="color"] {
   width: 28px;
   height: 28px;
