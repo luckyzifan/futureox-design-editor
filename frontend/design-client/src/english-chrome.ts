@@ -567,7 +567,7 @@ const phrases: Record<string, string> = {
   "重新录制": "Record again",
   "关闭渲染性能火焰图": "Close render performance flame chart",
   "关闭": "Close",
-  "⌘ / Ctrl ⇧ P · 最多保留 512 次结果。横宽表示阶段耗时，子层包含在父层内；不是调用栈采样或时间轴。": "⌘ / Ctrl Shift P · up to 512 results are kept. Width is stage time. Children are inside the parent. This is not a stack sample or a timeline.",
+  "最多保留 512 次结果。横宽表示阶段耗时，子层包含在父层内；不是调用栈采样或时间轴。": "Up to 512 results are kept. Width is stage time. Children are inside the parent. This is not a stack sample or a timeline.",
   "诊断日志记录缩放、DPR、请求与发布采样密度、缓存命中和错误分类；不记录文档内容、图片地址或原始错误文本。关闭面板即停止记录。": "The diagnostic log records zoom, DPR, request and publish sample density, cache hits and error categories. It does not record document content, image addresses or raw error text. Closing the panel stops recording.",
   "渲染样本": "Render sample",
   "跟随最新结果": "Follow the latest result",

@@ -271,6 +271,54 @@ test('Sketch Control-T inserts a linked text style with the archived size and pa
   expect(editor!.canUndo).toBe(false)
 })
 
+test('Sketch Shift-Command-P rounds coordinates and dimensions independently while preserving rotation', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Round to Pixel')
+  const plain = node('rectangle', -10.5, 21.51, 45.5, 18.5)
+  const rotated = node('rectangle', 120.43, 78.71, 61.24, 32.59)
+  rotated.transform = [.8, .6, -.6, .8, 120.43, 78.71]
+  const integer = node('rectangle', 240, 86, 60, 48)
+  const text = node('text', 310.27, 110.42, 128, 36)
+  doc.nodes = Object.fromEntries([plain, rotated, integer, text].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [plain.id, rotated.id, integer.id, text.id]
+  const ids = [plain.id, rotated.id, integer.id]
+  await act(async () => { editor!.load(doc); editor!.select(ids); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const round = () => key('P', { code: 'KeyP', shiftKey: true, metaKey: true })
+  await act(async () => editor!.set({ tool: 'vector' }))
+  await round()
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => { editor!.set({ tool: 'select' }); editor!.select([text.id]) })
+  await key('Enter')
+  const textarea = document.querySelector<HTMLTextAreaElement>('.rich-text-editor textarea')!
+  expect(textarea).toBeTruthy()
+  await act(async () => textarea.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'P', code: 'KeyP', shiftKey: true, metaKey: true, bubbles: true, cancelable: true,
+  })))
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => textarea.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true,
+  })))
+  await act(async () => { editor!.select(ids); canvas().focus() })
+  await round()
+  const after = editor!.authoredDocument
+  expect(after.nodes[plain.id]).toMatchObject({ transform: [1, 0, 0, 1, -11, 22], width: 46, height: 19 })
+  expect(after.nodes[integer.id]).toBe(before.nodes[integer.id])
+  const layer = after.nodes[rotated.id], box = selectionParentBounds(after, rotated.id), old = selectionParentBounds(before, rotated.id)
+  expect(layer.width).toBeCloseTo(61, 8)
+  expect(layer.height).toBeCloseTo(33, 8)
+  expect(box.x).toBeCloseTo(Math.round(old.x), 8)
+  expect(box.y).toBeCloseTo(Math.round(old.y), 8)
+  for (const [i,value] of layer.transform.slice(0, 4).entries()) expect(value).toBeCloseTo(rotated.transform[i], 8)
+  expect(editor!.state.version).toBe(revision + 1)
+  await round()
+  expect(editor!.authoredDocument).toBe(after)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+})
+
 test('Sketch Control-Command-X fits each selected bounds outward and undoes the change together', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

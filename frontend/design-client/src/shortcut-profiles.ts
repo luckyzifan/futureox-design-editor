@@ -54,6 +54,7 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
   if (uiMode === 'sketch' && platform === 'mac') bindings.unshift(
     { command: 'create-component', combo: 'Mod+Y' },
     { command: 'fit-pixel-bounds', combo: 'Ctrl+Mod+X' },
+    { command: 'round-to-pixel', combo: 'Mod+Shift+P' },
   )
   if (profile === 'sketch-like') {
     tools.set('set-tool-default', undefined); tools.set('set-tool-pen', 'V'); tools.set('set-tool-pencil', 'P')
