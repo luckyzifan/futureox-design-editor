@@ -1800,6 +1800,7 @@ footer button {
 .selection-color-row .selection-color-select { display:inline-flex; align-items:center; justify-content:center; width:23px; height:24px; padding:3px; flex:none; }
 
 .canvas-arrow { cursor: crosshair; }
+.canvas-hotspot { cursor: crosshair; }
 
 .node-export-setting { display:grid; grid-template-columns:1fr 60px; gap:6px; margin:8px 0; }
 .node-export-encoding { display:flex; align-items:center; gap:8px; margin:8px 0; }

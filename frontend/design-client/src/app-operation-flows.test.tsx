@@ -14,13 +14,15 @@ import { Editor } from './engine'
 import { applyInterfaceLayout } from './interface-layout'
 import { interfacePreference } from './interface-preference'
 import { fontTestBytes } from './font-test-fixtures'
-import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
+import { export_sketch_json, forma_decode_json, forma_encode_json, import_sketch_json } from './generated/design-kernel/design_kernel'
 import { worldMatrix } from './geometry'
 import { kernelFillWorld } from './kernel/picking'
 import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke } from './model'
 import { nudgePreference } from './nudge-preference'
 import * as persistence from './persistence'
 import { shortcutPreference } from './shortcut-preference'
+import { setPrototypeTab } from './prototype-chrome'
+import { authorSketchHotspot, isSketchHotspot } from './sketch-hotspot'
 import * as localStore from './local-store'
 import * as startupPreview from './startup-preview'
 import type { DesktopBridge } from './desktop'
@@ -188,6 +190,43 @@ test('Sketch Command-E marks only the missing selection presets and opens the se
     await act(async () => {})
     expect(document.querySelector('[role="group"][aria-label="全部资产"]')?.textContent).toContain('Unrelated asset')
   })
+})
+
+test('Sketch Interaction arms the prototype tool and preserves an invisible hotspot in both file formats', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Hotspot QA')
+  const frame = node('frame', 30, 50, 300, 200)
+  doc.nodes[frame.id] = frame
+  doc.pages[0].children = [frame.id]
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  try {
+    await key('i', { code: 'KeyI' })
+    expect(editor!.state.tool).toBe('hotspot')
+    expect(document.querySelector('#prototype-properties-tab')?.getAttribute('aria-selected')).toBe('true')
+    const authored = editor!.authoredDocument
+    const hotspot = node('rectangle', 20, 30, 80, 55)
+    await act(async () => editor!.change('创建热点', draft => {
+      authorSketchHotspot(draft, hotspot)
+      draft.nodes[hotspot.id] = hotspot
+      draft.nodes[frame.id].children.push(hotspot.id)
+    }, [hotspot.id]))
+    const committed = editor!.authoredDocument
+    expect(committed.nodes[hotspot.id].fills).toEqual([])
+    expect(committed.prototype?.interactions[hotspot.id]).toEqual([{ trigger: 'click', actions: [] }])
+    expect(document.querySelector<HTMLSelectElement>('[aria-label="交互触发"]')?.value).toBe('click')
+    const fd = JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(committed))))
+    const sketch = JSON.parse(import_sketch_json(export_sketch_json(JSON.stringify(committed)))).document
+    for (const reopened of [fd, sketch]) {
+      expect(isSketchHotspot(reopened, reopened.nodes[hotspot.id])).toBe(true)
+      expect(reopened.nodes[hotspot.id].fills).toEqual([])
+      expect(reopened.prototype.interactions[hotspot.id]).toMatchObject([{ trigger: 'click', actions: [] }])
+    }
+    await act(async () => editor!.undo())
+    expect(editor!.authoredDocument).toEqual(authored)
+  } finally {
+    await act(async () => setPrototypeTab('design'))
+  }
 })
 
 test('Sketch Option-Command-R replaces the chosen instance or shared style in one undo', async () => {
