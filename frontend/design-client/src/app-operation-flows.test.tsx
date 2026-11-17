@@ -312,6 +312,54 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Shift+X swaps paint rows in order, preserving border geometry and one-step undo', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Swap paints')
+  const layer = node('rectangle', 60, 40, 100, 90)
+  const fillOnly = node('rectangle', 230, 40, 100, 90)
+  const unsupported = node('line', 400, 40, 100, 90)
+  const gradient = { ...paint('#f02040'), kind: 'linear' as const, visible: false }
+  layer.fills = [gradient, paint('#00bb90')]
+  layer.strokes = [
+    { ...stroke('#1030f0', 7), align: 'inside', dash: '4 2' },
+    { ...stroke('#8866aa', 3), visible: false },
+  ]
+  for (const n of [layer, fillOnly, unsupported]) doc.nodes[n.id] = n
+  doc.pages[0].children = [layer.id, fillOnly.id, unsupported.id]
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const press = () => key('X', { code: 'KeyX', shiftKey: true })
+  await act(async () => editor!.select([layer.id, unsupported.id]))
+  await press()
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+  await act(async () => editor!.select([layer.id, fillOnly.id]))
+
+  const input = document.createElement('input')
+  await act(async () => { document.body.append(input); input.focus() })
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'X', code: 'KeyX', shiftKey: true, bubbles: true })))
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => { input.remove(); canvas().focus() })
+
+  await press()
+  const updated = editor!.state.doc.nodes[layer.id]
+  expect(updated.fills.map(fill => [fill.color, fill.visible])).toEqual([['#1030f0', true], ['#8866aa', false]])
+  expect(updated.strokes[0]).toMatchObject({
+    width: 7, align: 'inside', dash: '4 2', visible: false,
+    paint: { kind: 'linear', stops: gradient.stops },
+  })
+  expect(updated.strokes[1]).toMatchObject({ width: 3, visible: true, paint: { color: '#00bb90' } })
+  const turnedIntoBorder = editor!.state.doc.nodes[fillOnly.id]
+  expect(turnedIntoBorder.fills).toEqual([])
+  expect(turnedIntoBorder.strokes).toHaveLength(1)
+  expect(turnedIntoBorder.strokes[0].paint.color).toBe(fillOnly.fills[0].color)
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch Shift+A auto-pins the selection, shows its pins, and restores prior constraints', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

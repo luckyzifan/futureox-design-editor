@@ -21,6 +21,7 @@
 | 自动固定容器的直接子图层 | — | Sketch 布局 Alt+Shift+A；一步撤销 |
 | 去掉描边 | Shift+/ | 不绑定 |
 | 去掉填充 | Alt+/。Mac US Option 输出 ÷，对应物理键 Slash | 此方案不含该键 |
+| 交换填充和描边 | — | Sketch 布局 Shift+X |
 | 键盘尺寸微调 | macOS：Cmd+方向键 1；Cmd+Shift+方向键 10；Windows/Linux 本批未增加绑定 | Mod+方向键 1；Mod+Shift+方向键 10 |
 | 覆盖粘贴（保留目标） | Shift+Mod+V，单目标 | Shift+Mod+V，每个目标一份 |
 | 选区居中，保持倍率 | 菜单 | 桌面 Mod+3；浏览器用菜单 |
