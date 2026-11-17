@@ -139,6 +139,7 @@ pub mod scene;
 pub mod spatial;
 mod spatial_curve;
 mod spatial_depth;
+mod spatial_material;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod scene_store;
 #[cfg(not(target_arch = "wasm32"))]
@@ -625,6 +626,22 @@ mod wasm {
         doc.validate().map_err(|e| JsValue::from_str(&e))?;
         let projections = crate::spatial::projections(&doc).map_err(|e| JsValue::from_str(&e))?;
         serde_json::to_string(&projections).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
+    pub fn spatial_export_document_json(json: &str, selection_json: &str) -> Result<String, JsValue> {
+        capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
+        let mut doc: scene::Document = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let selection: Vec<String> = serde_json::from_str(selection_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        if selection.len()>1000 || selection.iter().any(|id|!doc.nodes.contains_key(id)) {
+            return Err(JsValue::from_str("Invalid spatial export roots"));
+        }
+        doc.validate().map_err(|e| JsValue::from_str(&e))?;
+        let outlines=crate::spatial::export_view(&mut doc,&selection).map_err(|e| JsValue::from_str(&e))?;
+        #[derive(serde::Serialize)]
+        struct ExportView<'a> { document: &'a scene::Document, outlines: serde_json::Value }
+        let output=serde_json::to_string(&ExportView { document:&doc,outlines }).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        capacity::check_document_bytes(output.len()).map_err(|e| JsValue::from_str(&e))?;
+        Ok(output)
     }
     /// SVG consumes the same ordered draw plan as the raster backends. The
     /// input contains topology only, with no image, font, path or paint bytes.

@@ -564,6 +564,7 @@ export const blends = [
   'luminosity',
   'linear-burn',
   'linear-dodge',
+  'plus-lighter',
 ]
 export const rect = (x: number, y: number, w: number, h: number): Rect => ({ x, y, w, h })
 export function intersect(a: Rect, b: Rect): Rect {

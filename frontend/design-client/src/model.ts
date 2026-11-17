@@ -45,6 +45,7 @@ export const blendModes = [
   'luminosity',
   'linear-burn',
   'linear-dodge',
+  'plus-lighter',
 ] as const
 export type Blend = (typeof blendModes)[number]
 export type NodeBlend = Blend | 'pass-through'

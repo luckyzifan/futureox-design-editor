@@ -20,6 +20,8 @@ import {
   kernelTextLayout,
   kernelExportPlan,
   kernelSpatialDocument,
+  kernelSpatialRasterDocument,
+  requiresSpatialRaster,
   kernelStrokeContours,
   kernelPdfVector,
 } from './kernel/picking'
@@ -53,7 +55,10 @@ function spatialPngProfile(authored: DesignDocument, projected: DesignDocument, 
     const id = pending.pop()!
     const node = projected.nodes[id]
     if (!node?.visible) continue
-    if (node.vectorGeometry && authored.nodes[id]?.vectorGeometry !== node.vectorGeometry) return 'figma' as const
+    const source = authored.nodes[id]
+    if (node.vectorGeometry && source?.vectorGeometry !== node.vectorGeometry ||
+        source?.spatial?.pose?.visible && source.transform.some((value, i) => value !== node.transform[i]))
+      return 'figma' as const
     for (const child of node.children) pending.push(child)
   }
 }
@@ -338,7 +343,10 @@ export async function exportVisualSvg(doc: DesignDocument, pageId: string, scale
 }
 export function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1, precision?: number, textMode: 'outlines' | 'editable' = 'outlines', fontMode: 'references' | 'embed' = 'references', fontEmbeddingAllowed = false, fontByteLimit = 4 * 1024 * 1024, embeddedFonts?: DesignDocument['fonts']) {
   if (fontMode === 'embed' && (textMode !== 'editable' || !fontEmbeddingAllowed)) throw new Error('Explicit editable font redistribution permission is required')
-  ;({doc,target} = repeatExport(kernelSpatialDocument(kernelLayout(doc)),target))
+  const authored = kernelLayout(doc)
+  if (requiresSpatialRaster(authored, target.kind === 'selection' ? target.nodeIds : []))
+    throw new Error('3D 混色和投影描边请用 PNG 或保留视觉效果的 SVG 导出')
+  ;({doc,target} = repeatExport(kernelSpatialDocument(authored),target))
   doc = projectSlice(doc,pageId,target)
   const b = targetBounds(doc, pageId, target)
   if(!Number.isFinite(scale) || scale<0.001 || scale>128) throw new Error('导出倍率必须在 0.001–128 之间')
@@ -390,7 +398,12 @@ export async function exportPdfVector(
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
   const repeatedVisual = hasRepeats(doc)
-  ;({doc,target} = repeatExport(kernelSpatialDocument(kernelLayout(doc)),target))
+  const authored = kernelLayout(doc)
+  if (requiresSpatialRaster(authored, target.kind === 'selection' ? target.nodeIds : [])) {
+    const bitmap = (await exportRasterBatch(doc, pageId, [1], target, undefined, signal, 'pdf'))[0]
+    return { ...bitmap, scale: 1, vector: true, fallback: true }
+  }
+  ;({doc,target} = repeatExport(kernelSpatialDocument(authored),target))
   doc = projectSlice(doc, pageId, target)
   if (pdfVectorIssues(doc, pageId, target).length) {
     const bitmap = (await exportRasterBatch(doc, pageId, [1], target, undefined, signal, 'pdf'))[0]
@@ -491,10 +504,13 @@ export async function exportRasterBatch(
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
   const authored = kernelLayout(doc)
-  const projected = kernelSpatialDocument(authored)
+  const selection = target.kind === 'selection' ? target.nodeIds : []
+  const materialView = requiresSpatialRaster(authored, selection) ? kernelSpatialRasterDocument(authored, selection) : undefined
+  const projected = materialView?.geometry ?? kernelSpatialDocument(authored)
   const spatialProfile = format === 'png' ? spatialPngProfile(authored, projected, target) : undefined
   ;({doc,target} = repeatExport(projected,target))
   doc = projectSlice(doc,pageId,target)
+  const renderInput = materialView ? projectSlice(materialView.document, pageId, target) : doc
   const box = rasterExportBounds(doc, pageId, target, format)
   const plans = scales.map((scale) => {
     if (!Number.isFinite(scale) || scale < 0.001 || scale > 128)
@@ -519,14 +535,14 @@ export async function exportRasterBatch(
       if (signal?.aborted) throw new Error('已取消导出')
       const plan = plans[index]
       const result = await kernel.render(
-        doc,
+        renderInput,
         {
           pageId,
           ...plan,
           exportRegion: {
             bounds: box,
             scale,
-            nodeIds: target.kind === 'selection' ? target.nodeIds : undefined,
+            nodeIds: !materialView && target.kind === 'selection' ? target.nodeIds : undefined,
           },
           transparent: true,
           grid: false,
