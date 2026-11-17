@@ -242,7 +242,8 @@ export class GpuRenderer {
   }
   private yieldEncoding() {
     this.checkFrameCurrent()
-    const force = this.driver.rasterPacing === true && this.driver.drawCalls - this.sliceDraws >= RASTER_SLICE_COMMANDS
+    const pendingDraws = this.driver.pendingDrawCalls ?? this.driver.drawCalls - this.sliceDraws
+    const force = this.driver.rasterPacing === true && pendingDraws >= RASTER_SLICE_COMMANDS
     const pause = this.encodeYield.checkpoint(this.driver.captureDisplay === true || !!this.frameCurrent, force)
     return pause?.then(async () => {
       // Let control messages invalidate this frame before its next GPU submit.
@@ -254,7 +255,7 @@ export class GpuRenderer {
         if (this.displayBackpressure &&
             this.driver.captureDisplay === true && this.driver.yieldRasterQueue) {
           const started = performance.now()
-          try { await this.driver.yieldRasterQueue() }
+          try { await this.driver.yieldRasterQueue(force) }
           finally { this.checkpointMs += performance.now() - started }
           this.checkFrameCurrent()
           this.encodeYield.begin()

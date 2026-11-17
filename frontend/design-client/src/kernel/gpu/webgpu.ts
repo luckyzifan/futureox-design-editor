@@ -338,6 +338,8 @@ export class WebGpuDriver implements Driver {
   description = 'WebGPU'
   lost = false
   drawCalls = 0
+  private submittedDrawCalls = 0
+  get pendingDrawCalls() { return this.drawCalls - this.submittedDrawCalls }
   opaqueTentPasses = 0
   private mergedExactFilterPasses = 0
   triangles = 0
@@ -2007,6 +2009,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
     this.resourceEpoch++
     this.drawCalls = 0
+    this.submittedDrawCalls = 0
     this.opaqueTentPasses = 0
     this.displayImageSourcePasses = 0
     this.byteTentAlphaPasses = 0
@@ -2554,6 +2557,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.closeOver()
     this.uploadUniforms()
     this.submitEncoder()
+    this.submittedDrawCalls = this.drawCalls
     this.commandSubmissions++
     this.encoder = this.device.createCommandEncoder()
     // Queue writes and submissions execute in order. Reuse this bounded arena
@@ -2663,10 +2667,14 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     // transient/scratch lifetime ends here and no readback is introduced.
     if (this.offset > 0 || [...(this.byteTentLeases?.values() || [])].some(entry => entry.encoder === this.encoder && !entry.submitted)) this.submitCommands()
   }
-  async yieldRasterQueue() {
+  async yieldRasterQueue(sliceFull = true) {
     const device = this.device
     if (this.disposed || this.lost) throw Error('GPU 设备已丢失')
-    this.submitPending()
+    // A CPU time slice can yield to camera messages while the GPU already
+    // has raster work. Fill the bounded encoder before adding another short
+    // submission. An idle queue and a full slice still submit immediately.
+    if (sliceFull || !this.rasterPacing || (this.submissionSequence || 0) <= (this.completedSubmissionSequence || 0))
+      this.submitPending()
     if ((this.submissionSequence || 0) <= (this.completedSubmissionSequence || 0)) return
     if (import.meta.env.VITE_DESIGN_RASTER_QUEUE_PACING === '0') await this.waitForQueue('raster-yield')
     else {
