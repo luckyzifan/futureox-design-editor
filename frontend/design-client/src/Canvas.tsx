@@ -473,6 +473,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useLayoutEffect(() => discardPendingView(), [editor, editor.sessionGeneration, state.page])
   const sourceHover=useRef<import('./source-hover-detail').SourceHoverHub>({}).current
   const host = useRef<HTMLDivElement>(null)
+  const temporaryZoomKey = useRef<string | null>(null)
+  const releaseTemporaryZoom = () => {
+    if (temporaryZoomKey.current === null) return
+    temporaryZoomKey.current = null
+    editor.endTemporaryZoom()
+  }
+  useEffect(() => () => releaseTemporaryZoom(), [editor])
+  useLayoutEffect(() => {
+    if (uiMode !== 'sketch') releaseTemporaryZoom()
+  }, [editor, uiMode])
   const pendingBoardMove = useRef<Parameters<Editor['preview']>|null>(null)
   useLayoutEffect(() => {
     if (fallbackMove.current?.epoch === editor.sessionGeneration && fallbackMove.current.pageId === state.page)
@@ -1303,6 +1313,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if(e.key==='Escape')cancelToolActivation(editor)
       const shortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge(),
         uiMode: interfacePreference.getSnapshot().uiMode }
+      if (shortcutContext.uiMode === 'sketch' && (e.key === '~' || e.key === '§') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (editor.state.busy || editor.interactionActive || drag.current || pencil.current ||
+            penRef.current || ownsTextEntry(textEntryOwner.current)) return
+        e.preventDefault()
+        if (e.repeat || temporaryZoomKey.current !== null) return
+        const width = host.current?.clientWidth || sizeRef.current.width
+        const height = host.current?.clientHeight || sizeRef.current.height
+        const point = editor.pointerScreen
+        const anchor = point && point.x >= 0 && point.x <= width && point.y >= 0 && point.y <= height
+          ? point : { x: width / 2, y: height / 2 }
+        if (editor.beginTemporaryZoom(anchor)) temporaryZoomKey.current = e.code || e.key
+        return
+      }
       const shortcut = resolveShortcut(e, shortcutContext)
       if (e.repeat && !shortcut?.repeat && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) { if (shortcut) e.preventDefault(); return }
       if(['Alt','Meta','Control'].includes(e.key)) {
@@ -1665,6 +1688,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
     }
     const up = (e: KeyboardEvent) => {
+      if (temporaryZoomKey.current === (e.code || e.key)) {
+        e.preventDefault()
+        releaseTemporaryZoom()
+        return
+      }
       if (e.key === 'Shift') setPenShift(false)
       nudge.release(e.key)
       if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
@@ -1683,6 +1711,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
     }
     const blur = () => {
+      releaseTemporaryZoom()
       desktopPet.stopNavigation()
       nudge.finish()
       cancelQueuedMove()
@@ -1708,10 +1737,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
     const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
-    const visibility = () => { if (document.hidden) { releaseMarquee(); nudge.finish() } }
+    const visibility = () => { if (document.hidden) { releaseTemporaryZoom(); releaseMarquee(); nudge.finish() } }
     const focus = (e: FocusEvent) => {
       if (e.target !== host.current) { nudge.finish(); setGradientKeyboardTarget(null) }
-      if (shortcutTargetOwnsKeyboard(e.target)) releaseMarquee()
+      if (shortcutTargetOwnsKeyboard(e.target)) { releaseTemporaryZoom(); releaseMarquee() }
     }
     const pointer = () => { nudge.finish() }
     const unsubscribeNudge = nudgePreference.subscribe(() => { nudge.finish() })
