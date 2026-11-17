@@ -19,7 +19,7 @@ import { worldMatrix } from './geometry'
 import { selectionParentBounds } from './canvas-view'
 import { screenToWorld, zoomAt } from './canvas-camera'
 import { kernelFillWorld } from './kernel/picking'
-import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke, uid } from './model'
+import { blank, defaultLayout, defaultLayoutGrid, defaultSizing, defaultTextStyle, node, paint, stroke, uid } from './model'
 import { nudgePreference } from './nudge-preference'
 import * as persistence from './persistence'
 import { shortcutPreference } from './shortcut-preference'
@@ -270,6 +270,46 @@ test('Sketch Control-T inserts a linked text style with the archived size and pa
   await act(async () => editor!.undo())
   expect(editor!.authoredDocument).toEqual(before)
   expect(editor!.canUndo).toBe(false)
+})
+
+test('Space hides Sketch canvas guides and selection feedback until release without rewriting preferences', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Space pan')
+  doc.schemaVersion = 12
+  const frame = node('frame', 42, 54, 150, 90)
+  frame.layoutGrid = { ...defaultLayoutGrid(), count: 4, gutter: 4, margin: 0 }
+  doc.nodes[frame.id] = frame
+  doc.pages[0].children = [frame.id]
+  doc.pages[0].guides = [{ id: uid(), axis: 'y', position: 32 }]
+  await act(async () => { editor!.load(doc) })
+  await act(async () => {
+    editor!.set({ rulers: true, grid: true, pixelGrid: true, view: { x: 20, y: 40, zoom: 4 } })
+    editor!.select([frame.id])
+    canvas().focus()
+  })
+  const authored = editor!.authoredDocument, revision = editor!.state.version
+  const chrome = (selector: string) => canvas().querySelector(selector)
+  const guides = '[data-testid="ruler-guide"]'
+  const layoutGrid = '[data-testid="authored-layout-grid-band"]'
+  const pixel = '[data-testid="pixel-grid"]'
+  const marks = ['.selection', '[data-testid="resize-edge-3"]', guides, layoutGrid, pixel]
+  for (const mark of marks) expect(chrome(mark)).not.toBeNull()
+
+  await key(' ', { code: 'Space' })
+  for (const mark of marks) expect(chrome(mark)).toBeNull()
+  expect(chrome('[data-testid="horizontal-ruler"]')).not.toBeNull()
+  expect(editor!.state).toMatchObject({ rulers: true, grid: true, pixelGrid: true })
+  await key(' ', { code: 'Space' }, 'keyup')
+  for (const mark of marks) expect(chrome(mark)).not.toBeNull()
+
+  await act(async () => { applyInterfaceLayout('figma'); canvas().focus() })
+  await key(' ', { code: 'Space' })
+  for (const mark of ['.selection', guides, layoutGrid, pixel]) expect(chrome(mark)).not.toBeNull()
+  await key(' ', { code: 'Space' }, 'keyup')
+  expect(editor!.state.selection).toEqual([frame.id])
+  expect(editor!.authoredDocument).toBe(authored)
+  expect(editor!.state.version).toBe(revision)
 })
 
 test('Sketch held zoom uses the pointer or center and restores each page’s original camera', async () => {
