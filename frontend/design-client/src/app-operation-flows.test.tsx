@@ -312,6 +312,52 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Shift+A auto-pins the selection, shows its pins, and restores prior constraints', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Auto Pin')
+  const frame = node('frame', 70, 80, 300, 200)
+  const child = node('rectangle', 246, 157, 40, 30)
+  const sibling = node('rectangle', 10, 16, 30, 20)
+  child.constraints = { horizontal: 'center', vertical: 'start' }
+  frame.children = [child.id, sibling.id]
+  for (const n of [frame, child, sibling]) doc.nodes[n.id] = n
+  doc.pages[0].children = [frame.id]
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const read = (id: string) => editor!.state.doc.nodes[id]
+  const press = (repeat = false) => key('A', { code: 'KeyA', shiftKey: true, repeat })
+  const active = (edge: string) => document.querySelector(`.constraint-box .edge-${edge}`)?.getAttribute('aria-pressed')
+  const expectPinned = () => {
+    expect(read(child.id).constraints).toMatchObject({ horizontal: 'end', vertical: 'end' })
+    expect(active('right')).toBe('true')
+    expect(active('bottom')).toBe('true')
+  }
+
+  await press()
+  await act(async () => editor!.select([frame.id]))
+  await press()
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => editor!.select([child.id]))
+  await press()
+  expect(editor!.state.version).toBe(revision + 1)
+  expectPinned()
+  expect(read(sibling.id).constraints).toBeUndefined()
+  expect(read(child.id).transform).toEqual(before.nodes[child.id].transform)
+  expect(read(frame.id).layout).toBeUndefined()
+  await press(true)
+  expect(editor!.state.version).toBe(revision + 1)
+  await press()
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(active('top')).toBe('true')
+  await act(async () => editor!.undo())
+  expectPinned()
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch Auto Pin Contents pins only direct children and is a single undoable edit', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')
