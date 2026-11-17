@@ -8511,6 +8511,9 @@ fn foreign_shared_style_ids(system: &crate::design_system::DesignSystem) -> BTre
 }
 
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
+    if crate::spatial::has_spatial(doc) {
+        return Err(Error::Unsupported("Sketch export cannot preserve editable 3D effects".into()));
+    }
     let source = boolean_worksets::source_view(doc)?;
     let doc = source.as_ref();
     if let Some(node) = doc.nodes.values().find(|n| n.vector_brush.is_some()) {

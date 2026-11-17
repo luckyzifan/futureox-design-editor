@@ -106,6 +106,7 @@ import type { BooleanOp } from './vector'
 import { pathNetwork } from './path-network'
 import {
   kernelSvgPaths,
+  kernelSpatialDocument,
   kernelBounds,
   kernelHitWorld,
   kernelFillWorld,
@@ -754,6 +755,7 @@ export class Editor {
         if(draft.schemaVersion < 20 && hasSchema20Features(featureDocOf(authored)))draft.schemaVersion=20
         if(draft.schemaVersion < 21 && hasSchema21Features(featureDocOf(authored)))draft.schemaVersion=21
         if(draft.schemaVersion < 22 && hasSchema22Features(featureDocOf(authored)))draft.schemaVersion=22
+        if(draft.schemaVersion < 24 && featureNodesOf(authored).some(n => n.spatial)) draft.schemaVersion = 24
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
@@ -1322,7 +1324,8 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  load(value: unknown, preserveView=false) {
+  private readonly sketchTabViews = new Map<string, { page: string; selection: string[]; view: View }>()
+  load(value: unknown, preserveView=false, restoreSketchTab=false) {
     if (this.disposed) return false
     if (!this.settleOwnedPropertyPreview('navigation') || !commitPendingEdits(this)) return false
     const previous=this.state
@@ -1330,16 +1333,29 @@ export class Editor {
     const prepared = ensurePreparedDocument(value), encoding = preparedDocumentEncoding(prepared)
     const doc = takePreparedDocument(prepared)!
     this.cameraState.remember(previous.doc.id, previous.page, previousView)
+    if (restoreSketchTab && previous.doc.id !== doc.id) {
+      this.sketchTabViews.delete(previous.doc.id)
+      this.sketchTabViews.set(previous.doc.id, { page: previous.page, selection: [...previous.selection], view: previousView })
+      if (this.sketchTabViews.size > 16) {
+        const oldest = this.sketchTabViews.keys().next().value
+        if (oldest !== undefined) this.sketchTabViews.delete(oldest)
+      }
+    }
+    const tabView = restoreSketchTab && !preserveView ? this.sketchTabViews.get(doc.id) : undefined
+    const tabPage = tabView && userPages(doc).some(p => p.id === tabView.page) ? tabView.page : undefined
+    const tabParents = tabPage && tabView!.selection.length ? allParents(doc) : undefined
+    const tabSelection = tabPage && tabParents
+      ? tabView!.selection.filter(id => interactivePath(doc, tabPage, id, true, tabParents).length) : []
     const saved = !preserveView && interfacePreference.getSnapshot().rememberViewport
       ? this.cameraState.recall(doc.id, doc.pages.map(p => p.id)) : undefined
-    this.restoredCamera = !!saved
+    this.restoredCamera = !!saved || !!tabView
     this.operationDiagnostics.endSession()
     this.diagnosticOperation = null
     this.sessionEpoch++
     this.repeatedDuplicate = null
     const adoptedSession = this.sessionEpoch, adoptedVersion = this.state.version + 1
     if (this.revealRequest) this.consumeReveal(this.revealRequest.nonce)
-    this.preservedViewSession=(preserveView || saved)?this.sessionEpoch:-1
+    this.preservedViewSession=(preserveView || saved || tabView)?this.sessionEpoch:-1
     this.geometryJob?.cancel()
     this.undoStack = []
     this.redoStack = []
@@ -1348,14 +1364,14 @@ export class Editor {
     this.transaction = null
     this.set({
       doc,
-      page:saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id)),
-      selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):[],
+      page:tabPage ?? (saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id))),
+      selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):tabSelection,
       frameCrop: null,
       outlines: false,
       hover: null,
       hoverSource: null,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
-      view:saved?.view || (preserveView?previousView:{x:40,y:40,zoom:1}),
+      view:(tabPage && tabView?.view) || saved?.view || (preserveView?previousView:{x:40,y:40,zoom:1}),
       version: adoptedVersion,
       message: '设计已打开',
       busy: false,
@@ -1453,9 +1469,10 @@ export class Editor {
   }
   hit(p: Point, deep = false, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot, eligible?: (node:DesignNode)=>boolean, priority: 'paint-order' | 'smallest' = 'paint-order'): string | null {
     const authored = snapshot?.document || this.state.doc,
-      d = this.pickContext(authored).parents.hasRepeats ? expandRepeats(authored) : authored,
+      withRepeats = this.pickContext(authored).parents.hasRepeats ? expandRepeats(authored) : authored,
+      d = kernelSpatialDocument(withRepeats),
       page = snapshot?.pageId || this.state.page,
-      entries = (d === authored ? index : undefined) || new SpatialIndex(scene(d, page)),
+      entries = (withRepeats === authored ? index : undefined) || new SpatialIndex(scene(d, page)),
       tol = 5 / viewZoom
     // Hit the pixels actually on screen while a later frame is rendering. The
     // visible target must still be editable in the current document and page.
@@ -2032,7 +2049,7 @@ export class Editor {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
           throw new SelectionCommandError('superseded', 'Selection owner changed before grouping')
         if (mask) draft.nodes[plan.ids[0]].mask = true
-        if (group.graphic) draft.schemaVersion = 23
+        if (group.graphic && draft.schemaVersion < 23) draft.schemaVersion = 23
         applySelectionWrap(draft, plan, group)
       }, [group.id])
     } catch (error) {
@@ -2255,7 +2272,8 @@ export class Editor {
     const content=this.clipboard, before=this.state.doc, parents=allParents(before), selected=this.topSelection()
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
     const shared = selected.length && selected.every(id => parents.get(id) === parents.get(selected[0])) ? parents.get(selected[0]) : undefined
-    const targets=replace?selected:selected.length && selected.every(id=>container(before.nodes[id]) && !content.roots.includes(id)) ? selected
+    const selectedContainers = !!selected.length && selected.every(id => container(before.nodes[id]) && !content.roots.includes(id))
+    const targets=replace?selected:selectedContainers ? selected
       : shared && before.nodes[shared] && !content.roots.includes(shared) ? [shared] : []
     if(!targets.length){
       if(replace){this.notify('请选择要替换的图层');return}
@@ -2279,7 +2297,12 @@ export class Editor {
     // Mac Figma steps the inspector X/Y by 10, then 20, then 30 from the
     // copied local position. Restoring the placement alone leaves that delta
     // at (0, 0). Paste in place first, then add the step in parent space.
+    // Sketch ordinary paste into each selected frame centers the copied bounds
+    // in that frame's own width and height. Every copied root gets the same
+    // shift, so layers keep their internal offsets. Groups, sections, sibling
+    // paste, and paste-replace stay on the Figma placement above.
     const step = replace ? 0 : this.duplicateOffset
+    const centerSelectedFrames = !replace && selectedContainers && interfacePreference.getSnapshot().uiMode === 'sketch'
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
@@ -2295,12 +2318,13 @@ export class Editor {
           const at=replace?list.indexOf(target):anchor?list.indexOf(anchor)+1:list.length
           list.splice(at<0?list.length:at,0,...roots)
           const parentWorld=d.nodes[destination]?worldMatrix(d,destination):[1,0,0,1,0,0] as Matrix
+          const centerFrame = centerSelectedFrames && box.kind === 'frame'
           for(const [i,id] of roots.entries()) {
             const source=content.roots[i],placement=content.placements?.[source]
             const placed = placement ? cloneValue(placement.transform)
               : d.nodes[destination] ? multiply(inverse(parentWorld), d.nodes[id].transform) : d.nodes[id].transform
             d.nodes[id].transform = replace && placement ? cloneValue(placement.transform)
-              : multiply(translate(step, step), placed)
+              : multiply(translate(centerFrame ? 0 : step, centerFrame ? 0 : step), placed)
           }
           const measure=(id:string,parent:Matrix): import('./model').Bounds => {
             const n=d.nodes[id],matrix=multiply(parent,n.transform)
@@ -2310,8 +2334,10 @@ export class Editor {
           const localBounds=unionBounds(roots.map(id=>measure(id,identity())))
           const targetBounds=replace?bounds(boxPoints({x:0,y:0,width:box.width,height:box.height}).map(p=>apply(box.transform,p))):null
           const outsideX=content.roots.some(id=>content.placements?.[id]?.outsideX),outsideY=content.roots.some(id=>content.placements?.[id]?.outsideY)
-          const dx=replace?(targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0):0
-          const dy=replace?(targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0):0
+          const dx=centerFrame ? (box.width - localBounds.width) / 2 - localBounds.x
+            : replace?(targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0):0
+          const dy=centerFrame ? (box.height - localBounds.height) / 2 - localBounds.y
+            : replace?(targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0):0
           for(const id of roots) {
             const n=d.nodes[id];n.transform[4]+=dx;n.transform[5]+=dy
             if(replace){n.constraints=cloneValue(box.constraints);n.sizing=cloneValue(box.sizing)}

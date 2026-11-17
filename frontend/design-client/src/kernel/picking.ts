@@ -14,6 +14,7 @@ import {
   DocumentHistory,
   vector_geometry_network_json,
   vector_geometry_scale_json,
+  spatial_projections_json,
 } from '../generated/design-kernel/design_kernel'
 import { initializeKernelModule, validateKernelDocument, kernelModuleResourceIdentity, kernelResourceSha256 } from './module'
 import { documentStage, DocumentStage } from '../document-lifecycle-diagnostics'
@@ -36,6 +37,32 @@ export function pickingPreparationResources() { return ready ? preparationResour
 // Canvas snapshots must not survive a changed main-thread font environment.
 let geometryEpoch: object = {}
 export const pickingGeometryEpoch = () => geometryEpoch
+const spatialViews = new WeakMap<DesignDocument, DesignDocument>()
+export function kernelSpatialDocument(doc: DesignDocument): DesignDocument {
+  if (doc.schemaVersion < 24 || !ready) return doc
+  const cached = spatialViews.get(doc)
+  if (cached) return cached
+  type Patch = Pick<DesignNode, 'visible' | 'transform' | 'vectorGeometry'>
+  const patches = JSON.parse(spatial_projections_json(JSON.stringify(doc))) as Record<string, Patch>
+  const ids = Object.keys(patches)
+  if (!ids.length) { spatialViews.set(doc, doc); return doc }
+  const nodes = { ...doc.nodes }
+  for (const id of ids) {
+    const { visible, transform, vectorGeometry } = patches[id]
+    const original = doc.nodes[id]
+    nodes[id] = { ...original, visible, transform }
+    delete nodes[id].spatial
+    if (vectorGeometry) {
+      nodes[id].kind = 'vector'
+      delete nodes[id].network
+      nodes[id].vectorGeometry = vectorGeometry
+    }
+  }
+  const view = { ...doc, nodes }
+  spatialViews.set(doc, view)
+  spatialViews.set(view, view)
+  return view
+}
 export function kernelGeometryNetwork(geometry: NonNullable<DesignNode['vectorGeometry']>) {
   if(!ready)throw Error('矢量内核尚未就绪')
   return JSON.parse(vector_geometry_network_json(JSON.stringify(geometry))) as import('../model').Network
@@ -181,7 +208,7 @@ export function prepareDocumentJsonForEditing(source: string, captureValidatedJs
 function prepareAdmittedDocument(original: DesignDocument, captureValidatedJson?: (json: string) => void): DesignDocument {
   const prepared = documentStage(DocumentStage.layout, () => kernelLayout({
     ...original,
-    schemaVersion: Math.max(2, original.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10,
+    schemaVersion: Math.max(2, original.schemaVersion) as DesignDocument['schemaVersion'],
     rasterProfile: original.rasterProfile || (original.colorManagement ? 'figma' : 'analytic'),
   }))
   // Reject an invalid derived offset before adopting a persisted/imported scene.

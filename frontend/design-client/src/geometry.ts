@@ -1,6 +1,6 @@
 import { multiply, inverse, apply, translate, rotate, around, matrixString, boxPoints, bounds, unionBounds } from './commands/affine'
 import { maximumStrokeWidth } from './stroke-profile'
-import { kernelBounds, kernelGeometryNetwork, kernelHit, kernelSvgPaths } from './kernel/picking'
+import { kernelBounds, kernelGeometryNetwork, kernelHit, kernelSpatialDocument, kernelSvgPaths } from './kernel/picking'
 import { documentTransition } from './document-patch'
 import {
   type Point,
@@ -278,6 +278,7 @@ export type SceneEntry = {
   hidden?: boolean
 }
 export function scene(d: DesignDocument, pageId: string, roots?: ReadonlySet<string>, includeHidden = false): SceneEntry[] {
+  d = kernelSpatialDocument(d)
   const result: SceneEntry[] = []
   const page = d.pages.find((p) => p.id === pageId)
   if (!page) return result

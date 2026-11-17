@@ -19,6 +19,7 @@ import {
   initializePicking,
   kernelTextLayout,
   kernelExportPlan,
+  kernelSpatialDocument,
   kernelStrokeContours,
   kernelPdfVector,
 } from './kernel/picking'
@@ -120,7 +121,7 @@ function projectSlice(doc: DesignDocument, pageId: string, target: ExportTarget)
 
 /** Page presentation retains its explicit historical 40-unit margin. */
 export function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {
-  doc = sketchMaskScene(expandRepeats(doc))
+  doc = sketchMaskScene(kernelSpatialDocument(expandRepeats(doc)))
   if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)
     throw new Error('页面留白必须为 0–1000000')
   if (!doc.pages.some((p) => p.id === pageId)) throw new Error('导出页面不存在')
@@ -227,7 +228,7 @@ export function targetBounds(doc: DesignDocument, pageId: string, target: Export
     return { ...b }
   }
   const ids = new Set(target.nodeIds)
-  doc = expandRepeats(doc)
+  doc = kernelSpatialDocument(expandRepeats(doc))
   const entries = scene(doc, pageId).filter((entry) => ids.has(repeatSourceId(doc, entry.id)))
   if (!ids.size || ids.size > 1000 || new Set(entries.map(e=>repeatSourceId(doc,e.id))).size !== ids.size)
     throw new Error('请选择当前页面的 1–1000 个可见图层')
@@ -322,7 +323,7 @@ export async function exportVisualSvg(doc: DesignDocument, pageId: string, scale
 }
 export function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1, precision?: number, textMode: 'outlines' | 'editable' = 'outlines', fontMode: 'references' | 'embed' = 'references', fontEmbeddingAllowed = false, fontByteLimit = 4 * 1024 * 1024, embeddedFonts?: DesignDocument['fonts']) {
   if (fontMode === 'embed' && (textMode !== 'editable' || !fontEmbeddingAllowed)) throw new Error('Explicit editable font redistribution permission is required')
-  ;({doc,target} = repeatExport(kernelLayout(doc),target))
+  ;({doc,target} = repeatExport(kernelSpatialDocument(kernelLayout(doc)),target))
   doc = projectSlice(doc,pageId,target)
   const b = targetBounds(doc, pageId, target)
   if(!Number.isFinite(scale) || scale<0.001 || scale>128) throw new Error('导出倍率必须在 0.001–128 之间')
@@ -374,7 +375,7 @@ export async function exportPdfVector(
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
   const repeatedVisual = hasRepeats(doc)
-  ;({doc,target} = repeatExport(kernelLayout(doc),target))
+  ;({doc,target} = repeatExport(kernelSpatialDocument(kernelLayout(doc)),target))
   doc = projectSlice(doc, pageId, target)
   if (pdfVectorIssues(doc, pageId, target).length) {
     const bitmap = (await exportRasterBatch(doc, pageId, [1], target, undefined, signal, 'pdf'))[0]
@@ -474,7 +475,7 @@ export async function exportRasterBatch(
     throw new Error('请选择 1–16 个不重复的导出倍率')
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
-  ;({doc,target} = repeatExport(kernelLayout(doc),target))
+  ;({doc,target} = repeatExport(kernelSpatialDocument(kernelLayout(doc)),target))
   doc = projectSlice(doc,pageId,target)
   const box = rasterExportBounds(doc, pageId, target, format)
   const plans = scales.map((scale) => {

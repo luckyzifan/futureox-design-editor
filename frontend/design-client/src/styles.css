@@ -1522,6 +1522,28 @@ footer button {
   justify-content: flex-start !important;
   padding: 8px !important;
 }
+.pixel-preview-submenu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  width: 100%;
+  min-height: 28px;
+  text-align: start;
+}
+.pixel-preview-submenu > button { justify-content: space-between; }
+.pixel-preview-submenu [role="menu"] {
+  position: fixed;
+  min-width: 132px;
+  margin: 0;
+  padding: 3px;
+  background: var(--workspace-field);
+  color: var(--workspace-text);
+  border: 1px solid var(--workspace-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px #0002;
+}
+.pixel-preview-check { width: 13px; display: inline-flex; }
 .zoom-presets {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2674,6 +2696,41 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="figma"] .floating-toolbar .creation-tool-hint {
   bottom: calc(100% + 56px);
 }
+.figma-toolbelt-mode {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  border-radius: 7px;
+  background: var(--workspace-field);
+}
+.floating-toolbar .figma-toolbelt-mode > button { width: 30px; height: 30px; padding: 0; }
+.figma-toolbelt-mode > [aria-checked="true"] { background: var(--workspace-panel); color: var(--workspace-accent); }
+.draw-pencil-tools {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--workspace-panel);
+  border: 1px solid var(--workspace-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px #0002;
+}
+.draw-pencil-tools .number-field { width: 62px; }
+.draw-pencil-tools input[type="range"] { width: 88px; }
+.draw-pencil-color input { width: 23px; height: 23px; padding: 1px; cursor: pointer; }
+.draw-layer-thumbnail {
+  width: 17px; height: 17px; flex: 0 0 17px;
+  display: grid; place-items: center;
+  background: var(--workspace-field);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.draw-layer-thumbnail svg { width: 14px; height: 14px; }
 @media (min-width: 1181px) {
   .editor-shell[data-ui-mode="figma"] .floating-toolbar {
     height: auto;
@@ -2741,13 +2798,33 @@ html[data-reduced-motion=true] .animation-modal * {
 }
 .editor-shell[data-ui-mode="sketch"][data-window-controls="inset"] > .editor-header { padding-left: 80px; }
 .editor-shell[data-window-controls="inset"] > .editor-header .floating-toolbar { -webkit-app-region: no-drag; }
-.editor-shell[data-ui-mode="sketch"] > nav[data-workspace-tabs] { grid-column: 1 / -1; grid-row: 3; }
-.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) { grid-template-rows: 52px 1px auto minmax(0, 1fr) auto; }
-.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) .canvas-workspace,
-.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) .adaptive-layers-shell,
-.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) .properties-workspace,
-.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) > footer { grid-row: 4; }
-.editor-shell[data-ui-mode="sketch"]:has(> nav[data-workspace-tabs]) > .animation-panel { grid-row: 5; }
+.workspace-tabs.sketch-document-list {
+  flex-direction: column;
+  min-height: 0;
+  background: transparent;
+  overflow: hidden;
+  padding: 3px 5px 5px;
+}
+.sketch-documents-header { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.sketch-documents-header > button { display: flex; gap: 5px; align-items: center; padding: 5px; color: var(--workspace-text); }
+.sketch-documents-header > button:first-child { flex: 1; font-weight: 600; }
+.sketch-document-list [role="tablist"] { flex-direction: column; max-height: 150px; overflow: auto; }
+.sketch-document-list [role="tablist"][hidden] { display: none; }
+.sketch-document-list .workspace-tab { min-height: 26px; border: 0; border-radius: 5px; }
+.sketch-document-list .workspace-tab.active { background: var(--workspace-selected, var(--workspace-hover)); }
+.sketch-document-list [role="tab"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  text-align: start;
+  padding: 3px 5px;
+}
+.sketch-document-list [role="tab"] svg { flex: none; }
+.sketch-document-list [role="tab"] span { overflow: hidden; text-overflow: ellipsis; }
+.sketch-document-list .workspace-tab-close { display: grid; place-items: center; width: 25px; min-width: 25px; }
 .editor-shell[data-ui-mode="sketch"] .workspace-rail { display: none; }
 .editor-shell[data-ui-mode="sketch"].chrome-minimized,
 .editor-shell[data-ui-mode="sketch"].chrome-minimized.chrome-hide-inspector { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }

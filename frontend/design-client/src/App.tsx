@@ -4,6 +4,8 @@ import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnosti
 import { operationStatusText } from './operation-status-messages'
 import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
+import { DrawPencilToolbar, FigmaToolbeltMode } from './FigmaDrawTools'
+import { frameSizePresetGate } from './frame-presets'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
 import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
 import { libraryHostKind, libraryRailVisible } from './library-chrome'
@@ -220,13 +222,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showMove, setShowMove] = useState(false)
   const [showShapes, setShowShapes] = useState(false)
   const [showRegions, setShowRegions] = useState(false)
-  const [showFramePresets, setShowFramePresets] = useState(false)
+  const [showFramePresets, setShowFramePresets] = useState<'create' | 'apply' | null>(null)
   const [showDrawing, setShowDrawing] = useState(false)
   const [showUtility, setShowUtility] = useState(false)
   const [lastShapeTool, setLastShapeTool] = useState<Tool>('rectangle')
   const [lastMoveTool, setLastMoveTool] = useState<Tool>('select')
   const [lastRegionTool, setLastRegionTool] = useState<Tool>('frame')
   const [lastDrawingTool, setLastDrawingTool] = useState<Tool>('pen')
+  const [figmaDraw, setFigmaDraw] = useState(false)
   const [lastUtilityTool, setLastUtilityTool] = useState<Tool>('eraser')
   const [showColor, setShowColor] = useState(false)
   const [showExport, setShowExport] = useState(false)
@@ -866,6 +869,26 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setMenu(false)
     setShowSettings(true)
   }, [ready, switching, desktopStatus.transitioning, editor, showHome])
+  const replaceSketchTemplate = useCallback(() => {
+    if (uiMode !== 'sketch' || !ready || switching || showHome || largeDocument || source?.nativeCanvas ||
+        source?.openingPreview || desktopStatus.busy || desktopStatus.transitioning || editor.state.busy ||
+        editor.interactionActive || modalOwnsKeyboard(document.activeElement)) return false
+    const canApply = () => frameSizePresetGate(editor.state.doc, editor.state.page, editor.state.selection, editor.parentMap()) === 'ready'
+    if (!canApply() || !commitPendingEdits(editor) || !canApply()) return false
+    setShowFramePresets('apply')
+    return true
+  }, [uiMode, ready, switching, showHome, largeDocument, source, desktopStatus.busy, desktopStatus.transitioning, editor])
+  useEffect(() => {
+    if (uiMode !== 'sketch') return
+    const shortcut = (event: KeyboardEvent) => {
+      const primary = shortcutPlatform() === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+      if (!primary || !event.altKey || event.shiftKey || event.code !== 'KeyR' || event.defaultPrevented ||
+          event.repeat || event.isComposing || event.keyCode === 229 || shortcutTargetOwnsKeyboard(event.target)) return
+      if (replaceSketchTemplate()) { event.preventDefault(); event.stopPropagation() }
+    }
+    window.addEventListener('keydown', shortcut, true)
+    return () => window.removeEventListener('keydown', shortcut, true)
+  }, [uiMode, replaceSketchTemplate])
   useEffect(() => {
     const command = (name: DesktopCommand) => {
       if (largeDocument || source) return
@@ -1068,6 +1091,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
   }
   const inlineFigmaTabs = uiMode === 'figma' && !source && !!desktopSession?.supportsWorkspace
+  const sketchDocuments = uiMode === 'sketch' && desktopSession?.supportsWorkspace
+    ? <WorkspaceTabs session={desktopSession} activeId={s.doc.id} sidebar /> : undefined
   const figmaNameInSidebar = inlineFigmaTabs && showLayers && !uiMinimized
   const figmaZoomDocked = uiMode === 'figma' && (uiMinimized ? !!s.selection.length : showInspector)
   const documentNameField = <input
@@ -1088,7 +1113,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
     onKeyDown={event => event.stopPropagation()} />
   const designToolbar = (
-          <DesignToolbar disabled={toolbarDisabled}>
+          <DesignToolbar disabled={toolbarDisabled} className={figmaDraw ? 'figma-draw-toolbelt' : undefined}>
             {ready && !showHome && !source?.nativeCanvas && !source?.openingPreview && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow', 'pen', 'eraser'].includes(s.tool) && (
               <div className="creation-tool-hint" role="status">
                 <b>{localizedToolLabel(s.tool, locale)}</b>
@@ -1107,7 +1132,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 {(['frame', 'section', 'slice'] as const).map(id => tools.find(tool => tool.id === id)!).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={regionTool.id === id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
-                <button type="button" role="menuitem" tabIndex={-1} onClick={() => { if (!commitPendingEdits(editor)) return; setShowRegions(false); setShowFramePresets(true) }}>{toolbarText.devicePresets}</button>
+                <button type="button" role="menuitem" tabIndex={-1} onClick={() => { if (!commitPendingEdits(editor)) return; setShowRegions(false); setShowFramePresets('create') }}>{toolbarText.devicePresets}</button>
               </ToolPopover>
               <ToolPopover label={toolbarText.shapeTools} icon={<ShapeIcon size={18} />} open={showShapes} onOpenChange={open => openToolbarMenu('shapes', open)}
                 primary={{ label: shapeTool.label, title: `${shapeTool.label}${shapeTool.key ? ` (${shapeTool.key})` : ''}`, active: s.tool === shapeTool.id, onClick: () => chooseTool(shapeTool.id) }}>
@@ -1115,8 +1140,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={shapeTool.id === id} onClick={() => { chooseTool(id); setShowShapes(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
               </ToolPopover>
+              {figmaDraw && tools.filter(({ id }) => id === 'pencil' || id === 'brush').map(({ id, label, key, icon: Icon }) =>
+                <button key={id} type="button" aria-label={label} aria-pressed={s.tool === id}
+                  data-tooltip={key ? `${label} (${key})` : label} className={s.tool === id ? 'active' : undefined}
+                  onClick={() => chooseTool(id)}><Icon size={18} aria-hidden="true" /></button>)}
               <ToolPopover label={toolbarText.drawingTools} icon={<DrawingIcon size={18} />} open={showDrawing} onOpenChange={open => openToolbarMenu('drawing', open)}
-                primary={{ label: drawingTool.label, title: `${drawingTool.label}${drawingTool.key ? ` (${drawingTool.key})` : ''}`, active: s.tool === drawingTool.id, onClick: () => chooseTool(drawingTool.id) }}>
+                primary={figmaDraw ? undefined : { label: drawingTool.label, title: `${drawingTool.label}${drawingTool.key ? ` (${drawingTool.key})` : ''}`, active: s.tool === drawingTool.id, onClick: () => chooseTool(drawingTool.id) }}>
                 {tools.filter(({ id }) => ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={drawingTool.id === id} onClick={() => { chooseTool(id); setShowDrawing(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
@@ -1171,6 +1200,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <Search size={18} />
               </button>
             </div>
+            <FigmaToolbeltMode draw={figmaDraw} onChange={next => {
+              if (toolbarDisabled || !commitPendingEdits(editor) || editor.interactionActive) return false
+              openToolbarMenu('drawing', false)
+              setFigmaDraw(next)
+              return true
+            }} />
+            {figmaDraw && s.tool === 'pencil' && !toolbarDisabled && <DrawPencilToolbar editor={editor} />}
     </DesignToolbar>
   )
   return (
@@ -1311,7 +1347,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         {uiMode === 'sketch' && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
           onEditText={id => editText.current?.(id)}
           onSection={switchWorkspaceSection} onImages={files => void importImageFiles(files)}
-          onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets(true) }}
+          onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets('create') }}
+          onReplaceTemplate={replaceSketchTemplate}
           onSystems={() => setShowTools(true)} onShapeBuilder={() => setShowShapeBuilder(true)} />}
         <div className="header-right">
           <details ref={workspaceActions} className="workspace-actions" onKeyDown={event => {
@@ -1386,7 +1423,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <span className="avatar">{translateProfessional('我', locale)}</span>
         </div>
       </header>
-      {desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
+      {uiMode === 'figma' && desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
       {menu && createPortal(
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
@@ -1578,7 +1615,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           return opened
         }}
         onSync={syncCurrentDesign} onClose={() => setShowCloudWorkspace(false)} />}
-      {showFramePresets && <FramePresetPanel editor={editor} onClose={() => setShowFramePresets(false)} />}
+      {showFramePresets && <FramePresetPanel editor={editor} intent={showFramePresets} onClose={() => setShowFramePresets(null)} />}
       {showHistory && !source && (
         <DocumentHistoryDialog
           key={s.doc.id}
@@ -1606,8 +1643,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
           onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}
-            documentTitle={figmaNameInSidebar ? documentNameField : undefined}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
+        <div ref={leftPanel} className="adaptive-layers-shell">
+          {source && !source.showLayers && sketchDocuments}
+          {source?.navigation}
+          {(!source || source.showLayers) && <Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}
+            documents={sketchDocuments} drawThumbnails={uiMode === 'figma' && figmaDraw}
+            documentTitle={figmaNameInSidebar ? documentNameField : undefined} />}
+          <PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
+        </div>
         <div className="canvas-workspace" ref={source?.canvas}>
           {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
@@ -1648,7 +1691,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             {figmaZoomDocked && figmaZoom}
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
-            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex} onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} /></PendingEditContext.Provider>
+            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex} onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} /></PendingEditContext.Provider>
               : <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />}
           </div>
           <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />

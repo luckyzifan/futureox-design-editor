@@ -582,6 +582,7 @@ fn solid_default() -> crate::scene::Paint {
 /// Test and tooling helper: a fully defaulted node of the given kind.
 pub fn sample_node(id: &str, kind: &str) -> Node {
     Node {
+        spatial: None,
         repeat: None,
         repeat_origin: None,
         guides: Default::default(),

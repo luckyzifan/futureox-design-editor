@@ -43,6 +43,7 @@ import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
 import { FramePresetPanel } from './FramePresetPanel'
+import { addSpatialEffect, SpatialEffectRow, type SpatialKind } from './SpatialEffectsPanel'
 import { frameSizePresetGate } from './frame-presets'
 import type { PencilCap } from './freehand'
 import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
@@ -449,12 +450,13 @@ function PencilCapSection({ editor, cap }: { editor: Editor; cap: PencilCap }) {
 }
 // Camera presentation updates re-render the parent shell. The controls consume
 // the editor's independent panel snapshot and must not rebuild for those frames.
-export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blurStopIndex, onSelectBlurStop, onEditBlur }: {
+export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blurStopIndex, onSelectBlurStop, onEditBlur, allowSpatial = true }: {
   editor: Editor
   blurEffectIndex?: number
   blurStopIndex?: number
   onSelectBlurStop?: (index: number) => void
   onEditBlur?: (index: number | null) => void
+  allowSpatial?: boolean
 }) {
   const { uiMode } = useInterfacePreferences()
   const shortcutProfile = useShortcutProfile()
@@ -462,6 +464,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const [presetFrameId, setPresetFrameId] = useState<string | null>(null)
   const [blurToOpen, setBlurToOpen] = useState<string | null>(null)
+  const [spatialOpen, setSpatialOpen] = useState<SpatialKind | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
     n = s.doc.nodes[ids[0]]
@@ -1054,7 +1057,12 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               aria-label={tr("添加效果")}
               value=""
               onChange={(e) => {
-                const kind = e.currentTarget.value as Effect['kind'] | ''
+                const choice = e.currentTarget.value
+                if (choice === 'pose' || choice === 'perspective') {
+                  if (allowSpatial && uiMode === 'figma' && addSpatialEffect(editor, n.id, choice)) setSpatialOpen(choice)
+                  return
+                }
+                const kind = choice as Effect['kind'] | ''
                 if (!kind || n.effects.length >= 16) return
                 if (uiMode === 'sketch' && !canAddSketchEffect(kind, n.effects)) return
                 const added = kind === 'glass' ? createGlassEffect(uiMode) : effect(kind)
@@ -1077,6 +1085,10 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                     uiMode === 'sketch' && kind === 'gaussian-blur' ? effects.blur : effects[kind])}
                 </option>
               ))}
+              {allowSpatial && uiMode === 'figma' && <>
+                <option value="pose" disabled={!!n.spatial?.pose || ['slice', 'section'].includes(n.kind)}>{locale === 'en' ? '3D transform' : '3D 变换'}</option>
+                <option value="perspective" disabled={!!n.spatial?.perspective || n.kind !== 'frame' || !!n.graphic}>{locale === 'en' ? 'Perspective' : '透视'}</option>
+              </>}
             </select>
           </h3>
           {n.effects.map((fx, i) => nativeBlurSettings(fx.kind) || usesSketchRamp(fx) ?
@@ -1257,8 +1269,14 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
               )}
             </div>
           )}
-          {!n.effects.length && <p className="muted">{tr("用光影和质感表达层次")}</p>}
+          {!n.effects.length && !n.spatial && <p className="muted">{tr("用光影和质感表达层次")}</p>}
         </section>
+        {allowSpatial && uiMode === 'figma' && n.spatial && <section>
+          <h3>{locale === 'en' ? 'Transform effects' : '变换效果'}</h3>
+          {(['pose', 'perspective'] as const).map(kind => n.spatial?.[kind] &&
+            <SpatialEffectRow key={kind} editor={editor} layer={n} kind={kind} open={spatialOpen === kind}
+              onOpen={open => setSpatialOpen(open ? kind : null)} />)}
+        </section>}
         <SelectionColorsPanel editor={editor} />
         </>}
         <NodeExportPanel key={n.id} editor={editor} node={n} />

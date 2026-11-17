@@ -7,7 +7,8 @@ import type { Editor } from './engine'
 import { zoomAt, zoomStep, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM } from './canvas-camera'
 import { NumberField } from './fields'
 import { PendingEditContext } from './pending-edit-context'
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { Check, ChevronRight } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 export function ViewControls({
   editor,
   size,
@@ -32,13 +33,40 @@ export function ViewControls({
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const zoomPercentage = sketch ? Math.floor(liveZoom * 100 + 1e-9) : Number((liveZoom * 100).toFixed(1))
   const menu = useRef<HTMLDetailsElement>(null)
-  const closeMenu = () => { if (menu.current) menu.current.open = false }
+  const pixelId = useId()
+  const pixelTrigger = useRef<HTMLButtonElement>(null)
+  const pixelList = useRef<HTMLDivElement>(null)
+  const [pixelOpen, setPixelOpen] = useState(false)
+  const closeMenu = (restoreFocus = false) => {
+    if (menu.current) menu.current.open = false
+    setPixelOpen(false)
+    if (restoreFocus) menu.current?.querySelector('summary')?.focus({ preventScroll: true })
+  }
   useEffect(() => {
-    const dismiss = (event: Event) => { if (menu.current && !menu.current.contains(event.target as Node)) menu.current.open = false }
-    const blur = () => { if (menu.current) menu.current.open = false }
+    const dismiss = (event: Event) => {
+      if (menu.current && !menu.current.contains(event.target as Node)) closeMenu()
+    }
+    const blur = () => closeMenu()
     document.addEventListener('pointerdown', dismiss, true); window.addEventListener('blur', blur)
     return () => { document.removeEventListener('pointerdown', dismiss, true); window.removeEventListener('blur', blur) }
   }, [])
+  useLayoutEffect(() => {
+    const panel = pixelList.current, trigger = pixelTrigger.current
+    const body = menu.current?.querySelector('.view-menu-body')
+    if (!pixelOpen || !panel || !trigger || !body) return
+    panel.showPopover?.()
+    const place = () => {
+      const anchor = trigger.getBoundingClientRect(), parent = body.getBoundingClientRect()
+      const left = parent.left - panel.offsetWidth - 4
+      panel.style.left = `${Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, left >= 8 ? left : parent.right + 4))}px`
+      panel.style.top = `${Math.max(8, Math.min(window.innerHeight - panel.offsetHeight - 8, anchor.top))}px`
+    }
+    place()
+    panel.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus({ preventScroll: true })
+    window.addEventListener('resize', place)
+    body.addEventListener('scroll', place)
+    return () => { window.removeEventListener('resize', place); body.removeEventListener('scroll', place) }
+  }, [pixelOpen])
   const zoom = (value: number) => {
     // Parked wheel cameras must land before button math: otherwise the next
     // rAF commit rolls the button's zoom back to the pre-click camera.
@@ -67,13 +95,15 @@ export function ViewControls({
       className={`canvas-controls ${compact ? 'compact-controls' : ''}`}
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && menu.current?.open) { menu.current.open = false; menu.current.querySelector('summary')?.focus(); e.preventDefault() } }}
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && menu.current?.open) { closeMenu(true); e.preventDefault() } }}
     >
       {!compact && <button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>
         −
       </button>}
       <details ref={menu} className="view-menu" onToggle={event => {
-        if (!sketch && event.currentTarget.open) event.currentTarget.querySelector<HTMLInputElement>('input[role="spinbutton"]')?.focus()
+        if (event.target !== event.currentTarget) return
+        if (!event.currentTarget.open) setPixelOpen(false)
+        else if (!sketch) event.currentTarget.querySelector<HTMLInputElement>('input[role="spinbutton"]')?.focus()
       }}>
         <summary aria-label={text.zoomView} data-testid="zoom-readout">{zoomPercentage}%</summary>
         <div className="view-menu-body">
@@ -127,7 +157,7 @@ export function ViewControls({
           <label><input type="checkbox" aria-label={text.wheelZoom} checked={s.scrollWheelZoom}
             onChange={e => editor.setScrollWheelZoom(e.target.checked)}/>{text.wheelZoom}</label>
           <small>{text.viewNavigationHelp}</small>
-          <label>
+          {sketch ? <label>
             {text.pixelPreview}
             <select
               aria-label={text.pixelPreview}
@@ -138,7 +168,39 @@ export function ViewControls({
               <option value={1}>1×</option>
               <option value={2}>2×</option>
             </select>
-          </label>
+          </label> : <div className="pixel-preview-submenu" onBlur={event => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPixelOpen(false)
+          }}>
+            <button type="button" ref={pixelTrigger} aria-haspopup="menu" aria-expanded={pixelOpen}
+              aria-controls={pixelOpen ? pixelId : undefined} onClick={() => setPixelOpen(!pixelOpen)}
+              onKeyDown={event => {
+                if (event.key !== 'ArrowRight' && event.key !== 'ArrowDown') return
+                event.preventDefault()
+                setPixelOpen(true)
+              }}>{text.pixelPreview}<ChevronRight size={14} aria-hidden="true" /></button>
+            {pixelOpen && <div ref={pixelList} id={pixelId} popover="manual" role="menu" aria-label={text.pixelPreview}
+              onKeyDown={event => {
+                if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+                  event.preventDefault(); event.stopPropagation()
+                  pixelTrigger.current?.focus({ preventScroll: true })
+                  setPixelOpen(false)
+                  return
+                }
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+                event.preventDefault()
+                const choices = Array.from(event.currentTarget.querySelectorAll('button'))
+                const index = choices.findIndex(choice => choice === event.target)
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 :
+                  (index + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length
+                choices[next]?.focus()
+              }}>
+              {([0, 1, 2] as const).map(value => <button type="button" key={value} role="menuitemradio" tabIndex={-1}
+                aria-checked={s.pixelPreview === value} onClick={() => { preview(value); closeMenu(true) }}>
+                <span className="pixel-preview-check" aria-hidden="true">{s.pixelPreview === value && <Check size={13} />}</span>
+                {value === 0 ? label('关闭', 'Disabled') : `${value}×`}
+              </button>)}
+            </div>}
+          </div>}
           <label><input type="checkbox" aria-label={text.checkerboard} checked={s.checkerboard} onChange={e => editor.set({ checkerboard: e.target.checked })}/>{text.checkerboard}</label>
           <label>
             <input
