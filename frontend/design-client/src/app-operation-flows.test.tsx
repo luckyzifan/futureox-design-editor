@@ -2416,3 +2416,37 @@ test('Figma Command+K opens Quick Actions without taking keys from Find, text or
   expect(current.state.view).toEqual(view)
   expect(current.canUndo).toBe(false)
 })
+
+
+test('Figma A and F arm the frame tool and display both keys without intercepting text', async () => {
+  applyInterfaceLayout('figma')
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  await render()
+  const current = editor!, doc = blank(), shape = node('rectangle')
+  doc.nodes[shape.id] = shape; doc.pages[0].children = [shape.id]
+  await act(async () => { current.load(doc); canvas().focus() })
+  const before = current.authoredDocument
+  await key('a', { code: 'KeyA' })
+  expect(current.state.tool).toBe('frame')
+  const frame = document.querySelector('.figma-workspace-tools button[aria-label="画板"][aria-pressed="true"]')!
+  expect(frame.getAttribute('data-tooltip')).toContain('F / A')
+  await key('Escape')
+  await key('f', { code: 'KeyF' })
+  expect(current.state.tool).toBe('frame')
+  await key('Escape')
+  const name = document.querySelector<HTMLInputElement>('input[aria-label="文档名称"]')!
+  await act(async () => name.focus())
+  const textKey = new KeyboardEvent('keydown',{ key: 'a', code: 'KeyA', bubbles: true, cancelable: true })
+  await act(async () => name.dispatchEvent(textKey))
+  expect(textKey.defaultPrevented).toBe(false)
+  expect(current.state.tool).toBe('select')
+  await act(async () => canvas().focus())
+  await key('a', { code: 'KeyA', metaKey: true })
+  expect(current.state.selection).toEqual([shape.id])
+  expect(current.state.tool).toBe('select')
+  await act(async () => applyInterfaceLayout('sketch'))
+  await key('a', { code: 'KeyA' })
+  expect(current.state.tool).toBe('select')
+  expect(current.authoredDocument).toBe(before)
+  expect(current.canUndo).toBe(false)
+})
