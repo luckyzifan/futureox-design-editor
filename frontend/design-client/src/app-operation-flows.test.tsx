@@ -2299,3 +2299,44 @@ test('Figma Shift+Quote toggles pixel grid while Command+Shift+Quote only toggle
   expect(current.state.view).toEqual(view)
   expect(current.canUndo).toBe(false)
 })
+
+
+test('Figma shortcut reference stays interactive, reflects used keys and remaps a selected keyboard layout', async () => {
+  applyInterfaceLayout('figma')
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  await render()
+  const current = editor!, doc = blank(), frame = node('frame'), child = node('rectangle')
+  frame.children = [child.id]; doc.nodes = { [frame.id]: frame, [child.id]: child }; doc.pages[0].children = [frame.id]
+  await act(async () => { current.load(doc); current.select([child.id]); canvas().focus() })
+  const before = current.authoredDocument
+  const dock = () => document.querySelector<HTMLElement>('.shortcut-reference')
+  const tab = (title: string) => [...dock()!.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(tab => tab.textContent === title)!
+  await key('?', { code: 'Slash', ctrlKey: true, shiftKey: true })
+  expect(dock()).not.toBeNull()
+  expect(dock()!.getAttribute('aria-modal')).toBeNull()
+  const arrow = () => dock()!.querySelector('[data-shortcut-command="set-tool-arrow"] kbd')
+  expect(arrow()?.getAttribute('data-used')).toBe('false')
+  await key('L', { code: 'KeyL', shiftKey: true })
+  expect(current.state.tool).toBe('arrow')
+  expect(arrow()?.getAttribute('data-used')).toBe('true')
+
+  await act(async () => tab('布局').click())
+  const select = dock()!.querySelector('select')!
+  await act(async () => { select.value = 'de-qwertz'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(interfacePreference.getSnapshot().figmaKeyboardLayout).toBe('de-qwertz')
+  await act(async () => tab('编辑与选区').click())
+  const parent = () => dock()!.querySelector('[data-shortcut-command="select-parent"] kbd')
+  expect(parent()?.textContent).toBe('#')
+  await act(async () => canvas().focus())
+  await key('#', { code: 'Backslash' })
+  expect(current.state.selection).toEqual([frame.id])
+  expect(parent()?.getAttribute('data-used')).toBe('true')
+  await key('Escape')
+  expect(dock()).toBeNull()
+  expect(document.activeElement).toBe(canvas())
+  expect(current.authoredDocument).toBe(before)
+  expect(current.canUndo).toBe(false)
+  await act(async () => applyInterfaceLayout('sketch'))
+  await key('?', { code: 'Slash', ctrlKey: true, shiftKey: true })
+  expect(dock()).toBeNull()
+})

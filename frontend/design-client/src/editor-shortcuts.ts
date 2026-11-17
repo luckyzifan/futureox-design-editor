@@ -4,6 +4,7 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
 import { requestCommandSearch } from './command-search-session'
 import { requestLayerFind } from './layer-find-session'
+import { recordShortcutUse, requestShortcutReference } from './shortcut-reference-session'
 import { editableFrameCrop } from './selection-properties'
 import { resolveShortcut, shortcutContextForLayout, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
@@ -16,17 +17,19 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   const binding = resolveShortcut(event, layout)
   if (!binding || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
-  // Command search is shell state. It must not enter dispatch or document history.
-  if (binding.command === 'open-command-search' || binding.command === 'open-layer-find') {
+  if (!event.repeat && !editor.interactionActive && !editor.state.busy && layout.profile === 'figma-like') recordShortcutUse(binding)
+  if (binding.command === 'open-command-search' || binding.command === 'open-layer-find' || binding.command === 'open-shortcut-reference') {
     if (!event.repeat && !editor.interactionActive) {
       if (binding.command === 'open-command-search') requestCommandSearch(event.target)
-      else requestLayerFind(event.target)
+      else if (binding.command === 'open-layer-find') requestLayerFind(event.target)
+      else requestShortcutReference(event.target)
     }
     return true
   }
-  if (binding.command === 'toggle-layout-guides' || binding.command === 'toggle-pixel-grid') {
+  if (binding.command === 'toggle-layout-guides' || binding.command === 'toggle-pixel-grid' || binding.command === 'toggle-pixel-snapping') {
     if (!event.repeat && !editor.interactionActive) {
       if (binding.command === 'toggle-pixel-grid') editor.set({ pixelGrid: !editor.state.pixelGrid })
+      else if (binding.command === 'toggle-pixel-snapping') editor.set({ snapPixels: !editor.state.snapPixels })
       else editor.set({ showAuthoredLayout: editor.state.showAuthoredLayout === false })
     }
     return true

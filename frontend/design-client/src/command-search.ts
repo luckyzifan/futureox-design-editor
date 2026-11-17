@@ -138,6 +138,11 @@ function supportsCatalogCommand(command: EditorCommand, mode: UiMode, profile: S
     (!['select-all-force', 'select-all-top-level'].includes(command) || profile === 'sketch-like')
 }
 
+export function commandTitleForShortcuts(command: string, locale: InterfaceLocale) {
+  const spec = catalog.find(item => item.command === command)
+  return spec ? forms(spec, locale, 'figma', false, false).label : undefined
+}
+
 const arrangeSpec = [
   ['align-x-start', 'x', 'start', 'alignLeft'],
   ['align-x-center', 'x', 'center', 'alignCenter'],

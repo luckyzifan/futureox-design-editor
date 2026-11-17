@@ -2,6 +2,7 @@ import { dispatchEditorCommand } from './editor-commands'
 import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
+import { requestShortcutReference } from './shortcut-reference-session'
 import { useInterfacePreferences, useInterfaceText } from './interface-preference'
 import type { Editor } from './engine'
 import { zoomAt, zoomStep, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM } from './canvas-camera'
@@ -26,13 +27,15 @@ export function ViewControls({
   const s = editor.state
   const { locale, uiMode } = useInterfacePreferences()
   const profile = useShortcutProfile()
-  const shortcut = { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }
+  const shortcut = { profile, platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode }
   const sketch = uiMode === 'sketch'
   const label = (zh: string, en: string) => locale === 'en' ? en : zh
   const centerKey = shortcutLabel('center-selection', shortcut)
   const topFrameKey = shortcutLabel('zoom-top-level-frame', { ...shortcut, uiMode })
   const layoutGuidesKey = shortcutLabel('toggle-layout-guides', shortcut)
-  const pixelGridKey = shortcutLabel('toggle-pixel-grid', { ...shortcut, uiMode })
+  const pixelGridKey = shortcutLabel('toggle-pixel-grid', shortcut)
+  const pixelSnapKey = shortcutLabel('toggle-pixel-snapping', shortcut)
+  const shortcutReferenceKey = shortcutLabel('open-shortcut-reference', shortcut)
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const zoomPercentage = sketch ? Math.floor(liveZoom * 100 + 1e-9) : Number((liveZoom * 100).toFixed(1))
   const menu = useRef<HTMLDetailsElement>(null)
@@ -223,8 +226,13 @@ export function ViewControls({
               checked={s.snapPixels}
               onChange={(e) => editor.set({ snapPixels: e.target.checked })}
             />
-            {text.snapPixels}
+            {text.snapPixels}{pixelSnapKey && <kbd>{pixelSnapKey}</kbd>}
           </label>
+          {!sketch && <button type="button" onClick={() => {
+            const trigger = menu.current?.querySelector('summary') ?? null
+            closeMenu()
+            requestShortcutReference(trigger)
+          }}>{label('键盘快捷键', 'Keyboard shortcuts')}{shortcutReferenceKey && <kbd>{shortcutReferenceKey}</kbd>}</button>}
           {!sketch && <label><input type="checkbox" checked={s.showAuthoredLayout !== false}
             onChange={event => editor.set({ showAuthoredLayout: event.target.checked })} />
             {label('布局参考线', 'Layout guides')}{layoutGuidesKey ? `　${layoutGuidesKey}` : ''}

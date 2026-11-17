@@ -49,6 +49,7 @@ import {useCanvasColorPicker} from './canvas-color-picker'
 import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
 import { resolveShortcut, shortcutProfileForUiMode, shortcutPlatform } from './shortcut-profiles'
+import { closeShortcutReference, recordShortcutUse, shortcutReferenceOpen } from './shortcut-reference-session'
 import { isSketchBooleanCommand } from './sketch-boolean-commands'
 import { requestCommandSearch } from './command-search-session'
 import { closeLayerFind, layerFindSnapshot, requestLayerFind } from './layer-find-session'
@@ -1365,6 +1366,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       const shortcut = resolveShortcut(e, shortcutContext)
+      if (mode === 'figma' && e.key === 'Escape' && shortcutReferenceOpen()) {
+        e.preventDefault()
+        if (!e.repeat) closeShortcutReference()
+        return
+      }
+      if (shortcut?.command === 'open-shortcut-reference') {
+        void dispatchEditorShortcut(editor, e, shortcutContext)
+        return
+      }
       if (shortcut?.command === 'select-parent') {
         // This is selection navigation. A live pen or vector edit owns input
         // and must not be committed just by pressing Backslash.
@@ -1457,7 +1467,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       // View shortcuts must not commit an in-progress pen path.
-      if ((shortcut?.command === 'toggle-layout-guides' || shortcut?.command === 'toggle-pixel-grid') && !drag.current && !pencil.current) {
+      if ((shortcut?.command === 'toggle-layout-guides' || shortcut?.command === 'toggle-pixel-grid' || shortcut?.command === 'toggle-pixel-snapping') && !drag.current && !pencil.current) {
         void dispatchEditorShortcut(editor, e, shortcutContext)
         return
       }
@@ -1493,7 +1503,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         editor.set({ pixelPreview: s.pixelPreview ? 0 : s.lastPixelPreview })
         return
       }
-      if (mod && e.code === 'Quote' && (mode === 'sketch' || (e.shiftKey && !e.altKey))) {
+      if (mode === 'sketch' && mod && e.code === 'Quote') {
         e.preventDefault()
         if (e.shiftKey) editor.set({ snapPixels: !editor.state.snapPixels })
         else editor.set({ pixelGrid: !editor.state.pixelGrid })
@@ -1659,6 +1669,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (shortcut.command === 'open-layer-find' && ownsTextEntry(textEntryOwner.current)) return
         e.preventDefault()
         if (!e.repeat && !editor.interactionActive && !drag.current && !pencil.current) {
+          if (mode === 'figma') recordShortcutUse(shortcut)
           if (shortcut.command === 'open-command-search') requestCommandSearch(e.target)
           else requestLayerFind(e.target)
         }
@@ -1670,6 +1681,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (preserveFrameContents && !editableFrameCrop(editor)) return
         e.preventDefault()
         if (['select', 'scale'].includes(editor.state.tool) && editor.topSelection().length) {
+          if (mode === 'figma' && !e.repeat) recordShortcutUse(shortcut)
           const command = shortcut.command
           nudge.step(e, preserveFrameContents ? '裁切画框' : '键盘调整图层尺寸',
             () => nudgeSelectionDimensions(editor, command, true, preserveFrameContents))
