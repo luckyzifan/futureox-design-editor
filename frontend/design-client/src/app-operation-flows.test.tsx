@@ -232,6 +232,33 @@ test('Sketch Control-S and Inspector Update sync the selected style without reli
   expect(editor!.authoredDocument).toEqual(afterSync)
 })
 
+test('Sketch Command-period, the canvas menu and the header toggle the same interface', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const minimized = () => document.querySelector('.editor-workspace')!.classList.contains('ui-minimized')
+  const toggle = () => key('.', { code: 'Period', metaKey: true })
+  const before = editor!.authoredDocument
+  await act(async () => { editor!.select([]); canvas().focus() })
+  expect(minimized()).toBe(false)
+  await toggle()
+  expect(minimized()).toBe(true)
+  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="展开界面"]')!.click())
+  expect(minimized()).toBe(false)
+  await act(async () => canvas().focus())
+  await key('ContextMenu')
+  const menuItem = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent === '显示/隐藏界面')
+  expect(menuItem).toBeDefined()
+  await act(async () => menuItem!.click())
+  expect(minimized()).toBe(true)
+  await act(async () => applyInterfaceLayout('figma'))
+  await toggle()
+  expect(minimized()).toBe(true)
+  await key('\\', { code: 'Backslash', metaKey: true, shiftKey: true })
+  expect(minimized()).toBe(false)
+  expect(editor!.authoredDocument).toBe(before)
+})
+
 test('mounted App capture preserves held-key one-undo and both toolbar/Inspector allow parent alignment', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })
   await render(); expect(editor).toBeDefined()

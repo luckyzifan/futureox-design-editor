@@ -187,11 +187,13 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
         </div>
       })}
       {!figma && layerPicker}
-      {figma && empty && <>
+      {empty && (figma || onToggleUi) && <>
         <div role="separator" />
         {onToggleUi && <button type="button" role="menuitem" onClick={() => { close.current(); onToggleUi() }}>{text.toggleUi}</button>}
-        <button type="button" role="menuitem" onClick={() => { close.current(); requestCommandSearch(previousFocus.current) }}>{commandSearchText[locale].label}</button>
-        {pluginPicker}
+        {figma && <>
+          <button type="button" role="menuitem" onClick={() => { close.current(); requestCommandSearch(previousFocus.current) }}>{commandSearchText[locale].label}</button>
+          {pluginPicker}
+        </>}
       </>}
     </>}
   </div>, document.body)

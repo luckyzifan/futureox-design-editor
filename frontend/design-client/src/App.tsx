@@ -249,7 +249,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [editor] = useState(() => source?.editor || new Editor(blank()))
   const editText = useRef<((id: string) => void) | null>(null)
   const toggleUi = useCallback(() => {
-    if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value)
+    if (hasPendingEdits(editor) || editor.interactionActive) return false
+    setUiMinimized(value => !value)
+    return true
   }, [editor])
   useEffect(() => {
     if (!desktop?.setInterfaceLocale) return
@@ -471,15 +473,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   }, [s.tool])
   useEffect(() => {
     const minimize = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || event.keyCode === 229 || (shortcutPlatform() === 'mac' ? (!event.metaKey || event.ctrlKey) : (!event.ctrlKey || event.metaKey)) || !event.shiftKey || event.code !== 'Backslash' ||
-          event.altKey || event.isComposing || editor.interactionActive || hasPendingEdits(editor) || modalOwnsKeyboard(event.target) ||
-          (event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable],[role="menu"]')) return
-      event.preventDefault()
-      setUiMinimized(value => !value)
+      const primary = shortcutPlatform() === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+      const sketchToggle = uiMode === 'sketch' && !event.shiftKey && event.code === 'Period'
+      const sharedToggle = event.shiftKey && event.code === 'Backslash'
+      if (!primary || (!sketchToggle && !sharedToggle) || event.altKey || event.defaultPrevented ||
+          event.repeat || event.keyCode === 229 || event.isComposing || shortcutTargetOwnsKeyboard(event.target)) return
+      if (toggleUi()) event.preventDefault()
     }
     window.addEventListener('keydown', minimize)
     return () => window.removeEventListener('keydown', minimize)
-  }, [editor])
+  }, [uiMode, toggleUi])
   const [ready, setReady] = useState(false),
     [saved, setSaved] = useState('载入中'),
     [menu, setMenu] = useState(false)
@@ -1372,7 +1375,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <b>/</b>
           {!figmaNameInSidebar && documentNameField}
           <span className="draft-badge">{panelText.localBadge}</span>
-          <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
+          <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo(uiMode === 'sketch' ? 'Mod+.' : 'Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={toggleUi}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
