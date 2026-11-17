@@ -12,7 +12,7 @@ use futureox_design_kernel::{
 };
 use std::collections::HashMap;
 
-const BLENDS: [&str; 18] = [
+const BLENDS: [&str; 19] = [
     "normal",
     "multiply",
     "screen",
@@ -31,6 +31,7 @@ const BLENDS: [&str; 18] = [
     "luminosity",
     "linear-burn",
     "linear-dodge",
+    "plus-lighter",
 ];
 fn blend(mode: &str) -> Result<f32, String> {
     BLENDS

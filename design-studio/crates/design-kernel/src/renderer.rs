@@ -4682,6 +4682,7 @@ impl Painter<'_> {
             && !n.effects.iter().any(|e| e.visible)
             && !n.passes_backdrop()
             && !self.group_samples_backdrop(n)
+            && n.render_children().iter().all(|id| self.doc.nodes[id].blend != "plus-lighter")
     }
     // The regional Gaussian proof is analytic and unmanaged. Unsupported
     // effects and mask subtrees keep their original full-domain evaluation.

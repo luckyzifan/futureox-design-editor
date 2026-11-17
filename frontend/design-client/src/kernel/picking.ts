@@ -15,6 +15,7 @@ import {
   vector_geometry_network_json,
   vector_geometry_scale_json,
   spatial_projections_json,
+  spatial_export_document_json,
 } from '../generated/design-kernel/design_kernel'
 import { initializeKernelModule, validateKernelDocument, kernelModuleResourceIdentity, kernelResourceSha256 } from './module'
 import { documentStage, DocumentStage } from '../document-lifecycle-diagnostics'
@@ -38,20 +39,54 @@ export function pickingPreparationResources() { return ready ? preparationResour
 let geometryEpoch: object = {}
 export const pickingGeometryEpoch = () => geometryEpoch
 const spatialViews = new WeakMap<DesignDocument, DesignDocument>()
+type SpatialPatch = Pick<DesignNode, 'visible' | 'transform' | 'vectorGeometry'> &
+  { hideFills?: boolean; hideStrokes?: boolean; composed?: boolean }
+const composedSpatialRoots = new WeakMap<DesignDocument, Set<string>>()
+export function requiresSpatialRaster(doc: DesignDocument, selected: readonly string[] = []) {
+  kernelSpatialDocument(doc)
+  const roots = composedSpatialRoots.get(doc)
+  if (!roots?.size) return false
+  if (!selected.length) return true
+  const meets = (ids: Iterable<string>, targets: ReadonlySet<string>) => {
+    const pending = [...ids]
+    const seen = new Set<string>()
+    while (pending.length) {
+      const id = pending.pop()!
+      if (targets.has(id)) return true
+      if (seen.has(id)) continue
+      seen.add(id)
+      for (const child of doc.nodes[id]?.children || []) pending.push(child)
+    }
+    return false
+  }
+  return meets(selected, roots) || meets(roots, new Set(selected))
+}
+export function kernelSpatialRasterDocument(doc: DesignDocument, selected: readonly string[]) {
+  const result = JSON.parse(spatial_export_document_json(JSON.stringify(doc), JSON.stringify(selected))) as
+    { document: DesignDocument; outlines: Record<string, SpatialPatch> }
+  return { document: result.document, geometry: applySpatialPatches(doc, result.outlines) }
+}
 export function kernelSpatialDocument(doc: DesignDocument): DesignDocument {
   if (doc.schemaVersion < 24 || !ready) return doc
   const cached = spatialViews.get(doc)
   if (cached) return cached
-  type Patch = Pick<DesignNode, 'visible' | 'transform' | 'vectorGeometry'> & { hideFills?: boolean }
-  const patches = JSON.parse(spatial_projections_json(JSON.stringify(doc))) as Record<string, Patch>
+  const patches = JSON.parse(spatial_projections_json(JSON.stringify(doc))) as Record<string, SpatialPatch>
+  const view = applySpatialPatches(doc, patches)
+  composedSpatialRoots.set(doc, new Set(Object.keys(patches).filter(id => patches[id].composed)))
+  spatialViews.set(doc, view)
+  spatialViews.set(view, view)
+  return view
+}
+function applySpatialPatches(doc: DesignDocument, patches: Record<string, SpatialPatch>): DesignDocument {
   const ids = Object.keys(patches)
-  if (!ids.length) { spatialViews.set(doc, doc); return doc }
+  if (!ids.length) return doc
   const nodes = { ...doc.nodes }
   for (const id of ids) {
-    const { visible, transform, vectorGeometry, hideFills } = patches[id]
+    const { visible, transform, vectorGeometry, hideFills, hideStrokes } = patches[id]
     const original = doc.nodes[id]
     nodes[id] = { ...original, visible, transform }
     if (hideFills) nodes[id].fills = original.fills.map(paint => ({ ...paint, visible: false }))
+    if (hideStrokes) nodes[id].strokes = []
     delete nodes[id].spatial
     if (vectorGeometry) {
       nodes[id].kind = 'vector'
@@ -65,10 +100,7 @@ export function kernelSpatialDocument(doc: DesignDocument): DesignDocument {
       delete nodes[id].spatial
     }
   }
-  const view = { ...doc, nodes }
-  spatialViews.set(doc, view)
-  spatialViews.set(view, view)
-  return view
+  return { ...doc, nodes }
 }
 export function kernelGeometryNetwork(geometry: NonNullable<DesignNode['vectorGeometry']>) {
   if(!ready)throw Error('矢量内核尚未就绪')

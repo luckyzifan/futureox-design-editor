@@ -5,6 +5,7 @@ use crate::{
     path::Contour,
     scene::{Document, Node},
     spatial_curve::{PAGE_TOLERANCE, project_contours},
+    spatial_material::{self, Appearance, INTERSECTION_BUDGET, MaterialPlane},
     vector_geometry::{Curve, VectorGeometry},
 };
 use serde::{Deserialize, Serialize};
@@ -125,16 +126,29 @@ pub(crate) struct Projection {
     pub(crate) hide_fills: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) vector_geometry: Option<VectorGeometry>,
+    #[serde(skip_serializing_if = "is_false")]
+    pub(crate) hide_strokes: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub(crate) composed: bool,
+    #[serde(skip)]
+    pub(crate) appearances: Vec<Appearance>,
+}
+
+impl Projection {
+    pub(crate) fn new(transform: Transform, visible: bool) -> Self {
+        Self { transform, visible, hide_fills: false, vector_geometry: None,
+            hide_strokes: false, composed: false, appearances: Vec::new() }
+    }
 }
 
 fn corners(node: &Node) -> [Point; 4] {
     [Point::new(0., 0.), Point::new(node.width, 0.), Point::new(node.width, node.height), Point::new(0., node.height)]
 }
 
-fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transform) -> Result<Projection, String> {
+fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transform, color_managed: bool) -> Result<Projection, String> {
     let plane = Plane::new(node, pose);
     let affine = node.transform.concat(plane.xy);
-    let fallback = Projection { transform: node.transform, visible: false, vector_geometry: None, hide_fills: false };
+    let fallback = Projection::new(node.transform, false);
     if !node.visible { return Ok(fallback); }
     let basis = camera.map(|c| c.parent_to_scene.inverse()).transpose()?;
     let point = |p: Point| -> Result<(Point, f64), String> {
@@ -169,7 +183,7 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
             Transform([(tr.x - tl.x) / node.width, (tr.y - tl.y) / node.width,
                 (bl.x - tl.x) / node.height, (bl.y - tl.y) / node.height, tl.x, tl.y])
         };
-        return Ok(Projection { transform, visible: true, vector_geometry: None, hide_fills: false });
+        return Ok(Projection::new(transform, true));
     }
 
     // The outline projects independently from the paint. Paints and styles
@@ -179,17 +193,30 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
         || node.vector_brush.is_some() || node.repeat.is_some()
         || !node.bindings.is_empty() || !node.style_refs.is_empty()
         || node.fills.iter().any(|p| p.visible && p.kind != "solid")
-        || node.strokes.iter().any(|s| s.visible && s.paint.visible && s.width > 0.)
         || node.effects.iter().any(|e| e.visible)
     {
-        return Err("Tilt with perspective currently supports solid vector layers without enabled strokes or other effects".into());
+        return Err("Tilt with perspective requires solid vector layers without other enabled effects".into());
     }
-    let (path, _) = node.paths()?;
     let inverse = node.transform.inverse()?;
     let tolerance = PAGE_TOLERANCE / page_parent.max_scale().max(1.);
-    let contours = project_contours(&path, tolerance, point)?;
-    let geometry = outline_geometry(&contours, inverse, node.fill_even_odd())?;
-    Ok(Projection { transform: node.transform, visible: true, vector_geometry: Some(geometry), hide_fills: false })
+    let mut patch=Projection::new(node.transform,true);
+    if spatial_material::has_strokes(node) {
+        if color_managed || node.blend != "normal" {
+            return Err("Projected strokes require normal SDR compositing".into());
+        }
+        let mut remaining=INTERSECTION_BUDGET;
+        let (outline,paints)=spatial_material::materials(node,tolerance,point,&mut remaining)?;
+        let planes=[MaterialPlane { paints:&paints, depth:crate::spatial_depth::PlaneDepth([0.;3]),opacity:node.opacity }];
+        patch.vector_geometry=Some(outline_geometry(&outline.contours,inverse,outline.even_odd)?);
+        patch.appearances=spatial_material::appearances(&planes,inverse,&mut remaining)?;
+        patch.composed=true;
+        patch.hide_strokes=true;
+        patch.visible=!patch.appearances.is_empty();
+    } else {
+        let contours = project_contours(&node.paths()?.0, tolerance, point)?;
+        patch.vector_geometry=Some(outline_geometry(&contours,inverse,node.fill_even_odd())?);
+    }
+    Ok(patch)
 }
 
 pub(crate) fn outline_geometry(contours: &[Contour], transform: Transform, even_odd: bool) -> Result<VectorGeometry, String> {
@@ -234,17 +261,17 @@ pub(crate) fn projections(doc: &Document) -> Result<BTreeMap<String, Projection>
                 distance: camera.distance, center: Point::new(node.width / 2., node.height / 2.), parent_to_scene: Transform::default()
             });
             if effects.preserve3d {
-                result.insert(id.to_owned(), Projection {
-                    transform: node.transform, visible: node.visible, vector_geometry: None, hide_fills: true,
-                });
+                let mut patch=Projection::new(node.transform,node.visible);
+                patch.hide_fills=true;
+                result.insert(id.to_owned(), patch);
                 if node.visible {
                     result.extend(crate::spatial_depth::project_scene(doc, node, own_camera.or(next), page_parent.concat(node.transform), pose)?);
                 }
                 return Ok(());
             }
             let projection = match pose {
-                Some(pose) => project(node, &pose, camera, page_parent)?,
-                None => Projection { transform: node.transform, visible: node.visible, vector_geometry: None, hide_fills: false },
+                Some(pose) => project(node, &pose, camera, page_parent, doc.color_management.is_some())?,
+                None => Projection::new(node.transform,node.visible),
             };
             result.insert(id.to_owned(), projection);
             if pose.is_some() { next = None; }
@@ -269,8 +296,14 @@ pub(crate) fn projections(doc: &Document) -> Result<BTreeMap<String, Projection>
 
 pub(crate) fn resolve(doc: &mut Document) -> Result<(), String> {
     let patches = projections(doc)?;
+    apply_projection(doc, patches)
+}
+
+fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -> Result<(), String> {
     if patches.is_empty() { return Ok(()); }
+    let mut assembled=Vec::new();
     for (id, projection) in patches {
+        if projection.composed { assembled.push((id.clone(),projection.appearances)); }
         let node = doc.nodes.get_mut(&id).unwrap();
         node.spatial = None;
         node.transform = projection.transform;
@@ -278,11 +311,48 @@ pub(crate) fn resolve(doc: &mut Document) -> Result<(), String> {
         if projection.hide_fills {
             for paint in &mut node.fills { paint.visible = false; }
         }
+        if projection.hide_strokes { node.strokes.clear(); }
         if let Some(geometry) = projection.vector_geometry {
             node.kind = "vector".into();
             node.network = None;
             node.vector_geometry = Some(Arc::new(geometry));
         }
+    }
+    let extra=assembled.iter().map(|(_,cells)|cells.len()).sum::<usize>();
+    crate::capacity::check_document_counts(doc.nodes.len().checked_add(extra).ok_or("Projected node count overflow")?,doc.pages.len())?;
+    let mut serial=0;
+    for (id,cells) in assembled {
+        let old_children=doc.nodes[&id].children.clone();
+        for child in old_children { doc.nodes.get_mut(&child).unwrap().visible=false; }
+        let mut children=Vec::new();
+        for cell in cells {
+            let cell_id=loop {
+                serial+=1;
+                let candidate=format!("spatial-cell-{serial}");
+                if !doc.nodes.contains_key(&candidate) { break candidate; }
+            };
+            let mut node=crate::facet::sample_node(&cell_id,"vector");
+            node.blend="plus-lighter".into();
+            node.locked=true;
+            node.vector_geometry=Some(Arc::new(cell.geometry));
+            node.fills.push(crate::scene::Paint {
+                transform:None,id:String::new(),kind:"solid".into(),
+                color:format!("#{:02x}{:02x}{:02x}",cell.rgb[0],cell.rgb[1],cell.rgb[2]),
+                opacity:f64::from(cell.alpha)/255.,visible:true,angle:0.,stops:Vec::new(),image:None,
+                fit:"cover".into(),blend:"normal".into(),adjust:None,tile:None,
+            });
+            children.push(cell_id.clone());
+            doc.nodes.insert(cell_id,node);
+        }
+        let parent=doc.nodes.get_mut(&id).unwrap();
+        if parent.kind!="frame" { parent.kind="group".into(); }
+        parent.vector_geometry=None;
+        parent.network=None;
+        parent.fills.clear();
+        parent.strokes.clear();
+        parent.opacity=1.;
+        parent.blend="normal".into();
+        parent.children.extend(children);
     }
     // Hidden descendants do not need geometry patches. Their authoring
     // settings do not belong in the disposable render snapshot either.
@@ -290,6 +360,50 @@ pub(crate) fn resolve(doc: &mut Document) -> Result<(), String> {
         if node.spatial.is_some() { node.spatial = None; }
     }
     Ok(())
+}
+
+/// Selection exports retain the spatial ancestors but compose only the
+/// selected paint. Filtering the resolved cells by source ID would discard
+/// the selected face when it is represented by its parent's coverage cells.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn export_view(doc: &mut Document, selected: &[String]) -> Result<serde_json::Value, String> {
+    if !selected.is_empty() {
+        let selected=selected.iter().map(String::as_str).collect::<std::collections::HashSet<_>>();
+        fn visit(doc: &mut Document, id: &str, selected: &std::collections::HashSet<&str>, within: bool) -> bool {
+            let within=within || selected.contains(id);
+            let children=doc.nodes[id].children.clone();
+            let mut keep=within;
+            for child in children { keep |= visit(doc,&child,selected,within); }
+            let n=doc.nodes.get_mut(id).unwrap();
+            if !keep { n.visible=false; }
+            if keep && !within {
+                n.fills.clear();
+                n.strokes.clear();
+                n.effects.clear();
+                n.clip=false;
+                n.opacity=1.;
+            }
+            keep
+        }
+        let roots=doc.pages.iter().flat_map(|p|p.children.iter().cloned()).collect::<Vec<_>>();
+        for root in roots { visit(doc,&root,&selected,false); }
+    }
+    let patches=projections(doc)?;
+    let outlines=serde_json::to_value(&patches).map_err(|e|e.to_string())?;
+    apply_projection(doc,patches)?;
+    // The caller has already resolved layout. Generated material nodes are
+    // positioned in the same frame, so layout must not arrange them again.
+    for n in doc.nodes.values_mut() {
+        n.layout=None;
+        n.sizing=None;
+        n.constraints=None;
+        n.component=None;
+        n.component_set=false;
+        n.component_key=None;
+        n.instance=None;
+        n.instance_origin=None;
+    }
+    Ok(outlines)
 }
 
 #[cfg(test)]
@@ -461,5 +575,117 @@ mod tests {
         assert_eq!(&spatial[..4], &[0, 0, 0, 0]);
         engine.load_document(&flat).unwrap();
         assert_eq!(engine.render(&opts).unwrap(), initial);
+    }
+
+    fn colored_planes() -> Value {
+        let mut doc=fixture();
+        doc["schemaVersion"]=json!(25);
+        doc["nodes"]["parent"]["spatial"]["preserve3d"]=json!(true);
+        doc["nodes"]["parent"]["fills"]=json!([]);
+        doc["nodes"]["parent"]["children"]=json!(["shape","blue"]);
+        let red=&mut doc["nodes"]["shape"];
+        red["transform"]=json!([1,0,0,1,100,70]);
+        red["fills"]=json!([{"kind":"solid","color":"#e75252"}]);
+        red["spatial"]["pose"]["rotateX"]=json!(0);
+        red["spatial"]["pose"]["rotateY"]=json!(35);
+        red["spatial"]["pose"]["depth"]=json!(0);
+        let mut blue=red.clone();
+        blue["id"]=json!("blue");
+        blue["fills"][0]["color"]=json!("#427ff1");
+        blue["spatial"]["pose"]["rotateY"]=json!(-35);
+        doc["nodes"]["blue"]=blue;
+        doc
+    }
+
+    fn spatial_render(doc: &Value) -> Vec<u8> {
+        let options=serde_json::from_value(json!({
+            "pageId":"p","width":300,"height":200,"transparent":true,
+            "view":{"x":0,"y":0,"zoom":1},"rasterProfile":"figma",
+        })).unwrap();
+        let mut engine=Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        engine.render(&options).unwrap()
+    }
+
+    fn pixel(bytes: &[u8], x: usize, y: usize) -> [u8;4] {
+        bytes[(y*300+x)*4..(y*300+x)*4+4].try_into().unwrap()
+    }
+
+    #[test]
+    fn translucent_faces_preserve_both_paints_at_the_local_depth_order() {
+        let mut doc=colored_planes();
+        doc["nodes"]["shape"]["opacity"]=json!(0.5);
+        doc["nodes"]["blue"]["opacity"]=json!(0.5);
+        let image=spatial_render(&doc);
+        // Native Figma 126.11.9 in a transparent frame, sampled well
+        // within a covered cell on opposite sides of the intersection.
+        assert_eq!(pixel(&image,130,100),[175,97,134,192]);
+        assert_eq!(pixel(&image,170,100),[121,112,187,192]);
+        doc["nodes"]["shape"]["transform"][4]=json!(100.25);
+        doc["nodes"]["blue"]["transform"][4]=json!(100.25);
+        let fractional=spatial_render(&doc);
+        for x in 148..153 {
+            assert!((i16::from(pixel(&fractional,x,100)[3])-192).abs()<=1);
+        }
+        doc["pages"][0]["children"]=json!(["behind","parent"]);
+        doc["nodes"]["behind"]=json!({"id":"behind","kind":"rectangle","width":300,"height":200,
+            "fills":[{"kind":"solid","color":"#202830"}]});
+        assert_eq!(pixel(&spatial_render(&doc),130,100),[140,83,113,255]);
+    }
+
+    #[test]
+    fn scoped_export_of_a_translucent_face_keeps_its_full_projected_paint() {
+        let mut source=colored_planes();
+        source["nodes"]["shape"]["opacity"]=json!(0.5);
+        source["nodes"]["blue"]["opacity"]=json!(0.5);
+        let mut selected:crate::scene::Document=serde_json::from_value(source.clone()).unwrap();
+        selected.validate().unwrap();
+        let outlines=super::export_view(&mut selected,&["blue".into()]).unwrap();
+        assert!(outlines["blue"]["vectorGeometry"].is_object());
+        selected.validate().unwrap();
+        let raster=spatial_render(&serde_json::to_value(selected).unwrap());
+        assert_eq!(pixel(&raster,130,100),[66,128,241,128]);
+        assert_eq!(pixel(&raster,170,100),[66,128,241,128]);
+    }
+
+    #[test]
+    fn inner_stroke_projects_with_the_authored_plane() {
+        let mut doc=colored_planes();
+        doc["nodes"]["blue"]["opacity"]=json!(0);
+        doc["nodes"]["shape"]["strokes"]=json!([
+            {"id":"stroke","width":4,"align":"inside","join":"miter","paint":{"kind":"solid","color":"#000000"}}
+        ]);
+        let shared=spatial_render(&doc);
+        assert_eq!(pixel(&shared,108,99),[0,0,0,255]);
+        assert_eq!(pixel(&shared,150,99),[231,82,82,255]);
+        doc["nodes"]["parent"]["spatial"]["preserve3d"]=json!(false);
+        assert_eq!(spatial_render(&doc),shared);
+        assert_eq!(doc["nodes"]["shape"]["strokes"][0]["width"],json!(4));
+    }
+
+    #[test]
+    fn a_nested_projection_keeps_depth_through_both_lenses() {
+        let mut doc=colored_planes();
+        doc["nodes"]["blue"]["opacity"]=json!(0);
+        doc["nodes"]["parent"]["children"]=json!(["frame","blue"]);
+        doc["nodes"]["frame"]=json!({
+            "id":"frame","kind":"frame","width":100,"height":60,"transform":[1,0,0,1,100,70],"children":["shape"],
+            "spatial":{"preserve3d":true,"perspective":{"distance":300,"visible":true},
+                "pose":{"rotateX":20,"rotateY":0,"rotateZ":0,"depth":20,
+                    "origin":[0.5,0.5],"visible":true,"backfaceVisible":true}},
+        });
+        doc["nodes"]["shape"]["transform"]=json!([1,0,0,1,0,0]);
+        let bytes=spatial_render(&doc);
+        let mut min=[300,200];
+        let mut max=[0,0];
+        for y in 0..200 {
+            for x in 0..300 {
+                if pixel(&bytes,x,y)[3]>=128 {
+                    min=[min[0].min(x),min[1].min(y)];
+                    max=[max[0].max(x+1),max[1].max(y+1)];
+                }
+            }
+        }
+        assert_eq!((min,max),([99,55],[188,135]));
     }
 }

@@ -20,13 +20,14 @@ pub fn valid_mode(mode: &str) -> bool {
             | "luminosity"
             | "linear-burn"
             | "linear-dodge"
+            | "plus-lighter"
     )
 }
 
 /// Parsed once per paint/composite, outside pixel loops. Unknown names keep
 /// the legacy source-channel fallback used by the public string API.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum BlendMode { Normal, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Difference, Exclusion, Hue, Saturation, Color, Luminosity, LinearBurn, LinearDodge, Other }
+pub(crate) enum BlendMode { Normal, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Difference, Exclusion, Hue, Saturation, Color, Luminosity, LinearBurn, LinearDodge, PlusLighter, Other }
 impl BlendMode {
     pub(crate) fn from_name(name:&str)->Self {
         match name {
@@ -48,6 +49,7 @@ impl BlendMode {
             "luminosity"=>Self::Luminosity,
             "linear-burn"=>Self::LinearBurn,
             "linear-dodge"=>Self::LinearDodge,
+            "plus-lighter"=>Self::PlusLighter,
             _=>Self::Other,
         }
     }
@@ -263,6 +265,9 @@ pub(crate) fn over_mode(dst: Pixel, src: Pixel, mode: BlendMode) -> Pixel {
     }
     if dst.0[3] <= 0. {
         return src;
+    }
+    if mode == BlendMode::PlusLighter {
+        return Pixel(std::array::from_fn(|i| (src.0[i] + dst.0[i]).min(1.)));
     }
     if mode == BlendMode::Normal {
         let inverse = 1. - src.0[3];
