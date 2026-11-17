@@ -825,12 +825,12 @@ mod wasm {
         crate::noise_fill::preset().and_then(|p|serde_json::to_string(&p).map_err(|e|e.to_string())).map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
-    pub fn zoom_blur_coordinates(value:&str,matrix:Vec<f64>,size:Vec<f64>,rect:&str)->Result<Vec<f32>,JsValue> {
+    pub fn zoom_blur_coordinates(value:&str,matrix:Vec<f64>,size:Vec<f64>,rect:&str,sketch:Option<bool>)->Result<Vec<f32>,JsValue> {
         let p=serde_json::from_str(value).map_err(|e|JsValue::from_str(&format!("Invalid zoom parameters: {e}")))?;
         let matrix:[f64;6]=matrix.try_into().map_err(|_|JsValue::from_str("Invalid zoom transform"))?;
         let size:[f64;2]=size.try_into().map_err(|_|JsValue::from_str("Invalid zoom size"))?;
         let rect=serde_json::from_str(rect).map_err(|e|JsValue::from_str(&format!("Invalid zoom extent: {e}")))?;
-        crate::zoom_blur::coordinates(p,crate::math::Transform(matrix),size,rect).map_err(|e|JsValue::from_str(&e))
+        crate::zoom_blur::coordinates_sampled(p,crate::math::Transform(matrix),size,rect,sketch.unwrap_or(false)).map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub fn gaussian_box_radii(sigma: f64) -> Result<Vec<u32>, JsValue> {

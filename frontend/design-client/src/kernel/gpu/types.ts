@@ -128,6 +128,7 @@ export type GpuNode = {
   matrix: Matrix
   inverse: Matrix
   size: [number, number]
+  sketchZoomSampling?: boolean
   glassShape?: { size: [number, number]; radius: number; radii?: [number, number, number, number] }
   captureReplay?: GlassCaptureReplay
   textureReplay?: TextureReplay
