@@ -65,7 +65,8 @@ import { canvasStatusLabel } from './canvas-status-label'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
 import { createAutomationSettingsAdapter } from './automation/settings-adapter'
-import {activateTool} from './tool-activation'
+import { activateTool, cancelToolActivation } from './tool-activation'
+import { sketchToolbarSupportsTool } from './interface-layout'
 import { readStartupPreview, writeStartupPreview, type StartupPreview, type PreviewPixels } from './startup-preview'
 import {useLocalWindows,LocalWindowControl} from './LocalWindows'
 import {boardToolNames,type BoardTool} from './board-tools'
@@ -183,6 +184,14 @@ const utilityToolItems: { id: Tool; label: string; icon: GlyphIcon }[] = [
   { id: 'crop', label: '裁切', icon: toolGlyph.crop },
   { id: 'comments', label: '评论', icon: toolGlyph.comments },
 ]
+const figmaDrawPaintTools = new Set<Tool>(['brush', 'marker', 'washi-tape'])
+const figmaDrawUtilityTools = ['bend', 'cut', 'vector-lasso', 'eraser', 'paint-bucket', 'offset-path', 'text-path', 'multiselect'] as const
+const figmaCommandTools = ['eyedropper', 'measure', 'comments', 'annotate'] as const
+const figmaToolbarTools = new Set<Tool>([
+  ...toolItems.filter(({ id }) => !figmaDrawPaintTools.has(id)).map(({ id }) => id),
+  ...utilityToolItems.map(({ id }) => id), ...figmaCommandTools, ...(Object.keys(boardToolNames) as BoardTool[]),
+])
+const figmaDrawExtraTools = new Set<Tool>([...figmaDrawPaintTools, ...figmaDrawUtilityTools, 'vector'])
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
   const { locale, uiMode } = useInterfacePreferences()
   const agentDockOpen = useSyncExternalStore(subscribeAgentDock, () => getAgentDock().open, () => false)
@@ -264,6 +273,17 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const setShowInspector = adaptivePanels.setRightOpen
   const [desktop] = useState(desktopBridge)
   const [editor] = useState(() => source?.editor || new Editor(blank()))
+  const previousToolLayout = useRef(uiMode)
+  useLayoutEffect(() => {
+    if (previousToolLayout.current === uiMode) return
+    previousToolLayout.current = uiMode
+    const { tool } = editor.state
+    const available = uiMode === 'sketch' ? sketchToolbarSupportsTool(tool) :
+      figmaToolbarTools.has(tool) || figmaDraw && figmaDrawExtraTools.has(tool)
+    if (available) return
+    cancelToolActivation(editor)
+    editor.set({ tool: 'select', frameCrop: null, editingVertex: null, editingVertices: [] })
+  }, [editor, figmaDraw, uiMode])
   const editText = useRef<((id: string) => void) | null>(null)
   const toggleUi = useCallback(() => {
     if (hasPendingEdits(editor) || editor.interactionActive) return false
@@ -1224,7 +1244,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const shapeTool = shapeTools.find(({ id }) => id === s.tool) || tools.find(({ id }) => id === lastShapeTool)!
   const figmaDesignTools = uiMode === 'figma' && !figmaDraw
   const drawingTools = tools.filter(({ id }) => id === 'pen' || id === 'pencil' ||
-    !figmaDesignTools && (id === 'brush' || id === 'marker' || id === 'washi-tape'))
+    !figmaDesignTools && figmaDrawPaintTools.has(id))
   const drawingTool = drawingTools.find(({ id }) => id === s.tool) ||
     drawingTools.find(({ id }) => id === lastDrawingTool) || drawingTools[0]
   const utilityTool = utilityTools.find(({ id }) => id === s.tool) || utilityTools.find(({ id }) => id === lastUtilityTool)!
@@ -1333,7 +1353,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={drawingTool.id === id} onClick={() => { chooseTool(id); setShowDrawing(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
                 {!figmaDesignTools && <>
-                {(['bend','cut','vector-lasso','eraser','paint-bucket','offset-path','text-path','multiselect'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowDrawing(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
+                {figmaDrawUtilityTools.map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowDrawing(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>{toolbarText.editVector}</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>{toolbarText.outlineStroke}</button>
                 </>}
@@ -1358,7 +1378,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               {action('撤销', toolGlyph.undo, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
               {action('重做', toolGlyph.redo, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
               <ToolPopover label={toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
-                {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
+                {figmaCommandTools.map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
                 <strong>{toolbarText.whiteboardAndResponsive}</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, label)}</button>)}
                 <strong>{toolbarText.alignAndDistribute}</strong><div className="arrangement-grid">
                   {action('左对齐', AlignLeft, () => alignSelection(editor, 'x', 'start'), !alignment.align, true)}

@@ -15,6 +15,7 @@ import { canEnterOutlineEdit } from './figma-basic-ops'
 import { commitPendingEdits } from './pending-edits'
 import { editableFrameCrop } from './selection-properties'
 import { frameSizePresetGate } from './frame-presets'
+import { sketchInsertTools, sketchToolMenu } from './interface-layout'
 
 type Menu = 'insert' | 'shapes' | 'group' | 'tools' | 'combine'
 
@@ -78,7 +79,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
       <button type="button" className="sketch-secondary-tool command-search-trigger" aria-label={commandSearchText[locale].label}
         data-tooltip={`${commandSearchText[locale].label} (S)`} onClick={() => requestCommandSearch()}><Search size={17} /></button>
       {menu('insert', label('置入', 'Insert'), <Plus size={18} />, <>
-        {(['frame', 'graphic', 'section', 'slice', 'hotspot', 'rectangle', 'ellipse', 'line', 'arrow', 'polygon', 'star', 'pen', 'pencil', 'text'] as const).map(menuTool)}
+        {sketchInsertTools.map(menuTool)}
         {onInsertTextStyle && <button type="button" role="menuitem" tabIndex={-1}
           onClick={() => { setOpen(null); onInsertTextStyle() }}>{label('文字样式…', 'Text Style…')}</button>}
         {onInsertSymbol && <button type="button" role="menuitem" tabIndex={-1}
@@ -119,7 +120,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
         {cropFrame ? <Crop size={17} /> : node?.kind === 'text' ? <TextCursor size={17} /> : <PenTool size={17} />}
       </button>
       {menu('tools', label('工具', 'Tools'), <SlidersHorizontal size={17} />, <>
-        {(['select', 'hand', 'scale', 'zoom', 'pencil', 'brush', 'eraser', 'comments', 'eyedropper'] as const).map(menuTool)}
+        {sketchToolMenu.map(menuTool)}
         <button type="button" role="menuitem" tabIndex={-1} disabled={!canEdit} onClick={edit}>{editLabel}</button>
         {menuAction('bring-forward', label('前置一层', 'Bring forward'))}
         {menuAction('send-backward', label('后置一层', 'Send backward'))}

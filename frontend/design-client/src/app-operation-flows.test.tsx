@@ -313,6 +313,39 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('changing editor layouts retires tools missing from the target toolbar', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Layout tools'), layer = node('rectangle', 90, 60, 140, 120)
+  doc.nodes[layer.id] = layer; doc.pages[0].children = [layer.id]
+  await act(async () => editor!.load(doc))
+  const view = { x: 23, y: -67, zoom: 1.4 }
+  await act(async () => { editor!.select([layer.id]); editor!.set({ view, tool: 'graphic' }) })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const switchMode = (name: string) => act(async () => {
+    const control = Array.from(document.querySelectorAll<HTMLButtonElement>('.ui-mode-switch button')).find(button => button.textContent === name)!
+    control.click()
+  })
+  await switchMode('Figma')
+  expect(editor!.state.tool).toBe('select')
+  await act(async () => document.querySelector<HTMLButtonElement>('.figma-toolbelt-mode [aria-label="绘制"]')!.click())
+  for (const tool of ['marker', 'washi-tape'] as const) {
+    await act(async () => editor!.set({ tool }))
+    await switchMode('Sketch')
+    expect(editor!.state.tool).toBe('select')
+    await switchMode('Figma')
+  }
+  await act(async () => editor!.set({ tool: 'rectangle' }))
+  await switchMode('Sketch')
+  expect(editor!.state.tool).toBe('rectangle')
+  expect(editor!.state.selection).toEqual([layer.id])
+  expect(editor!.state.view).toEqual(view)
+  expect(editor!.state.page).toBe(doc.pages[0].id)
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('layout switch preserves the page and uses the target layout frame behavior', async () => {
   applyInterfaceLayout('sketch')
   await render()

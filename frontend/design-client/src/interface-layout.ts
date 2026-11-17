@@ -2,6 +2,13 @@ import { interfacePreference, type UiMode } from './interface-preference'
 import { shortcutPreference } from './shortcut-preference'
 import type { ShortcutProfile } from './shortcut-profiles'
 import { LAYOUT_GAP_LIMIT, type AutoLayout } from './model'
+import type { Tool } from './engine'
+
+export const sketchInsertTools = ['frame', 'graphic', 'section', 'slice', 'hotspot', 'rectangle', 'ellipse', 'line',
+  'arrow', 'polygon', 'star', 'pen', 'pencil', 'text'] as const
+export const sketchToolMenu = ['select', 'hand', 'scale', 'zoom', 'pencil', 'brush', 'eraser', 'comments', 'eyedropper'] as const
+const sketchToolbarTools = new Set<Tool>([...sketchInsertTools, ...sketchToolMenu, 'vector'])
+export function sketchToolbarSupportsTool(tool: Tool) { return sketchToolbarTools.has(tool) }
 
 /** Grid tracks and Figma's cross-axis spacing stop at zero in their controls. */
 export function layoutGapMinimum(mode: AutoLayout['mode'], field: 'gap' | 'lineGap', uiMode: UiMode) {
