@@ -8,6 +8,17 @@ pub const SAMPLE_OFFSETS: [(f64, f64); 4] = [
     (0.625, 0.875),
 ];
 
+/// Independent Sketch 2025.1.3 and 2026.3.1 exports agree that a
+/// uniform layer Gaussian below 0.5 authored points is an identity.
+/// The cutoff is before raster scale, not a device-pixel effect budget.
+pub(crate) fn sketch_gaussian_identity(
+    doc: &crate::scene::Document, node: &crate::scene::Node, effect: &crate::scene::Effect,
+) -> bool {
+    effect.kind == "gaussian-blur" && effect.gradient_blur.is_none() && effect.radius < 0.5
+        && doc.color_management.is_none()
+        && crate::interop::sketch_binding(doc, node, "sketchSourceBlur").is_some()
+}
+
 /// Layer-blur activation measured in actual Figma browser PNG exports at
 /// 1x/2x/4x (figma-blur-threshold-2026-10-08.json). The Figma profile renders
 /// at twice the final output density. This SDR observation does not change

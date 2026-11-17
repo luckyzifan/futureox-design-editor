@@ -1229,6 +1229,42 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn native_sketch_gaussian_cutoff_is_in_authored_points() {
+        let mut source = json!({
+            "schemaVersion":19,"id":"d","name":"Native small Gaussian",
+            "pages":[{"id":"p","name":"Page","children":["ink"],"background":"#ffffff"}],
+            "nodes":{"ink":{"id":"ink","kind":"rectangle","width":8,"height":8,
+                "transform":[1,0,0,1,4.25,4.375],
+                "fills":[{"kind":"solid","color":"#ffffff"}],
+                "effects":[{"kind":"gaussian-blur","radius":0,"color":"#000000"}]}},
+            "designSystem":{"sketchContainers":{"nodeMetadata":{
+                "ink":{"bindings":{"sketchSourceBlur":"{}"},"styleRefs":{}}
+            }}}
+        });
+        let png = |document: &serde_json::Value, scale, profile| {
+            let mut e = Engine::new();
+            e.load_document(&document.to_string()).unwrap();
+            e.render_region_png(&RegionRequest {
+                page_id: "p".into(), scale, node_ids: None, color_output: None,
+                raster_profile: Some(profile),
+                bounds: ExportBounds { x: 0., y: 0., width: 16., height: 16. },
+            }).unwrap()
+        };
+        for (scale, profile) in [(1., RasterProfile::Analytic), (4., RasterProfile::Analytic), (2., RasterProfile::Figma)] {
+            source["nodes"]["ink"]["effects"][0]["radius"] = json!(0.);
+            let sharp = png(&source, scale, profile);
+            source["nodes"]["ink"]["effects"][0]["radius"] = json!(0.4999999);
+            assert_eq!(png(&source, scale, profile), sharp, "scale {scale}");
+            source["nodes"]["ink"]["effects"][0]["radius"] = json!(0.5);
+            assert_ne!(png(&source, scale, profile), sharp, "scale {scale}");
+        }
+        source["nodes"]["ink"]["effects"][0]["radius"] = json!(0.4999999);
+        let marked = png(&source, 2., RasterProfile::Analytic);
+        source["designSystem"]["sketchContainers"]["nodeMetadata"] = json!({});
+        assert_ne!(png(&source, 2., RasterProfile::Analytic), marked);
+    }
+
+    #[test]
     fn figma_flush_vector_blur_preserves_partial_backing_at_a_png_edge() {
         let doc = json!({
             "schemaVersion":19,"id":"d","name":"Flush backdrop",

@@ -1911,7 +1911,9 @@ impl Compiler<'_> {
         if filter_constant==Some(false){return Ok(Rect::default())}
         let omit_filter=filter_constant==Some(true) || self.source_filter_fields && requested.is_some_and(|region|
             source_occlusion::covers_own_shadow(self.doc,&self.prepared,n,region));
-        let source_filter_field=if self.gaussian_regions&&self.source_filter_fields&&!omit_filter&&
+        let has_inactive_gaussian = n.effects.iter().any(|e| e.visible
+            && crate::fidelity::sketch_gaussian_identity(self.doc, n, e));
+        let source_filter_field=if self.gaussian_regions&&self.source_filter_fields&&!omit_filter&&!has_inactive_gaussian&&
             self.doc.color_management.as_ref().is_some_and(|c|c.document_space==crate::color::ColorSpace::Srgb) {
             match (prepared,requested){(Some(p),Some(region))=>self.filter_planes(n,p,region)?,_=>None}
         }else{None};
@@ -1943,7 +1945,8 @@ impl Compiler<'_> {
                 .fold(0_i32, i32::saturating_add)
         } else { halo(n, matrix) };
         let source_region = requested.map(|r| r.expand(own_halo.saturating_add(2)));
-        let wide_image_gaussian = self.wide_image_gaussians.get(id).copied().filter(|_| !geometric);
+        let wide_image_gaussian = self.wide_image_gaussians.get(id).copied()
+            .filter(|_| !geometric && !has_inactive_gaussian);
         let extent = wide_image_gaussian.as_ref().map(|plan| plan.output)
             .or(analytic_region.as_ref().map(|region| region.input))
             .or(staged_region).unwrap_or_else(|| source_region.unwrap_or(self.extent));
@@ -2016,7 +2019,7 @@ impl Compiler<'_> {
         if rect.empty() {
             return Ok(rect);
         }
-        let full_gaussian=if self.gaussian_regions&&!omit_filter&&source_filter_field.is_none()&&analytic_region.is_none() {requested.and_then(|output|gaussian_region_plan(n,matrix,output.intersect(rect)))}else{None};
+        let full_gaussian=if self.gaussian_regions&&!omit_filter&&!has_inactive_gaussian&&source_filter_field.is_none()&&analytic_region.is_none() {requested.and_then(|output|gaussian_region_plan(n,matrix,output.intersect(rect)))}else{None};
         let reduced=if source_filter_field.is_none()&&self.gaussian_reduction>1&&self.doc.color_management.as_ref().is_some_and(|c|c.document_space==crate::color::ColorSpace::Srgb) {
             let candidate=if self.gaussian_regions&&!omit_filter {
                 requested.and_then(|output|gaussian_region_plan_above(n,matrix,output.intersect(rect),128.))
@@ -2171,6 +2174,7 @@ impl Compiler<'_> {
                     } else {
                         !(opaque_coverage && e.kind == "shadow") &&
                             !(omit_backdrop && e.kind == "background-blur") && !omit_filter
+                            && !crate::fidelity::sketch_gaussian_identity(self.doc, n, e)
                     })
                     .cloned()
                     .map(|mut e| {
