@@ -85,3 +85,65 @@ test('native Home file-command guard rejects real Settings modal focus and indep
  expect(perform).not.toHaveBeenCalled();independent.remove();document.querySelector<HTMLInputElement>('[aria-label="搜索最近设计"]')!.focus()
  dispatch('open');expect(perform).toHaveBeenCalledExactlyOnceWith('open');expect(editor.state).toBe(before)
 })
+
+const ops=()=>({rename:vi.fn(async()=>true),duplicate:vi.fn(async()=>true),trash:vi.fn(async()=>true)})
+const entryMenu=(name:string)=>[...document.querySelectorAll<HTMLButtonElement>('.local-home-entry-menu')].find(b=>b.getAttribute('aria-label')===`文档操作 · ${name}`)!
+const menuItem=(label:string)=>[...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(b=>b.textContent===label)!
+async function typeRename(value:string){
+ const input=document.querySelector<HTMLInputElement>('[aria-label="设计名称"]')!
+ Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value')!.set!.call(input,value)
+ await act(async()=>{input.dispatchEvent(new Event('input',{bubbles:true}))})
+ return input
+}
+test('per-entry menu opens from the corner button and from right-click, then opens through the same guarded path',async()=>{
+ source={...source,ops:ops()};await render()
+ await act(async()=>entryMenu('Alpha').click())
+ expect(document.querySelector('[role="menu"]')?.getAttribute('aria-label')).toBe('文档操作 · Alpha')
+ expect([...document.querySelectorAll('[role="menuitem"]')].map(b=>b.textContent)).toEqual(['打开','重命名','创建副本','移入回收站'])
+ await act(async()=>menuItem('打开').click())
+ expect(source.open).toHaveBeenCalledWith('a');expect(home()).toBeNull()
+ await act(async()=>root.render(<Harness/>));await act(async()=>button('首页').click());expect(home()).not.toBeNull()
+ await act(async()=>document.querySelector('.local-home-entry')!.dispatchEvent(new dom.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true})))
+ expect(document.querySelector('[role="menu"]')).not.toBeNull()
+ await act(async()=>home()!.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true})))
+ expect(document.querySelector('[role="menu"]')).toBeNull();expect(home()).not.toBeNull()
+})
+test('inline rename commits through the source op and refreshes; blank or unchanged names never write',async()=>{
+ const entryOps=ops();source={...source,ops:entryOps};await render();const lists=vi.mocked(source.list).mock.calls.length
+ await act(async()=>entryMenu('Alpha').click());await act(async()=>menuItem('重命名').click())
+ expect(document.querySelector<HTMLInputElement>('[aria-label="设计名称"]')).toBe(document.activeElement)
+ const input=await typeRename('  Renamed  ')
+ await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))})
+ expect(entryOps.rename).toHaveBeenCalledExactlyOnceWith('a','Renamed')
+ expect(vi.mocked(source.list).mock.calls.length).toBeGreaterThan(lists)
+ await act(async()=>entryMenu('Beta').click());await act(async()=>menuItem('重命名').click())
+ const blank=await typeRename('   ')
+ await act(async()=>{blank.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))})
+ expect(entryOps.rename).toHaveBeenCalledTimes(1)
+ await act(async()=>entryMenu('Beta').click());await act(async()=>menuItem('重命名').click())
+ const cancel=await typeRename('Whatever')
+ await act(async()=>{cancel.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))})
+ expect(entryOps.rename).toHaveBeenCalledTimes(1);expect(entryOps.duplicate).not.toHaveBeenCalled()
+})
+test('duplicate and trash operate in place, refresh the list, and surface op failures truthfully',async()=>{
+ const entryOps=ops();source={...source,ops:entryOps};await render()
+ await act(async()=>entryMenu('Alpha').click());await act(async()=>menuItem('创建副本').click())
+ expect(entryOps.duplicate).toHaveBeenCalledExactlyOnceWith('a');expect(home()).not.toBeNull()
+ await act(async()=>entryMenu('Beta').click());await act(async()=>menuItem('移入回收站').click())
+ expect(entryOps.trash).toHaveBeenCalledExactlyOnceWith('b',3)
+ entryOps.trash=vi.fn(async()=>{throw new Error('本机文档库不可用')})
+ await act(async()=>{await Promise.resolve();await Promise.resolve()});await act(async()=>{await Promise.resolve()})
+ await act(async()=>entryMenu('Beta').click());await act(async()=>menuItem('移入回收站').click())
+ expect(document.querySelector('[role="alert"]')?.textContent).toContain('本机文档库不可用');expect(home()).not.toBeNull()
+})
+test('sort toggle reorders by name while staying on Home; entries without ops hide the action affordances',async()=>{
+ source={...source,ops:ops()};await render()
+ expect([...document.querySelectorAll('.local-home-file strong')].map(n=>n.textContent)).toEqual(['Beta','Alpha'])
+ await act(async()=>button('名称').click())
+ expect([...document.querySelectorAll('.local-home-file strong')].map(n=>n.textContent)).toEqual(['Alpha','Beta'])
+ expect((document.querySelector('[aria-label="排序方式"]') as HTMLElement).textContent).toContain('最近修改')
+ await act(async()=>button('最近修改').click())
+ expect([...document.querySelectorAll('.local-home-file strong')].map(n=>n.textContent)).toEqual(['Beta','Alpha'])
+ source={kind:'web-local',list:vi.fn(async()=>records),open:vi.fn(async()=>true)};await act(async()=>root.render(<Harness/>))
+ expect(document.querySelector('.local-home-entry-menu')).toBeNull();expect(document.querySelector('[role="menu"]')).toBeNull()
+})
