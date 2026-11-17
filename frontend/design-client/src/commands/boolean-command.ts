@@ -8,9 +8,11 @@ export type LiveBooleanOperation = 'union' | 'subtract' | 'intersect' | 'exclude
  * existing-fill preserves the historical UI route (including its limitations).
  * verified-fill admits only proven fill geometry; it is not full Figma/Sketch parity. */
 export type BooleanAdmissionPolicy = 'existing-fill' | 'verified-fill'
-export interface BooleanCreateOptions { operation: LiveBooleanOperation; id?: string; name?: string }
+export interface BooleanCreateOptions { operation: NonNullable<DesignNode['booleanOperation']>; id?: string; name?: string }
 export interface BooleanCreatePlan { wrap: SelectionWrap; wrapper: DesignNode; policy: BooleanAdmissionPolicy; styleSourceId: string }
 const reject = (code: string, message: string): never => { throw new SelectionCommandError(code, message) }
+const booleanNames = { union: '联集', subtract: '减去', intersect: '交集', exclude: '排除',
+  compoundNonzero: '形状结合', compoundEvenodd: '形状结合' } as const
 function commonAdmission(doc: DesignDocument, ids: readonly string[]) {
   if (ids.length < 2 || ids.length > 64 || new Set(ids).size !== ids.length)
     reject('invalid_params', 'Live boolean creation requires 2–64 unique operands')
@@ -55,7 +57,8 @@ function commonAdmission(doc: DesignDocument, ids: readonly string[]) {
 }
 /** Plan only: native normalization remains the sole owner of result geometry. */
 export function prepareBooleanCreate(doc: DesignDocument, ids: readonly string[], options: BooleanCreateOptions, state: SelectionGeometryState, policy: BooleanAdmissionPolicy): BooleanCreatePlan {
-  if (!['existing-fill', 'verified-fill'].includes(policy) || !['union', 'subtract', 'intersect', 'exclude'].includes(options.operation))
+  if (!['existing-fill', 'verified-fill'].includes(policy) || !Object.hasOwn(booleanNames, options.operation) ||
+      (policy === 'verified-fill' && options.operation.startsWith('compound')))
     reject('invalid_params', 'Invalid boolean operation or policy')
   const index = policy === 'verified-fill' ? commonAdmission(doc, ids) : undefined
   // Figma places the boolean where the front-most selected sibling was, including
@@ -69,7 +72,7 @@ export function prepareBooleanCreate(doc: DesignDocument, ids: readonly string[]
   if (Object.hasOwn(doc.nodes, wrapper.id) || doc.pages.some(p => p.id === wrapper.id)) reject('duplicate_id', 'Boolean identifier already exists')
   if (options.name !== undefined && (!options.name.trim() || options.name.length > 200)) reject('invalid_params', 'Boolean name must contain 1–200 characters')
   configureSelectionWrapper(wrapper, wrap)
-  wrapper.name = options.name ?? ({ union: '联集', subtract: '减去', intersect: '交集', exclude: '排除' } as const)[options.operation]
+  wrapper.name = options.name ?? booleanNames[options.operation]
   wrapper.booleanOperation = options.operation; wrapper.blend = 'normal'
   // Scene children are bottom-to-top. Subtract is bottom minus all upper operands.
   const styleSourceId = policy === 'existing-fill' || options.operation === 'subtract' ? wrap.ids[0] : wrap.ids[wrap.ids.length - 1]
@@ -79,6 +82,7 @@ export function prepareBooleanCreate(doc: DesignDocument, ids: readonly string[]
   return { wrap, wrapper, policy, styleSourceId }
 }
 export function applyBooleanCreate(doc: DesignDocument, plan: BooleanCreatePlan): void {
+  if (plan.wrapper.booleanOperation?.startsWith('compound') && doc.schemaVersion < 16) doc.schemaVersion = 16
   applySelectionWrap(doc, plan.wrap, plan.wrapper)
   // The boolean group is not an auto-layout frame. Freeze fill/hug on the
   // operands so their sizes stay the ones measured at the merge.

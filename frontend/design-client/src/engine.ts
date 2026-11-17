@@ -104,7 +104,6 @@ import {
   contains,
   pointInContours,
 } from './geometry'
-import type { BooleanOp } from './vector'
 import { pathNetwork } from './path-network'
 import {
   kernelSvgPaths,
@@ -2035,7 +2034,7 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  group(mask = false, booleanOperation?: BooleanOp, kind: 'group' | 'frame' | 'graphic' = 'group') {
+  group(mask = false, booleanOperation?: DesignNode['booleanOperation'], kind: 'group' | 'frame' | 'graphic' = 'group') {
     const action = beginEditorAction(this, CanvasAction.group, ActionSource.unknown, 220)
     try {
       if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
@@ -3104,10 +3103,10 @@ export class Editor {
       if (current()) this.set({ busy: false })
     }
   }
-  async geometry(operation: BooleanOp | 'outline' | 'divide') {
+  async geometry(operation: NonNullable<DesignNode['booleanOperation']> | 'outline' | 'divide') {
     if (this.disposed) return
-    if (['union', 'subtract', 'intersect', 'exclude'].includes(operation)) {
-      this.group(false, operation as BooleanOp)
+    if (operation !== 'outline' && operation !== 'divide') {
+      this.group(false, operation)
       return
     }
     const ids = this.topSelection(),

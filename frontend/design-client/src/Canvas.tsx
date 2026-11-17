@@ -49,6 +49,7 @@ import {useCanvasColorPicker} from './canvas-color-picker'
 import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
 import { resolveShortcut, shortcutPlatform } from './shortcut-profiles'
+import { isSketchBooleanCommand } from './sketch-boolean-commands'
 import { shortcutPreference } from './shortcut-preference'
 import { requestCommandSearch } from './command-search-session'
 import { closeLayerFind, layerFindSnapshot, requestLayerFind } from './layer-find-session'
@@ -1280,7 +1281,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
       if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
       if(e.key==='Escape')cancelToolActivation(editor)
-      const shortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }
+      const shortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge(),
+        uiMode: interfacePreference.getSnapshot().uiMode }
       const shortcut = resolveShortcut(e, shortcutContext)
       if (e.repeat && !shortcut?.repeat && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) { if (shortcut) e.preventDefault(); return }
       if(['Alt','Meta','Control'].includes(e.key)) {
@@ -1290,6 +1292,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if(utility.active() && e.key!=='Escape'){e.preventDefault();return}
+      if (shortcut && isSketchBooleanCommand(shortcut.command)) {
+        if (penRef.current || drag.current || pencil.current || editor.state.tool === 'vector') e.preventDefault()
+        else void dispatchEditorShortcut(editor, e, shortcutContext)
+        return
+      }
       // X is a momentary selection override, never a persistent tool switch.
       // Keep it out of text/IME/modal handling and don't toggle on repeats.
       if (shortcutContext.profile === 'sketch-like' && e.key.toLowerCase() === 'x' &&

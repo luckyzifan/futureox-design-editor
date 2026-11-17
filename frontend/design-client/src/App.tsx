@@ -181,7 +181,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const menuText = fileMenuText[locale]
   const shortcutProfile = useShortcutProfile()
   const commandSearchOpen = useSyncExternalStore(subscribeCommandSearch, commandSearchSnapshot, () => 0) !== 0
-  const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [shortcutProfile])
+  const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode }), [shortcutProfile, uiMode])
   const tools = useMemo(() => toolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)

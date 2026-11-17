@@ -13,7 +13,7 @@ export function applyInterfaceLayoutShortcut(event: KeyboardEvent): boolean {
     return false
   }
   const mode = interfaceLayoutFromShortcut(event)
-  if (!mode) return false
+  if (!mode || (mode === 'sketch' && interfacePreference.getSnapshot().uiMode === 'sketch')) return false
   event.preventDefault()
   applyInterfaceLayout(mode)
   return true
