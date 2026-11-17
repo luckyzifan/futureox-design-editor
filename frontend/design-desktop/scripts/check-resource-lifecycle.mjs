@@ -68,7 +68,7 @@ try{
  const native=await page.evaluate(async doc=>{const bridge=window.coreDesktop.nativeRender;const loaded=await bridge.load(JSON.stringify(doc));if(!loaded.ok)throw Error(loaded.error);return bridge.frame({pageId:'p',width:16,height:16,view:{x:0,y:0,zoom:1},transparent:true},0)},nativeDocument)
  assert.equal(native.ok,true,native.error);await snapshot('native-render-open')
  const closed=page.waitForEvent('close');await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].close());await closed
- await expect.poll(async()=>{const row=await snapshot('window-closed-check');return row.processes.filter(p=>/^(design-render|design-prepare)$/.test(p.name)).length},{timeout:10000,intervals:[100,500,1000]}).toBe(0)
+ await expect.poll(async()=>{const row=await snapshot('window-closed-check');return row.processes.filter(p=>/^(design-render|design-prepare|futureox-sketch-font-outlines)$/.test(p.name)).length},{timeout:10000,intervals:[100,500,1000]}).toBe(0)
  const next=app.waitForEvent('window');await app.evaluate(({app})=>app.emit('activate'));page=await next;await configure()
  await expect(page.locator('.app-shell')).toHaveAttribute('data-desktop-ready','true',{timeout:60000});await settle();await snapshot('window-reopened')
  await app.close();app=undefined;await snapshot('application-quit')

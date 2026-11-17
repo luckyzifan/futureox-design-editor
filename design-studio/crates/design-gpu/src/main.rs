@@ -191,7 +191,7 @@ async fn run() -> Result<(), String> {
     // A single bounded blocking task owns GPU work and every conversion.
     let (png,rgba,linear,report,passed)=tokio::task::spawn_blocking(move||->Result<_,String>{
         let input:Input=serde_json::from_slice(&input).map_err(|e|e.to_string())?;
-        let mut engine=Engine::new();if let Some(font)=font{engine.load_font(&font)?;}
+        let mut engine=Engine::new();engine.fonts.enable_local_sketch_ui();if let Some(font)=font{engine.load_font(&font)?;}
         engine.load_document(&input.document.to_string())?;
         let output_color=output_color.or(input.options.get("colorOutput").cloned().map(serde_json::from_value::<ColorOutput>).transpose().map_err(|e|e.to_string())?);
         let mut options=engine.parse_options(input.options)?;
@@ -425,6 +425,7 @@ fn serve_load(
         .and_then(|document| document.as_str())
         .ok_or("Load command requires a document string")?;
     let mut engine = Engine::new();
+    engine.fonts.enable_local_sketch_ui();
     if let Some(font) = font {
         engine.load_font(font)?;
     }

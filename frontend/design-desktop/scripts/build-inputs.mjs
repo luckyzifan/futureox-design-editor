@@ -34,6 +34,7 @@ export const BUILD_FILES = [
   'design-studio/Cargo.toml',
   'design-studio/Cargo.lock',
   'design-studio/crates/design-kernel/Cargo.toml',
+  'design-studio/crates/design-kernel/native/sketch_font_outline.swift',
   'design-studio/crates/splash-glyph/Cargo.toml',
   'design-studio/crates/design-desktop-backend/Cargo.toml',
   'design-studio/crates/design-gpu/Cargo.toml',

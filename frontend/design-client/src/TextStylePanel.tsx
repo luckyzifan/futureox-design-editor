@@ -175,7 +175,7 @@ export function TextStylePanel({
           ))}
         </select>
       </label>
-      {unmatchedFonts.length > 0 && <p role="status" aria-label={tr("原字体匹配状态")}>{tr("原字体未匹配：")}{unmatchedFonts.join('、')}{tr("。当前使用 Noto Sans SC，可选择本机字体或导入字体替换。")}</p>}
+      {unmatchedFonts.length > 0 && <p role="status" aria-label={tr("原字体匹配状态")}>{tr("原字体未匹配：")}{unmatchedFonts.join('、')}{tr("。当前使用回退字体，可选择本机字体或导入字体替换。")}</p>}
       <SystemFontPicker editor={editor} ids={ids} detachSharedStyle={detachFontStyle} />
       <details><summary>{tr("字体管理与批量替换")}</summary><FontManagementPanel editor={editor} ids={ids} includeNative={false} detachSharedStyle={detachFontStyle} onDetachSharedStyleChange={setDetachFontStyle} /></details>
       <button onClick={() => { if (commitPendingEdits(editor)) { imports.invalidate(); file.current?.click() } }}>{tr("导入 TTF / OTF 字体")}</button>

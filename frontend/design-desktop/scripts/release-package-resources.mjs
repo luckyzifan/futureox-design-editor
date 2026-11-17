@@ -31,6 +31,7 @@ export function expectedNativeInstallPaths(platform) {
     `sidecar/futureox-design-desktop-backend${suffix}`,
     `bin/design-render${suffix}`,
     `bin/design-prepare${suffix}`,
+    ...(platform === 'darwin' ? ['bin/futureox-sketch-font-outlines'] : []),
     `bin/futureox-design-agent${suffix}`,
     `bin/ffmpeg${suffix}`,
   ]

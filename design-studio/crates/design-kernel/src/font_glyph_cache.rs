@@ -37,6 +37,7 @@ mod tests {
 pub(crate) struct Outline {
     pub commands: Vec<Command>,
     pub units_per_em: i32,
+    pub local_advance: Option<f64>,
     pub weight_axis: bool,
     pub italic_face: bool,
     /// OS/2 usWeightClass. Zero means the outline was not read from a face.

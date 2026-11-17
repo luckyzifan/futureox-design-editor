@@ -283,6 +283,62 @@ struct FontData {
     digest: [u8; 32],
     index: u32,
 }
+
+// Internal shaping IDs cannot be stored as document font resources. The
+// locally installed typeface never joins the document's transferable fonts.
+#[cfg(target_os = "macos")]
+mod macos_outlines;
+
+const SKETCH_UI_TEXT_ID: &str = "\0sketch-ui-han-text";
+const SKETCH_UI_DISPLAY_ID: &str = "\0sketch-ui-han-display";
+
+#[cfg(target_os = "macos")]
+fn system_sketch_ui_face(id: &str) -> Option<&'static FontData> {
+    const PATH: &str = "/System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc";
+    static FACES: std::sync::OnceLock<Option<[FontData; 2]>> = std::sync::OnceLock::new();
+    if !matches!(id, SKETCH_UI_TEXT_ID | SKETCH_UI_DISPLAY_ID) {
+        return None;
+    }
+    let faces = FACES.get_or_init(|| {
+        use std::io::Read as _;
+        if !macos_outlines::available() { return None; }
+        // CoreText resolves regular Simplified Chinese to these two UI
+        // optical faces at 16 and 46 pt. Discover their active collection
+        // indices at runtime because the order can change with macOS.
+        let mut data = Vec::new();
+        let limit = 96 * 1024 * 1024;
+        let mut source = std::fs::File::open(PATH).ok()?.take(limit + 1);
+        source.read_to_end(&mut data).ok()?;
+        if data.len() as u64 > limit { return None; }
+        let find = |instance: &str, variable_face: &str| (0..ttf_parser::fonts_in_collection(&data)?).find(|&index| {
+            ttf_parser::Face::parse(&data, index).is_ok_and(|face| {
+                let regular_axis = face.variation_axes().into_iter().any(|axis| {
+                    axis.tag == ttf_parser::Tag::from_bytes(b"wght") &&
+                        axis.min_value <= 400. && axis.max_value >= 400.
+                });
+                face.names().into_iter().any(|item| {
+                    if item.name_id != ttf_parser::name_id::POST_SCRIPT_NAME { return false; }
+                    let name = item.to_string();
+                    name.as_deref() == Some(instance) || regular_axis && name.as_deref() == Some(variable_face)
+                })
+            })
+        });
+        // Modern macOS exposes Regular as the wght=400 instance of
+        // -Default. Some older installations expose it as a static face.
+        let text = find(".PingFangUITextSC-Regular", ".PingFangUITextSC-Default")?;
+        let display = find(".PingFangUIDisplaySC-Regular", ".PingFangUIDisplaySC-Default")?;
+        let digest = Sha256::digest(&data).into();
+        let bytes = Arc::new(data);
+        Some([
+            FontData { bytes: bytes.clone(), digest, index: text },
+            FontData { bytes, digest, index: display },
+        ])
+    }).as_ref()?;
+    Some(&faces[usize::from(id == SKETCH_UI_DISPLAY_ID)])
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_sketch_ui_face(_: &str) -> Option<&'static FontData> { None }
 // Each resident face owns its immutable bytes through a safe self-borrowing
 // container. Arc clones share the parsed GSUB/GPOS tables instead of rebuilding
 // their coverage digests for every glyph ascent, shaping run, or outline miss.
@@ -384,6 +440,7 @@ pub struct Fonts {
     faces: Arc<RwLock<FontFaceCache>>,
     shaped_runs: Arc<RwLock<ShapedRunCache>>,
     named: BTreeMap<String, FontData>,
+    local_sketch_ui: bool,
     /// Sketch's `allowFontSubpixelQuantization` counterpart: quantise each
     /// glyph's painted outline origin to whole local units. Off by default —
     /// shaped advances, layout, wrapping and caret geometry keep their
@@ -399,6 +456,7 @@ pub(crate) struct FontSourceStamp {
     default: [u8; 32],
     named: BTreeMap<String, ([u8; 32], u32)>,
     quantized: bool,
+    local_sketch_ui: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OutlineOutput {
@@ -503,7 +561,7 @@ pub struct Caret {
     pub tilt: bool,
 }
 fn valid_font_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 128
+    !id.is_empty() && id.len() <= 128 && !matches!(id, SKETCH_UI_TEXT_ID | SKETCH_UI_DISPLAY_ID)
 }
 impl TextStyle {
     pub fn validate(&self) -> Result<(), String> {
@@ -902,6 +960,19 @@ impl Fonts {
     pub fn new() -> Self {
         Self::default()
     }
+    /// Enable locally owned UI glyphs for the native desktop rendering lanes.
+    /// Portable, PDF embedding and ordinary authored font resources keep their
+    /// existing font book. Missing system faces leave portable fallback active.
+    pub fn enable_local_sketch_ui(&mut self) {
+        self.local_sketch_ui = cfg!(target_os = "macos");
+        self.text_paths = Default::default();
+    }
+    fn local_sketch_ui(&self, id: &str) -> Option<&'static FontData> {
+        self.local_sketch_ui.then(|| system_sketch_ui_face(id)).flatten()
+    }
+    fn shaping_face_data(&self, id: &str) -> Option<&FontData> {
+        self.named.get(id).or_else(|| self.local_sketch_ui(id))
+    }
     /// Toggle rendering-side glyph-origin quantisation (see the field
     /// documentation); layout and caret geometry never move.
     pub fn set_glyph_origin_quantization(&mut self, on: bool) {
@@ -921,7 +992,7 @@ impl Fonts {
         Some((Arc::clone(&data.bytes), data.index, data.digest))
     }
     pub(crate) fn source_stamp(&self) -> FontSourceStamp {
-        FontSourceStamp { default:self.data_digest, quantized:self.quantize_glyph_origins,
+        FontSourceStamp { default:self.data_digest, quantized:self.quantize_glyph_origins, local_sketch_ui: self.local_sketch_ui,
             named:self.named.iter().map(|(id,font)|(id.clone(),(font.digest,font.index))).collect() }
     }
     pub fn load(&mut self, data: &[u8]) -> Result<(), String> {
@@ -946,6 +1017,7 @@ impl Fonts {
             faces: self.faces.clone(),
             shaped_runs: self.shaped_runs.clone(),
             named: BTreeMap::new(),
+            local_sketch_ui: self.local_sketch_ui,
             quantize_glyph_origins: self.quantize_glyph_origins,
         };
         let mut total = 0;
@@ -1024,7 +1096,7 @@ impl Fonts {
         if id == "default" {
             0
         } else {
-            self.named.get(id).map_or(0, |f| f.index)
+            self.shaping_face_data(id).map_or(0, |f| f.index)
         }
     }
     fn face_with(
@@ -1036,9 +1108,7 @@ impl Fonts {
         let (bytes, digest, index) = if id == "default" {
             (&self.data, self.data_digest, 0)
         } else {
-            let font = self
-                .named
-                .get(id)
+            let font = self.shaping_face_data(id)
                 .ok_or_else(|| format!("Missing font resource: {id}"))?;
             (&font.bytes, font.digest, font.index)
         };
@@ -1194,26 +1264,25 @@ impl Fonts {
             Err(_) => serde_json::json!({"error":"Glyph cache poisoned"}),
         }
     }
-    fn glyph_outline(
-        &self,
-        glyph: &Glyph,
-    ) -> Result<Arc<crate::font_glyph_cache::Outline>, String> {
+    fn glyph_outline(&self, glyph: &Glyph) -> Result<Arc<crate::font_glyph_cache::Outline>, String> {
+        self.outline_for_id(&glyph.font_id, glyph.id, glyph.weight, &glyph.vars)
+    }
+    fn outline_for_id(&self, font_id: &str, glyph: u16, weight: f32, axes: &[rustybuzz::Variation])
+        -> Result<Arc<crate::font_glyph_cache::Outline>, String> {
         use crate::font_glyph_cache::{Key, Outline};
-        let digest = if glyph.font_id == "default" {
+        let digest = if font_id == "default" {
             self.data_digest
         } else {
-            self.named
-                .get(&glyph.font_id)
-                .ok_or_else(|| format!("Missing font resource: {}", glyph.font_id))?
+            self.shaping_face_data(font_id)
+                .ok_or_else(|| format!("Missing font resource: {font_id}"))?
                 .digest
         };
         let key = Key {
             font: digest,
-            face: self.face_index(&glyph.font_id),
-            glyph: glyph.id,
-            weight: glyph.weight.to_bits(),
-            axes: glyph
-                .vars
+            face: self.face_index(font_id),
+            glyph,
+            weight: weight.to_bits(),
+            axes: axes
                 .iter()
                 .map(|v| (v.tag.to_bytes(), v.value.to_bits()))
                 .collect(),
@@ -1226,7 +1295,7 @@ impl Fonts {
         {
             return Ok(outline);
         }
-        let face = self.face_with(&glyph.font_id, glyph.weight, &glyph.vars)?;
+        let face = self.face_with(font_id, weight, axes)?;
         let face = face.borrow_face();
         let mut outline = Outline {
             units_per_em: face.units_per_em(),
@@ -1240,7 +1309,17 @@ impl Fonts {
             italic_face: face.is_italic() || face.is_oblique(),
             ..Outline::default()
         };
-        face.outline_glyph(ttf_parser::GlyphId(glyph.id), &mut outline);
+        #[cfg(target_os = "macos")]
+        if matches!(font_id, SKETCH_UI_TEXT_ID | SKETCH_UI_DISPLAY_ID) {
+            let (commands, advance) = macos_outlines::outline(font_id == SKETCH_UI_DISPLAY_ID, glyph, face.units_per_em())
+                .ok_or_else(|| "Local CoreText outline unavailable".to_string())?;
+            outline.commands = commands;
+            outline.local_advance = Some(advance);
+        } else {
+            face.outline_glyph(ttf_parser::GlyphId(glyph), &mut outline);
+        }
+        #[cfg(not(target_os = "macos"))]
+        face.outline_glyph(ttf_parser::GlyphId(glyph), &mut outline);
         Ok(self
             .outlines
             .write()
@@ -1601,7 +1680,20 @@ impl Fonts {
                 // The chain always ends at the embedded default font (the
                 // NotoSansSC resource the host installs): a Latin-only system
                 // font must still render CJK instead of failing the canvas.
-                let mut chain: Vec<&str> = Vec::with_capacity(style.fallbacks.len() + 2);
+                let mut chain: Vec<&str> = Vec::with_capacity(style.fallbacks.len() + 2 + usize::from(self.local_sketch_ui));
+                if self.local_sketch_ui && sketch_display_fallback && matches!(font_id, "" | "default") &&
+                    style.fallbacks.is_empty() && features.is_empty() && variations.is_empty() &&
+                    weight == 400. && cluster.chars().all(is_sketch_han) {
+                    let id = if size < 20. { SKETCH_UI_TEXT_ID } else { SKETCH_UI_DISPLAY_ID };
+                    // Admission includes the outline, not just cmap coverage.
+                    // Apple UI faces can expose metrics without portable
+                    // outlines; in that case leave the bundled path in place.
+                    if self.face(id, weight).ok().is_some_and(|face| cluster.chars().all(|ch|
+                        face.borrow_face().glyph_index(ch).is_some_and(|glyph|
+                            self.outline_for_id(id, glyph.0, weight, &[]).is_ok()))) {
+                        chain.push(id);
+                    }
+                }
                 chain.push(font_id);
                 chain.extend(style.fallbacks.iter().map(String::as_str));
                 if !self.data.is_empty() && !chain.iter().any(|id| *id == "default") {
@@ -1678,6 +1770,11 @@ impl Fonts {
                     let byte = start + glyph.cluster as usize;
                     let cluster = utf16[base + byte];
                     let mut raw_advance = (p.x_advance as f64 * scale).abs();
+                    if self.local_sketch_ui && matches!(id.as_str(), SKETCH_UI_TEXT_ID | SKETCH_UI_DISPLAY_ID) {
+                        if let Some(advance) = self.outline_for_id(&id, glyph.glyph_id as u16, weight, &variations)?.local_advance {
+                            raw_advance = advance * scale;
+                        }
+                    }
                     let (width_scale, height_scale, ink_offset, advance) = if sketch_display_fallback && id == "default" {
                         let character = text[byte..].chars().next().unwrap_or_default();
                         if is_sketch_han(character) {
@@ -2102,7 +2199,7 @@ impl Fonts {
                     }
                     let natural_ascent = f64::from(face.ascender()) * glyph.size / f64::from(face.units_per_em());
                     let character = text[glyph.byte..].chars().next();
-                    let fallback_ascent = if use_sketch_ascender && sketch_display_fallback && glyph.font_id == "default" {
+                    let fallback_ascent = if use_sketch_ascender && sketch_display_fallback && matches!(glyph.font_id.as_str(), "default" | SKETCH_UI_TEXT_ID | SKETCH_UI_DISPLAY_ID) {
                         character.and_then(|ch| {
                             if ch.is_ascii_whitespace() { Some(0.) }
                             else { sketch_fallback_ascent(ch, glyph.size) }
@@ -2540,6 +2637,35 @@ mod tests {
         fonts.load(&font_bytes()).unwrap();
         fonts
     }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn local_sketch_regular_han_uses_coretext_advances_without_exporting_the_face() {
+        let mut local = fonts();
+        let text = "系统";
+        let utf16: Vec<_> = (0..=text.len()).map(|byte| byte / 3).collect();
+        let style = TextStyle::default();
+        let original = local.shape(text, 0, 46., &style, &[], &utf16, true).unwrap();
+        assert!(original.iter().all(|glyph| glyph.font_id == "default"));
+        local.enable_local_sketch_ui();
+        let glyphs = local.shape(text, 0, 46., &style, &[], &utf16, true).unwrap();
+        if system_sketch_ui_face(SKETCH_UI_DISPLAY_ID).is_none() {
+            assert!(glyphs.iter().all(|glyph| glyph.font_id == "default"));
+            return;
+        }
+        assert_eq!(glyphs.len(), 2);
+        for glyph in glyphs {
+            assert_eq!(glyph.font_id, SKETCH_UI_DISPLAY_ID);
+            assert!((glyph.advance - 43.4492481203).abs() < 0.002, "{}", glyph.advance);
+            assert!(!local.glyph_outline(&glyph).unwrap().commands.is_empty());
+        }
+        assert!(local.owned_face_bytes(SKETCH_UI_DISPLAY_ID).is_none());
+        assert!(local.bytes(SKETCH_UI_DISPLAY_ID).is_err());
+        assert!(local.named.is_empty());
+        assert!(!valid_font_id(SKETCH_UI_DISPLAY_ID));
+        let portable = local.shape(text, 0, 46., &style, &[], &utf16, false).unwrap();
+        assert!(portable.iter().all(|glyph| glyph.font_id == "default"));
+    }
+
     fn node(text: &str, style: serde_json::Value, width: f64) -> Node {
         serde_json::from_value(serde_json::json!({
             "id":"t", "kind":"text", "text":text, "fontSize":20,

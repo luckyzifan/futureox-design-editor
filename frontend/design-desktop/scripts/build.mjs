@@ -89,6 +89,10 @@ await mkdir(path.join(output, 'bin'), { recursive: true })
 await installSidecar(path.join(target, profile, renderBinary), path.join(output, 'bin', renderBinary))
 const prepareBinary = `design-prepare${process.platform === 'win32' ? '.exe' : ''}`
 await installSidecar(path.join(target, profile, prepareBinary), path.join(output, 'bin', prepareBinary))
+if (process.platform === 'darwin') {
+  run('xcrun', ['swiftc', '-O', path.join(design, 'crates/design-kernel/native/sketch_font_outline.swift'),
+    '-o', path.join(output, 'bin/futureox-sketch-font-outlines')], design)
+}
 const agentBinary = `futureox-design-agent${process.platform === 'win32' ? '.exe' : ''}`
 await installSidecar(path.join(target, profile, agentBinary), path.join(output, 'bin', agentBinary))
 const font = path.join(core, 'frontend/design-client/public/fonts/NotoSansSC.ttf')
