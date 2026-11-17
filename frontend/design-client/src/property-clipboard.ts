@@ -7,6 +7,7 @@ import {allParents} from './geometry'
 export const PROPERTY_PREFIX='FUTUREOX-DESGIN-PROPERTIES-V1\n'
 export type PropertyKind='all'|'fills'|'strokes'|'effects'
 const appearance=['opacity','blend','fills','strokes','effects','radii','smoothing','cornerRadius'] as const
+const cornerFields = new Set(['radii', 'smoothing', 'cornerRadius'])
 const typography=['fontSize','textStyle'] as const
 function fields(kind:PropertyKind,text:boolean):string[]{return kind==='all'?[...appearance,...(text?typography:[])]:[kind]}
 function keepReferences(n:DesignNode,allowed:string[]){
@@ -50,8 +51,9 @@ export function readProperties(source:string):{kind:PropertyKind;document:Design
 }
 /** Called inside Editor.change so dependencies, overrides and all targets share
  * a single validated undo entry. Geometry and textual content remain authored. */
-export function pasteProperties(target:DesignDocument,ids:string[],packet:ReturnType<typeof readProperties>){
+export function pasteProperties(target:DesignDocument,ids:string[],packet:ReturnType<typeof readProperties>, options: { includeCorners?: boolean } = {}){
   const source=cloneValue(packet.node),allowed=fields(packet.kind,source.kind==='text')
+    .filter(key => options.includeCorners !== false || !cornerFields.has(key))
   keepReferences(source,allowed)
   const deps=importDesignDependencies(target,packet.document,[source]);importFonts(target,packet.document,[source]);remapDesignDependencies(source,deps)
   for(const id of ids){
