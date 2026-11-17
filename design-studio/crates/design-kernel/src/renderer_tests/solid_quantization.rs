@@ -75,6 +75,7 @@ impl Fixture {
             raster_workspace: RasterWorkspace::default(),
             pose_prefix: None,
             prefix_allocations: Vec::new(),
+            scene3d: crate::scene3d::index(&self.doc),
             prefix_view: PrefixView {
                 viewport: extent,
                 extent,

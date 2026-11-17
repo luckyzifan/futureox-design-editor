@@ -136,6 +136,7 @@ pub mod reviews;
 mod rounded;
 pub mod sampling;
 pub mod scene;
+pub mod scene3d;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod scene_store;
 #[cfg(not(target_arch = "wasm32"))]

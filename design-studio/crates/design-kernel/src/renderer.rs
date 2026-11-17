@@ -2270,6 +2270,7 @@ impl Engine {
             pose_prefix: self.pose_prefix.as_mut().filter(|_| use_pose_prefix && !self.display_degrade && !synchronized),
             prefix_view,
             prefix_allocations: Vec::new(),
+            scene3d: crate::scene3d::index(doc),
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
@@ -3189,6 +3190,8 @@ struct Painter<'a> {
     pose_prefix: Option<&'a mut PosePrefix>,
     prefix_view: PrefixView,
     prefix_allocations: Vec<Allocation>,
+    /// Set only when the document stores a 3D pose or scene. Empty documents skip the lookup.
+    scene3d: Option<crate::scene3d::SceneIndex>,
 }
 
 enum TextureBundle {
@@ -4703,6 +4706,80 @@ impl Painter<'_> {
         }
         Ok(())
     }
+    fn paint_scene_ops(
+        &mut self,
+        container: &str,
+        ops: &[crate::scene3d::DrawOp],
+        layer: &mut Surface,
+        clip: Option<&Mask>,
+    ) -> Result<(), String> {
+        let matrix = self.prepared.get(container).map(|prepared| prepared.matrix).unwrap_or_default();
+        for op in ops {
+            match op {
+                crate::scene3d::DrawOp::Paint2d(id) => self.node_with_outline(id, layer, clip, false)?,
+                crate::scene3d::DrawOp::Raster { planes, depth_test } => {
+                    let mut depth = depth_test.then(|| vec![f32::NEG_INFINITY; layer.pixels.len()]);
+                    for plane in planes {
+                        let captured = match &plane.capture {
+                            Some(id) => Some(self.capture_scene_leaf(id)?),
+                            None => None,
+                        };
+                        let quad = self.scene_quad(matrix, plane);
+                        let color = crate::blend::Pixel(plane.color.unwrap_or([0.; 4]));
+                        let mask = |x, y| clip.map_or(1., |mask| mask.at(x, y));
+                        crate::scene3d::rasterize_quad(
+                            &quad,
+                            color,
+                            captured.as_ref(),
+                            &mut layer.pixels,
+                            layer.rect,
+                            depth.as_deref_mut(),
+                            &mask,
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn scene_quad(&self, matrix: Transform, plane: &crate::scene3d::DrawPlane) -> crate::scene3d::ScreenQuad {
+        let mut quad = crate::scene3d::ScreenQuad {
+            x: [0.; 4], y: [0.; 4], depth: [0.; 4], w: [1.; 4], u: [0.; 4], v: [0.; 4],
+        };
+        let uv = plane.capture.as_ref().and_then(|id| {
+            let node = self.doc.nodes.get(id)?;
+            let prepared = self.prepared.get(id)?;
+            let local = [(0., 0.), (node.width, 0.), (node.width, node.height), (0., node.height)];
+            Some(local.map(|(x, y)| {
+                let point = prepared.matrix.point(Point::new(x, y));
+                (point.x, point.y)
+            }))
+        });
+        for i in 0..4 {
+            let point = matrix.point(Point::new(plane.corners[i].x, plane.corners[i].y));
+            quad.x[i] = point.x;
+            quad.y[i] = point.y;
+            quad.depth[i] = plane.depth[i];
+            quad.w[i] = plane.w[i];
+            if let Some(uv) = uv {
+                quad.u[i] = uv[i].0;
+                quad.v[i] = uv[i].1;
+            }
+        }
+        quad
+    }
+
+    fn capture_scene_leaf(&mut self, id: &str) -> Result<Surface, String> {
+        let bounds = self.prepared.get(id).map(|prepared| prepared.bounds).unwrap_or_default();
+        if bounds.empty() {
+            return self.allocate(Rect::new(0, 0, 1, 1));
+        }
+        let mut surface = self.allocate(bounds)?;
+        self.node_with_outline(id, &mut surface, None, false)?;
+        Ok(surface)
+    }
+
     fn node_with_outline(&mut self,id:&str,target:&mut Surface,clip:Option<&Mask>,inherited_outline:bool)->Result<(),String>{
         let original_target=target.rect;
         self.node_region(id,target,clip,None,original_target,inherited_outline)
@@ -4712,7 +4789,8 @@ impl Painter<'_> {
         let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
         let outline=n.outline_mask_node(inherited_outline);
         let n=outline.as_ref().unwrap_or(n);
-        if !n.visible || n.opacity <= 0. {
+        let preserve = crate::scene3d::preserves(n);
+        if !n.visible || (!preserve && n.opacity <= 0.) {
             return Ok(());
         }
         let Some(layer) = self.node_layer(id, target, true, output, original_target, geometric)? else {
@@ -4721,7 +4799,13 @@ impl Painter<'_> {
         let exact_mask_factor = n.mask
             && n.opacity < 1.
             && !matches!(n.mask_type.as_deref(), Some("outline") | Some("shape"));
-        if n.passes_backdrop() {
+        if preserve {
+            if clip.is_none() {
+                target.composite_unmasked(&layer, "normal", 1.);
+            } else {
+                target.composite(&layer, "normal", 1., |x, y| clip.map_or(1., |m| m.at(x, y)));
+            }
+        } else if n.passes_backdrop() {
             target.interpolate(
                 &layer,
                 |x, y| n.opacity as f32 * clip.map_or(1., |m| m.at(x, y)),
@@ -4766,6 +4850,9 @@ impl Painter<'_> {
         if !n.visible {
             return Ok(None);
         }
+        let preserve = crate::scene3d::preserves(n);
+        let spins = crate::scene3d::spins(n);
+        let scene_here = self.scene3d.as_ref().is_some_and(|index| index.contains(id));
         let prepared = &self.prepared[id];
         // Nonlocal effects read their source/geometry before ancestor clipping.
         // Cropping first creates artificial blur edges AND glass distance-field
@@ -4812,6 +4899,12 @@ impl Painter<'_> {
                 if !needed.empty() && needed.pixels() < r.pixels() { r = needed; }
             }
         }
+        if scene_here {
+            let extra = crate::scene3d::device_coverage(self.doc, id, prepared.matrix);
+            if !extra.empty() {
+                r = r.union(extra).intersect(self.extent.intersect(original_target));
+            }
+        }
         if r.empty() {
             self.stats.culled += 1;
             return Ok(None);
@@ -4832,7 +4925,7 @@ impl Painter<'_> {
             n.fill_even_odd() && n.kind != "text",
         )?;
         if let Some(fx) = n.backdrop_effect().filter(|fx| {
-            apply_effects && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))
+            apply_effects && !preserve && !spins && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))
         }) {
             let resolved_glass = fx.evaluated_glass();
             if fx.sketch_backdrop || fx.sketch_ramp().is_some() {
@@ -4923,12 +5016,14 @@ impl Painter<'_> {
             }
             }
         }
+        if !preserve && !spins {
         for paint in &n.fills {
             if bounded {
                 self.paint_region(n, paint, m, &fill, &mut layer, basis.intersect(prepared.fill_program_bounds), true, |_, _| 1.)?;
             } else {
                 self.paint(n, paint, m, &fill, &mut layer, true, |_, _| 1.)?;
             }
+        }
         }
         let mask_id = self.doc.mask_child(n).map(|m| &m.id);
         let mut mask_surface = None;
@@ -4937,8 +5032,12 @@ impl Painter<'_> {
             self.node_with_outline(id, &mut mask, None, geometric)?;
             mask_surface = Some(mask);
         }
-        let child_mask = if n.clip { Some(&*fill) } else { None };
-        if let Some(mask) = &mask_surface {
+        let child_mask = if n.clip && !preserve && !spins { Some(&*fill) } else { None };
+        let scene_ops = scene_here.then(|| crate::scene3d::draw_ops(self.doc, id));
+        let use_scene = scene_ops.as_ref().is_some_and(|ops| preserve || spins || ops.iter().any(crate::scene3d::is_raster));
+        if use_scene {
+            self.paint_scene_ops(id, scene_ops.as_ref().unwrap(), &mut layer, child_mask)?;
+        } else if let Some(mask) = &mask_surface {
             let mut content = self.allocate(r)?;
             if passthrough {
                 content.pixels.clone_from_slice(&layer.pixels);
@@ -4982,6 +5081,7 @@ impl Painter<'_> {
                 self.node_with_outline(child, &mut layer, child_mask, geometric)?;
             }
         }
+        if !preserve && !spins {
         for (i, s) in n.strokes.iter().enumerate() {
             if !s.visible || s.width <= 0. {
                 continue;
@@ -4997,10 +5097,11 @@ impl Painter<'_> {
                 }
             })?;
         }
+        }
         let mut shadow_basis: Option<Surface> = None;
         let shares_shadow_basis = n.effects.iter().filter(|effect| effect.visible &&
             matches!(effect.kind.as_str(), "shadow" | "inner-shadow")).take(2).count() == 2;
-        for fx in n.effects.iter().filter(|e| apply_effects && e.visible) {
+        for fx in n.effects.iter().filter(|e| apply_effects && !preserve && e.visible) {
             if self.display_degrade && effect_exceeds_display_budget(fx, scale, r) {
                 continue;
             }

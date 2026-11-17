@@ -47,6 +47,7 @@ import { frameSizePresetGate } from './frame-presets'
 import type { PencilCap } from './freehand'
 import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
+import { assignPreserve3d, frameOffersNested3d, nested3dSelected } from './nested-scene3d'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
 import type { Editor } from './engine'
@@ -467,7 +468,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     n = s.doc.nodes[ids[0]]
   const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation) as LiveRotation | null
   const liveBlur = useSyncExternalStore(editor.subscribeLiveBlur, () => editor.liveBlur)
-  const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
+  const update = (fn: (n: DesignNode, document: import('./model').DesignDocument) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
   const [glassToOpen, setGlassToOpen] = useState<string | null>(null)
   if (uiMode === 'sketch' && s.tool === 'graphic') return <GraphicTemplatePanel editor={editor}/>
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
@@ -604,6 +605,18 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       <input type="checkbox" checked={n.clip} onChange={event => update(node => { node.clip = event.target.checked })} />
       {tr("裁剪超出内容")}
     </label>}
+    {n.kind === 'frame' && frameOffersNested3d(s.doc, n) && <div className="nested-scene3d" role="radiogroup" aria-label={tr("嵌套图层 3D")}>
+      <label className="check-row">
+        <input type="radio" name={`nested-3d-${n.id}`} checked={nested3dSelected(n) === 0}
+          onChange={() => update((node, document) => assignPreserve3d(node, document, false), '转为平面')} />
+        {tr("转为平面")}
+      </label>
+      <label className="check-row">
+        <input type="radio" name={`nested-3d-${n.id}`} checked={nested3dSelected(n) === 1}
+          onChange={() => update((node, document) => assignPreserve3d(node, document, true), '保留嵌套图层 3D')} />
+        {tr("保留嵌套图层 3D")}
+      </label>
+    </div>}
   </>
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
     <div className="mini-actions" onClickCapture={field === 'effects' ? () => onEditBlur?.(null) : undefined}>

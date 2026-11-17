@@ -179,6 +179,41 @@ export function hasSchema21Features(d: DesignDocument): boolean {
   const runs = (r: any) => Array.isArray(r) && r.some(run => run && (run.letterSpacing !== undefined || run.lineHeight !== undefined))
   return Object.values(d.nodes).some(n => runs(n.textRuns) || Object.values(n.instance?.overrides || {}).some(o => runs(o.textRuns)))
 }
+function finiteBound(value: number) {
+  return Number.isFinite(value) && Math.abs(value) <= 1e7
+}
+function validOriginAxis(axis: { unit: OriginUnit; value: number } | undefined) {
+  return !!axis && (axis.unit === 'PERCENT' || axis.unit === 'PIXELS') && finiteBound(axis.value)
+    && Object.keys(axis).every(key => key === 'unit' || key === 'value')
+}
+function validateNestedScene(node: DesignNode) {
+  if (node.scene3d !== undefined) {
+    const scene = node.scene3d
+    if (node.kind !== 'frame' || !scene || typeof scene !== 'object'
+      || !finiteBound(scene.perspective) || typeof scene.preserve3d !== 'boolean'
+      || (scene.visible !== undefined && typeof scene.visible !== 'boolean')
+      || Object.keys(scene).some(key => !['perspective', 'preserve3d', 'visible'].includes(key)))
+      throw new Error('父画框的 3D 场景无效')
+  }
+  if (node.transform3d !== undefined) {
+    const pose = node.transform3d
+    const keys = Object.keys(pose)
+    if (pose.type === 'NONE') {
+      if (keys.some(key => key !== 'type')) throw new Error('3D 变换无效')
+    } else if (pose.type !== 'FIXED_ORDER' || ![pose.translateZ, pose.rotateX, pose.rotateY, pose.rotateZ].every(finiteBound)
+      || (pose.backfaceVisible !== undefined && typeof pose.backfaceVisible !== 'boolean')
+      || (pose.visible !== undefined && typeof pose.visible !== 'boolean')
+      || keys.some(key => !['type', 'translateZ', 'rotateX', 'rotateY', 'rotateZ', 'backfaceVisible', 'visible'].includes(key))) {
+      throw new Error('3D 变换无效')
+    }
+  }
+  if (node.transformOrigin !== undefined) {
+    const origin = node.transformOrigin
+    if (!origin || !validOriginAxis(origin.x) || !validOriginAxis(origin.y)
+      || Object.keys(origin).some(key => key !== 'x' && key !== 'y'))
+      throw new Error('3D 原点无效')
+  }
+}
 export function hasSchema22Features(d: DesignDocument): boolean {
   return Object.values(d.nodes).some(node => node.layout?.reverseFlow === true)
 }
@@ -360,6 +395,20 @@ export function exportSuffixHasForbiddenCharacters(value: string): boolean {
   })
 }
 export type ConnectorEndpoint={point:Point;nodeId?:string;anchor?:Point}
+export type Transform3d =
+  | { type: 'NONE' }
+  | {
+      type: 'FIXED_ORDER'
+      translateZ: number
+      rotateX: number
+      rotateY: number
+      rotateZ: number
+      backfaceVisible?: boolean
+      visible?: boolean
+    }
+export type Scene3d = { perspective: number; preserve3d: boolean; visible?: boolean }
+export type OriginUnit = 'PERCENT' | 'PIXELS'
+export type TransformOrigin = { x: { unit: OriginUnit; value: number }; y: { unit: OriginUnit; value: number } }
 export type DesignNode = {
   vectorGeometry?: VectorGeometry
   vectorBrush?: import('./vector-brush').VectorBrush
@@ -398,6 +447,12 @@ export type DesignNode = {
   fills: Paint[]
   strokes: Stroke[]
   effects: Effect[]
+  /** Parent frame camera. Absence is Turn into flat plane with perspective off. */
+  scene3d?: Scene3d
+  /** Fixed-order 3D pose. Absence matches type NONE. */
+  transform3d?: Transform3d
+  /** Pivot for transform3d. Absence is the layer center. */
+  transformOrigin?: TransformOrigin
   radii: [number, number, number, number]
   smoothing: number
   clip: boolean
@@ -504,7 +559,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24
   id: string
   name: string
   pages: Page[]
@@ -833,7 +888,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1072,6 +1127,10 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     if (n.graphic !== undefined && (typeof n.graphic !== 'boolean' ||
         n.graphic && (d.schemaVersion < 23 || n.kind !== 'frame' || n.layout && n.layout.mode !== 'none')))
       throw new Error('图形容器需要版本 23，且不能同时使用堆叠布局')
+    if (n.scene3d !== undefined || n.transform3d !== undefined || n.transformOrigin !== undefined) {
+      if (d.schemaVersion < 24) throw new Error('嵌套 3D 图层需要设计文件版本 24')
+      validateNestedScene(n)
+    }
     if (n?.layoutGrid !== undefined || n?.layoutGrids !== undefined) {
       if (d.schemaVersion < 12 || n.kind !== 'frame' ||
           (n.layoutGrids !== undefined && (!Array.isArray(n.layoutGrids) ||

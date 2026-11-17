@@ -301,6 +301,15 @@ pub struct Node {
     pub name: String,
     #[serde(default)]
     pub transform: Transform,
+    /// Shared camera and preserve-3D switch for a frame. Absence is the flat plane.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scene3d: Option<Box<crate::scene3d::Scene3d>>,
+    /// Fixed-order 3D pose. Absence matches `{ type: "NONE" }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform3d: Option<Box<crate::scene3d::Transform3d>>,
+    /// Pivot for [`Self::transform3d`]. Absence is the layer center.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform_origin: Option<Box<crate::scene3d::TransformOrigin>>,
     pub width: f64,
     pub height: f64,
     #[serde(default)]
@@ -1644,6 +1653,7 @@ impl Document {
                 || n.layout.as_ref().is_some_and(|layout| layout.mode != crate::layout::Flow::None)) {
                 return Err("Graphics require a non-stack frame and schema 23".into());
             }
+            crate::scene3d::validate_node(n)?;
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1770,7 +1780,11 @@ impl Document {
     pub fn requires_schema22(&self) -> bool {
         self.nodes.values().any(|node| node.layout.as_ref().is_some_and(|layout| layout.reverse_flow))
     }
+    pub fn requires_schema24(&self) -> bool {
+        self.nodes.values().any(crate::scene3d::node_uses_schema24)
+    }
     fn validate_edit_scope(&self, changed:Option<&std::collections::BTreeSet<String>>) -> Result<(),String> {
+        if self.schema_version < 24 && self.requires_schema24() { return Err("Nested 3D layers require schema 24".into()); }
         if self.schema_version<21 && self.requires_schema21() {return Err("Per-run letter spacing and line height require schema 21".into());}
         if self.schema_version<20 && self.requires_schema20() {return Err("Paragraph and vertical text layout require schema 20".into());}
         if self.schema_version<19 && self.requires_schema19() {return Err("Zoom blur requires schema 19".into());}
@@ -1861,7 +1875,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=23).contains(&self.schema_version)
+        if !(1..=24).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32
