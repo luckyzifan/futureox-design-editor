@@ -4,7 +4,7 @@ import { cloneValue } from '../draft'
 import { equalValue } from '../document-patch'
 import { allParents, worldMatrix, type ParentMap } from '../geometry'
 import { duplicateGraph, type Duplication, type GraphCopy } from '../duplicate-graph'
-import { inverse, multiply, translate } from './affine'
+import { apply, bounds, boxPoints, inverse, multiply, translate, unionBounds } from './affine'
 import { assertFreshSelection, assertStructuralParent, indexSelection, SelectionCommandError } from './selection-command'
 
 /** Local command state, never request JSON, identity authority or a replay token. */
@@ -13,6 +13,15 @@ export interface DuplicationRepeat {
   reference: ReadonlyMap<string, Matrix>
 }
 export type DuplicationIntent = { kind: 'default' } | { kind: 'world-offset'; x: number; y: number }
+/** Desktop Figma puts a duplicated top-level frame to the right of the source.
+ * Help text states that direction and not the gap. Desktop reports from 2021
+ * through 2024 measure 40px between the frames. This environment did not run
+ * Figma 126.10.13. Ordinary objects, nested frames, sections, groups, mixed
+ * selections, and Sketch layout keep the +10,+10 step. */
+export const FIGMA_TOP_LEVEL_FRAME_DUPLICATE_GAP = 40
+export function duplicationCanvas(uiMode: string | undefined): 'figma' | 'ordinary' {
+  return uiMode === 'sketch' ? 'ordinary' : 'figma'
+}
 export interface DuplicationPlan {
   content: GraphCopy
   transforms: Map<string, Matrix>
@@ -63,7 +72,7 @@ function copyForDuplication(doc: DesignDocument, roots: string[], mutable: boole
   return { nodes, roots, document: source }
 }
 export function prepareDuplication(doc: DesignDocument, selected: readonly string[], intent: DuplicationIntent,
-  state: { fresh: boolean; singleStep: boolean; mutable: boolean; repeat?: DuplicationRepeat | null; destination?: string }): DuplicationPlan {
+  state: { fresh: boolean; singleStep: boolean; mutable: boolean; repeat?: DuplicationRepeat | null; destination?: string; canvas?: 'figma' | 'ordinary' }): DuplicationPlan {
   const index = indexSelection(doc, selected)
   for (const id of index.ids) {
     assertStructuralParent(doc, index.parents.get(id)!, index.parents)
@@ -77,14 +86,19 @@ export function prepareDuplication(doc: DesignDocument, selected: readonly strin
   }
   const repeat = intent.kind === 'default' && repeatMatches(state.repeat, index.ids) ? state.repeat : null
   if (repeat && !state.singleStep) reject('unsupported_duplicate_repeat_batch', 'Implicit duplicate repeat requires one normalized operation, not a multi-operation batch')
+  // Bounds run only when every root is a page-level frame. A group, shape, or
+  // mixed selection stops at the first non-frame and keeps translate(10, 10).
+  const topLevelFrames = state.canvas !== 'ordinary' && intent.kind === 'default' && !repeat && index.ids.every(id =>
+    doc.nodes[id].kind === 'frame' && index.parents.get(id) === index.pageId)
+  const frameShift = topLevelFrames ? unionBounds(index.ids.map(id => {
+    const n = doc.nodes[id], matrix = worldMatrix(doc, id, index.parents)
+    return bounds(boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(point => apply(matrix, point)))
+  })).width + FIGMA_TOP_LEVEL_FRAME_DUPLICATE_GAP : null
   const transforms = new Map<string, Matrix>()
   for (const id of index.ids) {
     const delta = intent.kind === 'world-offset' ? translate(intent.x, intent.y) : repeat
       ? supportedRepeatDelta(worldMatrix(doc, id, index.parents), repeat.reference.get(id)!)
-      // Mac Figma steps Duplicate / Ctrl+D by +10,+10 in document units,
-      // including frames, sections, and groups. A later duplicate repeats
-      // that world displacement.
-      : translate(10, 10)
+      : frameShift !== null ? translate(frameShift, 0) : translate(10, 10)
     if (!delta || !finite(delta)) throw new SelectionCommandError('unsupported_duplicate_transform', 'Duplicate repeat supports finite translation and rotation only')
     transforms.set(id, delta)
   }

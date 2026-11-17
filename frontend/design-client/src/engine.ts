@@ -4,7 +4,7 @@ import { PreviewLayout } from './kernel/preview-layout'
 import { PoseTopology, TranslationPreviewPlan, translationOnlyChanges } from './kernel/translation-preview'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
-import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
+import { applyDuplication, prepareDuplication, canContinueDuplication, duplicationCanvas, type DuplicationRepeat } from './commands/duplication-command'
 import { prepareLayoutAdd, applyLayoutAdd, prepareLayoutRemove, applyLayoutRemove, layoutCommandAdmission } from './commands/layout-command'
 import { reportPostcommitSubscriberError } from './postcommit-subscriber-error'
 import { SelectionCommandError, prepareSelectionArrangement, prepareSelectionWrap, configureSelectionWrapper,
@@ -2851,7 +2851,8 @@ export class Editor {
       if (this.state.busy || this.interactionActive || !this.state.selection.length) return
       const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
       const plan = prepareDuplication(base, this.state.selection, { kind: 'default' },
-        { fresh: true, singleStep: true, mutable: false, repeat: this.duplicationRepeat() })
+        { fresh: true, singleStep: true, mutable: false, repeat: this.duplicationRepeat(),
+          canvas: duplicationCanvas(interfacePreference.getSnapshot().uiMode) })
       const selected: string[] = []
       let reference = new Map<string, Matrix>()
       const result = this.change('创建副本', draft => {
