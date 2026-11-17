@@ -186,6 +186,8 @@ type Drag = {
   session: number
   page: string
   cropFrame?: string
+  moveFromAnywhere?: boolean
+  movePlacementPoint?: Point
   /** null means a frame whose contents cannot be preserved independently. */
   commandCropFrame?: string | null
   kind: 'pan' | 'zoom' | 'move' | 'scale' | 'resize' | 'rotate' | 'pivot' | 'marquee' | 'create' | 'vertex' | 'handle' | 'width' | 'parameter' | 'crop'
@@ -2082,6 +2084,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     let dragKind = kind === 'resize' && s.tool === 'scale' ? 'scale' as const : kind || 'move',
       ids = editor.topSelection()
+    const moveFromAnywhere = !kind && uiMode === 'sketch' && shortcutPlatform() === 'mac' &&
+      s.tool === 'select' && e.altKey && e.metaKey && ids.length > 0 && selected.length > 0 && !selectionFeedback.readOnly
     let clickSelection: string[] | null = null
     if (e.button === 1 || space.current || s.tool === 'hand') { dragKind = 'pan'; setPanning(true); editor.hoverLayer(null, 'canvas') }
     else if (kind === 'marquee') { ids = []; setRubber({ ...p, width: 0, height: 0 }) }
@@ -2090,7 +2094,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       dragKind = 'create'
       ids = []
       setRubber({ ...p, width: 0, height: 0 })
-    } else if (!kind) {
+    } else if (!kind && !moveFromAnywhere) {
       const titleId = ['select','multiselect','scale'].includes(s.tool)
         ? target.closest('[data-frame-title]')?.getAttribute('data-frame-title') : null
       const title = frameTitleHit(s.doc,s.page,titleId)
@@ -2145,6 +2149,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       pointerId: e.pointerId,
       session: editor.sessionGeneration, page: s.page,
       kind: dragKind,
+      moveFromAnywhere,
       cropFrame: explicitCrop ? croppable : undefined,
       commandCropFrame: commandCrop ? croppable ?? null : undefined,
       creationTool: s.tool,
@@ -2198,7 +2203,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       clickSelection, moved: false,
       lastScreen: screen,
       lastModifiers: { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey },
-      ...(dragKind === 'move' && ids.length === 1 && displayedSnapshot?.document.nodes[ids[0]] ? {
+      ...(dragKind === 'move' && !moveFromAnywhere && ids.length === 1 && displayedSnapshot?.document.nodes[ids[0]] ? {
         layoutPointerOrigin: remapPointerAnchor(worldMatrix(displayedSnapshot.document, ids[0]), matrices[ids[0]], p),
       } : {}),
       ...(dragKind === 'marquee' && displayedIndex ? { pickIndex: displayedIndex } : {}),
@@ -2728,6 +2733,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return
     }
     const pointerScreen = screenPoint(e)
+    const duplicateMove = d.kind === 'move' && !d.moveFromAnywhere && e.altKey
     let transform: Matrix = translate(p.x - d.start.x, p.y - d.start.y)
     let moveGuides: MoveGuides = {}
     if (d.kind !== 'move') clearMoveGuides()
@@ -2735,11 +2741,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.moved = dragThresholdPassed(d.screen, pointerScreen, !!d.moved)
       if (d.actionToken) actionTrace.sample(d.actionToken, { thresholdPassed: !!d.moved })
       if (!d.moved) return
-      if (!d.cropFrame && e.altKey !== !!d.duplicating) {
+      if (!d.cropFrame && duplicateMove !== !!d.duplicating) {
         dropGestureFollow()
         try {
-          d.ids = editor.moveDuplication(e.altKey, d.originalIds || d.ids)
-          d.duplicating = e.altKey
+          d.ids = editor.moveDuplication(duplicateMove, d.originalIds || d.ids)
+          d.duplicating = duplicateMove
           // Duplication changes topology; share one fresh map for this sample.
           const parents = editor.parentMap()
           d.matrices = Object.fromEntries(d.ids.map(id => [id, worldMatrix(editor.state.doc, id, parents)]))
@@ -2749,18 +2755,25 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           editor.notify(String(error)); editor.cancel(); finishDragTrace(drag.current, ActionOutcome.rejected, ActionReason.validation); drag.current = null; return
         }
       }
+      // A grab far from the selection can start over an unrelated frame.
+      // Use the snapped selection center for placement instead of the pointer.
+      const remoteVisual = d.moveFromAnywhere ? gestureVisualMatrix(d, e, p, pointerScreen) : null
+      d.movePlacementPoint = remoteVisual ? apply(remoteVisual.matrix, {
+        x: d.box.x + d.box.width / 2, y: d.box.y + d.box.height / 2,
+      }) : undefined
+      const placementPoint = d.movePlacementPoint ?? p
       const layoutPointer = d.layoutPointerOrigin ? {
         x: d.layoutPointerOrigin.x + p.x - d.start.x,
         y: d.layoutPointerOrigin.y + p.y - d.start.y,
-      } : p
-      const free = d.ids.some(id => !insideParentFrame(d.sourceDocument || editor.state.doc, id, p, d.sourceParents))
+      } : placementPoint
+      const free = d.ids.some(id => !insideParentFrame(d.sourceDocument || editor.state.doc, id, placementPoint, d.sourceParents))
       if (!d.duplicating) editor.previewFreeMove(d.ids, free)
       if (!free && !d.duplicating && d.ids.length === 1 && editor.previewLayoutOrder(d.ids[0], layoutPointer)) {
         dropGestureFollow()
         clearMoveGuides()
         return
       }
-      const visual = gestureVisualMatrix(d, e, p, pointerScreen)
+      const visual = remoteVisual ?? gestureVisualMatrix(d, e, p, pointerScreen)
       if (!visual) return
       moveGuides = visual.guides
       transform = visual.matrix
@@ -2798,14 +2811,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.actionProposal = actionGeometry(editor.state.doc, d.ids, patches)
       actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
     }
-    const placement = d.kind==='move'&&!d.cropFrame?{ids:d.ids,point:p,
-      force:/Mac|iPhone|iPad/.test(navigator.platform)?e.metaKey:e.ctrlKey,preserveParent:space.current}:undefined
+    const placement = d.kind==='move'&&!d.cropFrame?{ids:d.ids,point:d.movePlacementPoint ?? p,
+      force:!d.moveFromAnywhere&&deepSelectChord(e,shortcutPlatform()),preserveParent:space.current}:undefined
     const movePreview=placement?editor.canvasMovePreview(patches,placement):undefined
     const retainsParents = !placement || movePreview!.retainsParents
     // Independent complete boards can follow the pointer on the compositor.
     // Keep one final authored mutation, using the same snapping/placement math.
     // Overlap, reparenting and Option-copy immediately use the regular path.
-    if (!d.cropFrame && (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey ||
+    if (!d.cropFrame && (d.kind === 'move' && retainsParents && !d.duplicating && !duplicateMove ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
       // Own paint is already on the pointer. A native capture here would
       // convert, upload and redraw the same image on every sample.
@@ -2835,7 +2848,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.actionToken && gpuMove.current?.previewFailure?.())
         actionTrace.sample(d.actionToken, { poseFallbackReason: gpuMove.current.previewFailure() })
     }
-    if (!d.cropFrame && d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && d.ids.length === 1 &&
+    if (!d.cropFrame && d.kind === 'move' && retainsParents && !d.duplicating && !duplicateMove && d.ids.length === 1 &&
       retainedMove.current?.apply(editor.state.doc, d.ids[0], (movePreview?.patches||patches)[d.ids[0]].transform!)) {
       gpuMove.current?.end(editor.state.doc); restoreGpuOverlays()
       clearFallbackMove()
@@ -3000,7 +3013,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if(d.kind==='move'||d.kind==='rotate')gpuMove.current?.releaseInput?.(d.kind)
       const releaseWorld = screenToWorld(d.view, release)
       if (d.kind === 'move' && d.duplicating) editor.finishMoveDuplication(releaseWorld)
-      const notice = d.kind === 'move' ? editor.finishCanvasMove(releaseWorld, /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey, /Mac|iPhone|iPad/.test(navigator.platform) && e.ctrlKey, space.current) : undefined
+      const notice = d.kind === 'move' ? editor.finishCanvasMove(d.movePlacementPoint ?? releaseWorld,
+        !d.moveFromAnywhere && deepSelectChord(e, shortcutPlatform()), shortcutPlatform() === 'mac' && e.ctrlKey, space.current) : undefined
       const commitResult = editor.commit()
       gestureFollow.current?.waitFor(editor.state.doc)
       if (uiMode === 'sketch' && d.parameter === 'gradientStop' && d.node && d.materialFill !== undefined && d.materialStop !== undefined) {
@@ -3170,7 +3184,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       tabIndex={-1}
       role="application"
       aria-label={chromeCopy.canvasEditor}
-      className={`canvas canvas-${state.tool}${state.tool==='zoom'&&measureKeys.alt?' canvas-zoom-out':''}${(ownedDrag?.duplicating||(measureKeys.alt&&state.tool==='select'&&!spaceHeld))?' canvas-alt-duplicate':''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved&&!ownedDrag.duplicating?' canvas-object-dragging':''}`}
+      className={`canvas canvas-${state.tool}${state.tool==='zoom'&&measureKeys.alt?' canvas-zoom-out':''}${(ownedDrag?.duplicating ||
+        (measureKeys.alt && state.tool === 'select' && !spaceHeld && !ownedDrag?.moveFromAnywhere &&
+          !(uiMode === 'sketch' && shortcutPlatform() === 'mac' && measureKeys.deep && selected.length))) ? ' canvas-alt-duplicate' : ''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved&&!ownedDrag.duplicating?' canvas-object-dragging':''}`}
       data-testid="canvas" data-pen-affordance={affordance || undefined} aria-busy={state.busy}
       data-creation-kind={shapePreview?.kind}
       data-frame-crop={cropFrame || undefined}
