@@ -1,11 +1,15 @@
 import { scene, worldMatrix } from './geometry'
-import { maskChild, type DesignDocument, type DesignNode, type Bounds, type Matrix } from './model'
+import { maskChild, uid, type DesignDocument, type DesignNode, type Bounds, type ExportSetting, type Matrix } from './model'
 import type { ColorOutput } from './color'
 
 export type ExportTarget =
   | { kind: 'page'; padding?: number }
   | { kind: 'selection'; nodeIds: string[] }
   | { kind: 'slice'; bounds: Bounds; transform?: Matrix }
+
+export function defaultLayerExportSetting(): ExportSetting {
+  return { id: uid(), format: 'png', scale: 1, suffix: '' }
+}
 
 /** Sketch snaps the document bounds of a group out to whole points before
  * applying the PNG scale. Preserve the fractional position of its contents. */

@@ -1,8 +1,8 @@
 import { desktopPet } from './desktop-pet'
-import { layerExportColorOutput, pdfVectorIssues, sketchGroupPngBounds, sliceExportTarget, subtreeNeedsExplicitColorEncoding } from './export-metadata'
+import { defaultLayerExportSetting, layerExportColorOutput, pdfVectorIssues, sketchGroupPngBounds, sliceExportTarget, subtreeNeedsExplicitColorEncoding } from './export-metadata'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from './engine'
-import { exportSuffixHasForbiddenCharacters, uid, type DesignNode, type ExportSetting } from './model'
+import { exportSuffixHasForbiddenCharacters, type DesignNode, type ExportSetting } from './model'
 import { NumberField } from './fields'
 import { DraftInput } from './DraftInput'
 import { commitExportEdits, ExportOwner } from './export-ownership'
@@ -93,7 +93,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     finally{owner.current.cancel(request);if(mounted.current)setBusy(false)}
   }
   return <section aria-label={tr('图层导出设置')} className="node-export-panel">
-    <div className="section-title"><h3>{tr('导出')}</h3><button type="button" aria-label={tr('添加图层导出设置')} disabled={busy || (node.exportSettings?.length||0)>=16} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.push({id:uid(),format:'png',scale:1,suffix:''}))}}>＋</button></div>
+    <div className="section-title"><h3>{tr('导出')}</h3><button type="button" aria-label={tr('添加图层导出设置')} disabled={busy || (node.exportSettings?.length||0)>=16} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.push(defaultLayerExportSetting()))}}>＋</button></div>
     {(node.exportSettings||[]).map((setting,i)=><div className="node-export-setting" key={setting.id}>
       <NumberField label={indexed('导出倍率', 'Export scale', i)} value={setting.scale} min={.001} max={128} onChange={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.scale=value})} />
       <select aria-label={indexed('导出格式', 'Export format', i)} value={setting.format} onChange={event=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.format=event.target.value as ExportSetting['format']})}><option value="png">PNG</option><option value="svg">SVG</option><option value="jpeg">JPEG</option><option value="jpg">{tr('JPG（Sketch）')}</option><option value="webp">WebP</option><option value="pdf">PDF</option><option value="pdf-vector" disabled={vectorIssues.length>0}>{tr('PDF（矢量）')}</option><option value="tiff">TIFF</option><option value="heic">HEIC</option><option value="eps">{tr('EPS（仅 Sketch 往返）')}</option></select>

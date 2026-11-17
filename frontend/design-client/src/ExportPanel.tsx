@@ -25,11 +25,15 @@ import {
 const AllAssetsExport = lazy(() => import('./AllAssetsExport').then(module => ({ default: module.AllAssetsExport })))
 type Asset = { name: string; url: string; width: number; height: number; scale: number; pdf: boolean; pdfVector: boolean }
 
-export function ExportPanel({ editor, onClose, exportSelectedSketch, initialTarget }: { editor: Editor; onClose: () => void; exportSelectedSketch?:()=>Promise<string|undefined>; initialTarget?: 'assets' }) {
+export function ExportPanel({ editor, onClose, exportSelectedSketch, initialTarget }: {
+  editor: Editor; onClose: () => void; exportSelectedSketch?:()=>Promise<string|undefined>
+  initialTarget?: 'assets' | 'selection-presets'
+}) {
   const s = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale } = useInterfacePreferences()
   const tx = (zh: string, en: string) => locale === 'en' ? en : zh
-  const [kind, setKind] = useState<ExportTarget['kind'] | 'assets'>(initialTarget === 'assets' ? 'assets' : s.selection.length ? 'selection' : 'page')
+  const selectionPresets = initialTarget === 'selection-presets'
+  const [kind, setKind] = useState<ExportTarget['kind'] | 'assets'>(initialTarget ? 'assets' : s.selection.length ? 'selection' : 'page')
   const [pickCanvas,setPickCanvas]=useState<HTMLElement|null>(null)
   const picking=useRef(false)
   const stopPicking=useCallback(()=>{picking.current=false;setPickCanvas(null)},[])
@@ -435,7 +439,7 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch, initialTarg
               checked={kind === 'assets'}
               onChange={() => { setKind('assets'); release(); setAssets([]); setStatus('') }}
             />
-            {tx('全部图层预设', 'All layer presets')}
+            {selectionPresets ? tx('选区预设', 'Selection presets') : tx('全部图层预设', 'All layer presets')}
           </label>
           {kind === 'page' && (
             <label>
@@ -470,7 +474,9 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch, initialTarg
             </div>
           )}
           <p>
-            {kind === 'assets'
+            {kind === 'assets' && selectionPresets
+              ? tx('为选中图层生成各自预设的文件。', 'Generate files for each selected layer’s presets.')
+              : kind === 'assets'
               ? tx('按各层已有预设勾选并分别导出。上面的整页、合并选区和自定义区域保持不变。', 'Check each layer’s presets and export them separately. Page, merged selection, and custom region above stay as they are.')
               : kind === 'selection'
               ? tx('按选中图层的几何边界裁切，保留内部效果与蒙版；不包含其他图层或祖先效果。合并为一个文件。', 'Crops to the selection bounds and keeps effects and masks inside it. Other layers and ancestor effects are excluded. The selection is one file.')
@@ -479,7 +485,7 @@ export function ExportPanel({ editor, onClose, exportSelectedSketch, initialTarg
                 : tx('包含可见内容和效果，页面留白可设为 0。', 'Includes visible content and effects. Page padding can be 0.')}
           </p>
         </fieldset>
-        {kind === 'assets' && <Suspense fallback={<p role="status">{tx('正在打开全部资产…', 'Opening all assets…')}</p>}><AllAssetsExport editor={editor} /></Suspense>}
+        {kind === 'assets' && <Suspense fallback={<p role="status">{tx('正在读取导出预设…', 'Loading export presets…')}</p>}><AllAssetsExport editor={editor} selectionOnly={selectionPresets} /></Suspense>}
         {kind !== 'assets' && format!=='sketch' && <fieldset disabled={busy || format === 'pdf-vector' || format === 'svg'}>
           <legend>{tx('倍率', 'Scale')}</legend>
           {[...new Set([1, 2, 3, ...scales])].sort((a, b) => a - b).map((scale) => (

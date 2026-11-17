@@ -14,7 +14,7 @@ export const ALL_ASSETS_CONFLICT_REASON = '与其他所选预设的文件名冲�
 export const ALL_ASSETS_BUDGET_REASON = '批量导出总尺寸超过 6400 万像素，请拆分批次'
 export const ALL_ASSETS_CANCEL_REASON = '已取消导出'
 
-export type AllAssetScope = 'page' | 'document'
+export type AllAssetScope = 'page' | 'document' | 'selection'
 export type AllAssetTask = {
   id: string
   documentId: string
@@ -68,14 +68,14 @@ function classify(doc: DesignDocument, pageId: string, node: DesignNode, setting
   }
 }
 
-function walkPage(doc: DesignDocument, pageId: string, pageName: string, revision: number, into: AllAssetTask[]) {
+function walkPage(doc: DesignDocument, pageId: string, pageName: string, revision: number, into: AllAssetTask[], selected?: ReadonlySet<string>) {
   const page = doc.pages.find(item => item.id === pageId)
   if (!page) return
   const visit = (id: string, hidden: boolean) => {
     const node = doc.nodes[id]
     if (!node) return
     const nextHidden = hidden || node.visible === false
-    node.exportSettings?.forEach((setting, index) => {
+    if (!selected || selected.has(id)) node.exportSettings?.forEach((setting, index) => {
       const classified = classify(doc, pageId, node, setting, nextHidden)
       into.push({
         id: `${pageId}:${node.id}:${index}:${setting.id}`,
@@ -99,9 +99,12 @@ function walkPage(doc: DesignDocument, pageId: string, pageName: string, revisio
   for (const id of page.children) visit(id, false)
 }
 
-export function planAllAssets(doc: DesignDocument, input: { scope: AllAssetScope; pageId: string; revision: number }): AllAssetPlan {
+export function planAllAssets(doc: DesignDocument, input: {
+  scope: AllAssetScope; pageId: string; revision: number; nodeIds?: readonly string[]
+}): AllAssetPlan {
   const tasks: AllAssetTask[] = []
   const pages = input.scope === 'document' ? doc.pages : doc.pages.filter(page => page.id === input.pageId)
-  for (const page of pages) walkPage(doc, page.id, page.name, input.revision, tasks)
+  const selected = input.scope === 'selection' ? new Set(input.nodeIds) : undefined
+  for (const page of pages) walkPage(doc, page.id, page.name, input.revision, tasks, selected)
   return { documentId: doc.id, revision: input.revision, scope: input.scope, pageId: input.pageId, tasks }
 }

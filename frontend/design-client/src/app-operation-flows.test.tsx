@@ -131,6 +131,65 @@ test('Sketch component shortcuts use six local categories and preserve the canva
   expect(editor!.authoredDocument).toBe(original)
 })
 
+test('Sketch Command-E marks only the missing selection presets and opens the selected presets on repeat', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Selection export')
+  doc.schemaVersion = 8
+  const first = { ...node('rectangle'), name: 'First item' }
+  const second = { ...node('rectangle'), name: 'Second item' }
+  const marked = { ...node('rectangle'), name: 'Already marked', exportSettings: [{ id: 'svg', format: 'svg' as const, scale: 2, suffix: '-wide' }] }
+  const elsewhere = { ...node('rectangle'), name: 'Unrelated asset', exportSettings: [{ id: 'svg', format: 'svg' as const, scale: 1, suffix: '' }] }
+  const ids = [first.id, second.id, marked.id]
+  doc.nodes = Object.fromEntries([first, second, marked, elsewhere].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [...ids, elsewhere.id]
+  await act(async () => { editor!.load(doc); editor!.select([]); canvas().focus() })
+  const authored = () => editor!.authoredDocument
+  const initial = authored()
+  const exportKey = () => key('e', { code: 'KeyE', metaKey: true })
+  await exportKey()
+  expect(authored()).toBe(initial)
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => editor!.select(ids))
+  const version = editor!.state.version
+  await exportKey()
+  for (const layer of [first, second]) expect(authored().nodes[layer.id].exportSettings).toEqual([
+    { id: expect.any(String), format: 'png', scale: 1, suffix: '' },
+  ])
+  expect(authored().nodes[marked.id].exportSettings).toEqual(marked.exportSettings)
+  expect(authored().nodes[elsewhere.id]).toEqual(initial.nodes[elsewhere.id])
+  expect(editor!.state.version).toBe(version + 1)
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => editor!.undo())
+  expect(authored()).toEqual(initial)
+  expect(editor!.canUndo).toBe(false)
+
+  await act(async () => editor!.select(ids))
+  await exportKey()
+  const configured = authored()
+  await exportKey()
+  await act(async () => { await vi.dynamicImportSettled() })
+  await vi.waitFor(async () => {
+    await act(async () => {})
+    expect(document.querySelector('[aria-label="选区导出预设"]')).not.toBeNull()
+  })
+  const panel = document.querySelector('[aria-label="选区导出预设"]')!
+  expect(panel.textContent).toContain('Already marked-wide.svg')
+  expect(panel.textContent).toContain('First item.png')
+  expect(panel.textContent).not.toContain('Unrelated asset')
+  expect(authored()).toBe(configured)
+  await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true,
+  })))
+  await act(async () => canvas().focus())
+  await key('E', { code: 'KeyE', metaKey: true, shiftKey: true })
+  await vi.waitFor(async () => {
+    await act(async () => {})
+    expect(document.querySelector('[role="group"][aria-label="全部资产"]')?.textContent).toContain('Unrelated asset')
+  })
+})
+
 test('Sketch Option-Command-R replaces the chosen instance or shared style in one undo', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')
