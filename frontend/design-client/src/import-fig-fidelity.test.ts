@@ -476,3 +476,43 @@ test('FIG stroke-only boolean renders the source outline and recomputes after an
     expect(render(12, 14)).toBeGreaterThan(200)
   } finally { engine.free() }
 })
+
+test('FIG union without a baked outline strokes open operands and closed results', () => {
+  // Two network anchors, one open segment, no fill regions.
+  const network = new Uint8Array(64)
+  const view = new DataView(network.buffer)
+  view.setUint32(0, 2, true)
+  view.setUint32(4, 1, true)
+  view.setFloat32(28, 24, true)
+  view.setUint32(52, 1, true)
+  const strokePaints = [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 } }]
+  const { document } = importFig(encoded({
+    type: 'BOOLEAN_OPERATION', booleanOperation: 'UNION', fillPaints: [], strokePaints, strokeWeight: 4, strokeCap: 'ROUND',
+  }, {}, [network], [
+    { guid: guid(4), type: 'VECTOR', name: 'Open path', parentIndex: { guid: guid(3), position: 'a' },
+      size: { x: 24, y: 1 }, vectorData: { vectorNetworkBlob: 0, normalizedSize: { x: 24, y: 1 } },
+      transform: { m00: 1, m01: 0, m02: 4, m10: 0, m11: 1, m12: 6 }, fillPaints: [] },
+    { guid: guid(5), type: 'ELLIPSE', name: 'Wheel', parentIndex: { guid: guid(3), position: 'b' },
+      size: { x: 8, y: 8 }, transform: { m00: 1, m01: 0, m02: 14, m10: 0, m11: 1, m12: 16 }, fillPaints: [] },
+  ]))
+  const engine = new VectorEngine()
+  try {
+    const render = () => {
+      engine.load_document(JSON.stringify(document))
+      const bytes = engine.render_rgba(JSON.stringify({ pageId: document.pages[0].id, width: 40, height: 24,
+        view: { x: 0, y: 0, zoom: 1 }, transparent: true }))
+      return (x: number, y: number) => [...bytes.subarray((y * 40 + x) * 4, (y * 40 + x) * 4 + 4)]
+    }
+    const before = render()
+    expect(before(12, 6)).toEqual([0, 0, 255, 255])
+    expect(before(3, 6)).toEqual([0, 0, 255, 255])
+    expect(before(17, 16)).toEqual([0, 0, 255, 255])
+    expect(before(17, 20)).toEqual([0, 0, 0, 0])
+    const operand = Object.values(document.nodes).find(node => node.name === 'Open path')!
+    operand.transform[5] += 6
+    const after = render()
+    expect(after(12, 6)).toEqual([0, 0, 0, 0])
+    expect(after(12, 12)).toEqual([0, 0, 255, 255])
+    expect(after(17, 16)).toEqual(before(17, 16))
+  } finally { engine.free() }
+})

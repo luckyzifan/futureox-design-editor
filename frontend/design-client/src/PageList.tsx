@@ -15,7 +15,7 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
   const { locale, uiMode } = useInterfacePreferences()
   const listId = useId()
   const state = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
-  const [collapsed, setCollapsed] = useState<Record<UiMode, boolean>>({ figma: false, sketch: false })
+  const [collapsed, setCollapsed] = useState<Record<UiMode, boolean>>({ figma: true, sketch: false })
   const [paneHeight, setPaneHeight] = useState<Record<UiMode, number>>({ figma: 209, sketch: 118 })
   const open = !collapsed[uiMode]
   const pane = useRef<HTMLElement>(null), list = useRef<HTMLElement>(null)

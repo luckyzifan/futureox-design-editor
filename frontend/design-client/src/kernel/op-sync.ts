@@ -131,8 +131,8 @@ function skipJsonValue(json: string, index: number): number {
   while (i < json.length && json[i] !== ',' && json[i] !== '}' && json[i] !== ']') i++
   return i
 }
-/** Insert the sync projection at the end of the top-level nodes object so a
- * duplicate page id keeps the same last-key precedence as a fresh stringify. */
+/** Insert at the opening of the nodes object to leave its records unread.
+ * A duplicate page id needs the old last-key precedence. */
 function spliceAugmentedNodes(json: string, document: DesignDocument): string | undefined {
   if (!json.startsWith('{')) return
   let index = 1
@@ -148,9 +148,18 @@ function spliceAugmentedNodes(json: string, document: DesignDocument): string | 
     index++
     if (key === '"nodes"') {
       if (json[index] !== '{') return
+      const entries = pageProjectionEntries(document)
+      if (!Object.hasOwn(document.nodes, PAGES_ROOT_ID) &&
+          document.pages.every(page => !Object.hasOwn(document.nodes, page.id))) {
+        const start = index + 1
+        let first = start
+        while (json[first] === ' ' || json[first] === '\n' || json[first] === '\r' || json[first] === '\t') first++
+        if (json[first] === '}') return json.slice(0, start) + entries + json.slice(start)
+        if (json[first] === '"') return json.slice(0, start) + entries + ',' + json.slice(start)
+        return
+      }
       const close = skipJsonValue(json, index)
       if (close < 0 || json[close - 1] !== '}') return
-      const entries = pageProjectionEntries(document)
       const empty = json.slice(index + 1, close - 1).trim() === ''
       return json.slice(0, close - 1) + (empty ? '' : ',') + entries + json.slice(close - 1)
     }

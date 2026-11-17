@@ -5,7 +5,8 @@ import { selectionSizeLabel } from './selection-size-label'
 import { SELECTION_BLUE, SIZE_PILL_TEXT } from './selection-blue'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
 import type { CanvasOverlay } from './kernel/gpu/canvas-overlay'
-import { frameChromeLabel } from './page-frame-chrome'
+import { fitFrameTitle, frameChromeLabel, FRAME_TITLE_SIZE } from './page-frame-chrome'
+import type { UiMode } from './interface-preference'
 
 export type CanvasOverlayContext = {
   document: DesignDocument
@@ -23,6 +24,7 @@ export type CanvasOverlayInputs = {
   localSelection: Bounds | null; selectionCorners: Point[]; selectionBox: Bounds
   measurementTarget: { id: string; bounds: Bounds } | null
   zoom?: number
+  uiMode?: UiMode
 }
 
 /** One command producer for Canvas and capture-ownership tests. Geometry is
@@ -45,10 +47,18 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   const { document, selected, owners, frameTitles, localSelection, selectionCorners, selectionBox, measurementTarget } = input
   const showSelection = !!selected.length && !['vector','width','pencil','brush','marker','washi-tape'].includes(input.tool)
   const selectedIds = new Set(showSelection ? selected.map(entry => entry.id) : [])
-  const titleIdentity = frameTitles.map(entry => {
-    const chrome = frameChromeLabel(document.nodes[entry.id], selectedIds.has(entry.id))
-    return [entry.id, document.nodes[entry.id].name, selectedIds.has(entry.id) ? 1 : 0, chrome.kind, chrome.chip ?? '', [...entry.ancestors, entry.id]]
+  const zoom = Number.isFinite(input.zoom) && (input.zoom ?? 0) > 0 ? input.zoom! : 1
+  const labels: CanvasLabel[] = frameTitles.flatMap(entry => {
+    const node = document.nodes[entry.id]
+    const chrome = frameChromeLabel(node, selectedIds.has(entry.id))
+    const text = input.uiMode === 'figma' && chrome.kind === 'frame-title'
+      ? fitFrameTitle(node.name, Math.floor(node.width * zoom) - 4)
+      : node.name
+    return text ? [{anchor: apply(entry.matrix,{x:0,y:0}), offset:chrome.offset,
+      basis:entry.matrix.slice(0,4) as [number,number,number,number], text, size:FRAME_TITLE_SIZE,
+      color:chrome.color, kind:chrome.kind, ...(chrome.chip ? {chip:chrome.chip} : {}), owners:[...entry.ancestors,entry.id]}] : []
   })
+  const titleIdentity = labels.map(label => [label.owners, label.text, label.color, label.kind, label.chip])
   const selectionIdentity = showSelection ? [owners, input.canTransform] : null
   const selectionName = showSelection && selected.length === 1 ? document.nodes[selected[0].id]?.name ?? '' : ''
   const targetIdentity = measurementTarget ? [measurementTarget.id, measurementTarget.bounds.x, measurementTarget.bounds.y,
@@ -58,17 +68,9 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   // pre-rotation box while the glyphs turned. Prefix 4 also retires labels
   // from before the warm pill frame.
   const spin = selected[0]?.matrix ? Math.round(Math.atan2(selected[0].matrix[1], selected[0].matrix[0]) * 1800) / 10 : 0
-  const zoom = Number.isFinite(input.zoom) && (input.zoom ?? 0) > 0 ? input.zoom! : 1
-  const uiIdentity = JSON.stringify([4, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity, Math.round(zoom * 100) / 100])
+  const uiIdentity = JSON.stringify([5, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity, Math.round(zoom * 100) / 100])
   const diagram = measurementTarget ? spacingDiagram(selectionBox, measurementTarget.bounds, zoom) : { lines: [] as Measurement[], pills: [] }
   const measurements = diagram.lines
-  const labels: CanvasLabel[] = frameTitles.map(entry => {
-    const node = document.nodes[entry.id]
-    const chrome = frameChromeLabel(node, selectedIds.has(entry.id))
-    return {anchor: apply(entry.matrix,{x:0,y:0}), offset:chrome.offset,
-      basis:entry.matrix.slice(0,4) as [number,number,number,number], text:node.name, size:11,
-      color:chrome.color, kind:chrome.kind, ...(chrome.chip ? {chip:chrome.chip} : {}), owners:[...entry.ancestors,entry.id]}
-  })
   const titled = new Set(frameTitles.map(entry => entry.id))
   // Sit above the top edge, clear of the corner rotate marks.
   if (showSelection && selected.length === 1 && selectionName && !titled.has(selected[0].id))

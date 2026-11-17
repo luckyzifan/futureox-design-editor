@@ -19,6 +19,10 @@ test('the page AI control appears on hover and targets that page', async () => {
   const onTarget = (event: Event) => seen.push((event as CustomEvent).detail)
   window.addEventListener(AGENT_TARGET_EVENT, onTarget)
   await act(async () => { root!.render(<PageList editor={editor} onRename={() => {}} />) })
+  const listToggle = document.querySelector<HTMLButtonElement>('.pages-current')!
+  expect(listToggle.getAttribute('aria-expanded')).toBe('false')
+  await act(async () => { listToggle.click() })
+  expect(listToggle.getAttribute('aria-expanded')).toBe('true')
   expect(document.querySelector('.page-ai')).toBeNull()
   const row = document.querySelector<HTMLElement>('.page-row')!
   await act(async () => { row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
