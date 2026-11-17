@@ -146,6 +146,7 @@ const contextOrder: EditorCommand[] = [
 const sketchContextOrder: EditorCommand[] = [
   'cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete',
   'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
+  'paste-properties-no-corners',
   'swap-fills-and-strokes',
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
@@ -201,6 +202,12 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
   }
   if (uiMode === 'sketch') {
     const commands = sketchSelectionCommands(editor)
+    const pasteStyle = available.get('paste-properties')
+    if (pasteStyle) available.set('paste-properties-no-corners', {
+      ...pasteStyle, command: 'paste-properties-no-corners',
+      label: locale === 'en' ? 'Paste Style Without Corners' : '粘贴样式（保留圆角）',
+      shortcut: shortcutLabel('paste-properties-no-corners', { ...context, uiMode }),
+    })
     available.set('swap-fills-and-strokes', {
       command: 'swap-fills-and-strokes', group: 'style',
       label: locale === 'en' ? 'Swap Fills and Borders' : '交换填充和描边',

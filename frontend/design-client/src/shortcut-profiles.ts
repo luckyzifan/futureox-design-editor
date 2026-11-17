@@ -55,6 +55,7 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
     { command: 'create-component', combo: 'Mod+Y' },
     { command: 'fit-pixel-bounds', combo: 'Ctrl+Mod+X' },
     { command: 'round-to-pixel', combo: 'Mod+Shift+P' },
+    { command: 'paste-properties-no-corners', combo: 'Ctrl+Alt+Mod+V' },
   )
   if (uiMode === 'sketch' && platform === 'mac' && desktop) bindings.unshift({ command: 'zoom-top-level-frame', combo: 'Mod+4' })
   if (profile === 'sketch-like') {

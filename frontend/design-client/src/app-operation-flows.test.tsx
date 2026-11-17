@@ -19,7 +19,8 @@ import { worldMatrix } from './geometry'
 import { selectionParentBounds } from './canvas-view'
 import { screenToWorld, zoomAt } from './canvas-camera'
 import { kernelFillWorld } from './kernel/picking'
-import { blank, defaultLayout, defaultLayoutGrid, defaultSizing, defaultTextStyle, node, paint, stroke, uid } from './model'
+import { blank, defaultLayout, defaultLayoutGrid, defaultSizing, defaultTextStyle, effect, node, paint, stroke, uid } from './model'
+import { copyProperties } from './property-clipboard'
 import { nudgePreference } from './nudge-preference'
 import * as persistence from './persistence'
 import { shortcutPreference } from './shortcut-preference'
@@ -310,6 +311,46 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.selection).toEqual([frame.id])
   expect(editor!.authoredDocument).toBe(authored)
   expect(editor!.state.version).toBe(revision)
+})
+
+test('Sketch Control+Option+Command+V pastes style while preserving target corners', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Paste style')
+  doc.schemaVersion = 7
+  const source = node('star', 60, 40, 100, 90)
+  source.fills = [paint('#ee0066')]
+  source.strokes = [stroke('#113399', 4)]
+  source.effects = [effect('shadow')]
+  source.cornerRadius = 8
+  source.radii = [12, 12, 12, 12]
+  source.smoothing = 0.7
+  const rectangle = node('rectangle', 230, 40, 100, 90)
+  rectangle.radii = [2, 4, 6, 8]
+  rectangle.smoothing = 0.2
+  const polygon = node('polygon', 400, 40, 100, 90)
+  polygon.cornerRadius = 3
+  for (const n of [source, rectangle, polygon]) doc.nodes[n.id] = n
+  doc.pages[0].children = [source.id, rectangle.id, polygon.id]
+  const readText = async () => copyProperties(doc, source.id)
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText } })
+  await act(async () => { editor!.load(doc); editor!.select([rectangle.id, polygon.id]); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const pasted = (id: string) => editor!.state.doc.nodes[id]
+  await key('v', { code: 'KeyV', metaKey: true, altKey: true, ctrlKey: true })
+  for (const id of [rectangle.id, polygon.id]) {
+    expect(pasted(id)).toMatchObject({ fills: source.fills, strokes: source.strokes, effects: source.effects })
+  }
+  expect(pasted(rectangle.id)).toMatchObject({ radii: rectangle.radii, smoothing: rectangle.smoothing })
+  expect(pasted(polygon.id).cornerRadius).toBe(3)
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+  await key('v', { code: 'KeyV', metaKey: true, altKey: true })
+  expect(pasted(rectangle.id)).toMatchObject({ radii: source.radii, smoothing: source.smoothing })
+  expect(pasted(polygon.id).cornerRadius).toBe(8)
 })
 
 test('Sketch Shift+F restores mixed fill visibility and leaves input typing alone', async () => {
