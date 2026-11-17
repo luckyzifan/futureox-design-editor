@@ -2173,3 +2173,61 @@ test('a mismatched saved shortcut profile cannot override the active layout keyb
   expect(before()).toEqual(original)
   expect(current.canUndo).toBe(false)
 })
+
+
+test('layout round trip replaces the chrome hosts while keeping the canvas, page and history', async () => {
+  applyInterfaceLayout('figma')
+  setPrototypeTab('design')
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  await render()
+  const doc = blank(), next = blank().pages[0], frame = node('frame'), shape = node('rectangle', 34, 36)
+  frame.children = [shape.id]; next.children = [frame.id]
+  doc.pages.push(next); doc.nodes = { [frame.id]: frame, [shape.id]: shape }
+  const current = editor!
+  await act(async () => { current.load(doc); current.switchPage(next.id); current.select([shape.id]) })
+  await act(async () => {
+    current.update([shape.id], { name: 'Changed before switching' }, 'Rename')
+    current.update([shape.id], { opacity: .5 }, 'Opacity')
+    current.undo()
+    current.set({ view: { x: 34, y: 62, zoom: 1.2 } })
+  })
+  const initial = current.authoredDocument, session = current.sessionGeneration, version = current.state.version
+  const view = { ...current.state.view }, originalCanvas = canvas()
+  const hosts = () => [...document.querySelectorAll('[data-workspace-host], .figma-workspace-tools, .sketch-window-tools')]
+  const file = () => document.querySelector<HTMLButtonElement>('button[aria-label="文件菜单"]')!
+  await act(async () => file().click())
+  expect(document.querySelector('.figma-file-menu')).not.toBeNull()
+  const before = hosts()
+  expect(before).toHaveLength(3)
+  await key('ß', { code: 'KeyS', altKey: true, metaKey: true })
+  expect(document.querySelector('.figma-file-menu')).toBeNull()
+  expect(document.querySelector('.workspace-rail')).toBeNull()
+  expect(document.querySelector('[data-workspace-host="sketch-layers"]')).not.toBeNull()
+  expect(document.querySelector('[data-workspace-host="sketch-inspector"]')).not.toBeNull()
+  expect(before.every(host => !host.isConnected)).toBe(true)
+  expect(canvas()).toBe(originalCanvas)
+
+  await act(async () => file().click())
+  expect(document.querySelector('.sketch-file-menu')).not.toBeNull()
+  const sketch = hosts()
+  await act(async () => document.querySelector<HTMLButtonElement>('.ui-mode-switch button:first-child')!.click())
+  expect(sketch).toHaveLength(3)
+  expect(sketch.every(host => !host.isConnected)).toBe(true)
+  expect(document.querySelector('.sketch-file-menu')).toBeNull()
+  expect(document.querySelector('[data-workspace-host="figma-layers"]')).not.toBeNull()
+  expect(document.querySelector('[data-workspace-host="figma-inspector"]')).not.toBeNull()
+  expect(document.querySelector('.workspace-rail')).not.toBeNull()
+  expect(canvas()).toBe(originalCanvas)
+  expect(current.authoredDocument).toBe(initial)
+  expect(current.state.version).toBe(version)
+  expect(current.sessionGeneration).toBe(session)
+  expect(current.state.page).toBe(next.id)
+  expect(current.state.selection).toEqual([shape.id])
+  expect(current.state.view).toEqual(view)
+  expect(current.canUndo).toBe(true)
+  expect(current.canRedo).toBe(true)
+  await act(async () => current.redo())
+  expect(current.authoredDocument.nodes[shape.id].opacity).toBe(.5)
+  await act(async () => current.undo())
+  expect(current.authoredDocument).toEqual(initial)
+})

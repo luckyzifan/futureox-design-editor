@@ -29,7 +29,7 @@ import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gest
 import { BatchRenameDialog } from './BatchRenameDialog'
 import { CommandSearch } from './CommandSearch'
 import { commandSearchCopy } from './command-search'
-import { commandSearchSnapshot, requestCommandSearch, subscribeCommandSearch } from './command-search-session'
+import { closeCommandSearch, commandSearchSnapshot, requestCommandSearch, subscribeCommandSearch } from './command-search-session'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
 import { SourceDocumentStatus } from './SourceDocumentStatus'
@@ -55,7 +55,7 @@ import { NativeAutomationDialog } from './AutomationPanelLauncher'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
 import { DesignAgentDock } from './design-ai/DesignAgentDock'
 import { getAgentDock, subscribeAgentDock } from './design-ai/design-agent-dock'
-import { AnchoredMenu } from './anchored-menu'
+import { FigmaPropertiesWorkspace, SketchPropertiesWorkspace, workspaceLayoutHosts } from './WorkspaceLayoutHosts'
 import { UiModeSwitch } from './UiModeSwitch'
 import { SketchWindowTools } from './SketchWindowTools'
 import { SketchReplacementDialog, sketchReplacementTarget, type SketchReplacementTarget } from './SketchReplacementDialog'
@@ -96,7 +96,7 @@ import { ActivityBanner, EmptyCanvas } from './ActivityBanner'
 import { activityKind, activityLabel, activityText } from './activity-chrome'
 import { toolGlyph, type GlyphIcon } from './chrome-icons'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { createPortal, flushSync } from 'react-dom'
+import { flushSync } from 'react-dom'
 import {
   Settings as SettingsIcon,
   ChevronDown,
@@ -195,6 +195,7 @@ const figmaToolbarTools = new Set<Tool>([
 const figmaDrawExtraTools = new Set<Tool>([...figmaDrawPaintTools, ...figmaDrawUtilityTools, 'vector'])
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
   const { locale, uiMode } = useInterfacePreferences()
+  const { Layers: WorkspaceLayers, FileMenu: WorkspaceFileMenu } = workspaceLayoutHosts[uiMode]
   const agentDockOpen = useSyncExternalStore(subscribeAgentDock, () => getAgentDock().open, () => false)
   const toolbarText = canvasText[locale]
   const menuText = fileMenuText[locale]
@@ -544,6 +545,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [ready, setReady] = useState(false),
     [saved, setSaved] = useState('载入中'),
     [menu, setMenu] = useState(false)
+  const chromeMode = useRef(uiMode)
+  useLayoutEffect(() => {
+    if (chromeMode.current === uiMode) return
+    chromeMode.current = uiMode
+    setMenu(false)
+    setShowCommands(false); setShowMove(false); setShowShapes(false); setShowRegions(false)
+    setShowDrawing(false); setShowUtility(false)
+    closeCommandSearch()
+  }, [uiMode])
   const [showCloudWorkspace, setShowCloudWorkspace] = useState(false)
   const cloudWorkspaceLabel = locale === 'en' ? 'Server workspace' : '服务器工作区'
   const [cloudStatusInWorkspace, setCloudStatusInWorkspace] = useState<CloudWorkspaceStatus>({ connected: false })
@@ -1319,8 +1329,21 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const figmaZoom = <div ref={setFigmaZoomHost} className="properties-zoom" data-testid="figma-view-tools"
     onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}
     onKeyDown={event => event.stopPropagation()} />
+  const propertyHost = {
+    panelRef: rightPanel, label: menuText.propertiesWorkspace,
+    resize: <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />,
+    agent: <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />,
+  }
+  const inspectorContent = source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} />
+    : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor} />
+    : activeProperties === 'prototype' ? <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />
+    : <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}>
+        {uiMode === 'sketch' && <SketchInteractionPanel editor={editor} doc={s.doc} selection={s.selection} armed={s.tool === 'hotspot'} />}
+        <Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex}
+          onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} />
+      </PendingEditContext.Provider>
   const designToolbar = (
-          <DesignToolbar disabled={toolbarDisabled} className={figmaDraw ? 'figma-draw-toolbelt' : undefined}>
+          <DesignToolbar disabled={toolbarDisabled} className={figmaDraw ? 'figma-workspace-tools figma-draw-toolbelt' : 'figma-workspace-tools'}>
             {ready && !showHome && !source?.nativeCanvas && !source?.openingPreview && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow', 'pen', 'eraser'].includes(s.tool) && (
               <div className="creation-tool-hint" role="status">
                 <b>{localizedToolLabel(s.tool, locale)}</b>
@@ -1635,10 +1658,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
       </header>
       {uiMode === 'figma' && desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
-      {menu && createPortal(
-        <>
-          <div className="menu-scrim" onClick={() => setMenu(false)} />
-          <AnchoredMenu anchor={fileMenuTrigger.current} className="file-menu" prefer="below">
+      {menu && <WorkspaceFileMenu anchor={fileMenuTrigger.current} close={() => setMenu(false)}>
             <button type="button" onClick={enterHome}><FolderOpen size={15} />{menuText.localHome}</button>
             {uiMode === 'sketch' && <button type="button" className="compact-library-entry" onClick={() => { setMenu(false); openPersistentLibrary() }}>
               {desktopSession ? menuText.localDesign : menuText.myDesigns}
@@ -1789,10 +1809,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 {format === 'png' ? ' @2x' : ''}
               </button>
             ))}
-          </AnchoredMenu>
-        </>,
-        document.body,
-      )}
+      </WorkspaceFileMenu>}
       <input
         ref={file}
         type="file"
@@ -1874,17 +1891,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             if (switchSketchWorkspace(false)) editor.insertComponent(id)
           }} />
       </main> : <main className={`editor-workspace ${showLayers && !uiMinimized ? '' : 'hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'hide-inspector'} ${uiMinimized ? 'ui-minimized' : ''}`} >
-        <WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
-          onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
-          onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <div ref={leftPanel} className="adaptive-layers-shell">
-          {source && !source.showLayers && sketchDocuments}
-          {source?.navigation}
+        <WorkspaceLayers panelRef={leftPanel}
+          rail={<WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
+            onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
+            onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />}
+          navigation={<>{source && !source.showLayers && sketchDocuments}{source?.navigation}</>}
+          resize={<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />}>
           {(!source || source.showLayers) && <Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}
             documents={sketchDocuments} drawThumbnails={uiMode === 'figma' && figmaDraw}
             documentTitle={figmaNameInSidebar ? documentNameField : undefined} />}
-          <PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
-        </div>
+        </WorkspaceLayers>
         <div className="canvas-workspace" ref={source?.canvas}>
           {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
@@ -1909,29 +1925,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {!showHome && ready && canvasEmpty && !switching && !desktopStatus.busy && !importing && <EmptyCanvas title={activityText[locale].emptyTitle} body={activityText[locale].emptyBody} />}
           {uiMode === 'sketch' ? null : designToolbar}
         </div>
-        <div ref={rightPanel} className="properties-workspace">
-          <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
-          {figmaZoomDocked && <div className="figma-properties-actions">{previewPrototype}</div>}
-          {uiMode === 'figma' && <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={menuText.propertiesWorkspace} onKeyDown={(event) => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-            event.preventDefault(); event.stopPropagation()
-            const next = event.key === 'Home' ? 'design' : event.key === 'End' ? 'prototype' : propertiesTab === 'design' ? 'prototype' : 'design'
-            setPropertiesTab(next)
-            document.getElementById(`${next}-properties-tab`)?.focus()
-          }}>
-            <button type="button" role="tab" id="design-properties-tab" tabIndex={propertiesTab === 'design' ? 0 : -1} aria-selected={propertiesTab === 'design'} aria-controls="design-properties" onClick={() => setPropertiesTab('design')}>{panelText.design}</button>
-            <button type="button" role="tab" id="prototype-properties-tab" tabIndex={propertiesTab === 'prototype' ? 0 : -1} aria-selected={propertiesTab === 'prototype'} aria-controls="prototype-properties" onClick={() => setPropertiesTab('prototype')}>{panelText.prototype}</button>
-            </div>
-            {figmaZoomDocked && figmaZoom}
-          </div>}
-          <div className="properties-content" {...(uiMode === 'figma'
-            ? { id: `${activeProperties}-properties`, role: 'tabpanel', 'aria-labelledby': `${activeProperties}-properties-tab` }
-            : { role: 'region', 'aria-label': menuText.propertiesWorkspace })}>
-            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : activeProperties === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}>{uiMode === 'sketch' && <SketchInteractionPanel editor={editor} doc={s.doc} selection={s.selection} armed={s.tool === 'hotspot'} />}<Inspector editor={editor} allowSpatial={!source} blurEffectIndex={blurEffectIndex} blurStopIndex={blurStopIndex} onSelectBlurStop={selectBlurStop} onEditBlur={editBlur} /></PendingEditContext.Provider>
-              : <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />}
-          </div>
-          <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />
-        </div>
+        {uiMode === 'figma'
+          ? <FigmaPropertiesWorkspace {...propertyHost} tab={propertiesTab} onTab={setPropertiesTab}
+              titles={panelText} zoom={figmaZoomDocked && figmaZoom} preview={figmaZoomDocked && previewPrototype}>
+              {inspectorContent}
+            </FigmaPropertiesWorkspace>
+          : <SketchPropertiesWorkspace {...propertyHost}>{inspectorContent}</SketchPropertiesWorkspace>}
       </main>}
       <BatchRenameDialog editor={editor} />
       <SketchMakeGridDialog editor={editor} />
