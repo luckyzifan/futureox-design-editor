@@ -2916,6 +2916,52 @@ html[data-reduced-motion=true] .animation-modal * {
   bottom: auto;
 }
 .editor-shell[data-ui-mode="sketch"] .layers-pages { background: var(--workspace-panel); }
+.editor-shell[data-ui-mode="sketch"] .layers-documents {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--workspace-panel);
+  border-bottom: 1px solid var(--workspace-border);
+}
+.editor-shell[data-ui-mode="sketch"] .layers-documents > .pages-heading { flex: none; min-height: 34px; padding: 4px 10px; }
+.editor-shell[data-ui-mode="sketch"] .sketch-document-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 140px;
+  overflow: auto;
+  padding: 0 8px 6px;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-document-list[hidden] { display: none; }
+.editor-shell[data-ui-mode="sketch"] .sketch-document-row {
+  display: flex;
+  align-items: center;
+  min-height: 27px;
+  border-radius: 6px;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-document-row:has([aria-selected="true"]) {
+  background: var(--workspace-selected);
+  color: var(--workspace-selected-ink);
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-document-switch {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  height: 27px;
+  padding: 0 8px;
+  gap: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+.editor-shell[data-ui-mode="sketch"] .sketch-document-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-shell[data-ui-mode="sketch"] .sketch-document-row .workspace-tab-close {
+  flex: none;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+}
 .editor-shell[data-ui-mode="sketch"] .pages .page { height: 27px; min-height: 27px; }
 .editor-shell[data-ui-mode="sketch"] .layer-heading { background: #ececec; }
 .editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 0; grid-row: 3; }

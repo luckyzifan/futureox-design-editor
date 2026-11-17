@@ -54,8 +54,10 @@ import type { WorkspaceSection } from './EditorChrome'
 import { interfacePreference, type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
 import { LayerFindPanel } from './LayerFindPanel'
 import { closeLayerFind, layerFindRefocus, layerFindReturnTarget, layerFindSnapshot, requestLayerFind, subscribeLayerFind } from './layer-find-session'
-export function Layers({ editor, section, onSection, showPages=true, documentTitle }: {
+export function Layers({ editor, section, onSection, showPages=true, documentTitle, documents }: {
   editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean; documentTitle?: ReactNode
+  /** Sketch open-document zone. Ignored for the Figma layout and for source pages. */
+  documents?: ReactNode
 }) {
   const text = useInterfaceText()
   const { uiMode, locale } = useInterfacePreferences()
@@ -358,6 +360,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   const relatedLabel = locale === 'en' ? 'Show only selected and related layers' : '仅显示所选内容及相关图层'
   return (
     <aside className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
+      {uiMode === 'sketch' && showPages ? documents : null}
       {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{documentTitle || s.doc.name}</div>}
       {showPages && <PageList editor={editor} onRename={renameIntendedPage} />}
       <div className="layer-heading">

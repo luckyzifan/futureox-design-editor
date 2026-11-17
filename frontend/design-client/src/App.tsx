@@ -60,6 +60,7 @@ import {boardToolNames,type BoardTool} from './board-tools'
 import { ReviewsPanel } from './ReviewsPanel'
 import { utilityToolNames } from './utility-tools'
 import { WorkspaceTabs } from './WorkspaceTabs'
+import { workspaceDocumentChrome } from './workspace-document-chrome'
 import { PendingEditContext } from './pending-edit-context'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEditsChanged, registerPendingEdit, subscribePendingEdits } from './pending-edits'
 import { modalOwnsKeyboard } from './modal-keyboard'
@@ -1067,7 +1068,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
     setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
   }
-  const inlineFigmaTabs = uiMode === 'figma' && !source && !!desktopSession?.supportsWorkspace
+  const documentChrome = workspaceDocumentChrome({
+    uiMode,
+    supportsWorkspace: !!desktopSession?.supportsWorkspace,
+    sourceOpen: !!source,
+  })
+  const inlineFigmaTabs = documentChrome.figmaHeaderTabs
   const figmaNameInSidebar = inlineFigmaTabs && showLayers && !uiMinimized
   const figmaZoomDocked = uiMode === 'figma' && (uiMinimized ? !!s.selection.length : showInspector)
   const documentNameField = <input
@@ -1386,7 +1392,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <span className="avatar">{translateProfessional('我', locale)}</span>
         </div>
       </header>
-      {desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
+      {documentChrome.windowTabBar && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
       {menu && createPortal(
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
@@ -1607,7 +1613,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
         <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}
-            documentTitle={figmaNameInSidebar ? documentNameField : undefined}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
+            documentTitle={figmaNameInSidebar ? documentNameField : undefined}
+            documents={documentChrome.sketchSidebarDocuments && desktopSession ? <WorkspaceTabs session={desktopSession} activeId={s.doc.id} placement="sidebar" /> : undefined}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace" ref={source?.canvas}>
           {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
