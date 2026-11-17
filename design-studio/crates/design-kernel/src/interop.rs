@@ -3581,7 +3581,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
                             .or_else(|| attrs.get("paragraphStyle"))
                             .cloned()
                             .unwrap_or(Value::Null);
-                        json!({
+                        let font_size = attrs.pointer("/MSAttributedStringFontAttribute/attributes/size")
+                            .and_then(Value::as_f64).filter(|size| (1. ..=4096.).contains(size));
+                        let mut style = json!({
                             "fontId": attrs.pointer("/MSAttributedStringFontAttribute/attributes/name").and_then(Value::as_str).unwrap_or("default"),
                             "weight": attrs.pointer("/MSAttributedStringFontAttribute/attributes/variation/2003265652").and_then(Value::as_f64).unwrap_or(400.),
                             "letterSpacing": attrs.get("kerning").and_then(Value::as_f64).unwrap_or(0.),
@@ -3596,7 +3598,11 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
                                 .map(|px| px / attrs.pointer("/MSAttributedStringFontAttribute/attributes/size").and_then(Value::as_f64).filter(|v| *v > 0.).unwrap_or(16.))
                                 .unwrap_or(1.35),
                             "wrap": false
-                        })
+                        });
+                        if let Some(size) = font_size {
+                            style["fontSize"] = json!(size);
+                        }
+                        style
                     })
                     .unwrap_or(Value::Null),
             };
@@ -5182,8 +5188,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
                 if style.font_id != "default" && !document.fonts.contains_key(&style.font_id) {
                     style.font_id = "default".into();
                 }
-                shared.value =
-                    serde_json::to_value(style).map_err(|e| Error::MalformedJson(e.to_string()))?;
+                crate::interop_resources::replace_shared_text_style(&mut shared.value, style)?;
             }
         }
         for node in document.nodes.values_mut() {
@@ -8810,17 +8815,19 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                 "text" => {
                     let style: Option<crate::font::TextStyle> =
                         serde_json::from_value(shared.value.clone()).ok();
+                    let font_size = shared.value.get("fontSize").and_then(Value::as_f64)
+                        .filter(|size| (1. ..=4096.).contains(size)).unwrap_or(16.);
                     let encoded = style.as_ref().map(|s| {
                         json!({
                             "_class": "textStyle",
                             "verticalAlignment":match s.vertical_align.as_str() { "center"=>1,"bottom"=>2,_=>0 },
                             "encodedAttributes": {
-                                "MSAttributedStringFontAttribute": sketch_font_descriptor(doc, &mut images.font_weight_axes, &s.font_id, 16., s.weight, None),
+                                "MSAttributedStringFontAttribute": sketch_font_descriptor(doc, &mut images.font_weight_axes, &s.font_id, font_size, s.weight, None),
                                 "kerning": s.letter_spacing,
                                 "paragraphStyle": {"_class": "paragraphStyle",
                                     "alignment": paragraph_alignment(&s.align),
-                                    "minimumLineHeight": s.line_height * 16.,
-                                    "maximumLineHeight": s.line_height * 16.,
+                                    "minimumLineHeight": s.line_height * font_size,
+                                    "maximumLineHeight": s.line_height * font_size,
                                     "paragraphSpacing": s.paragraph_spacing,
                                     "firstLineHeadIndent": s.paragraph_indent,
                                     "allowsDefaultTighteningForTruncation": 0}

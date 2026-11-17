@@ -229,6 +229,47 @@ test('Sketch Interaction arms the prototype tool and preserves an invisible hots
   }
 })
 
+test('Sketch Control-T inserts a linked text style with the archived size and paragraph metrics in one undo', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const picker = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="置入文字样式"]')!
+  const open = () => key('t', { code: 'KeyT', ctrlKey: true })
+  const empty = editor!.authoredDocument
+  await act(async () => canvas().focus())
+  await open()
+  expect(picker().textContent).toContain('没有匹配的文字样式')
+  expect(picker().querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true)
+  expect(editor!.authoredDocument).toBe(empty)
+  await act(async () => picker().querySelector('button')!.click())
+
+  const doc = blank('Text style insertion')
+  doc.schemaVersion = 20
+  doc.designSystem = emptySystem()
+  doc.designSystem.styles.body = { kind: 'text', name: 'Body 21', value: {
+    ...defaultTextStyle(), fontSize: 21, align: 'end', paragraphSpacing: 13, paragraphIndent: 4, lineHeight: 1.5,
+  } }
+  const restored = JSON.parse(import_sketch_json(export_sketch_json(JSON.stringify(doc)))).document
+  expect(restored.designSystem.styles.body.value).toMatchObject({ fontSize: 21, paragraphSpacing: 13, paragraphIndent: 4, lineHeight: 1.5 })
+  await act(async () => { editor!.load(restored); canvas().focus() })
+  const before = editor!.authoredDocument
+  await open()
+  const revision = editor!.state.version
+  expect(picker().textContent).toContain('Body 21')
+  await act(async () => picker().querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+  expect(picker()).toBeNull()
+  const id = editor!.state.selection[0], text = editor!.state.doc.nodes[id]
+  expect(text).toMatchObject({
+    kind: 'text', fontSize: 21, styleRefs: { textStyle: 'body' },
+    textStyle: { align: 'end', paragraphSpacing: 13, paragraphIndent: 4, lineHeight: 1.5 },
+  })
+  expect(text.text.length).toBeGreaterThan(0)
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch Option-Command-R replaces the chosen instance or shared style in one undo', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

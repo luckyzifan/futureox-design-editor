@@ -296,6 +296,16 @@ pub(crate) fn import_fonts(
     Ok(aliases)
 }
 
+pub(crate) fn replace_shared_text_style(value: &mut Value, style: crate::font::TextStyle) -> Result<(), Error> {
+    let size = value.get("fontSize").and_then(Value::as_f64)
+        .filter(|size| (1. ..=4096.).contains(size));
+    *value = serde_json::to_value(style).map_err(|error| Error::MalformedJson(error.to_string()))?;
+    if let Some(size) = size {
+        value["fontSize"] = json!(size);
+    }
+    Ok(())
+}
+
 pub(crate) fn remap_fonts(aliases:&BTreeMap<String,String>,doc:&mut Document)->Result<(),Error>{
     let remap = |id: &mut String| {
         if let Some(mapped) = aliases.get(id) {
@@ -324,8 +334,7 @@ pub(crate) fn remap_fonts(aliases:&BTreeMap<String,String>,doc:&mut Document)->R
                 for fallback in &mut style.fallbacks {
                     remap(fallback);
                 }
-                shared.value =
-                    serde_json::to_value(style).map_err(|e| Error::MalformedJson(e.to_string()))?;
+                replace_shared_text_style(&mut shared.value, style)?;
             }
         }
     }
