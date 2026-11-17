@@ -12,6 +12,7 @@ import { componentFixture } from './component-fixtures'
 import { emptySystem } from './design-system'
 import { Editor } from './engine'
 import { applyInterfaceLayout } from './interface-layout'
+import { interfacePreference } from './interface-preference'
 import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
 import { blank, defaultTextStyle, node, paint, stroke } from './model'
 import { nudgePreference } from './nudge-preference'
@@ -52,7 +53,7 @@ beforeEach(async () => {
   mount = document.createElement('div'); document.body.append(mount); root = (await import('react-dom/client')).createRoot(mount)
 })
 afterEach(async () => {
-  await act(async () => root.unmount()); editor?.dispose(); nudgePreference.reset(); shortcutPreference.set('figma-like')
+  await act(async () => root.unmount()); editor?.dispose(); interfacePreference.reset(); nudgePreference.reset(); shortcutPreference.set('figma-like')
   dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); expect(errors).toEqual([])
 })
 async function render() {
@@ -190,6 +191,44 @@ test('Sketch Control-Option-S restores the linked appearance and leaves a single
   await act(async () => editor!.undo())
   expect(editor!.authoredDocument).toEqual(before)
   expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch Control-S and Inspector Update sync the selected style without relinking other styles', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank(), source = node('rectangle'), linked = node('rectangle', 200), unlinked = node('rectangle', 400)
+  const originalFill = paint('#214989'), newFill = paint('#d14021'), border = stroke('#70879a', 4)
+  doc.schemaVersion = 12
+  doc.designSystem = emptySystem()
+  doc.designSystem.styles.calendar = { kind: 'paint', name: 'Calendar', value: [originalFill], strokes: [border] }
+  for (const layer of [source, linked, unlinked]) {
+    if (layer !== unlinked) layer.styleRefs = { fills: 'calendar' }
+    doc.nodes[layer.id] = layer
+    doc.pages[0].children.push(layer.id)
+  }
+  const sync = () => key('s', { code: 'KeyS', ctrlKey: true })
+  await act(async () => { editor!.load(doc); editor!.select([unlinked.id]); canvas().focus() })
+  const original = editor!.authoredDocument
+  await sync()
+  expect(editor!.authoredDocument).toBe(original)
+  await act(async () => {
+    editor!.select([source.id])
+    editor!.updateProperties([source.id], { fills: [newFill], strokes: [] })
+  })
+  const beforeSync = editor!.authoredDocument
+  const revision = editor!.state.version
+  await sync()
+  const afterSync = editor!.authoredDocument
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(afterSync.designSystem?.styles.calendar).toMatchObject({ value: [newFill], strokes: [] })
+  expect(afterSync.nodes[linked.id]).toMatchObject({ fills: [newFill], strokes: [], styleRefs: { fills: 'calendar' } })
+  expect(afterSync.nodes[source.id].sketchLayerStyleOverridden).toBeUndefined()
+  expect(afterSync.nodes[unlinked.id]).toBe(beforeSync.nodes[unlinked.id])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(beforeSync)
+  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="更新图层样式"]')!.click())
+  expect(editor!.authoredDocument).toEqual(afterSync)
 })
 
 test('mounted App capture preserves held-key one-undo and both toolbar/Inspector allow parent alignment', async () => {

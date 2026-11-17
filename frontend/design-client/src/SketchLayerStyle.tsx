@@ -5,7 +5,7 @@ import type { Editor } from './engine'
 import { type DesignDocument, type DesignNode, uid } from './model'
 import { commitPendingEdits } from './pending-edits'
 import { usePropertyText } from './property-interface-messages'
-import { applySketchLayerStyle, captureLayerStyle, copyLayerStyle } from './sketch-layer-style'
+import { applySketchLayerStyle, captureLayerStyle, copyLayerStyle, updateSketchLayerStyle } from './sketch-layer-style'
 
 export function SketchLayerStyle({ editor, node }: { editor: Editor; node: DesignNode }) {
   const { tr, locale } = usePropertyText()
@@ -35,12 +35,7 @@ export function SketchLayerStyle({ editor, node }: { editor: Editor; node: Desig
     })
   }
   const update = (id: string) => {
-    if (change('更新共享样式', (draft, selected) => {
-      const shared = draft.designSystem?.styles[id]
-      if (shared?.kind !== 'paint') return
-      Object.assign(shared, captureLayerStyle(selected, shared.name))
-      draft.schemaVersion = Math.max(12, draft.schemaVersion) as DesignDocument['schemaVersion']
-    })) setChoosingUpdateTarget(false)
+    if (canEdit() && updateSketchLayerStyle(editor, id)) setChoosingUpdateTarget(false)
   }
   return <div className="sketch-layer-style" data-testid="sketch-layer-style">
     <label>{tr('图层样式')}<select aria-label={tr('图层样式')} value={current?.[0] || ''} disabled={!canEdit()}

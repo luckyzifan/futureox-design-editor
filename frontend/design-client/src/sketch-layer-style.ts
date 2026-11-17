@@ -45,7 +45,8 @@ export function keepSketchLayerStyleEdit(doc: DesignDocument, node: DesignNode, 
   }
 }
 
-export function resetSketchLayerStyle(editor: Editor) {
+function editLayerStyle(editor: Editor, styleId: string | undefined, label: string,
+  edit: (doc: DesignDocument, node: DesignNode, id: string, style: LayerStyle) => void) {
   const { doc, page, selection } = editor.state
   const [id] = selection
   const generation = editor.sessionGeneration
@@ -55,18 +56,41 @@ export function resetSketchLayerStyle(editor: Editor) {
         editor.state.busy || editor.topSelection()[0] !== id) return
     const selected = editor.state.doc.nodes[id]
     if (!selected || selected.instance || selected.instanceOrigin) return
-    return linkedLayerStyle(editor.state.doc, selected)
+    const styleKey = styleId ?? selected.styleRefs?.fills
+    const style = styleKey && editor.state.doc.designSystem?.styles[styleKey]
+    if (style && style.kind === 'paint') return styleKey
   }
   const linked = selectedStyle()
-  if (!linked || !commitPendingEdits(editor) || selectedStyle()?.id !== linked.id) return false
-  editor.change('还原共享样式', draft => {
+  if (!linked || !commitPendingEdits(editor) || selectedStyle() !== linked) return false
+  const result = editor.change(label, draft => {
     const node = draft.nodes[id]
-    const current = linkedLayerStyle(draft, node)
-    if (current?.id !== linked.id) return
-    node.fills = cloneValue(current.style.value as Paint[])
-    if (!node.styleRefs?.strokes) node.strokes = cloneValue(current.style.strokes ?? [])
-    if (!node.styleRefs?.effects) node.effects = cloneValue(current.style.effects ?? [])
-    delete node.sketchLayerStyleOverridden
+    const style = draft.designSystem?.styles[linked]
+    if (style?.kind === 'paint') edit(draft, node, linked, style)
   })
-  return true
+  return result.status === 'committed' || result.status === 'unchanged'
+}
+
+function restoreLayerStyle(node: DesignNode, style: LayerStyle) {
+  node.fills = cloneValue(style.value as Paint[])
+  if (!node.styleRefs?.strokes) node.strokes = cloneValue(style.strokes ?? [])
+  if (!node.styleRefs?.effects) node.effects = cloneValue(style.effects ?? [])
+  delete node.sketchLayerStyleOverridden
+}
+
+export function resetSketchLayerStyle(editor: Editor) {
+  return editLayerStyle(editor, undefined, '还原共享样式', (_doc, node, _id, style) => restoreLayerStyle(node, style))
+}
+
+export function updateSketchLayerStyle(editor: Editor, styleId?: string) {
+  return editLayerStyle(editor, styleId, '更新共享样式', (doc, source, id, style) => {
+    const updated = captureLayerStyle(source, style.name)
+    if (!source.sketchLayerStyleOverridden && equalValue(updated.value, style.value) &&
+        equalValue(updated.strokes, style.strokes ?? []) && equalValue(updated.effects, style.effects ?? [])) return
+    Object.assign(style, updated)
+    if (doc.schemaVersion < 12) doc.schemaVersion = 12
+    for (const node of Object.values(doc.nodes)) {
+      if (node.styleRefs?.fills === id && (!node.sketchLayerStyleOverridden || node.id === source.id))
+        restoreLayerStyle(node, updated)
+    }
+  })
 }

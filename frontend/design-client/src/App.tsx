@@ -52,7 +52,7 @@ import { AnchoredMenu } from './anchored-menu'
 import { UiModeSwitch } from './UiModeSwitch'
 import { SketchWindowTools } from './SketchWindowTools'
 import { SketchReplacementDialog, sketchReplacementTarget, type SketchReplacementTarget } from './SketchReplacementDialog'
-import { resetSketchLayerStyle } from './sketch-layer-style'
+import { resetSketchLayerStyle, updateSketchLayerStyle } from './sketch-layer-style'
 import { canvasStatusLabel } from './canvas-status-label'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -895,18 +895,18 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   useEffect(() => {
     if (uiMode !== 'sketch') return
     const shortcut = (event: KeyboardEvent) => {
-      if (!event.altKey || event.shiftKey || event.defaultPrevented || event.repeat ||
+      if (event.shiftKey || event.defaultPrevented || event.repeat ||
           event.isComposing || event.keyCode === 229 || shortcutTargetOwnsKeyboard(event.target)) return
       const onMac = shortcutPlatform() === 'mac'
       if (onMac && event.code === 'KeyS' && event.ctrlKey && !event.metaKey) {
-        if (canUseSketchSelectionCommand() && resetSketchLayerStyle(editor)) {
+        if (canUseSketchSelectionCommand() && (event.altKey ? resetSketchLayerStyle(editor) : updateSketchLayerStyle(editor))) {
           event.preventDefault()
           event.stopPropagation()
         }
         return
       }
       const primary = onMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
-      if (!primary || event.code !== 'KeyR' || !canUseSketchSelectionCommand()) return
+      if (!primary || !event.altKey || event.code !== 'KeyR' || !canUseSketchSelectionCommand()) return
       if (!replaceSketchTemplate()) {
         const target = sketchReplacementTarget(editor)
         if (!target || !commitPendingEdits(editor)) return
