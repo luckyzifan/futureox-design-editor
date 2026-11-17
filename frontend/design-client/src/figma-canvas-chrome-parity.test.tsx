@@ -95,6 +95,43 @@ async function marquee(from: number[], to: number[], options: MouseEventInit = {
   await act(async () => pointer('pointerup', to[0], to[1], options))
 }
 
+test('Sketch Option+Command drags the existing selection from elsewhere with one undo', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const parent = node('frame', 50, 50, 260, 230)
+  const child = node('rectangle', 50, 55, 55, 60)
+  const other = node('frame', 390, 50, 200, 210)
+  parent.children = [child.id]
+  await render([parent, child, other], [parent.id, other.id])
+  await act(async () => editor.select([child.id]))
+  const before = editor.authoredDocument, revision = editor.state.version
+  const chord = { altKey: true, metaKey: true }
+  const drag = async (from: [number, number], to: [number, number], mods: MouseEventInit, up = mods) => {
+    await act(async () => pointer('pointerdown', ...from, mods))
+    await act(async () => pointer('pointermove', ...to, mods))
+    await flush()
+    await act(async () => pointer('pointerup', ...to, up))
+  }
+  await drag([450, 125], [480, 145], chord, { altKey: true })
+  expect(editor.state.selection).toEqual([child.id])
+  expect(editor.state.doc.nodes[parent.id].children).toEqual([child.id])
+  expect(editor.state.doc.nodes[other.id]).toBe(before.nodes[other.id])
+  expect(editor.state.doc.nodes[child.id].transform.slice(4)).toEqual([80, 75])
+  expect(Object.keys(editor.authoredDocument.nodes)).toHaveLength(3)
+  expect(editor.state.version).toBe(revision + 1)
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+
+  await drag([670, 365], [700, 385], { ...chord, shiftKey: true })
+  expect(editor.state.doc.nodes[child.id].transform.slice(4)).toEqual([80, 55])
+  await act(async () => editor.undo())
+  for (const modifiers of [{ altKey: true }, { metaKey: true }]) {
+    await act(async () => editor.select([child.id]))
+    await drag([670, 365], [700, 385], modifiers)
+    expect(editor.authoredDocument).toEqual(before)
+  }
+})
+
 test('Sketch Shift+secondary click previews overlapping layers and selects only when a row is chosen', async () => {
   interfacePreference.set({ uiMode: 'sketch' })
   const back = node('rectangle', 100, 100, 100, 100)
