@@ -168,7 +168,7 @@ export class WebGlDriver implements Driver {
   }
   async prepareScene(scene: GpuScene) {
     this.softwareRaster = !!scene.softwareRaster && !this.managed
-    const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62))
+    const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62 || mode === 65))
     if (Object.keys(scene.nodes).length) modes.add(3)
     this.allowedModes = modes
   }
@@ -579,7 +579,7 @@ export class WebGlDriver implements Driver {
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer!)
     gl.viewport(0, 0, target.width, target.height)
-    const program = u[16] === 31 ? this.areaProgram : this.managed && u[16] === 22 ? this.filterProgram : (this.managed || u[16] === 61 || u[16] === 62 || u[16] === 64) ? this.compositorProgram(u[16]) : this.program
+    const program = u[16] === 31 ? this.areaProgram : this.managed && u[16] === 22 ? this.filterProgram : (this.managed || u[16] === 61 || u[16] === 62 || u[16] === 64 || u[16] === 65) ? this.compositorProgram(u[16]) : this.program
     if (!program) throw new Error(`Exact compositor pipeline ${u[16]} not prepared`)
     gl.useProgram(program)
     gl.bindVertexArray(this.quadVao)

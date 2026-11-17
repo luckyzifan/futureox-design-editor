@@ -683,7 +683,7 @@ export class GpuRenderer {
       await this.reclaimForSurface(capture)
       this.checkFrameCurrent()
       const sharp = this.copy(backdrop, capture)
-      return this.variableTentBackdrop(sharp, n, effect, false)
+      return this.filterBackdropEffect(sharp, n, effect, false)
     }
     if (!this.wideDisplayBackdropEligible(n, sigma * 2)) return this.interactionBackdrop(n, backdrop, sigma)
     const support = Math.ceil(sigma * 2) + 2
@@ -7408,9 +7408,42 @@ export class GpuRenderer {
     if (vertical !== horizontal) this.release(horizontal)
     return vertical
   }
+  private async floatBackdropEndpoints(source: Surface, n: GpuNode, fx: Effect, cropped: boolean): Promise<Surface> {
+    const ramp = fx.gradientBlur!
+    const factor = scale(n.matrix)
+    const startSigma = fx.radius * ramp.startCount * factor / 2
+    const endSigma = fx.radius * ramp.endCount * factor / 2
+    let start: Surface | undefined
+    let end: Surface | undefined
+    let output: Surface | undefined
+    try {
+      start = await this.blur(source, startSigma, cropped, false, false, true)
+      if (startSigma === endSigma) {
+        output = start
+      } else {
+        end = await this.blur(source, endSigma, cropped, false, false, true)
+        if (this.surfaceNeedsAdmission(source.rect)) await this.reclaimForSurface(source.rect)
+        this.checkFrameCurrent()
+        const field = gradient_blur_composite_uniforms(
+          JSON.stringify(guardedPixelWindow(source.rect)), new Float64Array(n.matrix), JSON.stringify(ramp),
+        )
+        output = this.run(46, source.rect, [start, end], u => {
+          u.set(field.subarray(0, 3), 36)
+          u[44] = 1
+        })
+      }
+      return output
+    } finally {
+      this.release(source === output ? undefined : source,
+        start === output ? undefined : start, end === output ? undefined : end)
+    }
+  }
+
   private async filterBackdropEffect(background: Surface, n: GpuNode, fx: Effect, cropped: boolean): Promise<Surface> {
     if (fx.kind === 'background-blur' && fx.gradientBlur && !fx.gradientBlur.sketch) {
-      return this.variableTentBackdrop(background, n, fx, cropped)
+      return this.scene.floatCompositing
+        ? this.floatBackdropEndpoints(background, n, fx, cropped)
+        : this.variableTentBackdrop(background, n, fx, cropped)
     }
     const sigma = (backdropRadius(fx) * scale(n.matrix)) / 2
     const blurred = cropped
