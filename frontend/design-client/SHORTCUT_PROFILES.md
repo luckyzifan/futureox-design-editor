@@ -27,6 +27,7 @@
 | 键盘尺寸微调 | macOS：Cmd+方向键 1；Cmd+Shift+方向键 10；Windows/Linux 本批未增加绑定 | Mod+方向键 1；Mod+Shift+方向键 10 |
 | 覆盖粘贴（保留目标） | Shift+Mod+V，单目标 | Shift+Mod+V，每个目标一份 |
 | 粘贴样式并保留目标圆角 | — | macOS Sketch 布局 Ctrl+Alt+Cmd+V |
+| 在原图层后面创建副本 | — | macOS Sketch 布局 Cmd+Shift+D |
 | 选区居中，保持倍率 | 菜单 | 桌面 Mod+3；浏览器用菜单 |
 | 缩放到选区所在的顶层画框 | — | macOS 桌面 Cmd+4；浏览器用缩放菜单 |
 | 原始大小 / 适合全部 / 适合选择 | Shift+0 / 1 / 2 | 桌面 Cmd+0 / 1 / 2；浏览器 Shift+0 / 1 / 2 |
