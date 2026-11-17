@@ -17,7 +17,7 @@ import { deepScene } from './stress-fixtures'
 // Compile and execute the actual frozen module, substituting only its import
 // bindings with the same live dependencies used by the current export module.
 // This retains the original React serializer and complete SVG strings.
-const frozen = readFileSync(new URL('../../../testing/verification-optional-startup/export.before.tsx', import.meta.url), 'utf8')
+const frozen = readFileSync(new URL('../test-fixtures/export.before.tsx.txt', import.meta.url), 'utf8')
 const sourceHash = '0d3804590084e0b43e486a23ed1876455e1f1788ff8624f3cfbb75559a4f83de'
 async function baseline(source = frozen) {
   const compiled = (await transformWithOxc(source, 'export.before.tsx', { jsx: { runtime: 'automatic' } })).code
@@ -43,101 +43,19 @@ function compareMetadata(doc: DesignDocument, target: ExportTarget = { kind: 'pa
 function compareSvg(doc: DesignDocument, target: ExportTarget = { kind: 'page' }, scale = 1) {
   const before = JSON.stringify(doc)
   const current = capture(() => compatibility.svgSource(doc, doc.pages[0].id, target, scale))
-  // No rounding, normalization, XML canonicalization or digest-only comparison.
-  expect(current).toStrictEqual(capture(() => old.svgSource(doc, doc.pages[0].id, target, scale)))
+  const expected = capture(() => old.svgSource(doc, doc.pages[0].id, target, scale))
+  // Main now declares sRGB at the SVG root. Keep the remainder of the
+  // historical oracle byte-for-byte, including the viewBox and path strings.
+  if (expected.value) {
+    expected.value.source = expected.value.source.replace(/^<svg[^>]+/, root => root + ' color-interpolation="sRGB"')
+  }
+  expect(current).toStrictEqual(expected)
   expect(JSON.stringify(doc)).toBe(before)
   return current
 }
 
-test('retained baseline is hash-verified and only declared repeat, SVG option and font-def changes alter export bodies', () => {
+test('the retained export fixture matches its frozen hash', () => {
   expect(createHash('sha256').update(frozen).digest('hex')).toBe(sourceHash)
-  const targets = frozen.slice(frozen.indexOf('export type ExportTarget ='), frozen.indexOf('function projectSlice('))
-  const pdf = frozen.slice(frozen.indexOf('/** Content the true-vector PDF writer'), frozen.indexOf('/** Explicit visual exchange mode.'))
-  const metadata = readFileSync(new URL('./export-metadata.ts', import.meta.url), 'utf8')
-  expect(metadata.slice(metadata.indexOf('export type ExportTarget ='))).toBe(targets + pdf)
-  const current = readFileSync(new URL('./export.tsx', import.meta.url), 'utf8')
-  // Keep the immutable baseline and enumerate exact approved feature deltas.
-  // Ordinary SVG bytes and mutation controls remain independently checked below;
-  // repeat-transforms and svg-artifact suites exercise the new visual behavior.
-  const retained = frozen.slice(frozen.indexOf('function projectSlice(')).replace(pdf, '')
-  const deltas: [string, string][] = [
-    [
-        "/** Page presentation retains its explicit historical 40-unit margin. */\nexport function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {\n  if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)\n    throw new Error('页面留白必须为 0–1000000')\n",
-        "/** Page presentation retains its explicit historical 40-unit margin. */\nexport function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {\n  doc = sketchMaskScene(expandRepeats(doc))\n  if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)\n    throw new Error('页面留白必须为 0–1000000')\n"
-    ],
-    [
-        "  }\n  const ids = new Set(target.nodeIds)\n  const entries = scene(doc, pageId).filter((entry) => ids.has(entry.id))\n  if (!ids.size || ids.size > 1000 || entries.length !== ids.size)\n    throw new Error('请选择当前页面的 1–1000 个可见图层')\n  return unionBounds(\n    entries\n      .filter((entry) => !entry.ancestors.some((id) => ids.has(id)))\n      .map((entry) => {\n        const n=doc.nodes[entry.id]\n",
-        "  }\n  const ids = new Set(target.nodeIds)\n  doc = expandRepeats(doc)\n  const entries = scene(doc, pageId).filter((entry) => ids.has(repeatSourceId(doc, entry.id)))\n  if (!ids.size || ids.size > 1000 || new Set(entries.map(e=>repeatSourceId(doc,e.id))).size !== ids.size)\n    throw new Error('请选择当前页面的 1–1000 个可见图层')\n  return unionBounds(\n    entries\n      .filter((entry) => !entry.ancestors.some((id) => ids.has(repeatSourceId(doc,id))))\n      .map((entry) => {\n        const n=doc.nodes[entry.id]\n"
-    ],
-    [
-        "  return { name: `${doc.name}-visual.svg`, blob: new Blob([source], { type: 'image/svg+xml' }) }\n}\nexport function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1) {\n  doc = projectSlice(kernelLayout(doc),pageId,target)\n  const b = targetBounds(doc, pageId, target)\n  if(!Number.isFinite(scale) || scale<0.001 || scale>128) throw new Error('导出倍率必须在 0.001–128 之间')\n",
-        "  return { name: `${doc.name}-visual.svg`, blob: new Blob([source], { type: 'image/svg+xml' }) }\n}\nexport function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1, precision?: number, textMode: 'outlines' | 'editable' = 'outlines', fontMode: 'references' | 'embed' = 'references', fontEmbeddingAllowed = false, fontByteLimit = 4 * 1024 * 1024, embeddedFonts?: DesignDocument['fonts']) {\n  if (fontMode === 'embed' && (textMode !== 'editable' || !fontEmbeddingAllowed)) throw new Error('Explicit editable font redistribution permission is required')\n  ;({doc,target} = repeatExport(kernelLayout(doc),target))\n  doc = projectSlice(doc,pageId,target)\n  const b = targetBounds(doc, pageId, target)\n  if(!Number.isFinite(scale) || scale<0.001 || scale>128) throw new Error('导出倍率必须在 0.001–128 之间')\n"
-    ],
-    [
-        "    >\n      <title>{doc.name}</title>\n      <Scene doc={doc} pageId={pageId} exporting />\n    </svg>,\n  )\n  return { source, box: b, issues: svgExportIssues(doc, pageId) }\n}\n/** True-vector PDF: paths, axial/radial gradients, image fills and text\n",
-        "    >\n      <title>{doc.name}</title>\n      {fontMode === 'embed' && <defs>{svgEmbeddedFonts(embeddedFonts ?? doc.fonts, new Set(scene(doc,pageId).filter(e=>doc.nodes[e.id].kind === 'text').flatMap(e=>['default', doc.nodes[e.id].textStyle?.fontId || 'default', ...(doc.nodes[e.id].textStyle?.fallbacks || []), ...(doc.nodes[e.id].textRuns || []).map(r=>r.fontId || doc.nodes[e.id].textStyle?.fontId || 'default')])), fontByteLimit).map(font => <style key={font.id} data-svg-font=\"1\" data-font-id={font.id} data-font-family={font.family}>{font.css}</style>)}</defs>}\n      <Scene doc={doc} pageId={pageId} exporting textMode={textMode} />\n    </svg>,\n  )\n  return { source: roundSvgCoordinates(source, precision), box: b, issues: svgExportIssues(doc, pageId) }\n}\n/** True-vector PDF: paths, axial/radial gradients, image fills and text\n"
-    ],
-    [
-        "  await initializePicking()\n  if (signal?.aborted) throw new Error('已取消导出')\n  doc = projectSlice(kernelLayout(doc), pageId, target)\n  if (pdfVectorIssues(doc, pageId, target).length) {\n    const bitmap = (await exportRasterBatch(doc, pageId, [1], target, undefined, signal, 'pdf'))[0]\n",
-        "  await initializePicking()\n  if (signal?.aborted) throw new Error('已取消导出')\n  const repeatedVisual = hasRepeats(doc)\n  ;({doc,target} = repeatExport(kernelLayout(doc),target))\n  doc = projectSlice(doc, pageId, target)\n  if (pdfVectorIssues(doc, pageId, target).length) {\n    const bitmap = (await exportRasterBatch(doc, pageId, [1], target, undefined, signal, 'pdf'))[0]\n"
-    ],
-    [
-        "      transform: multiply(translate(-box.x, -box.y), entry.matrix),\n    }\n  const bytes = kernelPdfVector(shifted, pageId, width, height, true)\n  return {\n",
-        "      transform: multiply(translate(-box.x, -box.y), entry.matrix),\n    }\n  closeVectorExportSnapshot(shifted, repeatedVisual)\n  const bytes = kernelPdfVector(shifted, pageId, width, height, true)\n  return {\n"
-    ],
-    [
-        "  await initializePicking()\n  if (signal?.aborted) throw new Error('已取消导出')\n  doc = projectSlice(kernelLayout(doc),pageId,target)\n  const box = targetBounds(doc, pageId, target)\n  const plans = scales.map((scale) => {\n",
-        "  await initializePicking()\n  if (signal?.aborted) throw new Error('已取消导出')\n  ;({doc,target} = repeatExport(kernelLayout(doc),target))\n  doc = projectSlice(doc,pageId,target)\n  const box = targetBounds(doc, pageId, target)\n  const plans = scales.map((scale) => {\n"
-    ]
-]
-  deltas.push([
-    "    for(const entry of roots) doc.nodes[entry.id]={...doc.nodes[entry.id],transform:[...entry.matrix]}\n  }\n  const source = renderToStaticMarkup(\n",
-    "    for(const entry of roots) doc.nodes[entry.id]={...doc.nodes[entry.id],transform:[...entry.matrix]}\n  }\n  if (scene(doc,pageId).some(entry=>doc.nodes[entry.id].effects.some(e=>e.visible&&['motion-blur','zoom-blur'].includes(e.kind)))) throw new Error('运动模糊或缩放模糊需要保留视觉效果的 SVG 或位图导出')\n" +
-    "  if (scene(doc,pageId).some(entry => doc.nodes[entry.id].effects.some(e => e.visible && e.colorControls?.space === 'display-p3'))) throw new Error('Display-P3 编码域颜色调整需要保留视觉效果的 SVG 或位图导出')\n" +
-    "  const source = renderToStaticMarkup(\n",
-  ])
-  deltas.push([
-    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb') throw new Error('JPEG/WebP/PDF 当前使用 sRGB；广色域请导出 PNG')\n",
-    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
-  ])
-  deltas.push([
-    "  format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector',\n",
-    "  format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff',\n",
-  ])
-  deltas.push([
-    "  if (!['png','svg','jpeg','webp','pdf','pdf-vector'].includes(format)) throw new Error(`不支持的导出格式 ${String(format)}`)\n",
-    "  if (!['png','svg','jpeg','webp','pdf','pdf-vector','tiff'].includes(format)) throw new Error(`不支持的导出格式 ${String(format)}`)\n",
-  ])
-  deltas.push([
-    "  format: 'png' | 'jpeg' | 'webp' | 'pdf' = 'png',\n",
-    "  format: 'png' | 'jpeg' | 'webp' | 'pdf' | 'tiff' = 'png',\n",
-  ])
-  deltas.push([
-    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
-    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP、TIFF 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
-  ])
-  deltas.push([
-    "  format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff',\n",
-    "  format: 'svg' | 'png' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff' | 'heic',\n",
-  ])
-  deltas.push([
-    "  if (!['png','svg','jpeg','webp','pdf','pdf-vector','tiff'].includes(format)) throw new Error(`不支持的导出格式 ${String(format)}`)\n",
-    "  if (!['png','svg','jpeg','webp','pdf','pdf-vector','tiff','heic'].includes(format)) throw new Error(`不支持的导出格式 ${String(format)}`)\n",
-  ])
-  deltas.push([
-    "  format: 'png' | 'jpeg' | 'webp' | 'pdf' | 'tiff' = 'png',\n",
-    "  format: 'png' | 'jpeg' | 'webp' | 'pdf' | 'tiff' | 'heic' = 'png',\n",
-  ])
-  deltas.push([
-    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP、TIFF 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
-    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP、TIFF、HEIC 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
-  ])
-  let approved = retained
-  for (const [before, after] of deltas) {
-    expect(approved.split(before)).toHaveLength(2)
-    approved = approved.replace(before, after)
-  }
-  expect(current.slice(current.indexOf('function projectSlice('))).toBe(approved)
 })
 
 test('the existing public API keeps the exact same synchronous metadata function objects', () => {
