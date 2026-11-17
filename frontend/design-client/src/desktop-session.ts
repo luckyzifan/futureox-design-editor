@@ -750,14 +750,15 @@ export class DesktopSession {
     })
   }
 
-  replace(document: DesignDocument, canAdopt: () => boolean = () => true) {
+  replace(document: DesignDocument | PreparedDocument, canAdopt: () => boolean = () => true, onAdopted?: () => void) {
     return this.run('new', async () => {
       if (!canAdopt()) return false
-      const prepared = documentStage(DocumentStage.prepare, () => prepareDocument(document))
+      const prepared = documentStage(DocumentStage.prepare, () => ensurePreparedDocument(document))
       const approved = await this.leave('new')
       if (!this.authorized(approved) || !canAdopt()) return false
       if (!this.load(prepared, false)) return false
       const adoptedGeneration = this.generation
+      onAdopted?.()
       await this.updateRecovery()
       if (!this.disposed && this.generation === adoptedGeneration)
         this.editor.notify(this.supportsWorkspace ? (this.dirty ? '编辑后将自动保存到本机文档库' : '新设计已保存到本机文档库') : '新设计尚未保存到文件')

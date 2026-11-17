@@ -4,8 +4,26 @@ import { documentCapacity } from './document-capacity'
 import { FIG_WARNING_LIMITS, FIG_WARNINGS_TRUNCATED } from './import-warnings'
 import type { ImportedDesign } from './import-svg'
 import { validateDocument, type DesignDocument } from './model'
+import { sameDocumentPreparationRuntime, type DocumentPreparationRuntime } from './document-preparation-identity'
 
 export type WorkerImportFormat = 'fig' | 'sketch' | 'sketch-library' | 'pdf'
+export type PreparedFigResult = ImportedDesign & { validatedJson: string; runtime: DocumentPreparationRuntime }
+
+function checkImportWarnings(result: ImportedDesign, fig: boolean) {
+  if (!Array.isArray(result.warnings) || result.warnings.some((warning) => typeof warning !== 'string'))
+    throw new Error('文件导入兼容报告无效')
+  if (!fig) return
+  if (result.warnings.length > FIG_WARNING_LIMITS.count ||
+      result.warnings.some(warning => warning.length > FIG_WARNING_LIMITS.messageBytes))
+    throw new Error('FIG 兼容报告超限')
+  const encoder = new TextEncoder()
+  const sizes = result.warnings.map(warning => encoder.encode(warning).length)
+  if (sizes.some(size => size > FIG_WARNING_LIMITS.messageBytes) ||
+      sizes.reduce((sum, size) => sum + size, 0) > FIG_WARNING_LIMITS.totalBytes ||
+      (result.droppedOccurrences !== undefined && (!Number.isSafeInteger(result.droppedOccurrences) || result.droppedOccurrences < 1)) ||
+      (result.droppedOccurrences !== undefined) !== result.warnings.includes(FIG_WARNINGS_TRUNCATED))
+    throw new Error('FIG 兼容报告超限或截断元数据无效')
+}
 
 /** One owned worker per import, reclaimed on completion, failure or cancellation. */
 export function importFileInWorker(
@@ -25,22 +43,27 @@ export function importFileInWorker(
     const result = message.result as ImportedDesign
     diagnostic?.stage(ImportStage.validate)
     validateDocument(result.document)
-    if (!Array.isArray(result.warnings) || result.warnings.some((warning) => typeof warning !== 'string'))
-      throw new Error('文件导入兼容报告无效')
-    if (format === 'fig') {
-      if (result.warnings.length > FIG_WARNING_LIMITS.count ||
-          result.warnings.some(warning => warning.length > FIG_WARNING_LIMITS.messageBytes))
-        throw new Error('FIG 兼容报告超限')
-      const encoder = new TextEncoder()
-      const sizes = result.warnings.map(warning => encoder.encode(warning).length)
-      if (sizes.length > FIG_WARNING_LIMITS.count || sizes.some(size => size > FIG_WARNING_LIMITS.messageBytes) ||
-          sizes.reduce((sum, size) => sum + size, 0) > FIG_WARNING_LIMITS.totalBytes ||
-          (result.droppedOccurrences !== undefined && (!Number.isSafeInteger(result.droppedOccurrences) || result.droppedOccurrences < 1)) ||
-          (result.droppedOccurrences !== undefined) !== result.warnings.includes(FIG_WARNINGS_TRUNCATED))
-        throw new Error('FIG 兼容报告超限或截断元数据无效')
-    }
+    checkImportWarnings(result, format === 'fig')
     return result
   }, signal, diagnostic)
+}
+
+/** The same owned worker imports and prepares the complete FIG. Only the
+ * final graph and its canonical validated JSON cross into the UI realm. */
+export function importPreparedFigInWorker(file: File, runtime: DocumentPreparationRuntime, signal: AbortSignal,
+  diagnostic?: ImportDiagnostic): Promise<PreparedFigResult> {
+  diagnostic?.stage(ImportStage.admission)
+  assertImportInputBytes(file.size)
+  return runFileWorker({ file, name: file.name.replace(/\.fig$/i, ''), format: 'fig', prepareRuntime: runtime },
+    [], 'FIG', message => {
+      diagnostic?.stage(ImportStage.validate)
+      const result = message.prepared as PreparedFigResult | undefined
+      if (!result?.document || typeof result.document.id !== 'string' || typeof result.validatedJson !== 'string' ||
+          !sameDocumentPreparationRuntime(runtime, result.runtime))
+        throw new Error('FIG 文档准备响应无效')
+      checkImportWarnings(result, true)
+      return result
+    }, signal, diagnostic, 120_000)
 }
 
 export const SKETCH_LIBRARY_COUNT_MESSAGE = '打开前请附上 1 到 8 个本地 .sketch 库'
@@ -83,6 +106,7 @@ function runFileWorker<T>(
   decode: (message: Record<string, unknown>) => T,
   signal?: AbortSignal,
   diagnostic?: ImportDiagnostic,
+  timeoutMs = 30_000,
 ): Promise<T> {
   diagnostic?.stage(ImportStage.worker)
   signal?.throwIfAborted()
@@ -99,7 +123,7 @@ function runFileWorker<T>(
       else resolve(result!)
     }
     const abort = () => finish(signal?.reason || new DOMException('文件导入已取消', 'AbortError'))
-    const timeout = setTimeout(() => finish(new Error(`${label} 处理超过 30 秒预算；请拆分文件`)), 30_000)
+    const timeout = setTimeout(() => finish(new Error(`${label} 处理超过 ${timeoutMs / 1000} 秒预算；请拆分文件`)), timeoutMs)
     signal?.addEventListener('abort', abort, { once: true })
     const failWorker = (error: Error) => {
       if (settled) return

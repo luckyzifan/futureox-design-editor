@@ -1,7 +1,7 @@
 import { documentCapacity } from './document-capacity'
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank } from './model'
-import { exportSketchInWorker, importFileInWorker, importSketchWithLibraries } from './import-file-worker'
+import { exportSketchInWorker, importFileInWorker, importPreparedFigInWorker, importSketchWithLibraries } from './import-file-worker'
 import { readDesignFile } from './persistence'
 import { beginImportDiagnostic, ImportFailure, ImportStage } from './import-diagnostics'
 
@@ -41,6 +41,25 @@ test('cancelling an in-flight import reclaims the worker and ignores a late succ
   ImportWorker.instances[0].reply({ result: { document: blank(), warnings: [] } })
   await rejected
   expect(ImportWorker.instances[0].terminate).toHaveBeenCalledOnce()
+})
+
+test('a complete prepared FIG returns from the same owned worker with matching resource identity', async () => {
+  installWorker()
+  const file = new File([new Uint8Array([1])], 'project.fig')
+  const runtime = { build: { sourceSha256: 'a'.repeat(64), wasmInputSha256: 'b'.repeat(64) },
+    wasmSha256: 'b'.repeat(64), fontSha256: 'c'.repeat(64) }
+  const document = blank('prepared')
+  const prepared = { document, warnings: [], validatedJson: JSON.stringify(document), runtime }
+  const promise = importPreparedFigInWorker(file, runtime, new AbortController().signal)
+  const worker = ImportWorker.instances[0]
+  expect(worker.postMessage).toHaveBeenCalledWith({ format: 'fig', file, name: 'project', prepareRuntime: runtime, memoryBytes: documentCapacity().memoryBytes }, [])
+  worker.reply({ prepared })
+  expect(await promise).toBe(prepared)
+  const mismatch = importPreparedFigInWorker(file, runtime, new AbortController().signal)
+  const rejected = expect(mismatch).rejects.toThrow(/响应无效/)
+  ImportWorker.instances[1].reply({ prepared: { ...prepared, runtime: { ...runtime, fontSha256: 'd'.repeat(64) } } })
+  await rejected
+  expect(ImportWorker.instances[1].terminate).toHaveBeenCalledOnce()
 })
 
 test('an already cancelled import creates no worker', () => {

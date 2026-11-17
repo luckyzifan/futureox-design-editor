@@ -1,14 +1,20 @@
 import { activateDocumentFonts, prepareDocumentForEditing, prepareDocumentJsonForEditing } from './kernel/picking'
 import type { DesignDocument } from './model'
 import { requestDocumentPreparation, type DocumentPreparationIdentity } from './document-preparation-worker-client'
-import { documentPreparationRuntime, sameDocumentPreparationRuntime } from './document-preparation-identity'
+import { documentPreparationRuntime, sameDocumentPreparationRuntime, type DocumentPreparationRuntime } from './document-preparation-identity'
 import {freezeOwnedDocument,freezeOwnedDocumentInTasks,immutableDocument} from './immutable-document'
+import { importPreparedFigInWorker } from './import-file-worker'
+import type { ImportDiagnostic } from './import-diagnostics'
 
 const owned = new WeakMap<object, { document?: DesignDocument; validatedJson?: string }>()
 const currentEncodings = new WeakMap<DesignDocument, { json: string; current: () => boolean }>()
 const validPublications=new WeakSet<DesignDocument>()
 export function validatedPreparedPublication(document:DesignDocument){return validPublications.has(document)&&immutableDocument(document)}
 export type PreparedDocument = Readonly<{ id: string; snapshot(): DesignDocument }>
+
+export function isPreparedDocument(value: DesignDocument | PreparedDocument): value is PreparedDocument {
+  return owned.has(value)
+}
 
 /** One-use ownership transfer across save/adoption. The admitted document is
  * never exposed before adoption; callers can only obtain independent copies.
@@ -41,6 +47,24 @@ export async function prepareDocumentJsonInWorker(source: string, identity: Docu
   // takePreparedDocument restores it atomically before main-thread adoption.
   await freezeOwnedDocumentInTasks(result.document,()=>!signal.aborted&&isCurrent()&&sameDocumentPreparationRuntime(runtime,documentPreparationRuntime()))
   return ownDocument(result.document, result.validatedJson)
+}
+
+export function figPreparationRuntime() {
+  if (typeof Worker === 'undefined' || 'toJSON' in Object.prototype || 'toJSON' in Array.prototype ||
+      Object.getPrototypeOf(Array.prototype) !== Object.prototype) return
+  return documentPreparationRuntime()
+}
+
+/** Adopt only the result of the owned, resource-matched FIG worker. */
+export async function prepareFigInWorker(file: File, runtime: DocumentPreparationRuntime,
+  signal: AbortSignal, isCurrent: () => boolean, diagnostic?: ImportDiagnostic) {
+  const current = () => !signal.aborted && isCurrent() && sameDocumentPreparationRuntime(runtime, figPreparationRuntime())
+  if (!current()) throw new DOMException('FIG 文档准备已过期', 'AbortError')
+  const result = await importPreparedFigInWorker(file, runtime, signal, diagnostic)
+  if (!current()) throw new DOMException('FIG 文档准备已过期', 'AbortError')
+  await freezeOwnedDocumentInTasks(result.document, current)
+  if (!current()) throw new DOMException('FIG 文档准备已过期', 'AbortError')
+  return { prepared: ownDocument(result.document, result.validatedJson), warnings: result.warnings }
 }
 
 /** Normalize every adoption path through the private ownership boundary.
