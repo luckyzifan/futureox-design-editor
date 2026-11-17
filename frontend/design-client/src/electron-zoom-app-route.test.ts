@@ -8,8 +8,8 @@ import * as commands from './editor-commands'
 // command-routing tail with controlled dependencies. This is not a mounted App,
 // a synthetic copied routing implementation, or actual Electron GUI evidence.
 const app = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
-const start = app.indexOf("      if (name === 'open') void desktopSession.open()")
-const end = app.indexOf('\n    }\n    const shortcut =', start)
+const start = app.indexOf("      if (name === 'open') void openLocalDesign().catch(error => editor.notify(String(error)))")
+const end = app.indexOf('\n    }\n    const layout = (e: KeyboardEvent)', start)
 if (start < 0 || end < 0) throw Error('Desktop callback route boundary changed; review this contract')
 // Erase only the baseline's TypeScript-only EditorCommand assertions.
 const route = new Function('name', 'editor', 'editorCommands', 'resolveDesktopEditorCommand', 'dispatchEditorCommand', 'desktopSession', 'blank', app.slice(start, end).replace(/\s+as EditorCommand\b/g, ''))
