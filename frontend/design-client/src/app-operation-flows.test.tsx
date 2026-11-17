@@ -2231,3 +2231,41 @@ test('layout round trip replaces the chrome hosts while keeping the canvas, page
   await act(async () => current.undo())
   expect(current.authoredDocument).toEqual(initial)
 })
+
+
+test('Figma Backslash selects the same parent as Shift+Enter without authoring', async () => {
+  applyInterfaceLayout('figma')
+  await render()
+  const doc = blank(), frame = node('frame'), group = node('group'), shape = node('rectangle')
+  frame.children = [group.id]; group.children = [shape.id]
+  doc.nodes = { [frame.id]: frame, [group.id]: group, [shape.id]: shape }; doc.pages[0].children = [frame.id]
+  const current = editor!
+  await act(async () => { current.load(doc); current.select([shape.id]); canvas().focus() })
+  const before = current.authoredDocument, view = { ...current.state.view }
+  await key('Enter', { shiftKey: true })
+  expect(current.state.selection).toEqual([group.id])
+  await act(async () => current.select([shape.id]))
+  const original = '\\'
+  const send = async (target: HTMLElement) => {
+    const event = new KeyboardEvent('keydown', { key: original, code: 'Backslash', bubbles: true, cancelable: true })
+    await act(async () => target.dispatchEvent(event))
+    return event.defaultPrevented
+  }
+  const name = document.querySelector<HTMLInputElement>('input[aria-label="文档名称"]')!
+  await act(async () => name.focus())
+  expect(await send(name)).toBe(false)
+  expect(current.state.selection).toEqual([shape.id])
+  await act(async () => canvas().focus())
+  expect(await send(canvas())).toBe(true)
+  expect(current.state.selection).toEqual([group.id])
+  expect(await send(canvas())).toBe(true)
+  expect(current.state.selection).toEqual([frame.id])
+  await send(canvas())
+  expect(current.state.selection).toEqual([frame.id])
+  expect(current.authoredDocument).toBe(before)
+  expect(current.state.view).toEqual(view)
+  expect(current.canUndo).toBe(false)
+  await act(async () => { applyInterfaceLayout('sketch'); current.select([shape.id]); canvas().focus() })
+  expect(await send(canvas())).toBe(false)
+  expect(current.state.selection).toEqual([shape.id])
+})

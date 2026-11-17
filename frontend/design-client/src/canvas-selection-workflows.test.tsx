@@ -8,7 +8,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Canvas } from './Canvas'
 import { Editor } from './engine'
 import { blank, node, uid, type DesignNode } from './model'
-import { shortcutPreference } from './shortcut-preference'
+import { applyInterfaceLayout } from './interface-layout'
+import { interfacePreference } from './interface-preference'
 import { scene } from './geometry'
 
 vi.mock('./kernel/Surface', async () => {
@@ -44,12 +45,12 @@ beforeEach(() => {
   vi.spyOn(dom.window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
   errors = []; const error = console.error.bind(console)
   vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); error(...args) })
-  localStorage.clear(); shortcutPreference.set('sketch-like')
+  localStorage.clear(); applyInterfaceLayout('sketch')
   editor = new Editor(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
 afterEach(async () => {
-  await act(async () => root.unmount()); editor.dispose(); dom.window.close()
+  await act(async () => root.unmount()); editor.dispose(); interfacePreference.reset(); dom.window.close()
   vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
@@ -169,7 +170,7 @@ test('Sketch Escape walks parents, then deselects roots; Figma Escape and Shift+
   frame.children = [group.id]; group.children = [a.id]; const doc = await render([frame, group, a], [frame.id])
   await act(async () => editor.select([a.id]))
   for (const selected of [[group.id], [frame.id], []]) { await act(async () => key('Escape')); expect(editor.state.selection).toEqual(selected) }
-  await act(async () => { editor.select([a.id]); shortcutPreference.set('figma-like') })
+  await act(async () => { editor.select([a.id]); applyInterfaceLayout('figma') })
   await act(async () => key('Escape')); expect(editor.state.selection).toEqual([])
   await act(async () => editor.select([a.id])); await act(async () => key('Enter', { shiftKey: true })); expect(editor.state.selection).toEqual([group.id])
   unchanged(doc)
@@ -188,14 +189,14 @@ test('Sketch Escape cancels an active move and drawing tool before parent naviga
   await act(async () => key('Escape')); expect(editor.state.selection).toEqual([frame.id])
 })
 
-test('Figma Option marquee remains intersection-based and Shift remains additive; Sketch drag keeps its start profile', async () => {
+test('Figma Option marquee remains intersection-based and Shift remains additive; Sketch drag keeps its initial layout rules', async () => {
   const a = node('rectangle', 100, 100, 30, 30), b = node('rectangle', 145, 100, 30, 30), doc = await render([a, b])
-  await act(async () => { shortcutPreference.set('figma-like'); editor.select([a.id]) })
+  await act(async () => { applyInterfaceLayout('figma'); editor.select([a.id]) })
   await marquee([80, 80], [160, 150], { altKey: true, shiftKey: true })
   expect(ordered(editor.state.selection)).toEqual(ordered([a.id, b.id])); unchanged(doc)
-  await act(async () => { shortcutPreference.set('sketch-like'); editor.clearSelection() })
+  await act(async () => { applyInterfaceLayout('sketch'); editor.clearSelection() })
   await act(async () => pointer('pointerdown', 80, 80))
-  await act(async () => shortcutPreference.set('figma-like'))
+  await act(async () => applyInterfaceLayout('figma'))
   await act(async () => pointer('pointerup', 160, 150, { altKey: true }))
   expect(editor.state.selection).toEqual([a.id]); unchanged(doc)
 })
@@ -205,7 +206,7 @@ test('Figma click stays on the frame, Shift during the marquee adds, and a short
   const other = node('rectangle', 400, 80, 30, 30)
   frame.children = [child.id]
   const doc = await render([frame, child, other], [frame.id, other.id])
-  await act(async () => shortcutPreference.set('figma-like'))
+  await act(async () => applyInterfaceLayout('figma'))
   await act(async () => pointer('pointerdown', 90, 90))
   await act(async () => pointer('pointerup', 90, 90))
   expect(editor.state.selection).toEqual([frame.id]); unchanged(doc)
@@ -227,11 +228,11 @@ test('Figma click stays on the frame, Shift during the marquee adds, and a short
   expect(editor.state.selection).toEqual([child.id]); unchanged(doc)
 })
 
-test('held X clears on profile and document changes without becoming a persistent selection tool', async () => {
+test('held X clears on layout and document changes without becoming a persistent selection tool', async () => {
   const a = node('rectangle', 100, 100, 40, 40); await render([a]); await act(async () => editor.set({ tool: 'rectangle' }))
   await act(async () => key('x')); expect(host().style.cursor).toBe('crosshair')
-  await act(async () => shortcutPreference.set('figma-like')); expect(host().style.cursor).not.toBe('crosshair')
-  await act(async () => { shortcutPreference.set('sketch-like'); key('x') }); expect(host().style.cursor).toBe('crosshair')
+  await act(async () => applyInterfaceLayout('figma')); expect(host().style.cursor).not.toBe('crosshair')
+  await act(async () => { applyInterfaceLayout('sketch'); key('x') }); expect(host().style.cursor).toBe('crosshair')
   await act(async () => editor.load(blank('New document'))); expect(host().style.cursor).not.toBe('crosshair')
   expect(editor.state.doc.name).toBe('New document'); expect(editor.state.selection).toEqual([])
 })
@@ -332,7 +333,7 @@ test('browser primary+3 and Figma desktop primary+3 remain unclaimed browser/sys
   await act(async () => { event = key('3', { code: 'Digit3', metaKey: true }) })
   expect(event.defaultPrevented).toBe(false); expect(editor.state.view).toEqual(view)
   Object.defineProperty(window, 'coreDesktop', { configurable: true, value: { version: 1, onCommand: () => () => {} } })
-  await act(async () => shortcutPreference.set('figma-like'))
+  await act(async () => applyInterfaceLayout('figma'))
   await act(async () => { event = key('3', { code: 'Digit3', metaKey: true }) })
   expect(event.defaultPrevented).toBe(false); expect(editor.state.view).toEqual(view); unchanged(doc)
 })
@@ -369,6 +370,7 @@ test('desktop center shortcut respects empty selection, repeated/IME/modifier/in
 })
 
 test('entered-frame click hits the front sibling and a drag moves only that sibling', async () => {
+  applyInterfaceLayout('figma')
   const frame = node('frame', 0, 0, 400, 300), child = node('rectangle', 40, 40, 40, 30), backing = node('rectangle', 20, 20, 300, 200)
   frame.children = [child.id, backing.id]
   const before = await render([frame, child, backing], [frame.id])
@@ -395,10 +397,11 @@ test('entered-frame click hits the front sibling and a drag moves only that sibl
 })
 
 test('Option-drag duplicates inside the frame, leaves the original, and undoes once', async () => {
+  applyInterfaceLayout('figma')
   const frame = node('frame', 0, 0, 400, 300), child = node('rectangle', 40, 50, 80, 60)
   frame.children = [child.id]
   const before = await render([frame, child], [frame.id])
-  await act(async () => { shortcutPreference.set('figma-like'); editor.select([child.id]) })
+  await act(async () => { applyInterfaceLayout('figma'); editor.select([child.id]) })
   await act(async () => pointer('pointerdown', 80, 80, { altKey: true }))
   await act(async () => pointer('pointermove', 150, 110, { altKey: true }))
   await act(async () => pointer('pointerup', 160, 120, { altKey: true }))
@@ -417,6 +420,7 @@ test('Option-drag duplicates inside the frame, leaves the original, and undoes o
 })
 
 test('releasing Option before mouseup moves the original and drops the copy', async () => {
+  applyInterfaceLayout('figma')
   const n = node('rectangle', 40, 50, 80, 60), before = await render([n])
   await act(async () => editor.select([n.id]))
   await act(async () => pointer('pointerdown', 80, 80, { altKey: true }))
@@ -429,11 +433,12 @@ test('releasing Option before mouseup moves the original and drops the copy', as
 })
 
 test('hover and click select a group until it is entered; Cmd stays on the child', async () => {
+  applyInterfaceLayout('figma')
   const outer = node('frame', 80, 80, 240, 180), group = node('group', 20, 20, 140, 100), rect = node('rectangle', 10, 10, 30, 30)
   const other = node('rectangle', 400, 80, 30, 30)
   group.children = [rect.id]; outer.children = [group.id]
   await render([outer, group, rect, other], [outer.id, other.id])
-  await act(async () => shortcutPreference.set('figma-like'))
+  await act(async () => applyInterfaceLayout('figma'))
   const outline = () => mount.querySelector('[data-testid="canvas-hover-outline"]')?.getAttribute('data-node-id')
   const flush = async () => { await act(async () => { for (const [id, fn] of [...frames]) { frames.delete(id); fn(performance.now()) } }) }
   await act(async () => pointer('pointermove', 90, 90)); await flush()
@@ -466,6 +471,7 @@ test('hover and click select a group until it is entered; Cmd stays on the child
 })
 
 test('Space during a shape drag moves the draft and skips parenting into the frame', async () => {
+  applyInterfaceLayout('figma')
   const frame = node('frame', 40, 40, 400, 300)
   const before = await render([frame], [frame.id])
   await act(async () => editor.set({ tool: 'rectangle', snapPixels: false }))
@@ -496,6 +502,7 @@ test('Space during a shape drag moves the draft and skips parenting into the fra
 })
 
 test('Space pans the camera and does not move the selected layer', async () => {
+  applyInterfaceLayout('figma')
   const n = node('rectangle', 100, 100, 40, 40), before = await render([n])
   await act(async () => editor.select([n.id]))
   await act(async () => key(' ', { code: 'Space' }))
@@ -511,6 +518,7 @@ test('Space pans the camera and does not move the selected layer', async () => {
 })
 
 test('holding Alt shows the duplicate cursor without changing the document', async () => {
+  applyInterfaceLayout('figma')
   const n = node('rectangle', 40, 40, 40, 40), before = await render([n])
   await act(async () => key('Alt', { altKey: true, code: 'AltLeft' }))
   expect(host().className).toContain('canvas-alt-duplicate')
