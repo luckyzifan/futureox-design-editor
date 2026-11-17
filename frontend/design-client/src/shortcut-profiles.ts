@@ -21,9 +21,7 @@ const common: ShortcutBinding[] = [
   { command: 'delete', combo: 'Backspace' }, { command: 'delete', combo: 'Delete' },
   { command: 'copy-properties', combo: 'Mod+Alt+C' }, { command: 'paste-properties', combo: 'Mod+Alt+V' },
   { command: 'frame-selection', combo: 'Mod+Alt+G' },
-  // Existing local editor actions remain shared across both presets.
-  { command: 'create-component', combo: 'Mod+Alt+K' }, { command: 'copy-as-png', combo: 'Mod+Shift+C' },
-  { command: 'toggle-outlines', combo: 'Mod+Shift+O' },
+  { command: 'create-component', combo: 'Mod+Alt+K' },
   { command: 'select-inverse', combo: 'Mod+Shift+A' }, { command: 'select-matching', combo: 'Mod+Alt+A' },
   { command: 'toggle-lock', combo: 'Mod+Shift+L' }, { command: 'toggle-visibility', combo: 'Mod+Shift+H' },
   { command: 'flip-horizontal', combo: 'Shift+H' }, { command: 'flip-vertical', combo: 'Shift+V' },
@@ -35,8 +33,12 @@ const common: ShortcutBinding[] = [
   // Browser-safe aliases remain available in both presets.
   { command: 'zoom-100', combo: 'Shift+0' }, { command: 'zoom-fit', combo: 'Shift+1' }, { command: 'zoom-selection', combo: 'Shift+2' },
 ]
-/** A bounded preset over existing commands, not a promise of product parity.
- * Sources and deliberate browser adaptations are recorded in SHORTCUT_PROFILES.md. */
+const figmaBindings: ShortcutBinding[] = [
+  { command: 'copy-as-png', combo: 'Mod+Shift+C' },
+  { command: 'toggle-outlines', combo: 'Mod+Shift+O' },
+]
+
+/** Bindings belong to the active editor layout; portable editing keys are shared. */
 const bindingCache = new Map<string, readonly ShortcutBinding[]>()
 export function shortcutBindings({ profile, platform, desktop = false, uiMode }: ShortcutContext): readonly ShortcutBinding[] {
   const cacheKey = `${profile}:${platform}:${desktop}:${uiMode ?? ''}`
@@ -49,6 +51,8 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
   const bindings = common.filter(binding => (uiMode !== 'sketch' || binding.command !== 'select-matching') &&
     (!sketchMacSelection || binding.command !== 'select-inverse'))
     .map(binding => ({ ...binding }))
+  if (uiMode === 'sketch' || !uiMode && profile === 'sketch-like') tools.delete('set-tool-brush')
+  else bindings.push(...figmaBindings)
   if (uiMode === 'sketch') for (const command of sketchBooleanCommandIds) {
     const { letter } = sketchBooleanCommands[command]
     bindings.push({ command, combo: `Mod+Alt+${letter}`, physicalCode: `Key${letter}` })

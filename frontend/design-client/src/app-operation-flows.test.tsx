@@ -768,7 +768,7 @@ test('Sketch Shift+B hides and restores the selection’s individual border flag
   expect(editor!.authoredDocument).toEqual(prior)
   expect(editor!.canUndo).toBe(false)
   await key('b', { code: 'KeyB' })
-  expect(editor!.state.tool).toBe('brush')
+  expect(editor!.state.tool).toBe('select')
 })
 
 test('Sketch Shift+X swaps paint rows in order, preserving border geometry and one-step undo', async () => {
@@ -2097,4 +2097,37 @@ test('Sketch cannot inherit or toggle the Figma prototype inspector and restores
   expect(document.querySelector('.embedded-design-tools')).not.toBeNull()
   expect(preview()).not.toBeNull()
   await act(async () => setPrototypeTab('design'))
+})
+
+
+test('Sketch releases Figma-only key events before dispatch, even with a shape selected', async () => {
+  applyInterfaceLayout('sketch')
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  await render()
+  const doc = blank(), shape = node('rectangle')
+  doc.nodes[shape.id] = shape
+  doc.pages[0].children = [shape.id]
+  const editorInstance = editor!
+  await act(async () => { editorInstance.load(doc); editorInstance.select([shape.id]); canvas().focus() })
+  const before = [editorInstance.authoredDocument, editorInstance.state.selection, editorInstance.state.view]
+  const press = async (key: string, code: string, modifiers: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true, ...modifiers })
+    await act(async () => canvas().dispatchEvent(event))
+    return event.defaultPrevented
+  }
+  const modifiers = { metaKey: true, shiftKey: true }
+  expect(await press('O', 'KeyO', modifiers)).toBe(false)
+  expect(await press('b', 'KeyB')).toBe(false)
+  expect(await press('C', 'KeyC', modifiers)).toBe(false)
+  expect(editorInstance.state.tool).toBe('select')
+  expect(editorInstance.state.outlines).toBeFalsy()
+  expect([editorInstance.authoredDocument, editorInstance.state.selection, editorInstance.state.view]).toEqual(before)
+  expect(editorInstance.canUndo).toBe(false)
+
+  await act(async () => applyInterfaceLayout('figma'))
+  expect(await press('O', 'KeyO', modifiers)).toBe(true)
+  expect(editorInstance.state.outlines).toBe(true)
+  expect(await press('b', 'KeyB')).toBe(true)
+  expect(editorInstance.state.tool).toBe('brush')
+  expect(editorInstance.authoredDocument).toBe(before[0])
 })
