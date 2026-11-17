@@ -65,7 +65,7 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
     tools.set('set-tool-graphic', 'G')
     if (uiMode === 'sketch') {
       tools.set('set-tool-hotspot', 'I')
-      bindings.push({ command: 'auto-pin-contents', combo: 'Alt+Shift+A' })
+      bindings.push({ command: 'auto-pin-selection', combo: 'Shift+A' }, { command: 'auto-pin-contents', combo: 'Alt+Shift+A' })
     }
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' },
       { command: 'edit-frame-bounds', combo: 'Mod+Enter' })

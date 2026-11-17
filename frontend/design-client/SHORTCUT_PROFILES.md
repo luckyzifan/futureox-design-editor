@@ -17,6 +17,7 @@
 | 查找图层 | 桌面 Mod+F 打开左侧查找，不写入文档。浏览器保留 Mod+F | 底栏搜索过滤图层树；Ctrl+F 仅显示相关图层。桌面 Mod+F 仍是框选成画板 |
 | 评论 | C | N |
 | 添加 / 移除自动布局 | Shift+A / Alt+Shift+A | Shift+S / Alt+Shift+S |
+| 自动固定选区 | — | Sketch 布局 Shift+A；再按一次恢复原约束 |
 | 自动固定容器的直接子图层 | — | Sketch 布局 Alt+Shift+A；一步撤销 |
 | 去掉描边 | Shift+/ | 不绑定 |
 | 去掉填充 | Alt+/。Mac US Option 输出 ÷，对应物理键 Slash | 此方案不含该键 |

@@ -29,7 +29,7 @@ import { clearWholeTextRunColor, setWholeTextFontSize } from './text'
 import { selectionParentBounds, rotateNode, selectionLocalBounds } from './canvas-view'
 import { formatAngleDegrees } from './selection-handles'
 import { figmaRotationDegrees, nodeDegreesForFigmaAngle, type LiveRotation } from './rotation-field'
-import { nextConstraint } from './layout-constraints'
+import { canAutoPinChild, nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
 import { CornerRadiusFields } from './corner-radius-fields'
 import { VectorCornerFields } from './VectorCornerFields'
@@ -563,7 +563,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const directFrameConstraints = !!constraintParent && !constraintParent.graphic
     && (constraintParent.kind === 'frame' || constraintParent.kind === 'section')
     && (!constraintFlow || !!n.sizing?.absolute)
-  const showConstraints = directFrameConstraints || (uiMode === 'sketch' && sketchNestedFramePins(s.doc, n.id, parents))
+  const showConstraints = directFrameConstraints || (uiMode === 'sketch' && (sketchNestedFramePins(s.doc, n.id, parents) ||
+    (constraintParent?.kind === 'group' && canAutoPinChild(constraintParent, n))))
   const updateBounds = (edit: (node: DesignNode) => void) => {
     const source = editor.state.doc
     if (s.frameCrop !== n.id || editableFrameCrop(editor) !== n.id) { update(edit); return }
