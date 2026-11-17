@@ -94,6 +94,7 @@ import {
   paint,
   node,
   identity,
+  defaultSizing,
 } from './model'
 import {
   apply,
@@ -148,6 +149,16 @@ import { usePrototypeTab } from './prototype-chrome'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
 import { CanvasOutlines, createOutlineScene, outlineHits } from './CanvasOutlines'
 type TextEditEntry = { id: string; session: number; page: string; token: number }
+type ResizeEdgeTap = {
+  id: string
+  session: number
+  page: string
+  revision: number
+  handle: number
+  screen: Point
+  alt: boolean
+  paired: boolean
+}
 type Drag = {
   renderFallbackCount?: number
   actionSamples?: number
@@ -625,6 +636,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }, [editor])
   const drag = useRef<Drag | null>(null)
+  const resizeEdgeTap = useRef<ResizeEdgeTap | null>(null)
   const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string;
     index: ReturnType<typeof createSmartGuidesIndex> } | null>(null)
   const releaseGuideIndex = () => { guideIndex.current?.index?.free(); guideIndex.current = null }
@@ -1740,6 +1752,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if ((kind === 'resize' || kind === 'rotate') && state.tool === 'select' &&
         smallSelectionInterior(selectionCorners, displayViewRef.current.zoom,
           screenToWorld(displayViewRef.current, screenPoint(e)))) kind = 'move'
+    if (kind !== 'resize' || (handle ?? -1) < 4) resizeEdgeTap.current = null
     if (textEdit) {
       actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, ActionReason.editingText)
       host.current?.focus({ preventScroll: true })
@@ -2824,6 +2837,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     gpuMove.current?.end(editor.state.doc)
     restoreGpuOverlays()
     finishDragTrace(d, ['pan','zoom','pivot','marquee'].includes(d.kind) ? ActionOutcome.observed : d.kind === 'crop' ? ActionOutcome.unsupported : undefined, d.kind === 'crop' ? ActionReason.unobserved : ActionReason.none)
+    const previousTap = resizeEdgeTap.current
+    resizeEdgeTap.current = null
+    const handle = d.handle ?? -1
+    if (uiMode === 'sketch' && editor.state.tool === 'select' && d.kind === 'resize' &&
+        handle >= 4 && d.ids.length === 1 && d.originSelection.length === 1 && e.button === 0 &&
+        !e.shiftKey && !e.metaKey && !e.ctrlKey && !d.sampledMovement &&
+        release.x === d.screen.x && release.y === d.screen.y) {
+      const id = d.ids[0], revision = editor.state.version
+      // Pointer capture retargets click and dblclick to the canvas, so keep
+      // the completed resize edge and its owner from the pointer gesture.
+      const paired = previousTap?.id === id && previousTap.handle === handle && previousTap.alt === e.altKey &&
+        previousTap.session === d.session && previousTap.page === d.page && previousTap.revision === revision
+      resizeEdgeTap.current = { id, handle, session: d.session, page: d.page, revision, screen: release, alt: e.altKey, paired }
+    }
     setRubber(null)
     clearMoveGuides()
   }
@@ -3066,6 +3093,30 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (penRef.current) {
           finishPen()
           return
+        }
+        const tap = resizeEdgeTap.current
+        resizeEdgeTap.current = null
+        if (tap?.paired && tap.alt && e.altKey && uiMode === 'sketch' && e.button === 0 &&
+            !e.shiftKey && !e.metaKey && !e.ctrlKey && host.current?.contains(e.target as Node)) {
+          const live = editor.state
+          const matchesTap = () => !drag.current && !editor.interactionActive && !editor.state.busy &&
+            editor.sessionGeneration === tap.session && editor.state.page === tap.page && editor.state.version === tap.revision &&
+            editor.state.tool === 'select' && editor.state.selection.length === 1 && editor.topSelection()[0] === tap.id
+          const point = screenPoint(e)
+          // Chromium rounds dblclick coordinates to CSS pixels after the
+          // pointer events have reported the fractional handle position.
+          if (matchesTap() && Math.abs(tap.screen.x - point.x) < 1 && Math.abs(tap.screen.y - point.y) < 1) {
+            e.preventDefault()
+            const [axis] = resizeGestureAxes(tap.handle, false)
+            const child = live.doc.nodes[tap.id]
+            const parent = live.doc.nodes[editor.parentMap().get(tap.id) ?? '']
+            if (!parent?.layout || !['horizontal', 'vertical'].includes(parent.layout.mode) ||
+                child.sizing?.absolute || child.sizing?.[axis] === 'fill') return
+            if (commitPendingEdits(editor) && matchesTap()) editor.updateProperties([tap.id], node => {
+              node.sizing = { ...defaultSizing(), ...node.sizing, [axis]: 'fill' }
+            }, '修改响应式尺寸')
+            return
+          }
         }
         const outlined = hitOutline(world(e))
         const changed = !!outlined && editor.state.selection[0] !== outlined
