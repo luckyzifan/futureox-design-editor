@@ -20,6 +20,138 @@ pub(crate) struct Appearance {
     pub alpha: u8,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct InsetStroke {
+    pub interior: String,
+    pub fill: [u8; 3],
+    pub stroke: [u8; 3],
+}
+
+/// Only a single opaque fill and inside stroke can be refined without
+/// changing another projected face's coverage or assuming a paint order.
+pub(crate) fn inset_colors(node: &Node, cells: &[Appearance]) -> Option<([u8; 3], [u8; 3])> {
+    if node.opacity != 1. || cells.len() != 2 || cells.iter().any(|cell| cell.alpha != 255) {
+        return None;
+    }
+    let mut fills = node.fills.iter().filter(|paint| paint.visible && paint.opacity > 0.);
+    let mut strokes = node.strokes.iter().filter(|stroke| {
+        stroke.visible && stroke.width > 0. && stroke.paint.visible && stroke.paint.opacity > 0.
+    });
+    let (fill, stroke) = (fills.next()?, strokes.next()?);
+    if fills.next().is_some() || strokes.next().is_some() || stroke.align != "inside"
+        || fill.opacity != 1. || stroke.paint.opacity != 1.
+    {
+        return None;
+    }
+    let color = |paint: &Paint| {
+        let [r, g, b, _] = rgb(paint).ok()?.map(encode_unorm8);
+        Some([r, g, b])
+    };
+    let fill = color(fill)?;
+    let stroke = color(&stroke.paint)?;
+    (fill != stroke && cells.iter().any(|cell| cell.rgb == fill)
+        && cells.iter().any(|cell| cell.rgb == stroke)).then_some((fill, stroke))
+}
+
+const MAX_CONVEX_INSET_EDGES: usize = 16;
+
+struct InsetEdge {
+    origin: Point,
+    normal: Point,
+    radius: f64,
+}
+
+/// Exact area for straight convex insets. Curved or larger paths use the
+/// existing scanline area renderer.
+pub(crate) struct ConvexInset(Vec<InsetEdge>);
+
+impl ConvexInset {
+    pub(crate) fn new(contours: &[Contour]) -> Option<Self> {
+        let [contour] = contours else { return None };
+        let points = &contour.points;
+        if !contour.closed || !(3..=MAX_CONVEX_INSET_EDGES).contains(&points.len()) {
+            return None;
+        }
+        let pairs = points.iter().copied().zip(points.iter().copied().cycle().skip(1));
+        let start = points[0];
+        let area = pairs.clone().map(|(a, b)| (a - start).cross(b - start)).sum::<f64>();
+        if area.abs() < 1e-10 {
+            return None;
+        }
+        let mut edges = Vec::with_capacity(points.len());
+        for (a, b) in pairs {
+            let direction = b - a;
+            let length = direction.length();
+            if length < 1e-10 {
+                continue;
+            }
+            let normal = Point::new(-direction.y, direction.x) * (area.signum() / length);
+            if points.iter().any(|point| (*point - a).dot(normal) < -1e-8) {
+                return None;
+            }
+            edges.push(InsetEdge {
+                origin: a,
+                normal,
+                radius: (normal.x.abs() + normal.y.abs()) * 0.5,
+            });
+        }
+        Some(Self(edges))
+    }
+
+    pub(crate) fn coverage(&self, center: Point) -> f32 {
+        let mut mixed = false;
+        for edge in &self.0 {
+            let signed = (center - edge.origin).dot(edge.normal);
+            if signed <= -edge.radius {
+                return 0.;
+            }
+            mixed |= signed < edge.radius;
+        }
+        if !mixed {
+            return 1.;
+        }
+        // Clipping a convex polygon by one line adds at most one vertex.
+        let mut polygon = [Point::default(); 4 + MAX_CONVEX_INSET_EDGES];
+        let mut clipped = [Point::default(); 4 + MAX_CONVEX_INSET_EDGES];
+        polygon[..4].copy_from_slice(&[
+            Point::new(-0.5, -0.5), Point::new(0.5, -0.5),
+            Point::new(0.5, 0.5), Point::new(-0.5, 0.5),
+        ]);
+        let mut count = 4;
+        for edge in &self.0 {
+            let signed = (center - edge.origin).dot(edge.normal);
+            if signed >= edge.radius {
+                continue;
+            }
+            let mut next = 0;
+            for i in 0..count {
+                let a = polygon[i];
+                let b = polygon[(i + 1) % count];
+                let da = a.dot(edge.normal) + signed;
+                let db = b.dot(edge.normal) + signed;
+                if da >= 0. {
+                    clipped[next] = a;
+                    next += 1;
+                }
+                if da * db < 0. {
+                    clipped[next] = a.lerp(b, da / (da - db));
+                    next += 1;
+                }
+            }
+            if next < 3 {
+                return 0.;
+            }
+            count = next;
+            std::mem::swap(&mut polygon, &mut clipped);
+        }
+        let mut area = 0.;
+        for i in 0..count {
+            area += polygon[i].cross(polygon[(i + 1) % count]);
+        }
+        (area * 0.5).clamp(0., 1.) as f32
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Shape {
     pub contours: Vec<Contour>,

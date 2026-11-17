@@ -132,12 +132,14 @@ pub(crate) struct Projection {
     pub(crate) composed: bool,
     #[serde(skip)]
     pub(crate) appearances: Vec<Appearance>,
+    #[serde(skip)]
+    pub(crate) inset_colors: Option<([u8; 3], [u8; 3])>,
 }
 
 impl Projection {
     pub(crate) fn new(transform: Transform, visible: bool) -> Self {
         Self { transform, visible, hide_fills: false, vector_geometry: None,
-            hide_strokes: false, composed: false, appearances: Vec::new() }
+            hide_strokes: false, composed: false, appearances: Vec::new(), inset_colors: None }
     }
 }
 
@@ -209,6 +211,7 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
         let planes=[MaterialPlane { paints:&paints, depth:crate::spatial_depth::PlaneDepth([0.;3]),opacity:node.opacity }];
         patch.vector_geometry=Some(outline_geometry(&outline.contours,inverse,outline.even_odd)?);
         patch.appearances=spatial_material::appearances(&planes,inverse,&mut remaining)?;
+        patch.inset_colors = spatial_material::inset_colors(node, &patch.appearances);
         patch.composed=true;
         patch.hide_strokes=true;
         patch.visible=!patch.appearances.is_empty();
@@ -303,7 +306,9 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
     if patches.is_empty() { return Ok(()); }
     let mut assembled=Vec::new();
     for (id, projection) in patches {
-        if projection.composed { assembled.push((id.clone(),projection.appearances)); }
+        if projection.composed {
+            assembled.push((id.clone(), projection.appearances, projection.inset_colors));
+        }
         let node = doc.nodes.get_mut(&id).unwrap();
         node.spatial = None;
         node.transform = projection.transform;
@@ -318,19 +323,29 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
             node.vector_geometry = Some(Arc::new(geometry));
         }
     }
-    let extra=assembled.iter().map(|(_,cells)|cells.len()).sum::<usize>();
+    let extra=assembled.iter().map(|(_,cells,_)|cells.len()).sum::<usize>();
     crate::capacity::check_document_counts(doc.nodes.len().checked_add(extra).ok_or("Projected node count overflow")?,doc.pages.len())?;
     let mut serial=0;
-    for (id,cells) in assembled {
+    for (id,cells,inset_colors) in assembled {
         let old_children=doc.nodes[&id].children.clone();
         for child in old_children { doc.nodes.get_mut(&child).unwrap().visible=false; }
         let mut children=Vec::new();
+        let mut inset_stroke = None;
         for cell in cells {
             let cell_id=loop {
                 serial+=1;
                 let candidate=format!("spatial-cell-{serial}");
                 if !doc.nodes.contains_key(&candidate) { break candidate; }
             };
+            if let Some((fill, stroke)) = inset_colors
+                && cell.rgb == fill
+            {
+                inset_stroke = Some(Box::new(spatial_material::InsetStroke {
+                    interior: cell_id.clone(),
+                    fill,
+                    stroke,
+                }));
+            }
             let mut node=crate::facet::sample_node(&cell_id,"vector");
             node.blend="plus-lighter".into();
             node.locked=true;
@@ -352,6 +367,7 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
         parent.strokes.clear();
         parent.opacity=1.;
         parent.blend="normal".into();
+        parent.projected_inset_stroke = inset_stroke;
         parent.children.extend(children);
     }
     // Hidden descendants do not need geometry patches. Their authoring
@@ -366,7 +382,11 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
 /// selected paint. Filtering the resolved cells by source ID would discard
 /// the selected face when it is represented by its parent's coverage cells.
 #[cfg(any(target_arch = "wasm32", test))]
-pub(crate) fn export_view(doc: &mut Document, selected: &[String]) -> Result<serde_json::Value, String> {
+pub(crate) fn export_view(
+    doc: &mut Document,
+    selected: &[String],
+    refine_inset_stroke: bool,
+) -> Result<serde_json::Value, String> {
     if !selected.is_empty() {
         let selected=selected.iter().map(String::as_str).collect::<std::collections::HashSet<_>>();
         fn visit(doc: &mut Document, id: &str, selected: &std::collections::HashSet<&str>, within: bool) -> bool {
@@ -390,7 +410,11 @@ pub(crate) fn export_view(doc: &mut Document, selected: &[String]) -> Result<ser
     }
     let patches=projections(doc)?;
     let outlines=serde_json::to_value(&patches).map_err(|e|e.to_string())?;
-    apply_projection(doc,patches)?;
+    // The PNG renderer regenerates the ephemeral coverage data at export
+    // time. Keep its scoped source geometry across the worker's JSON boundary.
+    if !refine_inset_stroke || !patches.values().any(|patch| patch.inset_colors.is_some()) {
+        apply_projection(doc,patches)?;
+    }
     // The caller has already resolved layout. Generated material nodes are
     // positioned in the same frame, so layout must not arrange them again.
     for n in doc.nodes.values_mut() {
@@ -640,7 +664,7 @@ mod tests {
         source["nodes"]["blue"]["opacity"]=json!(0.5);
         let mut selected:crate::scene::Document=serde_json::from_value(source.clone()).unwrap();
         selected.validate().unwrap();
-        let outlines=super::export_view(&mut selected,&["blue".into()]).unwrap();
+        let outlines=super::export_view(&mut selected, &["blue".into()], false).unwrap();
         assert!(outlines["blue"]["vectorGeometry"].is_object());
         selected.validate().unwrap();
         let raster=spatial_render(&serde_json::to_value(selected).unwrap());
@@ -648,19 +672,48 @@ mod tests {
         assert_eq!(pixel(&raster,170,100),[66,128,241,128]);
     }
 
-    #[test]
-    fn inner_stroke_projects_with_the_authored_plane() {
-        let mut doc=colored_planes();
-        doc["nodes"]["blue"]["opacity"]=json!(0);
-        doc["nodes"]["shape"]["strokes"]=json!([
+    fn stroked_plane() -> Value {
+        let mut doc = colored_planes();
+        doc["nodes"]["blue"]["opacity"] = json!(0);
+        doc["nodes"]["shape"]["strokes"] = json!([
             {"id":"stroke","width":4,"align":"inside","join":"miter","paint":{"kind":"solid","color":"#000000"}}
         ]);
+        doc
+    }
+
+    #[test]
+    fn inner_stroke_projects_with_the_authored_plane() {
+        let mut doc = stroked_plane();
         let shared=spatial_render(&doc);
         assert_eq!(pixel(&shared,108,99),[0,0,0,255]);
         assert_eq!(pixel(&shared,150,99),[231,82,82,255]);
         doc["nodes"]["parent"]["spatial"]["preserve3d"]=json!(false);
         assert_eq!(spatial_render(&doc),shared);
         assert_eq!(doc["nodes"]["shape"]["strokes"][0]["width"],json!(4));
+    }
+
+    #[test]
+    fn projected_inset_stroke_improves_native_edge_samples_without_changing_alpha() {
+        let source = stroked_plane();
+        let render_selection = |refine| {
+            let mut doc: crate::scene::Document = serde_json::from_value(source.clone()).unwrap();
+            super::export_view(&mut doc, &["parent".into()], refine).unwrap();
+            let view = serde_json::to_value(doc).unwrap();
+            assert_eq!(view["nodes"]["shape"]["spatial"].is_object(), refine);
+            spatial_render(&view)
+        };
+        let binary = render_selection(false);
+        let refined = render_selection(true);
+        for (x, y, native) in [(148, 73, [21, 8, 8, 255]), (151, 125, [211, 75, 75, 255])] {
+            let error = |image: &[u8]| {
+                pixel(image, x, y).into_iter().zip(native).map(|(a, b)| a.abs_diff(b)).max().unwrap()
+            };
+            assert!(error(&binary) >= 20);
+            assert!(error(&refined) <= 8, "edge at {x},{y}: {:?}", pixel(&refined, x, y));
+        }
+        assert!(refined.iter().skip(3).step_by(4).eq(binary.iter().skip(3).step_by(4)));
+        assert_eq!(pixel(&refined, 108, 99), [0, 0, 0, 255]);
+        assert_eq!(pixel(&refined, 150, 99), [231, 82, 82, 255]);
     }
 
     #[test]

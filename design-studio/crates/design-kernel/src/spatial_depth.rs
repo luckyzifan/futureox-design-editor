@@ -450,6 +450,9 @@ pub(crate) fn project_scene(
         patch.composed = true;
         patch.appearances =
             spatial_material::appearances(&planes, Transform::default(), &mut remaining)?;
+        if let [face] = collector.faces.as_slice() {
+            patch.inset_colors = spatial_material::inset_colors(face.node, &patch.appearances);
+        }
         collector.patches.insert(frame.id.clone(), patch);
     }
     // For opaque rendering and for picking, cut a later face only where

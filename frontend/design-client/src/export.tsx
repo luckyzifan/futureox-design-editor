@@ -505,7 +505,9 @@ export async function exportRasterBatch(
   if (signal?.aborted) throw new Error('已取消导出')
   const authored = kernelLayout(doc)
   const selection = target.kind === 'selection' ? target.nodeIds : []
-  const materialView = requiresSpatialRaster(authored, selection) ? kernelSpatialRasterDocument(authored, selection) : undefined
+  const materialView = requiresSpatialRaster(authored, selection)
+    ? kernelSpatialRasterDocument(authored, selection, format === 'png' && target.kind === 'selection')
+    : undefined
   const projected = materialView?.geometry ?? kernelSpatialDocument(authored)
   const spatialProfile = format === 'png' ? spatialPngProfile(authored, projected, target) : undefined
   ;({doc,target} = repeatExport(projected,target))

@@ -411,6 +411,22 @@ test.each([
   }
   const menu = document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!
   await act(async () => menu.click())
+  const manualSave = button('保存设计文件')
+  if (layout === 'sketch') {
+    expect(manualSave.textContent).toContain('Ctrl+S')
+    exportFd.mockClear()
+    await act(async () => manualSave.click())
+    if (desktop) {
+      expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ saveAs: false }))
+      save.mockClear()
+    } else {
+      expect(exportFd).toHaveBeenCalledExactlyOnceWith(editor!.authoredDocument)
+    }
+    await act(async () => menu.click())
+  } else {
+    expect(manualSave).toBeUndefined()
+    expect(button('导出副本…')).toBeDefined()
+  }
   const inspect = button('预览原生 Sketch（只读）'), edit = button('编辑原生 Sketch（有限支持）')
   expect(inspect.disabled).toBe(!desktop); expect(edit.disabled).toBe(true)
   if (!desktop) { expect(inspect.title).toContain('当前宿主未提供'); return }
@@ -521,6 +537,29 @@ test.each([false, true])('Shift+Mod+N never becomes new-document; Sketch page sh
   await key('n', { code: 'KeyN', metaKey: true }); expect(replace).toHaveBeenCalledOnce()
 })
 
+test('a pending native FD opened at startup enters its editor directly', async () => {
+  const incoming = blank('Queued native design')
+  const shape = node('rectangle', 20, 30, 80, 50)
+  incoming.nodes[shape.id] = shape
+  incoming.pages[0].children = [shape.id]
+  const acceptDocument = vi.fn(async () => ({ status: 'ok' as const }))
+  const openPendingDocument = vi.fn()
+    .mockResolvedValue({ status: 'cancelled' })
+    .mockResolvedValueOnce({
+      status: 'ok', handle: 'opaque:queued', displayName: 'queued.fd', documentJson: JSON.stringify(incoming),
+    })
+  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true }, openPendingDocument, acceptDocument,
+    onCommand: () => () => {}, onCloseRequested: () => () => {}, setDirty: async () => {},
+    readRecovery: async () => ({ status: 'cancelled' }), clearRecovery: async () => ({ status: 'ok' }),
+  } as unknown as DesktopBridge })
+  await act(async () => { root.render(<App />); for (let i = 0; i < 30; i++) await Promise.resolve() })
+  expect(acceptDocument).toHaveBeenCalledExactlyOnceWith({ handle: 'opaque:queued' })
+  expect(editor!.authoredDocument.id).toBe(incoming.id)
+  expect(document.querySelector('.local-home')).toBeNull()
+  expect(canvas()).not.toBeNull()
+})
+
 test('source workset uses normal App panels and never enters FD recovery or browser autosave',async()=>{
  const sourceEditor=new Editor(blank('Loaded board')),layer=node('rectangle',0,0,80,80)
  sourceEditor.change('fixture',doc=>{doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]})
@@ -543,7 +582,10 @@ test('source workset uses normal App panels and never enters FD recovery or brow
  expect(start).not.toHaveBeenCalled();expect(localStore.localOpen).not.toHaveBeenCalled()
  expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled();expect(startupPreview.readStartupPreview).not.toHaveBeenCalled()
  expect(document.querySelector('.header-right .save-status')).not.toBeNull()
- await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!.click())
+ const menu=document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!
+ await act(async()=>menu.click())
+ await act(async()=>button('保存修改').click());expect(save).toHaveBeenCalledOnce()
+ await act(async()=>menu.click())
  await act(async()=>button('导出完整文件…').click());expect(exportFile).toHaveBeenCalledOnce()
  expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled()
 })

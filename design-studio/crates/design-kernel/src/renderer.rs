@@ -3874,6 +3874,11 @@ impl Painter<'_> {
             }
         }
         self.sample = None;
+        if self.profile == crate::fidelity::RasterProfile::Figma
+            && let Some(stroke) = n.projected_inset_stroke.as_deref()
+        {
+            self.refine_projected_inset_stroke(stroke, &mut layers)?;
+        }
         let raw_coverage = (backdrop.is_some() && coverage.is_none()).then_some(fill);
         let mut planes = layers.map(Arc::new);
         if !texture_passthrough && n.effects.iter().any(|e| e.visible) {
@@ -4061,6 +4066,64 @@ impl Painter<'_> {
             effects::BlurFilter::Gaussian(radius / 2.)
         }
     }
+    fn refine_projected_inset_stroke(
+        &mut self,
+        stroke: &crate::spatial_material::InsetStroke,
+        layers: &mut [Surface; 4],
+    ) -> Result<(), String> {
+        let Some(prepared) = self.prepared.get(&stroke.interior) else { return Ok(()) };
+        let limit = crate::raster::clipped_rect(&prepared.fill, layers[0].rect)?;
+        if limit.empty() {
+            return Ok(());
+        }
+        let even_odd = self.doc.nodes[&stroke.interior].fill_even_odd();
+        let to_pixel = |rgb: [u8; 3]| {
+            let [r, g, b] = rgb.map(|v| f32::from(v) / 255.);
+            Pixel::rgba(r, g, b, 1.)
+        };
+        let fill = to_pixel(stroke.fill);
+        let edge = to_pixel(stroke.stroke);
+        let convex = crate::spatial_material::ConvexInset::new(&prepared.fill);
+        let mut contours = convex.is_none().then(|| prepared.fill.as_ref().clone());
+        let mut previous = Point::default();
+        // Measure each jittered stroke edge over a source pixel. The normal
+        // 2x reduction retains all four phases. Only pixels fully covered by
+        // the opaque partition may change, preserving its outside coverage.
+        for (sample, (sx, sy)) in crate::fidelity::SAMPLE_OFFSETS.into_iter().enumerate() {
+            let mask = if let Some(contours) = &mut contours {
+                let shift = Point::new(0.5 - sx, 0.5 - sy);
+                for point in contours.iter_mut().flat_map(|c| &mut c.points) {
+                    *point = *point + (shift - previous);
+                }
+                previous = shift;
+                let allocation = self.budget.reserve(limit.pixels(), size_of::<f32>(), false)?;
+                let mask = self.raster_workspace.area(contours, limit, even_odd)?;
+                Some(AccountedMask { mask, _allocation: allocation })
+            } else {
+                None
+            };
+            let rect = mask.as_ref().map_or(limit, |mask| mask.rect());
+            for y in rect.y..rect.bottom() {
+                crate::render_cancellation::checkpoint()?;
+                for x in rect.x..rect.right() {
+                    let coverage = if let Some(convex) = &convex {
+                        convex.coverage(Point::new(f64::from(x) + sx, f64::from(y) + sy))
+                    } else {
+                        mask.as_ref().expect("inset area mask").at(x, y)
+                    };
+                    if coverage <= 0. || coverage >= 1. {
+                        continue;
+                    }
+                    let i = layers[0].rect.index(x, y).expect("inset coverage in layer");
+                    if layers.iter().all(|layer| layer.pixels[i].0[3] == 1.) {
+                        layers[sample].pixels[i] = edge.interpolate(fill, coverage, true);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn rasterize_bundle(&mut self, contours: &[Contour], limit: Rect, even_odd: bool) -> Result<AccountedSamples, String> {
         let allocation = self.budget.reserve(limit.pixels(), 1, false)?;
         let masks = self.raster_workspace.samples(contours, limit, even_odd)?;
