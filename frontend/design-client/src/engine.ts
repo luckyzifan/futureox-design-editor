@@ -26,6 +26,7 @@ import { sameLiveRotation, type LiveRotation } from './rotation-field'
 import { sameLiveBlur, type LiveBlur } from './live-blur'
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
+import { zoomAt } from './canvas-camera'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasSchema12FrameProperties,hasImageAdjusts,hasPatternTiles } from './model'
 import { canDeletePage, userPages } from './fig-document'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
@@ -325,7 +326,7 @@ export class Editor {
   private releaseCameraLifecycle: (() => void) | undefined
   restoredCamera = false
   private saveCamera = () => {
-    this.cameraState.remember(this.state.doc.id, this.state.page, this.effectiveView())
+    this.cameraState.remember(this.state.doc.id, this.state.page, this.temporaryZoom?.view ?? this.effectiveView())
     this.cameraState.flush()
   }
   private sessionEpoch = 0
@@ -557,7 +558,8 @@ export class Editor {
     const navigationChanged = (patch.page !== undefined && patch.page !== this.state.page) ||
       (patch.doc !== undefined && patch.doc.id !== this.state.doc.id)
     if (navigationChanged) {
-      this.cameraState.remember(this.state.doc.id, this.state.page, this.effectiveView())
+      this.cameraState.remember(this.state.doc.id, this.state.page, this.temporaryZoom?.view ?? this.effectiveView())
+      this.temporaryZoom = null
       this.discardPendingView()
       if (patch.view === undefined) {
         const doc = patch.doc || this.state.doc
@@ -566,9 +568,11 @@ export class Editor {
         patch = { ...patch, view: saved?.view || { x: 40, y: 40, zoom: 1 } }
       }
     }
+    if (this.temporaryZoom && this.temporaryZoom.session !== this.sessionGeneration) this.temporaryZoom = null
     if (patch.view !== undefined) {
       this.discardPendingView()
-      patch={...patch,view:savedCamera(patch.view)||this.state.view}
+      const view = savedCamera(patch.view)
+      patch = { ...patch, view: view && (!this.temporaryZoom || view.zoom === 1) ? view : this.state.view }
     }
     const next = { ...this.state, ...patch }
     if (next.frameCrop && (navigationChanged || next.tool !== 'select' ||
@@ -589,7 +593,7 @@ export class Editor {
       forgetPreparedDocumentEncoding(this.state.doc)
     this.state = next
     if (patch.view !== undefined || navigationChanged)
-      this.cameraState.remember(next.doc.id, next.page, next.view)
+      this.cameraState.remember(next.doc.id, next.page, this.temporaryZoom?.view ?? next.view)
     if (patch.view !== undefined) this.publishCamera()
     // Notification callbacks do not inherit the internal preview capability.
     const propertyWrite = this.propertyPreviewWrite
@@ -620,6 +624,22 @@ export class Editor {
   // instead of one component.
   private pendingView: EditorState['view'] | null = null
   private pendingFrame: number | null = null
+  private temporaryZoom: { view: View; session: number } | null = null
+  beginTemporaryZoom(anchor: Point) {
+    if (this.disposed || this.temporaryZoom) return false
+    const { doc, page } = this.state, session = this.sessionGeneration
+    const view = this.flushPendingView()
+    if (this.disposed || this.sessionGeneration !== session || this.state.doc.id !== doc.id || this.state.page !== page) return false
+    const owner = { view, session }
+    this.temporaryZoom = owner
+    if (view.zoom !== 1) this.set({ view: zoomAt(view, 1, anchor) })
+    return this.temporaryZoom === owner
+  }
+  endTemporaryZoom() {
+    const owner = this.temporaryZoom
+    this.temporaryZoom = null
+    if (owner && !this.disposed && owner.session === this.sessionGeneration) this.set({ view: owner.view })
+  }
   /** Effective camera: the pending write when one is parked, else committed. */
   effectiveView(): EditorState['view'] {
     return this.pendingView || this.state.view
@@ -628,7 +648,9 @@ export class Editor {
    * one latest camera per animation frame until the burst becomes idle. */
   setViewCoalesced(next: EditorState['view'], leading = false) {
     if (this.disposed) return
-    this.pendingView = savedCamera(next)||this.effectiveView()
+    const view = savedCamera(next) || this.effectiveView()
+    if (this.temporaryZoom && view.zoom !== 1) return
+    this.pendingView = view
     this.publishCamera()
     if (this.pendingFrame !== null) return
     const commit=(view:EditorState['view'])=>{
@@ -1340,7 +1362,7 @@ export class Editor {
     if (this.disposed) return false
     if (!this.settleOwnedPropertyPreview('navigation') || !commitPendingEdits(this)) return false
     const previous=this.state
-    const previousView = this.effectiveView()
+    const previousView = this.temporaryZoom?.view ?? this.effectiveView()
     const prepared = ensurePreparedDocument(value), encoding = preparedDocumentEncoding(prepared)
     const doc = takePreparedDocument(prepared)!
     this.cameraState.remember(previous.doc.id, previous.page, previousView)

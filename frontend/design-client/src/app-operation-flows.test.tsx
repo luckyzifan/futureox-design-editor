@@ -17,8 +17,9 @@ import { fontTestBytes } from './font-test-fixtures'
 import { export_sketch_json, forma_decode_json, forma_encode_json, import_sketch_json } from './generated/design-kernel/design_kernel'
 import { worldMatrix } from './geometry'
 import { selectionParentBounds } from './canvas-view'
+import { screenToWorld, zoomAt } from './canvas-camera'
 import { kernelFillWorld } from './kernel/picking'
-import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke } from './model'
+import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke, uid } from './model'
 import { nudgePreference } from './nudge-preference'
 import * as persistence from './persistence'
 import { shortcutPreference } from './shortcut-preference'
@@ -269,6 +270,63 @@ test('Sketch Control-T inserts a linked text style with the archived size and pa
   await act(async () => editor!.undo())
   expect(editor!.authoredDocument).toEqual(before)
   expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch held zoom uses the pointer or center and restores each page’s original camera', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Temporary zoom')
+  const page = doc.pages[0].id
+  const otherPage = uid()
+  doc.pages.push({ id: otherPage, name: 'Second', background: '#ffffff', children: [] })
+  const view = { x: -45, y: 84, zoom: 3.5 }
+  const point = { x: 240, y: 198 }
+  await act(async () => { editor!.load(doc) })
+  await act(async () => {
+    editor!.setViewCoalesced(view)
+    editor!.pointerScreen = point
+    canvas().focus()
+  })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  expect(editor!.effectiveView()).toEqual(view)
+  const down = () => key('~', { code: 'Backquote', shiftKey: true })
+  const up = () => key('`', { code: 'Backquote' }, 'keyup')
+  await down()
+  expect(editor!.state.view).toEqual(zoomAt(view, 1, point))
+  const previewPoint = screenToWorld(editor!.state.view, point)
+  const originalPoint = screenToWorld(view, point)
+  expect(previewPoint.x).toBeCloseTo(originalPoint.x, 10)
+  expect(previewPoint.y).toBeCloseTo(originalPoint.y, 10)
+  await key('~', { code: 'Backquote', shiftKey: true, repeat: true })
+  expect(editor!.state.view).toEqual(zoomAt(view, 1, point))
+  await up()
+  expect(editor!.state.view).toEqual(view)
+
+  editor!.pointerScreen = null
+  await key('§', { code: 'IntlBackslash' })
+  expect(editor!.state.view).toEqual(zoomAt(view, 1, { x: 500, y: 400 }))
+  await act(async () => window.dispatchEvent(new Event('blur')))
+  expect(editor!.state.view).toEqual(view)
+
+  await down()
+  await act(async () => editor!.switchPage(otherPage))
+  const second = editor!.state.view
+  await up()
+  expect(editor!.state.view).toEqual(second)
+  await act(async () => editor!.switchPage(page))
+  expect(editor!.state.view).toEqual(view)
+
+  const input = document.createElement('input')
+  document.body.append(input)
+  try {
+    await act(async () => {
+      input.focus()
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: '~', code: 'Backquote', shiftKey: true, bubbles: true }))
+    })
+    expect(editor!.state.view).toEqual(view)
+  } finally { input.remove() }
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
 })
 
 test('Sketch Shift-Command-P rounds coordinates and dimensions independently while preserving rotation', async () => {
