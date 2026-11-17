@@ -313,6 +313,47 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch align hover uses the reference layer and leaves history untouched until clicked', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Align preview')
+  const first = node('rectangle', 50, 60, 40, 30)
+  const middle = node('rectangle', 110, 120, 45, 35)
+  const last = node('rectangle', 260, 250, 60, 40)
+  for (const n of [first, middle, last]) doc.nodes[n.id] = n
+  const ids = [first.id, middle.id, last.id]
+  doc.pages[0].children = ids
+  await act(async () => { editor!.load(doc); editor!.select(ids); editor!.set({ alignmentReference: middle.id }); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const align = () => document.querySelector<HTMLButtonElement>('.sketch-inspector-alignment [aria-label="左对齐"]')!
+  const preview = () => [...canvas().querySelectorAll('[data-testid="arrangement-preview"] rect')]
+  const hover = () => act(async () => align().dispatchEvent(new MouseEvent('pointerover', { bubbles: true })))
+  await hover()
+  expect(preview().map(rect => Number(rect.getAttribute('x')))).toEqual([110, 110])
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+  await act(async () => align().dispatchEvent(new MouseEvent('pointerout', { bubbles: true })))
+  expect(preview()).toHaveLength(0)
+  await hover()
+  await key('Escape', { code: 'Escape' })
+  expect(preview()).toHaveLength(0)
+  expect(editor!.state.selection).toEqual(ids)
+
+  await act(async () => editor!.set({ busy: true }))
+  await hover()
+  expect(preview()).toHaveLength(0)
+  await act(async () => editor!.set({ busy: false }))
+  await hover()
+  expect(preview()).toHaveLength(2)
+  await act(async () => align().click())
+  expect(ids.map(id => editor!.state.doc.nodes[id].transform[4])).toEqual([110, 110, 110])
+  expect(preview()).toHaveLength(0)
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch Tidy previews its destination, then commits the same arrangement in one step', async () => {
   applyInterfaceLayout('sketch')
   await render()

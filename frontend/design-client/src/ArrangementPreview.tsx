@@ -7,9 +7,10 @@ export function ArrangementPreview({ editor, entries, zoom, enabled }: {
   editor: Editor; entries: readonly SceneEntry[]; zoom: number; enabled: boolean
 }) {
   const preview = useSyncExternalStore(editor.subscribeLiveArrangement, () => editor.liveArrangement)
-  const { doc, page, selection, busy } = editor.state
+  const { doc, page, selection, busy, alignmentReference } = editor.state
   const current = preview && enabled && !busy && !editor.interactionActive && preview.document === doc &&
-    preview.page === page && preview.session === editor.sessionGeneration && preview.selection === selection
+    preview.page === page && preview.session === editor.sessionGeneration && preview.selection === selection &&
+    preview.reference === alignmentReference
   useLayoutEffect(() => {
     if (preview && !current && editor.liveArrangement === preview) editor.setLiveArrangement(null)
   }, [current, editor, preview])

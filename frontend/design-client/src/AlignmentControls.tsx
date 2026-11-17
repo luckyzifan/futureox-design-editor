@@ -1,7 +1,7 @@
 import { usePropertyText } from './property-interface-messages'
 import { AlignLeft, AlignCenterHorizontal, AlignRight, AlignStartVertical, AlignCenterVertical, AlignEndVertical, FlipHorizontal2, FlipVertical2, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, MoreHorizontal, Grid2X2 } from 'lucide-react'
 import type { Editor } from './engine'
-import { alignmentAvailability, alignSelection, canTidySelection, previewTidy, tidySelection } from './alignment-availability'
+import { alignmentAvailability, alignSelection, canTidySelection, previewAlignment, previewTidy, tidySelection } from './alignment-availability'
 import { useInterfacePreferences } from './interface-preference'
 import { dispatchEditorCommand } from './editor-commands'
 
@@ -19,6 +19,8 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
   const { tr } = usePropertyText()
   const { uiMode, locale } = useInterfacePreferences()
   const availability = alignmentAvailability(editor)
+  const sketch = uiMode === 'sketch'
+  const clearPreview = sketch ? () => editor.setLiveArrangement(null) : undefined
   const tidyLabel = locale === 'en' ? 'Tidy' : '整理'
   const positions = [
     ['x', 'start', '左对齐', AlignLeft], ['x', 'center', '水平居中', AlignCenterHorizontal], ['x', 'end', '右对齐', AlignRight],
@@ -28,6 +30,8 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
   const buttons = (controls: readonly typeof positions[number][]) => controls.map(([axis, mode, title, Icon]) => <button
     type="button" key={`${axis}:${mode}`} title={tr(title)} aria-label={tr(title)}
     disabled={!availability[mode === 'distribute' ? 'distribute' : 'align']}
+    onPointerEnter={sketch ? () => previewAlignment(editor, axis, mode) : undefined}
+    onPointerLeave={clearPreview} onBlur={clearPreview}
     onClick={event => {
       alignSelection(editor, axis, mode)
       event.currentTarget.closest('details')?.removeAttribute('open')
@@ -36,14 +40,15 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
     {buttons(compact ? positions.slice(0, 6) : positions)}
     {compact ? <details className="alignment-more" onKeyDown={event => {
       if (event.key !== 'Escape' || !event.currentTarget.open) return
+      clearPreview?.()
       event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus()
     }}>
       <summary aria-label={tr("更多对齐选项")} title={tr("更多对齐选项")}><MoreHorizontal size={16}/></summary>
       <div>{buttons(positions.slice(6))}</div>
     </details> : <FlipControls editor={editor}/>}
-    {compact && uiMode === 'sketch' && <button type="button" title={tidyLabel} aria-label={tidyLabel}
+    {compact && sketch && <button type="button" title={tidyLabel} aria-label={tidyLabel}
       disabled={!canTidySelection(editor, availability.distribute)} onPointerEnter={() => previewTidy(editor)}
-      onPointerLeave={() => editor.setLiveArrangement(null)} onBlur={() => editor.setLiveArrangement(null)}
+      onPointerLeave={clearPreview} onBlur={clearPreview}
       onClick={() => tidySelection(editor)}><Grid2X2 size={16} /></button>}
   </div>
 }

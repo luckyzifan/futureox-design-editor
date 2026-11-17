@@ -1,5 +1,5 @@
 import type { Editor } from './engine'
-import { selectionCommandAdmission } from './commands/selection-command'
+import { SelectionCommandError, selectionCommandAdmission } from './commands/selection-command'
 import { commitPendingEdits } from './pending-edits'
 import { arrangePatches } from './align-engine'
 import { interactivePath } from './selection-hierarchy'
@@ -28,6 +28,7 @@ export function alignmentAvailability(editor: Editor) {
   }
 }
 export function alignSelection(editor: Editor, axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
+  editor.setLiveArrangement(null)
   if (!commitPendingEdits(editor)) return
   if (!alignmentAvailability(editor)[mode === 'distribute' ? 'distribute' : 'align']) return
   editor.align(axis, mode)
@@ -46,9 +47,28 @@ function tidyPatches(editor: Editor) {
 }
 
 export function previewTidy(editor: Editor) {
-  const patches = tidyPatches(editor)
-  const { doc, page, selection } = editor.state
-  editor.setLiveArrangement(patches ? { document: doc, page, selection, session: editor.sessionGeneration, patches } : null)
+  showArrangementPreview(editor, tidyPatches(editor))
+}
+
+function showArrangementPreview(editor: Editor, patches: NonNullable<Editor['liveArrangement']>['patches'] | null) {
+  const { doc, page, selection, alignmentReference } = editor.state
+  editor.setLiveArrangement(patches && Object.keys(patches).length ? {
+    document: doc, page, selection, reference: alignmentReference, session: editor.sessionGeneration, patches,
+  } : null)
+}
+
+export function previewAlignment(editor: Editor, axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
+  if (!alignmentAvailability(editor)[mode === 'distribute' ? 'distribute' : 'align']) {
+    editor.setLiveArrangement(null)
+    return
+  }
+  try {
+    const plan = editor.selectionAlignmentPlan(axis, mode)
+    showArrangementPreview(editor, Object.fromEntries(plan.patches.map(({ id, transform }) => [id, { transform }])))
+  } catch (error) {
+    if (!(error instanceof SelectionCommandError)) throw error
+    editor.setLiveArrangement(null)
+  }
 }
 
 export function tidySelection(editor: Editor) {
