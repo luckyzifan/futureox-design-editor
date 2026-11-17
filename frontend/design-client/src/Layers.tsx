@@ -50,7 +50,7 @@ import { kernelSvgPaths } from './kernel/picking'
 import { commitPendingEdits, hasPendingEdits } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { layerSelection } from './layer-selection'
-import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosition } from './layer-drop'
+import { layerDropPlan, layerDropPosition, orderedLayerRoots, pageMoveRoots, type LayerDropPosition } from './layer-drop'
 import type { WorkspaceSection } from './EditorChrome'
 import { interfacePreference, type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
 import { LayerFindPanel } from './LayerFindPanel'
@@ -104,18 +104,21 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   const setLayerExpanded = (id: string, expanded: boolean) => setDisclosure(old => ({
     ...old, [uiMode]: new Map(old[uiMode]).set(id, expanded),
   }))
-  const list = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLDivElement>(null), panel = useRef<HTMLElement>(null)
   const renaming = s.renamingLayer, setRenaming = (id: string | null) => editor.set({ renamingLayer: id })
   const [context, setContext] = useState<{ x: number; y: number; id: string } | null>(null)
   const [focused, setFocused] = useState<string | null>(null)
   const [drop, setDrop] = useState<{ id: string | null; position: LayerDropPosition } | null>(null)
+  const [layerDropPage, setLayerDropPage] = useState<string>()
   const reveal = useRef<string | null>(null)
   const selectionAnchor = useRef<string | null>(null)
-  const dragged = useRef<{ session: number; page: string; document: string; ids: string[] } | null>(null)
-  const pointerDrag = useRef<{ pointer: number; target: HTMLElement; x: number; y: number; id: string; moved: boolean; plan?: {parent:string;before?:string} } | null>(null)
+  const dragged = useRef<{ session: number; page: string; document: string; ids: string[]; pageSelection?: string[]; revision?: number } | null>(null)
+  const pointerDrag = useRef<{ pointer: number; target: HTMLElement; x: number; y: number; id: string; moved: boolean;
+    plan?: {parent:string;before?:string}; targetPage?: string } | null>(null)
   const suppressClick = useRef(false), clickReset = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const cancelPointerDrag = () => {
     const active = pointerDrag.current; pointerDrag.current = null; dragged.current = null; setDrop(null)
+    setLayerDropPage(undefined)
     if (active?.target.hasPointerCapture(active.pointer)) active.target.releasePointerCapture(active.pointer)
   }
   useEffect(() => () => { if (clickReset.current) clearTimeout(clickReset.current) }, [])
@@ -132,15 +135,29 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     if (payload.session !== editor.sessionGeneration || payload.page !== editor.state.page || payload.document !== editor.state.doc.id) { cancelPointerDrag(); return }
     if (!active.moved && Math.hypot(event.clientX - active.x, event.clientY - active.y) < 4) return
     event.preventDefault()
-    if (!active.moved) editor.select(payload.ids)
+    if (!active.moved) editor.select(payload.pageSelection ?? payload.ids)
     active.moved = true
+    const underPointer = document.elementFromPoint?.(event.clientX, event.clientY)
+    const pageRow = uiMode === 'sketch' ? underPointer?.closest<HTMLElement>('[data-layer-drop-page]') : undefined
+    active.targetPage = undefined
+    if (pageRow && panel.current?.contains(pageRow)) {
+      const target = pageRow.dataset.layerDropPage
+      active.plan = undefined
+      if (target && target !== payload.page && payload.pageSelection && payload.revision === editor.state.version &&
+          !editor.interactionActive && !editor.state.busy &&
+          pageMoveRoots(editor.state.doc, payload.page, payload.pageSelection, editor.parentMap()))
+        active.targetPage = target
+      setDrop(null); setLayerDropPage(active.targetPage)
+      return
+    }
+    setLayerDropPage(undefined)
     const host = list.current!, bounds = host.getBoundingClientRect()
     if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) {
       active.plan = undefined; setDrop(null); return
     }
     if (event.clientY < bounds.top + 20) host.scrollTop -= 12
     else if (event.clientY > bounds.bottom - 20) host.scrollTop += 12
-    const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-layer-id]')
+    const row = underPointer?.closest<HTMLElement>('[data-layer-id]')
     const target = row && host.contains(row) ? row.dataset.layerId! : null
     const rect = row?.getBoundingClientRect(), node = target ? editor.state.doc.nodes[target] : undefined
     const position = node && rect ? layerDropPosition(container(node), (event.clientY - rect.top) / rect.height) : 'below'
@@ -151,12 +168,14 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     const active = pointerDrag.current, payload = dragged.current
     if (!active || !payload || event.pointerId !== active.pointer) return
     moveLayerPointer(event)
+    if (pointerDrag.current !== active) return
     const plan = active.plan
     if (active.moved) {
       suppressClick.current = true
       if (clickReset.current) clearTimeout(clickReset.current)
       clickReset.current = setTimeout(() => { suppressClick.current = false }, 0)
-      if (plan && payload.session === editor.sessionGeneration && payload.page === editor.state.page && commitPendingEdits(editor))
+      if (active.targetPage && payload.pageSelection) editor.moveLayersToPage(active.targetPage, payload.pageSelection)
+      else if (plan && payload.session === editor.sessionGeneration && payload.page === editor.state.page && commitPendingEdits(editor))
         editor.reparentMany(payload.ids, plan.parent, plan.before)
     }
     cancelPointerDrag()
@@ -376,10 +395,10 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   </label>
   const relatedLabel = locale === 'en' ? 'Show only selected and related layers' : '仅显示所选内容及相关图层'
   return (
-    <aside className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
+    <aside ref={panel} className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
       {documents}
       {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{documentTitle || s.doc.name}</div>}
-      {showPages && <PageList editor={editor} onRename={renameIntendedPage} />}
+      {showPages && <PageList editor={editor} onRename={renameIntendedPage} layerDropPage={layerDropPage} />}
       <div className="layer-heading">
         <div role="tablist" aria-label={text.sidebarContent} className="layer-tabs">
           {(['layers', 'assets'] as const).map((name, index) => <button key={name} type="button"
@@ -499,8 +518,11 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                 draggable={false}
                 onPointerDown={event => {
                   if (event.button !== 0 || (event.target as Element).closest('button,input,textarea,select') || renaming || !commitPendingEdits(editor) || editor.interactionActive) return
-                  const ids = editor.state.selection.includes(id) ? editor.topSelection() : [id]
-                  dragged.current = { session: editor.sessionGeneration, page: editor.state.page, document: editor.state.doc.id, ids: orderedLayerRoots(editor.state.doc, editor.state.page, ids) }
+                  const selected = editor.state.selection.includes(id)
+                  const ids = selected ? editor.topSelection() : [id]
+                  dragged.current = { session: editor.sessionGeneration, page: editor.state.page, document: editor.state.doc.id,
+                    ids: orderedLayerRoots(editor.state.doc, editor.state.page, ids), revision: editor.state.version,
+                    pageSelection: uiMode === 'sketch' ? selected ? [...editor.state.selection] : [id] : undefined }
                   pointerDrag.current = { pointer: event.pointerId, target: event.currentTarget, x: event.clientX, y: event.clientY, id, moved: false }
                   event.currentTarget.setPointerCapture(event.pointerId)
                 }}

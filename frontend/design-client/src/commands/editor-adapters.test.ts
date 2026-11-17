@@ -170,6 +170,21 @@ function actualInstanceFixture() {
   try { return { doc: structuredClone(normalized.state.doc), id, child: normalized.state.doc.nodes[id].children[0], outside: f.outside.id } }
   finally { normalized.dispose() }
 }
+test('moving layers to another page rejects a mixed selection containing an instance child', () => {
+  const f = actualInstanceFixture(), destination = blank().pages[0]
+  f.doc.pages.push(destination)
+  const editor = new Editor(f.doc)
+  try {
+    editor.select([f.child, f.outside])
+    const before = editor.authoredDocument
+    expect(editor.moveLayersToPage(destination.id)).toBe(false)
+    expect(editor.authoredDocument).toBe(before)
+    expect(editor.state.selection).toEqual([f.child, f.outside])
+    expect(editor.canUndo).toBe(false)
+  } finally {
+    editor.dispose()
+  }
+})
 test('real materialized instance roots and internal children cannot be structurally wrapped or unwrapped', () => {
   const f = actualInstanceFixture()
   expect(f.doc.nodes[f.child].instanceOrigin?.owner).toBe(f.id)

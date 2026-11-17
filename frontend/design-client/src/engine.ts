@@ -25,6 +25,7 @@ import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPr
 import { sameLiveRotation, type LiveRotation } from './rotation-field'
 import { sameLiveBlur, type LiveBlur } from './live-blur'
 import { selectedTopLevelFrameId } from './canvas-navigation'
+import { pageMoveRoots } from './layer-drop'
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
 import { zoomAt } from './canvas-camera'
@@ -2151,6 +2152,22 @@ export class Editor {
     } finally { action.finish() }
   }
   reparent(id: string, parent: string, before?: string) { this.reparentMany([id], parent, before) }
+  moveLayersToPage(page: string, selected: readonly string[] = this.state.selection) {
+    const { doc, page: source } = this.state, session = this.sessionGeneration
+    if (source === page || this.interactionActive || this.state.busy || !commitPendingEdits(this) ||
+        this.sessionGeneration !== session || this.state.page !== source || this.state.doc.id !== doc.id ||
+        this.interactionActive || this.state.busy || !userPages(this.state.doc).some(p => p.id === page)) return false
+    const roots = pageMoveRoots(this.state.doc, source, selected, this.parentMap(), true)
+    if (!roots) return false
+    const result = this.reparentMany(roots, page)
+    const receipt = this.committedEditReceipt(result)
+    if (!receipt || this.sessionGeneration !== receipt.session || this.state.doc !== receipt.document ||
+        this.state.version !== receipt.revision || this.state.page !== source ||
+        this.state.selection.length !== roots.length || this.state.selection.some((id, index) => id !== roots[index])) return false
+    this.repeatedDuplicate = null
+    this.set({ page, selection: roots, editingVertex: null, editingVertices: [] })
+    return this.state.page === page
+  }
   reparentMany(ids: string[], parent: string, before?: string) {
     const action = beginEditorAction(this, CanvasAction.layer, ActionSource.unknown, 222)
     try {
@@ -2169,7 +2186,7 @@ export class Editor {
       ancestor = parents.get(ancestor)
     }
     const transforms = new Map(roots.map(id => [id, worldMatrix(d, id)])), pm = inverse(worldMatrix(d, parent))
-    this.change('移动图层层级', next => {
+    return this.change('移动图层层级', next => {
       for (const id of roots) {
         const old = parents.get(id)!
         const list = next.nodes[old]?.children || next.pages.find(p => p.id === old)!.children

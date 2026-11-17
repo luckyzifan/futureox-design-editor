@@ -238,7 +238,9 @@ test.each(['marquee', 'zoom', 'crop'] as const)('%s overlay batches latest input
   await act(async () => pointer('pointerdown', start[0], start[1]))
   for (let i = 1; i <= 20; i++) await act(async () => pointer('pointermove', start[0] + i, start[1] + i))
   const overlay = () => kind === 'crop' ? mount.querySelector('[data-testid="crop-overlay"] rect') :
-    mount.querySelector('svg.stage rect[stroke="#4597f7"][pointer-events="none"]')
+    mount.querySelector(kind === 'marquee'
+      ? 'svg.stage [data-testid="canvas-marquee"], svg.stage rect[stroke="#4597f7"][pointer-events="none"]'
+      : 'svg.stage rect[stroke="#4597f7"][pointer-events="none"]')
   if (kind === 'crop' && !baseline) expect(overlay()).toBeNull()
   if (kind !== 'crop') expect(Number(overlay()!.getAttribute('width'))).toBe(baseline ? 20 : 0)
   await flushFrames()
@@ -397,22 +399,29 @@ test('actual page delete button checks gesture/busy state before and after confi
     root.render(<><Canvas editor={editor} /><Layers editor={editor} section="layers" onSection={() => {}} /></>)
   })
   const confirm = vi.fn(() => true); vi.stubGlobal('confirm', confirm)
-  const remove = () => click(mount.querySelector('[title="删除当前页面"]')!)
+  const pages = mount.querySelector('.pages-current')!
+  if (pages.getAttribute('aria-expanded') === 'false') await act(async () => click(pages))
+  const remove = async () => {
+    await act(async () => click(mount.querySelector('.page-options')!))
+    const action = [...document.querySelectorAll('[role="menuitem"]')].find(item => item.textContent === '删除页面')
+    expect(action).toBeDefined()
+    await act(async () => click(action!))
+  }
   const start = () => pointer('pointerdown', 100, 100, {}, mount.querySelector('[data-testid="vector-anchor"]')!)
   await act(async () => start())
-  await act(async () => remove()); expect(confirm).not.toHaveBeenCalled(); expect(editor.state.doc).toBe(before)
+  await remove(); expect(confirm).not.toHaveBeenCalled(); expect(editor.state.doc).toBe(before)
   await act(async () => pointer('pointercancel', 100, 100))
   await act(async () => editor.set({ busy: true }))
-  await act(async () => remove()); expect(confirm).not.toHaveBeenCalled(); expect(editor.state.doc).toBe(before)
+  await remove(); expect(confirm).not.toHaveBeenCalled(); expect(editor.state.doc).toBe(before)
   await act(async () => editor.set({ busy: false }))
   confirm.mockImplementationOnce(() => { start(); return true })
-  await act(async () => remove()); expect(confirm).toHaveBeenCalledTimes(1)
+  await remove(); expect(confirm).toHaveBeenCalledTimes(1)
   expect(editor.interactionActive).toBe(true); expect(editor.state.doc).toBe(before)
   await act(async () => pointer('pointercancel', 100, 100))
   confirm.mockImplementationOnce(() => { editor.set({ busy: true }); return true })
-  await act(async () => remove()); expect(editor.state.doc).toBe(before)
+  await remove(); expect(editor.state.doc).toBe(before)
   await act(async () => editor.set({ busy: false }))
-  await act(async () => remove()); expect(editor.state.doc.pages).toHaveLength(before.pages.length - 1)
+  await remove(); expect(editor.state.doc.pages).toHaveLength(before.pages.length - 1)
   await act(async () => editor.undo()); expect(editor.state.doc).toEqual(before)
 })
 

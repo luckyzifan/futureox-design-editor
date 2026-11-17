@@ -10,7 +10,7 @@ import { requestAgentTarget } from './design-ai/target-event'
 import { clampAnchoredMenu } from './anchored-menu'
 import './design-ai/design-agent.css'
 
-export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: string) => void }) {
+export function PageList({ editor, onRename, layerDropPage }: { editor: Editor; onRename: (id: string) => void; layerDropPage?: string }) {
   const text = useInterfaceText()
   const { locale, uiMode } = useInterfacePreferences()
   const listId = useId()
@@ -86,7 +86,8 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
       }} /></label>}
     <nav ref={list} className="pages" aria-label={text.pageList}>
       {pages.map(page => {
-        return <div className="page-row" key={page.id} draggable
+        return <div className="page-row" key={page.id} draggable data-layer-drop-page={page.id}
+          data-layer-drop-target={layerDropPage === page.id || undefined}
           onMouseOver={() => setHoverPage(page.id)} onMouseLeave={() => setHoverPage(current => current === page.id ? null : current)}
           onDragStart={event => {
             if (!canMutatePages() || !commitPendingEdits(editor) || !canMutatePages()) { event.preventDefault(); return }
