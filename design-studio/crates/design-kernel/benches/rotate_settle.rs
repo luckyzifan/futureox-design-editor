@@ -426,8 +426,8 @@ fn run_real_117() {
     let mut turned = loaded.clone();
     turned.nodes.get_mut(&id).unwrap().transform = turn(&loaded.nodes[&id], true);
     let back = DocumentPatch::between(&turned, &loaded).unwrap();
-    let _ = settle_once(&mut engine, &options, &forward, 0);
-    let _ = settle_once(&mut engine, &options, &back, 0);
+    let first_forward = settle_once(&mut engine, &options, &forward, 0);
+    let first_back = settle_once(&mut engine, &options, &back, 0);
     let rounds = std::env::var("ROTATE_SETTLE_ROUNDS")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
@@ -463,8 +463,10 @@ fn run_real_117() {
     let reason = samples.iter().find_map(|s| s.reason.clone());
     let blurs = doc.nodes.values().filter(|node| node.effects.iter().any(|effect| effect.visible && effect.kind == "background-blur")).count();
     println!(
-        "{{\"scenario\":\"real-117-group-23\",\"status\":\"measured\",\"import_ms\":{import_ms:.3},\"nodes\":{},\"font_substitutions\":{substituted},\"background_blurs\":{blurs},\"view_w\":{width},\"view_h\":{height},\"cold_ms\":{cold_ms:.3},\"samples\":{},\"e2e_median_ms\":{:.3},\"apply_median_ms\":{:.3},\"present_median_ms\":{:.3},\"e2e_min_ms\":{:.3},\"e2e_max_ms\":{:.3},\"tiles\":{tiles:?},\"damage_full\":{full},\"damage_reason\":{reason:?},\"bounds_area\":{:.1},\"pixel_mismatch\":{mismatch},\"pixel_max_delta\":{max_delta},\"rss_kib\":{},\"hwm_kib\":{}}}",
+        "{{\"scenario\":\"real-117-group-23\",\"status\":\"measured\",\"import_ms\":{import_ms:.3},\"nodes\":{},\"font_substitutions\":{substituted},\"background_blurs\":{blurs},\"view_w\":{width},\"view_h\":{height},\"cold_ms\":{cold_ms:.3},\"first_forward_ms\":{:.3},\"first_back_ms\":{:.3},\"samples\":{},\"e2e_median_ms\":{:.3},\"apply_median_ms\":{:.3},\"present_median_ms\":{:.3},\"e2e_min_ms\":{:.3},\"e2e_max_ms\":{:.3},\"tiles\":{tiles:?},\"damage_full\":{full},\"damage_reason\":{reason:?},\"bounds_area\":{:.1},\"pixel_mismatch\":{mismatch},\"pixel_max_delta\":{max_delta},\"rss_kib\":{},\"hwm_kib\":{}}}",
         loaded.nodes.len(),
+        first_forward.apply_ms + first_forward.present_ms,
+        first_back.apply_ms + first_back.present_ms,
         samples.len(),
         median(&mut e2e),
         median(&mut apply),

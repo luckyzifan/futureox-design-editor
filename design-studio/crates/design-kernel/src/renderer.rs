@@ -15,7 +15,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 /// Device-pixel camera scale for 2%–25600% navigation, including DPR.
@@ -41,20 +41,51 @@ struct PrefixView {
     profile: crate::fidelity::RasterProfile,
 }
 
+#[derive(Clone)]
 struct PrefixEntry {
     view: PrefixView,
     rect: Rect,
-    pixels: Vec<Pixel>,
+    pixels: Arc<Vec<Pixel>>,
 }
 
 /// Pixels of one isolated parent up to, but not including, a rigid pose.
 /// Later siblings and the parent's own strokes/effects still run every time.
+#[derive(Clone)]
 struct PosePrefix {
     parent: String,
     edited: String,
     index: usize,
     entries: Vec<PrefixEntry>,
     bytes: usize,
+}
+
+/// Device pixels of one parent before a child index, shared with tile workers.
+/// The byte cap is the existing pose-prefix allowance, not an added budget.
+struct SettledCuts {
+    entries: Vec<SettledCut>,
+    bytes: usize,
+}
+
+struct SettledCut {
+    parent: String,
+    index: usize,
+    view: PrefixView,
+    rect: Rect,
+    pixels: Arc<Vec<Pixel>>,
+}
+
+impl Default for SettledCuts {
+    fn default() -> Self {
+        Self { entries: Vec::new(), bytes: 0 }
+    }
+}
+
+/// One late checkpoint in a long child list. A rigid pose after this index can
+/// restore it; anything earlier still paints the list.
+fn settled_cut_index(children: usize) -> Option<usize> {
+    if children < 24 { return None; }
+    let index = children * 4 / 5;
+    (index > 0 && index < children).then_some(index)
 }
 
 const PREFIX_ENTRY_PIXELS: usize = 6_000_000;
@@ -584,9 +615,11 @@ pub struct Engine {
     /// Sketch-parity tiled renderer state (tile residency, instructions,
     /// caches, telemetry). Lazily created so export-only engines pay nothing.
     tiled: Option<crate::tiled_renderer::TiledRenderer>,
-    /// Reused analytic pixels in front of one rigid pose. Workers do not share
-    /// it: parallel tiles repaint the whole surface and stay byte-identical.
+    /// Reused analytic pixels in front of one rigid pose. Workers clone the
+    /// entries. Settled cuts are shared so a later tile can restore pixels
+    /// captured while the previous frame was painted.
     pose_prefix: Option<PosePrefix>,
+    settled_cuts: Arc<Mutex<SettledCuts>>,
 }
 impl Default for Engine {
     fn default() -> Self {
@@ -638,6 +671,7 @@ impl Engine {
             render_index: None,
             tiled: None,
             pose_prefix: None,
+            settled_cuts: Arc::new(Mutex::new(SettledCuts::default())),
         }
     }
     pub fn load_font(&mut self, data: &[u8]) -> Result<(), String> {
@@ -650,6 +684,7 @@ impl Engine {
         self.paths.clear();
         self.geo_revision += 1;
         self.pose_prefix = None;
+        self.clear_settled_cuts();
         self.camera_prepare = None;
         self.camera_residency.clear();
         self.world_support = None;
@@ -669,12 +704,13 @@ impl Engine {
     /// does not bump the content revision because layout and caret geometry
     /// keep the shaped fractional grid — hosts opt in per presentation.
     pub fn set_text_quantization(&mut self, on: bool) {
-        if self.fonts.glyph_origin_quantization() != on { self.pose_prefix = None; }
+        if self.fonts.glyph_origin_quantization() != on { self.pose_prefix = None; self.clear_settled_cuts(); }
         self.fonts.set_glyph_origin_quantization(on);
     }
     #[cfg(not(target_arch="wasm32"))]
     pub(crate) fn set_source_bitmaps(&mut self, access: Option<crate::source_bitmap_pixels::Access>) {
         self.pose_prefix = None;
+        self.clear_settled_cuts();
         self.images.source = access;
     }
     pub fn image_data(&mut self, uri: &str) -> Result<Arc<Surface>, String> {
@@ -688,7 +724,7 @@ impl Engine {
         self.images.image_at_selected_level(uri, level)
     }
     pub fn set_image_mips(&mut self, mips: bool) {
-        if self.image_mips() != mips { self.pose_prefix = None; }
+        if self.image_mips() != mips { self.pose_prefix = None; self.clear_settled_cuts(); }
         self.images.set_mip_enabled(mips);
     }
     pub fn image_mips(&self) -> bool {
@@ -714,7 +750,7 @@ impl Engine {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn release_source_compile_caches(&mut self){
         self.camera_prepare=None;self.world_support=None;self.camera_residency.clear();self.paths.clear();
-        self.local_strokes=Default::default();self.page_support=None;self.pose_prefix=None;
+        self.local_strokes=Default::default();self.page_support=None;self.pose_prefix=None;self.clear_settled_cuts();
     }
     pub(crate) fn authored_document(&self)->Option<&Document>{self.source_doc.as_deref()}
     #[cfg(not(target_arch="wasm32"))]
@@ -876,6 +912,7 @@ impl Engine {
             // This branch can move any retained node, including one in front of
             // the cached pose. Drop the prefix rather than reuse its pixels.
             self.pose_prefix = None;
+            self.clear_settled_cuts();
             for (id, node) in &patch.nodes {
                 let transform = node.as_ref().expect("validated translation").transform;
                 self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = transform;
@@ -894,6 +931,7 @@ impl Engine {
             damage.translation_only = Some(true);
         } else if let Some((bounds_dirty, focus_only)) = retained_paint {
             self.pose_prefix = None;
+            self.clear_settled_cuts();
             for id in patch.nodes.keys() {
                 let node = &next.nodes[id];
                 crate::derived_invalidation::apply_paint(self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap(), node);
@@ -1206,6 +1244,7 @@ impl Engine {
     fn note_pose_prefix(&mut self, patch: &crate::editing::DocumentPatch) {
         let Some((parent, edited, index)) = self.pose_cut(patch) else {
             self.pose_prefix = None;
+            self.clear_settled_cuts();
             return;
         };
         if let Some(existing) = &self.pose_prefix {
@@ -1213,6 +1252,7 @@ impl Engine {
                 return;
             }
         }
+        self.retain_settled_cuts(&parent, index);
         self.pose_prefix = Some(PosePrefix {
             parent,
             edited,
@@ -1307,6 +1347,7 @@ impl Engine {
         let rects: Vec<_> = patch.nodes.iter().flat_map(|(id, next)|
             [rect(&source.nodes[id]), rect(next.as_ref().unwrap())]).collect();
         self.pose_prefix = None;
+        self.clear_settled_cuts();
         self.retained_source_size = None;
         for (id, next) in &patch.nodes {
             let transform = next.as_ref().unwrap().transform;
@@ -1391,7 +1432,19 @@ impl Engine {
         self.world_support = None;
         self.source_compile_context = None;
         self.pose_prefix = None;
+        self.clear_settled_cuts();
         Ok(())
+    }
+    fn clear_settled_cuts(&self) {
+        let mut cuts = self.settled_cuts.lock().unwrap_or_else(|err| err.into_inner());
+        cuts.entries.clear();
+        cuts.bytes = 0;
+    }
+    /// Keep only checkpoints that cannot contain the moved node.
+    fn retain_settled_cuts(&self, parent: &str, edited: usize) {
+        let mut cuts = self.settled_cuts.lock().unwrap_or_else(|err| err.into_inner());
+        cuts.entries.retain(|cut| cut.parent == parent && cut.index <= edited);
+        cuts.bytes = cuts.entries.iter().map(|cut| cut.pixels.len() * std::mem::size_of::<Pixel>()).sum();
     }
     pub fn stats(&self) -> &Stats {
         &self.stats
@@ -2273,6 +2326,7 @@ impl Engine {
             sample: None,
             raster_workspace: RasterWorkspace::default(),
             pose_prefix: self.pose_prefix.as_mut().filter(|_| use_pose_prefix && !self.display_degrade && !synchronized),
+            settled_cuts: Arc::clone(&self.settled_cuts),
             prefix_view,
             prefix_allocations: Vec::new(),
         };
@@ -3026,7 +3080,8 @@ impl Engine {
             page_support: None,
             render_index: self.render_index.clone(),
             tiled: None,
-            pose_prefix: None,
+            pose_prefix: self.pose_prefix.clone(),
+            settled_cuts: Arc::clone(&self.settled_cuts),
         }
     }
 
@@ -3192,6 +3247,7 @@ struct Painter<'a> {
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
     pose_prefix: Option<&'a mut PosePrefix>,
+    settled_cuts: Arc<Mutex<SettledCuts>>,
     prefix_view: PrefixView,
     prefix_allocations: Vec<Allocation>,
 }
@@ -4651,6 +4707,66 @@ impl Painter<'_> {
         layer.pixels.copy_from_slice(&slot.pixels);
         true
     }
+    fn settled_lock(&self) -> std::sync::MutexGuard<'_, SettledCuts> {
+        self.settled_cuts.lock().unwrap_or_else(|err| err.into_inner())
+    }
+    fn publish_settled_cut(&self, parent: &str, index: usize, layer: &Surface) {
+        let pixels = layer.pixels.len();
+        if pixels == 0
+            || pixels > PREFIX_ENTRY_PIXELS
+            || pixels != layer.rect.w as usize * layer.rect.h as usize
+            || self.display_degrade
+        {
+            return;
+        }
+        let add = pixels.saturating_mul(std::mem::size_of::<Pixel>());
+        if add > PREFIX_BYTE_LIMIT { return; }
+        let mut cuts = self.settled_lock();
+        if cuts.entries.iter().any(|cut| {
+            cut.parent == parent && cut.index == index && cut.view == self.prefix_view && cut.rect == layer.rect
+        }) {
+            return;
+        }
+        let prefix_bytes = self.pose_prefix.as_ref().map(|prefix| prefix.bytes).unwrap_or(0);
+        while !cuts.entries.is_empty()
+            && (cuts.entries.len() >= 24
+                || cuts.bytes.saturating_add(prefix_bytes).saturating_add(add) > PREFIX_BYTE_LIMIT)
+        {
+            let removed = cuts.entries.remove(0);
+            cuts.bytes = cuts.bytes.saturating_sub(removed.pixels.len() * std::mem::size_of::<Pixel>());
+        }
+        if cuts.bytes.saturating_add(prefix_bytes).saturating_add(add) > PREFIX_BYTE_LIMIT {
+            return;
+        }
+        let mut copy = Vec::new();
+        if copy.try_reserve_exact(pixels).is_err() { return; }
+        copy.extend_from_slice(&layer.pixels);
+        cuts.bytes += add;
+        cuts.entries.push(SettledCut {
+            parent: parent.to_owned(),
+            index,
+            view: self.prefix_view,
+            rect: layer.rect,
+            pixels: Arc::new(copy),
+        });
+    }
+    /// Highest saved child boundary at or before `edited` for this tile.
+    fn restore_settled_cut(&self, parent: &str, edited: usize, layer: &mut Surface) -> Option<usize> {
+        let view = self.prefix_view;
+        let cuts = self.settled_lock();
+        let best = cuts.entries.iter().filter(|cut| {
+            cut.parent == parent
+                && cut.index <= edited
+                && cut.view == view
+                && cut.rect == layer.rect
+                && cut.pixels.len() == layer.pixels.len()
+        }).max_by_key(|cut| cut.index)?;
+        let pixels = Arc::clone(&best.pixels);
+        let index = best.index;
+        drop(cuts);
+        layer.pixels.copy_from_slice(&pixels);
+        Some(index)
+    }
     fn store_prefix(&mut self, layer: &Surface) {
         let view = self.prefix_view;
         let pixels = layer.pixels.len();
@@ -4663,7 +4779,7 @@ impl Painter<'_> {
         let Some(prefix) = self.pose_prefix.as_mut() else { return };
         if let Some(slot) = prefix.entries.iter_mut().find(|entry| entry.view == view && entry.rect == layer.rect) {
             if slot.pixels.len() == pixels {
-                slot.pixels.copy_from_slice(&layer.pixels);
+                Arc::make_mut(&mut slot.pixels).copy_from_slice(&layer.pixels);
             }
             return;
         }
@@ -4676,7 +4792,7 @@ impl Painter<'_> {
         if copy.try_reserve_exact(pixels).is_err() { return; }
         copy.extend_from_slice(&layer.pixels);
         prefix.bytes += add;
-        prefix.entries.push(PrefixEntry { view, rect: layer.rect, pixels: copy });
+        prefix.entries.push(PrefixEntry { view, rect: layer.rect, pixels: Arc::new(copy) });
         self.prefix_allocations.push(allocation);
     }
     fn paint_cached_list(
@@ -4689,8 +4805,13 @@ impl Painter<'_> {
             return Ok(());
         }
         if let Some(index) = self.prefix_index(parent, children) {
-            if self.restore_prefix(layer) {
-                for child in &children[index..] {
+            let start = if self.restore_prefix(layer) {
+                Some(index)
+            } else {
+                self.restore_settled_cut(parent, index, layer)
+            };
+            if let Some(start) = start {
+                for child in &children[start..] {
                     self.node_with_outline(child, layer, clip, geometric)?;
                 }
                 return Ok(());
@@ -4703,7 +4824,9 @@ impl Painter<'_> {
             }
             return Ok(());
         }
-        for child in children {
+        let mark = settled_cut_index(children.len());
+        for (ordinal, child) in children.iter().enumerate() {
+            if mark == Some(ordinal) { self.publish_settled_cut(parent, ordinal, layer); }
             self.node_with_outline(child, layer, clip, geometric)?;
         }
         Ok(())
@@ -4979,11 +5102,23 @@ impl Painter<'_> {
         } else if bounded {
             let children: Vec<String> = n.render_children().to_vec();
             let (_, outputs) = self.regional_children(&children, basis.intersect(output.unwrap()))?;
-            for (child, region) in children.iter().zip(outputs) {
+            let edited = (!geometric).then(|| self.prefix_index(id, &children)).flatten();
+            let start = match edited {
+                Some(index) if self.restore_prefix(&mut layer) => index,
+                Some(index) => self.restore_settled_cut(id, index, &mut layer).unwrap_or(0),
+                None => 0,
+            };
+            let mark = if edited.is_none() && !geometric { settled_cut_index(children.len()) } else { None };
+            for (ordinal, (child, region)) in children.iter().zip(outputs).enumerate().skip(start) {
+                if mark == Some(ordinal) { self.publish_settled_cut(id, ordinal, &layer); }
+                if edited == Some(ordinal) && start == 0 { self.store_prefix(&layer); }
                 self.node_region(child, &mut layer, child_mask, Some(region), basis, geometric)?;
             }
         } else {
-            for child in n.render_children() {
+            let children = n.render_children().to_vec();
+            let mark = if geometric { None } else { settled_cut_index(children.len()) };
+            for (ordinal, child) in children.iter().enumerate() {
+                if mark == Some(ordinal) { self.publish_settled_cut(id, ordinal, &layer); }
                 self.node_with_outline(child, &mut layer, child_mask, geometric)?;
             }
         }
