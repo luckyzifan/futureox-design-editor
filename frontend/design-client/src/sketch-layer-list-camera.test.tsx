@@ -180,6 +180,36 @@ test('Sketch layer-list click and arrow keys select without moving the viewport'
   expect(editor.canRedo).toBe(true)
 })
 
+test('Sketch Option-disclosure expands visible branches with a single tree update', async () => {
+  const doc = blank('Branch expansion')
+  const parent = node('group'), nested = node('group'), deeper = node('group'), leaf = node('rectangle')
+  const hidden = node('group'), hiddenLeaf = node('rectangle')
+  parent.children = [nested.id, hidden.id]
+  nested.children = [deeper.id]
+  deeper.children = [leaf.id]
+  hidden.children = [hiddenLeaf.id]; hidden.visible = false
+  for (const n of [parent, nested, deeper, leaf, hidden, hiddenLeaf]) doc.nodes[n.id] = n
+  doc.pages[0].children = [parent.id]
+  await act(async () => { editor.load(doc) })
+  const before = editor.authoredDocument, view = camera()
+  const disclosure = () => row(parent.id)!.querySelector<HTMLButtonElement>('.disclosure')!
+  await act(async () => disclosure().click())
+  expect(row(nested.id)).not.toBeNull()
+  expect(row(leaf.id)).toBeNull()
+  await act(async () => disclosure().dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true })))
+  expect(row(nested.id)?.getAttribute('aria-expanded')).toBe('true')
+  expect(row(deeper.id)?.getAttribute('aria-expanded')).toBe('true')
+  expect(row(leaf.id)).not.toBeNull()
+  expect(row(hiddenLeaf.id)).toBeNull()
+  expect(editor.authoredDocument).toBe(before)
+  expect(editor.canUndo).toBe(false)
+  expect(camera()).toEqual(view)
+  await act(async () => applyInterfaceLayout('figma'))
+  await act(async () => disclosure().dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true })))
+  expect(row(nested.id)).not.toBeNull()
+  expect(row(leaf.id)).toBeNull()
+})
+
 test('Sketch double-clicks zoom on the layer icon and rename on the layer name', async () => {
   const right = editor.state.doc.pages[0].children[1], before = editor.state.doc, oldView = camera()
   const doubleClick = (target: Element) => {
