@@ -438,6 +438,7 @@ export class Editor {
     page: string
     session: number
     selection: readonly string[]
+    reference?: string
     patches: Readonly<Record<string, { transform: Matrix }>>
   } | null = null
   private liveArrangementListeners = new Set<() => void>()
@@ -2967,13 +2968,17 @@ export class Editor {
       }
     })
   }
+  selectionAlignmentPlan(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
+    const { doc, selection, alignmentReference } = this.state
+    const reference = interfacePreference.getSnapshot().uiMode === 'sketch' ? alignmentReference : undefined
+    return prepareSelectionArrangement(doc, selection, axis, mode, { fresh: true }, reference)
+  }
   align(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
     if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
     if (!this.state.selection.length) return
     try {
       const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
-      const reference = interfacePreference.getSnapshot().uiMode === 'sketch' ? this.state.alignmentReference : undefined
-      const plan = prepareSelectionArrangement(base, this.state.selection, axis, mode, { fresh: true }, reference)
+      const plan = this.selectionAlignmentPlan(axis, mode)
       if (!plan.patches.length) return { status: 'unchanged' as const, revision }
       return this.change(mode === 'distribute' ? '等距分布' : '对齐图层', draft => {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)

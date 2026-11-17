@@ -1334,12 +1334,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const arrows = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
     const down = (e: KeyboardEvent) => {
       if (e.key === 'Shift') setPenShift(true)
-      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target) || e.getModifierState?.('AltGraph')) { nudge.finish(); return }
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.getModifierState?.('AltGraph')) { nudge.finish(); return }
       if (e.key === 'Escape' && editor.liveArrangement) {
-        e.preventDefault()
+        if (!shortcutTargetOwnsKeyboard(e.target)) e.preventDefault()
         editor.setLiveArrangement(null)
         return
       }
+      if (shortcutTargetOwnsKeyboard(e.target)) { nudge.finish(); return }
       if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
       if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
       if(e.key==='Escape')cancelToolActivation(editor)
@@ -1748,6 +1749,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     const blur = () => {
       releaseTemporaryZoom()
+      editor.setLiveArrangement(null)
       desktopPet.stopNavigation()
       nudge.finish()
       cancelQueuedMove()
