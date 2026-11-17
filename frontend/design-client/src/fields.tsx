@@ -13,10 +13,11 @@ export function CalculatedDimension({ label, value }: { label: 'W' | 'H'; value:
   </label>
 }
 
-export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, clampMinimum = false, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption, sliderLabel }: {
+export function NumberField({ label, value, onChange, resolveInput, min = -1e6, max = 1e6, clampMinimum = false, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption, sliderLabel }: {
   label: string
   value: number
   onChange: (v: number) => void
+  resolveInput?: (text: string, original: number) => { value: number; commit?: (value: number) => void } | undefined
   min?: number
   max?: number
   clampMinimum?: boolean
@@ -38,8 +39,13 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, cla
   const diagnostic = useMemo(() => createInputDiagnostics(editor, family), [editor, family])
   useEffect(() => () => diagnostic.dispose(), [diagnostic])
   const input = useRef<HTMLInputElement>(null), dirty = useRef(false), composing = useRef(false)
+  const validationMessage = useRef('')
+  const setValidity = (message: string) => {
+    validationMessage.current = message
+    input.current?.setCustomValidity(message ? tr(message) : '')
+  }
   useEffect(() => {
-    if (input.current?.validity.customError) input.current.setCustomValidity(tr('请输入有效数值；若属性已变化，请按 Esc 取消后重试'))
+    if (validationMessage.current) input.current?.setCustomValidity(tr(validationMessage.current))
   }, [tr])
   const draft = useRef(String(value)), original = useRef(value), session = useRef(editor?.sessionGeneration)
   // A retained field belongs to the target at first input, not its mount session.
@@ -63,13 +69,20 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, cla
     if (composing.current) return false
     diagnostic.start()
     let v: number
-    try { v = numericExpression(draft.current, original.current, unit) } catch { v = NaN }
+    let resolved: ReturnType<NonNullable<typeof resolveInput>>, reason = ''
+    try {
+      resolved = resolveInput?.(draft.current, original.current)
+      v = resolved?.value ?? numericExpression(draft.current, original.current, unit)
+    } catch (error) {
+      v = NaN
+      if (resolveInput && error instanceof Error) reason = error.message
+    }
     const clamped = clampMinimum && v < min
     if (clamped) v = min
-    if (!draft.current.trim() || !Number.isFinite(v) || v < min || v > max ||
-      (editor && (!ownsDraft() || value !== original.current))) {
+    const stale = editor && (!ownsDraft() || value !== original.current)
+    if (!draft.current.trim() || !Number.isFinite(v) || v < min || v > max || stale) {
       diagnostic.valid(false)
-      input.current?.setCustomValidity(tr('请输入有效数值；若属性已变化，请按 Esc 取消后重试'))
+      setValidity(!stale && reason ? reason : '请输入有效数值；若属性已变化，请按 Esc 取消后重试')
       input.current?.reportValidity()
       return false
     }
@@ -84,7 +97,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, cla
     if (changedValue) {
       const before = editor?.state.doc
       committingValue.current = v
-      try { onChange(v) } finally { committingValue.current = null }
+      try { (resolved?.commit ?? onChange)(v) } finally { committingValue.current = null }
       if (editor && editor.state.doc === before) {
         if (draftRevision.current === revision) {
           original.current = previousOriginal; draft.current = previousDraft; dirty.current = true
@@ -95,11 +108,11 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, cla
     diagnostic.finish(changedValue, !!editor || !changedValue, compare())
     if (draftRevision.current !== revision || (editor &&
       (editor.sessionGeneration !== ownerSession || target() !== ownerTarget))) return false
-    if (clamped) {
+    if (clamped || resolved) {
       draft.current = String(v)
       if (input.current) input.current.value = shown(v)
     }
-    input.current?.setCustomValidity('')
+    setValidity('')
     committingValue.current = v
     try { changed() } finally { committingValue.current = null }
     // Pending-edit listeners are synchronous too; they may own a fresh draft
@@ -163,9 +176,9 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, cla
       }} onPointerCancel={() => stopScrub(true)} onLostPointerCapture={() => stopScrub(true)}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); stopScrub(true) } }}
     >{shownCaption}{shownUnit && <small title={shownUnit}>＊</small>}</span>
-    <input ref={input} aria-label={shownLabel} aria-description={shownUnit} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={shownUnit ? `${value}；${shownUnit}` : String(value)} defaultValue={shown(value)}
+    <input ref={input} aria-label={shownLabel} aria-description={shownUnit} type="text" inputMode={resolveInput ? 'text' : 'decimal'} role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={shownUnit ? `${value}；${shownUnit}` : String(value)} defaultValue={shown(value)}
       onFocus={(e) => { diagnostic.event(InputPhase.focus); if (!dirty.current) e.currentTarget.select() }}
-      onChange={(e) => { startDraft(); draftRevision.current++; diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
+      onChange={(e) => { startDraft(); draftRevision.current++; diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; setValidity(''); changed() }}
       onCompositionStart={() => { startDraft(); draftRevision.current++; diagnostic.start(); diagnostic.event(InputPhase.compositionStart); composing.current = true; changed() }}
       onCompositionEnd={(e) => { if (!composing.current) return; draftRevision.current++; diagnostic.event(InputPhase.compositionEnd); composing.current = false; draft.current = e.currentTarget.value; dirty.current = true; changed() }}
       onBlur={() => { diagnostic.event(InputPhase.blur); finish() }}
@@ -179,11 +192,11 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, cla
           try {
             const next = Math.min(max, Math.max(min, numericExpression(draft.current, original.current, unit) + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : e.altKey ? .1 : 1)))
             draft.current = shown(next); dirty.current = true; e.currentTarget.value = draft.current; changed()
-          } catch { e.currentTarget.setCustomValidity(tr('请先修正数值表达式')) }
+          } catch { setValidity('请先修正数值表达式') }
         }
         if (e.key === 'Escape') {
           e.preventDefault(); diagnostic.cancel(); original.current = value; draft.current = String(value); dirty.current = false
-          e.currentTarget.value = String(value); e.currentTarget.setCustomValidity(''); changed()
+          e.currentTarget.value = String(value); setValidity(''); changed()
         }
         if (e.key === 'Enter' && finish()) e.currentTarget.blur()
       }}

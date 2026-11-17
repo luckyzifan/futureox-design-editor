@@ -235,6 +235,57 @@ test('Sketch Control-S and Inspector Update sync the selected style without reli
   expect(editor!.authoredDocument).toEqual(afterSync)
 })
 
+test('Sketch inspector resolves frame distances and anchored dimensions before writing numbers', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Geometry anchor QA'), frame = node('frame', 50, 60, 300, 220)
+  const group = node('group', 40, 25, 180, 160), shape = node('rectangle', 5, 7, 60, 50), free = node('rectangle', 385, 90, 180, 160)
+  frame.children = [group.id]; group.children = [shape.id]
+  doc.nodes = Object.fromEntries([frame, group, shape, free].map(node => [node.id, node]))
+  doc.pages[0].children = [frame.id, free.id]
+  await act(async () => { editor!.load(doc); editor!.select([shape.id]); canvas().focus() })
+  const before = editor!.authoredDocument
+  const field = (label: string) => document.querySelector<HTMLInputElement>(`input[role="spinbutton"][aria-label="${label}"]`)!
+  const enter = async (label: string, value: string) => {
+    const input = field(label)
+    expect(input).not.toBeNull()
+    await act(async () => {
+      input.focus()
+      Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    })
+    return input
+  }
+  for (const [label, input, x, y, width, height] of [
+    ['X', '20r', 180, 7, 60, 50], ['X', '30L', -10, 7, 60, 50], ['X', '0c', 80, 7, 60, 50],
+    ['Y', '15b', 5, 130, 60, 50], ['Y', '9T', 5, -16, 60, 50], ['Y', '12m', 5, 72, 60, 50],
+    ['W', '(40 * 2)R', -15, 7, 80, 50], ['W', '80l', 5, 7, 80, 50],
+    ['H', '100M', 5, -18, 60, 100], ['H', '100b', 5, -43, 60, 100],
+  ] as const) {
+    const revision = editor!.state.version
+    const changedField = await enter(label, input)
+    expect(changedField.validity.customError).toBe(false)
+    const layer = editor!.authoredDocument.nodes[shape.id]
+    expect(layer.transform[4]).toBeCloseTo(x, 8)
+    expect(layer.transform[5]).toBeCloseTo(y, 8)
+    expect(layer.width).toBe(width)
+    expect(layer.height).toBe(height)
+    expect(editor!.state.version).toBe(revision + 1)
+    expect(changedField.value).toMatch(/^-?\d+(\.\d+)?$/)
+    await act(async () => editor!.undo())
+    expect(editor!.authoredDocument).toEqual(before)
+    expect(editor!.canUndo).toBe(false)
+  }
+  await act(async () => editor!.select([free.id]))
+  const bad = await enter('X', '20r')
+  expect(bad.validationMessage).toBe('该图层没有可换算的画框坐标')
+  expect(editor!.authoredDocument).toEqual(before)
+  await act(async () => bad.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  expect(bad.value).toBe('385')
+})
+
 test('Sketch rich-text shortcuts format the selected range and later input at a collapsed caret', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

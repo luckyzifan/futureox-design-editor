@@ -3,6 +3,9 @@ import { useInterfacePreferences, type InterfaceLocale } from './interface-prefe
 /** Explicit presentation catalog. Never apply this to document text, names, IDs or history labels. */
 export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "请先修正数值表达式": "Correct the numeric expression first",
+  "该边缘后缀不适用于此字段": "This edge suffix does not apply to this field",
+  "该图层没有可换算的画框坐标": "This layer's position cannot be expressed in frame coordinates",
+  "层叠布局控制该图层的位置": "The stack controls this layer's position",
   "颜色": "Color",
   "填充类型": "Fill type",
   "纯色": "Solid",

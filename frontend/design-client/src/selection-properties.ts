@@ -6,6 +6,7 @@ import { inverse, multiply } from './geometry'
 import { kernelScaleGeometry } from './kernel/picking'
 import type { Editor } from './engine'
 import { interactivePath } from './selection-hierarchy'
+import type { SketchAnchor } from './sketch-numeric-anchor'
 export { figmaPositionOffset } from './sketch-frame-distance'
 
 export function commonValue<T>(values: T[]): T | undefined {
@@ -46,7 +47,7 @@ export function setNodePosition(node: DesignNode, axis: 'x' | 'y', value: number
   if (!Number.isFinite(value) || !Number.isFinite(scale) || scale <= 0) throw new Error('图层位置必须为有限数值')
   node.transform[axis === 'x' ? 4 : 5] += value / scale - selectionParentBounds(doc, node.id, node.transform)[axis]
 }
-export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', value: number, doc?: DesignDocument, resolvedUnits?: PropertyUnits) {
+export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', value: number, doc?: DesignDocument, resolvedUnits?: PropertyUnits, anchor: SketchAnchor = 0) {
   const nodeUnits = resolvedUnits ?? (doc ? propertyUnits(doc, node.id) : undefined)
   const units = nodeUnits?.[axis] ?? 1
   const ratio = value / Math.max(1e-10, selectionMetric(node, axis, doc, nodeUnits))
@@ -54,7 +55,10 @@ export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', 
   const sx = axis === 'width' || node.constrainProportions ? ratio : 1
   const sy = axis === 'height' || node.constrainProportions ? ratio : 1
   const box = doc ? selectionLocalBounds(doc, node.id) : localBounds(node)
-  const next = multiply(node.transform, [sx, 0, 0, sy, box.x * (1 - sx), box.y * (1 - sy)])
+  const centered = anchor === 0.5 && node.constrainProportions
+  const pivotX = anchor && (axis === 'width' || centered) ? box.x + anchor * box.width : box.x
+  const pivotY = anchor && (axis === 'height' || centered) ? box.y + anchor * box.height : box.y
+  const next = multiply(node.transform, [sx, 0, 0, sy, pivotX * (1 - sx), pivotY * (1 - sy)])
   Object.assign(node, resizedNode(node, next, node.constrainProportions ? ['width', 'height'] : [axis]))
   // Explicit values must not acquire oldSize*(newSize/oldSize) rounding;
   // otherwise equal batch edits can incorrectly display as mixed values.

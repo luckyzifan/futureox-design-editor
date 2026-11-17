@@ -34,7 +34,8 @@ import { ComponentPanel } from './ComponentPanel'
 import { CornerRadiusFields } from './corner-radius-fields'
 import { VectorCornerFields } from './VectorCornerFields'
 import { CalculatedDimension, NumberField } from './fields'
-import { formatPercent } from './numeric-expression'
+import { formatPercent, numericExpression } from './numeric-expression'
+import { sketchNumericAnchor } from './sketch-numeric-anchor'
 import { LayoutPanel } from './LayoutPanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { dispatchEditorCommand } from './editor-commands'
@@ -573,10 +574,32 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       for (const id of node.children) if (patches[id]) Object.assign(draft.nodes[id], patches[id])
     }, '裁切画框')
   }
+  const resolvePositionInput = (axis: 'x' | 'y') => (text: string, original: number) => {
+    const suffix = sketchNumericAnchor(text, axis)
+    if (!suffix) return
+    const doc = editor.state.doc, layer = doc.nodes[n.id], parents = editor.parentMap(doc)
+    const parent = doc.nodes[parents.get(n.id) || '']
+    if (parent?.layout && parent.layout.mode !== 'none' && !layer?.sizing?.absolute)
+      throw new Error('层叠布局控制该图层的位置')
+    const distance = layer && sketchFrameDistance(doc, n.id, parents)
+    const frame = distance && doc.nodes[distance.frameId]
+    if (!distance || !frame) throw new Error('该图层没有可换算的画框坐标')
+    const units = propertyUnits(doc, n.id, parents), box = selectionParentBounds(doc, n.id)
+    const scale = axis === 'x' ? units.parentX : units.parentY
+    const shift = (axis === 'x' ? distance.offsetX : distance.offsetY) * scale
+    const amount = numericExpression(suffix.expression, original, 'length')
+    const edges = axis === 'x' ? ['left', 'right'] as const : ['top', 'bottom'] as const
+    const local = suffix.anchor === 0.5
+      ? ((axis === 'x' ? frame.width - box.width : frame.height - box.height) * scale) / 2 + amount - shift
+      : frameEdgeDisplayLocal(edges[suffix.anchor], amount, box, distance, frame, units.parentX, units.parentY).displayLocal
+    return { value: local + shift, commit: () => updateBounds(node => setNodePosition(node, axis, local, doc, units)) }
+  }
   const positionFields = <>
     <NumberField historyLabel="X" diagnosticFamily={2} unit="length" label="X" value={(position.x + positionOffset.x) * units.parentX}
+      resolveInput={uiMode === 'sketch' ? resolvePositionInput('x') : undefined}
       onChange={v => updateBounds(node => setNodePosition(node, 'x', v - positionOffset.x * units.parentX, editor.state.doc, units))} />
     <NumberField historyLabel="Y" diagnosticFamily={2} unit="length" label="Y" value={(position.y + positionOffset.y) * units.parentY}
+      resolveInput={uiMode === 'sketch' ? resolvePositionInput('y') : undefined}
       onChange={v => updateBounds(node => setNodePosition(node, 'y', v - positionOffset.y * units.parentY, editor.state.doc, units))} />
   </>
   const writeFrameEdge = (edge: 'right' | 'bottom', value: number) => updateBounds(node => {
@@ -602,7 +625,16 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     const label = field === 'width' ? 'W' : 'H', value = selectionMetric(n, field, s.doc, units)
     if (uiMode === 'figma' && n.kind === 'text' && n.sizing?.[field] === 'hug') return <CalculatedDimension label={label} value={value} />
     return <NumberField historyLabel={label} diagnosticFamily={field === 'width' ? 3 : 4} unit="length" label={label}
-      value={value} min={0.01} onChange={v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc))} />
+      value={value} min={0.01}
+      resolveInput={uiMode === 'sketch' ? (text, original) => {
+        const suffix = sketchNumericAnchor(text, field)
+        if (!suffix) return
+        if (suffix.anchor && constraintFlow && !n.sizing?.absolute)
+          throw new Error('层叠布局控制该图层的位置')
+        return { value: numericExpression(suffix.expression, original, 'length'),
+          commit: v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc, undefined, suffix.anchor)) }
+      } : undefined}
+      onChange={v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc))} />
   }
   const proportion = <label className="geometry-proportion" title={tr("锁定宽高比")}>
     <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
