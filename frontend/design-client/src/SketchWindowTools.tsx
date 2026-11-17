@@ -14,13 +14,15 @@ import { RASTER_FILE_ACCEPT } from './image-import'
 import { canEnterOutlineEdit } from './figma-basic-ops'
 import { commitPendingEdits } from './pending-edits'
 import { editableFrameCrop } from './selection-properties'
+import { frameSizePresetGate } from './frame-presets'
 
 type Menu = 'insert' | 'shapes' | 'group' | 'tools' | 'combine'
 
-export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSystems, onShapeBuilder, onSection, onEditText }: {
+export function SketchWindowTools({ editor, disabled, onPresets, onReplaceTemplate, onImages, onSystems, onShapeBuilder, onSection, onEditText }: {
   editor: Editor
   disabled: boolean
   onPresets: () => void
+  onReplaceTemplate?: () => void
   onImages: (files: File[]) => void
   onSystems: () => void
   onShapeBuilder: () => void
@@ -44,6 +46,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
   const invoke = (id: EditorCommand) => { setOpen(null); focusCanvas(); void dispatchEditorCommand(editor, id) }
   const tool = (id: Tool) => { setOpen(null); void activateTool(editor, id); focusCanvas() }
   const editLabel = label('编辑', 'Edit')
+  const replaceLabel = label('替换画框模板…', 'Replace Frame Template…')
   const cropFrame = editableFrameCrop(editor)
   const canEdit = !!node && !s.busy && !editor.interactionActive && !lockedSelectionIds(editor).length &&
     (!!cropFrame || (node.kind === 'text' ? node.visible : canEnterOutlineEdit(node)))
@@ -91,6 +94,10 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
       {insertTool('pen', label('矢量','Vector'), <PenTool size={17}/>)}
     </div>}
     <div className="tool-group">
+      {onReplaceTemplate && node?.kind === 'frame' && !node.graphic && <button type="button"
+        aria-label={replaceLabel} aria-haspopup="dialog" data-tooltip={`${replaceLabel} (⌥⌘R)`}
+        disabled={s.busy || frameSizePresetGate(s.doc, s.page, s.selection, editor.parentMap()) !== 'ready'}
+        onClick={onReplaceTemplate}><Frame size={17} /></button>}
       {action('create-component', label('创建组件', 'Create component'), <Component size={17} />, true)}
       {action('bring-forward', label('前置一层', 'Bring forward'), <ArrowUpToLine size={17} />, true)}
       {action('send-backward', label('后置一层', 'Send backward'), <ArrowDownToLine size={17} />, true)}

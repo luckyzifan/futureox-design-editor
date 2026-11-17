@@ -963,7 +963,11 @@ export class DesktopSession {
     const previousVersion = this.editor.state.version, previousSession = this.editor.sessionGeneration
     const previousGeneration = this.generation
     this.suppressObservation = true
-    try { if (!documentStage(DocumentStage.adoption, () => this.editor.load(document,preserveView))) return false } finally { this.suppressObservation = false }
+    const restoreSketchTab = !!this.bridge.workspace && interfacePreference.getSnapshot().uiMode === 'sketch'
+    try {
+      if (!documentStage(DocumentStage.adoption, () => restoreSketchTab
+        ? this.editor.load(document, preserveView, true) : this.editor.load(document, preserveView))) return false
+    } finally { this.suppressObservation = false }
     // Editor.load publishes synchronously. A listener may edit even the same
     // root object or start another load while normal observation is suppressed.
     // Ownership alone cannot prove that the adopted bytes are still current.

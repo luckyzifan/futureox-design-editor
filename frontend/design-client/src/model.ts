@@ -360,7 +360,14 @@ export function exportSuffixHasForbiddenCharacters(value: string): boolean {
   })
 }
 export type ConnectorEndpoint={point:Point;nodeId?:string;anchor?:Point}
+export type SpatialPose = {
+  rotateX: number; rotateY: number; rotateZ: number; depth: number
+  origin: [number, number]; backfaceVisible: boolean; visible: boolean
+}
+export type SpatialPerspective = { distance: number; visible: boolean }
+export type SpatialEffects = { pose?: SpatialPose; perspective?: SpatialPerspective }
 export type DesignNode = {
+  spatial?: SpatialEffects
   vectorGeometry?: VectorGeometry
   vectorBrush?: import('./vector-brush').VectorBrush
   guides?: RulerGuide[]
@@ -504,7 +511,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24
   id: string
   name: string
   pages: Page[]
@@ -833,7 +840,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1056,6 +1063,24 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
   for (let index = 0; index < nodes.length; index++) {
     const id = nodeIds[index], n = nodes[index]
     if (n.guides !== undefined) validateGuides(n.guides, n.kind === 'frame' || n.kind === 'section')
+    if (n.spatial !== undefined) {
+      const spatial = n.spatial
+      const inRange = (value: unknown, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+      if (d.schemaVersion < 24 || !isObject(spatial) || Object.keys(spatial).some(key => key !== 'pose' && key !== 'perspective') ||
+          (!spatial.pose && !spatial.perspective)) throw new Error('3D 效果需要设计文件版本 24')
+      const pose = spatial.pose
+      if (pose !== undefined && (!isObject(pose) || ['slice', 'section'].includes(n.kind) ||
+          Object.keys(pose).some(key => !['rotateX', 'rotateY', 'rotateZ', 'depth', 'origin', 'backfaceVisible', 'visible'].includes(key)) ||
+          ![pose.rotateX, pose.rotateY, pose.rotateZ].every(angle => inRange(angle, -36000, 36000)) ||
+          !inRange(pose.depth, -1e6, 1e6) || !Array.isArray(pose.origin) || pose.origin.length !== 2 ||
+          !pose.origin.every(axis => inRange(axis, 0, 1)) || typeof pose.backfaceVisible !== 'boolean' || typeof pose.visible !== 'boolean'))
+        throw new Error('无效的 3D 变换参数')
+      const perspective = spatial.perspective
+      if (perspective !== undefined && (!isObject(perspective) || n.kind !== 'frame' || n.graphic ||
+          Object.keys(perspective).some(key => key !== 'distance' && key !== 'visible') ||
+          !inRange(perspective.distance, 1, 1e7) || typeof perspective.visible !== 'boolean'))
+        throw new Error('透视需要画框和有效的透视距离')
+    }
     if (n.kind === 'slice' && (d.schemaVersion < 10 || n.fills.length || n.strokes.length || n.effects.length || n.children.length || n.network || n.mask))
       throw new Error('切片需要版本10，且不能包含绘制内容')
     if (n.pathOffset !== undefined && (!Number.isFinite(n.pathOffset) || Math.abs(n.pathOffset) > 10000 ||

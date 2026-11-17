@@ -985,7 +985,7 @@ impl Engine {
     }
     fn retainable_paint_changes(&self, patch: &crate::editing::DocumentPatch) -> Option<(Vec<String>, bool)> {
         let source = self.source_doc.as_ref()?;
-        if crate::repeat::has_repeats(source) { return None; }
+        if crate::repeat::has_repeats(source) || crate::spatial::has_spatial(source) { return None; }
         let resolved = self.doc.as_ref()?;
         let index = self.render_index.as_ref()?;
         if self.layout_dirty || self.animation_base.is_some() || self.animation_sample.is_some()
@@ -1033,7 +1033,7 @@ impl Engine {
     fn can_retain_pose(&self, patch:&crate::editing::DocumentPatch, affine:bool, checked_boolean:bool) -> bool {
         let (Some(source), Some(resolved)) = (&self.source_doc, &self.doc) else { return false; };
         let Some(index) = &self.render_index else { return false; };
-        if index.has_repeats { return false; }
+        if index.has_repeats || crate::spatial::has_spatial(source) { return false; }
         if self.layout_dirty || self.animation_base.is_some() || self.animation_sample.is_some()
             || !source.animations.is_empty() || !patch.fields.is_empty() || patch.nodes.is_empty()
             || index.has_connectors || index.has_instance_slots { return false; }
@@ -1269,6 +1269,7 @@ impl Engine {
         if self.source_doc_bytes.is_none() || !translation { return Ok(None); }
         if !patch.nodes.keys().all(|id| self.render_index.as_ref().unwrap().page_roots.contains(id)) { return Ok(None); }
         let source = self.source_doc.as_ref().unwrap();
+        if crate::spatial::has_spatial(source) { return Ok(None); }
         if !patch.nodes.keys().all(|id| {
             let authored=&source.nodes[id];let resolved=&self.doc.as_ref().unwrap().nodes[id];
             authored.width==resolved.width&&authored.height==resolved.height
@@ -1500,7 +1501,7 @@ impl Engine {
         if let Some(request) = request {
             let candidate = if self.animation_base.is_none() {
                 self.resolve_layout()?;
-                if self.has_sketch_masks() || self.source_doc.as_ref().is_some_and(|d| crate::repeat::has_repeats(d)) {
+                if self.has_sketch_masks() || self.source_doc.as_ref().is_some_and(|d| crate::repeat::has_repeats(d) || crate::spatial::has_spatial(d)) {
                     // Sample editable sources first, then regenerate every appearance.
                     let mut base = self.source_doc.as_ref().unwrap().clone();
                     crate::design_system::resolve_authored(&mut base)?;
@@ -1532,6 +1533,7 @@ impl Engine {
             crate::repeat::resolve(&mut sampled)?;
             if self.has_sketch_masks() { crate::sketch_masks::resolve(&mut sampled)?; }
             crate::font::expand_rich_text(&mut sampled, &self.fonts)?;
+            crate::spatial::resolve(&mut sampled)?;
             self.doc = Some(sampled.into());
             // Sample resolved layout geometry. Timeline recording captures the
             // selected subtree, so auto-layout does not overwrite interpolated poses.
@@ -1548,6 +1550,7 @@ impl Engine {
             crate::repeat::resolve(&mut base)?;
             if self.has_sketch_masks() { crate::sketch_masks::resolve(&mut base)?; }
             crate::font::expand_rich_text(&mut base, &self.fonts)?;
+            crate::spatial::resolve(&mut base)?;
             self.doc = Some(base);
             self.animation_sample = None;
             self.layout_dirty = false;
@@ -1584,6 +1587,7 @@ impl Engine {
                 .any(|n| n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some())
                 && !crate::repeat::has_repeats(doc)
                 && !crate::components::has_components(doc)
+                && !crate::spatial::has_spatial(doc)
                 && doc.design_system.is_none()
                 && !doc
                     .nodes
@@ -1625,7 +1629,8 @@ impl Engine {
                         })
                         .then(|| doc.clone());
                     if sketch_masks { crate::sketch_masks::resolve(doc)?; }
-                    crate::font::expand_rich_text(doc, &self.fonts)
+                    crate::font::expand_rich_text(doc, &self.fonts)?;
+                    crate::spatial::resolve(doc)
                 })
             {
                 *doc = before;

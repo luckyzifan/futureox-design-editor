@@ -243,6 +243,8 @@ pub enum MaskChain { Start, Break }
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spatial: Option<Box<crate::spatial::SpatialEffects>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat: Option<Box<crate::repeat::Repeat>>,
     /// Disposable render-scene selection ownership; never authored or serialized.
     #[serde(skip)]
@@ -1644,6 +1646,7 @@ impl Document {
                 || n.layout.as_ref().is_some_and(|layout| layout.mode != crate::layout::Flow::None)) {
                 return Err("Graphics require a non-stack frame and schema 23".into());
             }
+            if let Some(effects) = &n.spatial { effects.validate(n, self.schema_version)?; }
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1861,7 +1864,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=23).contains(&self.schema_version)
+        if !(1..=24).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32
@@ -1906,6 +1909,7 @@ impl Document {
         if seen.len() != self.nodes.len() {
             return Err("Unreachable node".into());
         }
+        if crate::spatial::has_spatial(self) { crate::spatial::projections(self)?; }
         crate::repeat::validate_document(self)?;
         crate::components::validate(self)?;
         crate::animation::validate(self)?;

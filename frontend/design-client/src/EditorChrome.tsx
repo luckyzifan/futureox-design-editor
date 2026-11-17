@@ -112,6 +112,7 @@ export function DesignToolbar({ children, disabled = false, className = '' }: { 
     onBlurCapture={hide}
     onKeyDown={event => {
       event.stopPropagation()
+      if ((event.target as HTMLElement).closest('input,textarea,select,[contenteditable="true"]')) return
       if ((event.target as Element | null)?.closest?.('.figma-view-tools')) {
         if (event.key === 'Escape') {
           event.preventDefault()

@@ -136,6 +136,7 @@ pub mod reviews;
 mod rounded;
 pub mod sampling;
 pub mod scene;
+pub mod spatial;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod scene_store;
 #[cfg(not(target_arch = "wasm32"))]
@@ -614,6 +615,14 @@ mod wasm {
     #[wasm_bindgen]
     pub fn validate_document_json(json: &str) -> Result<(), JsValue> {
         super::validate_document_json(json).map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn spatial_projections_json(json: &str) -> Result<String, JsValue> {
+        capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
+        let doc: scene::Document = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        doc.validate().map_err(|e| JsValue::from_str(&e))?;
+        let projections = crate::spatial::projections(&doc).map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&projections).map_err(|e| JsValue::from_str(&e.to_string()))
     }
     /// SVG consumes the same ordered draw plan as the raster backends. The
     /// input contains topology only, with no image, font, path or paint bytes.

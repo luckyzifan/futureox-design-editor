@@ -45,7 +45,8 @@ const Folder = memo(FolderGlyph)
 const Diamond = memo(DiamondGlyph)
 
 import type { Editor } from './engine'
-import { container } from './model'
+import { container, type DesignNode } from './model'
+import { kernelSvgPaths } from './kernel/picking'
 import { commitPendingEdits, hasPendingEdits } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { layerSelection } from './layer-selection'
@@ -54,8 +55,25 @@ import type { WorkspaceSection } from './EditorChrome'
 import { interfacePreference, type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
 import { LayerFindPanel } from './LayerFindPanel'
 import { closeLayerFind, layerFindRefocus, layerFindReturnTarget, layerFindSnapshot, requestLayerFind, subscribeLayerFind } from './layer-find-session'
-export function Layers({ editor, section, onSection, showPages=true, documentTitle }: {
-  editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean; documentTitle?: ReactNode
+const DrawLayerThumbnail = memo(function DrawLayerThumbnail({ layer, fallback }: { layer: DesignNode; fallback: ReactNode }) {
+  const fill = layer.fills.find(paint => paint.visible)
+  const stroke = layer.strokes.find(stroke => stroke.visible)
+  if ((!fill && !stroke) || layer.kind === 'text' || layer.children.length || layer.vectorBrush ||
+      layer.network && layer.network.vertices.length > 128 || (layer.vectorGeometry?.fill.length ?? 0) > 128 ||
+      fill && fill.kind !== 'solid' || stroke && stroke.paint.kind !== 'solid' || layer.fills.some(paint => paint.image))
+    return <span className="draw-layer-thumbnail" aria-hidden="true">{fallback}</span>
+  const paths = kernelSvgPaths(layer)
+  return <span className="draw-layer-thumbnail" aria-hidden="true">
+    {paths ? <svg viewBox={`0 0 ${Math.max(1, layer.width)} ${Math.max(1, layer.height)}`}>
+      <path d={paths.fill} fill={fill?.color ?? 'none'} fillOpacity={fill?.opacity}
+        fillRule={layer.vectorGeometry?.fillRule ?? layer.network?.fillRule} />
+      {stroke && <path d={paths.stroke} fill="none" stroke={stroke.paint.color} strokeWidth={stroke.width} />}
+    </svg> : fallback}
+  </span>
+})
+export function Layers({ editor, section, onSection, showPages=true, documentTitle, documents, drawThumbnails = false }: {
+  editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void
+  showPages?: boolean; documentTitle?: ReactNode; documents?: ReactNode; drawThumbnails?: boolean
 }) {
   const text = useInterfaceText()
   const { uiMode, locale } = useInterfacePreferences()
@@ -358,6 +376,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   const relatedLabel = locale === 'en' ? 'Show only selected and related layers' : '仅显示所选内容及相关图层'
   return (
     <aside className="layers-panel" aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
+      {documents}
       {showPages && uiMode === 'figma' && <div className="layers-document-title" title={s.doc.name}>{documentTitle || s.doc.name}</div>}
       {showPages && <PageList editor={editor} onRename={renameIntendedPage} />}
       <div className="layer-heading">
@@ -538,11 +557,11 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                     )
                   ) : null}
                 </button>
-                <Icon
+                {drawThumbnails ? <DrawLayerThumbnail layer={n} fallback={<Icon size={13} />} /> : <Icon
                   size={13}
                   color={n.component || n.instance || n.componentSet ? 'var(--workspace-accent)' : undefined}
                   fill={n.component ? 'currentColor' : 'none'}
-                />
+                />}
                 {renaming === id ? <span className="layer-name layer-rename" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setRenaming(null) }}
                   onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node) && commitPendingEdits(editor)) setRenaming(null) }}>

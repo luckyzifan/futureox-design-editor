@@ -106,6 +106,7 @@ import type { BooleanOp } from './vector'
 import { pathNetwork } from './path-network'
 import {
   kernelSvgPaths,
+  kernelSpatialDocument,
   kernelBounds,
   kernelHitWorld,
   kernelFillWorld,
@@ -754,6 +755,7 @@ export class Editor {
         if(draft.schemaVersion < 20 && hasSchema20Features(featureDocOf(authored)))draft.schemaVersion=20
         if(draft.schemaVersion < 21 && hasSchema21Features(featureDocOf(authored)))draft.schemaVersion=21
         if(draft.schemaVersion < 22 && hasSchema22Features(featureDocOf(authored)))draft.schemaVersion=22
+        if(draft.schemaVersion < 24 && featureNodesOf(authored).some(n => n.spatial)) draft.schemaVersion = 24
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
@@ -1322,7 +1324,8 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  load(value: unknown, preserveView=false) {
+  private readonly sketchTabViews = new Map<string, { page: string; selection: string[]; view: View }>()
+  load(value: unknown, preserveView=false, restoreSketchTab=false) {
     if (this.disposed) return false
     if (!this.settleOwnedPropertyPreview('navigation') || !commitPendingEdits(this)) return false
     const previous=this.state
@@ -1330,16 +1333,29 @@ export class Editor {
     const prepared = ensurePreparedDocument(value), encoding = preparedDocumentEncoding(prepared)
     const doc = takePreparedDocument(prepared)!
     this.cameraState.remember(previous.doc.id, previous.page, previousView)
+    if (restoreSketchTab && previous.doc.id !== doc.id) {
+      this.sketchTabViews.delete(previous.doc.id)
+      this.sketchTabViews.set(previous.doc.id, { page: previous.page, selection: [...previous.selection], view: previousView })
+      if (this.sketchTabViews.size > 16) {
+        const oldest = this.sketchTabViews.keys().next().value
+        if (oldest !== undefined) this.sketchTabViews.delete(oldest)
+      }
+    }
+    const tabView = restoreSketchTab && !preserveView ? this.sketchTabViews.get(doc.id) : undefined
+    const tabPage = tabView && userPages(doc).some(p => p.id === tabView.page) ? tabView.page : undefined
+    const tabParents = tabPage && tabView!.selection.length ? allParents(doc) : undefined
+    const tabSelection = tabPage && tabParents
+      ? tabView!.selection.filter(id => interactivePath(doc, tabPage, id, true, tabParents).length) : []
     const saved = !preserveView && interfacePreference.getSnapshot().rememberViewport
       ? this.cameraState.recall(doc.id, doc.pages.map(p => p.id)) : undefined
-    this.restoredCamera = !!saved
+    this.restoredCamera = !!saved || !!tabView
     this.operationDiagnostics.endSession()
     this.diagnosticOperation = null
     this.sessionEpoch++
     this.repeatedDuplicate = null
     const adoptedSession = this.sessionEpoch, adoptedVersion = this.state.version + 1
     if (this.revealRequest) this.consumeReveal(this.revealRequest.nonce)
-    this.preservedViewSession=(preserveView || saved)?this.sessionEpoch:-1
+    this.preservedViewSession=(preserveView || saved || tabView)?this.sessionEpoch:-1
     this.geometryJob?.cancel()
     this.undoStack = []
     this.redoStack = []
@@ -1348,14 +1364,14 @@ export class Editor {
     this.transaction = null
     this.set({
       doc,
-      page:saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id)),
-      selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):[],
+      page:tabPage ?? (saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id))),
+      selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):tabSelection,
       frameCrop: null,
       outlines: false,
       hover: null,
       hoverSource: null,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
-      view:saved?.view || (preserveView?previousView:{x:40,y:40,zoom:1}),
+      view:(tabPage && tabView?.view) || saved?.view || (preserveView?previousView:{x:40,y:40,zoom:1}),
       version: adoptedVersion,
       message: '设计已打开',
       busy: false,
@@ -1453,9 +1469,10 @@ export class Editor {
   }
   hit(p: Point, deep = false, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot, eligible?: (node:DesignNode)=>boolean, priority: 'paint-order' | 'smallest' = 'paint-order'): string | null {
     const authored = snapshot?.document || this.state.doc,
-      d = this.pickContext(authored).parents.hasRepeats ? expandRepeats(authored) : authored,
+      withRepeats = this.pickContext(authored).parents.hasRepeats ? expandRepeats(authored) : authored,
+      d = kernelSpatialDocument(withRepeats),
       page = snapshot?.pageId || this.state.page,
-      entries = (d === authored ? index : undefined) || new SpatialIndex(scene(d, page)),
+      entries = (withRepeats === authored ? index : undefined) || new SpatialIndex(scene(d, page)),
       tol = 5 / viewZoom
     // Hit the pixels actually on screen while a later frame is rendering. The
     // visible target must still be editable in the current document and page.
@@ -2032,7 +2049,7 @@ export class Editor {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
           throw new SelectionCommandError('superseded', 'Selection owner changed before grouping')
         if (mask) draft.nodes[plan.ids[0]].mask = true
-        if (group.graphic) draft.schemaVersion = 23
+        if (group.graphic && draft.schemaVersion < 23) draft.schemaVersion = 23
         applySelectionWrap(draft, plan, group)
       }, [group.id])
     } catch (error) {

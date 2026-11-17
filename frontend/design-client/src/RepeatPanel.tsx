@@ -11,7 +11,7 @@ export function RepeatPanel({editor,node}:{editor:Editor;node:DesignNode}) {
  // The history label stays the operation identifier. Only the visible copy follows the locale.
  const replace=(next?:RepeatTransform)=>editor.change('重复变换',d=>{
   const n=d.nodes[node.id];if(!n)return
-  if(next){d.schemaVersion=15;n.repeat=next}else delete n.repeat
+  if(next){if(d.schemaVersion<15)d.schemaVersion=15;n.repeat=next}else delete n.repeat
  })
  const axis=(key:'translation'|'pivot'|'scale',axis:'x'|'y',value:number)=>r&&replace({...r,[key]:{...r[key],[axis]:value}})
  return <section className="repeat-panel" aria-label={tr('非破坏性重复变换')}>

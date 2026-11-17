@@ -1040,7 +1040,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const looseSelectionBox = useMemo(() => unionBounds(selected.map(e => e.bounds)), [selected])
   const zoom = displayView.zoom
   const resizeNode = selected.length === 1 ? state.doc.nodes[selected[0].id] : null
-  const canOrient = !!resizeNode
+  const hasSpatialSelection = selected.some(entry => {
+    const doc = state.doc
+    return [entry.id, ...entry.ancestors].some(id => doc.nodes[id]?.spatial?.pose?.visible)
+  })
+  const canOrient = !!resizeNode && !hasSpatialSelection
   const localSelection = useMemo(() => canOrient ? selectionLocalBounds(state.doc, resizeNode!.id) : null,
     [state.doc, resizeNode?.id, canOrient, geometryReady])
   const selectionCorners = useMemo(() => localSelection
@@ -1089,7 +1093,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     ? state.selection[0]
     : undefined
   const showSelectionChrome = uiMode !== 'figma' || !editingBlur
-  const showTransformHandles = canTransform && !editingBlur
+  const showTransformHandles = canTransform && !editingBlur && !hasSpatialSelection
   const frameTitles = useMemo(() => entries.filter(e => {
     const n = state.doc.nodes[e.id]
     const parentId = e.ancestors.at(-1)
@@ -2693,7 +2697,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const n = updateCreation(d, { shift: e.shiftKey, alt: e.altKey })!
       editor.cancel()
       editor.change(`创建${n.name}`, document => {
-        if (n.graphic) document.schemaVersion = 23
+        if (n.graphic && document.schemaVersion < 23) document.schemaVersion = 23
         document.nodes[n.id] = n
         const page = document.pages.find(page => page.id === editor.state.page)!
         page.children.push(n.id)
