@@ -1,12 +1,12 @@
 import type { EditorCommand } from './editor-commands'
 import { TOOL_COMMANDS } from './tool-registry'
-import type { UiMode } from './interface-preference'
+import { interfacePreference, type FigmaKeyboardLayout, type UiMode } from './interface-preference'
 import { sketchBooleanCommands, sketchBooleanCommandIds } from './sketch-boolean-commands'
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'select-parent'
-export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode }
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'toggle-pixel-snapping' | 'select-parent' | 'open-shortcut-reference'
+export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode; keyboardLayout?: FigmaKeyboardLayout }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true; physicalCode?: string }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
 export function shortcutProfileForUiMode(mode: UiMode): ShortcutProfile {
@@ -44,6 +44,8 @@ const figmaBindings: ShortcutBinding[] = [
   { command: 'copy-as-png', combo: 'Mod+Shift+C' },
   { command: 'toggle-outlines', combo: 'Mod+Shift+O' },
   { command: 'toggle-pixel-grid', combo: "Shift+'", physicalCode: 'Quote' },
+  { command: 'toggle-pixel-snapping', combo: "Mod+Shift+'", physicalCode: 'Quote' },
+  { command: 'open-shortcut-reference', combo: 'Ctrl+Shift+/', physicalCode: 'Slash' },
   { command: 'select-parent', combo: '\\' },
 ]
 
@@ -51,7 +53,8 @@ const figmaBindings: ShortcutBinding[] = [
 const bindingCache = new Map<string, readonly ShortcutBinding[]>()
 export function shortcutBindings(context: ShortcutContext): readonly ShortcutBinding[] {
   const { profile, platform, desktop = false, uiMode } = shortcutContextForLayout(context)
-  const cacheKey = `${profile}:${platform}:${desktop}:${uiMode ?? ''}`
+  const keyboardLayout = context.keyboardLayout ?? (uiMode === 'figma' ? interfacePreference.getSnapshot().figmaKeyboardLayout : 'us-qwerty')
+  const cacheKey = `${profile}:${platform}:${desktop}:${uiMode ?? ''}:${keyboardLayout}`
   const cached = bindingCache.get(cacheKey)
   if (cached) return cached
   const tools = new Map<string, string | undefined>(TOOL_COMMANDS.filter(c => c.tool && c.shortcut).map(c => [c.id, c.shortcut]))
@@ -164,9 +167,22 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   if (profile === 'figma-like' && desktop) bindings.push({ command: 'open-layer-find', combo: 'Mod+F' })
   if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
   if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
-  const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))
+  const result = Object.freeze(bindings.map(binding => Object.freeze(
+    profile === 'figma-like' && keyboardLayout === 'de-qwertz' ? germanBinding(binding) : binding,
+  )))
   bindingCache.set(cacheKey, result)
   return result
+}
+function germanBinding(binding: ShortcutBinding): ShortcutBinding {
+  const { command, combo } = binding
+  if (command === 'select-parent') return { ...binding, combo: '#' }
+  if (command === 'toggle-pixel-grid') return { ...binding, combo: 'Mod+#', physicalCode: 'Backslash' }
+  if (command === 'toggle-pixel-snapping') return { ...binding, combo: 'Shift+#', physicalCode: 'Backslash' }
+  if (command === 'remove-stroke') return { ...binding, combo: 'Shift+,', physicalCode: 'Comma' }
+  if (command === 'remove-fill') return { ...binding, combo: 'Alt+,', physicalCode: 'Comma' }
+  if (command === 'bring-forward' || command === 'bring-to-front') return { ...binding, combo: combo.replace(']', 'Ä') }
+  if (command === 'send-backward' || command === 'send-to-back') return { ...binding, combo: combo.replace('[', 'Ö') }
+  return binding
 }
 function matches(event: ShortcutKey, { combo, physicalCode }: ShortcutBinding, platform: ShortcutPlatform) {
   // A trailing '+' is the actual plus key, not an empty chord component.

@@ -7,6 +7,8 @@ import { FramePresetPanel } from './FramePresetPanel'
 import { SketchInsertionDialog, type SketchInsertionAnchor } from './SketchInsertionDialog'
 import { SketchSymbolDialog, type SketchSymbolTarget } from './SketchSymbolDialog'
 import { SketchMakeGridDialog } from './SketchMakeGridDialog'
+import { ShortcutReference } from './ShortcutReference'
+import { closeShortcutReference } from './shortcut-reference-session'
 import { bindSketchSymbolDialog, sketchSymbolSelection } from './sketch-symbol'
 import { keyboardPlacementPoint } from './keyboard-placement'
 import { defaultLayerExportSetting } from './export-metadata'
@@ -553,7 +555,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowCommands(false); setShowMove(false); setShowShapes(false); setShowRegions(false)
     setShowDrawing(false); setShowUtility(false)
     closeCommandSearch()
+    closeShortcutReference(false)
   }, [uiMode])
+  useEffect(() => { if (showHome) closeShortcutReference(false) }, [showHome])
+  useEffect(() => () => closeShortcutReference(false), [])
   const [showCloudWorkspace, setShowCloudWorkspace] = useState(false)
   const cloudWorkspaceLabel = locale === 'en' ? 'Server workspace' : '服务器工作区'
   const [cloudStatusInWorkspace, setCloudStatusInWorkspace] = useState<CloudWorkspaceStatus>({ connected: false })
@@ -1935,6 +1940,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       <BatchRenameDialog editor={editor} />
       <SketchMakeGridDialog editor={editor} />
       <CommandSearch editor={editor} />
+      {uiMode === 'figma' && !showHome && <ShortcutReference />}
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} onImportCompatibility={() => {
         fileImports.invalidate()

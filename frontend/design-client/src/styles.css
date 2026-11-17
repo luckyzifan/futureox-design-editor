@@ -3212,3 +3212,22 @@ html[data-reduced-motion=true] .animation-modal * {
 .sketch-interaction-panel { margin: 8px; padding: 8px; background: var(--workspace-field); border: 1px solid var(--workspace-border); border-radius: 6px; }
 .sketch-interaction-panel h3 { margin: 0 0 6px; font-size: 11px; color: var(--workspace-text); }
 .sketch-interaction-panel label { display: grid; gap: 4px; }
+
+.shortcut-reference {
+  position: fixed; z-index: 46; inset-inline: 0; margin-inline: auto; bottom: 25px;
+  width: min(740px, calc(100vw - 28px)); max-height: min(52vh, 340px);
+  display: flex; flex-direction: column; overflow: hidden; font-size: 12px;
+  border: 1px solid var(--workspace-border); border-radius: 9px;
+  background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 8px 24px #17203330;
+}
+.shortcut-reference header { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; }
+.shortcut-reference [role="tablist"] { display: flex; gap: 6px; padding: 0 12px 5px; border-bottom: 1px solid var(--workspace-border); }
+.shortcut-reference button { padding: 4px 8px; border: 0; background: transparent; color: inherit; border-radius: 4px; cursor: pointer; }
+.shortcut-reference [role="tab"][aria-selected="true"] { background: var(--workspace-selected); }
+.shortcut-reference-content { min-height: 0; overflow-y: auto; padding: 8px 12px 12px; }
+.shortcut-reference-content > label { display: flex; align-items: center; gap: 14px; }
+.shortcut-reference dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 6px 20px; margin: 0; }
+.shortcut-reference dl > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shortcut-reference dd { display: flex; flex-wrap: wrap; justify-content: end; gap: 3px; margin: 0; }
+.shortcut-reference kbd { padding: 2px 5px; border-radius: 3px; white-space: nowrap; background: var(--workspace-field); }
+.shortcut-reference kbd[data-used="true"] { background: var(--workspace-selected); color: var(--workspace-selected-ink, var(--workspace-accent)); }
