@@ -32,6 +32,7 @@ export function ViewControls({
   const centerKey = shortcutLabel('center-selection', shortcut)
   const topFrameKey = shortcutLabel('zoom-top-level-frame', { ...shortcut, uiMode })
   const layoutGuidesKey = shortcutLabel('toggle-layout-guides', shortcut)
+  const pixelGridKey = shortcutLabel('toggle-pixel-grid', { ...shortcut, uiMode })
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const zoomPercentage = sketch ? Math.floor(liveZoom * 100 + 1e-9) : Number((liveZoom * 100).toFixed(1))
   const menu = useRef<HTMLDetailsElement>(null)
@@ -214,7 +215,7 @@ export function ViewControls({
               checked={s.pixelGrid}
               onChange={(e) => editor.set({ pixelGrid: e.target.checked })}
             />
-            {text.pixelGrid} <small>{text.pixelGridThreshold}</small>
+            {text.pixelGrid} <small>{text.pixelGridThreshold}</small>{pixelGridKey && <kbd>{pixelGridKey}</kbd>}
           </label>
           <label>
             <input

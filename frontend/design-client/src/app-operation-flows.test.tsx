@@ -2269,3 +2269,33 @@ test('Figma Backslash selects the same parent as Shift+Enter without authoring',
   expect(await send(canvas())).toBe(false)
   expect(current.state.selection).toEqual([shape.id])
 })
+
+
+test('Figma Shift+Quote toggles pixel grid while Command+Shift+Quote only toggles snapping', async () => {
+  applyInterfaceLayout('figma')
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  await render()
+  const current = editor!, press = async (key: string, modifiers: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent('keydown', { key, code: 'Quote', bubbles: true, cancelable: true, ...modifiers })
+    await act(async () => canvas().dispatchEvent(event))
+    return event.defaultPrevented
+  }
+  await act(async () => { current.set({ pixelGrid: false, snapPixels: false }); canvas().focus() })
+  const before = current.authoredDocument, view = { ...current.state.view }
+  expect(await press("'", { metaKey: true })).toBe(false)
+  expect(current.state.pixelGrid).toBe(false)
+  expect(await press('"', { shiftKey: true })).toBe(true)
+  expect(current.state.pixelGrid).toBe(true)
+  expect(current.state.snapPixels).toBe(false)
+  expect(await press('"', { shiftKey: true, metaKey: true })).toBe(true)
+  expect(current.state.pixelGrid).toBe(true)
+  expect(current.state.snapPixels).toBe(true)
+  await act(async () => applyInterfaceLayout('sketch'))
+  expect(await press('"', { shiftKey: true })).toBe(false)
+  expect(await press("'", { metaKey: true })).toBe(true)
+  expect(current.state.pixelGrid).toBe(false)
+  expect(current.state.snapPixels).toBe(true)
+  expect(current.authoredDocument).toBe(before)
+  expect(current.state.view).toEqual(view)
+  expect(current.canUndo).toBe(false)
+})

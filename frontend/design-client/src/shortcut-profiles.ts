@@ -5,7 +5,7 @@ import { sketchBooleanCommands, sketchBooleanCommandIds } from './sketch-boolean
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides' | 'select-parent'
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides' | 'toggle-pixel-grid' | 'select-parent'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true; physicalCode?: string }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -43,6 +43,7 @@ const common: ShortcutBinding[] = [
 const figmaBindings: ShortcutBinding[] = [
   { command: 'copy-as-png', combo: 'Mod+Shift+C' },
   { command: 'toggle-outlines', combo: 'Mod+Shift+O' },
+  { command: 'toggle-pixel-grid', combo: "Shift+'", physicalCode: 'Quote' },
   { command: 'select-parent', combo: '\\' },
 ]
 

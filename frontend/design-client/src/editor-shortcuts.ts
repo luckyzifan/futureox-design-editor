@@ -24,10 +24,11 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
     }
     return true
   }
-  // Layout-guide visibility is view state. It must not enter document history.
-  if (binding.command === 'toggle-layout-guides') {
-    if (!event.repeat && !editor.interactionActive)
-      editor.set({ showAuthoredLayout: editor.state.showAuthoredLayout === false })
+  if (binding.command === 'toggle-layout-guides' || binding.command === 'toggle-pixel-grid') {
+    if (!event.repeat && !editor.interactionActive) {
+      if (binding.command === 'toggle-pixel-grid') editor.set({ pixelGrid: !editor.state.pixelGrid })
+      else editor.set({ showAuthoredLayout: editor.state.showAuthoredLayout === false })
+    }
     return true
   }
   // Consume held destructive chords without creating additional history entries.
