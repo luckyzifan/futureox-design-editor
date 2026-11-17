@@ -122,6 +122,10 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
   </>
   const pluginPicker = <button type="button" role="menuitem" aria-haspopup="menu" data-plugin-picker="true"
     disabled={state.busy || editor.interactionActive} onClick={() => setPlugins(true)}><span>{text.plugins}</span><ChevronRight size={14} /></button>
+  const pagePicker = (disabled: boolean) => <button type="button" role="menuitem" aria-haspopup="menu"
+    data-page-picker="true" disabled={disabled} onClick={() => setPages(true)}>
+    <span>{text.moveToPage}</span><ChevronRight size={14} />
+  </button>
   let previousGroup = ''
   const menuLabel = origin === 'layers' ? text.layerMenu : origin === 'inspector' ? text.layerActions : text.menu
   return createPortal(<div ref={root} role="menu" aria-label={showLayers ? text.selectLayer : pages ? text.moveToPage : plugins ? text.plugins : group ? groupName(group) : menuLabel} className="canvas-context-menu"
@@ -185,12 +189,12 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
         const pageSlot = figma && !empty && index === moveToPageIndex(commands)
         const pluginSlot = figma && !empty && index === pluginsMenuIndex(commands)
         return <div key={item.command} role="none">
-          {pageSlot && <>{layerPicker || <div role="separator" />}<button type="button" role="menuitem" aria-haspopup="menu" data-page-picker="true" disabled={state.busy || editor.interactionActive || locked || userPages(state.doc).length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button></>}
+          {pageSlot && <>{layerPicker || <div role="separator" />}{pagePicker(state.busy || editor.interactionActive || locked || userPages(state.doc).length < 2)}</>}
           {pluginSlot && <><div role="separator" />{pluginPicker}</>}
           {separator && <div role="separator" />}
-          <button type="button" role="menuitem" aria-label={item.label} disabled={item.disabled} className={item.danger ? 'context-danger' : undefined}
+          {item.command === 'move-to-page' ? pagePicker(!!item.disabled) : <button type="button" role="menuitem" aria-label={item.label} disabled={item.disabled} className={item.danger ? 'context-danger' : undefined}
             onPointerMove={(event) => { if (!item.disabled) event.currentTarget.focus({ preventScroll: true }) }}
-            onClick={() => action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>
+            onClick={() => action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>}
         </div>
       })}
       {!figma && layerPicker}

@@ -404,6 +404,10 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       }, '转换为分区'); break
       case 'move-to-page': {
         if (!options.pageId || options.pageId === editor.state.page || !editor.state.doc.pages.some(p => p.id === options.pageId)) return
+        if (interfacePreference.getSnapshot().uiMode === 'sketch') {
+          editor.moveLayersToPage(options.pageId)
+          break
+        }
         const before = editor.state.doc
         editor.reparentMany(editor.topSelection(), options.pageId)
         if (editor.state.doc !== before) editor.clearSelection()

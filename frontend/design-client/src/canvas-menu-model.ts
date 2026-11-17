@@ -1,5 +1,5 @@
 import { interfacePreference, type UiMode } from './interface-preference'
-import { canvasCommandLabel } from './canvas-interface-messages'
+import { canvasCommandLabel, canvasText } from './canvas-interface-messages'
 import type { Editor } from './engine'
 import type { EditorCommand } from './editor-commands'
 import { container, type Point } from './model'
@@ -12,6 +12,7 @@ import { alignmentAvailability, alignmentCommandIds, alignmentCommands } from '.
 import { canMakeSketchGrid } from './sketch-make-grid'
 import { selectedPaintSwap } from './sketch-paint-commands'
 import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
+import { pageMoveRoots } from './layer-drop'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
 export type ContextMenuOrigin = 'canvas' | 'empty-canvas' | 'layers' | 'inspector'
@@ -151,7 +152,7 @@ const contextOrder: EditorCommand[] = [
 ]
 const sketchContextOrder: EditorCommand[] = [
   'cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete',
-  'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
+  'move-to-page', 'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
   'paste-properties-no-corners',
   'swap-fills-and-strokes',
   'select-all-force', 'select-all-top-level', 'select-inverse',
@@ -210,6 +211,11 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
   }
   if (uiMode === 'sketch') {
     const commands = sketchSelectionCommands(editor)
+    if (selection.length) available.set('move-to-page', {
+      command: 'move-to-page', label: canvasText[locale].moveToPage, group: 'stack',
+      disabled: disabled || userPages(editor.state.doc).length < 2 ||
+        !pageMoveRoots(editor.state.doc, editor.state.page, selection, editor.parentMap()),
+    })
     const pasteStyle = available.get('paste-properties')
     if (pasteStyle) available.set('paste-properties-no-corners', {
       ...pasteStyle, command: 'paste-properties-no-corners',

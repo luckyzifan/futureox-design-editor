@@ -1,6 +1,7 @@
 import { allParents, type ParentMap } from './geometry'
 import { layerFlowOrder } from './layer-order'
 import { container, type DesignDocument } from './model'
+import { assertStructuralParent, indexSelection, SelectionCommandError } from './commands/selection-command'
 
 export type LayerDropPosition = 'above' | 'inside' | 'below'
 
@@ -17,6 +18,23 @@ export function orderedLayerRoots(doc: DesignDocument, page: string, selected: r
 
 export function layerDropPosition(isContainer: boolean, fraction: number): LayerDropPosition {
   return isContainer && fraction >= .25 && fraction <= .75 ? 'inside' : fraction < .5 ? 'above' : 'below'
+}
+
+/** Validate the explicit selection before dropping any locked or derived
+ * member. Move the whole selection, or leave it unmodified. */
+export function pageMoveRoots(doc: DesignDocument, page: string, selected: readonly string[], parents: ParentMap, ordered = false) {
+  try {
+    const index = indexSelection(doc, selected, ordered, parents)
+    if (index.pageId !== page || !index.ids.length) return
+    for (const id of new Set(selected)) {
+      if (doc.nodes[id].instanceOrigin) return
+      assertStructuralParent(doc, parents.get(id)!, parents)
+    }
+    return index.ids
+  } catch (error) {
+    if (!(error instanceof SelectionCommandError)) throw error
+    return
+  }
 }
 
 /** Freeform rows run front-to-back. Auto-layout rows run in flow order.

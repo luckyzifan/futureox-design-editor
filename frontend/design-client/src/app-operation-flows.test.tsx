@@ -313,6 +313,63 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch layer pointer drop and context menu move a selection to another page', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Page move'), source = doc.pages[0], destination = uid()
+  const parent = node('frame', 0, 0, 220, 160)
+  parent.transform = [0.8, 0.6, -0.4, 1.2, 140, -60]
+  const child = node('rectangle', 20, 15, 50, 40), locked = node('rectangle', 190, 20, 30, 30)
+  locked.locked = true
+  parent.children = [child.id]
+  for (const layer of [parent, child, locked]) doc.nodes[layer.id] = layer
+  source.children = [parent.id, locked.id]
+  doc.pages.push({ id: destination, name: 'Destination', background: '#ffffff', children: [] })
+  await act(async () => { editor!.load(doc); editor!.select([child.id]) })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const target = document.querySelector<HTMLElement>(`[data-layer-drop-page="${destination}"]`)!
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+  dom.window.HTMLElement.prototype.setPointerCapture = () => undefined
+  dom.window.HTMLElement.prototype.hasPointerCapture = () => false
+  const row = () => document.querySelector<HTMLElement>(`[data-layer-id="${child.id}"]`)!
+  const pointer = (type: string, x: number) => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: 20 })
+    Object.defineProperty(event, 'pointerId', { value: 1 })
+    return row().dispatchEvent(event)
+  }
+  const menu = () => document.querySelector<HTMLButtonElement>('[data-page-picker]')
+  const openMenu = () => act(async () => row().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })))
+
+  await act(async () => { editor!.select([child.id, locked.id]); pointer('pointerdown', 10); pointer('pointermove', 30) })
+  expect(target.getAttribute('data-layer-drop-target')).toBeNull()
+  await act(async () => { pointer('pointerup', 30) })
+  expect(editor!.authoredDocument).toBe(before)
+  await openMenu()
+  expect(menu()?.disabled).toBe(true)
+  await act(async () => menu()!.parentElement!.closest('[role="menu"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+
+  await act(async () => { editor!.select([child.id]); pointer('pointerdown', 10); pointer('pointermove', 30) })
+  expect(target.getAttribute('data-layer-drop-target')).toBe('true')
+  await act(async () => { pointer('pointerup', 30) })
+  expect(editor!.state.page).toBe(destination)
+  expect(editor!.state.selection).toEqual([child.id])
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(editor!.state.doc.pages[1].children).toEqual([child.id])
+  expect(worldMatrix(editor!.state.doc, child.id)).toEqual(worldMatrix(before, child.id))
+  await act(async () => editor!.undo())
+  expect(editor!.state.page).toBe(source.id)
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+
+  await openMenu()
+  expect(menu()?.disabled).toBe(false)
+  await act(async () => menu()!.click())
+  const item = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(el => el.textContent === 'Destination')!
+  await act(async () => item.click())
+  expect(editor!.state.page).toBe(destination)
+  expect(editor!.state.selection).toEqual([child.id])
+})
+
 test('Sketch Option-click aligns and previews against the common top-level frame', async () => {
   applyInterfaceLayout('sketch')
   await render()
