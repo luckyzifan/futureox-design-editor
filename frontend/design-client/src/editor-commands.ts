@@ -274,7 +274,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         const tool = editor.state.tool
         if (tool === 'eraser') await activateTool(editor, 'vector')
         else if (['vector', 'pen', 'pencil', 'brush', 'marker'].includes(tool)) await activateTool(editor, 'eraser')
-        else togglePrototypeTab()
+        else if (interfacePreference.getSnapshot().uiMode === 'figma') togglePrototypeTab()
       } else if (command === 'zoom-next-frame' || command === 'zoom-previous-frame') jumpFrame(editor, command === 'zoom-next-frame' ? 1 : -1, size)
       else if (command === 'next-page' || command === 'previous-page') jumpPage(editor, command === 'next-page' ? 1 : -1)
       else if (options.nodeId) jumpToNode(editor, options.nodeId, size)

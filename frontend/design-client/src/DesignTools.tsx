@@ -25,16 +25,17 @@ import { jumpToNode } from './canvas-navigation'
 import { ImportOwner, importStep } from './import-ownership'
 
 export type DesignToolsTab = 'variables' | 'styles' | 'libraries' | 'prototype'
-export function DesignTools({ editor, onClose, initialTab = 'variables', embedded = false }: { editor: Editor; onClose: () => void; initialTab?: DesignToolsTab; embedded?: boolean }) {
+export function DesignTools({ editor, onClose, initialTab = 'variables', embedded = false, allowPrototype = true }: { editor: Editor; onClose: () => void; initialTab?: DesignToolsTab; embedded?: boolean; allowPrototype?: boolean }) {
   const { locale, tr } = useProfessionalDialogText()
   const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     system = doc.designSystem || emptySystem(),
     n = doc.nodes[selection[0]]
-  const [tab, setTab] = useState<DesignToolsTab>(initialTab),
+  const [requestedTab, setTab] = useState<DesignToolsTab>(initialTab),
     [name, setName] = useState(''),
     [version, setVersion] = useState(1),
     [preview, setPreview] = useState(false),
     [error, setError] = useState('')
+  const tab = !allowPrototype && requestedTab === 'prototype' ? 'variables' : requestedTab
   const file = useRef<HTMLInputElement>(null)
   const [imports] = useState(() => new ImportOwner())
   useEffect(() => { imports.activate(); return () => imports.dispose() }, [imports])
@@ -109,7 +110,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
               ['styles', '共享样式'],
               ['libraries', '组件库'],
               ['prototype', '交互原型'],
-            ].map(([id, label]) => (
+            ].filter(([id]) => allowPrototype || id !== 'prototype').map(([id, label]) => (
               <button type="button" key={id} aria-pressed={tab === id} onClick={() => { if (tab !== 'variables' || commitPendingEdits(editor)) setTab(id as DesignToolsTab) }}>
                 {tr(label)}
               </button>
@@ -848,7 +849,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
           )}
         </div>
       </div>
-      {preview && <PrototypePlayer document={doc} onClose={() => setPreview(false)} />}
+      {allowPrototype && preview && <PrototypePlayer document={doc} onClose={() => setPreview(false)} />}
     </>
   )
 }

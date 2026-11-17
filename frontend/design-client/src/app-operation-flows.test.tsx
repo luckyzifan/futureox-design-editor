@@ -206,7 +206,8 @@ test('Sketch Interaction arms the prototype tool and preserves an invisible hots
   try {
     await key('i', { code: 'KeyI' })
     expect(editor!.state.tool).toBe('hotspot')
-    expect(document.querySelector('#prototype-properties-tab')?.getAttribute('aria-selected')).toBe('true')
+    expect(document.querySelector('#prototype-properties-tab')).toBeNull()
+    expect(document.querySelector('.sketch-interaction-panel')).not.toBeNull()
     const authored = editor!.authoredDocument
     const hotspot = node('rectangle', 20, 30, 80, 55)
     await act(async () => editor!.change('创建热点', draft => {
@@ -217,7 +218,12 @@ test('Sketch Interaction arms the prototype tool and preserves an invisible hots
     const committed = editor!.authoredDocument
     expect(committed.nodes[hotspot.id].fills).toEqual([])
     expect(committed.prototype?.interactions[hotspot.id]).toEqual([{ trigger: 'click', actions: [] }])
-    expect(document.querySelector<HTMLSelectElement>('[aria-label="交互触发"]')?.value).toBe('click')
+    const target = document.querySelector<HTMLSelectElement>('.sketch-interaction-panel [aria-label="链接到"]')!
+    expect(target.value).toBe('')
+    await act(async () => { target.value = frame.id; target.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(editor!.authoredDocument.prototype?.interactions[hotspot.id][0].actions).toEqual([{ kind: 'navigate', target: frame.id, transitionStyle: 'none' }])
+    await act(async () => editor!.undo())
+    expect(editor!.authoredDocument).toEqual(committed)
     const fd = JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(committed))))
     const sketch = JSON.parse(import_sketch_json(export_sketch_json(JSON.stringify(committed)))).document
     for (const reopened of [fd, sketch]) {
@@ -2043,4 +2049,45 @@ test('layout switch keeps style ownership while Sketch and Figma edit it through
   await act(async () => editorInstance.undo())
   expect(editorInstance.authoredDocument).toEqual(before)
   expect(editorInstance.state.selection).toEqual([text.id])
+})
+
+
+test('Sketch cannot inherit or toggle the Figma prototype inspector and restores Figma controls on return', async () => {
+  applyInterfaceLayout('figma')
+  setPrototypeTab('design')
+  await render()
+  const doc = blank(), frame = node('frame'), next = node('frame')
+  for (const layer of [frame, next]) { doc.nodes[layer.id] = layer; doc.pages[0].children.push(layer.id) }
+  doc.schemaVersion = 4
+  doc.prototype = { interactions: { [frame.id]: [{ trigger: 'click', actions: [{ kind: 'navigate', target: next.id }] }] } }
+  const editorInstance = editor!, view = { x: 30, y: 40, zoom: 1.25 }
+  await act(async () => { editorInstance.load(doc); editorInstance.select([frame.id]) })
+  await act(async () => { editorInstance.set({ view }) })
+  const before = editorInstance.authoredDocument
+  const preview = () => document.querySelector('.prototype-preview-button')
+  const prototype = () => document.querySelector<HTMLButtonElement>('#prototype-properties-tab')
+  await act(async () => prototype()!.click())
+  expect(document.querySelector('.embedded-design-tools')).not.toBeNull()
+  expect(preview()).not.toBeNull()
+
+  await act(async () => applyInterfaceLayout('sketch'))
+  expect(document.querySelector('.properties-tabs')).toBeNull()
+  expect(document.querySelector('.embedded-design-tools')).toBeNull()
+  expect(document.querySelector('[data-testid="prototype-link"]')).toBeNull()
+  expect(document.querySelector('.properties-content .inspector')).not.toBeNull()
+  expect(preview()).toBeNull()
+  await act(async () => shortcutPreference.set('figma-like'))
+  await key('End')
+  await key('E', { code: 'KeyE', shiftKey: true })
+  expect(document.querySelector('.embedded-design-tools')).toBeNull()
+  expect(editorInstance.authoredDocument).toBe(before)
+  expect(editorInstance.state.selection).toEqual([frame.id])
+  expect(editorInstance.state.view).toEqual(view)
+  expect(editorInstance.canUndo).toBe(false)
+
+  await act(async () => applyInterfaceLayout('figma'))
+  expect(prototype()?.getAttribute('aria-selected')).toBe('true')
+  expect(document.querySelector('.embedded-design-tools')).not.toBeNull()
+  expect(preview()).not.toBeNull()
+  await act(async () => setPrototypeTab('design'))
 })

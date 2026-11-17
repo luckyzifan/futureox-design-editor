@@ -3073,7 +3073,6 @@ html[data-reduced-motion=true] .animation-modal * {
 @media (max-width: 900px) {
   .editor-shell[data-ui-mode="sketch"] { grid-template-columns: 0 0 minmax(0, 1fr) 0 !important; }
 }
-.editor-shell[data-ui-mode="sketch"] .properties-tabs { background: #e6e6e6; }
 .editor-shell[data-ui-mode="sketch"] .properties-content .inspector > section,
 .editor-shell[data-ui-mode="sketch"] .properties-content .property-card {
   margin: 8px; padding: 8px; background: #ffffff; border: 1px solid #d0d0d0; border-radius: 6px;
@@ -3210,3 +3209,6 @@ html[data-reduced-motion=true] .animation-modal * {
 .sketch-text-alignment { display: flex; align-items: center; gap: 2px; }
 .sketch-text-alignment button { flex: 1; }
 .sketch-text-alignment button[aria-pressed="true"] { background: var(--workspace-selected); color: var(--workspace-selected-ink, var(--workspace-accent)); }
+.sketch-interaction-panel { margin: 8px; padding: 8px; background: var(--workspace-field); border: 1px solid var(--workspace-border); border-radius: 6px; }
+.sketch-interaction-panel h3 { margin: 0 0 6px; font-size: 11px; color: var(--workspace-text); }
+.sketch-interaction-panel label { display: grid; gap: 4px; }
