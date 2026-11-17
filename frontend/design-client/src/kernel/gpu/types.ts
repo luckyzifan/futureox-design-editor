@@ -323,6 +323,13 @@ export interface Driver {
   /** Display-only bounded command slices; never a resource completion proof. */
   rasterPacing?: boolean
   captureDisplay?: boolean
+  /** Zoom-focus bands submit the next crop before this scope resolves. */
+  holdCapturedCompletion?: boolean
+  readonly completionDeferred?: boolean
+  noteHeldTexture?(texture: Texture): void
+  isHeldTexture?(texture: Texture): boolean
+  deferDestroy?(texture: Texture): void
+  flushHeldCompletion?(): Promise<void>
   retainedSampleCapture?(): boolean
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic?:boolean): void
   acceptPresentation?(token:number,accepted?:boolean):void

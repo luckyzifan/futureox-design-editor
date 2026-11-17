@@ -1120,7 +1120,14 @@ export class GpuRenderer {
       throw new Error('无效的 GPU 表面边界')
     const key = `${scalarCoverage ? 'scalar:' : binaryCoverage ? 'binary:' : ''}${r.w}:${r.h}`,
       list = this.free.get(key)
-    let texture = list?.pop()
+    let texture: Texture | undefined
+    if (list) {
+      for (let index = list.length - 1; index >= 0; index--) {
+        if (this.driver.isHeldTexture?.(list[index])) continue
+        texture = list.splice(index, 1)[0]
+        break
+      }
+    }
     if (texture) {
       this.ledger.unpark(texture, this.driver.completedResourceEpoch)
       ;(this.free as SurfacePool<Texture>).removed?.(texture)
@@ -1377,6 +1384,7 @@ export class GpuRenderer {
       ;(this.free as SurfacePool<Texture>).added?.(s.texture)
       this.ledger.notePoolReturn(s.texture, this.driver.resourceEpoch)
       this.ledger.park(s.texture, this.driver.resourceEpoch, this.driver.completedResourceEpoch)
+      if (this.driver.completionDeferred) this.driver.noteHeldTexture!(s.texture)
       if((this.free as SurfacePool<Texture>).setOwned)(this.free as SurfacePool<Texture>).setOwned(key,list)
       else this.free.set(key,list)
       // Returning to the pool is the end of this texture's latest use; stamp
@@ -6841,10 +6849,20 @@ export class GpuRenderer {
       return false
     })
   }
+  private deferUpload(texture: Texture) {
+    this.gradientPhaseResources.delete(texture)
+    this.busy.delete(texture)
+    this.used.delete(texture)
+    this.lastUsed.delete(texture)
+    this.dischargeTexture(texture)
+    this.driver.deferDestroy!(texture)
+  }
   private beginKernelFrame() {
+    const defer = !!this.driver.completionDeferred
     for (const { texture } of [...this.blurKernels.values(), ...this.certifiedKernels.values()]) {
       if (this.kernelCache.has(texture)) continue
       if (this.retainKernels) this.retiredKernels.push({ texture, epoch: this.driver.resourceEpoch! })
+      else if (defer) this.deferUpload(texture)
       else this.forgetUpload(texture)
     }
     this.blurKernels.clear()
@@ -8665,18 +8683,24 @@ export class GpuRenderer {
       }
       if(this.denseAtlas){this.admissionPins.delete(this.denseAtlas.texture);this.denseAtlas=undefined}
       for (const texture of this.coordinateMaps) {
-        this.gradientPhaseResources.delete(texture)
-        this.busy.delete(texture)
-        this.used.delete(texture)
-        this.lastUsed.delete(texture)
-        this.driver.destroy(texture)
-        this.dischargeTexture(texture)
+        if (this.driver.completionDeferred) this.deferUpload(texture)
+        else {
+          this.gradientPhaseResources.delete(texture)
+          this.busy.delete(texture)
+          this.used.delete(texture)
+          this.lastUsed.delete(texture)
+          this.driver.destroy(texture)
+          this.dischargeTexture(texture)
+        }
       }
       this.coordinateMaps.clear()
       // Retired geometry fields already left coordinateMaps; finish releases
       // them after the same completion boundary, before the busy sweep below
       // could ever pool a parameter upload.
-      for (const texture of this.retiredUploads) this.forgetUpload(texture)
+      for (const texture of this.retiredUploads) {
+        if (this.driver.completionDeferred) this.deferUpload(texture)
+        else this.forgetUpload(texture)
+      }
       this.retiredUploads.length = 0
       this.imageGrids.clear()
       this.gradientLookups.clear()

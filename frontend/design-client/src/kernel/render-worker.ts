@@ -1678,7 +1678,8 @@ self.onmessage = (e) => {
                     if (next && kernel.canPrepareConcurrently) ahead.start(index + 1, () => prepare(next))
                     const result = await renderTiledPreview(kernel, renderOptions, backend, color, settingsJson,
                       Math.max(region.width, region.height), region, decodeScenePacket(prepared.packet), false, undefined, true, false, false,
-                      reportRasterProgress, previewCurrent, hydrateImages, undefined, false, undefined, false, false, undefined, displayBackpressure)
+                      reportRasterProgress, previewCurrent, hydrateImages, undefined, false, undefined, false, false, undefined, displayBackpressure,
+                      false, false, focusCapture && regions.length > 1)
                     rendered.push({ region, result, driver: gpu?.driver })
                     if (!current()) throw Error('PREVIEW_CANCELLED')
                     if (!result.gpuTile || rendered[0].driver !== gpu?.driver) throw Error('Exact commit capture unavailable')
@@ -1687,6 +1688,13 @@ self.onmessage = (e) => {
                     checkpointMs += result.checkpointMs ?? 0
                     drawCalls += result.drawCalls ?? 0
                     peakTextureBytes = Math.max(peakTextureBytes, result.peakTextureBytes ?? 0)
+                  }
+                  if (focusCapture && regions.length > 1) {
+                    gpu?.driver && (gpu.driver.holdCapturedCompletion = false)
+                    const flushing = performance.now()
+                    await gpu?.driver.flushHeldCompletion?.()
+                    finishMs += performance.now() - flushing
+                    if (!current()) throw Error('PREVIEW_CANCELLED')
                   }
                   for (const { region, result, driver } of rendered) {
                     driver?.tagExactTile?.(result.gpuTile!, owner, pixelSourceContract(renderOptions), 0)
@@ -1705,6 +1713,10 @@ self.onmessage = (e) => {
                       !/GPU surface budget exceeded|Exact commit capture unavailable|Invalid native capture/.test(String(error))) throw error
                 } finally {
                   await ahead.drain()
+                  if (gpu?.driver.holdCapturedCompletion || gpu?.driver.completionDeferred) {
+                    gpu.driver.holdCapturedCompletion = false
+                    await gpu.driver.flushHeldCompletion?.()
+                  }
                   for (const { result, driver } of rendered) {
                     result.bitmap?.close()
                     if (result.gpuTile !== undefined) driver?.releasePresented?.([result.gpuTile])
@@ -2665,6 +2677,7 @@ async function renderTiledPreview(
   displayBackpressure=false,
   sourceDetailTile=false,
   sourceImageDisplay=false,
+  deferCapturedCompletion=false,
 ) {
   const regionChannel=activeLane
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
@@ -2767,6 +2780,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay()
+        if (deferCapturedCompletion) gpu.driver.holdCapturedCompletion = true
         const result = await failureAttempt(12, () => gpu!.render(scene, false, true, isCurrent,onEncodingProgress,displayBackpressure))
         tileCost?.observe(scene, result)
         presented = result.bitmap
@@ -2809,6 +2823,10 @@ async function renderTiledPreview(
         presented = undefined
         if (residentTile) gpu?.driver.releasePresented?.([residentTile])
         residentTile = undefined
+        if (deferCapturedCompletion && gpu) {
+          gpu.driver.holdCapturedCompletion = false
+          await gpu.driver.flushHeldCompletion?.()
+        }
         if (String(error).includes('PREVIEW_CANCELLED') || isDisplayBudgetError(error)) throw error
         presentationFailure = `GPU bitmap presentation fallback: ${String(error)}`
         admission.observe(error,crop)

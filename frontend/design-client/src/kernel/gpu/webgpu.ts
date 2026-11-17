@@ -630,6 +630,17 @@ export class WebGpuDriver implements Driver {
   private transient: GPUTexture[] = []
   private transientTargets: Texture[] = []
   private transientBytes = 0
+  /** Set by a multi-band zoom-focus settle. Captured frames may return before
+   * their validation scope resolves so the next band can encode. */
+  holdCapturedCompletion = false
+  private deferredCompletions: { scope: Promise<GPUError | null>; targets: Texture[]; buffers: GPUTexture[] }[] = []
+  private deferredDestroys: Texture[] = []
+  private heldTextures = new Set<Texture>()
+  private flushingHeld?: Promise<void>
+  get completionDeferred() { return this.deferredCompletions.length > 0 || this.deferredDestroys.length > 0 }
+  noteHeldTexture(texture: Texture) { this.heldTextures.add(texture) }
+  isHeldTexture(texture: Texture) { return this.heldTextures.has(texture) }
+  deferDestroy(texture: Texture) { this.deferredDestroys.push(texture) }
   private msaa = new Map<
     string,
     { color: GPUTexture; depth: GPUTexture; high: Texture; low: Texture }
@@ -3418,6 +3429,45 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.frameScopeOpen = false
     return checked
   }
+  /** One completion for every band submitted under holdCapturedCompletion.
+   * Later encodes already ran; this is the fence before reuse, destruction
+   * and publication. Idempotent if a flush is already in flight. */
+  flushHeldCompletion() {
+    if (this.flushingHeld) return this.flushingHeld
+    if (!this.deferredCompletions.length && !this.deferredDestroys.length && !this.heldTextures.size)
+      return Promise.resolve()
+    const settling = this.settleHeldCompletion()
+    this.flushingHeld = settling.finally(() => { this.flushingHeld = undefined })
+    return this.flushingHeld
+  }
+  private async settleHeldCompletion() {
+    const frames = this.deferredCompletions.splice(0)
+    const destroys = this.deferredDestroys.splice(0)
+    const epoch = this.resourceEpoch
+    let failure: unknown
+    try {
+      const scopes = await Promise.all(frames.map(frame => frame.scope))
+      const covered = this.waitForQueue('checkpoint')
+      await covered
+      if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
+      if (this.lost) failure = new Error('GPU 设备已丢失')
+      else {
+        const error = scopes.find(value => value)
+        if (error || this.errors.length)
+          failure = markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : 0, failureCode: 201 })
+      }
+    } catch (error) {
+      failure = error
+    } finally {
+      for (const texture of destroys) this.destroy(texture)
+      for (const frame of frames) {
+        for (const texture of frame.targets) this.destroy(texture)
+        for (const buffer of frame.buffers) buffer.destroy()
+      }
+      this.heldTextures.clear()
+    }
+    if (failure) throw failure
+  }
   async finish(
     source: Texture,
     r: Rect,
@@ -3556,6 +3606,22 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.uploadUniforms()
     this.submitEncoder()
     this.commandSubmissions++
+    // The next zoom-focus band encodes while this crop's commands stay queued.
+    // Scratch, readback and periodic fences keep the original completion wait.
+    if (this.holdCapturedCompletion && captured && !readback && !waitReason && !timingRead && !buffer && !transfer) {
+      if (retiredTables.length) this.deferImageTables(retiredTables)
+      const scope = this.popFrameScope()
+      this.deferredCompletions.push({
+        scope,
+        targets: this.transientTargets.splice(0),
+        buffers: this.transient.splice(0),
+      })
+      this.transientBytes = 0
+      this.msaa.clear()
+      if (captured) this.residentCaptures++
+      this.submittedBoundaryReady = true
+      return { gpuTile: captured.id }
+    }
     const byteTentSnapshot = this.byteTentSnapshot()
     // Presentation-only tiles stay on the GPU timeline. Submitted commands
     // retain their resources; subsequent uploads are ordered by the queue.
