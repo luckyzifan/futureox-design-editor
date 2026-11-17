@@ -135,6 +135,7 @@ import { createShapeSeed, resolveShapeCreation, creationPointCount, creationTool
 import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, keyboardPlacesTool } from './keyboard-placement'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, sketchGradientStopOffset, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
+import { ArrangementPreview } from './ArrangementPreview'
 import { isAlignmentCommand } from './alignment-availability'
 import { applyEditableNetwork, editableNetwork } from './editable-network'
 import {
@@ -1328,6 +1329,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const down = (e: KeyboardEvent) => {
       if (e.key === 'Shift') setPenShift(true)
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target) || e.getModifierState?.('AltGraph')) { nudge.finish(); return }
+      if (e.key === 'Escape' && editor.liveArrangement) {
+        e.preventDefault()
+        editor.setLiveArrangement(null)
+        return
+      }
       if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
       if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
       if(e.key==='Escape')cancelToolActivation(editor)
@@ -3675,6 +3681,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         {/* Selection is document feedback, not part of the raster result.
             Keep it above tiles and responsive while that result refines. */}
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}>
+          <ArrangementPreview editor={editor} entries={entries} zoom={zoom} enabled={uiMode === 'sketch' && !hidePanChrome && !ownedDrag} />
           {!hidePanChrome && marqueePreview === null && !!selected.length && !['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
             <g className="selection" data-selection-readonly={selectionFeedback.readOnly} data-selection-count={selected.length}>
               {selected.length > 1 && selected.map((entry, index) => {

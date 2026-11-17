@@ -432,6 +432,25 @@ export class Editor {
       try { fn() } catch { /* Angle feedback must not reject the gesture. */ }
     }
   }
+  liveArrangement: {
+    document: DesignDocument
+    page: string
+    session: number
+    selection: readonly string[]
+    patches: Readonly<Record<string, { transform: Matrix }>>
+  } | null = null
+  private liveArrangementListeners = new Set<() => void>()
+  subscribeLiveArrangement = (fn: () => void) => {
+    this.liveArrangementListeners.add(fn)
+    return () => { this.liveArrangementListeners.delete(fn) }
+  }
+  setLiveArrangement(next: Editor['liveArrangement']) {
+    if (this.disposed || this.liveArrangement === next) return
+    this.liveArrangement = next
+    for (const listener of this.liveArrangementListeners) {
+      try { listener() } catch { /* Preview subscribers do not own document edits. */ }
+    }
+  }
   /** Blur endpoint and zoom-focus readout while a canvas transaction holds the
    * inspector snapshot. Cleared when that transaction ends. */
   liveBlur: LiveBlur | null = null
@@ -3399,6 +3418,8 @@ export class Editor {
     this.editListeners.clear()
     this.liveRotation = null
     this.liveRotationListeners.clear()
+    this.liveArrangement = null
+    this.liveArrangementListeners.clear()
     this.revealRequest = null
     this.revealListeners.clear()
   }

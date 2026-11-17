@@ -2171,7 +2171,7 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
   background: var(--workspace-panel); border: 1px solid var(--workspace-border); border-radius: 6px; box-shadow: 0 4px 12px #0002; }
 .alignment-more > div > button { width: 26px; }
 .sketch-inspector-alignment { flex: none; padding: 6px 10px 0; }
-.sketch-inspector-alignment .compact-alignment { margin: 0; }
+.sketch-inspector-alignment .compact-alignment { margin: 0; grid-template-columns: repeat(8, minmax(0, 1fr)); }
 .geometry-position, .geometry-rotation, .geometry-dimensions { display: grid; gap: 6px; align-items: center; margin: 4px 0 8px; }
 .geometry-position { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .geometry-rotation { grid-template-columns: minmax(0, 1fr) auto; }

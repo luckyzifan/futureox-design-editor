@@ -1,6 +1,8 @@
 import type { Editor } from './engine'
 import { selectionCommandAdmission } from './commands/selection-command'
 import { commitPendingEdits } from './pending-edits'
+import { arrangePatches } from './align-engine'
+import { interactivePath } from './selection-hierarchy'
 
 export const alignmentCommands = {
   'align-left': { axis: 'x', mode: 'start', label: ['左对齐', 'Align Left'] },
@@ -29,4 +31,31 @@ export function alignSelection(editor: Editor, axis: 'x' | 'y', mode: 'start' | 
   if (!commitPendingEdits(editor)) return
   if (!alignmentAvailability(editor)[mode === 'distribute' ? 'distribute' : 'align']) return
   editor.align(axis, mode)
+}
+
+export function canTidySelection(editor: Editor, distribute = alignmentAvailability(editor).distribute) {
+  const { doc, page, selection } = editor.state
+  const parents = editor.parentMap(doc)
+  return distribute && selection.every(id => !doc.nodes[id]?.instanceOrigin &&
+    interactivePath(doc, page, id, false, parents).length > 0)
+}
+
+function tidyPatches(editor: Editor) {
+  const { doc, page, selection } = editor.state
+  return canTidySelection(editor) ? arrangePatches(doc, page, selection, 'tidy') : null
+}
+
+export function previewTidy(editor: Editor) {
+  const patches = tidyPatches(editor)
+  const { doc, page, selection } = editor.state
+  editor.setLiveArrangement(patches ? { document: doc, page, selection, session: editor.sessionGeneration, patches } : null)
+}
+
+export function tidySelection(editor: Editor) {
+  editor.setLiveArrangement(null)
+  if (!commitPendingEdits(editor)) return
+  const patches = tidyPatches(editor)
+  if (patches) editor.change('整理图层', draft => {
+    for (const [id, patch] of Object.entries(patches)) draft.nodes[id].transform = patch.transform
+  })
 }
