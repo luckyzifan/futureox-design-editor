@@ -158,7 +158,8 @@ function geometry(doc: DesignDocument, index: SelectionIndex, state: SelectionGe
   return { measure, matrix }
 }
 export interface SelectionArrangement { ids: string[]; patches: TransformPatch[] }
-export function prepareSelectionArrangement(doc: DesignDocument, selected: readonly string[], axis: 'x' | 'y', mode: ArrangementMode, state: SelectionGeometryState): SelectionArrangement {
+export function prepareSelectionArrangement(doc: DesignDocument, selected: readonly string[], axis: 'x' | 'y', mode: ArrangementMode,
+  state: SelectionGeometryState, referenceId?: string): SelectionArrangement {
   const index = indexSelection(doc, selected); assertPositionable(doc, index)
   if (mode === 'distribute' && index.ids.length < 2) reject('invalid_params', 'Distribution requires at least two nodes')
   if (mode === 'distribute' && index.ids.length === 2) return { ids: index.ids, patches: [] }
@@ -174,7 +175,9 @@ export function prepareSelectionArrangement(doc: DesignDocument, selected: reado
     for (let i = 1; i < sorted.length; i++) if (sorted[i][axis] < sorted[i - 1][axis] + sorted[i - 1][size] - 1e-9)
       reject('unsupported_distribution_geometry', 'Overlapping or contained distribution intervals need an explicit endpoint policy')
   }
-  const plan = planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode, single ? { x: 0, y: 0, width: parentNode.width, height: parentNode.height } : undefined)!
+  const reference = !single && referenceId && index.ids.includes(referenceId) ? reader.measure(referenceId) : undefined
+  const plan = planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode,
+    single ? { x: 0, y: 0, width: parentNode.width, height: parentNode.height } : undefined, reference)!
   return { ids: index.ids, patches: index.ids.map((id, i) => {
     const delta = plan.offsets[i]
     if (delta.x === 0 && delta.y === 0) return { id, transform: doc.nodes[id].transform }
