@@ -67,6 +67,7 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
       tools.set('set-tool-hotspot', 'I')
       bindings.push({ command: 'auto-pin-selection', combo: 'Shift+A' }, { command: 'auto-pin-contents', combo: 'Alt+Shift+A' })
       bindings.push({ command: 'swap-fills-and-strokes', combo: 'Shift+X' })
+      bindings.push({ command: 'toggle-sketch-borders', combo: 'Shift+B' })
     }
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' },
       { command: 'edit-frame-bounds', combo: 'Mod+Enter' })

@@ -312,6 +312,36 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Shift+B hides and restores the selection’s individual border flags', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Toggle borders')
+  const first = node('rectangle', 60, 40, 100, 90)
+  const second = node('ellipse', 230, 40, 100, 90)
+  first.strokes = [stroke('#ff0000', 6), { ...stroke('#00ff00', 3), visible: false }]
+  second.strokes = [stroke('#0000ff', 4)]
+  for (const n of [first, second]) doc.nodes[n.id] = n
+  doc.pages[0].children = [first.id, second.id]
+  await act(async () => { editor!.load(doc); editor!.select([first.id, second.id]); canvas().focus() })
+  const prior = editor!.authoredDocument, revision = editor!.state.version
+  const read = () => [first.id, second.id].map(id => editor!.state.doc.nodes[id].strokes.map(row => row.visible))
+  const toggle = () => key('B', { code: 'KeyB', shiftKey: true })
+  await toggle()
+  expect(read()).toEqual([[false, false], [false]])
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => { editor!.set({ tool: 'zoom' }) })
+  await toggle()
+  expect(read()).toEqual([[true, false], [true]])
+  expect(editor!.authoredDocument).toEqual(prior)
+  await act(async () => editor!.undo())
+  expect(read()).toEqual([[false, false], [false]])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(prior)
+  expect(editor!.canUndo).toBe(false)
+  await key('b', { code: 'KeyB' })
+  expect(editor!.state.tool).toBe('brush')
+})
+
 test('Sketch Shift+X swaps paint rows in order, preserving border geometry and one-step undo', async () => {
   applyInterfaceLayout('sketch')
   await render()

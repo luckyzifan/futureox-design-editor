@@ -34,3 +34,44 @@ export function swapSelectionPaints(editor: Editor, rejection: string) {
     }
   })
 }
+
+type VisibilityRow = { id: string; visible: boolean }
+const hiddenBorders = new WeakMap<Editor, { session: number; layers: Map<string, VisibilityRow[]> }>()
+
+/** The inspector's border toggles own visibility; the paint inside a border
+ * keeps its existing enabled flag. Remember the individual row choices. */
+export function toggleSelectionBorders(editor: Editor) {
+  const { doc, version } = editor.state
+  const session = editor.sessionGeneration
+  let remembered = hiddenBorders.get(editor)
+  if (remembered?.session !== session) {
+    remembered = { session, layers: new Map() }
+    hiddenBorders.set(editor, remembered)
+  }
+  const targets = editor.topSelection().map(id => doc.nodes[id])
+    .filter(node => node.strokes.length && !node.styleRefs?.strokes)
+  const hide = targets.some(node => node.strokes.some(border => border.visible))
+  const changes = new Map<string, VisibilityRow[]>()
+  const saved = new Map<string, VisibilityRow[]>()
+  for (const node of targets) {
+    if (hide) {
+      if (!node.strokes.some(border => border.visible)) continue
+      saved.set(node.id, node.strokes.map(({ id, visible }) => ({ id, visible })))
+      changes.set(node.id, node.strokes.map(({ id }) => ({ id, visible: false })))
+    } else {
+      const previous = remembered.layers.get(node.id)
+      if (previous && previous.length === node.strokes.length &&
+          previous.every(({ id }) => node.strokes.some(border => border.id === id))) changes.set(node.id, previous)
+    }
+  }
+  if (!changes.size) return
+  editor.updateProperties([...changes.keys()], node => {
+    const next = changes.get(node.id)!
+    for (const border of node.strokes) {
+      const row = next.find(({ id }) => id === border.id)
+      if (row) border.visible = row.visible
+    }
+  }, hide ? '隐藏描边' : '恢复描边')
+  if (editor.sessionGeneration !== session || editor.state.version !== version + 1) return
+  if (hide) for (const [id, rows] of saved) remembered.layers.set(id, rows)
+}
