@@ -9,6 +9,7 @@
 | 常用动作 | Figma-like | Sketch-like |
 | --- | --- | --- |
 | 选择 / 框选工具 | V | 按住 X 临时框选；tap-X 持续模式未实现 |
+| 键盘框选 | macOS Option+Space，Windows Ctrl+Space；方向键移动，主修饰键调整选框 | — |
 | 选择父图层 | 反斜杠或 Shift+Enter | Shift+Enter |
 | 画板 | F 或 A | F |
 | 钢笔 / 矢量绘制 | P | V |

@@ -26,7 +26,7 @@ describe('bounded keyboard presets', () => {
   test.each(contexts)('$profile $platform desktop=$desktop has unique chords and existing commands only', context => {
     const bindings = shortcutBindings(context)
     expect(new Set(bindings.map(binding => binding.combo)).size).toBe(bindings.length)
-    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find', 'toggle-layout-guides', 'toggle-pixel-grid', 'toggle-pixel-snapping', 'select-parent', 'open-shortcut-reference']).toContain(binding.command)
+    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find', 'toggle-layout-guides', 'toggle-pixel-grid', 'toggle-pixel-snapping', 'select-parent', 'open-shortcut-reference', 'keyboard-box-select']).toContain(binding.command)
     const layoutGuides = bindings.filter(binding => binding.command === 'toggle-layout-guides').map(binding => binding.combo)
     expect(layoutGuides).toEqual(context.profile === 'figma-like' ? ['Shift+G'] : [])
     const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()

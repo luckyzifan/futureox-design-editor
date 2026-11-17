@@ -963,6 +963,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [measureKeys,setMeasureKeys]=useState({alt:false,deep:false,text:false})
   const wheelModifiers = useRef({ ctrl: false, meta: false })
   const space = useRef(false)
+  type KeyboardBox = { page: string; session: number; original: readonly string[]; point: Point; anchor?: Point; parent?: string }
+  const keyboardBox = useRef<KeyboardBox | null>(null)
+  const [keyboardMark, setKeyboardMark] = useState<{ point: Point; area?: Bounds } | null>(null)
+  const handleKeyboardBox = useRef<(event: KeyboardEvent) => boolean>(() => false)
+  const closeKeyboardBox = () => {
+    const open = keyboardBox.current
+    if (!open) return
+    keyboardBox.current = null
+    setKeyboardMark(null)
+    if (editor.sessionGeneration === open.session && editor.state.page === open.page) editor.select([...open.original])
+  }
   const [spaceHeld, setSpaceHeld] = useState(false)
   const marqueeHeld = useRef(false)
   const [marqueeKeyHeld, setMarqueeKeyHeld] = useState(false)
@@ -1359,6 +1370,73 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (mode === 'deselect') editor.set({ tool: 'pen', selection: [], editingVertex: null, editingVertices: [] })
     else editor.set({ tool: 'select', ...(created ? {} : { editingVertex: null }) })
   }
+  handleKeyboardBox.current = event => {
+    const gesture = keyboardBox.current
+    if (!gesture) return false
+    if (interfacePreference.getSnapshot().uiMode !== 'figma' ||
+        gesture.session !== editor.sessionGeneration || gesture.page !== editor.state.page ||
+        event.target !== host.current) {
+      closeKeyboardBox()
+      return false
+    }
+    const mod = shortcutPlatform() === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+    const step: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+    const direction = step[event.key]
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      if (!event.repeat) closeKeyboardBox()
+      return true
+    }
+    const { doc, page, selection } = editor.state
+    const view = editor.effectiveView()
+    const area = gesture.anchor && createBox(gesture.anchor, gesture.point, false)
+    const reveal = (extent: Bounds) => {
+      const viewport = { width: host.current?.clientWidth || sizeRef.current.width, height: host.current?.clientHeight || sizeRef.current.height }
+      if (viewport.width <= 48 || viewport.height <= 48) return
+      const next = extent.width * view.zoom + 48 > viewport.width || extent.height * view.zoom + 48 > viewport.height
+        ? fitBounds(extent, viewport, { padding: 24, maxZoom: view.zoom }) : revealInView(view, extent, viewport, 24)
+      if (next) editor.set({ view: next })
+    }
+    if (direction && !event.altKey && (!event.metaKey && !event.ctrlKey || mod)) {
+      event.preventDefault()
+      gesture.parent = undefined
+      gesture.anchor = mod ? gesture.anchor ?? { ...gesture.point } : undefined
+      const distance = (event.shiftKey ? 50 : 10) / view.zoom
+      gesture.point = { x: gesture.point.x + direction[0] * distance, y: gesture.point.y + direction[1] * distance }
+      const nextArea = gesture.anchor && createBox(gesture.anchor, gesture.point, false)
+      if (nextArea) editor.select(canvasMarqueeSelection(doc, page, [], index.query(nextArea), nextArea, {
+        deep: false, contained: false, additive: false, toggle: false,
+      }))
+      setKeyboardMark({ point: gesture.point, area: nextArea })
+      reveal(nextArea ?? { ...gesture.point, width: 0, height: 0 })
+    } else if (event.key === 'Enter' && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      event.preventDefault()
+      if (!event.repeat && !area) {
+        const hit = displayedHoverHit(gesture.point, false)
+        gesture.parent = hit && doc.nodes[hit]?.children.length ? hit : undefined
+        editor.select(hit ? [hit] : [])
+      }
+    } else if (event.key === 'Tab' && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      event.preventDefault()
+      const parent = gesture.parent ? doc.nodes[gesture.parent] : undefined
+      if (!parent?.children.length) return true
+      const children = parent.children.filter(id => doc.nodes[id]?.visible && !doc.nodes[id].locked)
+      if (!children.length) return true
+      const at = children.indexOf(selection[0])
+      const next = at < 0 ? event.shiftKey ? children.length - 1 : 0 :
+        (at + (event.shiftKey ? children.length - 1 : 1)) % children.length
+      editor.select([children[next]])
+      const entry = entries.find(item => item.id === children[next])
+      if (entry) reveal(entry.bounds)
+    } else if (!['Shift', 'Alt', 'Meta', 'Control'].includes(event.key)) {
+      event.preventDefault()
+    }
+    return true
+  }
+  useEffect(() => {
+    if (keyboardBox.current && (uiMode !== 'figma' || keyboardBox.current.page !== state.page ||
+        keyboardBox.current.session !== editor.sessionGeneration)) closeKeyboardBox()
+  }, [editor, uiMode, state.page, editor.sessionGeneration])
   useEffect(() => {
     const nudge = createKeyboardNudgeGesture(editor)
     const arrows = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
@@ -1371,6 +1449,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       if (shortcutTargetOwnsKeyboard(e.target)) { nudge.finish(); return }
+      if (handleKeyboardBox.current(e)) return
       if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
       if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
       if(e.key==='Escape')cancelToolActivation(editor)
@@ -1390,6 +1469,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       const shortcut = resolveShortcut(e, shortcutContext)
+      if (shortcut?.command === 'keyboard-box-select') {
+        const canvas = host.current
+        if (!canvas || e.target !== canvas || e.repeat || drag.current || penRef.current || pencil.current || space.current ||
+            ownsTextEntry(textEntryOwner.current) || editor.interactionActive || editor.state.busy) return
+        const size = { width: canvas.clientWidth || sizeRef.current.width, height: canvas.clientHeight || sizeRef.current.height }
+        if (size.width <= 0 || size.height <= 0) return
+        e.preventDefault()
+        const point = keyboardPlacementPoint(editor.effectiveView(), size)
+        keyboardBox.current = { point, page: editor.state.page, session: editor.sessionGeneration, original: [...editor.state.selection] }
+        setKeyboardMark({ point })
+        recordShortcutUse(shortcut)
+        return
+      }
       if (mode === 'figma' && e.key === 'Escape' && shortcutReferenceOpen()) {
         e.preventDefault()
         if (!e.repeat) closeShortcutReference()
@@ -1798,6 +1890,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
     }
     const blur = () => {
+      closeKeyboardBox()
       releaseTemporaryZoom()
       editor.setLiveArrangement(null)
       desktopPet.stopNavigation()
@@ -1825,9 +1918,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
     const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
-    const visibility = () => { if (document.hidden) { releaseTemporaryZoom(); releaseMarquee(); nudge.finish() } }
+    const visibility = () => { if (document.hidden) { closeKeyboardBox(); releaseTemporaryZoom(); releaseMarquee(); nudge.finish() } }
     const focus = (e: FocusEvent) => {
-      if (e.target !== host.current) { nudge.finish(); setGradientKeyboardTarget(null) }
+      if (e.target !== host.current) { closeKeyboardBox(); nudge.finish(); setGradientKeyboardTarget(null) }
       if (shortcutTargetOwnsKeyboard(e.target)) { releaseTemporaryZoom(); releaseMarquee() }
     }
     const pointer = () => { nudge.finish() }
@@ -3307,6 +3400,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       data-transform-gesture={drag.current?.kind}
       style={marqueeKeyHeld ? { cursor: 'crosshair' } : drag.current?.kind==='rotate'?{cursor:transformHandles[drag.current.handle ?? 0]?.rotateCursor}:undefined}
       onPointerDownCapture={e => {
+        if (keyboardBox.current && e.target instanceof Node && host.current?.contains(e.target)) {
+          closeKeyboardBox()
+          e.preventDefault(); e.stopPropagation()
+          return
+        }
         // Capture before transform/layout handles, so held X cannot resize or
         // move an existing selection. Canvas controls keep their own input.
         if (!marqueeHeld.current || uiMode !== 'sketch' ||
@@ -3506,7 +3604,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           }}
         />
       )}
-      {frameHoverActive() && !hidePanChrome && exactOverlayMatches && !ownedDrag && !editor.interactionActive &&
+      {uiMode === 'figma' && keyboardMark && (() => {
+        const screen = worldToScreen(displayView, keyboardMark.point)
+        const box = keyboardMark.area
+        const corner = box && worldToScreen(displayView, { x: box.x, y: box.y })
+        return <>
+          <svg className="keyboard-box-selection-overlay" aria-hidden="true">
+            {box && corner && <rect data-testid="keyboard-selection-box" x={corner.x} y={corner.y}
+              width={box.width * displayView.zoom} height={box.height * displayView.zoom} />}
+            <circle data-testid="keyboard-selection-cursor" cx={screen.x} cy={screen.y} r={5} />
+          </svg>
+          <span className="sr-only" role="status">{locale === 'en' ? 'Keyboard box selection' : '键盘框选'}</span>
+        </>
+      })()}
+      {frameHoverActive() && !hidePanChrome && !keyboardMark && exactOverlayMatches && !ownedDrag && !editor.interactionActive &&
         state.hoverSource === 'canvas' && state.hover && state.doc.nodes[state.hover] &&
         hoveredAdjacentFrame(state.doc, state.page, state.hover, editor.parentMap(state.doc)) === state.hover &&
         adjacentEdges(state.hover).map(({ side, x, y }) => {

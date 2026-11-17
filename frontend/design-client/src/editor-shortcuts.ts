@@ -15,7 +15,7 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   if (shortcutTargetOwnsKeyboard(event.target)) return false
   const layout = shortcutContextForLayout(context)
   const binding = resolveShortcut(event, layout)
-  if (!binding || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
+  if (!binding || binding.command === 'keyboard-box-select' || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
   if (!event.repeat && !editor.interactionActive && !editor.state.busy && layout.profile === 'figma-like') recordShortcutUse(binding)
   if (binding.command === 'open-command-search' || binding.command === 'open-layer-find' || binding.command === 'open-shortcut-reference') {
