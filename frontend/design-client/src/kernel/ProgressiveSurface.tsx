@@ -580,6 +580,7 @@ export function ProgressiveSurfaceImpl(
       if (evicted.size) dropTiles(key => evicted.has(key))
     }
   }
+  const incompleteFillRetry = useRef<string | undefined>(undefined)
   const commitRef = useRef(commitReady)
   commitRef.current = commitReady
   const rasterProfile = props.rasterProfile || doc.rasterProfile || (doc.colorManagement ? 'figma' : 'analytic')
@@ -1433,6 +1434,19 @@ export function ProgressiveSurfaceImpl(
               sequentialRepair.current = null
               if (wakeLatest) setDisplayRetry(value => value + 1)
             }
+          }
+        }
+        if (result && !prefetchOnly && !current() && sameContent() && !latestContext.current.interaction?.active) {
+          // Cancellation can replace the scheduler without replacing the
+          // document or camera. The late batch has finished; if the live
+          // exact plan is still missing a tile, give its scheduler one
+          // recheck instead of leaving the last preview displayed forever.
+          const live = activePlan.current
+          if (live?.key === frameKey && live.document === doc && live.revision === contract.revision
+              && incompleteFillRetry.current !== live.key
+              && [...live.ids].some(key => !ready.current.has(key))) {
+            incompleteFillRetry.current = live.key
+            setDisplayRetry(value => value + 1)
           }
         }
         if (current() && result) {
