@@ -1,7 +1,8 @@
 import { usePropertyText } from './property-interface-messages'
-import { AlignLeft, AlignCenterHorizontal, AlignRight, AlignStartVertical, AlignCenterVertical, AlignEndVertical, FlipHorizontal2, FlipVertical2, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, MoreHorizontal } from 'lucide-react'
+import { AlignLeft, AlignCenterHorizontal, AlignRight, AlignStartVertical, AlignCenterVertical, AlignEndVertical, FlipHorizontal2, FlipVertical2, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, MoreHorizontal, Grid2X2 } from 'lucide-react'
 import type { Editor } from './engine'
-import { alignmentAvailability, alignSelection } from './alignment-availability'
+import { alignmentAvailability, alignSelection, canTidySelection, previewTidy, tidySelection } from './alignment-availability'
+import { useInterfacePreferences } from './interface-preference'
 import { dispatchEditorCommand } from './editor-commands'
 
 export function FlipControls({ editor }: { editor: Editor }) {
@@ -16,7 +17,9 @@ export function FlipControls({ editor }: { editor: Editor }) {
 
 export function AlignmentControls({ editor, compact = false }: { editor: Editor; compact?: boolean }) {
   const { tr } = usePropertyText()
+  const { uiMode, locale } = useInterfacePreferences()
   const availability = alignmentAvailability(editor)
+  const tidyLabel = locale === 'en' ? 'Tidy' : '整理'
   const positions = [
     ['x', 'start', '左对齐', AlignLeft], ['x', 'center', '水平居中', AlignCenterHorizontal], ['x', 'end', '右对齐', AlignRight],
     ['y', 'start', '顶对齐', AlignStartVertical], ['y', 'center', '垂直居中', AlignCenterVertical], ['y', 'end', '底对齐', AlignEndVertical],
@@ -38,5 +41,9 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
       <summary aria-label={tr("更多对齐选项")} title={tr("更多对齐选项")}><MoreHorizontal size={16}/></summary>
       <div>{buttons(positions.slice(6))}</div>
     </details> : <FlipControls editor={editor}/>}
+    {compact && uiMode === 'sketch' && <button type="button" title={tidyLabel} aria-label={tidyLabel}
+      disabled={!canTidySelection(editor, availability.distribute)} onPointerEnter={() => previewTidy(editor)}
+      onPointerLeave={() => editor.setLiveArrangement(null)} onBlur={() => editor.setLiveArrangement(null)}
+      onClick={() => tidySelection(editor)}><Grid2X2 size={16} /></button>}
   </div>
 }

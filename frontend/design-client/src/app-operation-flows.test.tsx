@@ -313,6 +313,43 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Tidy previews its destination, then commits the same arrangement in one step', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Tidy selection')
+  const first = node('rectangle', 50, 100, 50, 40)
+  const middle = node('rectangle', 140, 106, 50, 40)
+  const last = node('rectangle', 300, 104, 50, 40)
+  for (const n of [first, middle, last]) doc.nodes[n.id] = n
+  doc.pages[0].children = [first.id, middle.id, last.id]
+  await act(async () => { editor!.load(doc); editor!.select([first.id]); canvas().focus() })
+  const tidy = () => document.querySelector<HTMLButtonElement>('[aria-label="整理"]')!
+  expect(tidy().disabled).toBe(true)
+  await act(async () => editor!.select([first.id, middle.id, last.id]))
+  expect(tidy().disabled).toBe(false)
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const hover = () => act(async () => tidy().dispatchEvent(new MouseEvent('pointerover', { bubbles: true })))
+  const previews = () => [...canvas().querySelectorAll('[data-testid="arrangement-preview"] rect')]
+  await hover()
+  expect(previews().length).toBe(3)
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+  await key('Escape', { code: 'Escape' })
+  expect(previews()).toHaveLength(0)
+  expect(editor!.state.selection).toEqual([first.id, middle.id, last.id])
+  await hover()
+  const destinations = previews().map(rect => [rect.getAttribute('data-node-id')!, Number(rect.getAttribute('x')), Number(rect.getAttribute('y'))] as const)
+  await act(async () => tidy().click())
+  expect(previews()).toHaveLength(0)
+  for (const [id, x, y] of destinations) expect(editor!.state.doc.nodes[id].transform.slice(4)).toEqual([x, y])
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+  await act(async () => applyInterfaceLayout('figma'))
+  expect(tidy()).toBeNull()
+})
+
 test('Sketch Shift+Command+D duplicates directly behind the original and preserves undo', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')
