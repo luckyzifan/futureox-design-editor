@@ -158,8 +158,9 @@ function geometry(doc: DesignDocument, index: SelectionIndex, state: SelectionGe
   return { measure, matrix }
 }
 export interface SelectionArrangement { ids: string[]; patches: TransformPatch[] }
+export type AlignmentTarget = { kind: 'layer' | 'frame'; id: string }
 export function prepareSelectionArrangement(doc: DesignDocument, selected: readonly string[], axis: 'x' | 'y', mode: ArrangementMode,
-  state: SelectionGeometryState, referenceId?: string): SelectionArrangement {
+  state: SelectionGeometryState, target?: AlignmentTarget): SelectionArrangement {
   const index = indexSelection(doc, selected); assertPositionable(doc, index)
   if (mode === 'distribute' && index.ids.length < 2) reject('invalid_params', 'Distribution requires at least two nodes')
   if (mode === 'distribute' && index.ids.length === 2) return { ids: index.ids, patches: [] }
@@ -168,21 +169,33 @@ export function prepareSelectionArrangement(doc: DesignDocument, selected: reado
   // Build the parent basis once; the geometry reader independently memoizes
   // world matrices for every measured node and its ancestry.
   const world = (id: string): Matrix => doc.nodes[id] ? multiply(world(index.parents.get(id)!), doc.nodes[id].transform) : identity()
-  const basis = single ? inverse(world(parent)) : identity(), reader = geometry(doc, index, state, basis)
+  const alignToFrame = target?.kind === 'frame' && mode !== 'distribute'
+  const frame = alignToFrame ? doc.nodes[target.id] : undefined
+  if (alignToFrame && (!frame || frame.kind !== 'frame' || index.ids.some(id => {
+    for (let at = index.parents.get(id); at && doc.nodes[at]; at = index.parents.get(at)) if (at === frame.id) return false
+    return true
+  }))) reject('invalid_parent', 'The selection must share the alignment frame')
+  const frameWorld = frame ? world(frame.id) : undefined
+  const basis = frameWorld ? inverse(frameWorld) : single ? inverse(world(parent)) : identity()
+  const reader = geometry(doc, index, state, basis)
   const rects = index.ids.map(reader.measure)
   if (mode === 'distribute') {
     const size = axis === 'x' ? 'width' : 'height', sorted = [...rects].sort((a, b) => a[axis] - b[axis])
     for (let i = 1; i < sorted.length; i++) if (sorted[i][axis] < sorted[i - 1][axis] + sorted[i - 1][size] - 1e-9)
       reject('unsupported_distribution_geometry', 'Overlapping or contained distribution intervals need an explicit endpoint policy')
   }
-  const reference = !single && referenceId && index.ids.includes(referenceId) ? reader.measure(referenceId) : undefined
+  const reference = frame ? { x: 0, y: 0, width: frame.width, height: frame.height } :
+    !single && target?.kind === 'layer' && index.ids.includes(target.id) ? reader.measure(target.id) : undefined
   const plan = planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode,
     single ? { x: 0, y: 0, width: parentNode.width, height: parentNode.height } : undefined, reference)!
   return { ids: index.ids, patches: index.ids.map((id, i) => {
     const delta = plan.offsets[i]
     if (delta.x === 0 && delta.y === 0) return { id, transform: doc.nodes[id].transform }
-    return { id, transform: single ? multiply(translate(delta.x, delta.y), doc.nodes[id].transform) :
-      multiply(inverse(reader.matrix(index.parents.get(id)!)), multiply(translate(delta.x, delta.y), reader.matrix(id))) }
+    if (single && !frameWorld) return { id, transform: multiply(translate(delta.x, delta.y), doc.nodes[id].transform) }
+    const { x, y } = frameWorld ? {
+      x: frameWorld[0] * delta.x + frameWorld[2] * delta.y, y: frameWorld[1] * delta.x + frameWorld[3] * delta.y,
+    } : delta
+    return { id, transform: multiply(inverse(reader.matrix(index.parents.get(id)!)), multiply(translate(x, y), reader.matrix(id))) }
   }).filter((patch) => patch.transform.some((value, i) => value !== doc.nodes[patch.id].transform[i])) }
 }
 export interface SelectionWrap {

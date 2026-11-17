@@ -37,6 +37,19 @@ function childrenFixture(kind: 'group' | 'frame' | 'section' | 'vector' = 'group
   doc.nodes = Object.fromEntries([wrapper, a, b, outside].map(n => [n.id, n])); doc.pages[0].children = [wrapper.id, outside.id]
   return { doc, wrapper, a, b, outside }
 }
+test('align to an outer frame measures and moves in the rotated frame basis', () => {
+  const { doc, wrapper, a } = childrenFixture('frame')
+  const outer = node('frame', 100, 50, 300, 200)
+  outer.transform = multiply(translate(100, 50), rotate(Math.PI / 2))
+  outer.children = [...doc.pages[0].children]
+  doc.pages[0].children = [outer.id]
+  doc.nodes[outer.id] = outer
+  const plan = prepareSelectionArrangement(doc, [a.id], 'x', 'start', { fresh: true }, { kind: 'frame', id: outer.id })
+  expect(plan.patches).toHaveLength(1)
+  const [patch] = plan.patches
+  expect(patch.transform[4]).toBeCloseTo(-wrapper.transform[4], 8)
+  expect(patch.transform[5]).toBeCloseTo(a.transform[5], 8)
+})
 function rejectedParity(doc: DesignDocument, ids: string[], uiAction: (editor: Editor) => unknown, method: string, params: Record<string, unknown>, code: string) {
   const [ui, mcp] = pair(doc), api = createEditorDesignAutomation(mcp)
   try {

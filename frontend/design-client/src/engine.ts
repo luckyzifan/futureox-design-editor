@@ -24,6 +24,7 @@ import * as ComponentSlots from './component-slots'
 import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
 import { sameLiveRotation, type LiveRotation } from './rotation-field'
 import { sameLiveBlur, type LiveBlur } from './live-blur'
+import { selectedTopLevelFrameId } from './canvas-navigation'
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
 import { zoomAt } from './canvas-camera'
@@ -2968,17 +2969,24 @@ export class Editor {
       }
     })
   }
-  selectionAlignmentPlan(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
+  selectionAlignmentPlan(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false) {
     const { doc, selection, alignmentReference } = this.state
-    const reference = interfacePreference.getSnapshot().uiMode === 'sketch' ? alignmentReference : undefined
-    return prepareSelectionArrangement(doc, selection, axis, mode, { fresh: true }, reference)
+    const { uiMode, locale } = interfacePreference.getSnapshot()
+    if (uiMode === 'sketch' && toTopLevelFrame && mode !== 'distribute') {
+      const frame = selectedTopLevelFrameId(this, false)
+      if (!frame) throw new SelectionCommandError('missing_top_level_frame',
+        locale === 'en' ? 'The selection does not share a top-level frame.' : '选区不在同一个顶层画框内。')
+      return prepareSelectionArrangement(doc, selection, axis, mode, { fresh: true }, { kind: 'frame', id: frame })
+    }
+    const target = uiMode === 'sketch' && alignmentReference ? { kind: 'layer' as const, id: alignmentReference } : undefined
+    return prepareSelectionArrangement(doc, selection, axis, mode, { fresh: true }, target)
   }
-  align(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
+  align(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false) {
     if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
     if (!this.state.selection.length) return
     try {
       const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
-      const plan = this.selectionAlignmentPlan(axis, mode)
+      const plan = this.selectionAlignmentPlan(axis, mode, toTopLevelFrame)
       if (!plan.patches.length) return { status: 'unchanged' as const, revision }
       return this.change(mode === 'distribute' ? '等距分布' : '对齐图层', draft => {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)

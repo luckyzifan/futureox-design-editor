@@ -17,16 +17,22 @@ export type PrototypeLink = {
   label?: string
 }
 
-/** The outermost frame must contain the entire visible selection on this page. */
-export function selectedTopLevelFrameBounds(editor: Editor): Bounds | undefined {
+/** Resolve the outermost frame shared by the visible selection on this page. */
+export function selectedTopLevelFrameId(editor: Editor, includeSelectedFrame = true): string | undefined {
   const { doc, page } = editor.state
   const parents = editor.parentMap(doc)
   let frame: string | undefined
   for (const id of editor.topSelection(true)) {
-    const outer = interactivePath(doc, page, id, true, parents).find(at => doc.nodes[at].kind === 'frame')
+    const path = interactivePath(doc, page, id, true, parents)
+    const outer = (includeSelectedFrame ? path : path.slice(0, -1)).find(at => doc.nodes[at].kind === 'frame')
     if (!outer || (frame && frame !== outer)) return
     frame = outer
   }
+  return frame
+}
+
+export function selectedTopLevelFrameBounds(editor: Editor): Bounds | undefined {
+  const frame = selectedTopLevelFrameId(editor)
   return frame ? editor.entries().find(entry => entry.id === frame)?.bounds : undefined
 }
 
