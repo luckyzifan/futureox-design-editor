@@ -19,7 +19,8 @@ import { fitBounds, fitSelectedBounds, zoomAt, zoomStep } from './canvas-camera'
 import { jumpFrame, jumpPage, jumpToNode, selectedTopLevelFrameBounds } from './canvas-navigation'
 import { togglePrototypeTab } from './prototype-chrome'
 import { allParents, apply, bounds, unionBounds, worldMatrix } from './geometry'
-import { selectionParentBounds } from './canvas-view'
+import { selectionLocalBounds, selectionParentBounds } from './canvas-view'
+import { canAutoPinChild, inferPins } from './layout-constraints'
 import { canFitFrameContents, editableFrameCrop, frameCropPatches } from './selection-properties'
 import { interfacePreference } from './interface-preference'
 import { interactivePath } from './selection-hierarchy'
@@ -36,8 +37,8 @@ import { toolForCommand, unavailableReason, TOOL_COMMANDS } from './tool-registr
 
 export type SetToolCommand = `set-tool-${string}`
 type SketchPixelCommand = 'fit-pixel-bounds' | 'round-to-pixel'
-export type EditorCommand = SketchPixelCommand | SketchBooleanCommand | AlignmentCommand | 'graphic-selection' | 'edit-frame-bounds' | 'toggle-outlines' | DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'zoom-top-level-frame' | 'zoom-next-frame' | 'zoom-previous-frame' | 'next-page' | 'previous-page' | 'eraser-or-prototype' | 'jump-to-node' | 'center-selection' | 'fit-frame-content' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'flatten' | 'convert-vector' | 'remove-stroke' | 'remove-fill'
-export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'fit-pixel-bounds','round-to-pixel','copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','flatten','convert-vector','new-page','zoom-next-frame','zoom-previous-frame','next-page','previous-page','eraser-or-prototype','jump-to-node','fit-frame-content','graphic-selection','edit-frame-bounds','toggle-outlines','remove-stroke','remove-fill', ...alignmentCommandIds, ...sketchBooleanCommandIds, 'zoom-top-level-frame']
+export type EditorCommand = SketchPixelCommand | SketchBooleanCommand | AlignmentCommand | 'graphic-selection' | 'edit-frame-bounds' | 'toggle-outlines' | DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'auto-pin-contents' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'zoom-top-level-frame' | 'zoom-next-frame' | 'zoom-previous-frame' | 'next-page' | 'previous-page' | 'eraser-or-prototype' | 'jump-to-node' | 'center-selection' | 'fit-frame-content' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'flatten' | 'convert-vector' | 'remove-stroke' | 'remove-fill'
+export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'fit-pixel-bounds','round-to-pixel','copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','flatten','convert-vector','new-page','zoom-next-frame','zoom-previous-frame','next-page','previous-page','eraser-or-prototype','jump-to-node','fit-frame-content','graphic-selection','edit-frame-bounds','toggle-outlines','remove-stroke','remove-fill', ...alignmentCommandIds, ...sketchBooleanCommandIds, 'zoom-top-level-frame', 'auto-pin-contents']
 /** Normalize the native menu/accelerator bridge at one renderer boundary.
  * Focus ownership remains in dispatchEditorCommand, not in the native host. */
 export function resolveDesktopEditorCommand(name: string): EditorCommand | undefined {
@@ -372,6 +373,26 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       }
       case 'auto-layout': editor.autoLayout(); break
       case 'remove-auto-layout': editor.autoLayout('none'); break
+      case 'auto-pin-contents': {
+        if (interfacePreference.getSnapshot().uiMode !== 'sketch') break
+        const updates: [string, NonNullable<DesignNode['constraints']>][] = []
+        for (const parentId of editor.topSelection()) {
+          const parent = before.nodes[parentId]
+          const parentBox = selectionLocalBounds(before, parentId)
+          for (const id of parent.children) {
+            const child = before.nodes[id]
+            if (!child || !canAutoPinChild(parent, child)) continue
+            const pins = inferPins(parent, parentBox, selectionParentBounds(before, id))
+            const current = child.constraints
+            if (current?.horizontal !== pins.horizontal || current?.vertical !== pins.vertical ||
+                current.referenceWidth !== pins.referenceWidth || current.referenceHeight !== pins.referenceHeight) updates.push([id, pins])
+          }
+        }
+        if (updates.length) editor.change('自动固定子图层', draft => {
+          for (const [id, pins] of updates) draft.nodes[id].constraints = pins
+        })
+        break
+      }
       case 'create-component':
         if (interfacePreference.getSnapshot().uiMode !== 'sketch' || requestSketchSymbolDialog(editor) === undefined)
           editor.createComponent()
