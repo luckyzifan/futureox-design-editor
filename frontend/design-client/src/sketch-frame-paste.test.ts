@@ -194,6 +194,34 @@ test('sketch paste into one selected frame centers in that frame', () => {
   expect(editor.state.doc.nodes[mark.id].transform.slice(4)).toEqual([4, 6])
 })
 
+test('Sketch in-place paste keeps parent-local coordinates while Figma keeps world coordinates', () => {
+  const sourceFrame = node('frame', 100, 60, 240, 160)
+  const child = node('rectangle', 30, 25, 40, 30)
+  const target = node('frame', 420, 170, 200, 150)
+  sourceFrame.children = [child.id]
+  const editor = open('sketch', [sourceFrame, child, target])
+  editor.select([child.id])
+  const packet = editor.exportClipboard()!
+  const before = editor.authoredDocument
+  editor.importClipboard(packet)
+  editor.select([target.id])
+  editor.pasteToSelection(false, true)
+  const [local] = copiesIn(editor, target.id, 40)
+  expect(local.transform.slice(4)).toEqual([30, 25])
+  editor.undo()
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+
+  interfacePreference.set({ uiMode: 'figma' })
+  editor.importClipboard(packet)
+  editor.select([target.id])
+  editor.paste(true)
+  const [world] = copiesIn(editor, target.id, 40)
+  expect(world.transform.slice(4)).toEqual([-290, -85])
+  editor.undo()
+  expect(editor.authoredDocument).toEqual(before)
+})
+
 test('sketch sibling paste inside a frame still steps by 10', () => {
   const frame = node('frame', 10, 20, 170, 102)
   const child = node('rectangle', 30, 15, 39, 23)
