@@ -1749,6 +1749,7 @@ impl<'a> Importer<'a> {
         let kind = if modern_frame { "frame" } else { kind_for_class(class) };
         let mut node = crate::facet::sample_node(&id, kind);
         node.graphic = kind == "frame" && layer.get("groupBehavior").and_then(Value::as_i64) == Some(2);
+        node.sketch_template = kind == "frame" && class != "symbolMaster" && bool_at(layer, "isTemplate");
         if kind == "frame" {
             // Artboards and Frames clip by default. Symbol masters only clip
             // when explicitly enabled. This is separate from sibling masks.
@@ -3959,6 +3960,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     }
     if doc.nodes.values().any(|n| n.layout.as_ref().is_some_and(|layout| layout.stacking_order.is_some())) {
         version = version.max(31);
+    }
+    if doc.nodes.values().any(|n| n.sketch_template) {
+        version = version.max(32);
     }
     doc.schema_version = version;
     Ok(doc)
@@ -6577,7 +6581,7 @@ fn export_layer_impl(
     layer.insert("isFixedToViewport".into(), json!(false));
     layer.insert("isFlippedHorizontal".into(), json!(false));
     layer.insert("isFlippedVertical".into(), json!(false));
-    layer.insert("isTemplate".into(), json!(false));
+    layer.insert("isTemplate".into(), json!(node.is_some_and(|n| n.sketch_template)));
     layer.insert("layerListExpandedType".into(), json!(0));
     layer.insert("nameIsFixed".into(), json!(false));
     layer.insert("resizingConstraint".into(), json!(63));

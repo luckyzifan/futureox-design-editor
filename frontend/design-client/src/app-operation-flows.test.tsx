@@ -76,6 +76,61 @@ const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement
 const canvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')!
 async function key(value: string, options: KeyboardEventInit = {}, type = 'keydown') { await act(async () => canvas().dispatchEvent(new KeyboardEvent(type, { key: value, code: value, bubbles: true, cancelable: true, ...options }))) }
 
+test('Sketch component shortcuts use six local categories and preserve the canvas camera', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const { doc } = componentFixture()
+  Object.values(doc.nodes).find(layer => layer.component)!.name = 'Local Symbol'
+  const frame = { ...node('frame'), name: 'Wide Template', sketchTemplate: true }
+  const graphic = { ...node('frame'), name: 'Icon Template', graphic: true, sketchTemplate: true }
+  const ordinary = { ...node('frame'), name: 'Ordinary Frame' }
+  doc.schemaVersion = 32
+  for (const layer of [frame, graphic, ordinary]) { doc.nodes[layer.id] = layer; doc.pages[0].children.push(layer.id) }
+  doc.designSystem = emptySystem()
+  doc.designSystem.styles = {
+    paragraph: { name: 'Paragraph Style', kind: 'text', value: defaultTextStyle() },
+    surface: { name: 'Surface Style', kind: 'paint', value: [paint('#ddeeff')] },
+  }
+  doc.designSystem.collections.palette = { name: 'Palette', defaultMode: 'light', modes: ['light'] }
+  doc.designSystem.variables.brand = { name: 'Brand Blue', collection: 'palette', kind: 'color', values: { light: '#1234ab' } }
+  const view = { x: 31, y: 57, zoom: 1.375 }
+  await act(async () => { editor!.load(doc) })
+  await act(async () => { editor!.set({ view }); canvas().focus() })
+  const original = editor!.authoredDocument
+  await key('2', { code: 'Digit2', ctrlKey: true })
+  const region = document.querySelector<HTMLElement>('section[aria-label="组件视图"]')!
+  const search = region.querySelector<HTMLInputElement>('input[aria-label="搜索组件"]')!
+  expect(document.activeElement).toBe(search)
+  expect(document.querySelector('[data-testid="canvas"]')).toBeNull()
+  const press = (target: EventTarget, key: string, options: KeyboardEventInit) => act(async () =>
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options })))
+  for (const [i, [label, resource]] of [
+    ['符号', 'Local Symbol'], ['文本样式', 'Paragraph Style'], ['图层样式', 'Surface Style'],
+    ['颜色变量', 'Brand Blue'], ['画框模板', 'Wide Template'], ['图形模板', 'Icon Template'],
+  ].entries()) {
+    await press(search, String(i + 1), { code: `Digit${i + 1}`, metaKey: true })
+    expect(region.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe(label)
+    const list = region.querySelector('[role="tabpanel"]')!
+    expect(list.textContent).toContain(resource)
+    expect(list.textContent).not.toContain('Ordinary Frame')
+    expect(editor!.state.view).toEqual(view)
+  }
+  const frameTab = [...region.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(tab => tab.textContent === '画框模板')!
+  frameTab.focus()
+  await press(frameTab, 'f', { code: 'KeyF', metaKey: true, altKey: true })
+  expect(document.activeElement).toBe(search)
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(search, 'missing asset')
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(region.querySelector('[role="tabpanel"]')?.textContent).toContain('暂无匹配的组件')
+  await press(search, '1', { code: 'Digit1', ctrlKey: true })
+  expect(canvas()).not.toBeNull()
+  expect(editor!.state.view).toEqual(view)
+  expect(editor!.authoredDocument).toBe(original)
+})
+
 test('Sketch Option-Command-R replaces the chosen instance or shared style in one undo', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

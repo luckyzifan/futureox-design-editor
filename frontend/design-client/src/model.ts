@@ -418,6 +418,7 @@ export type DesignNode = {
   smoothing: number
   clip: boolean
   graphic?: boolean
+  sketchTemplate?: boolean
   mask: boolean
   points: number
   innerRadius: number
@@ -521,7 +522,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32
   id: string
   name: string
   pages: Page[]
@@ -850,7 +851,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1113,6 +1114,9 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     if (n.graphic !== undefined && (typeof n.graphic !== 'boolean' ||
         n.graphic && (d.schemaVersion < 23 || n.kind !== 'frame' || n.layout && n.layout.mode !== 'none')))
       throw new Error('图形容器需要版本 23，且不能同时使用堆叠布局')
+    if (n.sketchTemplate !== undefined && (typeof n.sketchTemplate !== 'boolean' ||
+        n.sketchTemplate && (d.schemaVersion < 32 || n.kind !== 'frame')))
+      throw new Error('Sketch 模板需要设计文件版本 32 及画框或图形')
     if (n?.layoutGrid !== undefined || n?.layoutGrids !== undefined) {
       if (d.schemaVersion < 12 || n.kind !== 'frame' ||
           (n.layoutGrids !== undefined && (!Array.isArray(n.layoutGrids) ||
