@@ -72,6 +72,8 @@ afterEach(async () => {
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
 async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRoots: string[] = []) {
   const doc = blank('Selection workflows'); if (nodes.some(n => n.constrainProportions)) doc.schemaVersion = 7; doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
+  if (nodes.some(n => n.graphic)) doc.schemaVersion = 23
+  else if (doc.schemaVersion < 4 && nodes.some(n => n.component || n.instance)) doc.schemaVersion = 4
   if (otherRoots.length) doc.pages.push({ ...doc.pages[0], id: uid(), name: 'Other page', children: otherRoots })
   editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
   await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 6; i++) await Promise.resolve() })
@@ -306,6 +308,59 @@ test('R03 mirrored child in 90-degree parent: actual corner resizes local axes a
  expect(next.sizing).toMatchObject({width:'fixed',height:'fixed'});expect(apply(world(n.id),{x:0,y:0})).toEqual(anchor)
  expect(editor.state.doc.nodes[parent.id]).toEqual(before.nodes[parent.id]);await history(before)
 })
+for (const graphic of [false, true]) {
+  test(`Sketch Command switches a ${graphic ? 'Graphic' : 'Frame'} resize between preserving contents and ordinary resize`, async () => {
+    interfacePreference.set({ uiMode: 'sketch' })
+    const frame = node('frame', 100, 80, 120, 80)
+    if (graphic) frame.graphic = true
+    const child = node('rectangle', 70, 23, 14, 20)
+    child.constraints = { horizontal: 'scale', vertical: 'scale', referenceWidth: 120, referenceHeight: 80 }
+    frame.children = [child.id]
+    const before = await render([frame, child], [frame.id])
+    await act(async () => editor.select([frame.id]))
+    const childWorld = [...world(child.id)]
+    const left = mount.querySelector('[data-testid="resize-edge-3"]')!
+    expect(left).not.toBeNull()
+    await act(async () => pointer('pointerdown', 100, 120, {}, left))
+    await act(async () => pointer('pointermove', 60, 120))
+    await act(async () => key('Meta', { metaKey: true }))
+    expect(editor.state.doc.nodes[frame.id].width).toBeCloseTo(160, 8)
+    expect(editor.state.doc.nodes[frame.id].transform[4]).toBeCloseTo(60, 8)
+    expect(world(child.id)).toEqual(childWorld)
+    expect(editor.state.doc.nodes[child.id]).toMatchObject({ width: 14, height: 20 })
+    await act(async () => key('Meta', {}, 'keyup'))
+    expect(editor.state.doc.nodes[child.id].width).toBeGreaterThan(14)
+    expect(world(child.id)[4]).not.toBeCloseTo(childWorld[4], 8)
+    await act(async () => key('Meta', { metaKey: true }))
+    expect(world(child.id)).toEqual(childWorld)
+    await act(async () => pointer('pointerup', 60, 120, { metaKey: true }))
+    await act(async () => key('Meta', {}, 'keyup'))
+    expect(world(child.id)).toEqual(childWorld)
+    expect(editor.state.frameCrop).toBeNull()
+    await history(before)
+  })
+}
+
+test('Sketch Command resize refuses an instance and does not commit an earlier ordinary preview', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const source = node('frame', 300, 80, 120, 80), instance = node('frame', 100, 80, 120, 80)
+  source.component = { variants: {}, properties: {} }
+  instance.instance = { componentId: source.id, overrides: {}, propertyValues: {} }
+  const before = await render([source, instance], [source.id, instance.id])
+  await act(async () => editor.select([instance.id]))
+  const left = mount.querySelector('[data-testid="resize-edge-3"]')!
+  expect(left).not.toBeNull()
+  await act(async () => pointer('pointerdown', 100, 120, { metaKey: true }, left))
+  await act(async () => pointer('pointermove', 60, 120, { metaKey: true }))
+  await act(async () => key('Meta', {}, 'keyup'))
+  expect(editor.state.doc.nodes[instance.id].width).toBeCloseTo(160, 8)
+  await act(async () => key('Meta', { metaKey: true }))
+  expect(editor.state.doc).toEqual(before)
+  await act(async () => pointer('pointerup', 60, 120, { metaKey: true }))
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+})
+
 for(const keyName of ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown']) for(const large of [false,true]) {
  test(`R04 sketch keyboard ${keyName} large=${large}: multi-selection skips locked/hidden and only fixes target axis`,async()=>{
   const {n,child}=autoFrame(),locked=node('rectangle',350,100,70,60),hidden=node('rectangle',450,100,70,60);locked.locked=true;hidden.visible=false
