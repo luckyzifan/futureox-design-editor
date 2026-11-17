@@ -662,10 +662,7 @@ export class GpuRenderer {
       await this.reclaimForSurface(capture)
       this.checkFrameCurrent()
       const sharp = this.copy(backdrop, capture)
-      let blurred: Surface
-      try { blurred = this.blur(sharp, sigma) }
-      catch (error) { this.release(sharp); throw error }
-      return this.consumeBackdropGradient(sharp, blurred, n, effect)
+      return this.variableTentBackdrop(sharp, n, effect, false)
     }
     if (!this.wideDisplayBackdropEligible(n, sigma * 2)) return this.interactionBackdrop(n, backdrop, sigma)
     const support = Math.ceil(sigma * 2) + 2
@@ -4870,11 +4867,7 @@ export class GpuRenderer {
         this.backdropReads++
         for (const fx of backgrounds) {
           if (!background) break
-          const blurred = cropped ? await this.blurBackdropRegion(background, (backdropRadius(fx) * scale(n.matrix)) / 2, n)
-            : this.blur(background, (backdropRadius(fx) * scale(n.matrix)) / 2, false)
-          const legacyGradient = fx.gradientBlur && !fx.gradientBlur.sketch
-          const filtered = legacyGradient ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
-          if (!legacyGradient && blurred !== background) this.release(background)
+          const filtered = await this.filterBackdropEffect(background, n, fx, cropped)
           background = this.colorControls(filtered, fx.colorControls)
           if (background !== filtered) this.release(filtered)
           if (fx.kind === 'glass' && !(n.glassShape && fx.glass)) {
@@ -5172,10 +5165,7 @@ export class GpuRenderer {
     this.checkFrameCurrent()
     let background = this.run(26, capture, opticalInputs ?? targets)
     this.backdropReads++
-    const blurred = cropped ? await this.blurBackdropRegion(background, sigma, n) : this.blur(background, sigma, false)
-    const legacyGradient = fx.gradientBlur && !fx.gradientBlur.sketch
-    const filtered = legacyGradient ? await this.consumeBackdropGradient(background, blurred, n, fx) : blurred
-    if (!legacyGradient && blurred !== background) this.release(background)
+    const filtered = await this.filterBackdropEffect(background, n, fx, cropped)
     background = this.colorControls(filtered, fx.colorControls)
     if (background !== filtered) this.release(filtered)
     if (cropped) {
@@ -7360,6 +7350,41 @@ export class GpuRenderer {
     } finally {
       this.release(sharp, blurred === sharp ? undefined : blurred)
     }
+  }
+  /** Background progressive: one separable tent whose radius is the authored
+   * segment. Layer blur keeps the weight-curve composite. */
+  private variableTentBackdrop(background: Surface, n: GpuNode, fx: Effect, cropped: boolean): Surface {
+    const ramp = fx.gradientBlur!
+    const factor = scale(n.matrix)
+    const values = gradient_blur_composite_uniforms(
+      JSON.stringify(guardedPixelWindow(background.rect)), new Float64Array(n.matrix), JSON.stringify(ramp),
+    )
+    const r0 = fx.radius * ramp.startCount * factor
+    const r1 = fx.radius * ramp.endCount * factor
+    const pass = (input: Surface, axis: number) => this.run(65, input.rect, [input], u => {
+      u.set(values.subarray(0, 3), 36)
+      u[40] = r0
+      u[41] = r1
+      u[44] = axis
+      u[45] = cropped ? 1 : 0
+    })
+    const horizontal = pass(background, 0)
+    if (horizontal !== background) this.release(background)
+    const vertical = pass(horizontal, 1)
+    if (vertical !== horizontal) this.release(horizontal)
+    return vertical
+  }
+  private async filterBackdropEffect(background: Surface, n: GpuNode, fx: Effect, cropped: boolean): Promise<Surface> {
+    if (fx.kind === 'background-blur' && fx.gradientBlur && !fx.gradientBlur.sketch) {
+      return this.variableTentBackdrop(background, n, fx, cropped)
+    }
+    const sigma = (backdropRadius(fx) * scale(n.matrix)) / 2
+    const blurred = cropped
+      ? await this.blurBackdropRegion(background, sigma, n)
+      : this.blur(background, sigma, false)
+    const surface = blurred instanceof Promise ? await blurred : blurred
+    if (surface !== background) this.release(background)
+    return surface
   }
   private glass(
     backdrop: Surface,

@@ -153,7 +153,7 @@ test('progressive background blur blends the sharp and filtered captures before 
   } as unknown as GpuNode
   await f.renderer.drawBackdropLeaf(node, f.targets, undefined, fx)
   const capture = modes.indexOf(26)
-  const gradient = modes.indexOf(46)
+  const gradient = modes.indexOf(65)
   const saturation = modes.indexOf(60)
   const expand = modes.lastIndexOf(27)
   expect(capture).toBeGreaterThanOrEqual(0)

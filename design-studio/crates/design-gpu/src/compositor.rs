@@ -513,6 +513,30 @@ impl Compositor<'_, '_, '_> {
                 u[1] = y as f32;
                 self.frame.draw(copy, u, &[backdrop], false, None)?;
                 self.backdrop_blur(copy, n, fx, true, n.backdrop_box)?
+            } else if fx.kind == "background-blur" && fx.gradient_blur.as_ref().is_some_and(|gradient| gradient.sketch.is_none()) {
+                let copy = self.copy(backdrop, n.rect)?;
+                let gradient = fx.gradient_blur.as_ref().expect("two-end background blur");
+                let factor = n.matrix.max_scale();
+                let pixels = self.frame.read_surface(copy)?;
+                let mut cpu = futureox_design_kernel::blend::Surface::new(copy.rect)?;
+                for (pixel, value) in cpu.pixels.iter_mut().zip(pixels.chunks_exact(4)) {
+                    pixel.0.copy_from_slice(value);
+                }
+                let inverse = n.matrix.inverse_composed(copy.rect)?;
+                let field = futureox_design_kernel::gradient_blur::CompositeField::new(&inverse, gradient);
+                let filtered = futureox_design_kernel::effects::variable_endpoint_tent(
+                    &cpu, &field,
+                    fx.radius * gradient.start_count * factor,
+                    fx.radius * gradient.end_count * factor,
+                    futureox_design_kernel::math::Point::default(),
+                    false,
+                )?;
+                let mixed = self.frame.upload_parameters(
+                    copy.rect,
+                    &filtered.pixels.into_iter().flat_map(|pixel| pixel.0).collect::<Vec<_>>(),
+                )?;
+                if mixed.id != copy.id { self.frame.release(&[copy]); }
+                mixed
             } else {
                 let copy = self.copy(backdrop, n.rect)?;
                 let raw = self.blur(copy, fx.backdrop_radius() * n.matrix.max_scale(), false)?;
@@ -2150,14 +2174,36 @@ impl Compositor<'_, '_, '_> {
             [0., 0.]
         };
         let sketch_ramp = fx.gradient_blur.as_ref().is_some_and(|g| g.sketch.is_some());
+        let two_end = fx.kind == "background-blur" && fx.gradient_blur.is_some() && !sketch_ramp;
         let blurred = if sketch_ramp {
             self.sketch_blur_ramp(sharp, n, fx, fx.sketch_backdrop_sigma(n.matrix.max_scale()), true, origin)?
+        } else if two_end {
+            let gradient = fx.gradient_blur.as_ref().expect("two-end background blur");
+            let factor = n.matrix.max_scale();
+            let r0 = fx.radius * gradient.start_count * factor;
+            let r1 = fx.radius * gradient.end_count * factor;
+            let pixels = self.frame.read_surface(sharp)?;
+            let mut cpu = futureox_design_kernel::blend::Surface::new(sharp.rect)?;
+            for (pixel, value) in cpu.pixels.iter_mut().zip(pixels.chunks_exact(4)) {
+                pixel.0.copy_from_slice(value);
+            }
+            let inverse = n.matrix.inverse_composed(sharp.rect)?;
+            let field = futureox_design_kernel::gradient_blur::CompositeField::new(&inverse, gradient);
+            let filtered = futureox_design_kernel::effects::variable_endpoint_tent(
+                &cpu, &field, r0, r1,
+                futureox_design_kernel::math::Point::new(origin[0], origin[1]),
+                cropped,
+            )?;
+            self.frame.upload_parameters(
+                sharp.rect,
+                &filtered.pixels.into_iter().flat_map(|pixel| pixel.0).collect::<Vec<_>>(),
+            )?
         } else if fx.sketch_backdrop {
             self.blur_mode(sharp, fx.sketch_backdrop_sigma(n.matrix.max_scale()) * 2., true, true)?
         } else {
             self.blur(sharp, fx.backdrop_radius() * n.matrix.max_scale(), cropped)?
         };
-        let mut background = if fx.gradient_blur.is_some() && !sketch_ramp {
+        let mut background = if !two_end && fx.gradient_blur.is_some() && !sketch_ramp {
             self.gradient_blur_at(sharp, blurred, n, fx, origin)?
         } else {
             blurred

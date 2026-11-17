@@ -3650,9 +3650,16 @@ impl Painter<'_> {
                     background = crate::sketch_progressive_blur::apply(
                         background, gradient, m, origin, fx.sketch_backdrop_sigma(scale), true, self.compatible,
                     )?;
+                } else if let Some(gradient) = fx.gradient_blur.clone() {
+                    let radius = fx.radius;
+                    let inverse = m.inverse_composed(r)?;
+                    let filtered = self.mix_background_endpoints(
+                        &background, radius, &gradient, scale, inverse, origin, cropped,
+                    )?;
+                    background = filtered;
                 } else {
                     let radius = fx.backdrop_radius() * scale;
-                    let blurred = if fx.sketch_backdrop {
+                    background = if fx.sketch_backdrop {
                         effects::gaussian_backdrop(background.try_clone()?, fx.sketch_backdrop_sigma(scale), self.compatible)?
                     } else if cropped && !self.compatible {
                         effects::linear_tent_blur(&background, radius, true)?
@@ -3661,13 +3668,6 @@ impl Painter<'_> {
                     } else {
                         self.blur_filter(radius).apply(&background)?
                     };
-                    if let Some(gradient) = &fx.gradient_blur {
-                        let inverse = m.inverse_composed(r)?;
-                        effects::gradient_blur_composite_at(&mut background, &blurred, &inverse, gradient, origin);
-                        if self.compatible { background.quantize_rgba8(); }
-                    } else {
-                        background = blurred;
-                    }
                 }
                 if let Some(controls) = &fx.color_controls { controls.apply(&mut background, self.doc.color_management.is_some()); }
                 if legacy_glass {
@@ -3945,6 +3945,51 @@ impl Painter<'_> {
             );
         }
         effects::shadow_alpha(basis, self.blur_filter(radius), spread, inner)
+    }
+    /// Two authored background-blur radii. Each end is that uniform operator;
+    /// the segment mixes them. Layer blur keeps the weight-curve composite.
+    fn mix_background_endpoints(
+        &self,
+        source: &crate::blend::Surface,
+        radius: f64,
+        gradient: &crate::scene::GradientBlurParameters,
+        scale: f64,
+        inverse: crate::math::Transform,
+        origin: crate::math::Point,
+        cropped: bool,
+    ) -> Result<crate::blend::Surface, String> {
+        let r0 = radius * gradient.start_count * scale;
+        let r1 = radius * gradient.end_count * scale;
+        let portable = if cropped {
+            self.compatible
+        } else {
+            self.compatible && self.doc.color_management.is_none()
+        };
+        if portable {
+            let field = crate::gradient_blur::CompositeField::new(&inverse, gradient);
+            return effects::variable_endpoint_tent(source, &field, r0, r1, origin, cropped);
+        }
+        let blur_one = |radius: f64| -> Result<crate::blend::Surface, String> {
+            if !(radius > 0.) {
+                return source.try_clone();
+            }
+            if cropped && !self.compatible {
+                effects::linear_tent_blur(source, radius, true)
+            } else if cropped {
+                effects::portable_tent_blur_edge(source, radius, true)
+            } else {
+                self.blur_filter(radius).apply(source)
+            }
+        };
+        let mut start = blur_one(r0)?;
+        if r0 != r1 {
+            let end = blur_one(r1)?;
+            effects::gradient_endpoint_mix_at(&mut start, &end, &inverse, gradient, origin);
+        }
+        if self.compatible {
+            start.quantize_rgba8();
+        }
+        Ok(start)
     }
     fn blur_filter(&self, radius: f64) -> effects::BlurFilter {
         if self.doc.color_management.is_some() {
@@ -4867,7 +4912,12 @@ impl Painter<'_> {
                 // Foreground paint, children and their layout keep the usual path.
                 self.stats.backdrop_reads += 1;
             } else {
-            let mut blurred = if bounded {
+            let mut blurred = if let Some(gradient) = fx.gradient_blur.clone() {
+                let radius = fx.radius;
+                let inverse = m.inverse_composed(r)?;
+                let source = effects::copy_region(target, r)?;
+                self.mix_background_endpoints(&source, radius, &gradient, scale, inverse, crate::math::Point::default(), false)?
+            } else if bounded {
                 let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(resolved_glass.as_ref()) {
                     crate::optics::input_region(basis, r, shape, m, glass, None)?
                 } else { r };
@@ -4876,13 +4926,6 @@ impl Painter<'_> {
                 let copy = effects::copy_region(target, r)?;
                 self.blur_filter(fx.backdrop_radius() * scale).apply_owned(copy)?
             };
-            if let Some(gradient) = &fx.gradient_blur {
-                let mut sharp = effects::copy_region(target, blurred.rect)?;
-                let inverse = m.inverse_composed(sharp.rect)?;
-                effects::gradient_blur_composite(&mut sharp, &blurred, &inverse, gradient);
-                if self.compatible { sharp.quantize_rgba8(); }
-                blurred = sharp;
-            }
             if let Some(controls) = &fx.color_controls { controls.apply(&mut blurred, self.doc.color_management.is_some()); }
             let background = if let Some((shape, glass)) =
                 crate::optics::GlassShape::from_node(n).zip(resolved_glass.as_ref())

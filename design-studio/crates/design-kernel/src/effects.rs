@@ -95,6 +95,159 @@ pub fn gradient_blur_composite_at(
     }
 }
 
+/// Background-blur progressive mode: `start` and `end` are the backdrop
+/// filtered at the two authored radii (`radius * count`). `t` is the same
+/// clamped segment projection as the layer-blur composite. The layer-blur
+/// weight curve is not used here; it saturates both ends onto the larger
+/// radius.
+pub fn gradient_endpoint_mix_at(
+    start: &mut Surface,
+    end: &Surface,
+    inverse: &crate::math::Transform,
+    params: &crate::scene::GradientBlurParameters,
+    origin: crate::math::Point,
+) {
+    let field = crate::gradient_blur::CompositeField::new(inverse, params);
+    for y in start.rect.y..start.rect.bottom() {
+        for x in start.rect.x..start.rect.right() {
+            let (si, ei) = match (start.rect.index(x, y), end.rect.index(x, y)) {
+                (Some(a), Some(b)) => (a, b),
+                _ => continue,
+            };
+            let px = (x as f32 + 0.5) + origin.x as f32;
+            let py = (y as f32 + 0.5) + origin.y as f32;
+            let t = field.a.mul_add(px, field.b.mul_add(py, field.c)).clamp(0., 1.);
+            let left = start.pixels[si].0;
+            let right = end.pixels[ei].0;
+            start.pixels[si].0 = std::array::from_fn(|channel| left[channel] + (right[channel] - left[channel]) * t);
+        }
+    }
+}
+
+/// One separable tent whose radius follows the two authored endpoints.
+/// A column of constant radius matches `portable_tent_blur_edge` of that
+/// radius; the prefix sums stay one pass, not one blur per endpoint.
+pub fn variable_endpoint_tent(
+    source: &Surface,
+    field: &crate::gradient_blur::CompositeField,
+    start_radius: f64,
+    end_radius: f64,
+    origin: crate::math::Point,
+    clamp_edges: bool,
+) -> Result<Surface, String> {
+    if !(0. ..=512.).contains(&start_radius) || !(0. ..=512.).contains(&end_radius) {
+        return Err("Progressive background blur radius must be in [0, 512]".into());
+    }
+    let mut current = source.try_clone()?;
+    current.quantize_rgba8();
+    let r0 = start_radius as f32;
+    let r1 = end_radius as f32;
+    if r0 == r1 && r0 <= 0. {
+        return Ok(current);
+    }
+    for horizontal in [true, false] {
+        let rect = current.rect;
+        let (lines, len) = if horizontal { (rect.h as i32, rect.w as i32) } else { (rect.w as i32, rect.h as i32) };
+        let _scanline = current.reserve_scratch::<Pixel>(len.max(0) as usize)?;
+        let _scratch = current.reserve_scratch::<[f64; 4]>((len.max(0) as usize + 1) * 2)?;
+        let mut line_pixels = vec![Pixel::default(); len.max(0) as usize];
+        let mut sums = vec![[0_f64; 4]; len.max(0) as usize + 1];
+        let mut moments = sums.clone();
+        for line in 0..lines {
+            crate::render_cancellation::checkpoint()?;
+            for at in 0..len {
+                line_pixels[at as usize] = if horizontal {
+                    current.at(rect.x + at, rect.y + line)
+                } else {
+                    current.at(rect.x + line, rect.y + at)
+                };
+            }
+            let sample = |at: i32| {
+                let at = if clamp_edges { at.clamp(0, len - 1) } else { at };
+                if at < 0 || at >= len {
+                    Pixel::default()
+                } else {
+                    let p = line_pixels[at as usize];
+                    Pixel(p.0.map(|v| (v * 255.).round_ties_even()))
+                }
+            };
+            for at in 0..len {
+                let value = sample(at);
+                for channel in 0..4 {
+                    sums[at as usize + 1][channel] = sums[at as usize][channel] + f64::from(value.0[channel]);
+                    moments[at as usize + 1][channel] =
+                        moments[at as usize][channel] + f64::from(value.0[channel]) * f64::from(at);
+                }
+            }
+            for at in 0..len {
+                let (sx, sy) = if horizontal { (rect.x + at, rect.y + line) } else { (rect.x + line, rect.y + at) };
+                let px = sx as f32 + 0.5 + origin.x as f32;
+                let py = sy as f32 + 0.5 + origin.y as f32;
+                let t = field.a.mul_add(px, field.b.mul_add(py, field.c)).clamp(0., 1.);
+                let radius = f64::from(r0 + (r1 - r0) * t);
+                let index = if horizontal {
+                    line as usize * rect.w as usize + at as usize
+                } else {
+                    at as usize * rect.w as usize + line as usize
+                };
+                if !(radius > 0.) {
+                    let sharp = sample(at).0.map(|v| v / 255.);
+                    current.pixels[index] = Pixel(sharp);
+                    continue;
+                }
+                let integer = radius.fract() == 0. && radius <= 512.;
+                let reach = radius.ceil() as i32;
+                let interior = (radius.floor() as i32 - 1).max(0);
+                let center = if integer { 6. * radius - 2. } else { tent_weight(radius, 0) };
+                let inv_square = if integer { 6. } else { 1. / (radius * radius) };
+                let mut value = sample(at).0.map(|v| f64::from(v) * center);
+                if interior > 0 {
+                    let lo = (at - interior).max(0) as usize;
+                    let mid = at as usize;
+                    let right = (at + interior + 1).min(len) as usize;
+                    for channel in 0..4 {
+                        let left_sum = sums[mid][channel] - sums[lo][channel];
+                        let left_moment = moments[mid][channel] - moments[lo][channel];
+                        let right_sum = sums[right][channel] - sums[mid + 1][channel];
+                        let right_moment = moments[right][channel] - moments[mid + 1][channel];
+                        value[channel] += ((radius - f64::from(at)) * left_sum
+                            + left_moment
+                            + (radius + f64::from(at)) * right_sum
+                            - right_moment)
+                            * inv_square;
+                    }
+                    if clamp_edges {
+                        let weight = |start: i32| {
+                            let count = (interior - start + 1).max(0);
+                            f64::from(count) * (radius - f64::from(start + interior) / 2.) * inv_square
+                        };
+                        let left = sample(0);
+                        let right = sample(len - 1);
+                        for (channel, value) in value.iter_mut().enumerate() {
+                            *value += f64::from(left.0[channel]) * weight(at + 1)
+                                + f64::from(right.0[channel]) * weight(len - at);
+                        }
+                    }
+                }
+                for offset in (interior + 1)..=reach {
+                    let weight = if integer { 1. } else { tent_weight(radius, offset as u32) };
+                    let a = sample(at - offset);
+                    let b = sample(at + offset);
+                    for (channel, value) in value.iter_mut().enumerate() {
+                        *value += (f64::from(a.0[channel]) + f64::from(b.0[channel])) * weight;
+                    }
+                }
+                let bytes = value.map(|v| {
+                    let byte = if integer { v / (6. * radius * radius) } else { v };
+                    (byte.clamp(0., 255.).round_ties_even() / 255.) as f32
+                });
+                current.pixels[index] = Pixel(bytes);
+            }
+        }
+    }
+    Ok(current)
+}
+
 pub fn tent_blur(surface: &Surface, radius: f64) -> Result<Surface, String> {
     tent_blur_edge(surface, radius, false)
 }
@@ -1974,6 +2127,47 @@ mod gradient_blur_pipeline_tests {
             mid,
             px(35)[0]
         );
+    }
+
+    #[test]
+    fn variable_tent_matches_a_uniform_integer_radius() {
+        let rect = Rect::new(2, -3, 24, 16);
+        let mut source = Surface::new(rect).unwrap();
+        for (i, pixel) in source.pixels.iter_mut().enumerate() {
+            let on = (i / 3) % 2 == 0;
+            pixel.0 = if on { [0.07, 0.13, 0.91, 1.] } else { [0.86, 0.84, 0.11, 1.] };
+        }
+        let field = crate::gradient_blur::CompositeField {
+            a: 0., b: 0., c: 0., start_count: 0., end_count: 0., smooth: true,
+        };
+        for radius in [1., 4., 12.] {
+            let uniform = portable_tent_blur_edge(&source, radius, true).unwrap();
+            let varying = variable_endpoint_tent(&source, &field, radius, radius + 3., crate::math::Point::default(), true).unwrap();
+            assert_eq!(varying.pixels.len(), uniform.pixels.len(), "radius {radius}");
+            for (index, (left, right)) in varying.pixels.iter().zip(&uniform.pixels).enumerate() {
+                assert_eq!(left.0, right.0, "radius {radius} pixel {index}: {:?} vs {:?}", left.0, right.0);
+            }
+        }
+    }
+
+    #[test]
+    fn endpoint_mix_keeps_each_authored_radius_image() {
+        let rect = Rect::new(0, 0, 8, 1);
+        let mut start = surface(rect, |_, _| [0.25, 0., 0., 1.]);
+        let end = surface(rect, |_, _| [0., 0.75, 0., 1.]);
+        let params = crate::scene::GradientBlurParameters {
+            start: [0.5, 0.],
+            end: [7.5, 0.],
+            start_count: 4.,
+            end_count: 12.,
+            smooth: true,
+            sketch: None,
+        };
+        gradient_endpoint_mix_at(&mut start, &end, &Transform::default(), &params, crate::math::Point::default());
+        assert_eq!(start.pixels[rect.index(0, 0).unwrap()].0, [0.25, 0., 0., 1.]);
+        assert_eq!(start.pixels[rect.index(7, 0).unwrap()].0, [0., 0.75, 0., 1.]);
+        let mid = start.pixels[rect.index(4, 0).unwrap()].0;
+        assert!(mid[0] > 0.05 && mid[0] < 0.2 && mid[1] > 0.3 && mid[1] < 0.6, "{mid:?}");
     }
 
     #[test]
