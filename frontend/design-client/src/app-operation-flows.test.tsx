@@ -434,6 +434,29 @@ test.each([false, true])('Shift+Mod+N never becomes new-document; Sketch page sh
   await key('n', { code: 'KeyN', metaKey: true }); expect(replace).toHaveBeenCalledOnce()
 })
 
+test('a pending native FD opened at startup enters its editor directly', async () => {
+  const incoming = blank('Queued native design')
+  const shape = node('rectangle', 20, 30, 80, 50)
+  incoming.nodes[shape.id] = shape
+  incoming.pages[0].children = [shape.id]
+  const acceptDocument = vi.fn(async () => ({ status: 'ok' as const }))
+  const openPendingDocument = vi.fn()
+    .mockResolvedValue({ status: 'cancelled' })
+    .mockResolvedValueOnce({
+      status: 'ok', handle: 'opaque:queued', displayName: 'queued.fd', documentJson: JSON.stringify(incoming),
+    })
+  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true }, openPendingDocument, acceptDocument,
+    onCommand: () => () => {}, onCloseRequested: () => () => {}, setDirty: async () => {},
+    readRecovery: async () => ({ status: 'cancelled' }), clearRecovery: async () => ({ status: 'ok' }),
+  } as unknown as DesktopBridge })
+  await act(async () => { root.render(<App />); for (let i = 0; i < 30; i++) await Promise.resolve() })
+  expect(acceptDocument).toHaveBeenCalledExactlyOnceWith({ handle: 'opaque:queued' })
+  expect(editor!.authoredDocument.id).toBe(incoming.id)
+  expect(document.querySelector('.local-home')).toBeNull()
+  expect(canvas()).not.toBeNull()
+})
+
 test('source workset uses normal App panels and never enters FD recovery or browser autosave',async()=>{
  const sourceEditor=new Editor(blank('Loaded board')),layer=node('rectangle',0,0,80,80)
  sourceEditor.change('fixture',doc=>{doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]})

@@ -509,7 +509,7 @@ export class DesktopSession {
   }
 
   /** Called only after the existing Rust/WASM editing kernel has initialized. */
-  async start() {
+  async start(onPendingOpened?: () => void) {
     this.publish()
     const result = await this.run('recover', async () => {
       if(this.bridge.live){
@@ -542,7 +542,7 @@ export class DesktopSession {
       return true
     })
     this.started = true
-    if (this.bridge.openPendingDocument) await this.openPending()
+    if (this.bridge.openPendingDocument && await this.openPending()) onPendingOpened?.()
     if (this.editor.state.version !== 0 && this.dirty) await this.updateRecovery()
     return result
   }

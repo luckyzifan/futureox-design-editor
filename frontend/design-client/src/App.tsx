@@ -660,7 +660,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     if (desktopSession) {
       void initializePicking().then(async () => {
         if (!active) return
-        await desktopSession.start()
+        await desktopSession.start(() => {
+          if (active) setShowHome(false)
+        })
         if (active) setReady(true)
       }).catch((e) => {
         if (active) { setStartupError(`设计内核载入失败：${String(e)}`); const detail = String(e); editor.notify(`设计内核载入失败：${detail}`, { key: 'kernelStartupFailed', error: detail }) }
