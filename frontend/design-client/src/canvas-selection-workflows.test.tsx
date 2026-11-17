@@ -562,3 +562,29 @@ test('Figma frame clicks remember top-level creation size for the file session, 
   await act(async () => { editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, tool: 'frame' }) })
   expect(size(await click(60, 40))).toEqual([100, 100])
 })
+
+test('Figma Frame tool hover exposes both adjacent controls outside the drawing gesture', async () => {
+  applyInterfaceLayout('figma')
+  const source = node('frame', 100, 100, 180, 120), child = node('rectangle', 25, 25, 50, 45)
+  source.children = [child.id]
+  const before = await render([source, child], [source.id])
+  await act(async () => editor.set({ tool: 'frame' }))
+  await act(async () => pointer('pointermove', 140, 150))
+  await act(async () => {
+    const pending = [...frames]
+    for (const [id, run] of pending) { frames.delete(id); run(performance.now()) }
+  })
+  const left = host().querySelector<HTMLButtonElement>('[data-frame-adjacent="left"]')!
+  const right = host().querySelector<HTMLButtonElement>('[data-frame-adjacent="right"]')!
+  expect(left.style.left).toBe('100px')
+  expect(right.style.left).toBe('280px')
+  await act(async () => right.click())
+  const after = editor.authoredDocument, copy = after.nodes[editor.state.selection[0]]
+  expect(copy.transform[4]).toBe(320)
+  expect(copy.children).toHaveLength(1)
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+  await act(async () => applyInterfaceLayout('sketch'))
+  expect(host().querySelector('[data-frame-adjacent]')).toBeNull()
+})

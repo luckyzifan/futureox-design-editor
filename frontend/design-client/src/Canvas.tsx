@@ -133,6 +133,7 @@ import { brushPreviewSettings } from './draw-brush-style'
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { lastFigmaFrameSize, rememberFigmaFrameSize } from './figma-frame-size'
+import { addAdjacentFigmaFrame, hoveredAdjacentFrame } from './figma-adjacent-frame'
 import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, keyboardPlacesTool } from './keyboard-placement'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, sketchGradientStopOffset, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
@@ -1079,9 +1080,30 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const displayedHoverHit = (point: Point, deep = measureKeys.deep) =>
     hitOutline(point) || (displayedSnapshot && displayedIndex
       ? editor.selectionHit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
+  const adjacentEdges = (id: string) => {
+    const frame = state.doc.nodes[id], parents = editor.parentMap(state.doc)
+    const matrix = worldMatrix(state.doc, id, parents)
+    return ([-1, 1] as const).map(side => ({
+      side, ...worldToScreen(displayViewRef.current, apply(matrix, { x: side < 0 ? 0 : frame.width, y: frame.height / 2 })),
+    }))
+  }
+  const frameHover = (world: Point, screen: Point) => {
+    const { doc, page, hover, hoverSource } = editor.state
+    const parents = editor.parentMap(doc)
+    if (hoverSource === 'canvas' && hover && state.doc.nodes[hover] &&
+        hoveredAdjacentFrame(doc, page, hover, parents) === hover &&
+        adjacentEdges(hover).some(edge => distance(edge, screen) <= 14)) return hover
+    return hoveredAdjacentFrame(doc, page, displayedHoverHit(world, true), parents)
+  }
+  const frameHoverActive = () => uiMode === 'figma' && editor.state.tool === 'frame' && !space.current && !textEdit
   refreshHover.current = () => {
     const client = hoverPoint.current, rect = host.current?.getBoundingClientRect()
     const point = client && rect ? { x: client.x - rect.left, y: client.y - rect.top } : null
+    if (point && rect && point.x >= 0 && point.y >= 0 && point.x < rect.width && point.y < rect.height &&
+        frameHoverActive() && displayedSnapshot && !drag.current && !pencil.current && performance.now() >= navigationUntil.current) {
+      editor.hoverLayer(frameHover(screenToWorld(displayedSnapshot.view, point), point), 'canvas')
+      return
+    }
     editor.hoverLayer(point && rect && point.x >= 0 && point.y >= 0 && point.x < rect.width && point.y < rect.height &&
       performance.now() >= navigationUntil.current && !textEdit && displayedSnapshot && !drag.current && !pencil.current && !space.current &&
       ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
@@ -2551,6 +2573,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const deep = deepSelectChord(e, shortcutPlatform())
       const text = e.altKey && e.ctrlKey && !e.getModifierState('AltGraph')
       setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===deep&&previous.text===text?previous:{alt:e.altKey,deep,text})
+      if (frameHoverActive() && performance.now() >= navigationUntil.current) {
+        editor.hoverLayer(frameHover(p, screenPoint(e)), 'canvas')
+        return
+      }
       editor.hoverLayer(performance.now() >= navigationUntil.current && !textEdit && !space.current && ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
         // The outline matches the click: group until entered, child paint in a
         // frame, or the frame on empty area. Command/Ctrl shows the leaf.
@@ -3291,6 +3317,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }}
       onPointerDown={(e) => { if (!drag.current) cancelQueuedMove(); start(e) }}
       onPointerMoveCapture={e => {
+        if ((e.target as Element).closest('[data-frame-adjacent]')) return
         // Scrollbar gestures stop propagation. Clear a previous canvas
         // target before that boundary, including any queued hover sample.
         if (!drag.current && !pencil.current && !utility.active() && e.target instanceof Element && e.target.closest(canvasChromeSelector)) {
@@ -3479,6 +3506,24 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           }}
         />
       )}
+      {frameHoverActive() && !hidePanChrome && exactOverlayMatches && !ownedDrag && !editor.interactionActive &&
+        state.hoverSource === 'canvas' && state.hover && state.doc.nodes[state.hover] &&
+        hoveredAdjacentFrame(state.doc, state.page, state.hover, editor.parentMap(state.doc)) === state.hover &&
+        adjacentEdges(state.hover).map(({ side, x, y }) => {
+          const frame = state.hover!
+          const label = locale === 'en' ? (side < 0 ? 'Add frame on the left' : 'Add frame on the right') :
+            (side < 0 ? '在左侧添加画板' : '在右侧添加画板')
+          return <button key={side} type="button" data-frame-adjacent={side < 0 ? 'left' : 'right'}
+            className="frame-adjacent-button" aria-label={label} title={label} style={{ left: x, top: y }}
+            onPointerDown={event => event.stopPropagation()} onPointerMove={event => event.stopPropagation()}
+            onKeyDown={event => event.stopPropagation()} onClick={event => {
+              event.stopPropagation()
+              if (addAdjacentFigmaFrame(editor, frame, side, event.altKey)) {
+                editor.hoverLayer(null, 'canvas')
+                host.current?.focus({ preventScroll: true })
+              }
+            }}>＋</button>
+        })}
       <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches && !hidePanChrome} uiMode={uiMode}/>
       <CanvasSmartSelection editor={editor} view={displayView} size={size} entries={entries} visible={exactOverlayMatches && !hidePanChrome}/>
       <CanvasGuides editor={editor} view={displayView} size={size} entries={entries} guidesHidden={hidePanChrome} intercept={e=>{
