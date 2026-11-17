@@ -3462,17 +3462,20 @@ impl Painter<'_> {
         r: Rect,
         origin: Point,
         targets: &[Surface; 4],
+        rotated: Option<crate::sketch_progressive_blur::RotatedBackdrop>,
     ) -> Result<Surface, String> {
         let mut out = self.allocate(r)?;
+        let location = |x: i32, y: i32| {
+            let p = Point::new(origin.x + f64::from(x - r.x) + 0.5, origin.y + f64::from(y - r.y) + 0.5);
+            rotated.map_or(p, |capture| capture.sample(p))
+        };
         if !self.compatible {
             for y in r.y..r.bottom() {
                 for x in r.x..r.right() {
                     let mut sum = [0.; 4];
+                    let at = location(x, y);
                     for t in targets {
-                        let p = t.sample_linear(
-                            origin.x + f64::from(x - r.x) + 0.5,
-                            origin.y + f64::from(y - r.y) + 0.5,
-                        );
+                        let p = t.sample_linear(at.x, at.y);
                         for (c, value) in sum.iter_mut().enumerate() {
                             *value += p.0[c] * 0.25;
                         }
@@ -3486,11 +3489,9 @@ impl Painter<'_> {
         for y in r.y..r.bottom() {
             for x in r.x..r.right() {
                 let mut sum = [0_u32; 4];
+                let at = location(x, y);
                 for t in targets {
-                    let p = t.sample_rgba8(
-                        origin.x + f64::from(x - r.x) + 0.5,
-                        origin.y + f64::from(y - r.y) + 0.5,
-                    );
+                    let p = t.sample_rgba8(at.x, at.y);
                     for (c, value) in sum.iter_mut().enumerate() {
                         *value += (p.0[c].clamp(0., 1.) * 255.).round_ties_even() as u32;
                     }
@@ -3684,7 +3685,8 @@ impl Painter<'_> {
             let mut background = if replay.is_some() {
                 self.allocate(capture)?
             } else {
-                self.resolve_backdrop(capture, origin, clean_backdrop.unwrap_or(targets))?
+                let rotated = crate::sketch_progressive_blur::RotatedBackdrop::for_node(self.doc, n, fx, m);
+                self.resolve_backdrop(capture, origin, clean_backdrop.unwrap_or(targets), rotated)?
             };
             // Most backdrop layers need coverage only at the final composite.
             // Keep their raster masks instead of making four RGBA copies.
@@ -4952,7 +4954,7 @@ impl Painter<'_> {
         if !n.visible || n.opacity <= 0. {
             return Ok(());
         }
-        let Some(layer) = self.node_layer(id, target, true, output, original_target, geometric)? else {
+        let Some((layer, backdrop_coverage)) = self.node_layer(id, target, true, output, original_target, geometric)? else {
             return Ok(());
         };
         let exact_mask_factor = n.mask
@@ -4965,6 +4967,7 @@ impl Painter<'_> {
                 self.compatible,
             );
         } else if self.compatible
+            && backdrop_coverage.is_none()
             && !exact_mask_factor
             && n.composite_blend() == "normal"
             && n.opacity < 1.
@@ -4974,6 +4977,26 @@ impl Painter<'_> {
             target.composite_rgba8(&layer, n.opacity as f32, |x, y| {
                 clip.map_or(1., |m| m.at(x, y))
             });
+        } else if let Some(coverage) = backdrop_coverage {
+            let blend = crate::blend::BlendMode::from_name(n.composite_blend());
+            let region = target.rect.intersect(layer.rect);
+            for y in region.y..region.bottom() {
+                crate::render_cancellation::checkpoint()?;
+                for x in region.x..region.right() {
+                    let i = target.rect.index(x, y).expect("backdrop copyback");
+                    let dst = target.pixels[i];
+                    let opacity = n.opacity as f32 * clip.map_or(1., |mask| mask.at(x, y));
+                    let src = layer.at(x, y).opacity(opacity);
+                    let mut value = crate::blend::over_mode(dst, src, blend);
+                    // Replace the covered backdrop. Source-over would leave the
+                    // original opaque pixels under the filtered transparent edge.
+                    let extra = (coverage.at(x, y) * opacity - src.0[3]).max(0.);
+                    for c in 0..4 {
+                        value.0[c] -= dst.0[c] * extra;
+                    }
+                    target.pixels[i] = value;
+                }
+            }
         } else if clip.is_none() {
             target.composite_unmasked(&layer, n.composite_blend(), n.opacity as f32);
         } else {
@@ -4995,7 +5018,7 @@ impl Painter<'_> {
         output: Option<Rect>,
         original_target: Rect,
         inherited_outline: bool,
-    ) -> Result<Option<Surface>, String> {
+    ) -> Result<Option<(Surface, Option<AccountedMask>)>, String> {
         let original = &self.doc.nodes[id];
         let geometric=inherited_outline || original.mask && original.mask_type.as_deref()==Some("outline");
         let outline=original.outline_mask_node(inherited_outline);
@@ -5068,6 +5091,7 @@ impl Painter<'_> {
             r,
             n.fill_even_odd() && n.kind != "text",
         )?;
+        let mut progressive_backdrop = false;
         if let Some(fx) = n.backdrop_effect().filter(|fx| {
             apply_effects && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))
         }) {
@@ -5078,13 +5102,18 @@ impl Painter<'_> {
                 let [x, y, w, h] = crate::coverage::backdrop_box(prepared.fill_bounds, self.extent);
                 let capture = Rect::new(0, 0, w as u32, h as u32);
                 let mut surface = self.allocate(capture)?;
+                let rotated = crate::sketch_progressive_blur::RotatedBackdrop::for_node(self.doc, n, fx, m);
                 for row in 0..capture.h {
+                    crate::render_cancellation::checkpoint()?;
                     for column in 0..capture.w {
+                        let p = Point::new(x + f64::from(column) + 0.5, y + f64::from(row) + 0.5);
+                        let at = rotated.map_or(p, |capture| capture.sample(p));
                         surface.pixels[row as usize * capture.w as usize + column as usize] =
-                            target.sample_linear(x + f64::from(column) + 0.5, y + f64::from(row) + 0.5);
+                            target.sample_linear(at.x, at.y);
                     }
                 }
                 let mut filtered = if let Some(gradient) = fx.sketch_ramp() {
+                    progressive_backdrop = rotated.is_some();
                     crate::sketch_progressive_blur::apply(surface, gradient, m, Point::new(x, y),
                         fx.sketch_backdrop_sigma(scale), true, self.compatible)?
                 } else {
@@ -5419,7 +5448,7 @@ impl Painter<'_> {
                 layer.quantize_rgba8();
             }
         }
-        Ok(Some(layer))
+        Ok(Some((layer, progressive_backdrop.then_some(fill))))
     }
 }
 

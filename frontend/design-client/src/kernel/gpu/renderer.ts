@@ -634,6 +634,24 @@ export class GpuRenderer {
     }
     return blurred
   }
+  private setBackdropCapture(n: GpuNode, scalar: boolean, u: Float32Array) {
+    if (!n.rotatedBackdropBounds) return
+    const [a, b, c, d, tx, ty] = n.inverse
+    u.set(n.rotatedBackdropBounds, 36)
+    u.set([a, c, tx], 40)
+    u.set([b, d, ty], 44)
+    u.set(n.matrix.slice(0, 4), 48)
+    u.set([1, Number(scalar)], 52)
+  }
+
+  private replaceBackdrop(source: Surface, target: Surface, n: GpuNode, clip: Surface | undefined,
+    coverage: Surface, output = target.rect): Surface {
+    return this.run(25, output, [source, target, clip ?? coverage, coverage], u => {
+      u.set([25, blends.indexOf(n.blend), n.opacity, Number(!!clip)], 16)
+      u.set([coverage.rect.x, coverage.rect.y, coverage.rect.w, coverage.rect.h], 188)
+    })
+  }
+
   /** Large normal background display work is asynchronous only at its two
    * existing async node call sites. Other effects and <=512 filters keep the
    * original synchronous cache/filter path and its unchanged radius guard. */
@@ -645,7 +663,9 @@ export class GpuRenderer {
       const capture = rect(x, y, w, h)
       await this.reclaimForSurface(capture)
       this.checkFrameCurrent()
-      const source = this.copy(backdrop, capture)
+      const source = n.rotatedBackdropBounds
+        ? this.run(26, capture, [backdrop], u => this.setBackdropCapture(n, true, u))
+        : this.copy(backdrop, capture)
       let filtered: Surface | undefined
       try {
         filtered = await this.blurBackdropRegion(source, sigma, n)
@@ -3868,10 +3888,17 @@ export class GpuRenderer {
     // blend target, while both live inputs remain pinned.
     if(this.driver.managed&&(this.scene.interactionRetained||this.surfaceNeedsAdmission(target.rect)))
       await this.reclaimForSurface(target.rect)
-    const next = n.passthrough
-      ? this.interpolate(source, target, n.opacity, clip)
-      : this.merge(source, target, n.blend, n.opacity, clip)
-    if (n.passthrough) this.release(target)
+    let next: Surface
+    if (n.passthrough) {
+      next = this.interpolate(source, target, n.opacity, clip)
+      this.release(target)
+    } else if (n.rotatedBackdropBounds) {
+      const coverage = await this.fillMask(n)
+      next = this.replaceBackdrop(source, target, n, clip, coverage)
+      this.release(target)
+    } else {
+      next = this.merge(source, target, n.blend, n.opacity, clip)
+    }
     this.release(source)
     return next
   }
@@ -4863,7 +4890,9 @@ export class GpuRenderer {
         const box = n.backdropBox
         const capture = cropped && box ? rect(box[0], box[1], box[2], box[3]) : n.rect
         if (!replay) { await this.reclaimForSurface(capture); this.checkFrameCurrent() }
-        let background = replay ? undefined : this.run(26, capture, opticalInputs ?? targets)
+        let background = replay ? undefined : n.rotatedBackdropBounds
+          ? this.run(26, capture, opticalInputs ?? targets, u => this.setBackdropCapture(n, false, u))
+          : this.run(26, capture, opticalInputs ?? targets)
         if(!replay)this.fastWork.add(cropped?'backdropCapturePixels':'glassCapturePixels',capture.w*capture.h)
         this.backdropReads++
         for (const fx of backgrounds) {
@@ -5073,10 +5102,7 @@ export class GpuRenderer {
           const old = targets[i],
             mask = clip?.[i],
             knockout = coverage.value[i]
-          targets[i] = this.run(25, output || old.rect, [layers[i], old, mask || knockout, knockout], (u) => {
-            u.set([25, blends.indexOf(n.blend), n.opacity, mask ? 1 : 0], 16)
-            u.set([knockout.rect.x, knockout.rect.y, knockout.rect.w, knockout.rect.h], 188)
-          })
+          targets[i] = this.replaceBackdrop(layers[i], old, n, mask, knockout, output)
           this.release(old)
         } else if (n.blend === 'normal' && n.opacity < 1) {
           const old = targets[i],
@@ -5164,7 +5190,9 @@ export class GpuRenderer {
     // Read all four original target planes exactly once, before replacing any.
     await this.reclaimForSurface(capture)
     this.checkFrameCurrent()
-    let background = this.run(26, capture, opticalInputs ?? targets)
+    let background = n.rotatedBackdropBounds
+      ? this.run(26, capture, opticalInputs ?? targets, u => this.setBackdropCapture(n, false, u))
+      : this.run(26, capture, opticalInputs ?? targets)
     this.backdropReads++
     const filtered = await this.filterBackdropEffect(background, n, fx, cropped)
     background = this.colorControls(filtered, fx.colorControls)

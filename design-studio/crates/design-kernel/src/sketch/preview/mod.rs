@@ -513,6 +513,7 @@ fn visit(
             shadow_paint_alpha: None,
             passthrough: false,
             backdrop_box: [0.; 4],
+            rotated_backdrop_bounds: None,
             backdrop_output_box: None,
             shadow_output_box: None,
             children_input_box: None,

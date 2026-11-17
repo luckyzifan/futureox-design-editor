@@ -477,6 +477,9 @@ impl Compositor<'_, '_, '_> {
             let source = self.scalar_node(n, target, depth)?;
             let next = if n.passthrough {
                 self.interpolate(source, target, n.opacity, clip)?
+            } else if n.rotated_backdrop_bounds.is_some() {
+                let coverage = self.mask(&n.fill, 4)?;
+                self.replace_backdrop(source, target, n, clip, coverage)?
             } else {
                 self.merge(source, target, &n.blend, n.opacity, clip)?
             };
@@ -512,6 +515,10 @@ impl Compositor<'_, '_, '_> {
                 let mut u = parameters(capture, &[backdrop]);
                 u[0] = x as f32;
                 u[1] = y as f32;
+                if n.rotated_backdrop_bounds.is_some() {
+                    u[16] = 26.;
+                    Self::backdrop_capture_uniforms(n, true, &mut u);
+                }
                 self.frame.draw(copy, u, &[backdrop], false, None)?;
                 self.backdrop_blur(copy, n, fx, true, n.backdrop_box)?
             } else if fx.kind == "background-blur" && fx.gradient_blur.as_ref().is_some_and(|gradient| gradient.sketch.is_none()) {
@@ -1192,6 +1199,29 @@ impl Compositor<'_, '_, '_> {
         self.frame
             .run(1., r, &[a, b], |u| u[36] = f32::from(outside))
     }
+    fn replace_backdrop(&mut self, src: Surface, dst: Surface, n: &GpuNode,
+        clip: Option<Surface>, coverage: Surface,
+    ) -> Result<Surface, String> {
+        let b = blend(&n.blend)?;
+        self.frame.run(25., dst.rect, &[src, dst, clip.unwrap_or(coverage), coverage], |u| {
+            u[16..20].copy_from_slice(&[25., b, n.opacity as f32, f32::from(clip.is_some())]);
+            u[188..192].copy_from_slice(&[
+                coverage.rect.x as f32, coverage.rect.y as f32,
+                coverage.rect.w as f32, coverage.rect.h as f32,
+            ]);
+        })
+    }
+
+    fn backdrop_capture_uniforms(n: &GpuNode, scalar: bool, u: &mut [f32; 256]) {
+        let Some(bounds) = n.rotated_backdrop_bounds else { return; };
+        let [a, b, c, d, tx, ty] = n.inverse.0.map(|v| v as f32);
+        u[36..40].copy_from_slice(&bounds.map(|v| v as f32));
+        u[40..43].copy_from_slice(&[a, c, tx]);
+        u[44..47].copy_from_slice(&[b, d, ty]);
+        for (out, value) in u[48..52].iter_mut().zip(n.matrix.0) { *out = value as f32; }
+        u[52..54].copy_from_slice(&[1., f32::from(scalar)]);
+    }
+
     fn compose(
         &mut self,
         src: Surface,
@@ -1836,6 +1866,7 @@ impl Compositor<'_, '_, '_> {
                     u[1] = b[1] as f32;
                 }
                 if n.capture_replay.is_none() {
+                    Self::backdrop_capture_uniforms(n, false, &mut u);
                     self.frame.draw(background, u, inputs, false, None)?;
                 }
                 // The integer Rect cannot carry a fractional origin; compensate
@@ -1955,27 +1986,7 @@ impl Compositor<'_, '_, '_> {
                 targets[i] = if n.passthrough {
                     self.interpolate(layers[i], old, n.opacity, mask)?
                 } else if let Some(coverage) = &coverage {
-                    let knockout = coverage[i];
-                    let b = blend(&n.blend)?;
-                    self.frame.run(
-                        25.,
-                        old.rect,
-                        &[layers[i], old, mask.unwrap_or(knockout), knockout],
-                        |u| {
-                            u[16..20].copy_from_slice(&[
-                                25.,
-                                b,
-                                n.opacity as f32,
-                                f32::from(mask.is_some()),
-                            ]);
-                            u[188..192].copy_from_slice(&[
-                                knockout.rect.x as f32,
-                                knockout.rect.y as f32,
-                                knockout.rect.w as f32,
-                                knockout.rect.h as f32,
-                            ]);
-                        },
-                    )?
+                    self.replace_backdrop(layers[i], old, n, mask, coverage[i])?
                 } else if n.blend == "normal" && n.opacity < 1. {
                     self.replace_region(29., layers[i], old, n.opacity, mask)?
                 } else {

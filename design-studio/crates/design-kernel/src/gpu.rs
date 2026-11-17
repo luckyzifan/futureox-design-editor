@@ -663,6 +663,9 @@ pub struct GpuNode {
     pub shadow_paint_alpha: Option<f32>,
     pub passthrough: bool,
     pub backdrop_box: [f64; 4],
+    /// Local texel-center limits for a translucent rotated Sketch capture.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotated_backdrop_bounds: Option<[f64; 4]>,
     /// Complete painter-dependency output demand, not merely the visible crop.
     /// Present only when the regional support certificate was adopted.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2087,6 +2090,10 @@ impl Compiler<'_> {
                     crate::bounds::path_bounds(fill_path, matrix),
                     self.stages.as_ref().and_then(|s| s.backdrop_inputs.get(id)).copied().unwrap_or(extent),
                 ),
+                rotated_backdrop_bounds: n.backdrop_effect().and_then(|fx| {
+                    crate::sketch_progressive_blur::RotatedBackdrop::for_node(self.doc, n, fx, matrix)
+                        .map(crate::sketch_progressive_blur::RotatedBackdrop::limits)
+                }),
                 backdrop_output_box: self.backdrop_outputs.get(id).map(|r| r.intersect(rect))
                     .filter(|r| !r.empty())
                     .map(|r| [f64::from(r.x), f64::from(r.y), f64::from(r.w), f64::from(r.h)]),

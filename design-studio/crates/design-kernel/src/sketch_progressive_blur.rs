@@ -8,6 +8,68 @@ use crate::{
     scene::{BlurRampShape, GradientBlurParameters},
 };
 
+/// A rotated rectangular lens samples the backdrop inside its own capture
+/// rectangle. Extend its edge texels into the screen-aligned allocation so
+/// separable screen-space filters do not see unrelated pixels in its corners.
+#[derive(Clone, Copy)]
+pub(crate) struct RotatedBackdrop {
+    inverse: Transform,
+    world: Transform,
+    inset: [f64; 2],
+    size: [f64; 2],
+}
+
+impl RotatedBackdrop {
+    pub(crate) fn for_node(doc: &crate::scene::Document, node: &crate::scene::Node,
+        effect: &crate::scene::Effect, world: Transform) -> Option<Self>
+    {
+        if node.kind != "rectangle" || node.mask || node.passes_backdrop()
+            || effect.kind != "background-blur" || effect.radius <= 0. || effect.sketch_ramp().is_none()
+            || node.effects.iter().any(|e| e.visible
+                && matches!(e.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur"))
+        {
+            return None;
+        }
+        let [a, b, c, d, _, _] = world.0;
+        let [sx, sy] = [a.hypot(b), c.hypot(d)];
+        if !(sx.is_finite() && sy.is_finite() && sx > 0. && sy > 0.) { return None; }
+        let axis = [a / sx, b / sx, c / sy, d / sy];
+        let size = [node.width, node.height];
+        // Right-angle rotations use the same screen capture; sheared lenses
+        // have no orthogonal edge texels to extend.
+        if axis.iter().any(|v| v.abs() <= 1e-8) || (axis[0] * axis[2] + axis[1] * axis[3]).abs() > 1e-6
+            || size.iter().any(|v| !v.is_finite() || *v <= 0.)
+        {
+            return None;
+        }
+        // An opaque normal fill already hides the backdrop. Keep the
+        // established antialiasing for that paint's outside edge.
+        if node.fills.iter().any(|p| p.visible && p.kind == "solid" && p.blend == "normal" && p.opacity == 1.
+            && crate::color::pixel(doc.color_management, &p.color, 1.).is_ok_and(|c| c.0[3] == 1.))
+        {
+            return None;
+        }
+        let inverse = world.inverse().ok()?;
+        Some(Self {
+            inverse, world, size,
+            inset: [(0.5 / sx).min(size[0] / 2.), (0.5 / sy).min(size[1] / 2.)],
+        })
+    }
+
+    pub(crate) fn limits(self) -> [f64; 4] {
+        [self.inset[0], self.inset[1], self.size[0] - self.inset[0], self.size[1] - self.inset[1]]
+    }
+
+    #[inline]
+    pub(crate) fn sample(self, point: Point) -> Point {
+        let p = self.inverse.point(point);
+        let x = p.x.clamp(self.inset[0], self.size[0] - self.inset[0]);
+        let y = p.y.clamp(self.inset[1], self.size[1] - self.inset[1]);
+        let [a, b, c, d, _, _] = self.world.0;
+        Point::new(point.x + (a * (x - p.x) + c * (y - p.y)), point.y + (b * (x - p.x) + d * (y - p.y)))
+    }
+}
+
 struct Field {
     along: [f32; 3],
     across: [f32; 3],
