@@ -222,7 +222,12 @@ impl Engine {
                     } else {
                         (512, 128)
                     };
-                    render_tiles(self, &options, tile_width, rows, coherent, space)
+                    let reduced = request.scale < 1.
+                        && options.raster_profile == RasterProfile::Analytic
+                        && space == crate::color::ColorSpace::Srgb;
+                    self.with_sketch_png_footprint(reduced, |engine| {
+                        render_tiles(engine, &options, tile_width, rows, coherent, space)
+                    })
                 }
                 Err(error) => Err(error),
             }

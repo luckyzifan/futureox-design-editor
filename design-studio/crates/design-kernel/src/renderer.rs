@@ -723,6 +723,13 @@ impl Engine {
     pub(crate) fn image_at_selected_level(&mut self, uri: &str, level: u32) -> Result<Arc<Surface>, String> {
         self.images.image_at_selected_level(uri, level)
     }
+    pub(crate) fn with_sketch_png_footprint<T>(&mut self, enabled: bool, render: impl FnOnce(&mut Self) -> T) -> T {
+        let previous = std::mem::replace(&mut self.images.sketch_png_footprint, enabled);
+        let result = render(self);
+        self.images.sketch_png_footprint = previous;
+        result
+    }
+
     pub fn set_image_mips(&mut self, mips: bool) {
         if self.image_mips() != mips { self.pose_prefix = None; self.clear_settled_cuts(); }
         self.images.set_mip_enabled(mips);
