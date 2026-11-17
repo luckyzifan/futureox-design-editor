@@ -93,9 +93,6 @@ fn encode_entry(entry: &large_json::Entry, out: &mut Vec<u8>) -> io::Result<()> 
         push_span(out, field.member);
         push_span(out, field.value);
     }
-    if out.len() as u64 > large_json::MAX_FRAGMENT_BYTES {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Index record exceeds the fragment limit"));
-    }
     Ok(())
 }
 struct EntryCursor<'a> { bytes: &'a [u8], at: usize }
@@ -114,7 +111,14 @@ impl EntryCursor<'_> {
         let bytes = self.take(n)?;
         String::from_utf8(bytes.to_vec()).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index record is not UTF-8"))
     }
-    fn span(&mut self) -> io::Result<large_json::Span> { Ok(large_json::Span { start: self.u64()?, end: self.u64()? }) }
+    fn span(&mut self) -> io::Result<large_json::Span> {
+        let start = self.u64()?;
+        let end = self.u64()?;
+        if end < start {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Reversed index span"));
+        }
+        Ok(large_json::Span { start, end })
+    }
 }
 fn decode_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
     let mut cursor = EntryCursor { bytes, at: 0 };
@@ -131,7 +135,13 @@ fn decode_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
     };
     let depth = usize::try_from(cursor.u64()?).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index depth does not fit"))?;
     let count = cursor.u32()? as usize;
-    let mut fields = Vec::with_capacity(count);
+    // Even an empty key needs its length and two full spans.
+    const MIN_FIELD_BYTES: usize = 4 + 2 * (8 + 8);
+    if count > (bytes.len() - cursor.at) / MIN_FIELD_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid index field count"));
+    }
+    let mut fields = Vec::new();
+    fields.try_reserve_exact(count).map_err(io::Error::other)?;
     for _ in 0..count {
         fields.push(large_json::Field { key: cursor.string()?, member: cursor.span()?, value: cursor.span()? });
     }
@@ -484,6 +494,11 @@ mod stream_pipeline_tests {
         assert_eq!(serde_json::to_value(decode_entry(&torn).unwrap()).unwrap(),serde_json::to_value(&scanned.entries[0]).unwrap());
         let legacy=serde_json::to_vec(&scanned.entries[0]).unwrap();
         assert_eq!(serde_json::to_value(decode_stored_entry(&legacy).unwrap()).unwrap(),serde_json::to_value(&scanned.entries[0]).unwrap());
+        let fieldless = large_json::Entry { fields: Vec::new(), ..scanned.entries[0].clone() };
+        encode_entry(&fieldless, &mut torn).unwrap();
+        let count = torn.len() - 4;
+        torn[count..].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(decode_entry(&torn).unwrap_err().kind(), io::ErrorKind::InvalidData);
     }
     #[test] fn pipelined_index_matches_records_across_unicode_chunk_boundaries() {
         let d=Directory::new();let bytes=serde_json::to_vec(&json!({"nodes":{"n":{"id":"n","name":"Node","opaque":format!("{}🙂tail","a".repeat(65500)),"children":[]}}})).unwrap();
