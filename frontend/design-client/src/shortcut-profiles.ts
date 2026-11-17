@@ -161,6 +161,7 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
   if (uiMode !== 'sketch') bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
+  if (profile === 'figma-like') bindings.push({ command: 'set-tool-frame', combo: 'A' })
   // Figma Quick Actions and the Sketch command bar share Mod+K. S is
   // reserved for the Sketch command bar and remains Slice in Figma.
   bindings.push({ command: 'open-command-search', combo: 'Mod+K' })
@@ -235,5 +236,7 @@ export function formatShortcutCombo(combo: string, platform: ShortcutPlatform): 
 }
 export function toolShortcutLabel(tool: string, context: ShortcutContext): string {
   const command = TOOL_COMMANDS.find(entry => entry.tool === tool)?.id
+  if (tool === 'frame') return shortcutBindings(context).filter(binding => binding.command === command)
+    .map(binding => formatShortcutCombo(binding.combo, context.platform)).join(' / ')
   return command ? shortcutLabel(command as EditorCommand, context) || '' : ''
 }
