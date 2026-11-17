@@ -128,9 +128,12 @@ export function SketchWindowTools({ editor, disabled, onPresets, onReplaceTempla
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onSystems() }}>{text.designSystems}</button>
       </>)}
       {menu('combine', label('结合', 'Combine'), <Shapes size={17} />, <>
-        {([['union', text.union], ['subtract', text.subtract], ['intersect', text.intersect], ['exclude', text.exclude], ['divide', text.divideLegacy]] as const)
-          .map(([operation, name]) => <button type="button" role="menuitem" tabIndex={-1} key={operation}
-            onClick={() => { setOpen(null); void editor.geometry(operation) }}>{name}</button>)}
+        {([['boolean-add', label('添加形状', 'Add Shapes')], ['boolean-union', text.union], ['boolean-subtract', text.subtract],
+          ['boolean-intersect', text.intersect], ['boolean-exclude', text.exclude]] as const)
+          .map(([command, name]) => <button type="button" role="menuitem" tabIndex={-1} key={command}
+            onClick={() => invoke(command)}>{name}</button>)}
+        <button type="button" role="menuitem" tabIndex={-1}
+          onClick={() => { setOpen(null); void editor.geometry('divide') }}>{text.divideLegacy}</button>
       </>, canCombine)}
     </div>
   </DesignToolbar>

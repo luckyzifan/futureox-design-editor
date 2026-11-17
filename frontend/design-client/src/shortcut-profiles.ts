@@ -1,11 +1,13 @@
 import type { EditorCommand } from './editor-commands'
 import { TOOL_COMMANDS } from './tool-registry'
+import type { UiMode } from './interface-preference'
+import { sketchBooleanCommands, sketchBooleanCommandIds } from './sketch-boolean-commands'
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
 export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides'
-export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean }
-export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true }
+export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode }
+export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true; physicalCode?: string }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
 export function shortcutPlatform(platform = typeof navigator === 'undefined' ? '' : navigator.platform): ShortcutPlatform {
   return /Mac|iPhone|iPad/.test(platform) ? 'mac' : /Win/.test(platform) ? 'windows' : 'linux'
@@ -36,14 +38,19 @@ const common: ShortcutBinding[] = [
 /** A bounded preset over existing commands, not a promise of product parity.
  * Sources and deliberate browser adaptations are recorded in SHORTCUT_PROFILES.md. */
 const bindingCache = new Map<string, readonly ShortcutBinding[]>()
-export function shortcutBindings({ profile, platform, desktop = false }: ShortcutContext): readonly ShortcutBinding[] {
-  const cacheKey = `${profile}:${platform}:${desktop}`
+export function shortcutBindings({ profile, platform, desktop = false, uiMode }: ShortcutContext): readonly ShortcutBinding[] {
+  const cacheKey = `${profile}:${platform}:${desktop}:${uiMode ?? ''}`
   const cached = bindingCache.get(cacheKey)
   if (cached) return cached
   const tools = new Map<string, string | undefined>(TOOL_COMMANDS.filter(c => c.tool && c.shortcut).map(c => [c.id, c.shortcut]))
   tools.set('set-tool-arrow', 'Shift+L')
   tools.set('set-tool-pencil', 'Shift+P')
-  const bindings = common.map(binding => ({ ...binding }))
+  const bindings = common.filter(binding => uiMode !== 'sketch' || binding.command !== 'select-matching')
+    .map(binding => ({ ...binding }))
+  if (uiMode === 'sketch') for (const command of sketchBooleanCommandIds) {
+    const { letter } = sketchBooleanCommands[command]
+    bindings.push({ command, combo: `Mod+Alt+${letter}`, physicalCode: `Key${letter}` })
+  }
   if (profile === 'sketch-like') {
     tools.set('set-tool-default', undefined); tools.set('set-tool-pen', 'V'); tools.set('set-tool-pencil', 'P')
     tools.set('set-tool-slice', 'E'); tools.set('set-tool-eraser', undefined); tools.set('set-tool-comments', 'N')
@@ -118,7 +125,7 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   bindingCache.set(cacheKey, result)
   return result
 }
-function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) {
+function matches(event: ShortcutKey, { combo, physicalCode }: ShortcutBinding, platform: ShortcutPlatform) {
   // A trailing '+' is the actual plus key, not an empty chord component.
   const key = combo.endsWith('+') ? '+' : combo.split('+').at(-1)!
   const modifiers = (key === '+' ? combo.slice(0, -1) : combo.slice(0, -key.length)).split('+')
@@ -134,6 +141,7 @@ function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) 
   // Shift+/ produces "?" on US keyboards. Match the Slash key, not every "?".
   if (key === '/' && shift && event.code === 'Slash') return true
   if (event.key.toLowerCase() === key.toLowerCase()) return true
+  if (physicalCode && event.code === physicalCode && !/^[a-z]$/i.test(event.key)) return true
   // Explicit US/Generic Option outputs only. Preserve logical ASCII keys on
   // other layouts; never guess a base key for unknown symbols or dead keys.
   if (platform === 'mac' && alt && !/^[\x00-\x7f]+$/.test(event.key)) {
@@ -150,8 +158,8 @@ function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) 
   return false
 }
 export function resolveShortcut(event: ShortcutKey, context: ShortcutContext): ShortcutBinding | null {
-  if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.key === 'Dead' || event.key === 'Process' || event.getModifierState?.('AltGraph')) return null
-  return shortcutBindings(context).find(binding => matches(event, binding.combo, context.platform)) || null
+  if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.key === 'Process' || event.getModifierState?.('AltGraph')) return null
+  return shortcutBindings(context).find(binding => (event.key !== 'Dead' || binding.physicalCode) && matches(event, binding, context.platform)) || null
 }
 export function shortcutLabel(command: ShortcutAction, context: ShortcutContext): string | undefined {
   const normalized = command === 'lock-selection' || command === 'unlock-selection' ? 'toggle-lock' : command === 'hide-selection' || command === 'show-selection' ? 'toggle-visibility' : command

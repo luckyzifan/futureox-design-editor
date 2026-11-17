@@ -53,6 +53,7 @@ import { UiModeSwitch } from './UiModeSwitch'
 import { SketchWindowTools } from './SketchWindowTools'
 import { SketchReplacementDialog, sketchReplacementTarget, type SketchReplacementTarget } from './SketchReplacementDialog'
 import { resetSketchLayerStyle, updateSketchLayerStyle } from './sketch-layer-style'
+import { matchesTypefaceShortcut, openTypefaceSelect } from './typeface-shortcut'
 import { canvasStatusLabel } from './canvas-status-label'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -181,7 +182,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const menuText = fileMenuText[locale]
   const shortcutProfile = useShortcutProfile()
   const commandSearchOpen = useSyncExternalStore(subscribeCommandSearch, commandSearchSnapshot, () => 0) !== 0
-  const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [shortcutProfile])
+  const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode }), [shortcutProfile, uiMode])
   const tools = useMemo(() => toolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
@@ -216,7 +217,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     return () => { document.removeEventListener('pointerdown', dismiss, true); window.removeEventListener('blur', blur) }
   }, [])
   const [propertiesTab, setPropertiesTabState] = useState<'design' | 'prototype'>('design')
-  const setPropertiesTab = (next: 'design' | 'prototype') => { setPropertiesTabState(next); setPrototypeTab(next) }
+  const setPropertiesTab = useCallback((next: 'design' | 'prototype') => { setPropertiesTabState(next); setPrototypeTab(next) }, [])
   useEffect(() => subscribePrototypeTab(() => setPropertiesTabState(getPrototypeTab())), [])
   const [showPrototype, setShowPrototype] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
@@ -902,6 +903,18 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const shortcut = (event: KeyboardEvent) => {
       if (event.shiftKey || event.defaultPrevented || event.repeat ||
           event.isComposing || event.keyCode === 229 || shortcutTargetOwnsKeyboard(event.target)) return
+      if (matchesTypefaceShortcut(event)) {
+        if (!canUseSketchSelectionCommand()) return
+        const ids = editor.topSelection()
+        if (!ids.length || ids.some(id => editor.state.doc.nodes[id].kind !== 'text') ||
+            ['comments', 'annotate'].includes(editor.state.tool) || !commitPendingEdits(editor)) return
+        flushSync(() => { setShowInspector(true); setUiMinimized(false); setPropertiesTab('design') })
+        if (openTypefaceSelect(document.querySelector<HTMLSelectElement>('#design-properties select[data-layer-typeface]'))) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        return
+      }
       const onMac = shortcutPlatform() === 'mac'
       if (onMac && event.code === 'KeyS' && event.ctrlKey && !event.metaKey) {
         if (canUseSketchSelectionCommand() && (event.altKey ? resetSketchLayerStyle(editor) : updateSketchLayerStyle(editor))) {
@@ -924,7 +937,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', shortcut, true)
     return () => window.removeEventListener('keydown', shortcut, true)
-  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, editor])
+  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, editor, setShowInspector, setPropertiesTab])
   const saveCurrentDesign = useCallback(() => {
     if (source) {
       if (source.ready && !source.busy && !source.locked) void source.save()

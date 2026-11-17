@@ -2,6 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { forwardNativeEditorShortcut, nativeShortcutRoute } from '../src/keyboard-shortcuts.mjs'
 const input = (key, extra = {}) => ({ type: 'keyDown', key, code: `Key${key.toUpperCase()}`, control: false, meta: false, alt: false, shift: false, isAutoRepeat: false, isComposing: false, ...extra })
+test('macOS leaves Sketch Option-Command-A with the renderer and retains Figma Select Matching', () => {
+  const event = input('å', { code: 'KeyA', alt: true, meta: true })
+  const sketch = nativeShortcutRoute(event, 'darwin', 'sketch')
+  assert.equal(sketch.consume, false)
+  assert.equal(sketch.command, undefined)
+  assert.equal(nativeShortcutRoute(event, 'darwin', 'figma').command, 'select-matching')
+})
 for (const platform of ['darwin', 'win32', 'linux']) {
   const mod = platform === 'darwin' ? { meta: true } : { control: true }
   test(`${platform}: native boundary forwards exactly once, suppresses held destructive chords and resets suppression`, () => {

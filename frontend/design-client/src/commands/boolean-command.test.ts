@@ -33,8 +33,12 @@ test('UI legacy fill-only acceptance and bottom paint remain unchanged', () => {
     const original = e.state.doc.nodes[f.a.id]
     e.select([f.b.id, f.a.id]); e.group(false, 'union')
     const result = e.state.doc.nodes[e.state.selection[0]]
-    expect(result.booleanOperation).toBe('union'); expect(result.fills).toEqual(original.fills.map(p => ({ ...p, image: p.image ?? null })))
-    expect(result.strokes).toEqual(original.strokes.map(s => ({ ...s, paint: { ...s.paint, image: s.paint.image ?? null } }))); expect(result.effects).toEqual([])
+    const withImage = (paint: typeof original.fills[number]) => ({ ...paint, image: paint.image ?? null })
+    const withStrokeImage = (stroke: typeof original.strokes[number]) => ({ ...stroke, paint: withImage(stroke.paint) })
+    expect(result.booleanOperation).toBe('union')
+    expect(result.fills.map(withImage)).toEqual(original.fills.map(withImage))
+    expect(result.strokes.map(withStrokeImage)).toEqual(original.strokes.map(withStrokeImage))
+    expect(result.effects).toEqual([])
   } finally { e.dispose() }
   expect(() => prepareBooleanCreate(f.doc, [f.a.id, f.b.id], { operation: 'union' }, { fresh: true }, 'verified-fill')).toThrow(/outline visible strokes/)
 })

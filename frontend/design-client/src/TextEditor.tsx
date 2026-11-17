@@ -11,6 +11,8 @@ import { registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { useProfessionalDialogText } from './professional-dialog-messages'
 import { sourceFonts, storeRemappedSourceFonts, type FontSourceRecord } from './font-matching'
 import { equalValue } from './document-patch'
+import { interfacePreference } from './interface-preference'
+import { matchesTypefaceShortcut, openTypefaceSelect } from './typeface-shortcut'
 
 export function TextInput({
   node,
@@ -172,6 +174,7 @@ export function CanvasTextEditor({
   const input = useRef<HTMLTextAreaElement>(null),
     root = useRef<HTMLDivElement>(null),
     toolbar = useRef<HTMLDivElement>(null),
+    typeface = useRef<HTMLSelectElement>(null),
     composing = useRef(false),
     done = useRef(false),
     original = useRef(node),
@@ -461,9 +464,16 @@ export function CanvasTextEditor({
           }}
         />
         <select
+          ref={typeface}
           aria-label={tr('选中文字字体')}
           value={runFontId}
           onChange={(e) => style({ fontId: e.target.value || undefined })}
+          onKeyDown={e => {
+            if (e.key !== 'Escape' || e.nativeEvent.isComposing || interfacePreference.getSnapshot().uiMode !== 'sketch') return
+            e.preventDefault()
+            e.stopPropagation()
+            select(...selection)
+          }}
         >
           <option value="">{tr('跟随文本样式')}</option>
           <option value="default">{tr('Noto Sans SC（内置）')}</option>
@@ -577,6 +587,14 @@ export function CanvasTextEditor({
         }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing || composing.current) return
+          if (interfacePreference.getSnapshot().uiMode === 'sketch' && matchesTypefaceShortcut(e.nativeEvent)) {
+            const { selectionStart, selectionEnd } = e.currentTarget
+            if (openTypefaceSelect(typeface.current)) {
+              e.preventDefault()
+              setSelection([selectionStart, selectionEnd])
+            }
+            return
+          }
           navigate(e)
           if (e.key === 'Escape') {
             e.preventDefault()

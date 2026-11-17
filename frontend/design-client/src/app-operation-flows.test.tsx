@@ -13,7 +13,10 @@ import { emptySystem } from './design-system'
 import { Editor } from './engine'
 import { applyInterfaceLayout } from './interface-layout'
 import { interfacePreference } from './interface-preference'
+import { fontTestBytes } from './font-test-fixtures'
 import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
+import { worldMatrix } from './geometry'
+import { kernelFillWorld } from './kernel/picking'
 import { blank, defaultTextStyle, node, paint, stroke } from './model'
 import { nudgePreference } from './nudge-preference'
 import * as persistence from './persistence'
@@ -230,6 +233,106 @@ test('Sketch Control-S and Inspector Update sync the selected style without reli
   expect(editor!.authoredDocument).toEqual(beforeSync)
   await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="更新图层样式"]')!.click())
   expect(editor!.authoredDocument).toEqual(afterSync)
+})
+
+test('Sketch Command-T opens the contextual typeface picker and keeps the edit range on Escape', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const showPicker = vi.fn()
+  Object.defineProperty(dom.window.HTMLSelectElement.prototype, 'showPicker', { value: showPicker, configurable: true })
+  const doc = blank('Typeface QA'), text = node('text', 60, 80, 240, 60), shape = node('rectangle', 330, 80, 160, 60)
+  text.text = 'Sketch typeface'
+  text.textStyle = defaultTextStyle()
+  doc.schemaVersion = 4
+  doc.fonts = { latin: { family: 'Noto Latin Fixture', data: fontTestBytes('noto-latin').toString('base64'), index: 0 } }
+  doc.nodes = { [text.id]: text, [shape.id]: shape }
+  doc.pages[0].children = [text.id, shape.id]
+  await act(async () => { editor!.load(doc); editor!.select([shape.id]); canvas().focus() })
+  const before = editor!.authoredDocument
+  const send = (target: HTMLElement, value: string, options: KeyboardEventInit = {}) =>
+    act(async () => target.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...options })))
+  const change = (select: HTMLSelectElement, value: string) => act(async () => {
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const open = (target: HTMLElement) => send(target, 't', { code: 'KeyT', metaKey: true })
+  await open(canvas())
+  expect(showPicker).not.toHaveBeenCalled()
+  await act(async () => editor!.select([text.id]))
+  await open(canvas())
+  const layerFont = document.querySelector<HTMLSelectElement>('select[data-layer-typeface]')!
+  expect(document.activeElement).toBe(layerFont)
+  expect(showPicker).toHaveBeenCalledTimes(1)
+  await send(layerFont, 'Escape')
+  expect(document.activeElement).toBe(canvas())
+  expect(editor!.authoredDocument).toBe(before)
+  await open(canvas())
+  await change(layerFont, 'latin')
+  expect(editor!.authoredDocument.nodes[text.id].textStyle?.fontId).toBe('latin')
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+
+  await send(canvas(), 'Enter')
+  const input = document.querySelector<HTMLTextAreaElement>('.rich-text-editor textarea')!
+  expect(document.activeElement).toBe(input)
+  await act(async () => input.setSelectionRange(0, 6))
+  await open(input)
+  const runFont = document.querySelector<HTMLSelectElement>('.rich-text-editor select[aria-label="选中文字字体"]')!
+  expect(document.activeElement).toBe(runFont)
+  await send(runFont, 'Escape')
+  expect(document.activeElement).toBe(input)
+  expect([input.selectionStart, input.selectionEnd]).toEqual([0, 6])
+  expect(editor!.authoredDocument).toEqual(before)
+  await open(input)
+  await change(runFont, 'latin')
+  await send(input, 'Enter', { metaKey: true })
+  expect(editor!.authoredDocument.nodes[text.id].textRuns).toEqual([{ start: 0, end: 6, fontId: 'latin' }])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch combine shortcuts create the expected editable operands through the layout keyboard route', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Keyboard booleans'), a = node('rectangle', 40, 60, 90, 80), b = node('rectangle', 80, 60, 90, 80)
+  const text = node('text', 240, 60, 90, 80)
+  for (const layer of [a, b, text]) { doc.nodes[layer.id] = layer; doc.pages[0].children.push(layer.id) }
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  const before = editor!.authoredDocument
+  const chord = (value: string, letter: string) => key(value, { code: `Key${letter}`, altKey: true, metaKey: true })
+  for (const [glyph, letter, operation] of [
+    ['å', 'A', 'compoundEvenodd'], ['Dead', 'U', 'union'], ['ß', 'S', 'subtract'],
+    ['ˆ', 'I', 'intersect'], ['≈', 'X', 'exclude'],
+  ] as const) {
+    await act(async () => editor!.select([a.id, b.id]))
+    const revision = editor!.state.version
+    await chord(glyph, letter)
+    const current = editor!.authoredDocument, id = editor!.state.selection[0]
+    const result = current.nodes[id]
+    expect(result).toMatchObject({ booleanOperation: operation, children: [a.id, b.id] })
+    expect(editor!.state.version).toBe(revision + 1)
+    if (letter === 'A' || letter === 'U')
+      expect(kernelFillWorld(result, { x: 110, y: 80 }, worldMatrix(current, id), 1)).toBe(letter === 'U')
+    await act(async () => editor!.undo())
+    expect(editor!.authoredDocument).toEqual(before)
+    expect(editor!.canUndo).toBe(false)
+  }
+  await act(async () => editor!.select([a.id, text.id]))
+  await chord('ß', 'S')
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
+  const other = structuredClone(doc), left = node('frame', 0, 0, 240, 180), right = node('frame', 260, 0, 240, 180)
+  left.children = [a.id]; right.children = [b.id]
+  other.nodes[left.id] = left; other.nodes[right.id] = right
+  other.pages[0].children = [left.id, right.id, text.id]
+  await act(async () => { applyInterfaceLayout('figma'); editor!.load(other); editor!.select([a.id]) })
+  const uncombined = editor!.authoredDocument
+  await chord('å', 'A')
+  expect(editor!.state.selection).toContain(b.id)
+  expect(editor!.authoredDocument).toBe(uncombined)
 })
 
 test('Sketch Command-period, the canvas menu and the header toggle the same interface', async () => {

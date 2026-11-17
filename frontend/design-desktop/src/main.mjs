@@ -1356,7 +1356,7 @@ async function buildWindow() {
   })
   window.webContents.on('before-input-event', (event, input) => {
     forwardNativeEditorShortcut(event, input, {
-      platform: process.platform, sendCommand,
+      platform: process.platform, interfaceMode, sendCommand,
       setIgnoreMenuShortcuts: (ignore) => ownedWindow.webContents.setIgnoreMenuShortcuts(ignore),
     })
   })
@@ -1456,7 +1456,7 @@ async function buildWindow() {
         { label: 'Paste in Place', click: () => sendCommand('paste-in-place') },
         { label: 'Duplicate', accelerator: 'CmdOrCtrl+D', click: () => sendCommand('duplicate') },
         { type: 'separator' },
-        { label:'Select Matching',accelerator:'CmdOrCtrl+Alt+A',click:()=>sendCommand('select-matching') },
+        { label:'Select Matching',accelerator:interfaceMode === 'figma' ? 'CmdOrCtrl+Alt+A' : undefined,click:()=>sendCommand('select-matching') },
         { label:'Select Inverse',accelerator:'CmdOrCtrl+Shift+A',click:()=>sendCommand('select-inverse') },
         { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendCommand('select-all') },
       ] },
