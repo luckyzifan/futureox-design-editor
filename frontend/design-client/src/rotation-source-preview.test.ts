@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { expect, test } from 'vitest'
-import { around, inverse, apply, boxPoints, rotate } from './geometry'
+import { around, inverse, apply, boxPoints, multiply, rotate } from './geometry'
 import { effect, node } from './model'
 import { rotation_screenshot_admitted } from './generated/design-kernel/design_kernel'
 import { mountRotationSource, rotationBackdropColor, rotationImageAddress, rotationSourceCoversScreen, rotationSourcePlan, type RotationSourcePlan } from './rotation-source-preview'
@@ -336,6 +336,56 @@ test('a nested large image keeps its full rectangle inside a proven frame', () =
   again!.place(delta, { x: 3, y: 3 }, 45)
   host.querySelector('img')!.dispatchEvent(new Event('error'))
   expect(host.querySelector('[data-testid="rotation-source-preview"]')).toBeNull()
+})
+
+test('a masked large bitmap follows from its own image inside the stationary rectangle', () => {
+  const group = node('group', 60, 90, 0, 0)
+  const mask = node('rectangle', 0, 0, 120, 80)
+  mask.mask = true
+  mask.maskType = 'shape'
+  mask.maskChain = 'break'
+  mask.fills = []
+  const image = node('rectangle', -100, -40, 400, 250)
+  image.fills[0] = { ...image.fills[0], kind: 'image', color: '#c43b67', fit: 'stretch', image: 'data:image/png;base64,aaaa' }
+  group.children = [mask.id, image.id]
+  const world = multiply(group.transform, image.transform)
+  const maskBox = { x: 60, y: 90, width: 120, height: 80 }
+  const nodes = { [group.id]: group, [mask.id]: mask, [image.id]: image }
+  const ancestors = [{ node: group, matrix: group.transform }]
+  const plan = rotationSourcePlan({
+    ...base, node: image, world, parent: group, ancestors, nodes,
+    center: { x: 160, y: 175 }, degrees: 24,
+    others: [maskBox, { x: 800, y: 800, width: 40, height: 40 }],
+  })
+  expect(plan?.paint).toEqual({ kind: 'image', src: 'data:image/png;base64,aaaa', fit: 'fill' })
+  expect(plan?.clip).toEqual(maskBox)
+  expect(plan?.box).toEqual({ x: -40, y: 50, width: 400, height: 250 })
+  expect(plan?.holes.every(hole => hole.box.x >= maskBox.x - 1e-6 && hole.box.y >= maskBox.y - 1e-6 &&
+    hole.box.x + hole.box.width <= maskBox.x + maskBox.width + 1e-6 &&
+    hole.box.y + hole.box.height <= maskBox.y + maskBox.height + 1e-6)).toBe(true)
+  const host = document.createElement('div')
+  document.body.append(host)
+  const layer = mountRotationSource(host, {
+    plan: plan!, view, viewport: { width: 460, height: 320 },
+    corners: boxPoints(plan!.box), drawSelection: true, ids: [image.id],
+  })
+  const before = host.querySelector('polygon')!.getAttribute('points')
+  layer!.place(around({ x: 160, y: 175 }, rotate(24)), { x: 20, y: 20 }, 24)
+  expect(host.querySelector<HTMLElement>('[data-testid="rotation-source-clip"]')!.getAttribute('style')).toContain('left: 60px')
+  expect(host.querySelector<HTMLElement>('[data-testid="rotation-source-paint"]')!.style.transform).toContain('matrix(')
+  expect(host.querySelector('polygon')!.getAttribute('points')).not.toBe(before)
+  layer!.destroy()
+  mask.maskType = 'alpha'
+  expect(rotationSourcePlan({
+    ...base, node: image, world, parent: group, ancestors, nodes, degrees: 24,
+    center: { x: 160, y: 175 }, others: [maskBox],
+  })).toBeNull()
+  mask.maskType = 'shape'
+  expect(rotationSourcePlan({
+    ...base, node: image, world, parent: group, ancestors, nodes, degrees: 24,
+    center: { x: 160, y: 175 },
+    others: [maskBox, { x: 70, y: 100, width: 30, height: 24 }],
+  })).toBeNull()
 })
 
 test('a front sibling and a translucent parent fill are not redrawn over the page', () => {

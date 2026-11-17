@@ -11,7 +11,7 @@ import { selectionSizeLabel } from './selection-size-label'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
 import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
-import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
+import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, omitLiveRotationSelection, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
 import { altMeasurementTarget, measurementTicks, SPACING_RED } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
@@ -1115,12 +1115,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
     id => !!state.doc.nodes[id] && presented?.document === state.doc)
   const gpuOverlay = canvasGpuOverlayOwnsUi(presented,overlay,presentationScopeMatches)
+  const kernelOverlay = useMemo(
+    () => sourceRotationPaint ? omitLiveRotationSelection(overlay) : overlay,
+    [sourceRotationPaint, overlay],
+  )
   // Angle, size and other chrome can change before the new pixels arrive.
   // Keep the acknowledged outline with its pixels while its selection and
   // handles are still current.
   const gpuSelectionOwnsOutline = presentationScopeMatches && overlay.selectionIdentity !== undefined &&
     presented.gpuSelectionIdentity === overlay.selectionIdentity
   useLayoutEffect(() => {
+    // Own-paint rotation is not a framebuffer snapshot. It already draws the
+    // live bitmap and outline, so a GPU-owned selection must not cancel it.
+    if (sourceRotation.current) return
     if (gpuSelectionOwnsOutline && gestureFollow.current) keepGpuGesture(ownedDrag)
   }, [gpuSelectionOwnsOutline, ownedDrag])
   const documentChromeOpacity = rotationDocumentChromeSuppressed({
@@ -2182,15 +2189,21 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     layer.place(matrix, screen, degrees)
   }
   function placeGestureFollow(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
+    // Rotation follows from the node's own paint, including while the GPU
+    // still owns the pre-gesture outline. A framebuffer crop bakes encoded
+    // alpha and drops pixels that sit outside the viewport.
+    if (d.kind === 'rotate') {
+      if (!d.rotationSourceRejected) placeRotationSource(d, matrix, screen, degrees)
+      if (sourceRotation.current && gestureFollow.current && !gestureFollow.current.holding) return
+      if (gpuSelectionOwnsOutline) keepGpuGesture(d)
+      return
+    }
     if (gpuSelectionOwnsOutline) {
       // A local snapshot cannot erase the outline baked into the visible
       // bitmap. Keep the same renderer through this captured gesture.
       keepGpuGesture(d)
       return
     }
-    // Rotation follows from the node's own paint. A framebuffer crop bakes
-    // encoded alpha and drops pixels that sit outside the viewport.
-    if (d.kind === 'rotate') { placeRotationSource(d, matrix, screen, degrees); return }
     if (d.duplicating || !host.current) { dropGestureFollow(); return }
     if (gestureFollow.current?.holding) dropGestureFollow()
     let layer = gestureFollow.current
@@ -3105,7 +3118,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }}/>:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
-        overlay={overlay}
+        overlay={kernelOverlay}
         interaction={zoomFocusCanvas ? undefined : gpuInteraction}
         onPresentation={recordPresentation}
         overview={refineOverview} overviewNodes={entries.length}

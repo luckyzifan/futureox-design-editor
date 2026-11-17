@@ -2,7 +2,29 @@ import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import { blank, node } from './model'
 import { apply, bounds, boxPoints, scene } from './geometry'
-import { canvasOverlayCommands, selectionChromeChipWidth } from './canvas-overlay-commands'
+import { canvasOverlayCommands, omitLiveRotationSelection, selectionChromeChipWidth } from './canvas-overlay-commands'
+
+test('live rotation drops the held selection from the GPU overlay and keeps other chrome', () => {
+  const rect = node('rectangle', 10, 20, 80, 40)
+  const doc = blank()
+  doc.nodes[rect.id] = rect
+  doc.pages[0].children = [rect.id]
+  const entry = scene(doc, doc.pages[0].id)[0]
+  const overlay = canvasOverlayCommands({
+    document: doc, pageId: doc.pages[0].id, epoch: 1, tool: 'select', pixelGrid: false,
+    canTransform: true, selected: [entry], owners: [rect.id], frameTitles: [],
+    localSelection: { x: 0, y: 0, width: 80, height: 40 },
+    selectionCorners: boxPoints({ x: 10, y: 20, width: 80, height: 40 }),
+    selectionBox: { x: 10, y: 20, width: 80, height: 40 }, measurementTarget: null, zoom: 1,
+  })
+  const live = omitLiveRotationSelection(overlay)
+  expect(overlay.commands.selection?.corners).toHaveLength(4)
+  expect(live.commands.selection).toBeUndefined()
+  expect(live.selectionIdentity).toBeUndefined()
+  expect(live.commands.labels.some(label => label.kind === 'selection-size')).toBe(false)
+  expect(live.commands.pixelGrid).toBe(overlay.commands.pixelGrid)
+  expect(omitLiveRotationSelection(live)).toBe(live)
+})
 
 test('chrome keeps the blue accent and warms the neutral surfaces', () => {
   const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')

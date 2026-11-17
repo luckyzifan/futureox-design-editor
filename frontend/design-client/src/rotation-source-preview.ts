@@ -1,7 +1,7 @@
 import type { Bounds, DesignNode, Matrix, Point } from './model'
 import type { ColorSpace } from './color'
 import { isIdentityImageAdjust } from './model'
-import { apply, boxPoints } from './commands/affine'
+import { apply, boxPoints, multiply } from './commands/affine'
 import { color_fully_opaque, rotation_source_preview_allowed } from './generated/design-kernel/design_kernel'
 import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { elementMatrix, followCamera, screenWarp, type FollowCamera, type GestureFollowLayer } from './gesture-follow'
@@ -129,15 +129,69 @@ function ancestorAllowsBackdrop(node: DesignNode, matrix: Matrix, nodes: Rotatio
   })
 }
 
+/** The mask parent only has to prove paint it actually draws. An empty
+ * pass-through group has no rectangle of its own; the mask supplies the clip. */
+function maskParentAllows(node: DesignNode, matrix: Matrix, nodes: RotationSourceInput['nodes'], maskId: string): boolean {
+  if (!node.visible || !(node.opacity >= 1 - 1e-9)) return false
+  if (node.blend !== 'normal' && node.blend !== 'pass-through') return false
+  if (node.mask || node.repeat || node.clip) return false
+  if (!rectangularShape(node)) return false
+  if ((node.cornerRadius ?? 0) > 1e-6 || node.radii.some(radius => radius > 1e-6) || node.smoothing > 1e-6) return false
+  if (node.effects.some(effect => effect.visible)) return false
+  if (node.strokes.some(stroke => stroke.visible && stroke.width > 0)) return false
+  if (node.fills.some(paint => paint.visible && paint.opacity > 0) && !axisAlignedBox(node, matrix)) return false
+  if (node.children.some(id => !nodes?.[id])) return false
+  return !node.children.some(id => id !== maskId && !!nodes?.[id]?.visible && !!nodes[id].mask)
+}
+
+/** A Sketch shape mask is a stationary clip, not a second layer the bitmap
+ * may paint over. Only an axis-aligned rectangle with an empty or opaque
+ * solid silhouette qualifies. Alpha, outline, translucent and image masks
+ * stay on the exact capture. */
+function stationaryShapeMask(input: RotationSourceInput): { id: string; box: Bounds } | null {
+  const parent = input.parent
+  const chain = input.ancestors ?? []
+  const nodes = input.nodes
+  if (!parent || !nodes || parent.kind !== 'group' || parent.children.length !== 2 || parent.children[1] !== input.node.id) return null
+  if (parent.mask || parent.clip || input.node.mask || input.node.maskChain === 'break') return null
+  const parentWorld = chain.at(-1)
+  if (!parentWorld || parentWorld.node !== parent) return null
+  const mask = nodes[parent.children[0]]
+  if (!mask?.visible || !mask.mask || mask.maskType !== 'shape' || mask.kind !== 'rectangle') return null
+  if (mask.children.length || mask.network || mask.vectorGeometry || mask.booleanOperation || mask.arc || mask.textPath || mask.pathOffset != null) return null
+  if ((mask.cornerRadius ?? 0) > 1e-6 || mask.radii.some(radius => radius > 1e-6) || mask.smoothing > 1e-6) return null
+  if (mask.opacity < 1 - 1e-9 || (mask.blend !== 'normal' && mask.blend !== 'pass-through')) return null
+  if (mask.effects.some(effect => effect.visible) || mask.strokes.some(stroke => stroke.visible && stroke.width > 0)) return null
+  if (mask.constraints || input.node.constraints || parent.constraints) return null
+  const derived = (node: DesignNode) => !!node.repeat || !!node.booleanOperation || !!node.instance || !!node.instanceOrigin ||
+    !!node.component || !!node.componentSet || !!node.componentKey || !!node.layout && node.layout.mode !== 'none' ||
+    Object.keys(node.bindings || {}).length > 0 || Object.keys(node.variableModes || {}).length > 0 ||
+    Object.keys(node.styleRefs || {}).length > 0 || node.sizing?.width === 'hug' || node.sizing?.height === 'hug'
+  if (derived(mask) || derived(input.node) || derived(parent) || chain.some(ancestor => ancestor.node !== parent && derived(ancestor.node))) return null
+  const paints = mask.fills.filter(paint => paint.visible && paint.opacity > 0)
+  if (paints.length > 1) return null
+  if (paints.length === 1) {
+    const paint = paints[0]
+    if (paint.kind !== 'solid' || paint.blend !== 'normal' || !color_fully_opaque(paint.color, paint.opacity)) return null
+  }
+  const box = axisAlignedBox(mask, multiply(parentWorld.matrix, mask.transform))
+  return box ? { id: mask.id, box } : null
+}
+
+function sameBounds(a: Bounds, b: Bounds) {
+  return Math.abs(a.x - b.x) <= 1e-4 && Math.abs(a.y - b.y) <= 1e-4 &&
+    Math.abs(a.width - b.width) <= 1e-4 && Math.abs(a.height - b.height) <= 1e-4
+}
+
 type Coverage = { kind: 'clear' } | { kind: 'paint'; box: Bounds; color: string } | { kind: 'unknown'; box: Bounds }
 
 function ancestorCoverage(node: DesignNode, matrix: Matrix, outerClip: Bounds | null): Coverage | null {
+  const fills = node.fills.filter(paint => paint.visible && paint.opacity > 0)
+  if (!fills.length) return { kind: 'clear' }
   const box = axisAlignedBox(node, matrix)
   if (!box) return null
   const shape = outerClip ? intersectArea(box, outerClip) : box
   if (!shape) return { kind: 'clear' }
-  const fills = node.fills.filter(paint => paint.visible && paint.opacity > 0)
-  if (!fills.length) return { kind: 'clear' }
   const front = fills[fills.length - 1]
   if (front.kind === 'solid' && front.blend === 'normal' && color_fully_opaque(front.color, front.opacity)) {
     return { kind: 'paint', box: shape, color: front.color.slice(0, 7).toLowerCase() }
@@ -157,8 +211,13 @@ function proveRotationBackdrop(
   input: RotationSourceInput,
   child: Bounds,
   chain: readonly RotationAncestor[],
+  mask?: { id: string; box: Bounds },
 ): { holes: RotationBackdropPatch[]; clip?: Bounds } | null {
   for (const ancestor of chain) {
+    if (mask && ancestor.node.id === input.parent?.id) {
+      if (!maskParentAllows(ancestor.node, ancestor.matrix, input.nodes, mask.id)) return null
+      continue
+    }
     if (!ancestorAllowsBackdrop(ancestor.node, ancestor.matrix, input.nodes)) return null
   }
   let clip: Bounds | undefined
@@ -167,6 +226,11 @@ function proveRotationBackdrop(
     const box = axisAlignedBox(ancestor.node, ancestor.matrix)
     if (!box) return null
     const next = clip ? intersectArea(clip, box) : box
+    if (!next) return null
+    clip = next
+  }
+  if (mask) {
+    const next = clip ? intersectArea(clip, mask.box) : mask.box
     if (!next) return null
     clip = next
   }
@@ -229,7 +293,8 @@ export function rotationSourcePlan(input: RotationSourceInput): RotationSourcePl
   if ((node.cornerRadius ?? 0) > 1e-6 || node.radii.some(radius => radius > 1e-6) || node.smoothing > 1e-6) return null
   const box = axisAlignedBox(node, input.world)
   if (!box || !Number.isFinite(input.degrees) || !Number.isFinite(input.center.x) || !Number.isFinite(input.center.y)) return null
-  const proven = proveRotationBackdrop(input, box, chain)
+  const mask = stationaryShapeMask(input)
+  const proven = proveRotationBackdrop(input, box, chain, mask ?? undefined)
   if (!proven) return null
   const fills = node.fills.filter(paint => paint.visible && paint.opacity > 0)
   if (fills.length !== 1) return null
@@ -251,9 +316,22 @@ export function rotationSourcePlan(input: RotationSourceInput): RotationSourcePl
   } else {
     return null
   }
-  const others = new Float64Array(input.others.length * 4)
-  for (let index = 0; index < input.others.length; index++) {
-    const other = input.others[index]
+  let sourceOthers = input.others
+  if (mask) {
+    let copies = 0
+    const kept: Bounds[] = []
+    for (const other of input.others) {
+      if (sameBounds(other, mask.box)) { copies += 1; continue }
+      if (intersectArea(other, mask.box)) kept.push(other)
+    }
+    // Two different layers sharing the mask rectangle cannot be told apart
+    // from bounds alone. Keep the exact capture rather than cover one of them.
+    if (copies > 1) return null
+    sourceOthers = kept
+  }
+  const others = new Float64Array(sourceOthers.length * 4)
+  for (let index = 0; index < sourceOthers.length; index++) {
+    const other = sourceOthers[index]
     others[index * 4] = other.x
     others[index * 4 + 1] = other.y
     others[index * 4 + 2] = other.width

@@ -11,15 +11,23 @@ import { blank, node, uid, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { scene, worldMatrix, inverse, multiply } from './geometry'
 
-const recordedOverlay = vi.hoisted(() => ({ labels: [] as string[], control: undefined as import('./kernel/interaction-layers').GpuMoveControl | undefined }))
+const recordedOverlay = vi.hoisted(() => ({
+  labels: [] as string[],
+  control: undefined as import('./kernel/interaction-layers').GpuMoveControl | undefined,
+  gpuSelection: false,
+  surfaceSelection: false,
+}))
 vi.mock('./kernel/Surface', async () => {
   const { useLayoutEffect } = await import('react')
   return { KernelSurface(props: import('./kernel/Surface').SurfaceProps) {
     if(recordedOverlay.control && props.interaction) props.interaction.control.current = recordedOverlay.control
     recordedOverlay.labels = props.overlay?.commands.labels?.map(label => label.text) || []
+    recordedOverlay.surfaceSelection = !!props.overlay?.commands.selection
+    const selectionIdentity = recordedOverlay.gpuSelection ? props.overlay?.selectionIdentity : undefined
     useLayoutEffect(() => {
-      props.onPresentation?.({ ...props, epoch: props.presentationEpoch!, pixelRatio: 1, managed: false })
-    }, [props.document, props.pageId, props.view, props.width, props.height, props.presentationEpoch, props.onPresentation])
+      props.onPresentation?.({ ...props, epoch: props.presentationEpoch!, pixelRatio: 1, managed: false,
+        ...(selectionIdentity ? { gpuOverlay: true, gpuOverlayIdentity: props.overlay?.uiIdentity, gpuSelectionIdentity: selectionIdentity } : {}) })
+    }, [props.document, props.pageId, props.view, props.width, props.height, props.presentationEpoch, props.onPresentation, selectionIdentity])
     return <div data-testid="surface-boundary" />
   } }
 })
@@ -27,6 +35,8 @@ let dom: any, root: Root, mount: HTMLDivElement, editor: Editor, errors: unknown
 let frames: Map<number, FrameRequestCallback>, frameId: number
 beforeEach(() => {
   recordedOverlay.control = undefined
+  recordedOverlay.gpuSelection = false
+  recordedOverlay.surfaceSelection = false
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLCanvasElement', 'Element', 'Node', 'Event', 'MouseEvent', 'WheelEvent', 'KeyboardEvent', 'FocusEvent', 'localStorage'])
     vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
@@ -173,6 +183,40 @@ test('rotation uses affine pose preview and pointerup commits its final input be
  expect(mount.querySelector<HTMLElement>('[data-testid="canvas-selection-outline"]')!.style.transform).toBe('')
  await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false)
 })
+test('a GPU-owned outline does not keep a large bitmap and its box on the old pose', async () => {
+  const bitmap = node('rectangle', 40, 30, 1800, 1200)
+  const before = await render([bitmap])
+  await act(async () => editor.select([bitmap.id]))
+  recordedOverlay.gpuSelection = true
+  await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 4; i++) await Promise.resolve() })
+  const apply = vi.fn(() => ({ x: 0, y: 0 }))
+  recordedOverlay.control = { apply, end: vi.fn(), isActive: () => false, covers: () => true, feedbackPending: () => false }
+  await act(async () => editor.set({ snap: false }))
+  const handle = mount.querySelector<HTMLElement>('[data-testid="rotate-corner-0"]')!
+  const x = Number(handle.dataset.anchorX), y = Number(handle.dataset.anchorY)
+  await act(async () => pointer('pointerdown', x, y, {}, handle))
+  await act(async () => {
+    pointer('pointermove', x + 160, y + 40)
+    const queued = [...frames.values()]
+    frames.clear()
+    queued.forEach(fn => fn(performance.now()))
+  })
+  const paint = mount.querySelector<HTMLElement>('[data-testid="rotation-source-paint"]')
+  expect(paint).not.toBeNull()
+  expect(paint!.style.transform).toContain('matrix(')
+  expect(mount.querySelector('[data-selection-held="texture"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="canvas-selection-outline"]')?.getAttribute('opacity')).toBe('0')
+  expect(recordedOverlay.surfaceSelection).toBe(false)
+  expect(apply).not.toHaveBeenCalled()
+  expect(editor.state.doc).toBe(before)
+  const held = mount.querySelector('[data-testid="rotation-source-preview"] polygon')
+  expect(held?.getAttribute('points')).toContain(',')
+  await act(async () => pointer('pointerup', x + 160, y + 40))
+  expect(editor.state.doc.nodes[bitmap.id].transform).not.toEqual(before.nodes[bitmap.id].transform)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+})
+
 test('repeated camera changes and document replacement retire queued stale pointer ownership and permit the next edit',async()=>{
  const rectangle=node('rectangle',100,100,100,80);const before=await render([rectangle])
  await act(async()=>editor.select([rectangle.id]))

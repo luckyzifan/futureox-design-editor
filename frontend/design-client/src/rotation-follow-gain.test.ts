@@ -322,3 +322,116 @@ test('a nested opaque image follows with fewer full rasters and the same release
     engine.free()
   }
 })
+
+test('a masked large bitmap follows inside the mask without resampling every sample', () => {
+  const png = solidPng(64, 48, [196, 59, 103, 255])
+  const doc = blank('masked-bitmap')
+  doc.schemaVersion = 4
+  doc.pages[0].background = '#ffffff'
+  const group = node('group', 0, 0, VIEW_W, VIEW_H)
+  const mask = node('rectangle', 0, 0, VIEW_W, VIEW_H)
+  mask.mask = true
+  mask.maskType = 'shape'
+  mask.fills = []
+  const image = node('rectangle', -40, -30, VIEW_W + 80, VIEW_H + 60)
+  image.fills[0] = { ...image.fills[0], kind: 'image', color: '#c43b67', fit: 'stretch', image: `data:image/png;base64,${png.toString('base64')}` }
+  group.children = [mask.id, image.id]
+  doc.nodes = { [group.id]: group, [mask.id]: mask, [image.id]: image }
+  doc.pages[0].children = [group.id]
+  validateDocument(doc)
+  const world = multiply(group.transform, image.transform)
+  const center = { x: VIEW_W / 2, y: VIEW_H / 2 }
+  const maskBox = { x: 0, y: 0, width: VIEW_W, height: VIEW_H }
+  const options = renderOptions(doc, VIEW_W, VIEW_H)
+  const engine = new VectorEngine()
+  const posePath = { retained: 0, reloaded: 0 }
+  const show = (pose: DesignDocument) => {
+    const local = pose.nodes[image.id].transform
+    const retained = engine.apply_interaction_transforms(JSON.stringify({ [image.id]: local }))
+    if (retained) posePath.retained += 1
+    else {
+      engine.load_document(JSON.stringify(pose))
+      posePath.reloaded += 1
+    }
+  }
+  const poseAt = (degrees: number) => {
+    const next = structuredClone(doc)
+    next.nodes[image.id].transform = multiply(around(center, rotate(degrees)), image.transform)
+    return next
+  }
+  const planInput = {
+    node: image, world, others: [maskBox], center, degrees: 36,
+    pageBackground: '#ffffff', documentSpace: 'srgb' as const, parent: group,
+    ancestors: [{ node: group, matrix: group.transform }],
+    nodes: doc.nodes, grid: false, checkerboard: false, pixelPreview: false,
+  }
+  try {
+    engine.load_document(JSON.stringify(doc))
+    const stale = engine.render_rgba(options)
+    const plan = rotationSourcePlan(planInput)
+    expect(plan?.clip).toEqual(maskBox)
+    expect(plan?.paint.kind).toBe('image')
+    const degrees = 36
+    const delta = around(center, rotate(degrees))
+    show(poseAt(degrees))
+    const reference = engine.render_rgba(options)
+    let scored = 0
+    let candidateError = 0
+    let staleError = 0
+    for (let y = 8; y < VIEW_H; y += 32) {
+      for (let x = 8; x < VIEW_W; x += 32) {
+        const predicted = previewColor(plan!, delta, x + 0.5, y + 0.5, hexByte('#c43b67'))
+        if (!predicted) continue
+        scored += 1
+        const ref = pixel(reference, VIEW_W, x, y)
+        const old = pixel(stale, VIEW_W, x, y)
+        for (let channel = 0; channel < 3; channel += 1) {
+          candidateError = Math.max(candidateError, Math.abs(ref[channel] - predicted[channel]))
+          staleError = Math.max(staleError, Math.abs(old[channel] - predicted[channel]))
+        }
+      }
+    }
+    expect(scored).toBeGreaterThan(20)
+    expect(candidateError).toBe(INTERIOR_ERROR)
+    expect(staleError).toBeGreaterThanOrEqual(128)
+    const baseline: number[] = []
+    const candidate: number[] = []
+    for (let round = 0; round < ROUNDS + 1; round += 1) {
+      let baselineMs = 0
+      for (const angle of ANGLES) {
+        const started = performance.now()
+        show(poseAt(angle))
+        engine.render_rgba(options)
+        baselineMs += performance.now() - started
+      }
+      let candidateMs = 0
+      for (const angle of ANGLES) {
+        const started = performance.now()
+        const admitted = rotationSourcePlan({ ...planInput, degrees: angle })
+        if (!admitted) throw new Error('masked bitmap plan was refused')
+        multiply(around(center, rotate(angle)), image.transform)
+        candidateMs += performance.now() - started
+      }
+      const started = performance.now()
+      show(poseAt(ANGLES[ANGLES.length - 1]))
+      const shown = engine.render_rgba(options)
+      candidateMs += performance.now() - started
+      show(poseAt(ANGLES[ANGLES.length - 1]))
+      expect(sha256(shown)).toBe(sha256(engine.render_rgba(options)))
+      if (round === 0) continue
+      baseline.push(baselineMs)
+      candidate.push(candidateMs)
+    }
+    const baselineMedian = median(baseline)
+    const candidateMedian = median(candidate)
+    const speedup = (baselineMedian - candidateMedian) / baselineMedian
+    console.log(JSON.stringify({
+      case: 'masked-large-bitmap',
+      baselineMs: baseline, candidateMs: candidate,
+      baselineMedian, candidateMedian, speedup, scored, candidateError, staleError, posePath,
+    }))
+    expect(speedup).toBeGreaterThanOrEqual(MIN_SPEEDUP)
+  } finally {
+    engine.free()
+  }
+})

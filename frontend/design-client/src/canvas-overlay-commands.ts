@@ -87,6 +87,21 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
     selection:showSelection?{corners:selectionCorners,handles:input.canTransform,owners}:undefined}}
 }
 
+/** Own-paint rotation draws the live outline. The GPU frame must not keep
+ * the pre-gesture selection, or the held box stays on the old bitmap. */
+export function omitLiveRotationSelection(overlay: CanvasOverlayContext): CanvasOverlayContext {
+  if (!overlay.commands.selection && overlay.selectionIdentity === undefined) return overlay
+  return {
+    ...overlay,
+    selectionIdentity: undefined,
+    commands: {
+      ...overlay.commands,
+      selection: undefined,
+      labels: overlay.commands.labels.filter(label => label.kind !== 'selection-name' && label.kind !== 'selection-size'),
+    },
+  }
+}
+
 /** A late ACK for the same document must not hide a newer UI state. */
 export function canvasGpuOverlayOwnsUi(presented: {gpuOverlay?: boolean; gpuOverlayIdentity?: string} | null | undefined,
   current: Pick<CanvasOverlayContext,'uiIdentity'>, scopeMatches: boolean): boolean {
