@@ -152,6 +152,25 @@ test('Sketch Option double-click fills only the local axis of an in-flow Stack c
   expect(editor.state.version).toBe(version)
 })
 
+test('Sketch double-click fits the selected frame axis and preserves the world position of its contents', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const frame = node('frame', 75, 83, 210, 166), child = node('rectangle', 24, 31, 63, 42)
+  const empty = node('frame', 340, 83, 200, 160)
+  frame.children = [child.id]
+  await render([frame, child, empty], [frame.id, empty.id])
+  await act(async () => editor.select([frame.id]))
+  const before = editor.state.doc, childTransform = world(child.id)
+  await doubleClickEdge(1)
+  expect(editor.state.doc.nodes[frame.id]).toMatchObject({ width: 63, height: 166, transform: [1, 0, 0, 1, 99, 83] })
+  expect(world(child.id)).toEqual(childTransform)
+  await history(before)
+  await act(async () => editor.select([empty.id]))
+  const current = editor.state.doc, version = editor.state.version
+  await doubleClickEdge(0)
+  expect(editor.state.doc).toBe(current)
+  expect(editor.state.version).toBe(version)
+})
+
 function autoFrame(x=100,y=100) {
   const n=node('frame',x,y,100,80), child=node('rectangle',0,0,100,80)
   n.children=[child.id]; n.layout={...defaultLayout(),padding:[0,0,0,0]}; n.sizing={...defaultSizing(),width:'hug',height:'hug'}
