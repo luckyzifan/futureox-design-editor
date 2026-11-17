@@ -17,6 +17,7 @@ import { altMeasurementTarget, measurementTicks, SPACING_RED } from './canvas-me
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
 import { useInterfacePreferences } from './interface-preference'
+import { useFigmaWorkspaceMode } from './figma-workspace-mode'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
 import { actionGeometry, compareActionGeometry } from './canvas-action-geometry'
@@ -311,6 +312,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.canvas-overview,.pencil-controls,.rich-text-editor'
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale, uiMode } = useInterfacePreferences()
+  const workspaceMode = useFigmaWorkspaceMode()
+  const drawOwnsFreehand = uiMode === 'figma' && workspaceMode === 'draw' && (state.tool === 'pencil' || state.tool === 'brush')
   const outlineAvailable = !nativeSource && !openingSource
   const outlines = uiMode === 'figma' && outlineAvailable && !!state.outlines
   const outlineScene = useMemo(() => outlines ? createOutlineScene(state.doc, state.page,
@@ -3134,7 +3137,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
       {editPreviewVisible && <span className="canvas-edit-status" role="status">{chromeCopy.editPreviewRefining}</span>}
       {outlineScene && <CanvasOutlines source={outlineScene} view={displayView} size={size} selected={selection} />}
-      {['pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
+      {['pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && !drawOwnsFreehand && (
         <div
           className="pencil-controls"
           onPointerDown={(e) => e.stopPropagation()}

@@ -53,12 +53,17 @@ import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosi
 import type { WorkspaceSection } from './EditorChrome'
 import { interfacePreference, type UiMode, useInterfacePreferences, useInterfaceText } from './interface-preference'
 import { LayerFindPanel } from './LayerFindPanel'
+import { LayerThumbnail } from './LayerThumbnail'
+import { canvasText } from './canvas-interface-messages'
+import { useFigmaWorkspaceMode } from './figma-workspace-mode'
 import { closeLayerFind, layerFindRefocus, layerFindReturnTarget, layerFindSnapshot, requestLayerFind, subscribeLayerFind } from './layer-find-session'
 export function Layers({ editor, section, onSection, showPages=true, documentTitle }: {
   editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean; documentTitle?: ReactNode
 }) {
   const text = useInterfaceText()
   const { uiMode, locale } = useInterfacePreferences()
+  const workspaceMode = useFigmaWorkspaceMode()
+  const drawLayers = uiMode === 'figma' && workspaceMode === 'draw'
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
@@ -82,7 +87,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
   const searchField = useRef<HTMLInputElement>(null), searchToggle = useRef<HTMLButtonElement>(null)
   const pendingFindFocus = useRef(false)
   const expansion = useMemo(() => ({ rootFramesOpen: uiMode === 'sketch', overrides: disclosure[uiMode] }), [disclosure, uiMode])
-  const rowHeight = uiMode === 'sketch' ? 26 : 32
+  const rowHeight = uiMode === 'sketch' ? 26 : drawLayers ? 48 : 32
   const setLayerExpanded = (id: string, expanded: boolean) => setDisclosure(old => ({
     ...old, [uiMode]: new Map(old[uiMode]).set(id, expanded),
   }))
@@ -299,6 +304,18 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     reveal.current = editor.state.selection.at(-1) || null
   }, [filterRelated])
 
+  const scrollNow = useRef(scroll)
+  scrollNow.current = scroll
+  useEffect(() => {
+    // Row height changes with Draw mode. Clamp that offset once; selection
+    // scrolling keeps its own effect and must not render the list twice.
+    const limit = Math.max(0, rows.length * rowHeight - height)
+    const current = scrollNow.current
+    const next = Number.isFinite(current) ? Math.min(Math.max(0, current), limit) : 0
+    if (next === current) return
+    if (list.current) list.current.scrollTop = next
+    setScroll(next)
+  }, [rowHeight, rows.length, height])
   useEffect(() => {
     const id = reveal.current
     if (!id || !list.current) return
@@ -310,8 +327,12 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     setScroll(list.current.scrollTop)
     reveal.current = null
   }, [rows, s.selection, height, rowHeight])
-  const start = Math.max(0, Math.floor(scroll / rowHeight) - 6),
-    end = Math.min(rows.length, start + Math.ceil(height / rowHeight) + 12)
+  // A Draw-mode row is taller. Keep the previous pixel offset inside the new list
+  // so the virtual window cannot slide past every row.
+  const maxScroll = Math.max(0, rows.length * rowHeight - height)
+  const visibleScroll = Number.isFinite(scroll) ? Math.min(Math.max(scroll, 0), maxScroll) : 0
+  const start = Math.max(0, Math.floor(visibleScroll / rowHeight) - 6),
+    end = Math.min(rows.length, start + Math.ceil(Math.max(height, 0) / rowHeight) + 12)
   function choose(id: string, range = false, toggle = false, focus = false) {
     const session = editor.sessionGeneration, documentId = editor.state.doc.id, page = editor.state.page
     if (session !== renderSession || documentId !== s.doc.id || page !== s.page) return
@@ -538,6 +559,11 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                     )
                   ) : null}
                 </button>
+                {drawLayers && <LayerThumbnail node={n} label={`${canvasText[locale].zoomToLayer} ${n.name}`} onZoom={() => {
+                  if (!commitPendingEdits(editor) || editor.interactionActive || editor.state.busy) return
+                  editor.select([id])
+                  void dispatchEditorCommand(editor, 'zoom-selection')
+                }} />}
                 <Icon
                   size={13}
                   color={n.component || n.instance || n.componentSet ? 'var(--workspace-accent)' : undefined}

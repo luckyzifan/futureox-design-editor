@@ -65,6 +65,8 @@ import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, pendingEd
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { DesignTools } from './DesignTools'
 import { WorkspaceRail, DesignToolbar, ToolPopover, type WorkspaceSection } from './EditorChrome'
+import { FigmaDrawToolstrip, FigmaWorkspaceModeSwitch } from './FigmaDrawChrome'
+import { setFigmaWorkspaceMode, useFigmaWorkspaceMode, type FigmaWorkspaceMode } from './figma-workspace-mode'
 import { PrototypePlayer } from './PrototypePlayer'
 import { WorkspaceLibrary } from './WorkspaceLibrary'
 import { CloudWorkspacePanel } from './CloudWorkspacePanel'
@@ -172,6 +174,7 @@ const utilityToolItems: { id: Tool; label: string; icon: GlyphIcon }[] = [
 ]
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
   const { locale, uiMode } = useInterfacePreferences()
+  const workspaceMode = useFigmaWorkspaceMode()
   const agentDockOpen = useSyncExternalStore(subscribeAgentDock, () => getAgentDock().open, () => false)
   const toolbarText = canvasText[locale]
   const menuText = fileMenuText[locale]
@@ -1008,6 +1011,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowRegions(open && name === 'regions'); setShowShapes(open && name === 'shapes'); setShowDrawing(open && name === 'drawing'); setShowCommands(open && name === 'commands')
     setShowUtility(open && name === 'utility')
   }
+  const switchFigmaWorkspace = (mode: FigmaWorkspaceMode) => {
+    if (mode === workspaceMode || editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
+    openToolbarMenu('move', false)
+    setFigmaWorkspaceMode(mode)
+  }
   const actionLabels: Record<string, string> = { '撤销': toolbarText.undo, '重做': toolbarText.redo, '左对齐': toolbarText.alignLeft, '水平居中': toolbarText.alignCenter, '右对齐': toolbarText.alignRight, '顶部对齐': toolbarText.alignTop, '垂直居中': toolbarText.alignMiddle, '底部对齐': toolbarText.alignBottom, '水平等距': toolbarText.distributeHorizontal, '垂直等距': toolbarText.distributeVertical }
   const action = (label: string, Icon: GlyphIcon, fn: () => void, disabled = false, menuItem = false) => (
     <button type="button" title={menuItem ? actionLabels[label] || label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `${toolbarText.undo} (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `${toolbarText.redo} (${shortcutLabel('redo', shortcutContext)})` : actionLabels[label] || label}
@@ -1095,7 +1103,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <span>{s.tool === 'pen' ? toolbarText.penToolHint : s.tool === 'eraser' ? toolbarText.eraserToolHint : s.tool === 'line' || s.tool === 'arrow' ? toolbarText.creationHintLine : toolbarText.creationHint}</span>
               </div>
             )}
-            <div className="tool-group">
+            <FigmaWorkspaceModeSwitch mode={workspaceMode} disabled={toolbarDisabled} onChange={switchFigmaWorkspace} />
+            {workspaceMode === 'draw'
+              ? <FigmaDrawToolstrip editor={editor} tool={s.tool} pencil={s.pencil} brush={s.brush} tools={tools} disabled={toolbarDisabled} onTool={chooseTool} />
+              : <div className="tool-group">
               <ToolPopover label={toolbarText.moveTools} icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
                 primary={{ label: moveTool.label, title: `${moveTool.label}${moveTool.key ? ` (${moveTool.key})` : ''}`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
                 {tools.filter(({ id }) => ['select', 'hand', 'scale', 'zoom'].includes(id)).map(({ id, label, key, icon: Icon }) => (
@@ -1138,7 +1149,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   </button>
                 ))}
               </ToolPopover>
-            </div>
+            </div>}
             <i />
             <div className="tool-group">
               {action('撤销', toolGlyph.undo, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
@@ -1187,6 +1198,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       data-window-controls={desktop && /Mac OS X/.test(navigator.userAgent) ? 'inset' : undefined}
       data-density={adaptivePanels.density}
       data-ui-mode={uiMode}
+      data-figma-workspace={uiMode === 'figma' ? workspaceMode : undefined}
       className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) && !agentDockOpen ? '' : agentDockOpen ? '' : 'chrome-hide-inspector'} ${agentDockOpen ? 'design-agent-open' : ''} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktop ? String(ready) : undefined}

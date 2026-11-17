@@ -1411,6 +1411,52 @@ footer button {
   font-size: 10px;
   color: var(--workspace-muted);
 }
+.figma-workspace-mode {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+  padding-right: 6px;
+  border-right: 1px solid var(--workspace-border);
+}
+.floating-toolbar .figma-workspace-mode > button {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  padding: 7px;
+  color: var(--workspace-text);
+}
+.floating-toolbar .figma-workspace-mode > button[aria-checked="true"] {
+  color: var(--workspace-selected-ink, var(--workspace-accent));
+  background: var(--workspace-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 32%, transparent);
+}
+.draw-tool-controls {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 2;
+}
+.draw-tool-controls .pencil-cap-choices {
+  display: flex;
+  gap: 4px;
+}
+.layer-thumb {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--workspace-panel) 82%, white);
+  opacity: 1;
+}
+.layer-row .layer-thumb,
+.layer-row:hover .layer-thumb,
+.layer-row button.layer-thumb {
+  opacity: 1;
+}
 .canvas-pencil,
 .canvas-brush {
   cursor: crosshair;
