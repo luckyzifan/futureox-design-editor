@@ -148,7 +148,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             ? n.fills
                             : kind === 'effect'
                               ? n.effects
-                              : n.textStyle || defaultTextStyle(),
+                              : { ...(n.textStyle || defaultTextStyle()), fontSize: n.fontSize },
                         ),
                       }
                     })

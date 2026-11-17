@@ -4,6 +4,8 @@ import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnosti
 import { operationStatusText } from './operation-status-messages'
 import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
+import { SketchTextStyleDialog, type SketchTextStyleAnchor } from './SketchTextStyleDialog'
+import { keyboardPlacementPoint } from './keyboard-placement'
 import { defaultLayerExportSetting } from './export-metadata'
 import { SketchComponentsView, sketchComponentCategories, type SketchComponentCategory } from './SketchComponentsView'
 import { DrawPencilToolbar, FigmaToolbeltMode } from './FigmaDrawTools'
@@ -233,6 +235,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showRegions, setShowRegions] = useState(false)
   const [showFramePresets, setShowFramePresets] = useState<'create' | 'apply' | null>(null)
   const [sketchReplacement, setSketchReplacement] = useState<SketchReplacementTarget | null>(null)
+  const [sketchTextStyle, setSketchTextStyle] = useState<SketchTextStyleAnchor | null>(null)
   const [showDrawing, setShowDrawing] = useState(false)
   const [showUtility, setShowUtility] = useState(false)
   const [lastShapeTool, setLastShapeTool] = useState<Tool>('rectangle')
@@ -904,6 +907,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowFramePresets('apply')
     return true
   }, [canUseSketchSelectionCommand, editor])
+  const insertSketchTextStyle = useCallback(() => {
+    if (!canUseSketchSelectionCommand() || !commitPendingEdits(editor)) return false
+    const canvas = document.querySelector<HTMLElement>('[data-testid="canvas"]')
+    if (!canvas || !canvas.clientWidth || !canvas.clientHeight) return false
+    setSketchTextStyle({ documentId: editor.state.doc.id, page: editor.state.page, generation: editor.sessionGeneration,
+      point: keyboardPlacementPoint(editor.flushPendingView(), { width: canvas.clientWidth, height: canvas.clientHeight }) })
+    return true
+  }, [canUseSketchSelectionCommand, editor])
   const switchSketchWorkspace = useCallback((components: boolean) => {
     if (!canUseSketchSelectionCommand() || !commitPendingEdits(editor)) return false
     editor.flushPendingView()
@@ -947,6 +958,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         return
       }
       if (editable) return
+      if (onMac && event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyT') {
+        if (insertSketchTextStyle()) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        return
+      }
       if (primary && !event.altKey && event.code === 'KeyE') {
         if (!canUseSketchSelectionCommand() || !editor.topSelection().length || !commitPendingEdits(editor)) return
         const ids = editor.topSelection()
@@ -996,7 +1014,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', shortcut, true)
     return () => window.removeEventListener('keydown', shortcut, true)
-  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, switchSketchWorkspace, sketchComponentsVisible, editor, setShowInspector, setPropertiesTab])
+  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, insertSketchTextStyle, switchSketchWorkspace, sketchComponentsVisible, editor, setShowInspector, setPropertiesTab])
   const saveCurrentDesign = useCallback(() => {
     if (source) {
       if (source.ready && !source.busy && !source.locked) void source.save()
@@ -1469,6 +1487,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           onEditText={id => editText.current?.(id)}
           onSection={section => switchSketchWorkspace(section === 'assets')} onImages={files => void importImageFiles(files)}
           onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets('create') }}
+          onInsertTextStyle={insertSketchTextStyle}
           onReplaceTemplate={replaceSketchTemplate}
           onSystems={() => setShowTools(true)} onShapeBuilder={() => setShowShapeBuilder(true)} />}
         <div className="header-right">
@@ -1749,6 +1768,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         onSync={syncCurrentDesign} onClose={() => setShowCloudWorkspace(false)} />}
       {showFramePresets && <FramePresetPanel editor={editor} intent={showFramePresets} onClose={() => setShowFramePresets(null)} />}
       {sketchReplacement && <SketchReplacementDialog editor={editor} target={sketchReplacement} onClose={() => setSketchReplacement(null)} />}
+      {sketchTextStyle && <SketchTextStyleDialog editor={editor} anchor={sketchTextStyle} onClose={() => setSketchTextStyle(null)} />}
       {showHistory && !source && (
         <DocumentHistoryDialog
           key={s.doc.id}
