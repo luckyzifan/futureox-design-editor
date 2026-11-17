@@ -32,6 +32,10 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   }
   // Consume held destructive chords without creating additional history entries.
   if ((event.repeat && !binding.repeat) || editor.state.busy || editor.interactionActive) return true
+  if (binding.command === 'select-parent') {
+    editor.selectParent()
+    return true
+  }
   const command: EditorCommand = binding.command === 'toggle-lock' ? (lockedSelectionIds(editor).length ? 'unlock-selection' : 'lock-selection') :
     binding.command === 'toggle-visibility' ? (editor.state.selection.some(id => !editor.state.doc.nodes[id]?.visible) ? 'show-selection' : 'hide-selection') : binding.command
   await dispatchEditorCommand(editor, command, {

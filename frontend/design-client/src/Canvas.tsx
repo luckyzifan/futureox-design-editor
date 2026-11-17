@@ -1365,6 +1365,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       const shortcut = resolveShortcut(e, shortcutContext)
+      if (shortcut?.command === 'select-parent') {
+        // This is selection navigation. A live pen or vector edit owns input
+        // and must not be committed just by pressing Backslash.
+        if (e.target === host.current && !drag.current && !penRef.current && !pencil.current &&
+            !ownsTextEntry(textEntryOwner.current) && editor.state.tool !== 'vector')
+          void dispatchEditorShortcut(editor, e, shortcutContext)
+        return
+      }
       if (e.repeat && !shortcut?.repeat && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) { if (shortcut) e.preventDefault(); return }
       if(['Alt','Meta','Control'].includes(e.key)) {
         setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform()),text:e.altKey&&e.ctrlKey})
