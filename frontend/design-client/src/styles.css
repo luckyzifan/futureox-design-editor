@@ -3257,3 +3257,15 @@ html[data-reduced-motion=true] .animation-modal * {
 .keyboard-box-selection-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 8; }
 .keyboard-box-selection-overlay circle { fill: #ff4fa9; stroke: #fff; stroke-width: 1.5; }
 .keyboard-box-selection-overlay rect { stroke: #e52e89; stroke-width: 1.5; fill: #ff4fa91a; }
+
+.keyboard-placement-target {
+  position: absolute; display: none; width: 15px; height: 15px;
+  transform: translate(-50%, -50%); color: var(--workspace-accent); z-index: 7; pointer-events: none;
+}
+.canvas:focus > .keyboard-placement-target { display: block; }
+.keyboard-placement-target::before, .keyboard-placement-target::after {
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  background-color: currentColor; box-shadow: 0 0 2px var(--workspace-panel);
+}
+.keyboard-placement-target::before { width: 15px; height: 1px; }
+.keyboard-placement-target::after { width: 1px; height: 15px; }

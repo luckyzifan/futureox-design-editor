@@ -1736,8 +1736,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           const width = host.current.clientWidth || sizeRef.current.width
           const height = host.current.clientHeight || sizeRef.current.height
           if (width > 0 && height > 0) {
-            const placed = keyboardPlacedNode(placeTool, keyboardPlacementPoint(displayViewRef.current, { width, height }),
+            const point = keyboardPlacementPoint(displayViewRef.current, { width, height },
               geometryReadyRef.current && (editor.state.snapPixels || placeTool === 'frame' || placeTool === 'section'))
+            const placed = keyboardPlacedNode(placeTool, point, false)
             const pageId = editor.state.page
             const result = editor.change(`创建${placed.name}`, document => {
               insertKeyboardPlacedNode(document, pageId, placed)
@@ -3384,6 +3385,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const from = pen.network.vertices.find(vertex => vertex.id === pen.last)
     return from ? apply(inverse(penMatrix), constrainToAngles(apply(penMatrix, from), cursor!)) : penLocalCursor
   })() : penLocalCursor, PEN_HIT_PX / zoom, penKeys.alt) : null
+  const keyboardTarget = uiMode === 'figma' && keyboardPlacesTool(state.tool) && size.width > 0 && size.height > 0 &&
+    !hidePanChrome && !keyboardMark && !ownedDrag && !textEdit && !editor.interactionActive && !state.busy
+    ? worldToScreen(displayView, keyboardPlacementPoint(displayView, size,
+      geometryReadyRef.current && (state.snapPixels || state.tool === 'frame' || state.tool === 'section')))
+    : undefined
   return (
     <div
       ref={host}
@@ -3604,6 +3610,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           }}
         />
       )}
+      {keyboardTarget && <div aria-hidden="true" data-testid="keyboard-placement-target" className="keyboard-placement-target"
+        style={{ left: keyboardTarget.x, top: keyboardTarget.y }} />}
       {uiMode === 'figma' && keyboardMark && (() => {
         const screen = worldToScreen(displayView, keyboardMark.point)
         const box = keyboardMark.area
