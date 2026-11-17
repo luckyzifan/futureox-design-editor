@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Canvas } from './Canvas'
 import { Editor } from './engine'
-import { blank, node, uid, paint, defaultLayout, type DesignNode } from './model'
+import { blank, node, uid, paint, defaultLayout, defaultSizing, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { shortcutBindings, resolveShortcut, type ShortcutProfile } from './shortcut-profiles'
 import { worldMatrix, apply, allParents } from './geometry'
@@ -246,6 +246,177 @@ test('Mac Sketch quick crop handles held and single arrows while retaining the c
   expect(editor.state.doc).toBe(after)
 })
 
+test('Mac Sketch Shift+Command+Option arrows resize only the container by the current large nudge', async () => {
+  shortcutPreference.set('sketch-like')
+  interfacePreference.set({ uiMode: 'sketch' })
+  const frame = node('frame', 100, 80, 120, 80)
+  const scaled = node('rectangle', 16, 12, 40, 24)
+  const pinned = node('rectangle', 70, 40, 20, 16)
+  scaled.constraints = { horizontal: 'scale', vertical: 'scale', referenceWidth: 120, referenceHeight: 80 }
+  pinned.constraints = { horizontal: 'end', vertical: 'start', referenceWidth: 120, referenceHeight: 80 }
+  frame.children = [scaled.id, pinned.id]
+  const before = await render([frame, scaled, pinned], [frame.id])
+  await act(async () => editor.select([frame.id]))
+  const chord = { metaKey: true, altKey: true, shiftKey: true }
+  const childStable = () => {
+    for (const id of [scaled.id, pinned.id]) {
+      expect(editor.state.doc.nodes[id].width).toBe(before.nodes[id].width)
+      expect(editor.state.doc.nodes[id].height).toBe(before.nodes[id].height)
+      expect(editor.state.doc.nodes[id].transform).toEqual(before.nodes[id].transform)
+      delta(before, id, 0, 0)
+    }
+  }
+  await act(async () => {
+    key('ArrowRight', chord)
+    key('ArrowRight', { ...chord, repeat: true })
+    key('ArrowRight', { ...chord, repeat: true })
+  })
+  expect(editor.state.doc.nodes[frame.id].width).toBeCloseTo(150, 8)
+  expect(editor.state.doc.nodes[frame.id].height).toBe(80)
+  expect(editor.interactionActive).toBe(true)
+  expect(editor.canUndo).toBe(false)
+  expect(editor.state.frameCrop).toBeNull()
+  childStable()
+  await act(async () => key('ArrowRight', chord, 'keyup'))
+  expect(editor.interactionActive).toBe(false)
+  childStable()
+  expect(editor.state.doc.nodes[scaled.id].constraints).toMatchObject({ referenceWidth: editor.state.doc.nodes[frame.id].width, referenceHeight: 80 })
+  expect(editor.state.doc.nodes[pinned.id].constraints).toMatchObject({ horizontal: 'end', vertical: 'start', referenceWidth: editor.state.doc.nodes[frame.id].width, referenceHeight: 80 })
+  await oneHistory(before)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+
+  for (const [arrow, width, height] of [
+    ['ArrowLeft', 110, 80], ['ArrowDown', 110, 90], ['ArrowUp', 110, 80], ['ArrowRight', 120, 80],
+  ] as const) {
+    await act(async () => { key(arrow, chord); key(arrow, chord, 'keyup') })
+    expect(editor.state.doc.nodes[frame.id].width).toBeCloseTo(width, 8)
+    expect(editor.state.doc.nodes[frame.id].height).toBeCloseTo(height, 8)
+    childStable()
+  }
+  await act(async () => editor.undo())
+  await act(async () => editor.undo())
+  await act(async () => editor.undo())
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+
+  nudgePreference.set({ small: 1, big: 25 })
+  await act(async () => { key('ArrowDown', chord); key('ArrowDown', chord, 'keyup') })
+  expect(editor.state.doc.nodes[frame.id]).toMatchObject({ width: 120, height: 105 })
+  childStable()
+  await oneHistory(before)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  nudgePreference.reset()
+
+  await act(async () => {
+    key('ArrowRight', chord)
+    key('ArrowRight', { ...chord, repeat: true })
+  })
+  expect(editor.state.doc.nodes[frame.id].width).toBeCloseTo(140, 8)
+  await act(async () => key('Escape'))
+  await act(async () => key('ArrowRight', chord, 'keyup'))
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+  expect(editor.interactionActive).toBe(false)
+
+  await act(async () => editor.update([frame.id], { transform: [0, 1, -1, 0, 100, 80] }))
+  const rotated = editor.state.doc
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc.nodes[frame.id].width).toBeCloseTo(130, 8)
+  expect(editor.state.doc.nodes[frame.id].transform).toEqual(rotated.nodes[frame.id].transform)
+  for (const id of [scaled.id, pinned.id]) delta(rotated, id, 0, 0)
+  await act(async () => editor.undo())
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+
+  await act(async () => { key('ArrowRight', { metaKey: true, shiftKey: true }); key('ArrowRight', { metaKey: true, shiftKey: true }, 'keyup') })
+  expect(editor.state.doc.nodes[frame.id].width).toBeCloseTo(130, 8)
+  expect(editor.state.doc.nodes[scaled.id].width).toBeCloseTo(40 * 130 / 120, 6)
+  expect(editor.state.doc.nodes[pinned.id].transform[4]).toBeCloseTo(80, 6)
+  expect(editor.state.doc.nodes[pinned.id].width).toBe(20)
+})
+
+test('Mac Sketch Shift+Command+Option does not fall back to a content resize when the frame cannot crop', async () => {
+  shortcutPreference.set('sketch-like')
+  interfacePreference.set({ uiMode: 'sketch' })
+  const frame = node('frame', 100, 80, 120, 80)
+  const child = node('rectangle', 16, 12, 40, 24)
+  child.constraints = { horizontal: 'scale', vertical: 'scale', referenceWidth: 120, referenceHeight: 80 }
+  frame.children = [child.id]
+  const flow = node('frame', 400, 40, 180, 100)
+  flow.layout = defaultLayout()
+  const flowChild = node('rectangle', 10, 10, 30, 20)
+  flow.children = [flowChild.id]
+  const outer = node('frame', 40, 240, 400, 300)
+  outer.layout = defaultLayout()
+  const nested = node('frame', 20, 20, 120, 80)
+  const leaf = node('rectangle', 8, 8, 30, 20)
+  leaf.constraints = { horizontal: 'end', vertical: 'start', referenceWidth: 120, referenceHeight: 80 }
+  nested.children = [leaf.id]
+  outer.children = [nested.id]
+  const loose = node('rectangle', 640, 40, 50, 40)
+  await render([frame, child, flow, flowChild, outer, nested, leaf, loose], [frame.id, flow.id, outer.id, loose.id])
+  const chord = { metaKey: true, altKey: true, shiftKey: true }
+  await act(async () => editor.select([child.id]))
+  const childBefore = editor.state.doc
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', { ...chord, repeat: true }); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc).toBe(childBefore)
+  await act(async () => { key('ArrowRight', { metaKey: true, shiftKey: true }); key('ArrowRight', { metaKey: true, shiftKey: true }, 'keyup') })
+  expect(editor.state.doc.nodes[child.id].width).toBeCloseTo(50, 8)
+  expect(editor.state.doc.nodes[frame.id].width).toBe(120)
+  await act(async () => editor.undo())
+
+  await act(async () => editor.select([frame.id, loose.id]))
+  const multi = editor.state.doc
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc).toBe(multi)
+
+  await act(async () => { editor.select([frame.id]); editor.update([frame.id], { locked: true }) })
+  const locked = editor.state.doc
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc).toBe(locked)
+  await act(async () => editor.updateProperties([frame.id], { locked: false }))
+
+  await act(async () => editor.select([flow.id]))
+  const flowing = editor.state.doc
+  await act(async () => { key('ArrowDown', chord); key('ArrowDown', chord, 'keyup') })
+  expect(editor.state.doc).toBe(flowing)
+
+  await act(async () => editor.select([nested.id]))
+  const nestedBefore = editor.state.doc
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc).toBe(nestedBefore)
+  await act(async () => editor.update([nested.id], { sizing: { ...defaultSizing(), absolute: true } }))
+  const absoluteBefore = editor.state.doc
+  const leafWorld = worldMatrix(absoluteBefore, leaf.id)
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc.nodes[nested.id].width).toBeCloseTo(130, 8)
+  expect(editor.state.doc.nodes[leaf.id].transform).toEqual(absoluteBefore.nodes[leaf.id].transform)
+  expect(worldMatrix(editor.state.doc, leaf.id)).toEqual(leafWorld)
+  await act(async () => editor.undo())
+
+  await act(async () => { shortcutPreference.set('figma-like'); editor.select([frame.id]) })
+  const figma = editor.state.doc
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc).toBe(figma)
+
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })
+  await act(async () => shortcutPreference.set('sketch-like'))
+  const windows = editor.state.doc
+  await act(async () => { key('ArrowRight', { ctrlKey: true, altKey: true, shiftKey: true }); key('ArrowRight', { ctrlKey: true, altKey: true, shiftKey: true }, 'keyup') })
+  expect(editor.state.doc).toBe(windows)
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Linux' })
+  await act(async () => { key('ArrowRight', { ctrlKey: true, altKey: true, shiftKey: true }); key('ArrowRight', { ctrlKey: true, altKey: true, shiftKey: true }, 'keyup') })
+  expect(editor.state.doc).toBe(windows)
+
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  await act(async () => { editor.select([frame.id]); key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
+  expect(editor.state.doc.nodes[frame.id].width).toBeCloseTo(130, 8)
+  expect(editor.state.doc.nodes[child.id].width).toBe(40)
+  delta(windows, child.id, 0, 0)
+})
+
 test('dimension chord registry has no duplicate mac chord and does not expand unobserved non-mac Figma bindings',()=>{
  for(const profile of ['figma-like','sketch-like'] as const)for(const desktop of [false,true]){
   const bindings=shortcutBindings({profile,platform:'mac',desktop})
@@ -255,5 +426,24 @@ test('dimension chord registry has no duplicate mac chord and does not expand un
  for(const platform of ['windows','linux'] as const){
   expect(shortcutBindings({profile:'figma-like',platform}).filter(b=>b.command.startsWith('resize-'))).toEqual([])
   expect(shortcutBindings({profile:'sketch-like',platform}).filter(b=>b.command.startsWith('resize-'))).toHaveLength(8)
+  for(const key of ['ArrowRight','ArrowLeft','ArrowDown','ArrowUp']){
+   const event={key,code:key,metaKey:false,ctrlKey:true,altKey:true,shiftKey:true,repeat:false,isComposing:false,defaultPrevented:false}
+   expect(resolveShortcut(event,{profile:'sketch-like',platform})).toBeNull()
+   expect(resolveShortcut(event,{profile:'figma-like',platform})).toBeNull()
+  }
+ }
+ const macSketch=shortcutBindings({profile:'sketch-like',platform:'mac',desktop:true})
+ expect(macSketch.filter(b=>b.command.startsWith('resize-'))).toHaveLength(16)
+ for(const [key,command] of [['ArrowRight','resize-width-increase-large'],['ArrowLeft','resize-width-decrease-large'],['ArrowDown','resize-height-increase-large'],['ArrowUp','resize-height-decrease-large']] as const){
+  const combo=`Mod+Shift+Alt+${key}`
+  const hits=macSketch.filter(b=>b.combo===combo)
+  expect(hits).toEqual([{command,combo,repeat:true,preserveFrameContents:true}])
+  const resolved=resolveShortcut({key,code:key,metaKey:true,ctrlKey:false,altKey:true,shiftKey:true,repeat:true,isComposing:false,defaultPrevented:false},{profile:'sketch-like',platform:'mac',desktop:false})
+  expect(resolved).toEqual({command,combo,repeat:true,preserveFrameContents:true})
+  expect(resolveShortcut({key,code:key,metaKey:true,ctrlKey:false,altKey:true,shiftKey:true,repeat:false,isComposing:false,defaultPrevented:false},{profile:'figma-like',platform:'mac'})).toBeNull()
+  const contentResize=resolveShortcut({key,code:key,metaKey:true,ctrlKey:false,altKey:false,shiftKey:true,repeat:false,isComposing:false,defaultPrevented:false},{profile:'sketch-like',platform:'mac'})
+  expect(contentResize?.command).toBe(command)
+  expect(contentResize?.combo).toBe(`Mod+Shift+${key}`)
+  expect(contentResize?.preserveFrameContents).toBeUndefined()
  }
 })

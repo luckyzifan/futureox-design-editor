@@ -80,8 +80,14 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
       const command = `resize-${dimension}-${direction}` as const
       bindings.push({ command, combo: `Mod+${key}`, repeat: true },
         { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+${key}`, repeat: true })
+      // Mac Sketch Option resizes only the container. Shift uses the large nudge.
+      // The chord stays bound when the frame cannot crop, so it does not fall
+      // through to a resize that moves the contents.
       if (profile === 'sketch-like' && platform === 'mac') {
-        bindings.push({ command, combo: `Mod+Alt+${key}`, repeat: true, preserveFrameContents: true })
+        bindings.push(
+          { command, combo: `Mod+Alt+${key}`, repeat: true, preserveFrameContents: true },
+          { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+Alt+${key}`, repeat: true, preserveFrameContents: true },
+        )
       }
     }
   }
