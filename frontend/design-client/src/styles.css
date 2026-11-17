@@ -3178,3 +3178,7 @@ html[data-reduced-motion=true] .animation-modal * {
 .sketch-blur-stop-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 
 .blur-stop-selected { stroke: var(--sketch-effect-accent, var(--workspace-accent)); fill: var(--sketch-effect-accent, var(--workspace-accent)); }
+.guide-ruler-menu{position:fixed;z-index:60;display:grid;min-width:170px;padding:4px;border:1px solid var(--workspace-border,#e6e6e6);border-radius:8px;background:#fff;box-shadow:0 12px 28px #1c191718}
+.guide-ruler-menu button{display:block;width:100%;min-height:32px;padding:6px 10px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;text-align:left}
+.guide-ruler-menu button:not(:disabled):hover{background:var(--workspace-hover,#f0f0f0)}
+.guide-ruler-menu button:disabled{color:#aaa}

@@ -74,7 +74,9 @@ const english: Readonly<Record<string, string>> = Object.freeze({
   "预设尺寸超出该画板的最小或最大尺寸": "The preset is outside this frame's minimum or maximum size.",
   "父级自动布局会改写该画板尺寸，预设未应用": "The parent auto layout would overwrite this frame size. The preset was not applied.",
   "预设尺寸未能按原样应用到当前画板": "The preset size was not applied to the current frame as requested.",
-  "画板尺寸未应用": "The frame size was not applied."
+  "画板尺寸未应用": "The frame size was not applied.",
+  "移除全部横向参考线": "Remove all horizontal guides",
+  "移除全部纵向参考线": "Remove all vertical guides"
 })
 function catalogValue(source: string): string | undefined {
   if (Object.prototype.hasOwnProperty.call(english, source)) return english[source]
