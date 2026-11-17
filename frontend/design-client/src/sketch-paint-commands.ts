@@ -36,42 +36,47 @@ export function swapSelectionPaints(editor: Editor, rejection: string) {
 }
 
 type VisibilityRow = { id: string; visible: boolean }
-const hiddenBorders = new WeakMap<Editor, { session: number; layers: Map<string, VisibilityRow[]> }>()
+type PaintStack = 'fills' | 'strokes'
+const hiddenPaint = new WeakMap<Editor, {
+  session: number
+  fills: Map<string, VisibilityRow[]>
+  strokes: Map<string, VisibilityRow[]>
+}>()
 
-/** The inspector's border toggles own visibility; the paint inside a border
- * keeps its existing enabled flag. Remember the individual row choices. */
-export function toggleSelectionBorders(editor: Editor) {
+/** Each row keeps its own enabled state when the selected stack is restored. */
+export function toggleSketchPaintVisibility(editor: Editor, stack: PaintStack) {
   const { doc, version } = editor.state
   const session = editor.sessionGeneration
-  let remembered = hiddenBorders.get(editor)
+  let remembered = hiddenPaint.get(editor)
   if (remembered?.session !== session) {
-    remembered = { session, layers: new Map() }
-    hiddenBorders.set(editor, remembered)
+    remembered = { session, fills: new Map(), strokes: new Map() }
+    hiddenPaint.set(editor, remembered)
   }
   const targets = editor.topSelection().map(id => doc.nodes[id])
-    .filter(node => node.strokes.length && !node.styleRefs?.strokes)
-  const hide = targets.some(node => node.strokes.some(border => border.visible))
+    .filter(node => node[stack].length && (!node.styleRefs?.[stack] || stack === 'fills' && node.sketchLayerStyleOverridden))
+  const hide = targets.some(node => node[stack].some(row => row.visible))
   const changes = new Map<string, VisibilityRow[]>()
   const saved = new Map<string, VisibilityRow[]>()
   for (const node of targets) {
+    const rows = node[stack]
     if (hide) {
-      if (!node.strokes.some(border => border.visible)) continue
-      saved.set(node.id, node.strokes.map(({ id, visible }) => ({ id, visible })))
-      changes.set(node.id, node.strokes.map(({ id }) => ({ id, visible: false })))
+      if (!rows.some(row => row.visible)) continue
+      saved.set(node.id, rows.map(({ id, visible }) => ({ id, visible })))
+      changes.set(node.id, rows.map(({ id }) => ({ id, visible: false })))
     } else {
-      const previous = remembered.layers.get(node.id)
-      if (previous && previous.length === node.strokes.length &&
-          previous.every(({ id }) => node.strokes.some(border => border.id === id))) changes.set(node.id, previous)
+      const previous = remembered[stack].get(node.id)
+      if (previous && previous.length === rows.length &&
+          previous.every(({ id }) => rows.some(row => row.id === id))) changes.set(node.id, previous)
     }
   }
   if (!changes.size) return
   editor.updateProperties([...changes.keys()], node => {
     const next = changes.get(node.id)!
-    for (const border of node.strokes) {
-      const row = next.find(({ id }) => id === border.id)
-      if (row) border.visible = row.visible
+    for (const row of node[stack]) {
+      const state = next.find(({ id }) => id === row.id)
+      if (state) row.visible = state.visible
     }
-  }, hide ? '隐藏描边' : '恢复描边')
+  }, `${hide ? '隐藏' : '恢复'}${stack === 'fills' ? '填充' : '描边'}`)
   if (editor.sessionGeneration !== session || editor.state.version !== version + 1) return
-  if (hide) for (const [id, rows] of saved) remembered.layers.set(id, rows)
+  if (hide) for (const [id, rows] of saved) remembered[stack].set(id, rows)
 }
