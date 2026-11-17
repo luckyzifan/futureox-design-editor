@@ -136,6 +136,7 @@ import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, k
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, sketchGradientStopOffset, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
 import { ArrangementPreview } from './ArrangementPreview'
+import { enclosedSketchFrameLayers } from './sketch-frame-creation'
 import { isAlignmentCommand } from './alignment-availability'
 import { applyEditableNetwork, editableNetwork } from './editable-network'
 import {
@@ -237,6 +238,7 @@ type Drag = {
   pickIndex?: SpatialIndex
   layoutPointerOrigin?: Point
   creationSeed?: ShapeCreationSeed
+  creationClick?: boolean
   creationTool?: Tool
   hotspotBounds?: Bounds
   parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'blurStop' | 'zoomBlurCenter'
@@ -1891,6 +1893,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       anchor: d.start, pointer: d.pointer, screenDistance: d.screenDistance || 0,
       ...modifiers, snap: editor.state.snapPixels || ['frame', 'section'].includes(d.creationSeed.kind),
     })
+    d.creationClick = result.click
+    if (uiMode === 'sketch' && d.creationTool === 'frame' && result.click) result.node.clip = false
     if (d.creationTool === 'hotspot') {
       const box = result.click && d.hotspotBounds ? d.hotspotBounds : result.bounds
       result.node.name = '热点'
@@ -2957,19 +2961,41 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.screenDistance = Math.max(d.screenDistance || 0, distance(screenPoint(e), d.screen))
       const n = updateCreation(d, { shift: e.shiftKey, alt: e.altKey })!
       editor.cancel()
+      if (d.session !== editor.sessionGeneration || d.page !== editor.state.page) {
+        setShapePreview(null)
+        finishDragTrace(d, ActionOutcome.cancelled, ActionReason.staleSession)
+        return
+      }
+      const source = editor.state.doc
+      const wrapEnclosed = uiMode === 'sketch' && d.creationTool === 'frame' && !d.creationClick && !space.current
       editor.change(`创建${n.name}`, document => {
         if (d.creationTool === 'hotspot') authorSketchHotspot(document, n)
         if (n.graphic && document.schemaVersion < 23) document.schemaVersion = 23
         document.nodes[n.id] = n
         const page = document.pages.find(page => page.id === editor.state.page)!
         page.children.push(n.id)
+        let containerId: string | undefined
         if (!space.current && n.kind!=='slice') {
           const center = apply(n.transform,{x:n.width/2,y:n.height/2})
           const parent = canvasDropFrame(document,page.id,[n.id],center,e.metaKey || e.ctrlKey)
           if (parent) {
+            containerId = parent
             page.children.splice(page.children.indexOf(n.id),1)
             document.nodes[parent].children.push(n.id)
             document.nodes[n.id].transform=multiply(inverse(worldMatrix(document,parent)),n.transform)
+          }
+        }
+        if (wrapEnclosed) {
+          const frame = document.nodes[n.id]
+          const frameWorld = worldMatrix(document, n.id)
+          const adopted = enclosedSketchFrameLayers(source, containerId ?? page.id, frameWorld, frame.width, frame.height)
+          const siblings = containerId ? document.nodes[containerId].children : page.children
+          for (const { id, transform } of adopted) {
+            siblings.splice(siblings.indexOf(id), 1)
+            frame.children.push(id)
+            const child = document.nodes[id]
+            child.transform = transform
+            if (child.constraints) child.constraints = { ...child.constraints, referenceWidth: null, referenceHeight: null }
           }
         }
       }, [n.id])

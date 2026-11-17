@@ -313,6 +313,65 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('layout switch preserves the page and uses the target layout frame behavior', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Frame layouts'), page = doc.pages[0], alternate = uid()
+  const first = node('rectangle', 80, 70, 35, 40), second = node('rectangle', 140, 90, 45, 35)
+  const locked = node('rectangle', 110, 125, 25, 25), partial = node('rectangle', 200, 180, 75, 55)
+  locked.locked = true
+  for (const n of [first, second, locked, partial]) doc.nodes[n.id] = n
+  page.children = [first.id, second.id, locked.id, partial.id]
+  doc.pages.push({ id: alternate, name: 'Second page', background: '#ffffff', children: [] })
+  const view = { x: 0, y: 0, zoom: 1 }
+  await act(async () => { editor!.load(doc) })
+  await act(async () => { editor!.select([first.id]); editor!.set({ view, tool: 'frame' }); canvas().focus() })
+  const before = editor!.authoredDocument
+  const pointer = (type: string, x: number, y: number) => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y })
+    Object.defineProperties(event, { pointerId: { value: 1 }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
+    canvas().dispatchEvent(event)
+  }
+  dom.window.HTMLElement.prototype.setPointerCapture = () => undefined
+  dom.window.HTMLElement.prototype.hasPointerCapture = () => false
+  const draw = async (endX: number, endY: number) => {
+    expect(editor!.state.tool).toBe('frame')
+    const revision = editor!.state.version
+    await act(async () => pointer('pointerdown', 50, 40))
+    await act(async () => pointer('pointerup', endX, endY))
+    expect(editor!.state.version).toBe(revision + 1)
+    return editor!.state.doc.nodes[editor!.state.selection[0]]
+  }
+  expect(document.querySelector(`[data-layer-drop-page="${alternate}"]`)).not.toBeNull()
+  const sketchFrame = await draw(235, 205)
+  expect(sketchFrame.children).toEqual([first.id, second.id])
+  expect(editor!.state.doc.pages[0].children).toEqual([locked.id, partial.id, sketchFrame.id])
+  expect(worldMatrix(editor!.state.doc, first.id)).toEqual(worldMatrix(before, first.id))
+  expect(worldMatrix(editor!.state.doc, second.id)).toEqual(worldMatrix(before, second.id))
+  expect(sketchFrame.clip).toBe(true)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+
+  await act(async () => editor!.set({ tool: 'frame' }))
+  const inserted = await draw(50, 40)
+  expect(inserted.children).toEqual([])
+  expect(inserted.clip).toBe(false)
+  await act(async () => editor!.undo())
+  await act(async () => applyInterfaceLayout('figma'))
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.state.page).toBe(page.id)
+  expect(editor!.state.selection).toEqual([first.id])
+  expect(editor!.state.view).toEqual(view)
+  await act(async () => editor!.set({ tool: 'frame' }))
+  const figmaFrame = await draw(235, 205)
+  expect(figmaFrame.children).toEqual([])
+  expect(editor!.state.doc.pages[0].children).toEqual([...page.children, figmaFrame.id])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch layer pointer drop and context menu move a selection to another page', async () => {
   applyInterfaceLayout('sketch')
   await render()
