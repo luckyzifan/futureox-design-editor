@@ -227,7 +227,8 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
     const canAlign = alignmentAvailability(editor).align
     for (const command of alignmentCommandIds) {
       const { label } = alignmentCommands[command]
-      available.set(command, { command, label: label[locale === 'en' ? 1 : 0], group: 'alignment', disabled: !canAlign })
+      available.set(command, { command, label: label[locale === 'en' ? 1 : 0], group: 'alignment', disabled: !canAlign,
+        shortcut: shortcutLabel(command, { ...context, uiMode }) })
     }
     available.set('paste', { command: 'paste', label: locale === 'en' ? 'Paste' : '粘贴', group: 'clipboard',
       disabled, shortcut: shortcutLabel('paste', context) })
