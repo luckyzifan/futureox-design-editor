@@ -3,7 +3,7 @@ import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { requestShortcutReference } from './shortcut-reference-session'
-import { useInterfacePreferences, useInterfaceText } from './interface-preference'
+import { interfacePreference, useInterfacePreferences, useInterfaceText } from './interface-preference'
 import type { Editor } from './engine'
 import { zoomAt, zoomStep, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM } from './canvas-camera'
 import { NumberField } from './fields'
@@ -25,7 +25,7 @@ export function ViewControls({
 }) {
   const text = useInterfaceText()
   const s = editor.state
-  const { locale, uiMode } = useInterfacePreferences()
+  const { locale, uiMode, figmaPropertyLabels } = useInterfacePreferences()
   const profile = useShortcutProfile()
   const shortcut = { profile, platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode }
   const sketch = uiMode === 'sketch'
@@ -233,6 +233,10 @@ export function ViewControls({
             closeMenu()
             requestShortcutReference(trigger)
           }}>{label('键盘快捷键', 'Keyboard shortcuts')}{shortcutReferenceKey && <kbd>{shortcutReferenceKey}</kbd>}</button>}
+          {!sketch && <label><input type="checkbox" checked={figmaPropertyLabels}
+            onChange={event => interfacePreference.set({ figmaPropertyLabels: event.currentTarget.checked })} />
+            {label('属性标签', 'Property labels')}
+          </label>}
           {!sketch && <label><input type="checkbox" checked={s.showAuthoredLayout !== false}
             onChange={event => editor.set({ showAuthoredLayout: event.target.checked })} />
             {label('布局参考线', 'Layout guides')}{layoutGuidesKey ? `　${layoutGuidesKey}` : ''}

@@ -475,7 +475,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   onEditBlur?: (index: number | null) => void
   allowSpatial?: boolean
 }) {
-  const { uiMode } = useInterfacePreferences()
+  const { uiMode, figmaPropertyLabels } = useInterfacePreferences()
   const sketchStyles = uiMode === 'sketch'
   const removeStacks = useSketchStyleOptions(sketchStyles)
   const shortcutProfile = useShortcutProfile()
@@ -789,7 +789,9 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                 <button type="button" aria-label={tr("顺时针旋转 90°")} title={tr("顺时针旋转 90°")}
                   disabled={s.busy || editor.interactionActive || n.locked}
                   onClick={() => update(node => rotateNode(node, figmaRotationDegrees(node.transform) + 90,
-                    selectionLocalBounds(editor.state.doc, node.id)), '旋转 90°')}><RotateCw size={15} /></button>
+                    selectionLocalBounds(editor.state.doc, node.id)), '旋转 90°')}><RotateCw size={15} />
+                    {figmaPropertyLabels && <span className="property-control-caption" aria-hidden="true">{tr("顺时针旋转 90°")}</span>}
+                  </button>
                 <FlipControls editor={editor} />
               </div>
             </div>

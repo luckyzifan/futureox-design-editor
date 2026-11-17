@@ -2340,3 +2340,38 @@ test('Figma shortcut reference stays interactive, reflects used keys and remaps 
   await key('?', { code: 'Slash', ctrlKey: true, shiftKey: true })
   expect(dock()).toBeNull()
 })
+
+test('Figma property labels reveal only icon captions and preserve document and layout options', async () => {
+  applyInterfaceLayout('figma')
+  await render()
+  const current = editor!, doc = blank(), frame = node('frame'), child = node('rectangle')
+  frame.children = [child.id]; doc.nodes = { [frame.id]: frame, [child.id]: child }; doc.pages[0].children = [frame.id]
+  await act(async () => { current.load(doc); current.select([child.id]) })
+  const before = current.authoredDocument, view = { ...current.state.view }
+  const icon = (label: string) => document.querySelector<HTMLButtonElement>(`.inspector button[aria-label="${label}"]`)!
+  const caption = (label: string) => icon(label).querySelector('.property-control-caption')?.textContent
+  const readout = () => document.querySelector<HTMLElement>('[data-testid="zoom-readout"]')!
+  const toggle = () => [...document.querySelectorAll('label')].find(label => label.textContent?.trim() === '属性标签')?.querySelector<HTMLInputElement>('input')
+  expect(caption('左对齐')).toBeUndefined()
+  await act(async () => readout().click())
+  await act(async () => toggle()!.click())
+  expect(toggle()?.checked).toBe(true)
+  expect(caption('左对齐')).toBe('左对齐')
+  expect(caption('水平翻转')).toBe('水平翻转')
+  expect(caption('顺时针旋转 90°')).toBe('顺时针旋转 90°')
+  expect(document.querySelectorAll('.geometry-position .property-control-caption')).toHaveLength(0)
+  expect(JSON.parse(localStorage.getItem('forma.interface-preferences.v1')!).figmaPropertyLabels).toBe(true)
+
+  await act(async () => applyInterfaceLayout('sketch'))
+  expect(toggle()).toBeUndefined()
+  expect(document.querySelector('.property-control-caption')).toBeNull()
+  await act(async () => applyInterfaceLayout('figma'))
+  expect(caption('左对齐')).toBe('左对齐')
+  await act(async () => readout().click())
+  await act(async () => toggle()!.click())
+  expect(caption('左对齐')).toBeUndefined()
+  expect(current.authoredDocument).toBe(before)
+  expect(current.state.view).toEqual(view)
+  expect(current.state.selection).toEqual([child.id])
+  expect(current.canUndo).toBe(false)
+})
