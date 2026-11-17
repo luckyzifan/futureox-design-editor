@@ -268,6 +268,42 @@ describe('Rust workspace persistence session',()=>{
     expect(f.rows.get(originalId)!.name).toBe('Original')
     expect(f.rows.size).toBe(2);expect(f.session.dirty).toBe(false)
   })
+  it('duplicating a document retains its latest edits and opens a separate revision-one copy', async () => {
+    const f = fixture(); await f.session.start()
+    f.rename('Source'); await f.session.save(); const source = f.editor.state.doc.id
+    f.rename('Source with edits')
+    expect(await f.session.duplicateDocument()).toBe(true)
+    const copy = f.editor.state.doc.id
+    expect(copy).not.toBe(source)
+    expect(f.rows.get(source)).toMatchObject({ name: 'Source with edits', revision: 2 })
+    expect(f.rows.get(copy)).toMatchObject({ name: 'Source with edits 副本', revision: 1 })
+    expect(f.session.status).toMatchObject({ dirty: false, revision: 1 })
+    expect(f.confirm).not.toHaveBeenCalled()
+    expect(f.bridge.saveDocument).not.toHaveBeenCalled()
+  })
+  it('keeps the current document and reuses a copy write whose acknowledgement was lost', async () => {
+    const f = fixture(); await f.session.start()
+    f.rename('Duplicate source'); await f.session.save(); const source = f.editor.state.doc.id
+    const commit = vi.mocked(f.store.commit).getMockImplementation()!
+    const error = { status: 'error' as const, code: 'BACKEND_TIMEOUT', message: 'outcome unknown' }
+    vi.mocked(f.store.commit).mockImplementationOnce(async request => { await commit(request); return error })
+    expect(await f.session.duplicateDocument()).toBe(false)
+    expect(f.session.activeDocumentId).toBe(source)
+    expect(f.rows.size).toBe(2)
+    expect(await f.session.duplicateDocument()).toBe(true)
+    expect(f.session.activeDocumentId).not.toBe(source)
+    expect(f.rows.size).toBe(2)
+    expect(vi.mocked(f.store.commit).mock.calls[1]).toEqual(vi.mocked(f.store.commit).mock.calls[2])
+  })
+  it('a rejected duplicate keeps the original open and creates no copy', async () => {
+    const f = fixture(); await f.session.start()
+    f.rename('Duplicate source'); await f.session.save(); const source = f.editor.state.doc.id
+    vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'WORKSPACE_WRITE_FAILED', message: 'write failed' })
+    expect(await f.session.duplicateDocument()).toBe(false)
+    expect(f.session.activeDocumentId).toBe(source)
+    expect(f.rows.size).toBe(1)
+    expect(f.session.status.error).toBe('write failed')
+  })
   it('will not trash the active document through the library',async()=>{
     const f=fixture();await f.session.start();f.rename('Active');await f.session.save()
     await expect(f.session.trashWorkspace(f.rows.get(f.editor.state.doc.id)!)).rejects.toThrow('先打开其他')

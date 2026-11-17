@@ -112,6 +112,7 @@ contextBridge.exposeInMainWorld(
         value => value && typeof value.requestId === 'string'),
     }),
     setInterfaceLocale: locale => invoke('set-interface-locale', locale),
+    setInterfaceMode: mode => invoke('set-interface-mode', mode),
     rendererReady: () => invoke('renderer-ready'),
     performTextCommand: (value) => invoke('text-command', value),
     fonts: Object.freeze({ list: () => invoke('fonts-list'), read: (value) => invoke('fonts-read', value) }),
@@ -260,7 +261,7 @@ contextBridge.exposeInMainWorld(
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>
-        ['settings', 'automation-settings', 'plugins', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
+        ['settings', 'automation-settings', 'plugins', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'duplicate-document', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
       ),
   }),
 )

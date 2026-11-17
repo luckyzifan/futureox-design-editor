@@ -1473,6 +1473,21 @@ for (const platform of ['darwin', 'win32', 'linux']) {
         assert.deepEqual(state.sent, ['saveAs', 'paste-over-selection', 'settings'].map(command => ['design-desktop:command', command]))
         assert.equal(state.pageZoom, 1)
       }
+      assert.deepEqual(await state.invoke('set-interface-mode', 'sketch'), { status: 'ok' })
+      const sketchFile = state.menu.find(item => item.label === 'File').submenu
+      const duplicateDocument = sketchFile.find(item => item.label === 'Duplicate document')
+      const exportCopy = sketchFile.find(item => item.label === 'Export copy…')
+      assert.equal(duplicateDocument.accelerator, 'CmdOrCtrl+Shift+S')
+      assert.equal(exportCopy.accelerator, 'CmdOrCtrl+Alt+Shift+S')
+      state.sent = []; duplicateDocument.click(); exportCopy.click()
+      assert.deepEqual(state.sent, [['design-desktop:command', 'duplicate-document'], ['design-desktop:command', 'saveAs']])
+      const sketchMenu = state.menu
+      assert.equal((await state.invoke('set-interface-mode', 'other')).status, 'error')
+      assert.equal(state.menu, sketchMenu)
+      assert.deepEqual(await state.invoke('set-interface-mode', 'figma'), { status: 'ok' })
+      const figmaFile = state.menu.find(item => item.label === 'File').submenu
+      assert.equal(figmaFile.some(item => item.label === 'Duplicate document'), false)
+      assert.equal(figmaFile.find(item => item.label === 'Export copy…').accelerator, 'CmdOrCtrl+Shift+S')
       assert.equal(state.requests.length, beforeRequests, 'Locale and menu dispatch do not create sidecar document mutations')
       assert.equal(state.prompts.length, beforePrompts)
     } finally { await state.dispose() }

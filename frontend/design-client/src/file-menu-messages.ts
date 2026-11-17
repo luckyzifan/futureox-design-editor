@@ -24,6 +24,8 @@ const phrases = {
   wideGamutTitle: ['广色域 / HDR 使用精细覆盖采样', 'Wide gamut / HDR uses fine coverage sampling'],
   figmaQualityTitle: ['保留精细采样。CPU 对照中，整数矩形、黑色小数矩形、未触发的小模糊和半透明 alpha 蒙版已与这组独立 Figma 参考逐字节对齐；GPU 输出仍有差异，其余字节边缘、渐变、模糊、阴影、玻璃和 Texture 也仍需核对。配置随文件保存', 'Keeps fine sampling. CPU reference checks are bit-exact for integer rectangles, the black fractional rectangle, inactive small blurs, and semi-transparent alpha masks. GPU output still differs; other byte edges, gradients, blur, shadows, glass, and texture also need further checks. Saved with the file.'],
   saveCopy: ['保存为本机副本', 'Save a local copy'],
+  duplicateDocument: ['复制文档', 'Duplicate document'],
+  exportCopy: ['导出副本…', 'Export copy…'],
   saveAs: ['另存为设计文件…', 'Save design as…'],
   exportFull: ['导出完整文件…', 'Export full file…'],
   importFormats: ['导入 Sketch / FIG / SVG / PDF', 'Import Sketch / FIG / SVG / PDF'],

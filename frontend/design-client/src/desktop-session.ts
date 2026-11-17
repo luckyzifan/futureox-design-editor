@@ -11,7 +11,7 @@ import { documentStage, documentStageAsync, DocumentStage } from './document-lif
 import { nativeDesignJson } from './native-design-json'
 import { unwrapSourceError } from './source-error-text'
 import { interfacePreference } from './interface-preference'
-import { blank, type DesignDocument } from './model'
+import { blank, copyName, type DesignDocument } from './model'
 import { consumeDocumentJsonSyntaxFailure } from './document-admission'
 import { consumeDocumentPreparationSourceFailure } from './document-preparation-worker-client'
 import { documentPreparationRuntime } from './document-preparation-identity'
@@ -44,6 +44,7 @@ const rejectedWorkspaceWrite = (result: DesktopResult<unknown>) => result.status
 /** Disk acknowledgements are scoped to immutable snapshots, never to the latest edit. */
 export type WorkspaceTab = { id: string; name: string; persisted: boolean }
 type WorkspaceCacheEntry = { revision: number; name: string; hash: string; updatedAt: number; documentJson: string }
+type WorkspaceCopy = { document: DesignDocument; documentJson: string; mutationId: string }
 
 /** Tab switches during an open/import must not surface the host file lock as
  * a hard failure. A cached snapshot can replace the canvas immediately; a
@@ -81,6 +82,7 @@ export class DesktopSession {
   }
   private readonly workspaceHeads = new Map<string, number>()
   private workspacePending?: { documentJson: string; expectedRevision: number | null; mutationId: string; generation: number; id: string }
+  private workspaceCopyPending?: WorkspaceCopy
   get supportsWorkspace() { return !!this.bridge.workspace }
   get activeDocumentId() { return this.currentDocument.id }
   private readonly cloudRevisions = new WeakMap<DesignDocument, number>()
@@ -459,6 +461,7 @@ export class DesktopSession {
   }
   private advanceGeneration() {
     this.generation++
+    this.workspaceCopyPending = undefined
     for (const controller of this.documentPreparations) controller.abort()
     // The cache can only serve its exact generation. Release stale full JSON
     // immediately, including navigation to a custom-codec document with no
@@ -633,22 +636,48 @@ export class DesktopSession {
 
 
   saveCopy() {
-    return this.run('save', async () => {
-      if (!this.bridge.workspace || this.editor.settleOwnedPropertyPreview?.('save') === false || this.editor.interactionActive || !commitPendingEdits(this.editor)) return false
-      const generation = this.generation
-      const document = { ...this.currentDocument, id: crypto.randomUUID(), name: `${this.currentDocument.name} 副本`.slice(0, 200) }
-      const documentJson = await this.encode(document)
-      const result = await this.bridge.workspace.commit({ documentJson, expectedRevision: null, mutationId: crypto.randomUUID() })
-      if (result.status !== 'ok') {
-        if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
-        return result.status === 'cancelled' ? false : this.failed(result)
-      }
-      desktopPet.event('save')
-      this.workspaceHeads.set(result.id, result.revision)
-      if (this.generation !== generation || this.disposed) { this.editor.notify('本机副本已保存；当前新修改已保留'); return true }
-      this.workspacePending = undefined
-      return this.adoptWorkspace(document, { ...result, documentJson })
+    return this.run('save', () => this.copyToWorkspace())
+  }
+
+  duplicateDocument() {
+    return this.run('new', async () => {
+      if (!this.bridge.workspace || !this.authorized(await this.leave('new'))) return false
+      return this.copyToWorkspace()
     })
+  }
+
+  private async copyToWorkspace() {
+    const workspace = this.bridge.workspace
+    if (!workspace || this.editor.settleOwnedPropertyPreview?.('save') === false || this.editor.interactionActive || !commitPendingEdits(this.editor)) return false
+    const generation = this.generation
+    const current = () => !this.disposed && this.generation === generation && !this.editor.state.busy &&
+      !this.editor.interactionActive && !this.editor.propertyPreviewActive && !hasPendingEdits(this.editor)
+    let submitted = this.workspaceCopyPending
+    if (!submitted) {
+      const document = { ...this.currentDocument, id: crypto.randomUUID(), name: copyName(this.currentDocument.name, ' 副本') }
+      const documentJson = await this.encode(document)
+      if (!current()) return false
+      // An uncertain acknowledgement can be retried with the same copy and mutation IDs.
+      submitted = this.workspaceCopyPending = { document, documentJson, mutationId: crypto.randomUUID() }
+    }
+    if (!current()) return false
+    const { document, documentJson, mutationId } = submitted
+    const result = await workspace.commit({ documentJson, expectedRevision: null, mutationId })
+    if (result.status !== 'ok') {
+      if (result.status === 'cancelled' || rejectedWorkspaceWrite(result)) this.workspaceCopyPending = undefined
+      return result.status === 'cancelled' ? false : this.failed(result)
+    }
+    const saved = { ...result, documentJson }
+    this.assertWorkspace(document, saved)
+    this.workspaceCopyPending = undefined
+    desktopPet.event('save')
+    this.workspaceHeads.set(result.id, result.revision)
+    if (!current()) {
+      if (!this.disposed) this.editor.notify('本机副本已保存；当前新修改已保留')
+      return true
+    }
+    this.workspacePending = undefined
+    return this.adoptWorkspace(document, saved)
   }
 
 
@@ -785,6 +814,7 @@ export class DesktopSession {
 
   dispose() {
     this.disposed = true
+    this.workspaceCopyPending = undefined
     this.pendingTabId = undefined
     this.clearTabWait()
     for (const controller of this.documentPreparations) controller.abort()

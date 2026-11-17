@@ -60,6 +60,7 @@ import { createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package
 import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
+let interfaceMode = 'figma'
 let rebuildApplicationMenu = () => {}
 
 const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)
@@ -381,6 +382,14 @@ register('set-interface-locale', value => {
   if (value !== 'en' && value !== 'zh-CN') throw new TypeError('Unsupported interface locale')
   interfaceLocale = value
   rebuildApplicationMenu()
+  return { status: 'ok' }
+}, false)
+register('set-interface-mode', value => {
+  if (value !== 'figma' && value !== 'sketch') throw new TypeError('Unsupported interface mode')
+  if (value !== interfaceMode) {
+    interfaceMode = value
+    rebuildApplicationMenu()
+  }
   return { status: 'ok' }
 }, false)
 let petHost = null
@@ -1387,9 +1396,14 @@ async function buildWindow() {
           ] }] : []),
           { type: 'separator' },
           { label: 'Edits are saved automatically', enabled: false },
+          ...(interfaceMode === 'sketch' ? [{
+            label: 'Duplicate document',
+            accelerator: 'CmdOrCtrl+Shift+S',
+            click: () => sendCommand('duplicate-document'),
+          }] : []),
           {
             label: 'Export copy…',
-            accelerator: 'CmdOrCtrl+Shift+S',
+            accelerator: interfaceMode === 'sketch' ? 'CmdOrCtrl+Alt+Shift+S' : 'CmdOrCtrl+Shift+S',
             click: () => sendCommand('saveAs'),
           },
           { label: 'Recover unsaved design…', click: () => sendCommand('recover') },

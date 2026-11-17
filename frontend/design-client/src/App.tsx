@@ -265,6 +265,14 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const unsubscribe = interfacePreference.subscribe(synchronize)
     return () => { disposed = true; unsubscribe() }
   }, [desktop, editor])
+  useEffect(() => {
+    if (!desktop?.setInterfaceMode) return
+    let active = true
+    void desktop.setInterfaceMode(uiMode).then(result => {
+      if (active && result.status === 'error') editor.notify(result.message)
+    }).catch(error => { if (active) editor.notify(String(error)) })
+    return () => { active = false }
+  }, [desktop, editor, uiMode])
   useEffect(() => desktopPet.bind(editor), [editor])
   useEffect(() => bindEditorSettings(editor), [editor])
   const [exports] = useState(() => new ExportOwner())
@@ -922,7 +930,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (!ready || !desktopSession) return
       // Native editor/text commands retain the dispatcher's focused-input routing.
       // File commands must not act on the .fd document behind an independent modal.
-      if (['open', 'openPending', 'new', 'recover', 'save', 'saveAs'].includes(name) && modalOwnsKeyboard(document.activeElement) &&
+      if (['open', 'openPending', 'new', 'recover', 'save', 'saveAs', 'duplicate-document'].includes(name) && modalOwnsKeyboard(document.activeElement) &&
         !ownedPropertyPreviewTarget(editor, document.activeElement)) return
       // Electron can consume the DOM shortcut before Canvas sees it. Complete
       // only our keyboard-owned edit, never another pending pointer gesture.
@@ -933,6 +941,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       else if (name === 'openPending') void desktopSession.openPending()
       else if (name === 'save') void desktopSession.save()
       else if (name === 'saveAs') void desktopSession.save(true)
+      else if (name === 'duplicate-document' && uiMode === 'sketch') void desktopSession.duplicateDocument()
       else if (name === 'new') void desktopSession.replace(blank())
       else if (name === 'recover') void desktopSession.recover()
       else {
@@ -947,13 +956,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       if (settingsMod && e.key === ',' && !e.shiftKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !e.defaultPrevented) {
         e.preventDefault(); openSettings(); return
       }
-      const propertySave = e.key.toLowerCase() === 's' && ownedPropertyPreviewTarget(editor, e.target)
-      if (!ready || e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat || e.altKey || (shortcutTargetOwnsKeyboard(e.target) && !propertySave)) return
+      const sketchWorkspace = uiMode === 'sketch' && desktopSession?.supportsWorkspace
+      const sketchExport = sketchWorkspace && e.altKey && e.shiftKey && e.code === 'KeyS' && !e.getModifierState('AltGraph')
+      const key = sketchExport ? 's' : e.key.toLowerCase()
+      const propertySave = key === 's' && ownedPropertyPreviewTarget(editor, e.target)
+      if (!ready || e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat ||
+          (e.altKey && !sketchExport) || (shortcutTargetOwnsKeyboard(e.target) && !propertySave)) return
       if (shortcutPlatform() === 'mac' ? (!e.metaKey || e.ctrlKey) : (!e.ctrlKey || e.metaKey)) return
-      const key = e.key.toLowerCase()
       if (key === 's') {
         e.preventDefault()
-        if (desktopSession) command(e.shiftKey ? 'saveAs' : 'save')
+        if (desktopSession) command(!e.shiftKey ? 'save' : sketchWorkspace && !e.altKey ? 'duplicate-document' : 'saveAs')
         else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) exportDocument(editor.authoredDocument)
       } else if (desktopSession && key === 'o' && !e.shiftKey) {
         e.preventDefault(); command('open')
@@ -1000,7 +1012,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         })
     })
     return () => { window.removeEventListener('keydown', allAssetsShortcut, true); window.removeEventListener('keydown', layout); window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source])
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source, uiMode])
   function resumeEditor() {
     if (!ready) return
     setShowHome(false)
@@ -1510,6 +1522,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 {menuText.figmaExportQuality}
               </button>
             </div>
+            {uiMode === 'sketch' && desktopSession?.supportsWorkspace && !source && <button type="button"
+              disabled={!ready || switching || desktopStatus.busy} onClick={() => { setMenu(false); void desktopSession.duplicateDocument() }}>
+              {menuText.duplicateDocument} <kbd>{formatShortcutCombo('Mod+Shift+S', shortcutContext.platform)}</kbd>
+            </button>}
             <button
               disabled={!ready || desktopStatus.busy}
               onClick={() => {
@@ -1522,7 +1538,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <Plus size={15} />
-              {source?menuText.exportFull:locale==='en'?'Export copy…':'导出副本…'}
+              {source ? menuText.exportFull : menuText.exportCopy}
+              {uiMode === 'sketch' && desktopSession?.supportsWorkspace && !source &&
+                <kbd>{formatShortcutCombo('Mod+Alt+Shift+S', shortcutContext.platform)}</kbd>}
             </button>
             <button
               onClick={() => {
