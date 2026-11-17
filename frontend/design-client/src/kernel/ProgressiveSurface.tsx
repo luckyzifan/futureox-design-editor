@@ -12,6 +12,7 @@ import { allowsResidentSdr, usesDesktopDisplay, usesProgressiveNativeRepair } fr
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SurfaceProps, PresentedFrame } from './Surface'
 import { KernelClient, renderExecutionPolicy, type TileDamage, type TileResult } from './client'
+import { takeWarmFigCanvas } from './fig-canvas-warmup'
 import { paintDamageIntersects } from './paint-damage'
 import { recordRenderDiagnostic, renderDiagnosticError, renderDiagnostics } from './render-diagnostics'
 import type { BackendPreference } from './gpu/types'
@@ -915,7 +916,7 @@ export function ProgressiveSurfaceImpl(
     else dropTiles((_key, tile) => { const r=tileWorldRect(tile);return paintDamageIntersects(damage,[r.x,r.y,r.width,r.height]) })
   }).current
   useEffect(() => {
-    client.current = new KernelClient()
+    client.current = takeWarmFigCanvas(props.navigationInputOwner, doc.id) ?? new KernelClient()
     previewDevice.current = { client: client.current }
     navigationIntentOwner.reset(client.current)
     setRasterClient(client.current)

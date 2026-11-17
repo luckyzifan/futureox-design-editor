@@ -178,11 +178,9 @@ export function ResidentCompositeSurface(props: {
       published.current.set(tile.serial, { key: tile.key, gpuTile: tile.gpuTile })
       if (pageTiles.has(tile)) p.onReady(tile.key, tile.serial, false)
     }
-    const nav = cameraProjection.current
-    if (nav && p.allowPanPreview && !p.interaction?.active && p.overviewTiles?.length && p.client.copyNavigationTile) {
-      nav.history.bind(currentHistoryScope.current)
-      nav.history.warm(p.overview, p.overviewTiles, (id,consume)=>p.client.copyNavigationTile(id,consume), () => repaint.current())
-    }
+    const overviewHistory = p.allowPanPreview && !p.interaction?.active &&
+      p.overviewTiles?.length && typeof p.client.copyNavigationTile === 'function' ? cameraProjection.current?.history : undefined
+    overviewHistory?.bind(currentHistoryScope.current)
     const moved = moving?.items(p.view)
     const projected=projectCamera(),camera=acceptedCamera.current
     if(projected?.active&&projected.changed&&camera&&!moved){
@@ -287,6 +285,9 @@ export function ResidentCompositeSurface(props: {
       p.client.present(frame)
       p.onCompositeItems?.(items)
     }
+    // Publish the requested camera before any optional GPU-to-browser copy.
+    if (overviewHistory && p.overviewTiles)
+      overviewHistory.warm(p.overview, p.overviewTiles, (id,consume)=>p.client.copyNavigationTile(id,consume), () => repaint.current())
     for (const [serial, tile] of published.current)
       if (!keep.has(serial)) {
         if (!keepGpu.has(tile.gpuTile)) release.add(tile.gpuTile)
@@ -430,12 +431,9 @@ export function ResidentCompositeSurface(props: {
             cameraProjection.current?.history.bind(undefined)
           acceptedCamera.current=source?{source,actual,client:p.client,device:deviceOwner}:undefined
           const projected=projectCamera(true),current=latest.current
-          if (bitmapApplied && projected?.allowed && source) {
-            cameraProjection.current?.history.capture(el, actual, current.overview)
-            const nav = cameraProjection.current
-            if(nav && current.overviewTiles?.length && current.client.copyNavigationTile)
-              nav.history.warm(current.overview,current.overviewTiles,(id,consume)=>current.client.copyNavigationTile(id,consume),()=>repaint.current())
-          }
+          const captureHistory = bitmapApplied && projected?.allowed && source ? cameraProjection.current?.history : undefined
+          const captureScope = currentHistoryScope.current
+          captureHistory?.capture(el, actual, current.overview)
           flushSync(() => {
             if(input?.sequence&&!usePageTranslation.current)
               interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)
@@ -444,6 +442,11 @@ export function ResidentCompositeSurface(props: {
             latest.current.onPresented?.(projected?.active?{...actual,view:current.view,width:current.width,height:current.height,dpr:current.dpr,preview:true}:actual,
               projected?.active&&source?{...source,view:current.view,width:current.width,height:current.height,pixelRatio:current.dpr,preview:true}:source,deviceOwner)
           })
+          const latestView = latest.current
+          if(captureHistory && captureHistory === cameraProjection.current?.history &&
+              captureScope === currentHistoryScope.current && !latestView.interaction?.active &&
+              latestView.overviewTiles?.length && typeof latestView.client.copyNavigationTile === 'function')
+            captureHistory.warm(latestView.overview,latestView.overviewTiles,(id,consume)=>latestView.client.copyNavigationTile(id,consume),()=>repaint.current())
         }
         } catch(error){latest.current.onFailure(String(error))} finally {
           bitmap?.close()

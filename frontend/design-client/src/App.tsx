@@ -139,6 +139,7 @@ import {
   type LocalEntry,
 } from './local-store'
 import { initializePicking } from './kernel/picking'
+import { warmFigCanvas } from './kernel/fig-canvas-warmup'
 import { figPreparationRuntime, isPreparedDocument, prepareDocument, prepareFigInWorker, type PreparedDocument } from './prepared-document'
 import { Canvas } from './Canvas'
 import { Layers } from './Layers'
@@ -194,6 +195,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
   const [showHome, setShowHome] = useState(!source)
+  const enteredCanvas = useRef(false)
+  useLayoutEffect(() => { if (!showHome) enteredCanvas.current = true }, [showHome])
   const [homeImportError, setHomeImportError] = useState('')
   const [libraryGap, setLibraryGap] = useState<{ file: File; error: string } | null>(null)
   const [startupError, setStartupError] = useState('')
@@ -370,12 +373,18 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           setImportReport({ documentId: document.id, warnings })
           editor.notify('导入完成，可以继续编辑', { key: 'designImportComplete' })
         }
+        return opened
       }
       const runtime = mode === 'open' && desktopSession && /\.fig$/i.test(f.name) ? figPreparationRuntime() : undefined
       if (runtime) {
-        const { prepared, warnings } = await importStep(request, () =>
-          prepareFigInWorker(f, runtime, request.signal, request.isCurrent, diagnostic))
-        await open(prepared, warnings)
+        const warm = showHome && !enteredCanvas.current ? warmFigCanvas(editor, request) : undefined
+        let opened = false
+        try {
+          const { prepared, warnings } = await importStep(request, () =>
+            prepareFigInWorker(f, runtime, request.signal, request.isCurrent, diagnostic))
+          warm?.bind(prepared.id)
+          opened = await open(prepared, warnings)
+        } finally { warm?.finish(opened) }
         return
       }
       const imported = await importStep(request, () => readDesignFile(f, request.signal, diagnostic))
@@ -1213,7 +1222,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const moveTool = tools.find(({ id }) => id === s.tool && ['select', 'hand', 'scale', 'zoom'].includes(id)) || tools.find(({ id }) => id === lastMoveTool)!
   const regionTool = tools.find(({ id }) => id === s.tool && ['frame', 'section', 'slice'].includes(id)) || tools.find(({ id }) => id === lastRegionTool)!
   const shapeTool = shapeTools.find(({ id }) => id === s.tool) || tools.find(({ id }) => id === lastShapeTool)!
-  const drawingTool = tools.find(({ id }) => id === s.tool && ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)) || tools.find(({ id }) => id === lastDrawingTool)!
+  const figmaDesignTools = uiMode === 'figma' && !figmaDraw
+  const drawingTools = tools.filter(({ id }) => id === 'pen' || id === 'pencil' ||
+    !figmaDesignTools && (id === 'brush' || id === 'marker' || id === 'washi-tape'))
+  const drawingTool = drawingTools.find(({ id }) => id === s.tool) ||
+    drawingTools.find(({ id }) => id === lastDrawingTool) || drawingTools[0]
   const utilityTool = utilityTools.find(({ id }) => id === s.tool) || utilityTools.find(({ id }) => id === lastUtilityTool)!
   const unavailableTools = localizedToolCommands(locale).filter((c) => !c.tool).filter((c, i, all) => all.findIndex((x) => x.id === c.id) === i)
   const MoveIcon = moveTool.icon, RegionIcon = regionTool.icon, ShapeIcon = shapeTool.icon, DrawingIcon = drawingTool.icon
@@ -1314,14 +1327,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button key={id} type="button" aria-label={label} aria-pressed={s.tool === id}
                   data-tooltip={key ? `${label} (${key})` : label} className={s.tool === id ? 'active' : undefined}
                   onClick={() => chooseTool(id)}><Icon size={18} aria-hidden="true" /></button>)}
-              <ToolPopover label={toolbarText.drawingTools} icon={<DrawingIcon size={18} />} open={showDrawing} onOpenChange={open => openToolbarMenu('drawing', open)}
+              <ToolPopover label={figmaDesignTools ? toolbarText.creationTools : toolbarText.drawingTools} icon={<DrawingIcon size={18} />} open={showDrawing} onOpenChange={open => openToolbarMenu('drawing', open)}
                 primary={figmaDraw ? undefined : { label: drawingTool.label, title: `${drawingTool.label}${drawingTool.key ? ` (${drawingTool.key})` : ''}`, active: s.tool === drawingTool.id, onClick: () => chooseTool(drawingTool.id) }}>
-                {tools.filter(({ id }) => ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)).map(({ id, label, key, icon: Icon }) => (
+                {drawingTools.map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={drawingTool.id === id} onClick={() => { chooseTool(id); setShowDrawing(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
+                {!figmaDesignTools && <>
                 {(['bend','cut','vector-lasso','eraser','paint-bucket','offset-path','text-path','multiselect'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowDrawing(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>{toolbarText.editVector}</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>{toolbarText.outlineStroke}</button>
+                </>}
               </ToolPopover>
               <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><toolGlyph.text size={18} /></button>
               <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} className={s.tool === 'comments' ? 'active' : ''} onClick={()=>chooseTool('comments')}><toolGlyph.comments size={18} /></button>

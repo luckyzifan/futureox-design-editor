@@ -91,6 +91,11 @@ export function backendPreference(): BackendPreference {
   return effectiveBackend(renderExecutionPolicy, 'webgpu')
 }
 
+export function canWarmDesktopCanvas(): boolean {
+  return !!desktopHost?.preparation && typeof Worker !== 'undefined' &&
+    backendPreference() === 'webgpu' && allowsResidentSdr(renderExecutionPolicy)
+}
+
 /** Page-wide GPU holder limit. Every KernelClient owns one render worker, and
  * that worker holds at most one GPU device (plus its pool budget) for its
  * lifetime, so at most MAX_ACTIVE_GPU_CLIENTS clients may actively drive the
@@ -1040,6 +1045,10 @@ export class KernelClient {
     if(this.disposed||effectiveBackend(renderExecutionPolicy,backendPreference(),false)!=='webgpu'||renderExecutionPolicy.hdrCompositing)return
     await this.acquireGpuPermit()
     if(!this.disposed)await this.request({command:'prepare-source-display',backend:'webgpu',channel:'canvas'})
+  }
+  async warmCanvasPreparation() {
+    if (!canWarmDesktopCanvas() || this.disposed) return
+    await this.request({ command: 'warm-canvas-preparation', backend: 'webgpu', channel: 'canvas' })
   }
   renderSource(snapshot:SourceRenderSnapshot,options:KernelOptions,progress?:(tile:TileResult)=>void,signal?:AbortSignal):Promise<KernelResult> {
     if(this.disposed)return Promise.reject(Error('渲染器已关闭'))
