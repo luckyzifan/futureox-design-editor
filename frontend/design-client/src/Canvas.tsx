@@ -24,7 +24,7 @@ import { recordNavigationInput } from './kernel/navigation-input'
 import { desktopPet } from './desktop-pet'
 import { nudgePreference } from './nudge-preference'
 import { createKeyboardNudgeGesture, keyboardNudgeActive } from './keyboard-nudge-gesture'
-import { isDimensionNudgeCommand, nudgeSelectionDimensions } from './canvas-workflow-shortcuts'
+import { isDimensionNudgeCommand, nudgeSelectionDimensions, rulersToggleEvent } from './canvas-workflow-shortcuts'
 import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
 import { deepSelectChord, doubleClickFollowUp, enterKeyEditsOutline, enterKeyEditsText } from './figma-basic-ops'
 import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
@@ -1431,7 +1431,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         void dispatchEditorShortcut(editor, e, shortcutContext)
         return
       }
-      if(!mod&&e.shiftKey&&e.code==='KeyR'&&!drag.current){e.preventDefault();editor.set({rulers:!editor.state.rulers});return}
+      if (!drag.current && rulersToggleEvent(e, shortcutContext)) {
+        e.preventDefault()
+        editor.set({ rulers: !editor.state.rulers })
+        return
+      }
       if(e.altKey&&!mod&&e.code==='KeyR'&&!drag.current&&editor.topSelection().length){e.preventDefault();setOrigin(origin.current.point,!origin.current.visible);return}
       const creation = drag.current
       if (creation?.kind === 'create' && creation.creationSeed) {
