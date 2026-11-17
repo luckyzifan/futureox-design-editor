@@ -61,9 +61,9 @@ const DrawLayerThumbnail = memo(function DrawLayerThumbnail({ layer, fallback }:
   if ((!fill && !stroke) || layer.kind === 'text' || layer.children.length || layer.vectorBrush ||
       layer.network && layer.network.vertices.length > 128 || (layer.vectorGeometry?.fill.length ?? 0) > 128 ||
       fill && fill.kind !== 'solid' || stroke && stroke.paint.kind !== 'solid' || layer.fills.some(paint => paint.image))
-    return <span className="draw-layer-thumbnail" aria-hidden="true">{fallback}</span>
+    return <span className="draw-layer-thumbnail" data-layer-type-icon="" aria-hidden="true">{fallback}</span>
   const paths = kernelSvgPaths(layer)
-  return <span className="draw-layer-thumbnail" aria-hidden="true">
+  return <span className="draw-layer-thumbnail" data-layer-type-icon="" aria-hidden="true">
     {paths ? <svg viewBox={`0 0 ${Math.max(1, layer.width)} ${Math.max(1, layer.height)}`}>
       <path d={paths.fill} fill={fill?.color ?? 'none'} fillOpacity={fill?.opacity}
         fillRule={layer.vectorGeometry?.fillRule ?? layer.network?.fillRule} />
@@ -555,6 +555,24 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                   dragged.current = null; setDrop(null)
                 }}
                 onClick={(e) => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); return }; choose(id, e.shiftKey, e.metaKey || e.ctrlKey) }}
+                onDoubleClick={event => {
+                  if (uiMode !== 'sketch' || editor.interactionActive || editor.state.busy) return
+                  // Pointer capture retargets clicks to the row after release.
+                  // Recover the actual icon or name under the pointer.
+                  const hitArea = '[data-layer-type-icon], .layer-name:not(.layer-rename)'
+                  const hit = (event.target as Element).closest(hitArea) ??
+                    document.elementFromPoint?.(event.clientX, event.clientY)?.closest(hitArea)
+                  if (!hit || !event.currentTarget.contains(hit)) return
+                  event.stopPropagation()
+                  if (!hit.hasAttribute('data-layer-type-icon')) {
+                    if (commitPendingEdits(editor)) setRenaming(id)
+                    return
+                  }
+                  choose(id)
+                  if (renderSession === editor.sessionGeneration && editor.state.doc.id === s.doc.id &&
+                      editor.state.page === s.page && editor.state.selection.length === 1 && editor.state.selection[0] === id)
+                    void dispatchEditorCommand(editor, 'zoom-selection')
+                }}
                 onContextMenu={event => {
                   event.preventDefault(); event.stopPropagation()
                   if (!commitPendingEdits(editor) || editor.interactionActive) return
@@ -581,6 +599,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                   ) : null}
                 </button>
                 {drawThumbnails ? <DrawLayerThumbnail layer={n} fallback={<Icon size={13} />} /> : <Icon
+                  data-layer-type-icon=""
                   size={13}
                   color={n.component || n.instance || n.componentSet ? 'var(--workspace-accent)' : undefined}
                   fill={n.component ? 'currentColor' : 'none'}

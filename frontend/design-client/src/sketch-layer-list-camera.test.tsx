@@ -180,6 +180,26 @@ test('Sketch layer-list click and arrow keys select without moving the viewport'
   expect(editor.canRedo).toBe(true)
 })
 
+test('Sketch double-clicks zoom on the layer icon and rename on the layer name', async () => {
+  const right = editor.state.doc.pages[0].children[1], before = editor.state.doc, oldView = camera()
+  const doubleClick = (target: Element) => {
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target })
+    row(right)!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
+  }
+  await act(async () => doubleClick(row(right)!.querySelector('[data-layer-type-icon]')!))
+  expect(editor.state.selection).toEqual([right])
+  expect(editor.state.view.zoom).toBeGreaterThan(oldView.zoom)
+  expect(revealInView(editor.state.view, layerBounds(right), SIZE)).toBeNull()
+  expect(editor.state.renamingLayer).toBeNull()
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
+  const zoomed = camera()
+  await act(async () => doubleClick(row(right)!.querySelector('.layer-name')!))
+  expect(editor.state.renamingLayer).toBe(right)
+  expect(camera()).toEqual(zoomed)
+  expect(editor.state.doc).toBe(before)
+})
+
 test('Sketch zoom-to-selection still reframes after a layer-list click', async () => {
   const right = editor.state.doc.nodes[editor.state.doc.pages[0].children[1]]
   const before = camera()
