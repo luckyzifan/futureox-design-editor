@@ -1,5 +1,5 @@
 import { wide_image_gaussian_pixels } from '../../generated/design-kernel/design_kernel'
-import {compactSourceAxes,hostedDenseByteFrame,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
+import {compactSourceAxes,hostedDenseByteFrame,largeRotatedSourceDirect,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
@@ -2519,12 +2519,16 @@ export class GpuRenderer {
     }else this.imageAssetCounters.hits++
     this.used.add(image.texture);this.touch(image.texture);return image
   }
-  private sourceBitmapGrid(n:GpuNode,p:GpuPaint){
+  private sourceBitmapGrid(n:GpuNode,p:GpuPaint):{image:Surface;field:Surface}|{direct:true}|undefined{
     const ref=sourceBitmap(p.image)
     if(!ref?.samples||!p.image||!this.driver.managed||!this.driver.uploadLinear||!this.driver.uploadParameters||
       this.scene.colorManagement?.documentSpace!=='srgb'||this.imageMips)return
     const source=n.previewSource||n,b=source.rect,phase=this.sampleIndex??4,uri=p.image
     if(b.w!==n.rect.w||b.h!==n.rect.h||!b.w||!b.h)return
+    const exactOutput=!!this.outputFrame&&!hostedDenseByteFrame({
+      present:this.outputFrame.present,readback:this.outputFrame.readback,resolve:!!this.scene.resolve,
+      presentation:!!this.scene.presentation,softwareRaster:this.scene.softwareRaster===true})
+    if(largeRotatedSourceDirect(b.w*b.h,source.matrix,!!p.tile&&p.tile.mode!=='none',exactOutput))return {direct:true}
     const paint=JSON.stringify({kind:'image',color:p.color,fit:p.fit,transform:p.transform,tile:p.tile})
     const axes=image_sampling_axes_placed(JSON.stringify(b),new Float64Array(source.matrix),new Float64Array(n.size),
       new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
@@ -2534,9 +2538,6 @@ export class GpuRenderer {
     // u[207]=1 and leaves u[187] at 0, so byte loads use the shared sRGB table
     // before bsBilinear4. Exact frames keep the predecoded float upload.
     // Keep this experiment opt-in until complete hardware/GUI conformance.
-    const exactOutput=!!this.outputFrame&&!hostedDenseByteFrame({
-      present:this.outputFrame.present,readback:this.outputFrame.readback,resolve:!!this.scene.resolve,
-      presentation:!!this.scene.presentation,softwareRaster:this.scene.softwareRaster===true})
     const byteSource=!exactOutput&&import.meta.env.VITE_DESIGN_DENSE_SOURCE_BYTES==='1'&&!grid&&this.scene.nativeInteraction===true&&
       this.scene.interactionRetained===true&&!this.scene.sourceDetailTile&&!this.scene.softwareRaster&&
       this.driver.name==='webgpu'&&!this.driver.hdr&&!this.driver.displayMath&&!imageAdjustActive(p.adjust)&&
@@ -3378,6 +3379,7 @@ export class GpuRenderer {
     let imageLevel = 0
     let imageOrigin: [number, number] = [0, 0]
     let windowedImage = false
+    let directRotated = false
     if (p.kind === 'image') {
       const uri = p.image || ''
       // Atlas slots exist only where the address field drives sampling; the
@@ -3388,14 +3390,19 @@ export class GpuRenderer {
       // Source fidelity and grid coordinates use the same geometric level.
       // Memory pressure must never silently substitute a coarser image.
       imageLevel = this.imageLevel(n, p)
-      const external=material?undefined:this.sourceBitmapGrid(n,p)
-      const raw=material||external?.image||this.sourceSrgbImage(p,imageLevel),window=raw?undefined:this.sourceImagePaint(n,p)
+      const probed=material?undefined:this.sourceBitmapGrid(n,p)
+      directRotated=!!probed&&'direct' in probed
+      const external=probed&&'image' in probed?probed:undefined
+      const raw=material||external?.image||this.sourceSrgbImage(p,imageLevel),window=directRotated||raw?undefined:this.sourceImagePaint(n,p)
       windowedImage = !!(material || external || window)
       if(external)parameterField=external.field
-      image = raw || window?.image || this.imageFor(uri, imageLevel, intoAtlas, p.adjust)
+      image = raw || window?.image || this.imageFor(uri, imageLevel, directRotated?false:intoAtlas, p.adjust)
       if(window)parameterField=window.field
-      if (intoAtlas)
+      if (intoAtlas && !directRotated)
         imageOrigin = this.imageOrigins.get(this.imageKey(uri, imageLevel, true, p.adjust)) ?? [0, 0]
+      // The shader samples the image inverse and does not read this field.
+      // It still has to be a parameter texture so the paint bind group matches.
+      if(directRotated)parameterField=this.materialField(['direct-rotated-source'],rect(0,0,1,1),()=>new Float32Array(4),this.driver.uploadParameters!)
     }
     const inputs = image
       ? this.driver.managed || (this.scene.coherentSamples && this.sampleIndex !== undefined)
@@ -3412,12 +3419,13 @@ export class GpuRenderer {
       const out = this.run(2, n.rect, inputs, (u) => {
         this.configurePaint(u, n, p)
         if (windowedImage || imageOrigin[0] !== 0 || imageOrigin[1] !== 0) u[186] = 1
-        if (p.kind === 'image' && inputs[3])
+        if (p.kind === 'image' && inputs[3] && !directRotated)
           u.set([inputs[3].rect.x, inputs[3].rect.y], 204)
+        if (directRotated) u[188] = 1
         if(parameterField && p.kind!=='image')u.set([1,parameterField.rect.x-n.rect.x,parameterField.rect.y-n.rect.y,0],188)
         if(this.fixedUnitGradient(n,p))u[191]=10;else if(inputs[3])this.configureGradientPhase(u,inputs[3])
       })
-      if (!material && image && this.imageZeroOverSource(n, p, mask, image))
+      if (!material && image && !directRotated && this.imageZeroOverSource(n, p, mask, image))
         // Native managed coordinates clamp valid addresses to texel centres;
         // invalid addresses produce +0. Private range/binary coverage proofs
         // keep this source-over identity exact, including after admission.

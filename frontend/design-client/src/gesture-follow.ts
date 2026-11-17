@@ -102,6 +102,9 @@ export function mountGestureFollow(host: HTMLElement, options: {
   hole: string
   drawSelection: boolean
   ids: readonly string[]
+  /** How long a committed snapshot may cover the previous frame. The settled
+   * picture removes it sooner. */
+  releaseWaitMs?: number
   onDestroy?: () => void
 }): GestureFollowLayer | null {
   let captured: ReturnType<typeof captureBoardFrame>
@@ -187,7 +190,7 @@ export function mountGestureFollow(host: HTMLElement, options: {
       clearTimeout(timer)
       // Exact pixels replace this preview. If they never arrive, uncover the
       // canvas anyway so a commit cannot stay hidden behind the snapshot.
-      timer = setTimeout(() => layer.destroy(), 1500)
+      timer = setTimeout(() => layer.destroy(), options.releaseWaitMs ?? 1500)
     },
     releaseIfPresented(frame) {
       if (frame && waiting && frame.document === waiting && !frame.preview) layer.destroy()

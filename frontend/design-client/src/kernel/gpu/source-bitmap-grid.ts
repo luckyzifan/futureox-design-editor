@@ -1,4 +1,17 @@
 import type {Rect} from './types'
+
+/** Output pixels above this rebuild a dense rotated source field. That field,
+ * plus the color resample behind it, is the seconds-long refine. A 256² tile
+ * qualifies; the small exact byte fixtures stay on the coordinate grid. */
+export const LARGE_ROTATED_SOURCE_PIXELS = 65_536
+
+/** A rotated or sheared source image has no separable axes. Display samples
+ * the uploaded image with the node inverse instead of rebuilding a dense
+ * color grid. Readback and export keep that grid. */
+export function largeRotatedSourceDirect(pixels: number, matrix: readonly number[], tiled: boolean, exactOutput: boolean) {
+  if (exactOutput || tiled || !(pixels >= LARGE_ROTATED_SOURCE_PIXELS) || matrix.length < 4) return false
+  return Math.abs(matrix[1]) > 1e-6 || Math.abs(matrix[2]) > 1e-6
+}
 // Preserve the Rust-computed bilinear fractions and validity flags. Only the
 // integer addresses are remapped into a small Cartesian product of real texels.
 export function compactSourceAxes(axes:Float32Array,b:Rect,width:number,height:number){

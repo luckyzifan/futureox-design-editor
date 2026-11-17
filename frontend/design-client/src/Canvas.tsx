@@ -136,6 +136,7 @@ import { ERASER_SCREEN_PX } from './vector-eraser'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { moveCanvasFeedback, concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { mountGestureFollow, isolatedGestureCrop, type GestureFollowLayer } from './gesture-follow'
+import { rotationBitmapFollowPlan, visibleRotationCrop } from './rotation-bitmap-follow'
 import { mountRotationSource, rotationSourcePlan } from './rotation-source-preview'
 import { retainedBoardPlan } from './retained-board-preview'
 import { interactivePath } from './selection-hierarchy'
@@ -225,6 +226,9 @@ type Drag = {
   rotationDegrees?: number
   /** This gesture's own-paint image failed to load. Do not mount it again. */
   rotationSourceRejected?: boolean
+  /** Visible pixels of this rotation are already moving with the pointer. */
+  rotationSnapshot?: boolean
+  rotationSnapshotRejected?: boolean
   rotationCenter?: Point
   originalPivot?: Point
 }
@@ -1121,7 +1125,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const gpuSelectionOwnsOutline = presentationScopeMatches && overlay.selectionIdentity !== undefined &&
     presented.gpuSelectionIdentity === overlay.selectionIdentity
   useLayoutEffect(() => {
-    if (gpuSelectionOwnsOutline && gestureFollow.current) keepGpuGesture(ownedDrag)
+    if (gpuSelectionOwnsOutline && gestureFollow.current && !ownedDrag?.rotationSnapshot) keepGpuGesture(ownedDrag)
   }, [gpuSelectionOwnsOutline, ownedDrag])
   const documentChromeOpacity = rotationDocumentChromeSuppressed({
     kind: ownedDrag?.kind, sourcePaint: sourceRotationPaint, holding: !!gestureFollow.current?.holding,
@@ -2128,8 +2132,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       intentResolvedComparison: snapped.x === p.x - d.start.x && snapped.y === p.y - d.start.y ? 1 : 2,
     }
   }
-  function placeRotationSource(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
-    if (d.rotationSourceRejected || d.duplicating || d.ids.length !== 1 || !host.current) { dropGestureFollow(); return }
+  function placeRotationSource(d: Drag, matrix: Matrix, screen: Point, degrees: number | undefined, deferImage: boolean): 'solid' | 'image' | null {
+    const dropOwn = () => { if (!d.rotationSnapshot) dropGestureFollow() }
+    if (d.rotationSourceRejected || d.duplicating || d.ids.length !== 1 || !host.current) { dropOwn(); return null }
     if (gestureFollow.current?.holding) dropGestureFollow()
     const id = d.ids[0]
     const source = d.sourceDocument || state.doc
@@ -2138,12 +2143,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const page = source.pages.find(item => item.id === state.page)
     const listed = d.sourceEntries || entries
     const self = listed.find(entry => entry.id === id)
-    if (!self) { dropGestureFollow(); return }
+    if (!self) { dropOwn(); return null }
     const ancestors: { node: DesignNode; matrix: Matrix }[] = []
     for (const ancestorId of self.ancestors) {
       const item = listed.find(entry => entry.id === ancestorId)
       const ancestor = source.nodes[ancestorId]
-      if (!item || !ancestor) { dropGestureFollow(); return }
+      if (!item || !ancestor) { dropOwn(); return null }
       ancestors.push({ node: ancestor, matrix: item.matrix })
     }
     const parent = ancestors.at(-1)?.node ?? null
@@ -2159,7 +2164,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       documentSpace: source.colorManagement?.documentSpace ?? 'srgb',
       grid: state.grid, checkerboard: state.checkerboard, pixelPreview: state.pixelPreview !== 0,
     }) : null
-    if (!plan) { dropGestureFollow(); return }
+    if (!plan) { dropOwn(); return null }
+    if (plan.paint.kind === 'image' && deferImage && !gestureFollow.current) return 'image'
     let layer = gestureFollow.current
     if (!layer) {
       const mounted = mountRotationSource(host.current, {
@@ -2175,22 +2181,72 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           restoreGpuOverlays()
         },
       })
-      if (!mounted) return
+      if (!mounted) return null
       gestureFollow.current = layer = mounted
       noteSourceRotation(true)
     }
     layer.place(matrix, screen, degrees)
+    return plan.paint.kind === 'image' ? 'image' : 'solid'
+  }
+  function placeRotationSnapshot(d: Drag, matrix: Matrix, screen: Point, degrees: number | undefined, drawSelection: boolean) {
+    if (d.rotationSnapshotRejected || d.duplicating || !host.current) return false
+    if (gestureFollow.current && !d.rotationSnapshot) return false
+    if (gestureFollow.current?.holding) dropGestureFollow()
+    const viewport = {
+      width: host.current.clientWidth || size.width,
+      height: host.current.clientHeight || size.height,
+    }
+    const box = visibleRotationCrop(d.box, d.view, viewport.width, viewport.height)
+    if (!box) { d.rotationSnapshotRejected = true; return false }
+    let layer = gestureFollow.current
+    if (!layer) {
+      const page = (d.sourceDocument || state.doc).pages.find(item => item.id === state.page)
+      const mounted = mountGestureFollow(host.current, {
+        box, view: d.view, corners: selectionCorners, hole: page?.background || '#ffffff',
+        drawSelection, ids: d.ids, releaseWaitMs: 4000,
+        onDestroy: () => {
+          if (gestureFollow.current === mounted) gestureFollow.current = null
+          d.rotationSnapshot = false
+          noteSourceRotation(false)
+          restoreGpuOverlays()
+        },
+      })
+      if (!mounted) return false
+      d.rotationSnapshot = true
+      gestureFollow.current = layer = mounted
+      noteSourceRotation(true)
+    }
+    layer.place(matrix, screen, degrees)
+    return true
+  }
+  function placeRotationFollow(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
+    const baked = gpuSelectionOwnsOutline
+    if (d.rotationSnapshot && gestureFollow.current) {
+      gestureFollow.current.place(matrix, screen, degrees)
+      return
+    }
+    const own = baked ? null : placeRotationSource(d, matrix, screen, degrees, true)
+    if (own === 'solid') return
+    const viewport = {
+      width: host.current?.clientWidth || size.width,
+      height: host.current?.clientHeight || size.height,
+    }
+    const visible = visibleRotationCrop(d.box, d.view, viewport.width, viewport.height)
+    const plan = rotationBitmapFollowPlan({
+      bakedOutline: baked, ownPaint: own, visibleBox: visible,
+      largeBitmap: d.box.width * d.view.zoom * d.box.height * d.view.zoom >= 65536,
+    })
+    if (plan.mode === 'snapshot' && placeRotationSnapshot(d, matrix, screen, degrees, plan.drawSelection)) return
+    if (own === 'image') placeRotationSource(d, matrix, screen, degrees, false)
   }
   function placeGestureFollow(d: Drag, matrix: Matrix, screen: Point, degrees?: number) {
+    if (d.kind === 'rotate') { placeRotationFollow(d, matrix, screen, degrees); return }
     if (gpuSelectionOwnsOutline) {
       // A local snapshot cannot erase the outline baked into the visible
       // bitmap. Keep the same renderer through this captured gesture.
       keepGpuGesture(d)
       return
     }
-    // Rotation follows from the node's own paint. A framebuffer crop bakes
-    // encoded alpha and drops pixels that sit outside the viewport.
-    if (d.kind === 'rotate') { placeRotationSource(d, matrix, screen, degrees); return }
     if (d.duplicating || !host.current) { dropGestureFollow(); return }
     if (gestureFollow.current?.holding) dropGestureFollow()
     let layer = gestureFollow.current
@@ -2576,8 +2632,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Overlap, reparenting and Option-copy immediately use the regular path.
     if (!d.cropFrame && (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
-      // Own paint is already on the pointer. A native capture here would
-      // convert, upload and redraw the same image on every sample.
+      // The bitmap and its selection are already on the pointer. A native
+      // capture here would resample a large image on every sample and leave
+      // the previous frame up until that finished.
       if (d.kind === 'rotate' && gestureFollow.current && !gestureFollow.current.holding) {
         clearFallbackMove()
         pendingBoardMove.current = [patches, placement]
