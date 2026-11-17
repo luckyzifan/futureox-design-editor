@@ -70,6 +70,7 @@ impl Fixture {
             interactive_effects: false,
             display_degrade: false,
             clipped_export_target: false,
+            flush_backdrop_frame: None,
             compact_export_groups: false,
             sample,
             raster_workspace: RasterWorkspace::default(),
