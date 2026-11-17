@@ -63,6 +63,9 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
       // conversion of strokes have separate shortcuts.
       { command: 'eraser-or-prototype', combo: 'Shift+E' },
       { command: 'outline-stroke', combo: 'Mod+Alt+O' },
+      // Figma keyboard layout: Remove fill is Option+/ on Mac (Alt+/ elsewhere).
+      // US Option+/ reports "÷"; the matcher maps that glyph back to Slash.
+      { command: 'remove-fill', combo: 'Alt+/' },
     )
     // Figma documents Shift, rather than Alt, for the Windows front/back chord.
     if (platform !== 'mac') for (const binding of bindings) {
@@ -123,6 +126,7 @@ function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) 
       'å': ['A', 'KeyA', false], 'π': ['P', 'KeyP', false],
       'ç': ['C', 'KeyC', false], '√': ['V', 'KeyV', false],
       '“': ['[', 'BracketLeft', false], '‘': [']', 'BracketRight', false],
+      '÷': ['/', 'Slash', false],
     }
     const known = optionOutputs[event.key]
     return !!known && key.toUpperCase() === known[0] && event.code === known[1] && event.shiftKey === known[2]
