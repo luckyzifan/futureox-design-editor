@@ -1165,15 +1165,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const frameTitles = useMemo(() => entries.filter(e => {
     const n = state.doc.nodes[e.id]
     const parentId = e.ancestors.at(-1)
-    return frameTitleShown(e, n, selection, parentId ? state.doc.nodes[parentId] : undefined)
-  }), [entries, state.doc, selection])
+    return frameTitleShown(e, n, selection, parentId ? state.doc.nodes[parentId] : undefined, uiMode)
+  }), [entries, state.doc, selection, uiMode])
   const overlay = useMemo(() => canvasOverlayCommands({
     document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:showPixelGrid,
     canTransform:showTransformHandles,selected:showSelectionChrome ? selected : [],owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
     measurementTarget:measurementTarget&&measurementBounds?{id:measurementTarget,bounds:measurementBounds}:null,
-    zoom,
+    zoom, uiMode,
   }), [state.doc,state.page,state.tool,showPixelGrid,editor.sessionGeneration,frameTitles,showSelectionChrome,showTransformHandles,selected,
-    measurementTarget,measurementBounds,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom])
+    measurementTarget,measurementBounds,selectionCorners,selectionBox,localSelection,selectionFeedback,zoom,uiMode])
+  const frameTitleLabels = useMemo(() => new Map(overlay.commands.labels.filter(label =>
+    label.kind === 'frame-title' || label.kind === 'section-title').map(label => [label.owners?.at(-1), label])), [overlay])
   const measurements = overlay.commands.measurements || []
   const marqueeChrome = useMemo(() => {
     if (!marqueePreview?.length) return null
@@ -3619,8 +3621,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               )
             })}
           {frameTitles.map(entry => {
-            const label = (overlay.commands.labels ?? []).find(item =>
-              (item.kind === 'frame-title' || item.kind === 'section-title') && item.owners?.at(-1) === entry.id)
+            const label = frameTitleLabels.get(entry.id)
             if (!label) return null
             const shown = gpuOverlay ? 0 : 1
             return (
@@ -3629,7 +3630,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   x={(label.offset.x - 6) / zoom} y={(label.offset.y - 14) / zoom}
                   width={(Math.max(label.text.length, 1) * 11 + 12) / zoom} height={18 / zoom} rx={4 / zoom} fill={label.chip} />}
                 <text data-frame-title={entry.id} opacity={shown} x={label.offset.x / zoom} y={label.offset.y / zoom}
-                  fontSize={11 / zoom} fill={!hidePanChrome && (selection.has(entry.id) || hover === entry.id) ? SELECTION_BLUE : label.color} pointerEvents="all"
+                  fontSize={label.size / zoom} fill={!hidePanChrome && (selection.has(entry.id) || hover === entry.id) ? SELECTION_BLUE : label.color} pointerEvents="all"
                   style={{cursor:entry.locked?'default':state.tool==='hand'||spaceHeld?'grab':'default'}}>
                   {label.text}
                 </text>

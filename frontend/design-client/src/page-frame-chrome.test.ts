@@ -32,7 +32,7 @@ test('a selected frame reveals direct child frame titles and the overlay chips a
   doc.pages[0].children = [frame.id, section.id]
   const entries = scene(doc, doc.pages[0].id)
   const selected = new Set([frame.id])
-  const visible = entries.filter(entry => frameTitleShown(entry, doc.nodes[entry.id], selected, doc.nodes[entry.ancestors.at(-1) ?? '']))
+  const visible = entries.filter(entry => frameTitleShown(entry, doc.nodes[entry.id], selected, doc.nodes[entry.ancestors.at(-1) ?? ''], 'sketch'))
   expect(visible.map(entry => doc.nodes[entry.id].name).sort()).toEqual(['Inner', '区域', '画板'].sort())
   const sectionEntry = entries.find(entry => entry.id === section.id)!
   const local = selectionLocalBounds(doc, section.id)
@@ -47,4 +47,26 @@ test('a selected frame reveals direct child frame titles and the overlay chips a
   })
   expect(overlay.commands.labels?.some(label => label.kind === 'selection-name')).toBe(false)
   expect(visible.some(entry => doc.nodes[entry.id].name === 'Deep')).toBe(false)
+})
+
+test('Figma keeps a nested title off its selected parent and fits long labels to the frame at overview scale', () => {
+  const doc = blank('Pages')
+  const frame = node('frame', 0, 0, 400, 300)
+  frame.name = '03_E-Commerce_Products_Quick Add'
+  const child = node('frame', 12, 48, 180, 100)
+  child.name = 'Product list'
+  frame.children = [child.id]
+  doc.nodes = { [frame.id]: frame, [child.id]: child }
+  doc.pages[0].children = [frame.id]
+  const [outer, inner] = scene(doc, doc.pages[0].id)
+  expect(frameTitleShown(inner, child, new Set([outer.id]), frame, 'figma')).toBe(false)
+  expect(frameTitleShown(inner, child, new Set([inner.id]), frame, 'figma')).toBe(true)
+  const overlay = (zoom: number) => canvasOverlayCommands({
+    document: doc, pageId: doc.pages[0].id, epoch: 1, tool: 'select', pixelGrid: false, canTransform: true,
+    selected: [], owners: [], frameTitles: [outer], localSelection: null, selectionCorners: [],
+    selectionBox: outer.bounds, measurementTarget: null, uiMode: 'figma', zoom,
+  })
+  expect(overlay(1).commands.labels[0].text).toBe(frame.name)
+  expect(overlay(.11).commands.labels[0].text).toBe('03…')
+  expect(overlay(.01).commands.labels).toEqual([])
 })

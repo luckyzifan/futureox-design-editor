@@ -37,6 +37,7 @@ import { CalculatedDimension, NumberField } from './fields'
 import { formatPercent, numericExpression } from './numeric-expression'
 import { sketchNumericAnchor } from './sketch-numeric-anchor'
 import { LayoutPanel } from './LayoutPanel'
+import { LayoutGuidePanel } from './LayoutGuidePanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { dispatchEditorCommand } from './editor-commands'
 import { desktopBridge } from './desktop'
@@ -51,7 +52,7 @@ import type { PencilCap } from './freehand'
 import { canFitFrameContents, editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, Minimize2, RotateCw } from 'lucide-react'
 import type { Editor } from './engine'
 import { VectorBrushPanel } from './VectorBrushPanel'
 import {
@@ -732,7 +733,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     <aside className="inspector" data-node-id={n.id} data-node-name={n.name} data-geometry-mode={uiMode} aria-label={propertyOwnerLabel(n.name, locale)}>
       {uiMode === 'sketch' && <div className="sketch-inspector-alignment"><AlignmentControls editor={editor} compact /></div>}
       <div className="panel-tabs">
-        <span>{n.graphic ? tr('图形容器') : ids.length > 1 ? propertyLayerCount(ids.length, locale) : tr({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>
+        {uiMode === 'figma' && framePresetButton ||
+          <span>{n.graphic ? tr('图形容器') : ids.length > 1 ? propertyLayerCount(ids.length, locale) : tr({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>}
         <button type="button" aria-label={tr("更多图层操作")} onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
       </div>
       <div className="inspector-scroll">
@@ -784,7 +786,12 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           </div>}
         </section>
         <section>
-          <h3>{tr("布局")}</h3>
+          <h3 className={uiMode === 'figma' ? 'layout-section-heading' : undefined}>{tr("布局")}
+            {uiMode === 'figma' && n.kind === 'frame' && ids.length === 1 &&
+              <button type="button" aria-label={tr('调整尺寸以适应内容')} title={tr('调整尺寸以适应内容')}
+                disabled={n.locked || !canFitFrameContents(s.doc, n)}
+                onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}><Minimize2 size={15} /></button>}
+          </h3>
           {n.kind==='slice' && uiMode === 'figma' && dimensions}
           {n.kind === 'ellipse' && !n.network && (
             <div className="field-grid">
@@ -804,7 +811,6 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
           </button>}
           {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} uiMode={uiMode} embedded geometry={uiMode === 'figma' ? <>
-            {framePresetButton}
             {dimensions}
             {n.kind === 'text' && !constraintParent?.graphic && <TextSizingControls editor={editor} nodes={[n]} />}
           </> : undefined} />}
@@ -1329,6 +1335,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           {n.kind === 'frame' && !n.graphic && <PreserveDepthControl editor={editor} layer={n} />}
         </section>}
         <SelectionColorsPanel editor={editor} />
+        {uiMode === 'figma' && n.kind === 'frame' &&
+          <LayoutGuidePanel key={`${editor.sessionGeneration}:${n.id}`} editor={editor} frame={n} ids={ids} compact />}
         </>}
         <NodeExportPanel key={n.id} editor={editor} node={n} />
       </div>

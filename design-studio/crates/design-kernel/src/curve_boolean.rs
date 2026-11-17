@@ -10,7 +10,15 @@ use crate::{
 use flo_curves::{Coord2, bezier::path::*};
 
 pub fn curves(path: &Path, m: Transform) -> Result<Vec<SimpleBezierPath>, String> {
-    let mut out = Vec::new();
+    curves_with_open(path, m, None)
+}
+
+fn curves_with_open(
+    path: &Path,
+    m: Transform,
+    mut open: Option<&mut Vec<SimpleBezierPath>>,
+) -> Result<Vec<SimpleBezierPath>, String> {
+    let mut closed = Vec::new();
     let mut parts = Vec::new();
     let mut start = Point::default();
     let mut pen = start;
@@ -22,7 +30,10 @@ pub fn curves(path: &Path, m: Transform) -> Result<Vec<SimpleBezierPath>, String
         match *cmd {
             Command::Move(p) => {
                 if !parts.is_empty() {
-                    return Err("Boolean operands must be closed".into());
+                    let Some(open) = open.as_mut() else {
+                        return Err("Boolean operands must be closed".into());
+                    };
+                    open.push((c(start), std::mem::take(&mut parts)));
                 }
                 start = p;
                 pen = p;
@@ -83,16 +94,19 @@ pub fn curves(path: &Path, m: Transform) -> Result<Vec<SimpleBezierPath>, String
                     ));
                 }
                 if !parts.is_empty() {
-                    out.push((c(start), std::mem::take(&mut parts)));
+                    closed.push((c(start), std::mem::take(&mut parts)));
                 }
                 pen = start;
             }
         }
     }
     if !parts.is_empty() {
-        return Err("Boolean operands must be closed".into());
+        let Some(open) = open else {
+            return Err("Boolean operands must be closed".into());
+        };
+        open.push((c(start), parts));
     }
-    Ok(out)
+    Ok(closed)
 }
 pub fn network(paths: Vec<SimpleBezierPath>) -> Network {
     let mut g = Network {
@@ -102,6 +116,11 @@ pub fn network(paths: Vec<SimpleBezierPath>) -> Network {
         curve_modes: None,
         fill_rule: "evenodd".into(),
     };
+    append_contours(&mut g, paths, true);
+    g
+}
+
+fn append_contours(g: &mut Network, paths: Vec<SimpleBezierPath>, closed: bool) {
     for (start, segments) in paths {
         if segments.is_empty() {
             continue;
@@ -113,7 +132,7 @@ pub fn network(paths: Vec<SimpleBezierPath>) -> Network {
             y: start.1,
         });
         for (i, (a, b, p)) in segments.iter().enumerate() {
-            let last = i + 1 == segments.len() && (p.0 - start.0).hypot(p.1 - start.1) < 0.01;
+            let last = closed && i + 1 == segments.len() && (p.0 - start.0).hypot(p.1 - start.1) < 0.01;
             let to = if last { base } else { g.vertices.len() };
             if !last {
                 g.vertices.push(Vertex {
@@ -131,7 +150,6 @@ pub fn network(paths: Vec<SimpleBezierPath>) -> Network {
             });
         }
     }
-    g
 }
 // Routing must use the same source-segment unit as `combine`, not serialized
 // commands: Move/Close are not edges, while arcs and smooth corners expand.
@@ -386,6 +404,12 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                 return Ok(());
             }
             let stroke_operands = crate::interop::sketch_binding(doc, &doc.nodes[id], "figBooleanStrokeOperands") == Some("true");
+            // A stroked vector union paints its closed result and the open
+            // centerlines of its operands with the parent's stroke. Open
+            // paths contribute no fill area to the Boolean clipper.
+            let keep_open_strokes = op == Operation::Union && node.kind == "vector" && !node.strokes.is_empty() && !stroke_operands;
+            let mut open_strokes = Vec::new();
+            let mut open_edges = 0usize;
             let inputs = children
                 .iter()
                 .filter(|c| doc.nodes[*c].visible)
@@ -419,7 +443,21 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                                     Err(_) => n.paths()?.0,
                                 }
                             } else { n.paths()?.0 }
-                        } else { n.paths()?.0 },
+                        } else {
+                            let (mut fill, stroke) = n.paths()?;
+                            if keep_open_strokes && stroke.commands.chunk_by(|_, next| !matches!(next, Command::Move(_)))
+                                .any(|contour| !matches!(contour.last(), Some(Command::Close)))
+                            {
+                                let previous = open_strokes.len();
+                                curves_with_open(&stroke, n.transform, Some(&mut open_strokes))?;
+                                open_edges += open_strokes[previous..].iter().map(|(_, segments)| segments.len()).sum::<usize>();
+                                if open_edges > 8192 { return Err("Boolean open stroke segment budget exceeded".into()); }
+                                if n.kind == "line" {
+                                    fill = Path::default();
+                                }
+                            }
+                            fill
+                        },
                         n.transform,
                         n.fill_even_odd(),
                     ))
@@ -454,10 +492,21 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                     let value=combine_dense(&inputs,op).map_err(|e|format!("Boolean node {id}: {e}"))?;
                     if memoize{cache.insert_geometry(key,&value);}value
                 };
+                let geometry = if open_strokes.is_empty() {
+                    geometry
+                } else {
+                    let (fill, mut stroke) = geometry.paths()?;
+                    for (start, segments) in open_strokes {
+                        stroke.commands.push(Command::Move(Point::new(start.0, start.1)));
+                        stroke.commands.extend(segments.into_iter().map(|(a, b, p)|
+                            Command::Cubic(Point::new(a.0, a.1), Point::new(b.0, b.1), Point::new(p.0, p.1))));
+                    }
+                    crate::vector_geometry::VectorGeometry::from_paths(&fill, &stroke, &geometry.fill_rule)?
+                };
                 let node=doc.nodes.get_mut(id).unwrap(); node.network=None;node.vector_geometry=Some(geometry.into());
                 return Ok(());
             }
-            let g = if inputs.is_empty() {
+            let mut g = if inputs.is_empty() {
                 network(vec![])
             } else {
                 let key = crate::curve_boolean_cache::Cache::key(&inputs, op);
@@ -466,6 +515,10 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                     if memoize { cache.insert(key, &result); } result
                 }
             };
+            if open_edges > 0 && g.vertices.len() + open_edges + open_strokes.len() > 10000 {
+                return Err(format!("Boolean node {id}: vector network vertex budget exceeded"));
+            }
+            append_contours(&mut g, open_strokes, false);
             let node=doc.nodes.get_mut(id).unwrap();node.vector_geometry=None;node.network=Some((g).into());
         }
         Ok(())

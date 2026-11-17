@@ -2,6 +2,7 @@ import type { CanvasCamera } from '../../canvas-camera'
 import type { Point } from '../../model'
 import { SELECTION_BLUE } from '../../selection-blue'
 import { SPACING_RED } from '../../canvas-measurements'
+import { CANVAS_CHROME_FONT } from '../../page-frame-chrome'
 
 export type CanvasLabel = {
   anchor: Point; offset: Point; text: string; size: number; color: string
@@ -17,7 +18,7 @@ type Entry = { texture: GPUTexture; bind: GPUBindGroup; width: number; height: n
 
 function measureLabel(label:CanvasLabel,density:number,measure:OffscreenCanvasRenderingContext2D) {
   if(!Number.isFinite(density)||density<=0)throw Error('Invalid chrome text density')
-  const font=`${label.size}px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif`
+  const font=`${label.size}px ${CANVAS_CHROME_FONT}`
   measure.font=font
   const metrics=measure.measureText(label.text)
   const framed=label.frame==='pill'||label.frame==='accent'||label.frame==='measure'

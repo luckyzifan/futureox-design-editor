@@ -16,16 +16,13 @@ import {
   type StackingOrder,
   type Constraints,
   type ConstraintAnchor,
-  type LayoutGrid,
   defaultLayout,
   defaultSizing,
-  defaultLayoutGrid,
-  MAX_LAYOUT_GRIDS,
   LAYOUT_GAP_LIMIT,
   container,
 } from './model'
 import { NumberField } from './fields'
-import { ColorInput } from './ColorInput'
+import { LayoutGuidePanel } from './LayoutGuidePanel'
 import { LayoutDashboard, Rows3, Columns3, Grid2X2 } from 'lucide-react'
 const packed = ['start', 'center', 'end'] as const
 const alignments = [
@@ -101,38 +98,8 @@ export function LayoutPanel({
     try { editor.autoLayout(mode, ids); setSuggestionError('') }
     catch (error) { setSuggestionError(error instanceof Error ? error.message : String(error)) }
   }
-  const grids = n.layoutGrids ?? (n.layoutGrid ? [n.layoutGrid] : [])
-  const editGrids = (edit: (grids: LayoutGrid[]) => LayoutGrid[], label: string) =>
-    editor.updateProperties(ids, (target) => {
-      if (target.kind !== 'frame') return
-      const current = target.layoutGrids ?? (target.layoutGrid ? [target.layoutGrid] : [])
-      const next = edit(current)
-      delete target.layoutGrid
-      if (next.length === 1 && next[0].alignment === undefined) {
-        target.layoutGrid = next[0]
-        delete target.layoutGrids
-      } else if (next.length) target.layoutGrids = next
-      else delete target.layoutGrids
-    }, label)
-  const updateGrid = (index: number, patch: Partial<LayoutGrid>) =>
-    editGrids(current => current.map((grid, i) => i === index ? { ...grid, ...patch } : grid), '修改布局网格')
-  const Tag = embedded ? 'div' : 'section'
-  const Heading = embedded ? 'h4' : 'h3'
-  return (
-    <Tag className="layout-panel">
-      {!n.graphic && <Heading>{tr("自动布局")}{' '}
-        {!active && (
-          <button title={tr("添加自动布局 Shift+A")} onClick={() => setLayoutMode()}>
-            ＋
-          </button>
-        )}
-        {active && (
-          <button title={tr("移除自动布局")} onClick={() => setLayoutMode('none')}>
-            −
-          </button>
-        )}
-      </Heading>}
-      {container(n) && ids.length === 1 && <div className="layout-suggestions">
+  const compact = uiMode === 'figma' && embedded && n.kind === 'frame' && !n.graphic && !active && !flow
+  const suggestions = container(n) && ids.length === 1 && <div className="layout-suggestions">
         <button type="button" disabled={n.locked} onClick={() => {
           try { setSuggestion(editor.previewSuggestedLayout(n.id)); setSuggestionError('') }
           catch (error) { setSuggestion(null); setSuggestionError(String(error)) }
@@ -151,13 +118,89 @@ export function LayoutPanel({
           {suggestion.warnings.map((warning, index) => <p key={index}>{layoutSuggestionText(suggestion.warningDisplay?.[index], warning, locale)}</p>)}
           <button type="button" onClick={() => { setSuggestion(null); setSuggestionError('') }}>{tr("取消")}</button>
         </div>}
-      </div>}
+      </div>
+  const sizingControls = !parent?.graphic && <>
+      {(n.kind !== 'text' || (!!geometry && flow)) && <>
+      <h4>{tr("响应式尺寸")}</h4>
+      {(['width', 'height'] as const).map(axis => {
+        const ratioKey = axis === 'width' ? 'widthRatio' : 'heightRatio'
+        const modeLabel = axis === 'width' ? '宽度模式' : '高度模式'
+        const ratioLabel = axis === 'width' ? '相对宽度 %' : '相对高度 %'
+        return <Fragment key={axis}>
+          <label className="labeled-select">{tr(modeLabel)}
+            <select aria-label={tr(modeLabel)} value={sizing[axis]} onChange={e => {
+              const mode = e.currentTarget.value as Sizing['width']
+              updateSize(mode === 'relative' ? { [axis]: mode, [ratioKey]: sizing[ratioKey] ?? 1 } : { [axis]: mode })
+            }}>
+              <option value="fixed">{tr("固定")}</option>
+              <option value="hug" disabled={!active && n.kind !== 'text'}>{tr("内容自适应")}</option>
+              <option value="fill" disabled={!flow || sizing.absolute}>{tr("填满容器")}</option>
+              {(uiMode === 'sketch' && relativeItem || sizing[axis] === 'relative') &&
+                <option value="relative" disabled={!relativeItem}>{tr('相对尺寸 (%)')}</option>}
+            </select>
+          </label>
+          {relativeItem && sizing[axis] === 'relative' &&
+            <NumberField historyLabel={ratioLabel} unit="percent" diagnosticFamily={axis === 'width' ? 3 : 4}
+              label={tr(ratioLabel)} value={(sizing[ratioKey] ?? 1) * 100} min={0} max={100}
+              onChange={value => updateSize({ [ratioKey]: value / 100 })} />}
+        </Fragment>
+      })}
+      </>}
+      <details>
+        <summary>{tr("最小 / 最大尺寸")}</summary>
+        <div className="field-grid">
+          <UnitNumberField historyLabel="最小宽度" diagnosticFamily={2} unit="length" unitScale={units.x}
+            label={tr("最小宽度")}
+            value={sizing.minWidth}
+            min={0.01}
+            max={sizing.maxWidth}
+            onChange={(minWidth) => updateSize({ minWidth })}
+          />
+          <UnitNumberField historyLabel="最小高度" diagnosticFamily={2} unit="length" unitScale={units.y}
+            label={tr("最小高度")}
+            value={sizing.minHeight}
+            min={0.01}
+            max={sizing.maxHeight}
+            onChange={(minHeight) => updateSize({ minHeight })}
+          />
+          {(['maxWidth', 'maxHeight'] as const).map((key, i) => (
+            <label className="number-field" key={key}>
+              <span>{i ? tr("最大高度") : tr("最大宽度")}</span>
+              <DraftInput aria-label={tr(i ? '最大高度' : '最大宽度')} type="number"
+                value={sizing[key] >= 1e7 ? '' : String(sizing[key] * (i ? units.y : units.x))} placeholder={tr("不限")}
+                min={(i ? sizing.minHeight : sizing.minWidth) * (i ? units.y : units.x)} max={1e7 * (i ? units.y : units.x)}
+                validate={(text) => text === '' || (Number.isFinite(Number(text)) && Number(text) / (i ? units.y : units.x) >= (i ? sizing.minHeight : sizing.minWidth) && Number(text) / (i ? units.y : units.x) <= 1e7)}
+                onCommit={(text) => updateSize({ [key]: text === '' ? 1e7 : Number(text) / (i ? units.y : units.x) })} />
+            </label>
+          ))}
+        </div>
+      </details>
+      </>
+  const Tag = embedded ? 'div' : 'section'
+  const Heading = embedded ? 'h4' : 'h3'
+  return (
+    <Tag className="layout-panel">
+      {!compact && !n.graphic && <Heading>{tr("自动布局")}{' '}
+        {!active && (
+          <button title={tr("添加自动布局 Shift+A")} onClick={() => setLayoutMode()}>
+            ＋
+          </button>
+        )}
+        {active && (
+          <button title={tr("移除自动布局")} onClick={() => setLayoutMode('none')}>
+            −
+          </button>
+        )}
+      </Heading>}
+      {!compact && suggestions}
       {suggestionError && <p role="alert">{layoutSuggestionError(suggestionError, locale)}</p>}
+      {compact && <div className="layout-field-label">{tr('流向')}</div>}
       {container(n) && <div className="layout-flow" role="radiogroup" aria-label={tr("布局方向")}>
         {([['none','自由布局',LayoutDashboard],['vertical','纵向布局',Rows3],['horizontal','横向布局',Columns3],['grid','网格布局',Grid2X2]] as const).map(([mode,label,Icon]) =>
           <button key={mode} type="button" role="radio" aria-label={tr(label)} title={tr(label)} aria-checked={(active ? layout.mode : 'none') === mode}
             onClick={() => { if ((active ? layout.mode : 'none') !== mode) setLayoutMode(mode) }}><Icon size={16} /></button>)}
       </div>}
+      {compact && <div className="layout-field-label">{tr('尺寸')}</div>}
       {geometry}
       {active && (layout.mode === 'horizontal' || layout.mode === 'vertical') && <div className="align-pad" role="group" aria-label={tr("对齐")}>
         {packed.flatMap(row => packed.map(col => {
@@ -288,63 +331,11 @@ export function LayoutPanel({
           </label>
         </>
       )}
-      {!parent?.graphic && <>
-      {(n.kind !== 'text' || (!!geometry && flow)) && <>
-      <h4>{tr("响应式尺寸")}</h4>
-      {(['width', 'height'] as const).map(axis => {
-        const ratioKey = axis === 'width' ? 'widthRatio' : 'heightRatio'
-        const modeLabel = axis === 'width' ? '宽度模式' : '高度模式'
-        const ratioLabel = axis === 'width' ? '相对宽度 %' : '相对高度 %'
-        return <Fragment key={axis}>
-          <label className="labeled-select">{tr(modeLabel)}
-            <select aria-label={tr(modeLabel)} value={sizing[axis]} onChange={e => {
-              const mode = e.currentTarget.value as Sizing['width']
-              updateSize(mode === 'relative' ? { [axis]: mode, [ratioKey]: sizing[ratioKey] ?? 1 } : { [axis]: mode })
-            }}>
-              <option value="fixed">{tr("固定")}</option>
-              <option value="hug" disabled={!active && n.kind !== 'text'}>{tr("内容自适应")}</option>
-              <option value="fill" disabled={!flow || sizing.absolute}>{tr("填满容器")}</option>
-              {(uiMode === 'sketch' && relativeItem || sizing[axis] === 'relative') &&
-                <option value="relative" disabled={!relativeItem}>{tr('相对尺寸 (%)')}</option>}
-            </select>
-          </label>
-          {relativeItem && sizing[axis] === 'relative' &&
-            <NumberField historyLabel={ratioLabel} unit="percent" diagnosticFamily={axis === 'width' ? 3 : 4}
-              label={tr(ratioLabel)} value={(sizing[ratioKey] ?? 1) * 100} min={0} max={100}
-              onChange={value => updateSize({ [ratioKey]: value / 100 })} />}
-        </Fragment>
-      })}
-      </>}
-      <details>
-        <summary>{tr("最小 / 最大尺寸")}</summary>
-        <div className="field-grid">
-          <UnitNumberField historyLabel="最小宽度" diagnosticFamily={2} unit="length" unitScale={units.x}
-            label={tr("最小宽度")}
-            value={sizing.minWidth}
-            min={0.01}
-            max={sizing.maxWidth}
-            onChange={(minWidth) => updateSize({ minWidth })}
-          />
-          <UnitNumberField historyLabel="最小高度" diagnosticFamily={2} unit="length" unitScale={units.y}
-            label={tr("最小高度")}
-            value={sizing.minHeight}
-            min={0.01}
-            max={sizing.maxHeight}
-            onChange={(minHeight) => updateSize({ minHeight })}
-          />
-          {(['maxWidth', 'maxHeight'] as const).map((key, i) => (
-            <label className="number-field" key={key}>
-              <span>{i ? tr("最大高度") : tr("最大宽度")}</span>
-              <DraftInput aria-label={tr(i ? '最大高度' : '最大宽度')} type="number"
-                value={sizing[key] >= 1e7 ? '' : String(sizing[key] * (i ? units.y : units.x))} placeholder={tr("不限")}
-                min={(i ? sizing.minHeight : sizing.minWidth) * (i ? units.y : units.x)} max={1e7 * (i ? units.y : units.x)}
-                validate={(text) => text === '' || (Number.isFinite(Number(text)) && Number(text) / (i ? units.y : units.x) >= (i ? sizing.minHeight : sizing.minWidth) && Number(text) / (i ? units.y : units.x) <= 1e7)}
-                onCommit={(text) => updateSize({ [key]: text === '' ? 1e7 : Number(text) / (i ? units.y : units.x) })} />
-            </label>
-          ))}
-        </div>
-      </details>
-      </>}
+      {compact ? <details className="layout-options" key={n.id}>
+        <summary>{tr('布局选项')}</summary>
+        {sizingControls}
+        {suggestions}
+      </details> : sizingControls}
       {flow && (
         <>
           <label className="check-row">
@@ -419,59 +410,8 @@ export function LayoutPanel({
           ))}
         </>
       )}
-      {n.kind === 'frame' && (
-        <>
-          <h4 id="layout-grid-settings" tabIndex={-1}>{tr("布局网格")}{' '}
-            <button type="button" title={tr("添加布局网格")} disabled={n.locked || grids.length >= MAX_LAYOUT_GRIDS}
-              onClick={() => editGrids(current => current.length < MAX_LAYOUT_GRIDS
-                ? [...current, defaultLayoutGrid()] : current, '添加布局网格')}>＋</button>
-          </h4>
-          {grids.map((grid, index) => (
-            <fieldset key={index} className="layout-grid-editor" data-testid="layout-grid-editor" disabled={n.locked}>
-              <legend>{tr("布局网格")} {index + 1}</legend>
-              <label className="check-row"><input type="checkbox" aria-label={tr("显示布局网格")}
-                checked={grid.visible} onChange={e => updateGrid(index, { visible: e.target.checked })} />{tr("显示网格")}</label>
-              <label className="labeled-select">{tr("网格方向")}<select aria-label={tr("网格方向")} value={grid.axis}
-                onChange={e => updateGrid(index, { axis: e.target.value as LayoutGrid['axis'] })}>
-                <option value="column">{tr("列")}</option>
-                <option value="row">{tr("行")}</option>
-                <option value="uniform">{tr("方块")}</option>
-              </select></label>
-              <label className="labeled-select">{tr("网格对齐")}<select aria-label={tr("网格对齐")} value={grid.alignment ?? 'stretch'}
-                onChange={e => {
-                  const alignment = e.target.value as NonNullable<LayoutGrid['alignment']>
-                  updateGrid(index, alignment === 'stretch'
-                    ? { alignment, sectionSize: undefined, count: grid.count || 12 }
-                    : { alignment, sectionSize: grid.sectionSize ?? 32 })
-                }}>
-                <option value="start">{tr("起点")}</option>
-                <option value="center">{tr("居中")}</option>
-                <option value="end">{tr("终点")}</option>
-                <option value="stretch">{tr("拉伸")}</option>
-              </select></label>
-              <div className="field-grid">
-                <NumberField historyLabel="数量" diagnosticFamily={2} unit="number"
-                  label={tr(grid.sectionSize === undefined ? "数量" : "数量（0 为自动）")} value={grid.count}
-                  min={grid.sectionSize === undefined ? 1 : 0} max={64}
-                  onChange={count => updateGrid(index, { count: Math.round(count) })} />
-                {grid.sectionSize !== undefined && <UnitNumberField unitScale={grid.axis === 'row' ? units.y : units.x}
-                  label={tr("区块尺寸")} value={grid.sectionSize} min={0.01}
-                  onChange={sectionSize => updateGrid(index, { sectionSize })} />}
-                <UnitNumberField historyLabel="间距" unit="length" diagnosticFamily={2} unitScale={grid.axis === 'row' ? units.y : units.x}
-                  label={tr("间距")} value={grid.gutter} min={0} max={1e5}
-                  onChange={gutter => updateGrid(index, { gutter })} />
-                <UnitNumberField historyLabel="边距" diagnosticFamily={2} unit="length" unitScale={grid.axis === 'row' ? units.y : units.x}
-                  label={tr("边距")} value={grid.margin} min={0} max={1e5}
-                  onChange={margin => updateGrid(index, { margin })} />
-                <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent" label={tr("不透明度 %")}
-                  value={grid.opacity * 100} min={0} max={100} onChange={v => updateGrid(index, { opacity: v / 100 })} />
-              </div>
-              <ColorInput label={tr("网格颜色")} value={grid.color} onChange={color => updateGrid(index, { color })} />
-              <button type="button" onClick={() => editGrids(current => current.filter((_, i) => i !== index), '移除布局网格')}>{tr("移除网格")}</button>
-            </fieldset>
-          ))}
-        </>
-      )}
+      {n.kind === 'frame' && !(uiMode === 'figma' && embedded) &&
+        <LayoutGuidePanel editor={editor} frame={n} ids={ids} />}
     </Tag>
   )
 }
