@@ -57,6 +57,15 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
   }, '键盘调整图层尺寸')
 }
 
+/** Figma toggles rulers with ⇧R; the Sketch Mac app uses ⌃R. ⇧R stays valid in
+ * both presets, while Control+R is admitted only for the Sketch-like preset.
+ * Alt+R (origin) and any Cmd-variant are left to their own handlers. */
+export function rulersToggleEvent(event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; code: string }, profile: ShortcutProfile): boolean {
+  if (event.code !== 'KeyR' || event.altKey || event.metaKey) return false
+  if (!event.ctrlKey && event.shiftKey) return true
+  return profile === 'sketch-like' && event.ctrlKey && !event.shiftKey
+}
+
 /** Mac Figma and Sketch both select siblings inside the entered container.
  * An empty selection, a top-level selection, or a selection that does not
  * share one container falls back to the current page. Hidden and locked

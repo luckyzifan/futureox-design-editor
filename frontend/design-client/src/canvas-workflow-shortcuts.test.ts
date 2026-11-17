@@ -3,7 +3,7 @@ import { Editor } from './engine'
 import { blank, node, defaultSizing, defaultTextStyle } from './model'
 import { dispatchEditorCommand } from './editor-commands'
 import { dispatchEditorShortcut } from './editor-shortcuts'
-import { selectAllCanvasIds } from './canvas-workflow-shortcuts'
+import { rulersToggleEvent, selectAllCanvasIds } from './canvas-workflow-shortcuts'
 import { selectionMetric } from './selection-properties'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
@@ -139,4 +139,22 @@ test('Figma Windows front/back uses Ctrl+Shift brackets, while macOS/Sketch pres
   expect(resolveShortcut(key(']', { ctrlKey: true, altKey: true }), context)).toBeNull()
   expect(resolveShortcut(key(']', { metaKey: true, altKey: true }), { ...context, platform: 'mac' })?.command).toBe('bring-to-front')
   expect(resolveShortcut(key(']', { ctrlKey: true, altKey: true }), { ...context, profile: 'sketch-like' })?.command).toBe('bring-to-front')
+})
+
+describe('ruler toggle key follows the active preset (Figma ⇧R, Sketch ⌃R)', () => {
+  test.each([
+    ['figma-like', { shiftKey: true }, true],
+    ['sketch-like', { shiftKey: true }, true],
+    ['figma-like', { ctrlKey: true }, false],
+    ['sketch-like', { ctrlKey: true }, true],
+    ['sketch-like', { ctrlKey: true, shiftKey: true }, false],
+    ['sketch-like', { ctrlKey: true, metaKey: true }, false],
+    ['sketch-like', { shiftKey: true, altKey: true }, false],
+    ['sketch-like', { metaKey: true }, false],
+  ] as const)('%s %j -> %s', (profile, overrides, expected) => {
+    expect(rulersToggleEvent({ code: 'KeyR', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...overrides }, profile)).toBe(expected)
+  })
+  test('other keys never toggle rulers', () => {
+    for (const code of ['KeyT', 'KeyX', 'Enter']) expect(rulersToggleEvent({ code, metaKey: false, ctrlKey: false, shiftKey: true, altKey: false }, 'sketch-like')).toBe(false)
+  })
 })
