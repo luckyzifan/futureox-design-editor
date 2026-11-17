@@ -5,7 +5,7 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, afterEach, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
-import { blank, node, paint, defaultLayout } from './model'
+import { blank, node, paint, defaultLayout, uid } from './model'
 import { useUtilityTools } from './utility-tools'
 import { CanvasScrollbars } from './CanvasScrollbars'
 import { CanvasGuides } from './CanvasGuides'
@@ -31,3 +31,40 @@ test('layout padding gesture resolves snap and commits actual layout change',asy
 test('eraser cannot remove locked targets',async()=>{const line=node('line');line.fills=[];line.locked=true;editor.change('fixture',d=>{d.nodes[line.id]=line;d.pages[0].children.push(line.id)});target=line.id;await renderUtility('eraser');const version=editor.state.version;await gesture();expect(editor.state.version).toBe(version);expect(editor.state.doc.nodes[line.id]).toBeDefined();expect(outcomes(CanvasAction.eraser).at(-1)?.actionOutcome).toBe(ActionOutcome.blocked)})
 test('lasso selection and bend use real authored scene state, not handler returns',async()=>{const line=node('line',20,20,80,80);line.fills=[];editor.change('fixture',d=>{d.nodes[line.id]=line;d.pages[0].children.push(line.id)});await renderUtility('vector-lasso');await act(async()=>{utility.start(event(0,0),{x:0,y:0},1);for(const [x,y] of [[200,0],[200,200],[0,200],[0,0]])utility.move(event(x,y),{x,y});utility.end(event(0,0),{x:0,y:0})});expect(editor.state.selection).toContain(line.id);expect(outcomes(CanvasAction.lasso).at(-1)?.selectionChanged).toBe(1);target=line.id;await renderUtility('bend');const version=editor.state.version;await act(async()=>{utility.start(event(60,60),{x:60,y:60},1);utility.end(event(80,40),{x:80,y:40})});expect(editor.state.version).toBeGreaterThan(version);expect(outcomes(CanvasAction.bend).at(-1)?.actionOutcome).toBe(ActionOutcome.committed)})
 test('smart selection gap handle snaps, commits and undo restores transforms',async()=>{const {CanvasSmartSelection}=await import('./CanvasSmartSelection');const nodes=[node('rectangle',20,20,40,40),node('rectangle',100,20,40,40),node('rectangle',180,20,40,40)];editor.change('fixture',d=>{for(const n of nodes){d.nodes[n.id]=n;d.pages[0].children.push(n.id)}});editor.select(nodes.map(n=>n.id));const before=editor.state.doc;await act(async()=>root.render(<CanvasSmartSelection editor={editor} view={view} size={size} visible/>));const layer=host.querySelector('.canvas-smart-selection')!,handle=host.querySelector('[data-testid=smart-gap-x]')!;expect(handle).not.toBeNull();await act(async()=>{fire(handle,'pointerdown',80,40);fire(layer,'pointermove',95.4,40);fire(layer,'pointerup',95.4,40)});expect(editor.state.doc.nodes[nodes[1].id].transform[4]-editor.state.doc.nodes[nodes[0].id].transform[4]).toBe(95);expect(outcomes(CanvasAction.smartSelection).at(-1)?.actionOutcome).toBe(ActionOutcome.committed);editor.undo();expect(editor.state.doc).toBe(before)})
+
+test('ruler context menu removes every visible guide of one axis in one undo',async()=>{
+ editor.set({rulers:true})
+ const frame=node('frame',50,60,120,90)
+ editor.change('fixture',d=>{d.nodes[frame.id]=frame;d.pages[0].children.push(frame.id)
+  d.pages[0].guides=[{id:uid(),axis:'y',position:80},{id:uid(),axis:'y',position:200},{id:uid(),axis:'x',position:120}]
+  d.nodes[frame.id].guides=[{id:uid(),axis:'y',position:100},{id:uid(),axis:'x',position:60}]})
+ await act(async()=>root.render(<CanvasGuides editor={editor} view={view} size={size} intercept={()=>false}/>))
+ const layer=host.querySelector('.canvas-guide-layer')!
+ vi.spyOn(layer,'getBoundingClientRect').mockReturnValue({left:0,top:0,right:800,bottom:600,width:800,height:600,x:0,y:0,toJSON(){}})
+ await act(async()=>host.querySelector('[data-testid=horizontal-ruler]')!.dispatchEvent(new dom.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:120,clientY:10,button:2})))
+ const menu=document.querySelector('.guide-ruler-menu')!
+ expect(menu.getAttribute('role')).toBe('menu')
+ const item=menu.querySelector('button')!
+ expect(item.textContent).toContain('移除全部横向参考线（3）')
+ await act(async()=>item.click())
+ expect(editor.state.doc.pages[0].guides?.map(g=>g.axis)).toEqual(['x'])
+ expect(editor.state.doc.nodes[frame.id].guides?.map(g=>g.axis)).toEqual(['x'])
+ expect(editor.canUndo).toBe(true)
+ expect(outcomes(CanvasAction.guide).at(-1)?.actionOutcome).toBe(ActionOutcome.committed)
+ editor.undo()
+ expect(editor.state.doc.pages[0].guides?.length).toBe(3);expect(editor.state.doc.nodes[frame.id].guides?.length).toBe(2)
+})
+test('ruler menu stays inert without guides of that axis and Escape closes it',async()=>{
+ editor.set({rulers:true})
+ editor.change('fixture',d=>{d.pages[0].guides=[{id:uid(),axis:'y',position:80}]})
+ await act(async()=>root.render(<CanvasGuides editor={editor} view={view} size={size} intercept={()=>false}/>))
+ const layer=host.querySelector('.canvas-guide-layer')!
+ vi.spyOn(layer,'getBoundingClientRect').mockReturnValue({left:0,top:0,right:800,bottom:600,width:800,height:600,x:0,y:0,toJSON(){}})
+ const version=editor.state.version
+ await act(async()=>host.querySelector('[data-testid=vertical-ruler]')!.dispatchEvent(new dom.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:10,clientY:120,button:2})))
+ const menu=document.querySelector('.guide-ruler-menu')!
+ expect(menu.querySelector('button')!.disabled).toBe(true)
+ await act(async()=>menu.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+ expect(document.querySelector('.guide-ruler-menu')).toBeNull()
+ expect(editor.state.version).toBe(version);expect(editor.state.doc.pages[0].guides?.length).toBe(1)
+})
