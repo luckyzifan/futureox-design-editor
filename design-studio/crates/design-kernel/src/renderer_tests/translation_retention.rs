@@ -1161,3 +1161,47 @@ fn rotation_reuses_the_analytic_prefix_and_matches_a_fresh_render() {
     fresh_color.install_document(recolored).unwrap();
     assert_eq!(changed, fresh_color.render(&options).unwrap());
 }
+
+#[test]
+fn long_child_list_restores_a_settled_cut_on_the_first_tiled_rotation() {
+    let mut nodes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for index in 0..28 {
+        let id = format!("fill-{index}");
+        nodes.insert(id.clone(), json!({"id": id, "kind": "rectangle", "width": 18, "height": 12,
+            "transform": [1, 0, 0, 1, 8 + (index % 7) * 24, 8 + (index / 7) * 18],
+            "fills": [{"kind": "solid", "color": "#5b7c99"}]}));
+        children.push(id);
+    }
+    nodes.insert("mover".into(), json!({"id": "mover", "kind": "rectangle", "width": 30, "height": 16,
+        "transform": [1, 0, 0, 1, 40, 70], "fills": [{"kind": "solid", "color": "#cc3344"}]}));
+    nodes.insert("tail".into(), json!({"id": "tail", "kind": "rectangle", "width": 22, "height": 14,
+        "transform": [1, 0, 0, 1, 90, 78], "fills": [{"kind": "solid", "color": "#2244aa"}]}));
+    children.push("mover".into());
+    children.push("tail".into());
+    nodes.insert("frame".into(), json!({"id": "frame", "kind": "frame", "width": 220, "height": 120,
+        "fills": [{"kind": "solid", "color": "#f4f1ea"}], "children": children}));
+    let original: Document = serde_json::from_value(json!({"schemaVersion": 18, "id": "long-cut", "name": "long-cut",
+        "pages": [{"id": "p", "name": "p", "children": ["frame"], "background": "#ffffff"}],
+        "nodes": nodes})).unwrap();
+    let options = serde_json::from_value(json!({"pageId": "p", "width": 240, "height": 140,
+        "view": {"x": 0.0, "y": 0.0, "zoom": 1.0}, "transparent": false, "grid": false,
+        "rasterProfile": "analytic"})).unwrap();
+    let mut turned = original.clone();
+    let mover = turned.nodes.get_mut("mover").unwrap();
+    mover.transform = Transform([0., 1., -1., 0., mover.transform.0[4], mover.transform.0[5]]);
+    let patch = crate::editing::DocumentPatch::between(&original, &turned).unwrap();
+    let mut engine = Engine::new();
+    engine.install_document(original).unwrap();
+    let cold = engine.render_device_rect(&options, 0, 0, options.width, options.height).unwrap();
+    let cold_nodes = engine.stats().nodes;
+    engine.apply_document_patch_with_damage(&patch).unwrap();
+    let settled = engine.render_device_rect(&options, 0, 0, options.width, options.height).unwrap();
+    assert!(engine.stats().nodes + 8 <= cold_nodes, "settled cut did not skip earlier siblings: {} then {}", cold_nodes, engine.stats().nodes);
+    assert_ne!(settled, cold);
+    let mut fresh = Engine::new();
+    fresh.install_document(turned.clone()).unwrap();
+    assert_eq!(settled, fresh.render(&options).unwrap());
+    let tiled = engine.render_tiled_frame(&options, None).unwrap();
+    assert_eq!(tiled.rgba, settled);
+}

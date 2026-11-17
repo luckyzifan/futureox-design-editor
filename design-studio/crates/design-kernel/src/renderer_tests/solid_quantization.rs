@@ -74,6 +74,7 @@ impl Fixture {
             sample,
             raster_workspace: RasterWorkspace::default(),
             pose_prefix: None,
+            settled_cuts: std::sync::Arc::new(std::sync::Mutex::new(super::SettledCuts::default())),
             prefix_allocations: Vec::new(),
             prefix_view: PrefixView {
                 viewport: extent,
