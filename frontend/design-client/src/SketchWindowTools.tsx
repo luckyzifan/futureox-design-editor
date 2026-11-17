@@ -18,11 +18,12 @@ import { frameSizePresetGate } from './frame-presets'
 
 type Menu = 'insert' | 'shapes' | 'group' | 'tools' | 'combine'
 
-export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextStyle, onReplaceTemplate, onImages, onSystems, onShapeBuilder, onSection, onEditText }: {
+export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextStyle, onInsertSymbol, onReplaceTemplate, onImages, onSystems, onShapeBuilder, onSection, onEditText }: {
   editor: Editor
   disabled: boolean
   onPresets: () => void
   onInsertTextStyle?: () => void
+  onInsertSymbol?: () => void
   onReplaceTemplate?: () => void
   onImages: (files: File[]) => void
   onSystems: () => void
@@ -80,6 +81,8 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
         {(['frame', 'graphic', 'section', 'slice', 'hotspot', 'rectangle', 'ellipse', 'line', 'arrow', 'polygon', 'star', 'pen', 'pencil', 'text'] as const).map(menuTool)}
         {onInsertTextStyle && <button type="button" role="menuitem" tabIndex={-1}
           onClick={() => { setOpen(null); onInsertTextStyle() }}>{label('文字样式…', 'Text Style…')}</button>}
+        {onInsertSymbol && <button type="button" role="menuitem" tabIndex={-1}
+          onClick={() => { setOpen(null); onInsertSymbol() }}>{label('控件…', 'Symbol…')}</button>}
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); imageInput.current?.click() }}>{label('图片…', 'Image…')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onPresets() }}>{text.devicePresets}</button>
       </>)}
