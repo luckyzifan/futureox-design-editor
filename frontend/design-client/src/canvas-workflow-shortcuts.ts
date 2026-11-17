@@ -76,7 +76,22 @@ export function rulersToggleEvent(
 export function selectAllCanvasIds(document: DesignDocument, page: string, selection: readonly string[], profile: ShortcutProfile): string[] {
   if (profile !== 'figma-like' && profile !== 'sketch-like') return []
   const parents = allParents(document)
+  return containerChildren(document, page, selection, parents).filter(id => interactivePath(document, page, id, false, parents).length > 0)
+}
+
+function containerChildren(document: DesignDocument, page: string, selection: readonly string[], parents: ReturnType<typeof allParents>): readonly string[] {
   const scope = marqueeScope(document, page, selection, parents)
   const children = scope === page ? document.pages.find(value => value.id === page)?.children : document.nodes[scope]?.children
-  return (children || []).filter(id => interactivePath(document, page, id, false, parents).length > 0)
+  return children ?? []
+}
+
+export function selectAllForceCanvasIds(document: DesignDocument, page: string, selection: readonly string[]): string[] {
+  return [...containerChildren(document, page, selection, allParents(document))]
+}
+
+export function selectTopLevelCanvasIds(document: DesignDocument, page: string): string[] {
+  return (document.pages.find(value => value.id === page)?.children ?? []).filter(id => {
+    const node = document.nodes[id]
+    return node && (node.kind === 'frame' || node.graphic) && node.visible && !node.locked
+  })
 }

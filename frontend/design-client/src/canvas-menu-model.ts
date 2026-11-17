@@ -10,6 +10,7 @@ import { desktopBridge } from './desktop'
 import { selectionCommandAdmission } from './commands/selection-command'
 import { alignmentAvailability, alignmentCommandIds, alignmentCommands } from './alignment-availability'
 import { selectedPaintSwap } from './sketch-paint-commands'
+import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
 export type ContextMenuOrigin = 'canvas' | 'empty-canvas' | 'layers' | 'inspector'
@@ -90,6 +91,10 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   const visiblePages = userPages(doc)
   const pageIndex = visiblePages.findIndex(page => page.id === editor.state.page)
   const page = doc.pages.find(item => item.id === editor.state.page)
+  if (context.uiMode === 'sketch' && context.profile === 'sketch-like') items.push(
+    { command: 'select-all-force', label: '全选（含隐藏与锁定）', group: 'selection', disabled: !page?.children.length },
+    { command: 'select-all-top-level', label: '全选顶层画框与图形', group: 'selection', disabled: !selectTopLevelCanvasIds(doc, editor.state.page).length },
+  )
   const hasFrame = !!page?.children.some(id => doc.nodes[id]?.visible && (doc.nodes[id].kind === 'frame' || doc.nodes[id].kind === 'section'))
   items.push(
     { command: 'zoom-next-frame', label: '缩放到下一画板', group: 'view', disabled: !hasFrame },
@@ -148,6 +153,7 @@ const sketchContextOrder: EditorCommand[] = [
   'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
   'paste-properties-no-corners',
   'swap-fills-and-strokes',
+  'select-all-force', 'select-all-top-level', 'select-inverse',
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
@@ -189,13 +195,13 @@ function disabledOutlineItem(editor: Editor, context: ShortcutContext): CanvasMe
 }
 export function canvasContextItems(editor: Editor, context: ShortcutContext, uiMode: UiMode = 'figma',
   origin: ContextMenuOrigin = editor.state.selection.length ? 'canvas' : 'empty-canvas'): CanvasMenuItem[] {
-  const available = new Map(canvasMenuItems(editor, context).map(item => [item.command, item]))
+  const available = new Map(canvasMenuItems(editor, { ...context, uiMode }).map(item => [item.command, item]))
   const { busy, selection } = editor.state
   const disabled = busy || editor.interactionActive
   const locale = interfacePreference.getSnapshot().locale
   if (origin === 'empty-canvas') {
     const paste = available.get('paste-here')!
-    return uiMode === 'figma' ? [paste] : [paste, ...(['paste-in-place', 'select-all', 'zoom-fit'] as const).flatMap(command => {
+    return uiMode === 'figma' ? [paste] : [paste, ...(['paste-in-place', 'select-all', 'select-all-force', 'select-all-top-level', 'zoom-fit'] as const).flatMap(command => {
       const item = available.get(command)
       return item ? [item] : []
     })]

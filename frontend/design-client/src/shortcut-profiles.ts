@@ -45,7 +45,9 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
   const tools = new Map<string, string | undefined>(TOOL_COMMANDS.filter(c => c.tool && c.shortcut).map(c => [c.id, c.shortcut]))
   tools.set('set-tool-arrow', 'Shift+L')
   tools.set('set-tool-pencil', 'Shift+P')
-  const bindings = common.filter(binding => uiMode !== 'sketch' || binding.command !== 'select-matching')
+  const sketchMacSelection = uiMode === 'sketch' && profile === 'sketch-like' && platform === 'mac'
+  const bindings = common.filter(binding => (uiMode !== 'sketch' || binding.command !== 'select-matching') &&
+    (!sketchMacSelection || binding.command !== 'select-inverse'))
     .map(binding => ({ ...binding }))
   if (uiMode === 'sketch') for (const command of sketchBooleanCommandIds) {
     const { letter } = sketchBooleanCommands[command]
@@ -74,6 +76,10 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
     }
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' },
       { command: 'edit-frame-bounds', combo: 'Mod+Enter' })
+    if (sketchMacSelection) bindings.push(
+      { command: 'select-all-force', combo: 'Ctrl+Mod+A' },
+      { command: 'select-all-top-level', combo: 'Mod+Shift+A' },
+    )
     if (desktop) bindings.unshift({ command: 'fit-frame-content', combo: 'Mod+Shift+F' }, { command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
   } else {
     bindings.push(

@@ -3,7 +3,7 @@ import { Editor } from './engine'
 import { blank, node, defaultSizing, defaultTextStyle } from './model'
 import { dispatchEditorCommand } from './editor-commands'
 import { dispatchEditorShortcut } from './editor-shortcuts'
-import { rulersToggleEvent, selectAllCanvasIds } from './canvas-workflow-shortcuts'
+import { rulersToggleEvent, selectAllCanvasIds, selectAllForceCanvasIds, selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { selectionMetric } from './selection-properties'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
@@ -20,6 +20,14 @@ function key(key: string, overrides: Partial<ShortcutKey> & { target?: EventTarg
   return { key, code: key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, repeat: false, isComposing: false, defaultPrevented: false, target: null, preventDefault: vi.fn(), ...overrides }
 }
 const contexts: ShortcutContext[] = ['mac', 'windows', 'linux'].flatMap(platform => [false, true].map(desktop => ({ profile: 'sketch-like', platform, desktop } as ShortcutContext)))
+
+test('Sketch force selects hidden and locked siblings while the top-level action selects only visible frames', () => {
+  const { editor, frame, a, b, hidden, locked } = fixture()
+  const { doc, page } = editor.state
+  expect(selectAllCanvasIds(doc, page, [a.id], 'sketch-like')).toEqual([a.id, b.id])
+  expect(selectAllForceCanvasIds(doc, page, [a.id])).toEqual([a.id, b.id, hidden.id, locked.id])
+  expect(selectTopLevelCanvasIds(doc, page)).toEqual([frame.id])
+})
 const mod = (context: ShortcutContext) => context.platform === 'mac' ? { metaKey: true } : { ctrlKey: true }
 
 describe('keyboard dimensions with real Editor/WASM', () => {

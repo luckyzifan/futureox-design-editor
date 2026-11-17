@@ -8,6 +8,7 @@ import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import type { Editor } from './engine'
 import { userPages } from './fig-document'
 import type { InterfaceLocale } from './interface-preference'
+import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { container } from './model'
 import { commitPendingEdits } from './pending-edits'
 import { formatShortcutCombo, shortcutBindings, type ShortcutContext } from './shortcut-profiles'
@@ -97,6 +98,8 @@ const catalog: readonly Spec[] = [
   { command: 'select-instance', zh: '选择同一组件实例', en: 'Select instances of the same component', group: 'selection' },
   { command: 'select-inverse', zh: '反选', en: 'Invert selection', group: 'selection' },
   { command: 'select-all', zh: '全选', en: 'Select all', group: 'selection' },
+  { command: 'select-all-force', zh: '全选（含隐藏与锁定）', en: 'Select all including hidden and locked', group: 'selection' },
+  { command: 'select-all-top-level', zh: '全选顶层画板与图形', en: 'Select all top-level frames and graphics', group: 'selection' },
   { command: 'zoom-in', zh: '放大', en: 'Zoom in', group: 'view' },
   { command: 'zoom-out', zh: '缩小', en: 'Zoom out', group: 'view' },
   { command: 'zoom-100', zh: '缩放至 100%', en: 'Zoom to 100%', group: 'view', aliases: ['100%'] },
@@ -199,6 +202,9 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
   if (command === 'redo') return editor.canRedo ? undefined : phrase(locale, '没有可重做的操作', 'Nothing to redo')
   if (command === 'zoom-in' || command === 'zoom-out' || command === 'zoom-100' || command === 'paste' || command === 'paste-in-place' || command === 'new-page' || command === 'eraser-or-prototype') return undefined
   if (command === 'select-all' || command === 'zoom-fit') return page?.children.length ? undefined : phrase(locale, '当前页面没有图层', 'This page has no layers')
+  if (command === 'select-all-force') return page?.children.length ? undefined : phrase(locale, '当前页面没有图层', 'This page has no layers')
+  if (command === 'select-all-top-level') return selectTopLevelCanvasIds(doc, editor.state.page).length ? undefined
+    : phrase(locale, '当前页面没有可选的顶层画框或图形', 'This page has no selectable top-level frames or graphics')
   if (command === 'zoom-next-frame' || command === 'zoom-previous-frame') {
     const hasFrame = !!page?.children.some(id => {
       const node = doc.nodes[id]
@@ -318,6 +324,8 @@ export function commandSearchEntries(editor: Editor, context: ShortcutContext, l
     entries.push({ ...entry, ...state, order: entries.length })
   }
   for (const spec of catalog) {
+    if ((spec.command === 'select-all-force' || spec.command === 'select-all-top-level') &&
+        (context.uiMode !== 'sketch' || context.profile !== 'sketch-like')) continue
     const presented = forms(spec, locale, multiple, lockedParent)
     const keys = presentedShortcut(spec.command, context)
     push({

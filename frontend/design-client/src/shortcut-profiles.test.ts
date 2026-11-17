@@ -428,3 +428,14 @@ describe('bounded keyboard presets', () => {
     expect(shortcutPlatform('MacIntel')).toBe('mac'); expect(shortcutPlatform('Win32')).toBe('windows'); expect(shortcutPlatform('Linux x86_64')).toBe('linux')
   })
 })
+
+test('Sketch preset maps ⌃⌘A/⇧⌘A select-all variants and keeps Figma inverse selection', () => {
+  const mac = { profile: 'sketch-like', platform: 'mac', uiMode: 'sketch' } as const
+  expect(resolveShortcut(key('a', { code: 'KeyA', ctrlKey: true, metaKey: true }), mac)?.command).toBe('select-all-force')
+  expect(resolveShortcut(key('A', { code: 'KeyA', metaKey: true, shiftKey: true }), mac)?.command).toBe('select-all-top-level')
+  expect(resolveShortcut(key('a', { code: 'KeyA', metaKey: true }), mac)?.command).toBe('select-all')
+  expect(resolveShortcut(key('A', { code: 'KeyA', metaKey: true, shiftKey: true }), { profile: 'figma-like', platform: 'mac' })?.command).toBe('select-inverse')
+  expect(resolveShortcut(key('a', { code: 'KeyA', ctrlKey: true, metaKey: true }), { profile: 'figma-like', platform: 'mac' })).toBeNull()
+  expect(resolveShortcut(key('a', { code: 'KeyA', ctrlKey: true }), { ...mac, platform: 'windows' })?.command).toBe('select-all')
+  expect(resolveShortcut(key('A', { code: 'KeyA', ctrlKey: true, shiftKey: true }), { ...mac, platform: 'windows' })?.command).toBe('select-inverse')
+})
