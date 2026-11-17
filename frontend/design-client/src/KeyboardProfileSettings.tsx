@@ -2,14 +2,15 @@ import { useInterfaceText } from './interface-preference'
 import { useId, useState } from 'react'
 import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform, toolShortcutLabel, type ShortcutProfile } from './shortcut-profiles'
-import { shortcutPreference, useShortcutProfile } from './shortcut-preference'
+import { useShortcutProfile } from './shortcut-preference'
+import { applyInterfaceLayout } from './interface-layout'
 export function KeyboardProfileSettings() {
   const text = useInterfaceText()
   const profile = useShortcutProfile(), id = useId(), [temporary, setTemporary] = useState(false)
   const context = { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }
   return <section className="keyboard-profile-settings" aria-label={text.keyboardSettings}>
     <label htmlFor={id}>{text.shortcutProfile}</label>
-    <select id={id} aria-describedby={`${id}-help`} value={profile} onChange={event => setTemporary(!shortcutPreference.set(event.target.value as ShortcutProfile))}>
+    <select id={id} aria-describedby={`${id}-help`} value={profile} onChange={event => setTemporary(!applyInterfaceLayout((event.target.value as ShortcutProfile) === 'sketch-like' ? 'sketch' : 'figma'))}>
       <option value="figma-like">Figma-like</option><option value="sketch-like">Sketch-like</option>
     </select>
     <small id={`${id}-help`}>{text.shortcutHelp}</small>

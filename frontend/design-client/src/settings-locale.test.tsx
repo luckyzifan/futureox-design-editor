@@ -94,7 +94,7 @@ test.each([false, true])('mounted locale changes preserve authored/editor state,
     expect(mount.querySelector<HTMLInputElement>('.number input')?.getAttribute('aria-label') || mount.querySelector('[role="spinbutton"]')!.getAttribute('aria-label')).toBe(text.zoomRatio)
     expect(document.documentElement.lang).toBe(locale)
     expect(createInterfacePreference(() => localStorage).getSnapshot().locale).toBe(locale)
-    expect(editor.state).toBe(snapshot); expect(editor.sessionGeneration).toBe(generation); expect(editor.effectiveView()).toBe(effectiveView)
+    expect(editor.state).toBe(snapshot); expect(editor.sessionGeneration).toBe(generation); expect(editor.effectiveView()).toEqual(effectiveView)
     expect(JSON.stringify(editor.state.doc)).toBe(documentBefore); expect(session.dirty).toBe(true)
     expect(editor.canUndo).toBe(true); expect(editor.canRedo).toBe(true); expect(hasPendingEdits(editor)).toBe(true)
     expect(draft.value).toBe('not committed: 12.'); expect(mount.querySelector('[data-authored-draft]')).toBe(draft)

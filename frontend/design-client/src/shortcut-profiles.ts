@@ -9,6 +9,13 @@ export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean; uiMode?: UiMode }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true; physicalCode?: string }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
+export function shortcutProfileForUiMode(mode: UiMode): ShortcutProfile {
+  return mode === 'sketch' ? 'sketch-like' : 'figma-like'
+}
+export function shortcutContextForLayout(context: ShortcutContext): ShortcutContext {
+  const profile = context.uiMode ? shortcutProfileForUiMode(context.uiMode) : context.profile
+  return profile === context.profile ? context : { ...context, profile }
+}
 export function shortcutPlatform(platform = typeof navigator === 'undefined' ? '' : navigator.platform): ShortcutPlatform {
   return /Mac|iPhone|iPad/.test(platform) ? 'mac' : /Win/.test(platform) ? 'windows' : 'linux'
 }
@@ -40,7 +47,8 @@ const figmaBindings: ShortcutBinding[] = [
 
 /** Bindings belong to the active editor layout; portable editing keys are shared. */
 const bindingCache = new Map<string, readonly ShortcutBinding[]>()
-export function shortcutBindings({ profile, platform, desktop = false, uiMode }: ShortcutContext): readonly ShortcutBinding[] {
+export function shortcutBindings(context: ShortcutContext): readonly ShortcutBinding[] {
+  const { profile, platform, desktop = false, uiMode } = shortcutContextForLayout(context)
   const cacheKey = `${profile}:${platform}:${desktop}:${uiMode ?? ''}`
   const cached = bindingCache.get(cacheKey)
   if (cached) return cached

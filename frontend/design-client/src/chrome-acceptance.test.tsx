@@ -83,10 +83,11 @@ test('page resizing, collapse and targeted deletion leave the layer tree availab
   expect(page.textContent).toContain('Meher Admin Dashboard')
   expect(page.getAttribute('title')).toContain('Meher Admin Dashboard')
   const pane = document.querySelector<HTMLDivElement>('.page-list-body')!
+  const disclosure = document.querySelector<HTMLButtonElement>('.pages-current')!
+  await act(async () => disclosure.click())
   const splitter = document.querySelector('[role="separator"]')!
   await act(async () => splitter.dispatchEvent(new KeyboardEvent('keydown', { key:'ArrowDown', bubbles:true })))
   expect(pane.style.height).toBe('225px')
-  const disclosure = document.querySelector<HTMLButtonElement>('.pages-current')!
   await act(async () => disclosure.click())
   expect(pane.hidden).toBe(true)
   expect(disclosure.textContent).toContain('Meher Admin Dashboard')

@@ -5,7 +5,7 @@ import type { EditorCommand } from './editor-commands'
 import { container, type Point } from './model'
 import { userPages } from './fig-document'
 import { shortcutLabel, shortcutPlatform, type ShortcutContext } from './shortcut-profiles'
-import { shortcutPreference } from './shortcut-preference'
+import { getShortcutProfile } from './shortcut-preference'
 import { desktopBridge } from './desktop'
 import { selectionCommandAdmission } from './commands/selection-command'
 import { alignmentAvailability, alignmentCommandIds, alignmentCommands } from './alignment-availability'
@@ -24,7 +24,7 @@ export function lockedSelectionIds(editor: Editor): string[] {
   }
   return [...locked]
 }
-export function canvasMenuItems(editor: Editor, context: ShortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }): CanvasMenuItem[] {
+export function canvasMenuItems(editor: Editor, context: ShortcutContext = { profile: getShortcutProfile(), platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode: interfacePreference.getSnapshot().uiMode }): CanvasMenuItem[] {
   const { doc, selection, busy } = editor.state, nodes = selection.map((id) => doc.nodes[id]).filter(Boolean)
   const roots = editor.topSelection(), parents = editor.parentMap(), locks = lockedSelectionIds(editor)
   const mutable = !!roots.length && !locks.length && !busy && !editor.interactionActive

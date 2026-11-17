@@ -1,7 +1,9 @@
 import type { Editor } from '../engine'
 import { hasPendingEdits } from '../pending-edits'
 import { CANVAS_SETTING_KEYS, settingsPreference, type CanvasSettings } from '../settings-preference'
-import { SHORTCUT_PROFILE_KEY, shortcutPreference } from '../shortcut-preference'
+import { SHORTCUT_PROFILE_KEY, getShortcutProfile, shortcutPreference } from '../shortcut-preference'
+import { interfacePreference } from '../interface-preference'
+import { applyInterfaceLayout } from '../interface-layout'
 import type { ShortcutProfile } from '../shortcut-profiles'
 import type { WorkspaceAutomationGuard } from './workspace-bridge'
 
@@ -20,7 +22,9 @@ export function createAutomationSettingsAdapter(editor: Editor, options: {
   const canvas = options.canvas ?? settingsPreference, keyboard = options.keyboard ?? shortcutPreference
   const storage = options.storage ?? (() => typeof window === 'undefined' ? undefined : window.localStorage)
   let revision = 0, applying = false, disposed = false
-  let keyboardProfile = keyboard.getSnapshot()
+  const readKeyboard = options.keyboard ? keyboard.getSnapshot : getShortcutProfile
+  const onKeyboard = options.keyboard ? keyboard.subscribe : interfacePreference.subscribe
+  let keyboardProfile = readKeyboard()
   const readValues = (): AutomationSettingsValues => ({
     snap: !!editor.state.snap, snapPixels: !!editor.state.snapPixels, pixelGrid: !!editor.state.pixelGrid,
     rulers: !!editor.state.rulers, checkerboard: !!editor.state.checkerboard, grid: !!editor.state.grid,
@@ -34,14 +38,14 @@ export function createAutomationSettingsAdapter(editor: Editor, options: {
     if (CANVAS_SETTING_KEYS.every(key => !!editor.state[key] === snapshot[key]) && !!editor.state.scrollWheelZoom === snapshot.scrollWheelZoom && keyboardProfile === snapshot.shortcutProfile) return
     snapshot = readValues(); revision++
   }
-  const subscriptions = [editor.subscribe(refresh), canvas.subscribe(refresh), keyboard.subscribe(() => { keyboardProfile = keyboard.getSnapshot(); refresh() })]
+  const subscriptions = [editor.subscribe(refresh), canvas.subscribe(refresh), onKeyboard(() => { keyboardProfile = readKeyboard(); refresh() })]
   let receiptOwner: string | undefined
   const receipts = new Map<string, { fingerprint: string; result: AutomationSettingsResult }>()
   const stored = (key: string, value: string) => { try { return storage()?.getItem(key) === value } catch { return false } }
   const get = (): AutomationSettingsResult => {
     if (disposed) return fail('SESSION_CLOSED', 'The settings adapter was disposed')
-    keyboardProfile = keyboard.getSnapshot(); refresh()
-    const persistenceByGroup = { canvas: canvas.getPersistenceSnapshot(), keyboard: stored(SHORTCUT_PROFILE_KEY, snapshot.shortcutProfile) ? 'available' as const : 'session-only' as const,
+    keyboardProfile = readKeyboard(); refresh()
+    const persistenceByGroup = { canvas: canvas.getPersistenceSnapshot(), keyboard: (options.keyboard ? stored(SHORTCUT_PROFILE_KEY, snapshot.shortcutProfile) : interfacePreference.getPersistenceSnapshot()) ? 'available' as const : 'session-only' as const,
       wheel: stored('forma-scroll-wheel-zoom', String(snapshot.scrollWheelZoom)) ? 'available' as const : 'session-only' as const }
     return { settingsRevision: revision, values: { ...snapshot }, persistence: Object.values(persistenceByGroup).every(value => value === 'available') ? 'available' : 'session-only', persistenceByGroup, atomicDurability: false }
   }
@@ -79,7 +83,10 @@ export function createAutomationSettingsAdapter(editor: Editor, options: {
           // the normal app-level preference binding yet.
           editor.set(canvasPatch)
         }
-        if (patch.shortcutProfile !== undefined) keyboard.set(patch.shortcutProfile as ShortcutProfile)
+        if (patch.shortcutProfile !== undefined) {
+          if (options.keyboard) keyboard.set(patch.shortcutProfile as ShortcutProfile)
+          else applyInterfaceLayout(patch.shortcutProfile === 'sketch-like' ? 'sketch' : 'figma')
+        }
         if (patch.scrollWheelZoom !== undefined) editor.setScrollWheelZoom(patch.scrollWheelZoom as boolean)
       } finally { applying = false; refresh() }
       const result = get()

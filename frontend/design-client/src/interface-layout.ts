@@ -1,6 +1,6 @@
 import { interfacePreference, type UiMode } from './interface-preference'
 import { shortcutPreference } from './shortcut-preference'
-import type { ShortcutProfile } from './shortcut-profiles'
+import { shortcutProfileForUiMode, type ShortcutProfile } from './shortcut-profiles'
 import { LAYOUT_GAP_LIMIT, type AutoLayout } from './model'
 import type { Tool } from './engine'
 
@@ -21,13 +21,10 @@ export function layoutGapMinimum(mode: AutoLayout['mode'], field: 'gap' | 'lineG
 export const FIGMA_LAYOUT_COMBO = 'Mod+Alt+F'
 export const SKETCH_LAYOUT_COMBO = 'Mod+Alt+S'
 
-export function shortcutProfileForUiMode(mode: UiMode): ShortcutProfile {
-  return mode === 'sketch' ? 'sketch-like' : 'figma-like'
-}
-
 export function applyInterfaceLayout(mode: UiMode) {
-  interfacePreference.set({ uiMode: mode })
-  shortcutPreference.set(shortcutProfileForUiMode(mode))
+  const layoutSaved = interfacePreference.set({ uiMode: mode })
+  const keyboardSaved = shortcutPreference.set(shortcutProfileForUiMode(mode))
+  return layoutSaved && keyboardSaved
 }
 
 export function interfaceLayoutFromShortcut(event: {
