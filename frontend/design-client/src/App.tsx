@@ -4,6 +4,7 @@ import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnosti
 import { operationStatusText } from './operation-status-messages'
 import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
+import { defaultLayerExportSetting } from './export-metadata'
 import { SketchComponentsView, sketchComponentCategories, type SketchComponentCategory } from './SketchComponentsView'
 import { DrawPencilToolbar, FigmaToolbeltMode } from './FigmaDrawTools'
 import { frameSizePresetGate } from './frame-presets'
@@ -242,7 +243,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [lastUtilityTool, setLastUtilityTool] = useState<Tool>('eraser')
   const [showColor, setShowColor] = useState(false)
   const [showExport, setShowExport] = useState(false)
-  const [exportEntry, setExportEntry] = useState<'merged' | 'assets'>('merged')
+  const [exportEntry, setExportEntry] = useState<'merged' | 'assets' | 'selection-presets'>('merged')
   const [showAnimation, setShowAnimation] = useState(false)
   const adaptivePanels = useAdaptivePanels()
   const showLayers = adaptivePanels.leftOpen
@@ -290,7 +291,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     exports.activate(editor)
     return () => exports.dispose()
   }, [editor, exports])
-  function openExportPanel(entry: 'merged' | 'assets' = 'merged') {
+  function openExportPanel(entry: 'merged' | 'assets' | 'selection-presets' = 'merged') {
     setExportEntry(entry)
     if(source)source.prepareExport(()=>setShowExport(true))
     else setShowExport(true)
@@ -946,6 +947,23 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         return
       }
       if (editable) return
+      if (primary && !event.altKey && event.code === 'KeyE') {
+        if (!canUseSketchSelectionCommand() || !editor.topSelection().length || !commitPendingEdits(editor)) return
+        const ids = editor.topSelection()
+        if (!ids.length) return
+        const missing = ids.filter(id => !editor.authoredDocument.nodes[id]?.exportSettings?.length)
+        if (missing.length) {
+          editor.updateProperties(missing, node => {
+            if (!node.exportSettings?.length) node.exportSettings = [defaultLayerExportSetting()]
+          }, '标记为可导出')
+        } else {
+          setMenu(false)
+          openExportPanel('selection-presets')
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
       if (matchesTypefaceShortcut(event)) {
         if (!canUseSketchSelectionCommand()) return
         const ids = editor.topSelection()
@@ -1715,7 +1733,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <button type="button" disabled={desktopStatus.busy} onClick={() => void (desktopSession?.supportsWorkspace ? desktopSession.saveCopy() : desktopSession?.save(true))}>{translateProfessional(desktopSession?.supportsWorkspace ? '保存本机副本' : '另存为', locale)}</button>
         <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{translateProfessional(desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件', locale)}</button>
       </div>}
-      {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} initialTarget={exportEntry === 'assets' ? 'assets' : undefined} onClose={() => { setShowExport(false); setExportEntry('merged') }} />}
+      {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} initialTarget={exportEntry === 'merged' ? undefined : exportEntry} onClose={() => { setShowExport(false); setExportEntry('merged') }} />}
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}

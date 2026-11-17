@@ -101,5 +101,4 @@ test('All Assets keeps the Sketch shortcut and the shared file-menu label', () =
   const app = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
   expect(app).toContain("openExportPanel('assets')")
   expect(app).toContain('matchesAllAssetsShortcut')
-  expect(app).toContain("initialTarget={exportEntry === 'assets' ? 'assets' : undefined}")
 })

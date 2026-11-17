@@ -43,13 +43,21 @@ function defaultChecked(tasks: readonly AllAssetTask[]): Set<string> {
   return new Set(tasks.filter(task => task.executable).map(task => task.id))
 }
 
-export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: AllAssetEncoder }) {
+export function AllAssetsExport({ editor, encode, selectionOnly = false }: {
+  editor: Editor; encode?: AllAssetEncoder; selectionOnly?: boolean
+}) {
   const { locale } = useInterfacePreferences()
   const english = locale === 'en'
   const desktop = desktopBridge()
   const text = (zh: string, en: string) => english ? en : zh
   const snap = useSyncExternalStore(editor.subscribe, editor.snapshot)
-  const [scope, setScope] = useState<AllAssetScope>('page')
+  const [pageScope, setScope] = useState<'page' | 'document'>('page')
+  const scope: AllAssetScope = selectionOnly ? 'selection' : pageScope
+  const [selection] = useState(() => selectionOnly ? {
+    documentId: snap.doc.id, pageId: snap.page, session: editor.sessionGeneration, ids: editor.topSelection(),
+  } : undefined)
+  const selectionIsCurrent = selection?.documentId === snap.doc.id && selection.pageId === snap.page &&
+    selection.session === editor.sessionGeneration
   const [query, setQuery] = useState('')
   const [formatFilter, setFormatFilter] = useState('all')
   const [scaleFilter, setScaleFilter] = useState('all')
@@ -58,8 +66,9 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
   const [run, setRun] = useState<AllAssetRun | null>(null)
   const [progress, setProgress] = useState('')
   const plan = useMemo(
-    () => planAllAssets(snap.doc, { scope, pageId: snap.page, revision: snap.version }),
-    [snap.doc, snap.page, snap.version, scope],
+    () => planAllAssets(snap.doc, { scope, pageId: snap.page, revision: snap.version,
+      nodeIds: selectionIsCurrent ? selection?.ids : undefined }),
+    [snap.doc, snap.page, snap.version, scope, selection, selectionIsCurrent],
   )
   const planKey = `${plan.documentId}:${plan.revision}:${plan.scope}:${plan.pageId}:${plan.tasks.map(task => `${task.id}:${task.executable}:${task.path}`).join('|')}`
   const [checkedKey, setCheckedKey] = useState(planKey)
@@ -156,8 +165,11 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
   async function execute(ids: ReadonlySet<string>, previous: AllAssetRun | null) {
     if (busy || !ids.size || !commitExportEdits(editor)) return
     const current = editor.snapshot()
+    if (selection && (current.doc.id !== selection.documentId || current.page !== selection.pageId ||
+        editor.sessionGeneration !== selection.session)) return
     const document = structuredClone(current.doc)
-    const fresh = planAllAssets(document, { scope, pageId: current.page, revision: current.version })
+    const fresh = planAllAssets(document, { scope, pageId: current.page, revision: current.version,
+      nodeIds: selection?.ids })
     const session = editor.sessionGeneration
     const controller = new AbortController()
     request.current = controller
@@ -196,15 +208,16 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
   const currentRun = run?.documentId === plan.documentId && run.revision === plan.revision &&
     run.scope === plan.scope && run.pageId === plan.pageId ? run : null
   const retryIds = new Set((currentRun?.items ?? []).filter(item => item.status === 'failed' || item.status === 'cancelled').map(item => item.task.id))
-  return <div className="all-assets-export" role="group" aria-label={text('全部资产', 'All assets')}>
-    <p>{text('按各层已有预设分别列出任务。整页、合并选区和自定义区域仍可用，不会把多个图层画成一张图。', 'Lists one task for each layer preset. Page, merged selection, and custom region stay available, and layers are not flattened into one image.')}</p>
-    <fieldset disabled={busy}>
+  return <div className="all-assets-export" role="group" aria-label={selectionOnly ? text('选区导出预设', 'Selection export presets') : text('全部资产', 'All assets')}>
+    <p>{selectionOnly ? text('按选中图层的预设分别导出。', 'Export each selected layer using its presets.') :
+      text('按各层已有预设分别列出任务。整页、合并选区和自定义区域仍可用，不会把多个图层画成一张图。', 'Lists one task for each layer preset. Page, merged selection, and custom region stay available, and layers are not flattened into one image.')}</p>
+    {!selectionOnly && <fieldset disabled={busy}>
       <legend>{text('范围', 'Scope')}</legend>
       <label><input type="radio" name="all-assets-scope" checked={scope === 'page'} onChange={() => { setScope('page'); setRun(null) }} />{text('当前页面', 'Current page')}</label>
       <label><input type="radio" name="all-assets-scope" checked={scope === 'document'} onChange={() => { setScope('document'); setRun(null) }} />{text('整个文档', 'Entire document')}</label>
-    </fieldset>
+    </fieldset>}
     <div className="all-assets-filters">
-      <label>{text('图层', 'Layer')}<input aria-label={text('搜索全部资产', 'Search all assets')} value={query} disabled={busy} onChange={event => setQuery(event.target.value)} /></label>
+      <label>{text('图层', 'Layer')}<input aria-label={selectionOnly ? text('搜索选区资产', 'Search selected assets') : text('搜索全部资产', 'Search all assets')} value={query} disabled={busy} onChange={event => setQuery(event.target.value)} /></label>
       <label>{text('格式', 'Format')}<select aria-label={text('按格式筛选资产', 'Filter assets by format')} value={formatFilter} disabled={busy} onChange={event => setFormatFilter(event.target.value)}>
         <option value="all">{text('全部格式', 'All formats')}</option>
         {formats.map(format => <option key={format} value={format}>{formatLabel(format, english)}</option>)}
@@ -219,7 +232,8 @@ export function AllAssetsExport({ editor, encode }: { editor: Editor; encode?: A
       <button type="button" disabled={busy || !visible.length} onClick={() => toggleIds(visible, false)}>{text('取消所列', 'Clear listed')}</button>
       <span>{text(`已选 ${checked.size} / ${plan.tasks.length} 项预设`, `${checked.size} of ${plan.tasks.length} presets selected`)}</span>
     </div>
-    {plan.tasks.length === 0 && <p>{text('这个范围里还没有图层预设。可改为整个文档，或在右侧导出里为图层添加预设。', 'This scope has no layer presets. Switch to the whole document, or add presets in the inspector.')}</p>}
+    {plan.tasks.length === 0 && <p>{selectionOnly ? text('选区暂无导出预设。', 'The selection has no export presets.') :
+      text('这个范围里还没有图层预设。可改为整个文档，或在右侧导出里为图层添加预设。', 'This scope has no layer presets. Switch to the whole document, or add presets in the inspector.')}</p>}
     <div className="all-assets-list">
       {groups.map(group => {
         const selected = group.tasks.filter(task => checked.has(task.id)).length

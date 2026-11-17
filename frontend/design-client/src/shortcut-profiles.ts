@@ -113,7 +113,7 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
   if (desktop) bindings.unshift({ command: 'rename', combo: 'Mod+R' }, { command: 'paste-to-replace', combo: 'Mod+Shift+R' })
   if (platform !== 'mac') bindings.push({ command: 'redo', combo: 'Mod+Y' })
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
-  bindings.push({ command: 'flatten', combo: 'Mod+E' })
+  if (uiMode !== 'sketch') bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
   // Sketch's command bar. S stays the slice tool in the Figma profile.
   if (profile === 'sketch-like') bindings.push({ command: 'open-command-search', combo: 'Mod+K' }, { command: 'open-command-search', combo: 'S' })
