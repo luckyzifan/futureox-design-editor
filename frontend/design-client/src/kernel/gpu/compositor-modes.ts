@@ -21,11 +21,11 @@ export function compositorModes(scene: GpuScene) {
       if (effect.kind === 'motion-blur') modes.add(61)
       if (effect.kind === 'zoom-blur') modes.add(62)
       if (effect.kind === 'texture') modes.add(8)
-      // One-pass GPU gradient-blur composite (shared vector shader mode 46).
-      // Background blur uses the same blend of the sharp capture and the
-      // filtered capture; omitting it leaves the managed pipeline unprepared.
+      // Layer blur keeps the weight-curve composite (mode 46). Background
+      // progressive is a separable tent at the two authored radii (mode 65).
       if (effect.gradientBlur?.sketch) modes.add(64)
-      else if ((effect.kind === 'blur' || effect.kind === 'background-blur') && effect.gradientBlur) modes.add(46)
+      else if (effect.kind === 'background-blur' && effect.gradientBlur) modes.add(65)
+      else if (effect.kind === 'blur' && effect.gradientBlur) modes.add(46)
     }
   }
   return modes

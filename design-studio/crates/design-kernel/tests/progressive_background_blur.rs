@@ -37,6 +37,106 @@ fn pixel(pixels: &[u8], x: usize, y: usize) -> [u8; 4] {
     pixels[i..i + 4].try_into().unwrap()
 }
 
+fn channel_delta(a: [u8; 4], b: [u8; 4]) -> i16 {
+    (0..4).map(|i| (a[i] as i16 - b[i] as i16).abs()).max().unwrap()
+}
+
+/// Issue #320: the two authored radii are the uniform blurs at the segment ends.
+#[test]
+fn measure_two_end_radii_against_uniform_endpoint_blurs() {
+    let mut stripes = serde_json::Map::new();
+    let mut children = Vec::new();
+    for index in 0..12 {
+        let id = format!("stripe{index}");
+        children.push(id.clone());
+        stripes.insert(id.clone(), json!({
+            "id": id, "kind": "rectangle", "width": 8, "height": 48,
+            "transform": [1, 0, 0, 1, index * 8, 0],
+            "fills": [{"kind": "solid", "color": if index % 2 == 0 { "#111111" } else { "#eeeeee" }}]
+        }));
+    }
+    children.push("lens".into());
+    let lens = |start: f64, end: f64, progressive: bool| {
+        let mut effect = json!({"kind":"background-blur","radius":1,"color":"#000000"});
+        if progressive {
+            effect["gradientBlur"] = json!({
+                "start":[0.5, 16], "end":[63.5, 16], "startCount": start, "endCount": end, "smooth": true
+            });
+        } else {
+            effect["radius"] = json!(end);
+        }
+        json!({
+            "id":"lens","kind":"rectangle","width":64,"height":32,"transform":[1,0,0,1,16,8],
+            "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+            "effects":[effect]
+        })
+    };
+    let document = |start: f64, end: f64, progressive: bool| {
+        let mut nodes = stripes.clone();
+        nodes.insert("lens".into(), lens(start, end, progressive));
+        json!({
+            "schemaVersion":19,"id":"d","name":"Two-end measure","rasterProfile":"figma",
+            "pages":[{"id":"p","name":"Page","children":children,"background":"#ffffff"}],
+            "nodes": nodes
+        })
+    };
+    let mut engine = Engine::new();
+    let draw = |engine: &mut Engine, start: f64, end: f64, progressive: bool| {
+        engine.load_document(&document(start, end, progressive).to_string()).unwrap();
+        engine.render(&options()).unwrap()
+    };
+    let progressive = draw(&mut engine, 4., 12., true);
+    let start_uniform = draw(&mut engine, 4., 4., false);
+    let end_uniform = draw(&mut engine, 12., 12., false);
+    let at = |image: &[u8], x: usize| pixel(image, x, 24);
+    // Lens local x = world x - 16. Pixel centers 16.5 and 79.5 are the authored ends.
+    let samples = [16usize, 32, 48, 64, 79];
+    for x in samples {
+        eprintln!(
+            "x={x} progressive={:?} uniform4={:?} uniform12={:?} d4={} d12={}",
+            at(&progressive, x), at(&start_uniform, x), at(&end_uniform, x),
+            channel_delta(at(&progressive, x), at(&start_uniform, x)),
+            channel_delta(at(&progressive, x), at(&end_uniform, x)),
+        );
+    }
+    let _ = draw(&mut engine, 4., 12., true);
+    let started = std::time::Instant::now();
+    for _ in 0..3 {
+        let _ = draw(&mut engine, 4., 12., true);
+    }
+    let progressive_ms = started.elapsed().as_secs_f64() * 1000. / 3.;
+    let _ = draw(&mut engine, 12., 12., false);
+    let started = std::time::Instant::now();
+    for _ in 0..3 {
+        let _ = draw(&mut engine, 12., 12., false);
+    }
+    let uniform_ms = started.elapsed().as_secs_f64() * 1000. / 3.;
+    eprintln!("two-end progressive mean {progressive_ms:.2} ms, uniform radius 12 mean {uniform_ms:.2} ms");
+    let mut filter_source = futureox_design_kernel::blend::Surface::new(futureox_design_kernel::math::Rect::new(0, 0, 256, 256)).unwrap();
+    for (i, pixel) in filter_source.pixels.iter_mut().enumerate() {
+        pixel.0 = if (i / 8) % 2 == 0 { [0.1, 0.2, 0.8, 1.] } else { [0.9, 0.85, 0.1, 1.] };
+    }
+    let field = futureox_design_kernel::gradient_blur::CompositeField {
+        a: 1. / 256., b: 0., c: 0., start_count: 0., end_count: 0., smooth: true,
+    };
+    let _ = futureox_design_kernel::effects::portable_tent_blur_edge(&filter_source, 12., true).unwrap();
+    let started = std::time::Instant::now();
+    for _ in 0..5 {
+        let _ = futureox_design_kernel::effects::portable_tent_blur_edge(&filter_source, 12., true).unwrap();
+    }
+    eprintln!("uniform tent r12 {:.2} ms", started.elapsed().as_secs_f64() * 1000. / 5.);
+    let _ = futureox_design_kernel::effects::variable_endpoint_tent(&filter_source, &field, 4., 12., futureox_design_kernel::math::Point::default(), true).unwrap();
+    let started = std::time::Instant::now();
+    for _ in 0..5 {
+        let _ = futureox_design_kernel::effects::variable_endpoint_tent(&filter_source, &field, 4., 12., futureox_design_kernel::math::Point::default(), true).unwrap();
+    }
+    eprintln!("variable tent 4→12 {:.2} ms", started.elapsed().as_secs_f64() * 1000. / 5.);
+    assert_ne!(at(&start_uniform, 79), at(&end_uniform, 79), "the two radii must differ on this stripe");
+    assert_eq!(at(&progressive, 16), at(&start_uniform, 16), "the start end is the smaller uniform blur");
+    assert_eq!(at(&progressive, 79), at(&end_uniform, 79), "the finish end is the larger uniform blur");
+    assert_ne!(at(&progressive, 16), at(&progressive, 79), "the two ends are adjustable");
+}
+
 #[test]
 fn uniform_background_blur_reopens_and_a_progressive_edit_undoes() {
     let original = scene();
