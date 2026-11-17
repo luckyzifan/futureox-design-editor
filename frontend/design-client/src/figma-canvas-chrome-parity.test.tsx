@@ -95,6 +95,46 @@ async function marquee(from: number[], to: number[], options: MouseEventInit = {
   await act(async () => pointer('pointerup', to[0], to[1], options))
 }
 
+test('Sketch Shift+secondary click previews overlapping layers and selects only when a row is chosen', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const back = node('rectangle', 100, 100, 100, 100)
+  const front = node('ellipse', 120, 120, 100, 100)
+  const elsewhere = node('rectangle', 260, 100, 60, 60)
+  back.name = 'Back paint'
+  front.name = 'Front paint'
+  await render([back, front, elsewhere])
+  await act(async () => editor.select([elsewhere.id]))
+  const before = editor.authoredDocument, revision = editor.state.version
+  const context = (shiftKey: boolean) => act(async () => pointer('contextmenu', 160, 160, { button: 2, shiftKey }))
+  const menu = () => document.querySelector<HTMLElement>('[role="menu"]')!
+  const rows = () => [...menu().querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+  const hover = () => host().querySelector('[data-testid="canvas-hover-outline"]')?.getAttribute('data-node-id')
+
+  await context(true)
+  expect(rows().map(row => row.textContent)).toEqual(['Front paint', 'Back paint'])
+  expect(editor.state.selection).toEqual([elsewhere.id])
+  await act(async () => rows()[1].dispatchEvent(new MouseEvent('pointerover', { bubbles: true })))
+  expect(hover()).toBe(back.id)
+  expect(editor.state.selection).toEqual([elsewhere.id])
+  await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+  expect(menu()).toBeNull()
+  expect(hover()).toBeUndefined()
+  expect(editor.state.selection).toEqual([elsewhere.id])
+
+  await context(true)
+  await act(async () => rows()[1].click())
+  expect(editor.state.selection).toEqual([back.id])
+  expect(menu()).toBeNull()
+  expect(editor.authoredDocument).toBe(before)
+  expect(editor.state.version).toBe(revision)
+  expect(editor.canUndo).toBe(false)
+
+  await context(false)
+  expect(editor.state.selection).toEqual([front.id])
+  expect(menu().querySelector('[data-layer-picker]')).not.toBeNull()
+  expect(rows().length).toBeGreaterThan(2)
+})
+
 test('a selected layer shows the blue box, white corner handles, and a blue size pill', async () => {
   const rect = node('rectangle', 40, 50, 80, 40)
   await render([rect])

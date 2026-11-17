@@ -24,19 +24,22 @@ export type CanvasContextMenuProps = {
   worldPoint: Point
   origin?: ContextMenuOrigin
   candidates?: CanvasLayerCandidate[]
+  layerPickerOnly?: boolean
+  onLayerPreview?: (id: string | null) => void
   onClose: () => void
   onEditText?: (id: string) => void
   onToggleUi?: () => void
 }
 
 export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.state.selection.length ? 'canvas' : 'empty-canvas',
-  candidates = [], onClose, onEditText, onToggleUi }: CanvasContextMenuProps) {
+  candidates = [], layerPickerOnly = false, onLayerPreview, onClose, onEditText, onToggleUi }: CanvasContextMenuProps) {
   const { locale, uiMode } = useInterfacePreferences(), text = canvasText[locale]
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const root = useRef<HTMLDivElement>(null), close = useRef(onClose)
   const previousFocus = useRef(document.activeElement), restoreFocus = useRef(false)
   close.current = onClose
   const [layers, setLayers] = useState(false), [position, setPosition] = useState({ x, y })
+  const showLayers = layerPickerOnly || layers
   const [pages, setPages] = useState(false),[group,setGroup]=useState<string|null>(null)
   const [plugins, setPlugins] = useState(false)
   const [pluginRows, setPluginRows] = useState<{ grant: string; name: string }[]>([])
@@ -44,8 +47,8 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
   const profile = useShortcutProfile()
   const figma = uiMode === 'figma', empty = origin === 'empty-canvas'
-  const items = canvasContextItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }, uiMode, origin)
-  const parents = editor.parentMap(state.doc), locked = !!lockedSelectionIds(editor).length
+  const items = layerPickerOnly ? [] : canvasContextItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }, uiMode, origin)
+  const parents = editor.parentMap(state.doc), locked = !layerPickerOnly && !!lockedSelectionIds(editor).length
   const visible = candidates.filter((candidate) => {
     let id: string | undefined = candidate.id
     if (!state.doc.nodes[id]) return false
@@ -60,12 +63,12 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
     const box = menu.getBoundingClientRect()
     const next = clampContextMenu({ x, y }, box, { width: window.innerWidth, height: window.innerHeight })
     setPosition((old) => old.x === next.x && old.y === next.y ? old : next)
-  }, [x, y, layers, pages, group, plugins, pluginRows.length, locale])
+  }, [x, y, showLayers, pages, group, plugins, pluginRows.length, locale])
   useLayoutEffect(() => {
     const menu = root.current
     if (!menu) return
     ;(menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || menu).focus({ preventScroll: true })
-  }, [x, y, layers, pages, group, plugins, pluginRows.length])
+  }, [x, y, showLayers, pages, group, plugins, pluginRows.length])
   useEffect(() => {
     const outside = (event: Event) => { if (event.target instanceof Node && !root.current?.contains(event.target)) close.current() }
     const dismiss = () => close.current()
@@ -121,9 +124,10 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
     disabled={state.busy || editor.interactionActive} onClick={() => setPlugins(true)}><span>{text.plugins}</span><ChevronRight size={14} /></button>
   let previousGroup = ''
   const menuLabel = origin === 'layers' ? text.layerMenu : origin === 'inspector' ? text.layerActions : text.menu
-  return createPortal(<div ref={root} role="menu" aria-label={layers ? text.selectLayer : pages ? text.moveToPage : plugins ? text.plugins : group ? groupName(group) : menuLabel} className="canvas-context-menu"
+  return createPortal(<div ref={root} role="menu" aria-label={showLayers ? text.selectLayer : pages ? text.moveToPage : plugins ? text.plugins : group ? groupName(group) : menuLabel} className="canvas-context-menu"
     style={{ left: position.x, top: position.y }} tabIndex={-1}
     onPointerDown={(event) => event.stopPropagation()} onPointerMove={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}
+    onPointerLeave={() => onLayerPreview?.(null)}
     onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}
     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}
     onKeyDown={(event) => {
@@ -131,7 +135,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
       if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
       if (event.repeat && ['Enter', ' ', 'Escape', 'Tab'].includes(event.key)) { event.preventDefault(); return }
       if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); restoreFocus.current = true; close.current(); return }
-      if (event.key === 'ArrowLeft' && (layers || pages || group || plugins)) { event.preventDefault(); setLayers(false); setPages(false); setPlugins(false); setGroup(null); return }
+      if (event.key === 'ArrowLeft' && !layerPickerOnly && (layers || pages || group || plugins)) { event.preventDefault(); setLayers(false); setPages(false); setPlugins(false); setGroup(null); return }
       const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')]
       if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault()
@@ -146,10 +150,13 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, origin = editor.st
       if (event.key === 'ArrowRight' && (document.activeElement as HTMLElement)?.dataset.pagePicker === 'true') { event.preventDefault(); setPages(true) }
       if (event.key === 'ArrowRight' && (document.activeElement as HTMLElement)?.dataset.pluginPicker === 'true') { event.preventDefault(); setPlugins(true) }
     }}>
-    {layers ? <>
-      <button type="button" role="menuitem" className="context-back" onClick={() => setLayers(false)}><ChevronLeft size={14} /><span>{text.selectLayer}</span></button>
-      <div role="separator" />
+    {showLayers ? <>
+      {!layerPickerOnly && <>
+        <button type="button" role="menuitem" className="context-back" onClick={() => setLayers(false)}><ChevronLeft size={14} /><span>{text.selectLayer}</span></button>
+        <div role="separator" />
+      </>}
       {visible.map((candidate) => <button type="button" role="menuitem" key={candidate.id} aria-label={`${text.selectLayer} ${candidate.name}${candidate.locked ? text.lockedSuffix : ''}`}
+        onPointerEnter={() => onLayerPreview?.(candidate.id)} onFocus={() => onLayerPreview?.(candidate.id)} onBlur={() => onLayerPreview?.(null)}
         onClick={() => { restoreFocus.current = true; editor.select([candidate.id]); close.current() }}><span className="context-label">{candidate.name}</span>{candidate.locked && <Lock size={12} aria-hidden="true" />}</button>)}
     </> : pages ? <>
       <button type="button" role="menuitem" className="context-back" onClick={() => setPages(false)}><ChevronLeft size={14} /><span>{text.moveToPage}</span></button>
