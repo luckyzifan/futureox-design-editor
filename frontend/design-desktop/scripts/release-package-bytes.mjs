@@ -24,6 +24,7 @@ const NATIVE_CRATES = {
   'futureox-design-desktop-backend': 'futureox-design-desktop-backend',
   'design-render': 'futureox-design-gpu',
   'design-prepare': 'futureox-design-kernel',
+  'futureox-sketch-font-outlines': 'futureox-design-kernel',
   'futureox-design-agent': 'futureox-design-agent',
 }
 const SKIP_WALK = new Set(['node_modules', 'target', '.git'])
@@ -198,7 +199,7 @@ function classifyResource(inner) {
   if (inner.startsWith('fonts/')) return fontKind(inner)
   if (inner.startsWith('bin/')) {
     if (base === 'ffmpeg' || base === 'ffmpeg.exe' || base.startsWith('ffmpeg-')) return { kind: 'vendor', role: base === 'ffmpeg' || base === 'ffmpeg.exe' ? 'binary' : 'notice' }
-    if (/^(design-render|design-prepare|futureox-design-agent)(\.exe)?$/.test(base)) return { kind: 'native', role: 'binary' }
+    if (/^(design-render|design-prepare|futureox-design-agent|futureox-sketch-font-outlines)(\.exe)?$/.test(base)) return { kind: 'native', role: 'binary' }
     return { kind: 'unclassified', role: 'bin' }
   }
   if (inner.startsWith('sidecar/')) return { kind: 'native', role: 'binary' }

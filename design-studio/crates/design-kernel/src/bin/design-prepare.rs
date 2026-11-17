@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Unexpected argument".into());
     }
     let mut session = Preparation::new(&font)?;
+    session.enable_local_sketch_ui();
     // The bounded reader remains available while Rust computes. A stateless
     // packet and an in-flight CPU frame can be cancelled; ordered edits and
     // exact exports cannot. A cancelled frame keeps tiles it already committed.

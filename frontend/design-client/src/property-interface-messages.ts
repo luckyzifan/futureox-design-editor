@@ -313,7 +313,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "行均分剩余高度": "Distribute remaining height equally between rows",
   "个图层": "layers",
   "原字体未匹配：": "Unmatched source fonts:",
-  "。当前使用 Noto Sans SC，可选择本机字体或导入字体替换。": ". Noto Sans SC is currently used; choose a local font or import a replacement.",
+  "。当前使用回退字体，可选择本机字体或导入字体替换。": ". A fallback font is displayed. Choose a local font or import a replacement.",
   "投影": "Drop shadow",
   "内阴影": "Inner shadow",
   "图层模糊": "Layer blur",

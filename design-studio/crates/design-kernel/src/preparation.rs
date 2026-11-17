@@ -58,6 +58,11 @@ impl Preparation {
         let mut interaction = Lane::default(); interaction.engine.fonts = canvas.engine.fonts.clone();
         Ok(Self { lanes: [canvas, interaction], owner: session_owner(), sequence: 0, operation: 0 })
     }
+    pub fn enable_local_sketch_ui(&mut self) {
+        for lane in &mut self.lanes {
+            lane.engine.fonts.enable_local_sketch_ui();
+        }
+    }
     fn mint(&mut self, index: usize, previous: Option<StateReceipt>, new_document: bool) -> StateReceipt {
         self.sequence = self.sequence.checked_add(1).expect("preparation receipt exhausted");
         let serial = self.sequence.to_string();
