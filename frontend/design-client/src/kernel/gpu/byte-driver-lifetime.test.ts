@@ -93,6 +93,29 @@ test.each(['complete', 'reject', 'device-change', 'lost'])('raster queue pacing 
   expect(f.allocated.every(x => !x.destroy.mock.calls.length)).toBe(true)
 })
 
+test('a CPU-only yield keeps partial raster commands while an older submission runs', async () => {
+  const f = fixture()
+  await f.driver.prepareByteTent()
+  expect(f.encode()).toBe(true)
+  f.driver.rasterPacing = true
+  f.driver.submissionSequence = 1
+  const encoder = f.driver.encoder
+  const bytes = f.driver.scratchBytes
+
+  await f.driver.yieldRasterQueue(false)
+  expect(f.driver.encoder).toBe(encoder)
+  expect(f.device.queue.submit).not.toHaveBeenCalled()
+  expect(f.waits).toHaveLength(1)
+
+  f.waits[0].resolve()
+  await vi.waitFor(() => expect(f.driver.completedSubmissionSequence).toBe(1))
+  await f.driver.yieldRasterQueue(false)
+  expect(f.device.queue.submit).toHaveBeenCalledOnce()
+  expect(f.driver.scratchBytes).toBe(bytes)
+  expect(f.allocated[0].destroy).not.toHaveBeenCalled()
+  f.waits[1].resolve()
+})
+
 test('multiple axis jobs are charged and submitted together; a rejected completion preserves every lease', async () => {
   const f = fixture(); await f.driver.prepareByteTent()
   expect(f.encode()).toBe(true); expect(f.encode()).toBe(true)

@@ -442,8 +442,8 @@ export function ProgressiveSurfaceImpl(
   const desired = useRef<string[]>([])
   const activePlanKey = useRef('')
   const overviewKeys = useRef(new Set<string>())
-  const nativePageBacking = useRef<{ contract: object; keys: Set<string>;
-    fit?: { client: KernelClient; view: CanvasCamera; width: number; height: number; dpr: number } } | null>(null)
+  const nativePageBacking = useRef<{ contract: object; keys: Set<string>; preparingFit?: boolean;
+    fit?: { client: KernelClient; view: CanvasCamera; from: CanvasCamera; width: number; height: number; dpr: number } } | null>(null)
   const overviewReuses = useRef(0)
   const protectedKeys = useRef(new Set<string>())
   const coverageRetention = useRef(new CoverageRetention())
@@ -652,6 +652,16 @@ export function ProgressiveSurfaceImpl(
   const requestedView = props.requestedView || view
   const backing = nativePageBacking.current
   const fit = backing?.fit
+  const atRequestedCamera = (camera: CanvasCamera) =>
+    camera.x === requestedView.x && camera.y === requestedView.y && camera.zoom === requestedView.zoom
+  const revealAtOpeningZoom = !!fit && fit.from.zoom === requestedView.zoom && !props.panGestureActive &&
+    !!props.interaction?.selection.length && !props.interaction.active
+  // A primed Fit can show its GPU residents directly. Warm browser copies
+  // after its exact frame arrives, or as soon as another camera needs them.
+  const fitHistoryPending = backing?.contract === contract && (backing.preparingFit ||
+    fit && fit.client === rasterClient &&
+    (atRequestedCamera(fit.from) || atRequestedCamera(fit.view) || revealAtOpeningZoom) &&
+    !coverageRetention.current.nativeKeys(contract.revision, fit.view, fit.width, fit.height, fit.dpr))
   const primedFitKeys = fit && backing?.contract === contract && fit.client === rasterClient &&
     fit.width === width && fit.height === height && fit.dpr === dpr &&
     fit.view.x === view.x && fit.view.y === view.y && fit.view.zoom === view.zoom ? backing.keys : undefined
@@ -1736,7 +1746,9 @@ export function ProgressiveSurfaceImpl(
             return true
           // Prime the same lattice used by Fit All. The current camera keeps
           // its own plan, and the warmed tiles still need a display receipt.
-          const cohort: NonNullable<typeof nativePageBacking.current> = { contract, keys: new Set(plan.map(tile => tile.key)) }
+          const cohort: NonNullable<typeof nativePageBacking.current> = {
+            contract, keys: new Set(plan.map(tile => tile.key)), preparingFit: true,
+          }
           // Layout can resize before the first frame. Let the new camera own
           // the backing; the cancelled job may only retire its own claims.
           if (previous?.contract === contract) for (const key of previous.keys) {
@@ -1764,7 +1776,8 @@ export function ProgressiveSurfaceImpl(
             })
             if (residents.length !== plan.length || estimatedTileResidencyBytes(residents) > budget / 4) return false
             for (const tile of residents) tile.overview = true
-            cohort.fit = { client: c, view: target, width, height, dpr }
+            cohort.fit = { client: c, view: target, from: view, width, height, dpr }
+            cohort.preparingFit = false
             syncedDoc.current = doc
             return true
           } finally {
@@ -2273,9 +2286,20 @@ export function ProgressiveSurfaceImpl(
         // ladder progressively degrades it; exact repair follows immediately.
         const continuityAllowed = !retainedEditViewport && !nativePanRepair && !sharpNavigation && !gestureHeadroom && !nativeNavigation && !nativeVisibleTiles && singleCanvas &&
           !hdrCompositing && !props.grid && !props.checkerboard && !props.pixelPreview && !props.interaction?.active
-        if (!needsStartupPreview && continuityAllowed && !reusePageOverview &&
+        const previewDensity = navigationPreviewDensity(dpr, width, height)
+        // Revealing a selection at the opening zoom already has a retained
+        // frame and the primed page. Fill the exact tiles once when a whole
+        // viewport capture would repeat work at the same sampling density.
+        const revealWithNativeTiles = revealAtOpeningZoom && fitHistoryPending && backing && reusableFrame && displayed && !displayed.preview &&
+          renderScale === view.zoom * previewDensity && previewDevice.current.client === c && !!previewDevice.current.key &&
+          [...backing.keys].every(key => {
+            const tile = tileRef.current.get(key)
+            return tile?.document === doc && tile.revision === contract.revision && !!tile.gpuTile && ready.current.has(key) &&
+              (!tile.residentDevice || tile.residentDevice.client === c && tile.residentDevice.key === previewDevice.current.key)
+          })
+        if (!needsStartupPreview && continuityAllowed && !reusePageOverview && !revealWithNativeTiles &&
             !hasReadyCoverage() && !hasRepairBacking() && !pendingCoverage() && !plan.every(tile => tileRef.current.has(tile.key) && ready.current.has(tile.key))) {
-          const target = { ...requestedView }, ratio = navigationPreviewDensity(dpr, width, height)
+          const target = { ...requestedView }, ratio = previewDensity
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
           const stillRequested = () => {
             const next = latestContext.current.requestedView || latestContext.current.view
@@ -2938,7 +2962,7 @@ export function ProgressiveSurfaceImpl(
           view={requestedView} width={width} height={height} dpr={dpr}
           presentation={presentation}
           overview={props.overview}
-          overviewTiles={[...new Set([...overviewKeys.current,...(nativePageBacking.current?.keys || [])])].flatMap(key=>{
+          overviewTiles={[...new Set([...overviewKeys.current,...(!fitHistoryPending ? backing?.keys || [] : [])])].flatMap(key=>{
             const tile=tileRef.current.get(key)
             return tile && tile.document===doc && tile.revision===contract.revision && ready.current.has(key) &&
               previewDevice.current.client===rasterClient && !!previewDevice.current.key &&
