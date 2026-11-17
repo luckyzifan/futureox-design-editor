@@ -275,6 +275,7 @@ export type LayoutAlign =
   | 'unsafe-center'
   | 'unsafe-end'
 export const LAYOUT_GAP_LIMIT = 1e5
+export type StackingOrder = 'first-on-top' | 'last-on-top'
 export type AutoLayout = {
   mode: 'none' | 'horizontal' | 'vertical' | 'grid'
   gap: number
@@ -283,6 +284,7 @@ export type AutoLayout = {
   wrap: boolean
   reverseFlow?: boolean
   bordersAffectLayout?: boolean
+  stackingOrder?: StackingOrder
   justify: LayoutAlign
   align: LayoutAlign
   columns: number
@@ -519,7 +521,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31
   id: string
   name: string
   pages: Page[]
@@ -848,7 +850,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1263,6 +1265,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
       const l = { ...defaultLayout(), ...n.layout }
       if (l.reverseFlow === true && d.schemaVersion < 22) throw new Error('反向堆栈流需要设计文件版本 22')
       if (l.bordersAffectLayout === true && d.schemaVersion < 30) throw new Error('边框计入布局需要设计文件版本 30')
+      if (l.stackingOrder !== undefined && (d.schemaVersion < 31 || !['first-on-top', 'last-on-top'].includes(l.stackingOrder)))
+        throw new Error('重叠顺序需要设计文件版本 31 和有效的叠放方向')
       if (
         !['none', 'horizontal', 'vertical', 'grid'].includes(l.mode) ||
         !finite(l.gap, -LAYOUT_GAP_LIMIT, LAYOUT_GAP_LIMIT) ||

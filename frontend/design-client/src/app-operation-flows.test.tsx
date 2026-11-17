@@ -410,6 +410,55 @@ test('Sketch stack border option reflows rendered stroke extents and undoes the 
   expect(boxes([clean.id, plain.id])).toEqual(noStrokeBoxes)
 })
 
+test('Sketch overlap order publishes painter order to the layer tree without reversing flow', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Stacking order QA')
+  const frame = node('frame', 50, 60, 300, 200)
+  const first = node('rectangle', 0, 0, 60, 70)
+  const last = node('rectangle', 0, 0, 70, 60)
+  const absolute = node('rectangle', 200, 150, 30, 30)
+  frame.name = 'Stacking frame'
+  first.name = 'First item'
+  last.name = 'Last item'
+  absolute.name = 'Absolute item'
+  frame.layout = { ...defaultLayout(), padding: [10, 10, 10, 10], gap: -30 }
+  frame.children = [first.id, absolute.id, last.id]
+  absolute.sizing = { ...defaultSizing(), absolute: true }
+  doc.nodes = Object.fromEntries([frame, first, last, absolute].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [frame.id]
+  await act(async () => { editor!.load(doc); editor!.select([frame.id]) })
+  const rootRow = document.querySelector<HTMLElement>('[role="treeitem"][aria-label="Stacking frame"]')!
+  if (rootRow.getAttribute('aria-expanded') === 'false') {
+    await act(async () => rootRow.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+  }
+  const layerNames = () => Array.from(document.querySelectorAll('[role="treeitem"][aria-level="2"]'), row => row.getAttribute('aria-label'))
+  const order = (value: string) => act(async () => {
+    const select = document.querySelector<HTMLSelectElement>('select[aria-label="重叠顺序"]')!
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const authored = () => editor!.authoredDocument
+  const initial = authored()
+  const revision = editor!.state.version
+  await order('first-on-top')
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(authored().schemaVersion).toBe(31)
+  expect(authored().nodes[frame.id].children).toEqual([last.id, absolute.id, first.id])
+  expect(layerNames()).toEqual(['First item', 'Absolute item', 'Last item'])
+  for (const item of [first, last, absolute]) expect(authored().nodes[item.id]).toEqual(initial.nodes[item.id])
+  const firstOnTop = authored()
+  await order('last-on-top')
+  expect(layerNames()).toEqual(['Last item', 'Absolute item', 'First item'])
+  for (const item of [first, last, absolute]) expect(authored().nodes[item.id]).toEqual(initial.nodes[item.id])
+  expect(JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(authored()))))).toEqual(authored())
+  await act(async () => editor!.undo())
+  expect(authored()).toEqual(firstOnTop)
+  await act(async () => editor!.undo())
+  expect(authored()).toEqual(initial)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch rich-text shortcuts format the selected range and later input at a collapsed caret', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

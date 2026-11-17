@@ -26,6 +26,12 @@ pub enum SizeMode {
     Fill,
     Relative,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StackingOrder {
+    FirstOnTop,
+    LastOnTop,
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Align {
@@ -83,6 +89,8 @@ pub struct Layout {
     pub reverse_flow: bool,
     #[serde(skip_serializing_if = "crate::components::is_false")]
     pub borders_affect_layout: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stacking_order: Option<StackingOrder>,
     pub justify: Align,
     pub align: Align,
     pub columns: usize,
@@ -98,11 +106,18 @@ impl Default for Layout {
             wrap: false,
             reverse_flow: false,
             borders_affect_layout: false,
+            stacking_order: None,
             justify: Align::Start,
             align: Align::Start,
             columns: 3,
             fill_rows: false,
         }
+    }
+}
+impl Layout {
+    pub(crate) fn reverses_flow(&self) -> bool {
+        self.stacking_order
+            .map_or(self.reverse_flow, |order| order == StackingOrder::FirstOnTop)
     }
 }
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -542,7 +557,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         })
         .cloned()
         .collect();
-    if l.reverse_flow {
+    if l.reverses_flow() {
         ids.reverse();
     }
     let borders: BTreeMap<_, _> = if l.borders_affect_layout {

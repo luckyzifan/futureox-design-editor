@@ -121,6 +121,7 @@ import {
   pickingGeometryEpoch,
 } from './kernel/picking'
 import { proveLocalEdit } from './local-edit-proof'
+import { stackOrder } from './layer-order'
 import { documentForSchema, pageEditScope, singlePageScope } from './page-edit-scope'
 import { shareDocument, documentPatch, produceDocumentDraft, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
@@ -764,6 +765,7 @@ export class Editor {
         if (draft.schemaVersion < 29 && featureNodesOf(authored).some(n =>
           n.sizing?.widthRatio !== undefined || n.sizing?.heightRatio !== undefined)) draft.schemaVersion = 29
         if (draft.schemaVersion < 30 && featureNodesOf(authored).some(n => n.layout?.bordersAffectLayout)) draft.schemaVersion = 30
+        if (draft.schemaVersion < 31 && featureNodesOf(authored).some(n => n.layout?.stackingOrder)) draft.schemaVersion = 31
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
@@ -1784,7 +1786,7 @@ export class Editor {
     if (!p?.layout || p.layout.mode === 'none' || n.sizing?.absolute) return false
     const cursor = apply(inverse(worldMatrix(base, p.id, parents)), point),
       axis = p.layout.mode === 'vertical' ? 1 : 0
-    const reverse = p.layout.reverseFlow && p.layout.mode !== 'grid'
+    const reverse = p.layout.mode !== 'grid' && stackOrder(p.layout) === 'first-on-top'
     const flow = p.children.filter(
       (child) => child !== id && base.nodes[child].visible && !base.nodes[child].sizing?.absolute,
     )

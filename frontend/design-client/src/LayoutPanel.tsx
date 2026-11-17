@@ -5,6 +5,7 @@ import type { LayoutSuggestionPreview } from './layout-suggestions'
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits } from './property-units'
 import { layoutGapMinimum } from './interface-layout'
+import { stackOrder } from './layer-order'
 import type { UiMode } from './interface-preference'
 import { DraftInput } from './DraftInput'
 import type { Editor } from './engine'
@@ -12,6 +13,7 @@ import {
   type DesignNode,
   type AutoLayout,
   type Sizing,
+  type StackingOrder,
   type Constraints,
   type ConstraintAnchor,
   type LayoutGrid,
@@ -75,6 +77,18 @@ export function LayoutPanel({
       },
       '修改响应式尺寸',
     )
+  const updateStackOrder = (order: StackingOrder) => editor.updateProperties(ids, (target, doc) => {
+    const current = target.layout
+    if (!current || (current.mode !== 'horizontal' && current.mode !== 'vertical')) return
+    if (stackOrder(current) !== order) {
+      // Mirror the painter slots while preserving the flow's visual sequence.
+      const flowing = target.children.filter(id => !doc.nodes[id].sizing?.absolute).reverse()
+      let index = 0
+      target.children = target.children.map(id => doc.nodes[id].sizing?.absolute ? id : flowing[index++])
+    }
+    current.stackingOrder = order
+    delete current.reverseFlow
+  }, '修改重叠顺序')
   const updateConstraint = (patch: Partial<Constraints>) =>
     editor.updateProperties(
       ids,
@@ -215,6 +229,14 @@ export function LayoutPanel({
               <input type="checkbox" checked={!!layout.bordersAffectLayout}
                 onChange={e => updateLayout({ bordersAffectLayout: e.currentTarget.checked || undefined })} />
               {tr('边框计入布局')}
+            </label>}
+          {uiMode === 'sketch' && (layout.mode === 'horizontal' || layout.mode === 'vertical') &&
+            <label className="labeled-select">{tr('重叠顺序')}
+              <select aria-label={tr('重叠顺序')} value={stackOrder(layout)}
+                onChange={event => updateStackOrder(event.currentTarget.value as StackingOrder)}>
+                <option value="first-on-top">{tr('首项在上')}</option>
+                <option value="last-on-top">{tr('末项在上')}</option>
+              </select>
             </label>}
           <h4>{tr("内边距")}</h4>
           <div className="field-grid">

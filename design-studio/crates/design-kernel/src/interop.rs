@@ -2069,6 +2069,11 @@ impl<'a> Importer<'a> {
                 _ => crate::layout::Align::Start,
             };
             let wrap = bool_at(group_layout, "wrappingEnabled");
+            let stacking_order = match group_layout.get("stackingOrder").and_then(Value::as_u64) {
+                Some(0) => Some(crate::layout::StackingOrder::FirstOnTop),
+                Some(1) => Some(crate::layout::StackingOrder::LastOnTop),
+                _ => None,
+            };
             let saved = layer.pointer("/userInfo/com.futureox.design-kernel/stackAlignment");
             let axis = |value: crate::layout::Align, key: &str| {
                 use crate::layout::Align::*;
@@ -2092,8 +2097,9 @@ impl<'a> Importer<'a> {
                 wrap,
                 // Sketch 2025 stores the modern Stack's first item last in
                 // its layer array. Keep that array for painting and masking.
-                reverse_flow: layer.get("groupBehavior").and_then(Value::as_i64).is_some(),
+                reverse_flow: stacking_order.is_none() && layer.get("groupBehavior").and_then(Value::as_i64).is_some(),
                 borders_affect_layout: bool_at(group_layout, "bordersAffectLayout"),
+                stacking_order,
                 justify: axis(justify(f64_at(group_layout, "justifyContent") as i64), "justify"),
                 align: axis(align(f64_at(group_layout, "alignItems") as i64), "align"),
                 ..crate::layout::Layout::default()
@@ -3013,17 +3019,29 @@ impl<'a> Importer<'a> {
                 children.push(self.layer(child, inside_artboard || class == "artboard", child_stack));
             }
         }
+        let reverse_archive = node.layout.as_ref().and_then(|layout| layout.stacking_order)
+            == Some(crate::layout::StackingOrder::LastOnTop);
+        if reverse_archive {
+            // Sketch keeps its archived flow order even when the last item
+            // paints on top. The kernel keeps child storage in painter order.
+            children.reverse();
+        }
         node.children = children;
         if class == "group" && node.kind == "group" {
             node.bindings.insert("sketchSourceGroup".into(), "true".into());
         }
         if class == "shapeGroup" {
+            let mut operations = layer.get("layers").and_then(Value::as_array).map(|children|
+                children.iter().map(|child| child.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1))
+                    .collect::<Vec<_>>()).unwrap_or_default();
+            if reverse_archive {
+                operations.reverse();
+            }
             node.bindings.insert("sketchSourceShapeGroup".into(), json!({
                 "parentOperation":layer.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1),
                 "nativeBooleanCodes": true,
                 "windingRule":style.get("windingRule").or_else(||layer.get("windingRule")).and_then(Value::as_i64).unwrap_or(1),
-                "operations":layer.get("layers").and_then(Value::as_array).map(|children|
-                    children.iter().map(|child| child.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1)).collect::<Vec<_>>()).unwrap_or_default(),
+                "operations":operations,
                 "children":node.children,
             }).to_string());
         }
@@ -3938,6 +3956,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     }
     if doc.nodes.values().any(|n| n.layout.as_ref().is_some_and(|layout| layout.borders_affect_layout)) {
         version = version.max(30);
+    }
+    if doc.nodes.values().any(|n| n.layout.as_ref().is_some_and(|layout| layout.stacking_order.is_some())) {
+        version = version.max(31);
     }
     doc.schema_version = version;
     Ok(doc)
@@ -7649,12 +7670,16 @@ fn export_layer_impl(
                 group["bordersAffectLayout"] = json!(true);
                 group["version"] = json!(1);
             }
+            if let Some(order) = l.stacking_order {
+                group["stackingOrder"] = json!(u8::from(order == crate::layout::StackingOrder::LastOnTop));
+                group["version"] = json!(1);
+            }
             layer.insert("groupLayout".into(), group);
             layer.insert("topPadding".into(), json!(l.padding[0]));
             layer.insert("rightPadding".into(), json!(l.padding[1]));
             layer.insert("bottomPadding".into(), json!(l.padding[2]));
             layer.insert("leftPadding".into(), json!(l.padding[3]));
-            if l.reverse_flow {
+            if l.reverses_flow() || l.stacking_order.is_some() {
                 layer.insert("groupBehavior".into(), json!(u8::from(class == "artboard" || class == "canvasFrame")));
             }
             // converter logic: asymmetric padding selects INDIVIDUAL (2),
@@ -7805,6 +7830,9 @@ fn export_layer_impl(
                     child["booleanOperation"] = json!(boolean_code(operation));
                 }
             }
+        }
+        if layer.get("groupLayout").and_then(|layout| layout.get("stackingOrder")).and_then(Value::as_u64) == Some(1) {
+            children.reverse();
         }
         if !children.is_empty() {
             layer.insert("layers".into(), Value::Array(children));
@@ -10997,6 +11025,7 @@ mod tests {
             wrap: false,
             reverse_flow: false,
             borders_affect_layout: false,
+            stacking_order: None,
             justify: crate::layout::Align::SpaceBetween,
             align: crate::layout::Align::Center,
             columns: 0,

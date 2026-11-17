@@ -504,11 +504,26 @@ pub(super) fn commit_nodes(
             if found.len() != 1 {
                 return Err(issue("Edit this dependency in its original source page"));
             }
-            if old.children != node.children {
-                if old.instance.is_some() || !matches!(old.kind.as_str(), "group"|"frame"|"section") {
-                    return Err(issue("Only source containers can change layer order"));
+            if old.children != node.children &&
+                (old.instance.is_some() || !matches!(old.kind.as_str(), "group"|"frame"|"section")) {
+                return Err(issue("Only source containers can change layer order"));
+            }
+            let reverse_archive = |node: &futureox_design_kernel::scene::Node| {
+                node.layout.as_ref().and_then(|layout| layout.stacking_order)
+                    == Some(futureox_design_kernel::layout::StackingOrder::LastOnTop)
+            };
+            let (old_reverse, new_reverse) = (reverse_archive(old), reverse_archive(&node));
+            if old.children != node.children || old_reverse != new_reverse {
+                let mut before = old.children.clone();
+                let mut after = node.children.clone();
+                if old_reverse { before.reverse(); }
+                if new_reverse { after.reverse(); }
+                if before != after {
+                    hierarchy.insert(id.clone(), (before, after));
                 }
-                hierarchy.insert(id.clone(), (old.children.clone(), node.children.clone()));
+            }
+            if node.layout.as_ref().is_some_and(|layout| layout.stacking_order.is_some()) {
+                scene.document.schema_version = scene.document.schema_version.max(31);
             }
             source_nodes.push((id.clone(), found[0]));
             scene.document.nodes.insert(id.clone(), node);

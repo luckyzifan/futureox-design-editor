@@ -1,4 +1,5 @@
 use futureox_design_kernel::{
+    Engine,
     font::Fonts,
     interop::{export_sketch, export_sketch_layer_fields, import_sketch_report},
     layout::{self, SizeMode},
@@ -161,4 +162,47 @@ fn relative_stack_border_option_counts_the_largest_protruding_border_and_round_t
     assert_eq!(reopened.schema_version, 30);
     doc.schema_version = 29;
     assert!(doc.validate().is_err());
+}
+
+#[test]
+fn sketch_stacking_order_matches_native_overlap_without_moving_flow_items() {
+    let mut doc: Document = serde_json::from_value(json!({
+        "schemaVersion":31,"id":"d","name":"Overlap order",
+        "pages":[{"id":"p","name":"Page","background":"#ffffff","children":["stack"]}],
+        "nodes":{
+            "stack":{"id":"stack","kind":"frame","width":300,"height":200,"children":["a","b"],
+                     "layout":{"mode":"horizontal","gap":-30,"padding":[10,10,10,10],"stackingOrder":"last-on-top"}},
+            "a":{"id":"a","kind":"rectangle","width":60,"height":70,"fills":[{"kind":"solid","color":"#0000ff"}]},
+            "b":{"id":"b","kind":"rectangle","width":70,"height":60,"fills":[{"kind":"solid","color":"#ff0000"}]}
+        }
+    })).unwrap();
+    for (order, code, pixel) in [
+        (layout::StackingOrder::LastOnTop, 1, [255,0,0,255]),
+        (layout::StackingOrder::FirstOnTop, 0, [0,0,255,255]),
+    ] {
+        let stack = doc.nodes.get_mut("stack").unwrap();
+        stack.layout.as_mut().unwrap().stacking_order = Some(order);
+        stack.children = match order {
+            layout::StackingOrder::LastOnTop => vec!["a".into(), "b".into()],
+            layout::StackingOrder::FirstOnTop => vec!["b".into(), "a".into()],
+        };
+        let fields = export_sketch_layer_fields(&doc, "stack").unwrap();
+        assert_eq!(fields["groupLayout"]["stackingOrder"], code);
+        let bytes = export_sketch(&doc).unwrap();
+        let mut reopened = import_sketch_report(&bytes).unwrap().document;
+        assert_eq!(reopened.schema_version, 31);
+        assert_eq!(reopened.nodes["stack"].children, doc.nodes["stack"].children);
+        assert_eq!(reopened.nodes["stack"].layout.as_ref().unwrap().stacking_order, Some(order));
+        layout::resolve(&mut reopened, &Fonts::new()).unwrap();
+        assert_box(&reopened, "a", [10., 10., 60., 70.]);
+        assert_box(&reopened, "b", [40., 10., 70., 60.]);
+        let mut engine = Engine::new();
+        engine.load_document(&serde_json::to_string(&reopened).unwrap()).unwrap();
+        let options = engine.parse_options(json!({
+            "pageId":"p","width":140,"height":100,"view":{"x":0,"y":0,"zoom":1},"transparent":true
+        })).unwrap();
+        let pixels = engine.render(&options).unwrap();
+        let offset = 4 * (30 * 140 + 55);
+        assert_eq!(&pixels[offset..offset + 4], &pixel);
+    }
 }

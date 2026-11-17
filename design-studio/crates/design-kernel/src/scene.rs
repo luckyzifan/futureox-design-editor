@@ -1694,6 +1694,9 @@ impl Document {
             if self.schema_version < 30 && n.layout.as_ref().is_some_and(|layout| layout.borders_affect_layout) {
                 return Err("Stack borders in layout require schema 30".into());
             }
+            if self.schema_version < 31 && n.layout.as_ref().is_some_and(|layout| layout.stacking_order.is_some()) {
+                return Err("Stacking order requires schema 31".into());
+            }
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1911,7 +1914,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=30).contains(&self.schema_version)
+        if !(1..=31).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32
