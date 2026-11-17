@@ -226,6 +226,7 @@ type Drag = {
   marqueeIgnoreId?: string | null
   originSelection: string[]
   clickSelection?: string[] | null
+  alignmentReferenceClick?: string
   moved?: boolean
   duplicating?: boolean
   originalIds?: string[]
@@ -344,6 +345,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.canvas-overview,.pencil-controls,.rich-text-editor'
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const { locale, uiMode } = useInterfacePreferences()
+  useEffect(() => {
+    if (uiMode !== 'sketch' && editor.state.alignmentReference) editor.set({ alignmentReference: undefined })
+  }, [editor, uiMode])
   const outlineAvailable = !nativeSource && !openingSource
   const outlines = uiMode === 'figma' && outlineAvailable && !!state.outlines
   const outlineScene = useMemo(() => outlines ? createOutlineScene(state.doc, state.page,
@@ -2096,6 +2100,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const moveFromAnywhere = !kind && uiMode === 'sketch' && shortcutPlatform() === 'mac' &&
       s.tool === 'select' && e.altKey && e.metaKey && ids.length > 0 && selected.length > 0 && !selectionFeedback.readOnly
     let clickSelection: string[] | null = null
+    let alignmentReferenceClick: string | undefined
     if (e.button === 1 || space.current || s.tool === 'hand') { dragKind = 'pan'; setPanning(true); editor.hoverLayer(null, 'canvas') }
     else if (kind === 'marquee') { ids = []; setRubber({ ...p, width: 0, height: 0 }) }
     else if(!kind&&s.tool==='zoom'){dragKind='zoom';setRubber({...p,width:0,height:0})}
@@ -2131,6 +2136,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         resolvedCommittedComparison: editor.state.selection.length === intent.selection.length && editor.state.selection.every((id,i) => id === intent.selection[i]) ? 1 : 2,
       })
       clickSelection = intent.clickSelection
+      if (uiMode === 'sketch' && s.tool === 'select' && ids.length > 1 &&
+          clickSelection?.length === 1 && clickSelection[0] === hit && ids.includes(clickSelection[0]) &&
+          !selectionFeedback.readOnly && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey)
+        alignmentReferenceClick = clickSelection[0]
       if (hit || groupIntent || (gap&&!e.shiftKey)) {
         ids = editor.topSelection()
       } else {
@@ -2210,6 +2219,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       } : {}),
       originSelection: [...s.selection],
       clickSelection, moved: false,
+      alignmentReferenceClick,
       lastScreen: screen,
       lastModifiers: { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey },
       ...(dragKind === 'move' && !moveFromAnywhere && ids.length === 1 && displayedSnapshot?.document.nodes[ids[0]] ? {
@@ -3001,7 +3011,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     } else if (d.kind === 'move' && !d.moved) {
       editor.cancel()
       finishDragTrace(d, ActionOutcome.cancelled, ActionReason.belowThreshold)
-      if (d.clickSelection !== null && d.clickSelection !== undefined) editor.select(d.clickSelection)
+      if (uiMode === 'sketch' && d.alignmentReferenceClick) editor.set({ alignmentReference: d.alignmentReferenceClick })
+      else if (d.clickSelection !== null && d.clickSelection !== undefined) editor.select(d.clickSelection)
     } else if (d.kind === 'crop') {
       const target = d.node
       const live = target && editor.state.doc.nodes[target.id]
@@ -3689,11 +3700,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 const node = state.doc.nodes[entry.id]
                 if (!node || !(node.width > 0) || !(node.height > 0)) return null
                 const member = heldRotationMembers?.[index]
+                const reference = uiMode === 'sketch' && state.alignmentReference === entry.id
                 const points = (member || boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
                   .map(point => apply(entry.matrix, point)))
                   .map(point => `${point.x},${point.y}`).join(' ')
                 return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
-                  fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                  data-alignment-reference={reference || undefined} fill="none" stroke={SELECTION_BLUE}
+                  strokeWidth={reference ? 2 * SELECTION_MEMBER_STROKE_PX : SELECTION_MEMBER_STROKE_PX}
+                  vectorEffect="non-scaling-stroke" pointerEvents="none" />
               })}
               {showSelectionChrome && <polygon
                 data-testid="canvas-selection-outline"

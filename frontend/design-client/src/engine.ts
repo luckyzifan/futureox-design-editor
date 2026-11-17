@@ -177,6 +177,7 @@ export type EditorState = {
   doc: DesignDocument
   page: string
   selection: string[]
+  alignmentReference?: string
   hover: string | null
   hoverSource: 'canvas' | 'layers' | null
   tool: Tool
@@ -594,6 +595,13 @@ export class Editor {
       patch = { ...patch, view: view && (!this.temporaryZoom || view.zoom === 1) ? view : this.state.view }
     }
     const next = { ...this.state, ...patch }
+    if (next.alignmentReference && (navigationChanged || next.selection.length < 2 ||
+        !next.selection.includes(next.alignmentReference) ||
+        !next.doc.nodes[next.alignmentReference]?.visible || next.doc.nodes[next.alignmentReference].locked ||
+        (patch.selection && (next.selection.length !== this.state.selection.length ||
+          next.selection.some((id, index) => id !== this.state.selection[index]))))) {
+      next.alignmentReference = undefined
+    }
     if (next.frameCrop && (navigationChanged || next.tool !== 'select' ||
         next.selection.length !== 1 || next.selection[0] !== next.frameCrop ||
         next.doc.nodes[next.frameCrop]?.kind !== 'frame'))
@@ -1418,6 +1426,7 @@ export class Editor {
       doc,
       page:tabPage ?? (saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id))),
       selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):tabSelection,
+      alignmentReference: undefined,
       frameCrop: null,
       outlines: false,
       hover: null,
@@ -2963,7 +2972,8 @@ export class Editor {
     if (!this.state.selection.length) return
     try {
       const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
-      const plan = prepareSelectionArrangement(base, this.state.selection, axis, mode, { fresh: true })
+      const reference = interfacePreference.getSnapshot().uiMode === 'sketch' ? this.state.alignmentReference : undefined
+      const plan = prepareSelectionArrangement(base, this.state.selection, axis, mode, { fresh: true }, reference)
       if (!plan.patches.length) return { status: 'unchanged' as const, revision }
       return this.change(mode === 'distribute' ? '等距分布' : '对齐图层', draft => {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)

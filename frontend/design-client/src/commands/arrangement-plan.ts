@@ -7,10 +7,11 @@ export interface ArrangementPlan { profile: CommandProfile; offsets: Point[] }
 /** Bounds are measured by the adapter against its exact snapshot/candidate.
  * The internal Core tag identifies that contract; it grants no authority and measures no geometry.
  * Offsets follow input order. The shared command handles two-node no-change and rejects ambiguous overlap before this >=3/equal-gap primitive. */
-export function planArrangement(profile: CommandProfile, rects: readonly Bounds[], axis: 'x' | 'y', mode: ArrangementMode, parent?: Bounds): ArrangementPlan | null {
+export function planArrangement(profile: CommandProfile, rects: readonly Bounds[], axis: 'x' | 'y', mode: ArrangementMode,
+  parent?: Bounds, reference?: Bounds): ArrangementPlan | null {
   if (!rects.length || (mode === 'distribute' ? rects.length < 3 : rects.length === 1 && !parent)) return null
   const size = axis === 'x' ? 'width' : 'height'
-  const box = rects.length >= 2 ? unionBounds([...rects]) : parent!
+  const box = (mode === 'distribute' ? undefined : reference) ?? (rects.length >= 2 ? unionBounds([...rects]) : parent!)
   const offsets: Point[] = new Array(rects.length)
   const point = (delta: number): Point => axis === 'x' ? { x: delta, y: 0 } : { x: 0, y: delta }
   if (mode === 'distribute') {

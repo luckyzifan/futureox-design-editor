@@ -95,6 +95,43 @@ async function marquee(from: number[], to: number[], options: MouseEventInit = {
   await act(async () => pointer('pointerup', to[0], to[1], options))
 }
 
+test('Sketch uses the clicked member of a multi-selection as the alignment reference', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const first = node('rectangle', 50, 100, 50, 40)
+  const reference = node('rectangle', 140, 108, 60, 45)
+  const frame = node('frame', 300, 105, 95, 70)
+  await render([first, reference, frame])
+  await act(async () => editor.select([first.id, reference.id, frame.id]))
+  const before = editor.authoredDocument, revision = editor.state.version
+  const click = async (x: number, y: number) => {
+    await act(async () => pointer('pointerdown', x, y))
+    await act(async () => pointer('pointerup', x, y))
+  }
+  const marker = () => host().querySelector('[data-alignment-reference]')?.getAttribute('data-node-id')
+  const xOf = (id: string) => editor.state.doc.nodes[id].transform[4]
+  await click(158, 125)
+  expect(editor.state.selection).toEqual([first.id, reference.id, frame.id])
+  expect(marker()).toBe(reference.id)
+  expect(editor.authoredDocument).toBe(before)
+  expect(editor.state.version).toBe(revision)
+  await act(async () => editor.align('x', 'start'))
+  expect([xOf(first.id), xOf(reference.id), xOf(frame.id)]).toEqual([140, 140, 140])
+  await act(async () => editor.undo())
+  expect(editor.authoredDocument).toEqual(before)
+
+  await click(339, 132)
+  expect(marker()).toBe(frame.id)
+  await act(async () => editor.align('x', 'end'))
+  expect([xOf(first.id), xOf(reference.id), xOf(frame.id)]).toEqual([345, 335, 300])
+  await act(async () => editor.undo())
+  await click(777, 577)
+  expect(marker()).toBeUndefined()
+  expect(editor.state.alignmentReference).toBeUndefined()
+  await act(async () => editor.select([first.id, reference.id]))
+  await act(async () => editor.align('x', 'start'))
+  expect([xOf(first.id), xOf(reference.id)]).toEqual([50, 50])
+})
+
 test('Sketch Option+Command drags the existing selection from elsewhere with one undo', async () => {
   interfacePreference.set({ uiMode: 'sketch' })
   const parent = node('frame', 50, 50, 260, 230)
