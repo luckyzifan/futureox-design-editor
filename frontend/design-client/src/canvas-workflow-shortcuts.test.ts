@@ -3,7 +3,7 @@ import { Editor } from './engine'
 import { blank, node, defaultSizing, defaultTextStyle } from './model'
 import { dispatchEditorCommand } from './editor-commands'
 import { dispatchEditorShortcut } from './editor-shortcuts'
-import { selectAllCanvasIds } from './canvas-workflow-shortcuts'
+import { selectAllCanvasIds, selectAllForceCanvasIds, selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { selectionMetric } from './selection-properties'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
@@ -139,4 +139,23 @@ test('Figma Windows front/back uses Ctrl+Shift brackets, while macOS/Sketch pres
   expect(resolveShortcut(key(']', { ctrlKey: true, altKey: true }), context)).toBeNull()
   expect(resolveShortcut(key(']', { metaKey: true, altKey: true }), { ...context, platform: 'mac' })?.command).toBe('bring-to-front')
   expect(resolveShortcut(key(']', { ctrlKey: true, altKey: true }), { ...context, profile: 'sketch-like' })?.command).toBe('bring-to-front')
+})
+
+describe('Sketch select-all variants (⌃⌘A force, ⇧⌘A top-level)', () => {
+  test('force select-all includes hidden and locked siblings inside the entered container', () => {
+    const { editor, a, b, hidden, locked } = fixture()
+    editor.select([a.id])
+    // plain ⌘A keeps hidden/locked out of the same container scope
+    expect(selectAllCanvasIds(editor.state.doc, editor.state.page, [a.id], 'sketch-like')).toEqual([a.id, b.id])
+    // ⌃⌘A returns every sibling of the entered container, hidden and locked included
+    expect(selectAllForceCanvasIds(editor.state.doc, editor.state.page, [a.id], 'sketch-like')).toEqual([a.id, b.id, hidden.id, locked.id])
+    // figma-like preset does not gain the command
+    expect(selectAllForceCanvasIds(editor.state.doc, editor.state.page, [a.id], 'figma-like')).toEqual([])
+  })
+  test('top-level select-all returns page roots even while inside a container', () => {
+    const { editor, frame, outside, a } = fixture()
+    editor.select([a.id])
+    expect(selectTopLevelCanvasIds(editor.state.doc, editor.state.page, 'sketch-like')).toEqual([frame.id, outside.id])
+    expect(selectTopLevelCanvasIds(editor.state.doc, editor.state.page, 'figma-like')).toEqual([])
+  })
 })

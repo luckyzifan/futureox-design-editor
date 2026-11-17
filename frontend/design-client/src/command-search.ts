@@ -97,6 +97,8 @@ const catalog: readonly Spec[] = [
   { command: 'select-instance', zh: '选择同一组件实例', en: 'Select instances of the same component', group: 'selection' },
   { command: 'select-inverse', zh: '反选', en: 'Invert selection', group: 'selection' },
   { command: 'select-all', zh: '全选', en: 'Select all', group: 'selection' },
+  { command: 'select-all-force', zh: '全选（含隐藏与锁定）', en: 'Select all including hidden and locked', group: 'selection' },
+  { command: 'select-all-top-level', zh: '全选顶层画板与图形', en: 'Select all top-level frames and graphics', group: 'selection' },
   { command: 'zoom-in', zh: '放大', en: 'Zoom in', group: 'view' },
   { command: 'zoom-out', zh: '缩小', en: 'Zoom out', group: 'view' },
   { command: 'zoom-100', zh: '缩放至 100%', en: 'Zoom to 100%', group: 'view', aliases: ['100%'] },

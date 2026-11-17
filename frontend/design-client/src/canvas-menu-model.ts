@@ -84,6 +84,10 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     { command: 'paste-here', label: '粘贴到此处', group: 'clipboard', disabled: busy },
     { command: 'paste-in-place', label: '粘贴到原位', group: 'clipboard', disabled: busy },
     { command: 'select-all', label: '全选', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
+    ...(context.profile === 'sketch-like' ? ([
+      { command: 'select-all-force', label: '全选（含隐藏与锁定）', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
+      { command: 'select-all-top-level', label: '全选顶层画板与图形', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
+    ] as const satisfies CanvasMenuItem[]) : []),
     { command: 'zoom-fit', label: '缩放至全部内容', group: 'view', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
   )
   const visiblePages = userPages(doc)
