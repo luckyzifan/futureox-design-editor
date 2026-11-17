@@ -1432,7 +1432,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>{toolbarText.designSystems}</button>
               </ToolPopover>
               <button type="button" className="command-search-trigger" aria-label={commandSearchLabels.label} aria-haspopup="dialog" aria-expanded={commandSearchOpen}
-                title={commandSearchLabels.label}
+                title={`${commandSearchLabels.label} (${shortcutLabel('open-command-search', shortcutContext)})`}
                 onClick={() => requestCommandSearch()}>
                 <Search size={18} />
               </button>
@@ -1672,7 +1672,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
             <button type="button" onClick={() => { const opener = fileMenuTrigger.current; setMenu(false); requestCommandSearch(opener) }}>
               <Search size={15} />{commandSearchLabels.title}
-              {uiMode === 'sketch' && shortcutProfile === 'sketch-like' && <kbd>{formatShortcutCombo('Mod+K', shortcutContext.platform)} / S</kbd>}
+              <kbd>{shortcutLabel('open-command-search', shortcutContext)}{uiMode === 'sketch' ? ' / S' : ''}</kbd>
             </button>
             <button
               onClick={() => {

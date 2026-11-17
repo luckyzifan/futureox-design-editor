@@ -30,7 +30,7 @@ describe('bounded keyboard presets', () => {
     const layoutGuides = bindings.filter(binding => binding.command === 'toggle-layout-guides').map(binding => binding.combo)
     expect(layoutGuides).toEqual(context.profile === 'figma-like' ? ['Shift+G'] : [])
     const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()
-    expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : [])
+    expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : ['Mod+K'])
     const find = bindings.filter(binding => binding.command === 'open-layer-find').map(binding => binding.combo)
     expect(find).toEqual(context.profile === 'figma-like' && context.desktop ? ['Mod+F'] : [])
     expect(bindings.some(binding => binding.command === 'set-tool-slice' && binding.combo === (context.profile === 'figma-like' ? 'S' : 'E'))).toBe(true)
@@ -275,7 +275,7 @@ describe('bounded keyboard presets', () => {
     expect(editor.state.showAuthoredLayout).toBe(true)
     expect(editor.canUndo).toBe(false)
   })
-  test('sketch command search chords do not edit; figma S remains slice', async () => {
+  test('Command+K opens search in both layouts and Figma S remains slice', async () => {
     const { editor } = fixture(), before = editor.state.doc
     const sketch: ShortcutContext = { profile: 'sketch-like', platform: 'mac', desktop: true }
     const figma: ShortcutContext = { profile: 'figma-like', platform: 'mac', desktop: true }
@@ -284,7 +284,7 @@ describe('bounded keyboard presets', () => {
     expect(resolveShortcut(key('s', { shiftKey: true }), sketch)?.command).toBe('auto-layout')
     expect(resolveShortcut(key('s', { metaKey: true }), sketch)).toBeNull()
     expect(resolveShortcut(key('s'), figma)?.command).toBe('set-tool-slice')
-    expect(resolveShortcut(key('k', { metaKey: true }), figma)).toBeNull()
+    expect(resolveShortcut(key('k', { metaKey: true }), figma)?.command).toBe('open-command-search')
     await dispatchEditorShortcut(editor, key('s'), sketch)
     expect(editor.state.doc).toBe(before)
     expect(editor.state.tool).toBe('select')

@@ -161,8 +161,10 @@ export function shortcutBindings(context: ShortcutContext): readonly ShortcutBin
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
   if (uiMode !== 'sketch') bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
-  // Sketch's command bar. S stays the slice tool in the Figma profile.
-  if (profile === 'sketch-like') bindings.push({ command: 'open-command-search', combo: 'Mod+K' }, { command: 'open-command-search', combo: 'S' })
+  // Figma Quick Actions and the Sketch command bar share Mod+K. S is
+  // reserved for the Sketch command bar and remains Slice in Figma.
+  bindings.push({ command: 'open-command-search', combo: 'Mod+K' })
+  if (profile === 'sketch-like') bindings.push({ command: 'open-command-search', combo: 'S' })
   // Desktop Figma Find. Browsers keep Mod+F. Sketch desktop Mod+F remains frame-selection.
   if (profile === 'figma-like' && desktop) bindings.push({ command: 'open-layer-find', combo: 'Mod+F' })
   if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
