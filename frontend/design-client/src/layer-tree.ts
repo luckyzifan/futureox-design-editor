@@ -14,6 +14,18 @@ export function layerExpanded(node: DesignNode, depth: number, expansion: LayerE
   return !expansion.has(node.id)
 }
 
+/** Disclosure expansion stops at hidden branches, which remain individually expandable. */
+export function visibleLayerBranch(doc: DesignDocument, root: string): string[] {
+  const branches: string[] = [], pending = [root]
+  while (pending.length) {
+    const id = pending.pop()!, node = doc.nodes[id]
+    if (!node?.children.length) continue
+    branches.push(id)
+    for (const child of node.children) if (doc.nodes[child]?.visible) pending.push(child)
+  }
+  return branches
+}
+
 export function layerTreeRows(doc: DesignDocument, pageId: string, expansion: LayerExpansion, search: string) {
   const query = search.trim().toLocaleLowerCase(), matches = new Set<string>(), included = new Set<string>()
   const roots = doc.pages.find(page => page.id === pageId)?.children || []

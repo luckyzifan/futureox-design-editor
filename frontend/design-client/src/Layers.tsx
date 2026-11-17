@@ -2,7 +2,7 @@ import { dispatchEditorCommand } from './editor-commands'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { sketchLayerFindOwnsChord } from './interface-layout'
 import { shortcutPreference } from './shortcut-preference'
-import { layerExpanded, LayerRowsCache } from './layer-tree'
+import { layerExpanded, LayerRowsCache, visibleLayerBranch } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
 import { AssetsPanel } from './AssetsPanel'
@@ -587,7 +587,15 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                   tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation()
-                    setLayerExpanded(id, !expanded)
+                    if (uiMode === 'sketch' && e.altKey) {
+                      const branch = visibleLayerBranch(s.doc, id)
+                      setDisclosure(old => {
+                        if (branch.every(key => old.sketch.get(key) === true)) return old
+                        const overrides = new Map(old.sketch)
+                        for (const key of branch) overrides.set(key, true)
+                        return { ...old, sketch: overrides }
+                      })
+                    } else setLayerExpanded(id, !expanded)
                   }}
                 >
                   {n.children.length ? (
