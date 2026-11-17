@@ -21,6 +21,7 @@ pub struct Images {
     pixels: usize,
     settings: Option<crate::color::ColorSettings>,
     mips: bool,
+    pub(crate) sketch_png_footprint: bool,
 }
 /// Decoded asset plus its lazily materialized mip chain: `chain[i]` is level
 /// `i + 1`. The chain shares the admission budget with the base so residency
@@ -429,6 +430,17 @@ impl ImageCoordinates {
             stride.abs().round() >= 2. && aligned_integer(stride) && aligned_integer(origin)
         });
         self
+    }
+
+    fn sketch_small_residual_shrink(&self) -> bool {
+        let ratio = self.linear_placement.map_or(
+            [self.size[0] / self.image[0], self.size[1] / self.image[1]],
+            |(ratio, _)| [ratio; 2],
+        );
+        let strides = [self.inverse.0[0].abs() / ratio[0], self.inverse.0[3].abs() / ratio[1]];
+        // Beyond this band the existing pixel-footprint sampler handles the
+        // larger residual shrink. Keep its behavior and the deeper mip levels.
+        strides.into_iter().all(|stride| (1. ..1.5).contains(&stride))
     }
 
     #[inline]
@@ -1369,6 +1381,7 @@ impl SampleImage {
 }
 pub struct Sampler {
     linear_sampling: bool,
+    sketch_png_footprint: bool,
     /// Unmanaged images stay quantized encoded bytes. Analytic frames also set
     /// `linear_sampling` so the float bilinear expression is used; that flag
     /// does not decode those bytes.
@@ -1534,9 +1547,9 @@ impl Sampler {
             return Err("Invalid gradient stop".into());
         }
         stops.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let image = if p.kind == "image" {
+        let (image, first_sketch_mip) = if p.kind == "image" {
             let uri = p.image.as_deref().ok_or("Image fill has no asset")?;
-            let ordinary=|images:&mut Images|->Result<Option<SampleImage>,String>{
+            let ordinary = |images: &mut Images| -> Result<(Option<SampleImage>, bool), String> {
             let base = images.image(uri)?;
             // Coordinate compilation and surface must agree on the level, so
             // the selection stays inside the same pure geometry the exported
@@ -1555,7 +1568,8 @@ impl Sampler {
             } else {
                 0
             };
-            Ok(Some(SampleImage::Surface(images.image_at_selected_level(uri,level)?)))
+            let first_sketch_mip = sketch_bitmap && !images.mips_enabled() && images.settings.is_none() && level == 1;
+            Ok((Some(SampleImage::Surface(images.image_at_selected_level(uri, level)?)), first_sketch_mip))
             };
             #[cfg(not(target_arch="wasm32"))]
             {
@@ -1570,9 +1584,9 @@ impl Sampler {
                         0
                     };
                     if level > 0 {
-                        Some(SampleImage::Surface(images.image_at_selected_level(uri, level)?))
+                        (Some(SampleImage::Surface(images.image_at_selected_level(uri, level)?)), level == 1)
                     } else if let Some(rows) = asset.raw(images.settings)? {
-                        Some(SampleImage::Rows(rows))
+                        (Some(SampleImage::Rows(rows)), false)
                     } else {
                         ordinary(images)?
                     }
@@ -1583,7 +1597,7 @@ impl Sampler {
             #[cfg(target_arch="wasm32")]
             ordinary(images)?
         } else {
-            None
+            (None, false)
         };
         let image_coordinates = image
             .as_ref()
@@ -1601,6 +1615,8 @@ impl Sampler {
                         && p.adjust.is_none()))
             })
             .transpose()?;
+        let sketch_png_footprint = first_sketch_mip && images.sketch_png_footprint
+            && image_coordinates.as_ref().is_some_and(ImageCoordinates::sketch_small_residual_shrink);
         let gradient_coordinates =
             if matches!(p.kind.as_str(), "linear" | "radial" | "angular" | "diamond") {
                 Some(GradientCoordinates::new(
@@ -1618,6 +1634,7 @@ impl Sampler {
         Ok(Self {
             gradient_coordinates,
             image_coordinates,
+            sketch_png_footprint,
             linear_sampling: images.settings.is_some(),
             encoded_texels: images.settings.is_none(),
             kind: p.kind.clone(),
@@ -1839,6 +1856,35 @@ impl Sampler {
         let adjusted = self.adjusted(sampled);
         Pixel(adjusted.0.map(|v| ((v * 255.) * self.opacity).round_ties_even() / 255.))
     }
+    fn sample_sketch_png_mip(image: &SampleImage, point: Point) -> Option<Pixel> {
+        let [w, h] = image.size();
+        let weights = |position: f64, extent: u32| {
+            let center = (position - 0.5).round();
+            // Preserve the established edge and partial-coverage sampling.
+            if center < 2. || center + 2. >= f64::from(extent) { return None; }
+            let delta = position - 0.5 - center;
+            let left = 0.5 * (0.5 - delta).powi(2);
+            let right = 0.5 * (0.5 + delta).powi(2);
+            Some((center as i32 - 1, [left, 1. - (left + right), right]))
+        };
+        let (x, wx) = weights(point.x, w)?;
+        let (y, wy) = weights(point.y, h)?;
+        // Integrate bilinear reconstruction over one mip texel around the
+        // exact sample center. This reduces phase-dependent aliasing without
+        // shifting the export lattice or allocating another raster surface.
+        let mut sum = [0.; 4];
+        for (j, wy) in wy.into_iter().enumerate() {
+            for (i, wx) in wx.into_iter().enumerate() {
+                let weight = wx * wy;
+                let pixel = image.at(x + i as i32, y + j as i32);
+                for (out, value) in sum.iter_mut().zip(pixel.0) {
+                    *out += weight * f64::from(value);
+                }
+            }
+        }
+        Some(Pixel(sum.map(|c| c as f32)))
+    }
+
     pub fn at(&self, device: Point) -> Pixel {
         if let Some(image) = &self.image {
             if let Some(filtered) = self.half_scale_stretch(image, device) {
@@ -1849,7 +1895,10 @@ impl Sampler {
             match self.image_coordinates.as_ref().and_then(|c| c.at(device)) {
                 None => Pixel::default(),
                 Some(q) => {
-                    let sampled = if self.linear_sampling {
+                    let filtered = self.sketch_png_footprint.then(|| Self::sample_sketch_png_mip(image, q)).flatten();
+                    let sampled = if let Some(filtered) = filtered {
+                        filtered
+                    } else if self.linear_sampling {
                         crate::blend::sample_linear_from(q.x,q.y,|x,y|image.at(x,y))
                     } else {
                         crate::blend::sample_from(q.x,q.y,|x,y|image.at(x,y))

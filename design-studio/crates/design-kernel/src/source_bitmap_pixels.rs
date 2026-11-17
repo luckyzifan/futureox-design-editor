@@ -464,7 +464,7 @@ mod pose_cost {
         let png = crate::export::encode_rgba(24, 18, &pixels).unwrap();
         std::fs::write(&asset.base, &png).unwrap();
         let inline = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png));
-        let render = |image: &str, native: bool, sketch: bool| {
+        let render = |image: &str, native: bool, sketch: bool, scale: f64, x: f64, width: f64| {
             let mut engine = crate::Engine::new();
             if native { engine.set_source_bitmaps(Some(access.clone())); }
             let doc = serde_json::json!({
@@ -478,13 +478,20 @@ mod pose_cost {
             });
             engine.load_document(&doc.to_string()).unwrap();
             engine.render_region_png(&crate::export::RegionRequest {
-                page_id: "p".into(), scale: 1. / 3., node_ids: Some(vec!["b".into()]),
+                page_id: "p".into(), scale, node_ids: Some(vec!["b".into()]),
                 raster_profile: Some(crate::fidelity::RasterProfile::Analytic), color_output: None,
-                bounds: crate::export::ExportBounds { x: 0., y: 0., width: 24., height: 18. }
+                bounds: crate::export::ExportBounds { x, y: 0., width, height: 18. }
             }).unwrap()
         };
-        assert_eq!(render(&uri, true, true), render(&inline, false, true));
-        assert_ne!(render(&uri, true, false), render(&uri, true, true));
+        for scale in [1. / 3., 0.35] {
+            let from_source = render(&uri, true, true, scale, 0., 24.);
+            assert_eq!(from_source, render(&inline, false, true, scale, 0., 24.));
+            assert_ne!(from_source, render(&uri, true, false, scale, 0., 24.));
+            let full = image::load_from_memory(&from_source).unwrap().into_rgba8();
+            let cropped = render(&uri, true, true, scale, 2. / scale, 4. / scale);
+            assert_eq!(image::load_from_memory(&cropped).unwrap().into_rgba8(),
+                image::imageops::crop_imm(&full, 2, 0, 4, full.height()).to_image());
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 
