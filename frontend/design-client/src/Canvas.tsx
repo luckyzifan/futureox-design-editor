@@ -1301,6 +1301,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!e.repeat) editor.set({ showOverview: !editor.state.showOverview })
         return
       }
+      // Resolve before pen commit so Shift+G cannot write the in-progress path.
+      if (shortcut?.command === 'toggle-layout-guides' && !drag.current && !pencil.current) {
+        void dispatchEditorShortcut(editor, e, shortcutContext)
+        return
+      }
       if(!mod&&e.shiftKey&&e.code==='KeyR'&&!drag.current){e.preventDefault();editor.set({rulers:!editor.state.rulers});return}
       if(e.altKey&&!mod&&e.code==='KeyR'&&!drag.current&&editor.topSelection().length){e.preventDefault();setOrigin(origin.current.point,!origin.current.visible);return}
       const creation = drag.current

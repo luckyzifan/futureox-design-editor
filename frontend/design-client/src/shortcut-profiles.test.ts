@@ -26,7 +26,9 @@ describe('bounded keyboard presets', () => {
   test.each(contexts)('$profile $platform desktop=$desktop has unique chords and existing commands only', context => {
     const bindings = shortcutBindings(context)
     expect(new Set(bindings.map(binding => binding.combo)).size).toBe(bindings.length)
-    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find']).toContain(binding.command)
+    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find', 'toggle-layout-guides']).toContain(binding.command)
+    const layoutGuides = bindings.filter(binding => binding.command === 'toggle-layout-guides').map(binding => binding.combo)
+    expect(layoutGuides).toEqual(context.profile === 'figma-like' ? ['Shift+G'] : [])
     const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()
     expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : [])
     const find = bindings.filter(binding => binding.command === 'open-layer-find').map(binding => binding.combo)
@@ -223,6 +225,14 @@ describe('bounded keyboard presets', () => {
     expect(resolveShortcut(key('O', { code: 'KeyO', ctrlKey: true, shiftKey: true }), { ...context, platform: 'windows' })?.command).toBe('toggle-outlines')
     expect(resolveShortcut(key('O', { code: 'KeyO', metaKey: true, altKey: true }), context)?.command).toBe('outline-stroke')
     expect(resolveShortcut(key('O', { code: 'KeyO', ctrlKey: true, altKey: true }), { ...context, platform: 'windows' })?.command).toBe('outline-stroke')
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true }), context)?.command).toBe('toggle-layout-guides')
+    expect(resolveShortcut(key('g', { code: 'KeyG', ctrlKey: true }), context)).toBeNull()
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true, metaKey: true }), context)?.command).toBe('ungroup')
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true, ctrlKey: true }), { ...context, platform: 'windows' })?.command).toBe('ungroup')
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true }), { ...context, profile: 'sketch-like' })).toBeNull()
+    expect(shortcutLabel('toggle-layout-guides', context)).toBe('⇧ G')
+    expect(shortcutLabel('toggle-layout-guides', { ...context, platform: 'windows' })).toBe('Shift+G')
+    expect(shortcutLabel('toggle-layout-guides', { ...context, profile: 'sketch-like' })).toBeUndefined()
     expect(resolveShortcut(key('e', { shiftKey: true }), context)?.command).not.toBe('outline-stroke')
     expect(resolveShortcut(key('n'), { ...context, profile: 'sketch-like' })?.command).toBe('set-tool-comments')
     editor.set({ tool: 'pen' })
@@ -241,6 +251,29 @@ describe('bounded keyboard presets', () => {
     editor.addPage()
     await dispatchEditorShortcut(editor, key('PageUp', { code: 'PageUp' }), context)
     expect(editor.state.page).toBe(first)
+  })
+  test('Shift+G hides layout guides in view state and leaves the undo stack on the document edit', async () => {
+    const { editor, a } = fixture(), context: ShortcutContext = { profile: 'figma-like', platform: 'linux' }
+    const original = editor.state.doc
+    editor.change('rename', draft => { draft.nodes[a.id].name = 'Renamed' })
+    const renamed = editor.state.doc
+    expect(renamed).not.toBe(original)
+    const version = editor.state.version
+    await dispatchEditorShortcut(editor, key('G', { code: 'KeyG', shiftKey: true }), context)
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    expect(editor.state.doc).toBe(renamed)
+    expect(editor.state.version).toBe(version)
+    await dispatchEditorShortcut(editor, key('G', { code: 'KeyG', shiftKey: true, repeat: true }), context)
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    await dispatchEditorShortcut(editor, key('g', { code: 'KeyG', ctrlKey: true }), { ...context, platform: 'mac' })
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    expect(editor.state.doc).toBe(renamed)
+    editor.undo()
+    expect(editor.state.doc.nodes[a.id].name).not.toBe('Renamed')
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    await dispatchEditorShortcut(editor, key('G', { code: 'KeyG', shiftKey: true }), context)
+    expect(editor.state.showAuthoredLayout).toBe(true)
+    expect(editor.canUndo).toBe(false)
   })
   test('sketch command search chords do not edit; figma S remains slice', async () => {
     const { editor } = fixture(), before = editor.state.doc

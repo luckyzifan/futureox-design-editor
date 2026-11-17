@@ -30,6 +30,7 @@ export function ViewControls({
   const sketch = uiMode === 'sketch'
   const label = (zh: string, en: string) => locale === 'en' ? en : zh
   const centerKey = shortcutLabel('center-selection', shortcut)
+  const layoutGuidesKey = shortcutLabel('toggle-layout-guides', shortcut)
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const zoomPercentage = sketch ? Math.floor(liveZoom * 100 + 1e-9) : Number((liveZoom * 100).toFixed(1))
   const menu = useRef<HTMLDetailsElement>(null)
@@ -220,7 +221,7 @@ export function ViewControls({
           </label>
           {!sketch && <label><input type="checkbox" checked={s.showAuthoredLayout !== false}
             onChange={event => editor.set({ showAuthoredLayout: event.target.checked })} />
-            {label('布局参考线', 'Layout guides')}
+            {label('布局参考线', 'Layout guides')}{layoutGuidesKey ? `　${layoutGuidesKey}` : ''}
           </label>}
           <label>
             <input
