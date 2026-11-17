@@ -4476,7 +4476,8 @@ impl Painter<'_> {
                 let kernel=if fx.kind=="motion-blur" {Some(crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?)} else {None};
                 let compatible=self.compatible;
                 let filter=|source:&Surface| -> Result<Surface,String> {
-                    let mut value=if let Some(z)=fx.zoom_blur {crate::zoom_blur::apply(source,z,m,[n.width,n.height])?}
+                    let mut value=if let Some(z)=fx.zoom_blur {crate::zoom_blur::apply_sampled(source, z, m, [n.width, n.height],
+                        crate::zoom_blur::sketch_sampling(self.doc, n))?}
                         else if let Some(kernel)=&kernel {kernel.apply(source)?}
                         else if let Some(gradient) = fx.sketch_ramp() {
                             crate::sketch_progressive_blur::apply(source.try_clone()?, gradient, m, Point::default(), fx.radius * scale, false, compatible)?
@@ -5318,7 +5319,8 @@ impl Painter<'_> {
                 continue;
             }
             match fx.kind.as_str() {
-                "zoom-blur" => { shadow_basis=None; layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
+                "zoom-blur" => { shadow_basis=None; layer=crate::zoom_blur::apply_sampled(&layer, fx.zoom_blur.ok_or("Missing zoom parameters")?, m,
+                    [n.width, n.height], crate::zoom_blur::sketch_sampling(self.doc, n))?; }
                 "gaussian-blur" => {
                     shadow_basis = None;
                     layer = if let Some(gradient) = fx.sketch_ramp() {

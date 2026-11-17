@@ -1069,22 +1069,30 @@ fn motionBlurPixel(p:vec2<f32>)->vec4<f32>{
  }
  return vec4<f32>(divideRN(sum.x,header.y),divideRN(sum.y,header.y),divideRN(sum.z,header.y),divideRN(sum.w,header.y));
 }
-fn zoomSample(p:vec2<f32>,tap:u32)->vec4<f32>{
- let header=motionKernelTap(0u);let pixel=vec2<u32>(floor(p-u(1).xy));
- let x=motionKernelTap(1u+pixel.x*64u+tap);let y=motionKernelTap(u32(header.w)+pixel.y*64u+tap);
+fn zoomSample(pixel:vec2<u32>,tap:u32,count:u32,yBase:u32)->vec4<f32>{
+ let x=motionKernelTap(1u+pixel.x*count+tap);let y=motionKernelTap(yBase+pixel.y*count+tap);
  let q=u(1).xy+vec2<f32>(x.x,y.x)+0.5;
  return bsBilinear4(at(sourceA,q,u(1)),at(sourceA,q+vec2<f32>(1,0),u(1)),at(sourceA,q+vec2<f32>(0,1),u(1)),at(sourceA,q+vec2<f32>(1,1),u(1)),vec2<f32>(x.y,y.y),19u,9u);
 }
 fn zoomBlurPixel(p:vec2<f32>)->vec4<f32>{
- let count=min(64u,u32(motionKernelTap(0u).x));if(count==0u){return at(sourceA,p,u(1));}
+ let header=motionKernelTap(0u);let count=u32(header.x);
+ if(count!=64u&&count!=100u){return at(sourceA,p,u(1));}
+ let pixel=vec2<u32>(floor(p-u(1).xy));
  var samples:array<vec4<f32>,4>;var quads:array<vec4<f32>,4>;var groups:array<vec4<f32>,4>;
- // One sampling call site avoids duplicating the wide exact sampler in every
- // branch. The reduction order is still exactly the CPU's 4×4×4 tree.
- for(var i=0u;i<count;i=i+1u){samples[i%4u]=zoomSample(p,i);
-  if(i%4u==3u){quads[(i/4u)%4u]=meanFourRN(samples[0],samples[1],samples[2],samples[3]);
-   if(i%16u==15u){groups[i/16u]=meanFourRN(quads[0],quads[1],quads[2],quads[3]);}
+ var total=vec4<f32>(0);
+ // Keep one invocation of the exact sampler. Only the 100-tap Sketch
+ // program uses a different reduction; the legacy tree remains bitwise.
+ for(var i=0u;i<count;i=i+1u){samples[i%4u]=zoomSample(pixel,i,count,u32(header.w));
+  if(i%4u==3u){
+   let mean=meanFourRN(samples[0],samples[1],samples[2],samples[3]);
+   if(count==100u){total=addRN4(total,mean);}
+   else {
+    quads[(i/4u)%4u]=mean;
+    if(i%16u==15u){groups[i/16u]=meanFourRN(quads[0],quads[1],quads[2],quads[3]);}
+   }
   }
  }
+ if(count==100u){return mulRN4(total,vec4<f32>(0.04));}
  return meanFourRN(groups[0],groups[1],groups[2],groups[3]);
 }
 // Device-pixel footprint for an axis-aligned stretch, cover, or contain image

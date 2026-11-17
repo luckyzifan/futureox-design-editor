@@ -689,6 +689,8 @@ pub struct GpuNode {
     pub matrix: Transform,
     pub inverse: Transform,
     pub size: [f64; 2],
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sketch_zoom_sampling: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub glass_shape: Option<crate::optics::GlassShape>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2108,6 +2110,8 @@ impl Compiler<'_> {
                 matrix,
                 inverse,
                 size: [n.width, n.height],
+                sketch_zoom_sampling: n.effects.iter().any(|e| e.visible && e.zoom_blur.is_some())
+                    && crate::zoom_blur::sketch_sampling(self.doc, n),
                 glass_shape: n
                     .effects
                     .iter()

@@ -6544,8 +6544,9 @@ export class GpuRenderer {
   private async spatialBlur(input: Surface, n: GpuNode, fx: Effect): Promise<Surface> {
     if(fx.zoomBlur){
       if(fx.zoomBlur.amount===0)return input
-      const kernel=this.filterKernel(`zoom:${JSON.stringify([input.rect,n.matrix,n.size,fx.zoomBlur.center])}`,fx.zoomBlur.amount,
-        ()=>zoom_blur_coordinates(JSON.stringify(fx.zoomBlur),new Float64Array(n.matrix),new Float64Array(n.size),JSON.stringify(input.rect)),values=>[256,values.length/1024])
+      const kernel=this.filterKernel(`zoom:${JSON.stringify([input.rect,n.matrix,n.size,fx.zoomBlur.center,!!n.sketchZoomSampling])}`,fx.zoomBlur.amount,
+        ()=>zoom_blur_coordinates(JSON.stringify(fx.zoomBlur),new Float64Array(n.matrix),new Float64Array(n.size),
+          JSON.stringify(input.rect),n.sketchZoomSampling),values=>[256,values.length/1024])
       const pending=this.admitSurface(input.rect,1,false,false,[input,kernel],()=>this.run(62,input.rect,[input,kernel]))
       return pending?await pending:this.run(62,input.rect,[input,kernel])
     }

@@ -310,7 +310,7 @@ struct Compositor<'a, 'b, 'c> {
     mips: bool,
     blur_kernels: HashMap<BlurKernelKey, Surface>,
     motion_kernels: HashMap<[u64;6],Surface>,
-    zoom_kernels: HashMap<[u64;15],Surface>,
+    zoom_kernels: HashMap<[u64;16],Surface>,
     image_grids: HashMap<ImageGridKey, (usize, Surface)>,
     gradient_grids: HashMap<GradientGridKey, Surface>,
     texture_math: Option<Surface>,
@@ -2008,9 +2008,9 @@ impl Compositor<'_, '_, '_> {
         if let Some(z)=fx.zoom_blur {
             if z.is_identity() {return Ok(input)}
             let r=input.rect;
-            let key=[n.matrix.0[0],n.matrix.0[1],n.matrix.0[2],n.matrix.0[3],n.matrix.0[4],n.matrix.0[5],n.size[0],n.size[1],f64::from(r.x),f64::from(r.y),f64::from(r.w),f64::from(r.h),z.amount,z.center[0],z.center[1]].map(f64::to_bits);
+            let key=[n.matrix.0[0],n.matrix.0[1],n.matrix.0[2],n.matrix.0[3],n.matrix.0[4],n.matrix.0[5],n.size[0],n.size[1],f64::from(r.x),f64::from(r.y),f64::from(r.w),f64::from(r.h),z.amount,z.center[0],z.center[1],f64::from(n.sketch_zoom_sampling)].map(f64::to_bits);
             if !self.zoom_kernels.contains_key(&key) {
-                let data=futureox_design_kernel::zoom_blur::coordinates(z,n.matrix,n.size,r)?;
+                let data=futureox_design_kernel::zoom_blur::coordinates_sampled(z, n.matrix, n.size, r, n.sketch_zoom_sampling)?;
                 let surface=self.frame.upload_parameters(Rect::new(0,0,256,(data.len()/1024) as u32),&data)?;
                 self.zoom_kernels.insert(key,surface);
             }
