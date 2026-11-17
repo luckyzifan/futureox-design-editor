@@ -312,6 +312,52 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Auto Pin Contents pins only direct children and is a single undoable edit', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Auto Pin Contents')
+  const frame = node('frame', 70, 80, 300, 200)
+  const bottomRight = node('rectangle', 246, 157, 40, 30)
+  const centered = node('ellipse', 130, 85, 40, 30)
+  const strip = node('rectangle', 0, 0, 300, 20)
+  const group = node('group', 12, 65, 70, 20)
+  const grandchild = node('rectangle', 0, 0, 70, 20)
+  group.children = [grandchild.id]
+  frame.children = [bottomRight.id, centered.id, strip.id, group.id]
+  for (const n of [frame, bottomRight, centered, strip, group, grandchild]) doc.nodes[n.id] = n
+  doc.pages[0].children = [frame.id]
+  await act(async () => { editor!.load(doc) })
+  const n = (id: string) => editor!.state.doc.nodes[id]
+  const revision = editor!.state.version, before = editor!.authoredDocument
+  const press = () => key('Å', { code: 'KeyA', altKey: true, shiftKey: true })
+
+  await act(async () => { editor!.select([bottomRight.id]); canvas().focus() })
+  await press()
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => editor!.select([frame.id]))
+  await press()
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(n(bottomRight.id).constraints).toMatchObject({ horizontal: 'end', vertical: 'end' })
+  expect(n(centered.id).constraints).toMatchObject({ horizontal: 'center', vertical: 'center' })
+  expect(n(strip.id).constraints).toMatchObject({ horizontal: 'stretch', vertical: 'start' })
+  expect(n(group.id).constraints).toMatchObject({ horizontal: 'start', vertical: 'start' })
+  expect(n(grandchild.id).constraints).toBeUndefined()
+  expect(n(frame.id).constraints).toBeUndefined()
+  for (const id of frame.children) expect(n(id).transform).toEqual(before.nodes[id].transform)
+  await press()
+  expect(editor!.state.version).toBe(revision + 1)
+
+  await act(async () => { editor!.change('Resize fixture', draft => { draft.nodes[frame.id].width = 400; draft.nodes[frame.id].height = 260 }) })
+  expect(n(bottomRight.id).transform.slice(4)).toEqual([346, 217])
+  expect(n(centered.id).transform.slice(4)).toEqual([180, 115])
+  expect(n(strip.id).width).toBe(400)
+  await act(async () => editor!.undo())
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test.each([false, true])('Sketch zooms a nested selection to its top-level frame (desktop: %s)', async desktop => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   if (desktop) Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
