@@ -184,6 +184,8 @@ type Drag = {
   session: number
   page: string
   cropFrame?: string
+  /** null means a frame whose contents cannot be preserved independently. */
+  commandCropFrame?: string | null
   kind: 'pan' | 'zoom' | 'move' | 'scale' | 'resize' | 'rotate' | 'pivot' | 'marquee' | 'create' | 'vertex' | 'handle' | 'width' | 'parameter' | 'crop'
   start: Point
   screen: Point
@@ -2084,12 +2086,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     )
     const hotspotTarget = dragKind === 'create' && s.tool === 'hotspot' ? displayedHit(p, true) : null
     const hotspotBounds = hotspotTarget ? entries.find(entry => entry.id === hotspotTarget)?.bounds : undefined
+    const explicitCrop = s.frameCrop && ids.length === 1 && ids[0] === s.frameCrop &&
+      (dragKind === 'resize' || dragKind === 'move')
+    const commandCrop = dragKind === 'resize' && uiMode === 'sketch' && shortcutPlatform() === 'mac' &&
+      ids.length === 1 && sourceDocument.nodes[ids[0]]?.kind === 'frame'
+    const croppable = explicitCrop || commandCrop ? editableFrameCrop(editor) : undefined
     drag.current = {
       pointerId: e.pointerId,
       session: editor.sessionGeneration, page: s.page,
       kind: dragKind,
-      cropFrame: s.frameCrop && ids.length === 1 && ids[0] === s.frameCrop &&
-        (dragKind === 'resize' || dragKind === 'move') ? editableFrameCrop(editor) : undefined,
+      cropFrame: explicitCrop ? croppable : undefined,
+      commandCropFrame: commandCrop ? croppable ?? null : undefined,
       creationTool: s.tool,
       start: p,
       screen,
@@ -2439,6 +2446,18 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     d.lastModifiers = { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey }
     d.sampledMovement ||= d.lastScreen.x !== d.screen.x || d.lastScreen.y !== d.screen.y
     if (d.actionToken) actionTrace.sample(d.actionToken, { inputSamples: d.actionSamples = (d.actionSamples || 0) + 1, motionObserved: !!d.sampledMovement, modifiers: modifierBits(e) })
+    const commandCropFrame = e.metaKey ? d.commandCropFrame : undefined
+    const cropFrame = d.cropFrame ?? commandCropFrame
+    if (commandCropFrame !== undefined && !d.cropFrame && d.followPlan !== null) {
+      // A bitmap of the original subtree would resize the children as well.
+      // Use document previews for the rest of this drag once Cmd is used.
+      keepGpuGesture(d)
+    }
+    if (cropFrame === null) {
+      if (editor.state.doc !== d.sourceDocument) editor.preview({})
+      clearMoveGuides()
+      return
+    }
     if(d.kind==='pivot'){setOrigin(originFromWorld(p),true);return}
     if (d.kind === 'parameter' && d.node) {
       if (!d.sampledMovement) return
@@ -2706,7 +2725,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.kind === 'rotate') d.rotationDegrees = visual.degrees
     }
     if (d.kind === 'rotate') publishRotation(d, transform)
-    if (!d.cropFrame && ['move', 'rotate', 'scale', 'resize'].includes(d.kind))
+    if (!cropFrame && ['move', 'rotate', 'scale', 'resize'].includes(d.kind))
       placeGestureFollow(d, transform, pointerScreen, d.rotationDegrees)
     const parents = d.kind === 'move' && d.sourceParents || editor.parentMap(),
       basePatches: Record<string, Partial<DesignNode>> = {}
@@ -2722,8 +2741,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
       }
     }
-    const patches = d.cropFrame && d.sourceDocument
-      ? frameCropPatches(d.sourceDocument, d.cropFrame, basePatches[d.cropFrame]) : basePatches
+    const patches = cropFrame && d.sourceDocument
+      ? frameCropPatches(d.sourceDocument, cropFrame, basePatches[cropFrame]) : basePatches
     if (d.actionToken && d.actionBefore) {
       d.actionProposal = actionGeometry(editor.state.doc, d.ids, patches)
       actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
