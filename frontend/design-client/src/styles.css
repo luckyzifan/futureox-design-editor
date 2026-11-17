@@ -1522,6 +1522,36 @@ footer button {
   justify-content: flex-start !important;
   padding: 8px !important;
 }
+.view-pixel-preview > button {
+  width: 100%;
+  justify-content: space-between;
+  text-align: left;
+  padding: 8px;
+  font-size: 11px;
+}
+.view-submenu {
+  position: fixed;
+  z-index: 80;
+  min-width: 156px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: var(--workspace-panel, #fff);
+  color: var(--workspace-text, #333);
+  border: 1px solid var(--workspace-border, #e6e2ef);
+  border-radius: 10px;
+  box-shadow: 0 10px 36px #28203924;
+}
+.view-submenu button[role="menuitemradio"] {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 28px;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 11px;
+}
+.view-submenu-mark { width: 1em; flex: none; text-align: center; }
 .zoom-presets {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -7,7 +7,133 @@ import type { Editor } from './engine'
 import { zoomAt, zoomStep, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM } from './canvas-camera'
 import { NumberField } from './fields'
 import { PendingEditContext } from './pending-edit-context'
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
+
+type PixelPreviewLevel = 0 | 1 | 2
+
+/** The view menu scrolls, so the flyout is portaled. Choosing a level closes
+ * both menus and returns focus to the zoom summary, matching the desktop menu. */
+function PixelPreviewSubmenu({
+  label, offLabel, value, onChoose, onDismiss, panelRef, closeRef,
+}: {
+  label: string
+  offLabel: string
+  value: PixelPreviewLevel
+  onChoose: (value: PixelPreviewLevel) => void
+  onDismiss: () => void
+  panelRef: { current: HTMLElement | null }
+  closeRef: { current: () => void }
+}) {
+  const trigger = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const pendingFocus = useRef(false)
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  const options = [
+    { value: 0 as const, label: offLabel },
+    { value: 1 as const, label: '1×' },
+    { value: 2 as const, label: '2×' },
+  ]
+  closeRef.current = () => setOpen(false)
+  const focusChecked = () => {
+    const checked = panel.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')
+    const first = panel.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')
+    ;(checked ?? first)?.focus()
+  }
+  const openSubmenu = (focus: boolean) => {
+    pendingFocus.current = focus
+    if (open) { if (focus) focusChecked(); return }
+    setOpen(true)
+  }
+  const leaveSubmenu = () => { setOpen(false); trigger.current?.focus() }
+  const inside = (target: EventTarget | null) => target instanceof Node &&
+    (!!trigger.current?.contains(target) || !!panel.current?.contains(target))
+  const place = () => {
+    if (!trigger.current || !panel.current) return
+    const anchor = trigger.current.getBoundingClientRect()
+    const menu = panel.current
+    const theme = trigger.current.ownerDocument.defaultView?.getComputedStyle(trigger.current)
+    if (theme) for (const key of ['--workspace-panel', '--workspace-text', '--workspace-border', '--workspace-hover', '--workspace-accent', '--workspace-selected']) {
+      const next = theme.getPropertyValue(key)
+      if (next) menu.style.setProperty(key, next)
+    }
+    const width = menu.offsetWidth || 168
+    const height = menu.offsetHeight || 120
+    const margin = 8
+    const left = anchor.left >= window.innerWidth - anchor.right ? anchor.left - width + 8 : anchor.right - 8
+    menu.style.left = `${Math.max(margin, Math.min(left, window.innerWidth - width - margin))}px`
+    menu.style.top = `${Math.max(margin, Math.min(anchor.top, window.innerHeight - height - margin))}px`
+  }
+  useLayoutEffect(() => {
+    if (!open) return
+    place()
+    if (!pendingFocus.current) return
+    pendingFocus.current = false
+    focusChecked()
+  }, [open, value])
+  useEffect(() => {
+    const scroller = trigger.current?.closest('.view-menu-body')
+    if (!open || !scroller) return
+    scroller.addEventListener('scroll', place, { passive: true })
+    window.addEventListener('resize', place)
+    return () => {
+      scroller.removeEventListener('scroll', place)
+      window.removeEventListener('resize', place)
+    }
+  }, [open])
+  return <div className="view-pixel-preview">
+    <button ref={trigger} type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
+      onClick={(event) => { event.stopPropagation(); openSubmenu(true) }}
+      onPointerEnter={() => openSubmenu(false)}
+      onPointerLeave={(event) => { if (!inside(event.relatedTarget) && !panel.current?.contains(document.activeElement)) setOpen(false) }}
+      onKeyDown={(event) => {
+        if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+        if (event.key === 'ArrowRight' || event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault(); event.stopPropagation(); openSubmenu(true)
+        } else if (event.key === 'ArrowLeft' && open) {
+          event.preventDefault(); event.stopPropagation(); setOpen(false)
+        }
+      }}>
+      <span>{label}</span><span aria-hidden="true">›</span>
+    </button>
+    {open && createPortal(<div ref={(node) => { panel.current = node; panelRef.current = node }} id={id} role="menu" aria-label={label}
+      className="view-submenu" tabIndex={-1}
+      onPointerDown={(event) => event.stopPropagation()}
+      onPointerLeave={(event) => { if (!inside(event.relatedTarget) && !panel.current?.contains(document.activeElement)) setOpen(false) }}
+      onKeyDown={(event) => {
+        event.stopPropagation()
+        if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+        if (event.repeat && (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape')) { event.preventDefault(); return }
+        const items = [...(panel.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? [])]
+        if (event.key === 'ArrowLeft' || event.key === 'Tab') { event.preventDefault(); leaveSubmenu(); return }
+        if (!items.length) return
+        if (event.key === 'Escape') { event.preventDefault(); onDismiss(); return }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+          event.preventDefault()
+          const at = items.indexOf(document.activeElement as HTMLButtonElement)
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+            : (Math.max(at, 0) + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+          items[next]?.focus()
+          return
+        }
+        if (event.key === 'ArrowRight') { event.preventDefault(); return }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          const current = document.activeElement as HTMLButtonElement
+          if (items.includes(current)) current.click()
+        }
+      }}>
+      {options.map(option => <button type="button" role="menuitemradio" tabIndex={-1} key={option.value}
+        aria-label={option.label} aria-checked={value === option.value}
+        onClick={() => onChoose(option.value)}>
+        <span className="view-submenu-mark" aria-hidden="true">{value === option.value ? '✓' : ''}</span>
+        <span>{option.label}</span>
+      </button>)}
+    </div>, document.body)}
+  </div>
+}
+
 export function ViewControls({
   editor,
   size,
@@ -32,10 +158,17 @@ export function ViewControls({
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const zoomPercentage = sketch ? Math.floor(liveZoom * 100 + 1e-9) : Number((liveZoom * 100).toFixed(1))
   const menu = useRef<HTMLDetailsElement>(null)
-  const closeMenu = () => { if (menu.current) menu.current.open = false }
+  const pixelPanel = useRef<HTMLElement | null>(null)
+  const closePixel = useRef<() => void>(() => {})
+  const zoomSummary = () => menu.current?.querySelector<HTMLElement>(':scope > summary')
+  const closeMenu = () => { closePixel.current(); if (menu.current) menu.current.open = false }
+  const dismissViewMenu = () => { closeMenu(); zoomSummary()?.focus() }
   useEffect(() => {
-    const dismiss = (event: Event) => { if (menu.current && !menu.current.contains(event.target as Node)) menu.current.open = false }
-    const blur = () => { if (menu.current) menu.current.open = false }
+    const dismiss = (event: Event) => {
+      const target = event.target as Node
+      if (menu.current && !menu.current.contains(target) && !pixelPanel.current?.contains(target)) closeMenu()
+    }
+    const blur = () => closeMenu()
     document.addEventListener('pointerdown', dismiss, true); window.addEventListener('blur', blur)
     return () => { document.removeEventListener('pointerdown', dismiss, true); window.removeEventListener('blur', blur) }
   }, [])
@@ -45,8 +178,11 @@ export function ViewControls({
     const view = editor.flushPendingView()
     editor.set({ view: zoomAt(view, value, { x: size.width / 2, y: size.height / 2 }) })
   }
-  const preview = (value: 0 | 1 | 2) =>
-    editor.set({ pixelPreview: value, ...(value ? { lastPixelPreview: value } : {}) })
+  const choosePreview = (value: PixelPreviewLevel) => {
+    if (editor.state.pixelPreview !== value)
+      editor.set({ pixelPreview: value, ...(value ? { lastPixelPreview: value } : {}) })
+    dismissViewMenu()
+  }
   const zoomSteps = compact && <div className="zoom-steps">
     {(sketch ? [-1, 1] : [1, -1]).map(direction => {
       const title = direction === 1 ? text.zoomIn : text.zoomOut
@@ -67,13 +203,20 @@ export function ViewControls({
       className={`canvas-controls ${compact ? 'compact-controls' : ''}`}
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && menu.current?.open) { menu.current.open = false; menu.current.querySelector('summary')?.focus(); e.preventDefault() } }}
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && menu.current?.open) { dismissViewMenu(); e.preventDefault() } }}
     >
       {!compact && <button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>
         −
       </button>}
       <details ref={menu} className="view-menu" onToggle={event => {
-        if (!sketch && event.currentTarget.open) event.currentTarget.querySelector<HTMLInputElement>('input[role="spinbutton"]')?.focus()
+        const details = event.currentTarget
+        if (!details.open) { closePixel.current(); return }
+        // The toggle task is queued. Only move into the zoom field when focus
+        // has not already entered the menu, so keyboard entry is not pulled back.
+        const summary = details.querySelector(':scope > summary')
+        const active = document.activeElement
+        if (!sketch && (active === summary || active === document.body || active === null))
+          details.querySelector<HTMLInputElement>('input[role="spinbutton"]')?.focus()
       }}>
         <summary aria-label={text.zoomView} data-testid="zoom-readout">{zoomPercentage}%</summary>
         <div className="view-menu-body">
@@ -127,18 +270,8 @@ export function ViewControls({
           <label><input type="checkbox" aria-label={text.wheelZoom} checked={s.scrollWheelZoom}
             onChange={e => editor.setScrollWheelZoom(e.target.checked)}/>{text.wheelZoom}</label>
           <small>{text.viewNavigationHelp}</small>
-          <label>
-            {text.pixelPreview}
-            <select
-              aria-label={text.pixelPreview}
-              value={s.pixelPreview}
-              onChange={(e) => preview(Number(e.target.value) as 0 | 1 | 2)}
-            >
-              <option value={0}>{text.vectorPreview}</option>
-              <option value={1}>1×</option>
-              <option value={2}>2×</option>
-            </select>
-          </label>
+          <PixelPreviewSubmenu label={text.pixelPreview} offLabel={text.vectorPreview} value={s.pixelPreview}
+            onChoose={choosePreview} onDismiss={dismissViewMenu} panelRef={pixelPanel} closeRef={closePixel} />
           <label><input type="checkbox" aria-label={text.checkerboard} checked={s.checkerboard} onChange={e => editor.set({ checkerboard: e.target.checked })}/>{text.checkerboard}</label>
           <label>
             <input

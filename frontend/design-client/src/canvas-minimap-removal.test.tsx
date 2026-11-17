@@ -161,7 +161,7 @@ test('a legacy minimap=true state cannot resurrect overview work or the removed 
     await act(async () => editor.set({ view: { x: i * 25, y: -i * 10, zoom: 1 + i / 4 }, selection: [i % 2 ? visibleId : distantId] }))
     absent()
   }
-  expect(mount.querySelector('select[aria-label="像素预览"]')).not.toBeNull()
+  expect(mount.querySelector('button[aria-haspopup="menu"][aria-label="像素预览"]')).not.toBeNull()
   expect(mount.querySelector('input[aria-label="棋盘格背景"]')).not.toBeNull()
   expect(mount.querySelectorAll('[role="scrollbar"]')).toHaveLength(2)
 })
