@@ -3199,3 +3199,14 @@ html[data-reduced-motion=true] .animation-modal * {
 .sketch-blur-stop-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 
 .blur-stop-selected { stroke: var(--sketch-effect-accent, var(--workspace-accent)); fill: var(--sketch-effect-accent, var(--workspace-accent)); }
+
+.sketch-style-row + .sketch-style-row { border-top: 1px solid var(--workspace-border); }
+.sketch-style-header { display: flex; align-items: center; gap: 5px; min-height: 28px; }
+.sketch-style-header .mini-actions { margin-inline-start: auto; }
+.sketch-style-check { flex: none; accent-color: var(--workspace-accent); }
+.sketch-style-header .sketch-style-disclosure { display: flex; align-items: center; gap: 4px; padding: 2px; }
+.sketch-style-details:not([hidden]) { display: grid; gap: 6px; padding: 0 2px 8px 16px; }
+.sketch-style-details > input:not([type="color"]) { min-width: 0; width: 100%; }
+.sketch-text-alignment { display: flex; align-items: center; gap: 2px; }
+.sketch-text-alignment button { flex: 1; }
+.sketch-text-alignment button[aria-pressed="true"] { background: var(--workspace-selected); color: var(--workspace-selected-ink, var(--workspace-accent)); }

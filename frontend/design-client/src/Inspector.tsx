@@ -1,3 +1,5 @@
+import { clearStyleStack, type StyleField } from './style-stack'
+import { StylePropertyRow, useSketchStyleOptions } from './StylePropertyRow'
 import { usePropertyText, propertyOwnerLabel, propertyLayerCount } from './property-interface-messages'
 import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
@@ -52,7 +54,7 @@ import type { PencilCap } from './freehand'
 import { canFitFrameContents, editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, Minimize2, RotateCw } from 'lucide-react'
+import { Plus, Minus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, Minimize2, RotateCw } from 'lucide-react'
 import type { Editor } from './engine'
 import { VectorBrushPanel } from './VectorBrushPanel'
 import {
@@ -474,6 +476,8 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   allowSpatial?: boolean
 }) {
   const { uiMode } = useInterfacePreferences()
+  const sketchStyles = uiMode === 'sketch'
+  const removeStacks = useSketchStyleOptions(sketchStyles)
   const shortcutProfile = useShortcutProfile()
   const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
@@ -658,8 +662,37 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       {tr("裁剪超出内容")}
     </label>}
   </>
-  const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
+  const stackNames = { fills: '填充', strokes: '描边', effects: '效果' }
+  const clearStack = (field: StyleField) => {
+    if (field === 'effects') onEditBlur?.(null)
+    update(node => clearStyleStack(node, field), `移除全部${stackNames[field]}`)
+  }
+  const stackButton = (field: StyleField, add?: () => void) => {
+    const label = tr(`${removeStacks ? '移除全部' : '添加'}${stackNames[field]}`)
+    return <button type="button" title={label} aria-label={label}
+      disabled={removeStacks && !n[field].length && !n.styleRefs?.[field]}
+      onClick={() => removeStacks ? clearStack(field) : add?.()}>
+      {removeStacks ? <Minus size={15} /> : <Plus size={15} />}
+    </button>
+  }
+  const visibilityCheckbox = (field: StyleField, i: number) => {
+    const property = n[field][i]
+    const label = `${tr('启用')} ${tr(stackNames[field])} ${i + 1}`
+    return <input type="checkbox" className="sketch-style-check" aria-label={label} title={label}
+      checked={property.visible} onChange={event => {
+        const visible = event.currentTarget.checked
+        if (field === 'effects' && !visible) onEditBlur?.(null)
+        update(node => {
+          const current = node[field].find(item => item.id === property.id)
+          if (!current) return
+          current.visible = visible
+          if (field === 'fills') clearWholeTextRunColor(node)
+        }, '切换可见性')
+      }} />
+  }
+  const listControls = (field: StyleField, i: number, inRow = false) => (
     <div className="mini-actions" onClickCapture={field === 'effects' ? () => onEditBlur?.(null) : undefined}>
+      {sketchStyles && !inRow && visibilityCheckbox(field, i)}
       <button
         title={tr("上移")}
         disabled={!i}
@@ -690,7 +723,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
       >
         <ChevronDown size={13} />
       </button>
-      <button
+      {!sketchStyles && <button
         title={tr("切换可见性")}
         onClick={() =>
           update((n) => {
@@ -702,7 +735,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         }
       >
         {n[field][i].visible ? <Eye size={13} /> : <EyeOff size={13} />}
-      </button>
+      </button>}
       <button
         title={tr("删除")}
         onClick={() =>
@@ -957,26 +990,15 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         <RepeatPanel editor={editor} node={n}/>
         <ComponentPanel editor={editor} node={n} ids={ids} />
         {!n.spatial?.preserve3d && <section>
-          <h3>{tr("填充")}<button
-              title={tr("添加填充")}
-              onClick={() =>
-                update((n) => {
-                  if (n.fills.length < 16) {
-                    n.fills.push(paint())
-                    clearWholeTextRunColor(n)
-                  }
-                }, '添加填充')
-              }
-            >
-              <Plus size={15} />
-            </button>
-          </h3>
+          <h3>{tr("填充")}{stackButton('fills', () => update(node => {
+            if (node.fills.length < 16) {
+              node.fills.push(paint())
+              clearWholeTextRunColor(node)
+            }
+          }, '添加填充'))}</h3>
           {n.fills.map((p, i) => (
-            <div className="property-card" key={p.id}>
-              <div className="property-title">
-                <span>{tr("填充")}{i + 1}</span>
-                {listControls('fills', i)}
-              </div>
+            <StylePropertyRow key={p.id} sketch={sketchStyles} label={`${tr('填充')}${i + 1}`}
+              check={sketchStyles && visibilityCheckbox('fills', i)} actions={listControls('fills', i, true)}>
               <PaintEditor
                 maxImagePixels={s.doc.colorManagement ? 8_388_608 : 16_777_216}
                 value={p}
@@ -990,28 +1012,17 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                   }, '修改填充')
                 }
               />
-            </div>
+            </StylePropertyRow>
           ))}
           {!n.fills.length && <p className="muted">{tr("无填充")}</p>}
         </section>}
         <section>
-          <h3>{tr("描边")}<button
-              title={tr("添加描边")}
-              onClick={() =>
-                update((n) => {
-                  if (n.strokes.length < 16) n.strokes.push(stroke())
-                }, '添加描边')
-              }
-            >
-              <Plus size={15} />
-            </button>
-          </h3>
+          <h3>{tr("描边")}{stackButton('strokes', () => update(node => {
+            if (node.strokes.length < 16) node.strokes.push(stroke())
+          }, '添加描边'))}</h3>
           {n.strokes.map((st, i) => (
-            <div className="property-card" key={st.id}>
-              <div className="property-title">
-                <span>{tr("描边")}{i + 1}</span>
-                {listControls('strokes', i)}
-              </div>
+            <StylePropertyRow key={st.id} sketch={sketchStyles} label={`${tr('描边')}${i + 1}`}
+              check={sketchStyles && visibilityCheckbox('strokes', i)} actions={listControls('strokes', i, true)}>
               <PaintEditor
                 channel="stroke"
                 maxImagePixels={s.doc.colorManagement ? 8_388_608 : 16_777_216}
@@ -1104,11 +1115,11 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                   })
                 }
               />
-            </div>
+            </StylePropertyRow>
           ))}
         </section>
         <section>
-          <h3>{tr("效果")}<select
+          <h3>{tr("效果")}{removeStacks ? stackButton('effects') : <select
               aria-label={tr("添加效果")}
               value=""
               onChange={(e) => {
@@ -1144,7 +1155,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                 <option value="pose" disabled={!!n.spatial?.pose || ['slice', 'section'].includes(n.kind)}>{locale === 'en' ? '3D transform' : '3D 变换'}</option>
                 <option value="perspective" disabled={!!n.spatial?.perspective || n.kind !== 'frame' || !!n.graphic}>{locale === 'en' ? 'Perspective' : '透视'}</option>
               </>}
-            </select>
+            </select>}
           </h3>
           {n.effects.map((fx, i) => nativeBlurSettings(fx.kind) || usesSketchRamp(fx) ?
             <BlurEffectPanel key={`${uiMode}:${fx.id}`} effect={fx} layer={n}
@@ -1162,19 +1173,16 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                 if (current) apply(current)
               }, label)}
               actions={listControls('effects', i)} fillNotice={backdropFillNotice(fx)} /> :
-            <div className="property-card" key={fx.id}>
-              <div className="property-title">
-                <b>{tr(effects[fx.kind])}</b>
-                {fx.glass && <GlassEffectPanel effect={fx} mode={uiMode} styleScale={units.style}
+            <StylePropertyRow key={fx.id} sketch={sketchStyles} label={tr(effects[fx.kind])} effect
+              check={sketchStyles && visibilityCheckbox('effects', i)} actions={listControls('effects', i, true)}
+              extra={fx.glass && <GlassEffectPanel effect={fx} mode={uiMode} styleScale={units.style}
                   styleDescription={styleDescription}
                   documentSpace={s.doc.colorManagement?.documentSpace === 'display-p3' ? 'display-p3' : 'srgb'}
                   openOnCreate={fx.id === glassToOpen} onOpened={() => setGlassToOpen(null)}
                   onChange={apply => update(node => {
                     const current = node.effects.find(effect => effect.id === fx.id)
                     if (current?.glass) apply(current)
-                  }, '修改玻璃效果')}/>}
-                {listControls('effects', i)}
-              </div>
+                  }, '修改玻璃效果')}/>}>
               {!fx.glass && <div className="field-grid effect-fields">
                 {(['radius', 'x', 'y', 'spread', 'opacity', 'amount'] as const)
                   .filter((k) =>
@@ -1322,7 +1330,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
                   }
                 />
               )}
-            </div>
+            </StylePropertyRow>
           )}
           {!n.effects.length && !n.spatial && <p className="muted">{tr("用光影和质感表达层次")}</p>}
         </section>

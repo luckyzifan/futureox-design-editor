@@ -1,4 +1,5 @@
 import type { DesignNode, Paint, Stroke, Effect } from './model'
+import { clearWholeTextRunColor } from './text'
 export type StyleField = 'fills' | 'strokes' | 'effects'
 export type StyleItem = Paint | Stroke | Effect
 export type StyleSlot = { index: number; kind: string; ids: string[] }
@@ -25,4 +26,21 @@ export function setStyleValue(item: StyleItem, path: string, value: unknown) {
   if (!parent || typeof parent !== 'object') return false
   ;(parent as Record<string, unknown>)[last] = value
   return true
+}
+
+export function clearStyleStack(node: DesignNode, stack: StyleField) {
+  node[stack] = []
+  if (stack === 'fills') {
+    clearWholeTextRunColor(node)
+    delete node.sketchLayerStyleOverridden
+  }
+  if (node.styleRefs && Object.hasOwn(node.styleRefs, stack)) {
+    delete node.styleRefs[stack]
+    if (!Object.keys(node.styleRefs).length) delete node.styleRefs
+  }
+  if (!node.bindings) return
+  for (const path of Object.keys(node.bindings)) {
+    if (path === stack || path.startsWith(stack + '.')) delete node.bindings[path]
+  }
+  if (!Object.keys(node.bindings).length) delete node.bindings
 }

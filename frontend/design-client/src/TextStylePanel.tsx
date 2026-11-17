@@ -2,7 +2,8 @@ import { usePropertyText, translateProperty } from './property-interface-message
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits, styleUnitDescription } from './property-units'
 import { SystemFontPicker } from './SystemFontPicker'
-import { interfacePreference } from './interface-preference'
+import { interfacePreference, useInterfacePreferences } from './interface-preference'
+import { AlignLeft, AlignCenter, AlignRight, AlignJustify } from 'lucide-react'
 import { FontManagementPanel } from './FontManagementPanel'
 import { applySelectionFont } from './font-management'
 import { commitPendingEdits, pendingEditsChanged, registerPendingEdit } from './pending-edits'
@@ -58,6 +59,7 @@ export function TextStylePanel({
   node: DesignNode
   ids: string[]
 }) {
+  const { uiMode } = useInterfacePreferences()
   const [paragraphIndex, setParagraphIndex] = useState(0)
   const paragraphs = Array.from(node.text.matchAll(/[^\r\n\u2028\u2029]*(?:\r\n|[\r\n\u2028\u2029]|$)/g))
     .filter(m=>m[0].length).map(m=>({start:m.index!,end:m.index!+m[0].length,text:m[0]}))
@@ -241,7 +243,14 @@ export function TextStylePanel({
           checked={style.wrap}
           onChange={(e) => update({ wrap: e.target.checked })}
         />{tr("按文本框宽度换行")}</label>
-      <label>{tr("对齐")}<select
+      {uiMode === 'sketch' ? <div className="sketch-text-alignment" role="group" aria-label={tr("文字对齐")}>
+        {([
+          ['start', '起始', AlignLeft], ['center', '居中', AlignCenter],
+          ['end', '末尾', AlignRight], ['justify', '两端对齐', AlignJustify],
+        ] as const).map(([align, label, Icon]) => <button type="button" key={align}
+          aria-label={tr(label)} title={tr(label)} aria-pressed={style.align === align}
+          onClick={() => update({ align })}><Icon size={14} /></button>)}
+      </div> : <label>{tr("对齐")}<select
           aria-label={tr("文字对齐")}
           value={style.align}
           onChange={(e) => update({ align: e.target.value as TextStyle['align'] })}
@@ -250,7 +259,7 @@ export function TextStylePanel({
           <option value="center">{tr("居中")}</option>
           <option value="end">{tr("末尾")}</option><option value="justify">{locale === 'en' ? 'Justify' : tr("两端对齐")}</option>
         </select>
-      </label>
+      </label>}
       <UnitNumberField unitDescription={styleDescription} historyLabel="段落间距" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("段落间距")} value={style.paragraphSpacing||0} min={0} max={10000} onChange={paragraphSpacing=>update({paragraphSpacing})}/><UnitNumberField unitDescription={styleDescription} historyLabel="首行缩进" diagnosticFamily={2} unit="number" unitScale={units.style} label={tr("首行缩进")} value={style.paragraphIndent||0} min={-10000} max={10000} onChange={paragraphIndent=>update({paragraphIndent})}/>
       {paragraphs.length > 0 && <details><summary>{tr('分段样式')}</summary>
         <label>{tr('段落')}<select aria-label={tr('选择段落')} value={Math.min(paragraphIndex,paragraphs.length-1)} onChange={e=>setParagraphIndex(Number(e.target.value))}>
