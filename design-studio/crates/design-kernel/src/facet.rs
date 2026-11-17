@@ -603,6 +603,7 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         bindings: BTreeMap::new(),
         variable_modes: BTreeMap::new(),
         style_refs: BTreeMap::new(),
+        sketch_layer_style_overridden: false,
         mask_type: None,
         mask_chain: None,
         id: id.into(),

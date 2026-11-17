@@ -1,35 +1,11 @@
 import { useState } from 'react'
 import { Link2Off, Plus, Upload } from 'lucide-react'
-import { emptySystem, type DesignSystem } from './design-system'
-import { cloneValue } from './draft'
+import { emptySystem } from './design-system'
 import type { Editor } from './engine'
-import { type DesignDocument, type DesignNode, type Paint, uid } from './model'
+import { type DesignDocument, type DesignNode, uid } from './model'
 import { commitPendingEdits } from './pending-edits'
 import { usePropertyText } from './property-interface-messages'
-
-type LayerStyle = DesignSystem['styles'][string]
-
-function captureStyle(node: DesignNode, name: string): LayerStyle {
-  return {
-    kind: 'paint', name, value: cloneValue(node.fills),
-    strokes: cloneValue(node.strokes), effects: cloneValue(node.effects),
-  }
-}
-
-function copyStyle(node: DesignNode, style: LayerStyle) {
-  node.fills = cloneValue(style.value as Paint[])
-  if (style.strokes?.length && !node.styleRefs?.strokes) node.strokes = cloneValue(style.strokes)
-  if (style.effects?.length) {
-    node.effects = cloneValue(style.effects)
-    // The combined layer style currently determines these visible effects.
-    if (node.styleRefs) delete node.styleRefs.effects
-  }
-}
-
-export function applySketchLayerStyle(node: DesignNode, id: string, style: LayerStyle) {
-  copyStyle(node, style)
-  node.styleRefs = { ...node.styleRefs, fills: id }
-}
+import { applySketchLayerStyle, captureLayerStyle, copyLayerStyle } from './sketch-layer-style'
 
 export function SketchLayerStyle({ editor, node }: { editor: Editor; node: DesignNode }) {
   const { tr, locale } = usePropertyText()
@@ -53,7 +29,7 @@ export function SketchLayerStyle({ editor, node }: { editor: Editor; node: Desig
     change('解除图层样式', (draft, selected) => {
       const shared = draft.designSystem?.styles[current[0]]
       if (shared?.kind !== 'paint' || selected.styleRefs?.fills !== current[0]) return
-      copyStyle(selected, shared)
+      copyLayerStyle(selected, shared)
       delete selected.styleRefs.fills
       if (!Object.keys(selected.styleRefs).length) delete selected.styleRefs
     })
@@ -62,7 +38,7 @@ export function SketchLayerStyle({ editor, node }: { editor: Editor; node: Desig
     if (change('更新共享样式', (draft, selected) => {
       const shared = draft.designSystem?.styles[id]
       if (shared?.kind !== 'paint') return
-      Object.assign(shared, captureStyle(selected, shared.name))
+      Object.assign(shared, captureLayerStyle(selected, shared.name))
       draft.schemaVersion = Math.max(12, draft.schemaVersion) as DesignDocument['schemaVersion']
     })) setChoosingUpdateTarget(false)
   }
@@ -110,8 +86,8 @@ export function SketchLayerStyle({ editor, node }: { editor: Editor; node: Desig
       if (change('保存共享样式', (draft, selected) => {
         const system = (draft.designSystem ??= emptySystem()), id = uid()
         const previous = system.styles[selected.styleRefs?.fills || '']
-        if (previous?.kind === 'paint') copyStyle(selected, previous)
-        system.styles[id] = captureStyle(selected, title)
+        if (previous?.kind === 'paint') copyLayerStyle(selected, previous)
+        system.styles[id] = captureLayerStyle(selected, title)
         selected.styleRefs = { ...selected.styleRefs, fills: id }
         draft.schemaVersion = Math.max(12, draft.schemaVersion) as DesignDocument['schemaVersion']
       })) { setCreating(false); setName('') }

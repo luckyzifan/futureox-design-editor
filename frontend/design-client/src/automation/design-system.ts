@@ -183,7 +183,7 @@ function validateSample(d: DesignDocument, sample: DesignNode) {
   // Validate authored values with existing transport admission, without involving rendering.
   const n = { ...sample, children: [] }
   delete n.component; delete n.componentSet; delete n.instance; delete n.instanceOrigin
-  delete n.variableModes; delete n.bindings; delete n.styleRefs
+  delete n.variableModes; delete n.bindings; delete n.styleRefs; delete n.sketchLayerStyleOverridden
   validateDocument({
     id: d.id, name: d.name, schemaVersion: Math.max(15,d.schemaVersion) as DesignDocument['schemaVersion'], fonts: d.fonts, colorManagement: d.colorManagement,
     rasterProfile: d.rasterProfile,
@@ -779,10 +779,15 @@ export const designSystemExtensions: AutomationExtension[] = [
   extension('style.apply', 'Apply a compatible shared style to a node.', { nodeId: str, field: { enum: ['fills', 'textStyle', 'effects'] }, styleId: str }, ['nodeId', 'field', 'styleId'], true, (d, p) => {
     const n = requiredNode(d, p.nodeId), field = styleField(p.field), id = key(p.styleId), s = resource(d.designSystem?.styles, id, 'style')
     if (s.kind !== styleFields[field] || (field === 'textStyle' && n.kind !== 'text')) throw new Error('Style/property type mismatch')
-    n.styleRefs = { ...n.styleRefs, [field]: id }; return { id: n.id, field, styleId: id }
+    n.styleRefs = { ...n.styleRefs, [field]: id }
+    if (field === 'fills') delete n.sketchLayerStyleOverridden
+    return { id: n.id, field, styleId: id }
   }),
   extension('style.unapply', 'Remove a shared style reference while retaining currently resolved node values.', { nodeId: str, field: { enum: ['fills', 'textStyle', 'effects'] } }, ['nodeId', 'field'], true, (d, p) => {
-    const n = requiredNode(d, p.nodeId), field = styleField(p.field); delete n.styleRefs?.[field]; return { id: n.id, field }
+    const n = requiredNode(d, p.nodeId), field = styleField(p.field)
+    delete n.styleRefs?.[field]
+    if (field === 'fills') delete n.sketchLayerStyleOverridden
+    return { id: n.id, field }
   }),
 ]
 

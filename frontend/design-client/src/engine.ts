@@ -35,6 +35,7 @@ import { duplicateGraph, type GraphCopy } from './duplicate-graph'
 import { appendDocument } from './append-document'
 import { commitPendingEdits } from './pending-edits'
 import { cloneValue, produceDraft } from './draft'
+import { keepSketchLayerStyleEdit } from './sketch-layer-style'
 import { validStroke, validProfiles } from './stroke-profile'
 import { remapDesignDependencies } from './design-system'
 import { pruneAnimations } from './animation'
@@ -758,6 +759,7 @@ export class Editor {
         if(draft.schemaVersion < 22 && hasSchema22Features(featureDocOf(authored)))draft.schemaVersion=22
         if(draft.schemaVersion < 24 && featureNodesOf(authored).some(n => n.spatial)) draft.schemaVersion = 24
         if(draft.schemaVersion < 25 && featureNodesOf(authored).some(n => n.spatial?.preserve3d)) draft.schemaVersion = 25
+        if(draft.schemaVersion < 26 && featureNodesOf(authored).some(n => n.sketchLayerStyleOverridden)) draft.schemaVersion = 26
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
@@ -1606,6 +1608,7 @@ export class Editor {
   ) {
     // Pointer previews are aggregated by their gesture owner, not logged per update.
     const commandCode = typeof patch !== 'function' && Object.hasOwn(patch, 'locked') ? 241 : typeof patch !== 'function' && Object.hasOwn(patch, 'visible') ? 242 : 240
+    const sketchProperties = source === 'properties' && interfacePreference.getSnapshot().uiMode === 'sketch'
     const action = this.interactionActive ? undefined : beginEditorAction(this, CanvasAction.layer, source === 'properties' ? ActionSource.properties : ActionSource.unknown, commandCode)
     try {
     const result = this.change(
@@ -1625,6 +1628,7 @@ export class Editor {
             if (typeof patch === 'function') patch(n, d)
             else Object.assign(n, patch)
             if (drawBrush) reconcileDrawBrush(n, drawBrush)
+            if (sketchProperties) keepSketchLayerStyleEdit(d, n, this.state.doc.nodes[id])
             if (!n.strokes.every(validStroke) || !validProfiles(n))
               throw new Error('描边参数无效，请检查宽度控制点、虚线或闭合接缝')
           }
@@ -3157,7 +3161,7 @@ export class Editor {
             fill.name += ' / 填充'
             fill.strokes = []
             // Outline is a baked geometry conversion, including effective paint.
-            delete fill.bindings; delete fill.styleRefs
+            delete fill.bindings; delete fill.styleRefs; delete fill.sketchLayerStyleOverridden
             delete fill.booleanOperation; fill.children = []
             parts.get(id)!.push(fill)
           }

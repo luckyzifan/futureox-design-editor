@@ -176,6 +176,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                 ? 'effects'
                                 : 'textStyle']: id,
                           }
+                          if (s.kind === 'paint') delete n.sketchLayerStyleOverridden
                         },
                         '应用共享样式',
                       )

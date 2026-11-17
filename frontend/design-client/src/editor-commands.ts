@@ -84,7 +84,10 @@ function nodeHasRemovablePaint(node: DesignNode | undefined, stack: PaintStack):
 }
 function clearPaintStack(node: DesignNode, stack: PaintStack) {
   node[stack] = []
-  if (stack === 'fills') clearWholeTextRunColor(node)
+  if (stack === 'fills') {
+    clearWholeTextRunColor(node)
+    delete node.sketchLayerStyleOverridden
+  }
   if (node.styleRefs && Object.hasOwn(node.styleRefs, stack)) {
     delete node.styleRefs[stack]
     if (!Object.keys(node.styleRefs).length) delete node.styleRefs

@@ -12,7 +12,8 @@ import { componentFixture } from './component-fixtures'
 import { emptySystem } from './design-system'
 import { Editor } from './engine'
 import { applyInterfaceLayout } from './interface-layout'
-import { blank, defaultTextStyle, node, paint } from './model'
+import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
+import { blank, defaultTextStyle, node, paint, stroke } from './model'
 import { nudgePreference } from './nudge-preference'
 import { shortcutPreference } from './shortcut-preference'
 import * as localStore from './local-store'
@@ -149,6 +150,46 @@ test('Sketch Option-Command-R replaces the chosen instance or shared style in on
   await select(ids.a)
   await replace()
   expect(dialog()).toBeNull()
+})
+
+test('Sketch Control-Option-S restores the linked appearance and leaves a single undo', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank(), shape = node('rectangle'), other = node('rectangle', 200)
+  const shared = paint('#214989'), override = paint('#d14021')
+  doc.schemaVersion = 12
+  doc.designSystem = emptySystem()
+  doc.designSystem.styles.calendar = { kind: 'paint', name: 'Calendar', value: [shared] }
+  for (const layer of [shape, other]) {
+    layer.styleRefs = { fills: 'calendar' }
+    layer.fills = [shared]
+    doc.nodes[layer.id] = layer
+    doc.pages[0].children.push(layer.id)
+  }
+  await act(async () => { editor!.load(doc); editor!.select([shape.id]); canvas().focus() })
+  const reset = () => key('ß', { code: 'KeyS', ctrlKey: true, altKey: true })
+  const selected = () => editor!.state.doc.nodes[shape.id]
+  await reset()
+  expect(editor!.canUndo).toBe(false)
+  await act(async () => editor!.updateProperties([shape.id], { fills: [override], strokes: [stroke('#144e52', 3)] }))
+  expect(selected()).toMatchObject({ fills: [override], styleRefs: { fills: 'calendar' }, sketchLayerStyleOverridden: true })
+  const reopened = JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(editor!.authoredDocument))))
+  await act(async () => { expect(editor!.load(reopened)).toBe(true); editor!.select([shape.id]) })
+  expect(selected().fills[0].color).toBe(override.color)
+  const before = editor!.authoredDocument
+  await reset()
+  expect(selected().styleRefs?.fills).toBe('calendar')
+  expect(selected().fills[0].color).toBe(shared.color)
+  expect(selected().strokes).toEqual([])
+  expect(selected().sketchLayerStyleOverridden).toBeUndefined()
+  expect(editor!.state.doc.nodes[other.id]).toEqual(before.nodes[other.id])
+  const version = editor!.state.version
+  await reset()
+  expect(editor!.state.version).toBe(version)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
 })
 
 test('mounted App capture preserves held-key one-undo and both toolbar/Inspector allow parent alignment', async () => {

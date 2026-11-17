@@ -388,6 +388,7 @@ export type DesignNode = {
   booleanOperation?: 'union' | 'subtract' | 'intersect' | 'exclude' | 'compoundNonzero' | 'compoundEvenodd'
   bindings?: Record<string, string>
   styleRefs?: Record<string, string>
+  sketchLayerStyleOverridden?: boolean
   /** Local collection selections, inherited by descendants. Instance roots keep authored placement only. */
   variableModes?: Record<string, string>
   maskType?: 'alpha' | 'luminance' | 'outline' | 'shape'
@@ -512,7 +513,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26
   id: string
   name: string
   pages: Page[]
@@ -841,7 +842,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1063,6 +1064,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
   let hasRepeat = false
   for (let index = 0; index < nodes.length; index++) {
     const id = nodeIds[index], n = nodes[index]
+    if (n.sketchLayerStyleOverridden !== undefined && (typeof n.sketchLayerStyleOverridden !== 'boolean' ||
+        n.sketchLayerStyleOverridden && d.schemaVersion < 26)) throw new Error('图层样式覆盖需要设计文件版本 26')
     if (n.guides !== undefined) validateGuides(n.guides, n.kind === 'frame' || n.kind === 'section')
     if (n.spatial !== undefined) {
       const spatial = n.spatial

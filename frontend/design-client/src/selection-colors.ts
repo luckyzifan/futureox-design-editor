@@ -52,6 +52,7 @@ export function replaceSelectionColor(node: DesignNode, uses: ColorUse[], color:
     if (detach) {
       if (node.bindings) { delete node.bindings[use.path]; if (!Object.keys(node.bindings).length) delete node.bindings }
       if (node.styleRefs) { delete node.styleRefs[use.field]; if (!Object.keys(node.styleRefs).length) delete node.styleRefs }
+      if (use.field === 'fills') delete node.sketchLayerStyleOverridden
     }
     const path = use.path.split('.'), last = path.pop()!
     let at: any = node

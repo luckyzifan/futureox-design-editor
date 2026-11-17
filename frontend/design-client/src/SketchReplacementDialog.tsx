@@ -5,7 +5,7 @@ import { useInterfacePreferences } from './interface-preference'
 import { modalKeyDown, useModalOwnership } from './modal-keyboard'
 import { commitPendingEdits } from './pending-edits'
 import { interactivePath } from './selection-hierarchy'
-import { applySketchLayerStyle } from './SketchLayerStyle'
+import { applySketchLayerStyle } from './sketch-layer-style'
 import './frame-presets.css'
 
 export type SketchReplacementTarget = {

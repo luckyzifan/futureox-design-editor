@@ -292,6 +292,9 @@ pub struct Node {
     pub variable_modes: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub style_refs: BTreeMap<String, String>,
+    /// Sketch retains the layer style link while local appearance is edited.
+    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    pub sketch_layer_style_overridden: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask_type: Option<String>,
     /// Ordered sibling clipping in Sketch. Shape masks already imply a chain start.
@@ -1647,6 +1650,9 @@ impl Document {
                 return Err("Graphics require a non-stack frame and schema 23".into());
             }
             if let Some(effects) = &n.spatial { effects.validate(n, self.schema_version)?; }
+            if n.sketch_layer_style_overridden && self.schema_version < 26 {
+                return Err("Local Sketch layer style overrides require schema 26".into());
+            }
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1864,7 +1870,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=25).contains(&self.schema_version)
+        if !(1..=26).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

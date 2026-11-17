@@ -544,6 +544,9 @@ pub(crate) fn resolve_node(
     validate_node(s, n)?;
     let mut json = serde_json::to_value(&*n).map_err(|e| e.to_string())?;
     for (field, id) in &n.style_refs {
+        if field == "fills" && n.sketch_layer_style_overridden {
+            continue;
+        }
         if !overridden(field) {
             let shared = &s.styles[id];
             // Stroke styles are paint styles whose payload is `strokes`, not fills.

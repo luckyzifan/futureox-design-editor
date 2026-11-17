@@ -12,6 +12,7 @@ function fields(kind:PropertyKind,text:boolean):string[]{return kind==='all'?[..
 function keepReferences(n:DesignNode,allowed:string[]){
   n.bindings=Object.fromEntries(Object.entries(n.bindings||{}).filter(([key])=>allowed.includes(key.split('.')[0])))
   n.styleRefs=Object.fromEntries(Object.entries(n.styleRefs||{}).filter(([key])=>allowed.includes(key)))
+  if(!n.styleRefs.fills)delete n.sketchLayerStyleOverridden
 }
 /** A style-only carrier never places source text, children, prototypes or other
  * document content on the system clipboard. Dependencies are reachable only. */
@@ -22,6 +23,7 @@ export function copyProperties(source:DesignDocument,id:string,kind:PropertyKind
   const allowed=fields(kind,text)
   for(const key of allowed)(carrier as any)[key]=cloneValue((original as any)[key])
   carrier.bindings=cloneValue(original.bindings);carrier.styleRefs=cloneValue(original.styleRefs)
+  if(original.sketchLayerStyleOverridden)carrier.sketchLayerStyleOverridden=true
   // Preserve the effective variable mode at the copy site, including ancestors.
   const parents=allParents(source),chain:string[]=[];let current:string|undefined=id
   while(current&&source.nodes[current]){chain.unshift(current);current=parents.get(current)}
@@ -61,6 +63,10 @@ export function pasteProperties(target:DesignDocument,ids:string[],packet:Return
     if(packet.kind==='all'&&source.kind==='text'&&n.kind==='text')delete n.textRuns
     n.bindings={...Object.fromEntries(Object.entries(n.bindings||{}).filter(([key])=>!keys.includes(key.split('.')[0]))),...Object.fromEntries(Object.entries(source.bindings||{}).filter(([key])=>keys.includes(key.split('.')[0])))}
     n.styleRefs={...Object.fromEntries(Object.entries(n.styleRefs||{}).filter(([key])=>!keys.includes(key))),...Object.fromEntries(Object.entries(source.styleRefs||{}).filter(([key])=>keys.includes(key)))}
+    if(keys.includes('fills')){
+      if(source.sketchLayerStyleOverridden){n.sketchLayerStyleOverridden=true;target.schemaVersion=26}
+      else delete n.sketchLayerStyleOverridden
+    }
     if(source.variableModes)n.variableModes={...n.variableModes,...cloneValue(source.variableModes)}
   }
 }
