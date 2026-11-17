@@ -229,6 +229,13 @@ fn progressiveTent(p:vec2<f32>)->vec4<f32>{
 }
 fn gradientBlurComposite(p:vec2<f32>)->vec4<f32>{
  var sharp=at(sourceA,p,u(1));var blurred=at(sourceB,p,u(2));
+ // Floating backdrop textures contain the two filtered endpoints. Sample
+ // their affine ramp with the capture's fractional origin, as the CPU does.
+ if(u(11).x>0.5){
+  let q=p+u(11).yz;
+  let t=clamp(fmaRN(u(9).x,q.x,fmaRN(u(9).y,q.y,u(9).z)),0.,1.);
+  return addRN4(sharp,mulRN4(addRN4(blurred,-sharp),vec4<f32>(t)));
+ }
  if(u(60).x<0.5){
   sharp=vec4<f32>(divideRN(round(mulRN(sharp.x,255.)),255.),divideRN(round(mulRN(sharp.y,255.)),255.),divideRN(round(mulRN(sharp.z,255.)),255.),divideRN(round(mulRN(sharp.w,255.)),255.));
   blurred=vec4<f32>(divideRN(round(mulRN(blurred.x,255.)),255.),divideRN(round(mulRN(blurred.y,255.)),255.),divideRN(round(mulRN(blurred.z,255.)),255.),divideRN(round(mulRN(blurred.w,255.)),255.));

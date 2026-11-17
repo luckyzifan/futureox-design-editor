@@ -201,6 +201,11 @@ float gradientT(vec2 p,vec2 q,int kind){vec2 uv=paintUV(q);vec2 delta=(uv-.5)*2.
 float fmaRN(float a,float b,float c);
 vec4 gradientBlurComposite(vec2 p){
  vec4 sharp=at(sourceA,p,u[1]);vec4 blurred=at(sourceB,p,u[2]);
+ if(u[11].x>.5){
+  vec2 q=p+u[11].yz;
+  float t=clamp(fmaRN(u[9].x,q.x,fmaRN(u[9].y,q.y,u[9].z)),0.,1.);
+  return addRN4(sharp,mulRN4(addRN4(blurred,-sharp),vec4(t)));
+ }
  if(u[60].x<.5){
   sharp=vec4(divideRN(round(mulRN(sharp.x,255.)),255.),divideRN(round(mulRN(sharp.y,255.)),255.),divideRN(round(mulRN(sharp.z,255.)),255.),divideRN(round(mulRN(sharp.w,255.)),255.));
   blurred=vec4(divideRN(round(mulRN(blurred.x,255.)),255.),divideRN(round(mulRN(blurred.y,255.)),255.),divideRN(round(mulRN(blurred.z,255.)),255.),divideRN(round(mulRN(blurred.w,255.)),255.));
@@ -1015,8 +1020,39 @@ vec4 sketchBlurBox(vec2 p){
  }
  return (sum+fraction*(at(sourceA,left,bounds)+at(sourceA,right,bounds)))/(2.*r+1.+2.*fraction);
 }
+// Mode 65 evaluates the same variable-radius tent as vector.wgsl.
+vec4 progressiveSample(vec2 p){
+ if(u[11].y>.5)p=clamp(p,u[1].xy+.5,u[1].xy+u[1].zw-.5);
+ return at(sourceA,p,u[1]);
+}
+vec4 progressiveTent(vec2 p){
+ float t=clamp(fmaRN(u[9].x,p.x,fmaRN(u[9].y,p.y,u[9].z)),0.,1.);
+ float radius=addRN(u[10].x,mulRN(addRN(u[10].y,-u[10].x),t));
+ vec2 axis=u[11].x>.5?vec2(0.,1.):vec2(1.,0.);
+ if(!(radius>0.))return progressiveSample(p);
+ if(radius==floor(radius)&&radius>=1.&&radius<=512.){
+  int r=int(radius);
+  uint denominator=uint(6*r*r);
+  uvec4 sum=uvec4(0);
+  for(int i=-r;i<=r;i++){
+   int distance=abs(i);
+   uint weight=uint(distance==0?6*r-2:distance<r?6*(r-distance):1);
+   sum+=uvec4(roundEven(progressiveSample(p+axis*float(i))*255.))*weight;
+  }
+  uvec4 quotient=sum/denominator,remainder=sum-quotient*denominator;
+  for(int channel=0;channel<4;channel++){
+   uint doubled=2u*remainder[channel];
+   if(doubled>denominator||(doubled==denominator&&(quotient[channel]&1u)!=0u))quotient[channel]++;
+  }
+  return vec4(quotient)/255.;
+ }
+ int reach=int(ceil(radius));
+ vec4 sum=vec4(0.);
+ for(int i=-reach;i<=reach;i++)sum+=progressiveSample(p+axis*float(i))*tentWeight(radius,float(abs(i)))*255.;
+ return roundEven(clamp(sum,0.,255.))/255.;
+}
 vec4 shade(vec2 p){
- int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
+ int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==65)return progressiveTent(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
  if(u[60].x>.5){
   if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
   if(mode==8){return legacyTexture(p,true);}

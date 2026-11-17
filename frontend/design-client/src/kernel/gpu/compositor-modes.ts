@@ -21,10 +21,10 @@ export function compositorModes(scene: GpuScene) {
       if (effect.kind === 'motion-blur') modes.add(61)
       if (effect.kind === 'zoom-blur') modes.add(62)
       if (effect.kind === 'texture') modes.add(8)
-      // Layer blur keeps the weight-curve composite (mode 46). Background
-      // progressive is a separable tent at the two authored radii (mode 65).
+      // Floating backdrop and layer blur use the endpoint compositor.
+      // Byte backdrop keeps the variable-radius tent.
       if (effect.gradientBlur?.sketch) modes.add(64)
-      else if (effect.kind === 'background-blur' && effect.gradientBlur) modes.add(65)
+      else if (effect.kind === 'background-blur' && effect.gradientBlur) modes.add(scene.floatCompositing ? 46 : 65)
       else if (effect.kind === 'blur' && effect.gradientBlur) modes.add(46)
     }
   }
