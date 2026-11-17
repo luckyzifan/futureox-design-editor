@@ -4,8 +4,10 @@ import { importFig, retainFigTextBoxes } from './import-fig'
 import { finalizeFigWarnings } from './import-warnings'
 import { abeezeeLineBreakDiagnostic, fontDigestDiagnostic, fontDownloadFor, matchBundledImportFonts, retainedFontWarnings } from './bundled-import-fonts'
 import { initializeKernelModule } from './kernel/module'
+import type { DocumentPreparationRuntime } from './document-preparation-identity'
+import type { PreparedFigResult } from './import-file-worker'
 import { uid, type DesignDocument } from './model'
-type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
+type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf'; prepareRuntime?: DocumentPreparationRuntime } & ({ bytes: ArrayBuffer } | { file: File })
   | { document: DesignDocument; format: 'sketch-export' }
   | { name: string; format: 'sketch-with-libraries'; project: ArrayBuffer | File; libraries: Array<ArrayBuffer | File> }
 
@@ -131,7 +133,21 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       result.warnings=report.warnings
       if(report.droppedOccurrences) result.droppedOccurrences=report.droppedOccurrences
       else delete result.droppedOccurrences
-      self.postMessage({ result })
+      if (event.data.prepareRuntime) {
+        const requested = event.data.prepareRuntime
+        const { documentPreparationBuild, documentPreparationRuntime, sameDocumentPreparationBuild,
+          sameDocumentPreparationRuntime } = await import('./document-preparation-identity')
+        if (!sameDocumentPreparationBuild(documentPreparationBuild(), requested.build)) throw new Error('FIG 文档准备构建身份不匹配')
+        const { initializePicking, prepareDocumentForEditing } = await import('./kernel/picking')
+        await initializePicking()
+        const runtime = documentPreparationRuntime()
+        if (!runtime || !sameDocumentPreparationRuntime(runtime, requested)) throw new Error('FIG 文档准备内核资源身份不匹配')
+        const { createImportedCopy } = await import('./import-identity')
+        let validatedJson: string | undefined
+        const document = prepareDocumentForEditing(createImportedCopy(result.document), json => { validatedJson = json })
+        if (validatedJson === undefined) throw new Error('FIG 文档准备缺少校验证书')
+        self.postMessage({ prepared: { ...result, document, validatedJson, runtime } satisfies PreparedFigResult })
+      } else self.postMessage({ result })
     } else throw new Error('不支持的导入格式')
   } catch (error) {
     self.postMessage({ importStage, error: error instanceof Error ? error.message : String(error) })

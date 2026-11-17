@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { DesktopSession } from './desktop-session'
 import { blank } from './model'
-import { takePreparedDocument } from './prepared-document'
+import { prepareDocument, takePreparedDocument } from './prepared-document'
 import * as picking from './kernel/picking'
 import { documentPreparationBuild, documentPreparationRuntime, sameDocumentPreparationBuild, sameDocumentPreparationRuntime } from './document-preparation-identity'
 import { pinDocumentCapacity } from './document-capacity'
@@ -59,6 +59,21 @@ test('production installed-codec open yields with old document/history untouched
   expect(f.editor.state.doc).toEqual(f.target); expect(f.editor.load).toHaveBeenCalledTimes(1)
   expect(f.codec.decode).not.toHaveBeenCalled(); expect(f.codec.encode).not.toHaveBeenCalled()
   expect((f.session as any).baselineJson).toBe(JSON.stringify(f.target)); expect(f.session.dirty).toBe(false)
+})
+
+test('an adopted prepared import can reveal its canvas while recovery persists', async () => {
+  const f = fixture(), prepared = prepareDocument(f.target)
+  vi.mocked(picking.prepareDocumentForEditing).mockClear()
+  let finishRecovery!: (result: { status: 'ok' }) => void
+  f.bridge.writeRecovery.mockImplementationOnce(() => new Promise(resolve => { finishRecovery = resolve }))
+  const onAdopted = vi.fn(() => expect(f.editor.state.doc).toEqual(f.target))
+  const pending = f.session.replace(prepared, () => true, onAdopted)
+  await turn()
+  expect(onAdopted).toHaveBeenCalledOnce()
+  expect(f.session.status.transitioning).toBe(true)
+  expect(picking.prepareDocumentForEditing).not.toHaveBeenCalled()
+  finishRecovery({ status: 'ok' })
+  expect(await pending).toBe(true)
 })
 
 test.each(['edit', 'dispose'])('production %s cancels preparation, rejects late replies and preserves current document', async mode => {

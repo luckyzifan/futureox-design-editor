@@ -1,5 +1,5 @@
 import { createHandoffTrace, gestureCode, type HandoffTrace } from './handoff-trace'
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
 import type { PresentedFrame } from './Surface'
 import type { SurfaceProps } from './Surface'
@@ -20,10 +20,22 @@ import { settleResidentImport } from './resident-import-ownership'
 import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
 import {allowIncompletePanPreview,type PanPreviewBacking} from './pan-preview'
 import {zoomOutBeyondPreview} from './tile-preview'
+import { allowsReducedSampling } from './render-quality'
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
 
 const activeAffineGesture = (interaction?: InteractionProps) =>
   !!interaction?.active && !!interaction.gestureKind && interaction.gestureKind !== 'move'
+
+export type ProjectedPageOverview = {
+  client: KernelClient
+  document: DesignDocument
+  pageId: string
+  revision: number
+  view: CanvasCamera
+  width: number
+  height: number
+  dpr: number
+}
 
 export function ResidentCompositeSurface(props: {
   client: KernelClient
@@ -52,6 +64,7 @@ export function ResidentCompositeSurface(props: {
   allowPanPreview?:boolean
   overview?: import('../model').Bounds
   overviewTiles?: readonly (import('./tile-cache').RasterTile & {gpuTile?:number})[]
+  overviewPresentation?: RefObject<ProjectedPageOverview | undefined>
   panBacking?:PanPreviewBacking
   overlay?: SurfaceProps['overlay']
   onPresented?: (frame: ResidentAcknowledgement, source?: PresentedFrame, device?: ViewportPreviewDevice) => void
@@ -103,9 +116,17 @@ export function ResidentCompositeSurface(props: {
     // Starting an edit must not suddenly undo a projection of the still-visible
     // backing. Freeze that projection until a worker receipt replaces its basis;
     // never publish new camera/content authority across this boundary.
-    cameraProjection.current?.history.bind(currentHistoryScope.current)
+    const projection = cameraProjection.current
+    projection?.history.bind(currentHistoryScope.current)
+    if (p.overviewPresentation) p.overviewPresentation.current = undefined
     if(!allowed&&!newBacking)return
-    return { ...cameraProjection.current?.update(backing?.actual,p.view,p.width,p.height,allowed,p.overview), allowed }
+    const projected = projection?.update(backing?.actual,p.view,p.width,p.height,allowed,p.overview)
+    if (p.overviewPresentation && allowed && projected?.active && p.overview && allowsReducedSampling(p.view.zoom) &&
+        projection?.history.canProject(backing.actual, p, p.overview)) {
+      p.overviewPresentation.current = { client: p.client, document: p.sourceDocument, pageId: p.pageId, revision: p.contentRevision,
+        view: p.view, width: p.width, height: p.height, dpr: p.dpr }
+    }
+    return { ...projected, allowed }
   }
   repaint.current = () => {
     if (!attached.current) return
@@ -341,6 +362,7 @@ export function ResidentCompositeSurface(props: {
         }
         if (stats.error) {
           cameraProjection.current?.history.bind(undefined)
+          if (latest.current.overviewPresentation) latest.current.overviewPresentation.current = undefined
           acceptedChrome.current=undefined
           latest.current.onFailure(String(stats.error))
           return
@@ -445,6 +467,7 @@ export function ResidentCompositeSurface(props: {
     }
     return () => {
       unregisterContent()
+      if (p.overviewPresentation) p.overviewPresentation.current = undefined
       interactionStarted.current = false
       presentation.current = new ResidentPresentation()
       actualPresentation.current=undefined

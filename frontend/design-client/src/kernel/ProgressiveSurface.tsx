@@ -26,6 +26,7 @@ import { viewportPreviewRole } from './frame-handoff'
 import { acceptFrameClarity } from './frame-acceptance'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
+import { fitBounds, type CanvasCamera } from '../canvas-camera'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
@@ -38,7 +39,7 @@ import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
 import { tilePrepareViewport, tileBatchPrepareViewport } from './tile-prepare-viewport'
 import { TileCompositeSurface } from './TileCompositeSurface'
-import { ResidentCompositeSurface } from './ResidentCompositeSurface'
+import { ResidentCompositeSurface, type ProjectedPageOverview } from './ResidentCompositeSurface'
 import { PresentationOwnership } from './presentation-ownership'
 import { PageResidencyCache, pageResidencyScope } from './page-residency-cache'
 import { BitmapRetirement } from './bitmap-retirement'
@@ -394,6 +395,7 @@ export function ProgressiveSurfaceImpl(
   const displayCapability = hdrCompositing && doc.colorManagement ? capability : undefined
   const latestContext = useRef(props)
   latestContext.current = props
+  const overviewPresentation = useRef<ProjectedPageOverview | undefined>(undefined)
   const client = useRef<KernelClient | null>(null)
   const [rasterClient, setRasterClient] = useState<KernelClient | null>(null)
   const residentDisplay = singleCanvas && allowsResidentSdr(renderExecutionPolicy, backend) && !!navigator.gpu &&
@@ -439,7 +441,8 @@ export function ProgressiveSurfaceImpl(
   const desired = useRef<string[]>([])
   const activePlanKey = useRef('')
   const overviewKeys = useRef(new Set<string>())
-  const nativePageBacking = useRef<{ contract: object; keys: Set<string> } | null>(null)
+  const nativePageBacking = useRef<{ contract: object; keys: Set<string>;
+    fit?: { client: KernelClient; view: CanvasCamera; width: number; height: number; dpr: number } } | null>(null)
   const overviewReuses = useRef(0)
   const protectedKeys = useRef(new Set<string>())
   const coverageRetention = useRef(new CoverageRetention())
@@ -646,18 +649,25 @@ export function ProgressiveSurfaceImpl(
   const dpr = useDevicePixelRatio()
   const detailLevel = view.zoom * dpr
   const requestedView = props.requestedView || view
-  // The retained viewport has already passed the presenter at this exact
-  // camera. Recheck every live tile before skipping the preview-only wait.
+  const backing = nativePageBacking.current
+  const fit = backing?.fit
+  const primedFitKeys = fit && backing?.contract === contract && fit.client === rasterClient &&
+    fit.width === width && fit.height === height && fit.dpr === dpr &&
+    fit.view.x === view.x && fit.view.y === view.y && fit.view.zoom === view.zoom ? backing.keys : undefined
+  // Only an existing exact viewport can skip the preview wait. Fit All may
+  // use tiles prepared for this exact camera, pending the usual display ACK.
   const retainedNativeKeys = navigationGesture.active && residentDisplay && filteredContent &&
     !nativeNavigation && !cameraDependent && !props.panGestureActive && !props.animation &&
     syncedDoc.current === doc && view.x === requestedView.x && view.y === requestedView.y && view.zoom === requestedView.zoom
-    ? coverageRetention.current.nativeKeys(contract.revision, view, width, height, dpr) : undefined
+    ? coverageRetention.current.nativeKeys(contract.revision, view, width, height, dpr) ?? primedFitKeys : undefined
   const nativeReturnReady = !!retainedNativeKeys && previewDevice.current.client === rasterClient &&
     !!previewDevice.current.key && [...retainedNativeKeys].every(key => {
       const tile = tileRef.current.get(key)
       return tile?.document === doc && tile.revision === contract.revision && tile.zoom === detailLevel &&
-        ready.current.has(key) && !!tile.gpuTile && tile.residentDevice?.client === rasterClient &&
-        tile.residentDevice.key === previewDevice.current.key
+        ready.current.has(key) && !!tile.gpuTile &&
+        (retainedNativeKeys !== primedFitKeys || tileHasNativePhase(tile, view, dpr)) &&
+        (tile.residentDevice ? tile.residentDevice.client === rasterClient && tile.residentDevice.key === previewDevice.current.key
+          : retainedNativeKeys === primedFitKeys)
     })
   const navigationZoom = nativeReturnReady ? { ...navigationGesture, active: false, sample: undefined } : navigationGesture
   const latestNavigationZoom = useRef(navigationZoom)
@@ -1666,6 +1676,18 @@ export function ProgressiveSurfaceImpl(
       try {
         const extent = props.overview
         const baseOverview = extent && navigationOverview(extent, Math.min(1,renderScale), props.overviewNodes)
+        const overview = overviewPresentation.current
+        // An already visible projection plus the full same-owner page cache
+        // can bridge the native tile fill. The receipt does not claim exact
+        // viewport coverage, and this only skips optional preview renders.
+        const reusePageOverview = !!extent && !!overview && progressiveNativeRepair && residentDisplay &&
+          props.visible !== false && reusableFrame && !cameraDependent && !props.interaction?.active &&
+          !props.interactionPreview && !!displayed && requestedView.zoom < displayed.view.zoom &&
+          overview.client === c && overview.document === doc && overview.pageId === pageId && overview.revision === contract.revision &&
+          overview.width === width && overview.height === height && overview.dpr === dpr &&
+          overview.view.x === requestedView.x && overview.view.y === requestedView.y && overview.view.zoom === requestedView.zoom &&
+          hasRetainedOverview(tileRef.current.values(), ready.current, doc, contract.revision, extent,
+            navigationReadyDensity(requestedView.zoom, dpr, width, height))
         const fillOverview = async (seed = false) => {
           if (!baseOverview || !current() || !extent) return
           const {tiles:baseTiles,view:camera} = baseOverview
@@ -1689,15 +1711,86 @@ export function ProgressiveSurfaceImpl(
             ...(props.presentationEpoch === undefined ? {} : {tileOwner:{documentId:doc.id,sessionEpoch:props.presentationEpoch}})},
             false,backend,false,false,undefined,receive)
         }
+        let primedFit = false
+        const primeFitViewport = async () => {
+          if (!extent || !filteredContent || backend !== 'webgpu' || props.checkerboard || props.animation) return false
+          const target = fitBounds(extent, { width, height })
+          if (!allowsReducedSampling(target.zoom)) return false
+          const lattice = canvasRasterPlan(target, dpr, width, height, { rasterProfile, exactPhase: true })
+          const world = navigationCoverageBounds(target, width, height)
+          const budget = displayTileBudget(width, height, dpr, false)
+          const plan = planTilesAligned(world, lattice.scale, budgetTileLimit(budget, false), lattice.phase)
+            .map(tile => ({ ...tile, key: tileComputationKey(tile, lattice.camera, false) }))
+          const bytes = plan.reduce((sum, tile) => sum + tile.width * tile.height * 4, 0)
+          if (!completeViewportBacking(plan, world, lattice.scale, bytes, budget)) return false
+          const previous = nativePageBacking.current
+          if (previous?.contract === contract && previous.fit?.client === c &&
+              previous.fit.width === width && previous.fit.height === height && previous.fit.dpr === dpr &&
+              previous.fit.view.x === target.x && previous.fit.view.y === target.y && previous.fit.view.zoom === target.zoom &&
+              plan.every(tile => ready.current.has(tile.key) && tileRef.current.get(tile.key)?.revision === contract.revision))
+            return true
+          // Prime the same lattice used by Fit All. The current camera keeps
+          // its own plan, and the warmed tiles still need a display receipt.
+          const cohort: NonNullable<typeof nativePageBacking.current> = { contract, keys: new Set(plan.map(tile => tile.key)) }
+          // Layout can resize before the first frame. Let the new camera own
+          // the backing; the cancelled job may only retire its own claims.
+          if (previous?.contract === contract) for (const key of previous.keys) {
+            if (cohort.keys.has(key)) continue
+            const tile = tileRef.current.get(key)
+            if (tile?.revision === contract.revision) tile.overview = overviewKeys.current.has(key)
+          }
+          nativePageBacking.current = cohort
+          try {
+            const missing = plan.filter(tile => !ready.current.has(tile.key) ||
+              tileRef.current.get(tile.key)?.revision !== contract.revision)
+            if (missing.length) {
+              await render(doc, { pageId, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
+                view: lattice.camera, transparent: false, grid: false, rasterProfile, renderIntent: 'canvas',
+                tileViewport: missing, tilePrepareViewport: tilePrepareViewport(plan, lattice.camera),
+                ...(props.presentationEpoch === undefined ? {} : {
+                  tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
+                }),
+              }, false, backend, false, false, undefined, receive)
+            }
+            if (!current() || nativePageBacking.current !== cohort) return false
+            const residents = plan.flatMap(tile => {
+              const cached = tileRef.current.get(tile.key)
+              return cached?.document === doc && cached.revision === contract.revision && cached.gpuTile ? [cached] : []
+            })
+            if (residents.length !== plan.length || estimatedTileResidencyBytes(residents) > budget / 4) return false
+            for (const tile of residents) tile.overview = true
+            cohort.fit = { client: c, view: target, width, height, dpr }
+            syncedDoc.current = doc
+            return true
+          } finally {
+            if (!cohort.fit && nativePageBacking.current === cohort) {
+              for (const key of cohort.keys) {
+                const tile = tileRef.current.get(key)
+                if (tile?.revision === contract.revision) tile.overview = overviewKeys.current.has(key)
+              }
+              nativePageBacking.current = null
+            }
+          }
+        }
         // The first ready frame can immediately be followed by a wheel burst.
         // Seed bounded local coverage before capture/viewport-cache early returns,
         // including the latest zoom-out target. Edits retain the settle lane and
         // do not pay for a page overview on pointer release.
-        if (residentDisplay && !nativeReturnReady && !coveredHighZoomOut && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
+        if (residentDisplay && !reusePageOverview && !nativeReturnReady && !coveredHighZoomOut && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
             !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && (!navigationZoom.active || zoomOutCoverage) &&
             (!displayed || (displayed.document === doc && displayed.revision === contract.revision && previousView &&
               (previousView.x !== view.x || previousView.y !== view.y || previousView.zoom !== view.zoom)))) {
-          try { await fillOverview(true) }
+          // Fill bounded page coverage during the first desktop render so
+          // zooming out can fill the exposed world from this same revision.
+          // Later cameras and active gestures still seed only a local batch.
+          const primePage = renderExecutionPolicy.desktopDisplay && props.visible !== false &&
+            !displayed && !navigationZoom.active && !props.interaction?.selection.length && !cameraDependent &&
+            baseOverview && baseOverview.tiles.length > 2 && baseOverview.tiles.length <= 16 &&
+            allowsReducedSampling(baseOverview.view.zoom / dpr)
+          try {
+            primedFit = !!primePage && await primeFitViewport()
+            if (!primedFit && current()) await fillOverview(!primePage)
+          }
           catch (error) { if (String(error).includes('PREVIEW_CANCELLED')) return }
           if (!current()) return
         }
@@ -1719,6 +1812,10 @@ export function ProgressiveSurfaceImpl(
         if (navigationZoom.active&&!nativePanRepair) {
           const sample = navigationZoom.sample
           if (!sample) return
+          if (reusePageOverview) {
+            navigationIntentOwner.reset(c)
+            return
+          }
           if (detailInsteadOfPreview) {
             // The stale whole-frame capture was already yielded. A capture that
             // is still inside the preview ratio keeps the channel until it
@@ -2171,7 +2268,7 @@ export function ProgressiveSurfaceImpl(
         // ladder progressively degrades it; exact repair follows immediately.
         const continuityAllowed = !retainedEditViewport && !nativePanRepair && !sharpNavigation && !gestureHeadroom && !nativeNavigation && !nativeVisibleTiles && singleCanvas &&
           !hdrCompositing && !props.grid && !props.checkerboard && !props.pixelPreview && !props.interaction?.active
-        if (!needsStartupPreview && continuityAllowed &&
+        if (!needsStartupPreview && continuityAllowed && !reusePageOverview &&
             !hasReadyCoverage() && !hasRepairBacking() && !pendingCoverage() && !plan.every(tile => tileRef.current.has(tile.key) && ready.current.has(tile.key))) {
           const target = { ...requestedView }, ratio = navigationPreviewDensity(dpr, width, height)
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
@@ -2214,7 +2311,7 @@ export function ProgressiveSurfaceImpl(
         // A bounded page overview covers large zoom-outs and previously unseen
         // portions of a board. It owns real world pixels, not a viewport crop.
         // Preserve it through cache pressure until its content is invalidated.
-        const currentCoverage = () => hasReadyCoverage() || pendingCoverage() || hasRepairBacking()
+        const currentCoverage = () => reusePageOverview || hasReadyCoverage() || pendingCoverage() || hasRepairBacking()
         // A committed drag keeps its kernel-rendered interaction layer above
         // the previous complete page until exact tiles take over. That is
         // already a covering preview; don't queue an overview and another LOD
@@ -2297,7 +2394,7 @@ export function ProgressiveSurfaceImpl(
           }
         }
         if (!current()) return
-        const bootstrap = !sharpNavigation && !nativeVisibleTiles && !displayed && residentDisplay && !cameraDependent &&
+        const bootstrap = !primedFit && !sharpNavigation && !nativeVisibleTiles && !displayed && residentDisplay && !cameraDependent &&
           baseOverview && !pageFitsView && !props.interaction?.active && coverageBootstrap.current !== contract.revision ? async () => {
             try {
               await fillOverview()
@@ -2310,7 +2407,7 @@ export function ProgressiveSurfaceImpl(
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
         // not put it behind selection warm-up and ahead of the first pose.
-        if (!sharpNavigation && !nativeVisibleTiles && !pageFitsView && !cameraMoving && !props.interaction?.selection.length && current()) warmOverview()
+        if (!primedFit && !sharpNavigation && !nativeVisibleTiles && !pageFitsView && !cameraMoving && !props.interaction?.selection.length && current()) warmOverview()
         if (current()) {
           setStats((s) => ({
             ...s,
@@ -2818,7 +2915,7 @@ export function ProgressiveSurfaceImpl(
         {singleCanvas ? (() => {
           const CompositeSurface = residentDisplay && rasterClient ? ResidentCompositeSurface : TileCompositeSurface
           return <CompositeSurface key={residentDisplay && rasterClient ? 'resident' : 'bitmap'} client={rasterClient!}
-          {...(residentDisplay ? { reuseSequence: previewReuseSequence.current } : {})}
+          {...(residentDisplay ? { reuseSequence: previewReuseSequence.current, overviewPresentation } : {})}
           items={compositeItems}
           onCompositeItems={residentDisplay ? items => compositeCacheFrame.stage(compositeOwner, {
             ...compositeOwner,

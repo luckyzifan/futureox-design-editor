@@ -136,7 +136,7 @@ import {
   type LocalEntry,
 } from './local-store'
 import { initializePicking } from './kernel/picking'
-import { prepareDocument } from './prepared-document'
+import { figPreparationRuntime, isPreparedDocument, prepareDocument, prepareFigInWorker, type PreparedDocument } from './prepared-document'
 import { Canvas } from './Canvas'
 import { Layers } from './Layers'
 import { Inspector } from './Inspector'
@@ -359,6 +359,21 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setLibraryGap(null)
     diagnostic.bindRequest(request)
     try {
+      const open = async (document: DesignDocument | PreparedDocument, warnings: string[]) => {
+        const opened = await diagnostic.wait(ImportStage.open, () => switchDocument(document, undefined, true, request))
+        if (opened) trace.result(ActionOutcome.observed)
+        if (opened && request.isLatest() && editor.state.doc.id === document.id && warnings.length) {
+          setImportReport({ documentId: document.id, warnings })
+          editor.notify('导入完成，可以继续编辑', { key: 'designImportComplete' })
+        }
+      }
+      const runtime = mode === 'open' && desktopSession && /\.fig$/i.test(f.name) ? figPreparationRuntime() : undefined
+      if (runtime) {
+        const { prepared, warnings } = await importStep(request, () =>
+          prepareFigInWorker(f, runtime, request.signal, request.isCurrent, diagnostic))
+        await open(prepared, warnings)
+        return
+      }
       const imported = await importStep(request, () => readDesignFile(f, request.signal, diagnostic))
       request.assertCurrent()
       const document = diagnostic.run(ImportStage.copy, () => createImportedCopy(imported.document))
@@ -372,11 +387,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         editor.notify(`已追加 ${roots.length} 组内容，可整体拖动；撤销可移除此轮导入`, { key: 'importedGroupsAppended', count: roots.length })
         return
       }
-      const opened = await diagnostic.wait(ImportStage.open, () => switchDocument(document, undefined, true, request))
-      if (opened) trace.result(ActionOutcome.observed)
-      if (opened && request.isLatest() && editor.state.doc.id === document.id && imported.warnings.length) {
-        setImportReport({ documentId: document.id, warnings: imported.warnings }); editor.notify('导入完成，可以继续编辑', { key: 'designImportComplete' })
-      }
+      await open(document, imported.warnings)
     } catch (error) {
       const retired = request.signal.aborted || !request.isCurrent()
       const cancelled = diagnostic.fail(error, retired) === ImportFailure.cancelled
@@ -755,7 +766,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     return () => window.removeEventListener('beforeunload', unload)
   }, [saved, desktopSession, saver, editor])
   async function switchDocument(
-    document: DesignDocument,
+    input: DesignDocument | PreparedDocument,
     record?: LocalRecord,
     preserveCurrent = true,
     request?: ImportRequest,
@@ -770,11 +781,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const adoption = request || fileImports.begin(editor)
     if (!adoption.isCurrent()) return false
     if (desktopSession) {
-      const opened = await desktopSession.replace(document, adoption.isCurrent)
+      // The prepared FIG is already adopted when the callback runs. Let its
+      // first frame render while the existing recovery queue persists it.
+      const opened = await desktopSession.replace(input, adoption.isCurrent, isPreparedDocument(input) ? () => {
+        if (adoption.isLatest() && editor.state.doc.id === input.id) setShowHome(false)
+      } : undefined)
       if (opened && adoption.isLatest()) setMenu(false)
       if (opened) { trace.result(ActionOutcome.observed); setShowHome(false) }
       return opened
     }
+    let document = isPreparedDocument(input) ? input.snapshot() : input
     cancelPendingOperations(editor)
     const operation = {}
     const lifetime = switchLifetime.current
