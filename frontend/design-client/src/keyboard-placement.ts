@@ -1,5 +1,6 @@
 import { screenToWorld, type CanvasCamera, type CanvasSize } from './canvas-camera'
 import { canvasDropFrame } from './canvas-drop'
+import { kernelSnapPoint } from './kernel/picking'
 import { apply, inverse, multiply, worldMatrix } from './geometry'
 import type { DesignDocument, DesignNode, Point } from './model'
 import { createShapeSeed, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
@@ -18,11 +19,17 @@ export function keyboardPlacesTool(tool: string): tool is ShapeCreationKind {
  * Figma's accessibility guide says arrow keys reveal it there, and the
  * August 2025 keyboard note says Enter places text in the center of the screen.
  * Arrow-key movement of that crosshair is a separate gesture. */
-export function keyboardPlacementPoint(view: CanvasCamera, size: CanvasSize): Point {
+export function keyboardPlacementPoint(view: CanvasCamera, size: CanvasSize, snap = false): Point {
   if (!(size.width > 0) || !(size.height > 0) || !(view.zoom > 0) ||
       ![view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite))
     throw new Error('Invalid placement viewport')
-  return screenToWorld(view, { x: size.width / 2, y: size.height / 2 })
+  const point = screenToWorld(view, { x: size.width / 2, y: size.height / 2 })
+  if (!snap) return point
+  try { return kernelSnapPoint(point) }
+  catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('尚未就绪')) throw error
+    return point
+  }
 }
 
 /** A Return insertion uses the click-sized object, centered on the crosshair.

@@ -83,6 +83,10 @@ test('Figma layout Return places a frame at the viewport center and one undo rem
   await act(async () => { editor.set({ tool: 'frame', selection: [] }) })
   expect(editor.state.tool).toBe('frame')
   expect(editor.state.selection).toEqual([])
+  const target = host.querySelector<HTMLElement>('[data-testid="keyboard-placement-target"]')!
+  expect(target).not.toBeNull()
+  const { zoom, x, y } = editor.effectiveView()
+  const screen = [parseFloat(target.style.left), parseFloat(target.style.top)]
   await act(async () => { pressEnter(host) })
   const page = editor.state.doc.pages[0]
   expect(page.children).toHaveLength(1)
@@ -94,6 +98,8 @@ test('Figma layout Return places a frame at the viewport center and one undo rem
   expect(created.height).toBe(100)
   expect(created.transform[4] + created.width / 2).toBeCloseTo(center.x, 5)
   expect(created.transform[5] + created.height / 2).toBeCloseTo(center.y, 5)
+  expect((created.transform[4] + created.width / 2) * zoom + x).toBeCloseTo(screen[0], 5)
+  expect((created.transform[5] + created.height / 2) * zoom + y).toBeCloseTo(screen[1], 5)
   expect(editor.state.selection).toEqual([created.id])
   expect(editor.state.tool).toBe('frame')
   expect(editor.canUndo).toBe(true)
@@ -150,6 +156,7 @@ test('line and pen Return do not insert an object', async () => {
     const host = await mount(editor)
     await act(async () => { editor.set({ tool, selection: [] }) })
     const version = editor.state.version
+    expect(host.querySelector('[data-testid="keyboard-placement-target"]')).toBeNull()
     await act(async () => { pressEnter(host) })
     expect(editor.state.doc.pages[0].children).toEqual([])
     expect(editor.canUndo).toBe(false)
