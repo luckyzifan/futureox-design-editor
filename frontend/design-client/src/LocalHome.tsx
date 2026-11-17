@@ -96,19 +96,22 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
    {!ready?<p className="activity-line" role={startupError?"alert":"status"}>{shown(startupError||"正在读取本机设计…")} {shown("文档操作暂不可用，仍可调整本机设置。")}{!startupError&&<span className="activity-track" aria-hidden="true"><i/></span>}</p>:loading?<p className="activity-line" role="status">{shown("正在读取本机设计…")}<span className="activity-track" aria-hidden="true"><i/></span></p>:<div className={`local-home-files ${layout}`} aria-label={text.recentDesignList}>{ordered.map(entry=>{
     const when = new Date(entry.updatedAt).toLocaleString()
     const meta = locale === 'en' ? `Version ${entry.revision} · Updated ${when}` : `版本 ${entry.revision} · 更新于 ${when}`
-    return <div className="local-home-entry" key={entry.id} onContextMenu={e=>{if(!latest.current.ops||disabled)return;e.preventDefault();setRenaming(null);setMenuFor(entry.id)}}>
-    <button type="button" className="local-home-file" disabled={disabled} onClick={()=>void run(()=>latest.current.open(entry.id))}>
-     <span className="local-home-placeholder" aria-hidden="true"><FileMark kind="fd" size={40}/></span><span className="local-home-file-meta">
-      {renaming&&renaming.id===entry.id
-       ?<input className="local-home-rename" aria-label={text.renameDesignField} defaultValue={renaming.name} autoFocus
+    const editing = renaming?.id === entry.id ? renaming : null
+    const card = <><span className="local-home-placeholder" aria-hidden="true"><FileMark kind="fd" size={40}/></span>
+     <span className="local-home-file-meta">
+      {editing
+       ?<input className="local-home-rename" aria-label={text.renameDesignField} defaultValue={editing.name} autoFocus
          onCompositionStart={()=>{composing.current=true}} onCompositionEnd={()=>{composing.current=false}}
          onKeyDown={e=>{if(composing.current||e.nativeEvent.isComposing)return
           if(e.key==='Enter'&&!e.repeat){e.preventDefault();commitRename(entry.id,e.currentTarget.value)}
           if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setRenaming(null)}}}
          onBlur={e=>commitRename(entry.id,e.currentTarget.value)}/>
        :<strong>{entry.name}</strong>}
-      <small>{meta}</small></span>
-    </button>
+      <small>{meta}</small>
+     </span></>
+    return <div className="local-home-entry" key={entry.id} onContextMenu={e=>{if(!latest.current.ops||disabled)return;e.preventDefault();setRenaming(null);setMenuFor(entry.id)}}>
+    {editing ? <div className="local-home-file">{card}</div> :
+      <button type="button" className="local-home-file" disabled={disabled} onClick={()=>void run(()=>latest.current.open(entry.id))}>{card}</button>}
     {latest.current.ops&&!disabled&&<button type="button" className="local-home-entry-menu" aria-label={`${text.designEntryActions} · ${entry.name}`} aria-haspopup="menu" aria-expanded={menuFor===entry.id} onClick={()=>{setRenaming(null);setMenuFor(menuFor===entry.id?null:entry.id)}}><MoreVertical size={16}/></button>}
     {menuFor===entry.id&&<div role="menu" className="local-home-entry-actions" aria-label={`${text.designEntryActions} · ${entry.name}`}>
      <button type="button" role="menuitem" onClick={()=>{setMenuFor(null);void run(()=>latest.current.open(entry.id))}}>{text.openDesignEntry}</button>
