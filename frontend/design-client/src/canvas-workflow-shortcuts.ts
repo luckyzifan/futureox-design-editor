@@ -6,7 +6,7 @@ import { allParents } from './geometry'
 import { propertyUnits } from './property-units'
 import { interactivePath, marqueeScope } from './selection-hierarchy'
 import { editableFrameCrop, frameCropPatches, resizeNodeDimension, selectionMetric } from './selection-properties'
-import type { ShortcutProfile } from './shortcut-profiles'
+import type { ShortcutContext, ShortcutProfile } from './shortcut-profiles'
 
 const dimensionNudges = {
   'resize-width-increase': { axis: 'width', direction: 1, large: false },
@@ -57,11 +57,16 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
   }, '键盘调整图层尺寸')
 }
 
-/** The sibling list the plain select-all operates on: the entered container,
- * or the current page when the selection does not share one container. */
-function containerChildren(document: DesignDocument, page: string, selection: readonly string[], parents: ReturnType<typeof allParents>): readonly string[] {
-  const scope = marqueeScope(document, page, selection, parents)
-  return scope === page ? document.pages.find(value => value.id === page)?.children ?? [] : document.nodes[scope]?.children ?? []
+/** Figma toggles rulers with ⇧R; the Sketch Mac app uses ⌃R. ⇧R stays valid in
+ * both presets, while Control+R is admitted only for the Sketch-like preset.
+ * Alt+R (origin) and any Cmd-variant are left to their own handlers. */
+export function rulersToggleEvent(
+  event: Pick<KeyboardEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'code'>,
+  { profile, platform }: Pick<ShortcutContext, 'profile' | 'platform'>,
+): boolean {
+  if (event.code !== 'KeyR' || event.altKey || event.metaKey) return false
+  if (!event.ctrlKey && event.shiftKey) return true
+  return platform === 'mac' && profile === 'sketch-like' && event.ctrlKey && !event.shiftKey
 }
 
 /** Mac Figma and Sketch both select siblings inside the entered container.
@@ -74,19 +79,19 @@ export function selectAllCanvasIds(document: DesignDocument, page: string, selec
   return containerChildren(document, page, selection, parents).filter(id => interactivePath(document, page, id, false, parents).length > 0)
 }
 
-/** Sketch ⌃⌘A: the same container scope as plain select-all, but hidden and
- * locked siblings join the selection (Sketch "Select All Including Hidden
- * and Locked Layers"). Sketch preset only; the plain preset keeps ⌘A. */
-export function selectAllForceCanvasIds(document: DesignDocument, page: string, selection: readonly string[], profile: ShortcutProfile): string[] {
-  if (profile !== 'sketch-like') return []
+function containerChildren(document: DesignDocument, page: string, selection: readonly string[], parents: ReturnType<typeof allParents>): readonly string[] {
+  const scope = marqueeScope(document, page, selection, parents)
+  const children = scope === page ? document.pages.find(value => value.id === page)?.children : document.nodes[scope]?.children
+  return children ?? []
+}
+
+export function selectAllForceCanvasIds(document: DesignDocument, page: string, selection: readonly string[]): string[] {
   return [...containerChildren(document, page, selection, allParents(document))]
 }
 
-/** Sketch ⇧⌘A: only the top-level frames and graphics of the current page,
- * leaving any entered container (Sketch "Select All Top-Level Frames and
- * Graphics"). Hidden and locked stay excluded, matching plain select-all. */
-export function selectTopLevelCanvasIds(document: DesignDocument, page: string, profile: ShortcutProfile): string[] {
-  if (profile !== 'sketch-like') return []
-  const parents = allParents(document)
-  return (document.pages.find(value => value.id === page)?.children ?? []).filter(id => interactivePath(document, page, id, false, parents).length > 0)
+export function selectTopLevelCanvasIds(document: DesignDocument, page: string): string[] {
+  return (document.pages.find(value => value.id === page)?.children ?? []).filter(id => {
+    const node = document.nodes[id]
+    return node && (node.kind === 'frame' || node.graphic) && node.visible && !node.locked
+  })
 }

@@ -52,6 +52,7 @@ export const canvasText = { 'zh-CN': catalog(0), en: catalog(1) } as const
 
 /** Explicit command keys, not string replacement of labels or document data. */
 export const canvasCommandEnglish: Readonly<Record<string, string>> = {
+  'select-all-force': 'Select all including hidden and locked', 'select-all-top-level': 'Select all top-level frames and graphics',
   undo: 'Undo', redo: 'Redo', 'paste-over-selection': 'Paste over selection (keep targets)', 'paste-to-replace': 'Paste to replace',
   'copy-properties': 'Copy properties', 'paste-properties': 'Paste properties', 'copy-fills': 'Copy fills', 'copy-strokes': 'Copy strokes', 'copy-effects': 'Copy effects',
   'copy-as-png': 'Copy as PNG', 'copy-as-svg': 'Copy as SVG', copy: 'Copy', cut: 'Cut', 'paste-here': 'Paste here', 'paste-in-place': 'Paste in place',

@@ -39,12 +39,18 @@ async function harness(kind:'rotate'|'scale'|'move'='rotate',workerPoses=false,o
  const jobs:any[]=[],frames:any[]=[],acks:any[]=[]
  let client:any
  const gpu=descriptorPresenter(stats=>{acks.push(stats);client.onPresentation?.(stats)})
+ // Presentation stats may be followed by non-presented reports; assertions
+ // target the latest ack that actually presented, matching the pose-order
+ // integration contract.
+ const lastPresented=()=>[...acks].reverse().find(ack=>ack.presented)
  // Descriptor-only text raster adapter. Production CanvasLabels still executes;
  // this supplies deterministic metrics, not browser glyph or pixel evidence.
  const canvasPrototype=Object.getPrototypeOf(gpu.canvas),getContext=canvasPrototype.getContext
  canvasPrototype.getContext=function(kind:string){return kind==='2d'?{
+  // Production CanvasLabels now strokes rounded label chips; keep the
+  // deterministic metrics and no-op the geometry it exercises.
   measureText:(text:string)=>({width:text.length*6,actualBoundingBoxLeft:0,actualBoundingBoxRight:text.length*6,actualBoundingBoxAscent:8,actualBoundingBoxDescent:2}),
-  setTransform(){},strokeText(){},fillText(){},
+  setTransform(){},strokeText(){},fillText(){},beginPath(){},moveTo(){},lineTo(){},arcTo(){},closePath(){},fill(){},stroke(){},
  }:getContext.call(this,kind)}
  client={attachPresentation(){},present(frame:any){frames.push(frame);queueMicrotask(()=>gpu.presenter.draw(frame))},
   releasePresented(ids:number[]){gpu.presenter.release(ids)},presentationDiagnosticsEnabled:()=>false,
@@ -67,14 +73,14 @@ async function harness(kind:'rotate'|'scale'|'move'='rotate',workerPoses=false,o
  const oldSlot=gpu.presenter.capture(100,100).id
  await act(async()=>{jobs[0].resolve({bytes:new Uint8Array(),gpuTile:oldSlot,compileMs:1,residentInteraction:workerPoses});await Promise.resolve()})
  expect(frames.at(-1).items.some((item:any)=>item.tile.gpuTile===oldSlot)).toBe(true)
- expect(acks.at(-1).presented.gpuOverlay).toBe(options.initialOverlay!==false)
+ expect(lastPresented()?.presented.gpuOverlay).toBe(options.initialOverlay!==false)
  const matrix=kind==='move'?[1,0,0,1,12.5,3.25]:kind==='scale'?[1.4,0,0,1.4,0,0]:[Math.cos(.4),Math.sin(.4),-Math.sin(.4),Math.cos(.4),0,0]
  const patches=Object.fromEntries(ids.map(id=>[id,{transform:multiply(matrix as any,doc.nodes[id].transform)}]))
  await act(async()=>{expect(control.current.apply(doc,patches)).toBeTruthy()})
  expect(jobs).toHaveLength(workerPoses?1:2) // Deliberately leave the last capture/pose incomplete.
  const final={...doc,nodes:{...doc.nodes,...Object.fromEntries(ids.map(id=>[id,{...doc.nodes[id],...patches[id]}]))}}
  await act(async()=>{control.current.end(final)})
- return {doc,final,n,ids,props,control,render,frames,acks,jobs,oldSlot,overlay,onPresented,gpu,
+ return {doc,final,n,ids,props,control,render,frames,acks,lastPresented,jobs,oldSlot,overlay,onPresented,gpu,
   replaceClient:()=>{client={...client};return client}}
 }
 
@@ -90,7 +96,7 @@ test('inline translation carries its compiled slot proof through release without
  expect(h.frames.at(-1).overlay).toEqual(h.overlay(h.doc).commands)
  await act(async()=>owner!.acceptResidentSample({slot:h.oldSlot,sequence:1,at:0,nativePose:true}))
  expect(h.frames.at(-1).overlay).toEqual(h.overlay(h.doc).commands)
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(true)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(true)
  expect(h.frames.at(-1).overlay.transforms).not.toEqual(committed.commands.transforms)
  // A changed UI or an authored size edit cannot reuse that translation proof.
  await h.render({overlay:h.overlay(h.final,{handles:false})});expect(h.frames.at(-1).overlay).toBeUndefined()
@@ -106,7 +112,7 @@ test.each(['ui','camera'])('a released move references its compiled capture; cha
  expect(h.frames.at(-1).overlay).toEqual(h.overlay(h.doc).commands)
  await h.render(change==='ui'?{overlay:h.overlay(h.final,{handles:false})}:{view:{...h.props.view,x:1}})
  expect(h.frames.length).toBeGreaterThan(before);expect(h.frames.at(-1).overlay).toBeUndefined()
- if(change==='ui')expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ if(change==='ui')expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
  else {expect(h.acks.at(-1).coverageDeferred).toBe(1);expect(h.acks.at(-1).presented).toBeUndefined()}
 })
 
@@ -117,7 +123,7 @@ test.each([{kind:'rotate',multiple:false},{kind:'scale',multiple:false},{kind:'r
  const pendingOverlay=h.overlay(h.final),original=h.overlay(h.doc).commands,oldCorners=original.selection!.corners
  expect(pendingOverlay.commands.selection!.corners).not.toEqual(oldCorners)
  await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:pendingOverlay})
- const frame=h.frames.at(-1),ack=h.acks.at(-1).presented
+ const frame=h.frames.at(-1),ack=h.lastPresented()?.presented
  expect(frame.items.some((item:any)=>item.tile.gpuTile===h.oldSlot)).toBe(true)
  expect(frame.interaction).toBe(true);expect(ack.ids).toContain(h.oldSlot)
  expect(h.onPresented.mock.calls.at(-1)![1].document).toBe(h.doc)
@@ -146,7 +152,7 @@ test.each(['overlay-geometry','selection','page','epoch','owner','next-resize','
  if(boundary==='next-resize')changes.interaction={...changes.interaction,active:true,gestureKind:'resize'}
  await h.render(changes)
  expect(h.frames.at(-1).overlay).toBeUndefined()
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
  expect(h.props.interaction.document).toBe(changes.interaction.document)
  expect(h.props.onFailure).not.toHaveBeenCalled()
 })
@@ -157,7 +163,7 @@ test('a capture without its own complete overlay snapshot cannot borrow a newer 
  await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:h.overlay(h.final)})
  expect(h.frames.at(-1).items.some((item:any)=>item.tile.gpuTile===h.oldSlot)).toBe(true)
  expect(h.frames.at(-1).overlay).toBeUndefined()
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
 })
 
 test('cancelled handoff cannot replay the previous capture chrome over another document',async()=>{
@@ -165,7 +171,7 @@ test('cancelled handoff cannot replay the previous capture chrome over another d
  await act(async()=>h.control.current.end(h.doc))
  await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:h.overlay(h.final)})
  expect(h.frames.at(-1).overlay).toBeUndefined()
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
 })
 
 test('late cancelled capture cannot replace the retained overlay cohort',async()=>{
@@ -176,7 +182,7 @@ test('late cancelled capture cannot replace the retained overlay cohort',async()
  expect(h.frames.at(-1).items.some((item:any)=>item.tile.gpuTile===h.oldSlot)).toBe(true)
  expect(h.frames.at(-1).items.some((item:any)=>item.tile.gpuTile===lateSlot)).toBe(false)
  expect(h.frames.at(-1).overlay).toEqual(original)
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(true)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(true)
  expect(h.props.onFailure).not.toHaveBeenCalled()
 })
 
@@ -205,7 +211,7 @@ test.each([
  expect(h.frames.at(-1).presentationId).not.toBe(oldId)
  expect(h.frames.at(-1).overlay).toBeUndefined()
  expect(h.frames.at(-1).items.some((item:any)=>item.tile.gpuTile===h.oldSlot)).toBe(true)
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
  const lateSlot=h.gpu.presenter.capture(100,100).id
  await act(async()=>{h.jobs[1].resolve({bytes:new Uint8Array(),gpuTile:lateSlot,compileMs:1});await Promise.resolve()})
  expect(h.frames.at(-1).overlay).toBeUndefined()
@@ -219,7 +225,7 @@ test('capture rejection stays closed even when source presentation advances to c
   presentation:{...h.props.presentation,document:h.final},overlay:h.overlay(h.final,{pixelGrid:true})})
  expect(h.frames.at(-1).items.some((item:any)=>item.tile.gpuTile===h.oldSlot)).toBe(true)
  expect(h.frames.at(-1).overlay).toBeUndefined()
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
 })
 
 test('returning to exactly the captured UI may reuse its geometry without rewriting committed document',async()=>{
@@ -235,7 +241,7 @@ test('legacy commands without a UI certificate cannot borrow retained capture ge
  const h=await harness(),current=h.overlay(h.final)
  await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:{...current,uiIdentity:undefined}})
  expect(h.frames.at(-1).overlay).toBeUndefined()
- expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
 })
 
 test.each([1,16,64])('exact command snapshot reuse performs linear owner membership work for %i selections',async selectedCount=>{

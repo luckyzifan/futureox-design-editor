@@ -3,7 +3,7 @@ import { Editor } from './engine'
 import { blank, node, defaultSizing, defaultTextStyle } from './model'
 import { dispatchEditorCommand } from './editor-commands'
 import { dispatchEditorShortcut } from './editor-shortcuts'
-import { selectAllCanvasIds, selectAllForceCanvasIds, selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
+import { rulersToggleEvent, selectAllCanvasIds, selectAllForceCanvasIds, selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { selectionMetric } from './selection-properties'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
@@ -20,6 +20,14 @@ function key(key: string, overrides: Partial<ShortcutKey> & { target?: EventTarg
   return { key, code: key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, repeat: false, isComposing: false, defaultPrevented: false, target: null, preventDefault: vi.fn(), ...overrides }
 }
 const contexts: ShortcutContext[] = ['mac', 'windows', 'linux'].flatMap(platform => [false, true].map(desktop => ({ profile: 'sketch-like', platform, desktop } as ShortcutContext)))
+
+test('Sketch force selects hidden and locked siblings while the top-level action selects only visible frames', () => {
+  const { editor, frame, a, b, hidden, locked } = fixture()
+  const { doc, page } = editor.state
+  expect(selectAllCanvasIds(doc, page, [a.id], 'sketch-like')).toEqual([a.id, b.id])
+  expect(selectAllForceCanvasIds(doc, page, [a.id])).toEqual([a.id, b.id, hidden.id, locked.id])
+  expect(selectTopLevelCanvasIds(doc, page)).toEqual([frame.id])
+})
 const mod = (context: ShortcutContext) => context.platform === 'mac' ? { metaKey: true } : { ctrlKey: true }
 
 describe('keyboard dimensions with real Editor/WASM', () => {
@@ -141,21 +149,23 @@ test('Figma Windows front/back uses Ctrl+Shift brackets, while macOS/Sketch pres
   expect(resolveShortcut(key(']', { ctrlKey: true, altKey: true }), { ...context, profile: 'sketch-like' })?.command).toBe('bring-to-front')
 })
 
-describe('Sketch select-all variants (⌃⌘A force, ⇧⌘A top-level)', () => {
-  test('force select-all includes hidden and locked siblings inside the entered container', () => {
-    const { editor, a, b, hidden, locked } = fixture()
-    editor.select([a.id])
-    // plain ⌘A keeps hidden/locked out of the same container scope
-    expect(selectAllCanvasIds(editor.state.doc, editor.state.page, [a.id], 'sketch-like')).toEqual([a.id, b.id])
-    // ⌃⌘A returns every sibling of the entered container, hidden and locked included
-    expect(selectAllForceCanvasIds(editor.state.doc, editor.state.page, [a.id], 'sketch-like')).toEqual([a.id, b.id, hidden.id, locked.id])
-    // figma-like preset does not gain the command
-    expect(selectAllForceCanvasIds(editor.state.doc, editor.state.page, [a.id], 'figma-like')).toEqual([])
+describe('ruler toggle key follows the active preset (Figma ⇧R, Sketch ⌃R)', () => {
+  test.each([
+    ['figma-like', { shiftKey: true }, true],
+    ['sketch-like', { shiftKey: true }, true],
+    ['figma-like', { ctrlKey: true }, false],
+    ['sketch-like', { ctrlKey: true }, true],
+    ['sketch-like', { ctrlKey: true, shiftKey: true }, false],
+    ['sketch-like', { ctrlKey: true, metaKey: true }, false],
+    ['sketch-like', { shiftKey: true, altKey: true }, false],
+    ['sketch-like', { metaKey: true }, false],
+  ] as const)('%s %j -> %s', (profile, overrides, expected) => {
+    expect(rulersToggleEvent({ code: 'KeyR', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...overrides }, { profile, platform: 'mac' })).toBe(expected)
   })
-  test('top-level select-all returns page roots even while inside a container', () => {
-    const { editor, frame, outside, a } = fixture()
-    editor.select([a.id])
-    expect(selectTopLevelCanvasIds(editor.state.doc, editor.state.page, 'sketch-like')).toEqual([frame.id, outside.id])
-    expect(selectTopLevelCanvasIds(editor.state.doc, editor.state.page, 'figma-like')).toEqual([])
+  test('other keys never toggle rulers', () => {
+    for (const code of ['KeyT', 'KeyX', 'Enter']) expect(rulersToggleEvent({ code, metaKey: false, ctrlKey: false, shiftKey: true, altKey: false }, { profile: 'sketch-like', platform: 'mac' })).toBe(false)
+  })
+  test.each(['windows', 'linux'] as const)('Control+R on %s remains available to the host', platform => {
+    expect(rulersToggleEvent({ code: 'KeyR', metaKey: false, ctrlKey: true, shiftKey: false, altKey: false }, { profile: 'sketch-like', platform })).toBe(false)
   })
 })

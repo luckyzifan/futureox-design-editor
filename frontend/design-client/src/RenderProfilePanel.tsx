@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { modalOwnsKeyboard } from './modal-keyboard'
+import { interfacePreference } from './interface-preference'
 import { profileBars, renderProfile, type RenderProfileSample } from './kernel/render-profile'
 import { useProfessionalDialogText } from './professional-dialog-messages'
+import { shortcutPlatform } from './shortcut-profiles'
+
+const isMacSketch = () => interfacePreference.getSnapshot().uiMode === 'sketch' && shortcutPlatform() === 'mac'
 
 /** Diagnostic UI only: closed = no recording, no polling, no React updates. */
 export function RenderProfilePanel() {
@@ -12,7 +16,11 @@ export function RenderProfilePanel() {
   const [selection, setSelection] = useState<number | null>(null)
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== 'p' || modalOwnsKeyboard(e.target)) return
+      const sketch = isMacSketch() && e.metaKey && !e.ctrlKey
+      // Sketch owns Shift-Command-P for Round to Pixel. Option keeps the
+      // diagnostics reachable with the same physical key.
+      const matchesKey = sketch ? e.altKey && e.code === 'KeyP' : e.key.toLowerCase() === 'p'
+      if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || !e.shiftKey || !matchesKey || modalOwnsKeyboard(e.target)) return
       e.preventDefault(); setOpen(v => !v)
     }
     window.addEventListener('keydown', key)
@@ -44,7 +52,7 @@ export function RenderProfilePanel() {
       <button onClick={exportTrace} disabled={!samples.length && !renderProfile.diagnostics().samples.length}>{tr('导出 JSON')}</button>
       <button aria-label={tr('关闭渲染性能火焰图')} onClick={() => setOpen(false)}>{tr('关闭')}</button>
     </div>
-    <p>{tr('⌘ / Ctrl ⇧ P · 最多保留 512 次结果。横宽表示阶段耗时，子层包含在父层内；不是调用栈采样或时间轴。')}</p>
+    <p>{isMacSketch() ? '⌥⇧⌘P' : '⌘ / Ctrl ⇧ P'} · {tr('最多保留 512 次结果。横宽表示阶段耗时，子层包含在父层内；不是调用栈采样或时间轴。')}</p>
     <p>{tr('诊断日志记录缩放、DPR、请求与发布采样密度、缓存命中和错误分类；不记录文档内容、图片地址或原始错误文本。关闭面板即停止记录。')}</p>
     <select aria-label={tr('渲染样本')} value={selection ?? ''} onChange={e=>setSelection(e.target.value===''?null:Number(e.target.value))} style={{width:'100%',marginBottom:10}}>
       <option value="">{tr('跟随最新结果')}</option>

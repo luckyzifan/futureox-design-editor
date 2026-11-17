@@ -403,6 +403,7 @@ pub(crate) struct FontSourceStamp {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OutlineOutput {
     None,
+    Measurement,
     Geometry,
     Spans,
     Svg,
@@ -462,6 +463,22 @@ pub struct TextLayout {
     pub bounds: Option<crate::bounds::Bounds>,
     #[serde(skip)]
     pub path: Path,
+    #[serde(skip)]
+    measurement: Option<TextVerticalMeasurement>,
+}
+
+/// Node-local cap line of the first laid-out text line and baseline of the last.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextVerticalMeasurement {
+    pub cap_y: Option<f64>,
+    pub baseline_y: f64,
+}
+
+fn capital_height(face: &ttf_parser::Face<'_>) -> Option<i16> {
+    face.capital_height().or_else(|| {
+        face.glyph_bounding_box(face.glyph_index('H')?).map(|rect| rect.y_max)
+    }).filter(|&height| height > 0)
 }
 #[derive(Serialize)]
 pub struct TextSpan {
@@ -1271,6 +1288,14 @@ impl Fonts {
     pub fn node_layout(&self, node: &Node, width: Option<f64>) -> Result<TextLayout, String> {
         self.node_outline_layout(node, width, OutlineOutput::Svg)
     }
+    pub fn node_text_measurement(&self, node: &Node) -> Result<Option<TextVerticalMeasurement>, String> {
+        if node.kind != "text" || node.text_path.is_some()
+            || node.text_style.as_ref().is_some_and(|style| style.writing_mode == "vertical")
+        {
+            return Ok(None);
+        }
+        Ok(self.node_outline_layout(node, Some(node.width), OutlineOutput::Measurement)?.measurement)
+    }
     fn node_outline_layout(
         &self,
         node: &Node,
@@ -1317,6 +1342,10 @@ impl Fonts {
                 }
                 for line in &mut result.lines {
                     line.y += offset;
+                }
+                if let Some(measurement) = &mut result.measurement {
+                    measurement.cap_y = measurement.cap_y.map(|y| y + offset);
+                    measurement.baseline_y += offset;
                 }
                 if output == OutlineOutput::Svg {
                     result.bounds =
@@ -1787,6 +1816,7 @@ impl Fonts {
         let mut lines = Vec::new();
         let mut glyphs = Vec::new();
         let mut y = 0.;
+        let mut measurement: Option<TextVerticalMeasurement> = None;
         // Pen for vertical wrapping: filled columns advance in +x with no
         // gap (the column width is the tallest glyph size).
         let mut column_x = 0.;
@@ -1827,9 +1857,7 @@ impl Fonts {
                 let cap_height = |font: &str, weight, size| {
                     let parsed = self.face(font, weight).ok()?;
                     let face = parsed.borrow_face();
-                    let cap = face.capital_height().or_else(|| {
-                        face.glyph_bounding_box(face.glyph_index('H')?).map(|rect| rect.y_max)
-                    })?;
+                    let cap = capital_height(face)?;
                     Some(f64::from(cap) * size / f64::from(face.units_per_em()))
                 };
                 let mut cap = cap_height(&style.font_id, style.weight, size)?;
@@ -2171,6 +2199,27 @@ impl Fonts {
                     .map(|glyph| cluster_tracking(runs, glyph.cluster, style))
                     .unwrap_or(0.);
                 let line_width = (shaped.iter().map(|g| g.advance).sum::<f64>() - trailing).max(0.);
+                if output == OutlineOutput::Measurement && !shaped.is_empty() {
+                    let baseline_y = y + ascent;
+                    if let Some(measurement) = &mut measurement {
+                        measurement.baseline_y = baseline_y;
+                    } else {
+                        let mut previous: Option<&Glyph> = None;
+                        let cap = shaped.iter().filter_map(|glyph| {
+                            let duplicate = previous.replace(glyph).is_some_and(|prev|
+                                prev.font_id == glyph.font_id && prev.weight == glyph.weight
+                                    && prev.size == glyph.size && prev.vars == glyph.vars);
+                            if duplicate { return None; }
+                            let face = self.face_with(&glyph.font_id, glyph.weight, &glyph.vars).ok()?;
+                            let face = face.borrow_face();
+                            Some(f64::from(capital_height(face)?) * glyph.size / f64::from(face.units_per_em()))
+                        }).reduce(f64::max);
+                        measurement = Some(TextVerticalMeasurement {
+                            cap_y: cap.map(|height| baseline_y - height),
+                            baseline_y,
+                        });
+                    }
+                }
                 let available = width.unwrap_or(line_width);
                 let rtl = style.direction == "rtl"
                     || (style.direction == "auto"
@@ -2246,7 +2295,7 @@ impl Fonts {
         }
         let mut path = Path::default();
         let mut spans: Vec<TextSpan> = Vec::new();
-        for glyph in glyphs.iter_mut().filter(|_| output != OutlineOutput::None) {
+        for glyph in glyphs.iter_mut().filter(|_| !matches!(output, OutlineOutput::None | OutlineOutput::Measurement)) {
             let run = runs
                 .iter()
                 .find(|r| r.start <= glyph.cluster && glyph.cluster < r.end);
@@ -2381,6 +2430,7 @@ impl Fonts {
                 None
             },
             path,
+            measurement,
         })
     }
 }
@@ -2504,6 +2554,18 @@ mod tests {
             .iter()
             .filter(|g| line.start <= g.cluster && g.cluster < line.end)
             .collect()
+    }
+    #[test]
+    fn measurement_uses_the_first_cap_and_last_baseline_after_vertical_alignment() {
+        let fonts = fonts();
+        let node = node("H\nH", serde_json::json!({ "verticalAlign": "bottom" }), 200.);
+        let layout = fonts.node_layout(&node, Some(node.width)).unwrap();
+        let measurement = fonts.node_text_measurement(&node).unwrap().unwrap();
+        assert_eq!(measurement.baseline_y, layout.glyphs.last().unwrap().y);
+        // Noto Sans SC: 733 cap-height units on a 1000-unit em.
+        assert!((measurement.cap_y.unwrap() - (layout.glyphs[0].y - 20. * 0.733)).abs() < 1e-9);
+        assert!(measurement.cap_y.unwrap() > 0.);
+        assert!(measurement.baseline_y < node.height);
     }
     #[test]
     fn bundled_noto_sans_sc_reports_variable_weight_axis() {

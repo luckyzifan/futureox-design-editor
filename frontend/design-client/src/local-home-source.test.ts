@@ -3,7 +3,7 @@ import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
 import type { DesktopSession } from './desktop-session'
 const entries=[{id:'local-a',name:'A',revision:1,updatedAt:123,deleted:false}]
 function web(){return {list:vi.fn(async()=>entries),open:vi.fn(async(_id:string)=>true)}}
-function desktop(workspace=true){return {supportsWorkspace:workspace,listWorkspace:vi.fn(async()=>({status:'ok' as const,documents:entries})),openWorkspace:vi.fn(async(_id:string)=>true),status:{error:null}} as unknown as Pick<DesktopSession,'supportsWorkspace'|'listWorkspace'|'openWorkspace'|'status'>}
+function desktop(workspace=true){return {supportsWorkspace:workspace,listWorkspace:vi.fn(async()=>({status:'ok' as const,documents:entries})),openWorkspace:vi.fn(async(_id:string)=>true),status:{error:null},trashWorkspace:vi.fn(async()=>({status:'cancelled' as const})),renameWorkspaceFile:vi.fn(async()=>true),duplicateWorkspaceFile:vi.fn(async()=>true)} as unknown as Pick<DesktopSession,'supportsWorkspace'|'listWorkspace'|'openWorkspace'|'status'|'trashWorkspace'|'renameWorkspaceFile'|'duplicateWorkspaceFile'>}
 test('Web metadata listing and opening use only supplied local store callbacks',async()=>{
  const storage=web(),source=localHomeSource(null,storage);expect(source.kind).toBe('web-local');expect(await source.list()).toEqual(entries);expect(storage.open).not.toHaveBeenCalled();expect(await source.open('local-a')).toBe(true);expect(storage.open).toHaveBeenCalledWith('local-a')
 })
@@ -17,6 +17,18 @@ test('native cancellation stays false; native list/open failure is not converted
  const native=desktop(),source=localHomeSource(native,web());vi.mocked(native.openWorkspace).mockResolvedValue(false);expect(await source.open('a')).toBe(false)
  native.status.error='Disk unavailable';await expect(source.open('a')).rejects.toThrow('Disk unavailable')
  vi.mocked(native.listWorkspace).mockResolvedValue({status:'error',code:'IO',message:'Read failed'});await expect(source.list()).rejects.toThrow('Read failed')
+})
+test('workspace Home routes rename/duplicate/trash to the session; cancelled stays false and errors propagate',async()=>{
+ const native=desktop(),source=localHomeSource(native,web());expect(source.ops).toBeDefined()
+ await source.ops!.rename('local-a','Two');expect(native.renameWorkspaceFile).toHaveBeenCalledWith('local-a','Two')
+ await source.ops!.duplicate('local-a');expect(native.duplicateWorkspaceFile).toHaveBeenCalledWith('local-a')
+ expect(await source.ops!.trash('local-a',2)).toBe(false);expect(native.trashWorkspace).toHaveBeenCalledWith({id:'local-a',revision:2})
+ vi.mocked(native.trashWorkspace).mockResolvedValue({status:'ok',id:'local-a',name:'A',revision:3,hash:'h',updatedAt:1,deleted:true});expect(await source.ops!.trash('local-a',3)).toBe(true)
+ vi.mocked(native.trashWorkspace).mockResolvedValue({status:'error',code:'WORKSPACE_CONFLICT',message:'冲突'});await expect(source.ops!.trash('local-a',3)).rejects.toThrow('冲突')
+})
+test('web-local and file-only Home stay metadata-only without per-entry operations',async()=>{
+ expect(localHomeSource(null,web()).ops).toBeUndefined()
+ expect(localHomeSource(desktop(false),web()).ops).toBeUndefined()
 })
 
 const available = {ready:true,switching:false,busy:false,transitioning:false,interactionActive:false,modalOwnsFocus:false}

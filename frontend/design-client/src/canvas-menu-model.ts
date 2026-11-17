@@ -9,6 +9,8 @@ import { shortcutPreference } from './shortcut-preference'
 import { desktopBridge } from './desktop'
 import { selectionCommandAdmission } from './commands/selection-command'
 import { alignmentAvailability, alignmentCommandIds, alignmentCommands } from './alignment-availability'
+import { selectedPaintSwap } from './sketch-paint-commands'
+import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
 export type ContextMenuOrigin = 'canvas' | 'empty-canvas' | 'layers' | 'inspector'
@@ -84,15 +86,15 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     { command: 'paste-here', label: '粘贴到此处', group: 'clipboard', disabled: busy },
     { command: 'paste-in-place', label: '粘贴到原位', group: 'clipboard', disabled: busy },
     { command: 'select-all', label: '全选', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
-    ...(context.profile === 'sketch-like' ? ([
-      { command: 'select-all-force', label: '全选（含隐藏与锁定）', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
-      { command: 'select-all-top-level', label: '全选顶层画板与图形', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
-    ] as const satisfies CanvasMenuItem[]) : []),
     { command: 'zoom-fit', label: '缩放至全部内容', group: 'view', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
   )
   const visiblePages = userPages(doc)
   const pageIndex = visiblePages.findIndex(page => page.id === editor.state.page)
   const page = doc.pages.find(item => item.id === editor.state.page)
+  if (context.uiMode === 'sketch' && context.profile === 'sketch-like') items.push(
+    { command: 'select-all-force', label: '全选（含隐藏与锁定）', group: 'selection', disabled: !page?.children.length },
+    { command: 'select-all-top-level', label: '全选顶层画框与图形', group: 'selection', disabled: !selectTopLevelCanvasIds(doc, editor.state.page).length },
+  )
   const hasFrame = !!page?.children.some(id => doc.nodes[id]?.visible && (doc.nodes[id].kind === 'frame' || doc.nodes[id].kind === 'section'))
   items.push(
     { command: 'zoom-next-frame', label: '缩放到下一画板', group: 'view', disabled: !hasFrame },
@@ -149,10 +151,13 @@ const contextOrder: EditorCommand[] = [
 const sketchContextOrder: EditorCommand[] = [
   'cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete',
   'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
+  'paste-properties-no-corners',
+  'swap-fills-and-strokes',
+  'select-all-force', 'select-all-top-level', 'select-inverse',
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
-  'flip-horizontal', 'flip-vertical', 'mask-selection', 'convert-vector', 'outline-stroke',
+  'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'round-to-pixel', 'mask-selection', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
   'copy': ['拷贝', 'Copy'],
@@ -190,19 +195,35 @@ function disabledOutlineItem(editor: Editor, context: ShortcutContext): CanvasMe
 }
 export function canvasContextItems(editor: Editor, context: ShortcutContext, uiMode: UiMode = 'figma',
   origin: ContextMenuOrigin = editor.state.selection.length ? 'canvas' : 'empty-canvas'): CanvasMenuItem[] {
-  const available = new Map(canvasMenuItems(editor, context).map(item => [item.command, item]))
+  const available = new Map(canvasMenuItems(editor, { ...context, uiMode }).map(item => [item.command, item]))
   const { busy, selection } = editor.state
   const disabled = busy || editor.interactionActive
   const locale = interfacePreference.getSnapshot().locale
   if (origin === 'empty-canvas') {
     const paste = available.get('paste-here')!
-    return uiMode === 'figma' ? [paste] : [paste, ...(['paste-in-place', 'select-all', 'zoom-fit'] as const).flatMap(command => {
+    return uiMode === 'figma' ? [paste] : [paste, ...(['paste-in-place', 'select-all', 'select-all-force', 'select-all-top-level', 'zoom-fit'] as const).flatMap(command => {
       const item = available.get(command)
       return item ? [item] : []
     })]
   }
   if (uiMode === 'sketch') {
     const commands = sketchSelectionCommands(editor)
+    const pasteStyle = available.get('paste-properties')
+    if (pasteStyle) available.set('paste-properties-no-corners', {
+      ...pasteStyle, command: 'paste-properties-no-corners',
+      label: locale === 'en' ? 'Paste Style Without Corners' : '粘贴样式（保留圆角）',
+      shortcut: shortcutLabel('paste-properties-no-corners', { ...context, uiMode }),
+    })
+    available.set('swap-fills-and-strokes', {
+      command: 'swap-fills-and-strokes', group: 'style',
+      label: locale === 'en' ? 'Swap Fills and Borders' : '交换填充和描边',
+      disabled: disabled || !selectedPaintSwap(editor)?.length,
+      shortcut: shortcutLabel('swap-fills-and-strokes', { ...context, uiMode }),
+    })
+    available.set('fit-pixel-bounds', { command: 'fit-pixel-bounds', group: 'geometry', disabled: disabled || !editor.topSelection().length,
+      label: locale === 'en' ? 'Fit Selection to Pixel Bounds' : '贴合像素边界', shortcut: shortcutLabel('fit-pixel-bounds', context) })
+    available.set('round-to-pixel', { command: 'round-to-pixel', group: 'geometry', disabled: disabled || !editor.topSelection().length,
+      label: locale === 'en' ? 'Round to Pixel' : '四舍五入到像素', shortcut: shortcutLabel('round-to-pixel', context) })
     const canAlign = alignmentAvailability(editor).align
     for (const command of alignmentCommandIds) {
       const { label } = alignmentCommands[command]

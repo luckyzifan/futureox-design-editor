@@ -9,28 +9,29 @@ import {guideOwner,guidePosition,worldGuides} from './ruler-guides'
 import {NumberField} from './fields'
 import {useProfessionalDialogText} from './professional-dialog-messages'
 
-export function CanvasGuides({editor,view,size,entries,intercept}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean}){
+export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=false}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean;guidesHidden?:boolean}){
   const {tr}=useProfessionalDialogText()
   const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<{owner:string;id:string}|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
   const doc=editor.state.doc,page=editor.state.page,shown=!!editor.state.rulers
-  const guides = useMemo(() => shown ? worldGuides(doc,page,entries) : [], [shown,doc,page,entries])
+  const guides = useMemo(() => shown && !guidesHidden ? worldGuides(doc,page,entries) : [], [shown,guidesHidden,doc,page,entries])
   const selectedGuide=selected&&guideOwner(doc,selected.owner)?.guides?.find(g=>g.id===selected.id)
   const cancel=()=>{const d=active.current;active.current=null;if(d?.session===editor.sessionGeneration&&d.page===editor.state.page)editor.cancel();d?.action.cancel()}
   useEffect(()=>{cancel();setSelected(null)},[editor.sessionGeneration,page,shown])
   useEffect(()=>{
     const down=(e:PointerEvent)=>{if(!host.current?.contains(e.target as Node))setSelected(null)}
     const key=(e:KeyboardEvent)=>{
-      if(!selected||!shown||(e.target as Element)?.closest('input,textarea,[contenteditable]'))return
+      if(!selected||!shown||guidesHidden||(e.target as Element)?.closest('input,textarea,[contenteditable]'))return
       if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancel();setSelected(null)}
       if(['Delete','Backspace'].includes(e.key)&&!active.current){e.preventDefault();e.stopImmediatePropagation();runUtilityAction(editor,CanvasAction.guide,ActionSource.keyboard,()=>editor.change('删除参考线',d=>{const owner=guideOwner(d,selected.owner);if(owner)owner.guides=owner.guides?.filter(g=>g.id!==selected.id)}));setSelected(null)}
     }
     window.addEventListener('keydown',key,true);window.addEventListener('pointerdown',down,true);window.addEventListener('blur',cancel)
     return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('pointerdown',down,true);window.removeEventListener('blur',cancel)}
-  },[editor,selected,shown])
+  },[editor,selected,shown,guidesHidden])
   if(!shown)return null
   const location=(e:{clientX:number;clientY:number},camera=view)=>{const b=host.current!.getBoundingClientRect();return screenToWorld(camera,{x:e.clientX-b.left,y:e.clientY-b.top})}
   const start=(e:React.PointerEvent,axis:'x'|'y',owner:string,existing?:RulerGuide)=>{
+    if(guidesHidden)return
     e.stopPropagation();if(existing&&intercept(e))return
     const action=utilityAction(editor,CanvasAction.guide)
     if(e.button!==0||editor.state.busy||editor.interactionActive||editor.state.tool!=='select'){action.block(ActionReason.busy);return}
@@ -73,7 +74,7 @@ export function CanvasGuides({editor,view,size,entries,intercept}:{editor:Editor
     <div className="canvas-ruler horizontal" data-testid="horizontal-ruler" onPointerDown={e=>start(e,'y',owner)}>{ticks('x').map(t=><span key={t.value} style={{left:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>
     <div className="canvas-ruler vertical" data-testid="vertical-ruler" onPointerDown={e=>start(e,'x',owner)}>{ticks('y').map(t=><span key={t.value} style={{top:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>
     <div className="ruler-origin"/>
-    {selected&&selectedGuide&&<div className="guide-properties" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
+    {!guidesHidden&&selected&&selectedGuide&&<div className="guide-properties" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
       <span>{tr(selected.owner===page?'页面参考线':'画板参考线')}</span>
       <NumberField label="参考线位置" value={selectedGuide.position} onChange={position=>runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('设置参考线位置',d=>{const g=guideOwner(d,selected.owner)?.guides?.find(g=>g.id===selected.id);if(g)g.position=position}))}/>
       <button onClick={()=>{runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('删除参考线',d=>{const o=guideOwner(d,selected.owner);if(o)o.guides=o.guides?.filter(g=>g.id!==selected.id)}));setSelected(null)}}>{tr('删除')}</button>

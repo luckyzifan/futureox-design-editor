@@ -1457,7 +1457,9 @@ async function buildWindow() {
         { label: 'Duplicate', accelerator: 'CmdOrCtrl+D', click: () => sendCommand('duplicate') },
         { type: 'separator' },
         { label:'Select Matching',accelerator:interfaceMode === 'figma' ? 'CmdOrCtrl+Alt+A' : undefined,click:()=>sendCommand('select-matching') },
-        { label:'Select Inverse',accelerator:'CmdOrCtrl+Shift+A',click:()=>sendCommand('select-inverse') },
+        // In Sketch the renderer resolves this chord according to the selected preset.
+        { label:'Select Inverse', accelerator: process.platform === 'darwin' && interfaceMode === 'sketch' ? undefined : 'CmdOrCtrl+Shift+A',
+          click:()=>sendCommand('select-inverse') },
         { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendCommand('select-all') },
       ] },
       { label: 'Object', submenu: [

@@ -2,8 +2,15 @@ import type { DesktopSession } from './desktop-session'
 import type { LocalEntry } from './local-store'
 
 export type HomeEntry = Pick<LocalEntry,'id'|'name'|'revision'|'updatedAt'|'deleted'>
-export type HomeSource = { kind:'web-local'|'desktop-workspace'|'desktop-files'; list:()=>Promise<HomeEntry[]>; open:(id:string)=>Promise<boolean> }
-type DesktopHomeSession = Pick<DesktopSession,'supportsWorkspace'|'listWorkspace'|'openWorkspace'|'status'>
+/** Per-document metadata operations surfaced on Home entries. Optional per
+ * source kind: only the desktop workspace session owns all three today. */
+export type HomeDocumentOps = {
+  rename:(id:string,name:string)=>Promise<boolean>
+  duplicate:(id:string)=>Promise<boolean>
+  trash:(id:string,revision:number)=>Promise<boolean>
+}
+export type HomeSource = { kind:'web-local'|'desktop-workspace'|'desktop-files'; list:()=>Promise<HomeEntry[]>; open:(id:string)=>Promise<boolean>; ops?:HomeDocumentOps }
+type DesktopHomeSession = Pick<DesktopSession,'supportsWorkspace'|'listWorkspace'|'openWorkspace'|'status'|'trashWorkspace'|'renameWorkspaceFile'|'duplicateWorkspaceFile'>
 /** Capability routing only. No backend, authentication, document decoding or
  * preview generation while listing metadata. Opening retains existing guards. */
 export function localHomeSource(desktop: DesktopHomeSession | null | undefined, web: { list:()=>Promise<HomeEntry[]>; open:(id:string)=>Promise<boolean> }): HomeSource {
@@ -18,6 +25,15 @@ export function localHomeSource(desktop: DesktopHomeSession | null | undefined, 
     const opened=await desktop.openWorkspace(id)
     if(!opened&&desktop.status.error)throw new Error(desktop.status.error)
     return opened
+  },ops:{
+    rename:(id,name)=>desktop.renameWorkspaceFile(id,name),
+    duplicate:id=>desktop.duplicateWorkspaceFile(id),
+    trash:async(id,revision)=>{
+      const result=await desktop.trashWorkspace({id,revision})
+      if(result.status==='cancelled')return false
+      if(result.status!=='ok')throw new Error(result.message)
+      return true
+    }
   }}
 }
 
