@@ -96,14 +96,15 @@ test('sketch layout opens command search from S without editing, and keeps the s
   expect(document.querySelector('[role="combobox"]')?.getAttribute('placeholder')).toBe('搜索命令…')
   await act(async () => { document.querySelector<HTMLElement>('[aria-label="关闭命令搜索"]')!.click() })
   expect(document.querySelector('[role="dialog"]')).toBeNull()
-  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="排列与编辑"]')!.click())
-  const arrange = document.querySelector<HTMLElement>('[role="menu"][aria-label="排列与编辑"]')!
-  expect(arrange.querySelector('input')).toBeNull()
-  expect(arrange.textContent).toContain('编组')
-  expect(arrange.textContent).toContain('变量 · 组件库 · 原型')
-  await act(async () => button('变量 · 组件库 · 原型').click())
+  await act(async () => document.querySelector<HTMLButtonElement>('.sketch-window-tools button[aria-label="工具"]')!.click())
+  const tools = document.querySelector<HTMLElement>('[role="menu"][aria-label="工具"]')!
+  expect(tools.querySelector('input')).toBeNull()
+  expect(tools.textContent).toContain('撤销')
+  expect(tools.textContent).toContain('变量 · 组件库')
+  await act(async () => button('变量 · 组件库').click())
   const design = document.querySelector<HTMLElement>('[aria-label="设计系统与交互"]')!
   expect(design).not.toBeNull()
+  expect(design.textContent).not.toContain('交互原型')
   expect(document.querySelector('[role="combobox"]')).toBeNull()
   await act(async () => [...design.querySelectorAll('button')].find(item => item.textContent === '关闭')!.click())
   expect(document.querySelector('[aria-label="设计系统与交互"]')).toBeNull()

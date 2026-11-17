@@ -28,7 +28,7 @@ import { recordLocalError } from './local-diagnostics'
 import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gesture'
 import { BatchRenameDialog } from './BatchRenameDialog'
 import { CommandSearch } from './CommandSearch'
-import { commandSearchText } from './command-search'
+import { commandSearchCopy } from './command-search'
 import { commandSearchSnapshot, requestCommandSearch, subscribeCommandSearch } from './command-search-session'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
@@ -198,6 +198,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const agentDockOpen = useSyncExternalStore(subscribeAgentDock, () => getAgentDock().open, () => false)
   const toolbarText = canvasText[locale]
   const menuText = fileMenuText[locale]
+  const commandSearchLabels = commandSearchCopy(uiMode, locale)
   const shortcutProfile = useShortcutProfile()
   const commandSearchOpen = useSyncExternalStore(subscribeCommandSearch, commandSearchSnapshot, () => 0) !== 0
   const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode }), [shortcutProfile, uiMode])
@@ -1402,8 +1403,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>{toolbarText.ungroup} <kbd>{shortcutLabel('ungroup', shortcutContext)}</kbd></button>
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>{toolbarText.designSystems}</button>
               </ToolPopover>
-              <button type="button" className="command-search-trigger" aria-label={commandSearchText[locale].label} aria-haspopup="dialog" aria-expanded={commandSearchOpen}
-                title={shortcutProfile === 'sketch-like' ? `${commandSearchText[locale].label} (${formatShortcutCombo('Mod+K', shortcutContext.platform)} / S)` : commandSearchText[locale].label}
+              <button type="button" className="command-search-trigger" aria-label={commandSearchLabels.label} aria-haspopup="dialog" aria-expanded={commandSearchOpen}
+                title={commandSearchLabels.label}
                 onClick={() => requestCommandSearch()}>
                 <Search size={18} />
               </button>
@@ -1645,8 +1646,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             <button type="button" onClick={openSettings}><SettingsIcon size={15} />{panelText.settingsTitle}</button>
             <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
             <button type="button" onClick={() => { const opener = fileMenuTrigger.current; setMenu(false); requestCommandSearch(opener) }}>
-              <Search size={15} />{commandSearchText[locale].title}
-              {shortcutProfile === 'sketch-like' && <kbd>{formatShortcutCombo('Mod+K', shortcutContext.platform)} / S</kbd>}
+              <Search size={15} />{commandSearchLabels.title}
+              {uiMode === 'sketch' && shortcutProfile === 'sketch-like' && <kbd>{formatShortcutCombo('Mod+K', shortcutContext.platform)} / S</kbd>}
             </button>
             <button
               onClick={() => {
@@ -1743,7 +1744,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               {menuText.importFormats}
             </button>
             {!source&&desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>{menuText.openLarge}</button>}
-            {(['inspect', 'edit'] as const).map(mode => <button type="button" key={mode}
+            {uiMode === 'sketch' && (['inspect', 'edit'] as const).map(mode => <button type="button" key={mode}
               disabled={!ready || switching || desktopStatus.busy || s.busy || editor.interactionActive || !sketchCapabilities[mode]}
               title={sketchCapabilities[mode] ? (mode === 'inspect' ? menuText.sketchInspectTitle : menuText.sketchEditTitle) : menuText.sketchUnavailable}
               onClick={() => { if (!commitPendingEdits(editor)) return; fileImports.invalidate(); setMenu(false); setSketchMode(mode) }}>
@@ -1763,16 +1764,20 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             >
               {menuText.openSample}
             </button>
-            <button onClick={() => { void generateExport('visual-svg'); setMenu(false) }}>{menuText.exportVisualSvg}</button>
-            <button type="button" disabled={!ready || exportAsset !== null}
-              title={menuText.exportSketchTitle}
-              onClick={() => void generateSketchExport()}>{menuText.exportSketch}</button>
+            {uiMode === 'sketch' ? <>
+              <button type="button" disabled={!ready || exportAsset !== null}
+                title={menuText.exportSketchTitle}
+                onClick={() => void generateSketchExport()}>{menuText.exportSketch}</button>
+              <button type="button" disabled={!s.selection.length} onClick={() => { openExportPanel('selection-presets'); setMenu(false) }}>
+                {menuText.exportSelectedLayers}
+              </button>
+            </> : <button onClick={() => { void generateExport('visual-svg'); setMenu(false) }}>{menuText.exportVisualSvg}</button>}
             <button type="button" onClick={() => { openExportPanel('assets'); setMenu(false) }}>
               {menuText.exportAllAssets}
               <kbd>{formatShortcutCombo('Mod+Shift+E', shortcutContext.platform)}</kbd>
             </button>
             <button onClick={() => { openExportPanel(); setMenu(false) }}>{menuText.exportImages}</button>
-            {(['svg', 'png'] as const).map((format) => (
+            {uiMode === 'figma' && (['svg', 'png'] as const).map((format) => (
               <button
                 key={format}
                 onClick={() => {

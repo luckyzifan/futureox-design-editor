@@ -229,7 +229,7 @@ test('context origin and layout choose the menu while the shortcut preference su
   expect(sketchSelectionCommands(editor)).toMatchObject({ canBringForward: false, canSendBackward: false, canCombine: false })
   editor.select([a.id])
   const sketch = canvasContextItems(editor, keys, 'sketch', 'layers')
-  expect(sketch.slice(0, 6).map(item => item.command)).toEqual(['cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete'])
+  expect(sketch.slice(0, 7).map(item => item.command)).toEqual(['cut', 'copy', 'paste', 'paste-in-place', 'paste-to-replace', 'duplicate', 'delete'])
   expect(sketch.find(item => item.command === 'ungroup')?.disabled).toBe(true)
   expect(sketchSelectionCommands(editor)).toMatchObject({ canBringForward: true, canSendBackward: false, canCombine: false })
   editor.select([a.id, b.id])
