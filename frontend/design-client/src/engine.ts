@@ -140,7 +140,7 @@ function applyInferredFrame(doc: DesignDocument, id: string, inferred: {directio
 export type Tool =
   | import('./board-tools').BoardTool
   | 'text-path' | 'offset-path' | 'multiselect' | 'paint-bucket' | 'comments' | 'annotate'
-  | 'measure' | 'vector-lasso' | 'bend' | 'cut' | 'eraser' | 'eyedropper'
+  | 'measure' | 'vector-lasso' | 'bend' | 'cut' | 'eraser' | 'eyedropper' | 'hotspot'
   | 'slice'
   | 'select'
   | 'scale'

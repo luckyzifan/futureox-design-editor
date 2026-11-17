@@ -1725,10 +1725,14 @@ impl<'a> Importer<'a> {
     }
 
     fn layer(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool) -> String {
-        let class = layer
+        let class = match layer
             .get("_class")
             .and_then(Value::as_str)
-            .unwrap_or("group");
+            .unwrap_or("group")
+        {
+            "MSImmutableHotspotLayer" => "hotspot",
+            class => class,
+        };
         let id = layer
             .get("userInfo")
             .and_then(|u| u.get("com.futureox.design-kernel"))
@@ -6542,7 +6546,7 @@ fn export_layer_impl(
             class = "shapeGroup";
         }
     }
-    layer.insert("_class".into(), json!(class));
+    layer.insert("_class".into(), json!(if class == "hotspot" { "MSImmutableHotspotLayer" } else { class }));
     layer.insert("do_objectID".into(), json!(sketch_id(id)));
     // Canonical base field set every real Sketch layer carries (the
     // unarchiver constructs these via initWithUnarchiver: even when default).
@@ -9717,7 +9721,7 @@ mod tests {
         let re_files = read_zip(&re).unwrap();
         let re_page: Value = serde_json::from_slice(&re_files[&name]).unwrap();
         let hotspot = &re_page["layers"][1];
-        assert_eq!(hotspot["_class"], "hotspot");
+        assert_eq!(hotspot["_class"], "MSImmutableHotspotLayer");
         assert_eq!(hotspot["flow"]["_class"], "MSImmutableFlowDestination");
         assert_eq!(
             hotspot["flow"]["destinationArtboardID"],

@@ -149,6 +149,7 @@ import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input
 import { constrainAngle, penHandle } from './pen-constraints'
 import { hitPrototypeHead, hitPrototypeLink, jumpToNode, prototypeLinks } from './canvas-navigation'
 import { usePrototypeTab } from './prototype-chrome'
+import { authorSketchHotspot, isSketchHotspot } from './sketch-hotspot'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
 import { CanvasOutlines, createOutlineScene, outlineHits } from './CanvasOutlines'
 type TextEditEntry = { id: string; session: number; page: string; token: number }
@@ -228,6 +229,7 @@ type Drag = {
   layoutPointerOrigin?: Point
   creationSeed?: ShapeCreationSeed
   creationTool?: Tool
+  hotspotBounds?: Bounds
   parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'blurStop' | 'zoomBlurCenter'
   materialFill?: number
   materialStop?: number
@@ -945,6 +947,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   snapshots.begin(editor, editor.sessionGeneration, state.page, geometryReady)
   const currentScene = snapshots.currentScene(state.doc, state.page)
   const entries = currentScene.entries
+  const hotspots = useMemo(() => uiMode === 'sketch' && prototypeTab === 'prototype'
+    ? entries.filter(entry => isSketchHotspot(state.doc, state.doc.nodes[entry.id])) : [],
+  [uiMode, prototypeTab, entries, state.doc])
   const links = useMemo(
     () => prototypeTab === 'prototype' ? prototypeLinks(state.doc, state.page, entries) : [],
     [prototypeTab, state.doc, state.page, entries],
@@ -1817,8 +1822,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       anchor: d.start, pointer: d.pointer, screenDistance: d.screenDistance || 0,
       ...modifiers, snap: editor.state.snapPixels || ['frame', 'section'].includes(d.creationSeed.kind),
     })
-    setShapePreview(result.node)
-    setRubber(result.bounds)
+    if (d.creationTool === 'hotspot') {
+      const box = result.click && d.hotspotBounds ? d.hotspotBounds : result.bounds
+      result.node.name = '热点'
+      result.node.width = Math.max(.01, box.width)
+      result.node.height = Math.max(.01, box.height)
+      result.node.transform = [1, 0, 0, 1, box.x, box.y]
+      setRubber(box)
+    } else {
+      setShapePreview(result.node)
+      setRubber(result.bounds)
+    }
     return result.node
   }
   function start(
@@ -2068,6 +2082,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         .filter((v) => selectedIds.has(v.id))
         .map((v) => v.bounds),
     )
+    const hotspotTarget = dragKind === 'create' && s.tool === 'hotspot' ? displayedHit(p, true) : null
+    const hotspotBounds = hotspotTarget ? entries.find(entry => entry.id === hotspotTarget)?.bounds : undefined
     drag.current = {
       pointerId: e.pointerId,
       session: editor.sessionGeneration, page: s.page,
@@ -2130,7 +2146,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       } : {}),
       ...(dragKind === 'marquee' && displayedIndex ? { pickIndex: displayedIndex } : {}),
       ...(dragKind === 'create' ? {
-        creationSeed: createShapeSeed(s.tool as ShapeCreationKind | 'graphic'), creationTool:s.tool, pointer: p,
+        creationSeed: createShapeSeed(s.tool === 'hotspot' ? 'rectangle' : s.tool as ShapeCreationKind | 'graphic'),
+        creationTool:s.tool, pointer: p, hotspotBounds,
         screenDistance: 0, modifiers: { shift: e.shiftKey, alt: e.altKey },
       } : {}),
     }
@@ -2837,6 +2854,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const n = updateCreation(d, { shift: e.shiftKey, alt: e.altKey })!
       editor.cancel()
       editor.change(`创建${n.name}`, document => {
+        if (d.creationTool === 'hotspot') authorSketchHotspot(document, n)
         if (n.graphic && document.schemaVersion < 23) document.schemaVersion = 23
         document.nodes[n.id] = n
         const page = document.pages.find(page => page.id === editor.state.page)!
@@ -2853,7 +2871,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }, [n.id])
       if (n.kind === 'text') setTextEdit(n.id)
       // Hold the filled ghost until this document is the presented frame.
-      setHeldCreation(n)
+      if (d.creationTool !== 'hotspot') setHeldCreation(n)
       setShapePreview(null)
       if (!creationToolStaysArmed(editor.state.tool)) editor.set({ tool: 'select' })
     } else if(d.kind==='zoom') {
@@ -4055,6 +4073,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               })()}
             </g>
           )}
+          {hotspots.map(entry => <rect key={entry.id} data-testid="prototype-hotspot" transform={matrixString(entry.matrix)}
+              width={state.doc.nodes[entry.id].width} height={state.doc.nodes[entry.id].height} fill="none"
+              stroke="#0d99ff" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" pointerEvents="none" />)}
           {links.map(link => (
             <g key={link.id} data-testid="prototype-link" data-link-id={link.id} data-off-page={link.offPage ? 'true' : 'false'} pointerEvents="none">
               <path d={`M${link.from.x} ${link.from.y} C${link.c1.x} ${link.c1.y} ${link.c2.x} ${link.c2.y} ${link.to.x} ${link.to.y}`} fill="none" stroke="#0d99ff" strokeWidth={2 / zoom} />

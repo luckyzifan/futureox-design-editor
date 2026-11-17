@@ -76,7 +76,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onReplaceTempla
       <button type="button" className="sketch-secondary-tool command-search-trigger" aria-label={commandSearchText[locale].label}
         data-tooltip={`${commandSearchText[locale].label} (S)`} onClick={() => requestCommandSearch()}><Search size={17} /></button>
       {menu('insert', label('置入', 'Insert'), <Plus size={18} />, <>
-        {(['frame', 'graphic', 'section', 'slice', 'rectangle', 'ellipse', 'line', 'arrow', 'polygon', 'star', 'pen', 'pencil', 'text'] as const).map(menuTool)}
+        {(['frame', 'graphic', 'section', 'slice', 'hotspot', 'rectangle', 'ellipse', 'line', 'arrow', 'polygon', 'star', 'pen', 'pencil', 'text'] as const).map(menuTool)}
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); imageInput.current?.click() }}>{label('图片…', 'Image…')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onPresets() }}>{text.devicePresets}</button>
       </>)}

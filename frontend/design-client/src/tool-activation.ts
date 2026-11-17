@@ -4,6 +4,7 @@ import type {Editor,Tool} from './engine'
 import type {DesignDocument} from './model'
 import {desktopBridge} from './desktop'
 import {commitPendingEdits} from './pending-edits'
+import { setPrototypeTab } from './prototype-chrome'
 let codeFont: {id:string;resource:NonNullable<DesignDocument['fonts']>[string]}|undefined
 let loading:Promise<void>|undefined
 export function codeFontResource(){if(!codeFont)throw new Error('请先载入本机等宽字体');return codeFont}
@@ -33,6 +34,9 @@ export async function activateTool(editor:Editor,tool:Tool){
   try{await(loading??=loadCodeFont(editor.state.doc).finally(()=>{loading=undefined}));if(editor.sessionGeneration!==generation||owners.get(editor)!==owner){action.result(ActionOutcome.cancelled,ActionReason.superseded);return;}const font=codeFontResource(),existing=editor.state.doc.fonts?.[font.id];if(existing&&existing.data!==font.resource.data)throw new Error('等宽字体标识冲突');if(!existing&&Object.keys(editor.state.doc.fonts||{}).length>=32)throw new Error('文档已达到32份字体资源上限');editor.set({busy:false,message:'代码块：拖动创建'});action.result(ActionOutcome.observed)}
   catch(e){action.result(ActionOutcome.rejected,ActionReason.validation);if(editor.sessionGeneration===generation&&owners.get(editor)===owner)editor.set({tool:'select',busy:false,message:String(e)})}
   finally{if(owners.get(editor)===owner)owners.delete(editor)}
- }else editor.set({tool})
+ }else {
+  editor.set({tool})
+  if (tool === 'hotspot') setPrototypeTab('prototype')
+ }
  } finally {action.finish()}
 }
