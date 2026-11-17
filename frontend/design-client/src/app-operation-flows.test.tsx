@@ -8,8 +8,11 @@ import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
 import { DesktopSession } from './desktop-session'
+import { componentFixture } from './component-fixtures'
+import { emptySystem } from './design-system'
 import { Editor } from './engine'
-import { blank, node } from './model'
+import { applyInterfaceLayout } from './interface-layout'
+import { blank, defaultTextStyle, node, paint } from './model'
 import { nudgePreference } from './nudge-preference'
 import { shortcutPreference } from './shortcut-preference'
 import * as localStore from './local-store'
@@ -66,6 +69,87 @@ async function render() {
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(value => value.textContent?.includes(text))!
 const canvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')!
 async function key(value: string, options: KeyboardEventInit = {}, type = 'keydown') { await act(async () => canvas().dispatchEvent(new KeyboardEvent(type, { key: value, code: value, bubbles: true, cancelable: true, ...options }))) }
+
+test('Sketch Option-Command-R replaces the chosen instance or shared style in one undo', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const { doc, ids } = componentFixture()
+  const shape = node('rectangle'), text = node('text'), frame = node('frame', 0, 0, 300, 200)
+  const fill = paint('#d92454'), newFill = paint('#4180f2')
+  doc.schemaVersion = 12
+  doc.designSystem = emptySystem()
+  doc.designSystem.styles = {
+    accent: { name: 'Accent', kind: 'paint', value: [fill] },
+    neutral: { name: 'Neutral', kind: 'paint', value: [newFill] },
+    label: { name: 'Label', kind: 'text', value: defaultTextStyle() },
+    caption: { name: 'Caption', kind: 'text', value: { ...defaultTextStyle(), letterSpacing: 2 } },
+  }
+  shape.fills = [fill]
+  shape.styleRefs = { fills: 'accent' }
+  text.text = 'Keep this text'
+  text.textStyle = defaultTextStyle()
+  text.styleRefs = { textStyle: 'label' }
+  frame.styleRefs = { fills: 'accent' }
+  for (const n of [shape, text, frame]) {
+    doc.nodes[n.id] = n
+    doc.pages[0].children.push(n.id)
+  }
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  const replace = () => key('®', { code: 'KeyR', altKey: true, metaKey: true })
+  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+  const select = (id: string) => act(async () => editor!.select([id]))
+  const choose = async (id: string) => {
+    const list = dialog()!.querySelector<HTMLSelectElement>('select[size]')!
+    await act(async () => {
+      list.value = id
+      list.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await act(async () => dialog()!.querySelector<HTMLButtonElement>('button[type=submit]')!.click())
+    expect(dialog()).toBeNull()
+  }
+
+  await replace()
+  expect(dialog()).toBeNull()
+  await select(ids.a)
+  const before = editor!.authoredDocument
+  await replace()
+  expect(dialog()?.getAttribute('aria-label')).toBe('替换组件')
+  expect(document.activeElement?.getAttribute('type')).toBe('search')
+  expect(editor!.authoredDocument).toBe(before)
+  await choose(ids.iconB)
+  expect(editor!.authoredDocument.nodes[ids.a].instance?.componentId).toBe(ids.iconB)
+  expect(editor!.authoredDocument.nodes[ids.b].instance?.componentId).toBe(ids.button)
+  expect(document.activeElement).toBe(canvas())
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+
+  await select(shape.id)
+  await replace()
+  expect(dialog()?.getAttribute('aria-label')).toBe('替换图层样式')
+  await choose('neutral')
+  expect(editor!.state.doc.nodes[shape.id].styleRefs?.fills).toBe('neutral')
+  await act(async () => editor!.undo())
+  expect(editor!.state.doc.nodes[shape.id].styleRefs?.fills).toBe('accent')
+
+  await select(text.id)
+  await replace()
+  expect(dialog()?.getAttribute('aria-label')).toBe('替换文字样式')
+  await choose('caption')
+  expect(editor!.state.doc.nodes[text.id]).toMatchObject({ text: 'Keep this text', styleRefs: { textStyle: 'caption' } })
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+
+  await select(frame.id)
+  await replace()
+  expect(dialog()?.getAttribute('aria-label')).toBe('选择模板')
+  await act(async () => dialog()!.querySelector('button')!.click())
+  await act(async () => applyInterfaceLayout('figma'))
+  await select(ids.a)
+  await replace()
+  expect(dialog()).toBeNull()
+})
 
 test('mounted App capture preserves held-key one-undo and both toolbar/Inspector allow parent alignment', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })

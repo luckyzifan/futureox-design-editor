@@ -1836,7 +1836,7 @@ export class Editor {
     this.change('重置实例覆盖', (d) => Components.resetInstance(d, id))
   }
   swapInstance(id: string, target: string) {
-    this.change('替换组件实例', (d) => Components.swapInstance(d, id, target))
+    return this.change('替换组件实例', (d) => Components.swapInstance(d, id, target))
   }
   declareComponentSlot(targetId: string, name: string) {
     this.change('声明内容插槽', d => { ComponentSlots.declareSlot(d, targetId, name) })

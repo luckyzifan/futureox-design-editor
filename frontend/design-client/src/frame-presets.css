@@ -7,3 +7,5 @@
 .frame-preset-list button{width:100%;padding:9px;text-align:left;background:transparent;border:0;color:inherit;cursor:pointer}
 .frame-preset-list button:hover,.frame-preset-list button:focus-visible{background:var(--workspace-selection,#e4f2ff)}
 .frame-preset-panel form{display:flex;flex-wrap:wrap;gap:8px}.frame-preset-panel form label{display:flex;gap:5px;align-items:center}.frame-preset-panel input[type=number]{width:90px}
+.sketch-replacement-panel form{display:grid;gap:8px;margin-top:8px}
+.sketch-replacement-panel button[type=submit]{justify-self:end}

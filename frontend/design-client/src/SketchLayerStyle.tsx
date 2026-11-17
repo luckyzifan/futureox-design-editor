@@ -26,6 +26,11 @@ function copyStyle(node: DesignNode, style: LayerStyle) {
   }
 }
 
+export function applySketchLayerStyle(node: DesignNode, id: string, style: LayerStyle) {
+  copyStyle(node, style)
+  node.styleRefs = { ...node.styleRefs, fills: id }
+}
+
 export function SketchLayerStyle({ editor, node }: { editor: Editor; node: DesignNode }) {
   const { tr, locale } = usePropertyText()
   const { doc } = editor.state, session = editor.sessionGeneration
@@ -69,8 +74,7 @@ export function SketchLayerStyle({ editor, node }: { editor: Editor; node: Desig
         change('应用共享样式', (draft, selected) => {
           const style = draft.designSystem?.styles[id]
           if (style?.kind !== 'paint') return
-          copyStyle(selected, style)
-          selected.styleRefs = { ...selected.styleRefs, fills: id }
+          applySketchLayerStyle(selected, id, style)
         })
       }}>
       <option value="">{tr('无图层样式')}</option>
