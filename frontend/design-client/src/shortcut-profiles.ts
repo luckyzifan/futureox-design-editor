@@ -51,7 +51,10 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
     const { letter } = sketchBooleanCommands[command]
     bindings.push({ command, combo: `Mod+Alt+${letter}`, physicalCode: `Key${letter}` })
   }
-  if (uiMode === 'sketch' && platform === 'mac') bindings.unshift({ command: 'create-component', combo: 'Mod+Y' })
+  if (uiMode === 'sketch' && platform === 'mac') bindings.unshift(
+    { command: 'create-component', combo: 'Mod+Y' },
+    { command: 'fit-pixel-bounds', combo: 'Ctrl+Mod+X' },
+  )
   if (profile === 'sketch-like') {
     tools.set('set-tool-default', undefined); tools.set('set-tool-pen', 'V'); tools.set('set-tool-pencil', 'P')
     tools.set('set-tool-slice', 'E'); tools.set('set-tool-eraser', undefined); tools.set('set-tool-comments', 'N')

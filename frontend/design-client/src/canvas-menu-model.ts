@@ -148,7 +148,7 @@ const sketchContextOrder: EditorCommand[] = [
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
-  'flip-horizontal', 'flip-vertical', 'mask-selection', 'convert-vector', 'outline-stroke',
+  'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'mask-selection', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
   'copy': ['拷贝', 'Copy'],
@@ -199,6 +199,8 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
   }
   if (uiMode === 'sketch') {
     const commands = sketchSelectionCommands(editor)
+    available.set('fit-pixel-bounds', { command: 'fit-pixel-bounds', group: 'geometry', disabled: disabled || !editor.topSelection().length,
+      label: locale === 'en' ? 'Fit Selection to Pixel Bounds' : '贴合像素边界', shortcut: shortcutLabel('fit-pixel-bounds', context) })
     const canAlign = alignmentAvailability(editor).align
     for (const command of alignmentCommandIds) {
       const { label } = alignmentCommands[command]
