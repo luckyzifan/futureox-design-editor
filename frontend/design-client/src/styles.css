@@ -3231,3 +3231,17 @@ html[data-reduced-motion=true] .animation-modal * {
 .shortcut-reference dd { display: flex; flex-wrap: wrap; justify-content: end; gap: 3px; margin: 0; }
 .shortcut-reference kbd { padding: 2px 5px; border-radius: 3px; white-space: nowrap; background: var(--workspace-field); }
 .shortcut-reference kbd[data-used="true"] { background: var(--workspace-selected); color: var(--workspace-selected-ink, var(--workspace-accent)); }
+
+.property-control-caption { font-size: 10px; line-height: 1.2; }
+.alignment-controls[data-property-labels] { display: flex; flex-wrap: wrap; gap: 3px; }
+.alignment-controls[data-property-labels] button,
+.alignment-controls[data-property-labels] summary,
+.geometry-actions button:has(.property-control-caption) {
+  display: inline-flex; align-items: center; gap: 4px; width: auto; min-height: 25px; height: auto; padding: 4px 5px; text-align: start;
+}
+.alignment-controls[data-property-labels] svg,
+.geometry-actions button:has(.property-control-caption) svg { flex-shrink: 0; }
+.alignment-controls[data-property-labels] .alignment-more > div { right: auto; left: 0; width: max-content; max-width: 190px; flex-wrap: wrap; }
+.geometry-rotation:has(.property-control-caption) { grid-template-columns: minmax(0, 1fr); }
+.geometry-actions:has(.property-control-caption) { flex-wrap: wrap; white-space: normal; }
+.alignment-controls[data-property-labels] .alignment-more { flex-basis: 100%; }

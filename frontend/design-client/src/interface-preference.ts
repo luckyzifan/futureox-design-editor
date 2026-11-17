@@ -22,9 +22,9 @@ export const RIGHT_PANEL_MAX = 480
 export type InspectorWidths = Readonly<{ figma: number; sketch: number }>
 export const OFFICIAL_INSPECTOR_WIDTHS: InspectorWidths = Object.freeze({ figma: FIGMA_INSPECTOR_WIDTH, sketch: SKETCH_INSPECTOR_WIDTH })
 export function officialInspectorWidth(mode: UiMode) { return OFFICIAL_INSPECTOR_WIDTHS[mode] }
-export type InterfacePreferences = Readonly<{ leftWidth: number; leftWidths: LayersWidths; rightWidth: number; inspectorWidths: InspectorWidths; leftOpen: boolean; rightOpen: boolean; reducedMotion: boolean; rememberViewport: boolean; locale: InterfaceLocale; uiMode: UiMode; figmaKeyboardLayout: FigmaKeyboardLayout }>
+export type InterfacePreferences = Readonly<{ leftWidth: number; leftWidths: LayersWidths; rightWidth: number; inspectorWidths: InspectorWidths; leftOpen: boolean; rightOpen: boolean; reducedMotion: boolean; rememberViewport: boolean; locale: InterfaceLocale; uiMode: UiMode; figmaKeyboardLayout: FigmaKeyboardLayout; figmaPropertyLabels: boolean }>
 export const INTERFACE_PREFERENCE_KEY = 'forma.interface-preferences.v1'
-export const DEFAULT_INTERFACE_PREFERENCES: InterfacePreferences = Object.freeze({ leftWidth: FIGMA_LAYERS_WIDTH, leftWidths: DEFAULT_LAYERS_WIDTHS, rightWidth: FIGMA_INSPECTOR_WIDTH, inspectorWidths: OFFICIAL_INSPECTOR_WIDTHS, leftOpen: true, rightOpen: true, reducedMotion: false, rememberViewport: false, locale: 'zh-CN', uiMode: 'figma', figmaKeyboardLayout: 'us-qwerty' })
+export const DEFAULT_INTERFACE_PREFERENCES: InterfacePreferences = Object.freeze({ leftWidth: FIGMA_LAYERS_WIDTH, leftWidths: DEFAULT_LAYERS_WIDTHS, rightWidth: FIGMA_INSPECTOR_WIDTH, inspectorWidths: OFFICIAL_INSPECTOR_WIDTHS, leftOpen: true, rightOpen: true, reducedMotion: false, rememberViewport: false, locale: 'zh-CN', uiMode: 'figma', figmaKeyboardLayout: 'us-qwerty', figmaPropertyLabels: false })
 export function panelWidth(value: number, side: 'left' | 'right') { return Math.round(Math.min(RIGHT_PANEL_MAX, Math.max(side === 'left' ? 208 : RIGHT_PANEL_MIN, value))) }
 function finiteLeft(value: unknown, fallback: number) {
   return typeof value === 'number' && Number.isFinite(value) ? panelWidth(value, 'left') : fallback
@@ -70,6 +70,7 @@ export function createInterfacePreference(storage: () => Pick<Storage, 'getItem'
       locale: value.locale === 'en' ? 'en' : 'zh-CN',
       uiMode,
       figmaKeyboardLayout: value.figmaKeyboardLayout === 'de-qwertz' ? 'de-qwertz' : 'us-qwerty',
+      figmaPropertyLabels: value.figmaPropertyLabels === true,
     })
   }
   const read = () => { initialized = true; try { const target = storage(); snapshot = sanitize(JSON.parse(target?.getItem(INTERFACE_PREFERENCE_KEY) || '{}')); persisted = !!target } catch { persisted = false } }
