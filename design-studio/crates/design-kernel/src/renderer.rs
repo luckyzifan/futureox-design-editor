@@ -4443,7 +4443,8 @@ impl Painter<'_> {
             .iter()
             .filter(|e| e.visible && !matches!(e.kind.as_str(), "background-blur" | "glass"))
         {
-            if (fx.kind == "blur"
+            if crate::fidelity::sketch_gaussian_identity(self.doc, n, fx)
+                || (fx.kind == "blur"
                 && !crate::fidelity::layer_blur_active(
                     fx.blur_radius() * scale,
                     self.profile,
@@ -5316,6 +5317,9 @@ impl Painter<'_> {
         let shares_shadow_basis = n.effects.iter().filter(|effect| effect.visible &&
             matches!(effect.kind.as_str(), "shadow" | "inner-shadow")).take(2).count() == 2;
         for fx in n.effects.iter().filter(|e| apply_effects && e.visible) {
+            if crate::fidelity::sketch_gaussian_identity(self.doc, n, fx) {
+                continue;
+            }
             if self.display_degrade && effect_exceeds_display_budget(fx, scale, r) {
                 continue;
             }
