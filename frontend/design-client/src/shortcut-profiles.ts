@@ -60,7 +60,15 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
     { command: 'paste-properties-no-corners', combo: 'Ctrl+Alt+Mod+V' },
     { command: 'duplicate-behind', combo: 'Mod+Shift+D' },
   )
-  if (uiMode === 'sketch' && platform === 'mac' && desktop) bindings.unshift({ command: 'zoom-top-level-frame', combo: 'Mod+4' })
+  if (uiMode === 'sketch' && platform === 'mac' && desktop) bindings.unshift(
+    { command: 'zoom-top-level-frame', combo: 'Mod+4' },
+    { command: 'align-left', combo: 'Ctrl+Mod+ArrowLeft' },
+    { command: 'align-right', combo: 'Ctrl+Mod+ArrowRight' },
+    { command: 'align-top', combo: 'Ctrl+Mod+ArrowUp' },
+    { command: 'align-bottom', combo: 'Ctrl+Mod+ArrowDown' },
+    { command: 'align-horizontal-center', combo: 'Ctrl+Mod+H' },
+    { command: 'align-vertical-center', combo: 'Ctrl+Mod+V' },
+  )
   if (profile === 'sketch-like') {
     tools.set('set-tool-default', undefined); tools.set('set-tool-pen', 'V'); tools.set('set-tool-pencil', 'P')
     tools.set('set-tool-slice', 'E'); tools.set('set-tool-eraser', undefined); tools.set('set-tool-comments', 'N')

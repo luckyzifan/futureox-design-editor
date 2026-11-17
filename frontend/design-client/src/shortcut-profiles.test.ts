@@ -429,6 +429,19 @@ describe('bounded keyboard presets', () => {
   })
 })
 
+test('Sketch alignment accelerators route only in the macOS desktop layout', () => {
+  const context = { profile: 'sketch-like', platform: 'mac', uiMode: 'sketch', desktop: true } as const
+  for (const [name, command] of Object.entries({
+    ArrowLeft: 'align-left', ArrowRight: 'align-right', ArrowUp: 'align-top', ArrowDown: 'align-bottom',
+    h: 'align-horizontal-center', v: 'align-vertical-center',
+  })) {
+    const event = key(name, { ctrlKey: true, metaKey: true })
+    expect(resolveShortcut(event, context)?.command).toBe(command)
+    expect(resolveShortcut(event, { ...context, desktop: false })).toBeNull()
+    expect(resolveShortcut(event, { ...context, uiMode: 'figma' })).toBeNull()
+  }
+})
+
 test('Sketch preset maps ⌃⌘A/⇧⌘A select-all variants and keeps Figma inverse selection', () => {
   const mac = { profile: 'sketch-like', platform: 'mac', uiMode: 'sketch' } as const
   expect(resolveShortcut(key('a', { code: 'KeyA', ctrlKey: true, metaKey: true }), mac)?.command).toBe('select-all-force')

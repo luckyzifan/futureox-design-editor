@@ -135,6 +135,7 @@ import { createShapeSeed, resolveShapeCreation, creationPointCount, creationTool
 import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, keyboardPlacesTool } from './keyboard-placement'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, sketchGradientStopOffset, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
+import { isAlignmentCommand } from './alignment-availability'
 import { applyEditableNetwork, editableNetwork } from './editable-network'
 import {
   PEN_BLUE, PEN_HIT_PX, constrainToAngles, penAffordance, penCurvePath, penHandleMove, penHitsNetwork,
@@ -1394,7 +1395,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           return
         }
       }
-      if (shortcut && isSketchBooleanCommand(shortcut.command)) {
+      if (shortcut && (isSketchBooleanCommand(shortcut.command) || isAlignmentCommand(shortcut.command))) {
         if (penRef.current || drag.current || pencil.current || editor.state.tool === 'vector') e.preventDefault()
         else void dispatchEditorShortcut(editor, e, shortcutContext)
         return
