@@ -313,6 +313,41 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Shift+Command+D duplicates directly behind the original and preserves undo', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Duplicate behind')
+  const back = node('rectangle', 20, 20, 80, 80)
+  const original = node('rectangle', 60, 50, 100, 100)
+  const front = node('rectangle', 90, 80, 60, 60)
+  front.locked = true
+  for (const n of [back, original, front]) doc.nodes[n.id] = n
+  doc.pages[0].children = [back.id, original.id, front.id]
+  await act(async () => { editor!.load(doc); editor!.select([front.id]); canvas().focus() })
+  const before = editor!.authoredDocument
+  const duplicate = (shiftKey = true) => key('d', { code: 'KeyD', metaKey: true, shiftKey })
+  await duplicate()
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => editor!.select([original.id]))
+
+  const input = document.createElement('input')
+  await act(async () => { document.body.append(input); input.focus() })
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'D', code: 'KeyD', metaKey: true, shiftKey: true, bubbles: true,
+  })))
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => { input.remove(); canvas().focus() })
+
+  await duplicate()
+  const copyBehind = editor!.state.selection[0]
+  expect(editor!.state.doc.pages[0].children).toEqual([back.id, copyBehind, original.id, front.id])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  await duplicate(false)
+  expect(editor!.state.doc.pages[0].children).toEqual([back.id, original.id, editor!.state.selection[0], front.id])
+})
+
 test('Sketch Control+Option+Command+V pastes style while preserving target corners', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')

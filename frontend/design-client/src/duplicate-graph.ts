@@ -9,8 +9,9 @@ export type Duplication = { roots: string[]; ids: Map<string, string>; sourceRoo
 /** Copy inside one native document. Existing resource/variable references stay
  * local, copied component/interaction targets are remapped together. */
 export function duplicateGraph(target: DesignDocument, content: GraphCopy,
-  options: { page?: string; wrapAnimated?: boolean; transforms?: Map<string, Matrix> } = {}): Duplication {
+  options: { page?: string; wrapAnimated?: boolean; transforms?: Map<string, Matrix>; behindSource?: boolean } = {}): Duplication {
   const source = content.document, parents = allParents(source)
+  const siblingOffset = options.behindSource ? 0 : 1
   const master = content.roots.length === 1 ? source.nodes[content.roots[0]] : undefined
   const behavior = Object.keys(source.prototype?.interactions || {}).some(id => content.nodes[id]) ||
     source.animations?.some(clip => clip.tracks.some(track => content.nodes[track.nodeId]))
@@ -24,7 +25,8 @@ export function duplicateGraph(target: DesignDocument, content: GraphCopy,
     target.nodes[created].transform = delta.every((v, i) => v === identity()[i]) ? cloneValue(master.transform)
       : multiply(inverse(worldMatrix(target, parent)), multiply(delta, worldMatrix(source, master.id)))
     const list = target.nodes[parent]?.children || target.pages.find(page => page.id === parent)!.children
-    list.splice(list.indexOf(created), 1); list.splice(list.indexOf(master.id) + 1, 0, created)
+    list.splice(list.indexOf(created), 1)
+    list.splice(list.indexOf(master.id) + siblingOffset, 0, created)
     return { roots: [created], ids: new Map([[master.id, created]]), sourceRoots: [master.id], reference: new Map([[created, worldMatrix(source, master.id)]]) }
   }
   const ids = new Map(Object.keys(content.nodes).map(id => [id, uid()]))
@@ -70,7 +72,7 @@ export function duplicateGraph(target: DesignDocument, content: GraphCopy,
       reference.set(root, worldMatrix(source, id))
     }
     const at = options.page ? -1 : list.indexOf(id)
-    list.splice(at < 0 ? list.length : at + 1, 0, root)
+    list.splice(at < 0 ? list.length : at + siblingOffset, 0, root)
     roots.push(root)
   }
   if (source.prototype) {

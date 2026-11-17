@@ -104,8 +104,8 @@ export function prepareDuplication(doc: DesignDocument, selected: readonly strin
   }
   return { content: copyForDuplication(doc, index.ids, state.mutable, index.parents), transforms, pageId: index.pageId }
 }
-export function applyDuplication(doc: DesignDocument, plan: DuplicationPlan): Duplication {
-  return duplicateGraph(doc, plan.content, { transforms: plan.transforms })
+export function applyDuplication(doc: DesignDocument, plan: DuplicationPlan, behindSource = false): Duplication {
+  return duplicateGraph(doc, plan.content, { transforms: plan.transforms, behindSource })
 }
 /** Retain repeat only across a provable authored root transform-only chain.
  * Any other property/topology/behavior edit clears it. No hidden recomputation. */

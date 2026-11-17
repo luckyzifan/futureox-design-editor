@@ -2888,7 +2888,7 @@ export class Editor {
       pageId: pageId!, roots: [...roots], reference: new Map(roots.map(id => [id, [...reference.get(id)!] as Matrix])) }
     return true
   }
-  duplicate() {
+  duplicate(behindSource = false) {
     const action = beginEditorAction(this, CanvasAction.duplicate, ActionSource.unknown, 224)
     try {
       if (this.state.busy || this.interactionActive || !commitPendingEdits(this) || !this.settleOwnedPropertyPreview('edit')) return
@@ -2899,10 +2899,10 @@ export class Editor {
           canvas: duplicationCanvas(interfacePreference.getSnapshot().uiMode) })
       const selected: string[] = []
       let reference = new Map<string, Matrix>()
-      const result = this.change('创建副本', draft => {
+      const result = this.change(behindSource ? '在原图层后面创建副本' : '创建副本', draft => {
         if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
           throw new SelectionCommandError('superseded', 'Duplicate owner changed before commit')
-        const created = applyDuplication(draft, plan)
+        const created = applyDuplication(draft, plan, behindSource)
         for (const id of created.roots) selected.push(id)
         reference = created.reference
       }, selected)
