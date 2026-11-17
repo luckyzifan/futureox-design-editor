@@ -163,7 +163,7 @@ export class DesktopSession {
     if (!this.bridge.workspace) throw new Error('本机文档库不可用')
     return this.bridge.workspace.revisions({ id, beforeRevision })
   }
-  async trashWorkspace(document: WorkspaceDocument, deleted = true) {
+  async trashWorkspace(document: Pick<WorkspaceDocument, 'id' | 'revision'>, deleted = true) {
     const trace = beginEditorAction(this.editor, CanvasAction.delete, ActionSource.menu, deleted ? 330 : 331)
     try {
     if (!this.bridge.workspace) throw new Error('本机文档库不可用')
@@ -173,6 +173,54 @@ export class DesktopSession {
     return result
     } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { trace.finish() }
+  }
+  /** Home-level metadata write on a document that is not open in the editor.
+   * Reads the fresh head, re-encodes through the same codec path as Save, and
+   * commits against that head revision; it never adopts or leaves the current
+   * editor document. Returns false only on a cancelled workspace write. */
+  async renameWorkspaceFile(id: string, name: string): Promise<boolean> {
+    const trimmed = name.trim()
+    if (!trimmed) throw new Error('名称不能为空')
+    if (id === this.currentDocument.id) throw new Error('当前打开的设计请用编辑器标题重命名')
+    const store = this.bridge.workspace
+    if (!store) throw new Error('本机文档库不可用')
+    return this.run('save', async () => {
+      const head = await store.open({ id })
+      if (head.status !== 'ok') { if (head.status === 'cancelled') return false; throw new Error(head.message) }
+      if (head.deleted || head.id !== id) throw new Error('本机文档响应无效')
+      const json = nativeDesignJson(head.documentJson)
+      assertDocumentJson(json)
+      const document: DesignDocument = JSON.parse(json)
+      if (document.id !== id) throw new Error('本机文档响应无效')
+      if (document.name === trimmed) return true
+      const encoded = await this.encode({ ...document, name: trimmed.slice(0, 200) })
+      const result = await store.commit({ documentJson: encoded, expectedRevision: head.revision, mutationId: crypto.randomUUID() })
+      if (result.status !== 'ok') { if (result.status === 'cancelled') return false; throw new Error(result.message) }
+      this.workspaceHeads.set(result.id, result.revision)
+      return true
+    })
+  }
+  /** Home-level duplicate of a non-open document: fresh head read, new id and
+   * 副本 name, commit with a null expected revision so SQLite creates the row.
+   * Mirrors saveCopy's encoding and head bookkeeping without editor adoption. */
+  async duplicateWorkspaceFile(id: string): Promise<boolean> {
+    const store = this.bridge.workspace
+    if (!store) throw new Error('本机文档库不可用')
+    return this.run('save', async () => {
+      const head = await store.open({ id })
+      if (head.status !== 'ok') { if (head.status === 'cancelled') return false; throw new Error(head.message) }
+      if (head.deleted || head.id !== id) throw new Error('本机文档响应无效')
+      const json = nativeDesignJson(head.documentJson)
+      assertDocumentJson(json)
+      const document: DesignDocument = JSON.parse(json)
+      if (document.id !== id) throw new Error('本机文档响应无效')
+      const copy: DesignDocument = { ...document, id: crypto.randomUUID(), name: `${document.name} 副本`.slice(0, 200) }
+      const encoded = await this.encode(copy)
+      const result = await store.commit({ documentJson: encoded, expectedRevision: null, mutationId: crypto.randomUUID() })
+      if (result.status !== 'ok') { if (result.status === 'cancelled') return false; throw new Error(result.message) }
+      this.workspaceHeads.set(result.id, result.revision)
+      return true
+    })
   }
   openWorkspace(id: string) {
     return this.run('open', async () => {

@@ -54,3 +54,17 @@
   animation: activity-slide 1.15s cubic-bezier(0.22, 0.8, 0.28, 1) infinite;
 }
 @keyframes activity-slide { from { transform: translateX(-130%); } to { transform: translateX(340%); } }
+
+/* Per-entry document actions: the menu button rides the card corner and the
+   popup anchors inside the relative entry wrapper; existing tokens only. */
+.local-home-entry { position: relative; display: flex; }
+.local-home-entry > .local-home-file { flex: 1; min-width: 0; }
+.local-home-entry-menu { position: absolute; top: 6px; right: 6px; z-index: 2; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-panel); color: var(--workspace-muted); }
+.local-home-entry-menu:not(:disabled):hover, .local-home-entry-menu[aria-expanded="true"] { color: var(--workspace-text); background: var(--workspace-hover); }
+.local-home-entry-actions { position: absolute; top: 34px; right: 6px; z-index: 3; display: grid; min-width: 148px; padding: 4px; border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-panel); box-shadow: 0 12px 28px #1c191718; }
+.local-home-entry-actions button { display: block; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--workspace-text); text-align: left; }
+.local-home-entry-actions button:not(:disabled):hover { background: var(--workspace-hover); }
+.local-home-rename { width: 100%; min-height: 26px; padding: 3px 8px; border: 1px solid var(--workspace-accent); border-radius: 6px; background: var(--workspace-panel); color: var(--workspace-text); font: inherit; }
+.local-home-sort { display: flex; }
+.local-home-sort button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-panel); color: var(--workspace-muted); }
+.local-home-sort button[aria-pressed="true"] { color: var(--workspace-text); border-color: color-mix(in srgb, var(--workspace-accent) 45%, var(--workspace-border)); background: var(--workspace-hover); }
