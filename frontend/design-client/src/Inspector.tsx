@@ -624,6 +624,9 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const dimensionField = (field: 'width' | 'height') => {
     const label = field === 'width' ? 'W' : 'H', value = selectionMetric(n, field, s.doc, units)
     if (uiMode === 'figma' && n.kind === 'text' && n.sizing?.[field] === 'hug') return <CalculatedDimension label={label} value={value} />
+    if (n.sizing?.[field] === 'relative' && !n.sizing.absolute &&
+        (constraintParent?.layout?.mode === 'horizontal' || constraintParent?.layout?.mode === 'vertical'))
+      return <CalculatedDimension label={label} value={value} />
     return <NumberField historyLabel={label} diagnosticFamily={field === 'width' ? 3 : 4} unit="length" label={label}
       value={value} min={0.01}
       resolveInput={uiMode === 'sketch' ? (text, original) => {

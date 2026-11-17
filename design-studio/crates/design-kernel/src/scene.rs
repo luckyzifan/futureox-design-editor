@@ -1688,6 +1688,9 @@ impl Document {
             if n.sketch_layer_style_overridden && self.schema_version < 26 {
                 return Err("Local Sketch layer style overrides require schema 26".into());
             }
+            if self.schema_version < 29 && n.sizing.as_ref().is_some_and(crate::layout::Sizing::has_relative_sizing) {
+                return Err("Relative stack sizing requires schema 29".into());
+            }
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1905,7 +1908,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=28).contains(&self.schema_version)
+        if !(1..=29).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

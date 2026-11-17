@@ -288,8 +288,10 @@ export type AutoLayout = {
   fillRows: boolean
 }
 export type Sizing = {
-  width: 'fixed' | 'hug' | 'fill'
-  height: 'fixed' | 'hug' | 'fill'
+  width: 'fixed' | 'hug' | 'fill' | 'relative'
+  height: 'fixed' | 'hug' | 'fill' | 'relative'
+  widthRatio?: number
+  heightRatio?: number
   minWidth: number
   minHeight: number
   maxWidth: number
@@ -516,7 +518,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29
   id: string
   name: string
   pages: Page[]
@@ -845,7 +847,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1288,8 +1290,8 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
       if (!isObject(n.sizing)) throw new Error('尺寸配置无效')
       const z = { ...defaultSizing(), ...n.sizing }
       if (
-        !['fixed', 'hug', 'fill'].includes(z.width) ||
-        !['fixed', 'hug', 'fill'].includes(z.height) ||
+        !['fixed', 'hug', 'fill', 'relative'].includes(z.width) ||
+        !['fixed', 'hug', 'fill', 'relative'].includes(z.height) ||
         !finite(z.minWidth, 0.01) ||
         !finite(z.minHeight, 0.01) ||
         !finite(z.maxWidth, z.minWidth) ||
@@ -1299,6 +1301,11 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
         ![z.rowSpan, z.columnSpan].every((v) => Number.isInteger(v) && finite(v, 1, 64))
       )
         throw new Error('响应式尺寸参数无效')
+      for (const [mode, ratio] of [[z.width, z.widthRatio], [z.height, z.heightRatio]] as const) {
+        if ((mode === 'relative' || ratio !== undefined) &&
+            (d.schemaVersion < 29 || !finite(ratio, 0, 1)))
+          throw new Error('相对尺寸需要有效的百分比及设计文件版本 29')
+      }
       if (
         (z.width === 'hug' || z.height === 'hug') &&
         n.kind !== 'text' &&

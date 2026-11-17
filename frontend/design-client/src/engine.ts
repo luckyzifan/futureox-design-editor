@@ -761,6 +761,8 @@ export class Editor {
         if(draft.schemaVersion < 26 && featureNodesOf(authored).some(n => n.sketchLayerStyleOverridden)) draft.schemaVersion = 26
         if(draft.schemaVersion < 27 && featureNodesOf(authored).some(n => n.textRuns?.some(run => run.italic))) draft.schemaVersion = 27
         if (draft.schemaVersion < 28 && featureNodesOf(authored).some(n => n.network?.curveModes || n.vectorGeometry?.cornerSource?.network.curveModes)) draft.schemaVersion = 28
+        if (draft.schemaVersion < 29 && featureNodesOf(authored).some(n =>
+          n.sizing?.widthRatio !== undefined || n.sizing?.heightRatio !== undefined)) draft.schemaVersion = 29
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields

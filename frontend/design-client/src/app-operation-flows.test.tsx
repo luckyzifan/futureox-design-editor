@@ -17,7 +17,7 @@ import { fontTestBytes } from './font-test-fixtures'
 import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
 import { worldMatrix } from './geometry'
 import { kernelFillWorld } from './kernel/picking'
-import { blank, defaultTextStyle, node, paint, stroke } from './model'
+import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke } from './model'
 import { nudgePreference } from './nudge-preference'
 import * as persistence from './persistence'
 import { shortcutPreference } from './shortcut-preference'
@@ -284,6 +284,69 @@ test('Sketch inspector resolves frame distances and anchored dimensions before w
   expect(editor!.authoredDocument).toEqual(before)
   await act(async () => bad.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
   expect(bad.value).toBe('385')
+})
+
+test('Sketch stack percentage modes persist, reflow with the parent and undo with their dimensions', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Relative stack QA')
+  const frame = node('frame', 50, 60, 300, 200)
+  const fixed = node('rectangle', 0, 0, 50, 80)
+  const child = node('rectangle', 0, 0, 40, 35)
+  const fill = node('rectangle', 0, 0, 20, 20)
+  frame.layout = { ...defaultLayout(), padding: [10, 30, 20, 20], gap: 10 }
+  frame.children = [fixed.id, child.id, fill.id]
+  fill.sizing = { ...defaultSizing(), width: 'fill' }
+  doc.nodes = Object.fromEntries([frame, fixed, child, fill].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [frame.id]
+  const patch = () => editor!.authoredDocument.nodes[child.id]
+  const choose = (label: string, value: string) => act(async () => {
+    const select = document.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!
+    expect(select.querySelector(`option[value="${value}"]`)).not.toBeNull()
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const enter = (label: string, value: string) => act(async () => {
+    const input = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
+    input.focus()
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    expect(input.validity.customError).toBe(false)
+  })
+  await act(async () => { editor!.load(doc); editor!.select([child.id]) })
+  const initial = editor!.authoredDocument
+  await choose('宽度模式', 'relative')
+  expect(patch().sizing).toMatchObject({ width: 'relative', widthRatio: 1 })
+  expect(patch().width).toBeCloseTo(179.99, 8)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(initial)
+  expect(editor!.canUndo).toBe(false)
+
+  await choose('宽度模式', 'relative')
+  await enter('相对宽度 %', '50%')
+  await choose('高度模式', 'relative')
+  await enter('相对高度 %', '40')
+  expect(patch()).toMatchObject({
+    width: 125, height: 68, sizing: { width: 'relative', widthRatio: 0.5, height: 'relative', heightRatio: 0.4 },
+  })
+  const proportional = editor!.authoredDocument
+  expect(proportional.schemaVersion).toBe(29)
+  expect(proportional.nodes[fill.id].width).toBeCloseTo(55, 8)
+  expect(JSON.parse(forma_decode_json(forma_encode_json(JSON.stringify(proportional))))).toEqual(proportional)
+  await choose('宽度模式', 'fill')
+  expect(patch().sizing?.width).toBe('fill')
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(proportional)
+
+  await act(async () => editor!.select([frame.id]))
+  await enter('W', '400')
+  expect(patch().width).toBe(175)
+  expect(editor!.authoredDocument.nodes[fill.id].width).toBeCloseTo(105, 8)
+  await enter('H', '260')
+  expect(patch().height).toBe(92)
+  await act(async () => { editor!.undo(); editor!.undo() })
+  expect(editor!.authoredDocument).toEqual(proportional)
 })
 
 test('Sketch rich-text shortcuts format the selected range and later input at a collapsed caret', async () => {

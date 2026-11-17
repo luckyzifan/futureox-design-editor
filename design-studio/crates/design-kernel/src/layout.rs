@@ -24,6 +24,7 @@ pub enum SizeMode {
     Fixed,
     Hug,
     Fill,
+    Relative,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -106,6 +107,10 @@ impl Default for Layout {
 pub struct Sizing {
     pub width: SizeMode,
     pub height: SizeMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width_ratio: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height_ratio: Option<f64>,
     pub min_width: f64,
     pub min_height: f64,
     pub max_width: f64,
@@ -120,6 +125,8 @@ impl Default for Sizing {
         Self {
             width: SizeMode::Fixed,
             height: SizeMode::Fixed,
+            width_ratio: None,
+            height_ratio: None,
             min_width: 0.01,
             min_height: 0.01,
             max_width: 1e7,
@@ -129,6 +136,12 @@ impl Default for Sizing {
             column_span: 1,
             row_span: 1,
         }
+    }
+}
+impl Sizing {
+    pub(crate) fn has_relative_sizing(&self) -> bool {
+        self.width_ratio.is_some() || self.height_ratio.is_some()
+            || self.width == SizeMode::Relative || self.height == SizeMode::Relative
     }
 }
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -163,6 +176,13 @@ impl Node {
                 || !(1..=64).contains(&s.row_span)
             {
                 return Err("Invalid sizing configuration".into());
+            }
+            for (mode, ratio) in [(s.width, s.width_ratio), (s.height, s.height_ratio)] {
+                if ratio.is_some_and(|value| !valid(value, 0., 1.))
+                    || (mode == SizeMode::Relative && ratio.is_none())
+                {
+                    return Err("Invalid relative sizing ratio".into());
+                }
             }
             if (s.width == SizeMode::Hug || s.height == SizeMode::Hug)
                 && self.kind != "text"
@@ -262,6 +282,27 @@ fn metrics(n: &Node) -> [f64; 4] {
         b.abs() * n.width + d.abs() * n.height,
     ]
 }
+// Relative sizing sets the local dimension. Account for the transformed box
+// when reserving its place in the line, like the other stack size modes.
+fn relative_size(n: &Node, axis: usize, available: f64) -> Option<(f64, f64)> {
+    let s = n.sizing.as_ref()?;
+    let (ratio, min, max, a, b, other) = if axis == 0 && s.width == SizeMode::Relative {
+        (s.width_ratio?, s.min_width, s.max_width, n.transform.0[0], n.transform.0[2], n.height)
+    } else if axis == 1 && s.height == SizeMode::Relative {
+        (s.height_ratio?, s.min_height, s.max_height, n.transform.0[3], n.transform.0[1], n.width)
+    } else {
+        return None;
+    };
+    let size = (available * ratio).clamp(min, max);
+    Some((size, a.abs() * size + b.abs() * other))
+}
+fn resize_axis(n: &mut Node, axis: usize, size: f64) {
+    if axis == 0 {
+        resize(n, size, n.height)
+    } else {
+        resize(n, n.width, size)
+    }
+}
 fn place(n: &mut Node, x: f64, y: f64) {
     let m = metrics(n);
     n.transform.0[4] = x - m[0];
@@ -276,11 +317,7 @@ fn fit_axis(n: &mut Node, axis: usize, extent: f64) {
     };
     if coeff > 1e-9 {
         let size = ((extent - other) / coeff).max(0.01);
-        if axis == 0 {
-            resize(n, size, n.height)
-        } else {
-            resize(n, n.width, size)
-        }
+        resize_axis(n, axis, size);
     }
 }
 fn mode(s: &Sizing, axis: usize) -> SizeMode {
@@ -322,6 +359,59 @@ fn distribution(align: Align, free: f64, count: usize, gap: f64, min_extent: f64
             (free / (count + 1) as f64, gap + free / (count + 1) as f64)
         }
         _ => (align.offset(free), gap),
+    }
+}
+fn fit_relative_line(doc: &mut Document, ids: &[String], axis: usize, capacity: f64, gap: f64) {
+    let mut space = capacity - gap * ids.len().saturating_sub(1) as f64;
+    let mut requested = 0.;
+    let mut relative = Vec::new();
+    for id in ids {
+        let node = &doc.nodes[id];
+        if let Some((size, extent)) = relative_size(node, axis, capacity) {
+            relative.push((id, size, extent, limits(node, axis).0));
+            requested += extent;
+        } else if mode(&node.sizing_value(), axis) == SizeMode::Fill {
+            space -= limits(node, axis).0;
+        } else {
+            space -= metrics(node)[axis + 2];
+        }
+    }
+    if requested <= space || requested == 0. {
+        for (id, size, _, _) in relative {
+            resize_axis(doc.nodes.get_mut(id).unwrap(), axis, size);
+        }
+        return;
+    }
+    // Shrink proportionally if the requested widths and fixed siblings
+    // overrun the line. Remove items at their minimum before distributing
+    // the remaining space. Fill takes any slack after relative sizes.
+    let minimum_fraction = |extent: f64, minimum: f64| {
+        if extent > 0. { minimum / extent } else { 0. }
+    };
+    relative.sort_by(|a, b| minimum_fraction(b.2, b.3).total_cmp(&minimum_fraction(a.2, a.3)));
+    let mut remaining = relative.as_slice();
+    while let Some((&(id, size, extent, minimum), rest)) = remaining.split_first() {
+        if extent * (space.max(0.) / requested.max(f64::MIN_POSITIVE)) >= minimum {
+            break;
+        }
+        let node = doc.nodes.get_mut(id).unwrap();
+        if extent > minimum + 1e-9 {
+            fit_axis(node, axis, minimum);
+        } else {
+            resize_axis(node, axis, size);
+        }
+        space -= minimum;
+        requested -= extent;
+        remaining = rest;
+    }
+    let scale = (space.max(0.) / requested.max(f64::MIN_POSITIVE)).min(1.);
+    for &(id, size, extent, minimum) in remaining {
+        let n = doc.nodes.get_mut(id).unwrap();
+        if scale < 1. && extent > minimum + 1e-9 {
+            fit_axis(n, axis, extent * scale);
+        } else {
+            resize_axis(n, axis, size);
+        }
     }
 }
 fn fill_sizes(
@@ -401,12 +491,17 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     let axis = usize::from(l.mode == Flow::Vertical);
     let cross = 1 - axis;
     let mut sizing = n.sizing_value();
+    let mut relative_axes = [false; 2];
     let mut ids: Vec<_> = n
         .children
         .iter()
         .filter(|id| {
             let c = &doc.nodes[*id];
-            c.visible && !c.sizing_value().absolute
+            let sizing = c.sizing_value();
+            let included = c.visible && !sizing.absolute;
+            relative_axes[0] |= included && sizing.width == SizeMode::Relative;
+            relative_axes[1] |= included && sizing.height == SizeMode::Relative;
+            included
         })
         .cloned()
         .collect();
@@ -433,6 +528,16 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     }
     let pad_start = [l.padding[3], l.padding[0]];
     let pad_end = [l.padding[1], l.padding[2]];
+    if relative_axes[cross] {
+        let parent = &doc.nodes[id];
+        let cross_size = if cross == 0 { parent.width } else { parent.height };
+        let capacity = (cross_size - pad_start[cross] - pad_end[cross]).max(0.);
+        for child in &ids {
+            if let Some((size, _)) = relative_size(&doc.nodes[child], cross, capacity) {
+                resize_axis(doc.nodes.get_mut(child).unwrap(), cross, size);
+            }
+        }
+    }
     let main = if axis == 0 {
         n_width(doc, id)
     } else {
@@ -446,7 +551,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         let natural = if mode(&c.sizing_value(), axis) == SizeMode::Fill {
             limits(c, axis).0
         } else {
-            metrics(c)[axis + 2]
+            relative_size(c, axis, capacity).map_or_else(|| metrics(c)[axis + 2], |(_, extent)| extent)
         };
         let row = lines.last_mut().unwrap();
         if l.wrap && !row.is_empty() && used + l.gap + natural > capacity + 1e-7 {
@@ -469,7 +574,9 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
                 + l.gap * line.len().saturating_sub(1) as f64
         })
         .fold(0., f64::max);
-    if mode(&sizing, axis) == SizeMode::Hug {
+    // A percentage needs a definite reference. Keep the current container
+    // extent on that axis while it has relative children.
+    if mode(&sizing, axis) == SizeMode::Hug && !relative_axes[axis] {
         let (lo, hi) = limits(&doc.nodes[id], axis);
         let extent = (intrinsic_main + pad_start[axis] + pad_end[axis]).clamp(lo, hi);
         let p = doc.nodes.get_mut(id).unwrap();
@@ -486,6 +593,9 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     };
     let capacity = (main - pad_start[axis] - pad_end[axis]).max(0.);
     for line in &lines {
+        if relative_axes[axis] {
+            fit_relative_line(doc, line, axis, capacity, l.gap);
+        }
         let sizes = fill_sizes(&doc.nodes, line, axis, capacity, l.gap);
         for (child, extent) in line.iter().zip(sizes) {
             if mode(&doc.nodes[child].sizing_value(), axis) == SizeMode::Fill {
@@ -503,7 +613,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
         .collect();
     let intrinsic_cross =
         line_cross.iter().sum::<f64>() + l.line_gap * lines.len().saturating_sub(1) as f64;
-    if mode(&sizing, cross) == SizeMode::Hug {
+    if mode(&sizing, cross) == SizeMode::Hug && !relative_axes[cross] {
         let (lo, hi) = limits(&doc.nodes[id], cross);
         let extent = (intrinsic_cross + pad_start[cross] + pad_end[cross]).clamp(lo, hi);
         let p = doc.nodes.get_mut(id).unwrap();
@@ -545,7 +655,8 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
             let c = doc.nodes.get_mut(child).unwrap();
             let s = c.sizing_value();
             let align = s.align_self.unwrap_or(l.align);
-            if mode(&s, cross) == SizeMode::Fill || align == Align::Stretch {
+            let cross_mode = mode(&s, cross);
+            if cross_mode == SizeMode::Fill || (align == Align::Stretch && cross_mode != SizeMode::Relative) {
                 fit_axis(c, cross, span)
             }
             let m = metrics(c);

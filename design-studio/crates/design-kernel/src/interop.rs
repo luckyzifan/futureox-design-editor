@@ -1724,7 +1724,7 @@ impl<'a> Importer<'a> {
         out
     }
 
-    fn layer(&mut self, layer: &Value, inside_artboard: bool) -> String {
+    fn layer(&mut self, layer: &Value, inside_artboard: bool, stack_item: bool) -> String {
         let class = layer
             .get("_class")
             .and_then(Value::as_str)
@@ -2920,12 +2920,34 @@ impl<'a> Importer<'a> {
                     let Some(code) = value.as_u64() else { continue };
                     let axis = key.starts_with("vertical");
                     if key.ends_with("Sizing") {
-                        let mode = match code { 0=>Some(crate::layout::SizeMode::Fixed), 1=>Some(crate::layout::SizeMode::Hug), 2=>Some(crate::layout::SizeMode::Fill), _=>None };
+                        use crate::layout::SizeMode;
+                        let ratio = if code == 3 && stack_item {
+                            // Florence archives NSSize as "{width, height}".
+                            // An omitted size represents two zero ratios.
+                            layer.get("percentageSize").map_or(Some(0.), |value| {
+                                sketch_point(value).map(|size| size[usize::from(axis)])
+                            }).filter(|n| (0. ..=1.).contains(n))
+                        } else {
+                            None
+                        };
+                        let mode = match code {
+                            0 => Some(SizeMode::Fixed),
+                            1 => Some(SizeMode::Hug),
+                            2 => Some(SizeMode::Fill),
+                            3 if ratio.is_some() => Some(SizeMode::Relative),
+                            _ => None,
+                        };
                         if let Some(mode)=mode {
                             // Hug is meaningful only for text/container contents.
-                            if mode == crate::layout::SizeMode::Hug && !matches!(node.kind.as_str(),"text"|"frame"|"group"|"section") {continue}
+                            if mode == SizeMode::Hug && !matches!(node.kind.as_str(),"text"|"frame"|"group"|"section") {continue}
                             let sizing=node.sizing.get_or_insert_with(Default::default);
-                            if axis {sizing.height=mode} else {sizing.width=mode}
+                            if axis {
+                                sizing.height = mode;
+                                sizing.height_ratio = ratio;
+                            } else {
+                                sizing.width = mode;
+                                sizing.width_ratio = ratio;
+                            }
                             modeled.push(spelling.clone());
                         }
                     } else if key.ends_with("Pins") {
@@ -2982,10 +3004,12 @@ impl<'a> Importer<'a> {
             }
         }
 
+        let child_stack = node.layout.as_ref().is_some_and(|layout| matches!(layout.mode,
+            crate::layout::Flow::Horizontal | crate::layout::Flow::Vertical));
         let mut children = Vec::new();
         if let Some(layers) = layer.get("layers").and_then(Value::as_array) {
             for child in layers {
-                children.push(self.layer(child, inside_artboard || class == "artboard"));
+                children.push(self.layer(child, inside_artboard || class == "artboard", child_stack));
             }
         }
         node.children = children;
@@ -3159,7 +3183,7 @@ fn foreign_symbol_import(
             unresolved.push(entry.clone());
             continue;
         };
-        let id = importer.layer(master, false);
+        let id = importer.layer(master, false, false);
         let library_id = entry
             .get("libraryID")
             .and_then(Value::as_str)
@@ -3360,7 +3384,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
         let mut children = Vec::new();
         if let Some(layers) = page_json.get("layers").and_then(Value::as_array) {
             for layer in layers {
-                children.push(importer.layer(layer, false));
+                children.push(importer.layer(layer, false, false));
             }
         }
         page_node.children = children.clone();
@@ -3908,6 +3932,9 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if doc.requires_schema21() { version=version.max(21); }
     if doc.requires_schema22() { version=version.max(22); }
     if doc.nodes.values().any(|n| n.graphic) { version=version.max(23); }
+    if doc.nodes.values().any(|n| n.sizing.as_ref().is_some_and(crate::layout::Sizing::has_relative_sizing)) {
+        version = version.max(29);
+    }
     doc.schema_version = version;
     Ok(doc)
 }
@@ -6612,6 +6639,23 @@ fn export_layer_impl(
             && source.get("model")==Some(&json!(n.constraints)) {
             layer.insert("resizingConstraint".into(),source["mask"].clone());
         }
+        let sizing_code = |mode| match mode {
+            crate::layout::SizeMode::Fixed => 0,
+            crate::layout::SizeMode::Hug => 1,
+            crate::layout::SizeMode::Fill => 2,
+            crate::layout::SizeMode::Relative => 3,
+        };
+        if let Some(sizing) = n.sizing.as_ref().filter(|s| s.has_relative_sizing()) {
+            if sizing.width_ratio.is_some() {
+                layer.insert("horizontalSizing".into(), json!(sizing_code(sizing.width)));
+            }
+            if sizing.height_ratio.is_some() {
+                layer.insert("verticalSizing".into(), json!(sizing_code(sizing.height)));
+            }
+            layer.insert("percentageSize".into(), json!(format!(
+                "{{{}, {}}}", sizing.width_ratio.unwrap_or(0.), sizing.height_ratio.unwrap_or(0.)
+            )));
+        }
         // Sketch 2025 modern layout fields return verbatim under their
         // original archived spelling (plain/`_`/`__`), overriding the
         // default zeros written above.
@@ -6628,7 +6672,7 @@ fn export_layer_impl(
                     let key=spelling.trim_start_matches('_'); let vertical=key.starts_with("vertical");
                     if key.ends_with("Sizing") {
                         let z=n.sizing_value(); let mode=if vertical {z.height}else{z.width};
-                        value=json!(match mode {crate::layout::SizeMode::Fixed=>0,crate::layout::SizeMode::Hug=>1,crate::layout::SizeMode::Fill=>2});
+                        value=json!(sizing_code(mode));
                     } else if key.ends_with("Pins") {
                         let c=n.constraints.clone().unwrap_or_default(); let a=if vertical {c.vertical}else{c.horizontal};
                         value=json!(match a {crate::layout::Anchor::Start=>1,crate::layout::Anchor::End=>4,crate::layout::Anchor::Stretch=>5,_=>0});
