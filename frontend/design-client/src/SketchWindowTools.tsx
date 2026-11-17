@@ -132,7 +132,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onInsertTextSty
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onSection('layers') }}>{label('显示画布', 'Show canvas')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onSection('assets') }}>{label('显示组件', 'Show components')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); requestCommandSearch() }}>{commandSearchText[locale].label}</button>
-        <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onSystems() }}>{text.designSystems}</button>
+        <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onSystems() }}>{label('变量 · 组件库', 'Variables · Libraries')}</button>
       </>)}
       {menu('combine', label('结合', 'Combine'), <Shapes size={17} />, <>
         {([['boolean-add', label('添加形状', 'Add Shapes')], ['boolean-union', text.union], ['boolean-subtract', text.subtract],

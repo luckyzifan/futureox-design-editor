@@ -165,6 +165,8 @@ const sketchContextOrder: EditorCommand[] = [
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
   'copy': ['拷贝', 'Copy'],
   'duplicate': ['复制', 'Duplicate'],
+  'bring-to-front': ['移到最前面', 'Bring to Front'],
+  'send-to-back': ['移到最后面', 'Send to Back'],
   'bring-forward': ['前置一层', 'Bring Forward'],
   'send-backward': ['后置一层', 'Send Backward'],
   'copy-properties': ['拷贝样式', 'Copy Style'],
@@ -175,6 +177,9 @@ const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = 
   'auto-layout': ['添加层叠布局', 'Add Stack Layout'],
   'remove-auto-layout': ['移除层叠布局', 'Remove Stack Layout'],
   'create-component': ['创建控件', 'Create Symbol'],
+}
+export function sketchCommandLabel(command: EditorCommand, locale: 'zh-CN' | 'en') {
+  return sketchLabels[command]?.[locale === 'en' ? 1 : 0]
 }
 function contextPresentation(item: CanvasMenuItem, locale: 'zh-CN' | 'en'): CanvasMenuItem {
   if (item.command === 'hide-selection' || item.command === 'show-selection')
@@ -247,12 +252,12 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
     if (selection.length && !available.has('ungroup'))
       available.set('ungroup', { command: 'ungroup', label: '', group: 'structure', shortcut: shortcutLabel('ungroup', context) })
     return sketchContextOrder.flatMap(command => {
-      const item = available.get(command), label = sketchLabels[command]
+      const item = available.get(command), label = sketchCommandLabel(command, locale)
       if (!item || (command === 'detach-instance' && item.disabled)) return []
       const allowed = command === 'bring-forward' ? commands.canBringForward :
         command === 'send-backward' ? commands.canSendBackward : command === 'ungroup' ? commands.canUngroup :
         command === 'group' || command === 'frame-selection' ? commands.canGroup : !item.disabled
-      return [{ ...item, label: label?.[locale === 'en' ? 1 : 0] ?? item.label, disabled: !allowed }]
+      return [{ ...item, label: label ?? item.label, disabled: !allowed }]
     })
   }
   if (!available.has('outline-stroke')) {

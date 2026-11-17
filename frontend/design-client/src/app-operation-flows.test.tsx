@@ -1824,6 +1824,13 @@ test.each([
     expect(button('导出副本…')).toBeDefined()
   }
   const inspect = button('预览原生 Sketch（只读）'), edit = button('编辑原生 Sketch（有限支持）')
+  if (layout === 'figma') {
+    expect(inspect).toBeUndefined(); expect(edit).toBeUndefined()
+    expect(button('导出 SVG（保留视觉效果')).toBeDefined()
+    return
+  }
+  expect(button('导出所选图层…')).toBeDefined()
+  expect(button('导出 SVG（保留视觉效果')).toBeUndefined()
   expect(inspect.disabled).toBe(!desktop); expect(edit.disabled).toBe(true)
   if (!desktop) { expect(inspect.title).toContain('当前宿主未提供'); return }
   expect(button('打开本机设计文件').textContent).toContain('Ctrl+O')

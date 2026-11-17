@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { CommandSearch } from './CommandSearch'
 import { commandSearchEntries, commandSearchText, filterCommandSearch, runCommandSearch } from './command-search'
 import { closeCommandSearch, commandSearchSnapshot, requestCommandSearch } from './command-search-session'
-import { canvasMenuItems } from './canvas-menu-model'
+import { canvasMenuItems, sketchCommandLabel } from './canvas-menu-model'
 import { dispatchEditorShortcut } from './editor-shortcuts'
 import { Editor } from './engine'
 import { interfacePreference } from './interface-preference'
@@ -18,8 +18,8 @@ import type { ShortcutContext } from './shortcut-profiles'
 
 const editors: Editor[] = []
 let dom: JSDOM, root: Root, mount: HTMLDivElement, canvas: HTMLElement
-const sketch: ShortcutContext = { profile: 'sketch-like', platform: 'mac', desktop: true }
-const figma: ShortcutContext = { profile: 'figma-like', platform: 'mac', desktop: true }
+const sketch: ShortcutContext = { profile: 'sketch-like', platform: 'mac', desktop: true, uiMode: 'sketch' }
+const figma: ShortcutContext = { profile: 'figma-like', platform: 'mac', desktop: true, uiMode: 'figma' }
 
 beforeEach(async () => {
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
@@ -28,7 +28,7 @@ beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   Object.defineProperty(dom.window.navigator, 'platform', { configurable: true, value: 'MacIntel' })
   localStorage.clear()
-  interfacePreference.set({ locale: 'zh-CN' })
+  interfacePreference.set({ locale: 'zh-CN', uiMode: 'sketch' })
   shortcutPreference.set('sketch-like')
   closeCommandSearch()
   mount = document.createElement('div')
@@ -93,7 +93,9 @@ test('entries reuse menu admission, names, aliases and profile shortcuts without
     expect(new Set(entries.map(entry => entry.id)).size).toBe(entries.length)
     for (const item of canvasMenuItems(editor, context)) {
       const entry = entries.find(candidate => candidate.id === item.command)
-      expect(entry?.label, item.command).toBe(item.label)
+      if (!entry && context.uiMode === 'sketch' &&
+          ['copy-fills','copy-strokes','copy-effects','zoom-next-frame','zoom-previous-frame','convert-section'].includes(item.command)) continue
+      expect(entry?.label, item.command).toBe(context.uiMode === 'sketch' ? sketchCommandLabel(item.command, locale) ?? item.label : item.label)
       if (item.command === 'paste-here') {
         expect(entry?.disabled).toBe(true)
         expect(entry?.reason).toBe(locale === 'en' ? 'Paste here needs a point on the canvas' : '粘贴位置无效')
@@ -236,4 +238,32 @@ test('sketch chords open search from the shortcut channel; figma S still selects
   expect(editor.state.tool).toBe('slice')
   expect(editor.state.doc).toBe(before)
   expect(commandSearchSnapshot()).toBe(0)
+})
+
+
+test('catalog follows the layout, and results from the other layout cannot execute after a switch', async () => {
+  const frame = node('frame'), another = node('frame', 400, 0)
+  const editor = editorWith([frame, another])
+  editor.select([frame.id])
+  const before = editor.authoredDocument, view = editor.state.view
+  const figmaRows = commandSearchEntries(editor, { ...figma, profile: 'sketch-like' }, 'zh-CN')
+  const sketchRows = commandSearchEntries(editor, { ...sketch, profile: 'figma-like' }, 'zh-CN')
+  for (const id of ['eraser-or-prototype', 'convert-section', 'zoom-next-frame', 'copy-fills', 'set-tool-sticky']) {
+    expect(figmaRows.some(item => item.id === id), id).toBe(true)
+    expect(sketchRows.some(item => item.id === id), id).toBe(false)
+  }
+  for (const id of ['make-grid', 'fit-pixel-bounds', 'set-tool-graphic', 'set-tool-hotspot']) {
+    expect(sketchRows.some(item => item.id === id), id).toBe(true)
+    expect(figmaRows.some(item => item.id === id), id).toBe(false)
+  }
+  expect(sketchRows.find(item => item.id === 'frame-selection')?.label).toBe('编组画框')
+  for (const id of ['eraser-or-prototype', 'convert-section', 'zoom-next-frame', 'set-tool-sticky'])
+    await runCommandSearch(editor, figmaRows.find(item => item.id === id)!, figma)
+  expect(editor.state.tool).toBe('select')
+  expect(editor.authoredDocument).toBe(before)
+  expect(editor.state.view).toEqual(view)
+  interfacePreference.set({ uiMode: 'figma' })
+  await runCommandSearch(editor, sketchRows.find(item => item.id === 'set-tool-graphic')!, sketch)
+  expect(editor.state.tool).toBe('select')
+  expect(editor.canUndo).toBe(false)
 })

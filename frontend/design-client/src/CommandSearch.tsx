@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { commandSearchEntries, commandSearchText, filterCommandSearch, runCommandSearch, type CommandSearchEntry } from './command-search'
+import { commandSearchEntries, commandSearchCopy, filterCommandSearch, runCommandSearch, type CommandSearchEntry } from './command-search'
 import { closeCommandSearch, commandSearchReturnTarget, commandSearchSnapshot, requestCommandSearch, subscribeCommandSearch } from './command-search-session'
 import { desktopBridge } from './desktop'
 import type { Editor } from './engine'
@@ -19,9 +19,9 @@ export function CommandSearch({ editor }: { editor: Editor }) {
 }
 
 function CommandSearchDialog({ editor }: { editor: Editor }) {
-  const { locale } = useInterfacePreferences()
+  const { locale, uiMode } = useInterfacePreferences()
   const profile = useShortcutProfile()
-  const text = commandSearchText[locale]
+  const text = commandSearchCopy(uiMode, locale)
   const listId = useId()
   const dialog = useRef<HTMLElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -32,7 +32,7 @@ function CommandSearchDialog({ editor }: { editor: Editor }) {
     editor.state.version, editor.state.selection.join('\n'), editor.state.tool, editor.state.page,
     editor.state.busy, editor.interactionActive, editor.canUndo, editor.canRedo,
   ].join('|'), () => '')
-  const context = useMemo(() => ({ profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [profile])
+  const context = useMemo(() => ({ profile, platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode }), [profile, uiMode])
   const entries = useMemo(() => commandSearchEntries(editor, context, locale), [editor, context, locale, revision])
   const filtered = useMemo(() => filterCommandSearch(entries, query), [entries, query])
   const index = filtered.length ? Math.min(active, filtered.length - 1) : 0

@@ -1,19 +1,21 @@
 import { alignSelection } from './alignment-availability'
 import { canvasCommandEnglish, canvasCommandLabel, canvasText } from './canvas-interface-messages'
-import { canvasMenuItems, lockedSelectionIds } from './canvas-menu-model'
+import { canvasMenuItems, lockedSelectionIds, sketchCommandLabel } from './canvas-menu-model'
 import { SelectionCommandError, selectionCommandAdmission } from './commands/selection-command'
 import { prepareLayoutRemove } from './commands/layout-command'
 import { ActionSource } from './canvas-action-diagnostics'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
-import type { Editor } from './engine'
+import type { Editor, Tool } from './engine'
 import { userPages } from './fig-document'
-import type { InterfaceLocale } from './interface-preference'
+import { interfacePreference, type InterfaceLocale, type UiMode } from './interface-preference'
+import { sketchToolbarSupportsTool } from './interface-layout'
 import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 import { canMakeSketchGrid } from './sketch-make-grid'
+import { selectedPaintSwap } from './sketch-paint-commands'
 import { container } from './model'
 import { commitPendingEdits } from './pending-edits'
 import { formatShortcutCombo, shortcutBindings, type ShortcutContext } from './shortcut-profiles'
-import { localizedToolCommands, unavailableReason } from './tool-registry'
+import { localizedToolCommands, toolForCommand, unavailableReason } from './tool-registry'
 
 /** Presentation only. Running a row always goes through the existing command routes. */
 export const commandSearchText = {
@@ -26,6 +28,13 @@ export const commandSearchText = {
     empty: 'No matching commands', close: 'Close command search', unavailable: 'This command cannot run',
   },
 } as const
+
+export function commandSearchCopy(mode: UiMode, locale: InterfaceLocale) {
+  const base = commandSearchText[locale]
+  if (mode === 'sketch') return base
+  const title = locale === 'en' ? 'Quick actions' : '快速操作'
+  return { ...base, title, label: title }
+}
 
 export type CommandSearchAction =
   | { kind: 'command'; command: EditorCommand }
@@ -45,7 +54,7 @@ export type CommandSearchEntry = {
   order: number
 }
 
-type Spec = { command: EditorCommand; zh: string; en: string; group: string; aliases?: readonly string[] }
+type Spec = { command: EditorCommand; layout?: UiMode; zh: string; en: string; group: string; aliases?: readonly string[] }
 
 const catalog: readonly Spec[] = [
   { command: 'undo', zh: '撤销', en: 'Undo', group: 'history' },
@@ -58,13 +67,16 @@ const catalog: readonly Spec[] = [
   { command: 'paste-to-replace', zh: '粘贴替换', en: 'Paste to replace', group: 'clipboard' },
   { command: 'paste-over-selection', zh: '覆盖粘贴（保留目标）', en: 'Paste over selection (keep targets)', group: 'clipboard' },
   { command: 'duplicate', zh: '创建副本', en: 'Duplicate', group: 'clipboard', aliases: ['duplicate', '副本'] },
-  { command: 'make-grid', zh: '制作网格', en: 'Make Grid', group: 'arrange' },
+  { command: 'make-grid', layout: 'sketch', zh: '制作网格', en: 'Make Grid', group: 'arrange' },
+  { command: 'fit-pixel-bounds', layout: 'sketch', zh: '使边界贴合像素', en: 'Fit to pixel bounds', group: 'transform' },
+  { command: 'round-to-pixel', layout: 'sketch', zh: '舍入到像素', en: 'Round to pixel', group: 'transform' },
+  { command: 'swap-fills-and-strokes', layout: 'sketch', zh: '交换填充和边框', en: 'Swap fills and borders', group: 'geometry' },
   { command: 'delete', zh: '删除', en: 'Delete', group: 'clipboard' },
   { command: 'copy-properties', zh: '复制属性', en: 'Copy properties', group: 'clipboard' },
   { command: 'paste-properties', zh: '粘贴属性', en: 'Paste properties', group: 'clipboard' },
-  { command: 'copy-fills', zh: '复制填充', en: 'Copy fills', group: 'clipboard' },
-  { command: 'copy-strokes', zh: '复制描边', en: 'Copy strokes', group: 'clipboard' },
-  { command: 'copy-effects', zh: '复制效果', en: 'Copy effects', group: 'clipboard' },
+  { command: 'copy-fills', layout: 'figma', zh: '复制填充', en: 'Copy fills', group: 'clipboard' },
+  { command: 'copy-strokes', layout: 'figma', zh: '复制描边', en: 'Copy strokes', group: 'clipboard' },
+  { command: 'copy-effects', layout: 'figma', zh: '复制效果', en: 'Copy effects', group: 'clipboard' },
   { command: 'copy-as-png', zh: '复制为 PNG', en: 'Copy as PNG', group: 'clipboard' },
   { command: 'copy-as-svg', zh: '复制为 SVG', en: 'Copy as SVG', group: 'clipboard' },
   { command: 'bring-to-front', zh: '置于顶层', en: 'Bring to front', group: 'order' },
@@ -89,7 +101,7 @@ const catalog: readonly Spec[] = [
   { command: 'outline-stroke', zh: '轮廓化描边', en: 'Outline stroke', group: 'geometry' },
   { command: 'mask-selection', zh: '用作蒙版', en: 'Use as mask', group: 'geometry' },
   { command: 'rename', zh: '重命名', en: 'Rename', group: 'naming' },
-  { command: 'convert-section', zh: '转换为分区', en: 'Convert to section', group: 'naming' },
+  { command: 'convert-section', layout: 'figma', zh: '转换为分区', en: 'Convert to section', group: 'naming' },
   { command: 'select-matching', zh: '选择匹配图层', en: 'Select matching layers', group: 'selection' },
   { command: 'select-properties', zh: '选择相同属性', en: 'Select same properties', group: 'selection' },
   { command: 'select-fill', zh: '选择相同填充', en: 'Select same fill', group: 'selection' },
@@ -100,21 +112,31 @@ const catalog: readonly Spec[] = [
   { command: 'select-instance', zh: '选择同一组件实例', en: 'Select instances of the same component', group: 'selection' },
   { command: 'select-inverse', zh: '反选', en: 'Invert selection', group: 'selection' },
   { command: 'select-all', zh: '全选', en: 'Select all', group: 'selection' },
-  { command: 'select-all-force', zh: '全选（含隐藏与锁定）', en: 'Select all including hidden and locked', group: 'selection' },
-  { command: 'select-all-top-level', zh: '全选顶层画板与图形', en: 'Select all top-level frames and graphics', group: 'selection' },
+  { command: 'select-all-force', layout: 'sketch', zh: '全选（含隐藏与锁定）', en: 'Select all including hidden and locked', group: 'selection' },
+  { command: 'select-all-top-level', layout: 'sketch', zh: '全选顶层画框与图形', en: 'Select all top-level frames and graphics', group: 'selection' },
   { command: 'zoom-in', zh: '放大', en: 'Zoom in', group: 'view' },
   { command: 'zoom-out', zh: '缩小', en: 'Zoom out', group: 'view' },
   { command: 'zoom-100', zh: '缩放至 100%', en: 'Zoom to 100%', group: 'view', aliases: ['100%'] },
   { command: 'zoom-fit', zh: '缩放至全部内容', en: 'Zoom to all content', group: 'view' },
   { command: 'zoom-selection', zh: '缩放至选区', en: 'Zoom to selection', group: 'view' },
   { command: 'center-selection', zh: '居中选区（保留缩放）', en: 'Center selection (keep zoom)', group: 'view' },
-  { command: 'zoom-next-frame', zh: '缩放到下一画板', en: 'Zoom to next frame', group: 'view' },
-  { command: 'zoom-previous-frame', zh: '缩放到上一画板', en: 'Zoom to previous frame', group: 'view' },
+  { command: 'zoom-next-frame', layout: 'figma', zh: '缩放到下一画板', en: 'Zoom to next frame', group: 'view' },
+  { command: 'zoom-previous-frame', layout: 'figma', zh: '缩放到上一画板', en: 'Zoom to previous frame', group: 'view' },
   { command: 'next-page', zh: '下一页', en: 'Next page', group: 'view' },
   { command: 'previous-page', zh: '上一页', en: 'Previous page', group: 'view' },
   { command: 'new-page', zh: '新建页面', en: 'New page', group: 'view' },
-  { command: 'eraser-or-prototype', zh: '切换橡皮或原型', en: 'Toggle eraser or prototype', group: 'view', aliases: ['原型', 'prototype', '橡皮', 'eraser'] },
+  { command: 'eraser-or-prototype', layout: 'figma', zh: '切换橡皮或原型', en: 'Toggle eraser or prototype', group: 'view', aliases: ['原型', 'prototype', '橡皮', 'eraser'] },
 ]
+
+function supportsCatalogCommand(command: EditorCommand, mode: UiMode, profile: ShortcutContext['profile']) {
+  if (command.startsWith('set-tool-')) {
+    const tool = toolForCommand(command) as Tool | null
+    return tool != null && (mode === 'sketch' ? sketchToolbarSupportsTool(tool) : tool !== 'graphic' && tool !== 'hotspot')
+  }
+  const spec = catalog.find(entry => entry.command === command)
+  return !!spec && (!spec.layout || spec.layout === mode) &&
+    (!['select-all-force', 'select-all-top-level'].includes(command) || profile === 'sketch-like')
+}
 
 const arrangeSpec = [
   ['align-x-start', 'x', 'start', 'alignLeft'],
@@ -150,12 +172,15 @@ function presentedShortcut(command: string, context: ShortcutContext) {
   return binding ? { shortcut: formatShortcutCombo(binding.combo, context.platform), combo: binding.combo } : {}
 }
 
-function forms(spec: Spec, locale: InterfaceLocale, multiple: boolean, lockedParent: boolean) {
+function forms(spec: Spec, locale: InterfaceLocale, mode: UiMode, multiple: boolean, lockedParent: boolean) {
   const zh = spec.command === 'rename' && multiple ? '批量重命名…'
     : spec.command === 'unlock-selection' && lockedParent ? '解锁图层及父级' : spec.zh
   const known = spec.command in canvasCommandEnglish || spec.command === 'rename' || spec.command === 'unlock-selection'
-  const label = known ? canvasCommandLabel(spec.command, zh, locale, multiple, lockedParent) : phrase(locale, zh, spec.en)
-  const aliases = new Set<string>([spec.zh, spec.en, zh, canvasCommandEnglish[spec.command] ?? spec.en, ...(spec.aliases ?? [])])
+  const layoutLabel = mode === 'sketch' ? sketchCommandLabel(spec.command, locale) : undefined
+  const label = layoutLabel ?? (known ? canvasCommandLabel(spec.command, zh, locale, multiple, lockedParent) : phrase(locale, zh, spec.en))
+  const aliases = new Set<string>(layoutLabel
+    ? [sketchCommandLabel(spec.command, 'zh-CN')!, sketchCommandLabel(spec.command, 'en')!, ...(spec.aliases ?? [])]
+    : [spec.zh, spec.en, zh, canvasCommandEnglish[spec.command] ?? spec.en, ...(spec.aliases ?? [])])
   if (spec.command === 'rename') ['重命名', '批量重命名…', 'Rename', 'Batch rename…'].forEach(item => aliases.add(item))
   if (spec.command === 'unlock-selection') ['解锁图层', '解锁图层及父级', 'Unlock layers', 'Unlock layers and ancestors'].forEach(item => aliases.add(item))
   aliases.delete(label)
@@ -250,6 +275,8 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
     try { prepareLayoutRemove(doc, editor.state.selection, { fresh: true }); return undefined }
     catch (error) { if (error instanceof SelectionCommandError) return error.message; throw error }
   }
+  if (command === 'fit-pixel-bounds' || command === 'round-to-pixel') return mutable()
+  if (command === 'swap-fills-and-strokes') return mutable() ?? (selectedPaintSwap(editor)?.length ? undefined : phrase(locale, '选区没有可交换的填充或边框', 'No eligible fills or borders in the selection'))
   if (command === 'flatten') {
     const owned = mutable()
     if (owned) return owned
@@ -319,7 +346,9 @@ function availability(editor: Editor, action: CommandSearchAction, context: Shor
 
 /** Every row is an existing editor, alignment, or geometry command. Search text is not stored. */
 export function commandSearchEntries(editor: Editor, context: ShortcutContext, locale: InterfaceLocale): CommandSearchEntry[] {
-  const menu = new Map(canvasMenuItems(editor, context).map(item => [item.command, item]))
+  const mode = context.uiMode ?? interfacePreference.getSnapshot().uiMode
+  const layoutContext = { ...context, uiMode: mode }
+  const menu = new Map(canvasMenuItems(editor, layoutContext).map(item => [item.command, item]))
   const multiple = editor.state.selection.length > 1
   const lockedParent = lockedSelectionIds(editor).some(id => !editor.state.selection.includes(id))
   const entries: CommandSearchEntry[] = []
@@ -328,11 +357,9 @@ export function commandSearchEntries(editor: Editor, context: ShortcutContext, l
     entries.push({ ...entry, ...state, order: entries.length })
   }
   for (const spec of catalog) {
-    if (spec.command === 'make-grid' && context.uiMode !== 'sketch') continue
-    if ((spec.command === 'select-all-force' || spec.command === 'select-all-top-level') &&
-        (context.uiMode !== 'sketch' || context.profile !== 'sketch-like')) continue
-    const presented = forms(spec, locale, multiple, lockedParent)
-    const keys = presentedShortcut(spec.command, context)
+    if (!supportsCatalogCommand(spec.command, mode, context.profile)) continue
+    const presented = forms(spec, locale, mode, multiple, lockedParent)
+    const keys = presentedShortcut(spec.command, layoutContext)
     push({
       id: spec.command, label: presented.label, aliases: presented.aliases, group: spec.group, ...keys,
       action: { kind: 'command', command: spec.command }, menuDisabled: menu.get(spec.command)?.disabled,
@@ -342,10 +369,10 @@ export function commandSearchEntries(editor: Editor, context: ShortcutContext, l
   const tools = localizedToolCommands(locale)
   const otherTools = localizedToolCommands(locale === 'en' ? 'zh-CN' : 'en')
   for (const tool of tools) {
-    if (seen.has(tool.id)) continue
+    if (seen.has(tool.id) || !supportsCatalogCommand(tool.id as EditorCommand, mode, context.profile)) continue
     seen.add(tool.id)
     const other = otherTools.find(item => item.id === tool.id)?.label
-    const keys = presentedShortcut(tool.id, context)
+    const keys = presentedShortcut(tool.id, layoutContext)
     push({
       id: tool.id, label: tool.label, aliases: other && other !== tool.label ? [other] : [], group: 'tools', ...keys,
       action: { kind: 'command', command: tool.id as EditorCommand },
@@ -392,6 +419,8 @@ export function filterCommandSearch(entries: readonly CommandSearchEntry[], quer
 export async function runCommandSearch(editor: Editor, entry: CommandSearchEntry, context: ShortcutContext): Promise<void> {
   if (entry.disabled) return
   if (entry.action.kind === 'command') {
+    const { uiMode } = interfacePreference.getSnapshot()
+    if (!supportsCatalogCommand(entry.action.command, uiMode, context.profile)) return
     await dispatchEditorCommand(editor, entry.action.command, { shortcutProfile: context.profile, actionSource: ActionSource.menu })
     return
   }
