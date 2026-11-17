@@ -315,6 +315,7 @@ pub fn fit_samples(request: Request) -> Result<Fitted, String> {
         vertices: Vec::new(),
         edges: Vec::new(),
         filled_faces: None,
+        curve_modes: None,
         fill_rule: "nonzero".into(),
     };
     if samples.len() == 1 {

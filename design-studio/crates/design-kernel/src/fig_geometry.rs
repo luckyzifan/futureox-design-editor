@@ -308,6 +308,7 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
         edges: Vec::with_capacity(ne),
         fill_rule: "nonzero".into(),
         filled_faces: None,
+        curve_modes: None,
     };
     let mut vertex_styles = Vec::with_capacity(nv);
     let mut region_styles = Vec::with_capacity(nr);

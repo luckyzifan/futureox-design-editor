@@ -99,6 +99,7 @@ pub fn network(paths: Vec<SimpleBezierPath>) -> Network {
         vertices: vec![],
         edges: vec![],
         filled_faces: None,
+        curve_modes: None,
         fill_rule: "evenodd".into(),
     };
     for (start, segments) in paths {

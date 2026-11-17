@@ -822,11 +822,22 @@ pub struct Edge {
     #[serde(default)]
     pub c2: Option<Point>,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CurveMode {
+    Straight,
+    Mirrored,
+    Independent,
+    Asymmetric,
+}
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Network {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filled_faces: Option<Vec<Vec<String>>>,
+    /// Explicit handle constraints keyed by vertex. Control coordinates own the outline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curve_modes: Option<Box<std::collections::BTreeMap<String, CurveMode>>>,
     pub vertices: Vec<Vertex>,
     pub edges: Vec<Edge>,
     #[serde(default = "evenodd")]
@@ -999,6 +1010,18 @@ pub fn selected_backdrop(effects: &[Effect]) -> Option<&Effect> {
         .filter(|e| e.backdrop_radius() > 0. || e.color_controls.is_some_and(|c| !c.is_identity()) || (e.kind == "glass" && e.glass_active()))
 }
 impl Network {
+    fn validate_curve_modes(&self, schema: u32) -> Result<(), String> {
+        let Some(modes) = self.curve_modes.as_ref() else { return Ok(()); };
+        if schema < 28 || modes.len() > self.vertices.len() {
+            return Err("Vector anchor modes require schema 28 and existing vertices".into());
+        }
+        let ids: HashSet<&str> = self.vertices.iter().map(|vertex| vertex.id.as_str()).collect();
+        if modes.keys().any(|id| !ids.contains(id.as_str())) {
+            return Err("Vector anchor mode names a missing vertex".into());
+        }
+        Ok(())
+    }
+
     pub fn paths(&self) -> Result<(Path, Path), String> {
         self.paths_and_faces(&mut Vec::new())
     }
@@ -1367,6 +1390,12 @@ impl Document {
         nodes: impl IntoIterator<Item = (&'a String, &'a Node)>,
     ) -> Result<(), String> {
         for (id, n) in nodes {
+            if let Some(network) = &n.network {
+                network.validate_curve_modes(self.schema_version)?;
+            }
+            if let Some(source) = n.vector_geometry.as_ref().and_then(|g| g.corner_source.as_ref()) {
+                source.network.validate_curve_modes(self.schema_version)?;
+            }
             if self.schema_version < 27 && n.text_runs.iter().any(|run| run.italic) {
                 return Err("Italic text runs require schema 27".into());
             }
@@ -1876,7 +1905,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=27).contains(&self.schema_version)
+        if !(1..=28).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

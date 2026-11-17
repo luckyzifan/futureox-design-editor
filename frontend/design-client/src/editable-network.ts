@@ -49,9 +49,15 @@ export function editableNetwork(source: DesignNode): Network {
 /** Call only after a real geometry edit, within the editor's single gesture
  * transaction. Enter/Esc, selection and a motionless pointer must not call it. */
 export function materializeEditableNetwork(source: DesignNode, edited: Network): DesignNode {
-  const result: DesignNode = { ...structuredClone(source), kind: 'vector', network: structuredClone(edited) }
-  delete result.arc
-  delete result.vectorGeometry
-  delete result.cornerRadius
+  const result = structuredClone(source)
+  applyEditableNetwork(result, structuredClone(edited))
   return result
+}
+
+export function applyEditableNetwork(node: DesignNode, edited: Network) {
+  node.kind = 'vector'
+  node.network = edited
+  delete node.arc
+  delete node.vectorGeometry
+  delete node.cornerRadius
 }

@@ -638,6 +638,7 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
                     vertices: vec![],
                     edges: vec![],
                     filled_faces: None,
+                    curve_modes: None,
                     fill_rule: "nonzero".into(),
                 })
                 .into(),

@@ -2200,6 +2200,7 @@ impl<'a> Importer<'a> {
                 if let Some(points) = path_field("points").and_then(Value::as_array) {
                     let mut network = crate::scene::Network {
                         filled_faces: None,
+                        curve_modes: None,
                         vertices: Vec::new(),
                         edges: Vec::new(),
                         fill_rule: if style
@@ -5975,7 +5976,14 @@ fn shape_path_curve_points(
         } else {
             (None, None)
         };
-        let mode = curve_mode_of(vertex, outgoing, incoming);
+        use crate::scene::CurveMode;
+        let mode = match net.curve_modes.as_ref().and_then(|modes| modes.get(&vertex.id)) {
+            Some(CurveMode::Straight) => 1,
+            Some(CurveMode::Mirrored) => 2,
+            Some(CurveMode::Asymmetric) => 3,
+            Some(CurveMode::Independent) => 4,
+            None => curve_mode_of(vertex, outgoing, incoming),
+        };
         let anchor = sketch_curve_coordinate(vertex.x, vertex.y, width, height)?;
         let curve_from = match outgoing {
             Some(point) => sketch_curve_coordinate(point.x, point.y, width, height)?,
@@ -6002,15 +6010,15 @@ fn shape_path_curve_points(
 /// 22 号字典 §1 export side: derive curveMode from the handle geometry at
 /// one vertex. c1 is the outgoing handle (curveFrom), c2 the incoming one
 /// (curveTo). No handles → 1 (Straight); two handles collinear with the
-/// vertex → 2 (Mirrored) when equally long, 4 (Asymmetric) otherwise; a
-/// single handle or non-collinear pair → 3 (Disconnected).
+/// vertex → 2 (Mirrored) when equally long, 3 (Asymmetric) otherwise; a
+/// single handle or non-collinear pair → 4 (Disconnected).
 fn curve_mode_of(
     v: &crate::scene::Vertex,
     c1: Option<crate::math::Point>,
     c2: Option<crate::math::Point>,
 ) -> i64 {
     let (Some(a), Some(b)) = (c1, c2) else {
-        return if c1.is_some() || c2.is_some() { 3 } else { 1 };
+        return if c1.is_some() || c2.is_some() { 4 } else { 1 };
     };
     let (ox, oy) = (a.x - v.x, a.y - v.y);
     let (ix, iy) = (b.x - v.x, b.y - v.y);
@@ -6018,12 +6026,12 @@ fn curve_mode_of(
     let in_len = ix.hypot(iy);
     let cross = (ox * iy - oy * ix).abs();
     if ox * ix + oy * iy >= 0. || cross > 1e-9 * (1. + out_len * in_len) {
-        return 3;
+        return 4;
     }
     if (out_len - in_len).abs() <= 1e-9 * (1. + out_len.max(in_len)) {
         2
     } else {
-        4
+        3
     }
 }
 
@@ -10087,6 +10095,7 @@ mod tests {
         path.name = "Blob".into();
         path.network = Some((crate::scene::Network {
             filled_faces: None,
+            curve_modes: None,
             vertices: vec![
                 crate::scene::Vertex {
                     id: "v0".into(),
@@ -10158,6 +10167,7 @@ mod tests {
         let mut path = crate::facet::sample_node("n3", "path");
         path.network = Some((crate::scene::Network {
             filled_faces: None,
+            curve_modes: None,
             vertices: vec![
                 crate::scene::Vertex {
                     id: "v0".into(),
@@ -10213,6 +10223,7 @@ mod tests {
         path.name = "Modes".into();
         path.network = Some((crate::scene::Network {
             filled_faces: None,
+            curve_modes: None,
             vertices: (0..4)
                 .map(|i| crate::scene::Vertex {
                     id: format!("v{i}"),
@@ -10253,14 +10264,14 @@ mod tests {
             {"_class":"curvePoint","point":"{1, 0}","curveFrom":"{1, 0}",
              "curveTo":"{0.8, 0.2}","hasCurveFrom":false,"hasCurveTo":true,
              "curveMode":2,"cornerRadius":0.0},
-            // 3 Disconnected: both sides independent
+            // 4 Disconnected: both sides independent
             {"_class":"curvePoint","point":"{1, 1}","curveFrom":"{1.2, 1.1}",
              "curveTo":"{0.9, 0.8}","hasCurveFrom":true,"hasCurveTo":true,
-             "curveMode":3,"cornerRadius":0.0},
-            // 4 Asymmetric: collinear with the vertex, unequal lengths
+             "curveMode":4,"cornerRadius":0.0},
+            // 3 Asymmetric: collinear with the vertex, unequal lengths
             {"_class":"curvePoint","point":"{0, 1}","curveFrom":"{0.2, 1}",
              "curveTo":"{-0.1, 1}","hasCurveFrom":true,"hasCurveTo":true,
-             "curveMode":4,"cornerRadius":0.0}
+             "curveMode":3,"cornerRadius":0.0}
         ]);
         files.insert(name.clone(), serde_json::to_vec(&page).unwrap());
         let encoded = write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap();
@@ -10314,7 +10325,7 @@ mod tests {
             .iter()
             .map(|p| p["curveMode"].as_i64().unwrap())
             .collect();
-        assert_eq!(modes, vec![2, 3, 3, 4]);
+        assert_eq!(modes, vec![2, 4, 4, 3]);
         assert_eq!(points[0]["cornerRadius"], 2.0);
         assert_eq!(points[0]["hasCurveFrom"], true);
         assert_eq!(points[0]["hasCurveTo"], true);

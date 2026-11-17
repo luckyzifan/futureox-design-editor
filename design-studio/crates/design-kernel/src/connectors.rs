@@ -151,6 +151,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
                 .collect(),
             fill_rule: "nonzero".into(),
             filled_faces: None,
+            curve_modes: None,
         }).into());
         let binding = n.connector.as_mut().unwrap();
         binding.from.point = a;

@@ -107,6 +107,7 @@ fn ring(points: &[(f64, f64)], closed: bool) -> Network {
     }
     Network {
         filled_faces: None,
+        curve_modes: None,
         vertices,
         edges,
         fill_rule: "nonzero".into(),
@@ -562,6 +563,7 @@ fn commands_to_network(commands: &[Command]) -> (Network, f64, f64) {
     (
         Network {
             filled_faces: None,
+            curve_modes: None,
             vertices,
             edges,
             fill_rule: "nonzero".into(),

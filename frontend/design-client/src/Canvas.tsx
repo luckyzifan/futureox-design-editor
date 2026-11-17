@@ -91,6 +91,8 @@ import {
   type Matrix,
   type DesignNode,
   type Network,
+  type CurveMode,
+  CURVE_MODES,
   uid,
   paint,
   node,
@@ -131,10 +133,10 @@ import { createShapeSeed, resolveShapeCreation, creationPointCount, creationTool
 import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, keyboardPlacesTool } from './keyboard-placement'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, sketchGradientStopOffset, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
-import { editableNetwork } from './editable-network'
+import { applyEditableNetwork, editableNetwork } from './editable-network'
 import {
   PEN_BLUE, PEN_HIT_PX, constrainToAngles, penAffordance, penCurvePath, penHandleMove, penHitsNetwork,
-  penPointerDown, popPenPoint, dragBezierHandle, type PenDraft,
+  penPointerDown, popPenPoint, dragBezierHandle, changeCurveModes, explicitCurveMode, pruneCurveModes, type PenDraft,
 } from './pen-geometry'
 import { ERASER_SCREEN_PX } from './vector-eraser'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
@@ -151,15 +153,21 @@ import { canvasLayerFeedback } from './canvas-layer-feedback'
 import { CanvasOutlines, createOutlineScene, outlineHits } from './CanvasOutlines'
 type TextEditEntry = { id: string; session: number; page: string; token: number }
 type GradientStopKeyboardTarget = { nodeId: string; paintId: string; index: number; session: number; page: string; revision: number }
-type ResizeHandleTap = {
+type CanvasHandleTap = {
   id: string
   session: number
   page: string
   revision: number
-  handle: number
+  handle: number | string
   screen: Point
   alt: boolean
   paired: boolean
+}
+const anchorModeLabels: Record<CurveMode, readonly [string, string]> = {
+  straight: ['直线', 'Straight'],
+  mirrored: ['镜像角度和长度', 'Mirror angle and length'],
+  independent: ['独立', 'Independent'],
+  asymmetric: ['镜像角度', 'Mirror angle'],
 }
 type Drag = {
   renderFallbackCount?: number
@@ -639,7 +647,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }, [editor])
   const drag = useRef<Drag | null>(null)
   const [gradientKeyboardTarget, setGradientKeyboardTarget] = useState<GradientStopKeyboardTarget | null>(null)
-  const resizeHandleTap = useRef<ResizeHandleTap | null>(null)
+  const handleTap = useRef<CanvasHandleTap | null>(null)
   const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string;
     index: ReturnType<typeof createSmartGuidesIndex> } | null>(null)
   const releaseGuideIndex = () => { guideIndex.current?.index?.free(); guideIndex.current = null }
@@ -1297,6 +1305,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if(utility.active() && e.key!=='Escape'){e.preventDefault();return}
+      const curveMode = /^[1-4]$/.test(e.key) ? CURVE_MODES[Number(e.key) - 1] : undefined
+      if (curveMode && shortcutContext.uiMode === 'sketch' && editor.state.tool === 'vector' &&
+          !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        e.preventDefault()
+        if (!e.repeat) {
+          const { editingVertices, editingVertex } = editor.state
+          editSketchAnchors(editingVertices?.length ? editingVertices : editingVertex ? [editingVertex] : [], curveMode)
+        }
+        return
+      }
       if (shortcutContext.uiMode === 'sketch' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey &&
           /^[0-9=]$/.test(e.key) && !ownsTextEntry(textEntryOwner.current) &&
           !['vector', 'width', 'pen'].includes(editor.state.tool) && !penRef.current && !drag.current && !pencil.current &&
@@ -1594,6 +1612,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               if (n.network) {
                 n.network.vertices = n.network.vertices.filter((p) => !vertices.has(p.id))
                 n.network.edges = n.network.edges.filter((e) => !vertices.has(e.from) && !vertices.has(e.to))
+                pruneCurveModes(n.network)
                 if(n.network.filledFaces){const edges=new Set(n.network.edges.map(e=>e.id));n.network.filledFaces=n.network.filledFaces.filter(f=>f.every(id=>edges.has(id)))}
               }
             },
@@ -1769,6 +1788,26 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.start = translateCreationAnchor(d.spaceAnchor, d.spacePointer, p)
     d.pointer = p
   }
+  function editSketchAnchors(vertices: readonly string[], mode?: CurveMode, expectedLayer?: string) {
+    if (!vertices.length || !commitCurveModeAllowed()) return
+    const { page, selection } = editor.state
+    const id = selection[0], session = editor.sessionGeneration
+    if (selection.length !== 1 || (expectedLayer !== undefined && id !== expectedLayer) ||
+        editor.topSelection()[0] !== id || !commitPendingEdits(editor) ||
+        editor.sessionGeneration !== session || editor.state.page !== page || editor.state.selection.length !== 1 ||
+        editor.topSelection()[0] !== id || !commitCurveModeAllowed()) return
+    try {
+      const network = editableNetwork(editor.state.doc.nodes[id])
+      if (changeCurveModes(network, vertices, mode))
+        editor.update([id], node => applyEditableNetwork(node, network), '修改矢量锚点类型')
+    } catch (error) {
+      editor.notify(String(error))
+    }
+  }
+  function commitCurveModeAllowed() {
+    return interfacePreference.getSnapshot().uiMode === 'sketch' && editor.state.tool === 'vector' &&
+      !editor.state.busy && !editor.interactionActive && !drag.current && !pencil.current && !penRef.current
+  }
   function updateCreation(d: Drag, modifiers: { shift: boolean; alt: boolean }) {
     if (!d.creationSeed || !d.pointer) return
     d.modifiers = modifiers
@@ -1799,7 +1838,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if ((kind === 'resize' || kind === 'rotate') && state.tool === 'select' &&
         smallSelectionInterior(selectionCorners, displayViewRef.current.zoom,
           screenToWorld(displayViewRef.current, screenPoint(e)))) kind = 'move'
-    if (kind !== 'resize') resizeHandleTap.current = null
+    if (kind !== 'resize' && kind !== 'vertex') handleTap.current = null
     if (textEdit) {
       actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, ActionReason.editingText)
       host.current?.focus({ preventScroll: true })
@@ -2889,19 +2928,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     gpuMove.current?.end(editor.state.doc)
     restoreGpuOverlays()
     finishDragTrace(d, ['pan','zoom','pivot','marquee'].includes(d.kind) ? ActionOutcome.observed : d.kind === 'crop' ? ActionOutcome.unsupported : undefined, d.kind === 'crop' ? ActionReason.unobserved : ActionReason.none)
-    const previousTap = resizeHandleTap.current
-    resizeHandleTap.current = null
-    const handle = d.handle ?? -1
-    if (uiMode === 'sketch' && editor.state.tool === 'select' && d.kind === 'resize' &&
-        handle >= 0 && handle < 8 && d.ids.length === 1 && d.originSelection.length === 1 && e.button === 0 &&
+    const previousTap = handleTap.current
+    handleTap.current = null
+    const handle = d.kind === 'resize' && editor.state.tool === 'select' ? d.handle
+      : d.kind === 'vertex' && editor.state.tool === 'vector' ? d.vertex : undefined
+    if (uiMode === 'sketch' && handle !== undefined && d.ids.length === 1 && d.originSelection.length === 1 && e.button === 0 &&
         !e.shiftKey && !e.metaKey && !e.ctrlKey && !d.sampledMovement &&
         release.x === d.screen.x && release.y === d.screen.y) {
       const id = d.ids[0], revision = editor.state.version
       // Pointer capture retargets click and dblclick to the canvas, so keep
-      // the completed resize handle and its owner from the pointer gesture.
+      // the completed handle and its owner from the pointer gesture.
       const paired = previousTap?.id === id && previousTap.handle === handle && previousTap.alt === e.altKey &&
         previousTap.session === d.session && previousTap.page === d.page && previousTap.revision === revision
-      resizeHandleTap.current = { id, handle, session: d.session, page: d.page, revision, screen: release, alt: e.altKey, paired }
+      handleTap.current = { id, handle, session: d.session, page: d.page, revision, screen: release, alt: e.altKey, paired }
     }
     setRubber(null)
     clearMoveGuides()
@@ -3146,21 +3185,26 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           finishPen()
           return
         }
-        const tap = resizeHandleTap.current
-        resizeHandleTap.current = null
-        if (tap?.paired && tap.alt === e.altKey && (!e.altKey || tap.handle >= 4) && uiMode === 'sketch' && e.button === 0 &&
+        const tap = handleTap.current
+        handleTap.current = null
+        if (tap?.paired && tap.alt === e.altKey && (!e.altKey || (typeof tap.handle === 'number' && tap.handle >= 4)) && uiMode === 'sketch' && e.button === 0 &&
             !e.shiftKey && !e.metaKey && !e.ctrlKey && host.current?.contains(e.target as Node)) {
           const live = editor.state
           const matchesTap = () => !drag.current && !editor.interactionActive && !editor.state.busy &&
             editor.sessionGeneration === tap.session && editor.state.page === tap.page && editor.state.version === tap.revision &&
-            editor.state.tool === 'select' && editor.state.selection.length === 1 && editor.topSelection()[0] === tap.id
+            editor.state.tool === (typeof tap.handle === 'number' ? 'select' : 'vector') &&
+            editor.state.selection.length === 1 && editor.topSelection()[0] === tap.id
           const point = screenPoint(e)
           const child = live.doc.nodes[tap.id]
           // Chromium rounds dblclick coordinates to CSS pixels after the
           // pointer events have reported the fractional handle position.
-          if ((e.altKey || child?.kind === 'frame') && matchesTap() &&
+          if ((typeof tap.handle === 'string' || e.altKey || child?.kind === 'frame') && matchesTap() &&
               Math.abs(tap.screen.x - point.x) < 1 && Math.abs(tap.screen.y - point.y) < 1) {
             e.preventDefault()
+            if (typeof tap.handle === 'string') {
+              editSketchAnchors([tap.handle], undefined, tap.id)
+              return
+            }
             const axes = resizeGestureAxes(tap.handle, false)
             if (!e.altKey) {
               void dispatchEditorCommand(editor, 'fit-frame-content', { fitAxes: axes })
@@ -3843,11 +3887,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   })}
                 </React.Fragment>
               ))}
-              {vectorNode.network.vertices.map((v) => (
+              {vectorNode.network.vertices.map((v) => {
+                const mode = explicitCurveMode(vectorNode.network!, v.id)
+                return (
                 <rect
                   key={v.id}
                   data-testid="vector-anchor"
                   data-node-id={vectorNode.id}
+                  data-vertex-id={v.id}
+                  data-curve-mode={mode}
                   x={v.x - 4 / zoom}
                   y={v.y - 4 / zoom}
                   width={8 / zoom}
@@ -3863,6 +3911,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     e.stopPropagation()
                     if (!displayedSnapshot ||
                         e.button !== 0 || drag.current || pencil.current || !editor.topSelection().includes(vectorNode.id)) return
+                    if (uiMode === 'sketch') {
+                      if (!e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) editSketchAnchors([v.id], undefined, vectorNode.id)
+                      return
+                    }
                     editor.update(
                       [vectorNode.id],
                       (n) => {
@@ -3881,8 +3933,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                       '转换为曲线节点',
                     )
                   }}
-                />
-              ))}
+                >{mode && <title>{anchorModeLabels[mode][locale === 'en' ? 1 : 0]}</title>}</rect>
+                )
+              })}
             </g>
           )}
           {cropRect && drag.current?.kind === 'crop' && drag.current.node && state.doc.nodes[drag.current.node.id] && (

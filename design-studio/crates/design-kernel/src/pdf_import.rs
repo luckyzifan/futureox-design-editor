@@ -2076,6 +2076,7 @@ impl<'a, 'f> Runner<'a, 'f> {
         node.network = Some(
             (Network {
                 filled_faces: None,
+                curve_modes: None,
                 vertices,
                 edges,
                 fill_rule: if op.evenodd { "evenodd" } else { "nonzero" }.into(),

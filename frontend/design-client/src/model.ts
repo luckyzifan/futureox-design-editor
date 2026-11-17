@@ -261,7 +261,9 @@ export type Effect = {
 }
 export type Vertex = Point & { id: string }
 export type Edge = { id: string; from: string; to: string; c1?: Point; c2?: Point }
-export type Network = { filledFaces?:string[][]; vertices: Vertex[]; edges: Edge[]; fillRule: 'evenodd' | 'nonzero' }
+export const CURVE_MODES = ['straight', 'mirrored', 'independent', 'asymmetric'] as const
+export type CurveMode = typeof CURVE_MODES[number]
+export type Network = { filledFaces?:string[][]; curveModes?: Record<string, CurveMode>; vertices: Vertex[]; edges: Edge[]; fillRule: 'evenodd' | 'nonzero' }
 export type LayoutAlign =
   | 'start'
   | 'center'
@@ -514,7 +516,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28
   id: string
   name: string
   pages: Page[]
@@ -843,7 +845,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1324,6 +1326,9 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
       )
         throw new Error('矢量网络超过限制')
       const vertices = networkIdDomain(g.vertices, vertexIndex), edges = networkIdDomain(g.edges, edgeIndex)
+      if (g.curveModes !== undefined && (d.schemaVersion < 28 || !isObject(g.curveModes) ||
+          Object.entries(g.curveModes).some(([id, mode]) => !vertices.has(id) || !CURVE_MODES.includes(mode as CurveMode))))
+        throw new Error('矢量锚点类型需要设计文件版本 28 和有效的锚点引用')
       if (g.filledFaces !== undefined && (d.schemaVersion < 10 || !Array.isArray(g.filledFaces) ||
           g.filledFaces.length > 10000 || g.filledFaces.some(face => !Array.isArray(face) || face.length > 10000 ||
             face.some(edgeId => Number.isNaN(edgeId) || !edges.has(edgeId)))))
@@ -1345,6 +1350,12 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
             !source.radii.every(radius => finite(radius, 0, 1e7)) || !finite(source.smoothing, 0, 1) ||
             !Array.isArray(source.scale) || source.scale.length !== 2 || !source.scale.every(v => Number.isFinite(v) && v > 0))
           throw Error('可编辑矢量圆角数据无效')
+        if (source.network.curveModes !== undefined) {
+          const ids = new Set(source.network.vertices.map(v => v.id))
+          if (d.schemaVersion < 28 || !isObject(source.network.curveModes) ||
+              Object.entries(source.network.curveModes).some(([id, mode]) => !ids.has(id) || !CURVE_MODES.includes(mode as CurveMode)))
+            throw new Error('矢量锚点类型需要设计文件版本 28 和有效的锚点引用')
+        }
       }
       // Missing stroke reuses this exact fill array. Validate each carrier once,
       // and avoid allocating an entries array and opcode map per curve. Dense

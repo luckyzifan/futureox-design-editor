@@ -1,8 +1,25 @@
 import { expect, test } from 'vitest'
-import { constrainToAngles, deleteAndHealVertex, dragBezierHandle, mirrorAcross, penHandleMove, penPointerDown, popPenPoint, type PenDraft } from './pen-geometry'
+import { changeCurveModes, constrainToAngles, deleteAndHealVertex, dragBezierHandle, mirrorAcross, penHandleMove, penPointerDown, popPenPoint, type PenDraft } from './pen-geometry'
 import type { Network } from './model'
 
 const empty = (): PenDraft => ({ network: { vertices: [], edges: [], fillRule: 'evenodd' }, last: null, first: null })
+
+test('explicit independent mode survives a collinear pair and both mirror modes keep their constraints', () => {
+  const network: Network = {
+    vertices: [{ id: 'a', x: -90, y: 0 }, { id: 'b', x: 0, y: 0 }, { id: 'c', x: 90, y: 0 }],
+    edges: [{ id: 'left', from: 'a', to: 'b', c2: { x: -30, y: 0 } },
+      { id: 'right', from: 'b', to: 'c', c1: { x: 20, y: 0 } }],
+    fillRule: 'nonzero',
+  }
+  expect(changeCurveModes(network, ['b'], 'independent')).toBe(true)
+  expect(dragBezierHandle(network, 'right', 'c1', { x: 0, y: 10 }, false).edges[0].c2).toEqual({ x: -30, y: 0 })
+  expect(changeCurveModes(network, ['b'], 'mirrored')).toBe(true)
+  expect(dragBezierHandle(network, 'right', 'c1', { x: 0, y: 10 }, false).edges[0].c2).toEqual({ x: 0, y: -10 })
+  expect(dragBezierHandle(network, 'right', 'c1', { x: 40, y: 0 }, true).curveModes).toEqual({ b: 'independent' })
+  expect(changeCurveModes(network, ['b'], 'asymmetric')).toBe(true)
+  expect(dragBezierHandle(network, 'right', 'c1', { x: 0, y: 10 }, false).edges[0].c2).toEqual({ x: 0, y: -30 })
+  expect(deleteAndHealVertex(network, 'b').curveModes).toBeUndefined()
+})
 
 test('shift snaps a pen segment to the nearest 45 degrees without changing its length', () => {
   const placed = constrainToAngles({ x: 100, y: 100 }, { x: 160, y: 130 })

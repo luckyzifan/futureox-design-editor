@@ -171,6 +171,63 @@ test('Sketch double-click fits the selected frame axis and preserves the world p
   expect(editor.state.version).toBe(version)
 })
 
+test('Sketch vector keys set the selected anchor mode, and captured double-click toggles it', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const vector = node('vector', 0, 0, 240, 160)
+  vector.network = {
+    vertices: [{ id: 'left', x: 60, y: 130 }, { id: 'center', x: 120, y: 60 }, { id: 'right', x: 200, y: 130 }],
+    edges: [{ id: 'left-edge', from: 'left', to: 'center', c2: { x: 90, y: 60 } },
+      { id: 'right-edge', from: 'center', to: 'right', c1: { x: 140, y: 60 } }],
+    fillRule: 'nonzero',
+  }
+  await render([vector])
+  await act(async () => { editor.select([vector.id]); editor.set({ tool: 'vector' }) })
+  const getAnchor = () => mount.querySelector('[data-vertex-id="center"]')!
+  const tap = async () => {
+    expect(getAnchor()).not.toBeNull()
+    await at('pointerdown', { x: 120, y: 60 }, getAnchor())
+    await at('pointerup', { x: 120, y: 60 })
+  }
+  const base = editor.state.doc
+  const current = () => editor.state.doc.nodes[vector.id].network!
+  for (const [digit, mode] of [['1', 'straight'], ['2', 'mirrored'], ['3', 'independent'], ['4', 'asymmetric']] as const) {
+    await act(async () => editor.set({ tool: 'vector' }))
+    await tap()
+    const revision = editor.state.version
+    await act(async () => key(digit))
+    expect(current().curveModes).toEqual({ center: mode })
+    expect(getAnchor().getAttribute('data-curve-mode')).toBe(mode)
+    expect(editor.state.version).toBe(revision + 1)
+    if (mode === 'straight') {
+      expect(current().edges[0].c2).toBeUndefined()
+      expect(current().edges[1].c1).toBeUndefined()
+    } else if (mode === 'mirrored') expect(current().edges[1].c1).toMatchObject({ x: 150, y: 60 })
+    else expect(current().edges).toEqual(base.nodes[vector.id].network!.edges)
+    const reopened = validateDocument(decodeDocumentBinary(encodeDocumentBinary(editor.state.doc)))
+    expect(reopened.schemaVersion).toBe(28)
+    expect(reopened.nodes[vector.id].network?.curveModes?.center).toBe(mode)
+    await act(async () => editor.undo())
+    expect(editor.state.doc).toEqual(base)
+    expect(editor.canUndo).toBe(false)
+  }
+  const dblclick = async () => {
+    await tap(); await tap()
+    await act(async () => host().dispatchEvent(new MouseEvent('dblclick', {
+      button: 0, detail: 2, bubbles: true, cancelable: true, clientX: 120, clientY: 60,
+    })))
+  }
+  await act(async () => editor.set({ tool: 'vector' }))
+  await dblclick()
+  expect(current().curveModes?.center).toBe('straight')
+  await dblclick()
+  expect(current().curveModes?.center).toBe('mirrored')
+  await act(async () => key('Backspace'))
+  expect(current().vertices.some(vertex => vertex.id === 'center')).toBe(false)
+  expect(current().curveModes).toBeUndefined()
+  await act(async () => editor.undo())
+  expect(current().curveModes?.center).toBe('mirrored')
+})
+
 test('Sketch digits edit layer opacity or the active gradient stop with distinct history', async () => {
   interfacePreference.set({ uiMode: 'sketch' })
   const shape = node('rectangle', 80, 70, 170, 110)

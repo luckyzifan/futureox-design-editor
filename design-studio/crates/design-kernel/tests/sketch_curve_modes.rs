@@ -6,7 +6,7 @@ use futureox_design_kernel::{
     facet::sample_node,
     interop::{export_sketch, import_sketch, import_sketch_report, read_zip_public},
     math::{Point, Transform},
-    scene::{Document, Edge, Network, Page, Vertex},
+    scene::{CurveMode, Document, Edge, Network, Page, Vertex},
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -30,6 +30,7 @@ fn ring(anchors: &[(f64, f64)], handles: &[(Option<Point>, Option<Point>)]) -> N
     assert_eq!(handles.len(), n);
     Network {
         filled_faces: None,
+        curve_modes: None,
         vertices: anchors
             .iter()
             .enumerate()
@@ -206,7 +207,7 @@ fn import_explicit_active_handles_survive_none_straight_or_missing_edit_mode() {
         // Disconnected control point proves the ring itself keeps handles.
         {"_class":"curvePoint","point":"{0, 1}","curveFrom":"{0.2, 1.1}",
          "curveTo":"{-0.2, 0.9}","hasCurveFrom":true,"hasCurveTo":true,
-         "curveMode":3,"cornerRadius":0.0}
+         "curveMode":4,"cornerRadius":0.0}
     ]));
     let net = node.network.as_ref().expect("network");
     assert_eq!(net.vertices.len(), 4);
@@ -436,8 +437,8 @@ fn export_restores_corner_radius_from_bindings() {
 #[test]
 fn export_derives_curve_mode_from_handle_geometry() {
     // Per 22 号字典 §1 export rule: no handles → 1; both handles collinear
-    // with the vertex → 2 when equally long, 4 otherwise; a single handle or
-    // a non-collinear pair → 3.
+    // with the vertex → 2 when equally long, 3 otherwise; a single handle or
+    // a non-collinear pair → 4.
     let net = ring(
         &[(0., 0.), (1., 0.), (1., 1.), (0., 1.), (-0.5, 0.5)],
         &[
@@ -460,7 +461,7 @@ fn export_derives_curve_mode_from_handle_geometry() {
         .collect();
     assert_eq!(
         modes,
-        vec![1, 2, 4, 3, 3],
+        vec![1, 2, 3, 4, 4],
         "straight / mirrored / asymmetric / disconnected / single-handle"
     );
     assert_eq!(points[0]["hasCurveFrom"], false);
@@ -472,6 +473,21 @@ fn export_derives_curve_mode_from_handle_geometry() {
     assert_eq!(points[4]["hasCurveTo"], false);
     // without a radii binding every point exports cornerRadius 0
     assert!(points.iter().all(|p| p["cornerRadius"] == 0.0));
+}
+
+#[test]
+fn export_keeps_explicit_independence_for_collinear_handles() {
+    let mut net = ring(
+        &[(0., 0.), (1., 0.), (1., 1.)],
+        &[(None, Some(Point::new(0.8, 0.))), (Some(Point::new(1.2, 0.)), None), (None, None)],
+    );
+    net.curve_modes = Some(Box::new(BTreeMap::from([("v1".into(), CurveMode::Independent)])));
+    let mut doc = kernel_doc(net);
+    doc.schema_version = 28;
+    let points = exported_shape_points(&doc);
+    assert_eq!(points[1]["curveMode"], 4);
+    assert_eq!(points[1]["hasCurveFrom"], true);
+    assert_eq!(points[1]["hasCurveTo"], true);
 }
 
 // ---------------------------------------------------------------------------
@@ -494,11 +510,11 @@ fn native_document_round_trips_modes_handles_and_radii() {
         // Disconnected
         {"_class":"curvePoint","point":"{1, 1}","curveFrom":"{1.2, 1.1}",
          "curveTo":"{0.9, 0.8}","hasCurveFrom":true,"hasCurveTo":true,
-         "curveMode":3,"cornerRadius":0.0},
+         "curveMode":4,"cornerRadius":0.0},
         // Asymmetric: collinear with the vertex, unequal lengths
         {"_class":"curvePoint","point":"{0, 1}","curveFrom":"{0.2, 1}",
          "curveTo":"{-0.1, 1}","hasCurveFrom":true,"hasCurveTo":true,
-         "curveMode":4,"cornerRadius":0.0}
+         "curveMode":3,"cornerRadius":0.0}
     ]))).unwrap().document;
     // Source bindings such as per-point radii live in admission metadata.
     // Export merges them; rebuilding a bare node would drop that contract.
@@ -510,7 +526,7 @@ fn native_document_round_trips_modes_handles_and_radii() {
         .iter()
         .map(|p| p["curveMode"].as_i64().unwrap())
         .collect();
-    assert_eq!(modes, vec![1, 2, 3, 4], "modes re-derive from geometry");
+    assert_eq!(modes, vec![1, 2, 4, 3], "modes re-derive from geometry");
     assert_eq!(points[0]["cornerRadius"], 2.0);
     assert_eq!(points[0]["hasCurveFrom"], false);
     assert_eq!(points[0]["hasCurveTo"], false);

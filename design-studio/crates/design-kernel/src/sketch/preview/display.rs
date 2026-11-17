@@ -302,6 +302,7 @@ impl Projection<'_> {
             vertices: vec![],
             edges: vec![],
             filled_faces: None,
+            curve_modes: None,
             fill_rule: if num(&v["style"], "windingRule", 1.) == 0. {
                 "nonzero"
             } else {

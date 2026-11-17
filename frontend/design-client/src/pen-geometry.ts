@@ -1,5 +1,5 @@
 import { distance } from './geometry'
-import { uid, type Edge, type Network, type Point } from './model'
+import { uid, type CurveMode, type Edge, type Network, type Point } from './model'
 import { splitEdge } from './vector'
 
 /** On-canvas vector chrome uses the same selection blue as the rest of the
@@ -47,6 +47,71 @@ function classifyMirror(anchor: Point, active: Point, opposite: Point): MirrorMo
   return ratio > 0.98 && ratio < 1.02 ? 'full' : 'angle'
 }
 
+type IncidentHandle = { edge: Edge; control: 'c1' | 'c2'; neighbor: string }
+
+export function explicitCurveMode(network: Network, vertex: string): CurveMode | undefined {
+  return network.curveModes && Object.hasOwn(network.curveModes, vertex) ? network.curveModes[vertex] : undefined
+}
+
+/** Mutates a detached editing graph. Coordinates remain the render authority
+ * while the explicit mode controls what the next handle drag does. */
+export function changeCurveModes(network: Network, ids: readonly string[], requested?: CurveMode): boolean {
+  const vertices = new Map(network.vertices.map(vertex => [vertex.id, vertex]))
+  const incidents = new Map(ids.filter(id => vertices.has(id)).map(id => [id, [] as IncidentHandle[]]))
+  for (const edge of network.edges) {
+    incidents.get(edge.from)?.push({ edge, control: 'c1', neighbor: edge.to })
+    incidents.get(edge.to)?.push({ edge, control: 'c2', neighbor: edge.from })
+  }
+  const modes = new Map(Object.entries(network.curveModes ?? {}))
+  let changed = false
+  for (const [id, handles] of incidents) {
+    const anchor = vertices.get(id)!
+    const existing = modes.get(id)
+    const straight = existing === 'straight' || (!existing && handles.every(({ edge, control }) => !edge[control]))
+    const mode = requested ?? (straight ? 'mirrored' : 'straight')
+    if (existing === mode || (handles.length > 2 && (mode === 'mirrored' || mode === 'asymmetric'))) continue
+    if (mode === 'straight') {
+      for (const { edge, control } of handles) delete edge[control]
+    } else if (mode === 'independent' || handles.length < 2) {
+      for (const { edge, control, neighbor } of handles) {
+        const point = vertices.get(neighbor)
+        if (!edge[control] && point) edge[control] = {
+          x: anchor.x + (point.x - anchor.x) / 3,
+          y: anchor.y + (point.y - anchor.y) / 3,
+        }
+      }
+    } else {
+      const [a, b] = handles
+      const aNeighbor = vertices.get(a.neighbor)!, bNeighbor = vertices.get(b.neighbor)!
+      const aControl = a.edge[a.control], bControl = b.edge[b.control]
+      const aLength = aControl ? distance(anchor, aControl) : 0
+      const bLength = bControl ? distance(anchor, bControl) : 0
+      const direction = aLength > 1e-10 ? { x: aControl!.x - anchor.x, y: aControl!.y - anchor.y }
+        : bLength > 1e-10 ? { x: anchor.x - bControl!.x, y: anchor.y - bControl!.y }
+          : { x: aNeighbor.x - bNeighbor.x, y: aNeighbor.y - bNeighbor.y }
+      const length = Math.hypot(direction.x, direction.y)
+      if (length > 1e-10) {
+        const shared = aLength || bLength || Math.min(distance(anchor, aNeighbor), distance(anchor, bNeighbor)) / 3
+        const move = (amount: number) => ({ x: anchor.x + direction.x * amount / length, y: anchor.y + direction.y * amount / length })
+        a.edge[a.control] = move(mode === 'mirrored' ? shared : aLength || distance(anchor, aNeighbor) / 3)
+        b.edge[b.control] = move(-(mode === 'mirrored' ? shared : bLength || distance(anchor, bNeighbor) / 3))
+      }
+    }
+    modes.set(id, mode)
+    changed = true
+  }
+  if (changed) network.curveModes = Object.fromEntries(modes)
+  return changed
+}
+
+export function pruneCurveModes(network: Network) {
+  if (!network.curveModes) return
+  const vertices = new Set(network.vertices.map(vertex => vertex.id))
+  const modes = Object.entries(network.curveModes).filter(([id]) => vertices.has(id))
+  if (modes.length) network.curveModes = Object.fromEntries(modes)
+  else delete network.curveModes
+}
+
 function oppositeControl(network: Network, anchorId: string, edgeId: string, control: 'c1' | 'c2') {
   for (const edge of network.edges) {
     if (edge.id === edgeId) continue
@@ -54,6 +119,20 @@ function oppositeControl(network: Network, anchorId: string, edgeId: string, con
     if (edge.from === anchorId && edge.c1 && control === 'c2') return { edgeId: edge.id, control: 'c1' as const, point: edge.c1 }
   }
   return null
+}
+
+function explicitOppositeControl(network: Network, anchorId: string, edgeId: string, control: 'c1' | 'c2') {
+  let opposite: { edgeId: string; control: 'c1' | 'c2'; point: Point } | undefined
+  let incident = 0
+  for (const edge of network.edges) {
+    for (const side of ['c1', 'c2'] as const) {
+      if ((side === 'c1' ? edge.from : edge.to) !== anchorId) continue
+      if (++incident > 2) return
+      const point = edge[side]
+      if (point && (edge.id !== edgeId || side !== control)) opposite = { edgeId: edge.id, control: side, point }
+    }
+  }
+  return opposite
 }
 
 /** Drag one cubic handle. Alt leaves the sister handle in place. Otherwise a
@@ -70,10 +149,14 @@ export function dragBezierHandle(original: Network, edgeId: string, control: 'c1
   const sourceHandle = source[control]
   if (!anchor || !sourceAnchor) return next
   edge[control] = { x: point.x, y: point.y }
-  if (alt || !sourceHandle) return next
-  const opposite = oppositeControl(original, anchorId, edgeId, control)
+  const intent = explicitCurveMode(original, anchorId)
+  if (alt && (intent === 'mirrored' || intent === 'asymmetric'))
+    next.curveModes = { ...next.curveModes, [anchorId]: 'independent' }
+  if (alt || !sourceHandle || intent === 'straight' || intent === 'independent') return next
+  const opposite = intent ? explicitOppositeControl(original, anchorId, edgeId, control)
+    : oppositeControl(original, anchorId, edgeId, control)
   if (!opposite) return next
-  const mode = classifyMirror(sourceAnchor, sourceHandle, opposite.point)
+  const mode = intent === 'mirrored' ? 'full' : intent === 'asymmetric' ? 'angle' : classifyMirror(sourceAnchor, sourceHandle, opposite.point)
   if (mode === 'none') return next
   const mirrored = mirrorAcross(anchor, point)
   const target = next.edges.find(item => item.id === opposite.edgeId)
@@ -163,6 +246,7 @@ export function deleteAndHealVertex(network: Network, vertexId: string): Network
     next.edges = next.edges.filter(edge => edge.from !== vertexId && edge.to !== vertexId)
   }
   next.vertices = next.vertices.filter(vertex => vertex.id !== vertexId)
+  pruneCurveModes(next)
   if (next.filledFaces) {
     const edges = new Set(next.edges.map(edge => edge.id))
     next.filledFaces = next.filledFaces.filter(face => face.every(id => edges.has(id)))
@@ -243,6 +327,7 @@ export function popPenPoint<T extends PenDraft>(pen: T): T {
     network.edges.splice(index, 1)
     const used = (id: string) => network.edges.some(item => item.from === id || item.to === id)
     if (pen.last && !used(pen.last)) network.vertices = network.vertices.filter(vertex => vertex.id !== pen.last)
+    pruneCurveModes(network)
     const first = pen.first && network.vertices.some(vertex => vertex.id === pen.first) ? pen.first : network.vertices[0]?.id || null
     return { ...pen, network, last: network.vertices.some(vertex => vertex.id === edge.from) ? edge.from : null, first, outgoing: undefined, closed: false }
   }
@@ -250,6 +335,7 @@ export function popPenPoint<T extends PenDraft>(pen: T): T {
     const id = pen.last || network.vertices.at(-1)!.id
     network.vertices = network.vertices.filter(vertex => vertex.id !== id)
     network.edges = network.edges.filter(edge => edge.from !== id && edge.to !== id)
+    pruneCurveModes(network)
     return { ...pen, network, last: null, first: null, outgoing: undefined, closed: false }
   }
   return { ...pen, network, last: null, first: null, outgoing: undefined, closed: false }

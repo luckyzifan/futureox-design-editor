@@ -297,6 +297,7 @@ mod tests {
                     c2: None,
                 }],
                 filled_faces: None,
+                curve_modes: None,
                 fill_rule: "evenodd".into(),
             },
             point: Point::new(50., 0.),

@@ -278,6 +278,7 @@ impl VectorGeometry {
             edges: Vec::new(),
             fill_rule: self.fill_rule.clone(),
             filled_faces: None,
+            curve_modes: None,
         };
         let mut start: Option<usize> = None;
         let mut at: Option<usize> = None;
