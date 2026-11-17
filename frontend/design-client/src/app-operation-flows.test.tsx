@@ -312,6 +312,43 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Shift+F restores mixed fill visibility and leaves input typing alone', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Toggle fills')
+  const painted = node('rectangle', 60, 40, 100, 90)
+  const emptyFill = node('line', 230, 40, 100, 90)
+  painted.fills = [paint('#ee0066'), { ...paint('#00bb77'), visible: false }]
+  painted.strokes = [stroke('#113399', 4)]
+  for (const n of [painted, emptyFill]) doc.nodes[n.id] = n
+  doc.pages[0].children = [painted.id, emptyFill.id]
+  await act(async () => { editor!.load(doc); editor!.select([painted.id, emptyFill.id]); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const fillFlags = () => editor!.state.doc.nodes[painted.id].fills.map(fill => fill.visible)
+  const toggle = () => key('F', { code: 'KeyF', shiftKey: true })
+
+  const input = document.createElement('input')
+  await act(async () => { document.body.append(input); input.focus() })
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', code: 'KeyF', shiftKey: true, bubbles: true })))
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => { input.remove(); canvas().focus() })
+
+  await toggle()
+  expect(fillFlags()).toEqual([false, false])
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(editor!.state.doc.nodes[painted.id].strokes).toEqual(before.nodes[painted.id].strokes)
+  expect(editor!.state.doc.nodes[emptyFill.id]).toBe(before.nodes[emptyFill.id])
+  await act(async () => { editor!.set({ tool: 'zoom' }) })
+  await toggle()
+  expect(fillFlags()).toEqual([true, false])
+  expect(editor!.authoredDocument).toEqual(before)
+  await act(async () => editor!.undo())
+  expect(fillFlags()).toEqual([false, false])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
 test('Sketch Shift+B hides and restores the selection’s individual border flags', async () => {
   applyInterfaceLayout('sketch')
   await render()
