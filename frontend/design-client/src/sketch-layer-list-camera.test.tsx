@@ -180,6 +180,34 @@ test('Sketch layer-list click and arrow keys select without moving the viewport'
   expect(editor.canRedo).toBe(true)
 })
 
+test('Sketch Enter toggles containers and Escape focuses their parent without a camera move', async () => {
+  const doc = blank('Keyboard disclosure'), group = node('group'), inner = node('group'), leaf = node('rectangle')
+  group.children = [inner.id]; inner.children = [leaf.id]
+  for (const n of [group, inner, leaf]) doc.nodes[n.id] = n
+  doc.pages[0].children = [group.id]
+  await act(async () => { editor.load(doc); editor.select([group.id]); row(group.id)?.focus() })
+  const before = editor.authoredDocument, view = camera()
+  await arrow(group.id, 'Enter')
+  expect(row(group.id)?.getAttribute('aria-expanded')).toBe('true')
+  await arrow(inner.id, 'Enter')
+  expect(row(leaf.id)).not.toBeNull()
+  await arrow(leaf.id, 'Enter')
+  expect(editor.state.selection).toEqual([leaf.id])
+  await arrow(leaf.id, 'Escape')
+  expect(editor.state.selection).toEqual([inner.id])
+  expect(document.activeElement).toBe(row(inner.id))
+  await arrow(inner.id, 'Enter')
+  expect(row(leaf.id)).toBeNull()
+  expect(editor.authoredDocument).toBe(before)
+  expect(editor.canUndo).toBe(false)
+  expect(camera()).toEqual(view)
+  await act(async () => editor.clearSelection())
+  await act(async () => applyInterfaceLayout('figma'))
+  await arrow(group.id, 'Enter')
+  expect(editor.state.selection).toEqual([group.id])
+  expect(row(inner.id)).toBeNull()
+})
+
 test('Sketch Option-disclosure expands visible branches with a single tree update', async () => {
   const doc = blank('Branch expansion')
   const parent = node('group'), nested = node('group'), deeper = node('group'), leaf = node('rectangle')

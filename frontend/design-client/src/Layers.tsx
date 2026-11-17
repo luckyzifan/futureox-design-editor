@@ -475,6 +475,21 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
                 aria-expanded={n.children.length ? !!layerQuery.trim() || expanded : undefined}
                 onKeyDown={(e) => {
                   if (e.target !== e.currentTarget) return
+                  const plainKey = !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey &&
+                    !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229
+                  if (uiMode === 'sketch' && plainKey && e.key === 'Enter' && n.children.length) {
+                    e.preventDefault(); e.stopPropagation()
+                    if (!e.repeat && !layerQuery.trim()) setLayerExpanded(id, !expanded)
+                    return
+                  }
+                  if (uiMode === 'sketch' && plainKey && e.key === 'Escape') {
+                    const parent = editor.parentMap(s.doc).get(id)
+                    if (parent && rows.some(row => row.id === parent)) {
+                      e.preventDefault(); e.stopPropagation()
+                      if (!e.repeat) choose(parent, false, false, true)
+                      return
+                    }
+                  }
                   if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
                     e.preventDefault(); e.stopPropagation()
                     const at = rows.findIndex((row) => row.id === id)
