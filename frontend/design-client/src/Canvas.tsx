@@ -23,7 +23,7 @@ import { actionGeometry, compareActionGeometry } from './canvas-action-geometry'
 import { recordNavigationInput } from './kernel/navigation-input'
 import { desktopPet } from './desktop-pet'
 import { nudgePreference } from './nudge-preference'
-import { createKeyboardNudgeGesture } from './keyboard-nudge-gesture'
+import { createKeyboardNudgeGesture, keyboardNudgeActive } from './keyboard-nudge-gesture'
 import { isDimensionNudgeCommand, nudgeSelectionDimensions } from './canvas-workflow-shortcuts'
 import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
 import { deepSelectChord, doubleClickFollowUp, enterKeyEditsOutline, enterKeyEditsText } from './figma-basic-ops'
@@ -3322,7 +3322,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         navigationInputOwner={editor}
         panGestureActive={panning}
         overlay={overlay}
-        interaction={zoomFocusCanvas ? undefined : gpuInteraction}
+        // Nudges present the edited document through the canvas tile path.
+        interaction={zoomFocusCanvas || keyboardNudgeActive(editor) ? undefined : gpuInteraction}
         onPresentation={recordPresentation}
         overview={refineOverview} overviewNodes={entries.length}
         presentationEpoch={editor.sessionGeneration}
