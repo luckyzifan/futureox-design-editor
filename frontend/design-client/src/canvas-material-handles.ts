@@ -143,6 +143,14 @@ export function gradientStopOffset(start: Point, end: Point, local: Point): numb
   return Math.max(0, Math.min(1, ((local.x - start.x) * dx + (local.y - start.y) * dy) / length))
 }
 
+export function sketchGradientStopOffset(stops: Paint['stops'], index: number, key: string): number | undefined {
+  if (!stops[index]) return
+  const lower = stops[index - 1]?.offset, upper = stops[index + 1]?.offset
+  if (key === '=') return lower !== undefined && upper !== undefined ? (lower + upper) / 2 : undefined
+  if (!/^\d$/.test(key)) return
+  return Math.max(lower ?? 0, Math.min(upper ?? 1, Number(key) / 10))
+}
+
 /** The topmost visible fill, when it is an untransformed gradient the kernel evaluates from `angle`. */
 export function editableGradient(node: Pick<DesignNode, 'fills'>): { index: number; paint: Paint } | null {
   for (let index = node.fills.length - 1; index >= 0; index -= 1) {

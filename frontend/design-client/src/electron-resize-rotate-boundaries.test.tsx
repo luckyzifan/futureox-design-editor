@@ -9,7 +9,7 @@ import { Canvas } from './Canvas'
 import { Inspector } from './Inspector'
 import { formatAngleDegrees } from './selection-handles'
 import { Editor } from './engine'
-import { blank, node, uid, defaultSizing, defaultLayout, validateDocument, type DesignNode } from './model'
+import { blank, node, uid, defaultSizing, defaultLayout, paint, validateDocument, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { scene, apply } from './geometry'
 import { selectionMetric } from './selection-properties'
@@ -169,6 +169,48 @@ test('Sketch double-click fits the selected frame axis and preserves the world p
   await doubleClickEdge(0)
   expect(editor.state.doc).toBe(current)
   expect(editor.state.version).toBe(version)
+})
+
+test('Sketch digits edit layer opacity or the active gradient stop with distinct history', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const shape = node('rectangle', 80, 70, 170, 110)
+  shape.opacity = 0.62
+  shape.fills = [{ ...paint('#ff3300'), kind: 'linear', angle: 0,
+    stops: [{ offset: 0.1, color: '#ff3300' }, { offset: 0.37, color: '#224477' }, { offset: 0.9, color: '#551199' }] }]
+  await render([shape])
+  await act(async () => editor.select([shape.id]))
+  const before = editor.state.doc
+  await act(async () => key('3'))
+  expect(editor.state.doc.nodes[shape.id].opacity).toBe(0.3)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  await act(async () => key('0'))
+  expect(editor.state.doc.nodes[shape.id].opacity).toBe(1)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+
+  const stop = mount.querySelector('[data-testid="gradient-stop-1"]')!
+  expect(stop).not.toBeNull()
+  const point = { x: Number(stop.getAttribute('cx')), y: Number(stop.getAttribute('cy')) }
+  await at('pointerdown', point, stop)
+  await at('pointerup', point)
+  const version = editor.state.version
+  await act(async () => key('7'))
+  expect(editor.state.doc.nodes[shape.id].fills[0].stops[1].offset).toBe(0.7)
+  expect(editor.state.doc.nodes[shape.id].opacity).toBe(0.62)
+  expect(editor.state.version).toBe(version + 1)
+  await act(async () => key('='))
+  expect(editor.state.doc.nodes[shape.id].fills[0].stops[1].offset).toBe(0.5)
+  await act(async () => editor.undo())
+  expect(editor.state.doc.nodes[shape.id].fills[0].stops[1].offset).toBe(0.7)
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+
+  await act(async () => editor.set({ tool: 'vector' }))
+  await act(async () => key('8'))
+  expect(editor.state.doc).toEqual(before)
 })
 
 function autoFrame(x=100,y=100) {

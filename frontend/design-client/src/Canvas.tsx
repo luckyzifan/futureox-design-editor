@@ -129,7 +129,7 @@ import { brushPreviewSettings } from './draw-brush-style'
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, keyboardPlacesTool } from './keyboard-placement'
-import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, type CornerIndex } from './canvas-material-handles'
+import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, sketchGradientStopOffset, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
 import {
@@ -150,6 +150,7 @@ import { usePrototypeTab } from './prototype-chrome'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
 import { CanvasOutlines, createOutlineScene, outlineHits } from './CanvasOutlines'
 type TextEditEntry = { id: string; session: number; page: string; token: number }
+type GradientStopKeyboardTarget = { nodeId: string; paintId: string; index: number; session: number; page: string; revision: number }
 type ResizeHandleTap = {
   id: string
   session: number
@@ -637,6 +638,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }, [editor])
   const drag = useRef<Drag | null>(null)
+  const [gradientKeyboardTarget, setGradientKeyboardTarget] = useState<GradientStopKeyboardTarget | null>(null)
   const resizeHandleTap = useRef<ResizeHandleTap | null>(null)
   const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string;
     index: ReturnType<typeof createSmartGuidesIndex> } | null>(null)
@@ -1292,6 +1294,36 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if(utility.active() && e.key!=='Escape'){e.preventDefault();return}
+      if (shortcutContext.uiMode === 'sketch' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey &&
+          /^[0-9=]$/.test(e.key) && !ownsTextEntry(textEntryOwner.current) &&
+          !['vector', 'width', 'pen'].includes(editor.state.tool) && !penRef.current && !drag.current && !pencil.current &&
+          !editor.state.busy && !editor.interactionActive) {
+        const { doc, selection, version, page } = editor.state
+        const target = gradientKeyboardTarget
+        const currentStop = target && e.target === host.current && target.session === editor.sessionGeneration &&
+          target.page === page && target.revision === version && selection.length === 1 && selection[0] === target.nodeId
+          ? doc.nodes[target.nodeId]?.fills.find(fill => fill.id === target.paintId) : undefined
+        if (target && currentStop) {
+          e.preventDefault()
+          if (!e.repeat) {
+            const offset = sketchGradientStopOffset(currentStop.stops, target.index, e.key)
+            if (offset !== undefined && offset !== currentStop.stops[target.index].offset) {
+              editor.updateProperties([target.nodeId], node => {
+                const stop = node.fills.find(fill => fill.id === target.paintId)?.stops[target.index]
+                if (stop) stop.offset = offset
+              }, '调整渐变色标')
+              setGradientKeyboardTarget({ ...target, revision: editor.state.version })
+            }
+          }
+          return
+        }
+        const ids = e.key === '=' ? [] : editor.topSelection()
+        if (ids.length) {
+          e.preventDefault()
+          if (!e.repeat) editor.update(ids, { opacity: e.key === '0' ? 1 : Number(e.key) / 10 }, '修改图层不透明度')
+          return
+        }
+      }
       if (shortcut && isSketchBooleanCommand(shortcut.command)) {
         if (penRef.current || drag.current || pencil.current || editor.state.tool === 'vector') e.preventDefault()
         else void dispatchEditorShortcut(editor, e, shortcutContext)
@@ -1640,6 +1672,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       drag.current = null
       setRubber(null)
       hoverPoint.current = null
+      setGradientKeyboardTarget(null)
       editor.hoverLayer(null, 'canvas')
     }
     window.addEventListener('keydown', down)
@@ -1647,7 +1680,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     window.addEventListener('blur', blur)
     const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
     const visibility = () => { if (document.hidden) { releaseMarquee(); nudge.finish() } }
-    const focus = (e: FocusEvent) => { if (e.target !== host.current) nudge.finish(); if (shortcutTargetOwnsKeyboard(e.target)) releaseMarquee() }
+    const focus = (e: FocusEvent) => {
+      if (e.target !== host.current) { nudge.finish(); setGradientKeyboardTarget(null) }
+      if (shortcutTargetOwnsKeyboard(e.target)) releaseMarquee()
+    }
     const pointer = () => { nudge.finish() }
     const unsubscribeNudge = nudgePreference.subscribe(() => { nudge.finish() })
     const unsubscribeProfile = shortcutPreference.subscribe(() => {
@@ -1668,7 +1704,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       document.removeEventListener('focusin', focus)
       unsubscribeProfile()
     }
-  }, [editor])
+  }, [editor, gradientKeyboardTarget])
   useEffect(() => {
     const el = host.current!
     const wheelGesture=new WheelCameraGesture()
@@ -1756,6 +1792,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // sidebar. Only physical canvas targets can adopt the displayed camera.
     const target = e.target as Element
     if (!host.current?.contains(target) || target.closest('button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor')) return
+    if (gradientKeyboardTarget) setGradientKeyboardTarget(null)
     if ((kind === 'resize' || kind === 'rotate') && state.tool === 'select' &&
         smallSelectionInterior(selectionCorners, displayViewRef.current.zoom,
           screenToWorld(displayViewRef.current, screenPoint(e)))) kind = 'move'
@@ -2836,6 +2873,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const notice = d.kind === 'move' ? editor.finishCanvasMove(releaseWorld, /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey, /Mac|iPhone|iPad/.test(navigator.platform) && e.ctrlKey, space.current) : undefined
       const commitResult = editor.commit()
       gestureFollow.current?.waitFor(editor.state.doc)
+      if (uiMode === 'sketch' && d.parameter === 'gradientStop' && d.node && d.materialFill !== undefined && d.materialStop !== undefined) {
+        const paint = editor.state.doc.nodes[d.node.id]?.fills[d.materialFill]
+        if (paint?.stops[d.materialStop]) setGradientKeyboardTarget({ nodeId: d.node.id, paintId: paint.id,
+          index: d.materialStop, session: d.session, page: d.page, revision: editor.state.version })
+      }
       if(d.kind==='rotate'&&d.rotationCenter)setOrigin(originFromWorld(d.rotationCenter))
       if (notice) editor.notify(notice)
       if (d.kind === 'move' && d.duplicating && d.ids.every(id => editor.state.doc.nodes[id]))
@@ -3689,7 +3731,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     </circle>
                     {gradient.paint.stops.map((stop, stopIndex) => {
                       const p = worldPoint(gradientStopPoint(n.width, n.height, gradient.paint.angle, stop.offset))
-                      return <circle key={stopIndex} data-testid={`gradient-stop-${stopIndex}`} cx={p.x} cy={p.y} r={3.5 / zoom} fill={stop.color} stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'pointer' }}
+                      const active = gradientKeyboardTarget?.nodeId === n.id && gradientKeyboardTarget.paintId === gradient.paint.id &&
+                        gradientKeyboardTarget.index === stopIndex && gradientKeyboardTarget.session === editor.sessionGeneration &&
+                        gradientKeyboardTarget.page === state.page && gradientKeyboardTarget.revision === state.version
+                      return <circle key={stopIndex} data-testid={`gradient-stop-${stopIndex}`} data-selected={active || undefined}
+                        cx={p.x} cy={p.y} r={(active ? 5 : 3.5) / zoom} fill={stop.color} stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'pointer' }}
                         onPointerDown={(event) => beginMaterial(event, 'gradientStop', undefined, '调整渐变色标', gradient.index, stopIndex)}>
                         <title>{chromeCopy.gradientStop}</title>
                       </circle>

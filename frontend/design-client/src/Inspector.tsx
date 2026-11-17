@@ -41,7 +41,8 @@ import { dispatchEditorCommand } from './editor-commands'
 import { desktopBridge } from './desktop'
 import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
-import { useInterfacePreferences } from './interface-preference'
+import { interfacePreference, useInterfacePreferences } from './interface-preference'
+import { sketchGradientStopOffset } from './canvas-material-handles'
 import { FramePresetPanel } from './FramePresetPanel'
 import { addSpatialEffect, PreserveDepthControl, SpatialEffectRow, type SpatialKind } from './SpatialEffectsPanel'
 import { frameSizePresetGate } from './frame-presets'
@@ -215,9 +216,21 @@ function PaintEditor({
               setStopAt(nearestStopIndex(p.stops, Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))))
             }}
           >
-            {p.stops.map((stop, index) => <button type="button" key={`${stop.offset}:${index}`} className="gradient-stop-thumb" aria-pressed={index === stopAt}
+            {p.stops.map((stop, index) => <button type="button" key={index} className="gradient-stop-thumb" aria-pressed={index === stopAt}
               aria-label={`${tr('选择色标')} ${index + 1}`} style={{ left: `${stop.offset * 100}%`, background: stop.color }}
-              onClick={() => setStopAt(index)} />)}
+              onClick={() => setStopAt(index)}
+              onKeyDown={event => {
+                if (interfacePreference.getSnapshot().uiMode !== 'sketch' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+                    event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229 || !/^[0-9=]$/.test(event.key)) return
+                event.preventDefault()
+                event.stopPropagation()
+                if (event.repeat) return
+                const offset = sketchGradientStopOffset(p.stops, index, event.key)
+                if (offset !== undefined && offset !== stop.offset) {
+                  setStopAt(index)
+                  onChange({ ...p, stops: p.stops.map((value, at) => at === index ? { ...value, offset } : value) })
+                }
+              }} />)}
           </div>
           {p.stops.map((s, i) => (
             <div className="stop-row" key={i} data-selected={i === stopAt ? 'true' : undefined}>
