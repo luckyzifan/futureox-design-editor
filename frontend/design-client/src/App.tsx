@@ -4,7 +4,7 @@ import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnosti
 import { operationStatusText } from './operation-status-messages'
 import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
-import { SketchTextStyleDialog, type SketchTextStyleAnchor } from './SketchTextStyleDialog'
+import { SketchInsertionDialog, type SketchInsertionAnchor } from './SketchInsertionDialog'
 import { keyboardPlacementPoint } from './keyboard-placement'
 import { defaultLayerExportSetting } from './export-metadata'
 import { SketchComponentsView, sketchComponentCategories, type SketchComponentCategory } from './SketchComponentsView'
@@ -235,7 +235,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showRegions, setShowRegions] = useState(false)
   const [showFramePresets, setShowFramePresets] = useState<'create' | 'apply' | null>(null)
   const [sketchReplacement, setSketchReplacement] = useState<SketchReplacementTarget | null>(null)
-  const [sketchTextStyle, setSketchTextStyle] = useState<SketchTextStyleAnchor | null>(null)
+  const [sketchInsertion, setSketchInsertion] = useState<SketchInsertionAnchor | null>(null)
   const [showDrawing, setShowDrawing] = useState(false)
   const [showUtility, setShowUtility] = useState(false)
   const [lastShapeTool, setLastShapeTool] = useState<Tool>('rectangle')
@@ -907,11 +907,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowFramePresets('apply')
     return true
   }, [canUseSketchSelectionCommand, editor])
-  const insertSketchTextStyle = useCallback(() => {
+  const openSketchInsertion = useCallback((kind: SketchInsertionAnchor['kind']) => {
     if (!canUseSketchSelectionCommand() || !commitPendingEdits(editor)) return false
     const canvas = document.querySelector<HTMLElement>('[data-testid="canvas"]')
     if (!canvas || !canvas.clientWidth || !canvas.clientHeight) return false
-    setSketchTextStyle({ documentId: editor.state.doc.id, page: editor.state.page, generation: editor.sessionGeneration,
+    setSketchInsertion({ kind, documentId: editor.state.doc.id, page: editor.state.page, generation: editor.sessionGeneration,
       point: keyboardPlacementPoint(editor.flushPendingView(), { width: canvas.clientWidth, height: canvas.clientHeight }) })
     return true
   }, [canUseSketchSelectionCommand, editor])
@@ -958,8 +958,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         return
       }
       if (editable) return
-      if (onMac && event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyT') {
-        if (insertSketchTextStyle()) {
+      const insert = !event.metaKey && !event.altKey && (
+        event.code === 'KeyY' && !event.ctrlKey ? 'symbol' :
+          event.code === 'KeyT' && event.ctrlKey && onMac ? 'text' : undefined
+      )
+      if (insert) {
+        if (openSketchInsertion(insert)) {
           event.preventDefault()
           event.stopPropagation()
         }
@@ -1014,7 +1018,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', shortcut, true)
     return () => window.removeEventListener('keydown', shortcut, true)
-  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, insertSketchTextStyle, switchSketchWorkspace, sketchComponentsVisible, editor, setShowInspector, setPropertiesTab])
+  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, openSketchInsertion, switchSketchWorkspace, sketchComponentsVisible, editor, setShowInspector, setPropertiesTab])
   const saveCurrentDesign = useCallback(() => {
     if (source) {
       if (source.ready && !source.busy && !source.locked) void source.save()
@@ -1487,7 +1491,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           onEditText={id => editText.current?.(id)}
           onSection={section => switchSketchWorkspace(section === 'assets')} onImages={files => void importImageFiles(files)}
           onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets('create') }}
-          onInsertTextStyle={insertSketchTextStyle}
+          onInsertTextStyle={() => openSketchInsertion('text')}
+          onInsertSymbol={() => openSketchInsertion('symbol')}
           onReplaceTemplate={replaceSketchTemplate}
           onSystems={() => setShowTools(true)} onShapeBuilder={() => setShowShapeBuilder(true)} />}
         <div className="header-right">
@@ -1768,7 +1773,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         onSync={syncCurrentDesign} onClose={() => setShowCloudWorkspace(false)} />}
       {showFramePresets && <FramePresetPanel editor={editor} intent={showFramePresets} onClose={() => setShowFramePresets(null)} />}
       {sketchReplacement && <SketchReplacementDialog editor={editor} target={sketchReplacement} onClose={() => setSketchReplacement(null)} />}
-      {sketchTextStyle && <SketchTextStyleDialog editor={editor} anchor={sketchTextStyle} onClose={() => setSketchTextStyle(null)} />}
+      {sketchInsertion && <SketchInsertionDialog editor={editor} anchor={sketchInsertion} onClose={() => setSketchInsertion(null)} />}
       {showHistory && !source && (
         <DocumentHistoryDialog
           key={s.doc.id}

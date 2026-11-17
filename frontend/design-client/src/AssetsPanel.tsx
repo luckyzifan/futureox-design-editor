@@ -1,15 +1,13 @@
 import { useState } from 'react'
 import type { Editor } from './engine'
-import { family } from './components'
+import { componentSources, family } from './components'
 import { usePropertyText } from './property-interface-messages'
 export function AssetsPanel({ editor }: { editor: Editor }) {
   const { tr } = usePropertyText()
   const [search, setSearch] = useState('')
   const doc = editor.state.doc
-  const items = Object.values(doc.nodes).filter(
+  const items = componentSources(doc).filter(
     (n) =>
-      n.component &&
-      !n.instanceOrigin &&
       `${n.name} ${family(doc, n.id)?.name || ''}`.toLowerCase().includes(search.toLowerCase()),
   )
   return (

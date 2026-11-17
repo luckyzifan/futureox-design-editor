@@ -633,6 +633,9 @@ export function family(d: DesignDocument, componentId: string) {
   const parent = allParents(d).get(componentId)
   return parent && d.nodes[parent]?.componentSet ? d.nodes[parent] : undefined
 }
+export function componentSources(document: DesignDocument) {
+  return Object.values(document.nodes).filter(node => node.component && !node.instanceOrigin)
+}
 export function cloneTree(d: DesignDocument, root: string): string {
   const ids = new Map<string, string>()
   const collect = (id: string) => {

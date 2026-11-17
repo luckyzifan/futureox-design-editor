@@ -270,6 +270,50 @@ test('Sketch Control-T inserts a linked text style with the archived size and pa
   expect(editor!.canUndo).toBe(false)
 })
 
+test('Sketch Y opens the symbol picker and inserts an existing source only after confirmation', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const picker = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="置入控件"]')!
+  const open = () => key('y', { code: 'KeyY' })
+  const cancel = () => act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true,
+  })))
+  const empty = editor!.authoredDocument
+  await act(async () => canvas().focus())
+  await open()
+  expect(picker().textContent).toContain('没有可置入的控件')
+  expect(picker().querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true)
+  await cancel()
+  expect(picker()).toBeNull()
+  expect(editor!.authoredDocument).toBe(empty)
+
+  const { doc } = componentFixture()
+  const source = Object.values(doc.nodes).find(layer => layer.component)!
+  source.name = 'Source of the inserted symbol'
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  const initial = editor!.authoredDocument
+  await open()
+  expect(picker().textContent).toContain(source.name)
+  expect(editor!.authoredDocument).toBe(initial)
+  await cancel()
+  expect(editor!.authoredDocument).toBe(initial)
+  await open()
+  await act(async () => {
+    const list = picker().querySelector<HTMLSelectElement>('select')!
+    list.value = source.id
+    list.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const version = editor!.state.version
+  await act(async () => picker().querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+  const selected = editor!.state.selection[0]
+  expect(picker()).toBeNull()
+  expect(editor!.authoredDocument.nodes[selected].instance?.componentId).toBe(source.id)
+  expect(editor!.authoredDocument.nodes[source.id]).toEqual(initial.nodes[source.id])
+  expect(editor!.state.version).toBe(version + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(initial)
+})
+
 test('Sketch Option-Command-R replaces the chosen instance or shared style in one undo', async () => {
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   applyInterfaceLayout('sketch')
