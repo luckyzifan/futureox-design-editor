@@ -16,6 +16,7 @@ import { interfacePreference } from './interface-preference'
 import { fontTestBytes } from './font-test-fixtures'
 import { export_sketch_json, forma_decode_json, forma_encode_json, import_sketch_json } from './generated/design-kernel/design_kernel'
 import { worldMatrix } from './geometry'
+import { selectionParentBounds } from './canvas-view'
 import { kernelFillWorld } from './kernel/picking'
 import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke } from './model'
 import { nudgePreference } from './nudge-preference'
@@ -268,6 +269,45 @@ test('Sketch Control-T inserts a linked text style with the archived size and pa
   await act(async () => editor!.undo())
   expect(editor!.authoredDocument).toEqual(before)
   expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch Control-Command-X fits each selected bounds outward and undoes the change together', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Pixel fitting')
+  const plain = node('rectangle', -12.22, -21.68, 20.38, 10.45)
+  const parent = node('frame', 90.3, 75.7, 300, 200)
+  const rotated = node('rectangle', 22.2, 16.8, 61.5, 33.4)
+  rotated.transform = [.8, .6, -.6, .8, 22.2, 16.8]
+  parent.children = [rotated.id]
+  doc.nodes = Object.fromEntries([plain, parent, rotated].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [plain.id, parent.id]
+  const ids = [plain.id, rotated.id]
+  await act(async () => { editor!.load(doc); editor!.select(ids); canvas().focus() })
+  const before = editor!.authoredDocument, version = editor!.state.version, snap = editor!.state.snapPixels
+  const edges = (document: typeof doc, id: string) => {
+    const box = selectionParentBounds(document, id, worldMatrix(document, id))
+    return [box.x, box.y, box.x + box.width, box.y + box.height]
+  }
+  const fit = () => key('x', { code: 'KeyX', ctrlKey: true, metaKey: true })
+  await fit()
+  const after = editor!.authoredDocument
+  for (const [index, edge] of edges(after, plain.id).entries()) {
+    expect(edge).toBeCloseTo([-13, -22, 9, -11][index], 8)
+  }
+  for (const [index, edge] of edges(after, rotated.id).entries()) {
+    const original = edges(before, rotated.id)[index]
+    expect(edge).toBeCloseTo(index < 2 ? Math.floor(original) : Math.ceil(original), 8)
+  }
+  expect(after.nodes[parent.id]).toBe(before.nodes[parent.id])
+  expect(editor!.state.snapPixels).toBe(snap)
+  expect(editor!.state.version).toBe(version + 1)
+  await fit()
+  expect(editor!.authoredDocument).toBe(after)
+  expect(editor!.state.version).toBe(version + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
 })
 
 test('Sketch Command-Y creates an in-place instance and a source in one undo step', async () => {
