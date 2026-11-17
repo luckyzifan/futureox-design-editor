@@ -6,6 +6,7 @@ import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
 import { SketchInsertionDialog, type SketchInsertionAnchor } from './SketchInsertionDialog'
 import { SketchSymbolDialog, type SketchSymbolTarget } from './SketchSymbolDialog'
+import { SketchMakeGridDialog } from './SketchMakeGridDialog'
 import { bindSketchSymbolDialog, sketchSymbolSelection } from './sketch-symbol'
 import { keyboardPlacementPoint } from './keyboard-placement'
 import { defaultLayerExportSetting } from './export-metadata'
@@ -1888,6 +1889,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
       </main>}
       <BatchRenameDialog editor={editor} />
+      <SketchMakeGridDialog editor={editor} />
       <CommandSearch editor={editor} />
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} onImportCompatibility={() => {

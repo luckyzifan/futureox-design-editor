@@ -9,6 +9,7 @@ import { shortcutPreference } from './shortcut-preference'
 import { desktopBridge } from './desktop'
 import { selectionCommandAdmission } from './commands/selection-command'
 import { alignmentAvailability, alignmentCommandIds, alignmentCommands } from './alignment-availability'
+import { canMakeSketchGrid } from './sketch-make-grid'
 import { selectedPaintSwap } from './sketch-paint-commands'
 import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
 
@@ -157,6 +158,7 @@ const sketchContextOrder: EditorCommand[] = [
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
+  'make-grid',
   'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'round-to-pixel', 'mask-selection', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
@@ -230,6 +232,10 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
       available.set(command, { command, label: label[locale === 'en' ? 1 : 0], group: 'alignment', disabled: !canAlign,
         shortcut: shortcutLabel(command, { ...context, uiMode }) })
     }
+    if (selection.length) available.set('make-grid', {
+      command: 'make-grid', label: locale === 'en' ? 'Make Grid…' : '制作网格…', group: 'arrange',
+      disabled: disabled || !canMakeSketchGrid(editor),
+    })
     available.set('paste', { command: 'paste', label: locale === 'en' ? 'Paste' : '粘贴', group: 'clipboard',
       disabled, shortcut: shortcutLabel('paste', context) })
     if (selection.length && !available.has('ungroup'))
