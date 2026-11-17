@@ -1810,6 +1810,13 @@ mod wasm {
                 .map_err(|e| JsValue::from_str(&e))?;
             serde_json::to_string(&layout).map_err(|e| JsValue::from_str(&format!("{e}")))
         }
+        pub fn text_vertical_measurement(&self, node: &str) -> Result<String, JsValue> {
+            let node: scene::Node =
+                serde_json::from_str(node).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            let measurement = self.inner.fonts.node_text_measurement(&node)
+                .map_err(|e| JsValue::from_str(&e))?;
+            serde_json::to_string(&measurement).map_err(|e| JsValue::from_str(&format!("{e}")))
+        }
         /// Caret geometry (node-local space) for one UTF-16 offset; compose
         /// with the node transform for page coordinates.
         pub fn caret_at(&self, node: &str, utf16_offset: usize) -> Result<String, JsValue> {

@@ -13,7 +13,7 @@ import { rotationChromeHeldToTexture, rotationDocumentChromeSuppressed, rotation
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
-import { altMeasurementTarget, measurementTicks, SPACING_RED } from './canvas-measurements'
+import { altMeasurementTarget, measurementTicks, SPACING_RED, textMeasurementBounds } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
 import { interfacePreference, useInterfacePreferences } from './interface-preference'
@@ -76,6 +76,8 @@ import {
   kernelSnapPoint,
   kernelHitWorld,
   kernelFillWorld,
+  kernelTextVerticalMeasurement,
+  pickingGeometryEpoch,
   type StrokeHandle,
 } from './kernel/picking'
 import { profileTopology } from './stroke-profile'
@@ -941,7 +943,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }, [editor, editor.sessionGeneration, state.page])
   const [cursor, setCursor] = useState<Point | null>(null)
   const cursorPoint = useRef<Point | null>(null)
-  const [measureKeys,setMeasureKeys]=useState({alt:false,deep:false})
+  const [measureKeys,setMeasureKeys]=useState({alt:false,deep:false,text:false})
   const wheelModifiers = useRef({ ctrl: false, meta: false })
   const space = useRef(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
@@ -1106,8 +1108,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     alt: measureKeys.alt, dragging: !!drag.current, space: spaceHeld, tool: state.tool,
     selection: state.selection, hover: measurementHover,
   })
-  const measurementBounds = measurementTarget && displayedSnapshot
-    ? displayedIndex?.entries.find(e=>e.id===measurementTarget)?.bounds : null
+  const measurementEntry = measurementTarget && displayedSnapshot
+    ? displayedIndex?.entries.find(e => e.id === measurementTarget) : undefined
+  const measurementDocument = displayedSnapshot?.document
+  const measurementText = uiMode === 'sketch' && measureKeys.text && measurementEntry
+    ? measurementDocument?.nodes[measurementEntry.id] : undefined
+  const measurementFonts = measurementDocument?.fonts
+  const measurementEpoch = pickingGeometryEpoch()
+  const measurementBounds = useMemo(() => {
+    if (!measurementEntry) return null
+    if (measurementText?.kind !== 'text' || !geometryReady) return measurementEntry.bounds
+    const metrics = kernelTextVerticalMeasurement(measurementText, measurementFonts)
+    return metrics ? textMeasurementBounds(measurementEntry.bounds, measurementText.width, measurementEntry.matrix, metrics) : measurementEntry.bounds
+  }, [measurementEntry, measurementText, measurementFonts, measurementEpoch, geometryReady])
   const transformHandles = useMemo(() => selectionHandles(selectionCorners, zoom), [selectionCorners, zoom])
   const ownedDrag = drag.current?.session === editor.sessionGeneration && drag.current.page === state.page
     ? drag.current : null
@@ -1332,7 +1345,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const shortcut = resolveShortcut(e, shortcutContext)
       if (e.repeat && !shortcut?.repeat && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) { if (shortcut) e.preventDefault(); return }
       if(['Alt','Meta','Control'].includes(e.key)) {
-        setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform())})
+        setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform()),text:e.altKey&&e.ctrlKey})
         if (e.altKey) setCursor(cursorPoint.current)
       }
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
@@ -1699,7 +1712,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (e.key === 'Shift') setPenShift(false)
       nudge.release(e.key)
       if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
-      if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform())})
+      if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform()),text:e.altKey&&e.ctrlKey&&!e.getModifierState('AltGraph')})
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if (e.code === 'Space') {
@@ -1719,7 +1732,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       nudge.finish()
       cancelQueuedMove()
       wheelModifiers.current = { ctrl: false, meta: false }
-      setMeasureKeys({alt:false,deep:false})
+      setMeasureKeys({alt:false,deep:false,text:false})
       setPenShift(false)
       if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
       flushView()
@@ -2466,7 +2479,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const d = drag.current
     if (!d) {
       const deep = deepSelectChord(e, shortcutPlatform())
-      setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===deep?previous:{alt:e.altKey,deep})
+      const text = e.altKey && e.ctrlKey && !e.getModifierState('AltGraph')
+      setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===deep&&previous.text===text?previous:{alt:e.altKey,deep,text})
       editor.hoverLayer(performance.now() >= navigationUntil.current && !textEdit && !space.current && ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
         // The outline matches the click: group until entered, child paint in a
         // frame, or the frame on empty area. Command/Ctrl shows the leaf.
