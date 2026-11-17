@@ -10,7 +10,7 @@ export type FrameCategory = keyof typeof frameCategories
 export type FramePreset = { id: string; category: FrameCategory; name: string; width: number; height: number }
 // Reference design-canvas dimensions, not physical screen pixels or hardware emulation.
 const groups: [FrameCategory, [string, number, number][]][] = [
-  ['phone', [['iPhone 13 mini',375,812],['iPhone SE',320,568],['iPhone 13 Pro Max',428,926],['iPhone 13 / 13 Pro',390,844],['iPhone 11 Pro Max',414,896],['iPhone 11 Pro / X',375,812],['iPhone 8 Plus',414,736],['iPhone 8',375,667],['Android Small',360,640],['Android Large',360,800],['Google Pixel 2',411,731],['Google Pixel 2 XL',411,823]]],
+  ['phone', [['iPhone 17',402,874],['iPhone 13 mini',375,812],['iPhone SE',320,568],['iPhone 13 Pro Max',428,926],['iPhone 13 / 13 Pro',390,844],['iPhone 11 Pro Max',414,896],['iPhone 11 Pro / X',375,812],['iPhone 8 Plus',414,736],['iPhone 8',375,667],['Android Small',360,640],['Android Large',360,800],['Google Pixel 2',411,731],['Google Pixel 2 XL',411,823]]],
   ['tablet', [['iPad mini 5',768,1024],['Surface Pro 4',1368,912]]],
   ['desktop', [['MacBook',1152,700],['MacBook Pro',1440,900],['Surface Book',1500,1000],['iMac',1280,720],['Macintosh 128k',512,342]]],
   ['watch', [['Apple Watch 42mm',156,195],['Apple Watch 38mm',136,170]]],

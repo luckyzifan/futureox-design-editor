@@ -2902,6 +2902,9 @@ html[data-reduced-motion=true] .animation-modal * {
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-group { gap: 2px; }
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-group > button,
 .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-popover > button { width: 29px; height: 32px; padding: 4px; }
+.editor-shell[data-ui-mode="sketch"] .sketch-window-tools .tool-group > button.sketch-frame-template {
+  width: auto; min-width: 29px; padding: 0 10px; font-size: 12px; white-space: nowrap;
+}
 @media (max-width: 1180px) {
   .editor-shell[data-ui-mode="sketch"] .sketch-window-tools .sketch-secondary-tool { display: none; }
 }

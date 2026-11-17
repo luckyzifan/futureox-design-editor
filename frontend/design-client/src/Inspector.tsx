@@ -44,6 +44,7 @@ import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
 import { FramePresetPanel } from './FramePresetPanel'
 import { frameSizePresetGate } from './frame-presets'
+import { frameTemplateSnapshot, subscribeFrameTemplate } from './frame-template-session'
 import type { PencilCap } from './freehand'
 import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
@@ -461,6 +462,9 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
   const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const [presetFrameId, setPresetFrameId] = useState<string | null>(null)
+  useEffect(() => subscribeFrameTemplate(() => {
+    if (frameTemplateSnapshot() > 0) setPresetFrameId(null)
+  }), [])
   const [blurToOpen, setBlurToOpen] = useState<string | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,

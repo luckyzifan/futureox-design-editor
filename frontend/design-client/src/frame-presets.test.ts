@@ -4,11 +4,13 @@ import { blank,node } from './model'
 import { createPresetFrame,framePlacementRight,filterFramePresets,framePresets,validFrameSize } from './frame-presets'
 
 test('reference catalogue preserves logical sizes, category and searchable names',()=>{
-  expect(framePresets).toHaveLength(32)
-  expect(new Set(framePresets.map(p=>p.id)).size).toBe(32)
+  expect(framePresets).toHaveLength(33)
+  expect(new Set(framePresets.map(p=>p.id)).size).toBe(33)
   expect(filterFramePresets('iPhone 13','phone')).toHaveLength(3)
   expect(filterFramePresets('375 812','phone')).toHaveLength(2)
   expect(filterFramePresets('iPhone','desktop')).toEqual([])
+  expect(filterFramePresets('iPhone 17','all')).toEqual([expect.objectContaining({name:'iPhone 17',category:'phone',width:402,height:874})])
+  expect(filterFramePresets('402 874','phone')).toEqual([expect.objectContaining({name:'iPhone 17',width:402,height:874})])
   expect(framePresets.find(p=>p.name==='iPhone 13 / 13 Pro')).toMatchObject({width:390,height:844})
   expect(framePresets.every(p=>validFrameSize(p.width,p.height))).toBe(true)
 })

@@ -8,6 +8,9 @@ import { activateTool } from './tool-activation'
 import { canvasText } from './canvas-interface-messages'
 import { commandSearchText } from './command-search'
 import { requestCommandSearch } from './command-search-session'
+import { frameTemplateReplaceAvailable, openFrameTemplateReplace } from './frame-template-session'
+import { useShortcutProfile } from './shortcut-preference'
+import { formatShortcutCombo, shortcutPlatform } from './shortcut-profiles'
 import { useInterfacePreferences } from './interface-preference'
 import { localizedToolLabel } from './tool-registry'
 import { RASTER_FILE_ACCEPT } from './image-import'
@@ -28,6 +31,7 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
   onEditText: (id: string) => void
 }) {
   const { locale } = useInterfacePreferences(), text = canvasText[locale]
+  const shortcutProfile = useShortcutProfile()
   const [open, setOpen] = useState<Menu | null>(null)
   const imageInput = useRef<HTMLInputElement>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
@@ -65,6 +69,9 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
       onClick={() => tool(id)}>{id === 'frame' ? label('画框','Frame') : localizedToolLabel(id, locale)}</button>
   const insertTool = (id: Tool, name: string, icon: ReactNode) =>
     <button type="button" aria-label={name} data-tooltip={name} aria-pressed={s.tool === id} onClick={() => tool(id)}>{icon}</button>
+  const replaceLabel = label('替换画框模板…', 'Replace frame template…')
+  const replaceShortcut = shortcutProfile === 'sketch-like' ? formatShortcutCombo('Mod+Alt+R', shortcutPlatform()) : ''
+  const canReplaceTemplate = frameTemplateReplaceAvailable(editor)
   const menu = (id: Menu, name: string, icon: ReactNode, children: ReactNode, enabled = true) =>
     <ToolPopover label={name} icon={icon} disabled={!enabled} open={enabled && open === id}
       onOpenChange={next => setOpen(next ? id : null)}>{children}</ToolPopover>
@@ -77,6 +84,9 @@ export function SketchWindowTools({ editor, disabled, onPresets, onImages, onSys
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); imageInput.current?.click() }}>{label('图片…', 'Image…')}</button>
         <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(null); onPresets() }}>{text.devicePresets}</button>
       </>)}
+      {canReplaceTemplate && <button type="button" className="sketch-frame-template" aria-label={replaceLabel}
+        data-tooltip={replaceShortcut ? `${replaceLabel} (${replaceShortcut})` : replaceLabel}
+        onClick={() => openFrameTemplateReplace(editor)}>{replaceLabel}</button>}
       <input ref={imageInput} type="file" accept={RASTER_FILE_ACCEPT} multiple hidden onChange={event => {
         const files = [...(event.target.files || [])]; event.target.value = ''
         if (files.length) onImages(files)

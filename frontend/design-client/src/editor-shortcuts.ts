@@ -4,6 +4,7 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
 import { requestCommandSearch } from './command-search-session'
 import { requestLayerFind } from './layer-find-session'
+import { openFrameTemplateReplace } from './frame-template-session'
 import { editableFrameCrop } from './selection-properties'
 import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
@@ -14,6 +15,12 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
   if (shortcutTargetOwnsKeyboard(event.target)) return false
   const binding = resolveShortcut(event, context)
   if (!binding || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
+  // The template search is shell state. An ineligible selection must not consume the chord or edit.
+  if (binding.command === 'open-frame-template') {
+    if (event.repeat || editor.state.busy || editor.interactionActive || !openFrameTemplateReplace(editor)) return false
+    event.preventDefault()
+    return true
+  }
   event.preventDefault()
   // Command search is shell state. It must not enter dispatch or document history.
   if (binding.command === 'open-command-search' || binding.command === 'open-layer-find') {

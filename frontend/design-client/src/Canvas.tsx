@@ -51,6 +51,7 @@ import { useUtilityTools, translateVertices } from './utility-tools'
 import { resolveShortcut, shortcutPlatform } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
 import { requestCommandSearch } from './command-search-session'
+import { openFrameTemplateReplace } from './frame-template-session'
 import { closeLayerFind, layerFindSnapshot, requestLayerFind } from './layer-find-session'
 import { dispatchEditorShortcut, shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { createPortal, flushSync } from 'react-dom'
@@ -1458,6 +1459,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       // Open command search before any pen commit. The chord itself must not edit the document.
+      if (shortcut?.command === 'open-frame-template') {
+        if (!e.repeat && !editor.interactionActive && !drag.current && !pencil.current && openFrameTemplateReplace(editor))
+          e.preventDefault()
+        return
+      }
       if (shortcut?.command === 'open-command-search' || shortcut?.command === 'open-layer-find') {
         // textEntryOwner is current; this listener is not rebound on each text-edit render.
         if (shortcut.command === 'open-layer-find' && ownsTextEntry(textEntryOwner.current)) return

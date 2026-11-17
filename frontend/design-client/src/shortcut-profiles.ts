@@ -3,7 +3,7 @@ import { TOOL_COMMANDS } from './tool-registry'
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find'
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'open-frame-template'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -53,6 +53,9 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' },
       { command: 'edit-frame-bounds', combo: 'Mod+Enter' })
     if (desktop) bindings.unshift({ command: 'fit-frame-content', combo: 'Mod+Shift+F' }, { command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
+    // Sketch replaces the selected frame from the template search. Opening it
+    // does not edit; confirming a template resizes only that frame.
+    bindings.push({ command: 'open-frame-template', combo: 'Mod+Alt+R' })
   } else {
     bindings.push(
       { command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' },
@@ -122,6 +125,7 @@ function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) 
       '©': ['G', 'KeyG', false], 'Å': ['A', 'KeyA', true],
       'å': ['A', 'KeyA', false], 'π': ['P', 'KeyP', false],
       'ç': ['C', 'KeyC', false], '√': ['V', 'KeyV', false],
+      '®': ['R', 'KeyR', false],
       '“': ['[', 'BracketLeft', false], '‘': [']', 'BracketRight', false],
     }
     const known = optionOutputs[event.key]

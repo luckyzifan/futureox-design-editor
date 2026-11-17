@@ -26,7 +26,7 @@ describe('bounded keyboard presets', () => {
   test.each(contexts)('$profile $platform desktop=$desktop has unique chords and existing commands only', context => {
     const bindings = shortcutBindings(context)
     expect(new Set(bindings.map(binding => binding.combo)).size).toBe(bindings.length)
-    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find']).toContain(binding.command)
+    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find', 'open-frame-template']).toContain(binding.command)
     const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()
     expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : [])
     const find = bindings.filter(binding => binding.command === 'open-layer-find').map(binding => binding.combo)

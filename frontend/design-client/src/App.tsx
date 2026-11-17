@@ -4,6 +4,7 @@ import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnosti
 import { operationStatusText } from './operation-status-messages'
 import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
+import { FrameTemplateReplaceHost } from './FrameTemplateReplaceHost'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
 import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
 import { libraryHostKind, libraryRailVisible } from './library-chrome'
@@ -1656,6 +1657,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       </main>
       <BatchRenameDialog editor={editor} />
       <CommandSearch editor={editor} />
+      <FrameTemplateReplaceHost editor={editor} />
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} onImportCompatibility={() => {
         fileImports.invalidate()
