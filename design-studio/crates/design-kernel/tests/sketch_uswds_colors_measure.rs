@@ -447,23 +447,19 @@ fn fifty_v_crop_moves_closer_to_the_sketch_preview_without_raising_the_threshold
         println!(
             "MEASURE pixels profile={name} over0={over0} over1={over1} over2={over2} max={max} darkest={darkest:?} main_over0={previous}"
         );
-        let expected = match name {
-            // Analytic now paints the FreeType mask. Figma profiles keep the
-            // outlines, so that count stays on the previous analytic-adjacent
-            // rasterizer.
-            "analytic" => 121,
-            "figma" => 127,
-            _ => unreachable!(),
-        };
-        assert_eq!(
-            over0, expected,
-            "{name} delta>0 pixels {over0}, main was {previous}"
-        );
         assert!(
             over0 < previous,
             "{name} delta>0 pixels {over0} did not fall below main {previous}"
         );
-        assert_eq!(darkest, [46, 46, 46, 255], "{name} text core color changed");
+        if name == "analytic" {
+            // The FreeType mask is covered at its own byte, so this crop
+            // matches Poppler's raster. The reference has no fully opaque
+            // core; its darkest pixel is the match.
+            assert_eq!((over0, over1, over2, max), (0, 0, 0, 0), "analytic 50v crop");
+        } else {
+            assert_eq!(over0, 127, "figma delta>0 pixels {over0}, main was {previous}");
+            assert_eq!(darkest, [46, 46, 46, 255], "{name} text core color changed");
+        }
     }
 }
 
@@ -699,16 +695,12 @@ fn unspecified_line_box_crops_move_under_the_misplaced_column() {
         "MEASURE auto old over0={old0} over16={old16} max={old_max} column over0={col0} over16={col16} max={col_max} changed over0={chg0} over16={chg16} max={chg_max}"
     );
     // Unrounded analytic coverage was over16 103/280 (max 149) for "Old"
-    // and 908/2240 (max 255) for the column. Line-box rounding left
-    // 22/285/402. Splash's FreeType mask brings every one of those under
-    // the channel-delta > 16 screening line. The locks are this engine
-    // against poppler 24.02.0 at 72 dpi, not a raised threshold.
-    assert_eq!((old0, old16, old_max), (108, 0, 13), "Old crop");
-    assert_eq!((col0, col16, col_max), (827, 0, 16), "column crop");
-    assert_eq!((chg0, chg16, chg_max), (1173, 0, 13), "changed crop");
-    assert_eq!(old16, 0, "Old still exceeds the screening line");
-    assert_eq!(col16, 0, "column still exceeds the screening line");
-    assert_eq!(chg16, 0, "changed still exceeds the screening line");
+    // and 908/2240 (max 255) for the column. Vertical mask rectangles left
+    // these crops at over0 108/827/1173 with max 13/16/13. Covering each
+    // FreeType byte across the full pixel matches Poppler 24.02.0 at 72 dpi.
+    assert_eq!((old0, old16, old_max), (0, 0, 0), "Old crop");
+    assert_eq!((col0, col16, col_max), (0, 0, 0), "column crop");
+    assert_eq!((chg0, chg16, chg_max), (0, 0, 0), "changed crop");
 }
 
 const SEMIBOLD: &[u8] = include_bytes!("PublicSans-SemiBold.otf");
@@ -924,6 +916,9 @@ fn poppler_preview_pixel_sweep() {
     let mut colors_pixels = 0u64;
     let mut max = 0u8;
     let mut hot = Vec::new();
+    let mut hist = [0u64; 5];
+    let mut by_tx = [0u64; 2];
+    let mut pages: Vec<(u32, u8, String)> = Vec::new();
     for row in &rows {
         let page = row["page"].as_u64().unwrap();
         let path = std::path::Path::new(&dir).join(format!("p-{page:03}.png", page = page + 1));
@@ -940,6 +935,20 @@ fn poppler_preview_pixel_sweep() {
             for x in 0..overlap_w {
                 let delta = channel_delta(*image.get_pixel(x, y), *reference.get_pixel(x, y));
                 page_max = page_max.max(delta);
+                if row["board"] == "colors" {
+                    let bucket = if delta == 0 {
+                        0
+                    } else if delta <= 16 {
+                        1
+                    } else if delta <= 32 {
+                        2
+                    } else if delta <= 64 {
+                        3
+                    } else {
+                        4
+                    };
+                    hist[bucket] += 1;
+                }
                 if delta > 16 {
                     page_over16 += 1;
                 }
@@ -951,6 +960,22 @@ fn poppler_preview_pixel_sweep() {
         if row["board"] == "colors" {
             colors_pixels += area;
             colors_over16 += u64::from(page_over16);
+            let slot = usize::from(row["tx"].as_f64().unwrap_or(0.) > 0.);
+            by_tx[slot] += u64::from(page_over16);
+            if page_over16 > 0 {
+                pages.push((
+                    page_over16,
+                    page_max,
+                    format!(
+                        "p{page} {:?} font={} size={} color={} tx={} over16={page_over16} max={page_max}",
+                        row["text"],
+                        row["runs"][0]["font"],
+                        row["runs"][0]["size"],
+                        row["runs"][0]["color"],
+                        row["tx"]
+                    ),
+                ));
+            }
         }
         max = max.max(page_max);
         if page_max > 100 && hot.len() < 12 {
@@ -961,10 +986,22 @@ fn poppler_preview_pixel_sweep() {
         }
     }
     let artboard = 3193u64 * 3821u64;
+    pages.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
     println!(
         "MEASURE sweep pages={} compared={compared} over16={over16} max={max} colors_pixels={colors_pixels} colors_over16={colors_over16} colors_artboard_pct={:.4} hot={hot:?}",
         rows.len(),
         100.0 * colors_over16 as f64 / artboard as f64
+    );
+    println!(
+        "MEASURE attr hist0={} hist1to16={} hist17to32={} hist33to64={} hist65={} tx0={} txhalf={} worst={:?}",
+        hist[0],
+        hist[1],
+        hist[2],
+        hist[3],
+        hist[4],
+        by_tx[0],
+        by_tx[1],
+        pages.iter().take(15).map(|p| p.2.as_str()).collect::<Vec<_>>()
     );
     assert!(
         hot.is_empty(),

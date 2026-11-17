@@ -757,6 +757,8 @@ const phrases: Record<string, string> = {
   "删除页面": "Delete page",
   "切换锁定": "Toggle lock",
   "切换可见性": "Toggle visibility",
+  "去掉描边": "Remove stroke",
+  "去掉填充": "Remove fill",
   "重命名图层": "Rename layer",
   "页面名称": "Page name",
   "重命名目标页面已不存在": "The page to rename no longer exists",

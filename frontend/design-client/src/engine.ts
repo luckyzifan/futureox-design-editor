@@ -4,7 +4,7 @@ import { PreviewLayout } from './kernel/preview-layout'
 import { PoseTopology, TranslationPreviewPlan, translationOnlyChanges } from './kernel/translation-preview'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
-import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
+import { applyDuplication, prepareDuplication, canContinueDuplication, duplicationCanvas, type DuplicationRepeat } from './commands/duplication-command'
 import { prepareLayoutAdd, applyLayoutAdd, prepareLayoutRemove, applyLayoutRemove, layoutCommandAdmission } from './commands/layout-command'
 import { reportPostcommitSubscriberError } from './postcommit-subscriber-error'
 import { SelectionCommandError, prepareSelectionArrangement, prepareSelectionWrap, configureSelectionWrapper,
@@ -42,6 +42,7 @@ import { prunePrototypeReferences, prototypeNeedsSchema12 } from './prototype'
 import { applyClipboardSemantics, captureClipboardSemantics, clipboardDependencyNodes, hasClipboardSemantics } from './clipboard-semantics'
 import { editableNetwork } from './editable-network'
 import { defaultPencil, defaultBrush, defaultMarker, defaultTape, SKETCH_PENCIL_COLOR, type PencilSettings } from './freehand'
+import { drawBrushPresetId, reconcileDrawBrush } from './draw-brush-style'
 import { wrappedInsertion } from './layout-order'
 import { sketchMaskScene } from './render-outline-mask'
 import { isEmptyLeafAlphaMask } from './mask-coverage'
@@ -1589,6 +1590,7 @@ export class Editor {
       (d) => {
         d.nodes[n.id] = cloneValue(n)
         d.pages.find((p) => p.id === this.state.page)!.children.push(n.id)
+        if (n.vectorBrush && d.schemaVersion < 15) d.schemaVersion = 15
         validateDocument(d)
       },
       [n.id],
@@ -1613,8 +1615,16 @@ export class Editor {
           const n = d.nodes[id]
           if (n) {
             if (n.locked && source !== 'properties' && !['切换锁定', '切换可见性', '重命名图层'].includes(label)) continue
+            const drawBrush = n.vectorBrush ? {
+              strokeWidth: n.strokes[0]?.width,
+              brushWidth: n.vectorBrush.width,
+              fillColor: n.fills[0]?.kind === 'solid' ? n.fills[0].color : undefined,
+              strokeColor: n.strokes[0]?.paint.kind === 'solid' ? n.strokes[0].paint.color : undefined,
+              preset: drawBrushPresetId(n.vectorBrush),
+            } : undefined
             if (typeof patch === 'function') patch(n, d)
             else Object.assign(n, patch)
+            if (drawBrush) reconcileDrawBrush(n, drawBrush)
             if (!n.strokes.every(validStroke) || !validProfiles(n))
               throw new Error('描边参数无效，请检查宽度控制点、虚线或闭合接缝')
           }
@@ -2852,7 +2862,8 @@ export class Editor {
       if (this.state.busy || this.interactionActive || !this.state.selection.length) return
       const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
       const plan = prepareDuplication(base, this.state.selection, { kind: 'default' },
-        { fresh: true, singleStep: true, mutable: false, repeat: this.duplicationRepeat() })
+        { fresh: true, singleStep: true, mutable: false, repeat: this.duplicationRepeat(),
+          canvas: duplicationCanvas(interfacePreference.getSnapshot().uiMode) })
       const selected: string[] = []
       let reference = new Map<string, Matrix>()
       const result = this.change('创建副本', draft => {

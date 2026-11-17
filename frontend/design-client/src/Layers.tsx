@@ -338,9 +338,10 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
       !editor.state.doc.nodes[id]) return
     reveal.current = id
     editor.select(layerSelection(rows.map((row) => row.id), editor.state.selection, id, selectionAnchor.current, { range, toggle }))
-    // Panel selection drives the camera: the canvas pans the new selection into
-    // view (it never re-scales). Canvas clicks do not route through here.
-    editor.requestReveal(editor.state.selection)
+    // Figma pans this selection into view and keeps the current zoom.
+    // Sketch keeps that zoom and viewport; Zoom to Selection frames the layer.
+    // Canvas clicks do not route through here.
+    if (uiMode !== 'sketch') editor.requestReveal(editor.state.selection)
     if (!range) selectionAnchor.current = id
     setFocused(id)
     if (focus) {

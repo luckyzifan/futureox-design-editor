@@ -16,7 +16,7 @@ import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
 import { altMeasurementTarget, measurementTicks, SPACING_RED } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameTitleShown } from './page-frame-chrome'
-import { useInterfacePreferences } from './interface-preference'
+import { interfacePreference, useInterfacePreferences } from './interface-preference'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
 import { actionGeometry, compareActionGeometry } from './canvas-action-geometry'
@@ -123,8 +123,10 @@ import { GIF_FIRST_FRAME_RULE } from './image-import'
 import { currentPreparedDocumentJson } from './prepared-document'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
+import { brushPreviewSettings } from './draw-brush-style'
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
+import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, keyboardPlacesTool } from './keyboard-placement'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
@@ -416,6 +418,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
   const [size, setSize] = useState({ width: 1000, height: 800 })
+  const sizeRef = useRef(size)
+  sizeRef.current = size
   const displayView = referenceOverlayCamera({
     cpu: presented?.computeBackend === 'cpu',
     live: state.view,
@@ -607,6 +611,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (entry && !ownsTextEntry(entry)) setTextEdit(null)
   }, [editor.sessionGeneration, state.page])
   const [geometryReady, setGeometryReady] = useState(false)
+  const geometryReadyRef = useRef(false)
+  geometryReadyRef.current = geometryReady
   useEffect(() => {
     let alive = true
     initializePicking()
@@ -775,7 +781,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const draft = pencil.current
     if (!draft) return
     try {
-      setPencilPreview(freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool, draft.uiMode))
+      const previewSettings = draft.tool === 'brush' ? brushPreviewSettings(draft.settings) : draft.settings
+      setPencilPreview(freehandNode(draft.id, draft.input.samples, previewSettings, draft.zoom, draft.tool, draft.uiMode))
     } catch (error) {
       cancelPencil()
       editor.notify(String(error))
@@ -1301,6 +1308,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!e.repeat) editor.set({ showOverview: !editor.state.showOverview })
         return
       }
+      // Resolve before pen commit so Shift+G cannot write the in-progress path.
+      if (shortcut?.command === 'toggle-layout-guides' && !drag.current && !pencil.current) {
+        void dispatchEditorShortcut(editor, e, shortcutContext)
+        return
+      }
       if(!mod&&e.shiftKey&&e.code==='KeyR'&&!drag.current){e.preventDefault();editor.set({rulers:!editor.state.rulers});return}
       if(e.altKey&&!mod&&e.code==='KeyR'&&!drag.current&&editor.topSelection().length){e.preventDefault();setOrigin(origin.current.point,!origin.current.visible);return}
       const creation = drag.current
@@ -1430,6 +1442,34 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (penRef.current) {
           finishPen()
           return
+        }
+        // Figma layout: an armed frame, shape, or text tool places one
+        // click-sized object on Return, centered on the viewport. Lines and
+        // the pen stay on the branches above and do not insert a new object.
+        // Shift+Enter already selected the parent. Child entry and text or
+        // vector edit still run when the move tool is active.
+        const placeTool = editor.state.tool
+        const placeTarget = e.target
+        if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !drag.current && !pencil.current &&
+            !editor.state.busy && !editor.interactionActive &&
+            interfacePreference.getSnapshot().uiMode === 'figma' &&
+            host.current && placeTarget instanceof Node && host.current.contains(placeTarget) &&
+            keyboardPlacesTool(placeTool)) {
+          const width = host.current.clientWidth || sizeRef.current.width
+          const height = host.current.clientHeight || sizeRef.current.height
+          if (width > 0 && height > 0) {
+            const placed = keyboardPlacedNode(placeTool, keyboardPlacementPoint(displayViewRef.current, { width, height }),
+              geometryReadyRef.current && (editor.state.snapPixels || placeTool === 'frame' || placeTool === 'section'))
+            const pageId = editor.state.page
+            const result = editor.change(`创建${placed.name}`, document => {
+              insertKeyboardPlacedNode(document, pageId, placed)
+            }, [placed.id])
+            if (result?.status === 'committed') {
+              if (placed.kind === 'text') setTextEdit(placed.id)
+              if (!creationToolStaysArmed(placeTool)) editor.set({ tool: 'select' })
+            }
+            return
+          }
         }
         if (editor.selectChildren()) return
         if (editor.state.selection.length === 1) {
@@ -1767,7 +1807,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const input = new PencilInput(e.pointerId, s[tool].pressure)
       input.append([e.nativeEvent], map)
       editor.begin(tool === 'pencil' ? '绘制铅笔路径' : '绘制画笔路径')
-      pencil.current = { actionToken: actionTrace.begin(CanvasAction.create, ActionSource.pointer, {routeSupported:true,geometrySupported:false}), actionRevision:editor.state.version, input, map, id: uid(), settings: { ...s[tool] }, tool, uiMode, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
+      const settings = tool === 'brush' && uiMode === 'figma' ? { ...s[tool] } : brushPreviewSettings({ ...s[tool] })
+      pencil.current = { actionToken: actionTrace.begin(CanvasAction.create, ActionSource.pointer, {routeSupported:true,geometrySupported:false}), actionRevision:editor.state.version, input, map, id: uid(), settings, tool, uiMode, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
       pencilFrame.current = requestAnimationFrame(pencilPreviewFrame)
       return
     }
@@ -3144,6 +3185,27 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           onPointerDown={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
         >
+          {state.tool === 'brush' && uiMode === 'figma' && (
+            <select
+              aria-label={chromeCopy.brushStyle}
+              value={state.brush.style ?? ''}
+              onChange={(event) => {
+                const brush = { ...state.brush }
+                const value = event.target.value
+                if (value === 'heist' || value === 'bubblegum') brush.style = value
+                else delete brush.style
+                editor.set({ brush })
+              }}
+            >
+              <option value="">{chromeCopy.brushStyleBasic}</option>
+              <optgroup label={chromeCopy.brushStyleStretch}>
+                <option value="heist">Heist</option>
+              </optgroup>
+              <optgroup label={chromeCopy.brushStyleScatter}>
+                <option value="bubblegum">Bubblegum</option>
+              </optgroup>
+            </select>
+          )}
           <NumberField
             label={chromeCopy.brushWidth}
             historyLabel="笔宽"

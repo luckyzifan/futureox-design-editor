@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
 import { screenToWorld } from './canvas-camera'
-import { blank, node } from './model'
+import { blank, node, paint, stroke } from './model'
 import { editorCommands } from './editor-commands'
 import { closeCommandSearch, commandSearchSnapshot } from './command-search-session'
 import { closeLayerFind } from './layer-find-session'
@@ -26,7 +26,9 @@ describe('bounded keyboard presets', () => {
   test.each(contexts)('$profile $platform desktop=$desktop has unique chords and existing commands only', context => {
     const bindings = shortcutBindings(context)
     expect(new Set(bindings.map(binding => binding.combo)).size).toBe(bindings.length)
-    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find']).toContain(binding.command)
+    for (const binding of bindings) expect([...editorCommands, 'toggle-lock', 'toggle-visibility', 'open-command-search', 'open-layer-find', 'toggle-layout-guides']).toContain(binding.command)
+    const layoutGuides = bindings.filter(binding => binding.command === 'toggle-layout-guides').map(binding => binding.combo)
+    expect(layoutGuides).toEqual(context.profile === 'figma-like' ? ['Shift+G'] : [])
     const search = bindings.filter(binding => binding.command === 'open-command-search').map(binding => binding.combo).sort()
     expect(search).toEqual(context.profile === 'sketch-like' ? ['Mod+K', 'S'] : [])
     const find = bindings.filter(binding => binding.command === 'open-layer-find').map(binding => binding.combo)
@@ -223,6 +225,14 @@ describe('bounded keyboard presets', () => {
     expect(resolveShortcut(key('O', { code: 'KeyO', ctrlKey: true, shiftKey: true }), { ...context, platform: 'windows' })?.command).toBe('toggle-outlines')
     expect(resolveShortcut(key('O', { code: 'KeyO', metaKey: true, altKey: true }), context)?.command).toBe('outline-stroke')
     expect(resolveShortcut(key('O', { code: 'KeyO', ctrlKey: true, altKey: true }), { ...context, platform: 'windows' })?.command).toBe('outline-stroke')
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true }), context)?.command).toBe('toggle-layout-guides')
+    expect(resolveShortcut(key('g', { code: 'KeyG', ctrlKey: true }), context)).toBeNull()
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true, metaKey: true }), context)?.command).toBe('ungroup')
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true, ctrlKey: true }), { ...context, platform: 'windows' })?.command).toBe('ungroup')
+    expect(resolveShortcut(key('G', { code: 'KeyG', shiftKey: true }), { ...context, profile: 'sketch-like' })).toBeNull()
+    expect(shortcutLabel('toggle-layout-guides', context)).toBe('⇧ G')
+    expect(shortcutLabel('toggle-layout-guides', { ...context, platform: 'windows' })).toBe('Shift+G')
+    expect(shortcutLabel('toggle-layout-guides', { ...context, profile: 'sketch-like' })).toBeUndefined()
     expect(resolveShortcut(key('e', { shiftKey: true }), context)?.command).not.toBe('outline-stroke')
     expect(resolveShortcut(key('n'), { ...context, profile: 'sketch-like' })?.command).toBe('set-tool-comments')
     editor.set({ tool: 'pen' })
@@ -241,6 +251,29 @@ describe('bounded keyboard presets', () => {
     editor.addPage()
     await dispatchEditorShortcut(editor, key('PageUp', { code: 'PageUp' }), context)
     expect(editor.state.page).toBe(first)
+  })
+  test('Shift+G hides layout guides in view state and leaves the undo stack on the document edit', async () => {
+    const { editor, a } = fixture(), context: ShortcutContext = { profile: 'figma-like', platform: 'linux' }
+    const original = editor.state.doc
+    editor.change('rename', draft => { draft.nodes[a.id].name = 'Renamed' })
+    const renamed = editor.state.doc
+    expect(renamed).not.toBe(original)
+    const version = editor.state.version
+    await dispatchEditorShortcut(editor, key('G', { code: 'KeyG', shiftKey: true }), context)
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    expect(editor.state.doc).toBe(renamed)
+    expect(editor.state.version).toBe(version)
+    await dispatchEditorShortcut(editor, key('G', { code: 'KeyG', shiftKey: true, repeat: true }), context)
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    await dispatchEditorShortcut(editor, key('g', { code: 'KeyG', ctrlKey: true }), { ...context, platform: 'mac' })
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    expect(editor.state.doc).toBe(renamed)
+    editor.undo()
+    expect(editor.state.doc.nodes[a.id].name).not.toBe('Renamed')
+    expect(editor.state.showAuthoredLayout).toBe(false)
+    await dispatchEditorShortcut(editor, key('G', { code: 'KeyG', shiftKey: true }), context)
+    expect(editor.state.showAuthoredLayout).toBe(true)
+    expect(editor.canUndo).toBe(false)
   })
   test('sketch command search chords do not edit; figma S remains slice', async () => {
     const { editor } = fixture(), before = editor.state.doc
@@ -281,6 +314,115 @@ describe('bounded keyboard presets', () => {
     expect(editor.state.tool).toBe('slice')
     expect(editor.state.doc).toBe(before)
     expect(commandSearchSnapshot()).toBe(0)
+  })
+  test('Figma Option+/ removes fills in one undo while Shift+/ removes strokes', async () => {
+    const doc = blank('Remove fill')
+    doc.schemaVersion = 4
+    const shape = node('rectangle', 10, 20, 40, 30)
+    const hiddenFill = paint('#ff8800')
+    hiddenFill.visible = false
+    shape.fills = [paint('#112233'), hiddenFill]
+    shape.strokes = [stroke('#101010', 3)]
+    const empty = node('rectangle', 80, 20, 20, 20)
+    empty.fills = []
+    empty.strokes = [stroke()]
+    const text = node('text', 120, 20, 80, 40)
+    text.text = 'Ab'
+    text.fills = [paint('#00aa00')]
+    text.textRuns = [{ start: 0, end: 2, color: '#abcdef', weight: 700 }]
+    const runOnly = node('text', 120, 80, 40, 20)
+    runOnly.text = 'Z'
+    runOnly.fills = []
+    runOnly.textRuns = [{ start: 0, end: 1, color: '#111111' }]
+    const frame = node('frame', 220, 20, 80, 80)
+    const child = node('rectangle', 8, 8, 16, 16)
+    frame.children = [child.id]
+    const locked = node('rectangle', 320, 20, 24, 24)
+    locked.locked = true
+    const hidden = node('rectangle', 360, 20, 24, 24)
+    hidden.visible = false
+    for (const item of [shape, empty, text, runOnly, frame, child, locked, hidden]) doc.nodes[item.id] = item
+    doc.pages[0].children = [shape.id, empty.id, text.id, runOnly.id, frame.id, locked.id, hidden.id]
+    const editor = new Editor(doc)
+    editors.push(editor)
+    const mac: ShortcutContext = { profile: 'figma-like', platform: 'mac', desktop: true }
+    const optionSlash = () => key('÷', { code: 'Slash', altKey: true })
+    expect(resolveShortcut(optionSlash(), mac)?.command).toBe('remove-fill')
+    expect(resolveShortcut(key('/', { code: 'Slash', altKey: true }), mac)?.command).toBe('remove-fill')
+    expect(resolveShortcut(key('/', { code: 'Slash', altKey: true }), { ...mac, platform: 'windows' })?.command).toBe('remove-fill')
+    expect(resolveShortcut(key('/', { code: 'Slash', altKey: true }), { ...mac, platform: 'linux' })?.command).toBe('remove-fill')
+    expect(shortcutLabel('remove-fill', mac)).toBe('⌥ /')
+    expect(shortcutLabel('remove-fill', { ...mac, platform: 'windows' })).toBe('Alt+/')
+    expect(resolveShortcut(key('/', { code: 'Slash' }), mac)).toBeNull()
+    expect(resolveShortcut(key('/', { code: 'Slash', altKey: true, shiftKey: true }), mac)).toBeNull()
+    expect(resolveShortcut(key('?', { code: 'Slash', shiftKey: true }), mac)?.command).toBe('remove-stroke')
+    expect(resolveShortcut(key('÷', { code: 'KeyQ', altKey: true }), mac)).toBeNull()
+    expect(resolveShortcut(key('÷', { code: 'Slash', altKey: true, shiftKey: true }), mac)).toBeNull()
+    expect(resolveShortcut(optionSlash(), { ...mac, profile: 'sketch-like' })).toBeNull()
+    expect(shortcutLabel('remove-fill', { ...mac, profile: 'sketch-like' })).toBeUndefined()
+
+    editor.select([shape.id, empty.id, text.id, frame.id, locked.id, hidden.id])
+    const before = editor.state.doc
+    const version = editor.state.version
+    await dispatchEditorShortcut(editor, optionSlash(), mac)
+    const cleared = editor.state.doc
+    expect(editor.state.version).toBe(version + 1)
+    expect(editor.canUndo).toBe(true)
+    expect(editor.state.message).toBe('去掉填充')
+    expect(editor.state.selection).toEqual([shape.id, empty.id, text.id, frame.id, locked.id, hidden.id])
+    for (const id of [shape.id, text.id, frame.id, locked.id, hidden.id]) expect(cleared.nodes[id].fills).toEqual([])
+    expect(cleared.nodes[shape.id].strokes).toEqual(before.nodes[shape.id].strokes)
+    expect(cleared.nodes[empty.id]).toEqual(before.nodes[empty.id])
+    expect(cleared.nodes[text.id].textRuns).toEqual([{ start: 0, end: 2, weight: 700 }])
+    expect(cleared.nodes[child.id]).toEqual(before.nodes[child.id])
+    expect(cleared.nodes[runOnly.id]).toEqual(before.nodes[runOnly.id])
+    const held = key('÷', { code: 'Slash', altKey: true, repeat: true })
+    expect(await dispatchEditorShortcut(editor, held, mac)).toBe(true)
+    expect(editor.state.doc).toBe(cleared)
+    expect(editor.state.version).toBe(version + 1)
+    editor.undo()
+    expect(editor.state.doc).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+    editor.redo()
+    expect(editor.state.doc).toEqual(cleared)
+    editor.undo()
+
+    editor.select([shape.id])
+    await dispatchEditorShortcut(editor, key('/', { code: 'Slash', altKey: true }), { profile: 'figma-like', platform: 'windows' })
+    expect(editor.state.doc.nodes[shape.id].fills).toEqual([])
+    expect(editor.state.doc.nodes[text.id].fills).toEqual(before.nodes[text.id].fills)
+    expect(editor.state.doc.nodes[shape.id].strokes).toEqual(before.nodes[shape.id].strokes)
+    editor.undo()
+    expect(editor.state.doc).toEqual(before)
+
+    editor.select([empty.id])
+    const emptyBefore = editor.state.doc
+    await dispatchEditorShortcut(editor, optionSlash(), mac)
+    expect(editor.state.doc).toBe(emptyBefore)
+    expect(editor.canUndo).toBe(false)
+    editor.select([runOnly.id])
+    await dispatchEditorShortcut(editor, key('/', { code: 'Slash', altKey: true }), { profile: 'figma-like', platform: 'linux' })
+    expect(editor.state.doc).toBe(emptyBefore)
+    expect(editor.state.doc.nodes[runOnly.id].textRuns?.[0].color).toBe('#111111')
+
+    editor.select([shape.id])
+    const typing = key('/', { code: 'Slash', target: { closest: (query: string) => query.includes('textarea') ? {} : null } as unknown as EventTarget })
+    expect(await dispatchEditorShortcut(editor, typing, mac)).toBe(false)
+    expect(typing.preventDefault).not.toHaveBeenCalled()
+    const optionTyping = key('÷', { code: 'Slash', altKey: true, target: { closest: (query: string) => query.includes('textarea') ? {} : null } as unknown as EventTarget })
+    expect(await dispatchEditorShortcut(editor, optionTyping, mac)).toBe(false)
+    expect(optionTyping.preventDefault).not.toHaveBeenCalled()
+    expect(editor.state.doc).toBe(emptyBefore)
+
+    const sketchEvent = key('/', { code: 'Slash', altKey: true })
+    expect(await dispatchEditorShortcut(editor, sketchEvent, { profile: 'sketch-like', platform: 'mac', desktop: true })).toBe(false)
+    expect(sketchEvent.preventDefault).not.toHaveBeenCalled()
+    const shiftSlash = key('?', { code: 'Slash', shiftKey: true })
+    expect(await dispatchEditorShortcut(editor, shiftSlash, mac)).toBe(true)
+    expect(editor.state.doc.nodes[shape.id].strokes).toEqual([])
+    expect(editor.state.doc.nodes[shape.id].fills).toEqual(before.nodes[shape.id].fills)
+    editor.undo()
+    expect(editor.state.doc).toEqual(emptyBefore)
   })
   test('platform identification uses the OS, not a Mac-only assumption', () => {
     expect(shortcutPlatform('MacIntel')).toBe('mac'); expect(shortcutPlatform('Win32')).toBe('windows'); expect(shortcutPlatform('Linux x86_64')).toBe('linux')

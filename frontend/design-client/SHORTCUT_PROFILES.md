@@ -17,10 +17,15 @@
 | 查找图层 | 桌面 Mod+F 打开左侧查找，不写入文档。浏览器保留 Mod+F | 底栏搜索过滤图层树；Ctrl+F 仅显示相关图层。桌面 Mod+F 仍是框选成画板 |
 | 评论 | C | N |
 | 添加 / 移除自动布局 | Shift+A / Alt+Shift+A | Shift+S / Alt+Shift+S |
+| 去掉描边 | Shift+/ | 不绑定 |
+| 去掉填充 | Alt+/。Mac US Option 输出 ÷，对应物理键 Slash | 此方案不含该键 |
 | 键盘尺寸微调 | macOS：Cmd+方向键 1；Cmd+Shift+方向键 10；Windows/Linux 本批未增加绑定 | Mod+方向键 1；Mod+Shift+方向键 10 |
 | 覆盖粘贴（保留目标） | Shift+Mod+V，单目标 | Shift+Mod+V，每个目标一份 |
 | 选区居中，保持倍率 | 菜单 | 桌面 Mod+3；浏览器用菜单 |
 | 原始大小 / 适合全部 / 适合选择 | Shift+0 / 1 / 2 | 桌面 Cmd+0 / 1 / 2；浏览器 Shift+0 / 1 / 2 |
+| 显示或隐藏全部布局参考线 | Shift+G，只改视图状态，不写入文档历史 | 既有 ⌃L（mac），不改 |
+
+Figma-like 的 Shift+/ 对应官方键盘布局表中的 Remove stroke。US 键盘按住 Shift 时该键产生 `?`，物理键仍是 Slash。它清掉选区顶层图层的整组描边（含隐藏描边、描边样式引用和描边宽度绑定），一步撤销恢复；没有描边时不写入历史。填充样式本身保持链接；若该样式还携带描边，解析会把描边写回，这条快捷键不解除填充样式。绑定不含 Control，因此不占用 ⌃⇧?。⌥/ 去掉填充，以及 Sketch 的 ⇧B 切换描边可见性，都不在这条绑定里。其它键盘布局把 Remove stroke 改到逗号或冒号等键上，本机预设仍按 US/Generic 的 Shift+/。
 
 Sketch 布局的命令搜索复用现有编辑命令、对齐和几何入口，按名称、别名和完整快捷键过滤，并显示禁用原因。查询、高亮和焦点只留在界面会话里，不进入文档历史。Figma 布局的 S 仍是切片。Sketch 文档已改为 F=Frame；不是旧版 Artboard 的 A。Windows/Linux 用 Ctrl 替代 Cmd。Sketch 的 stack layout 在此只对应已有自动布局命令，不代表布局语义完全一致。双方原有的本地编组、复制属性、导出 PNG、反选等命令继续保留；例如 Cmd+Shift+C 仍是复制 PNG，不能理解为 Sketch 的复制在线链接。抓手 H、区域缩放 Z、画笔 B 等已有本地工具仍可使用。Sketch-like 的 E 归切片使用，橡皮不再显示错误的 E 提示。
 

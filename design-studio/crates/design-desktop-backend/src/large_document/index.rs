@@ -55,6 +55,105 @@ pub(super) struct DiskIndex {
     data: String,
 }
 const STREAM_CHUNK: usize = 64 * 1024;
+const ENTRY_MAGIC: &[u8; 4] = b"FXE1";
+fn push_u32(out: &mut Vec<u8>, value: u32) { out.extend_from_slice(&value.to_le_bytes()); }
+fn push_u64(out: &mut Vec<u8>, value: u64) { out.extend_from_slice(&value.to_le_bytes()); }
+fn push_str(out: &mut Vec<u8>, value: &str) -> io::Result<()> {
+    let len = u32::try_from(value.len()).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index record string is too long"))?;
+    push_u32(out, len);
+    out.extend_from_slice(value.as_bytes());
+    Ok(())
+}
+fn push_span(out: &mut Vec<u8>, span: large_json::Span) {
+    push_u64(out, span.start);
+    push_u64(out, span.end);
+}
+/// Same Entry the JSON side file stored, without a second serde document.
+/// Rows still own navigation identity; this record is only the field table.
+fn encode_entry(entry: &large_json::Entry, out: &mut Vec<u8>) -> io::Result<()> {
+    out.clear();
+    out.extend_from_slice(ENTRY_MAGIC);
+    push_str(out, &entry.id)?;
+    push_str(out, &entry.name)?;
+    push_str(out, &entry.kind)?;
+    push_span(out, entry.member);
+    push_span(out, entry.span);
+    match entry.parent {
+        Some(parent) => {
+            out.push(1);
+            push_u64(out, u64::try_from(parent).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index parent does not fit"))?);
+        }
+        None => out.push(0),
+    }
+    push_u64(out, u64::try_from(entry.depth).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index depth does not fit"))?);
+    let count = u32::try_from(entry.fields.len()).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index field count does not fit"))?;
+    push_u32(out, count);
+    for field in &entry.fields {
+        push_str(out, &field.key)?;
+        push_span(out, field.member);
+        push_span(out, field.value);
+    }
+    Ok(())
+}
+struct EntryCursor<'a> { bytes: &'a [u8], at: usize }
+impl EntryCursor<'_> {
+    fn take(&mut self, n: usize) -> io::Result<&[u8]> {
+        let end = self.at.checked_add(n).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Invalid index record"))?;
+        if end > self.bytes.len() { return Err(io::Error::new(io::ErrorKind::InvalidData, "Truncated index record")); }
+        let value = &self.bytes[self.at..end];
+        self.at = end;
+        Ok(value)
+    }
+    fn u32(&mut self) -> io::Result<u32> { Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap())) }
+    fn u64(&mut self) -> io::Result<u64> { Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap())) }
+    fn string(&mut self) -> io::Result<String> {
+        let n = self.u32()? as usize;
+        let bytes = self.take(n)?;
+        String::from_utf8(bytes.to_vec()).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index record is not UTF-8"))
+    }
+    fn span(&mut self) -> io::Result<large_json::Span> {
+        let start = self.u64()?;
+        let end = self.u64()?;
+        if end < start {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Reversed index span"));
+        }
+        Ok(large_json::Span { start, end })
+    }
+}
+fn decode_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
+    let mut cursor = EntryCursor { bytes, at: 0 };
+    if cursor.take(4)? != ENTRY_MAGIC { return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid index record")); }
+    let id = cursor.string()?;
+    let name = cursor.string()?;
+    let kind = cursor.string()?;
+    let member = cursor.span()?;
+    let span = cursor.span()?;
+    let parent = match cursor.take(1)? {
+        [0] => None,
+        [1] => Some(usize::try_from(cursor.u64()?).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index parent does not fit"))?),
+        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid index parent")),
+    };
+    let depth = usize::try_from(cursor.u64()?).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Index depth does not fit"))?;
+    let count = cursor.u32()? as usize;
+    // Even an empty key needs its length and two full spans.
+    const MIN_FIELD_BYTES: usize = 4 + 2 * (8 + 8);
+    if count > (bytes.len() - cursor.at) / MIN_FIELD_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid index field count"));
+    }
+    let mut fields = Vec::new();
+    fields.try_reserve_exact(count).map_err(io::Error::other)?;
+    for _ in 0..count {
+        fields.push(large_json::Field { key: cursor.string()?, member: cursor.span()?, value: cursor.span()? });
+    }
+    if cursor.at != bytes.len() { return Err(io::Error::new(io::ErrorKind::InvalidData, "Index record has trailing bytes")); }
+    Ok(large_json::Entry { member, id, name, kind, parent, depth, span, fields })
+}
+/// New indexes write compact records. A working copy saved by an older build
+/// still has JSON records; both decode to the same Entry.
+fn decode_stored_entry(bytes: &[u8]) -> io::Result<large_json::Entry> {
+    if bytes.starts_with(ENTRY_MAGIC) { decode_entry(bytes) }
+    else { serde_json::from_slice(bytes).map_err(io::Error::other) }
+}
 pub(super) struct ChunkReader {
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
     current: std::io::Cursor<Vec<u8>>,
@@ -132,18 +231,20 @@ impl DiskIndex {
         let mut entries = Vec::new();
         let mut locations = Vec::new();
         let mut at = 0;
+        let mut scratch = Vec::new();
         let summary = large_json::scan(reader, limit, |ordinal, entry| {
             if entries.len() <= ordinal {
                 entries.resize_with(ordinal + 1, Row::default);
                 locations.resize(ordinal + 1, Span::default());
             }
-            let bytes = serde_json::to_vec(&entry).map_err(io::Error::other)?;
-            writer.write_all(&bytes)?;
+            encode_entry(&entry, &mut scratch)?;
+            writer.write_all(&scratch)?;
+            let bytes_len = scratch.len() as u64;
             locations[ordinal] = Span {
                 start: at,
-                end: at + bytes.len() as u64,
+                end: at + bytes_len,
             };
-            at += bytes.len() as u64;
+            at += bytes_len;
             entries[ordinal] = Row::from_entry(&entry);
             Ok(())
         })
@@ -232,7 +333,7 @@ impl DiskIndex {
             .get(n)
             .ok_or_else(|| issue("Unknown source object"))?;
         let bytes = large_json::read_fragment(file, self.locations[n]).map_err(issue)?;
-        let mut entry: Entry = serde_json::from_slice(&bytes).map_err(issue)?;
+        let mut entry = decode_stored_entry(&bytes).map_err(issue)?;
         for edit in self.edits.iter().skip(self.generations[n]) {
             for field in &mut entry.fields {
                 adjust(&mut field.value, edit.span, edit.length)?;
@@ -320,7 +421,8 @@ impl DiskIndex {
                 field.member.start += span.start;
                 field.member.end += span.start;
             }
-            let raw = serde_json::to_vec(&e).map_err(issue)?;
+            let mut raw = Vec::new();
+            encode_entry(&e, &mut raw).map_err(issue)?;
             file.write_all(&raw).map_err(issue)?;
             locations.push(Span {
                 start: at,
@@ -369,6 +471,35 @@ mod stream_pipeline_tests {
         fs::create_dir(&p).unwrap();Self(p)
     }}
     impl Drop for Directory {fn drop(&mut self){let _=fs::remove_dir_all(&self.0);}}
+    #[test] fn compact_records_keep_identity_fields_and_reject_trailing_bytes() {
+        let d=Directory::new();
+        let source=json!({"_class":"page","do_objectID":"page","name":"页 🙂","layers":[
+            {"_class":"group","do_objectID":"g","name":"组","layers":[
+                {"_class":"rectangle","do_objectID":"r","name":"矩形","frame":{"x":1,"y":2,"width":3,"height":4},"rotation":12.5}
+            ]}
+        ]});
+        let bytes=serde_json::to_vec(&source).unwrap();
+        let scanned=large_json::index(bytes.as_slice(),1024*1024).unwrap();
+        let index=DiskIndex::build(bytes.as_slice(),1024*1024,&d.0).unwrap();
+        assert_eq!(index.entries.len(),scanned.entries.len());
+        for (i,expected) in scanned.entries.iter().enumerate() {
+            let actual=index.entry(i,&d.0).unwrap();
+            assert_eq!(serde_json::to_value(&actual).unwrap(),serde_json::to_value(expected).unwrap());
+        }
+        let mut torn=Vec::new();
+        encode_entry(&scanned.entries[0],&mut torn).unwrap();
+        torn.push(1);
+        assert!(decode_entry(&torn).is_err());
+        torn.pop();
+        assert_eq!(serde_json::to_value(decode_entry(&torn).unwrap()).unwrap(),serde_json::to_value(&scanned.entries[0]).unwrap());
+        let legacy=serde_json::to_vec(&scanned.entries[0]).unwrap();
+        assert_eq!(serde_json::to_value(decode_stored_entry(&legacy).unwrap()).unwrap(),serde_json::to_value(&scanned.entries[0]).unwrap());
+        let fieldless = large_json::Entry { fields: Vec::new(), ..scanned.entries[0].clone() };
+        encode_entry(&fieldless, &mut torn).unwrap();
+        let count = torn.len() - 4;
+        torn[count..].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(decode_entry(&torn).unwrap_err().kind(), io::ErrorKind::InvalidData);
+    }
     #[test] fn pipelined_index_matches_records_across_unicode_chunk_boundaries() {
         let d=Directory::new();let bytes=serde_json::to_vec(&json!({"nodes":{"n":{"id":"n","name":"Node","opaque":format!("{}🙂tail","a".repeat(65500)),"children":[]}}})).unwrap();
         let a=DiskIndex::build(bytes.as_slice(),1024*1024,&d.0).unwrap();let b=DiskIndex::build_pipelined(bytes.as_slice(),1024*1024,&d.0).unwrap();

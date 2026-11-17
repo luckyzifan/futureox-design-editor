@@ -11,9 +11,10 @@ function scene(kind: 'blur' | 'background-blur', progressive: boolean, visible =
   return { nodes: { lens: { blend: 'normal', fills: [], strokes: [], effects: [fx] } } } as unknown as GpuScene
 }
 
-test('managed WebGPU prepares the shared gradient composite for progressive background blur', () => {
-  expect(compositorModes(scene('background-blur', true)).has(46)).toBe(true)
+test('managed WebGPU prepares the radius tent for progressive background blur', () => {
+  expect(compositorModes(scene('background-blur', true)).has(65)).toBe(true)
+  expect(compositorModes(scene('background-blur', true)).has(46)).toBe(false)
   expect(compositorModes(scene('blur', true)).has(46)).toBe(true)
-  expect(compositorModes(scene('background-blur', false)).has(46)).toBe(false)
-  expect(compositorModes(scene('background-blur', true, false)).has(46)).toBe(false)
+  expect(compositorModes(scene('background-blur', false)).has(65)).toBe(false)
+  expect(compositorModes(scene('background-blur', true, false)).has(65)).toBe(false)
 })

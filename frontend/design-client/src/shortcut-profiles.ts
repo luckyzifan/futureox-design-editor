@@ -3,7 +3,7 @@ import { TOOL_COMMANDS } from './tool-registry'
 
 export type ShortcutProfile = 'figma-like' | 'sketch-like'
 export type ShortcutPlatform = 'mac' | 'windows' | 'linux'
-export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find'
+export type ShortcutAction = EditorCommand | 'toggle-lock' | 'toggle-visibility' | 'open-command-search' | 'open-layer-find' | 'toggle-layout-guides'
 export type ShortcutContext = { profile: ShortcutProfile; platform: ShortcutPlatform; desktop?: boolean }
 export type ShortcutBinding = { command: ShortcutAction; combo: string; repeat?: boolean; preserveFrameContents?: true }
 export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'isComposing' | 'defaultPrevented'> & { keyCode?: number; getModifierState?: (key: string) => boolean }
@@ -63,6 +63,17 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
       // conversion of strokes have separate shortcuts.
       { command: 'eraser-or-prototype', combo: 'Shift+E' },
       { command: 'outline-stroke', combo: 'Mod+Alt+O' },
+      // Mac desktop Figma "Remove stroke" is Shift+/. On a US keyboard that
+      // chord reports key "?" and code Slash. Control is not part of it:
+      // Control+Shift+? opens the shortcuts panel.
+      { command: 'remove-stroke', combo: 'Shift+/' },
+      // Figma's shortcut panel lists Layout guides as Shift+G on every
+      // documented layout, including US/Generic. The zoom-page Control+G
+      // chord is not this binding. Sketch keeps its own Ctrl+L handler.
+      { command: 'toggle-layout-guides', combo: 'Shift+G' },
+      // Figma keyboard layout: Remove fill is Option+/ on Mac (Alt+/ elsewhere).
+      // US Option+/ reports "÷"; the matcher maps that glyph back to Slash.
+      { command: 'remove-fill', combo: 'Alt+/' },
     )
     // Figma documents Shift, rather than Alt, for the Windows front/back chord.
     if (platform !== 'mac') for (const binding of bindings) {
@@ -80,8 +91,14 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
       const command = `resize-${dimension}-${direction}` as const
       bindings.push({ command, combo: `Mod+${key}`, repeat: true },
         { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+${key}`, repeat: true })
+      // Mac Sketch Option resizes only the container. Shift uses the large nudge.
+      // The chord stays bound when the frame cannot crop, so it does not fall
+      // through to a resize that moves the contents.
       if (profile === 'sketch-like' && platform === 'mac') {
-        bindings.push({ command, combo: `Mod+Alt+${key}`, repeat: true, preserveFrameContents: true })
+        bindings.push(
+          { command, combo: `Mod+Alt+${key}`, repeat: true, preserveFrameContents: true },
+          { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+Alt+${key}`, repeat: true, preserveFrameContents: true },
+        )
       }
     }
   }
@@ -114,6 +131,8 @@ function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) 
   if (shift && ((key === '[' && event.code === 'BracketLeft') || (key === ']' && event.code === 'BracketRight'))) return true
   if (key === '-' && shift && event.code === 'Minus') return true
   if (/^\d$/.test(key) && shift && event.code === `Digit${key}`) return true
+  // Shift+/ produces "?" on US keyboards. Match the Slash key, not every "?".
+  if (key === '/' && shift && event.code === 'Slash') return true
   if (event.key.toLowerCase() === key.toLowerCase()) return true
   // Explicit US/Generic Option outputs only. Preserve logical ASCII keys on
   // other layouts; never guess a base key for unknown symbols or dead keys.
@@ -123,6 +142,7 @@ function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) 
       'å': ['A', 'KeyA', false], 'π': ['P', 'KeyP', false],
       'ç': ['C', 'KeyC', false], '√': ['V', 'KeyV', false],
       '“': ['[', 'BracketLeft', false], '‘': [']', 'BracketRight', false],
+      '÷': ['/', 'Slash', false],
     }
     const known = optionOutputs[event.key]
     return !!known && key.toUpperCase() === known[0] && event.code === known[1] && event.shiftKey === known[2]

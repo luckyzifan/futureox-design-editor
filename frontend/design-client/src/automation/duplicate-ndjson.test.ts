@@ -3,6 +3,7 @@ import { PassThrough } from 'node:stream'
 import { Editor } from '../engine'
 import { blank, node } from '../model'
 import { translate, worldMatrix } from '../geometry'
+import { interfacePreference } from '../interface-preference'
 import { createEditorDesignAutomation } from './index'
 import { OperationBackend } from '../../../design-mcp/src/operation-backend.mjs'
 import { DesignMcpServer } from '../../../design-mcp/src/server.mjs'
@@ -39,9 +40,10 @@ async function fixture(kind: 'rectangle' | 'frame' = 'rectangle') {
   return { doc, item, editor, api, call, owner, duplicate }
 }
 
-for (const kind of ['rectangle', 'frame'] as const) test(`real NDJSON duplicate defaults use Core ${kind} placement and select the copy`, async () => {
+for (const kind of ['rectangle', 'frame'] as const) for (const uiMode of ['figma', 'sketch'] as const) test(`real NDJSON duplicate places a ${kind} consistently in ${uiMode} layout`, async () => {
+  interfacePreference.set({ uiMode })
   const f = await fixture(kind), before = f.editor.state.doc, [copy] = await f.duplicate([f.item.id])
-  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, kind === 'frame' ? 134 : 20, kind === 'frame' ? 20 : 30])
+  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 20, 30])
   expect(f.editor.state.selection).toEqual([copy]); expect(f.editor.state.version).toBe(1)
   const after = f.editor.state.doc
   expect((await f.call('history.undo', {}, f.owner())).isError).toBe(false); expect(f.editor.state.doc).toEqual(before)
