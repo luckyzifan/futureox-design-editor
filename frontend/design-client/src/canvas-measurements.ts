@@ -1,4 +1,5 @@
-import type { Bounds, Point } from './model'
+import type { Bounds, Matrix, Point } from './model'
+import type { TextVerticalMeasurement } from './kernel/picking'
 export type MeasurementAxis = 'horizontal' | 'vertical'
 export type Measurement = { from: Point; to: Point; distance: number; axis: MeasurementAxis; tick?: boolean; role?: 'box' | 'span' | 'gap' | 'padding' }
 export type SpacingPill = { text: string; anchor: Point; offset: Point }
@@ -11,6 +12,17 @@ const encloses = (outer: Bounds, inner: Bounds) => outer.x <= inner.x + EPS && o
   && outer.x + outer.width + EPS >= inner.x + inner.width && outer.y + outer.height + EPS >= inner.y + inner.height
 const segment = (x: number, y: number, u: number, v: number, axis: MeasurementAxis): Measurement =>
   ({ from: { x, y }, to: { x: u, y: v }, distance: Math.hypot(u - x, v - y), axis })
+
+/** Project the two text edges onto the canvas Y axis; keep the box's X extent. */
+export function textMeasurementBounds(box: Bounds, width: number, matrix: Matrix, text: TextVerticalMeasurement): Bounds {
+  const [, b, , d, , originY] = matrix
+  const left = Math.min(0, b * width), right = Math.max(0, b * width)
+  const baseline = originY + d * text.baselineY
+  const cap = text.capY === null ? null : originY + d * text.capY
+  const top = d < 0 ? baseline + left : cap === null ? box.y : cap + left
+  const bottom = d >= 0 ? baseline + right : cap === null ? box.y + box.height : cap + right
+  return Number.isFinite(top) && Number.isFinite(bottom) && bottom > top ? { ...box, y: top, height: bottom - top } : box
+}
 
 /** Figma Mac Option/Alt spacing between a selection and one other box.
  * The first box is the selection. A containing pair reports the four edge

@@ -9,12 +9,13 @@ import { Canvas } from './Canvas'
 import { Inspector } from './Inspector'
 import { Editor } from './engine'
 import { commonValue, selectionMetric } from './selection-properties'
-import { blank, node, type DesignNode } from './model'
+import { blank, defaultTextStyle, node, type DesignDocument, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { interfacePreference } from './interface-preference'
 import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
 import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 import { SPACING_RED } from './canvas-measurements'
+import { kernelTextLayout } from './kernel/picking'
 
 vi.mock('./kernel/Surface', async () => {
   const { useLayoutEffect } = await import('react')
@@ -54,7 +55,7 @@ beforeEach(() => {
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
 afterEach(async () => {
-  await act(async () => root.unmount()); editor.dispose(); interfacePreference.set({ locale: 'zh-CN' }); dom.window.close()
+  await act(async () => root.unmount()); editor.dispose(); interfacePreference.set({ locale: 'zh-CN', uiMode: 'figma' }); dom.window.close()
   vi.unstubAllGlobals(); vi.restoreAllMocks()
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
@@ -69,8 +70,8 @@ function bandSpan(d: string) {
     return Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
   })
 }
-async function render(nodes: DesignNode[], roots = nodes.map(n => n.id)) {
-  const doc = blank('Mac chrome'); doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
+async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), schemaVersion: DesignDocument['schemaVersion'] = 2) {
+  const doc = blank('Mac chrome'); doc.schemaVersion = schemaVersion; doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
   editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false, tool: 'select' })
   await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 8; i++) await Promise.resolve() })
   host().focus(); return editor.state.doc
@@ -189,6 +190,59 @@ test('Alt draws red gap lines to the hovered layer, not through the selection', 
   expect(pills).toEqual(expect.arrayContaining(['50', '40']))
   await act(async () => key('Alt', { altKey: false }, 'keyup'))
   expect(mount.querySelector('[data-testid="canvas-measurement"]')).toBeNull()
+})
+
+test('Sketch Control+Option measures the first cap above text and the last baseline below it', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
+  const above = node('rectangle', 100, 80, 40, 20)
+  const below = node('rectangle', 100, 340, 40, 20)
+  const text = node('text', 100, 150, 120, 110)
+  const shape = node('rectangle', 150, 40, 40, 24)
+  text.text = 'H\nH'
+  text.fontSize = 20
+  text.textStyle = { ...defaultTextStyle(), verticalAlign: 'center' }
+  await render([above, below, text, shape], undefined, 20)
+  const before = editor.authoredDocument, revision = editor.state.version
+  const actual = editor.state.doc.nodes[text.id]
+  const { glyphs } = kernelTextLayout(actual)
+  const cap = 150 + glyphs[0].y - 14.66 // Noto Sans SC cap height at 20 px.
+  const baseline = 150 + glyphs[1].y
+  const hover = async (x: number, y: number, ctrlKey = false) => {
+    await act(async () => pointer('pointermove', x, y, { altKey: true, ctrlKey }))
+    await flush()
+  }
+  const gap = () => {
+    const line = mount.querySelector('[data-testid="canvas-measurement"] [data-measure="gap"]')!
+    return ['y1','y2'].map(a => Number(line.getAttribute(a)))
+  }
+  const ctrl = async (pressed: boolean) => {
+    await act(async () => key('Control', { altKey: true, ctrlKey: pressed }, pressed ? 'keydown' : 'keyup'))
+  }
+
+  await act(async () => editor.select([above.id]))
+  await hover(110, 170)
+  expect(gap()).toEqual([100, 150])
+  await ctrl(true)
+  expect(gap()[1]).toBeCloseTo(cap, 9)
+  await ctrl(false)
+  expect(gap()).toEqual([100, 150])
+
+  await act(async () => editor.select([below.id]))
+  await hover(110, 170)
+  expect(gap()).toEqual([150 + actual.height, 340])
+  await hover(110, 170, true)
+  expect(gap()[0]).toBeCloseTo(baseline, 9)
+
+  await hover(160, 50)
+  const plainShape = gap()
+  await ctrl(true)
+  expect(gap()).toEqual(plainShape)
+  await act(async () => interfacePreference.set({ uiMode: 'figma' }))
+  await hover(110, 170, true)
+  expect(gap()).toEqual([150 + actual.height, 340])
+  expect(editor.authoredDocument).toBe(before)
+  expect(editor.state.version).toBe(revision)
+  expect(editor.canUndo).toBe(false)
 })
 
 test('Alt inside an empty frame reports the four paddings around the selection', async () => {
