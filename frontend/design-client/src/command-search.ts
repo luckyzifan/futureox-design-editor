@@ -9,6 +9,7 @@ import type { Editor } from './engine'
 import { userPages } from './fig-document'
 import type { InterfaceLocale } from './interface-preference'
 import { selectTopLevelCanvasIds } from './canvas-workflow-shortcuts'
+import { canMakeSketchGrid } from './sketch-make-grid'
 import { container } from './model'
 import { commitPendingEdits } from './pending-edits'
 import { formatShortcutCombo, shortcutBindings, type ShortcutContext } from './shortcut-profiles'
@@ -57,6 +58,7 @@ const catalog: readonly Spec[] = [
   { command: 'paste-to-replace', zh: '粘贴替换', en: 'Paste to replace', group: 'clipboard' },
   { command: 'paste-over-selection', zh: '覆盖粘贴（保留目标）', en: 'Paste over selection (keep targets)', group: 'clipboard' },
   { command: 'duplicate', zh: '创建副本', en: 'Duplicate', group: 'clipboard', aliases: ['duplicate', '副本'] },
+  { command: 'make-grid', zh: '制作网格', en: 'Make Grid', group: 'arrange' },
   { command: 'delete', zh: '删除', en: 'Delete', group: 'clipboard' },
   { command: 'copy-properties', zh: '复制属性', en: 'Copy properties', group: 'clipboard' },
   { command: 'paste-properties', zh: '粘贴属性', en: 'Paste properties', group: 'clipboard' },
@@ -197,6 +199,8 @@ function explain(editor: Editor, action: CommandSearchAction, context: ShortcutC
     return wrap.ok ? undefined : wrap.message
   }
   const command = action.command
+  if (command === 'make-grid') return canMakeSketchGrid(editor) ? undefined :
+    phrase(locale, '请选择同一容器内可移动且已排齐的图层', 'Select movable, aligned layers in the same container')
   if (command.startsWith('set-tool-')) return unavailableReason(command, locale) ?? undefined
   if (command === 'undo') return editor.canUndo ? undefined : phrase(locale, '没有可撤销的操作', 'Nothing to undo')
   if (command === 'redo') return editor.canRedo ? undefined : phrase(locale, '没有可重做的操作', 'Nothing to redo')
@@ -324,6 +328,7 @@ export function commandSearchEntries(editor: Editor, context: ShortcutContext, l
     entries.push({ ...entry, ...state, order: entries.length })
   }
   for (const spec of catalog) {
+    if (spec.command === 'make-grid' && context.uiMode !== 'sketch') continue
     if ((spec.command === 'select-all-force' || spec.command === 'select-all-top-level') &&
         (context.uiMode !== 'sketch' || context.profile !== 'sketch-like')) continue
     const presented = forms(spec, locale, multiple, lockedParent)
