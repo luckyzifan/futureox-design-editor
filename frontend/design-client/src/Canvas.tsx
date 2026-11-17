@@ -901,7 +901,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     setShapePreview(null)
     setHeldCreation(null)
   }, [editor, editor.sessionGeneration, state.page])
-  const hover = state.hover
   // Client coordinates survive sidebar resizing; convert against the current
   // canvas rectangle when a new presented snapshot becomes pickable.
   const hoverPoint = useRef<Point | null>(null)
@@ -916,7 +915,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     hoverTimer.current = setTimeout(() => { hoverTimer.current = null; navigationUntil.current = 0; refreshHover.current() }, 150)
   }
   useEffect(() => () => { if (hoverTimer.current !== null) clearTimeout(hoverTimer.current) }, [])
-  const [contextMenu, setContextMenu] = useState<Pick<CanvasContextMenuProps, 'x' | 'y' | 'worldPoint' | 'origin' | 'candidates'> | null>(null)
+  const [contextMenu, setContextMenu] = useState<Pick<CanvasContextMenuProps, 'x' | 'y' | 'worldPoint' | 'origin' | 'candidates' | 'layerPickerOnly'> | null>(null)
+  const [layerMenuPreview, setLayerMenuPreview] = useState<string | null>(null)
+  const hover = contextMenu?.layerPickerOnly ? layerMenuPreview : state.hover
   useEffect(() => setContextMenu(null), [state.page, editor.sessionGeneration])
   const [pen, setPen] = useState<Pen | null>(null)
   const [penShift, setPenShift] = useState(false)
@@ -3255,6 +3256,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           })
         }).map(entry => ({ id: entry.id, name: editor.state.doc.nodes[entry.id].name,
           locked: entry.locked || !interactivePath(editor.state.doc, editor.state.page, entry.id, false, parents).length }))
+        if (uiMode === 'sketch' && e.shiftKey) {
+          setLayerMenuPreview(null)
+          setContextMenu(candidates.length ? {
+            x: e.clientX, y: e.clientY, worldPoint: point, candidates, origin: 'canvas', layerPickerOnly: true,
+          } : null)
+          return
+        }
         const hit = (candidates[0]?.locked ? candidates[0].id : displayedHit(point)) || candidates[0]?.id
         if (hit && !editor.state.selection.includes(hit)) editor.select([hit])
         else if (!hit && uiMode === 'sketch') editor.select([])
@@ -3342,7 +3350,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         {formatAngleDegrees(drag.current.rotationDegrees)}
       </div>}
       {contextMenu && <CanvasContextMenu editor={editor} {...contextMenu} onEditText={editSelectedText}
-        onToggleUi={onToggleUi} onClose={() => setContextMenu(null)} />}
+        onLayerPreview={contextMenu.layerPickerOnly ? setLayerMenuPreview : undefined}
+        onToggleUi={onToggleUi} onClose={() => { setContextMenu(null); setLayerMenuPreview(null) }} />}
       {textEdit && state.doc.nodes[textEdit] && (
         <CanvasTextEditor
           viewport={size}
@@ -3633,7 +3642,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             })
           })()}
           {!hidePanChrome && hover &&
-            !selection.has(hover) &&
+            (!selection.has(hover) || contextMenu?.layerPickerOnly) &&
             !drag.current &&
             (() => {
               const e = entries.find((v) => v.id === hover)
