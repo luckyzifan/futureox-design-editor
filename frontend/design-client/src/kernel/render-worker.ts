@@ -973,6 +973,20 @@ self.onmessage = (e) => {
         self.postMessage({ id: request.id })
         return
       }
+      if (request.command === 'warm-canvas-preparation') {
+        const canvas = lanes.get('canvas')
+        if (preparation && backend === 'webgpu' && allowsResidentSdr(executionPolicy)) {
+          try { await engine(canvas) }
+          catch (error) {
+            // Optional warmup may fail. The first regular render can retry
+            // initialization under its normal recovery/ownership contract.
+            canvas.enginePromise = undefined
+            throw error
+          }
+        }
+        self.postMessage({ id: request.id })
+        return
+      }
       if(request.command==='prepare-source-display'){
         if(!gpu&&preparation&&backend==='webgpu'&&!executionPolicy.cpuOnly&&!executionPolicy.hdrCompositing){
           const {createGpu}=await import('./gpu/factory')
