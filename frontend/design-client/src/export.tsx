@@ -42,6 +42,21 @@ function repeatExport(doc: DesignDocument, target: ExportTarget): {doc: DesignDo
   }))
   return {doc:{...expanded,nodes},target}
 }
+
+/** Only a PNG selection containing a projected outline needs Figma's filter.
+ * Keep ordinary and explicitly encoded exports on their existing profiles. */
+function spatialPngProfile(authored: DesignDocument, projected: DesignDocument, target: ExportTarget) {
+  if (authored === projected || authored.colorManagement || target.kind !== 'selection' ||
+      (authored.rasterProfile && authored.rasterProfile !== 'analytic')) return
+  const pending = [...target.nodeIds]
+  while (pending.length) {
+    const id = pending.pop()!
+    const node = projected.nodes[id]
+    if (!node?.visible) continue
+    if (node.vectorGeometry && authored.nodes[id]?.vectorGeometry !== node.vectorGeometry) return 'figma' as const
+    for (const child of node.children) pending.push(child)
+  }
+}
 /** The vector writer admits one page only. Re-rooting a selection or the
  * current page leaves every other node in the copied map, and native
  * validation rejects that as an unreachable node. Drop those nodes from this
@@ -475,7 +490,10 @@ export async function exportRasterBatch(
     throw new Error('请选择 1–16 个不重复的导出倍率')
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
-  ;({doc,target} = repeatExport(kernelSpatialDocument(kernelLayout(doc)),target))
+  const authored = kernelLayout(doc)
+  const projected = kernelSpatialDocument(authored)
+  const spatialProfile = format === 'png' ? spatialPngProfile(authored, projected, target) : undefined
+  ;({doc,target} = repeatExport(projected,target))
   doc = projectSlice(doc,pageId,target)
   const box = rasterExportBounds(doc, pageId, target, format)
   const plans = scales.map((scale) => {
@@ -512,6 +530,7 @@ export async function exportRasterBatch(
           },
           transparent: true,
           grid: false,
+          rasterProfile: spatialProfile,
           colorOutput,
           ...(format === 'png' ? {} : { exportFormat: format }),
         },
