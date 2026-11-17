@@ -1456,8 +1456,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!e.repeat) editor.set({ showOverview: !editor.state.showOverview })
         return
       }
-      // Resolve before pen commit so Shift+G cannot write the in-progress path.
-      if (shortcut?.command === 'toggle-layout-guides' && !drag.current && !pencil.current) {
+      // View shortcuts must not commit an in-progress pen path.
+      if ((shortcut?.command === 'toggle-layout-guides' || shortcut?.command === 'toggle-pixel-grid') && !drag.current && !pencil.current) {
         void dispatchEditorShortcut(editor, e, shortcutContext)
         return
       }
@@ -1493,7 +1493,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         editor.set({ pixelPreview: s.pixelPreview ? 0 : s.lastPixelPreview })
         return
       }
-      if (mod && e.code === 'Quote') {
+      if (mod && e.code === 'Quote' && (mode === 'sketch' || (e.shiftKey && !e.altKey))) {
         e.preventDefault()
         if (e.shiftKey) editor.set({ snapPixels: !editor.state.snapPixels })
         else editor.set({ pixelGrid: !editor.state.pixelGrid })
