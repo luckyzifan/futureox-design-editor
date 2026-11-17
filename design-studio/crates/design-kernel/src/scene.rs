@@ -281,6 +281,8 @@ pub struct Node {
     /// Sketch Graphic: the frame owns proportional positioning of its contents.
     #[serde(default, skip_serializing_if = "crate::components::is_false")]
     pub graphic: bool,
+    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    pub sketch_template: bool,
     /// Renderer-only glyph outlines; never serialized into authored documents.
     #[serde(skip)]
     pub(crate) derived_path: Option<std::sync::Arc<Path>>,
@@ -1697,6 +1699,9 @@ impl Document {
             if self.schema_version < 31 && n.layout.as_ref().is_some_and(|layout| layout.stacking_order.is_some()) {
                 return Err("Stacking order requires schema 31".into());
             }
+            if n.sketch_template && (self.schema_version < 32 || n.kind != "frame") {
+                return Err("Sketch templates require a frame or graphic and schema 32".into());
+            }
             n.validate_layout()?;
             n.validate_strokes()?;
             if (n.blend != "pass-through" && !crate::blend::valid_mode(&n.blend))
@@ -1914,7 +1919,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if !(1..=31).contains(&self.schema_version)
+        if !(1..=32).contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

@@ -4,6 +4,7 @@ import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnosti
 import { operationStatusText } from './operation-status-messages'
 import { translateProfessional } from './professional-dialog-messages'
 import { FramePresetPanel } from './FramePresetPanel'
+import { SketchComponentsView, sketchComponentCategories, type SketchComponentCategory } from './SketchComponentsView'
 import { DrawPencilToolbar, FigmaToolbeltMode } from './FigmaDrawTools'
 import { frameSizePresetGate } from './frame-presets'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
@@ -207,6 +208,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const workspaceRootPending = useRef(false)
   const fileMenuTrigger = useRef<HTMLButtonElement>(null)
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>('layers')
+  const [sketchComponents, setSketchComponents] = useState(false)
+  const [sketchCategory, setSketchCategory] = useState<SketchComponentCategory>('symbols')
+  const sketchComponentSearch = useRef<HTMLInputElement>(null)
+  const sketchComponentsVisible = uiMode === 'sketch' && sketchComponents && !showHome
   const [sketchZoomHost, setSketchZoomHost] = useState<HTMLDivElement | null>(null)
   const [figmaZoomHost, setFigmaZoomHost] = useState<HTMLDivElement | null>(null)
   const workspaceActions = useRef<HTMLDetailsElement>(null)
@@ -898,11 +903,49 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowFramePresets('apply')
     return true
   }, [canUseSketchSelectionCommand, editor])
+  const switchSketchWorkspace = useCallback((components: boolean) => {
+    if (!canUseSketchSelectionCommand() || !commitPendingEdits(editor)) return false
+    editor.flushPendingView()
+    flushSync(() => {
+      setSketchComponents(components)
+      if (!components) {
+        setWorkspaceSection('layers')
+        setShowLayers(true)
+        setUiMinimized(false)
+      }
+    })
+    if (components) sketchComponentSearch.current?.focus({ preventScroll: true })
+    else document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
+    return true
+  }, [canUseSketchSelectionCommand, editor])
   useEffect(() => {
     if (uiMode !== 'sketch') return
     const shortcut = (event: KeyboardEvent) => {
       if (event.shiftKey || event.defaultPrevented || event.repeat ||
-          event.isComposing || event.keyCode === 229 || shortcutTargetOwnsKeyboard(event.target)) return
+          event.isComposing || event.keyCode === 229 || event.getModifierState('AltGraph')) return
+      const editable = shortcutTargetOwnsKeyboard(event.target)
+      const componentSearchFocused = sketchComponentsVisible && event.target === sketchComponentSearch.current
+      const onMac = shortcutPlatform() === 'mac'
+      const primary = onMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+      if ((!editable || componentSearchFocused) && onMac && event.ctrlKey && !event.metaKey && !event.altKey &&
+          (event.code === 'Digit1' || event.code === 'Digit2')) {
+        if (switchSketchWorkspace(event.code === 'Digit2')) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        return
+      }
+      if (sketchComponentsVisible) {
+        if ((editable && !componentSearchFocused) || !primary || !canUseSketchSelectionCommand()) return
+        const digit = !event.altKey && /^Digit([1-6])$/.exec(event.code)
+        if (digit) setSketchCategory(sketchComponentCategories[Number(digit[1]) - 1][0])
+        else if (event.altKey && event.code === 'KeyF') sketchComponentSearch.current?.focus({ preventScroll: true })
+        else return
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      if (editable) return
       if (matchesTypefaceShortcut(event)) {
         if (!canUseSketchSelectionCommand()) return
         const ids = editor.topSelection()
@@ -915,7 +958,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         }
         return
       }
-      const onMac = shortcutPlatform() === 'mac'
       if (onMac && event.code === 'KeyS' && event.ctrlKey && !event.metaKey) {
         if (canUseSketchSelectionCommand() && (event.altKey ? resetSketchLayerStyle(editor) : updateSketchLayerStyle(editor))) {
           event.preventDefault()
@@ -923,7 +965,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         }
         return
       }
-      const primary = onMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
       if (!primary || !event.altKey || event.code !== 'KeyR' || !canUseSketchSelectionCommand()) return
       if (!replaceSketchTemplate()) {
         const target = sketchReplacementTarget(editor)
@@ -937,7 +978,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', shortcut, true)
     return () => window.removeEventListener('keydown', shortcut, true)
-  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, editor, setShowInspector, setPropertiesTab])
+  }, [uiMode, canUseSketchSelectionCommand, replaceSketchTemplate, switchSketchWorkspace, sketchComponentsVisible, editor, setShowInspector, setPropertiesTab])
   const saveCurrentDesign = useCallback(() => {
     if (source) {
       if (source.ready && !source.busy && !source.locked) void source.save()
@@ -1382,11 +1423,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <span className="header-divider" />
         {uiMode === 'sketch' && <div className="sketch-workspace-switch" role="group" aria-label={panelText.sidebarContent}>
           <button type="button" aria-label={locale === 'en' ? 'Show canvas' : '显示画布'}
-            title={locale === 'en' ? 'Show canvas' : '显示画布'} aria-pressed={workspaceSection === 'layers'}
-            onClick={() => switchWorkspaceSection('layers')}><PanelLeftOpen size={16} /></button>
+            title={locale === 'en' ? 'Show canvas' : '显示画布'} aria-pressed={!sketchComponentsVisible}
+            onClick={() => switchSketchWorkspace(false)}><PanelLeftOpen size={16} /></button>
           <button type="button" aria-label={locale === 'en' ? 'Show components' : '显示组件'}
-            title={locale === 'en' ? 'Show components' : '显示组件'} aria-pressed={workspaceSection === 'assets'}
-            onClick={() => switchWorkspaceSection('assets')}><Puzzle size={16} /></button>
+            title={locale === 'en' ? 'Show components' : '显示组件'} aria-pressed={sketchComponentsVisible}
+            onClick={() => switchSketchWorkspace(true)}><Puzzle size={16} /></button>
         </div>}
         <div className="document-title">
           <button ref={fileMenuTrigger} className="brand" aria-label={panelText.fileMenu} aria-expanded={menu} onClick={() => setMenu(!menu)}>
@@ -1406,9 +1447,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
 
         </div>
         {inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
-        {uiMode === 'sketch' && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
+        {uiMode === 'sketch' && !sketchComponentsVisible && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
           onEditText={id => editText.current?.(id)}
-          onSection={switchWorkspaceSection} onImages={files => void importImageFiles(files)}
+          onSection={section => switchSketchWorkspace(section === 'assets')} onImages={files => void importImageFiles(files)}
           onPresets={() => { if (commitPendingEdits(editor)) setShowFramePresets('create') }}
           onReplaceTemplate={replaceSketchTemplate}
           onSystems={() => setShowTools(true)} onShapeBuilder={() => setShowShapeBuilder(true)} />}
@@ -1713,7 +1754,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           onClose={() => setShowHistory(false)}
         />
       )}
-      <main className={`editor-workspace ${showLayers && !uiMinimized ? '' : 'hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'hide-inspector'} ${uiMinimized ? 'ui-minimized' : ''}`} >
+      {sketchComponentsVisible ? <main className="editor-workspace">
+        <SketchComponentsView document={editor.authoredDocument} category={sketchCategory} onCategory={setSketchCategory}
+          searchField={sketchComponentSearch} onInsert={id => {
+            if (switchSketchWorkspace(false)) editor.insertComponent(id)
+          }} />
+      </main> : <main className={`editor-workspace ${showLayers && !uiMinimized ? '' : 'hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'hide-inspector'} ${uiMinimized ? 'ui-minimized' : ''}`} >
         <WorkspaceRail section={workspaceSection} onSection={switchWorkspaceSection}
           onFiles={libraryRailVisible(uiMode, libraryHostKind(desktopSession)) ? openPersistentLibrary : undefined}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
@@ -1770,7 +1816,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </div>
           <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />
         </div>
-      </main>
+      </main>}
       <BatchRenameDialog editor={editor} />
       <CommandSearch editor={editor} />
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
