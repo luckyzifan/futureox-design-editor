@@ -85,3 +85,20 @@ Same Public Sans / Roboto Mono files, poppler 24.02.0 `pdftoppm -r 72`, analytic
 952 shipped text-preview pages (Public Sans Regular/Light/Bold/SemiBold and Roboto Mono Regular) match the Quartz text matrices: max baseline error 0. Eleven centered labels differ in x by at most 0.048px (6 or 8 font units of kerning). Three pages that use Lucida Grande or Public Sans Thin were not shaped.
 
 Full poppler sweep of those 952 pages, analytic, same fonts: colors-page text crops have 42,653 pixels with channel delta > 16. The artboard is 3193×3821 = 12,200,453 pixels. That is 0.3496% of the artboard, under the historical >16/255 on >1% screening line. The largest single-pixel delta in the sweep is 88. Swatches were not re-composited; this counts text-preview pixels only. A Mac Sketch export, Electron, and Metal were not run (`/dev/dri` is absent; SwiftShader is not Metal).
+
+## 2026-11-17 exact mask bytes
+
+Baseline is `origin/main` `e9be5eb4056c1f8d1828715a65ca8b0032736327`. The text-preview PDF and the four committed crops were recreated from `uswds/uswds-for-designers` `color reference/uswds-colors.sketch` (git blob `74ae49acd2b62e9db96abd2753d57dc0319b02bc`, file SHA-256 `64ae57e92d8500e003334f5cdaeab37089af5d43e1f8825e180ae34eafbfe995`). `text-previews.pdf` SHA-256 `e24a3037ad80eb614ec17681c79e7f4d61d426dbadc5737389bd3436ce9f9ae6`. Poppler 24.02.0 `pdftoppm -r 72` reproduced `uswds-50v-sketch-preview.png`, `uswds-old-sketch-preview.png`, `uswds-column-sketch-preview.png`, and `uswds-changed-sketch-preview.png` byte for byte. The vendored Public Sans and Roboto Mono files match `fonts/public-sans.zip` and `fonts/roboto-mono.zip` in that repository byte for byte. Embedded subset outlines for the compared glyphs match those files; this is not a missing-font fallback.
+
+On that baseline the analytic area program turned each FreeType coverage byte into a full-width rectangle of height `byte/255`. Eight horizontal samples then kept only a multiple of 1/8. Colors-page text, same command as below:
+
+| | Main `e9be5eb4` | This change |
+| --- | ---: | ---: |
+| Pixels with channel delta 0 | 346,095 / 475,258 | 474,139 / 475,258 |
+| Pixels with delta 1…16 | 128,476 | 454 |
+| Pixels with delta > 16 | 687 | 665 |
+| Max channel delta | 65 | 59 |
+| `50v` / `Old` / column / `Changed values in 2.6.0` delta > 0 | 121 / 108 / 827 / 1,173 | 0 / 0 / 0 / 0 |
+| Sweep wall time, debug, one thread | 25.02 s | 25.22 s and 25.84 s |
+
+The rectangles are now `byte/255` wide and one pixel tall, so every sample span carries that fraction. CPU stamps the same eight additions directly. Figma profiles still draw outlines. Thresholds are unchanged. The 665 pixels still above 16 are labels whose advances differ from the Quartz text matrix by 1–8 font units and then cross Splash's quarter-pixel truncation; that position gap is not closed here. No Mac, Sketch, Electron, Metal, or full-page native export was run.
