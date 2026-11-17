@@ -27,11 +27,11 @@ export function alignmentAvailability(editor: Editor) {
     distribute: available && selectionCommandAdmission(doc, selection, 'distribute', parents).ok,
   }
 }
-export function alignSelection(editor: Editor, axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
+export function alignSelection(editor: Editor, axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false) {
   editor.setLiveArrangement(null)
   if (!commitPendingEdits(editor)) return
-  if (!alignmentAvailability(editor)[mode === 'distribute' ? 'distribute' : 'align']) return
-  editor.align(axis, mode)
+  if (!toTopLevelFrame && !alignmentAvailability(editor)[mode === 'distribute' ? 'distribute' : 'align']) return
+  editor.align(axis, mode, toTopLevelFrame)
 }
 
 export function canTidySelection(editor: Editor, distribute = alignmentAvailability(editor).distribute) {
@@ -57,13 +57,13 @@ function showArrangementPreview(editor: Editor, patches: NonNullable<Editor['liv
   } : null)
 }
 
-export function previewAlignment(editor: Editor, axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
+export function previewAlignment(editor: Editor, axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', toTopLevelFrame = false) {
   if (!alignmentAvailability(editor)[mode === 'distribute' ? 'distribute' : 'align']) {
     editor.setLiveArrangement(null)
     return
   }
   try {
-    const plan = editor.selectionAlignmentPlan(axis, mode)
+    const plan = editor.selectionAlignmentPlan(axis, mode, toTopLevelFrame)
     showArrangementPreview(editor, Object.fromEntries(plan.patches.map(({ id, transform }) => [id, { transform }])))
   } catch (error) {
     if (!(error instanceof SelectionCommandError)) throw error

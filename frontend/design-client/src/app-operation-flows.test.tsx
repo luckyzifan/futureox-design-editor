@@ -313,6 +313,56 @@ test('Space hides Sketch canvas guides and selection feedback until release with
   expect(editor!.state.version).toBe(revision)
 })
 
+test('Sketch Option-click aligns and previews against the common top-level frame', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Align to outer frame')
+  const outer = node('frame', 100, 50, 300, 200)
+  const inner = node('frame', 40, 35, 160, 110)
+  const child = node('rectangle', 25, 20, 40, 30)
+  const sibling = node('rectangle', 190, 45, 50, 50)
+  const outside = node('rectangle', 500, 80, 35, 35)
+  outer.children = [inner.id, sibling.id]
+  inner.children = [child.id]
+  inner.clip = false
+  for (const n of [outer, inner, child, sibling, outside]) doc.nodes[n.id] = n
+  doc.pages[0].children = [outer.id, outside.id]
+  await act(async () => { editor!.load(doc); editor!.select([child.id]); canvas().focus() })
+  const before = editor!.authoredDocument
+  const align = (name: string) => document.querySelector<HTMLButtonElement>(`.sketch-inspector-alignment [aria-label="${name}"]`)!
+  const click = (name: string, altKey = false) => act(async () => align(name).dispatchEvent(new MouseEvent('click', { bubbles: true, altKey })))
+  const option = (pressed: boolean) => key('Alt', { code: 'AltLeft', altKey: pressed }, pressed ? 'keydown' : 'keyup')
+  const x = (id: string) => editor!.state.doc.nodes[id].transform[4]
+  const previewX = () => Number(canvas().querySelector('[data-testid="arrangement-preview"] rect')?.getAttribute('x'))
+  await act(async () => align('左对齐').dispatchEvent(new MouseEvent('pointerover', { bubbles: true })))
+  expect(previewX()).toBe(140)
+  await option(true)
+  expect(previewX()).toBe(100)
+  await click('左对齐', true)
+  expect(x(child.id)).toBe(-40)
+  expect(editor!.state.doc.nodes[inner.id].children).toEqual([child.id])
+  await option(false)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  await click('左对齐')
+  expect(x(child.id)).toBe(0)
+  await act(async () => editor!.undo())
+
+  await act(async () => editor!.select([child.id, sibling.id]))
+  await click('右对齐', true)
+  expect([x(child.id), x(sibling.id)]).toEqual([220, 250])
+  await act(async () => editor!.undo())
+  await act(async () => editor!.select([outside.id]))
+  expect(align('左对齐').disabled).toBe(true)
+  await option(true)
+  expect(align('左对齐').disabled).toBe(false)
+  await click('左对齐', true)
+  expect(editor!.state.message).toContain('同一个顶层画框')
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+  await option(false)
+})
+
 test('Sketch align hover uses the reference layer and leaves history untouched until clicked', async () => {
   applyInterfaceLayout('sketch')
   await render()

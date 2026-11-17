@@ -1,4 +1,5 @@
 import { usePropertyText } from './property-interface-messages'
+import { useEffect, useRef, useState } from 'react'
 import { AlignLeft, AlignCenterHorizontal, AlignRight, AlignStartVertical, AlignCenterVertical, AlignEndVertical, FlipHorizontal2, FlipVertical2, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, MoreHorizontal, Grid2X2 } from 'lucide-react'
 import type { Editor } from './engine'
 import { alignmentAvailability, alignSelection, canTidySelection, previewAlignment, previewTidy, tidySelection } from './alignment-availability'
@@ -20,7 +21,39 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
   const { uiMode, locale } = useInterfacePreferences()
   const availability = alignmentAvailability(editor)
   const sketch = uiMode === 'sketch'
-  const clearPreview = sketch ? () => editor.setLiveArrangement(null) : undefined
+  const [optionHeld, setOptionHeld] = useState(false)
+  const hovered = useRef<{ axis: 'x' | 'y'; mode: 'start' | 'center' | 'end' | 'distribute' } | null>(null)
+  const clear = () => {
+    hovered.current = null
+    editor.setLiveArrangement(null)
+  }
+  const clearPreview = sketch ? clear : undefined
+  useEffect(() => {
+    if (!sketch) { setOptionHeld(false); return }
+    const modifiers = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') hovered.current = null
+      if (event.key !== 'Alt') return
+      setOptionHeld(event.altKey)
+      const control = hovered.current
+      if (control && control.mode !== 'distribute') previewAlignment(editor, control.axis, control.mode, event.altKey)
+    }
+    const blur = () => {
+      hovered.current = null
+      setOptionHeld(false)
+      editor.setLiveArrangement(null)
+    }
+    window.addEventListener('keydown', modifiers, true)
+    window.addEventListener('keyup', modifiers, true)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', modifiers, true)
+      window.removeEventListener('keyup', modifiers, true)
+      window.removeEventListener('blur', blur)
+      hovered.current = null
+    }
+  }, [editor, sketch])
+  const canAttemptFrame = sketch && optionHeld && !!editor.state.selection.length &&
+    !editor.state.busy && !editor.interactionActive
   const tidyLabel = locale === 'en' ? 'Tidy' : '整理'
   const positions = [
     ['x', 'start', '左对齐', AlignLeft], ['x', 'center', '水平居中', AlignCenterHorizontal], ['x', 'end', '右对齐', AlignRight],
@@ -29,11 +62,16 @@ export function AlignmentControls({ editor, compact = false }: { editor: Editor;
   ] as const
   const buttons = (controls: readonly typeof positions[number][]) => controls.map(([axis, mode, title, Icon]) => <button
     type="button" key={`${axis}:${mode}`} title={tr(title)} aria-label={tr(title)}
-    disabled={!availability[mode === 'distribute' ? 'distribute' : 'align']}
-    onPointerEnter={sketch ? () => previewAlignment(editor, axis, mode) : undefined}
+    disabled={mode === 'distribute' ? !availability.distribute : !availability.align && !canAttemptFrame}
+    onPointerEnter={sketch ? event => {
+      hovered.current = { axis, mode }
+      setOptionHeld(event.altKey)
+      previewAlignment(editor, axis, mode, event.altKey && mode !== 'distribute')
+    } : undefined}
     onPointerLeave={clearPreview} onBlur={clearPreview}
     onClick={event => {
-      alignSelection(editor, axis, mode)
+      hovered.current = null
+      alignSelection(editor, axis, mode, sketch && event.altKey && mode !== 'distribute')
       event.currentTarget.closest('details')?.removeAttribute('open')
     }}><Icon size={16}/></button>)
   return <div className={`alignment-controls${compact ? ' compact-alignment' : ''}`} role="group" aria-label={tr(compact ? "对齐" : "对齐与翻转")}>
