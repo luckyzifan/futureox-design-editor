@@ -2815,6 +2815,8 @@ export class GpuRenderer {
     const baseDims = p.image ? this.baseDims(p.image) : [image.rect.w, image.rect.h] as [number, number]
     const paintJson = JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile })
     const sketchBitmap = p.sketchBitmapSampling === true && !this.imageMips && !p.adjust
+    const motionAxis = sketchBitmap ? n.sketchMotionPhaseAxis : undefined
+    const sketchArgs: [boolean, number?] = motionAxis === undefined ? [sketchBitmap] : [sketchBitmap, motionAxis]
     const arguments_: Parameters<typeof image_byte_sampling_field_placed> = [JSON.stringify((n.previewSource || n).rect), new Float64Array((n.previewSource || n).matrix),
       new Float64Array(n.size), new Uint32Array(baseDims), paintJson, sample, level, new Int32Array(origin)]
     // Separable axes carry the same binary64-derived cells/fractions as the
@@ -2823,7 +2825,7 @@ export class GpuRenderer {
     const compact = this.driver.managed && this.driver.name === 'webgpu' && this.scene.compactImageFields !== false && import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0'
     const scope = compact && import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS !== '0' ? this.filterImageFields : undefined
     if (scope && containsRect(scope.rect, n.rect) && exactBlendLattice([scope.rect, n.rect])) {
-      const key = materialFieldKey([(n.previewSource || n).matrix, n.size, baseDims, paintJson, sample, level, origin, sketchBitmap])
+      const key = materialFieldKey([(n.previewSource || n).matrix, n.size, baseDims, paintJson, sample, level, origin, sketchBitmap, motionAxis])
       let field = scope.fields.get(key)
       if (field === undefined) {
         const inputs = ['image-axes-support', scope.rect, key]
@@ -2843,7 +2845,7 @@ export class GpuRenderer {
           try {
             const [, matrix, size, dimensions, paint, phase, mip, placement] = arguments_
             values = image_sampling_axes_placed(JSON.stringify(scope.rect),
-              matrix, size, dimensions, paint, phase, mip, placement, sketchBitmap)
+              matrix, size, dimensions, paint, phase, mip, placement, ...sketchArgs)
           } catch { /* bounded strip proof below remains authoritative */ }
           this.fieldBuildMs += performance.now() - started
           if (values.length && this.workingBytes + values.byteLength <= this.frameBudget) {
@@ -3303,11 +3305,13 @@ export class GpuRenderer {
     if (this.imageGrids.get(p)?.has(this.sampleIndex ?? 4)) return true
     if (this.scene.compactImageFields === false || import.meta.env.VITE_DESIGN_IMAGE_AXES === '0') return false
     const source = n.previewSource || n
+    const sketchBitmap = p.sketchBitmapSampling === true && !this.imageMips && !p.adjust
+    const motionAxis = sketchBitmap ? n.sketchMotionPhaseAxis : undefined
     let values: Float32Array
     try { values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
       new Float64Array(n.size), new Uint32Array(this.baseDims(p.image || '')),
       JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile }),
-      this.sampleIndex ?? 4, level, new Int32Array([0, 0]), p.sketchBitmapSampling === true && !this.imageMips && !p.adjust)
+      this.sampleIndex ?? 4, level, new Int32Array([0, 0]), sketchBitmap, motionAxis)
     } catch (error) {
       // The kernel rejects a whole-support proof over its sampling-field
       // guards instead of shrinking it. The regional path below stays exact

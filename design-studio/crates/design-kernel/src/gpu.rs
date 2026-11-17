@@ -692,6 +692,8 @@ pub struct GpuNode {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub sketch_zoom_sampling: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub sketch_motion_phase_axis: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub glass_shape: Option<crate::optics::GlassShape>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capture_replay: Option<crate::glass_capture::Replay>,
@@ -2112,6 +2114,8 @@ impl Compiler<'_> {
                 size: [n.width, n.height],
                 sketch_zoom_sampling: n.effects.iter().any(|e| e.visible && e.zoom_blur.is_some())
                     && crate::zoom_blur::sketch_sampling(self.doc, n),
+                sketch_motion_phase_axis: sketch_bitmap_sampling.then(||
+                    crate::paint::sketch_motion_phase_axis(self.doc, n)).flatten(),
                 glass_shape: n
                     .effects
                     .iter()

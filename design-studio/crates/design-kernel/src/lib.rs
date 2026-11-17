@@ -1134,6 +1134,7 @@ mod wasm {
         level: u32,
         origin: &[i32],
         sketch_bitmap: Option<bool>,
+        motion_axis: Option<u8>,
     ) -> Result<Vec<f32>, JsValue> {
         let rect = serde_json::from_str(rect).map_err(|e| JsValue::from_str(&format!("{e}")))?;
         let matrix: [f64; 6] = matrix
@@ -1162,6 +1163,7 @@ mod wasm {
             level,
             origin,
             sketch_bitmap == Some(true),
+            motion_axis,
         )
         .map_err(|e| JsValue::from_str(&e))
     }
@@ -1176,6 +1178,7 @@ mod wasm {
         level: u32,
         origin: &[i32],
         sketch_bitmap: Option<bool>,
+        motion_axis: Option<u8>,
     ) -> Result<Vec<f32>, JsValue> {
         let rect = serde_json::from_str(rect).map_err(|e| JsValue::from_str(&format!("{e}")))?;
         let matrix: [f64; 6] = matrix
@@ -1204,6 +1207,7 @@ mod wasm {
             level,
             origin,
             sketch_bitmap == Some(true),
+            motion_axis,
         )
         .map_err(|e| JsValue::from_str(&e))
     }
