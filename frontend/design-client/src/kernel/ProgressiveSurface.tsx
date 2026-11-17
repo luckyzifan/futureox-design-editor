@@ -1313,7 +1313,15 @@ export function ProgressiveSurfaceImpl(
         cacheHits: reused.length, cacheMisses: 0 })
     }
     const request = async (plan: RasterTile[], preparePlan: RasterTile[],
-      prefetch: { rim: RasterTile[]; cacheLimitSkipped: number; protect?: boolean }, bootstrapCoverage?: () => Promise<void>) => {
+      prefetch: { rim: RasterTile[]; cacheLimitSkipped: number; protect?: boolean }, bootstrapCoverage?: () => Promise<void>,
+      focus?: SurfaceProps['overview']) => {
+      const orderVisibleWork = (tiles: RasterTile[], priorities?: Map<RasterTile, import('./tile-cache').TileFillPriority>) => {
+        const residents = [...tileRef.current.values()].filter(tile => tile.document === doc &&
+          tile.revision === contract.revision && ready.current.has(tile.key))
+        if (!focus) return prioritizeUncoveredTiles(tiles, residents, viewport, priorities)
+        const { onScreen, offScreen } = prioritizeTileFill(tiles, focus)
+        return prioritizeUncoveredTiles([...onScreen, ...offScreen], residents, focus, priorities)
+      }
       protectedKeys.current = new Set([...plan, ...(prefetch.protect ? prefetch.rim : [])].map((t) => t.key))
       // Idle prefetch stays evictable. During pan, the bounded leading edge is
       // briefly protected too, so cache pressure cannot evict each new tile
@@ -1368,9 +1376,7 @@ export function ProgressiveSurfaceImpl(
             const pending = chunk.filter(tile => !isResident(tile))
             if (!pending.length) return Promise.resolve(undefined)
             const priorities = new Map<RasterTile, import('./tile-cache').TileFillPriority>()
-            const ordered = prioritizeUncoveredTiles(pending,
-              [...tileRef.current.values()].filter(tile => tile.document === doc &&
-                tile.revision === contract.revision && ready.current.has(tile.key)), viewport, priorities)
+            const ordered = orderVisibleWork(pending, priorities)
             if (repair) submittedRepair = true
             return c.render(
             doc,
@@ -1457,9 +1463,7 @@ export function ProgressiveSurfaceImpl(
           // a later batch must beat already-covered center refinement. Keep
           // the submit-time residency check for tiles delivered while waiting
           // on the mailbox, and leave the shared prepare/halo extent intact.
-          const ordered = prioritizeUncoveredTiles(tiles,
-            [...tileRef.current.values()].filter(tile => tile.document === doc &&
-              tile.revision === contract.revision && ready.current.has(tile.key)), viewport)
+          const ordered = orderVisibleWork(tiles)
           for (let i = 0; i < ordered.length && current(); i += batch)
             await submitChunk(ordered.slice(i, i + batch))
         },
@@ -2403,7 +2407,9 @@ export function ProgressiveSurfaceImpl(
               console.debug('[coverage] startup overview unavailable', String(error))
             }
           } : undefined
-        await request(plan, fullPlan, prefetch, bootstrap)
+        // With page continuity already displayed, refine the content before
+        // the empty pasteboard. This changes order only; every tile remains.
+        await request(plan, fullPlan, prefetch, bootstrap, reusePageOverview && pageFitsView ? extent : undefined)
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
         // not put it behind selection warm-up and ahead of the first pose.
