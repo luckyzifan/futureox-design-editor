@@ -6,6 +6,8 @@ import { requestBatchRename } from './batch-rename-session'
 import {activateTool} from './tool-activation'
 import { copySelectionAsset } from './clipboard-export'
 import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
+import { requestSketchSymbolDialog } from './sketch-symbol'
+import { fitSelectionToPixelBounds, roundSelectionToPixels } from './sketch-pixel-alignment'
 import type { Editor } from './engine'
 import { desktopBridge } from './desktop'
 import { assertClipboardSize as assertSize, CLIPBOARD_TEXT_PREFIX as TEXT_PREFIX, readEditorClipboard as readClipboard, writeWebGraphClipboard } from './clipboard-adapter'
@@ -14,10 +16,12 @@ import { blank, defaultSizing, node, paint, type Bounds, type DesignNode, type D
 import { clearWholeTextRunColor } from './text'
 import { lockedSelectionIds, sketchSelectionCommands } from './canvas-menu-model'
 import { fitBounds, fitSelectedBounds, zoomAt, zoomStep } from './canvas-camera'
-import { jumpFrame, jumpPage, jumpToNode } from './canvas-navigation'
+import { jumpFrame, jumpPage, jumpToNode, selectedTopLevelFrameBounds } from './canvas-navigation'
 import { togglePrototypeTab } from './prototype-chrome'
 import { allParents, apply, bounds, unionBounds, worldMatrix } from './geometry'
 import { selectionParentBounds } from './canvas-view'
+import { sketchAutoPin } from './sketch-auto-pin'
+import { swapSelectionPaints, toggleSketchPaintVisibility } from './sketch-paint-commands'
 import { canFitFrameContents, editableFrameCrop, frameCropPatches } from './selection-properties'
 import { interfacePreference } from './interface-preference'
 import { interactivePath } from './selection-hierarchy'
@@ -33,8 +37,9 @@ import type { ShortcutProfile } from './shortcut-profiles'
 import { toolForCommand, unavailableReason, TOOL_COMMANDS } from './tool-registry'
 
 export type SetToolCommand = `set-tool-${string}`
-export type EditorCommand = SketchBooleanCommand | AlignmentCommand | 'graphic-selection' | 'edit-frame-bounds' | 'toggle-outlines' | DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'zoom-next-frame' | 'zoom-previous-frame' | 'next-page' | 'previous-page' | 'eraser-or-prototype' | 'jump-to-node' | 'center-selection' | 'fit-frame-content' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'flatten' | 'convert-vector' | 'remove-stroke' | 'remove-fill'
-export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','flatten','convert-vector','new-page','zoom-next-frame','zoom-previous-frame','next-page','previous-page','eraser-or-prototype','jump-to-node','fit-frame-content','graphic-selection','edit-frame-bounds','toggle-outlines','remove-stroke','remove-fill', ...alignmentCommandIds, ...sketchBooleanCommandIds]
+type SketchPixelCommand = 'fit-pixel-bounds' | 'round-to-pixel'
+export type EditorCommand = SketchPixelCommand | SketchBooleanCommand | AlignmentCommand | 'graphic-selection' | 'edit-frame-bounds' | 'toggle-outlines' | DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'auto-pin-contents' | 'auto-pin-selection' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'zoom-top-level-frame' | 'zoom-next-frame' | 'zoom-previous-frame' | 'next-page' | 'previous-page' | 'eraser-or-prototype' | 'jump-to-node' | 'center-selection' | 'fit-frame-content' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'flatten' | 'convert-vector' | 'remove-stroke' | 'remove-fill' | 'swap-fills-and-strokes' | 'toggle-sketch-borders' | 'toggle-sketch-fills'
+export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'fit-pixel-bounds','round-to-pixel','copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','flatten','convert-vector','new-page','zoom-next-frame','zoom-previous-frame','next-page','previous-page','eraser-or-prototype','jump-to-node','fit-frame-content','graphic-selection','edit-frame-bounds','toggle-outlines','remove-stroke','remove-fill', ...alignmentCommandIds, ...sketchBooleanCommandIds, 'zoom-top-level-frame', 'auto-pin-contents', 'auto-pin-selection', 'swap-fills-and-strokes', 'toggle-sketch-borders', 'toggle-sketch-fills']
 /** Normalize the native menu/accelerator bridge at one renderer boundary.
  * Focus ownership remains in dispatchEditorCommand, not in the native host. */
 export function resolveDesktopEditorCommand(name: string): EditorCommand | undefined {
@@ -289,13 +294,15 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       else if (options.nodeId) jumpToNode(editor, options.nodeId, size)
       return
     }
-    if (command === 'center-selection') {
-      const box = selectionCameraBox(editor)
+    if (command === 'center-selection' || command === 'zoom-top-level-frame') {
+      const box = command === 'center-selection' ? selectionCameraBox(editor) : selectedTopLevelFrameBounds(editor)
       if (!box) return
       const host = typeof document === 'undefined' ? null : document.querySelector('[data-testid=canvas]')
       const width = host?.clientWidth || 800, height = host?.clientHeight || 600
       const view = editor.flushPendingView()
-      editor.set({ view: { ...view, x: width / 2 - (box.x + box.width / 2) * view.zoom, y: height / 2 - (box.y + box.height / 2) * view.zoom } })
+      editor.set({ view: command === 'zoom-top-level-frame'
+        ? fitSelectedBounds(box, { width, height }, 'sketch')
+        : { ...view, x: width / 2 - (box.x + box.width / 2) * view.zoom, y: height / 2 - (box.y + box.height / 2) * view.zoom } })
       return
     }
     if (command.startsWith('zoom-')) {
@@ -367,7 +374,15 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       }
       case 'auto-layout': editor.autoLayout(); break
       case 'remove-auto-layout': editor.autoLayout('none'); break
-      case 'create-component': editor.createComponent(); break
+      case 'auto-pin-selection':
+      case 'auto-pin-contents':
+        if (interfacePreference.getSnapshot().uiMode === 'sketch')
+          sketchAutoPin(editor, command === 'auto-pin-selection' ? 'selection' : 'contents')
+        break
+      case 'create-component':
+        if (interfacePreference.getSnapshot().uiMode !== 'sketch' || requestSketchSymbolDialog(editor) === undefined)
+          editor.createComponent()
+        break
       case 'detach-instance': if (editor.state.selection.length === 1 && editor.state.doc.nodes[editor.state.selection[0]]?.instance) editor.detachInstance(); break
       case 'mask-selection': editor.group(true); break
       case 'convert-section': editor.update(editor.topSelection(), n => {
@@ -399,6 +414,19 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'show-selection': editor.update(editor.state.selection, { visible: true }, '切换可见性'); break
       case 'convert-vector': editor.convert(); break
       case 'outline-stroke': await editor.geometry('outline'); action.result(ActionOutcome.observed, ActionReason.unobserved); break
+      case 'swap-fills-and-strokes': {
+        const { uiMode, locale } = interfacePreference.getSnapshot()
+        if (uiMode === 'sketch') swapSelectionPaints(editor, locale === 'en'
+          ? 'Some selected layers have fills or borders that cannot be swapped.'
+          : '选区包含无法交换填充与描边的图层。')
+        break
+      }
+      case 'toggle-sketch-borders':
+      case 'toggle-sketch-fills':
+        if (interfacePreference.getSnapshot().uiMode === 'sketch' &&
+            ['select', 'multiselect', 'scale', 'zoom'].includes(editor.state.tool))
+          toggleSketchPaintVisibility(editor, command === 'toggle-sketch-fills' ? 'fills' : 'strokes')
+        break
       case 'remove-fill':
       case 'remove-stroke': {
         const fills = command === 'remove-fill'
@@ -411,6 +439,12 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         break
       }
       case 'flatten': await editor.flattenSelection(); break
+      case 'fit-pixel-bounds':
+        if (interfacePreference.getSnapshot().uiMode === 'sketch') fitSelectionToPixelBounds(editor)
+        break
+      case 'round-to-pixel':
+        if (interfacePreference.getSnapshot().uiMode === 'sketch') roundSelectionToPixels(editor)
+        break
       case 'flip-horizontal':
       case 'flip-vertical': {
         const box = editor.selectionBounds()

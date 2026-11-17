@@ -73,6 +73,7 @@ afterEach(async () => {
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
 async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRoots: string[] = []) {
   const doc = blank('Selection workflows'); doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
+  if (nodes.some(node => node.graphic)) doc.schemaVersion = 23
   if (otherRoots.length) doc.pages.push({ ...doc.pages[0], id: uid(), name: 'Other page', children: otherRoots })
   await act(async () => { editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false }) })
   await act(async () => { root.render(<Harness />); for (let i = 0; i < 6; i++) await Promise.resolve() })
@@ -335,6 +336,31 @@ test('Mac Sketch Shift+Command+Option arrows resize only the container by the cu
   expect(editor.state.doc.nodes[scaled.id].width).toBeCloseTo(40 * 130 / 120, 6)
   expect(editor.state.doc.nodes[pinned.id].transform[4]).toBeCloseTo(80, 6)
   expect(editor.state.doc.nodes[pinned.id].width).toBe(20)
+})
+
+test('Mac Sketch large container nudges preserve the content of a Graphic under a rotated scaled frame', async () => {
+  shortcutPreference.set('sketch-like')
+  interfacePreference.set({ uiMode: 'sketch' })
+  nudgePreference.set({ small: 1, big: 12.5 })
+  const outer = node('frame', 0, 0, 600, 500)
+  outer.transform = [0, 1.25, -1.25, 0, 660, 80]
+  const graphic = node('frame', 90, 80, 120, 80)
+  graphic.graphic = true
+  const child = node('rectangle', 14, 15, 40, 24)
+  graphic.children = [child.id]
+  outer.children = [graphic.id]
+  const before = await render([outer, graphic, child], [outer.id])
+  await act(async () => editor.select([graphic.id]))
+  const chord = { metaKey: true, shiftKey: true, altKey: true }
+  await act(async () => key('ArrowRight', chord))
+  expect(editor.state.doc.nodes[graphic.id].width).toBeCloseTo(130, 8)
+  await act(async () => key('ArrowRight', { ...chord, repeat: true }))
+  expect(editor.state.doc.nodes[graphic.id].width).toBeCloseTo(140, 8)
+  expect(editor.canUndo).toBe(false)
+  await act(async () => key('ArrowRight', chord, 'keyup'))
+  expect(editor.state.doc.nodes[child.id]).toMatchObject({ width: 40, height: 24 })
+  delta(before, child.id, 0, 0)
+  await oneHistory(before)
 })
 
 test('Mac Sketch Shift+Command+Option does not fall back to a content resize when the frame cannot crop', async () => {

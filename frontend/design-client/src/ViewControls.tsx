@@ -30,6 +30,7 @@ export function ViewControls({
   const sketch = uiMode === 'sketch'
   const label = (zh: string, en: string) => locale === 'en' ? en : zh
   const centerKey = shortcutLabel('center-selection', shortcut)
+  const topFrameKey = shortcutLabel('zoom-top-level-frame', { ...shortcut, uiMode })
   const layoutGuidesKey = shortcutLabel('toggle-layout-guides', shortcut)
   const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const zoomPercentage = sketch ? Math.floor(liveZoom * 100 + 1e-9) : Number((liveZoom * 100).toFixed(1))
@@ -129,6 +130,10 @@ export function ViewControls({
             ))}
           </div>
           {sketch && fitButtons}
+          {sketch && <button type="button" disabled={!s.selection.length} onClick={() => {
+            void dispatchEditorCommand(editor, 'zoom-top-level-frame')
+            closeMenu()
+          }}>{label('缩放到顶层画框', 'Zoom to fit top-level frame')}{topFrameKey && `　${topFrameKey}`}</button>}
           {sketch && <button type="button" disabled={!s.selection.length} onClick={() => {
             void dispatchEditorCommand(editor, 'center-selection')
             if (menu.current) menu.current.open = false

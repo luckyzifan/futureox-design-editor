@@ -3,6 +3,7 @@ import { userPages } from './fig-document'
 import type { Bounds, DesignDocument, Point } from './model'
 import { allParents, scene, type SceneEntry } from './geometry'
 import { fitBounds, type CanvasSize } from './canvas-camera'
+import { interactivePath } from './selection-hierarchy'
 
 export type PrototypeLink = {
   id: string
@@ -14,6 +15,19 @@ export type PrototypeLink = {
   c2: Point
   offPage: boolean
   label?: string
+}
+
+/** The outermost frame must contain the entire visible selection on this page. */
+export function selectedTopLevelFrameBounds(editor: Editor): Bounds | undefined {
+  const { doc, page } = editor.state
+  const parents = editor.parentMap(doc)
+  let frame: string | undefined
+  for (const id of editor.topSelection(true)) {
+    const outer = interactivePath(doc, page, id, true, parents).find(at => doc.nodes[at].kind === 'frame')
+    if (!outer || (frame && frame !== outer)) return
+    frame = outer
+  }
+  return frame ? editor.entries().find(entry => entry.id === frame)?.bounds : undefined
 }
 
 export function pageOfNode(doc: DesignDocument, id: string): string | null {

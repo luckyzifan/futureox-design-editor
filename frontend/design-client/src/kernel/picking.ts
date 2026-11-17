@@ -159,6 +159,15 @@ export function kernelTextLayout(n: DesignNode) {
     glyphs: { pathTransform?:Matrix; size:number; cluster: number; clusterEnd: number; x: number; y: number; advance: number }[]
   }
 }
+export type TextVerticalMeasurement = { capY: number | null; baselineY: number }
+
+/** Only measure with the same document fonts as the displayed geometry. */
+export function kernelTextVerticalMeasurement(n: DesignNode, fonts: DesignDocument['fonts']) {
+  if (!ready || !layoutEngine || loadedFonts !== fonts) return null
+  try {
+    return JSON.parse(layoutEngine.text_vertical_measurement(JSON.stringify(n))) as TextVerticalMeasurement | null
+  } catch { return null }
+}
 export function kernelSvgPaths(n: DesignNode) {
   if (!ready || !layoutEngine) return null
   let paths = svgCache.get(n)

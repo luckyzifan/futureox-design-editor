@@ -61,6 +61,11 @@ test('a parked raster driver still receives the displayed bitmap receipt and the
     let gpu = { driver }
     const navigationJournal = { recording: false }
     const displayedOverlayAffines = () => undefined
+    // display-accept now asks the worker pose scheduler to run the accepted
+    // camera. That pipeline has its own contract tests; here it is a recorded
+    // collaborator so this slice keeps exercising the handoff itself.
+    const poseRequests: unknown[] = []
+    const schedulePose = () => { poseRequests.push(null) }
     let poseSession
     ${displayState}
     ${attach}

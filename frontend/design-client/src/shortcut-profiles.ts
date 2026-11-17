@@ -51,13 +51,25 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
     const { letter } = sketchBooleanCommands[command]
     bindings.push({ command, combo: `Mod+Alt+${letter}`, physicalCode: `Key${letter}` })
   }
+  if (uiMode === 'sketch' && platform === 'mac') bindings.unshift(
+    { command: 'create-component', combo: 'Mod+Y' },
+    { command: 'fit-pixel-bounds', combo: 'Ctrl+Mod+X' },
+    { command: 'round-to-pixel', combo: 'Mod+Shift+P' },
+  )
+  if (uiMode === 'sketch' && platform === 'mac' && desktop) bindings.unshift({ command: 'zoom-top-level-frame', combo: 'Mod+4' })
   if (profile === 'sketch-like') {
     tools.set('set-tool-default', undefined); tools.set('set-tool-pen', 'V'); tools.set('set-tool-pencil', 'P')
     tools.set('set-tool-slice', 'E'); tools.set('set-tool-eraser', undefined); tools.set('set-tool-comments', 'N')
     tools.set('set-tool-eyedropper', platform === 'mac' ? 'Ctrl+C' : 'Shift+I')
     tools.set('set-tool-section', undefined)
     tools.set('set-tool-graphic', 'G')
-    if (uiMode === 'sketch') tools.set('set-tool-hotspot', 'I')
+    if (uiMode === 'sketch') {
+      tools.set('set-tool-hotspot', 'I')
+      bindings.push({ command: 'auto-pin-selection', combo: 'Shift+A' }, { command: 'auto-pin-contents', combo: 'Alt+Shift+A' })
+      bindings.push({ command: 'swap-fills-and-strokes', combo: 'Shift+X' })
+      bindings.push({ command: 'toggle-sketch-borders', combo: 'Shift+B' })
+      bindings.push({ command: 'toggle-sketch-fills', combo: 'Shift+F' })
+    }
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' },
       { command: 'edit-frame-bounds', combo: 'Mod+Enter' })
     if (desktop) bindings.unshift({ command: 'fit-frame-content', combo: 'Mod+Shift+F' }, { command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })

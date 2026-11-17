@@ -152,9 +152,12 @@ describe('ruler toggle key follows the active preset (Figma ⇧R, Sketch ⌃R)',
     ['sketch-like', { shiftKey: true, altKey: true }, false],
     ['sketch-like', { metaKey: true }, false],
   ] as const)('%s %j -> %s', (profile, overrides, expected) => {
-    expect(rulersToggleEvent({ code: 'KeyR', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...overrides }, profile)).toBe(expected)
+    expect(rulersToggleEvent({ code: 'KeyR', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...overrides }, { profile, platform: 'mac' })).toBe(expected)
   })
   test('other keys never toggle rulers', () => {
-    for (const code of ['KeyT', 'KeyX', 'Enter']) expect(rulersToggleEvent({ code, metaKey: false, ctrlKey: false, shiftKey: true, altKey: false }, 'sketch-like')).toBe(false)
+    for (const code of ['KeyT', 'KeyX', 'Enter']) expect(rulersToggleEvent({ code, metaKey: false, ctrlKey: false, shiftKey: true, altKey: false }, { profile: 'sketch-like', platform: 'mac' })).toBe(false)
+  })
+  test.each(['windows', 'linux'] as const)('Control+R on %s remains available to the host', platform => {
+    expect(rulersToggleEvent({ code: 'KeyR', metaKey: false, ctrlKey: true, shiftKey: false, altKey: false }, { profile: 'sketch-like', platform })).toBe(false)
   })
 })

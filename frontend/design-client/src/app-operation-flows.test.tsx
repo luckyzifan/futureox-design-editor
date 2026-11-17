@@ -16,8 +16,10 @@ import { interfacePreference } from './interface-preference'
 import { fontTestBytes } from './font-test-fixtures'
 import { export_sketch_json, forma_decode_json, forma_encode_json, import_sketch_json } from './generated/design-kernel/design_kernel'
 import { worldMatrix } from './geometry'
+import { selectionParentBounds } from './canvas-view'
+import { screenToWorld, zoomAt } from './canvas-camera'
 import { kernelFillWorld } from './kernel/picking'
-import { blank, defaultLayout, defaultSizing, defaultTextStyle, node, paint, stroke } from './model'
+import { blank, defaultLayout, defaultLayoutGrid, defaultSizing, defaultTextStyle, node, paint, stroke, uid } from './model'
 import { nudgePreference } from './nudge-preference'
 import * as persistence from './persistence'
 import { shortcutPreference } from './shortcut-preference'
@@ -268,6 +270,493 @@ test('Sketch Control-T inserts a linked text style with the archived size and pa
   await act(async () => editor!.undo())
   expect(editor!.authoredDocument).toEqual(before)
   expect(editor!.canUndo).toBe(false)
+})
+
+test('Space hides Sketch canvas guides and selection feedback until release without rewriting preferences', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Space pan')
+  doc.schemaVersion = 12
+  const frame = node('frame', 42, 54, 150, 90)
+  frame.layoutGrid = { ...defaultLayoutGrid(), count: 4, gutter: 4, margin: 0 }
+  doc.nodes[frame.id] = frame
+  doc.pages[0].children = [frame.id]
+  doc.pages[0].guides = [{ id: uid(), axis: 'y', position: 32 }]
+  await act(async () => { editor!.load(doc) })
+  await act(async () => {
+    editor!.set({ rulers: true, grid: true, pixelGrid: true, view: { x: 20, y: 40, zoom: 4 } })
+    editor!.select([frame.id])
+    canvas().focus()
+  })
+  const authored = editor!.authoredDocument, revision = editor!.state.version
+  const chrome = (selector: string) => canvas().querySelector(selector)
+  const guides = '[data-testid="ruler-guide"]'
+  const layoutGrid = '[data-testid="authored-layout-grid-band"]'
+  const pixel = '[data-testid="pixel-grid"]'
+  const marks = ['.selection', '[data-testid="resize-edge-3"]', guides, layoutGrid, pixel]
+  for (const mark of marks) expect(chrome(mark)).not.toBeNull()
+
+  await key(' ', { code: 'Space' })
+  for (const mark of marks) expect(chrome(mark)).toBeNull()
+  expect(chrome('[data-testid="horizontal-ruler"]')).not.toBeNull()
+  expect(editor!.state).toMatchObject({ rulers: true, grid: true, pixelGrid: true })
+  await key(' ', { code: 'Space' }, 'keyup')
+  for (const mark of marks) expect(chrome(mark)).not.toBeNull()
+
+  await act(async () => { applyInterfaceLayout('figma'); canvas().focus() })
+  await key(' ', { code: 'Space' })
+  for (const mark of ['.selection', guides, layoutGrid, pixel]) expect(chrome(mark)).not.toBeNull()
+  await key(' ', { code: 'Space' }, 'keyup')
+  expect(editor!.state.selection).toEqual([frame.id])
+  expect(editor!.authoredDocument).toBe(authored)
+  expect(editor!.state.version).toBe(revision)
+})
+
+test('Sketch Shift+F restores mixed fill visibility and leaves input typing alone', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Toggle fills')
+  const painted = node('rectangle', 60, 40, 100, 90)
+  const emptyFill = node('line', 230, 40, 100, 90)
+  painted.fills = [paint('#ee0066'), { ...paint('#00bb77'), visible: false }]
+  painted.strokes = [stroke('#113399', 4)]
+  for (const n of [painted, emptyFill]) doc.nodes[n.id] = n
+  doc.pages[0].children = [painted.id, emptyFill.id]
+  await act(async () => { editor!.load(doc); editor!.select([painted.id, emptyFill.id]); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const fillFlags = () => editor!.state.doc.nodes[painted.id].fills.map(fill => fill.visible)
+  const toggle = () => key('F', { code: 'KeyF', shiftKey: true })
+
+  const input = document.createElement('input')
+  await act(async () => { document.body.append(input); input.focus() })
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', code: 'KeyF', shiftKey: true, bubbles: true })))
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => { input.remove(); canvas().focus() })
+
+  await toggle()
+  expect(fillFlags()).toEqual([false, false])
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(editor!.state.doc.nodes[painted.id].strokes).toEqual(before.nodes[painted.id].strokes)
+  expect(editor!.state.doc.nodes[emptyFill.id]).toBe(before.nodes[emptyFill.id])
+  await act(async () => { editor!.set({ tool: 'zoom' }) })
+  await toggle()
+  expect(fillFlags()).toEqual([true, false])
+  expect(editor!.authoredDocument).toEqual(before)
+  await act(async () => editor!.undo())
+  expect(fillFlags()).toEqual([false, false])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch Shift+B hides and restores the selection’s individual border flags', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Toggle borders')
+  const first = node('rectangle', 60, 40, 100, 90)
+  const second = node('ellipse', 230, 40, 100, 90)
+  first.strokes = [stroke('#ff0000', 6), { ...stroke('#00ff00', 3), visible: false }]
+  second.strokes = [stroke('#0000ff', 4)]
+  for (const n of [first, second]) doc.nodes[n.id] = n
+  doc.pages[0].children = [first.id, second.id]
+  await act(async () => { editor!.load(doc); editor!.select([first.id, second.id]); canvas().focus() })
+  const prior = editor!.authoredDocument, revision = editor!.state.version
+  const read = () => [first.id, second.id].map(id => editor!.state.doc.nodes[id].strokes.map(row => row.visible))
+  const toggle = () => key('B', { code: 'KeyB', shiftKey: true })
+  await toggle()
+  expect(read()).toEqual([[false, false], [false]])
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => { editor!.set({ tool: 'zoom' }) })
+  await toggle()
+  expect(read()).toEqual([[true, false], [true]])
+  expect(editor!.authoredDocument).toEqual(prior)
+  await act(async () => editor!.undo())
+  expect(read()).toEqual([[false, false], [false]])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(prior)
+  expect(editor!.canUndo).toBe(false)
+  await key('b', { code: 'KeyB' })
+  expect(editor!.state.tool).toBe('brush')
+})
+
+test('Sketch Shift+X swaps paint rows in order, preserving border geometry and one-step undo', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Swap paints')
+  const layer = node('rectangle', 60, 40, 100, 90)
+  const fillOnly = node('rectangle', 230, 40, 100, 90)
+  const unsupported = node('line', 400, 40, 100, 90)
+  const gradient = { ...paint('#f02040'), kind: 'linear' as const, visible: false }
+  layer.fills = [gradient, paint('#00bb90')]
+  layer.strokes = [
+    { ...stroke('#1030f0', 7), align: 'inside', dash: '4 2' },
+    { ...stroke('#8866aa', 3), visible: false },
+  ]
+  for (const n of [layer, fillOnly, unsupported]) doc.nodes[n.id] = n
+  doc.pages[0].children = [layer.id, fillOnly.id, unsupported.id]
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const press = () => key('X', { code: 'KeyX', shiftKey: true })
+  await act(async () => editor!.select([layer.id, unsupported.id]))
+  await press()
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+  await act(async () => editor!.select([layer.id, fillOnly.id]))
+
+  const input = document.createElement('input')
+  await act(async () => { document.body.append(input); input.focus() })
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'X', code: 'KeyX', shiftKey: true, bubbles: true })))
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => { input.remove(); canvas().focus() })
+
+  await press()
+  const updated = editor!.state.doc.nodes[layer.id]
+  expect(updated.fills.map(fill => [fill.color, fill.visible])).toEqual([['#1030f0', true], ['#8866aa', false]])
+  expect(updated.strokes[0]).toMatchObject({
+    width: 7, align: 'inside', dash: '4 2', visible: false,
+    paint: { kind: 'linear', stops: gradient.stops },
+  })
+  expect(updated.strokes[1]).toMatchObject({ width: 3, visible: true, paint: { color: '#00bb90' } })
+  const turnedIntoBorder = editor!.state.doc.nodes[fillOnly.id]
+  expect(turnedIntoBorder.fills).toEqual([])
+  expect(turnedIntoBorder.strokes).toHaveLength(1)
+  expect(turnedIntoBorder.strokes[0].paint.color).toBe(fillOnly.fills[0].color)
+  expect(editor!.state.version).toBe(revision + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch Shift+A auto-pins the selection, shows its pins, and restores prior constraints', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Auto Pin')
+  const frame = node('frame', 70, 80, 300, 200)
+  const child = node('rectangle', 246, 157, 40, 30)
+  const sibling = node('rectangle', 10, 16, 30, 20)
+  child.constraints = { horizontal: 'center', vertical: 'start' }
+  frame.children = [child.id, sibling.id]
+  for (const n of [frame, child, sibling]) doc.nodes[n.id] = n
+  doc.pages[0].children = [frame.id]
+  await act(async () => { editor!.load(doc); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const read = (id: string) => editor!.state.doc.nodes[id]
+  const press = (repeat = false) => key('A', { code: 'KeyA', shiftKey: true, repeat })
+  const active = (edge: string) => document.querySelector(`.constraint-box .edge-${edge}`)?.getAttribute('aria-pressed')
+  const expectPinned = () => {
+    expect(read(child.id).constraints).toMatchObject({ horizontal: 'end', vertical: 'end' })
+    expect(active('right')).toBe('true')
+    expect(active('bottom')).toBe('true')
+  }
+
+  await press()
+  await act(async () => editor!.select([frame.id]))
+  await press()
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => editor!.select([child.id]))
+  await press()
+  expect(editor!.state.version).toBe(revision + 1)
+  expectPinned()
+  expect(read(sibling.id).constraints).toBeUndefined()
+  expect(read(child.id).transform).toEqual(before.nodes[child.id].transform)
+  expect(read(frame.id).layout).toBeUndefined()
+  await press(true)
+  expect(editor!.state.version).toBe(revision + 1)
+  await press()
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(active('top')).toBe('true')
+  await act(async () => editor!.undo())
+  expectPinned()
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch Auto Pin Contents pins only direct children and is a single undoable edit', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Auto Pin Contents')
+  const frame = node('frame', 70, 80, 300, 200)
+  const bottomRight = node('rectangle', 246, 157, 40, 30)
+  const centered = node('ellipse', 130, 85, 40, 30)
+  const strip = node('rectangle', 0, 0, 300, 20)
+  const group = node('group', 12, 65, 70, 20)
+  const grandchild = node('rectangle', 0, 0, 70, 20)
+  group.children = [grandchild.id]
+  frame.children = [bottomRight.id, centered.id, strip.id, group.id]
+  for (const n of [frame, bottomRight, centered, strip, group, grandchild]) doc.nodes[n.id] = n
+  doc.pages[0].children = [frame.id]
+  await act(async () => { editor!.load(doc) })
+  const n = (id: string) => editor!.state.doc.nodes[id]
+  const revision = editor!.state.version, before = editor!.authoredDocument
+  const press = () => key('Å', { code: 'KeyA', altKey: true, shiftKey: true })
+
+  await act(async () => { editor!.select([bottomRight.id]); canvas().focus() })
+  await press()
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => editor!.select([frame.id]))
+  await press()
+  expect(editor!.state.version).toBe(revision + 1)
+  expect(n(bottomRight.id).constraints).toMatchObject({ horizontal: 'end', vertical: 'end' })
+  expect(n(centered.id).constraints).toMatchObject({ horizontal: 'center', vertical: 'center' })
+  expect(n(strip.id).constraints).toMatchObject({ horizontal: 'stretch', vertical: 'start' })
+  expect(n(group.id).constraints).toMatchObject({ horizontal: 'start', vertical: 'start' })
+  expect(n(grandchild.id).constraints).toBeUndefined()
+  expect(n(frame.id).constraints).toBeUndefined()
+  for (const id of frame.children) expect(n(id).transform).toEqual(before.nodes[id].transform)
+  await press()
+  expect(editor!.state.version).toBe(revision + 1)
+
+  await act(async () => { editor!.change('Resize fixture', draft => { draft.nodes[frame.id].width = 400; draft.nodes[frame.id].height = 260 }) })
+  expect(n(bottomRight.id).transform.slice(4)).toEqual([346, 217])
+  expect(n(centered.id).transform.slice(4)).toEqual([180, 115])
+  expect(n(strip.id).width).toBe(400)
+  await act(async () => editor!.undo())
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
+})
+
+test.each([false, true])('Sketch zooms a nested selection to its top-level frame (desktop: %s)', async desktop => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  if (desktop) Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true }, onCommand: () => () => {}, onCloseRequested: () => () => {},
+    setDirty: async () => ({}), readRecovery: async () => ({ status: 'cancelled' }), writeRecovery: async () => ({ status: 'ok' }),
+  } as unknown as DesktopBridge })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Frame zoom')
+  const frame = node('frame', 430, 190, 340, 240)
+  const nested = node('frame', 15, 30, 170, 120)
+  const child = node('rectangle', 8, 19, 25, 30)
+  const outside = node('rectangle', 45, 60, 60, 40)
+  frame.children = [nested.id]; nested.children = [child.id]
+  for (const n of [frame, nested, child, outside]) doc.nodes[n.id] = n
+  doc.pages[0].children = [frame.id, outside.id]
+  await act(async () => { editor!.load(doc) })
+  const view = { x: -38, y: 72, zoom: 1.25 }
+  await act(async () => { editor!.select([frame.id]); canvas().focus() })
+  await key('2', { code: 'Digit2', shiftKey: true })
+  const fitted = editor!.state.view
+  expect(fitted).not.toEqual(view)
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  await act(async () => { editor!.select([child.id]); editor!.set({ view }) })
+  const cmd4 = async () => {
+    const event = new KeyboardEvent('keydown', { key: '4', code: 'Digit4', metaKey: true, bubbles: true, cancelable: true })
+    await act(async () => canvas().dispatchEvent(event))
+    return event.defaultPrevented
+  }
+  expect(await cmd4()).toBe(desktop)
+  expect(editor!.state.view).toEqual(desktop ? fitted : view)
+  if (!desktop) {
+    const zoom = document.querySelector<HTMLDetailsElement>('.view-menu')!
+    await act(async () => { zoom.open = true; button('缩放到顶层画框').click() })
+    expect(editor!.state.view).toEqual(fitted)
+  }
+  expect(editor!.state.selection).toEqual([child.id])
+
+  await act(async () => { editor!.select([outside.id]); editor!.set({ view }); canvas().focus() })
+  if (desktop) await cmd4()
+  else await act(async () => button('缩放到顶层画框').click())
+  expect(editor!.state.view).toEqual(view)
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+  expect(editor!.canUndo).toBe(false)
+})
+
+test('Sketch held zoom uses the pointer or center and restores each page’s original camera', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Temporary zoom')
+  const page = doc.pages[0].id
+  const otherPage = uid()
+  doc.pages.push({ id: otherPage, name: 'Second', background: '#ffffff', children: [] })
+  const view = { x: -45, y: 84, zoom: 3.5 }
+  const point = { x: 240, y: 198 }
+  await act(async () => { editor!.load(doc) })
+  await act(async () => {
+    editor!.setViewCoalesced(view)
+    editor!.pointerScreen = point
+    canvas().focus()
+  })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  expect(editor!.effectiveView()).toEqual(view)
+  const down = () => key('~', { code: 'Backquote', shiftKey: true })
+  const up = () => key('`', { code: 'Backquote' }, 'keyup')
+  await down()
+  expect(editor!.state.view).toEqual(zoomAt(view, 1, point))
+  const previewPoint = screenToWorld(editor!.state.view, point)
+  const originalPoint = screenToWorld(view, point)
+  expect(previewPoint.x).toBeCloseTo(originalPoint.x, 10)
+  expect(previewPoint.y).toBeCloseTo(originalPoint.y, 10)
+  await key('~', { code: 'Backquote', shiftKey: true, repeat: true })
+  expect(editor!.state.view).toEqual(zoomAt(view, 1, point))
+  await up()
+  expect(editor!.state.view).toEqual(view)
+
+  editor!.pointerScreen = null
+  await key('§', { code: 'IntlBackslash' })
+  expect(editor!.state.view).toEqual(zoomAt(view, 1, { x: 500, y: 400 }))
+  await act(async () => window.dispatchEvent(new Event('blur')))
+  expect(editor!.state.view).toEqual(view)
+
+  await down()
+  await act(async () => editor!.switchPage(otherPage))
+  const second = editor!.state.view
+  await up()
+  expect(editor!.state.view).toEqual(second)
+  await act(async () => editor!.switchPage(page))
+  expect(editor!.state.view).toEqual(view)
+
+  const input = document.createElement('input')
+  document.body.append(input)
+  try {
+    await act(async () => {
+      input.focus()
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: '~', code: 'Backquote', shiftKey: true, bubbles: true }))
+    })
+    expect(editor!.state.view).toEqual(view)
+  } finally { input.remove() }
+  expect(editor!.authoredDocument).toBe(before)
+  expect(editor!.state.version).toBe(revision)
+})
+
+test('Sketch Shift-Command-P rounds coordinates and dimensions independently while preserving rotation', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Round to Pixel')
+  const plain = node('rectangle', -10.5, 21.51, 45.5, 18.5)
+  const rotated = node('rectangle', 120.43, 78.71, 61.24, 32.59)
+  rotated.transform = [.8, .6, -.6, .8, 120.43, 78.71]
+  const integer = node('rectangle', 240, 86, 60, 48)
+  const text = node('text', 310.27, 110.42, 128, 36)
+  doc.nodes = Object.fromEntries([plain, rotated, integer, text].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [plain.id, rotated.id, integer.id, text.id]
+  const ids = [plain.id, rotated.id, integer.id]
+  await act(async () => { editor!.load(doc); editor!.select(ids); canvas().focus() })
+  const before = editor!.authoredDocument, revision = editor!.state.version
+  const round = () => key('P', { code: 'KeyP', shiftKey: true, metaKey: true })
+  await act(async () => editor!.set({ tool: 'vector' }))
+  await round()
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => { editor!.set({ tool: 'select' }); editor!.select([text.id]) })
+  await key('Enter')
+  const textarea = document.querySelector<HTMLTextAreaElement>('.rich-text-editor textarea')!
+  expect(textarea).toBeTruthy()
+  await act(async () => textarea.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'P', code: 'KeyP', shiftKey: true, metaKey: true, bubbles: true, cancelable: true,
+  })))
+  expect(editor!.authoredDocument).toBe(before)
+  await act(async () => textarea.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true, cancelable: true,
+  })))
+  await act(async () => { editor!.select(ids); canvas().focus() })
+  await round()
+  const after = editor!.authoredDocument
+  expect(after.nodes[plain.id]).toMatchObject({ transform: [1, 0, 0, 1, -11, 22], width: 46, height: 19 })
+  expect(after.nodes[integer.id]).toBe(before.nodes[integer.id])
+  const layer = after.nodes[rotated.id], box = selectionParentBounds(after, rotated.id), old = selectionParentBounds(before, rotated.id)
+  expect(layer.width).toBeCloseTo(61, 8)
+  expect(layer.height).toBeCloseTo(33, 8)
+  expect(box.x).toBeCloseTo(Math.round(old.x), 8)
+  expect(box.y).toBeCloseTo(Math.round(old.y), 8)
+  for (const [i,value] of layer.transform.slice(0, 4).entries()) expect(value).toBeCloseTo(rotated.transform[i], 8)
+  expect(editor!.state.version).toBe(revision + 1)
+  await round()
+  expect(editor!.authoredDocument).toBe(after)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+})
+
+test('Sketch Control-Command-X fits each selected bounds outward and undoes the change together', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Pixel fitting')
+  const plain = node('rectangle', -12.22, -21.68, 20.38, 10.45)
+  const parent = node('frame', 90.3, 75.7, 300, 200)
+  const rotated = node('rectangle', 22.2, 16.8, 61.5, 33.4)
+  rotated.transform = [.8, .6, -.6, .8, 22.2, 16.8]
+  parent.children = [rotated.id]
+  doc.nodes = Object.fromEntries([plain, parent, rotated].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [plain.id, parent.id]
+  const ids = [plain.id, rotated.id]
+  await act(async () => { editor!.load(doc); editor!.select(ids); canvas().focus() })
+  const before = editor!.authoredDocument, version = editor!.state.version, snap = editor!.state.snapPixels
+  const edges = (document: typeof doc, id: string) => {
+    const box = selectionParentBounds(document, id, worldMatrix(document, id))
+    return [box.x, box.y, box.x + box.width, box.y + box.height]
+  }
+  const fit = () => key('x', { code: 'KeyX', ctrlKey: true, metaKey: true })
+  await fit()
+  const after = editor!.authoredDocument
+  for (const [index, edge] of edges(after, plain.id).entries()) {
+    expect(edge).toBeCloseTo([-13, -22, 9, -11][index], 8)
+  }
+  for (const [index, edge] of edges(after, rotated.id).entries()) {
+    const original = edges(before, rotated.id)[index]
+    expect(edge).toBeCloseTo(index < 2 ? Math.floor(original) : Math.ceil(original), 8)
+  }
+  expect(after.nodes[parent.id]).toBe(before.nodes[parent.id])
+  expect(editor!.state.snapPixels).toBe(snap)
+  expect(editor!.state.version).toBe(version + 1)
+  await fit()
+  expect(editor!.authoredDocument).toBe(after)
+  expect(editor!.state.version).toBe(version + 1)
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+})
+
+test('Sketch Command-Y creates an in-place instance and a source in one undo step', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank('Create Symbol')
+  const parent = node('frame', 30, 60, 600, 340)
+  const beforeSibling = node('rectangle', 1, 1, 16, 16)
+  const selected = node('frame', 90, 80, 120, 75)
+  const child = node('rectangle', 10, 13, 30, 26)
+  const afterSibling = node('rectangle', 230, 85, 16, 16)
+  selected.name = 'QA Symbol'
+  selected.transform = [0.8, 0.6, -0.6, 0.8, 90, 80]
+  selected.children = [child.id]
+  parent.children = [beforeSibling.id, selected.id, afterSibling.id]
+  doc.nodes = Object.fromEntries([parent, beforeSibling, selected, child, afterSibling].map(layer => [layer.id, layer]))
+  doc.pages[0].children = [parent.id]
+  await act(async () => { editor!.load(doc); editor!.select([selected.id]); canvas().focus() })
+  const initial = editor!.authoredDocument
+  const open = () => key('y', { code: 'KeyY', metaKey: true })
+  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="创建控件"]')!
+  await open()
+  expect(dialog()).toBeTruthy()
+  expect(editor!.authoredDocument).toBe(initial)
+  await act(async () => dialog().querySelector('header button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+  expect(editor!.authoredDocument).toBe(initial)
+  for (const send of [false, true]) {
+    await act(async () => { editor!.select([selected.id]); canvas().focus() })
+    await open()
+    if (send) await act(async () => dialog().querySelector<HTMLInputElement>('input[type="checkbox"]')!.click())
+    const version = editor!.state.version
+    await act(async () => dialog().querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+    expect(dialog()).toBeNull()
+    expect(editor!.state.version).toBe(version + 1)
+    const result = editor!.authoredDocument, instance = result.nodes[editor!.state.selection[0]]
+    expect(instance.instance?.componentId).toBe(selected.id)
+    expect(instance.transform).toEqual(selected.transform)
+    expect(result.nodes[parent.id].children).toEqual([beforeSibling.id, instance.id, afterSibling.id])
+    expect(result.nodes[selected.id].component).toBeDefined()
+    expect(result.nodes[selected.id].children).toEqual([child.id])
+    expect(result.pages.find(page => page.children.includes(selected.id))?.name).toBe(send ? 'Symbols' : initial.pages[0].name)
+    const displayed = editor!.state.doc
+    const instanceChild = displayed.nodes[instance.id].children[0]
+    expect(worldMatrix(displayed, instanceChild)).toEqual(worldMatrix(initial, child.id))
+    await act(async () => editor!.undo())
+    expect(editor!.authoredDocument).toEqual(initial)
+    expect(editor!.canUndo).toBe(false)
+  }
 })
 
 test('Sketch Y opens the symbol picker and inserts an existing source only after confirmation', async () => {

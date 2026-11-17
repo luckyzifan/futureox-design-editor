@@ -9,6 +9,7 @@ import { shortcutPreference } from './shortcut-preference'
 import { desktopBridge } from './desktop'
 import { selectionCommandAdmission } from './commands/selection-command'
 import { alignmentAvailability, alignmentCommandIds, alignmentCommands } from './alignment-availability'
+import { selectedPaintSwap } from './sketch-paint-commands'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
 export type ContextMenuOrigin = 'canvas' | 'empty-canvas' | 'layers' | 'inspector'
@@ -145,10 +146,11 @@ const contextOrder: EditorCommand[] = [
 const sketchContextOrder: EditorCommand[] = [
   'cut', 'copy', 'paste', 'paste-to-replace', 'duplicate', 'delete',
   'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
+  'swap-fills-and-strokes',
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
   ...alignmentCommandIds,
-  'flip-horizontal', 'flip-vertical', 'mask-selection', 'convert-vector', 'outline-stroke',
+  'flip-horizontal', 'flip-vertical', 'fit-pixel-bounds', 'round-to-pixel', 'mask-selection', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
   'copy': ['拷贝', 'Copy'],
@@ -199,6 +201,16 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
   }
   if (uiMode === 'sketch') {
     const commands = sketchSelectionCommands(editor)
+    available.set('swap-fills-and-strokes', {
+      command: 'swap-fills-and-strokes', group: 'style',
+      label: locale === 'en' ? 'Swap Fills and Borders' : '交换填充和描边',
+      disabled: disabled || !selectedPaintSwap(editor)?.length,
+      shortcut: shortcutLabel('swap-fills-and-strokes', { ...context, uiMode }),
+    })
+    available.set('fit-pixel-bounds', { command: 'fit-pixel-bounds', group: 'geometry', disabled: disabled || !editor.topSelection().length,
+      label: locale === 'en' ? 'Fit Selection to Pixel Bounds' : '贴合像素边界', shortcut: shortcutLabel('fit-pixel-bounds', context) })
+    available.set('round-to-pixel', { command: 'round-to-pixel', group: 'geometry', disabled: disabled || !editor.topSelection().length,
+      label: locale === 'en' ? 'Round to Pixel' : '四舍五入到像素', shortcut: shortcutLabel('round-to-pixel', context) })
     const canAlign = alignmentAvailability(editor).align
     for (const command of alignmentCommandIds) {
       const { label } = alignmentCommands[command]

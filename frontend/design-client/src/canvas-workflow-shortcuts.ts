@@ -6,7 +6,7 @@ import { allParents } from './geometry'
 import { propertyUnits } from './property-units'
 import { interactivePath, marqueeScope } from './selection-hierarchy'
 import { editableFrameCrop, frameCropPatches, resizeNodeDimension, selectionMetric } from './selection-properties'
-import type { ShortcutProfile } from './shortcut-profiles'
+import type { ShortcutContext, ShortcutProfile } from './shortcut-profiles'
 
 const dimensionNudges = {
   'resize-width-increase': { axis: 'width', direction: 1, large: false },
@@ -60,10 +60,13 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
 /** Figma toggles rulers with ⇧R; the Sketch Mac app uses ⌃R. ⇧R stays valid in
  * both presets, while Control+R is admitted only for the Sketch-like preset.
  * Alt+R (origin) and any Cmd-variant are left to their own handlers. */
-export function rulersToggleEvent(event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; code: string }, profile: ShortcutProfile): boolean {
+export function rulersToggleEvent(
+  event: Pick<KeyboardEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'code'>,
+  { profile, platform }: Pick<ShortcutContext, 'profile' | 'platform'>,
+): boolean {
   if (event.code !== 'KeyR' || event.altKey || event.metaKey) return false
   if (!event.ctrlKey && event.shiftKey) return true
-  return profile === 'sketch-like' && event.ctrlKey && !event.shiftKey
+  return platform === 'mac' && profile === 'sketch-like' && event.ctrlKey && !event.shiftKey
 }
 
 /** Mac Figma and Sketch both select siblings inside the entered container.
