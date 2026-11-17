@@ -277,7 +277,7 @@ impl Runtime {
             return self.full(owner, request, "different-page", started);
         }
         owner.prepare_frame(&query.options)?;
-        owner.resolve_layout()?;
+        owner.resolve_for_source_tile(stage, query.region, query.prepare, (query.options.view.x, query.options.view.y, query.options.view.zoom))?;
         let key = owner.static_scene_revision();
         if key.is_none() {
             return self.full(owner, request, "non-static-source", started);

@@ -219,9 +219,24 @@ pub(crate) fn resolve(d: &mut Document) -> Result<(), String> {
     resolve_with(d, &mut |_| {})
 }
 
+pub(crate) fn resolve_islands(d: &mut Document, islands: &[String]) -> Result<(), String> {
+    if d.pages.iter().any(|page| page.children.iter().any(|id| starts(&d.nodes[id]))) {
+        return resolve(d);
+    }
+    resolve_limited(d, &mut |_| {}, Some(islands))
+}
+
 pub(crate) fn resolve_with(
     d: &mut Document,
     emit: &mut impl FnMut(DrawChange),
+) -> Result<(), String> {
+    resolve_limited(d, emit, None)
+}
+
+fn resolve_limited(
+    d: &mut Document,
+    emit: &mut impl FnMut(DrawChange),
+    only: Option<&[String]>,
 ) -> Result<(), String> {
     // Post-order matters when the silhouette itself is a group with a mask.
     fn visit(
@@ -252,6 +267,10 @@ pub(crate) fn resolve_with(
         .nodes
         .len()
         .saturating_add((crate::capacity::memory_budget_bytes() / 4096) as usize);
+    if let Some(islands) = only {
+        let roots = islands.to_vec();
+        return visit(d, &roots, limit, emit);
+    }
     for i in 0..d.pages.len() {
         let roots = d.pages[i].children.clone();
         visit(d, &roots, limit, emit)?;

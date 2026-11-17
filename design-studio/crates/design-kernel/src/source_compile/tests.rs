@@ -1007,3 +1007,44 @@ fn shared_prepare_window_does_not_repeat_distant_roots_on_every_tile() {
         desc.nodes
     );
 }
+
+#[test]
+fn cold_viewport_resolves_only_islands_that_meet_the_tile() {
+    let mut children = vec!["near".to_string(), "far".to_string(), "pad".to_string()];
+    let mut nodes = serde_json::Map::new();
+    let mut pad_children = Vec::new();
+    for i in 0..4100 {
+        let id = format!("p{i}");
+        pad_children.push(id.clone());
+        nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":4,"height":4}));
+    }
+    for i in 0..37 {
+        let id = format!("r{i}");
+        children.push(id.clone());
+        nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":8,"height":8,"transform":[1,0,0,1,50000,0]}));
+    }
+    nodes.insert("near".into(), json!({"id":"near","kind":"rectangle","width":30,"height":20,"transform":[1,0,0,1,8,8],"fills":[{"kind":"solid","color":"#ff0000"}]}));
+    nodes.insert("far".into(), json!({"id":"far","kind":"vector","width":80,"height":80,"transform":[1,0,0,1,20000,0],"booleanOperation":"union","children":["fa","fb"]}));
+    nodes.insert("fa".into(), json!({"id":"fa","kind":"rectangle","width":40,"height":40,"fills":[{"kind":"solid","color":"#00ff00"}]}));
+    nodes.insert("fb".into(), json!({"id":"fb","kind":"rectangle","width":30,"height":30,"transform":[1,0,0,1,20,10],"fills":[{"kind":"solid","color":"#0000ff"}]}));
+    nodes.insert("pad".into(), json!({"id":"pad","kind":"frame","width":10,"height":10,"transform":[1,0,0,1,30000,0],"children":pad_children}));
+    nodes.insert("stage".into(), json!({"id":"stage","kind":"frame","width":80000,"height":4000,"blend":"pass-through","children":children}));
+    let mut doc: Document = serde_json::from_value(json!({
+        "schemaVersion":20,"id":"source","name":"source",
+        "pages":[{"id":"page","name":"page","children":["stage"],"background":"#ffffff"}],
+        "nodes": nodes
+    })).unwrap();
+    doc.color_management = Some(Default::default());
+    assert!(doc.nodes.len() >= 4096);
+    assert!(doc.nodes["stage"].children.len() >= 32);
+    let desc = descriptor(&doc);
+    let mut expected = owner(doc.clone(), "oracle");
+    let mut actual = owner(doc, "live");
+    let mut runtime = Runtime::default();
+    let request = request(0., 0., 1.);
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &request);
+    assert!(actual.doc.as_ref().unwrap().nodes["far"].network.is_none(), "a boolean artboard outside the prepare window stays unresolved");
+    assert!(expected.doc.as_ref().unwrap().nodes["far"].network.is_some(), "the full compiler still resolves that boolean");
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert!(runtime.stats["resolvedCompileNodes"].as_u64().unwrap() < 64);
+}

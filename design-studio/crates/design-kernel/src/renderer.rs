@@ -519,6 +519,76 @@ struct DegradePrepared {
     map: HashMap<String, Prepared>,
 }
 
+fn bounds_hit(node: &Node, world: Transform, zoom: f64, view_x: f64, view_y: f64, guard: Rect) -> bool {
+    let mut b = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    let mut push = |x: f64, y: f64| {
+        if x.is_finite() && y.is_finite() {
+            b[0] = b[0].min(x); b[1] = b[1].min(y); b[2] = b[2].max(x); b[3] = b[3].max(y);
+        }
+    };
+    if let Some(rect) = crate::geometry_support::leaf_control_bounds(node, world) {
+        push(f64::from(rect.x), f64::from(rect.y));
+        push(f64::from(rect.right()), f64::from(rect.bottom()));
+    } else {
+        for (x, y) in [(0., 0.), (node.width, 0.), (0., node.height), (node.width, node.height)] {
+            let p = world.point(Point::new(x, y));
+            push(p.x, p.y);
+        }
+    }
+    if !b[0].is_finite() { return true; }
+    let scale = world.max_scale().max(1e-6);
+    let pad = node.effect_outset(scale) + node.strokes.iter().filter(|s| s.visible).map(crate::stroke::maximum_width).fold(0., f64::max) * 4. * scale + 8.;
+    if pad.is_finite() { b[0] -= pad; b[1] -= pad; b[2] += pad; b[3] += pad; }
+    let x0 = b[0] * zoom + view_x;
+    let y0 = b[1] * zoom + view_y;
+    let x1 = b[2] * zoom + view_x;
+    let y1 = b[3] * zoom + view_y;
+    let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
+    let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+    lo_x < f64::from(guard.right()) && hi_x > f64::from(guard.x) && lo_y < f64::from(guard.bottom()) && hi_y > f64::from(guard.y)
+}
+fn structural_layout(node: &Node) -> bool {
+    node.layout.is_some() || node.sizing.is_some() || node.constraints.is_some() || node.graphic
+        || node.boolean_operation.is_some() || node.instance.is_some()
+}
+fn collect_islands(doc: &Document, id: &str, parent: Transform, zoom: f64, view_x: f64, view_y: f64, guard: Rect, islands: &mut std::collections::BTreeSet<String>) -> bool {
+    let Some(node) = doc.nodes.get(id) else { return false; };
+    if !node.visible { return false; }
+    let world = parent.concat(node.transform);
+    let self_hit = bounds_hit(node, world, zoom, view_x, view_y, guard);
+    if structural_layout(node) {
+        let mut child_hit = false;
+        if !self_hit {
+            for child in &node.children {
+                child_hit |= descendant_hits(doc, child, world, zoom, view_x, view_y, guard);
+                if child_hit { break; }
+            }
+        }
+        if self_hit || child_hit {
+            islands.insert(id.to_owned());
+            return true;
+        }
+        return false;
+    }
+    let mut child_hit = false;
+    for child in &node.children {
+        child_hit |= collect_islands(doc, child, world, zoom, view_x, view_y, guard, islands);
+    }
+    let rich = node.kind == "text" && node.text_runs.iter().any(|run| run.color.is_some() || run.underline || run.strikethrough);
+    let masks = node.mask || node.children.iter().any(|child| doc.nodes.get(child).is_some_and(|n| n.mask));
+    let bound = !node.bindings.is_empty() || !node.style_refs.is_empty() || !node.variable_modes.is_empty();
+    if self_hit && (rich || masks || bound) {
+        islands.insert(id.to_owned());
+    }
+    self_hit || child_hit
+}
+fn descendant_hits(doc: &Document, id: &str, parent: Transform, zoom: f64, view_x: f64, view_y: f64, guard: Rect) -> bool {
+    let Some(node) = doc.nodes.get(id) else { return false; };
+    if !node.visible { return false; }
+    let world = parent.concat(node.transform);
+    if bounds_hit(node, world, zoom, view_x, view_y, guard) { return true; }
+    node.children.iter().any(|child| descendant_hits(doc, child, world, zoom, view_x, view_y, guard))
+}
 pub struct Engine {
     source_doc: Option<SharedDocument>,
     source_doc_bytes: Option<usize>,
@@ -531,6 +601,11 @@ pub struct Engine {
     animation_base: Option<SharedDocument>,
     animation_sample: Option<crate::animation::Sample>,
     layout_dirty: bool,
+    /// Artboard roots resolved for the current viewport. `None` means layout is
+    /// either dirty or complete for every root. A later full resolve clears it.
+    viewport_resolved: Option<std::collections::BTreeSet<String>>,
+    viewport_covered: Option<[f64; 4]>,
+    viewport_zoom: u64,
     pub(crate) doc: Option<SharedDocument>,
     pub fonts: Fonts,
     images: Images,
@@ -608,6 +683,9 @@ impl Engine {
             animation_base: None,
             animation_sample: None,
             layout_dirty: true,
+            viewport_resolved: None,
+            viewport_covered: None,
+            viewport_zoom: 0,
             doc: None,
             fonts,
             images: Images::default(),
@@ -645,6 +723,9 @@ impl Engine {
         self.fonts.load(data)?;
         if self.has_sketch_masks() { self.doc = self.source_doc.clone(); }
         self.layout_dirty = true;
+        self.viewport_resolved = None;
+        self.viewport_covered = None;
+        self.viewport_zoom = 0;
         self.pending_camera = None;
         self.pending_layout = None;
         self.paths.clear();
@@ -1384,6 +1465,9 @@ impl Engine {
         self.animation_base = None;
         self.animation_sample = None;
         self.layout_dirty = true;
+        self.viewport_resolved = None;
+        self.viewport_covered = None;
+        self.viewport_zoom = 0;
         self.geo_revision += 1;
         self.camera_prepare = None;
         self.camera_residency.clear();
@@ -1569,7 +1653,106 @@ impl Engine {
     fn has_sketch_masks(&self) -> bool {
         self.render_index.as_ref().is_some_and(|index| !index.sketch_mask_owners.is_empty())
     }
+    /// Resolve only stage roots that can meet this prepare window. A later
+    /// full `resolve_layout` still finishes every root. Small documents keep
+    /// the complete pass.
+    pub(crate) fn resolve_for_source_tile(
+        &mut self,
+        stage: &str,
+        region: Rect,
+        prepare: Rect,
+        camera: (f64, f64, f64),
+    ) -> Result<(), String> {
+        let (view_x, view_y, zoom) = camera;
+        if !(0.001..=MAX_CANVAS_SAMPLE_SCALE).contains(&zoom) || !view_x.is_finite() || !view_y.is_finite() {
+            return self.resolve_layout();
+        }
+        // Effect padding on this source is about 200 device pixels. A wider
+        // halo pulled in whole artboards whose content never reaches the tile.
+        let covered_rect = prepare.union(region);
+        let covered_box = [f64::from(covered_rect.x), f64::from(covered_rect.y), f64::from(covered_rect.right()), f64::from(covered_rect.bottom())];
+        // Selection looks outside this window by the effect pad. The promise
+        // is only the window itself, so a later tile that leaves it resolves again.
+        let guard = covered_rect.expand(512);
+        if self.viewport_resolved.is_some()
+            && self.viewport_zoom == zoom.to_bits()
+            && self.viewport_covered.is_some_and(|covered| {
+                covered[0] <= covered_box[0] && covered[1] <= covered_box[1]
+                    && covered[2] >= covered_box[2] && covered[3] >= covered_box[3]
+            })
+        {
+            return Ok(());
+        }
+        let planned = (|| {
+            let doc = self.doc.as_ref()?;
+            if crate::repeat::has_repeats(doc) { return None; }
+            let stage_node = doc.nodes.get(stage)?;
+            if stage_node.children.len() < 32 || doc.nodes.len() < 4096 || stage_node.transform != Transform::default() {
+                return None;
+            }
+            let mut islands: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for id in &stage_node.children {
+                collect_islands(doc, id, Transform::default(), zoom, view_x, view_y, guard, &mut islands);
+            }
+            if islands.len() > 8192 { return None; }
+            Some(islands)
+        })();
+        let Some(islands) = planned else { return self.resolve_layout(); };
+        let fresh: Vec<String> = match &self.viewport_resolved {
+            Some(done) => islands.iter().filter(|id| !done.contains(*id)).cloned().collect(),
+            None => islands.iter().cloned().collect(),
+        };
+        let growing = self.viewport_resolved.is_some();
+        if !fresh.is_empty() {
+            let fonts = self.fonts.clone();
+            let sketch_masks = self.has_sketch_masks();
+            let doc = self.doc.as_mut().unwrap();
+            crate::design_system::resolve_authored_islands(doc, &fresh)?;
+            let mut instances = std::collections::BTreeSet::new();
+            let mut stack = fresh.clone();
+            while let Some(id) = stack.pop() {
+                let Some(node) = doc.nodes.get(&id) else { continue; };
+                if node.instance.is_some() && node.instance_origin.is_none() {
+                    instances.insert(id.clone());
+                }
+                stack.extend(node.children.iter().cloned());
+            }
+            if !instances.is_empty() {
+                crate::components::resolve_viewport_instances(doc, &instances)?;
+            }
+            crate::layout::resolve_islands(doc, &fonts, &fresh)?;
+            crate::curve_boolean::resolve_subtrees(doc, fresh.clone())?;
+            crate::components::check_budget(doc)?;
+            if sketch_masks {
+                crate::sketch_masks::resolve_islands(doc, &fresh)?;
+            }
+            crate::font::expand_rich_text_under(doc, &fonts, &fresh)?;
+            crate::connectors::resolve(doc)?;
+        }
+        self.viewport_resolved = Some(islands);
+        self.viewport_covered = Some(covered_box);
+        self.viewport_zoom = zoom.to_bits();
+        self.layout_dirty = false;
+        if growing {
+            self.geo_revision = self.geo_revision.saturating_add(1);
+            self.world_support = None;
+            self.camera_prepare = None;
+            self.camera_residency.clear();
+        }
+        Ok(())
+    }
     pub(crate) fn resolve_layout(&mut self) -> Result<(), String> {
+        if self.viewport_resolved.take().is_some() {
+            // A viewport island is not a complete source. Finish every root
+            // before edits, export, or a non-demand compile.
+            self.layout_dirty = true;
+            self.viewport_covered = None;
+            self.viewport_zoom = 0;
+            self.geo_revision = self.geo_revision.saturating_add(1);
+            self.world_support = None;
+            self.camera_prepare = None;
+            self.camera_residency.clear();
+        }
         if !self.layout_dirty {
             return Ok(());
         }
@@ -2990,6 +3173,9 @@ impl Engine {
             animation_base: self.animation_base.clone(),
             animation_sample: self.animation_sample.clone(),
             layout_dirty: self.layout_dirty,
+            viewport_resolved: self.viewport_resolved.clone(),
+            viewport_covered: self.viewport_covered,
+            viewport_zoom: self.viewport_zoom,
             doc: self.doc.clone(),
             fonts: self.fonts.clone(),
             images: self.images.clone(),

@@ -864,13 +864,22 @@ pub fn resolve(doc: &mut Document, fonts: &Fonts) -> Result<(), String> {
     resolve_roots(doc,fonts,None)
 }
 pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::collections::BTreeSet<String>>)->Result<(),String>{
-    if roots.is_none(){crate::code_blocks::resolve(doc)?;}
-    if !doc
+    resolve_inner(doc,fonts,roots,None)
+}
+/// Layout only these subtrees. Callers use this for a viewport island; a full
+/// `resolve_roots(None)` remains the whole-document contract.
+pub(crate) fn resolve_islands(doc:&mut Document,fonts:&Fonts,islands:&[String])->Result<(),String>{
+    resolve_inner(doc,fonts,None,Some(islands))
+}
+fn resolve_inner(doc:&mut Document,fonts:&Fonts,roots:Option<&std::collections::BTreeSet<String>>,islands:Option<&[String]>)->Result<(),String>{
+    let scoped=roots.is_some()||islands.is_some();
+    if !scoped{crate::code_blocks::resolve(doc)?;}
+    if islands.is_none() && !doc
         .nodes
         .values()
         .any(|n| n.graphic || n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some())
     {
-        return if roots.is_none(){crate::connectors::resolve(doc)}else{Ok(())};
+        return if !scoped{crate::connectors::resolve(doc)}else{Ok(())};
     }
     fn order(doc: &Document, id: &str, out: &mut Vec<String>) {
         for c in &doc.nodes[id].children {
@@ -879,10 +888,19 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
         out.push(id.to_owned());
     }
     let mut ordered = Vec::new();
-    for p in &doc.pages {
-        for id in &p.children {
-            if roots.is_some_and(|roots|!roots.contains(id)){continue;}
-            order(doc, id, &mut ordered)
+    if let Some(islands)=islands {
+        for id in islands {
+            if doc.nodes.contains_key(id) { order(doc, id, &mut ordered); }
+        }
+        if !ordered.iter().any(|id| { let n=&doc.nodes[id]; n.graphic || n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some() }) {
+            return Ok(());
+        }
+    } else {
+        for p in &doc.pages {
+            for id in &p.children {
+                if roots.is_some_and(|roots|!roots.contains(id)){continue;}
+                order(doc, id, &mut ordered)
+            }
         }
     }
     // Text, fonts, runs and text sizing limits are immutable during this solve.
@@ -915,7 +933,7 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
         }
         Ok(())
     };
-    if roots.is_some() {
+    if scoped {
         // Mutable iteration detaches a shared payload. Select the island
         // before getting mutable nodes, in the same key order as the full map.
         for id in ordered.iter().collect::<std::collections::BTreeSet<_>>() {
@@ -925,7 +943,7 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
         for (id, n) in &mut doc.nodes { initial_size(id, n)?; }
     }
     for _ in 0..68 {
-        let before = if roots.is_some(){scoped_state(doc)}else{state(doc)};
+        let before = if scoped{scoped_state(doc)}else{state(doc)};
         for id in ordered.iter().rev() {
             constrain(doc, id)
         }
@@ -946,13 +964,13 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
                 }
             }
         }
-        let after = if roots.is_some(){scoped_state(doc)}else{state(doc)};
+        let after = if scoped{scoped_state(doc)}else{state(doc)};
         if before.iter().zip(&after).all(|((a, w, h), (b, x, y))| {
             a.0.iter().zip(b.0).all(|(a, b)| (a - b).abs() < 1e-7)
                 && (w - x).abs() < 1e-7
                 && (h - y).abs() < 1e-7
         }) {
-            return if roots.is_none(){crate::connectors::resolve(doc)}else{Ok(())};
+            return if !scoped{crate::connectors::resolve(doc)}else{Ok(())};
         }
     }
     Err("Layout did not converge; inspect nested hug/fill sizing".into())

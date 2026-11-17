@@ -711,6 +711,48 @@ pub(crate) fn resolve_authored(doc: &mut Document) -> Result<(), String> {
     Ok(())
 }
 
+/// Bindings and legacy line boxes for one viewport island. The document was
+/// validated at source admission; this does not re-walk cold artboards.
+pub(crate) fn resolve_authored_islands(doc: &mut Document, islands: &[String]) -> Result<(), String> {
+    let mut ids = BTreeSet::new();
+    fn walk(doc: &Document, id: &str, ids: &mut BTreeSet<String>) {
+        if !doc.nodes.contains_key(id) || !ids.insert(id.to_owned()) { return; }
+        let node = &doc.nodes[id];
+        if let Some(instance) = &node.instance {
+            walk(doc, &instance.component_id, ids);
+        }
+        for child in node.children.clone() { walk(doc, &child, ids); }
+    }
+    for id in islands { walk(doc, id, &mut ids); }
+    let sketch_metadata = doc.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get("nodeMetadata"));
+    let needs_modes = ids.iter().any(|id| {
+        let n = &doc.nodes[id];
+        !n.bindings.is_empty() || !n.style_refs.is_empty() || !n.variable_modes.is_empty()
+    });
+    let contexts = needs_modes.then(|| node_mode_contexts(doc)).transpose()?;
+    let mut boolean_resizes = Vec::new();
+    for id in &ids {
+        let n = doc.nodes.get_mut(id).unwrap();
+        if n.instance_origin.is_some() { continue; }
+        crate::interop::restore_legacy_sketch_line_box(n, sketch_metadata);
+        if n.bindings.is_empty() && n.style_refs.is_empty() && n.variable_modes.is_empty() {
+            continue;
+        }
+        let old_size = (n.width, n.height);
+        let modes = &contexts.as_ref().unwrap()[id].effective;
+        let placement = n.instance.is_some();
+        resolve_node(doc.design_system.as_ref(), n, modes, |field| placement && field != "visible")?;
+        if n.boolean_operation.is_some() {
+            boolean_resizes.push((n.children.clone(), n.width / old_size.0, n.height / old_size.1));
+        }
+    }
+    for (children, sx, sy) in boolean_resizes {
+        crate::mutation::resize_boolean_children(&mut doc.nodes, &children, sx, sy);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod mode_scope_tests {
     use super::*;

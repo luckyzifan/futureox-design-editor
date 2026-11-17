@@ -588,11 +588,25 @@ pub fn validate_node(node: &Node) -> Result<(), String> {
 /// Materialize styled outlines only in the renderer's derived document. The
 /// authored text, ranges and UTF-16 identities remain in source_doc/history.
 pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Result<(), String> {
+    expand_rich_text_in(doc, fonts, None)
+}
+pub(crate) fn expand_rich_text_under(doc: &mut crate::scene::Document, fonts: &Fonts, roots: &[String]) -> Result<(), String> {
+    let mut allow = std::collections::BTreeSet::new();
+    fn walk(doc: &crate::scene::Document, id: &str, allow: &mut std::collections::BTreeSet<String>) {
+        let Some(node) = doc.nodes.get(id) else { return; };
+        allow.insert(id.to_owned());
+        for child in &node.children { walk(doc, child, allow); }
+    }
+    for id in roots { walk(doc, id, &mut allow); }
+    expand_rich_text_in(doc, fonts, Some(&allow))
+}
+fn expand_rich_text_in(doc: &mut crate::scene::Document, fonts: &Fonts, allow: Option<&std::collections::BTreeSet<String>>) -> Result<(), String> {
     let ids: Vec<_> = doc
         .nodes
         .values()
         .filter(|n| {
-            n.kind == "text"
+            allow.is_none_or(|ids| ids.contains(&n.id))
+                && n.kind == "text"
                 && n.text_runs
                     .iter()
                     .any(|r| r.color.is_some() || r.underline || r.strikethrough)

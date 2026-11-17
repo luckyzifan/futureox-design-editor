@@ -873,14 +873,20 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
 pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>>)->Result<(),String>{
     resolve_roots_budgeted(doc,selected,None)
 }
+pub(crate) fn resolve_viewport_instances(doc:&mut Document, selected:&BTreeSet<String>)->Result<(),String>{
+    resolve_roots_budgeted_inner(doc,Some(selected),None,true)
+}
 /// `source_bytes` is supplied only by the resident component receipt's exact
 /// ledger, immediately after patch admission. It is never an imported hint.
 /// Definition defaults may change the source; that case revokes the shortcut.
 pub(crate) fn resolve_roots_budgeted(doc:&mut Document, selected:Option<&BTreeSet<String>>,source_bytes:Option<usize>)->Result<(),String>{
+    resolve_roots_budgeted_inner(doc,selected,source_bytes,false)
+}
+fn resolve_roots_budgeted_inner(doc:&mut Document, selected:Option<&BTreeSet<String>>,source_bytes:Option<usize>,skip_validate:bool)->Result<(),String>{
     if !has_components(doc) {
         return Ok(());
     }
-    validate(doc)?;
+    if !skip_validate { validate(doc)?; }
     let mut source = Cow::Borrowed(&*doc);
     // Definition defaults modify authored targets. Nested properties stay on their
     // nested component; a containing definition exposes a swap on the nested root.
@@ -925,6 +931,10 @@ pub(crate) fn resolve_roots_budgeted(doc:&mut Document, selected:Option<&BTreeSe
         .filter(|n|selected.is_none_or(|ids|ids.contains(&n.id)))
         .map(|n| n.id.clone())
         .collect();
+    if selected.is_some() && roots.is_empty() {
+        if let Cow::Owned(source) = source { *doc = source; }
+        return Ok(());
+    }
     let inherited_modes = crate::design_system::node_mode_contexts(&source)?;
     let byte_limit=(!crate::capacity::native_source_storage()).then(crate::capacity::document_byte_limit);
     let known_bytes=source_bytes.filter(|_|selected.is_some()&&matches!(source,Cow::Borrowed(_)));
