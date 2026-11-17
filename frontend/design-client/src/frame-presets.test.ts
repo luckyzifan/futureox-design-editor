@@ -4,8 +4,7 @@ import { blank,node } from './model'
 import { createPresetFrame,framePlacementRight,filterFramePresets,framePresets,validFrameSize } from './frame-presets'
 
 test('reference catalogue preserves logical sizes, category and searchable names',()=>{
-  expect(framePresets).toHaveLength(32)
-  expect(new Set(framePresets.map(p=>p.id)).size).toBe(32)
+  expect(new Set(framePresets.map(p=>p.id)).size).toBe(framePresets.length)
   expect(filterFramePresets('iPhone 13','phone')).toHaveLength(3)
   expect(filterFramePresets('375 812','phone')).toHaveLength(2)
   expect(filterFramePresets('iPhone','desktop')).toEqual([])

@@ -132,6 +132,7 @@ import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } fro
 import { brushPreviewSettings } from './draw-brush-style'
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
+import { lastFigmaFrameSize, rememberFigmaFrameSize } from './figma-frame-size'
 import { insertKeyboardPlacedNode, keyboardPlacementPoint, keyboardPlacedNode, keyboardPlacesTool } from './keyboard-placement'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, sketchGradientStopOffset, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu, type CanvasContextMenuProps } from './CanvasContextMenu'
@@ -239,6 +240,7 @@ type Drag = {
   layoutPointerOrigin?: Point
   creationSeed?: ShapeCreationSeed
   creationClick?: boolean
+  figmaFrameClick?: { parent?: string; size?: ReturnType<typeof lastFigmaFrameSize> }
   creationTool?: Tool
   hotspotBounds?: Bounds
   parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop' | 'blurEndpoint' | 'blurStop' | 'zoomBlurCenter'
@@ -1627,6 +1629,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               insertKeyboardPlacedNode(document, pageId, placed)
             }, [placed.id])
             if (result?.status === 'committed') {
+              if (placed.kind === 'frame') rememberFigmaFrameSize(editor, placed.id)
               if (placed.kind === 'text') setTextEdit(placed.id)
               if (!creationToolStaysArmed(placeTool)) editor.set({ tool: 'select' })
             }
@@ -1919,6 +1922,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const result = resolveShapeCreation(d.creationSeed, {
       anchor: d.start, pointer: d.pointer, screenDistance: d.screenDistance || 0,
       ...modifiers, snap: editor.state.snapPixels || ['frame', 'section'].includes(d.creationSeed.kind),
+      clickSize: d.figmaFrameClick?.size,
     })
     d.creationClick = result.click
     if (uiMode === 'sketch' && d.creationTool === 'frame' && result.click) result.node.clip = false
@@ -2267,6 +2271,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     beginDragTrace(drag.current, e)
     if (dragKind === 'create') {
+      if (uiMode === 'figma' && s.tool === 'frame') {
+        const parent = canvasDropFrame(s.doc, s.page, [], p)
+        drag.current.figmaFrameClick = { parent, size: parent ? undefined : lastFigmaFrameSize(editor) }
+      }
       editor.begin('绘制形状')
       // The click default (including its fill) is visible on pointerdown.
       // A later move past the threshold replaces it with the drag span.
@@ -2995,7 +3003,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       const source = editor.state.doc
       const wrapEnclosed = uiMode === 'sketch' && d.creationTool === 'frame' && !d.creationClick && !space.current
-      editor.change(`创建${n.name}`, document => {
+      const created = editor.change(`创建${n.name}`, document => {
         if (d.creationTool === 'hotspot') authorSketchHotspot(document, n)
         if (n.graphic && document.schemaVersion < 23) document.schemaVersion = 23
         document.nodes[n.id] = n
@@ -3007,7 +3015,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           const sketchDrawnShape = uiMode === 'sketch' && !d.creationClick &&
             ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow'].some(tool => tool === d.creationTool)
           const placementPoint = sketchDrawnShape ? d.start : center
-          const parent = canvasDropFrame(document,page.id,[n.id],placementPoint,e.metaKey || e.ctrlKey)
+          const parent = d.creationClick && d.figmaFrameClick ? d.figmaFrameClick.parent :
+            canvasDropFrame(document,page.id,[n.id],placementPoint,e.metaKey || e.ctrlKey)
           if (parent) {
             containerId = parent
             page.children.splice(page.children.indexOf(n.id),1)
@@ -3029,6 +3038,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           }
         }
       }, [n.id])
+      if (created.status === 'committed' && d.creationTool === 'frame') rememberFigmaFrameSize(editor, n.id)
       if (n.kind === 'text') setTextEdit(n.id)
       // Hold the filled ghost until this document is the presented frame.
       if (d.creationTool !== 'hotspot') setHeldCreation(n)
