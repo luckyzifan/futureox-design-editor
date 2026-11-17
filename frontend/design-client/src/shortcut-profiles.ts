@@ -56,6 +56,7 @@ export function shortcutBindings({ profile, platform, desktop = false, uiMode }:
     { command: 'fit-pixel-bounds', combo: 'Ctrl+Mod+X' },
     { command: 'round-to-pixel', combo: 'Mod+Shift+P' },
   )
+  if (uiMode === 'sketch' && platform === 'mac' && desktop) bindings.unshift({ command: 'zoom-top-level-frame', combo: 'Mod+4' })
   if (profile === 'sketch-like') {
     tools.set('set-tool-default', undefined); tools.set('set-tool-pen', 'V'); tools.set('set-tool-pencil', 'P')
     tools.set('set-tool-slice', 'E'); tools.set('set-tool-eraser', undefined); tools.set('set-tool-comments', 'N')
