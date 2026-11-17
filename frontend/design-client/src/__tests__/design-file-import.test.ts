@@ -1,10 +1,9 @@
 import { test, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { strToU8, zipSync } from 'fflate'
 import { import_sketch_json } from '../generated/design-kernel/design_kernel'
 import { importFig } from '../import-fig'
 import { uid, validateDocument } from '../model'
-import { statSync } from 'node:fs'
 
 // Restored from testing/lib/fixture-policy.mjs (removed in 379593929) so this
 // suite loads again. A missing optional external corpus is a SKIP, never a
@@ -17,8 +16,8 @@ function externalFixture(name: 'DESIGN_TEST_SKETCH' | 'DESIGN_TEST_FIG', environ
     if (environment.DESIGN_REQUIRE_PRIVATE_FIXTURES === '1') throw new Error(reason)
     return { skip: reason }
   }
-  const stat = statSync(path)
-  if (!stat.isFile() || stat.size === 0) throw new Error(`${name} must identify a nonempty regular file`)
+  const stat = statSync(path, { throwIfNoEntry: false })
+  if (!stat?.isFile() || stat.size === 0) throw new Error(`${name} must identify a nonempty regular file`)
   return { path }
 }
 
@@ -62,7 +61,7 @@ for (const [name, importer] of [
 ] as const) {
   test(`external corpus: ${name}`, context => {
     const fixture = externalFixture(name)
-    if (fixture.skip) { context.skip(fixture.skip); return }
+    if (fixture.path === undefined) { context.skip(fixture.skip); return }
     importer(new Uint8Array(readFileSync(fixture.path)))
   })
 }
