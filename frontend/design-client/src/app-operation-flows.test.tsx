@@ -1979,3 +1979,68 @@ test('source workset uses normal App panels and never enters FD recovery or brow
  await act(async()=>button('导出完整文件…').click());expect(exportFile).toHaveBeenCalledOnce()
  expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled()
 })
+
+test('layout switch keeps style ownership while Sketch and Figma edit it through their own controls', async () => {
+  applyInterfaceLayout('sketch')
+  await render()
+  const doc = blank(), layer = node('rectangle'), text = node('text')
+  layer.fills = [paint('#113355'), paint('#446688')]
+  layer.strokes = [stroke()]
+  layer.effects = [effect('shadow')]
+  text.text = 'Alignment'
+  for (const item of [layer, text]) { doc.nodes[item.id] = item; doc.pages[0].children.push(item.id) }
+  const editorInstance = editor!
+  await act(async () => { expect(editorInstance.load(doc)).toBe(true); editorInstance.select([layer.id]) })
+  const before = editorInstance.authoredDocument
+  const current = () => editorInstance.authoredDocument.nodes[layer.id]
+  const undo = async () => {
+    expect(editorInstance.canUndo).toBe(true)
+    await act(async () => editorInstance.undo())
+    expect(editorInstance.authoredDocument).toEqual(before)
+    expect(editorInstance.canUndo).toBe(false)
+    expect(editorInstance.state.selection).toEqual([layer.id])
+  }
+  const rows = () => [...document.querySelectorAll<HTMLElement>('.sketch-style-row')]
+  expect(rows()).toHaveLength(4)
+  const disclosure = rows()[0].querySelector<HTMLButtonElement>('[aria-controls]')!
+  await act(async () => disclosure.click())
+  expect(disclosure.getAttribute('aria-expanded')).toBe('false')
+  expect(document.getElementById(disclosure.getAttribute('aria-controls')!)!.hidden).toBe(true)
+  expect(editorInstance.canUndo).toBe(false)
+  await act(async () => disclosure.click())
+
+  for (const [index, field, label] of [[0, 'fills', '填充'], [2, 'strokes', '描边'], [3, 'effects', '效果']] as const) {
+    const checkbox = rows()[index].querySelector<HTMLInputElement>('.sketch-style-check')!
+    expect(checkbox.checked).toBe(true)
+    await act(async () => checkbox.click())
+    expect(current()[field][0].visible).toBe(false)
+    await undo()
+
+    await key('Alt', { altKey: true })
+    const remove = document.querySelector<HTMLButtonElement>(`button[aria-label="移除全部${label}"]`)!
+    expect(remove.disabled).toBe(false)
+    await act(async () => remove.click())
+    await key('Alt', {}, 'keyup')
+    expect(current()[field]).toHaveLength(0)
+    await undo()
+  }
+  await act(async () => applyInterfaceLayout('figma'))
+  expect(rows()).toHaveLength(0)
+  expect(editorInstance.authoredDocument).toEqual(before)
+  expect(editorInstance.state.selection).toEqual([layer.id])
+  const cards = [...document.querySelectorAll('.property-card')]
+  for (const [index, field] of [[0, 'fills'], [2, 'strokes'], [3, 'effects']] as const) {
+    await act(async () => cards[index].querySelector<HTMLButtonElement>('button[title="切换可见性"]')!.click())
+    expect(current()[field][0].visible).toBe(false)
+    await undo()
+  }
+  await act(async () => { applyInterfaceLayout('sketch'); editorInstance.select([text.id]) })
+  const align = document.querySelector<HTMLButtonElement>('.sketch-text-alignment button[aria-label="居中"]')!
+  await act(async () => align.click())
+  expect(editorInstance.authoredDocument.nodes[text.id].textStyle?.align).toBe('center')
+  await act(async () => applyInterfaceLayout('figma'))
+  expect(document.querySelector<HTMLSelectElement>('select[aria-label="文字对齐"]')!.value).toBe('center')
+  await act(async () => editorInstance.undo())
+  expect(editorInstance.authoredDocument).toEqual(before)
+  expect(editorInstance.state.selection).toEqual([text.id])
+})

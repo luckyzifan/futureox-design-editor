@@ -14,7 +14,7 @@ import { desktopBridge } from './desktop'
 import { assertClipboardSize as assertSize, CLIPBOARD_TEXT_PREFIX as TEXT_PREFIX, readEditorClipboard as readClipboard, writeWebGraphClipboard } from './clipboard-adapter'
 import { commitPendingEdits } from './pending-edits'
 import { blank, defaultSizing, node, paint, type Bounds, type DesignNode, type DesignDocument, type Point } from './model'
-import { clearWholeTextRunColor } from './text'
+import { clearStyleStack } from './style-stack'
 import { lockedSelectionIds, sketchSelectionCommands } from './canvas-menu-model'
 import { fitBounds, fitSelectedBounds, zoomAt, zoomStep } from './canvas-camera'
 import { jumpFrame, jumpPage, jumpToNode, selectedTopLevelFrameBounds } from './canvas-navigation'
@@ -89,22 +89,6 @@ export function selectionCameraBox(editor: Editor): Bounds | undefined {
 type PaintStack = 'fills' | 'strokes'
 function nodeHasRemovablePaint(node: DesignNode | undefined, stack: PaintStack): boolean {
   return !!node && (node[stack].length > 0 || node.styleRefs?.[stack] !== undefined)
-}
-function clearPaintStack(node: DesignNode, stack: PaintStack) {
-  node[stack] = []
-  if (stack === 'fills') {
-    clearWholeTextRunColor(node)
-    delete node.sketchLayerStyleOverridden
-  }
-  if (node.styleRefs && Object.hasOwn(node.styleRefs, stack)) {
-    delete node.styleRefs[stack]
-    if (!Object.keys(node.styleRefs).length) delete node.styleRefs
-  }
-  if (!node.bindings) return
-  for (const path of Object.keys(node.bindings)) {
-    if (path === stack || path.startsWith(stack + '.')) delete node.bindings[path]
-  }
-  if (!Object.keys(node.bindings).length) delete node.bindings
 }
 export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: {
   worldPoint?: Point
@@ -446,8 +430,8 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         const selection = fills ? editor.state.selection : editor.topSelection()
         const ids = selection.filter(id => nodeHasRemovablePaint(editor.state.doc.nodes[id], stack))
         if (!ids.length) break
-        if (fills) editor.updateProperties(ids, node => clearPaintStack(node, stack), '去掉填充')
-        else editor.update(ids, node => clearPaintStack(node, stack), '去掉描边')
+        if (fills) editor.updateProperties(ids, node => clearStyleStack(node, stack), '去掉填充')
+        else editor.update(ids, node => clearStyleStack(node, stack), '去掉描边')
         break
       }
       case 'flatten': await editor.flattenSelection(); break
