@@ -1138,6 +1138,15 @@ fn halfScaleStretch(p:vec2<f32>)->vec4<f32>{
  if(managed){return sum/denom;}
  return clamp(floor(sum/denom+vec4<f32>(0.5)),vec4<f32>(0.),vec4<f32>(255.))/255.;
 }
+// Preserve the device texel grid. Only points outside the inset local
+// rectangle move, by the transformed difference to their nearest edge.
+fn rotatedBackdropPoint(p:vec2<f32>)->vec2<f32>{
+ if(u(13).x<0.5){return p;}
+ let h=vec3<f32>(p,1.);
+ let local=vec2<f32>(dot(u(10).xyz,h),dot(u(11).xyz,h));
+ let delta=clamp(local,u(9).xy,u(9).zw)-local;
+ return p+u(12).xy*delta.x+u(12).zw*delta.y;
+}
 fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==65){return progressiveTent(p);}if(mode==64){return sketchBlurBox(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
  // Managed surfaces preserve extended-range linear light in RGBA32F.
  if(u(60).x>0.5){
@@ -1145,7 +1154,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
   if(mode==8){return legacyTexture(p,true);}
   if(mode==11){return linearGlass(p);}
   if(mode==23){return meanFourRN(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}
-  if(mode==26){return meanFourRN(smp(sourceA,p,u(1)),smp(sourceB,p,u(2)),smp(sourceC,p,u(3)),smp(sourceD,p,u(1)));}
+  if(mode==26){let p=rotatedBackdropPoint(p);if(u(13).y>0.5){return smp(sourceA,p,u(1));}return meanFourRN(smp(sourceA,p,u(1)),smp(sourceB,p,u(2)),smp(sourceC,p,u(3)),smp(sourceD,p,u(1)));}
   if(mode==24){let q=(p-u(9).xy)/u(9).z-0.5;var sum=vec4<f32>(0);sum=resolveFour(sum,sourceA,q,u(1));sum=resolveFour(sum,sourceB,q,u(2));sum=resolveFour(sum,sourceC,q,u(3));return resolveFour(sum,sourceD,q,u(1));}
   // Match CPU backdrop replacement's separate multiply/subtract rounding.
   // Texture displacement can make coverage > source alpha; contraction here
@@ -1167,7 +1176,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
   for(var i=-reach;i<=reach;i=i+1){total=total+blurAt(p+axis*f32(i))*tentWeight(radius,abs(f32(i)));}
   return round(clamp(total,vec4<f32>(0),vec4<f32>(1))*255.)/255.;}
  if(mode==20){return curveMask(p);}
- if(mode==26){let total=round(smpBytes(sourceA,p,u(1)))+round(smpBytes(sourceB,p,u(2)))+round(smpBytes(sourceC,p,u(3)))+round(smpBytes(sourceD,p,u(1)));return floor((total+2.)*0.25)/255.;}
+ if(mode==26){let p=rotatedBackdropPoint(p);if(u(13).y>0.5){return smp(sourceA,p,u(1));}let total=round(smpBytes(sourceA,p,u(1)))+round(smpBytes(sourceB,p,u(2)))+round(smpBytes(sourceC,p,u(3)))+round(smpBytes(sourceD,p,u(1)));return floor((total+2.)*0.25)/255.;}
  if(mode==27){return round(smpBytes(sourceA,clamp(p,u(1).xy+0.5,u(1).xy+u(1).zw-0.5),u(1)))/255.;}
  if(mode==29){let dst=vec4<u32>(round(smp(sourceB,p,u(2))*255.));let src=vec4<u32>(round(a*255.));var opacity=u(4).z;if(u(4).w>0.5){opacity=opacity*at(sourceC,p,u(3)).a;}let weight=u32(round(clamp(opacity,0.,1.)*65535.));let denominator=16711425u;let numerator=dst*(denominator-src.a*weight)+src*(255u*weight);let q=numerator/vec4<u32>(denominator);let rem=numerator-q*denominator;return vec4<f32>(q+select(vec4<u32>(0),vec4<u32>(1),rem*2u>vec4<u32>(denominator)))/255.;}
  if(mode==28){let dst=smp(sourceB,p,u(2));if(any(p<u(1).xy)||any(p>=u(1).xy+u(1).zw)){return dst;}var opacity=u(4).z;if(u(4).w>0.5){opacity=opacity*at(sourceC,p,u(3)).a;}if(u(4).y>0.5){return round(round(dst*255.)*(1.-opacity)+round(a*255.)*opacity)/255.;}return dst*(1.-opacity)+a*opacity;}

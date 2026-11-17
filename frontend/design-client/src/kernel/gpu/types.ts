@@ -107,6 +107,8 @@ export type GpuNode = {
   shadowPaintAlpha?: number
   passthrough?: boolean
   backdropBox?: [number, number, number, number]
+  /** Local texel-center limits for a translucent rotated Sketch capture. */
+  rotatedBackdropBounds?: [number, number, number, number]
   /** Native painter-dependency certificate, emitted only for the adopted
    * bounded scene. Includes downstream effect consumers; not a viewport hint. */
   backdropOutputBox?: [number, number, number, number]

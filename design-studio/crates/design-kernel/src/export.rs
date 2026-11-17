@@ -1224,6 +1224,46 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn rotated_sketch_backdrop_clamps_capture_and_replaces_revealed_alpha() {
+        let doc = json!({
+            "schemaVersion":19,"id":"d","name":"Rotated Sketch capture",
+            "pages":[{"id":"p","name":"Page","children":["frame"],"background":"#ffffff"}],
+            "nodes":{
+                "frame":{"id":"frame","kind":"frame","width":192,"height":144,"clip":true,
+                    "children":["back","lens"]},
+                "back":{"id":"back","kind":"rectangle","width":192,"height":144,
+                    "fills":[{"kind":"solid","color":"#2985db"}]},
+                "lens":{"id":"lens","kind":"rectangle","width":160,"height":120,
+                    "transform":[0.981627183447664,-0.1908089953765448,0.1908089953765448,
+                        0.981627183447664,6.021285601594197,28.36708862326374],
+                    "fills":[{"kind":"solid","color":"#ffffff","opacity":0.1}],
+                    "effects":[{"kind":"background-blur","radius":12,"color":"#000000","sketch_backdrop":true,
+                        "gradientBlur":{"start":[80,60],"end":[80,120],"startCount":1,"endCount":1,
+                            "sketch":{"shape":"radial","ellipse":0.6,"stops":[
+                                {"offset":0,"strength":0},{"offset":0.35,"strength":1},
+                                {"offset":0.7,"strength":0.05},{"offset":1,"strength":0.6}]}}}]}
+            }
+        });
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        for scale in [1, 2] {
+            let mut render = |x, width, height| {
+                let png = engine.render_region_png(&RegionRequest {
+                    page_id: "p".into(), bounds: ExportBounds { x, y: 0., width, height },
+                    scale: scale as f64, node_ids: None, raster_profile: Some(RasterProfile::Analytic), color_output: None,
+                }).unwrap();
+                image::load_from_memory(&png).unwrap().into_rgba8()
+            };
+            let full = render(0., 192., 144.);
+            assert_eq!(full.get_pixel(113 * scale, 12 * scale)[3], 255, "no artificial alpha on the rotated side");
+            assert!(full.get_pixel(161 * scale, 0)[3] < 230, "the lens samples past the artboard");
+            assert_eq!(full.get_pixel(170 * scale, 0).0, [41, 133, 219, 255], "untouched backdrop outside the lens");
+            let crop = render(144., 48., 32.);
+            assert_eq!(crop, image::imageops::crop_imm(&full, 144 * scale, 0, 48 * scale, 32 * scale).to_image());
+        }
+    }
+
+    #[test]
     fn progressive_backdrop_filters_background_before_paint_and_preserves_fd() {
         let scene = json!({
             "schemaVersion":19,"id":"d","name":"Progressive backdrop","rasterProfile":"figma",

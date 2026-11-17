@@ -14,7 +14,7 @@ function fixture(){
   renderer.blur=vi.fn(()=>{throw Error('old-full-capture')})
   renderer.exactTentAxis=vi.fn((_input:Surface,_radius:number,_axis:number,output:Rect)=>renderer.acquire(output))
   const input=renderer.acquire({x:-1797.8828125,y:964.162109375,w:3659,h:1857})
-  const node={rect:{x:-1797,y:-837,w:3658,h:3658},backdropOutputBox:[-2,958,68,68]} as GpuNode
+  const node={effects:[],rect:{x:-1797,y:-837,w:3658,h:3658},backdropOutputBox:[-2,958,68,68]} as unknown as GpuNode
   return{renderer,driver,input,node,run:()=>renderer.blurBackdropRegion(input,1177.21484375/2,node)}
 }
 test('native-consumer backdrop uses bounded bit-preserving strips and keeps original capture phase/clamp',async()=>{
