@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Editor } from './engine'
 import { componentSources, family } from './components'
+import { dispatchEditorCommand } from './editor-commands'
 import { usePropertyText } from './property-interface-messages'
 export function AssetsPanel({ editor }: { editor: Editor }) {
   const { tr } = usePropertyText()
@@ -21,7 +22,7 @@ export function AssetsPanel({ editor }: { editor: Editor }) {
       <button
         className="text-button"
         disabled={!editor.state.selection.length}
-        onClick={() => editor.createComponent()}
+        onClick={() => void dispatchEditorCommand(editor, 'create-component')}
       >
         {tr('◇ 从选择创建组件')}
       </button>
