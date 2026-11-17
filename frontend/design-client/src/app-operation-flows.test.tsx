@@ -13,6 +13,7 @@ import { emptySystem } from './design-system'
 import { Editor } from './engine'
 import { applyInterfaceLayout } from './interface-layout'
 import { interfacePreference } from './interface-preference'
+import { fontTestBytes } from './font-test-fixtures'
 import { forma_decode_json, forma_encode_json } from './generated/design-kernel/design_kernel'
 import { worldMatrix } from './geometry'
 import { kernelFillWorld } from './kernel/picking'
@@ -232,6 +233,64 @@ test('Sketch Control-S and Inspector Update sync the selected style without reli
   expect(editor!.authoredDocument).toEqual(beforeSync)
   await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="更新图层样式"]')!.click())
   expect(editor!.authoredDocument).toEqual(afterSync)
+})
+
+test('Sketch Command-T opens the contextual typeface picker and keeps the edit range on Escape', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('sketch')
+  await render()
+  const showPicker = vi.fn()
+  Object.defineProperty(dom.window.HTMLSelectElement.prototype, 'showPicker', { value: showPicker, configurable: true })
+  const doc = blank('Typeface QA'), text = node('text', 60, 80, 240, 60), shape = node('rectangle', 330, 80, 160, 60)
+  text.text = 'Sketch typeface'
+  text.textStyle = defaultTextStyle()
+  doc.schemaVersion = 4
+  doc.fonts = { latin: { family: 'Noto Latin Fixture', data: fontTestBytes('noto-latin').toString('base64'), index: 0 } }
+  doc.nodes = { [text.id]: text, [shape.id]: shape }
+  doc.pages[0].children = [text.id, shape.id]
+  await act(async () => { editor!.load(doc); editor!.select([shape.id]); canvas().focus() })
+  const before = editor!.authoredDocument
+  const send = (target: HTMLElement, value: string, options: KeyboardEventInit = {}) =>
+    act(async () => target.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...options })))
+  const change = (select: HTMLSelectElement, value: string) => act(async () => {
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  const open = (target: HTMLElement) => send(target, 't', { code: 'KeyT', metaKey: true })
+  await open(canvas())
+  expect(showPicker).not.toHaveBeenCalled()
+  await act(async () => editor!.select([text.id]))
+  await open(canvas())
+  const layerFont = document.querySelector<HTMLSelectElement>('select[data-layer-typeface]')!
+  expect(document.activeElement).toBe(layerFont)
+  expect(showPicker).toHaveBeenCalledTimes(1)
+  await send(layerFont, 'Escape')
+  expect(document.activeElement).toBe(canvas())
+  expect(editor!.authoredDocument).toBe(before)
+  await open(canvas())
+  await change(layerFont, 'latin')
+  expect(editor!.authoredDocument.nodes[text.id].textStyle?.fontId).toBe('latin')
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+
+  await send(canvas(), 'Enter')
+  const input = document.querySelector<HTMLTextAreaElement>('.rich-text-editor textarea')!
+  expect(document.activeElement).toBe(input)
+  await act(async () => input.setSelectionRange(0, 6))
+  await open(input)
+  const runFont = document.querySelector<HTMLSelectElement>('.rich-text-editor select[aria-label="选中文字字体"]')!
+  expect(document.activeElement).toBe(runFont)
+  await send(runFont, 'Escape')
+  expect(document.activeElement).toBe(input)
+  expect([input.selectionStart, input.selectionEnd]).toEqual([0, 6])
+  expect(editor!.authoredDocument).toEqual(before)
+  await open(input)
+  await change(runFont, 'latin')
+  await send(input, 'Enter', { metaKey: true })
+  expect(editor!.authoredDocument.nodes[text.id].textRuns).toEqual([{ start: 0, end: 6, fontId: 'latin' }])
+  await act(async () => editor!.undo())
+  expect(editor!.authoredDocument).toEqual(before)
+  expect(editor!.canUndo).toBe(false)
 })
 
 test('Sketch combine shortcuts create the expected editable operands through the layout keyboard route', async () => {

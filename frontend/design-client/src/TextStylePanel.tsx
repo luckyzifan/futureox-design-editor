@@ -2,6 +2,7 @@ import { usePropertyText, translateProperty } from './property-interface-message
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits, styleUnitDescription } from './property-units'
 import { SystemFontPicker } from './SystemFontPicker'
+import { interfacePreference } from './interface-preference'
 import { FontManagementPanel } from './FontManagementPanel'
 import { applySelectionFont } from './font-management'
 import { commitPendingEdits, pendingEditsChanged, registerPendingEdit } from './pending-edits'
@@ -154,8 +155,15 @@ export function TextStylePanel({
     <div className="text-style-panel" onCompositionStartCapture={() => { composing.current = true; pendingEditsChanged(editor) }} onCompositionEndCapture={() => { composing.current = false; pendingEditsChanged(editor) }}>
       <label>{tr("字体")}<select
           aria-label={tr("文字字体")}
+          data-layer-typeface
           value={style.fontId}
           onChange={(e) => applySelectionFont(editor, ids, e.target.value, { detachSharedStyle: detachFontStyle })}
+          onKeyDown={event => {
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing || interfacePreference.getSnapshot().uiMode !== 'sketch') return
+            event.preventDefault()
+            event.stopPropagation()
+            document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
+          }}
         >
           <option value="default">{tr("Noto Sans SC（内置）")}</option>
           {Object.entries(doc.fonts || {}).map(([id, font]) => (
