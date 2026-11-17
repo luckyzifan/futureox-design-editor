@@ -8,6 +8,7 @@ import { shortcutLabel, shortcutPlatform, type ShortcutContext } from './shortcu
 import { shortcutPreference } from './shortcut-preference'
 import { desktopBridge } from './desktop'
 import { selectionCommandAdmission } from './commands/selection-command'
+import { alignmentAvailability, alignmentCommandIds, alignmentCommands } from './alignment-availability'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
 export type ContextMenuOrigin = 'canvas' | 'empty-canvas' | 'layers' | 'inspector'
@@ -146,6 +147,7 @@ const sketchContextOrder: EditorCommand[] = [
   'bring-forward', 'send-backward', 'copy-properties', 'paste-properties',
   'group', 'frame-selection', 'ungroup', 'rename', 'create-component', 'detach-instance', 'auto-layout', 'remove-auto-layout',
   'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
+  ...alignmentCommandIds,
   'flip-horizontal', 'flip-vertical', 'mask-selection', 'convert-vector', 'outline-stroke',
 ]
 const sketchLabels: Partial<Record<EditorCommand, readonly [string, string]>> = {
@@ -197,6 +199,11 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext, uiM
   }
   if (uiMode === 'sketch') {
     const commands = sketchSelectionCommands(editor)
+    const canAlign = alignmentAvailability(editor).align
+    for (const command of alignmentCommandIds) {
+      const { label } = alignmentCommands[command]
+      available.set(command, { command, label: label[locale === 'en' ? 1 : 0], group: 'alignment', disabled: !canAlign })
+    }
     available.set('paste', { command: 'paste', label: locale === 'en' ? 'Paste' : '粘贴', group: 'clipboard',
       disabled, shortcut: shortcutLabel('paste', context) })
     if (selection.length && !available.has('ungroup'))

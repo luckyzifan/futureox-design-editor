@@ -8,6 +8,7 @@ import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { createClip } from './animation'
 import { VectorEngine } from './generated/design-kernel/design_kernel'
 import { prepareDocumentForEditing } from './kernel/picking'
+import { alignmentAvailability, alignmentCommandIds } from './alignment-availability'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -237,6 +238,33 @@ test('context origin and layout choose the menu while the shortcut preference su
   expect(sketchSelectionCommands(editor).canCombine).toBe(false)
   editor.clearSelection()
   expect(sketchSelectionCommands(editor)).toMatchObject({ canGroup: false, canUngroup: false, canCombine: false })
+  editor.dispose()
+})
+
+test('Sketch context alignment follows the inspector admission and dispatches one edit', async () => {
+  const { editor, a } = rotatedFixture()
+  const keys = { profile: 'sketch-like', platform: 'mac', desktop: true } as const
+  editor.select([a.id])
+  const matching = (origin: 'canvas' | 'layers', uiMode: 'sketch' | 'figma' = 'sketch') =>
+    canvasContextItems(editor, keys, uiMode, origin).filter(item => item.group === 'alignment')
+  expect(alignmentAvailability(editor).align).toBe(true)
+  for (const origin of ['canvas', 'layers'] as const) {
+    expect(matching(origin).map(item => item.command)).toEqual(alignmentCommandIds)
+    expect(matching(origin).every(item => !item.disabled)).toBe(true)
+    expect(matching(origin, 'figma')).toEqual([])
+  }
+  const before = editor.state.doc
+  await dispatchEditorCommand(editor, 'align-left')
+  expect(editor.state.doc.nodes[a.id].transform[4]).toBeCloseTo(0)
+  editor.undo()
+  expect(editor.state.doc).toEqual(before)
+  expect(editor.canUndo).toBe(false)
+  editor.update([a.id], { locked: true }, '切换锁定')
+  expect(alignmentAvailability(editor).align).toBe(false)
+  expect(matching('layers').every(item => item.disabled)).toBe(true)
+  const locked = editor.state.doc
+  await dispatchEditorCommand(editor, 'align-left')
+  expect(editor.state.doc).toBe(locked)
   editor.dispose()
 })
 
