@@ -18,7 +18,7 @@ import { jumpFrame, jumpPage, jumpToNode } from './canvas-navigation'
 import { togglePrototypeTab } from './prototype-chrome'
 import { allParents, apply, bounds, unionBounds, worldMatrix } from './geometry'
 import { selectionParentBounds } from './canvas-view'
-import { editableFrameCrop, frameCropPatches } from './selection-properties'
+import { canFitFrameContents, editableFrameCrop, frameCropPatches } from './selection-properties'
 import { interfacePreference } from './interface-preference'
 import { interactivePath } from './selection-hierarchy'
 import {querySelection,type SelectionQuery} from './selection-queries'
@@ -107,6 +107,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
   shortcutProfile?: ShortcutProfile
   actionSource?: ActionSourceCode
   preserveFrameContents?: boolean
+  fitAxes?: readonly ('width' | 'height')[]
 } = {}): Promise<void> {
   const category = command === 'copy' ? CanvasAction.copy : command === 'cut' ? CanvasAction.cut : command.startsWith('paste') ? CanvasAction.paste : command === 'undo' ? CanvasAction.undo : command === 'redo' ? CanvasAction.redo : command === 'delete' ? CanvasAction.delete : command === 'duplicate' ? CanvasAction.duplicate : command === 'group' || command === 'frame-selection' || command === 'graphic-selection' ? CanvasAction.group : command === 'ungroup' ? CanvasAction.ungroup : command === 'select-all' ? CanvasAction.selectAll : CanvasAction.command
   const action = beginEditorAction(editor, category, options.actionSource ?? ActionSource.unknown, editorCommands.indexOf(command) + 1)
@@ -326,17 +327,25 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'fit-frame-content': {
         const ids = editor.topSelection()
         const frame = ids.length === 1 ? before.nodes[ids[0]] : undefined
-        if (!frame || frame.kind !== 'frame' || frame.locked || frame.instance || frame.instanceOrigin ||
-            frame.layout && frame.layout.mode !== 'none' || lockedSelectionIds(editor).length) break
+        if (!frame || !canFitFrameContents(before, frame) || lockedSelectionIds(editor).length) break
+        const axes = options.fitAxes ?? ['width', 'height']
+        const sizing = { ...defaultSizing(), ...frame.sizing }
+        const stack = frame.layout?.mode === 'horizontal' || frame.layout?.mode === 'vertical'
+        for (const axis of axes) sizing[axis] = stack ? 'hug' : 'fixed'
+        if (stack) {
+          if (axes.every(axis => frame.sizing?.[axis] === 'hug')) break
+          editor.change('调整尺寸以适应内容', draft => { draft.nodes[frame.id].sizing = sizing })
+          break
+        }
         const children = frame.children.filter(id => before.nodes[id].visible)
-        if (!children.length) break
         const box = unionBounds(children.map(id => selectionParentBounds(before, id)))
-        if (!(box.width > 0 && box.height > 0)) break
-        const origin = apply(frame.transform, box)
+        if (axes.some(axis => !(box[axis] > 0))) break
+        const fitWidth = axes.includes('width'), fitHeight = axes.includes('height')
+        const origin = apply(frame.transform, { x: fitWidth ? box.x : 0, y: fitHeight ? box.y : 0 })
         const patches = frameCropPatches(before, frame.id, {
           transform: [...frame.transform.slice(0, 4), origin.x, origin.y] as DesignNode['transform'],
-          width: box.width, height: box.height,
-          sizing: { ...defaultSizing(), ...frame.sizing, width: 'fixed', height: 'fixed' },
+          width: fitWidth ? box.width : frame.width, height: fitHeight ? box.height : frame.height,
+          sizing,
         })
         editor.change('调整尺寸以适应内容', draft => {
           for (const [id, patch] of Object.entries(patches)) Object.assign(draft.nodes[id], patch)

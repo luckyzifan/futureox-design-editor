@@ -46,7 +46,7 @@ import { FramePresetPanel } from './FramePresetPanel'
 import { addSpatialEffect, PreserveDepthControl, SpatialEffectRow, type SpatialKind } from './SpatialEffectsPanel'
 import { frameSizePresetGate } from './frame-presets'
 import type { PencilCap } from './freehand'
-import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
+import { canFitFrameContents, editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import { frameEdgeDisplayLocal, sketchFrameDistance, sketchFrameEdges, sketchNestedFramePins } from './sketch-frame-distance'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus, Link2, Unlink2, RotateCw } from 'lucide-react'
@@ -750,7 +750,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} historyLabel="顶点圆角" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("顶点圆角")} min={0} value={n.cornerRadius ?? 0}
             onChange={v => update(n => { n.cornerRadius = v })} />}
           {uiMode === 'sketch' && n.kind === 'frame' && ids.length === 1 && <button type="button"
-            disabled={n.locked || !!n.instance || !!n.instanceOrigin || !n.children.length || !!n.layout && n.layout.mode !== 'none'}
+            disabled={!canFitFrameContents(s.doc, n) || !editor.topSelection().length}
             onClick={() => void dispatchEditorCommand(editor, 'fit-frame-content')}>
             {tr('调整尺寸以适应内容')} {shortcutLabel('fit-frame-content', { profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() })}
           </button>}

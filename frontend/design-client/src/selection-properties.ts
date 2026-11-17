@@ -75,6 +75,15 @@ export function editableFrameCrop(editor: Editor): string | undefined {
   return id
 }
 
+export function canFitFrameContents(doc: DesignDocument, frame: DesignNode): boolean {
+  if (frame.kind !== 'frame' || frame.locked || frame.instance || frame.instanceOrigin || frame.layout?.mode === 'grid') return false
+  const stack = frame.layout?.mode === 'horizontal' || frame.layout?.mode === 'vertical'
+  return frame.children.some(id => {
+    const child = doc.nodes[id]
+    return child?.visible && (!stack || !child.sizing?.absolute)
+  })
+}
+
 /** Resize the frame in its own axes. Rebase direct children so their world
  * transforms and the pin modes used by the next ordinary resize stay intact. */
 export function frameCropPatches(doc: DesignDocument, id: string, patch: Partial<DesignNode>): Record<string, Partial<DesignNode>> {
