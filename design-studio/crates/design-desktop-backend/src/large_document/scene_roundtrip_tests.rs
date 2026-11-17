@@ -1294,3 +1294,100 @@ fn topology_source_snapshot_load_measures_production_entries() {
     assert_eq!(after_meta.len(), meta.len());
     assert_eq!(after_meta.modified().ok(), meta.modified().ok());
 }
+
+/// Production preview open, snapshot, load, and two adjacent tile compiles.
+/// One cold process. Requires TOPOLOGY_SKETCH. Does not change admission.
+#[test]
+#[ignore = "Complete user topology source; run explicitly with TOPOLOGY_SKETCH"]
+fn measure_preview_open_snapshot_tiles() {
+    let source = PathBuf::from(std::env::var_os("TOPOLOGY_SKETCH").expect("TOPOLOGY_SKETCH"));
+    let source = source.canonicalize().unwrap_or_else(|e| panic!("topology source {}: {e}", source.display()));
+    let font_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf");
+    let font = fs::read(&font_path).unwrap_or_else(|e| panic!("font {}: {e}", font_path.display()));
+    let source_bytes = fs::read(&source).unwrap();
+    let source_sha = digest(&source_bytes);
+    let meta = fs::symlink_metadata(&source).unwrap();
+    eprintln!("measurePreview debugAssertions={} budgetBytes={} sourceBytes={} sourceSha={source_sha}", cfg!(debug_assertions), futureox_design_kernel::capacity::memory_budget_bytes(), source_bytes.len());
+    let root = std::env::temp_dir().join("topology-preview-measure");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir(&root).unwrap();
+    let sessions = Sessions::new(root.join("cache"));
+    let cancel = AtomicBool::new(false);
+    let opened = std::time::Instant::now();
+    let status = sessions.open(Open {
+        opening_preview: true,
+        path: source.clone(),
+        document_id: "topology-preview-measure".into(),
+        session_epoch: 1,
+    }, &cancel).unwrap();
+    let open_ms = opened.elapsed().as_secs_f64() * 1000.0;
+    let snap = std::time::Instant::now();
+    let snapshot = sessions.dispatch("large.canvasSnapshot", Fixture::request(&status, json!({"navigationPreview": false})), &cancel).unwrap();
+    let snapshot_ms = snap.elapsed().as_secs_f64() * 1000.0;
+    let scene_bytes = snapshot["bytes"].as_u64().unwrap();
+    let scene_path = PathBuf::from(snapshot["path"].as_str().unwrap());
+    assert_eq!(fs::metadata(&scene_path).unwrap().len(), scene_bytes);
+    let scene_sha = sha256_file(&scene_path);
+    let descriptor = json!({
+        "path": snapshot["path"],
+        "store": snapshot["store"],
+        "documentId": snapshot["owner"]["documentId"],
+        "pageId": snapshot["pageId"],
+        "stageId": snapshot["stageId"],
+        "nodes": snapshot["nodes"],
+    });
+    let mut native = futureox_design_kernel::preparation::Preparation::new(&font).unwrap();
+    let loading = std::time::Instant::now();
+    let loaded = native.request("canvas", "load_source_snapshot", &[descriptor]).unwrap();
+    let load_ms = loading.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(loaded.metadata["value"]["nodes"], snapshot["nodes"]);
+    let bounds = &snapshot["bounds"];
+    let page = snapshot["pageId"].as_str().unwrap();
+    let origin_x = bounds["x"].as_f64().unwrap();
+    let origin_y = bounds["y"].as_f64().unwrap();
+    let mut tiles = Vec::new();
+    for (name, dx) in [("first", 0.0), ("adjacent", 512.0)] {
+        let x = origin_x.floor() as i32 + dx as i32;
+        let y = origin_y.floor() as i32;
+        let options = json!({
+            "pageId": page, "width": 1024, "height": 768,
+            "view": {"x": origin_x, "y": origin_y, "zoom": 1.0},
+            "rasterProfile": "figmaSubpixel", "gpuPageBackground": true,
+            "gpuViewport": {"x": x, "y": y, "w": 514, "h": 514},
+            "prepareViewport": {"x": x, "y": y, "w": 1026, "h": 514},
+        });
+        let started = std::time::Instant::now();
+        let reply = native.request("canvas", "compile_gpu_packet", &[json!(options.to_string())]).unwrap();
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+        let demand = &reply.metadata["compileStats"]["sourceDemand"];
+        tiles.push(json!({
+            "name": name, "compileMs": ms, "packetBytes": reply.bytes.len(),
+            "packetSha256": digest(&reply.bytes),
+            "mode": demand["mode"], "resolvedCompileNodes": demand["resolvedCompileNodes"],
+            "projectionRebuilds": demand["projectionRebuilds"], "projectionReuses": demand["projectionReuses"],
+            "sourceNodes": demand["sourceNodes"],
+        }));
+        eprintln!("tile {name} ms={ms:.2} bytes={} mode={} nodes={}", reply.bytes.len(), demand["mode"], demand["resolvedCompileNodes"]);
+    }
+    let (builds, scene_writes, source_batches, conversions, retained_reads) = {
+        let slot = sessions.current.lock().unwrap();
+        let s = slot.as_ref().unwrap();
+        let windows = s.converted_windows.lock().unwrap();
+        (s.snapshot_account.builds, s.snapshot_account.scene_writes, s.snapshot_account.source_batches.load(Ordering::Relaxed), windows.conversions, windows.retained_reads)
+    };
+    eprintln!("{}", json!({
+        "kind": "preview-open-snapshot-tiles",
+        "openMs": open_ms, "snapshotMs": snapshot_ms, "loadMs": load_ms,
+        "roots": snapshot["roots"], "nodes": snapshot["nodes"], "sceneBytes": scene_bytes, "sceneSha": scene_sha,
+        "builds": builds, "sceneWrites": scene_writes, "sourceBatches": source_batches,
+        "windowConversions": conversions, "windowReads": retained_reads, "tiles": tiles,
+    }));
+    drop(native);
+    drop(sessions);
+    let _ = fs::remove_dir_all(&root);
+    let after = fs::read(&source).unwrap();
+    assert_eq!(after, source_bytes, "original sketch bytes changed");
+    let after_meta = fs::symlink_metadata(&source).unwrap();
+    assert_eq!(after_meta.len(), meta.len());
+    assert_eq!(after_meta.modified().ok(), meta.modified().ok());
+}
