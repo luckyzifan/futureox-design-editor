@@ -1,18 +1,18 @@
 import { useId, useLayoutEffect, useRef } from 'react'
-import { Box, Eye, EyeOff, RotateCcw, Scan, Trash2, X } from 'lucide-react'
+import { Box, Eye, EyeOff, Minus, RotateCcw, Scan, Trash2, X } from 'lucide-react'
 import type { Editor } from './engine'
 import { NumberField } from './fields'
 import { useInterfacePreferences } from './interface-preference'
 import type { DesignNode, SpatialEffects } from './model'
 import { commitPendingEdits } from './pending-edits'
 
-export type SpatialKind = keyof SpatialEffects
+export type SpatialKind = 'pose' | 'perspective'
 
 export function addSpatialEffect(editor: Editor, layerId: string, kind: SpatialKind) {
   const before = editor.authoredDocument
   editor.updateProperties([layerId], (layer, doc) => {
     if (layer.spatial?.[kind]) return
-    doc.schemaVersion = 24
+    if (doc.schemaVersion < 24) doc.schemaVersion = 24
     const spatial = layer.spatial ??= {}
     if (kind === 'pose') spatial.pose = {
       rotateX: 0, rotateY: 0, rotateZ: 0, depth: 0, origin: [0.5, 0.5], visible: true, backfaceVisible: true,
@@ -68,7 +68,7 @@ export function SpatialEffectRow({ editor, layer, kind, open, onOpen }: {
     editor.updateProperties([layer.id], target => {
       if (!target.spatial?.[kind]) return
       apply(target.spatial)
-      if (!target.spatial.pose && !target.spatial.perspective) delete target.spatial
+      if (!target.spatial.pose && !target.spatial.perspective && !target.spatial.preserve3d) delete target.spatial
     }, history)
   }
   return <div className="blur-effect spatial-effect">
@@ -124,6 +124,44 @@ export function SpatialEffectRow({ editor, layer, kind, open, onOpen }: {
         <NumberField label={label('透视距离', 'Distance')} value={perspective.distance} min={1} max={1e7} unit="number"
           onChange={value => change('修改透视距离', spatial => { if (spatial.perspective) spatial.perspective.distance = value })} />
       </div>}
+    </div>
+  </div>
+}
+
+export function PreserveDepthControl({ editor, layer }: { editor: Editor; layer: DesignNode }) {
+  const { locale } = useInterfacePreferences()
+  const en = locale === 'en'
+  const enabled = !!layer.spatial?.preserve3d
+  const setMode = (preserve: boolean) => {
+    if (preserve === enabled) return
+    editor.updateProperties([layer.id], (node, doc) => {
+      if (preserve) {
+        doc.schemaVersion = 25
+        ;(node.spatial ??= {}).preserve3d = true
+      } else if (node.spatial) {
+        delete node.spatial.preserve3d
+        if (!node.spatial.pose && !node.spatial.perspective) delete node.spatial
+      }
+    }, preserve ? '保留嵌套图层 3D' : '转为平面')
+  }
+  const names = en ? ['Turn into flat plane', 'Keep nested layers 3D'] : ['转为平面', '保留嵌套图层 3D']
+  return <div className="spatial-depth-control">
+    <span>{en ? 'Preserve 3D' : '保留 3D'}</span>
+    <div className="blur-settings-modes" role="radiogroup" aria-label={en ? 'Preserve 3D' : '保留 3D'}
+      onKeyDown={event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        event.stopPropagation()
+        const preserve = event.key === 'Home' ? false : event.key === 'End' ? true : !enabled
+        setMode(preserve)
+        event.currentTarget.querySelectorAll('button')[preserve ? 1 : 0]?.focus()
+      }}>
+      {names.map((name, i) => {
+        const selected = enabled === Boolean(i)
+        return <button key={i} type="button" role="radio" aria-checked={selected}
+          aria-pressed={selected} aria-label={name} title={name} tabIndex={selected ? 0 : -1}
+          onClick={() => setMode(Boolean(i))}>{i ? <Box size={15} aria-hidden /> : <Minus size={15} aria-hidden />}</button>
+      })}
     </div>
   </div>
 }

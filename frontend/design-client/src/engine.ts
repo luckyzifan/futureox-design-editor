@@ -756,6 +756,7 @@ export class Editor {
         if(draft.schemaVersion < 21 && hasSchema21Features(featureDocOf(authored)))draft.schemaVersion=21
         if(draft.schemaVersion < 22 && hasSchema22Features(featureDocOf(authored)))draft.schemaVersion=22
         if(draft.schemaVersion < 24 && featureNodesOf(authored).some(n => n.spatial)) draft.schemaVersion = 24
+        if(draft.schemaVersion < 25 && featureNodesOf(authored).some(n => n.spatial?.preserve3d)) draft.schemaVersion = 25
         if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields

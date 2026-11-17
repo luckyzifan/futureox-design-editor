@@ -42,20 +42,27 @@ export function kernelSpatialDocument(doc: DesignDocument): DesignDocument {
   if (doc.schemaVersion < 24 || !ready) return doc
   const cached = spatialViews.get(doc)
   if (cached) return cached
-  type Patch = Pick<DesignNode, 'visible' | 'transform' | 'vectorGeometry'>
+  type Patch = Pick<DesignNode, 'visible' | 'transform' | 'vectorGeometry'> & { hideFills?: boolean }
   const patches = JSON.parse(spatial_projections_json(JSON.stringify(doc))) as Record<string, Patch>
   const ids = Object.keys(patches)
   if (!ids.length) { spatialViews.set(doc, doc); return doc }
   const nodes = { ...doc.nodes }
   for (const id of ids) {
-    const { visible, transform, vectorGeometry } = patches[id]
+    const { visible, transform, vectorGeometry, hideFills } = patches[id]
     const original = doc.nodes[id]
     nodes[id] = { ...original, visible, transform }
+    if (hideFills) nodes[id].fills = original.fills.map(paint => ({ ...paint, visible: false }))
     delete nodes[id].spatial
     if (vectorGeometry) {
       nodes[id].kind = 'vector'
       delete nodes[id].network
       nodes[id].vectorGeometry = vectorGeometry
+    }
+  }
+  for (const [id, node] of Object.entries(nodes)) {
+    if (node.spatial) {
+      nodes[id] = { ...node }
+      delete nodes[id].spatial
     }
   }
   const view = { ...doc, nodes }

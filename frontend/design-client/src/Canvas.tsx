@@ -1042,7 +1042,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const resizeNode = selected.length === 1 ? state.doc.nodes[selected[0].id] : null
   const hasSpatialSelection = selected.some(entry => {
     const doc = state.doc
-    return [entry.id, ...entry.ancestors].some(id => doc.nodes[id]?.spatial?.pose?.visible)
+    return [entry.id, ...entry.ancestors].some(id => doc.nodes[id]?.spatial?.pose?.visible || doc.nodes[id]?.spatial?.preserve3d)
   })
   const canOrient = !!resizeNode && !hasSpatialSelection
   const localSelection = useMemo(() => canOrient ? selectionLocalBounds(state.doc, resizeNode!.id) : null,

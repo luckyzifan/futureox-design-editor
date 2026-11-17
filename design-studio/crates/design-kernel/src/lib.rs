@@ -137,6 +137,8 @@ mod rounded;
 pub mod sampling;
 pub mod scene;
 pub mod spatial;
+mod spatial_curve;
+mod spatial_depth;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod scene_store;
 #[cfg(not(target_arch = "wasm32"))]

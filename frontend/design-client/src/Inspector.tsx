@@ -43,7 +43,7 @@ import { shortcutLabel, shortcutPlatform } from './shortcut-profiles'
 import { useShortcutProfile } from './shortcut-preference'
 import { useInterfacePreferences } from './interface-preference'
 import { FramePresetPanel } from './FramePresetPanel'
-import { addSpatialEffect, SpatialEffectRow, type SpatialKind } from './SpatialEffectsPanel'
+import { addSpatialEffect, PreserveDepthControl, SpatialEffectRow, type SpatialKind } from './SpatialEffectsPanel'
 import { frameSizePresetGate } from './frame-presets'
 import type { PencilCap } from './freehand'
 import { editableFrameCrop, figmaPositionOffset, frameCropPatches, resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
@@ -901,7 +901,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         <BoardPanel editor={editor} node={n}/>
         <RepeatPanel editor={editor} node={n}/>
         <ComponentPanel editor={editor} node={n} ids={ids} />
-        <section>
+        {!n.spatial?.preserve3d && <section>
           <h3>{tr("填充")}<button
               title={tr("添加填充")}
               onClick={() =>
@@ -938,7 +938,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
             </div>
           ))}
           {!n.fills.length && <p className="muted">{tr("无填充")}</p>}
-        </section>
+        </section>}
         <section>
           <h3>{tr("描边")}<button
               title={tr("添加描边")}
@@ -1271,11 +1271,13 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
           )}
           {!n.effects.length && !n.spatial && <p className="muted">{tr("用光影和质感表达层次")}</p>}
         </section>
-        {allowSpatial && uiMode === 'figma' && n.spatial && <section>
+        {allowSpatial && uiMode === 'figma' && (n.spatial || n.kind === 'frame' && !n.graphic &&
+          n.children.some(id => s.doc.nodes[id]?.spatial)) && <section>
           <h3>{locale === 'en' ? 'Transform effects' : '变换效果'}</h3>
           {(['pose', 'perspective'] as const).map(kind => n.spatial?.[kind] &&
             <SpatialEffectRow key={kind} editor={editor} layer={n} kind={kind} open={spatialOpen === kind}
               onOpen={open => setSpatialOpen(open ? kind : null)} />)}
+          {n.kind === 'frame' && !n.graphic && <PreserveDepthControl editor={editor} layer={n} />}
         </section>}
         <SelectionColorsPanel editor={editor} />
         </>}

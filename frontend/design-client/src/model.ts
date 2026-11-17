@@ -365,7 +365,7 @@ export type SpatialPose = {
   origin: [number, number]; backfaceVisible: boolean; visible: boolean
 }
 export type SpatialPerspective = { distance: number; visible: boolean }
-export type SpatialEffects = { pose?: SpatialPose; perspective?: SpatialPerspective }
+export type SpatialEffects = { pose?: SpatialPose; perspective?: SpatialPerspective; preserve3d?: boolean }
 export type DesignNode = {
   spatial?: SpatialEffects
   vectorGeometry?: VectorGeometry
@@ -511,7 +511,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25
   id: string
   name: string
   pages: Page[]
@@ -840,7 +840,7 @@ export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
 export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -1066,8 +1066,11 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     if (n.spatial !== undefined) {
       const spatial = n.spatial
       const inRange = (value: unknown, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
-      if (d.schemaVersion < 24 || !isObject(spatial) || Object.keys(spatial).some(key => key !== 'pose' && key !== 'perspective') ||
-          (!spatial.pose && !spatial.perspective)) throw new Error('3D 效果需要设计文件版本 24')
+      if (d.schemaVersion < 24 || !isObject(spatial) || Object.keys(spatial).some(key => !['pose', 'perspective', 'preserve3d'].includes(key)) ||
+          (!spatial.pose && !spatial.perspective && !spatial.preserve3d)) throw new Error('3D 效果需要设计文件版本 24')
+      if (spatial.preserve3d !== undefined && (typeof spatial.preserve3d !== 'boolean' ||
+          spatial.preserve3d && (d.schemaVersion < 25 || n.kind !== 'frame' || n.graphic)))
+        throw new Error('保留嵌套 3D 需要画框和设计文件版本 25')
       const pose = spatial.pose
       if (pose !== undefined && (!isObject(pose) || ['slice', 'section'].includes(n.kind) ||
           Object.keys(pose).some(key => !['rotateX', 'rotateY', 'rotateZ', 'depth', 'origin', 'backfaceVisible', 'visible'].includes(key)) ||
