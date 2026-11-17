@@ -67,6 +67,12 @@ fn coverage_rects(
     width: i32,
     height: i32,
 ) -> Vec<Contour> {
+    // The analytic area program integrates eight horizontal spans per pixel.
+    // A full-width rectangle of height coverage/255 only hits a subset of
+    // those spans, so the reconstructed coverage is a multiple of 1/8 and
+    // can sit more than 16/255 away from the FreeType mask. A rectangle of
+    // width coverage/255 and height 1 contributes that fraction on every
+    // span, which is the mask byte on both the CPU and GPU area programs.
     let mut rects = Vec::new();
     for y in 0..height {
         for x in 0..width {
@@ -76,14 +82,14 @@ fn coverage_rects(
             }
             let x0 = f64::from(origin_x + x);
             let y0 = f64::from(origin_y + y);
-            let y1 = y0 + f64::from(coverage) / 255.0;
+            let x1 = x0 + f64::from(coverage) / 255.0;
             rects.push(Contour {
                 closed: true,
                 points: vec![
                     Point::new(x0, y0),
-                    Point::new(x0 + 1.0, y0),
-                    Point::new(x0 + 1.0, y1),
-                    Point::new(x0, y1),
+                    Point::new(x1, y0),
+                    Point::new(x1, y0 + 1.0),
+                    Point::new(x0, y0 + 1.0),
                 ],
             });
         }

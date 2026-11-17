@@ -196,6 +196,62 @@ pub fn try_rasterize(cs: &[Contour], limit: Rect, even_odd: bool) -> Result<Mask
     RasterWorkspace::default().area(cs, limit, even_odd)
 }
 
+fn stamp_horizontal_pixel_bars(cs: &[Contour], mask: &mut Mask) -> Result<bool, String> {
+    if cs.is_empty() {
+        return Ok(true);
+    }
+    let rect = mask.rect;
+    let mut bars = Vec::with_capacity(cs.len());
+    for (i, contour) in cs.iter().enumerate() {
+        if i % 256 == 0 {
+            checkpoint()?;
+        }
+        // Curve outlines have more than four corners. Reject them before
+        // the rectangle walk so ordinary fills do not pay for this path.
+        if !(4..=5).contains(&contour.points.len()) {
+            return Ok(false);
+        }
+        let Some([x0, y0, x1, y1]) = crate::coverage::rectangle(std::slice::from_ref(contour))
+        else {
+            return Ok(false);
+        };
+        let width = x1 - x0;
+        if y0.fract() != 0.
+            || x0.fract() != 0.
+            || y1 != y0 + 1.
+            || !(width > 0. && width <= 1.)
+        {
+            return Ok(false);
+        }
+        let x = x0 as i32;
+        let y = y0 as i32;
+        if x < rect.x || y < rect.y || x >= rect.right() || y >= rect.bottom() {
+            return Ok(false);
+        }
+        let Some(index) = rect.index(x, y) else {
+            return Ok(false);
+        };
+        bars.push((index, width));
+    }
+    for (i, (index, width)) in bars.iter().enumerate() {
+        if i % 256 == 0 {
+            checkpoint()?;
+        }
+        if mask.data[*index] != 0. {
+            mask.data.fill(0.);
+            return Ok(false);
+        }
+        // Same eight additions the scanline accumulator performs.
+        let step = (*width / 8.) as f32;
+        let mut coverage = 0f32;
+        for _ in 0..8 {
+            coverage += step;
+        }
+        mask.data[*index] = coverage;
+    }
+    Ok(true)
+}
+
 fn pixel_span(rect: Rect, row: u32, left: f64, right: f64) -> std::ops::Range<usize> {
     let sx = crate::fidelity::SAMPLE_OFFSETS[(row % 4) as usize].0;
     let start = ((left - sx).ceil() as i32).clamp(rect.x, rect.right());
@@ -277,6 +333,12 @@ impl RasterWorkspace {
             data: buffer(rect)?,
         };
         if rect.empty() {
+            return Ok(mask);
+        }
+        // Device-pixel bars from a FreeType mask. The eight-span integral of a
+        // bar [x, x + a] × [y, y + 1] is exactly `a`, so stamp that coverage
+        // instead of walking every span. Any other shape keeps the scan.
+        if stamp_horizontal_pixel_bars(cs, &mut mask)? {
             return Ok(mask);
         }
         if let Some(bounds) = crate::coverage::rectangle(cs) {
