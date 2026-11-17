@@ -1,5 +1,5 @@
-import { useSyncExternalStore } from 'react'
-import type { ShortcutProfile } from './shortcut-profiles'
+import { interfacePreference, useInterfacePreferences } from './interface-preference'
+import { shortcutProfileForUiMode, type ShortcutProfile } from './shortcut-profiles'
 export const SHORTCUT_PROFILE_KEY = 'forma.shortcut-profile.v1'
 const valid = (value: unknown): value is ShortcutProfile => value === 'figma-like' || value === 'sketch-like'
 export function createShortcutPreference(storage: () => Pick<Storage, 'getItem' | 'setItem'> | undefined) {
@@ -27,4 +27,5 @@ export function createShortcutPreference(storage: () => Pick<Storage, 'getItem' 
   }
 }
 export const shortcutPreference = createShortcutPreference(() => typeof localStorage === 'undefined' ? undefined : localStorage)
-export function useShortcutProfile() { return useSyncExternalStore(shortcutPreference.subscribe, shortcutPreference.getSnapshot, () => 'figma-like' as const) }
+export function getShortcutProfile() { return shortcutProfileForUiMode(interfacePreference.getSnapshot().uiMode) }
+export function useShortcutProfile() { return shortcutProfileForUiMode(useInterfacePreferences().uiMode) }

@@ -48,9 +48,8 @@ import {createSmartGuidesIndex, placedSmartGuides, type SmartGuideSegment, type 
 import {useCanvasColorPicker} from './canvas-color-picker'
 import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
-import { resolveShortcut, shortcutPlatform } from './shortcut-profiles'
+import { resolveShortcut, shortcutProfileForUiMode, shortcutPlatform } from './shortcut-profiles'
 import { isSketchBooleanCommand } from './sketch-boolean-commands'
-import { shortcutPreference } from './shortcut-preference'
 import { requestCommandSearch } from './command-search-session'
 import { closeLayerFind, layerFindSnapshot, requestLayerFind } from './layer-find-session'
 import { dispatchEditorShortcut, shortcutTargetOwnsKeyboard } from './editor-shortcuts'
@@ -1350,8 +1349,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
       if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
       if(e.key==='Escape')cancelToolActivation(editor)
-      const shortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge(),
-        uiMode: interfacePreference.getSnapshot().uiMode }
+      const mode = interfacePreference.getSnapshot().uiMode
+      const shortcutContext = { profile: shortcutProfileForUiMode(mode), platform: shortcutPlatform(), desktop: !!desktopBridge(), uiMode: mode }
       if (shortcutContext.uiMode === 'sketch' && (e.key === '~' || e.key === '§') && !e.metaKey && !e.ctrlKey && !e.altKey) {
         if (editor.state.busy || editor.interactionActive || drag.current || pencil.current ||
             penRef.current || ownsTextEntry(textEntryOwner.current)) return
@@ -1421,7 +1420,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       // X is a momentary selection override, never a persistent tool switch.
       // Keep it out of text/IME/modal handling and don't toggle on repeats.
-      if (shortcutContext.profile === 'sketch-like' && e.key.toLowerCase() === 'x' &&
+      if (shortcutContext.uiMode === 'sketch' && e.key.toLowerCase() === 'x' &&
           !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
           !drag.current && !pencil.current && !penRef.current && !editor.interactionActive && !editor.state.busy) {
         e.preventDefault(); marqueeHeld.current = true; setMarqueeKeyHeld(true); return
@@ -1439,12 +1438,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       const mod = e.metaKey || e.ctrlKey
-      if (shortcutContext.profile === 'sketch-like' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyL' && !drag.current) {
+      if (shortcutContext.uiMode === 'sketch' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyL' && !drag.current) {
         e.preventDefault()
         if (!e.repeat) editor.set({ showAuthoredLayout: editor.state.showAuthoredLayout === false })
         return
       }
-      if (shortcutContext.profile === 'sketch-like' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyM' && !drag.current) {
+      if (shortcutContext.uiMode === 'sketch' && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyM' && !drag.current) {
         e.preventDefault()
         if (!e.repeat) editor.set({ showOverview: !editor.state.showOverview })
         return
@@ -1560,7 +1559,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         penRef.current = null
         pendingEditsChanged(editor)
         editor.set({ tool: 'select', editingVertex: null })
-        if (!cancelOnly && !(shortcutContext.profile === 'sketch-like' &&
+        if (!cancelOnly && !(shortcutContext.uiMode === 'sketch' &&
             !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && editor.selectParent())) editor.clearSelection()
         editor.hoverLayer(null, 'canvas')
         // Restore last: select() publishes synchronously and may adopt a new
@@ -1788,9 +1787,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     const pointer = () => { nudge.finish() }
     const unsubscribeNudge = nudgePreference.subscribe(() => { nudge.finish() })
-    const unsubscribeProfile = shortcutPreference.subscribe(() => {
+    let layout = interfacePreference.getSnapshot().uiMode
+    const unsubscribeLayout = interfacePreference.subscribe(() => {
+      const next = interfacePreference.getSnapshot().uiMode
+      if (layout === next) return
+      layout = next
       nudge.finish()
-      if (shortcutPreference.getSnapshot() !== 'sketch-like') releaseMarquee()
+      if (layout !== 'sketch') releaseMarquee()
     })
     document.addEventListener('visibilitychange', visibility)
     document.addEventListener('focusin', focus)
@@ -1804,7 +1807,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       window.removeEventListener('blur', blur)
       document.removeEventListener('visibilitychange', visibility)
       document.removeEventListener('focusin', focus)
-      unsubscribeProfile()
+      unsubscribeLayout()
     }
   }, [editor, gradientKeyboardTarget])
   useEffect(() => {
@@ -2221,7 +2224,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       control,
       additive: e.shiftKey || s.tool==='multiselect',
       ...(dragKind === 'marquee' ? {
-        sketchMarquee: shortcutPreference.getSnapshot() === 'sketch-like',
+        sketchMarquee: uiMode === 'sketch',
         forcedMarquee: kind === 'marquee',
         // Sketch's forced marquee ignores its starting layer and reaches
         // nested content without requiring an additional deep-select chord.
@@ -3250,7 +3253,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       onPointerDownCapture={e => {
         // Capture before transform/layout handles, so held X cannot resize or
         // move an existing selection. Canvas controls keep their own input.
-        if (!marqueeHeld.current || shortcutPreference.getSnapshot() !== 'sketch-like' ||
+        if (!marqueeHeld.current || uiMode !== 'sketch' ||
             drag.current || pencil.current || utility.active() || space.current || editor.state.tool === 'hand' ||
             e.button !== 0 || !(e.target instanceof Element) || !host.current?.contains(e.target) ||
             e.target.closest(canvasChromeSelector) || shortcutTargetOwnsKeyboard(e.target)) return

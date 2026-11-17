@@ -12,13 +12,14 @@ import { CanvasContextMenu } from './CanvasContextMenu'
 import { dispatchEditorCommand } from './editor-commands'
 import { dispatchEditorShortcut } from './editor-shortcuts'
 import { shortcutPreference, SHORTCUT_PROFILE_KEY } from './shortcut-preference'
+import { interfacePreference, INTERFACE_PREFERENCE_KEY } from './interface-preference'
 let root: Root, mount: HTMLDivElement, editor: Editor, canvas: HTMLDivElement, dom: any
 const cleanups: (() => void)[] = []
 beforeEach(() => {
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLButtonElement', 'HTMLInputElement', 'Node', 'Event', 'KeyboardEvent', 'StorageEvent', 'localStorage']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  localStorage.clear(); shortcutPreference.set('figma-like')
+  localStorage.clear(); interfacePreference.reset(); shortcutPreference.set('figma-like')
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
   canvas = document.createElement('div'); canvas.dataset.testid = 'canvas'; canvas.tabIndex = 0; document.body.append(canvas)
   const doc = blank('DOM shortcut test'), shape = node('rectangle', 10, 20, 30, 40)
@@ -34,10 +35,10 @@ function key(target: EventTarget, value: string, options: KeyboardEventInit = {}
   target.dispatchEvent(event); return event
 }
 function listen() {
-  const listener = (event: KeyboardEvent) => { void dispatchEditorShortcut(editor, event, { profile: shortcutPreference.getSnapshot(), platform: 'windows' }) }
+  const listener = (event: KeyboardEvent) => { void dispatchEditorShortcut(editor, event, { profile: shortcutPreference.getSnapshot(), platform: 'windows', uiMode: interfacePreference.getSnapshot().uiMode }) }
   window.addEventListener('keydown', listener); cleanups.push(() => window.removeEventListener('keydown', listener))
 }
-test('accessible profile select persists and immediately changes real DOM keyboard dispatch', async () => {
+test('accessible profile select switches layout and its real DOM keyboard dispatch', async () => {
   listen(); await act(async () => root.render(<KeyboardProfileSettings />))
   const select = mount.querySelector('select')!
   expect([...mount.querySelectorAll('label')].find(label => label.htmlFor === select.id)?.textContent).toBe('快捷键方案')
@@ -45,6 +46,7 @@ test('accessible profile select persists and immediately changes real DOM keyboa
   await act(async () => { key(canvas, 'p') }); expect(editor.state.tool).toBe('pen')
   await act(async () => { select.value = 'sketch-like'; select.dispatchEvent(new Event('change', { bubbles: true })) })
   expect(localStorage.getItem(SHORTCUT_PROFILE_KEY)).toBe('sketch-like')
+  expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
   await act(async () => { key(canvas, 'p') }); expect(editor.state.tool).toBe('pencil')
   await act(async () => { key(canvas, 'e') }); expect(editor.state.tool).toBe('slice')
   await act(async () => root.unmount()); root = createRoot(mount)
@@ -87,7 +89,7 @@ test('actual React context menu performs one flip and Undo; composition and repe
   expect(document.querySelector('[role="menu"]')).toBeNull(); expect(document.activeElement).toBe(canvas)
   await act(async () => { editor.undo() }); expect(editor.state.doc).toEqual(before)
 })
-test('context Escape restores focus and cross-window preference storage changes update the selector', async () => {
+test('context Escape restores focus and cross-window layout changes update the selector', async () => {
   await act(async () => root.render(<Menu />))
   const menu = document.querySelector<HTMLElement>('[role="menu"]')!
   await act(async () => { key(menu, 'Escape') }); expect(document.querySelector('[role="menu"]')).toBeNull(); expect(document.activeElement).toBe(canvas)
@@ -95,6 +97,12 @@ test('context Escape restores focus and cross-window preference storage changes 
   await act(async () => {
     localStorage.setItem(SHORTCUT_PROFILE_KEY, 'sketch-like')
     window.dispatchEvent(new StorageEvent('storage', { key: SHORTCUT_PROFILE_KEY, newValue: 'sketch-like' }))
+  })
+  expect(mount.querySelector('select')?.value).toBe('figma-like')
+  await act(async () => {
+    const next = JSON.stringify({ ...interfacePreference.getSnapshot(), uiMode: 'sketch' })
+    localStorage.setItem(INTERFACE_PREFERENCE_KEY, next)
+    window.dispatchEvent(new StorageEvent('storage', { key: INTERFACE_PREFERENCE_KEY, newValue: next }))
   })
   expect(mount.querySelector('select')?.value).toBe('sketch-like')
 })

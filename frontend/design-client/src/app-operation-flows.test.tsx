@@ -1759,7 +1759,8 @@ test('Sketch Command-period, the canvas menu and the header toggle the same inte
 })
 
 test('mounted App capture preserves held-key one-undo and both toolbar/Inspector allow parent alignment', async () => {
-  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })
+  applyInterfaceLayout('figma')
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
   await render(); expect(editor).toBeDefined()
   const doc = blank(), frame = node('frame', 0, 0, 300, 200), child = node('rectangle', 30, 40, 50, 60)
   frame.children = [child.id]; doc.nodes = { [frame.id]: frame, [child.id]: child }; doc.pages[0].children = [frame.id]
@@ -1769,7 +1770,7 @@ test('mounted App capture preserves held-key one-undo and both toolbar/Inspector
   expect(editor!.interactionActive).toBe(true); expect(editor!.state.doc.nodes[child.id].transform[4]).toBe(31.5)
   await key('ArrowRight', {}, 'keyup'); await act(async () => editor!.undo())
   expect(editor!.state.doc).toEqual(before); expect(editor!.canUndo).toBe(false)
-  for (const repeat of [false, true]) await key('ArrowDown', { ctrlKey: true, repeat })
+  for (const repeat of [false, true]) await key('ArrowDown', { metaKey: true, repeat })
   await key('ArrowDown', {}, 'keyup'); expect(editor!.state.doc.nodes[child.id].height).toBe(61)
   await act(async () => editor!.undo()); expect(editor!.state.doc).toEqual(before); expect(editor!.canUndo).toBe(false)
   expect(document.querySelector<HTMLButtonElement>('.alignment-controls [aria-label="左对齐"]')!.disabled).toBe(false)
@@ -1917,7 +1918,7 @@ test.each([false, true])('Shift+Mod+N never becomes new-document; Sketch page sh
   expect(editor!.state.doc).toBe(before)
   await key('O', { code: 'KeyO', metaKey: true, shiftKey: true })
   expect(open).not.toHaveBeenCalled(); expect(replace).not.toHaveBeenCalled()
-  await act(async () => shortcutPreference.set('sketch-like'))
+  await act(async () => applyInterfaceLayout('sketch'))
   const pageEvent = new KeyboardEvent('keydown', { key: 'N', code: 'KeyN', metaKey: true, shiftKey: true, bubbles: true, cancelable: true })
   await act(async () => canvas().dispatchEvent(pageEvent))
   expect(pageEvent.defaultPrevented).toBe(desktop)
@@ -2130,4 +2131,45 @@ test('Sketch releases Figma-only key events before dispatch, even with a shape s
   expect(await press('b', 'KeyB')).toBe(true)
   expect(editorInstance.state.tool).toBe('brush')
   expect(editorInstance.authoredDocument).toBe(before[0])
+})
+
+
+test('a mismatched saved shortcut profile cannot override the active layout keyboard and pointer rules', async () => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  applyInterfaceLayout('figma')
+  await render()
+  const doc = blank(), shape = node('rectangle')
+  doc.nodes[shape.id] = shape; doc.pages[0].children = [shape.id]
+  const current = editor!
+  await act(async () => { current.load(doc); current.select([shape.id]); canvas().focus() })
+  const before = () => [current.authoredDocument, current.state.selection, current.state.view, current.state.showAuthoredLayout, current.state.showOverview]
+  const press = async (key: string, code: string, modifiers: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true, ...modifiers })
+    await act(async () => canvas().dispatchEvent(event))
+    return event.defaultPrevented
+  }
+  await act(async () => shortcutPreference.set('sketch-like'))
+  const original = before()
+  expect(await press('g','KeyG')).toBe(false)
+  expect(await press('x','KeyX')).toBe(false)
+  expect(await press('l','KeyL',{ ctrlKey: true })).toBe(false)
+  expect(await press('m','KeyM',{ ctrlKey: true })).toBe(false)
+  expect(canvas().style.cursor).not.toBe('crosshair')
+  expect(current.state.tool).toBe('select')
+  expect(before()).toEqual(original)
+  expect(await press('s','KeyS')).toBe(true)
+  expect(current.state.tool).toBe('slice')
+  expect(document.querySelector('.command-search-dialog')).toBeNull()
+
+  await act(async () => { applyInterfaceLayout('sketch'); shortcutPreference.set('figma-like') })
+  expect(await press('E','KeyE',{ shiftKey: true })).toBe(false)
+  expect(await press('π','KeyP',{ altKey: true })).toBe(false)
+  expect(document.querySelector('.embedded-design-tools')).toBeNull()
+  expect(await press('s','KeyS')).toBe(true)
+  expect(document.querySelector('.command-search-dialog')).not.toBeNull()
+  await act(async () => document.querySelector<HTMLButtonElement>('.command-search-dialog button[aria-label="关闭命令搜索"]')!.click())
+  expect(await press('p','KeyP')).toBe(true)
+  expect(current.state.tool).toBe('pencil')
+  expect(before()).toEqual(original)
+  expect(current.canUndo).toBe(false)
 })

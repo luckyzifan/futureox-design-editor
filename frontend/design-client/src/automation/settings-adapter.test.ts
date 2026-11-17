@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../engine'
 import { blank } from '../model'
 import { bindEditorSettings, createSettingsPreference, SETTINGS_PREFERENCE_KEY } from '../settings-preference'
-import { createShortcutPreference, SHORTCUT_PROFILE_KEY } from '../shortcut-preference'
+import { createShortcutPreference, SHORTCUT_PROFILE_KEY, shortcutPreference } from '../shortcut-preference'
+import { interfacePreference } from '../interface-preference'
 import { registerPendingEdit } from '../pending-edits'
 import { createAutomationSettingsAdapter } from './settings-adapter'
 const cleanups: (() => void)[] = []
@@ -68,4 +69,24 @@ describe('settings automation through real Editor and existing preference stores
     expect(second.values.snap).toBe(true); expect(second.settingsRevision).toBeGreaterThan(first.settingsRevision)
   })
 
+})
+
+
+it('keeps the advertised keyboard profile in sync with the active layout during automation', () => {
+  const f = fixture()
+  vi.stubGlobal('localStorage', f.storage)
+  interfacePreference.reset()
+  cleanups.push(() => { interfacePreference.reset(); shortcutPreference.set('figma-like') })
+  shortcutPreference.set('sketch-like')
+  const adapter = createAutomationSettingsAdapter(f.editor, { canvas: f.canvas, storage: () => f.storage })
+  cleanups.push(() => adapter.dispose())
+  const before = adapter.get(), doc = f.editor.authoredDocument
+  expect(before.values.shortcutProfile).toBe('figma-like')
+  const reply = adapter.update({ patch: { shortcutProfile: 'sketch-like' }, expectedSettingsRevision: before.settingsRevision, mutationId: 'keyboard-layout' },
+    f.guard(), new AbortController().signal)
+  expect(reply.values.shortcutProfile).toBe('sketch-like')
+  expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
+  expect(reply.settingsRevision).toBeGreaterThan(before.settingsRevision)
+  expect(f.editor.authoredDocument).toBe(doc)
+  expect(f.editor.canUndo).toBe(false)
 })

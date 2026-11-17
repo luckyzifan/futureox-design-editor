@@ -30,7 +30,7 @@ import {querySelection,type SelectionQuery} from './selection-queries'
 import { dimensionNudgeCommands, isDimensionNudgeCommand, nudgeSelectionDimensions, selectAllCanvasIds, selectAllForceCanvasIds, selectTopLevelCanvasIds, type DimensionNudgeCommand } from './canvas-workflow-shortcuts'
 import { activateDocumentFonts } from './kernel/picking'
 import { applyPasteOverPlan, planPasteOverSelection } from './paste-over-selection'
-import { shortcutPreference } from './shortcut-preference'
+import { getShortcutProfile } from './shortcut-preference'
 import { alignSelection, alignmentCommandIds, alignmentCommands, isAlignmentCommand, type AlignmentCommand } from './alignment-availability'
 import { isSketchBooleanCommand, sketchBooleanCommands, sketchBooleanCommandIds, type SketchBooleanCommand } from './sketch-boolean-commands'
 import type { ShortcutProfile } from './shortcut-profiles'
@@ -255,7 +255,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       if (command === 'paste-over-selection') {
         normalized ??= content ? undefined : copiedPackets.get(editor)
         if (!normalized) throw Error('剪贴板中没有可覆盖粘贴的图层；请先复制内容')
-        const plan = planPasteOverSelection(before, page, editor.state.selection, normalized, options.shortcutProfile ?? shortcutPreference.getSnapshot())
+        const plan = planPasteOverSelection(before, page, editor.state.selection, normalized, options.shortcutProfile ?? getShortcutProfile())
         if (!current()) throw Error('读取剪贴板期间设计已变化，请重新粘贴')
         try { editor.change('覆盖粘贴', draft => applyPasteOverPlan(draft, before, plan.document), plan.selection) }
         finally { activateDocumentFonts(editor.state.doc) }
@@ -449,10 +449,10 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         editor.transformSelection(horizontal ? [-1, 0, 0, 1, 2 * box.x + box.width, 0] : [1, 0, 0, -1, 0, 2 * box.y + box.height], horizontal ? '水平翻转' : '垂直翻转')
         break
       }
-      case 'select-all': editor.select(selectAllCanvasIds(editor.state.doc, editor.state.page, editor.state.selection, options.shortcutProfile ?? shortcutPreference.getSnapshot())); break
+      case 'select-all': editor.select(selectAllCanvasIds(editor.state.doc, editor.state.page, editor.state.selection, options.shortcutProfile ?? getShortcutProfile())); break
       case 'select-all-force':
       case 'select-all-top-level':
-        if (interfacePreference.getSnapshot().uiMode === 'sketch' && (options.shortcutProfile ?? shortcutPreference.getSnapshot()) === 'sketch-like') {
+        if (interfacePreference.getSnapshot().uiMode === 'sketch' && (options.shortcutProfile ?? getShortcutProfile()) === 'sketch-like') {
           const { doc, page, selection } = editor.state
           editor.select(command === 'select-all-force' ? selectAllForceCanvasIds(doc, page, selection) : selectTopLevelCanvasIds(doc, page))
         }

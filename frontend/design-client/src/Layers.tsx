@@ -1,7 +1,7 @@
 import { dispatchEditorCommand } from './editor-commands'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { sketchLayerFindOwnsChord } from './interface-layout'
-import { shortcutPreference } from './shortcut-preference'
+import { getShortcutProfile } from './shortcut-preference'
 import { layerExpanded, LayerRowsCache, visibleLayerBranch } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
@@ -245,7 +245,7 @@ export function Layers({ editor, section, onSection, showPages=true, documentTit
     const find = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat || event.shiftKey || !event.altKey) return
       if (!(event.metaKey || event.ctrlKey) || (event.metaKey && event.ctrlKey)) return
-      if (!sketchLayerFindOwnsChord(event, shortcutPreference.getSnapshot(), uiMode)) return
+      if (!sketchLayerFindOwnsChord(event, getShortcutProfile(), uiMode)) return
       if (shortcutTargetOwnsKeyboard(event.target)) return
       event.preventDefault()
       event.stopPropagation()

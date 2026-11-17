@@ -14,7 +14,7 @@ import { canMakeSketchGrid } from './sketch-make-grid'
 import { selectedPaintSwap } from './sketch-paint-commands'
 import { container } from './model'
 import { commitPendingEdits } from './pending-edits'
-import { formatShortcutCombo, shortcutBindings, type ShortcutContext } from './shortcut-profiles'
+import { formatShortcutCombo, shortcutBindings, shortcutContextForLayout, type ShortcutContext } from './shortcut-profiles'
 import { localizedToolCommands, toolForCommand, unavailableReason } from './tool-registry'
 
 /** Presentation only. Running a row always goes through the existing command routes. */
@@ -347,17 +347,17 @@ function availability(editor: Editor, action: CommandSearchAction, context: Shor
 /** Every row is an existing editor, alignment, or geometry command. Search text is not stored. */
 export function commandSearchEntries(editor: Editor, context: ShortcutContext, locale: InterfaceLocale): CommandSearchEntry[] {
   const mode = context.uiMode ?? interfacePreference.getSnapshot().uiMode
-  const layoutContext = { ...context, uiMode: mode }
+  const layoutContext = shortcutContextForLayout({ ...context, uiMode: mode })
   const menu = new Map(canvasMenuItems(editor, layoutContext).map(item => [item.command, item]))
   const multiple = editor.state.selection.length > 1
   const lockedParent = lockedSelectionIds(editor).some(id => !editor.state.selection.includes(id))
   const entries: CommandSearchEntry[] = []
   const push = (entry: Omit<CommandSearchEntry, 'order' | 'disabled' | 'reason'> & { action: CommandSearchAction; menuDisabled?: boolean }) => {
-    const state = availability(editor, entry.action, context, locale, entry.menuDisabled)
+    const state = availability(editor, entry.action, layoutContext, locale, entry.menuDisabled)
     entries.push({ ...entry, ...state, order: entries.length })
   }
   for (const spec of catalog) {
-    if (!supportsCatalogCommand(spec.command, mode, context.profile)) continue
+    if (!supportsCatalogCommand(spec.command, mode, layoutContext.profile)) continue
     const presented = forms(spec, locale, mode, multiple, lockedParent)
     const keys = presentedShortcut(spec.command, layoutContext)
     push({
@@ -369,7 +369,7 @@ export function commandSearchEntries(editor: Editor, context: ShortcutContext, l
   const tools = localizedToolCommands(locale)
   const otherTools = localizedToolCommands(locale === 'en' ? 'zh-CN' : 'en')
   for (const tool of tools) {
-    if (seen.has(tool.id) || !supportsCatalogCommand(tool.id as EditorCommand, mode, context.profile)) continue
+    if (seen.has(tool.id) || !supportsCatalogCommand(tool.id as EditorCommand, mode, layoutContext.profile)) continue
     seen.add(tool.id)
     const other = otherTools.find(item => item.id === tool.id)?.label
     const keys = presentedShortcut(tool.id, layoutContext)
@@ -420,8 +420,9 @@ export async function runCommandSearch(editor: Editor, entry: CommandSearchEntry
   if (entry.disabled) return
   if (entry.action.kind === 'command') {
     const { uiMode } = interfacePreference.getSnapshot()
-    if (!supportsCatalogCommand(entry.action.command, uiMode, context.profile)) return
-    await dispatchEditorCommand(editor, entry.action.command, { shortcutProfile: context.profile, actionSource: ActionSource.menu })
+    const layout = shortcutContextForLayout({ ...context, uiMode })
+    if (!supportsCatalogCommand(entry.action.command, uiMode, layout.profile)) return
+    await dispatchEditorCommand(editor, entry.action.command, { shortcutProfile: layout.profile, actionSource: ActionSource.menu })
     return
   }
   if (entry.action.kind === 'align') {

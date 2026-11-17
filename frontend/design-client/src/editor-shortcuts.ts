@@ -5,14 +5,15 @@ import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
 import { requestCommandSearch } from './command-search-session'
 import { requestLayerFind } from './layer-find-session'
 import { editableFrameCrop } from './selection-properties'
-import { resolveShortcut, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
+import { resolveShortcut, shortcutContextForLayout, type ShortcutContext, type ShortcutKey } from './shortcut-profiles'
 export function shortcutTargetOwnsKeyboard(target: EventTarget | null): boolean {
   return editableOwnsKeyboard(target) || modalOwnsKeyboard(target)
 }
 /** Runs the same command dispatcher as toolbar and context-menu actions. */
 export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey & { target: EventTarget | null; preventDefault(): void }, context: ShortcutContext): Promise<boolean> {
   if (shortcutTargetOwnsKeyboard(event.target)) return false
-  const binding = resolveShortcut(event, context)
+  const layout = shortcutContextForLayout(context)
+  const binding = resolveShortcut(event, layout)
   if (!binding || binding.preserveFrameContents && !editableFrameCrop(editor)) return false
   event.preventDefault()
   // Command search is shell state. It must not enter dispatch or document history.
@@ -35,7 +36,7 @@ export async function dispatchEditorShortcut(editor: Editor, event: ShortcutKey 
     binding.command === 'toggle-visibility' ? (editor.state.selection.some(id => !editor.state.doc.nodes[id]?.visible) ? 'show-selection' : 'hide-selection') : binding.command
   await dispatchEditorCommand(editor, command, {
     zoomAnchor: editor.pointerScreen || undefined,
-    shortcutProfile: context.profile,
+    shortcutProfile: layout.profile,
     preserveFrameContents: binding.preserveFrameContents,
   })
   return true
