@@ -133,13 +133,13 @@ pub(crate) struct Projection {
     #[serde(skip)]
     pub(crate) appearances: Vec<Appearance>,
     #[serde(skip)]
-    pub(crate) inset_colors: Option<([u8; 3], [u8; 3])>,
+    pub(crate) inset: Option<spatial_material::InsetAppearance>,
 }
 
 impl Projection {
     pub(crate) fn new(transform: Transform, visible: bool) -> Self {
         Self { transform, visible, hide_fills: false, vector_geometry: None,
-            hide_strokes: false, composed: false, appearances: Vec::new(), inset_colors: None }
+            hide_strokes: false, composed: false, appearances: Vec::new(), inset: None }
     }
 }
 
@@ -211,7 +211,9 @@ fn project(node: &Node, pose: &Pose, camera: Option<Camera>, page_parent: Transf
         let planes=[MaterialPlane { paints:&paints, depth:crate::spatial_depth::PlaneDepth([0.;3]),opacity:node.opacity }];
         patch.vector_geometry=Some(outline_geometry(&outline.contours,inverse,outline.even_odd)?);
         patch.appearances=spatial_material::appearances(&planes,inverse,&mut remaining)?;
-        patch.inset_colors = spatial_material::inset_colors(node, &patch.appearances);
+        patch.inset = spatial_material::inset_appearance(
+            node, &patch.appearances, &paints, inverse,
+        )?;
         patch.composed=true;
         patch.hide_strokes=true;
         patch.visible=!patch.appearances.is_empty();
@@ -307,7 +309,7 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
     let mut assembled=Vec::new();
     for (id, projection) in patches {
         if projection.composed {
-            assembled.push((id.clone(), projection.appearances, projection.inset_colors));
+            assembled.push((id.clone(), projection.appearances, projection.inset));
         }
         let node = doc.nodes.get_mut(&id).unwrap();
         node.spatial = None;
@@ -326,7 +328,7 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
     let extra=assembled.iter().map(|(_,cells,_)|cells.len()).sum::<usize>();
     crate::capacity::check_document_counts(doc.nodes.len().checked_add(extra).ok_or("Projected node count overflow")?,doc.pages.len())?;
     let mut serial=0;
-    for (id,cells,inset_colors) in assembled {
+    for (id,cells,mut inset) in assembled {
         let old_children=doc.nodes[&id].children.clone();
         for child in old_children { doc.nodes.get_mut(&child).unwrap().visible=false; }
         let mut children=Vec::new();
@@ -337,13 +339,10 @@ fn apply_projection(doc: &mut Document, patches: BTreeMap<String, Projection>) -
                 let candidate=format!("spatial-cell-{serial}");
                 if !doc.nodes.contains_key(&candidate) { break candidate; }
             };
-            if let Some((fill, stroke)) = inset_colors
-                && cell.rgb == fill
-            {
+            if inset.as_ref().is_some_and(|appearance| appearance.fill == cell.rgb) {
                 inset_stroke = Some(Box::new(spatial_material::InsetStroke {
                     interior: cell_id.clone(),
-                    fill,
-                    stroke,
+                    appearance: inset.take().expect("matching inset appearance"),
                 }));
             }
             let mut node=crate::facet::sample_node(&cell_id,"vector");
@@ -412,7 +411,7 @@ pub(crate) fn export_view(
     let outlines=serde_json::to_value(&patches).map_err(|e|e.to_string())?;
     // The PNG renderer regenerates the ephemeral coverage data at export
     // time. Keep its scoped source geometry across the worker's JSON boundary.
-    if !refine_inset_stroke || !patches.values().any(|patch| patch.inset_colors.is_some()) {
+    if !refine_inset_stroke || !patches.values().any(|patch| patch.inset.is_some()) {
         apply_projection(doc,patches)?;
     }
     // The caller has already resolved layout. Generated material nodes are
@@ -622,9 +621,13 @@ mod tests {
     }
 
     fn spatial_render(doc: &Value) -> Vec<u8> {
+        spatial_render_at_scale(doc, 1)
+    }
+
+    fn spatial_render_at_scale(doc: &Value, scale: usize) -> Vec<u8> {
         let options=serde_json::from_value(json!({
-            "pageId":"p","width":300,"height":200,"transparent":true,
-            "view":{"x":0,"y":0,"zoom":1},"rasterProfile":"figma",
+            "pageId":"p","width":300 * scale,"height":200 * scale,"transparent":true,
+            "view":{"x":0,"y":0,"zoom":scale},"rasterProfile":"figma",
         })).unwrap();
         let mut engine=Engine::new();
         engine.load_document(&doc.to_string()).unwrap();
@@ -693,27 +696,44 @@ mod tests {
     }
 
     #[test]
-    fn projected_inset_stroke_improves_native_edge_samples_without_changing_alpha() {
+    fn projected_inset_stroke_matches_native_silhouette_samples_at_both_scales() {
         let source = stroked_plane();
-        let render_selection = |refine| {
+        let render_selection = |refine, scale| {
             let mut doc: crate::scene::Document = serde_json::from_value(source.clone()).unwrap();
             super::export_view(&mut doc, &["parent".into()], refine).unwrap();
             let view = serde_json::to_value(doc).unwrap();
             assert_eq!(view["nodes"]["shape"]["spatial"].is_object(), refine);
-            spatial_render(&view)
+            spatial_render_at_scale(&view, scale)
         };
-        let binary = render_selection(false);
-        let refined = render_selection(true);
-        for (x, y, native) in [(148, 73, [21, 8, 8, 255]), (151, 125, [211, 75, 75, 255])] {
-            let error = |image: &[u8]| {
-                pixel(image, x, y).into_iter().zip(native).map(|(a, b)| a.abs_diff(b)).max().unwrap()
-            };
-            assert!(error(&binary) >= 20);
-            assert!(error(&refined) <= 8, "edge at {x},{y}: {:?}", pixel(&refined, x, y));
+        // Figma desktop 126.11.9. The four old mismatches each changed
+        // one sample in the 2x render target, at a different output phase.
+        for (scale, cases) in [
+            (1, [(177, 128, 239, 223), (122, 131, 16, 32)]),
+            (2, [(349, 141, 16, 32), (272, 261, 16, 32)]),
+        ] {
+            let unsnapped = render_selection(false, scale);
+            let snapped = render_selection(true, scale);
+            for (x, y, old, native) in cases {
+                let alpha = (y * 300 * scale + x) * 4 + 3;
+                assert_eq!(unsnapped[alpha], old);
+                assert_eq!(snapped[alpha], native, "{scale}x sample ({x}, {y})");
+            }
+            let changed = unsnapped.iter().skip(3).step_by(4)
+                .zip(snapped.iter().skip(3).step_by(4))
+                .filter(|(before, after)| before != after).count();
+            assert_eq!(changed, cases.len());
+            if scale == 1 {
+                for (x, y, native) in [(148, 73, [21, 8, 8, 255]), (151, 125, [211, 75, 75, 255])] {
+                    let error = |image: &[u8]| {
+                        pixel(image, x, y).into_iter().zip(native).map(|(a, b)| a.abs_diff(b)).max().unwrap()
+                    };
+                    assert!(error(&unsnapped) >= 20);
+                    assert!(error(&snapped) <= 8, "edge at {x},{y}: {:?}", pixel(&snapped, x, y));
+                }
+                assert_eq!(pixel(&snapped, 108, 99), [0, 0, 0, 255]);
+                assert_eq!(pixel(&snapped, 150, 99), [231, 82, 82, 255]);
+            }
         }
-        assert!(refined.iter().skip(3).step_by(4).eq(binary.iter().skip(3).step_by(4)));
-        assert_eq!(pixel(&refined, 108, 99), [0, 0, 0, 255]);
-        assert_eq!(pixel(&refined, 150, 99), [231, 82, 82, 255]);
     }
 
     #[test]
