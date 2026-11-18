@@ -188,6 +188,16 @@ test.each(['normal', 'non-normal', 'gradient', 'glass'] as const)('%s backdrop p
   const node = { blend: mode === 'non-normal' ? 'multiply' : 'normal', effects,
     backdropOutputBox: [0, 0, 8, 8], rect: { x: -8, y: 0, w: 40, h: 32 } }
   const authored = JSON.stringify(node), input = f.renderer.acquire(node.rect)
+  if (mode === 'gradient') {
+    await expect(f.renderer.blurBackdropRegion(input, raw / 2, node)).rejects.toThrow('512')
+    const supportedRadius = raw / 4
+    await f.renderer.blurBackdropRegion(input, supportedRadius / 2, node)
+    expect(f.renderer.run.mock.calls.every((call: any[]) => call[5]?.radius === supportedRadius)).toBe(true)
+    expect(f.renderer.run).toHaveBeenCalledTimes(2)
+    expect(f.renderer.exactTentAxis).not.toHaveBeenCalled()
+    expect(JSON.stringify(node)).toBe(authored)
+    return
+  }
   await f.renderer.blurBackdropRegion(input, raw / 2, node)
   expect(f.renderer.exactTentAxis).toHaveBeenCalledTimes(2)
   expect(f.renderer.exactTentAxis.mock.calls.every((call: any[]) => call[1] === raw && call[5] === true && call[6] === (mode === 'normal'))).toBe(true)
