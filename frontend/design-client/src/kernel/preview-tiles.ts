@@ -2,6 +2,7 @@ import { renderFailureFields } from './render-failure-telemetry'
 
 export type PreviewTile = { x: number; y: number; width: number; height: number }
 export type PreviewPixels = Uint8Array | Float32Array
+export const MAX_PREVIEW_TILE_SIDE = 1024
 
 /** Only the compiler's classified aggregate program admission is spatially
  * retriable. Unknown text, device loss, and per-path work failures stay errors. */
@@ -62,7 +63,7 @@ export async function renderPreviewRegions(
     width * height > 4_100_000 ||
     !Number.isSafeInteger(side) ||
     side < 64 ||
-    side > 1024
+    side > MAX_PREVIEW_TILE_SIDE
   )
     throw new Error('Invalid preview tile dimensions')
   let tiles = 0
