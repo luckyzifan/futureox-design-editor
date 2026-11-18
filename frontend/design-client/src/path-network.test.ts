@@ -9,7 +9,7 @@ import { uid, type Network } from './model'
 
 // Execute the actual pre-extraction implementation, retained with its complete
 // source and hash. This is not a second implementation of the SVG algorithm.
-const frozen = readFileSync(new URL('../../../testing/verification-startup-imports/import-svg.before.ts', import.meta.url), 'utf8')
+const frozen = readFileSync(new URL('../test-fixtures/import-svg.before.ts.txt', import.meta.url), 'utf8')
 const oldFunction = frozen.slice(frozen.indexOf('export function pathNetwork('), frozen.indexOf('export function svgTransform('))
 const oldPathNetwork = new Function('SVGPathData', 'uid', `"use strict";\n${stripTypeScriptTypes(oldFunction.replace('export function', 'function'))}\nreturn pathNetwork`)(SVGPathData, uid) as typeof pathNetwork
 const functionHash = 'de128cda4c183d418c4641b2ea51fef040dc294091953a4b5e4250e93035ae49'
