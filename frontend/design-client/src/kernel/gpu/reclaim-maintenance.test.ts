@@ -220,7 +220,7 @@ test('candidate allocation pressure consumes the covered current-frame pool befo
   f.renderer.poolReleaseEpoch.set(f.pooled, 4); f.renderer.used.add(f.pooled)
   // The bounded first batch reaches its resource-count limit before touching
   // the large pool. Its real checkpoint nevertheless covers that exact pool.
-  for (let i = 0; i < 4096; i++) f.renderer.retiredUploads.push({ width: 1, height: 1, bytes: 16, resource: {} } as Texture)
+  for (let i = 0; i < 4096; i++) f.renderer.retireUpload({ width: 1, height: 1, bytes: 16, resource: {} } as Texture)
   const pending = f.renderer.reclaimScratch(64 * MiB)
   expect(f.driver.checkpoint).toHaveBeenCalledOnce(); expect(f.driver.destroy).not.toHaveBeenCalled()
   f.complete(); await pending
@@ -380,7 +380,7 @@ test.each([false, true])('one byte beyond a fitting ordinary allocation requires
 function requiredSequentialRetirement(kind: 'allocation' | 'retired-upload' | 'coordinate' | 'image') {
   const f = kind === 'allocation' ? sequential() : sequential(128 * 1024, kind === 'image' ? 203 * MiB : 160 * MiB)
   const resource = { width: 1024, height: 3072, bytes: 48 * MiB, resource: {} } as Texture
-  if (kind === 'retired-upload') f.renderer.retiredUploads.push(resource)
+  if (kind === 'retired-upload') f.renderer.retireUpload(resource)
   if (kind === 'coordinate') f.renderer.coordinateMaps.add(resource)
   if (kind === 'image') f.renderer.images.set('cold-image', { texture: resource })
   return { ...f, resource, required: kind === 'allocation' ? 128 * MiB : 0 }

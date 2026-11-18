@@ -352,7 +352,7 @@ function readProfile(resourcesRoot, declared) {
   }
 }
 
-function nativeEntries(resourcesRoot, platform) {
+function nativeEntries(resourcesRoot, platform, { declared, publishedNativePaths } = {}) {
   const found = new Map()
   const candidates = new Set([
     ...expectedNativeInstallPaths('linux'),
@@ -368,7 +368,14 @@ function nativeEntries(resourcesRoot, platform) {
     }
   }
   if (platform) {
+    const publishedPaths = publishedNativePaths && new Set([
+      ...publishedNativePaths,
+      ...(declared?.entries || []).filter(entry => entry.kind === 'native').map(entry => entry.installPath),
+    ])
     for (const installPath of expectedNativeInstallPaths(platform)) {
+      // A verified historical release may predate a current native component.
+      // Its declared slots, including absent optional files, still compare.
+      if (publishedPaths && !publishedPaths.has(installPath)) continue
       if (!found.has(installPath)) found.set(installPath, { kind: 'native', installPath, sha256: null, size: null, present: false })
     }
   }
@@ -495,7 +502,7 @@ function diffDeclared(declared, actual) {
     : { status: 'match', mismatches: [] }
 }
 
-function listResources(layout, meta) {
+function listResources(layout, meta, publishedNativePaths) {
   const archive = path.join(layout.resourcesRoot, 'app.asar')
   let entries = []
   let archiveInfo = null
@@ -515,13 +522,13 @@ function listResources(layout, meta) {
     const app = path.join(layout.resourcesRoot, 'app')
     if (existsSync(app) && lstatSync(app).isDirectory()) entries.push(...listAppDirectory(app, 'app'))
   }
-  entries.push(...nativeEntries(layout.resourcesRoot, meta.packagePlatform))
+  entries.push(...nativeEntries(layout.resourcesRoot, meta.packagePlatform, { declared: meta.declared, publishedNativePaths }))
   entries.push(...mcpEntries(layout.resourcesRoot))
   entries.sort((left, right) => left.installPath.localeCompare(right.installPath))
   return entries
 }
 
-export function describePackage(packagePath, { runtimeRoot, platform = process.platform, arch = process.arch } = {}) {
+export function describePackage(packagePath, { runtimeRoot, platform = process.platform, arch = process.arch, publishedNativePaths } = {}) {
   const identity = hashPackageIdentity(packagePath)
   const base = {
     identity,
@@ -590,7 +597,7 @@ export function describePackage(packagePath, { runtimeRoot, platform = process.p
     const meta = readProfile(layout.resourcesRoot, declared)
     const evidence = { ...evidenceFor(layout.kind, meta.profile), profile: meta.profile, packagePlatform: meta.packagePlatform, packageArch: meta.packageArch }
     if (meta.packagePlatform && meta.packagePlatform !== platform) evidence.note += ` Host ${platform}/${arch} is not the recorded package platform ${meta.packagePlatform}/${meta.packageArch ?? 'unknown'}; the app was not launched.`
-    const entries = listResources(layout, meta)
+    const entries = listResources(layout, meta, publishedNativePaths)
     const declaredVersusBytes = diffDeclared(meta.declared, entries)
     let comparison = emptyComparison('not_run', 'no runtime tree supplied')
     if (runtimeRoot) {
