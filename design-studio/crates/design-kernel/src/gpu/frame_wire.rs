@@ -8,14 +8,35 @@ impl std::fmt::Display for Error {fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->
 impl std::error::Error for Error {}
 impl ser::Error for Error {fn custom<T:std::fmt::Display>(message:T)->Self{Self(message.to_string())}}
 pub fn encode<T:Serialize+?Sized>(value:&T)->Result<Vec<u8>,String>{
-    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:false,sequence_offset:None};
+    let mut writer=Writer::default();
     value.serialize(&mut writer).map_err(|e|e.to_string())?;Ok(writer.bytes)
 }
-/// Compiled GpuPath/AreaPath addresses are relocatable. Keep all other
-/// authored/compiler fields exact without building an intermediate JSON tree.
-pub fn encode_source<T:Serialize+?Sized>(value:&T)->Result<Vec<u8>,String>{
-    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:true,sequence_offset:None};
-    value.serialize(&mut writer).map_err(|e|e.to_string())?;Ok(writer.bytes)
+
+/// A frame encodes hundreds of independent records. Reuse allocation space
+/// and exact scalar spellings, while each record still starts its own string
+/// dictionary and assigns the same wire IDs as a standalone encoding.
+pub(super) struct Batch {
+    writer: Writer,
+}
+impl Batch {
+    pub(super) fn new() -> Self {
+        Self { writer: Writer { scalar_cache: Some(Box::new([(0, 0.); 256])), ..Writer::default() } }
+    }
+    pub(super) fn encode<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<Vec<u8>, String> {
+        self.record(value, false)
+    }
+    /// Compiled path addresses are relocatable. Preserve every other field.
+    pub(super) fn encode_source<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<Vec<u8>, String> {
+        self.record(value, true)
+    }
+    fn record<T: Serialize + ?Sized>(&mut self, value: &T, zero_offsets: bool) -> Result<Vec<u8>, String> {
+        self.writer.bytes.clear();
+        self.writer.strings.clear();
+        self.writer.zero_offsets = zero_offsets;
+        self.writer.sequence_offset = None;
+        value.serialize(&mut self.writer).map_err(|e| e.to_string())?;
+        Ok(std::mem::take(&mut self.writer.bytes))
+    }
 }
 /// Producer-only marker. Its wire representation is still an ordinary u32
 /// encoded as f64; a source replay may update that field, never scene words.
@@ -24,12 +45,19 @@ impl Serialize for FrameSequence {
     fn serialize<S:ser::Serializer>(&self,s:S)->Result<S::Ok,S::Error>{s.serialize_newtype_struct("GpuFrameSequence",&self.0)}
 }
 pub(super) fn encode_frame<T:Serialize+?Sized>(value:&T)->Result<(Vec<u8>,usize),String>{
-    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:false,sequence_offset:None};
+    let mut writer=Writer::default();
     value.serialize(&mut writer).map_err(|e|e.to_string())?;
     let offset=writer.sequence_offset.ok_or("Missing frame sequence marker")?;
     Ok((writer.bytes,offset))
 }
-struct Writer {bytes:Vec<u8>,strings:HashMap<Cow<'static,str>,u32>,zero_offsets:bool,sequence_offset:Option<usize>}
+#[derive(Default)]
+struct Writer {
+    bytes: Vec<u8>,
+    strings: HashMap<Cow<'static, str>, u32>,
+    zero_offsets: bool,
+    sequence_offset: Option<usize>,
+    scalar_cache: Option<Box<[(u32, f64); 256]>>,
+}
 impl Writer {
     fn number(&mut self,n:f64){if !n.is_finite(){self.bytes.push(1)}else{self.bytes.push(4);self.bytes.extend(n.to_le_bytes())}}
     fn text(&mut self,value:&str)->Result<(),Error>{
@@ -68,6 +96,14 @@ impl<'a> ser::Serializer for &'a mut Writer {
         // GPU program words never enter this path and remain bit-for-bit f32.
         let n = if !v.is_finite() || v == 0.0 || v.abs() == 1.0 {
             f64::from(v)
+        } else if let Some(cache) = &mut self.scalar_cache {
+            let bits = v.to_bits();
+            let index = ((bits ^ (bits >> 11) ^ (bits >> 22)) & 255) as usize;
+            let entry = &mut cache[index];
+            if entry.0 != bits {
+                *entry = (bits, zmij::Buffer::new().format_finite(v).parse::<f64>().map_err(ser::Error::custom)?);
+            }
+            entry.1
         } else {
             zmij::Buffer::new().format_finite(v).parse::<f64>().map_err(ser::Error::custom)?
         };
@@ -147,5 +183,20 @@ fn metadata_f32_matches_the_json_number_seen_by_javascript() {
         } else {
             assert_eq!(bytes, [1]);
         }
+    }
+}
+
+
+#[cfg(test)]
+#[test]
+fn batched_records_match_independent_encoding_after_dictionary_and_scalar_reuse() {
+    #[derive(serde::Serialize)]
+    struct Record<'a> { name: &'a str, first: u32, values: [f32; 4] }
+    let mut batch = Batch::new();
+    for (name, first) in [("first", 48), ("other", 2), ("first", 17)] {
+        let values = [1.0 / 3.0, -0.0, f32::from_bits(1), -4.125];
+        let record = Record { name, first, values };
+        assert_eq!(batch.encode(&record).unwrap(), encode(&record).unwrap());
+        assert_eq!(batch.encode_source(&record).unwrap(), encode(&Record { name, first: 0, values }).unwrap());
     }
 }

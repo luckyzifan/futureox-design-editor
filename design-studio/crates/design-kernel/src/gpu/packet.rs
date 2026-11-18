@@ -231,6 +231,31 @@ impl FrameSceneContext {
         }).unwrap_or_else(||scope.to_owned());
         if self.scope.is_empty()||self.binding!=binding{*self=Self{scope:scope.into(),binding,..Self::default()}}
     }
+    fn reuse_transfer(&mut self, key: &Key) -> Result<Option<(u32, Arc<[u8]>)>, String> {
+        let Some(entry) = self.entries.get_mut(key) else { return Ok(None); };
+        self.clock = self.clock.checked_add(1).ok_or("Frame resource clock exhausted")?;
+        self.ages.remove(&entry.age);
+        entry.age = self.clock;
+        self.ages.insert(self.clock, key.clone());
+        Ok(Some((entry.id, key.data.clone())))
+    }
+    fn intern_curve(&mut self, words: &[f32], previous_id: Option<u32>) -> Result<(u32, Arc<[u8]>), String> {
+        // The previous slot suggests an existing allocation. Match every
+        // original f32 byte before reusing its immutable wire identity.
+        #[cfg(target_endian = "little")]
+        {
+            let bytes: &[u8] = bytemuck::cast_slice(words);
+            if let Some(key) = previous_id.and_then(|id| self.curve_transfer_keys.get(&id)).filter(|key| &*key.data == bytes).cloned() &&
+                let Some(entry) = self.reuse_transfer(&key)? {
+                return Ok(entry);
+            }
+        }
+        #[cfg(target_endian = "big")]
+        let _ = previous_id;
+        let mut data = Vec::with_capacity(words.len() * 4);
+        append_geometry(&mut data, words);
+        self.intern(4, data)
+    }
     fn intern(&mut self,kind:u8,data:Vec<u8>)->Result<(u32,Arc<[u8]>),String>{
         // Unbound or oversized values cannot be cache hits or insertions.
         // They retain the original uncached path without scanning their bytes
@@ -239,12 +264,10 @@ impl FrameSceneContext {
             self.resource_hasher.hash_one((kind,data.as_slice()))
         }else{0};
         let data:Arc<[u8]>=data.into();let key=Key{kind,digest,data:data.clone()};
-        self.clock=self.clock.checked_add(1).ok_or("Frame resource clock exhausted")?;
-        if let Some((original,entry))=self.entries.get_key_value(&key){
-            let original=original.clone();let id=entry.id;let age=entry.age;
-            self.ages.remove(&age);self.entries.get_mut(&original).unwrap().age=self.clock;self.ages.insert(self.clock,original.clone());
-            return Ok((id,original.data));
+        if let Some(original)=self.entries.get_key_value(&key).map(|(key,_)|key.clone()){
+            if let Some(found)=self.reuse_transfer(&original)? { return Ok(found); }
         }
+        self.clock=self.clock.checked_add(1).ok_or("Frame resource clock exhausted")?;
         self.next=self.next.checked_add(1).ok_or("Frame resource ID exhausted")?;let id=self.next;
         let bytes=data.len().checked_add(256).ok_or("Frame resource size overflow")?;
         let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.semantic_bytes).saturating_sub(self.cached.as_ref().map_or(0,|frame|frame.charge));
@@ -321,7 +344,11 @@ impl FrameSceneContext {
         }
         Ok(id)
     }
-    fn encode(&mut self,mut scene:GpuScene,request:Option<&serde_json::Value>,revision:u64)->Result<Vec<u8>,String>{
+    fn encode(&mut self,scene:GpuScene,request:Option<&serde_json::Value>,revision:u64)->Result<Vec<u8>,String>{
+        self.encode_with_curves(scene, request, revision, &[])
+    }
+    fn encode_with_curves(&mut self,mut scene:GpuScene,request:Option<&serde_json::Value>,revision:u64,
+        previous_curves:&[u32])->Result<Vec<u8>,String>{
         let shared=request.and_then(|r|r.get("prepareViewport")).is_some();
         // Borrow semantic fields; a large ACK must never be cloned only to be
         // removed from the frame key immediately afterwards.
@@ -358,11 +385,9 @@ impl FrameSceneContext {
         let mut curve_ids = HashMap::new();
         let curve_resources = if let Some(spans) = curve_spans {
             let mut ids = Vec::with_capacity(spans.len());
-            for (first, count) in spans {
+            for (slot, (first, count)) in spans.into_iter().enumerate() {
                 crate::render_cancellation::checkpoint()?;
-                let mut data = Vec::with_capacity(count * 4);
-                append_geometry(&mut data, &curves[first..first + count]);
-                let (id, data) = self.intern(4, data)?;
+                let (id, data) = self.intern_curve(&curves[first..first + count], previous_curves.get(slot).copied())?;
                 record(id, 4, &data)?;
                 ids.push(id);
                 curve_ids.insert((first, count), id);
@@ -389,6 +414,7 @@ impl FrameSceneContext {
         // certify a retained subtree after a descendant edit.
         let order=plan.source_order.as_ref().map_err(Clone::clone)?;
         let mut source_ids=BTreeMap::<String,u32>::new();
+        let mut wire = frame_wire::Batch::new();
         for name in order { let node=nodes.get_mut(name).unwrap();
             crate::render_cancellation::checkpoint()?;
             // Exact image identity retains each original URI once. Repeated
@@ -419,7 +445,7 @@ impl FrameSceneContext {
                 for p in &mut node.fills{image(&mut p.paint)?}for s in &mut node.strokes{image(&mut s.paint.paint)?}
                 if let Some(replay)=&mut node.texture_replay{image(&mut replay.paint)?}
             }
-            let canonical=frame_wire::encode_source(node)?;
+            let canonical=wire.encode_source(node)?;
             let transport=|paint:&mut Paint|{if let Some(source)=paint.image.as_ref(){
                 let source=source.parse::<u32>().expect("private semantic image reference");
                 paint.image=Some(image_transports[&source].to_string().into());
@@ -447,12 +473,12 @@ impl FrameSceneContext {
                 }
             }
             let children=node.children.iter().map(|id|(id,source_ids.get(id).copied())).collect::<Vec<_>>();
-            source_key.extend(frame_wire::encode(&children)?);
+            source_key.extend(wire.encode(&children)?);
             let source_id=self.source_identity(name,source_key)?;
             source_ids.insert(name.clone(),source_id);
             #[derive(Serialize)]#[serde(rename_all="camelCase")]
             struct NodeResource<'a>{node:&'a super::GpuNode,source_identity:u32}
-            let (id,data)=self.intern(2,frame_wire::encode(&NodeResource{node:&node,source_identity:source_id})?)?;
+            let (id,data)=self.intern(2,wire.encode(&NodeResource{node:&node,source_identity:source_id})?)?;
             record(id,2,&data)?;node_resources.push((name.clone(),id));
         }
         self.image_semantics.retain(|uri,source|{if image_transports.contains_key(source){true}else{
@@ -533,7 +559,12 @@ impl crate::Engine {
         // Only the most recent successful exact request can short-circuit.
         // A different camera, invalidation or failure cannot revive an old
         // frame sequence, and no ACK dictionary participates in compilation.
-        self.frame_scene.cached=None;
+        let previous = self.frame_scene.cached.take();
+        let previous_curves: Vec<_> = if curve_resources_requested(Some(&fields)) {
+            previous.iter().flat_map(|frame| frame.resources.iter().take_while(|(_,kind,_)| *kind == 4))
+                .map(|(id,_,_)| *id).collect()
+        } else { Vec::new() };
+        drop(previous);
         self.frame_scene.compilations+=1;
         let dense=match fields.get("gpuDensePaint"){
             None=>false, Some(serde_json::Value::Bool(value))=>*value,
@@ -549,7 +580,7 @@ impl crate::Engine {
         }
         if self.frame_scene.scope.is_empty() { return scene.into_packet(); }
         self.frame_scene.pending_request=request_key.and_then(|key|self.static_scene_revision().map(|revision|(revision,key)));
-        let result=self.frame_scene.encode(scene,Some(&fields),self.geo_revision);
+        let result=self.frame_scene.encode_with_curves(scene,Some(&fields),self.geo_revision,&previous_curves);
         self.reserve_render_cache_bytes();result
     }
 }
@@ -818,6 +849,23 @@ impl crate::Engine {
         assert_eq!(entries.len(),4);assert_eq!(entries.get(&key(5,vec![0;1024*1024])),Some(&2));
         assert_eq!(entries.get(&large),Some(&2));
     }
+    #[test]
+    fn curve_slot_hints_require_the_original_bits_and_a_live_resource() {
+        let mut frame=FrameSceneContext::default();
+        frame.bind("curve-slot");
+        let words = [1.0, 0.0, 2.0, 3.0];
+        let original = frame.intern_curve(&words, None).unwrap().0;
+        let mut different = words;
+        different[1] = -0.0;
+        let changed = frame.intern_curve(&different, Some(original)).unwrap().0;
+        assert_ne!(original, changed);
+        assert_eq!(frame.intern_curve(&words, Some(changed)).unwrap().0, original);
+        let key = frame.curve_transfer_keys[&original].clone();
+        frame.ages.remove(&frame.entries[&key].age);
+        frame.evict_transfer(&key);
+        assert_ne!(frame.intern_curve(&words, Some(original)).unwrap().0, original);
+    }
+
     #[test]fn hits_and_eviction_keep_exact_resource_identity_under_the_configured_memory_limit(){
         let mut frame=FrameSceneContext::default();frame.bind("cache-proof");
         let limit=4*1024*1024;frame.limit_override=Some(limit);
