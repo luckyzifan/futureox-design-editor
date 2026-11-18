@@ -1,7 +1,7 @@
 //! Issue #284. Radius-4 outer shadow versus the frozen Figma browser PNG.
 //! The reference bytes stay the oracle. Figma export still resolves 2× coverage
-//! with the official byte average. This outer shadow is filtered on the output
-//! pixel grid, which is the tent the browser image follows.
+//! with the official byte average. The shadow tent integrates one destination
+//! cell on the output grid after resolving the coverage samples.
 use futureox_design_kernel::{Engine, RenderOptions};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -43,7 +43,7 @@ fn gap(actual: &[u8], expected: &[u8]) -> (usize, u8) {
 }
 
 #[test]
-fn radius4_outer_shadow_reduces_the_frozen_browser_residual() {
+fn radius4_outer_shadow_integrates_one_output_cell() {
     let case = shadow_case();
     let reference_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../frontend/design-client/public/fidelity/browser-2026-10-07")
@@ -66,17 +66,16 @@ fn radius4_outer_shadow_reduces_the_frozen_browser_residual() {
         "issue284 shadow figma pixels={pixels} max={max} rgba={}",
         sha256(&actual)
     );
-    // Frozen failure on this input was 668 pixels, max channel 2. The output
-    // grid tent removes that two-code bias. What remains is one code, the
-    // browser PNG's variation around the same row.
+    // The previous output-grid tent integrated both cells and left 429 pixels
+    // different. The destination-cell integral brings that down to 307.
     assert_eq!(
         (pixels, max),
-        (429, 1),
+        (307, 1),
         "measured remainder against the frozen browser PNG"
     );
     assert_eq!(
         sha256(&actual),
-        "589a345e3f1e2c5dae2aeb6b88a89b7c870d92f500ca7a654abd09073acd8249"
+        "6b49319c86f3c0fa094866f490dd5c76abd1212627f9509ffc8250d2ff445d3e"
     );
     let at = |x: usize, y: usize| {
         let i = (y * 128 + x) * 4;

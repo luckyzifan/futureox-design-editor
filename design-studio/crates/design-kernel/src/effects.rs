@@ -1399,23 +1399,41 @@ pub(crate) fn sketch_shadow_alpha(
     blur_shadow_alpha(alpha, BlurFilter::Gaussian(sigma))
 }
 
-/// Figma export rasterizes coverage at 2× and resolves each output pixel from
-/// that pair. A radius-4 outer shadow on the browser PNG matches the same tent
-/// evaluated on the output pixel grid. Blurring the 2× mask and then resolving
-/// the pair keeps the lower code of a half-byte mean, up to two codes off.
-/// Spread stays on the device grid. The returned mask is constant on each
-/// output pair, so the official 2× resolve reproduces the output-grid byte.
+/// Filter the resolved coverage samples over an output-pixel footprint. The
+/// input samples already represent coverage over their cells, so integrate
+/// only the destination cell. The resulting alpha is shared by its 2×2 samples.
 pub(crate) fn shadow_alpha_output_grid(
     surface: &Surface,
-    filter: BlurFilter,
-    spread: f64,
+    radius: i32,
 ) -> Result<Surface, String> {
-    let alpha = shadow_alpha_plane(surface, spread, false)?;
+    let mut alpha = downsample_alpha_pairs(surface)?;
     let rect = alpha.rect;
-    let half = downsample_alpha_pairs(&alpha)?;
-    drop(alpha);
-    let blurred = blur_shadow_alpha(half, filter)?;
-    upsample_alpha_pairs(&blurred, rect)
+    let denominator = (8 * radius * radius) as f32;
+    // A unit-width box integral of an integer-radius tent has weights
+    // 8*r-2 at the center, 8*(r-distance) in the interior, and 1 at the tip.
+    let weights = (1..radius).map(|distance| (8 * (radius - distance)) as u32);
+    let weights: Vec<_> = std::iter::once((8 * radius - 2) as u32)
+        .chain(weights)
+        .chain(std::iter::once(1))
+        .collect();
+    for (dx, dy) in [(1, 0), (0, 1)] {
+        let mut filtered = alpha.new_like(rect)?;
+        for y in rect.y..rect.bottom() {
+            crate::render_cancellation::checkpoint()?;
+            for x in rect.x..rect.right() {
+                let mut sum = alpha_byte(alpha.at(x, y)) * weights[0];
+                for distance in 1..=radius {
+                    let a = alpha_byte(alpha.at(x - dx * distance, y - dy * distance));
+                    let b = alpha_byte(alpha.at(x + dx * distance, y + dy * distance));
+                    sum += (a + b) * weights[distance as usize];
+                }
+                let index = rect.index(x, y).expect("filtered shadow grid");
+                filtered.pixels[index].0[3] = (sum as f32 / denominator).round_ties_even() / 255.;
+            }
+        }
+        alpha = filtered;
+    }
+    upsample_alpha_pairs(&alpha, surface.rect)
 }
 
 fn shadow_alpha_plane(surface: &Surface, spread: f64, inner: bool) -> Result<Surface, String> {
@@ -1483,6 +1501,7 @@ fn downsample_alpha_pairs(alpha: &Surface) -> Result<Surface, String> {
         return Ok(half);
     }
     for oy in rect.y..rect.bottom() {
+        crate::render_cancellation::checkpoint()?;
         for ox in rect.x..rect.right() {
             let mut sum = 0u32;
             for dy in 0..2 {
@@ -1508,6 +1527,7 @@ fn upsample_alpha_pairs(half: &Surface, rect: Rect) -> Result<Surface, String> {
         return Ok(out);
     }
     for y in rect.y..rect.bottom() {
+        crate::render_cancellation::checkpoint()?;
         for x in rect.x..rect.right() {
             let value = half.at(x.div_euclid(2), y.div_euclid(2)).0[3];
             let index = out.rect.index(x, y).expect("upsampled shadow grid");
