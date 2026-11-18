@@ -46,8 +46,9 @@ export function buildDesktopFlowReport({
   arch = process.arch,
   runtimeRoot = process.env.FUTUREOX_RELEASE_RUNTIME,
   originalPaths = splitOriginals(process.env.FUTUREOX_RELEASE_ORIGINALS),
+  publishedNativePaths,
 } = {}) {
-  const described = describePackage(packagePath, { runtimeRoot, platform, arch })
+  const described = describePackage(packagePath, { runtimeRoot, platform, arch, publishedNativePaths })
   const originals = recordReadonlyOriginals(originalPaths)
   const reason = stepReason(described)
   const report = {

@@ -8,12 +8,13 @@ import { bundleExecutable } from '../scripts/release-desktop-session.mjs'
 import {
   assessObservedDesktopSession,
   bindInstalledDeb,
+  bindInstalledDmg,
   inspectHostSignature,
   officialPackageBlockers,
   parseCodesignDisplay,
   planReleaseLaunch,
 } from '../scripts/release-session-report.mjs'
-import { describePackage } from '../scripts/release-package-resources.mjs'
+import { describePackage, hashReadonlyFile } from '../scripts/release-package-resources.mjs'
 
 const HASH_A = 'a'.repeat(64)
 const SHA = 'c'.repeat(64)
@@ -266,6 +267,62 @@ test('an installed linux deb can pass the desktop steps without closing signed a
     assert.equal(rejected.releaseAcceptance, 'not_closed')
   } finally {
     await rm(release.root, { recursive: true, force: true })
+  }
+})
+
+test('a mounted DMG keeps the installer digest and the copied app digest distinct', async () => {
+  const release = await bundle('release')
+  try {
+    const baseline = bindInstalledDmg(buildDesktopFlowReport({ packagePath: release.directory }), {
+      dmgPath: '/tmp/Futureox.dmg', dmgSha256: SHA,
+    })
+    const session = measuredSession(baseline)
+    session.installer = { macDmg: 'copied' }
+    const payload = baseline.package.payloadSha256
+    Object.assign(session.observation.install, {
+      method: 'hdiutil', installer: 'dmg', dmgSha256: SHA, payloadSha256: payload,
+      installedSha256: payload, afterSha256: payload,
+    })
+    const passed = assessObservedDesktopSession(baseline, session)
+    assert.equal(passed.packagePath, '/tmp/Futureox.dmg')
+    assert.equal(passed.releaseAcceptance, 'not_closed')
+    assert.equal(passed.steps.every(step => step.status === 'passed' && step.packageSha256 === SHA), true)
+    assert.equal(passed.blockedOfficialSteps.find(step => step.id === 'disk_image_or_system_installer').status, 'macos_dmg_copied')
+    session.observation.install.afterSha256 = HASH_A
+    assert.equal(assessObservedDesktopSession(baseline, session).steps.find(step => step.id === 'install').status, 'failed')
+  } finally {
+    await rm(release.root, { recursive: true, force: true })
+  }
+})
+
+test('a historical published app verifies each declared file with its recorded native set', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'fx-historical-macos-'))
+  try {
+    const app = path.join(root, 'Futureox.app')
+    const resources = path.join(app, 'Contents/Resources')
+    const publishedNativePaths = ['sidecar/futureox-design-desktop-backend',
+      'bin/design-render', 'bin/design-prepare', 'bin/futureox-design-agent']
+    const entries = []
+    for (const installPath of publishedNativePaths) {
+      const file = path.join(resources, installPath)
+      await mkdir(path.dirname(file), { recursive: true })
+      await writeFile(file, installPath)
+      const { sha256, size } = hashReadonlyFile(file)
+      entries.push({ kind: 'native', installPath, sha256, size, present: true })
+    }
+    entries.push({ kind: 'native', installPath: 'bin/ffmpeg', sha256: null, size: null, present: false })
+    await writeFile(path.join(resources, 'resource-list.json'), JSON.stringify({
+      schema: 1, profile: 'release', platform: 'darwin', arch: 'arm64', entries,
+    }))
+    const host = { platform: 'darwin', arch: 'arm64' }
+    assert.equal(describePackage(app, host).resources.declaredVersusBytes.status, 'mismatch')
+    const described = () => describePackage(app, { ...host, publishedNativePaths })
+    assert.equal(described().resources.declaredVersusBytes.status, 'match')
+    assert.equal(planReleaseLaunch(described(), host).canLaunch, true)
+    await writeFile(path.join(resources, 'bin/design-render'), 'different bytes')
+    assert.deepEqual(planReleaseLaunch(described(), host).blockers, ['resource_mismatch'])
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
 

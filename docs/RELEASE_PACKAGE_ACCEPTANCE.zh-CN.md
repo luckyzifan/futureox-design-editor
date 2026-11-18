@@ -38,15 +38,22 @@ node frontend/design-desktop/scripts/release-desktop-session.mjs \
   --verification=/absolute/release-verification.json
 ```
 
-这个包若没有 `--desktop-acceptance-profile`，脚本会把 `HOME` 和 `XDG_CONFIG_HOME` 指到验收目录，并先写入「打开原默认工作区」会留下的选择记录，再从「打开设计文件」进入。有验收配置钩子的包仍走原来的配置目录，不用这份私有家目录。`.dmg`、`.pkg`、`.msi`、`.exe`、`.rpm` 仍然不挂载。
+这个包若没有 `--desktop-acceptance-profile`，脚本会把 `HOME` 和 `XDG_CONFIG_HOME` 指到验收目录，并先写入「打开原默认工作区」会留下的选择记录，再从「打开设计文件」进入。有验收配置钩子的包仍走原来的配置目录。
 
-仍不能在本环境完成、必须保持未关闭的正式包步骤：
+在 macOS 上，已发布的 DMG 也可执行同一套桌面验收。
 
-- 签名并公证的 macOS 包，以及 `codesign` / `spctl` 评估。
-- Windows Authenticode。
-- 挂载或安装 `.dmg`、`.pkg`、`.msi`、`.exe`、`.rpm`。目录复制不是这些安装器。linux `.deb` 用 `dpkg --root` 安装并启动后，安装器记录是 `linux_deb_installed`，不是全部安装器通过。
+```bash
+node frontend/design-desktop/scripts/release-desktop-session.mjs \
+  --package=/absolute/futureox-design-macos-arm64.dmg \
+  --verification=/absolute/release-verification.json \
+  --output=/absolute/isolated-acceptance-directory
+```
 
-`.dmg`、`.pkg`、`.msi`、`.exe`、`.deb`、`.rpm`、`.AppImage` 在准备清单里只做文件哈希，不挂载、不启动。linux `.deb` 的安装和启动属于上面的会话脚本，不属于准备清单。目录包会列出 `app.asar` 或未打包 `app/` 里的 JS/WASM、`sidecar/` 与 `bin/` 下的已知原生程序，以及 `design-mcp` 的脚本。每个步骤记录都带 `packageSha256`、`platform` 和 `arch`。准备清单不把这些步骤标成已执行。Linux/Windows 第一次启动时，绝对路径 `.fd` 参数会进入原生打开队列；macOS 仍只接受系统的 `open-file` 事件。验收配置目录不能是默认用户数据目录、家目录、符号链接或全局可写目录。
+脚本先核对发布记录中的 DMG 哈希，再只读挂载镜像。复制到独立前缀后，会对照镜像中的应用摘要，并校验 ASAR、内核 WASM 和原生程序。历史应用按其发布记录和包内资源清单校验，签名和公证评估单独记录。
+
+安装器记录使用 `macos_dmg_copied` 和 `linux_deb_installed`。Developer ID 签名与公证、Windows Authenticode、以及 `.pkg`、`.msi`、`.exe`、`.rpm` 的安装验收仍需各自的执行证据。
+
+`.dmg`、`.pkg`、`.msi`、`.exe`、`.deb`、`.rpm`、`.AppImage` 在准备清单里只做文件哈希。DMG 和 DEB 的挂载或安装及启动由上面的会话脚本记录。目录包会列出 `app.asar` 或未打包 `app/` 里的 JS/WASM、`sidecar/` 与 `bin/` 下的已知原生程序，以及 `design-mcp` 的脚本。每个步骤记录都带 `packageSha256`、`platform` 和 `arch`。Linux/Windows 第一次启动时，绝对路径 `.fd` 参数会进入原生打开队列。macOS 通过系统的 `open-file` 事件或应用菜单打开文件。验收配置目录不能是默认用户数据目录、家目录、符号链接或全局可写目录。
 
 目录身份按路径、大小和内容 SHA-256 分段哈希。旧实现把路径文本和文件字节直接拼在一起，`a` + `bc` 与 `ab` + `c` 会得到同一个 SHA-256。单个安装包文件仍是内容 SHA-256。清单哈希和包内字节不一致，或和运行时字节不一致时，进程以失败退出；桌面步骤仍是 `not_run`，`confirmedRuntimeFault` 仍是 false。`profile` 为 `desktop-dev` 或 `debug` 时记为开发包。`release` profile 但没有签名检查的包也不是正式签名安装包。签名和公证保持 `not_run`。
 

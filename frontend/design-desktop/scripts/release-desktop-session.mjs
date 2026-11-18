@@ -1,10 +1,10 @@
 // Launch an installed release-profile bundle and record issue #85's desktop flow.
 // A source tree, desktop-dev profile, or hashed-but-unopened installer cannot pass.
-// A linux .deb is installed with dpkg before launch. Other installers stay unopened.
+// A Linux DEB uses dpkg. A macOS DMG supplies a verified app from a read-only mount.
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } from 'node:fs/promises'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { Sidecar } from '../src/sidecar.mjs'
 import { describePackage, hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
 import { assertProductName, bundleLaunchContract, readAsarFile, readAsarJson, resolveInstalledBundle, workspaceSelectionSeed } from './release-deb-install.mjs'
-import { assessObservedDesktopSession, bindInstalledDeb, desktopFlowBaseline, inspectHostSignature, officialPackageBlockers, planReleaseLaunch } from './release-session-report.mjs'
+import { assessObservedDesktopSession, bindInstalledDeb, bindInstalledDmg, desktopFlowBaseline, inspectHostSignature, officialPackageBlockers, planReleaseLaunch } from './release-session-report.mjs'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const core = path.resolve(desktop, '../..')
@@ -34,7 +34,7 @@ function directoryNames(directory) {
 
 export function bundleExecutable(bundle, platform = process.platform) {
   const name = platform === 'win32' ? 'futureox-desgin.exe' : 'futureox-desgin'
-  if (platform === 'darwin' && existsSync(bundle)) {
+  if (platform === 'darwin' && existsSync(bundle) && lstatSync(bundle).isDirectory()) {
     if (path.extname(bundle) === '.app') return path.join(bundle, 'Contents', 'MacOS', name)
     const apps = readdirSync(bundle).filter(name => name.endsWith('.app'))
     if (apps.length === 1) return path.join(bundle, apps[0], 'Contents', 'MacOS', name)
@@ -203,6 +203,12 @@ async function launchPackaged(electron, executable, profile, extraArgs, logs, la
   app.process().stderr?.on('data', chunk => logs.push(String(chunk)))
   try {
     const page = await app.firstWindow({ timeout: 90000 })
+    if (process.platform === 'darwin') await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      window.setFocusable(false)
+      window.setIgnoreMouseEvents(true)
+      window.showInactive()
+    })
     page.on('pageerror', error => logs.push(`pageerror ${error}\n`))
     await page.waitForURL(/^design-app:/, { timeout: 90000, waitUntil: 'domcontentloaded' })
     return { app, page }
@@ -265,17 +271,17 @@ async function restoreSaveDialog(app) {
   }).catch(() => {})
 }
 
-async function verifyLinuxInstaller(verificationPath, debPath) {
+async function verifyPublishedInstaller(verificationPath, installerPath) {
   const verification = JSON.parse(await readFile(verificationPath, 'utf8'))
   const release = verification.packages?.[`${process.platform}-${process.arch}`]
-  const sha = hashReadonlyFile(debPath).sha256
+  const sha = hashReadonlyFile(installerPath).sha256
   if (verification.build?.profile !== 'release' || release?.sha256 !== sha) {
-    throw new Error('deb hash or platform does not match the release verification')
+    throw new Error('Installer hash or platform does not match the release verification')
   }
   return sha
 }
 
-async function readVerification(verificationPath, resourcesRoot, debPath = null) {
+async function readVerification(verificationPath, resourcesRoot, installerPath = null) {
   const verification = JSON.parse(await readFile(verificationPath, 'utf8'))
   const archive = path.join(resourcesRoot, 'app.asar')
   const actual = hashReadonlyFile(archive).sha256
@@ -285,10 +291,26 @@ async function readVerification(verificationPath, resourcesRoot, debPath = null)
   const release = verification.packages?.[`${process.platform}-${process.arch}`]
   if (release && verification.build) {
     if (verification.build.profile !== 'release') throw new Error(`release verification profile is ${verification.build.profile}, not release`)
-    if (debPath && hashReadonlyFile(debPath).sha256 !== release.sha256) throw new Error('deb hash does not match the release verification')
+    if (installerPath && hashReadonlyFile(installerPath).sha256 !== release.sha256) throw new Error('Installer hash does not match the release verification')
     if (release.appAsarSha256 !== actual) throw new Error('release verification app.asar hash does not match this bundle')
     if (release.nativeSha256?.[sidecarName] !== sidecarHash) throw new Error('release verification sidecar hash does not match this bundle')
-    return { path: verificationPath, status: 'matched_release_verification', profile: 'release', appAsar: actual }
+    const publishedNativePaths = Object.keys(release.nativeSha256)
+    for (const name of publishedNativePaths) {
+      if (!/^(?:bin|sidecar)\/[a-zA-Z0-9._-]+$/.test(name)) throw new Error('Invalid native path in release verification')
+      if (name !== sidecarName && hashReadonlyFile(path.join(resourcesRoot, name)).sha256 !== release.nativeSha256[name]) {
+        throw new Error(`Release verification native hash does not match ${name}`)
+      }
+    }
+    if (installerPath?.toLowerCase().endsWith('.dmg')) {
+      for (const name of ['bin/design-render', 'bin/design-prepare', 'bin/futureox-design-agent']) {
+        if (!publishedNativePaths.includes(name)) throw new Error(`Release verification omits ${name}`)
+      }
+      const wasm = readAsarFile(archive, 'renderer/kernel/design_kernel_bg.wasm')
+      if (createHash('sha256').update(wasm).digest('hex') !== release.kernelWasmSha256) {
+        throw new Error('Release verification kernel WASM hash does not match this bundle')
+      }
+    }
+    return { path: verificationPath, status: 'matched_release_verification', profile: 'release', appAsar: actual, publishedNativePaths }
   }
   if (verification.status !== 'passed') throw new Error(`package verification status is ${verification.status}`)
   if (verification.platform !== process.platform || verification.arch !== process.arch) throw new Error('package verification platform does not match this host')
@@ -334,6 +356,31 @@ async function installLinuxDeb(debPath, output, verifiedSha256) {
   }
 }
 
+async function installMacDmg(dmgPath, output, dmgSha256) {
+  const mount = await mkdtemp(path.join(output, 'dmg-mount-'))
+  const attached = runCommand('/usr/bin/hdiutil', ['attach', '-readonly', '-nobrowse', '-noautoopen', '-mountpoint', mount, dmgPath])
+  if (attached.status !== 0) throw new Error(`Could not mount the DMG read-only: ${attached.stderr}`)
+  try {
+    const apps = (await readdir(mount, { withFileTypes: true })).filter(entry => entry.isDirectory() && entry.name.endsWith('.app'))
+    if (apps.length !== 1) throw new Error('The DMG must contain one application bundle')
+    const source = path.join(mount, apps[0].name)
+    const payload = hashPackageIdentity(source)
+    const root = await mkdtemp(path.join(output, 'dmg-install-'))
+    const directory = path.join(root, apps[0].name)
+    const copied = runCommand('/usr/bin/ditto', [source, directory])
+    if (copied.status !== 0) throw new Error(`Could not copy the DMG application: ${copied.stderr}`)
+    const tree = hashPackageIdentity(directory)
+    if (!payload.sha256 || payload.sha256 !== tree.sha256) {
+      throw Object.assign(new Error('Installed app hash does not match the DMG payload'), { code: 'INSTALL_MISMATCH' })
+    }
+    if (hashReadonlyFile(dmgPath).sha256 !== dmgSha256) throw new Error('The source DMG changed during installation')
+    return { directory, resources: path.join(directory, 'Contents/Resources'), tree, dmgSha256, payloadSha256: payload.sha256 }
+  } finally {
+    const detached = runCommand('/usr/bin/hdiutil', ['detach', mount])
+    if (detached.status !== 0) throw new Error(`Could not unmount the acceptance disk image: ${detached.stderr}`)
+  }
+}
+
 async function preparePrivateHome(output, productName) {
   const outputPath = await realpath(output)
   const userHome = await realpath(homedir())
@@ -365,36 +412,48 @@ async function main() {
   let exitCode = 1
   let report
   let plan = { canLaunch: false, blockers: ['missing_package'] }
+  let launched = false
   let debInstall = null
+  let dmgInstall = null
+  let publishedNativePaths
   let launchOptions = {}
   let flowPackage = packagePath
-  const signaturePath = process.platform === 'darwin' && !packagePath.endsWith('.app')
-    ? path.resolve(path.dirname(bundleExecutable(packagePath)), '../..')
-    : packagePath
-  const signature = inspectHostSignature({ platform: process.platform, packagePath: signaturePath,
-    run(command, args) {
-      const result = spawnSync(command, args, { encoding: 'utf8', timeout: 15000 })
-      return { status: result.status, stdout: (result.stdout || '') + (result.stderr || '') }
-    },
-  })
+  let signature = { status: 'not_run', notarization: 'not_run' }
+  const verificationPath = option('verification') || path.join(path.dirname(packagePath), 'package-verification.json')
   const linuxDeb = process.platform === 'linux' && packagePath.toLowerCase().endsWith('.deb')
+  const macDmg = process.platform === 'darwin' && packagePath.toLowerCase().endsWith('.dmg')
   report = desktopFlowBaseline({ packagePath, platform: process.platform, arch: process.arch, originalPaths: [] })
   report.blockedOfficialSteps = []
   report.signature = signature
   try {
     let bundlePath = packagePath
     if (linuxDeb) {
-      const releaseVerification = option('verification') || path.join(path.dirname(packagePath), 'package-verification.json')
-      const verifiedSha256 = await verifyLinuxInstaller(releaseVerification, packagePath)
+      const verifiedSha256 = await verifyPublishedInstaller(verificationPath, packagePath)
       debInstall = await installLinuxDeb(packagePath, output, verifiedSha256)
       bundlePath = debInstall.directory
       flowPackage = bundlePath
       launchOptions = debInstall.contract.acceptanceProfile ? {} : { privateHome: await preparePrivateHome(output, debInstall.productName) }
+    } else if (macDmg) {
+      const verifiedSha256 = await verifyPublishedInstaller(verificationPath, packagePath)
+      dmgInstall = await installMacDmg(packagePath, output, verifiedSha256)
+      bundlePath = flowPackage = dmgInstall.directory
+      observation.verification = await readVerification(verificationPath, dmgInstall.resources, packagePath)
+      publishedNativePaths = observation.verification.publishedNativePaths
     }
-    const described = describePackage(bundlePath, { platform: process.platform, arch: process.arch })
+    const signaturePath = process.platform === 'darwin' && !bundlePath.endsWith('.app') && lstatSync(bundlePath, { throwIfNoEntry: false })?.isDirectory()
+      ? path.resolve(path.dirname(bundleExecutable(bundlePath)), '../..')
+      : bundlePath
+    signature = inspectHostSignature({ platform: process.platform, packagePath: signaturePath,
+      run(command, args) {
+        const result = spawnSync(command, args, { encoding: 'utf8', timeout: 15000 })
+        return { status: result.status, stdout: (result.stdout || '') + (result.stderr || '') }
+      },
+    })
+    const described = describePackage(bundlePath, { platform: process.platform, arch: process.arch, publishedNativePaths })
     plan = planReleaseLaunch(described, { platform: process.platform, arch: process.arch })
-    report = desktopFlowBaseline({ packagePath: bundlePath, platform: process.platform, arch: process.arch, originalPaths: [] })
+    report = desktopFlowBaseline({ packagePath: bundlePath, platform: process.platform, arch: process.arch, originalPaths: [], publishedNativePaths })
     if (debInstall) report = bindInstalledDeb(report, { debPath: packagePath, debSha256: debInstall.debSha256 })
+    if (dmgInstall) report = bindInstalledDmg(report, { dmgPath: packagePath, dmgSha256: dmgInstall.dmgSha256 })
     report.blockedOfficialSteps = []
     report.plan = plan
     report.signature = signature
@@ -413,6 +472,10 @@ async function main() {
       installed = debInstall.directory
       frozenSha = debInstall.debSha256
       installedHash = debInstall.tree
+    } else if (dmgInstall) {
+      installed = dmgInstall.directory
+      frozenSha = dmgInstall.dmgSha256
+      installedHash = dmgInstall.tree
     } else {
       const frozen = hashPackageIdentity(packagePath)
       const installParent = await mkdtemp(path.join(output, 'install-'))
@@ -424,13 +487,11 @@ async function main() {
       if (installedHash.sha256 !== frozenSha) throw Object.assign(new Error('Installed copy hash does not match the frozen package'), { code: 'INSTALL_MISMATCH' })
     }
     const executable = bundleExecutable(installed)
-    const resourcesRoot = debInstall?.resources || path.join(installed, described.resources.installRoot || 'resources')
+    const resourcesRoot = debInstall?.resources || dmgInstall?.resources || path.join(installed, described.resources.installRoot || 'resources')
     const sidecarBinary = path.join(resourcesRoot, 'sidecar', `futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`)
     if (!debInstall && process.platform !== 'darwin') await chmod(executable, 0o755)
-    const verificationPath = option('verification')
-      || path.join(path.dirname(packagePath), 'package-verification.json')
     if (!existsSync(verificationPath)) throw Object.assign(new Error('package-verification.json is missing; run verify-package for this bundle first'), { code: 'VERIFICATION_MISSING' })
-    observation.verification = await readVerification(verificationPath, resourcesRoot, debInstall ? packagePath : null)
+    observation.verification ??= await readVerification(verificationPath, resourcesRoot, debInstall ? packagePath : null)
     observation.expectedSidecarSha256 = hashReadonlyFile(sidecarBinary).sha256
     let contract = debInstall?.contract
     if (process.platform === 'darwin') {
@@ -491,6 +552,9 @@ async function main() {
         debSha256: debInstall.debSha256,
         dpkgRoot: debInstall.root,
         payloadSha256: debInstall.tree.sha256,
+      } : dmgInstall ? {
+        method: 'hdiutil', installer: 'dmg', dmgSha256: dmgInstall.dmgSha256,
+        payloadSha256: dmgInstall.payloadSha256,
       } : { method: 'directory_copy' }),
     }
     const { _electron: electron } = requireClient('@playwright/test')
@@ -499,6 +563,7 @@ async function main() {
     try {
       const openOnArgv = contract?.argvFiles ?? true
       ;({ app, page } = await launchPackaged(electron, executable, profile, openOnArgv ? [originalPath] : [], logs, launchOptions))
+      launched = true
       reached.open = true
       const runtime = await hostFacts(app, profile)
       const profileReal = realpathSync(profile)
@@ -685,7 +750,7 @@ async function main() {
   } finally {
     const failure = report.error || report.failure
     const session = {
-      launched: plan.canLaunch && exitCode !== 2,
+      launched,
       packageSha256: report.package.sha256,
       platform: process.platform,
       arch: process.arch,
@@ -700,11 +765,17 @@ async function main() {
         platform: process.platform,
         arch: process.arch,
         originalPaths: observation.originals.paths || [],
+        publishedNativePaths,
       })
       if (debInstall) {
         baseline = bindInstalledDeb(baseline, { debPath: packagePath, debSha256: debInstall.debSha256 })
         session.packageSha256 = debInstall.debSha256
         session.installer = { linuxDeb: 'installed' }
+      }
+      if (dmgInstall) {
+        baseline = bindInstalledDmg(baseline, { dmgPath: packagePath, dmgSha256: dmgInstall.dmgSha256 })
+        session.packageSha256 = dmgInstall.dmgSha256
+        session.installer = { macDmg: 'copied' }
       }
       report = assessObservedDesktopSession(baseline, session)
       if (failure) report.error = failure
@@ -712,7 +783,7 @@ async function main() {
       report.packageFlow = 'not_launched'
       report.releaseAcceptance = 'not_closed'
       report.confirmedRuntimeFault = false
-      report.blockedOfficialSteps = officialPackageBlockers(process.platform, signature)
+      report.blockedOfficialSteps = officialPackageBlockers(process.platform, signature, dmgInstall ? { macDmg: 'copied' } : null)
       if (failure) report.failure = failure
     }
     report.output = output
