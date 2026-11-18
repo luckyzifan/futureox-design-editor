@@ -43,6 +43,7 @@ import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
 import {pixelGridPathData} from './pixel-grid'
 import {CanvasGuides} from './CanvasGuides'
+import { cancelComponentPlacement, takeComponentPlacement } from './component-placement'
 import {worldGuides} from './ruler-guides'
 import {createSmartGuidesIndex, placedSmartGuides, type SmartGuideSegment, type SmartSnapResult} from './canvas-smart-guides'
 import {useCanvasColorPicker} from './canvas-color-picker'
@@ -1456,6 +1457,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (keyboardBox.current && (uiMode !== 'figma' || keyboardBox.current.page !== state.page ||
         keyboardBox.current.session !== editor.sessionGeneration)) closeKeyboardBox()
   }, [editor, uiMode, state.page, editor.sessionGeneration])
+  useEffect(() => () => { cancelComponentPlacement(editor) }, [editor, uiMode, state.page, editor.sessionGeneration])
   useEffect(() => {
     const nudge = createKeyboardNudgeGesture(editor)
     const arrows = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
@@ -1468,6 +1470,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       if (shortcutTargetOwnsKeyboard(e.target)) { nudge.finish(); return }
+      if (e.key === 'Escape' && cancelComponentPlacement(editor)) { e.preventDefault(); return }
       if (handleKeyboardBox.current(e)) return
       if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
       if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
@@ -2118,6 +2121,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // displayed camera; selection uses the displayed snapshot and live IDs.
     // A different page/session is a separate loading boundary, never a target.
     if (!displayedSnapshot && editor.state.tool !== 'hand' && !space.current && e.button !== 1) return
+    if (uiMode === 'figma' && !kind && !navigation && e.button === 0) {
+      const component = takeComponentPlacement(editor)
+      if (component) {
+        const owner = { session: editor.sessionGeneration, document: editor.state.doc.id, page: editor.state.page }
+        const point = screenToWorld(displayViewRef.current, screenPoint(e))
+        if (commitPendingEdits(editor) && owner.session === editor.sessionGeneration &&
+            owner.document === editor.state.doc.id && owner.page === editor.state.page &&
+            editor.state.doc.nodes[component]?.component) editor.insertComponent(component, point)
+        return
+      }
+    }
     // Handles stop propagation and bypass the host's pointerdown handler.
     // Retire the hover frame before its ownership is replaced by this drag.
     cancelQueuedMove()
