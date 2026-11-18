@@ -776,6 +776,11 @@ fn sketch_font_line_box(style: &TextStyle) -> bool {
     style.line_height_auto && (style.line_height - 1.35).abs() <= 1e-9
 }
 
+fn uses_figma_line_metrics(style: &TextStyle) -> bool {
+    style.writing_mode == "horizontal"
+        && matches!(style.line_box_baseline.as_str(), "figma-pixel-leading" | "figma-font-metrics")
+}
+
 const SKETCH_SYSTEM_TEXT_ASCENT: f64 = 15.46875 / 16.;
 const SKETCH_HAN_DISPLAY_ASCENT: f64 = 17.1990966796875 / 20.;
 
@@ -1659,8 +1664,7 @@ impl Fonts {
         let mut glyphs = Vec::new();
         // FIG's measured horizontal advances use a 1/1024 em grid before
         // tracking. Retain that metric for the imported FIG line-box modes.
-        let figma_advances = style.writing_mode == "horizontal"
-            && matches!(style.line_box_baseline.as_str(), "figma-pixel-leading" | "figma-font-metrics");
+        let figma_advances = uses_figma_line_metrics(style);
         // Avoid repeated cache lookups within a run, while keeping only bounded
         // owning references. Persistent entries are keyed by bytes/index/axes,
         // so resource replacement and cloned snapshots cannot reuse stale faces.
@@ -1906,6 +1910,7 @@ impl Fonts {
             return Err("Invalid text layout inputs".into());
         }
         let baseline = text_path.map(crate::text_path::Baseline::new).transpose()?;
+        let snap_figma_ink = uses_figma_line_metrics(style) && style.vertical_align == "top" && baseline.is_none();
         let width = baseline.as_ref().map(|b| b.length).or(width);
         // Wrapping engages for both writing modes: horizontally the `width`
         // parameter is the line budget; vertically it is the COLUMN HEIGHT
@@ -2309,8 +2314,15 @@ impl Fonts {
                     .map(|glyph| cluster_tracking(runs, glyph.cluster, style))
                     .unwrap_or(0.);
                 let line_width = (shaped.iter().map(|g| g.advance).sum::<f64>() - trailing).max(0.);
+                let baseline_y = y + ascent;
+                // Figma snaps the ink baseline in text-local points. Keep
+                // fractional layout, diacritic offsets and line advances.
+                let ink_y = if snap_figma_ink && attributes.is_none() {
+                    baseline_y.round() - baseline_y
+                } else {
+                    0.
+                };
                 if output == OutlineOutput::Measurement && !shaped.is_empty() {
-                    let baseline_y = y + ascent;
                     if let Some(measurement) = &mut measurement {
                         measurement.baseline_y = baseline_y;
                     } else {
@@ -2364,7 +2376,8 @@ impl Fonts {
                         .partition_point(|p| *p <= glyph.cluster)
                         .min(boundaries.len() - 1)];
                     glyph.x += x;
-                    glyph.y += y + ascent;
+                    glyph.y += baseline_y;
+                    glyph.ink_offset.y += ink_y;
                     x += glyph.advance;
                     if text[glyph.byte..].starts_with(' ') {
                         glyph.advance += extra;
@@ -2776,6 +2789,32 @@ mod tests {
         n.text_style.as_mut().unwrap().line_box_baseline.clear();
         let plain = fonts.node_layout(&n, Some(n.width)).unwrap();
         assert!((plain.glyphs[1].x - 20.14).abs() < 1e-9);
+    }
+
+    #[test]
+    fn figma_ink_rounds_the_baseline_without_moving_the_layout() {
+        let mut fonts = Fonts::new();
+        fonts.load(include_bytes!(
+            "../../../../frontend/design-client/public/fonts/poppins/v2.000/Poppins-Bold.ttf"
+        )).unwrap();
+        let mut n = node("P", serde_json::json!({
+            "lineHeight": 1.0,
+            "lineHeightAuto": true,
+            "lineBoxBaseline": "figma-font-metrics",
+        }), 200.);
+        n.font_size = 30.;
+        n.height = 49.;
+        let snapped = fonts.node_layout(&n, Some(n.width)).unwrap();
+        n.text_style.as_mut().unwrap().vertical_align = "bottom".into();
+        let continuous = fonts.node_layout(&n, Some(n.width)).unwrap();
+        assert!((snapped.glyphs[0].y - 33.35).abs() < 1e-9);
+        assert_eq!(snapped.glyphs[0].y, continuous.glyphs[0].y);
+        assert_eq!(snapped.height, continuous.height);
+        let (Some(Command::Move(a)), Some(Command::Move(b))) =
+            (snapped.path.commands.first(), continuous.path.commands.first())
+        else { panic!("Poppins P has an outline"); };
+        assert_eq!(a.x, b.x);
+        assert!((a.y - b.y + 0.35).abs() < 1e-9);
     }
 
     #[test]
