@@ -1,7 +1,9 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, expect, test } from 'vitest'
+// @ts-expect-error The Electron host is shipped as a JavaScript module.
+import { createDesignAgentHost, resolveDesignAgentBinary } from '../../../design-desktop/src/design-agent-host.mjs'
 import { Editor } from '../engine'
 import { SaveCoordinator } from '../local-store'
 import { blank } from '../model'
@@ -11,37 +13,42 @@ import { agentFence, applyAgentOperations } from './apply-operations'
 import { availableCompareFiles, missingCompareNames, readCompareFile } from './comparison-fixtures'
 import { compareOutlines, outlineDocument, sketchRoundTripGaps } from './format-gap'
 
-const bin = new URL('../../../../design-studio/target/debug/futureox-design-agent', import.meta.url)
-const port = 39281
-let child: ChildProcess | undefined
+const packagedBin = resolveDesignAgentBinary({ resourcesRoot: fileURLToPath(new URL('../../../design-desktop/dist', import.meta.url)) })
+const binaryName = process.platform === 'win32' ? 'futureox-design-agent.exe' : 'futureox-design-agent'
+const cargoBin = fileURLToPath(new URL(`../../../../design-studio/target/debug/${binaryName}`, import.meta.url))
+const bin = process.env.DESIGN_AGENT_BIN || [packagedBin, cargoBin].find(existsSync)
+const agentTest = test.skipIf(!bin)
+type AgentTurn = { operations: Array<{ method: string; params: Record<string, unknown> }>; mutationId: string; summary: string; skills: string[]; targetPageId: string }
+let host: {
+  turn(value: { session_id: string; message: string; context: Record<string, unknown> }): Promise<
+    { status: 'ok'; turn: AgentTurn } | { status: 'error'; message: string }>
+  dispose(): void
+} | undefined
 const editors: Editor[] = []
 
 async function turn(message: string, context: Record<string, unknown>, session = crypto.randomUUID().replace(/-/g, '')) {
-  const response = await fetch(`http://127.0.0.1:${port}/v1/turn`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ session_id: session, message, context }),
-  })
-  const body = await response.json()
-  expect(response.ok, JSON.stringify(body)).toBe(true)
-  return body as { operations: Array<{ method: string; params: Record<string, unknown> }>; mutationId: string; summary: string; skills: string[]; targetPageId: string }
+  const response = await host!.turn({ session_id: session, message, context })
+  if (response.status === 'error') throw Error(response.message)
+  return response.turn
 }
 
 beforeAll(async () => {
-  child = spawn(fileURLToPath(bin), ['serve', '--bind', `127.0.0.1:${port}`], { stdio: 'ignore' })
-  const deadline = Date.now() + 8000
-  let last = 'agent did not start'
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/health`)
-      if (response.ok) return
-    } catch (error) { last = error instanceof Error ? error.message : String(error) }
-    await new Promise(resolve => setTimeout(resolve, 40))
-  }
-  throw new Error(last)
+  if (!bin) return
+  const server = createServer()
+  const port = await new Promise<number>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      server.close(() => typeof address === 'object' && address ? resolve(address.port) : reject(Error('No loopback address')))
+    })
+  })
+  // Exercise the same process ownership and HTTP route as Electron, in local mode.
+  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot }
+  host = createDesignAgentHost({ bin, port, env })
 })
-afterAll(() => { child?.kill(); editors.splice(0).forEach(editor => editor.dispose()) })
+afterAll(() => { host?.dispose(); editors.splice(0).forEach(editor => editor.dispose()) })
 
-test('a complete brief generates a real page, then a named page can be adjusted', async () => {
+agentTest('a complete brief generates a real page, then a named page can be adjusted', async () => {
   const editor = new Editor(blank('比较'))
   editors.push(editor)
   const created = await turn('做一个咖啡品牌落地页，标题秋日特惠，副标题手冲咖啡本周上新，卖点：产地、烘焙、门店', {
@@ -97,7 +104,7 @@ function nodeBelongs(editor: Editor, id: string, pageId: string) {
   return at === pageId
 }
 
-test('generated page is compared with a real Fig file and a real Sketch template', async () => {
+agentTest('generated page is compared with a real Fig file and a real Sketch template', async () => {
   const editor = new Editor(blank('比较'))
   editors.push(editor)
   const created = await turn('一键出图：做一个产品介绍页，标题秋日特惠，副标题可编辑页面，卖点：层级、修改、本地', {
