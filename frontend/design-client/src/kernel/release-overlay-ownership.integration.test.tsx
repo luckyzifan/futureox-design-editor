@@ -43,15 +43,6 @@ async function harness(kind:'rotate'|'scale'|'move'='rotate',workerPoses=false,o
  // target the latest ack that actually presented, matching the pose-order
  // integration contract.
  const lastPresented=()=>[...acks].reverse().find(ack=>ack.presented)
- // Descriptor-only text raster adapter. Production CanvasLabels still executes;
- // this supplies deterministic metrics, not browser glyph or pixel evidence.
- const canvasPrototype=Object.getPrototypeOf(gpu.canvas),getContext=canvasPrototype.getContext
- canvasPrototype.getContext=function(kind:string){return kind==='2d'?{
-  // Production CanvasLabels now strokes rounded label chips; keep the
-  // deterministic metrics and no-op the geometry it exercises.
-  measureText:(text:string)=>({width:text.length*6,actualBoundingBoxLeft:0,actualBoundingBoxRight:text.length*6,actualBoundingBoxAscent:8,actualBoundingBoxDescent:2}),
-  setTransform(){},strokeText(){},fillText(){},beginPath(){},moveTo(){},lineTo(){},arcTo(){},closePath(){},fill(){},stroke(){},
- }:getContext.call(this,kind)}
  client={attachPresentation(){},present(frame:any){frames.push(frame);queueMicrotask(()=>gpu.presenter.draw(frame))},
   releasePresented(ids:number[]){gpu.presenter.release(ids)},presentationDiagnosticsEnabled:()=>false,
   stopResidentInteraction:vi.fn(),moveResidentInteraction:vi.fn(),render(doc:any,options:any){return new Promise(resolve=>jobs.push({doc,options,resolve}))}}

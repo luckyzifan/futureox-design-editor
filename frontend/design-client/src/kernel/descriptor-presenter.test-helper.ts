@@ -40,8 +40,16 @@ export function descriptorPresenter(report: (value: Record<string, unknown>) => 
     current?:Resource;configured=false;owner='transient-canvas'
     context={configure:()=>{this.configured=true},unconfigure:()=>{this.configured=false;this.current?.destroy();this.current=undefined},
       getCurrentTexture:()=>this.current??=new Resource(queue,this.width*this.height*4,this.owner,this.width,this.height)}
+    // Deterministic text metrics and path operations for chrome descriptors.
+    // The real label renderer decides which commands to issue.
+    private readonly labels = {
+      measureText: (text: string) => ({ width: text.length * 6, actualBoundingBoxLeft: 0,
+        actualBoundingBoxRight: text.length * 6, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
+      setTransform() {}, strokeText() {}, fillText() {}, beginPath() {}, moveTo() {},
+      arcTo() {}, closePath() {}, fill() {}, stroke() {},
+    }
     constructor(public width:number,public height:number){canvases.push(this)}
-    getContext(){return this.context}
+    getContext(kind?: string) { return kind === '2d' ? this.labels : this.context }
     transferToImageBitmap(){const resource=this.current!;this.current=undefined;resource.owner='transferred-bitmap';return{width:this.width,height:this.height,close:()=>resource.destroy()}}
   }
   vi.stubGlobal('OffscreenCanvas',MockCanvas)

@@ -111,8 +111,6 @@ beforeEach(()=>{
   transport.acks.push(entry)
   if(!transport.holdAcks)queueMicrotask(()=>entry.callback?.(stats))
  })
- const proto=Object.getPrototypeOf(gpu.canvas),original=proto.getContext
- proto.getContext=function(kind:string){return kind==='2d'?{measureText:(text:string)=>({width:text.length*6,actualBoundingBoxLeft:0,actualBoundingBoxRight:text.length*6,actualBoundingBoxAscent:8,actualBoundingBoxDescent:2}),setTransform(){},strokeText(){},fillText(){}}:original.call(this,kind)}
  Object.defineProperty(navigator,'gpu',{configurable:true,value:{requestAdapter:async()=>({requestDevice:async()=>gpu.device}),getPreferredCanvasFormat:()=> 'rgba8unorm'}})
  HTMLCanvasElement.prototype.transferControlToOffscreen=()=>new OffscreenCanvas(600,400)
  const gl=new Proxy({} as any,{get:(_target,key)=>{
