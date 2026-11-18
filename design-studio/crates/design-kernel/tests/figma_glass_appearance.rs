@@ -5,12 +5,14 @@
 //! matches. Downsample and the filter store stay on the software byte contract.
 //!
 //! Measured on this Linux CPU build against browser-2026-10-07 (PNG checksums
-//! unchanged). Backdrop is unchanged. The combined aggregate's glass-full
+//! unchanged). The Figma backdrop samples the trailing device edge of its
+//! fractional capture. The combined aggregate's glass-full
 //! document now carries the same frozen readback, so its figma profile matches
 //! that PNG. figmaSoftware glass pixel counts fell; the max channel did not.
 //!
 //! | case | profile | main pixels / max | candidate |
 //! | --- | --- | ---: | ---: |
+//! | backdrop-blur | figma | 3887 / 7 | 3795 / 4 |
 //! | glass-frost-only | figmaSoftware | 2536 / 2 | 1690 / 2 |
 //! | glass-full | figmaSoftware | 2077 / 3 | 1579 / 3 |
 use futureox_design_kernel::{Engine, RenderOptions};
@@ -19,7 +21,7 @@ use sha2::{Digest, Sha256};
 
 /// (case, profile, max different pixels, max channel). Inclusive ceilings.
 const CEILINGS: &[(&str, &str, usize, u8)] = &[
-    ("backdrop-blur", "figma", 3887, 7),
+    ("backdrop-blur", "figma", 3795, 4),
     ("backdrop-blur", "figmaSoftware", 3974, 7),
     ("glass-frost-only", "figma", 0, 0),
     ("glass-frost-only", "figmaSoftware", 1690, 2),
@@ -255,6 +257,27 @@ fn legacy_nonzero_amount_is_not_a_full_glass_mapping() {
     assert_eq!(frost.radius, 0.25);
     frost.radius = 4.;
     assert_eq!(frost.backdrop_radius(), 4.);
+}
+
+#[test]
+fn fractional_backdrop_keeps_the_trailing_sample_in_a_shifted_viewport() {
+    let cases = cases();
+    let case = case(&cases, "backdrop-blur");
+    let full = render(case, "figma");
+    let edge = (40 * 128 + 111) * 4;
+    assert_eq!(&full[edge..edge + 4], &[58, 58, 58, 255]);
+
+    let mut shifted = case.clone();
+    shifted["options"]["width"] = json!(28);
+    shifted["options"]["view"]["x"] = json!(-96);
+    let crop = render(&shifted, "figma");
+    for (y, (full_row, crop_row)) in full
+        .chunks_exact(128 * 4)
+        .zip(crop.chunks_exact(28 * 4))
+        .enumerate()
+    {
+        assert_eq!(&full_row[96 * 4..124 * 4], crop_row, "row {y}");
+    }
 }
 
 #[test]
