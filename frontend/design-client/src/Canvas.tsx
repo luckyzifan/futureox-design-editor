@@ -178,6 +178,7 @@ const anchorModeLabels: Record<CurveMode, readonly [string, string]> = {
   independent: ['独立', 'Independent'],
   asymmetric: ['镜像角度', 'Mirror angle'],
 }
+type CanvasPointerInput = React.PointerEvent | PointerEvent
 type Drag = {
   renderFallbackCount?: number
   actionSamples?: number
@@ -257,7 +258,7 @@ type Drag = {
   spaceAnchor?: Point
   spacePointer?: Point
   modifiers?: { shift: boolean; alt: boolean }
-  lastInput?: React.PointerEvent
+  lastInput?: CanvasPointerInput
   lastScreen?: Point
   lastModifiers?: { shift: boolean; alt: boolean; ctrl: boolean; meta: boolean }
   sampledMovement?: boolean
@@ -730,8 +731,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   const queuedMove = useRef<{ event: React.PointerEvent; at: number } | null>(null)
   const moveFrame = useRef<number | null>(null)
-  const moveCallback = useRef<(event: React.PointerEvent) => void>(() => {})
+  const moveCallback = useRef<(event: CanvasPointerInput) => void>(() => {})
+  const endCallback = useRef<(event: CanvasPointerInput) => void>(() => {})
   const queuedInputAt = useRef(0)
+  const recoveringMouseCapture = useRef<AbortController | undefined>(undefined)
+  const clearMouseCaptureRecovery = () => {
+    recoveringMouseCapture.current?.abort()
+    recoveringMouseCapture.current = undefined
+  }
   const cancelQueuedMove = () => {
     if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current)
     moveFrame.current = null; queuedMove.current = null; queuedInputAt.current = 0
@@ -751,7 +758,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       dropGestureFollow(); restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); clearMoveGuides()
       if (host.current?.hasPointerCapture(previous.pointerId)) host.current.releasePointerCapture(previous.pointerId)
     }
-    return cancelQueuedMove
+    return () => { cancelQueuedMove(); clearMouseCaptureRecovery() }
   }, [editor, editor.sessionGeneration, state.page])
   const queuePointerMove = (event: React.PointerEvent) => actionTrace.cpu.run(CpuStage.pointerQueue, () => queuePointerMoveImpl(event), drag.current?.actionToken)
   const queuePointerMoveImpl = (event: React.PointerEvent) => {
@@ -1665,6 +1672,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       if (e.key === 'Escape') {
         e.preventDefault()
+        clearMouseCaptureRecovery()
         if (penRef.current?.network.edges.length) {
           cancelQueuedMove()
           marqueeHeld.current = false; setMarqueeKeyHeld(false)
@@ -1903,6 +1911,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
     }
     const blur = () => {
+      clearMouseCaptureRecovery()
       closeKeyboardBox()
       releaseTemporaryZoom()
       editor.setLiveArrangement(null)
@@ -1931,7 +1940,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
     const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
-    const visibility = () => { if (document.hidden) { closeKeyboardBox(); releaseTemporaryZoom(); releaseMarquee(); nudge.finish() } }
+    const visibility = () => {
+      if (!document.hidden) return
+      if (recoveringMouseCapture.current && drag.current) cancelCapturedDrag(drag.current, ActionReason.sessionEnd)
+      closeKeyboardBox(); releaseTemporaryZoom(); releaseMarquee(); nudge.finish()
+    }
     const focus = (e: FocusEvent) => {
       if (e.target !== host.current) { closeKeyboardBox(); nudge.finish(); setGradientKeyboardTarget(null) }
       if (shortcutTargetOwnsKeyboard(e.target)) { releaseTemporaryZoom(); releaseMarquee() }
@@ -2636,10 +2649,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     layer.place(matrix, screen, degrees)
   }
-  function move(e: React.PointerEvent) {
+  function move(e: CanvasPointerInput) {
     return actionTrace.cpu.run(CpuStage.pointerMove, () => moveImpl(e), drag.current?.actionToken, actionTrace.enabled && queuedInputAt.current ? performance.now() - queuedInputAt.current : undefined)
   }
-  function moveImpl(e: React.PointerEvent) {
+  function moveImpl(e: CanvasPointerInput) {
     editInputAt.current = queuedInputAt.current || performance.now()
     if (!drag.current && !pencil.current && !utility.active() && e.target instanceof Element &&
       (!host.current?.contains(e.target) || e.target.closest(canvasChromeSelector))) {
@@ -2647,13 +2660,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     editor.pointerScreen=screenPoint(e)
     editor.pointerLocation=world(e)
-    if (utility.move(e,world(e))) return
+    if ('nativeEvent' in e && utility.move(e,world(e))) return
     if (pencil.current) {
       const draft = pencil.current
       if (e.pointerId !== draft.input.pointerId) return
       try {
-        const events = e.nativeEvent.getCoalescedEvents?.() || []
-        draft.input.append(events.length ? events : [e.nativeEvent], draft.map, false, e.shiftKey)
+        const native = 'nativeEvent' in e ? e.nativeEvent : e
+        const events = native.getCoalescedEvents?.() || []
+        draft.input.append(events.length ? events : [native], draft.map, false, e.shiftKey)
         if (pencilFrame.current === null)
           pencilFrame.current = requestAnimationFrame(pencilPreviewFrame)
       } catch (error) {
@@ -3064,16 +3078,79 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (host.current) host.current.dataset.inputTiming = JSON.stringify(editor.lastPreviewTiming)
   }
   moveCallback.current = move
-  function end(e: React.PointerEvent) {
+  endCallback.current = end
+  function cancelCapturedDrag(draft: Drag, reason: ActionReasonCode) {
+    clearMouseCaptureRecovery()
+    desktopPet.stopNavigation()
+    cancelQueuedMove()
+    if (draft.kind === 'pivot' && draft.originalPivot) setOrigin(draft.originalPivot)
+    flushView()
+    editor.cancel()
+    finishDragTrace(draft, ActionOutcome.cancelled, reason)
+    drag.current = null
+    setPanning(false); setShapePreview(null); setHeldCreation(null); setRubber(null); clearMoveGuides()
+    restoreCancelledMarqueeSelection(draft)
+  }
+  function recoverMouseCapture(e: React.PointerEvent, draft: Drag) {
+    const canvas = host.current
+    const canvasWindow = canvas?.ownerDocument.defaultView
+    if (!canvas || !canvasWindow || e.target !== canvas || e.pointerType !== 'mouse' ||
+        (draft.kind !== 'move' && draft.kind !== 'rotate') ||
+        draft.session !== editor.sessionGeneration || draft.page !== editor.state.page ||
+        !canvas.isConnected || canvas.ownerDocument.hidden) return false
+    clearMouseCaptureRecovery()
+    const controller = new canvasWindow.AbortController()
+    recoveringMouseCapture.current = controller
+    const options = { capture: true, signal: controller.signal }
+    const pointerId = draft.pointerId
+    const current = (event: PointerEvent) => {
+      if (event.pointerId !== pointerId) return false
+      if (drag.current === draft && draft.session === editor.sessionGeneration && draft.page === editor.state.page &&
+          host.current === canvas && canvas.isConnected && !canvas.ownerDocument.hidden) return true
+      clearMouseCaptureRecovery()
+      return false
+    }
+    const recapture = () => {
+      try { canvas.setPointerCapture(pointerId) }
+      catch { /* The browser may have released the button before its up event reaches the window. */ }
+    }
+    // A missing DOM capture does not end the editor transaction. Recover the
+    // original pressed pointer, or route its real up/cancel from the window.
+    recapture()
+    canvasWindow.addEventListener('pointermove', event => {
+      if (!current(event)) return
+      if (!(event.buttons & 1)) { cancelCapturedDrag(draft, ActionReason.lostCapture); return }
+      if (event.target === canvas && canvas.hasPointerCapture(pointerId)) {
+        clearMouseCaptureRecovery()
+        return
+      }
+      recapture()
+      event.stopPropagation()
+      moveCallback.current(event)
+    }, options)
+    canvasWindow.addEventListener('pointerup', event => {
+      if (!current(event)) return
+      event.stopPropagation()
+      endCallback.current(event)
+    }, options)
+    canvasWindow.addEventListener('pointercancel', event => {
+      if (current(event)) cancelCapturedDrag(draft, ActionReason.pointerCancel)
+    }, options)
+    canvasWindow.addEventListener('pointerdown', event => {
+      if (current(event)) cancelCapturedDrag(draft, ActionReason.lostCapture)
+    }, options)
+    return true
+  }
+  function end(e: CanvasPointerInput) {
     return actionTrace.cpu.run(CpuStage.pointerUp, () => endImpl(e), drag.current?.actionToken)
   }
-  function endImpl(e: React.PointerEvent) {
-    if (utility.end(e,world(e))) { if(host.current?.hasPointerCapture(e.pointerId))host.current.releasePointerCapture(e.pointerId); return }
+  function endImpl(e: CanvasPointerInput) {
+    if ('nativeEvent' in e && utility.end(e,world(e))) { if(host.current?.hasPointerCapture(e.pointerId))host.current.releasePointerCapture(e.pointerId); return }
     if (pencil.current) {
       const draft = pencil.current
       if (e.pointerId !== draft.input.pointerId) return
       try {
-        draft.input.append([e.nativeEvent], draft.map, true, e.shiftKey)
+        draft.input.append(['nativeEvent' in e ? e.nativeEvent : e], draft.map, true, e.shiftKey)
         const n = freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool, draft.uiMode)
         cancelPencil(false)
         if (n.opacity > 0) editor.addFreehand(n)
@@ -3090,6 +3167,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const d = drag.current
     if (!d) return
     if (e.pointerId !== d.pointerId) return
+    clearMouseCaptureRecovery()
     if (d.session !== editor.sessionGeneration || d.page !== editor.state.page) {
       cancelQueuedMove(); drag.current = null; pendingBoardMove.current = null
       dropGestureFollow(); restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); clearMoveGuides()
@@ -3453,6 +3531,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!pencil.current && !drag.current) return
         if (pencil.current && e.pointerId !== pencil.current.input.pointerId) return
         if (drag.current && e.pointerId !== drag.current.pointerId) return
+        clearMouseCaptureRecovery()
         desktopPet.stopNavigation()
         cancelQueuedMove()
         if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
@@ -3471,15 +3550,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       onLostPointerCapture={(e) => {
         if(utility.active())utility.cancel(e.pointerId)
         if (pencil.current?.input.pointerId === e.pointerId) cancelPencil()
-        if (drag.current?.pointerId === e.pointerId) {
-          desktopPet.stopNavigation()
-          cancelQueuedMove()
-          if(drag.current.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
-          flushView()
-          const cancelledDraft = drag.current
-          editor.cancel(); finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setHeldCreation(null); setRubber(null); clearMoveGuides()
-          restoreCancelledMarqueeSelection(cancelledDraft)
-        }
+        const draft = drag.current
+        if (draft?.pointerId === e.pointerId && !recoverMouseCapture(e, draft))
+          cancelCapturedDrag(draft, ActionReason.lostCapture)
       }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={drop}
