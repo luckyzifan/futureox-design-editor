@@ -535,10 +535,6 @@ impl Projection<'_> {
                         effect.sketch_backdrop = effect.kind == "background-blur" && params.sketch.is_some();
                         effect.gradient_blur = Some(params);
                     }
-                    Ok(crate::interop::SketchProgressiveBlur::Uniform(radius)) => {
-                        effect.radius = radius;
-                        self.warnings.insert("progressive-background-blur-equal-radii-kept-uniform".into());
-                    }
                     Err(note) => {
                         self.warnings.insert(note.into());
                     }
