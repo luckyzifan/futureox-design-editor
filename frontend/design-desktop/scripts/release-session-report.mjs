@@ -71,6 +71,7 @@ export function officialPackageBlockers(platform, signature = { status: 'not_run
       ? (signature.status === 'failed' || signature.status === 'signed_unnotarized' ? signature.status : 'not_run')
       : 'blocked'
   const linuxDeb = installer?.linuxDeb === 'installed'
+  const macDmg = installer?.macDmg === 'copied'
   return [
     {
       id: 'macos_signed_notarized_package',
@@ -86,27 +87,37 @@ export function officialPackageBlockers(platform, signature = { status: 'not_run
     },
     {
       id: 'disk_image_or_system_installer',
-      status: linuxDeb ? 'linux_deb_installed' : 'not_run',
+      status: linuxDeb ? 'linux_deb_installed' : macDmg ? 'macos_dmg_copied' : 'not_run',
       reason: linuxDeb
         ? 'dpkg installed and launched the linux .deb. .dmg, .pkg, .msi, .exe, and .rpm were not mounted. The package is still unsigned.'
-        : 'No .dmg, .pkg, .msi, .exe installer, .deb, or .rpm was mounted. Copying an electron-packager directory into an install prefix is not a signed installer.',
+        : macDmg
+          ? 'The DMG was mounted read-only and its app was copied to an isolated install prefix.'
+          : 'No .dmg, .pkg, .msi, .exe installer, .deb, or .rpm was mounted. Copying an electron-packager directory into an install prefix is not a signed installer.',
     },
   ]
 }
 
-export function bindInstalledDeb(report, { debPath, debSha256 } = {}) {
-  if (!hex(debSha256)) throw new Error('deb hash is missing')
+function bindInstalledPackage(report, format, installerPath, installerSha256) {
+  if (!hex(installerSha256)) throw new Error(`${format} hash is missing`)
   const next = structuredClone(report)
   next.package = {
-    status: 'hashed_installed_deb',
-    sha256: debSha256,
+    status: `hashed_installed_${format}`,
+    sha256: installerSha256,
     files: 1,
     payloadSha256: report.package.sha256,
     payloadFiles: report.package.files,
   }
-  next.packagePath = debPath
-  next.steps = next.steps.map(step => ({ ...step, packageSha256: debSha256 }))
+  next.packagePath = installerPath
+  next.steps = next.steps.map(step => ({ ...step, packageSha256: installerSha256 }))
   return next
+}
+
+export function bindInstalledDeb(report, { debPath, debSha256 } = {}) {
+  return bindInstalledPackage(report, 'deb', debPath, debSha256)
+}
+
+export function bindInstalledDmg(report, { dmgPath, dmgSha256 } = {}) {
+  return bindInstalledPackage(report, 'dmg', dmgPath, dmgSha256)
 }
 
 export function planReleaseLaunch(described, { platform, arch } = {}) {
@@ -202,7 +213,7 @@ function checks(report, session) {
     && inside(install.installRoot, runtime.resourcesPath)
     && hex(runtime.sidecarSha256)
     && runtime.sidecarSha256 === observation.expectedSidecarSha256
-  const directoryInstall = install.method !== 'dpkg'
+  const directoryInstall = install.method !== 'dpkg' && install.method !== 'hdiutil'
     && install.installedSha256 === install.sourceSha256 && install.afterSha256 === install.sourceSha256
     && install.sourceSha256 === report.package.sha256
   const debInstall = install.method === 'dpkg'
@@ -213,13 +224,23 @@ function checks(report, session) {
     && install.afterSha256 === install.installedSha256
     && install.installedSha256 !== install.debSha256
     && install.sourceSha256 === report.package.sha256
+  const dmgInstall = install.method === 'hdiutil'
+    && install.installer === 'dmg'
+    && hex(install.dmgSha256)
+    && install.dmgSha256 === report.package.sha256
+    && install.sourceSha256 === install.dmgSha256
+    && hex(install.payloadSha256)
+    && install.payloadSha256 === report.package.payloadSha256
+    && install.payloadSha256 !== install.dmgSha256
+    && install.installedSha256 === install.payloadSha256
+    && install.afterSha256 === install.installedSha256
   return {
     samePackage,
     sameHost,
     packagedRuntime,
     freeze_release_package: samePackage && sameHost && install.sourceSha256 === report.package.sha256 && hex(install.sourceSha256),
     record_package_hash_and_platform: samePackage && sameHost && typeof report.platform === 'string' && typeof report.arch === 'string',
-    install: samePackage && (debInstall || directoryInstall)
+    install: samePackage && (debInstall || dmgInstall || directoryInstall)
       && install.executableWithinInstall === true && install.resourcesWithinInstall === true && install.launchedFromInstall === true
       && inside(install.installRoot, install.executable),
     open: packagedRuntime && open.ready === true && typeof open.documentName === 'string' && open.documentName.length > 0,
@@ -286,7 +307,7 @@ export function assessObservedDesktopSession(report, session = {}) {
       kind: 'signed_release_bundle',
       formalRelease: true,
       signature: 'verified',
-      note: 'Host codesign and notarization assessment passed for this installed bundle. Disk-image mounting stays a separate not_run record.',
+      note: 'Host codesign and notarization assessment passed for this installed bundle.',
     }
     next.steps = next.steps.map(step => step.id === 'distinguish_dev_package_from_release'
       ? { ...step, evidenceKind: 'signed_release_bundle', reason: 'signed release bundle, distinct from desktop-dev and from an unsigned bundle' }
