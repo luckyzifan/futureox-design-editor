@@ -199,6 +199,26 @@ test('native FIG text casing and styled ranges remain authored through WASM reop
   expect(result.node.textRuns?.[0]).toMatchObject({start:1,end:3,textCase:'original',fontSize:18})
 })
 
+test('a measured FIG Auto line box survives import without changing literal 100% heights', () => {
+  const layer = {
+    type: 'TEXT', textData: { characters: 'Test\nAuto' }, fontSize: 30,
+    textAutoResize: 'WIDTH_AND_HEIGHT', lineHeight: { units: 'PERCENT', value: 100 },
+    size: { x: 69, y: 98 },
+    derivedTextData: {
+      layoutSize: { x: 69, y: 98 },
+      baselines: [0, 49].map(lineY => ({ position: { x: 0, y: lineY + 33.35 },
+        lineHeight: 49.2, lineY, lineAscent: 33, width: 68 })),
+      fontMetaData: [{ key: { family: 'Poppins', style: 'Bold', postscript: '' }, fontLineHeight: 1.64 }],
+    },
+  }
+  expect(subject(layer).node.textStyle).toMatchObject({
+    lineHeight: 1, lineHeightAuto: true, lineBoxBaseline: 'figma-font-metrics',
+  })
+  const explicitHeight = { ...layer, derivedTextData: { ...layer.derivedTextData, layoutSize: { x: 69, y: 60 } } }
+  expect(subject(explicitHeight).node.textStyle?.lineHeight).toBe(1)
+  expect(subject(explicitHeight).node.textStyle?.lineHeightAuto).toBeFalsy()
+})
+
 test.each(['GRADIENT_LINEAR', 'GRADIENT_RADIAL', 'GRADIENT_ANGULAR', 'GRADIENT_DIAMOND'])(
   'FIG %s retains independent stop alpha through document reopening', type => {
     const gradient = { type, opacity: .4, stops: [

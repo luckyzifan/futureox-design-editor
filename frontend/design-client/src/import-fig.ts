@@ -32,7 +32,7 @@ import {
 } from './model'
 import type { ImportedDesign } from './import-svg'
 import { emptySystem } from './design-system'
-import { importFigTextExtras, importFigTextRuns } from './import-fig-text'
+import { hasFigAutomaticLineHeight, importFigTextExtras, importFigTextRuns } from './import-fig-text'
 import { applyFigFacet, assertFigStructure, figNodeKind, figNote, importFigPrototype, parkFigReceipts, type FigReceipts } from './import-fig-nodes'
 import { defaultColorSettings } from './color'
 import { figImageAdjust, figImageTile } from './import-fig-image'
@@ -893,7 +893,13 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         n.textStyle.lineHeight = r.lineHeight.value / n.fontSize
         n.textStyle.lineBoxBaseline = 'figma-pixel-leading'
       }
-      if (r.lineHeight?.units === 'PERCENT') n.textStyle.lineHeight = r.lineHeight.value / 100
+      if (r.lineHeight?.units === 'PERCENT') {
+        n.textStyle.lineHeight = r.lineHeight.value / 100
+        if (hasFigAutomaticLineHeight(r, n.fontSize)) {
+          n.textStyle.lineHeightAuto = true
+          n.textStyle.lineBoxBaseline = 'figma-font-metrics'
+        }
+      }
       if (r.letterSpacing?.units === 'PIXELS') n.textStyle.letterSpacing = r.letterSpacing.value
       if (r.letterSpacing?.units === 'PERCENT') n.textStyle.letterSpacing = r.letterSpacing.value * n.fontSize / 100
       keepFonts(n, r)

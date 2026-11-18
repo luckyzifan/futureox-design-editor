@@ -97,11 +97,11 @@ pub struct TextStyle {
     /// `sketch-fixed-advance` uses the ascender with an exact line advance.
     /// `figma-pixel-leading` centers the font metrics in an explicit FIG
     /// pixel line box, using the existing fractional baseline.
+    /// `figma-font-metrics` keeps the intrinsic line advance of FIG Auto.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub line_box_baseline: String,
-    /// Sketch text with no authored line box uses the font's ascender,
-    /// descender and line gap. An explicit line height other than the 1.35
-    /// default turns this off. Editor-created text leaves it false.
+    /// Automatic line boxes use the selected font's line metrics.
+    /// Sketch uses its original 1.35 sentinel for a default line box.
     #[serde(default, skip_serializing_if = "is_false")]
     pub line_height_auto: bool,
     pub letter_spacing: f64,
@@ -575,7 +575,7 @@ impl TextStyle {
             || !(1. ..=1000.).contains(&self.weight)
             || !self.line_height.is_finite()
             || !(0.1..=10.).contains(&self.line_height)
-            || !["", "nearest-point", "sketch-font-leading", "sketch-fixed-advance", "figma-pixel-leading"]
+            || !["", "nearest-point", "sketch-font-leading", "sketch-fixed-advance", "figma-pixel-leading", "figma-font-metrics"]
                 .contains(&self.line_box_baseline.as_str())
             || !self.letter_spacing.is_finite()
             || self.letter_spacing.abs() > 1000.
@@ -2164,7 +2164,8 @@ impl Fonts {
                     }
                     continue;
                 }
-                let mut ascent = if shaped.is_empty() || attributes.is_some() {
+                let figma_auto = style.line_height_auto && style.line_box_baseline == "figma-font-metrics";
+                let mut ascent = if figma_auto || shaped.is_empty() || attributes.is_some() {
                     0.
                 } else {
                     // Seed the line box with the style font's ascent floor; a
@@ -2266,7 +2267,7 @@ impl Fonts {
                 } else if style.line_box_baseline == "figma-pixel-leading" && natural > 0. {
                     ascent += (height - natural) / 2.;
                 }
-                if font_line_box && attributes.is_none() && !explicit_line_height {
+                if (font_line_box || figma_auto) && attributes.is_none() && !explicit_line_height {
                     if natural == 0. {
                         if let Ok(face) = self.face(&style.font_id, style.weight) {
                             let face = face.borrow_face();
@@ -2280,18 +2281,16 @@ impl Fonts {
                         }
                     }
                     if natural > 0. {
-                        height = natural;
-                        // Quartz text previews snap an unspecified Sketch line
-                        // box onto whole document points. The baseline is the
-                        // nearest point of the ascender, and the next line
-                        // starts one nearest-point font line box later.
-                        // USWDS colors columns are 11, 25, 39… rather than
-                        // 11.4 + 14.1n. Fixed line boxes take the other branch
-                        // and are not rounded again here.
-                        ascent = ascent.round_ties_even();
-                        let pitched = height.round_ties_even();
-                        if pitched > 0. {
-                            height = pitched;
+                        if figma_auto {
+                            let rounded = natural.round();
+                            height = if rounded > 0. { rounded } else { natural };
+                            ascent += (height - natural) / 2.;
+                        } else {
+                            // Sketch snaps the ascender and the next line's
+                            // advance independently to whole document points.
+                            ascent = ascent.round_ties_even();
+                            let rounded = natural.round_ties_even();
+                            height = if rounded > 0. { rounded } else { natural };
                         }
                     }
                 }
@@ -2715,6 +2714,39 @@ mod tests {
         assert_eq!(b.lines[0].height, a.lines[0].height);
         assert_eq!(b.glyphs[0].x, a.glyphs[0].x);
         assert!((b.glyphs[0].y - a.glyphs[0].y - (21. - natural) / 2.).abs() < 1e-9);
+    }
+
+    #[test]
+    fn figma_auto_line_box_follows_the_faces_used_on_each_line() {
+        let mut fonts = Fonts::new();
+        fonts.load(include_bytes!(
+            "../../../../frontend/design-client/public/fonts/poppins/v2.000/Poppins-Bold.ttf"
+        )).unwrap();
+        let modern = include_bytes!(
+            "../../../../frontend/design-client/public/fonts/poppins/Poppins-Bold.ttf"
+        );
+        let fonts = fonts.with_resources(&BTreeMap::from([("modern".into(), FontResource {
+            family: "Poppins Bold".into(),
+            data: base64::engine::general_purpose::STANDARD.encode(modern).into(),
+            index: 0,
+            postscript: Some("Poppins-Bold".into()),
+        })])).unwrap();
+        let mut n = node("B\nB", serde_json::json!({
+            "lineHeight": 1.0,
+            "lineHeightAuto": true,
+            "lineBoxBaseline": "figma-font-metrics",
+        }), 200.);
+        n.font_size = 30.;
+        let original = fonts.node_layout(&n, Some(n.width)).unwrap();
+        assert_eq!(original.height, 98.);
+        assert!((original.glyphs[0].y - 33.35).abs() < 1e-9);
+        assert!((original.glyphs[1].y - 82.35).abs() < 1e-9);
+        n.text_runs = vec![TextRun { start: 0, end: 3, font_id: Some("modern".into()), ..Default::default() }].into();
+        let changed = fonts.node_layout(&n, Some(n.width)).unwrap();
+        assert_eq!(changed.height, 90.);
+        assert!(changed.glyphs[0].y < original.glyphs[0].y);
+        n.text_style.as_mut().unwrap().line_height_auto = false;
+        assert_eq!(fonts.node_layout(&n, Some(n.width)).unwrap().height, 60.);
     }
 
     #[test]
