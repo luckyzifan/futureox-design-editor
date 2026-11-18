@@ -287,7 +287,13 @@ test.each(['zh-CN', 'en'] as const)('repeated control clicks use the latest came
   const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
   const old = internals.H
   let controls: ReturnType<typeof ViewControls>
-  internals.H = { useRef: (current: unknown) => ({ current }), useEffect() {}, useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }
+  internals.H = {
+    useRef: (current: unknown) => ({ current }),
+    useId: () => 'camera-test-popover',
+    useState: (initial: unknown) => [initial, () => {}],
+    useEffect() {}, useLayoutEffect() {},
+    useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
+  }
   try { controls = ViewControls({ editor, size, fit: () => {} }) } finally { internals.H = old }
   const button = (title: string) => {
     const find = (children: ReactNode): (() => void) | undefined => {
