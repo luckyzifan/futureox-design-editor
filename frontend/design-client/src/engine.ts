@@ -1120,7 +1120,8 @@ export class Editor {
         booleanPoseUnchanged(base,this.posePreview.plan.booleanRoots,patches)) return this.posePublication(base,patches)
   }
   private publishTranslationPreview(base: DesignDocument, patches: Record<string, Partial<DesignNode>>, move: { ids: string[]; point: Point; force: boolean; preserveParent: boolean }, previewOwner: Editor['transaction'], previewStarted: number) {
-    if (!this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent)) return false
+    const multiple = move.ids.length > 1
+    if (!multiple && !this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent)) return false
     if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] || Object.keys(patch).some(key => key !== 'transform'))) return false
     const pose = this.certifiedGesturePose(base,patches)
     let candidate = pose
@@ -1130,6 +1131,8 @@ export class Editor {
       candidate={...base,nodes}
       if (!translationOnlyChanges(base,candidate)) return false
     }
+    // The cross-frame exception requires containment of the current pose.
+    if (multiple && !this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent, candidate)) return false
     const resolved=pose ?? kernelLayout(candidate,base,true)
     const published = performance.now()
     this.set({ doc: resolved })
@@ -2700,13 +2703,16 @@ export class Editor {
     if(next!==this.state.doc)this.set({doc:kernelLayout(next)})
   }
   /** Retained pixels cannot represent a changed clipping/parent boundary.
-   * Query the transaction's original hierarchy, like previewCore does, without
-   * constructing or laying out a document on every compositor-only sample. */
-  canvasMovePreservesParents(ids: string[], point: Point, force = false, preserveParent = false): boolean {
-    const tx=this.transaction
-    if(!tx)return true
-    const base=tx.previewBase||tx.doc,index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page)
-    return this.movePlacement(base,ids,point,force,preserveParent,index).moving.length===0
+   * Keep the transaction's hierarchy and evaluate containment in its proposed
+   * pose when a multi-selection can span independent frames. */
+  canvasMovePreservesParents(ids: string[], point: Point, force = false, preserveParent = false, pose?: DesignDocument): boolean {
+    const tx = this.transaction
+    if (!tx) return true
+    const base = tx.previewBase || tx.doc
+    const index = tx.dropIndex ??= createCanvasDropIndex(base, this.state.page)
+    const source = pose ?? base
+    const plan = this.movePlacement(source, ids, point, force, preserveParent, index)
+    return plan.moving.length === 0 && (!plan.retained || plan.retained === source)
   }
   /** Read-only projection for a move query, never published, serialized or
    * admitted as a document. The fixed gesture index supplies complete topology. */
