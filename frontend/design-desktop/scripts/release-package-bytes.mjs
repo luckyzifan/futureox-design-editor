@@ -669,6 +669,7 @@ export function inventoryFromPackageBytes({
   rust,
   javascript,
   declaredElectronVersion = null,
+  nativeTargets = null,
 }) {
   let host = hostIdentity(layout.packageDir)
   const iconPath = path.join(root, 'frontend/design-desktop/assets/branding/futureox-desgin.icns')
@@ -680,6 +681,12 @@ export function inventoryFromPackageBytes({
   const binaryHost = layout.style === 'mac-app' ? frameworkTarget(runtime) : executableTarget(runtime)
   const targetMismatch = host.triple && binaryHost && host.triple !== binaryHost.triple
   host = binaryHost ?? host
+  if (nativeTargets) {
+    const family = binaryHost?.target?.split('-', 3).join('-')
+    const matches = nativeTargets.filter(target => target.split('-', 3).join('-') === family)
+    if (matches.length !== 1) throw new Error('Verification record must identify one Rust target for the packaged runtime')
+    host = { ...host, target: matches[0] }
+  }
   const archives = walked.files.filter(file => file.kind === 'archive')
   let openedAppAsar = false
   for (const asarFile of archives) {

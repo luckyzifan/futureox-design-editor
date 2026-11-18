@@ -69,6 +69,19 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs \
 
 `--require-package` 会重新哈希包内文件和 `app.asar` 条目。哈希对不上、或者 Electron/Chromium、JS、Rust notice、native、WASM、字体、图标、Linux FFmpeg 任一缺失时，进程失败。`Cargo.lock` 和 npm devDependencies 只用来给已经出现在包里的文件或已链接进包内二进制的 crate 补版本、来源和许可证；没进这个包的 lock 名和 Vite、Playwright、`@electron/packager` 留在 `notDistribution`。签名、公证和其他操作系统安装包保持 `not_run` / `not_built`，`releaseAcceptance` 仍是 `not_closed`。
 
+核对已发布的包时，可以传入冻结源码检出、解包目录和发布附带的验证记录。
+
+```bash
+node frontend/design-desktop/scripts/release-component-inventory.mjs \
+  --source-root=/path/to/release-source \
+  --release-dir=/path/to/unpacked-package \
+  --release-verification=/path/to/release-verification.json \
+  --require-package \
+  --write-report=/tmp/futureox-published-components.json
+```
+
+这组参数会对照源码提交与 Git 树，并校验包内 ASAR、内核 WASM 和记录列出的原生文件。清单使用发布记录的 Rust 目标归因依赖，包括 Windows gnullvm。安装包哈希、签名和启动验收仍由对应的安装包流程记录。
+
 清单区分这些东西：
 
 - 四个会装进包里的 Rust 二进制的 `cargo tree --locked --edges normal`，以及 wasm32 的 kernel 图。`futureox-design-server`、`utoipa`、`sqlx-postgres` 和 dev-dependency `tiny-skia` 不在这个图里。
