@@ -137,11 +137,10 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
                 .all(|(_, pixels, max)| *pixels == 0 && *max == 0),
         "linear-gradient {linear:?}"
     );
-    // The paired frozen reference comparison moved two shadow rows and four
-    // half-pixel layer-blur rows closer to the original PNGs. The combined
-    // glass-full fixture now uses its frozen readback and adds a zero-diff row.
+    // The output-cell tent improves both manifest entries for the same
+    // frozen shadow PNG, from 429 differing pixels to 307 at max error 1.
     assert_eq!(
-        others_sha, "cfd15c0e19d953dfd81e95fca8e5e596b21c0c3acdd989a99d0886778aba06e0",
+        others_sha, "35555a29e21ffa982b35e864d38dcf6154a688d222ca9a8bcae79ce75a45e018",
         "other frozen figma references moved"
     );
 }

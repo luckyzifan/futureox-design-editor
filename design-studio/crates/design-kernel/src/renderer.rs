@@ -4043,11 +4043,7 @@ impl Painter<'_> {
         if self.compatible && !inner && radius == 8. && spread == 0.
             && self.profile == crate::fidelity::RasterProfile::Figma
         {
-            return effects::shadow_alpha_output_grid(
-                basis,
-                self.blur_filter(radius / 2.),
-                spread,
-            );
+            return effects::shadow_alpha_output_grid(basis, (radius / 2.) as i32);
         }
         effects::shadow_alpha(basis, self.blur_filter(radius), spread, inner)
     }
