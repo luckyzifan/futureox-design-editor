@@ -923,12 +923,18 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       const operation = r.booleanOperation ?? 'UNION'
       if (!(operation in operations)) throw new Error(`FIG 布尔运算 ${operation} 暂不支持；原文件未修改`)
       n.booleanOperation = operations[operation as keyof typeof operations]
-      if (Array.isArray(r.strokeGeometry) && r.strokeGeometry.length &&
+      const hasStrokeOutline = Array.isArray(r.strokeGeometry) && r.strokeGeometry.length > 0
+      const hasFillOutline = Array.isArray(r.fillGeometry) && r.fillGeometry.length > 0
+      if (hasStrokeOutline &&
           !n.fills.some(p => p.visible && p.opacity > 0) && n.strokes.some(s => s.paint.visible && s.paint.opacity > 0)) {
         n.fills = n.strokes.map(s => s.paint)
         n.strokes = []
         const source = receipts.get(n.id) ?? {}
         source.figBooleanStrokeOperands = 'true'
+        receipts.set(n.id, source)
+      } else if (n.booleanOperation === 'union' && !hasFillOutline && !hasStrokeOutline) {
+        const source = receipts.get(n.id) ?? {}
+        source.figBooleanStrokeOperands = 'unbaked-union'
         receipts.set(n.id, source)
       }
     }

@@ -1657,6 +1657,10 @@ impl Fonts {
         );
         let (levels, visual) = bidi.visual_runs(&bidi.paragraphs[0], 0..text.len());
         let mut glyphs = Vec::new();
+        // FIG's measured horizontal advances use a 1/1024 em grid before
+        // tracking. Retain that metric for the imported FIG line-box modes.
+        let figma_advances = style.writing_mode == "horizontal"
+            && matches!(style.line_box_baseline.as_str(), "figma-pixel-leading" | "figma-font-metrics");
         // Avoid repeated cache lookups within a run, while keeping only bounded
         // owning references. Persistent entries are keyed by bytes/index/axes,
         // so resource replacement and cloned snapshots cannot reuse stale faces.
@@ -1754,7 +1758,8 @@ impl Fonts {
             }
             for (start, end, id, size, weight, _) in pieces {
                 let face = self.face_with(&id, weight, &variations)?;
-                let scale = size / face.borrow_face().units_per_em() as f64;
+                let em = f64::from(face.borrow_face().units_per_em());
+                let scale = size / em;
                 let mut buffer = rustybuzz::UnicodeBuffer::new();
                 buffer.push_str(&text[start..end]);
                 buffer.guess_segment_properties();
@@ -1771,7 +1776,12 @@ impl Fonts {
                         .is_none_or(|next| next.cluster != glyph.cluster);
                     let byte = start + glyph.cluster as usize;
                     let cluster = utf16[base + byte];
-                    let mut raw_advance = (p.x_advance as f64 * scale).abs();
+                    let advance = f64::from(p.x_advance).abs();
+                    let mut raw_advance = if figma_advances {
+                        (advance * 1024. / em).round_ties_even() * (size / 1024.)
+                    } else {
+                        advance * scale
+                    };
                     if self.local_sketch_ui && matches!(id.as_str(), SKETCH_UI_TEXT_ID | SKETCH_UI_DISPLAY_ID) {
                         if let Some(advance) = self.outline_for_id(&id, glyph.glyph_id as u16, weight, &variations)?.local_advance {
                             raw_advance = advance * scale;
@@ -2747,6 +2757,25 @@ mod tests {
         assert!(changed.glyphs[0].y < original.glyphs[0].y);
         n.text_style.as_mut().unwrap().line_height_auto = false;
         assert_eq!(fonts.node_layout(&n, Some(n.width)).unwrap().height, 60.);
+    }
+
+    #[test]
+    fn figma_advances_follow_source_grid_before_tracking() {
+        let mut fonts = Fonts::new();
+        fonts.load(include_bytes!(
+            "../../../../frontend/design-client/public/fonts/poppins/v2.000/Poppins-Bold.ttf"
+        )).unwrap();
+        let mut n = node("Pro", serde_json::json!({
+            "letterSpacing": 1.,
+            "lineBoxBaseline": "figma-pixel-leading",
+        }), 200.);
+        n.font_size = 30.;
+        let figma = fonts.node_layout(&n, Some(n.width)).unwrap();
+        assert_eq!(figma.glyphs[1].x, 20.130859375);
+        assert_eq!(figma.glyphs[2].x, 33.845703125);
+        n.text_style.as_mut().unwrap().line_box_baseline.clear();
+        let plain = fonts.node_layout(&n, Some(n.width)).unwrap();
+        assert!((plain.glyphs[1].x - 20.14).abs() < 1e-9);
     }
 
     #[test]
