@@ -161,7 +161,7 @@ test('Sketch Insert pencil starts the same tool and stroke settings as P, then k
 
   const chinese = itemLabels(await openInsert())
   expect(chinese).toEqual([
-    '画框', '图形', '分区', '切片', '矩形', '椭圆', '直线', '箭头', '多边形', '星形', '钢笔', '铅笔', '文本',
+    '画框', '图形', '分区', '切片', '交互', '矩形', '椭圆', '直线', '箭头', '多边形', '星形', '钢笔', '铅笔', '文本',
     '图片…', '设备与尺寸预设…',
   ])
   const pencil = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(entry => entry.textContent === '铅笔')!
@@ -235,7 +235,7 @@ test('Sketch Insert pencil starts the same tool and stroke settings as P, then k
   expect(englishMenu).not.toBeNull()
   const english = itemLabels(englishMenu!)
   expect(english).toEqual([
-    'Frame', 'Graphic', 'Section', 'Slice', 'Rectangle', 'Ellipse', 'Line', 'Arrow', 'Polygon', 'Star', 'Pen', 'Pencil', 'Text',
+    'Frame', 'Graphic', 'Section', 'Slice', 'Interaction', 'Rectangle', 'Ellipse', 'Line', 'Arrow', 'Polygon', 'Star', 'Pen', 'Pencil', 'Text',
     'Image…', 'Device and size presets…',
   ])
   const pencilEn = [...englishMenu!.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(entry => entry.textContent === 'Pencil')!

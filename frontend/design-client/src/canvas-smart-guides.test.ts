@@ -83,16 +83,16 @@ test('beyond-threshold targets never snap', () => {
     [{ x: 60, y: 30, width: 10, height: 10 }],
     5,
   )
-  expect(snap).toEqual({ dx: 0, dy: 0, guides: [null, null] })
+  expect(snap).toEqual({ dx: 0, dy: 0, guides: [null, null], targetSpans: [null, null] })
 })
 
-test('fractional world rects round onto the kernel integer grid before snapping', () => {
+test('fractional world rects snap to the exact fractional target', () => {
   const snap = smartGuidesSnapWorld(
     { x: 110.25, y: 0.75, width: 10, height: 10 },
     undefined,
     [{ x: 111.375, y: 0, width: 30, height: 30 }],
     6,
   )
-  expect(snap.dx).toBe(1)
-  expect(snap.guides[0]?.position).toBe(111)
+  expect(snap.dx).toBe(1.125)
+  expect(snap.guides[0]?.position).toBe(111.375)
 })

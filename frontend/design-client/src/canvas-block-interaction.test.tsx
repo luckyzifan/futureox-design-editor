@@ -331,12 +331,21 @@ test('layout containers stay transparent until their selection feedback is reque
   child.fills = [{ ...child.fills[0], opacity: 0 }]
   frame.children = [child.id]
   const section = node('section', 420, 0, 160, 80)
+  interfacePreference.set({ uiMode: 'figma' })
   await render([frame, child, section], [frame.id, section.id])
   expect(mount.querySelector(`[data-frame-title="${child.id}"]`)).toBeNull()
   expect(mount.querySelector(`[data-testid="frame-hairline"][data-node-id="${child.id}"]`)).toBeNull()
   expect(mount.querySelector(`[data-section-chip="${section.id}"]`)?.getAttribute('fill')).toBe('#e7e8ef')
+  const childTitle = () => mount.querySelector(`[data-frame-title="${child.id}"]`)
   await act(async () => editor.select([frame.id]))
-  expect(mount.querySelector(`[data-frame-title="${child.id}"]`)?.textContent).toBe('Inner')
+  expect(childTitle()).toBeNull()
+  await act(async () => editor.select([child.id]))
+  expect(childTitle()?.textContent).toBe('Inner')
+  await act(async () => {
+    interfacePreference.set({ uiMode: 'sketch' })
+    editor.select([frame.id])
+  })
+  expect(childTitle()?.textContent).toBe('Inner')
   await act(async () => editor.select([section.id]))
   expect(mount.querySelector(`[data-frame-title="${section.id}"]`)?.getAttribute('fill')).toBe('#4597f7')
 })

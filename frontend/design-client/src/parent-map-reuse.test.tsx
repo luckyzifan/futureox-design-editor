@@ -110,6 +110,7 @@ function renderLayers(editor: Editor) {
     useRef: (current: any) => ({ current }),
     useId: () => 'parent-map-layer-test',
     useEffect() {},
+    useLayoutEffect() {},
     useMemo: (fn: () => unknown) => fn(),
     useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
   }
@@ -135,7 +136,7 @@ test('ArrowLeft at a root scans topology once even when no parent row exists amo
   const editor = new Editor(doc); editors.push(editor)
   const row = findRow(renderLayers(editor)), target = {}
   scans.count = 0
-  row.props.onKeyDown({ key: 'ArrowLeft', target, currentTarget: target, preventDefault() {}, stopPropagation() {} })
+  row.props.onKeyDown({ key: 'ArrowLeft', target, currentTarget: target, nativeEvent: { isComposing: false, keyCode: 37 }, preventDefault() {}, stopPropagation() {} })
   expect(scans.count).toBe(1)
   expect(editor.state.selection).toEqual([])
   expect(editor.canUndo).toBe(false)
