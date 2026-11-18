@@ -1,12 +1,15 @@
-/** Real browser hit tests for Sketch toolbar buttons. DOM presence is not a pass. */
-import { chromium, expect, type Browser, type Page } from '@playwright/test'
+/** Toolbar placement and live clicks against the shared Chromium renderer. */
+import { _electron as electron, chromium, expect, type Browser, type ElectronApplication, type Page } from '@playwright/test'
 import { createServer, type ViteDevServer } from 'vite'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const output = join('/tmp', 'sketch-toolbar-hits')
+const useElectron = process.argv.includes('--electron')
+const output = resolve(process.env.DESIGN_TEST_OUTPUT || await mkdtemp(join(tmpdir(), 'futureox-toolbar-')))
 await mkdir(output, { recursive: true })
 
 const sizes = [
@@ -23,6 +26,10 @@ const locales = [
     text: '文字',
     utility: '实用工具',
     undo: '撤销',
+    insert: '置入',
+    shapes: '形状',
+    sketchText: '字符',
+    sketchTools: '工具',
   },
   {
     id: 'en' as const,
@@ -32,6 +39,10 @@ const locales = [
     text: 'Text',
     utility: 'Utility tools',
     undo: 'Undo',
+    insert: 'Insert',
+    shapes: 'Shapes',
+    sketchText: 'Text',
+    sketchTools: 'Tools',
   },
 ]
 
@@ -52,10 +63,13 @@ const server: ViteDevServer = await createServer({
   logLevel: 'error',
 })
 let browser: Browser | undefined
+let app: ElectronApplication | undefined
 let page: Page | undefined
 const report: Record<string, unknown> = {
   platform: process.platform,
-  note: 'Linux CSS-pixel hit tests of the shared editor shell. Not a macOS Electron timing run.',
+  host: useElectron ? 'electron' : 'chromium',
+  output,
+  bridge: 'version 1 test fixture',
   cases: [] as unknown[],
 }
 const failures: string[] = []
@@ -64,21 +78,41 @@ try {
   const base = server.resolvedUrls?.local?.[0]
   if (!base) throw new Error('Vite did not report a local URL')
   report.base = base
-  const headed = process.env.SKETCH_TOOLBAR_HEADED === '1'
-  const launchArgs = ['--disable-dev-shm-usage', '--force-device-scale-factor=1', ...(headed ? ['--no-sandbox'] : [])]
-  try {
-    browser = await chromium.launch({ headless: !headed, chromiumSandbox: !headed, channel: headed ? 'chrome' : undefined, args: launchArgs })
-    report.browser = headed ? 'headed-chrome' : 'playwright-chromium'
-  } catch (error) {
-    report.bundledChromiumError = String(error).split('\n')[0]
-    browser = await chromium.launch({ headless: !headed, channel: 'chrome', args: [...launchArgs, '--no-sandbox'] })
-    report.browser = headed ? 'headed-chrome-channel' : 'chrome-channel'
+  if (useElectron) {
+    const requireDesktop = createRequire(new URL('../../design-desktop/package.json', import.meta.url))
+    const executablePath: string = requireDesktop('electron')
+    const hostPath = join(output, 'host.cjs'), profile = join(output, 'profile')
+    await mkdir(profile, { recursive: true })
+    await writeFile(hostPath, `const { app, BrowserWindow } = require('electron')
+app.setPath('userData', process.env.CORE_TOOLBAR_TEST_PROFILE)
+app.whenReady().then(() => {
+  const window = new BrowserWindow({
+    width: 1440, height: 960, useContentSize: true, show: false,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+  })
+  window.loadURL('about:blank')
+})
+`)
+    app = await electron.launch({ executablePath, args: [hostPath, '--force-device-scale-factor=1'],
+      chromiumSandbox: !(process.platform === 'linux' && process.getuid?.() === 0),
+      env: { ...process.env, CORE_TOOLBAR_TEST_PROFILE: profile } })
+    report.versions = await app.evaluate(({ app }) => ({ electron: app.getVersion(), chrome: process.versions.chrome }))
+    page = await app.firstWindow()
+  } else {
+    const headed = process.env.SKETCH_TOOLBAR_HEADED === '1'
+    const launchArgs = ['--disable-dev-shm-usage', '--force-device-scale-factor=1', ...(headed ? ['--no-sandbox'] : [])]
+    try {
+      browser = await chromium.launch({ headless: !headed, chromiumSandbox: !headed, channel: headed ? 'chrome' : undefined, args: launchArgs })
+      report.browser = headed ? 'headed-chrome' : 'playwright-chromium'
+    } catch (error) {
+      report.bundledChromiumError = String(error).split('\n')[0]
+      browser = await chromium.launch({ headless: !headed, channel: 'chrome', args: [...launchArgs, '--no-sandbox'] })
+      report.browser = headed ? 'headed-chrome-channel' : 'chrome-channel'
+    }
+    page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 })
   }
-  page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 })
   await page.addInitScript(() => {
-    const host = window as Window & { coreDesktop?: { version: number } }
-    if (host.coreDesktop?.version === 1) return
-    host.coreDesktop = {
+    Object.defineProperty(window, 'coreDesktop', { value: Object.freeze({
       version: 1,
       readRecovery: async () => ({ status: 'cancelled' }),
       writeRecovery: async () => ({ status: 'ok' }),
@@ -87,18 +121,17 @@ try {
       onCommand: () => () => {},
       onCloseRequested: () => () => {},
       respondToClose: async () => ({ accepted: true }),
-    }
+    }) })
   })
   const errors: string[] = []
+  report.pageErrors = errors
   page.on('pageerror', error => errors.push(String(error)))
   await page.goto(base)
-  await expect(page.locator('.editor-shell')).toBeVisible()
   const create = page.getByRole('button', { name: '新建设计', exact: true })
   await expect(create).toBeEnabled({ timeout: 90_000 })
   await create.click()
   await expect(page.locator('.local-home')).toHaveCount(0, { timeout: 30_000 })
   await expect(page.locator('.floating-toolbar')).toBeVisible()
-  report.pageErrors = errors
 
   const probe = () => page!.evaluate(() => {
     const describe = (element: Element | null) => element ? `${element.tagName.toLowerCase()}[${element.getAttribute('aria-label') || element.getAttribute('role') || element.className}]` : null
@@ -144,7 +177,7 @@ try {
       return { x: +rect.x.toFixed(2), y: +rect.y.toFixed(2), w: +rect.width.toFixed(2), h: +rect.height.toFixed(2) }
     }
     const zoom = document.querySelector<HTMLElement>('[data-testid="zoom-readout"]')
-    const preview = document.querySelector<HTMLElement>('.prototype-preview-button')
+    const exportButton = document.querySelector<HTMLElement>('.header-right > .primary')
     const layers = document.querySelector<HTMLElement>('.adaptive-layers-shell')
     const inspector = document.querySelector<HTMLElement>('.properties-workspace')
     return {
@@ -158,13 +191,13 @@ try {
       canvasRow: workspace ? getComputedStyle(workspace).gridRow : '',
       toolbarInHeader: !!bar && !!windowBar && windowBar.contains(bar),
       zoomInHeader: !!zoom && !!windowBar && windowBar.contains(zoom),
-      previewInHeader: !!preview && !!windowBar && windowBar.contains(preview),
+      exportInHeader: !!exportButton && !!windowBar && windowBar.contains(exportButton),
       geometry: {
         toolbar: rectOf(bar),
         header: rectOf(windowBar),
         canvas: rectOf(workspace),
         zoom: rectOf(zoom),
-        preview: rectOf(preview),
+        export: rectOf(exportButton),
         layers: rectOf(layers),
         inspector: rectOf(inspector),
       },
@@ -177,6 +210,9 @@ try {
   })
 
   for (const size of sizes) {
+    await app?.evaluate(({ BrowserWindow }, size) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(size.width, size.height)
+    }, size)
     await page.setViewportSize({ width: size.width, height: size.height })
     const density = size.width <= 900 ? 'narrow' : size.width <= 1180 ? 'desk' : 'wide'
     await expect.poll(async () => page!.locator('.editor-shell').getAttribute('data-density')).toBe(density)
@@ -191,10 +227,11 @@ try {
       for (const locale of locales) {
         await page.locator('.locale-switch select').selectOption(locale.id)
         await expect(page.locator('.locale-switch select')).toHaveValue(locale.id)
-        await expect(page.getByRole('button', { name: locale.arrange, exact: true })).toBeVisible()
+        const required = mode === 'sketch' ? [locale.insert, locale.shapes, locale.sketchText, locale.sketchTools]
+          : [locale.arrange, locale.region, locale.text, locale.utility, locale.undo]
+        await expect(page.getByRole('button', { name: required[0], exact: true })).toBeVisible()
         await page.mouse.move(2, 2)
         const hit = await probe()
-        const required = [locale.arrange, locale.region, locale.text, locale.utility, locale.undo]
         const missing = required.filter(label => !hit.toolbarHits.some(button => button.label === label))
         const covered = hit.toolbarHits.filter(button => !button.ok)
         const headerMisses = hit.headerHits.filter(control => !control.ok)
@@ -225,8 +262,8 @@ try {
             failures.push(`${size.width} sketch inspector ${JSON.stringify(hit.geometry.inspector)}`)
           if (!hit.zoomInHeader || !insideBar(hit.geometry.zoom, bar))
             failures.push(`${size.width} sketch zoom ${JSON.stringify(hit.geometry.zoom)}`)
-          if (!hit.previewInHeader || !insideBar(hit.geometry.preview, bar))
-            failures.push(`${size.width} sketch preview ${JSON.stringify(hit.geometry.preview)}`)
+          if (!hit.exportInHeader || !insideBar(hit.geometry.export, bar))
+            failures.push(`${size.width} sketch export ${JSON.stringify(hit.geometry.export)}`)
         }
         if (mode === 'figma') {
           const tools = hit.geometry.toolbar
@@ -242,10 +279,10 @@ try {
         if (hit.overlaps.length) failures.push(`${size.width} ${mode} ${locale.id} overlap ${JSON.stringify(hit.overlaps)}`)
         if (!covered.length && !missing.length) {
           const clicks: Record<string, string> = {}
-          for (const label of mode === 'sketch' ? [locale.arrange, locale.region, locale.text] : [locale.arrange]) {
+          for (const label of mode === 'sketch' ? [locale.insert, locale.shapes, locale.sketchText] : [locale.arrange]) {
             try {
               await page.getByRole('button', { name: label, exact: true }).click({ timeout: 5_000 })
-              if (label === locale.text) {
+              if (mode === 'sketch' && label === locale.sketchText) {
                 await expect(page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true')
                 clicks[label] = 'pressed'
               } else {
@@ -267,7 +304,7 @@ try {
       }
     }
   }
-  if (failures.length) throw new Error(failures.join('\n'))
+  if (errors.length || failures.length) throw new Error([...errors, ...failures].join('\n'))
   report.status = 'passed'
 } catch (error) {
   report.status = 'failed'
@@ -275,7 +312,8 @@ try {
   throw error
 } finally {
   await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2))
-  await page?.close().catch(() => undefined)
+  console.log(join(output, 'report.json'))
+  await app?.close().catch(() => undefined)
   await browser?.close().catch(() => undefined)
   await server.close()
 }
