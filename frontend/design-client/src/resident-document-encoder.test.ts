@@ -1,6 +1,6 @@
 import { expect,test } from 'vitest'
-import { deflateSync } from 'node:zlib'
-import { ResidentDocumentEncoder, type CodecDelta } from './resident-document-encoder'
+import { deflateSync, inflateSync } from 'node:zlib'
+import { ResidentDocumentEncoder, sameDocumentText, type CodecDelta } from './resident-document-encoder'
 import { blank,node } from './model'
 import { applyDocumentPatch } from './document-patch'
 // @ts-expect-error The actual desktop codec is an ESM host module.
@@ -53,9 +53,19 @@ test('keeps a compressed receipt tied to the exact JSON used for persistence', a
     const { owner, sequence, json } = codec.encode(request)
     return { owner, sequence, documentDeflate: new Uint8Array(deflateSync(json)) }
   })
-  expect(await encoder.encode(before)).toBe(JSON.stringify(before))
-  expect(encoder.deflateFor(JSON.stringify(before))).toBeInstanceOf(Uint8Array)
+  const original = await encoder.encodeText(before)
+  expect(original.json).toBe(JSON.stringify(before))
+  expect(original.chunks?.join('')).toBe(original.json)
   expect(await encoder.encode(after)).toBe(JSON.stringify(after))
-  expect(encoder.deflateFor(JSON.stringify(before))).toBeUndefined()
+  expect(inflateSync(original.documentDeflate!).toString()).toBe(original.json)
   expect(await encoder.encode(before)).toBe(JSON.stringify(before))
+})
+
+test('compares exact snapshot text across chunk boundaries and plain saved baselines', async () => {
+  const text = '前缀'.repeat(400_000)
+  const json = text + '🧪a'
+  const chunked = { json, chunks: [text + '\ud83e', '\uddea', 'a'] }
+  await expect(sameDocumentText(chunked, { json })).resolves.toBe(true)
+  await expect(sameDocumentText(chunked, { json, chunks: [text, '🧪a'] })).resolves.toBe(true)
+  await expect(sameDocumentText(chunked, { json: text + '🧪b' })).resolves.toBe(false)
 })
