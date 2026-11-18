@@ -8,16 +8,22 @@ import {uid,type RulerGuide} from './model'
 import {guideOwner,guidePosition,worldGuides} from './ruler-guides'
 import {NumberField} from './fields'
 import {useProfessionalDialogText} from './professional-dialog-messages'
+import { ActionContextMenu } from './ActionContextMenu'
+import { useInterfacePreferences } from './interface-preference'
+import { commitPendingEdits } from './pending-edits'
 
 export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=false}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean;guidesHidden?:boolean}){
   const {tr}=useProfessionalDialogText()
+  const {uiMode}=useInterfacePreferences()
   const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<{owner:string;id:string}|null>(null)
+  const [rulerMenu,setRulerMenu]=useState<{axis:'x'|'y';x:number;y:number;page:string;session:number}|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
   const doc=editor.state.doc,page=editor.state.page,shown=!!editor.state.rulers
   const guides = useMemo(() => shown && !guidesHidden ? worldGuides(doc,page,entries) : [], [shown,guidesHidden,doc,page,entries])
   const selectedGuide=selected&&guideOwner(doc,selected.owner)?.guides?.find(g=>g.id===selected.id)
   const cancel=()=>{const d=active.current;active.current=null;if(d?.session===editor.sessionGeneration&&d.page===editor.state.page)editor.cancel();d?.action.cancel()}
   useEffect(()=>{cancel();setSelected(null)},[editor.sessionGeneration,page,shown])
+  useEffect(()=>setRulerMenu(null),[editor.sessionGeneration,page,shown,guidesHidden,uiMode])
   useEffect(()=>{
     const down=(e:PointerEvent)=>{if(!host.current?.contains(e.target as Node))setSelected(null)}
     const key=(e:KeyboardEvent)=>{
@@ -56,6 +62,25 @@ export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=fa
     if(!inside)editor.change('移除参考线',d=>{const target=guideOwner(d,a.owner);if(target)target.guides=target.guides?.filter(g=>g.id!==a.id)} )
     const resolved=guideOwner(editor.state.doc,a.owner)?.guides?.find(g=>g.id===a.id)?.position;editor.commit();const committed=guideOwner(editor.state.doc,a.owner)?.guides?.find(g=>g.id===a.id)?.position;a.action.finish(false,{motionObserved:a.moved,resolvedCommittedComparison:resolved===committed?1:2});if(!inside)setSelected(null)
   }
+  const removeAxisGuides=()=>{
+    const menu=rulerMenu
+    setRulerMenu(null)
+    if(!menu) return
+    const current=()=>editor.sessionGeneration===menu.session && editor.state.page===menu.page &&
+      !!editor.state.rulers && !editor.state.busy && !editor.interactionActive
+    if(!current() || !commitPendingEdits(editor) || !current()) return
+    const {axis}=menu
+    const owners=[...new Set(worldGuides(editor.state.doc,menu.page).filter(g=>g.editable&&g.guide.axis===axis).map(g=>g.owner))]
+    if(!owners.length)return
+    runUtilityAction(editor,CanvasAction.guide,ActionSource.menu,()=>editor.change(axis==='x'?'移除全部纵向参考线':'移除全部横向参考线',d=>{
+      for(const owner of owners){const target=guideOwner(d,owner);if(target)target.guides=target.guides?.filter(g=>g.axis!==axis)}
+    }))
+  }
+  const openRulerMenu=(e:React.MouseEvent,axis:'x'|'y')=>{
+    if(uiMode!=='sketch'||guidesHidden||e.button!==2||editor.state.busy||editor.interactionActive)return
+    e.preventDefault();e.stopPropagation();setSelected(null)
+    setRulerMenu({axis,x:e.clientX,y:e.clientY,page,session:editor.sessionGeneration})
+  }
   const selectedFrame=editor.topSelection().length===1?doc.nodes[editor.topSelection()[0]]:null
   const owner=selectedFrame&&['frame','section'].includes(selectedFrame.kind)&&!selectedFrame.instance&&!selectedFrame.instanceOrigin&&!selectedFrame.locked?selectedFrame.id:page
   const targetStep=80/view.zoom,baseStep=10**Math.floor(Math.log10(targetStep)),tickStep=([1,2,5,10].find(v=>v*baseStep>=targetStep)||10)*baseStep,ticks=(axis:'x'|'y')=>{
@@ -71,9 +96,16 @@ export function CanvasGuides({editor,view,size,entries,intercept,guidesHidden=fa
           <line x1={a.x*view.zoom+view.x} y1={a.y*view.zoom+view.y} x2={b.x*view.zoom+view.x} y2={b.y*view.zoom+view.y} stroke="transparent" strokeWidth={8} pointerEvents={g.editable&&editor.state.tool==='select'?'stroke':'none'} style={{cursor:g.guide.axis==='x'?'ew-resize':'ns-resize'}} onPointerDown={e=>start(e,g.guide.axis,g.owner,g.guide)} onDoubleClick={e=>e.stopPropagation()}/>
         </g>})}
     </svg>
-    <div className="canvas-ruler horizontal" data-testid="horizontal-ruler" onPointerDown={e=>start(e,'y',owner)}>{ticks('x').map(t=><span key={t.value} style={{left:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>
-    <div className="canvas-ruler vertical" data-testid="vertical-ruler" onPointerDown={e=>start(e,'x',owner)}>{ticks('y').map(t=><span key={t.value} style={{top:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>
+    <div className="canvas-ruler horizontal" data-testid="horizontal-ruler" onPointerDown={e=>start(e,'y',owner)} onContextMenu={e=>openRulerMenu(e,'y')}>{ticks('x').map(t=><span key={t.value} style={{left:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>
+    <div className="canvas-ruler vertical" data-testid="vertical-ruler" onPointerDown={e=>start(e,'x',owner)} onContextMenu={e=>openRulerMenu(e,'x')}>{ticks('y').map(t=><span key={t.value} style={{top:t.at}}>{Number(t.value.toFixed(4))}</span>)}</div>
     <div className="ruler-origin"/>
+    {rulerMenu&&(() => {
+      const axis=rulerMenu.axis,count=guides.filter(g=>g.editable&&g.guide.axis===axis).length
+      return <ActionContextMenu className="guide-ruler-menu" label={tr(axis==='x'?'纵向标尺操作':'横向标尺操作')}
+        point={rulerMenu} returnFocus={host.current} onClose={()=>setRulerMenu(null)}>
+        <button type="button" role="menuitem" disabled={!count} onClick={removeAxisGuides}>{tr(axis==='x'?'移除全部纵向参考线':'移除全部横向参考线')}{count?`（${count}）`:''}</button>
+      </ActionContextMenu>
+    })()}
     {!guidesHidden&&selected&&selectedGuide&&<div className="guide-properties" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
       <span>{tr(selected.owner===page?'页面参考线':'画板参考线')}</span>
       <NumberField label="参考线位置" value={selectedGuide.position} onChange={position=>runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('设置参考线位置',d=>{const g=guideOwner(d,selected.owner)?.guides?.find(g=>g.id===selected.id);if(g)g.position=position}))}/>
