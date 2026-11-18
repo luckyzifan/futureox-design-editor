@@ -5,7 +5,7 @@ use crate::{
     boolean::Operation,
     math::{Point, Transform},
     path::{Command, Path},
-    scene::{Document, Edge, Network, Vertex},
+    scene::{Document, Edge, Network, Node, Stroke, Vertex},
 };
 use flo_curves::{Coord2, bezier::path::*};
 
@@ -369,10 +369,35 @@ pub(crate) fn fig_outline_key(node: &crate::scene::Node, children: &[&crate::sce
     Some(hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-// Figma can boolean-combine the painted area of an open stroke, whose fill
-// path is empty. Expand in local space before applying the operand transform.
-fn stroke_operand(node: &crate::scene::Node) -> Result<Option<Path>, String> {
-    let strokes = node.strokes.iter().filter(|s| s.visible && s.paint.visible && s.paint.opacity > 0. && s.width > 0.);
+fn stroke_paints_area(s: &Stroke) -> bool {
+    s.visible && s.paint.visible && s.paint.opacity > 0. && s.width > 0.
+}
+
+fn fig_stroke_operands(doc: &Document, node: &Node) -> bool {
+    match crate::interop::sketch_binding(doc, node, "figBooleanStrokeOperands") {
+        Some("true") => true,
+        // Older FIG unions can store just their editable stroked shapes.
+        // Their outlines have area even when the operands have no fill paint.
+        Some("unbaked-union") if node.boolean_operation == Some(Operation::Union) => node
+            .children
+            .iter()
+            .filter_map(|id| doc.nodes.get(id))
+            .filter(|child| child.visible)
+            .all(|child| {
+                child.children.is_empty()
+                    && matches!(child.kind.as_str(), "rectangle" | "ellipse" | "vector" | "line" | "polygon" | "star")
+                    && child.vector_brush.is_none()
+                    && !child.fills.iter().any(|p| p.visible && p.opacity > 0.)
+                    && child.strokes.iter().any(stroke_paints_area)
+            }),
+        _ => false,
+    }
+}
+
+// Figma can combine the painted area of a stroke. Expand in local space
+// before applying the operand transform.
+fn stroke_operand(node: &Node) -> Result<Option<Path>, String> {
+    let strokes = node.strokes.iter().filter(|s| stroke_paints_area(s));
     let mut outline = Path::default();
     for stroke in strokes {
         let local = node.paths()?.1.flatten(Transform::default(), 0.005)?;
@@ -403,7 +428,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
             {
                 return Ok(());
             }
-            let stroke_operands = crate::interop::sketch_binding(doc, &doc.nodes[id], "figBooleanStrokeOperands") == Some("true");
+            let stroke_operands = fig_stroke_operands(doc, node);
             // A stroked vector union paints its closed result and the open
             // centerlines of its operands with the parent's stroke. Open
             // paths contribute no fill area to the Boolean clipper.
@@ -535,6 +560,10 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
 pub(crate) fn operand_keeps_outline(doc: &Document, parent: &str, operand: &str, pose: Transform) -> bool {
     let Some(group) = doc.nodes.get(parent) else { return false; };
     if group.boolean_operation.is_none() || group.children.len() > 32 || !group.children.iter().any(|id| id == operand) {
+        return false;
+    }
+    // The isolated pose proof below does not carry FIG source metadata.
+    if fig_stroke_operands(doc, group) {
         return false;
     }
     let geometry_items = |n: &crate::scene::Node| {

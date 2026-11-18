@@ -536,3 +536,32 @@ test('FIG union without a baked outline strokes open operands and closed results
     expect(after(17, 16)).toEqual(before(17, 16))
   } finally { engine.free() }
 })
+
+test('legacy FIG unions use stroke-only operands without filling their holes', () => {
+  const strokePaints = [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 } }]
+  const { document } = importFig(encoded({
+    type: 'BOOLEAN_OPERATION', booleanOperation: 'UNION',
+  }, {}, [], [{
+    guid: guid(4), type: 'ROUNDED_RECTANGLE', name: 'Outlined square', parentIndex: { guid: guid(3), position: 'a' },
+    size: { x: 10, y: 10 }, transform: { m00: 1, m01: 0, m02: 8, m10: 0, m11: 1, m12: 7 },
+    fillPaints: [], strokePaints, strokeWeight: 2, strokeAlign: 'CENTER',
+  }]))
+  const operand = Object.values(document.nodes).find(node => node.name === 'Outlined square')!
+  const engine = new VectorEngine()
+  try {
+    const sample = () => {
+      engine.load_document(JSON.stringify(document))
+      const pixels = engine.render_rgba(JSON.stringify({ pageId: document.pages[0].id, width: 40, height: 24,
+        view: { x: 0, y: 0, zoom: 1 }, transparent: true }))
+      return (x: number, y: number) => [...pixels.subarray((y * 40 + x) * 4, (y * 40 + x) * 4 + 4)]
+    }
+    const before = sample()
+    expect(before(7, 12)).toEqual([255, 0, 0, 255])
+    expect(before(12, 12)).toEqual([0, 0, 0, 0])
+    operand.transform[4] += 8
+    const after = sample()
+    expect(after(7, 12)).toEqual([0, 0, 0, 0])
+    expect(after(15, 12)).toEqual(before(7, 12))
+    expect(after(20, 12)).toEqual(before(12, 12))
+  } finally { engine.free() }
+})

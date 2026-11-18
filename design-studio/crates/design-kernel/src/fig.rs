@@ -1844,12 +1844,17 @@ impl FigImporter {
                     None | Some("UNION") => Some(crate::boolean::Operation::Union),
                     Some(other) => return Err(Error::Unsupported(format!("booleanOperation={other}"))),
                 };
-                if change.get("strokeGeometry").and_then(Value::as_array).is_some_and(|items| !items.is_empty())
+                let baked = |field: &str| change[field].as_array().is_some_and(|items| !items.is_empty());
+                if baked("strokeGeometry")
                     && !node.fills.iter().any(|p| p.visible && p.opacity > 0.)
                     && node.strokes.iter().any(|s| s.paint.visible && s.paint.opacity > 0.)
                 {
                     node.fills = node.strokes.drain(..).map(|s| s.paint).collect();
                     node.bindings.insert("figBooleanStrokeOperands".into(), "true".into());
+                } else if node.boolean_operation == Some(crate::boolean::Operation::Union)
+                    && !baked("fillGeometry") && !baked("strokeGeometry")
+                {
+                    node.bindings.insert("figBooleanStrokeOperands".into(), "unbaked-union".into());
                 }
             }
             "SYMBOL" => {
@@ -3149,7 +3154,9 @@ pub fn document_from_canvas(
     for (id, record) in &records {
         let Some(mut node) = nodes.remove(id) else { continue; };
         if node.boolean_operation.is_some() && (node.strokes.is_empty() || node.strokes.iter().all(|s| !s.paint.visible)) {
-            let field = if node.bindings.contains_key("figBooleanStrokeOperands") { "strokeGeometry" } else { "fillGeometry" };
+            let field = if node.bindings.get("figBooleanStrokeOperands").map(String::as_str) == Some("true") {
+                "strokeGeometry"
+            } else { "fillGeometry" };
             if let Some(items) = record.get(field).and_then(Value::as_array)
                 .filter(|items| !items.is_empty() && items.iter().all(|item| item.get("styleID").and_then(Value::as_u64).unwrap_or(0) == 0))
                 && let Some(children) = node.children.iter().map(|id| nodes.get(id)).collect::<Option<Vec<_>>>()
