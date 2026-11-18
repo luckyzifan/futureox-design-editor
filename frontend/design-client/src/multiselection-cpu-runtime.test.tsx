@@ -141,13 +141,15 @@ test('mixed expressions, preview cancellation, reparenting, and camera writes pr
   parentScans.count = 0
   for (let i = 1; i <= 60; i++) act(() => editor.set({ view: { x: i, y: -i, zoom: 1 + i / 100 } }))
   expect(parentScans.count).toBe(0); expect(mount.innerHTML).toBe(html)
-  let clock = performance.now() + 1000
-  vi.spyOn(performance, 'now').mockImplementation(() => clock)
+  const version = editor.state.version
   editor.begin('Batch move')
-  act(() => editor.preview(Object.fromEntries(ids.map(id => [id, { transform: [1, 0, 0, 1, 200, 100] } satisfies Partial<DesignNode>]))))
-  clock += 81
-  act(() => editor.preview(Object.fromEntries(ids.map(id => [id, { transform: [1, 0, 0, 1, 220, 100] } satisfies Partial<DesignNode>]))))
-  expect(field('X').placeholder).not.toBe('混合')
+  for (const x of [200, 220]) {
+    act(() => editor.preview(Object.fromEntries(ids.map(id => [id, { transform: [1, 0, 0, 1, x, 100] } satisfies Partial<DesignNode>]))))
+    expect(ids.map(id => editor.state.doc.nodes[id].transform[4])).toEqual(ids.map(() => x))
+    expect(editor.state.version).toBe(version)
+    expect(editor.panelSnapshot().doc).toBe(before)
+    expect(field('X').placeholder).toBe('混合')
+  }
   act(() => editor.cancel()); expect(editor.state.doc).toBe(before); expect(field('X').placeholder).toBe('混合')
   act(() => editor.change('Reparent', doc => {
     doc.nodes[group.id].children = []

@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { PassThrough } from 'node:stream'
 import { createHash } from 'node:crypto'
+import { crc32, inflateSync } from 'node:zlib'
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Editor } from '../engine'
@@ -53,6 +54,28 @@ class ProductCpuWorker {
 const installWorker = () => vi.stubGlobal('Worker', ProductCpuWorker)
 const bytesOf = (result: Awaited<ReturnType<typeof captureDesignPreview>>) => Buffer.from(result.dataUrl.split(',')[1], 'base64')
 const hash = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex')
+
+function pngChunkDigests(png: Buffer) {
+  expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+  const chunks: Array<{ type: string; digest: string }> = []
+  for (let offset = 8; offset < png.length;) {
+    const size = png.readUInt32BE(offset)
+    const end = offset + 8 + size
+    const type = png.toString('ascii', offset + 4, offset + 8)
+    expect(crc32(png.subarray(offset + 4, end))).toBe(png.readUInt32BE(end))
+    let payload = png.subarray(offset + 8, end)
+    if (type === 'iCCP') {
+      // PNG writers can compress the same ICC profile to different bytes.
+      const method = payload.indexOf(0) + 1
+      expect(method).toBeGreaterThan(1)
+      expect(payload[method]).toBe(0)
+      payload = Buffer.concat([payload.subarray(0, method + 1), inflateSync(payload.subarray(method + 1))])
+    }
+    chunks.push({ type, digest: hash(payload) })
+    offset = end + 4
+  }
+  return chunks
+}
 function sceneFixture() {
   const document = blank('Product CPU visual feedback')
   const board = node('frame', -12.5, 8.25, 480, 280), title = node('text', 28, 32, 420, 40), button = node('rectangle', 28, 180, 180, 52), label = node('text', 42, 192, 160, 28)
@@ -215,7 +238,10 @@ it('replays the agent visual-review decision against the exact previously inspec
   const before = await f.call('preview.capture', { pageId, nodeIds: [fixture.board.id], scale: 1 }, fence)
   expect(before.isError).toBe(false)
   const baseline = Buffer.from(before.content.find((item: Json) => item.type === 'image').data, 'base64')
-  expect(hash(baseline)).toBe(decision.observedSha256)
+  expect(decision.source).toBe('product-cpu-after.png')
+  const inspectedPng = await readFile(new URL('../../test-fixtures/mcp-visual/product-cpu-after.png', import.meta.url))
+  expect(hash(inspectedPng)).toBe(decision.observedSha256)
+  expect(pngChunkDigests(baseline)).toEqual(pngChunkDigests(inspectedPng))
   expect(decision.decision.targetRole).toBe('label')
   const transform = [...fixture.label.transform]; transform[4] = decision.decision.x
   const modified = await f.call('batch.apply', { operations: [
@@ -239,7 +265,7 @@ it('replays the agent visual-review decision against the exact previously inspec
     await writeFile(path.join(destination, 'agent-review-evidence.json'), JSON.stringify({
       kind: 'actual-agent-inspection-followed-by-guarded-refinement', decision, beforeSha256: hash(baseline), afterSha256: hash(reviewed),
       metadata: { ...after.structuredContent.result, resources: undefined },
-      assertions: ['input PNG exactly matches inspected source hash', 'decision loaded after inspection from recorded refinement', 'real MCP fenced atomic batch', 'actual product CPU PNG changes', 'dimensions and scale unchanged', 'button and title preserved'],
+      assertions: ['inspected source hash is intact and replay matches its raster and decoded ICC profile', 'decision loaded after inspection from recorded refinement', 'real MCP fenced atomic batch', 'actual product CPU PNG changes', 'dimensions and scale unchanged', 'button and title preserved'],
       limits: 'Synthetic card. In-process Worker and NDJSON transport boundaries. Browser/Electron/socket/GPU not run. No external model provider.', transcript: f.transcript,
     }, null, 2) + '\n')
   }

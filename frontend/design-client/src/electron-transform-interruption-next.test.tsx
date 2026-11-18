@@ -154,12 +154,16 @@ async function beginTransform(kind:'resize'|'rotate') {
 for(const kind of ['resize','rotate'] as const) {
  test(`RT-next ${kind}: internal tool admission blocks during gesture, Escape restores document without history`,async()=>{
   const n=node('rectangle',100,100,100,80);await render([n]);await act(async()=>editor.select([n.id]));const before=editor.state.doc
-  const {end}=await beginTransform(kind);expect(editor.state.doc).not.toEqual(before)
-  const preview=editor.state.doc,tool=editor.state.tool
+  const {end}=await beginTransform(kind)
+  const preview=editor.state.doc,tool=editor.state.tool,rotation=editor.liveRotation
+  if (kind==='rotate') {
+    expect(Math.abs(Number(rotation?.textById[n.id]))).toBeCloseTo(30,8)
+    expect(editor.authoredDocument).toBe(before)
+  } else expect(preview).not.toEqual(before)
   await act(async()=>dispatchEditorCommand(editor,'set-tool-ellipse'))
-  expect(editor.state.tool).toBe(tool);expect(editor.state.doc).toEqual(preview);expect(editor.interactionActive).toBe(true)
+  expect(editor.state.tool).toBe(tool);expect(editor.state.doc).toEqual(preview);expect(editor.liveRotation).toEqual(rotation);expect(editor.interactionActive).toBe(true)
   await act(async()=>key('Escape'));await at('pointerup',end)
-  expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false);expect(editor.interactionActive).toBe(false)
+  expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false);expect(editor.interactionActive).toBe(false);expect(editor.liveRotation).toBeNull()
  })
  test(`RT-next ${kind}: document replacement invalidates preview and late pointerup cannot mutate new document`,async()=>{
   const n=node('rectangle',100,100,100,80);await render([n]);await act(async()=>editor.select([n.id]));const oldId=editor.state.doc.id
