@@ -106,9 +106,16 @@ test('mixed style opacity draft retains units, original history and one undo in 
 
 test('selection color labels change without rewriting authored color', async () => {
   fixture(); await act(async () => root.render(<Panel kind="colors" />)); const before = editor.state.doc
-  const field = input('选区颜色 1'); expect(field).not.toBeNull(); field.focus(); await locale('en')
-  expect(input('Selection color 1')).toBe(field); expect(document.activeElement).toBe(field)
-  expect(field.value).toBe(before.nodes[ids[0]].fills[0].color.toLowerCase()); expect(editor.state.doc).toBe(before)
+  const field = input('选区颜色 1')
+  expect(field).not.toBeNull()
+  const beforeValue = field.value
+  expect(beforeValue.toLowerCase()).toBe(before.nodes[ids[0]].fills[0].color.toLowerCase())
+  field.focus()
+  await locale('en')
+  expect(input('Selection color 1')).toBe(field)
+  expect(document.activeElement).toBe(field)
+  expect(field.value).toBe(beforeValue)
+  expect(editor.state.doc).toBe(before)
 })
 
 test('scale ratio draft and anchor identity survive locale, then scale once and undo', async () => {

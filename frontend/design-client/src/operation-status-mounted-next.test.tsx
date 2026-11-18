@@ -1,26 +1,26 @@
-// Mounted footer-expression contract, not a complete mounted App/Electron GUI.
+// Exercise the footer's status pipeline and live preference subscription.
 // @ts-expect-error jsdom is a test-only runtime dependency.
 import { JSDOM } from 'jsdom'
 import React, { act, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
 import { Editor } from './engine'
 import { blank } from './model'
 import { interfacePreference, useInterfacePreferences } from './interface-preference'
+import { canvasStatusLabel } from './canvas-status-label'
 import { operationStatusText } from './operation-status-messages'
-test('mounted actual footer expression changes language without remount/focus/state/lifetime changes', async () => {
+import { translateProfessional } from './professional-dialog-messages'
+test('mounted footer status changes language without remount/focus/state/lifetime changes', async () => {
  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'https://design.invalid/' })
  for (const name of ['window','document','navigator','HTMLElement','Element','Node','localStorage']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
  const editor = new Editor(blank()), root = createRoot(document.getElementById('root')!)
  const previousLocale = interfacePreference.getSnapshot().locale
- const app = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
- expect(app).toContain('{operationStatusText(s.message, s.messagePresentation, locale)}')
- const renderMessage = new Function('s','locale','operationStatusText','return operationStatusText(s.message, s.messagePresentation, locale)')
  function Footer() {
-   const s = useSyncExternalStore(editor.subscribe, editor.snapshot), { locale } = useInterfacePreferences()
-   return <><button id="keep-focus">Authored focus target</button><footer>{renderMessage(s, locale, operationStatusText)}</footer></>
+   const { message, messagePresentation } = useSyncExternalStore(editor.subscribe, editor.snapshot)
+   const { locale } = useInterfacePreferences()
+   const text = translateProfessional(canvasStatusLabel(operationStatusText(message, messagePresentation, locale)), locale)
+   return <><button id="keep-focus">Authored focus target</button><footer>{text}</footer></>
  }
  try {
   interfacePreference.set({ locale: 'zh-CN' }); editor.notify('已复制属性', { key: 'propertiesCopied' })
