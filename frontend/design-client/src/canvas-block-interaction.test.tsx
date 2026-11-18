@@ -109,6 +109,10 @@ test.each(['pointerup', 'pointercancel'])('the original pointer can finish or ca
   await act(async () => pointer('pointerdown', 135, 135, { buttons: 1 }))
   await act(async () => pointer('pointermove', 147, 153, { buttons: 1 }))
   await act(async () => pointer('lostpointercapture', 147, 153))
+  const held = editor.state.doc
+  await act(async () => pointer('pointermove', 157, 163, { buttons: 0 }, outside))
+  expect(editor.interactionActive).toBe(true)
+  expect(editor.state.doc).toBe(held)
   await act(async () => pointer('pointerup', 162, 167, {}, outside, 8))
   expect(editor.interactionActive).toBe(true)
   await act(async () => pointer('pointermove', 167, 173, { buttons: 1 }, outside))
