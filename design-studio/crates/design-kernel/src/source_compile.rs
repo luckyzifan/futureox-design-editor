@@ -456,6 +456,20 @@ impl Runtime {
             drop(margin);
             return self.full(owner, request, "effect-coordinate-domain", started);
         }
+        // Seed an analytic overview tile with a small, camera-local effect
+        // margin. The compiled extent still determines the final closure.
+        if query.options.raster_profile == crate::fidelity::RasterProfile::Analytic
+            && (1..=32).contains(&padding)
+            && padding as u32 <= query.region.w.min(query.region.h) / 8
+        {
+            let padded_guard = tile_closure_guard(query.region, Some(query.region.expand(padding)));
+            let padded = plan.catalog.viewport_for_compile(camera, padded_guard, &AtomicBool::new(false))?;
+            let padded_stats = padded.stats();
+            if padded_stats.required_nodes < padded_stats.total_nodes {
+                guard = padded_guard;
+                demand = padded;
+            }
+        }
         let base_units = demand.unit_key();
         let catalog = plan.catalog.clone();
         let properties = plan.properties;
