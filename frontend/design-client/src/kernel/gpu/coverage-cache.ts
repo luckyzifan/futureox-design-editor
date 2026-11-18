@@ -1,5 +1,5 @@
 import type { Texture } from './types'
-type Entry = { key: string; bits: Uint32Array; texture: Texture; bytes: number; frame: number }
+type Entry = { key: string; bits: Uint32Array; texture: Texture; bytes: number; frame: number; createdFrame: number }
 
 /** Exact, bounded coverage reuse. A hash indexes candidates; it never proves equality.
  * Entries referenced by the current command buffer stay pinned until frame completion.
@@ -65,7 +65,7 @@ export class CoverageCache {
       this.rejectedPinned++; this.rejectedBytes += bytes; return false
     }
     // Copy only this mesh, not a view retaining the entire frame vertex buffer.
-    const entry = { key, bits: bits.slice(), texture, bytes, frame: this.frame }
+    const entry = { key, bits: bits.slice(), texture, bytes, frame: this.frame, createdFrame: this.frame }
     const bucket = this.buckets.get(key) || new Set<Entry>()
     bucket.add(entry)
     this.buckets.set(key, bucket)
@@ -115,6 +115,14 @@ export class CoverageCache {
     this.bytes -= e.bytes
     if (destroy && !aliases.size) { this.destroy(e.texture); return e.texture.bytes }
     return 0
+  }
+  /** After the queue fence for an abandoned frame, keep immutable coverage
+   * from earlier frames and drop every entry that could still be unwritten. */
+  discardFrame() {
+    for (const entry of this.entries) {
+      if (entry.createdFrame === this.frame) this.removeEntry(entry)
+    }
+    this.eviction = undefined
   }
   clear() {
     for (const e of this.entries) this.removeEntry(e)

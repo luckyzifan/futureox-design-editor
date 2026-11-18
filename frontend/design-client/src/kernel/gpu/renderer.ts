@@ -8729,7 +8729,9 @@ export class GpuRenderer {
         // discarding an unsubmitted encoder. That never publishes its pixels.
         if (this.displayMaterial && !this.displayMaterial.published) this.retireDisplayMaterial()
         this.retireNestedPrefix(); this.retireCoherentSubtrees(); this.horizontalFilters.clear()
-        this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear()
+        this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch)
+        if (cancelledUploadsComplete && rootBatch && scene.interactionFixedMask) this.coverage.discardFrame()
+        else this.coverage.clear()
         if (!cancelledUploadsComplete) this.materialFields.clear()
         if (cancelledUploadsComplete && rootBatch) {
           // Earlier isolated captures are immutable and the abort fence has
