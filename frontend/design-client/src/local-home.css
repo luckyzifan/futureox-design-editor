@@ -26,6 +26,44 @@
 .local-home-filter [role=group] { padding: 3px; border: 1px solid var(--workspace-border); border-radius: 7px; background: var(--workspace-field); }
 .local-home-filter [role=group] button { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 4px; color: var(--workspace-muted); }
 .local-home-filter [role=group] [aria-pressed=true] { background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 0 0 1px var(--workspace-border); }
+.local-home-layout-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 18px;
+  color: var(--workspace-muted);
+}
+.local-home-layout-choice .ui-mode-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 10px;
+  background: var(--workspace-panel);
+}
+.local-home-layout-choice .ui-mode-switch button {
+  min-height: 30px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--workspace-text);
+}
+.local-home-layout-choice .ui-mode-switch button:not(:disabled):hover { background: var(--workspace-hover); }
+.local-home-layout-choice .ui-mode-switch button[aria-pressed=true] { background: var(--workspace-selected); color: var(--workspace-accent); }
+.editor-shell[data-ui-mode="figma"] .local-home-filter label:focus-within {
+  outline: 1px solid var(--workspace-accent);
+}
+.editor-shell[data-ui-mode="figma"] .local-home-filter input:focus-visible { outline: none; }
+.editor-shell[data-ui-mode="figma"] .local-home-sort button {
+  width: auto;
+  height: auto;
+  min-height: 32px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+.editor-shell[data-ui-mode="figma"] .local-home-sort button:not(:disabled):hover { background: var(--workspace-hover); }
 .local-home-file { border-radius: 14px; box-shadow: 0 1px 2px #1c191708; }
 .local-home-file:not(:disabled):hover { border-color: color-mix(in srgb, var(--workspace-accent) 45%, var(--workspace-border)); background: var(--workspace-panel); box-shadow: 0 8px 22px #1c191710; }
 .local-home-empty { display: grid; justify-items: center; gap: 6px; max-width: 420px; margin: 28px auto; padding: 28px 20px; border: 1px solid var(--workspace-border); border-radius: 16px; background: var(--workspace-panel); line-height: 1.5; }

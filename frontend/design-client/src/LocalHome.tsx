@@ -4,6 +4,7 @@ import { File,FolderOpen,Grid2X2,List,MoreVertical,Plus,Search,Settings } from '
 import { FileMark } from './chrome-icons'
 import { sourceErrorKind, sourceErrorSummary } from './source-error-text'
 import { useInterfacePreferences, useInterfaceText } from './interface-preference'
+import { UiModeSwitch } from './UiModeSwitch'
 import { translateProfessional } from './professional-dialog-messages'
 import type { HomeEntry,HomeSource } from './local-home-source'
 import './local-home.css'
@@ -16,12 +17,14 @@ export function HomeCanvasGate({home,children}:{home:boolean;children:ReactNode}
  return !home||admitted?children:null
 }
 
-export function LocalHome({source,ready,busy=false,startupError,importError,currentName,onResume,onNew,onOpenFile,onSettings,onServerWorkspace}: {
- source:HomeSource;ready:boolean;busy?:boolean;startupError?:string;importError?:string;currentName:string
+export function LocalHome({source,ready,busy=false,startupError,importError,currentName,chooseLayout=false,onResume,onNew,onOpenFile,onSettings,onServerWorkspace}: {
+ source:HomeSource;ready:boolean;busy?:boolean;startupError?:string;importError?:string;currentName:string;chooseLayout?:boolean
  onResume:()=>void;onNew:()=>Promise<boolean>;onOpenFile:()=>Promise<boolean|'pending'>;onSettings:()=>void;onServerWorkspace?:()=>void
 }) {
  const { locale } = useInterfacePreferences()
  const text = useInterfaceText()
+ // Keep the chooser available for this visit if the user changes their layout.
+ const [layoutEntry] = useState(chooseLayout)
  const [entries,setEntries]=useState<HomeEntry[]>([]),[query,setQuery]=useState(''),[layout,setLayout]=useState<'grid'|'list'>('grid'),[sort,setSort]=useState<'updated'|'name'>('updated')
  const [loading,setLoading]=useState(false),[working,setWorking]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
  const [menuFor,setMenuFor]=useState<string|null>(null),[renaming,setRenaming]=useState<{id:string;name:string}|null>(null)
@@ -90,6 +93,10 @@ export function LocalHome({source,ready,busy=false,startupError,importError,curr
    <p>{text.localIdentityNote}</p>
   </aside>
   <div className="local-home-content"><header><div><h1>{text.recentDesignsTitle}</h1><p>{savedWhere}</p></div><button type="button" disabled={disabled} onClick={onResume}>{continueLabel}</button></header>
+   {layoutEntry && <div className="local-home-layout-choice">
+    <span>{locale === 'en' ? 'Workspace layout' : '工作区布局'}</span>
+    <UiModeSwitch disabled={busy || working} />
+   </div>}
    <div className="local-home-actions"><button type="button" disabled={disabled} onClick={()=>void run(onNew)}><Plus size={17}/>{text.newDesign}</button><button type="button" disabled={disabled} onClick={()=>void run(onOpenFile)}><FolderOpen size={17}/>{text.openDesignFile}</button></div>
    <div className="local-home-filter"><label><Search size={16}/><input ref={search} aria-label={text.searchRecentDesigns} placeholder={text.searchDesignNames} value={query} onChange={e=>setQuery(e.target.value)}/></label><button type="button" disabled={loading||disabled} onClick={()=>void refresh()}>{text.refresh}</button><div role="group" aria-label={text.fileDisplay}><button type="button" aria-label={text.gridDisplay} aria-pressed={layout==='grid'} onClick={()=>setLayout('grid')}><Grid2X2 size={17}/></button><button type="button" aria-label={text.listDisplay} aria-pressed={layout==='list'} onClick={()=>setLayout('list')}><List size={17}/></button></div><div role="group" className="local-home-sort" aria-label={text.sortDesigns}><button type="button" aria-pressed={sort==='updated'} onClick={()=>setSort('updated')}>{text.sortByUpdated}</button><button type="button" aria-pressed={sort==='name'} onClick={()=>setSort('name')}>{text.sortByName}</button></div></div>
    {(error||importError)&&<p role="alert" className="local-home-error">{shown(error||importError||'')}</p>}{notice&&<p role="status">{shown(notice)}</p>}
