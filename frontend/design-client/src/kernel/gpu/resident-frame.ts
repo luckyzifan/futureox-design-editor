@@ -1,5 +1,8 @@
 import { terminalQualityMessage } from './terminal-quality'
 import type { ResidentFrame } from './resident-presenter'
+import type { Bounds } from '../../model'
+
+const boundsMessage = ({ x, y, width, height }: Bounds) => ({ x, y, width, height })
 
 /** Explicit wire projection: painted tiles also carry their document and
  * diagnostics at runtime. A TypeScript type does not remove those fields. */
@@ -27,6 +30,10 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
     ...(frame.zoomUnderlay ? { zoomUnderlay: true } : {}),
     cameraPreview: frame.cameraPreview ? { anchor: frame.cameraPreview.anchor } : undefined,
     backgroundTranslation: frame.backgroundTranslation ? { x: frame.backgroundTranslation.x, y: frame.backgroundTranslation.y } : undefined,
+    backgroundBoard: frame.backgroundBoard ? {
+      moving: boundsMessage(frame.backgroundBoard.moving),
+      stationary: frame.backgroundBoard.stationary.map(boundsMessage),
+    } : undefined,
     linearBlend: frame.linearBlend,
     backgroundLinear: frame.backgroundLinear ? [...frame.backgroundLinear] : undefined,
     input: frame.input ? { sequence: frame.input.sequence, at: frame.input.at,owner:frame.input.owner,
@@ -96,6 +103,7 @@ export function residentFrameSignature(frame: ResidentFrame) {
     frame.zoomUnderlay === true,
     frame.cameraPreview,
     frame.backgroundTranslation,
+    frame.backgroundBoard,
     frame.linearBlend,
     frame.backgroundLinear,
     active

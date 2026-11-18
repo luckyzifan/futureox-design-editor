@@ -1009,6 +1009,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
   useLayoutEffect(() => editor.bindPublishedScene(interactionScene), [editor, interactionScene])
   const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
+    figmaBoardPreview: uiMode === 'figma',
     readinessRevision:gpuReadyRevision,
     active: editor.interactionActive, gestureKind: drag.current?.kind, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
     onPreviewFailed: failure => {
@@ -1031,7 +1032,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (gesture.actionToken) actionTrace.sample(gesture.actionToken, { posePresentedSequence: pose.sequence, poseLatencyMs: Math.round(pose.latencyMs) })
     },
     scene: interactionScene }),
-    [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene, drag.current?.kind,gpuReadyRevision])
+    [state.doc, state.selection, uiMode, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene, drag.current?.kind,gpuReadyRevision])
   const sliceEntries = useMemo(() => entries.filter(entry => state.doc.nodes[entry.id].kind === 'slice'),
     [entries, state.doc])
   const lastOpenedSession = useRef(editor.sessionGeneration)

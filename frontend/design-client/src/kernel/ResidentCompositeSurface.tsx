@@ -62,6 +62,7 @@ export function ResidentCompositeSurface(props: {
   terminalQuality?: ResidentFrame['terminalQuality']
   presentation: PresentedFrame | null
   allowPanPreview?:boolean
+  preserveZoomBasis?: boolean
   overview?: import('../model').Bounds
   overviewTiles?: readonly (import('./tile-cache').RasterTile & {gpuTile?:number})[]
   overviewPresentation?: RefObject<ProjectedPageOverview | undefined>
@@ -252,6 +253,7 @@ export function ResidentCompositeSurface(props: {
         (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
         (i.tile as unknown as {revision?:number}).revision===p.contentRevision),
       backgroundTranslation: moved && moving === pageTranslation.current ? pageTranslation.current?.backgroundTranslation : undefined,
+      backgroundBoard: moved && moving === pageTranslation.current ? pageTranslation.current?.backgroundBoard : undefined,
       linearBlend:
         !!moved && moving?.mode === 'retained-layers' && !!p.interaction?.document.colorManagement,
       backgroundLinear: moving?.backgroundLinear,
@@ -412,7 +414,7 @@ export function ResidentCompositeSurface(props: {
           if (bitmap && canProject && nav && previous && actual.preview && target.overview &&
               target.view.zoom < previous.view.zoom && !nav.history.canAdvance(previous,actual,target,target.overview)) return
           if (bitmap && keepCompleteCameraBacking(previous,actual,canProject,
-              nav?.zooming,target,nav?.history.completeFrame)) return
+              nav?.zooming,target,nav?.history.completeFrame,target.preserveZoomBasis)) return
           if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,el,bitmap);bitmapApplied=true}
           actualPresentation.current=actual
           acceptedChrome.current=source?.gpuOverlay&&actual.gpuOverlay?{source,actual,client:p.client}:undefined
@@ -521,6 +523,8 @@ export function ResidentCompositeSurface(props: {
         p.settledDocument,
         p.allowPageTranslation,
         renderExecutionPolicy.desktopDisplay&&p.rasterProfile==='figmaSubpixel'&&import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION!=='0',
+        renderExecutionPolicy.desktopDisplay && import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION!=='0'
+          ? { view: p.view, width: p.width, height: p.height } : undefined,
       ) === true
     if (usePageTranslation.current) {
       interaction.current?.prepare(undefined, p.pageId, p.view, p.dpr, p.rasterProfile, p.backend)

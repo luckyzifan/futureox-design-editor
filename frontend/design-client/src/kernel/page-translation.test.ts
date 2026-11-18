@@ -84,6 +84,43 @@ test('one isolated opaque board lifts from existing tiles without raster work an
   expect(isolatedOpaqueBoard(doc, doc.pages[0].children, a.id)).toBeUndefined()
 })
 
+test('Figma lifts opaque sRGB board pixels and falls back when the board would cover visible siblings', () => {
+  const doc = blank()
+  const board = node('frame', 20, 20, 100, 100)
+  const neighbor = node('frame', 200, 20, 100, 100)
+  for (const root of [board, neighbor]) {
+    root.blend = 'normal'
+    root.clip = true
+    doc.nodes[root.id] = root
+  }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing solid board paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const pageId = doc.pages[0].id
+  doc.pages[0].children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: false, epoch: 1,
+    control: { current: null }, onReady() {} }
+  const tile = { key: 'page', serial: 1, gpuTile: 7, bytes: new Uint8Array(), x: -1, y: -1, width: 514, height: 514, zoom: 1 }
+  const items = [{ tile, active: true, layer: 0 }]
+  const view = { x: 0, y: 0, zoom: 1 }
+  const camera = { view, width: 512, height: 512 }
+  const native = vi.fn(() => null)
+  const movement = new PageTranslation(vi.fn(), native)
+  expect(movement.prepare(props, pageId, doc, items, doc, true, false, camera)).toBe(false)
+  const figma = { ...props, figmaBoardPreview: true }
+  expect(movement.prepare(figma, pageId, doc, items, doc, true, false, camera)).toBe(true)
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 20.25, 20.5] } })).toEqual({ x: .25, y: .5 })
+  expect(movement.items(view)?.every(item => item.tile === tile)).toBe(true)
+  expect(native).not.toHaveBeenCalled()
+  movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, 190, 20] } })
+  expect(native).toHaveBeenCalledTimes(1)
+  expect(native).toHaveBeenCalledWith(doc, { [board.id]: { transform: [1, 0, 0, 1, 190, 20] } }, doc, undefined)
+
+  movement.clear()
+  paint.color = 'color(srgb 0.8 0.9 1 / 0.9999)'
+  expect(movement.prepare(figma, pageId, doc, items, doc, true, false, camera)).toBe(false)
+})
+
 test('retained pointer samples do not enumerate the document and reject unrelated edits', () => {
   const doc = blank(), a = node('frame', 0, 0, 100, 100)
   doc.nodes = { [a.id]: a }; doc.pages[0].children = [a.id]
@@ -191,7 +228,7 @@ test('first fractional input keeps the original native document identity when no
   const tile={key:'native',serial:1,gpuTile:1,bytes:new Uint8Array(),x:0,y:0,width:512,height:512,zoom:32}
   movement.prepare(props,doc.pages[0].id,doc,[{tile,active:true,layer:0}],doc,true)
   movement.control.apply(doc,{[root.id]:{transform:[1,0,0,1,.1,0]}})
-  expect(fallback).toHaveBeenCalledWith(doc,expect.anything(),doc)
+  expect(fallback).toHaveBeenCalledWith(doc,expect.anything(),doc,undefined)
   expect((fallback.mock.calls[0] as unknown[])[2]).toBe(doc)
   expect(movement.handingOff).toBe(true)
 })
