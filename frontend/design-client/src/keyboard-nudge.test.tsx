@@ -13,7 +13,7 @@ import { selectionMetric } from './selection-properties'
 import { hasPendingEdits } from './pending-edits'
 import { Editor } from './engine'
 import { blank, node, uid, type DesignNode } from './model'
-import { shortcutPreference } from './shortcut-preference'
+import { interfacePreference } from './interface-preference'
 
 vi.mock('./kernel/Surface', async () => {
   const { useLayoutEffect } = await import('react')
@@ -48,12 +48,12 @@ beforeEach(() => {
   vi.spyOn(dom.window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
   errors = []; const error = console.error.bind(console)
   vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); error(...args) })
-  localStorage.clear(); nudgePreference.reset(); shortcutPreference.set('sketch-like')
+  localStorage.clear(); nudgePreference.reset(); interfacePreference.set({ uiMode: 'sketch' })
   editor = new Editor(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
 afterEach(async () => {
-  await act(async () => root.unmount()); editor.dispose(); nudgePreference.reset(); shortcutPreference.set('figma-like'); dom.window.close()
+  await act(async () => root.unmount()); editor.dispose(); nudgePreference.reset(); interfacePreference.reset(); dom.window.close()
   vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
@@ -151,7 +151,7 @@ test('fractional movement under scaled/rotated parents, vector movement and dime
 })
 
 test('empty-selection arrows do not pan, with or without Shift, and do not write history', async () => {
-  shortcutPreference.set('figma-like')
+  interfacePreference.set({ uiMode: 'figma' })
   const before = await render([])
   await act(async () => { editor.set({ tool: 'frame', view: { x: 12, y: -4, zoom: 2 } }); nudgePreference.set({ small: 1, big: 10 }) })
   const view = { ...editor.state.view }
@@ -164,7 +164,7 @@ test('empty-selection arrows do not pan, with or without Shift, and do not write
 })
 
 test('Enter selects both children of a group and Shift+Enter selects the group', async () => {
-  shortcutPreference.set('figma-like')
+  interfacePreference.set({ uiMode: 'figma' })
   const group = node('group', 40, 40, 200, 80), a = node('rectangle', 10, 10, 40, 40), b = node('ellipse', 80, 10, 36, 36)
   group.children = [a.id, b.id]
   const before = await render([group, a, b], [group.id])
@@ -179,7 +179,7 @@ test('Enter selects both children of a group and Shift+Enter selects the group',
 })
 
 test('Figma defaults nudge 1px and Shift+arrow 10px as one undo each', async () => {
-  shortcutPreference.set('figma-like')
+  interfacePreference.set({ uiMode: 'figma' })
   const n = node('rectangle', 20, 40, 100, 80), before = await render([n])
   await act(async () => editor.select([n.id]))
   await act(async () => { key('ArrowRight'); key('ArrowRight', {}, 'keyup') })
@@ -191,7 +191,7 @@ test('Figma defaults nudge 1px and Shift+arrow 10px as one undo each', async () 
 })
 
 test('Delete and Backspace remove the selection and undo restores it', async () => {
-  shortcutPreference.set('figma-like')
+  interfacePreference.set({ uiMode: 'figma' })
   const n = node('rectangle', 20, 40, 40, 40), before = await render([n])
   await act(async () => editor.select([n.id]))
   await act(async () => key('Backspace'))
@@ -203,7 +203,7 @@ test('Delete and Backspace remove the selection and undo restores it', async () 
 })
 
 test('Cmd+A selects entered siblings, and bracket keys reorder inside the parent', async () => {
-  shortcutPreference.set('figma-like')
+  interfacePreference.set({ uiMode: 'figma' })
   const frame = node('frame', 0, 0, 400, 300), a = node('rectangle', 20, 30, 40, 40), b = node('rectangle', 80, 30, 40, 40), outside = node('rectangle', 500, 30, 40, 40)
   frame.children = [a.id, b.id]
   await render([frame, a, b, outside], [frame.id, outside.id])

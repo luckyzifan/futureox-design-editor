@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Layers } from './Layers'
 import { Editor } from './engine'
 import { blank, node } from './model'
+import { interfacePreference } from './interface-preference'
 
 const bootstrap = await vi.hoisted(async () => {
   // @ts-expect-error jsdom runtime dependency
@@ -24,6 +25,7 @@ beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  interfacePreference.set({ uiMode: 'sketch' })
   const doc = blank(), a = node('rectangle'), b = node('rectangle')
   a.name = '入库'; b.name = '控件'
   doc.nodes[a.id] = a; doc.nodes[b.id] = b
@@ -32,8 +34,8 @@ beforeEach(async () => {
   editor = new Editor(doc); root = createRoot(document.getElementById('root')!)
   await act(async () => root.render(<Layers editor={editor} showPages={false} />))
 })
-afterEach(async () => { await act(async () => root.unmount()); editor.dispose(); dom.window.close(); vi.unstubAllGlobals() })
-const search = () => document.querySelector<HTMLInputElement>('[aria-label="搜索图层"]')!
+afterEach(async () => { await act(async () => root.unmount()); editor.dispose(); interfacePreference.reset(); dom.window.close(); vi.unstubAllGlobals() })
+const search = () => document.querySelector<HTMLInputElement>('input[aria-label="搜索图层"]')!
 async function query() {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search(), '入库')

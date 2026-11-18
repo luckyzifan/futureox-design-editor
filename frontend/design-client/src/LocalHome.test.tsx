@@ -18,7 +18,7 @@ let mounts=0
 const records=[{id:'a',name:'Alpha',revision:1,updatedAt:1000,deleted:false},{id:'b',name:'Beta',revision:3,updatedAt:2000,deleted:false},{id:'c',name:'Trashed',revision:2,updatedAt:3000,deleted:true}]
 beforeEach(async()=>{
  dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://design.invalid/'})
- for(const name of ['window','document','navigator','HTMLElement','HTMLInputElement','HTMLButtonElement','Node','Event','KeyboardEvent','StorageEvent','localStorage'])vi.stubGlobal(name,name==='window'?dom.window:dom.window[name])
+ for(const name of ['window','document','navigator','HTMLElement','HTMLInputElement','HTMLButtonElement','Element','Node','Event','KeyboardEvent','StorageEvent','localStorage'])vi.stubGlobal(name,name==='window'?dom.window:dom.window[name])
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
  const {createRoot}=await import('react-dom/client');mount=document.createElement('div');document.body.append(mount);root=createRoot(mount)
  const doc=blank(),a=node('rectangle',10,20,100,75);doc.nodes[a.id]=a;doc.pages[0].children=[a.id];editor=new Editor(doc);editor.select([a.id]);editor.set({view:{x:123,y:456,zoom:2}})
