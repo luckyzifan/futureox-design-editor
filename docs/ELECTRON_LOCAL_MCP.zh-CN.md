@@ -14,7 +14,7 @@
 | Claude Code | 把复制的 JSON 保存成个人临时文件（如 `/absolute/private/futureox.json`），运行 `claude --mcp-config /absolute/private/futureox.json`。如果使用已有个人 MCP 配置，只合并 `futureox_design` 条目。 | 在新会话输入 `/mcp`，选中该服务，然后要求读取文档。[Claude Code 官方说明](https://code.claude.com/docs/en/mcp) |
 | Codex 桌面 / Codex CLI | 将 **复制 Codex TOML** 的内容加入个人 `~/.codex/config.toml`。已有同名表时替换该表及其 `.env` 子表，不重复添加。Windows 对应用户目录下的 `.codex/config.toml`。重新加载 MCP 或开启新客户端会话。 | CLI 可先用 `codex mcp list` 查登记，再用 `/mcp` 或上面的读图指令验证；仅能列出配置不代表已连通。[OpenAI 官方文档](https://developers.openai.com/codex/mcp/) |
 | Kimi Code CLI 2.x | 将 JSON 中的条目合并到个人 `~/.kimi-code/mcp.json`，或在 TUI 的 `/mcp-config` 中录入相同的 command、args、env。不要设置远端 `environment_id`。 | 开新会话，运行 `/mcp` 并读取文档。[Kimi Code 官方文档](https://www.kimi.com/code/docs/kimi-code-cli/customization/mcp.html) |
-| 旧版 Kimi CLI 1.x（命令可能叫 `kimi-cli`） | 可通过 `kimi-cli --mcp-config-file /absolute/private/futureox.json` 临时加载；若写入其个人 `~/.kimi/mcp.json`，可直接测试。 | `kimi-cli mcp test futureox_design` 会实际连接并列出工具。[旧版 CLI 官方说明](https://moonshotai.github.io/kimi-cli/en/reference/kimi-mcp.html) |
+| 旧版 Kimi CLI 1.x（命令可能叫 `kimi-cli`） | 交互会话可用 `--mcp-config-file`。执行连接检查时，将复制的 JSON 保存为私有临时目录下的 `mcp.json`。 | 运行 `KIMI_SHARE_DIR=/absolute/private/futureox-qa kimi-cli mcp test futureox_design`，使用该临时目录的配置连接并列出工具。[旧版 CLI 官方说明](https://moonshotai.github.io/kimi-cli/en/reference/kimi-mcp.html) |
 | DeepSeek Harness（DSH） | 在启用的 profile / Cordis 作用域注册 `@deepseek-ai/dsh-mcp-client`，字段映射见下面。它使用每个服务一个插件条目的格式。 | 重新载入此 profile，查找 `mcp__futureox_design__design_document_get`。[DSH 官方 MCP 客户端说明](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md) |
 
 **DSH 配置示例。** 从复制的 JSON 的 `mcpServers.futureox_design` 取出 `command`、`args` 和 **完整 env**；将下面的占位符替换为对应值。Windows 路径在 YAML 中可用单引号。使用含 MCP 客户端插件的本地 profile。
@@ -57,3 +57,15 @@
 | 安装包移动后命令找不到 | 启动新位置的应用并重新复制配置。macOS 资源在 `.app/Contents/Resources/design-mcp/`，Windows/Linux 在应用的 `resources/design-mcp/`。本指南随包保存为 `design-mcp/README.zh-CN.md`。配置里的脚本路径可以经过符号链接；适配器用解析后的文件判断自己是不是入口。 | |
 
 开发者在 `frontend/design-desktop` 运行 `bun run package:local`。该命令构建本机平台的 release 包，并核对适配器文件、用包内 Electron 启动两个 stdio 入口、连接本机 HTTP、读取资源后再撤权。默认不启用服务，也不改外部客户端的个人配置。跨平台包需在对应平台构建验证。
+
+## v0.0.0.1 的 macOS 发布包复测
+
+2026-11-18 使用发布的 arm64 DMG，在独立目录和临时编辑器配置中启动应用。DMG 的 SHA-256 为 `730207741e9edcfa73716d1a04c327423414d37afffeaf06001864fa0ecb5aec`，发布记录绑定源码提交 `58f0d7542fb7e7bfcc4ab48fecf82b96727b7ea0`。各客户端使用从该应用导出的临时 stdio 配置。[v0.0.0.1 发布记录](https://github.com/luckyzifan/futureox-design-editor/releases/tag/v0.0.0.1)
+
+| 客户端 | 观测结果 |
+| --- | --- |
+| Codex CLI 0.167.0-alpha.4.1 | 使用临时 App Server 会话连接包内适配器。读取文档和选区、创建矩形、读取 PNG 资源、撤销均通过。停用授权后，旧文档请求和 PNG 资源请求均被拒绝。 |
+| Kimi CLI 1.47.0 | `mcp test` 完成握手，读写授权下列出 136 个工具。使用这份 CLI 随附的 MCP 客户端读取、编辑、读取 PNG、撤销，停用后旧文档和图片均被拒绝。 |
+| Claude Code 2.1.83 | `mcp get` 和非交互会话初始化均显示连接成功。合成文档测试在模型鉴权阶段失败，后续编辑、截图与撤销仍待验。 |
+| Kimi Code 2.5.2 | ACP 初始化成功。隔离配置下创建会话返回 `-32000`，尚未进入 MCP 握手。 |
+| DSH | 本机未找到可启动的客户端。 |
