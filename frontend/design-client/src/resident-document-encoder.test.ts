@@ -1,5 +1,6 @@
 import { expect,test } from 'vitest'
-import { ResidentDocumentEncoder, type CodecDelta } from './resident-document-encoder'
+import { deflateSync, inflateSync } from 'node:zlib'
+import { ResidentDocumentEncoder, sameDocumentText, type CodecDelta } from './resident-document-encoder'
 import { blank,node } from './model'
 import { applyDocumentPatch } from './document-patch'
 // @ts-expect-error The actual desktop codec is an ESM host module.
@@ -42,4 +43,29 @@ test('certified import bytes seed the first changed save without cloning cold no
  codec=new ResidentDocumentCodec(2**20)
  expect(await encoder.encode(changed)).toBe(JSON.stringify(changed));expect(sent.at(-1)?.install).toBe(true)
  const other={...before,id:crypto.randomUUID()};expect(await encoder.encode(other)).toBe(JSON.stringify(other))
+})
+
+test('keeps a compressed receipt tied to the exact JSON used for persistence', async () => {
+  const codec = new ResidentDocumentCodec(2 ** 20)
+  const before = { ...blank(), name: '恢复 🧪', preserved: 'A\n"\ud800' }
+  const after = { ...before, name: '下一帧' }
+  const encoder = new ResidentDocumentEncoder(async request => {
+    const { owner, sequence, json } = codec.encode(request)
+    return { owner, sequence, documentDeflate: new Uint8Array(deflateSync(json)) }
+  })
+  const original = await encoder.encodeText(before)
+  expect(original.json).toBe(JSON.stringify(before))
+  expect(original.chunks?.join('')).toBe(original.json)
+  expect(await encoder.encode(after)).toBe(JSON.stringify(after))
+  expect(inflateSync(original.documentDeflate!).toString()).toBe(original.json)
+  expect(await encoder.encode(before)).toBe(JSON.stringify(before))
+})
+
+test('compares exact snapshot text across chunk boundaries and plain saved baselines', async () => {
+  const text = '前缀'.repeat(400_000)
+  const json = text + '🧪a'
+  const chunked = { json, chunks: [text + '\ud83e', '\uddea', 'a'] }
+  await expect(sameDocumentText(chunked, { json })).resolves.toBe(true)
+  await expect(sameDocumentText(chunked, { json, chunks: [text, '🧪a'] })).resolves.toBe(true)
+  await expect(sameDocumentText(chunked, { json: text + '🧪b' })).resolves.toBe(false)
 })

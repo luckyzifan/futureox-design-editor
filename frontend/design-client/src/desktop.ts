@@ -54,6 +54,7 @@ export interface WorkspaceBridge {
   list(request?: { includeDeleted?: boolean }): Promise<DesktopResult<{ documents: WorkspaceDocument[] }>>
   open(request: { id: string; revision?: number }): Promise<DesktopResult<WorkspaceOpened>>
   commit(request: { documentJson: string; expectedRevision: number | null; mutationId: string }): Promise<DesktopResult<WorkspaceDocument>>
+  commitDeflate?(request: { documentDeflate: Uint8Array; expectedRevision: number | null; mutationId: string }): Promise<DesktopResult<WorkspaceDocument>>
   trash(request: { id: string; expectedRevision: number; mutationId: string; deleted?: boolean }): Promise<DesktopResult<WorkspaceDocument>>
   revisions(request: { id: string; beforeRevision?: number }): Promise<DesktopResult<{ revisions: WorkspaceDocument[]; hasMore?: boolean; nextBeforeRevision?: number }>>
   restore(request: { id: string; revision: number; expectedRevision: number; mutationId: string }): Promise<DesktopResult<WorkspaceOpened>>
@@ -235,6 +236,11 @@ export interface DesktopBridge {
   acceptRecovery(request: { recoveryHandle: string }): Promise<DesktopResult>
   writeRecovery(request: {
     documentJson: string
+    displayName?: string
+    handle?: string
+  }): Promise<DesktopResult>
+  writeRecoveryDeflate?(request: {
+    documentDeflate: Uint8Array
     displayName?: string
     handle?: string
   }): Promise<DesktopResult>

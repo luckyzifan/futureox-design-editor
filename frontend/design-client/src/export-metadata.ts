@@ -1,4 +1,5 @@
 import { scene, worldMatrix } from './geometry'
+import { kernelSpatialDocument } from './kernel/picking'
 import { maskChild, uid, type DesignDocument, type DesignNode, type Bounds, type ExportSetting, type Matrix } from './model'
 import type { ColorOutput } from './color'
 
@@ -43,21 +44,30 @@ export function pdfVectorIssues(doc: DesignDocument, pageId: string, target: Exp
   const issues = new Set<string>()
   const selected = target.kind === 'selection' ? new Set(target.nodeIds) : undefined
   const page = scopePageRoots ? doc.pages.find(page => page.id === pageId) : undefined
-  // For a page-root selection, the inspector can build just the exact scene
-  // branches it will inspect. Nested targets still use their page ancestry.
   const roots = page && selected && [...selected].every(id => page.children.includes(id)) ? selected : undefined
-  for (const entry of scene(doc, pageId, roots)) {
-    if (selected && !selected.has(entry.id) && !entry.ancestors.some((id) => selected.has(id))) continue
-    const n = doc.nodes[entry.id]
-    if (!n.visible || n.opacity <= 0) continue
-    if (n.effects.some((e) => e.visible)) issues.add('滤镜效果')
+  const inspect = (n: DesignNode) => {
+    if (!n.visible || n.opacity <= 0) return
+    if (n.effects.some(e => e.visible)) issues.add('滤镜效果')
     if (maskChild(doc, n)?.visible) issues.add('蒙版')
-    if (
-      [...n.fills, ...n.strokes.map((s) => s.paint)].some(
-        (p) => p.kind === 'angular' || p.kind === 'diamond',
-      )
-    )
+    if ([...n.fills, ...n.strokes.map(s => s.paint)].some(p => p.kind === 'angular' || p.kind === 'diamond'))
       issues.add('角向/菱形渐变')
+  }
+  if (roots) {
+    // The Figma inspector only asks about visible authored effects. Walk
+    // the same kernel-resolved branches in scene order without building bounds.
+    const spatial = kernelSpatialDocument(doc)
+    const visit = (id: string) => {
+      const node = spatial.nodes[id]
+      if (!node?.visible) return
+      inspect(doc.nodes[id])
+      node.children.forEach(visit)
+    }
+    spatial.pages.find(page => page.id === pageId)?.children.forEach(id => { if (roots.has(id)) visit(id) })
+  } else {
+    for (const entry of scene(doc, pageId)) {
+      if (selected && !selected.has(entry.id) && !entry.ancestors.some(id => selected.has(id))) continue
+      inspect(doc.nodes[entry.id])
+    }
   }
   return [...issues]
 }

@@ -2,12 +2,23 @@
 // saved document stays off the UI thread. This worker has no filesystem,
 // network, or backend process.
 import { parentPort } from 'node:worker_threads'
+import { inflateSync } from 'node:zlib'
 import { DOCUMENT_BYTE_LIMIT, DOCUMENT_TRANSFER_BYTES, assertDocumentSerialization } from './document-capacity.mjs'
 
 parentPort.on('message', (message) => {
   try {
     if (message.op === 'encode-request') {
       const params = { ...message.params }
+      if (Object.hasOwn(params, 'documentDeflate')) {
+        const bytes = params.documentDeflate
+        if (Object.hasOwn(params, 'documentJson') || !(bytes instanceof Uint8Array) ||
+            !bytes.byteLength || bytes.byteLength > DOCUMENT_BYTE_LIMIT)
+          throw Error('Invalid compressed document')
+        const inflated = inflateSync(bytes, { maxOutputLength: DOCUMENT_BYTE_LIMIT, info: true })
+        if (inflated.engine.bytesWritten !== bytes.byteLength) throw Error('Invalid compressed document')
+        params.documentJson = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(inflated.buffer)
+        delete params.documentDeflate
+      }
       if (Object.hasOwn(params, 'documentJson')) {
         const text = params.documentJson
         if (typeof text !== 'string' || Buffer.byteLength(text) > DOCUMENT_BYTE_LIMIT)

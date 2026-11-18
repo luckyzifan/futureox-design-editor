@@ -649,20 +649,28 @@ register('workspace-open', async (value) => {
   if (r.revision !== undefined) workspaceRevision(r.revision)
   return workspacePublic(await backend.request('workspace.open', r))
 }, false)
-register('workspace-commit', async (value) => {
-  const r = record(value, ['documentJson', 'expectedRevision', 'mutationId'])
-  workspaceRevision(r.expectedRevision, true); workspaceIdentity(r.mutationId)
-  // Large saves parse and frame on the SQLite worker. The main thread only
-  // forwards the finished bytes, so the window stays responsive during the write.
-  if (typeof r.documentJson === 'string' && Buffer.byteLength(r.documentJson) >= SQLITE_OFFTHREAD_BYTES) {
-    const id = randomUUID()
-    const encoded = await sqliteCodec.encodeRequest(id, 'workspace.commit', {
-      documentJson: r.documentJson, expectedRevision: r.expectedRevision, mutationId: r.mutationId,
-    })
-    return workspacePublic(await backend.requestFrame('workspace.commit', id, encoded.frame, encoded.wireBytes))
+// Large document writes share the same off-thread validation and framing.
+async function requestDocumentWrite(method, { documentJson, documentDeflate }, params) {
+  if (documentDeflate === undefined) {
+    const bytes = typeof documentJson === 'string' ? Buffer.byteLength(documentJson, 'utf8') : Infinity
+    if (bytes > DOCUMENT_BYTE_LIMIT)
+      throw new Error('Document exceeds the available document working-memory allowance')
+    if (bytes < SQLITE_OFFTHREAD_BYTES)
+      return backend.request(method, { ...params, document: documentFromString(documentJson) })
+  } else if (documentJson !== undefined || !(documentDeflate instanceof Uint8Array) ||
+      !documentDeflate.byteLength || documentDeflate.byteLength > DOCUMENT_BYTE_LIMIT) {
+    throw new Error('Invalid compressed document')
   }
-  return workspacePublic(await backend.request('workspace.commit', {
-    document: documentFromString(r.documentJson), expectedRevision: r.expectedRevision, mutationId: r.mutationId,
+  const input = documentDeflate === undefined ? { documentJson } : { documentDeflate }
+  const id = randomUUID()
+  const encoded = await sqliteCodec.encodeRequest(id, method, { ...params, ...input })
+  return backend.requestFrame(method, id, encoded.frame, encoded.wireBytes)
+}
+register('workspace-commit', async (value) => {
+  const r = record(value, ['documentJson', 'documentDeflate', 'expectedRevision', 'mutationId'])
+  workspaceRevision(r.expectedRevision, true); workspaceIdentity(r.mutationId)
+  return workspacePublic(await requestDocumentWrite('workspace.commit', r, {
+    expectedRevision: r.expectedRevision, mutationId: r.mutationId,
   }))
 })
 register('workspace-trash', async (value) => {
@@ -963,18 +971,16 @@ register('export-product-file', async value => {
   return { status: 'ok', displayName: choice.basename }
 })
 register('recovery-write', async (value) => {
-  const params = record(value, ['handle', 'documentJson', 'displayName'])
+  const params = record(value, ['handle', 'documentJson', 'documentDeflate', 'displayName'])
   if (
     params.displayName !== undefined &&
     (typeof params.displayName !== 'string' || params.displayName.length > 256)
   ) {
     throw new Error('Invalid display name')
   }
-  const document = documentFromString(params.documentJson)
   const source = params.handle === undefined ? null : await lookup(params.handle, true)
-  const saved = await backend.request('recovery.write', {
+  const saved = await requestDocumentWrite('recovery.write', params, {
     recoveryId,
-    document,
     sourcePath: source?.path ?? null,
     sourceHash: source?.hash ?? null,
   })

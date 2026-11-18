@@ -1,5 +1,5 @@
 import { assertDocumentJson } from './document-capacity'
-import { ResidentDocumentEncoder } from './resident-document-encoder'
+import { ResidentDocumentEncoder, sameDocumentText, type DocumentText } from './resident-document-encoder'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
@@ -81,7 +81,7 @@ export class DesktopSession {
     return true
   }
   private readonly workspaceHeads = new Map<string, number>()
-  private workspacePending?: { documentJson: string; expectedRevision: number | null; mutationId: string; generation: number; id: string }
+  private workspacePending?: { documentJson: string; encoding: DocumentText; expectedRevision: number | null; mutationId: string; generation: number; id: string }
   private workspaceCopyPending?: WorkspaceCopy
   get supportsWorkspace() { return !!this.bridge.workspace }
   get activeDocumentId() { return this.currentDocument.id }
@@ -137,7 +137,8 @@ export class DesktopSession {
         else if (head.status !== 'error' || head.code !== 'WORKSPACE_NOT_FOUND')
           throw Error('无法读取已有本机文档')
       }
-      const json = preparedDocumentEncoding(prepared)?.json ?? await this.encode(prepared.snapshot())
+      const preparedEncoding = preparedDocumentEncoding(prepared)
+      const encoding = preparedEncoding ? { json: preparedEncoding.json } : await this.encodeText(prepared.snapshot())
       if (!current()) return false
       const mutationId = crypto.randomUUID()
       await beforeCommit?.(mutationId)
@@ -148,7 +149,7 @@ export class DesktopSession {
       else this.workspaceHeads.set(next.id, revision)
       // Adoption precedes the asynchronous commit. Any new edit now derives
       // from this revision; an interrupted write can be recovered by mutation ID.
-      if (!await this.persistWorkspace(json, this.generation, next.id, mutationId)) return false
+      if (!await this.persistWorkspace(encoding, this.generation, next.id, mutationId)) return false
       this.cloudRevisions.set(document, this.workspaceHeads.get(next.id)!)
       return document
     })
@@ -421,6 +422,7 @@ export class DesktopSession {
   }
   private baselineGeneration: number | null = null
   private baselineJson: string | null = null
+  private baselineChunks?: readonly string[]
   private baselineDocument?: DesignDocument
   private generation = 0
   private currentVersion: number
@@ -429,7 +431,8 @@ export class DesktopSession {
   private currentDocument: DesignDocument
   private serializedGeneration = -1
   private serializedJson = ''
-  private serializing?: { generation: number; document: DesignDocument; promise: Promise<string> }
+  private serializedText?: DocumentText
+  private serializing?: { generation: number; document: DesignDocument; promise: Promise<DocumentText> }
   private active: Promise<unknown> | null = null
   private operation: DesktopStatus['operation'] = 'idle'
   private error?: string
@@ -499,43 +502,68 @@ export class DesktopSession {
       (!!this.editor.interactionActive && (this.editor.authoredDocument ?? this.editor.state.doc) !== this.currentDocument)
   }
   private residentEncoder?: ResidentDocumentEncoder
-  private encode(document: DesignDocument) {
+  private async encode(document: DesignDocument) {
+    return (await this.encodeText(document)).json
+  }
+
+  private encodeText(document: DesignDocument): Promise<DocumentText> {
     const codec = this.bridge.documentCodec
     if (codec?.encoding === 'json-stringify-v1' && codec.encodeIncremental) {
       this.residentEncoder ??= new ResidentDocumentEncoder(request => codec.encodeIncremental!(request))
-      return documentStageAsync(DocumentStage.encode, () => this.residentEncoder!.encode(document))
+      return documentStageAsync(DocumentStage.encode, () => this.residentEncoder!.encodeText(document))
     }
-    return documentStageAsync(DocumentStage.encode, () => codec?.encode(document) ?? Promise.resolve(JSON.stringify(document)))
+    return documentStageAsync(DocumentStage.encode, async () => ({
+      json: await (codec?.encode(document) ?? Promise.resolve(JSON.stringify(document))),
+    }))
   }
+
+  private setBaselineText(text: DocumentText | null) {
+    this.baselineJson = text?.json ?? null
+    this.baselineChunks = text?.chunks
+  }
+
   private advanceGeneration() {
     this.generation++
     this.workspaceCopyPending = undefined
     for (const controller of this.documentPreparations) controller.abort()
-    // The cache can only serve its exact generation. Release stale full JSON
-    // immediately, including navigation to a custom-codec document with no
-    // replacement certificate. Baselines and uncertain idempotent writes own
-    // their separate references and must survive this cache invalidation.
+    // Baselines and unresolved writes retain their own immutable encodings.
     this.serializedGeneration = -1
     this.serializedJson = ''
+    this.serializedText = undefined
   }
+
   private async captureSnapshot() {
-    const generation=this.generation, document=this.currentDocument
-    if(this.serializedGeneration===generation)return {json:this.serializedJson,generation,document}
-    let pending=this.serializing
-    if(pending?.generation!==generation||pending.document!==document){pending={generation,document,promise:this.encode(document)};this.serializing=pending}
-    let json:string
-    try{json=await pending.promise}finally{if(this.serializing===pending)this.serializing=undefined}
-    if(this.generation===generation && this.currentDocument===document){this.serializedJson=json;this.serializedGeneration=generation}
-    return {json,generation,document}
+    const generation = this.generation, document = this.currentDocument
+    if (this.serializedGeneration === generation) {
+      const encoding = this.serializedText ?? { json: this.serializedJson }
+      return { json: encoding.json, encoding, generation, document }
+    }
+    let pending = this.serializing
+    if (pending?.generation !== generation || pending.document !== document) {
+      pending = { generation, document, promise: this.encodeText(document) }
+      this.serializing = pending
+    }
+    let encoding: DocumentText
+    try { encoding = await pending.promise } finally { if (this.serializing === pending) this.serializing = undefined }
+    if (this.generation === generation && this.currentDocument === document) {
+      this.serializedJson = encoding.json
+      this.serializedText = encoding
+      this.serializedGeneration = generation
+    }
+    return { json: encoding.json, encoding, generation, document }
   }
+
   private async reconcileBaseline() {
-    if(hasPendingEdits(this.editor)||!this.dirty||this.baselineJson===null&&!this.baselineDocument)return
-    const generation=this.baselineGeneration, document=this.baselineDocument
-    const baseline=this.baselineJson ?? await this.encode(document!)
-    const snapshot=await this.captureSnapshot()
-    if (!this.disposed && !hasPendingEdits(this.editor) && this.generation===snapshot.generation &&
-        this.baselineGeneration===generation && this.baselineDocument===document && snapshot.json===baseline) {
-      this.baselineJson=baseline;this.baselineDocument=undefined
+    if (hasPendingEdits(this.editor) || !this.dirty || this.baselineJson === null && !this.baselineDocument) return
+    const generation = this.baselineGeneration, document = this.baselineDocument
+    const json = this.baselineJson, chunks = this.baselineChunks
+    const baseline = json === null ? await this.encodeText(document!) : { json, chunks }
+    const snapshot = await this.captureSnapshot()
+    const current = () => !this.disposed && !hasPendingEdits(this.editor) && this.generation === snapshot.generation &&
+      this.baselineGeneration === generation && this.baselineDocument === document && this.baselineChunks === chunks
+    if (current() && await sameDocumentText(snapshot.encoding, baseline) && current()) {
+      this.setBaselineText(baseline)
+      this.baselineDocument = undefined
       this.baselineGeneration = snapshot.generation
       this.publish()
     }
@@ -640,7 +668,7 @@ export class DesktopSession {
         if ((this.workspaceHeads.get(guard.documentId) ?? null) !== expected) fail('STORAGE_REVISION_CONFLICT', 'The saved revision changed')
         const snapshot = await this.captureSnapshot()
         check()
-        const submitted = { documentJson: snapshot.json, expectedRevision: expected as number | null, mutationId: params.mutationId as string, generation: snapshot.generation, id: snapshot.document.id }
+        const submitted = { documentJson: snapshot.json, encoding: snapshot.encoding, expectedRevision: expected as number | null, mutationId: params.mutationId as string, generation: snapshot.generation, id: snapshot.document.id }
         this.workspacePending = submitted
         const response = await store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId })
         if (rejectedWorkspaceWrite(response)) this.workspacePending = undefined
@@ -650,7 +678,7 @@ export class DesktopSession {
         this.workspaceHeads.set(saved.id, saved.revision)
         // Acknowledging exact older bytes never marks a newer edit as saved.
         if (!this.disposed && this.currentDocument.id === submitted.id) {
-          this.baselineGeneration = submitted.generation; this.baselineJson = submitted.documentJson; this.baselineDocument = undefined
+          this.baselineGeneration = submitted.generation; this.setBaselineText(submitted.encoding); this.baselineDocument = undefined
           this.displayName = saved.name; this.error = undefined; this.conflict = false; this.publish()
         }
         check()
@@ -785,7 +813,7 @@ export class DesktopSession {
       if (accepted.status !== 'ok') {
         this.handle = undefined
         this.baselineGeneration = null
-        this.baselineJson = null
+        this.setBaselineText(null)
         this.baselineDocument = undefined
         this.publish()
         this.editor.notify('设计内容已打开，但文件句柄确认失败；请另存为设计文件')
@@ -1084,7 +1112,7 @@ export class DesktopSession {
     this.baselineGeneration = persistedUnchanged ? this.generation : null
     const certifiedJson = persistedUnchanged && encoding
       ? documentStage(DocumentStage.baselineReuse, () => encoding.json, encoding.json.length) : undefined
-    this.baselineJson = certifiedJson ?? null
+    this.setBaselineText(certifiedJson === undefined ? null : { json: certifiedJson })
     this.baselineDocument = persistedUnchanged && certifiedJson === undefined ? this.currentDocument : undefined
     this.handle = handle
     this.displayName = name
@@ -1099,10 +1127,10 @@ export class DesktopSession {
     if (this.editor.settleOwnedPropertyPreview?.('save') === false) return false
     if (this.editor.interactionActive) { this.editor.notify('请先完成拖动，或按 Esc 取消后保存'); return false }
     if (!commitPendingEdits(this.editor)) return false
-    const {json:snapshot,generation:snapshotGeneration,document} = await this.captureSnapshot()
+    const { json: snapshot, encoding, generation: snapshotGeneration, document } = await this.captureSnapshot()
     if(this.disposed)return false
     if (this.bridge.workspace && !saveAs) {
-      const persisted = await this.persistWorkspace(snapshot, snapshotGeneration, document.id)
+      const persisted = await this.persistWorkspace(encoding, snapshotGeneration, document.id)
       if (persisted) {
         await this.updateRecovery()
         this.editor.notify(this.dirty ? '先前版本已保存；当前修改正在保存' : '已保存到本机文档库')
@@ -1122,7 +1150,7 @@ export class DesktopSession {
     this.displayName = result.displayName
     if (!this.supportsWorkspace) {
       this.baselineGeneration = snapshotGeneration
-      this.baselineJson = snapshot
+      this.setBaselineText(encoding)
       this.baselineDocument = undefined
     }
     this.warning = result.warning
@@ -1136,14 +1164,20 @@ export class DesktopSession {
     return true
   }
 
-  private async persistWorkspace(snapshot: string, generation: number, id: string, mutationId = crypto.randomUUID()): Promise<boolean> {
+  private async persistWorkspace(encoding: DocumentText, generation: number, id: string, mutationId = crypto.randomUUID()): Promise<boolean> {
     const store = this.bridge.workspace
     if (!store || this.disposed) return false
+    const commit = ({ documentJson, encoding, expectedRevision, mutationId }: NonNullable<DesktopSession['workspacePending']>) => {
+      const { documentDeflate } = encoding
+      return documentDeflate && store.commitDeflate
+        ? store.commitDeflate({ documentDeflate, expectedRevision, mutationId })
+        : store.commit({ documentJson, expectedRevision, mutationId })
+    }
     // Retain the same request identity until an uncertain write is acknowledged.
     // A newer edit first settles the older idempotent request, then submits its own revision.
     if (this.workspacePending) {
       const older = this.workspacePending
-      const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: older.documentJson, expectedRevision: older.expectedRevision, mutationId: older.mutationId }), older.documentJson.length)
+      const result = await documentStageAsync(DocumentStage.save, () => commit(older), older.documentJson.length)
       if (result.status !== 'ok') {
         if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
         this.retryWorkspaceBusy(result)
@@ -1158,13 +1192,14 @@ export class DesktopSession {
       this.workspacePending = undefined
       if (this.currentDocument.id === older.id) {
         this.baselineGeneration = older.generation
-        this.baselineJson = older.documentJson
+        this.setBaselineText(older.encoding)
         this.baselineDocument = undefined
         this.displayName = result.name
         this.error = undefined
         this.conflict = false
       }
-      if (snapshot === older.documentJson && this.currentDocument.id === older.id) {
+      if (this.currentDocument.id === older.id && await sameDocumentText(encoding, older.encoding) &&
+          !this.disposed && this.currentDocument.id === older.id) {
         // A draft may have ended without changing authored bytes. The same
         // acknowledged payload also covers the exact newer captured generation,
         // never an edit that arrived after that capture.
@@ -1172,9 +1207,9 @@ export class DesktopSession {
         this.publish(); return true
       }
     }
-    const submitted = { documentJson: snapshot, expectedRevision: this.workspaceHeads.get(id) ?? null, mutationId, generation, id }
+    const submitted = { documentJson: encoding.json, encoding, expectedRevision: this.workspaceHeads.get(id) ?? null, mutationId, generation, id }
     this.workspacePending = submitted
-    const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId }), submitted.documentJson.length)
+    const result = await documentStageAsync(DocumentStage.save, () => commit(submitted), submitted.documentJson.length)
     if (result.status !== 'ok') {
       if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
       this.retryWorkspaceBusy(result)
@@ -1186,10 +1221,10 @@ export class DesktopSession {
     this.workspaceBusyRetries = 0
     desktopPet.event('save')
     this.workspaceHeads.set(result.id, result.revision)
-    this.rememberWorkspace({ id: result.id, name: result.name, revision: result.revision, hash: result.hash, updatedAt: result.updatedAt, deleted: result.deleted, documentJson: snapshot })
+    this.rememberWorkspace({ id: result.id, name: result.name, revision: result.revision, hash: result.hash, updatedAt: result.updatedAt, deleted: result.deleted, documentJson: encoding.json })
     if (!this.disposed && this.currentDocument.id === id) {
       this.baselineGeneration = generation
-      this.baselineJson = snapshot
+      this.setBaselineText(encoding)
       this.baselineDocument = undefined
       this.displayName = result.name
       this.error = undefined
@@ -1323,17 +1358,17 @@ export class DesktopSession {
           this.pristineBlankGeneration !== this.generation && !this.editor.state.busy && !this.editor.interactionActive && !hasPendingEdits(this.editor)) {
         const snapshot=await this.captureSnapshot()
         if(this.disposed||this.recoveryPaused||this.generation!==snapshot.generation||hasPendingEdits(this.editor))return
-        await this.persistWorkspace(snapshot.json, snapshot.generation, snapshot.document.id)
+        await this.persistWorkspace(snapshot.encoding, snapshot.generation, snapshot.document.id)
       }
       let result: DesktopResult
       if (this.dirty && discardSnapshot !== this.generation) {
         const snapshot=await this.captureSnapshot()
         if(this.disposed||this.recoveryPaused||this.generation!==snapshot.generation)return
-        result = await this.bridge.writeRecovery({
-          documentJson: snapshot.json,
-          displayName: this.displayName || this.currentDocument.name,
-          handle: this.handle,
-        })
+        const metadata = { displayName: this.displayName || this.currentDocument.name, handle: this.handle }
+        const documentDeflate = snapshot.encoding.documentDeflate
+        result = documentDeflate && this.bridge.writeRecoveryDeflate
+          ? await this.bridge.writeRecoveryDeflate({ ...metadata, documentDeflate })
+          : await this.bridge.writeRecovery({ ...metadata, documentJson: snapshot.json })
       } else {
         result = await this.bridge.clearRecovery()
         if (result.status === 'ok') {
