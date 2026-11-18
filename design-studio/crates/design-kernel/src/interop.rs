@@ -921,7 +921,6 @@ fn sketch_point(value: &Value) -> Option<[f64; 2]> {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum SketchProgressiveBlur {
     NotProgressive,
-    Uniform(f64),
     Ramp(f64, crate::scene::GradientBlurParameters),
 }
 
@@ -972,26 +971,8 @@ pub(crate) fn sketch_progressive_blur(blur: &Value, size: Option<[f64; 2]>) -> s
         Some(value) => value.as_f64().filter(|r| (0. ..=1000.).contains(r))
             .ok_or("progressive-blur-radius-outside-model")?,
     };
-    let first = indexed[0];
-    let last = *indexed.last().expect("at least two stops");
-    // Preserve the previously admitted two-end background model. FD and
-    // native authoring receipts retain the exact representation of new ramps.
-    let legacy_pair = kind == 3 && shape == BlurRampShape::Linear && indexed.len() == 2
-        && first.offset < last.offset;
-    if legacy_pair && first.strength == last.strength {
-        return Ok(SketchProgressiveBlur::Uniform(first.strength * radius));
-    }
     let size = size.ok_or("progressive-blur-needs-layer-bounds")?;
     let local = |point: [f64; 2]| [point[0] * size[0], point[1] * size[1]];
-    if legacy_pair {
-        use crate::gradient_blur::{TwoEndAdmission, admit_two_end_progressive};
-        let at = |t: f64| local([from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t]);
-        if let Ok(TwoEndAdmission::Ramp(params)) = admit_two_end_progressive(
-            at(first.offset), at(last.offset), first.strength * radius, last.strength * radius,
-        ) {
-            return Ok(SketchProgressiveBlur::Ramp(1., params));
-        }
-    }
     let (start, end) = (local(from), local(to));
     if !start.iter().chain(&end).all(|value| value.abs() <= 1e7) {
         return Err("progressive-blur-endpoints-outside-model");
@@ -1000,6 +981,8 @@ pub(crate) fn sketch_progressive_blur(blur: &Value, size: Option<[f64; 2]>) -> s
     if !(0. ..=1e6).contains(&ellipse) {
         return Err("progressive-blur-ellipse-outside-model");
     }
+    // Sketch evaluates the radius field even with only two stops. A constant
+    // ramp still uses the progressive kernel's narrower support.
     Ok(SketchProgressiveBlur::Ramp(radius, GradientBlurParameters {
         start, end, start_count: 1., end_count: 1., smooth: true,
         sketch: Some(SketchBlurRamp { shape, ellipse, stops: indexed }),
@@ -1007,11 +990,7 @@ pub(crate) fn sketch_progressive_blur(blur: &Value, size: Option<[f64; 2]>) -> s
 }
 
 fn sketch_progressive_note(blur: &Value, size: Option<[f64; 2]>) -> Option<&'static str> {
-    match sketch_progressive_blur(blur, size) {
-        Ok(SketchProgressiveBlur::Uniform(_)) => Some("progressive-background-blur-equal-radii-kept-uniform"),
-        Err(note) => Some(note),
-        Ok(_) => None,
-    }
+    sketch_progressive_blur(blur, size).err()
 }
 
 fn sketch_zoom_parameters(blur:&Value)->Option<crate::zoom_blur::ZoomBlur> {
@@ -1667,7 +1646,6 @@ impl<'a> Importer<'a> {
                 let mut gradient_blur = None;
                 if matches!(kind, "background-blur" | "gaussian-blur") {
                     match sketch_progressive_blur(blur, size) {
-                        Ok(SketchProgressiveBlur::Uniform(value)) => radius = value,
                         Ok(SketchProgressiveBlur::Ramp(value, params)) => {
                             radius = value;
                             gradient_blur = Some(params);
@@ -5571,9 +5549,9 @@ fn export_paint(
 // and the fig2sketch sketchformat sources)
 // ---------------------------------------------------------------------------
 
-/// `Some(true)` is an exact inverse of the two-stop importer (base radius 1,
-/// smooth tier). A portable projection uses the actual filter support; the
-/// FD receipt preserves authored strengths, radius and blend tier.
+/// `Some(true)` preserves the native Sketch ramp. Other progressive
+/// effects use a portable projection and keep their authored model in the
+/// round-trip receipt.
 fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size: [f64; 2]) -> Option<bool> {
     let gradient = effect.gradient_blur.as_ref()?;
     if !(size[0] > 0. && size[1] > 0. && size.iter().all(|value| value.is_finite())) {
@@ -5593,10 +5571,7 @@ fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size:
             "elipseLength": ramp.ellipse,
             "from": point(gradient.start), "to": point(gradient.end), "stops": stops,
         });
-        // A linear two-stop archive may reopen through the legacy projection.
-        // Retain the FD receipt to recover the currently authored model.
-        return Some(ramp.shape == crate::scene::BlurRampShape::Radial
-            || effect.kind == "gaussian-blur" || ramp.stops.len() > 2);
+        return Some(true);
     }
     let max_count = gradient.start_count.max(gradient.end_count);
     let radius = effect.backdrop_radius();
@@ -5629,11 +5604,7 @@ fn attach_sketch_progressive_background(blur: &mut Value, effect: &Effect, size:
         "from": point(from), "to": point(to),
         "stops": [stop(0., gradient.start_count / max_count), stop(1., gradient.end_count / max_count)]
     });
-    let exact = effect.radius == 1. && matches!(
-        crate::gradient_blur::admit_two_end_progressive(gradient.start, gradient.end, gradient.start_count, gradient.end_count),
-        Ok(crate::gradient_blur::TwoEndAdmission::Ramp(params)) if params == *gradient
-    );
-    Some(exact)
+    Some(false)
 }
 
 fn sketch_blur_with_progressive(effect: &Effect, size: [f64; 2]) -> (Value, Option<bool>) {
@@ -9215,6 +9186,34 @@ fn import_fig_via_converter_at(bytes: &[u8], helper: &std::path::Path) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sketch_two_stop_background_blur_keeps_the_progressive_kernel() {
+        for strengths in [[0., 1.], [0.5, 0.5]] {
+            let blur = json!({
+                "type": 3, "isProgressive": true, "radius": 12.,
+                "gradient": {
+                    "gradientType": 0, "from": "{0.5, 0}", "to": "{0.5, 1}",
+                    "stops": [
+                        {"position": 0, "color": {"alpha": strengths[0]}},
+                        {"position": 1, "color": {"alpha": strengths[1]}}
+                    ]
+                }
+            });
+            let SketchProgressiveBlur::Ramp(radius, gradient) =
+                sketch_progressive_blur(&blur, Some([160., 120.])).unwrap()
+            else {
+                panic!("Sketch's progressive backdrop must retain a ramp");
+            };
+            assert_eq!(radius, 12.);
+            assert_eq!(gradient.start, [80., 0.]);
+            assert_eq!(gradient.end, [80., 120.]);
+            let ramp = gradient.sketch.expect("native Sketch filter");
+            assert_eq!(ramp.shape, crate::scene::BlurRampShape::Linear);
+            let stops = ramp.stops.iter().map(|stop| (stop.offset, stop.strength)).collect::<Vec<_>>();
+            assert_eq!(stops, [(0., strengths[0]), (1., strengths[1])]);
+        }
+    }
     #[test]
     fn large_source_boolean_is_bounded_for_render_and_exports_original_hierarchy() {
         for code in 0..4 {
