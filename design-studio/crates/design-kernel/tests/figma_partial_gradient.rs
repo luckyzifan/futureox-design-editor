@@ -137,10 +137,10 @@ fn partial_opacity_linear_gradient_matches_frozen_chrome_png() {
                 .all(|(_, pixels, max)| *pixels == 0 && *max == 0),
         "linear-gradient {linear:?}"
     );
-    // The output-cell tent improves both manifest entries for the same
-    // frozen shadow PNG, from 429 differing pixels to 307 at max error 1.
+    // The half-code resolve improves the half-pixel layer-blur exports at
+    // 1×, 2× and 4×. The eight rows include identical manifest copies.
     assert_eq!(
-        others_sha, "35555a29e21ffa982b35e864d38dcf6154a688d222ca9a8bcae79ce75a45e018",
+        others_sha, "ba6193b51a954a888ff5e41bea3d5a04be4752ecec8b1b2d03d19a8498df1335",
         "other frozen figma references moved"
     );
 }

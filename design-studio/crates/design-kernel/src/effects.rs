@@ -548,42 +548,70 @@ fn tent_blur_impl(
 }
 
 /// One device-pixel tent has separable integer weights [1, 4, 1]/6.
-/// Keep the normal per-pass bytes except for exact half-codes that are
-/// constant on an entire export pair. Use the original source to prove the
-/// tie, so the rounding is independent of float error and memory pressure.
+/// The two byte-rounded passes can lose an exact half-code before the 2×2
+/// export resolve. Lift those ties only when the resolved byte then equals
+/// the half-up mean of the unrounded tent. Keep separate samples for clips
+/// and later paint, which can cover any subset of the 2×2 group.
 pub(crate) fn figma_portable_layer_blur(source: Surface) -> Result<Surface, String> {
     let mut quantized = portable_tent_blur_edge(&source, 1., false)?;
     let rect = source.rect;
     let pair_start = |edge: i32| edge + edge.rem_euclid(2);
-    let numerator = |x: i32, y: i32| {
-        let mut result = [0u32; 4];
-        for (dy, wy) in [(-1, 1), (0, 4), (1, 1)] {
-            for (dx, wx) in [(-1, 1), (0, 4), (1, 1)] {
-                let rgba = source.at(x + dx, y + dy).0;
-                for (channel, value) in result.iter_mut().zip(rgba) {
-                    *channel += (value.clamp(0., 1.) * 255.).round_ties_even() as u32 * wx * wy;
-                }
-            }
-        }
-        result
+    let bytes = |pixel: Pixel| pixel.0.map(|v| (v.clamp(0., 1.) * 255.).round_ties_even() as u32);
+    let tent = |a: [u32; 4], b: [u32; 4], c: [u32; 4]| {
+        std::array::from_fn(|i| a[i] + 4 * b[i] + c[i])
+    };
+    let resolve = |sum| {
+        crate::figma_sampling::encode_unorm8(crate::figma_sampling::normalize_q4(sum * 4))
     };
     for y in (pair_start(rect.y)..rect.bottom() - 1).step_by(2) {
+        crate::render_cancellation::checkpoint()?;
         for x in (pair_start(rect.x)..rect.right() - 1).step_by(2) {
-            let base = numerator(x, y);
-            let lift = base.map(|value| value % 72 == 18);
-            if !lift.into_iter().any(|channel| channel)
-                || numerator(x + 1, y) != base
-                || numerator(x, y + 1) != base
-                || numerator(x + 1, y + 1) != base
-            {
+            let taps = [-1, 0, 1, 2].map(|dy| [-1, 0, 1, 2].map(|dx| source.at(x + dx, y + dy)));
+            // A uniform neighborhood stays at its exact byte in both passes.
+            if taps.iter().flatten().all(|p| p.0 == taps[0][0].0) {
                 continue;
             }
-            for (px, py) in [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)] {
-                let pixel = &mut quantized.pixels[rect.index(px, py).expect("complete export pair")];
-                for channel in 0..4 {
-                    if lift[channel] {
-                        pixel.0[channel] = (base[channel] / 36 + 1) as f32 / 255.;
+            let [above, top, bottom, below] = taps.map(|row| {
+                let [a, b, c, d] = row.map(bytes);
+                [tent(a, b, c), tent(b, c, d)]
+            });
+            let numerators = [
+                tent(above[0], top[0], bottom[0]),
+                tent(above[1], top[1], bottom[1]),
+                tent(top[0], bottom[0], below[0]),
+                tent(top[1], bottom[1], below[1]),
+            ];
+            let indices = [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)]
+                .map(|(px, py)| rect.index(px, py).expect("complete export pair"));
+            let original = indices.map(|i| bytes(quantized.pixels[i]));
+            let mut corrected = original;
+            for channel in 0..4 {
+                let exact = numerators.map(|n| n[channel]);
+                let rounded = original.map(|b| b[channel]);
+                let lift = std::array::from_fn::<_, 4, _>(|i| {
+                    u32::from(exact[i] % 72 == 18 && rounded[i] == exact[i] / 36)
+                });
+                let added = lift.iter().sum::<u32>();
+                if added == 0 {
+                    continue;
+                }
+                let target = ((exact.iter().sum::<u32>() + 72) / 144) as u8;
+                let sum = rounded.iter().sum::<u32>();
+                if resolve(sum) < target && resolve(sum + added) == target {
+                    for (pixel, increment) in corrected.iter_mut().zip(lift) {
+                        pixel[channel] += increment;
                     }
+                }
+            }
+            for (i, (before, mut after)) in
+                indices.into_iter().zip(original.into_iter().zip(corrected))
+            {
+                if after != before {
+                    let alpha = after[3];
+                    for color in &mut after[..3] {
+                        *color = (*color).min(alpha);
+                    }
+                    quantized.pixels[i] = Pixel(after.map(|code| code as f32 / 255.));
                 }
             }
         }

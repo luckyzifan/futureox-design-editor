@@ -120,13 +120,13 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p5-1x",
-            18usize,
+            16usize,
             1u8,
         ),
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p25-2x",
-            364,
+            42,
             1,
         ),
         (
@@ -156,7 +156,7 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         (
             "frontend/design-client/public/fidelity/blur-threshold-2026-10-08/cases.json",
             "BlurThreshold-0p125-4x",
-            896,
+            234,
             1,
         ),
         (
@@ -186,7 +186,7 @@ fn issue_282_frozen_layer_blur_references_do_not_regress() {
         (
             "frontend/design-client/public/fidelity/combined-2026-10-08/cases.json",
             "BlurQA-0p5",
-            18,
+            16,
             1,
         ),
         (
@@ -326,6 +326,27 @@ fn later_opaque_cover_of_one_device_sample_does_not_see_a_flattened_pair() {
         [255, 0, 0, 255],
         "opaque later layer must replace the blur"
     );
+}
+
+#[test]
+fn corrected_varying_pair_keeps_each_device_sample() {
+    let mut scene = blur_scene(false);
+    scene["nodes"]["bar"]["width"] = json!(2);
+    let plain = render_figma(scene.clone(), 128, 128, 1., false);
+    assert_eq!(pixel(&plain, 128, 63, 50), [234, 234, 234, 255]);
+
+    scene["nodes"]["frame"]["children"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("cover"));
+    scene["nodes"]["cover"] = json!({
+        "id": "cover", "kind": "rectangle", "width": 0.5, "height": 20,
+        "transform": [1, 0, 0, 1, 63.5, 40],
+        "fills": [{"kind": "solid", "color": "#ff0000", "opacity": 1}]
+    });
+    let covered = render_figma(scene, 128, 128, 1., false);
+    // Red covers only the 255 sample. The other keeps its corrected 213.
+    assert_eq!(pixel(&covered, 128, 63, 50), [234, 107, 107, 255]);
 }
 
 #[test]
