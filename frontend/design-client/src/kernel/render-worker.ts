@@ -68,7 +68,7 @@ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../docume
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
 import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
-import { interactionPatchTransforms, isBitmapPoseLayer, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
+import { expandBitmapRotationPatch, interactionPatchTransforms, isBitmapPoseLayer, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
@@ -216,8 +216,8 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   navigationJournal.record(4, { sequence })
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
-function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal) {
-  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal)).consume())
+function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, curvePrograms=false) {
+  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal, curvePrograms)).consume())
 }
 let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
@@ -555,6 +555,8 @@ function schedulePose(){
           !session.scene.interactionLocalFootprint
         const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
           !session.scene.interactionLocalFootprint&&ownsSelection
+        const bitmapTerminal = fullNativePose && session.affine && ids.length===1 &&
+          isBitmapPoseLayer(session.baseDocument.nodes[ids[0]])
         // A native absolute pose can replace queued work while the previous
         // accepted viewport remains visible. Submitted GPU work still fences.
         terminalMaySupersede||=fullNativePose||viewportPatch
@@ -647,7 +649,7 @@ function schedulePose(){
             }
             if(!current())continue
             const compileStarted=performance.now()
-            const compile=()=>compilePacket(kernel,session.options,session.controller.signal)
+            const compile=()=>compilePacket(kernel,session.options,session.controller.signal,bitmapTerminal)
             packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
             if(!current())continue
             poseCompileMs=performance.now()-compileStarted
@@ -708,8 +710,6 @@ function schedulePose(){
           // A private Sketch mask can decline the JS patch session. The full
           // native bitmap capture still proves coverage and can overlap its
           // next exact compile while the previous pose is on the GPU.
-          const bitmapTerminal = fullNativePose && session.affine && ids.length===1 &&
-            isBitmapPoseLayer(session.baseDocument.nodes[ids[0]])
           const openTerminalPreparation = poseKernel && !pose.terminal &&
             (bitmapTerminal || session.affine && localTerminal || fullNativePose && session.patch)
             ? () => {
@@ -726,7 +726,7 @@ function schedulePose(){
                   work.mutated=true
                   if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
                   const at=performance.now()
-                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal))
+                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,bitmapTerminal))
                   return {packet,compileMs:performance.now()-at}
                 }
                 ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
@@ -1356,7 +1356,11 @@ self.onmessage = (e) => {
         laneState.authoredSnapshot = undefined
         if (request.baseDocumentRevision !== laneState.loadedRevision)
           throw new Error('文档补丁版本未同步，请重试当前画布')
-        const patch = failureAttempt(4, () => JSON.parse(request.documentPatch)) as DocumentPatch
+        const bitmapRotation = channel==='canvas' && request.bitmapRotation === true
+        const patch = failureAttempt(4, () => {
+          const value = JSON.parse(request.documentPatch)
+          return bitmapRotation ? expandBitmapRotationPatch(laneState.interactionDocument, value) : value as DocumentPatch
+        })
         if (laneState.interactionDocument) {
           const next = failureAttempt(4, () => applyDocumentPatch(laneState.interactionDocument!, patch))
           if (retainInteraction && !interactionNative && laneState.compiledScene?.revision === laneState.loadedRevision) {
@@ -1400,7 +1404,8 @@ self.onmessage = (e) => {
         }
         const nativePose = !!transforms && await kernel.apply_interaction_transforms(JSON.stringify(transforms))
         const damage = nativePose ? settledPoseDamage(localPose) : defer ? { full: true, bounds: null, reason: 'transient-translation' } :
-          JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch, canGuard ? request.patchBaseReceipt : undefined).catch(error => {
+          JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch,
+            canGuard ? request.patchBaseReceipt : undefined, bitmapRotation ? patch : undefined).catch(error => {
             if (canGuard) laneState.interactionDocument = priorAuthoredDocument
             throw error
           })) as {full:boolean;translationOnly?:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}

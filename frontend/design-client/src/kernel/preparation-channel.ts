@@ -16,7 +16,7 @@ export class PreparationChannel {
   private sequence = 0
   private operationSequence = 0
   private receipts = new Map<string, PreparationStateReceiptV1>()
-  private capability?: Promise<{ emptyDeltaDerivation: boolean; guardedPatchReceiptV1: boolean; nativeSourceSnapshot: boolean }>
+  private capability?: Promise<{ emptyDeltaDerivation: boolean; guardedPatchReceiptV1: boolean; nativeSourceSnapshot: boolean; bitmapRotationPatch: boolean }>
   private static mutates(method: PreparationMethod) {
     return ['initialize', 'load_document', 'load_source_snapshot', 'apply_document_patch_with_damage', 'apply_interaction_transforms', 'derive_document_v1'].includes(method)
   }
@@ -28,17 +28,22 @@ export class PreparationChannel {
   }
   private capabilities() {
     return this.capability ??= this.request('canvas', 'preparation_capabilities_v1').then(reply => {
-      const value = reply.value as { protocol?: unknown; emptyDeltaDerivation?: unknown; guardedPatchReceiptV1?: unknown; nativeSourceSnapshot?:unknown } | undefined
+      const value = reply.value as { protocol?: unknown; emptyDeltaDerivation?: unknown; guardedPatchReceiptV1?: unknown;
+        nativeSourceSnapshot?:unknown; bitmapRotationPatch?:unknown } | undefined
       return { emptyDeltaDerivation: value?.protocol === 1 && value.emptyDeltaDerivation === true,
         guardedPatchReceiptV1: value?.protocol === 1 && value.guardedPatchReceiptV1 === true,
-        nativeSourceSnapshot:value?.protocol===1&&value.nativeSourceSnapshot===true }
-    }, () => ({ emptyDeltaDerivation: false, guardedPatchReceiptV1: false, nativeSourceSnapshot:false }))
+        nativeSourceSnapshot:value?.protocol===1&&value.nativeSourceSnapshot===true,
+        bitmapRotationPatch:value?.protocol===1&&value.bitmapRotationPatch===true }
+    }, () => ({ emptyDeltaDerivation: false, guardedPatchReceiptV1: false, nativeSourceSnapshot:false, bitmapRotationPatch:false }))
   }
   supportsDerivation(): Promise<boolean> { return this.capabilities().then(value => value.emptyDeltaDerivation) }
   supportsGuardedPatch(): Promise<boolean> { return this.capabilities().then(value => value.guardedPatchReceiptV1) }
   supportsNativeSource(): Promise<boolean> { return this.capabilities().then(value => value.nativeSourceSnapshot) }
+  supportsBitmapRotationPatch(): Promise<boolean> { return this.capabilities().then(value => value.bitmapRotationPatch) }
   private static guardedPatch(job: Pick<Job, 'method' | 'args'>) {
-    return job.method === 'apply_document_patch_with_damage' && job.args.length === 2
+    if (job.method !== 'apply_document_patch_with_damage' || job.args.length!==2) return false
+    const options = job.args[1] as { bitmapRotation?: boolean; expectedBaseReceipt?: unknown } | undefined
+    return options?.bitmapRotation !== true || Object.hasOwn(options, 'expectedBaseReceipt')
   }
   nextDerivationOperation() { return ++this.operationSequence }
   private readonly originChannelId = (() => { const words = crypto.getRandomValues(new Uint32Array(2)); return (words[0] & 0xffff) * 0x100000000 + words[1] })()

@@ -10,6 +10,17 @@ const byteEstimates = new WeakMap<Uint8Array, number>()
 type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVersion:number;
   scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number}>
 
+function copyProgramStorage(scene: GpuScene) {
+  const vertices = scene.vertices, curves = scene.curves
+  if (!(vertices instanceof Float32Array) || !(curves instanceof Float32Array)) throw Error('Unpacked scene geometry')
+  const geometry = new Uint8Array(vertices.buffer, vertices.byteOffset, vertices.byteLength + curves.byteLength).slice()
+  const copied = { ...scene,
+    vertices: new Float32Array(geometry.buffer, 0, vertices.length),
+    curves: new Float32Array(geometry.buffer, vertices.byteLength, curves.length) }
+  bindSourcePrograms(copied)
+  return { geometry, copied }
+}
+
 /** CPU-only handoff after resource validation. Unlike a transport packet this
  * cannot be posted to another process: it holds the materialized scene and its
  * exact witness, without retaining/copying already-owned resource bodies. */
@@ -20,10 +31,8 @@ export class CompiledScenePacket {
     let scene=decodeScenePacket(bytes),witness=scenePacketWitness(bytes)
     const h=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
     if(independent){
-      const start=Math.ceil((24+h.getUint32(8,true))/4)*4,nv=h.getUint32(12,true),nc=h.getUint32(16,true)
-      const geometry=bytes.slice(start,start+(nv+nc)*4)
-      scene={...scene,vertices:new Float32Array(geometry.buffer,0,nv),curves:new Float32Array(geometry.buffer,nv*4,nc)}
-      bindSourcePrograms(scene)
+      const { geometry, copied } = copyProgramStorage(scene)
+      scene = copied
       witness=witness instanceof Uint8Array?witness.slice():segmentedWitness([witness.parts[0],geometry])
     }
     return new CompiledScenePacket(scene,witness,Object.freeze({scenePacketProtocol:2,scenePacketVersion:h.getUint32(4,true),
@@ -55,7 +64,7 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
   const start=Math.ceil((24+metadataLength)/4)*4,resourceStart=start+(nv+nc)*4
   if(resourceStart+payload!==bytes.length)throw Error('Invalid GPU scene packet length')
   const metadata=decodeFrameValue(bytes.subarray(24,24+metadataLength))
-  const {resourceScope,frameSequence,nodeResources,scenePlan,...fields}=metadata
+  const {resourceScope,frameSequence,nodeResources,scenePlan,curveResources,...fields}=metadata
   if(typeof resourceScope!=='string'||!Number.isSafeInteger(frameSequence)||frameSequence<=0||!Array.isArray(nodeResources)||
       ![7,8].includes(fields.version)||!Array.isArray(fields.roots))throw Error('Invalid frame scene metadata')
   const incoming=new Map<number,FrameResource>(), priorResources=resourceScope&&lease?.scope===resourceScope?lease.entries:undefined
@@ -111,13 +120,33 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
   Object.freeze(nodes)
   // One independent program allocation replaces the old eager full-geometry
   // witness copy. Long-lived scenes cannot retain inline image/resource bodies.
-  const geometry=bytes.slice(start,resourceStart)
+  let geometry:Uint8Array<ArrayBuffer>, curveWords = nc
+  if (curveResources === undefined) geometry = bytes.slice(start, resourceStart)
+  else {
+    if (!resourceScope || nc !== 0 || !Number.isSafeInteger(curveResources?.words) || curveResources.words <= 0 ||
+        curveResources.words > 8_000_000 || !Array.isArray(curveResources.ids) || !curveResources.ids.length)
+      throw Error('Invalid frame curve resources')
+    const programs = curveResources.ids.map((id:number)=>resource(id,4).data)
+    const curveBytes = programs.reduce((total:number, program:Uint8Array)=>total+program.byteLength,0)
+    curveWords=curveResources.words
+    if (curveBytes!==curveWords*4) throw Error('Frame curve length changed')
+    geometry = new Uint8Array(nv*4+curveBytes)
+    geometry.set(bytes.subarray(start,resourceStart))
+    let offset=nv*4
+    for (const program of programs) {
+      geometry.set(program,offset)
+      offset+=program.byteLength
+    }
+  }
   const scene={...fields,nodes,vertices:new Float32Array(geometry.buffer,geometry.byteOffset,nv),
-    curves:new Float32Array(geometry.buffer,geometry.byteOffset+nv*4,nc)} as GpuScene
+    curves:new Float32Array(geometry.buffer,geometry.byteOffset+nv*4,curveWords)} as GpuScene
   bindSourcePrograms(scene)
   bindScenePlan(scene,immutable(resource(scenePlan,3).value) as NativeScenePlan)
   // No partial dictionary publication on malformed data or missing dependencies.
-  if(store&&lease){store.commit(resourceScope,incoming,lease);for(const id of used)if(lease.scope===resourceScope&&lease.entries.has(id))store.touch(id)}
+  if(store&&lease){
+    store.commit(resourceScope,incoming,lease,curveResources===undefined?undefined:new Set<number>(curveResources.ids))
+    for(const id of used)if(lease.scope===resourceScope&&lease.entries.has(id))store.touch(id)
+  }
   decoded.set(input,scene)
   // Exact tile equivalence excludes retransmitted resource bodies, but includes
   // the producer scope and immutable logical IDs that prove their identity.
@@ -135,11 +164,8 @@ export function scenePacketWitness(bytes:ScenePacket){return bytes instanceof Co
 export function copyScenePacket(input:Uint8Array):Uint8Array {
   const copy=input.slice(),scene=decoded.get(input)
   if(scene){
-    const header=new DataView(copy.buffer),start=Math.ceil((24+header.getUint32(8,true))/4)*4
-    const vertices=header.getUint32(12,true),curves=header.getUint32(16,true)
-    const geometry=copy.slice(start,start+(vertices+curves)*4)
-    const copied={...scene,vertices:new Float32Array(geometry.buffer,0,vertices),curves:new Float32Array(geometry.buffer,vertices*4,curves)}
-    bindSourcePrograms(copied); decoded.set(copy,copied)
+    const { geometry, copied } = copyProgramStorage(scene)
+    decoded.set(copy,copied)
     const witness=witnesses.get(input);if(witness)witnesses.set(copy,witness instanceof Uint8Array?copy:segmentedWitness([witness.parts[0],geometry]))
     const estimate = byteEstimates.get(input)
     if (estimate !== undefined) byteEstimates.set(copy, estimate)

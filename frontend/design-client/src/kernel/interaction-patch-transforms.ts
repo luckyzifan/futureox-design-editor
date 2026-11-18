@@ -1,5 +1,6 @@
 import type { DesignDocument, DesignNode, Matrix } from '../model'
 import { equalValue, type DocumentPatch } from '../document-patch'
+import { supportsExactTransformPatch } from './authored-patch-transition'
 
 /** Rendering-lane optimization only. Native validates semantic dependency and
  * transform admission; a miss takes the ordinary authoritative patch route. */
@@ -31,6 +32,26 @@ export function isBitmapPoseLayer(node: DesignNode | undefined): boolean {
   return !!node && node.children.length === 0 &&
     node.fills.some(fill => fill.visible && fill.kind === 'image') &&
     node.effects.every(effect => !effect.visible || effect.kind === 'color-controls')
+}
+
+export function bitmapRotationPatch(before: DesignDocument, patch: DocumentPatch) {
+  const ids = Object.keys(patch.nodes)
+  if (ids.length !== 1 || !supportsExactTransformPatch(before, patch)) return
+  const [id] = ids, old = before.nodes[id], next = patch.nodes[id]
+  if (next && isBitmapPoseLayer(old) && next.transform.slice(0, 4).some((value, i) => !Object.is(value, old.transform[i])))
+    return { [id]: next.transform }
+}
+
+export function expandBitmapRotationPatch(before: DesignDocument | undefined, transforms: unknown): DocumentPatch {
+  if (!before || !transforms || typeof transforms !== 'object' || Array.isArray(transforms)) throw Error('Invalid bitmap rotation patch')
+  const entries = Object.entries(transforms)
+  if (entries.length !== 1) throw Error('Invalid bitmap rotation patch')
+  const [[id, transform]] = entries
+  const old = Object.hasOwn(before.nodes, id) ? before.nodes[id] : undefined
+  if (!old || !isBitmapPoseLayer(old) || !Array.isArray(transform) || transform.length !== 6 ||
+      !transform.every(Number.isFinite) || transform.slice(0, 4).every((value, i) => Object.is(value, old.transform[i])))
+    throw Error('Invalid bitmap rotation patch')
+  return { nodes: { [id]: { ...old, transform: transform as Matrix } }, fields: {} }
 }
 
 /** Only an authored translation, with its source paint and parent graph

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, effect, node, paint, stroke, type Matrix } from '../model'
 import { applyDocumentPatch, type DocumentPatch } from '../document-patch'
-import { interactionPatchTransforms, isBitmapTranslationPatch, isInnerShadowPosePatch } from './interaction-patch-transforms'
+import { bitmapRotationPatch, expandBitmapRotationPatch, interactionPatchTransforms, isBitmapTranslationPatch, isInnerShadowPosePatch } from './interaction-patch-transforms'
 
 test('pose admission compares normalized authored paints and still rejects actual edits', () => {
   const before=blank(), path=node('vector',0,0,32,32), id=path.id
@@ -39,4 +39,20 @@ test('viewport commit admission accepts only one pure bitmap translation', () =>
     const change = { fields: {}, nodes: { [image.id]: edited } } as DocumentPatch
     expect(isBitmapTranslationPatch(before, applyDocumentPatch(before, change), change)).toBe(false)
   }
+})
+
+test('a compact bitmap rotation reconstructs the original patch only for a changed affine matrix', () => {
+  const before = blank(), image = node('rectangle', 0, 0, 200, 180)
+  image.fills = [{ ...paint('#ffffff'), kind: 'image', image: 'test-bitmap' }]
+  before.nodes[image.id] = image
+  const transform: Matrix = [.8, .6, -.6, .8, 10, 14]
+  const changed = { ...image, transform }
+  const patch = { nodes: { [image.id]: changed }, fields: {} }
+  const compact = bitmapRotationPatch(before, patch)
+  expect(compact).toEqual({ [image.id]: transform })
+  expect(expandBitmapRotationPatch(before, compact)).toEqual(patch)
+  expect(bitmapRotationPatch(before, { nodes: { [image.id]: { ...changed, opacity: .5 } }, fields: {} })).toBeUndefined()
+  expect(bitmapRotationPatch(before, { nodes: { [image.id]: changed }, fields: { name: 'changed' } })).toBeUndefined()
+  expect(() => expandBitmapRotationPatch(before, { [image.id]: [1, 0, 0, 1, 10, 14] })).toThrow('Invalid bitmap rotation')
+  expect(() => expandBitmapRotationPatch(before, { unknown: transform })).toThrow('Invalid bitmap rotation')
 })

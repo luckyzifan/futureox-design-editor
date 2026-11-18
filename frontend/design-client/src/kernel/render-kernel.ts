@@ -11,6 +11,7 @@ import { FrameResources } from './gpu/frame-resources'
 import { decodeScenePacket, copyScenePacket, CompiledScenePacket } from './gpu/scene-packet'
 import { PreparedPacket, waitForPacket } from './prepared-packet'
 import { canRebuildImageDecoder } from './image-decode-recovery'
+import type { DocumentPatch } from '../document-patch'
 export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string;nodes:number}
 
 /** The GPU worker keeps only the image decoder on its synchronous boundary.
@@ -156,18 +157,22 @@ export class RenderKernel {
       return identity
     }finally{this.pendingMutations--}
   }
-  async apply_document_patch_with_damage(value: string, expectedBaseReceipt?: PreparationStateReceiptV1) {
+  async apply_document_patch_with_damage(value: string, expectedBaseReceipt?: PreparationStateReceiptV1,
+    expandedBitmapPatch?: DocumentPatch) {
     if (expectedBaseReceipt && !await this.supportsAcknowledgedPatches()) throw Error('PATCH_GUARD_UNSUPPORTED')
+    const compact = !!expandedBitmapPatch && !!await this.preparation?.supportsBitmapRotationPatch()
+    const patch = expandedBitmapPatch && !compact ? JSON.stringify(expandedBitmapPatch) : value
+    const options = { ...(expectedBaseReceipt ? { expectedBaseReceipt } : {}), ...(compact ? { bitmapRotation: true } : {}) }
     const previousPixelOwner=this.contentOwner
     this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
     const mutationRevision=this.revision
     try {
-      const result = await this.call<string>('apply_document_patch_with_damage', expectedBaseReceipt ? [value, { expectedBaseReceipt }] : [value])
+      const result = await this.call<string>('apply_document_patch_with_damage', expectedBaseReceipt || compact ? [patch, options] : [patch])
       let samePixels=false
       try{
         const damage=JSON.parse(result) as PaintDamage
         samePixels=damage.full===false&&damage.bounds==null&&(!damage.rects||Array.isArray(damage.rects)&&damage.rects.length===0)&&
-          Object.keys((JSON.parse(value) as {fields?:object}).fields||{}).every(key=>key==='name')
+          Object.keys((JSON.parse(patch) as {fields?:object}).fields||{}).every(key=>key==='name')
       }catch{ /* An unavailable optional proof never authorizes pixel reuse. */ }
       // Native no-paint proof can preserve existing pixels across names and
       // inert node metadata. Keep transport revisions/resources independent;
@@ -182,9 +187,9 @@ export class RenderKernel {
   async compile_gpu_packet(options: string, signal?: AbortSignal) {
     return this.compileOwned(options,signal,(bytes,shared)=>shared?copyScenePacket(bytes):bytes)
   }
-  private async compileOwned<T>(options:string,signal:AbortSignal|undefined,own:(bytes:Uint8Array,shared:boolean)=>T):Promise<T> {
+  private async compileOwned<T>(options:string,signal:AbortSignal|undefined,own:(bytes:Uint8Array,shared:boolean)=>T,curvePrograms=false):Promise<T> {
     if (signal?.aborted) throw Error('PREVIEW_CANCELLED')
-    const enabled = !!this.preparation
+    const enabled = !!this.preparation && !curvePrograms
     const revision = this.revision
     const pending = enabled && !this.pendingMutations ? this.pendingPackets.get(options) : undefined
     if (pending?.revision === revision) {
@@ -194,7 +199,7 @@ export class RenderKernel {
       // Each waiter needs independent ownership, including before cache admission.
       return own(await waitForPacket(pending.bytes, signal),true)
     }
-    const entry = { revision, bytes: this.compileFrame(options, revision, signal), shared: false }
+    const entry = { revision, bytes: this.compileFrame(options, revision, signal, curvePrograms), shared: false }
     // A cancellable physical compile cannot be the shared owner of an exact
     // request (or another preview owner). Only noncancellable jobs are shared.
     if (enabled && !this.pendingMutations && !signal) this.pendingPackets.set(options, entry)
@@ -215,10 +220,10 @@ export class RenderKernel {
     if (!current()) throw Error('STALE_PREPARED_PACKET')
     return new PreparedPacket({ lane: this.lane, revision, options, settings }, bytes, current, signal)
   }
-  async prepare_gpu_scene(options: string, signal?: AbortSignal): Promise<PreparedPacket<CompiledScenePacket>> {
+  async prepare_gpu_scene(options: string, signal?: AbortSignal, curvePrograms=false): Promise<PreparedPacket<CompiledScenePacket>> {
     if(this.pendingMutations)throw Error('DOCUMENT_PREPARATION_PENDING')
     const revision=this.revision,settings=this.settings
-    const scene=await this.compileOwned(options,signal,(bytes,shared)=>CompiledScenePacket.from(bytes,shared))
+    const scene=await this.compileOwned(options,signal,(bytes,shared)=>CompiledScenePacket.from(bytes,shared),curvePrograms)
     const current=()=>revision===this.revision&&!this.pendingMutations&&settings===this.settings
     if(!current())throw Error('STALE_PREPARED_PACKET')
     return new PreparedPacket({lane:this.lane,revision,options,settings},scene,current,signal)
@@ -233,10 +238,11 @@ export class RenderKernel {
     try { return await this.call<boolean>('apply_interaction_transforms', [value]) }
     finally { this.pendingMutations-- }
   }
-  private async compileFrame(options:string, revision:number, signal?:AbortSignal) {
+  private async compileFrame(options:string, revision:number, signal?:AbortSignal, curvePrograms=false) {
     const lease=this.resources.capture(),owner=this.contentOwner
     try {
-      const request=JSON.stringify({...JSON.parse(options),frameResources:lease.acknowledgement})
+      const frameResources = curvePrograms ? { ...lease.acknowledgement, curvePrograms: true } : lease.acknowledgement
+      const request=JSON.stringify({...JSON.parse(options),frameResources})
       const bytes=await this.call<Uint8Array>('compile_gpu_packet',[request],signal)
       const scene=decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)
       bindContentOwner(scene,owner,pixelSourceContract(JSON.parse(options)))

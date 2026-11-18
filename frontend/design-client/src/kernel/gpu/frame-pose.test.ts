@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import { VectorEngine } from '../../generated/design-kernel/design_kernel'
 import { blank, node, paint } from '../../model'
 import { FrameResources } from './frame-resources'
-import { decodeScenePacket } from './scene-packet'
+import { CompiledScenePacket, copyScenePacket, decodeScenePacket } from './scene-packet'
 
 test('incremental native poses and camera changes reconstruct the full exact packet', () => {
   const doc = blank(), shape = node('ellipse', 12.25, 8.125, 42, 30)
@@ -54,4 +54,47 @@ test('omitted resources require the exact acknowledged producer scope and can re
     const next=resources.capture()
     try{expect(()=>decodeScenePacket(kernel.compile_gpu_packet(JSON.stringify({...options,frameResources:next.acknowledgement})),resources,next)).not.toThrow()}finally{next.release()}
   }finally{kernel.free()}
+})
+
+test('an affine pose reuses acknowledged curve programs and reconstructs their exact relocation', () => {
+  const kernel = new VectorEngine(), resources = new FrameResources()
+  const doc = blank(), page = doc.pages[0]
+  const moving = node('ellipse', 12, 18, 46, 25)
+  for (const shape of [moving, ...Array.from({ length: 8 }, (_, i) =>
+    node('ellipse', 70 + i * 8, 12 + i * 7, 34 - i, 37 + i))]) {
+    shape.fills = [paint('#2244bb')]
+    doc.nodes[shape.id] = shape
+    page.children.push(shape.id)
+  }
+  const options = { pageId: page.id, width: 160, height: 128, rasterProfile: 'analytic',
+    view: { x: .125, y: .375, zoom: 1 } }
+  try {
+    kernel.load_document(JSON.stringify(doc))
+    kernel.bind_frame_scene_scope('curve-pose')
+    const request = () => {
+      const lease = resources.capture()
+      try {
+        const packet = kernel.compile_gpu_packet(JSON.stringify({
+          ...options, frameResources: { ...lease.acknowledgement, curvePrograms: true },
+        }))
+        return { packet, actual: decodeScenePacket(packet, resources, lease) }
+      } finally { lease.release() }
+    }
+    request()
+    const transform = [.8, .6, -.6, .8, 16, 13]
+    expect(kernel.apply_interaction_transforms(JSON.stringify({ [moving.id]: transform }))).toBe(true)
+    const {packet, actual} = request()
+    const raw = kernel.compile_gpu_packet(JSON.stringify(options))
+    const exact = decodeScenePacket(raw)
+    expect(exact.curves?.length).toBeGreaterThan(0)
+    expect(new DataView(packet.buffer, packet.byteOffset).getUint32(16, true)).toBe(0)
+    expect(actual).toEqual(exact)
+    expect(packet.byteLength).toBeLessThan(raw.byteLength / 2)
+    expect(decodeScenePacket(copyScenePacket(packet))).toEqual(exact)
+    expect(CompiledScenePacket.from(packet, true).scene).toEqual(exact)
+    const missing = packet.slice()
+    expect(() => decodeScenePacket(missing)).toThrow('Missing frame resource')
+    resources.clear()
+    expect(request().actual).toEqual(exact)
+  } finally { kernel.free() }
 })
