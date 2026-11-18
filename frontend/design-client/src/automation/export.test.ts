@@ -18,6 +18,17 @@ function fixture() {
   return { document, frame, text }
 }
 describe('AI-friendly semantic export', () => {
+  it('preserves authored text and identifies the HTML approximation of title case', () => {
+    const { document, text } = fixture()
+    document.schemaVersion = 15
+    text.textStyle = { ...defaultTextStyle(), textCase: 'title' }
+    text.textRuns = [{ start: 0, end: 6, textCase: 'original' }]
+    const result = exportDesignCode(document)
+    expect(result.css).toContain('text-transform:capitalize')
+    expect(result.css).toContain('text-transform:none')
+    expect(result.html).toContain('Native')
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'TEXT_CASE_APPROXIMATION', nodeId: text.id }))
+  })
   it.each(['horizontal', 'grid'] as const)('exports the real %s layout deterministically with complete stable node-ID mappings', kind => {
     const document = layoutFixture(kind), before = JSON.stringify(document)
     const a = exportDesignCode(document), b = exportDesignCode(document)

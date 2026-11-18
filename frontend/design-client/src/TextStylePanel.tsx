@@ -14,7 +14,7 @@ import { FontFaceOptions } from './FontFaceOptions'
 import { defaultTextStyle, defaultSizing, type DesignNode, type TextStyle, type TextParagraph } from './model'
 import type { Editor } from './engine'
 import { NumberField } from './fields'
-import { applyWholeTextStyle, styleTextRange } from './text'
+import { applyWholeTextStyle, styleTextRange, wholeTextCase } from './text'
 import { sourceFonts, storeRemappedSourceFonts } from './font-matching'
 
 /** Comma-separated draft -> string[]; empty items drop at save time only. */
@@ -92,6 +92,7 @@ export function TextStylePanel({
   useLayoutEffect(() => { imports.invalidate(); setDetachFontStyle(false) }, [imports, editor, fontTargetsKey])
   const file = useRef<HTMLInputElement>(null),
     style = { ...defaultTextStyle(), ...node.textStyle }
+  const textCase = wholeTextCase(node)
   // Drafts for the comma-list fields stay local until blur; the effect
   // re-syncs them whenever the committed value moves (undo, other panels).
   const featuresValue = (style.features ?? []).join(',')
@@ -307,6 +308,14 @@ export function TextStylePanel({
           <option value="rtl">{tr("从右到左")}</option>
         </select>
       </label>
+      <label>{tr('文字大小写')}<select aria-label={tr('文字大小写')} value={textCase}
+        onChange={event => update({ textCase: event.target.value as TextStyle['textCase'] })}>
+        {textCase === 'mixed' && <option value="mixed" disabled>{tr('混合')}</option>}
+        <option value="original">{tr('按原文')}</option>
+        <option value="upper">{tr('全部大写')}</option>
+        <option value="lower">{tr('全部小写')}</option>
+        <option value="title">{tr('词首大写')}</option>
+      </select></label>
       <label>{tr("排版走向")}<select
           aria-label={tr("文字排版走向")}
           value={style.writingMode ?? 'horizontal'}

@@ -1,4 +1,4 @@
-import { defaultTextStyle, type DesignDocument, type DesignNode, type TextRun, type TextStyle } from './model'
+import { defaultTextStyle, type DesignDocument, type DesignNode, type TextCase, type TextRun, type TextStyle } from './model'
 import { remapSourceFontRuns, type FontSourceRecord } from './font-matching'
 
 /** Inspector formatting applies to the entire layer; range formatting stays in styleTextRange. */
@@ -14,6 +14,7 @@ export function applyWholeTextStyle(node: DesignNode, patch: Partial<TextStyle>)
   for (const run of node.textRuns || []) {
     if (patch.fontId !== undefined) delete run.fontId
     if (patch.weight !== undefined) delete run.weight
+    if (patch.textCase !== undefined) delete run.textCase
     if (run.paragraph) {
       if (patch.align !== undefined) run.paragraph.align = patch.align
       if (patch.paragraphSpacing !== undefined) run.paragraph.spacing = patch.paragraphSpacing
@@ -21,6 +22,19 @@ export function applyWholeTextStyle(node: DesignNode, patch: Partial<TextStyle>)
       if (patch.lineHeight !== undefined) run.paragraph.minimumLineHeight = run.paragraph.maximumLineHeight = patch.lineHeight * (run.fontSize ?? node.fontSize)
     }
   }
+}
+
+export function wholeTextCase(node: DesignNode): TextCase | 'mixed' {
+  const base = node.textStyle?.textCase ?? 'original'
+  const cases = new Set<TextCase>()
+  let end = 0
+  for (const run of node.textRuns ?? []) {
+    if (run.start > end) cases.add(base)
+    cases.add(run.textCase ?? base)
+    end = run.end
+  }
+  if (end < node.text.length || !cases.size) cases.add(base)
+  return cases.size === 1 ? cases.values().next().value! : 'mixed'
 }
 
 export function setWholeTextFontSize(node: DesignNode, size: number) {

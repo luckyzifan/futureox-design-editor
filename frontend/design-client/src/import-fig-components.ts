@@ -3,7 +3,7 @@ import { defaultLayout, defaultSizing, defaultTextStyle, validNodeTransform } fr
 import type { FigReceipts } from './import-fig-nodes'
 import { figExportSettings } from './import-fig-properties'
 import { figCollectionModes, figReferenceGuid } from './import-fig-document'
-import { figInstanceTextFace, type FigInstanceTextLayout } from './import-fig-text'
+import { figInstanceTextFace, figTextCase, type FigInstanceTextLayout } from './import-fig-text'
 const guid = (g: any): string => typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : ''
 function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,string>): string | boolean {
   if (kind === 'boolean' && typeof value?.boolValue === 'boolean') return value.boolValue
@@ -421,8 +421,8 @@ function applyText(fields: Record<string, unknown>, override: any, target: { tex
     } else warnings?.add('FIG 实例覆盖 paragraphIndent 暂不能执行，其余覆盖已保留')
   }
   if(override.textCase !== undefined) {
-    const mapped: Record<string, 'original' | 'upper' | 'lower'> = { ORIGINAL: 'original', UPPER: 'upper', LOWER: 'lower' }
-    if(mapped[override.textCase]) { style.textCase = mapped[override.textCase]; changed = true }
+    const textCase = figTextCase(override.textCase)
+    if(textCase) { style.textCase = textCase; changed = true }
     else warnings?.add(`FIG 实例覆盖 textCase=${override.textCase} 暂不能执行，其余覆盖已保留`)
   }
   if(override.fontName) {

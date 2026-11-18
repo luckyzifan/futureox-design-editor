@@ -1,5 +1,6 @@
 import type { DesignDocument, Effect, Paint, RulerGuide, Stroke } from './model'
 import { defaultTextStyle } from './model'
+import { figTextCase } from './import-fig-text'
 
 type FigRecord = Record<string, any>
 type Warnings = { add(message: string): unknown }
@@ -75,7 +76,8 @@ function textStyleOf(record: FigRecord) {
   if (record.lineHeight?.units === 'RAW') style.lineHeight = record.lineHeight.value
   if (record.letterSpacing?.units === 'PIXELS') style.letterSpacing = record.letterSpacing.value
   if (record.letterSpacing?.units === 'PERCENT') style.letterSpacing = record.letterSpacing.value * fontSize / 100
-  if (record.textCase === 'UPPER' || record.textCase === 'LOWER') style.textCase = record.textCase.toLowerCase() as 'upper' | 'lower'
+  const textCase = figTextCase(record.textCase)
+  if (textCase && textCase !== 'original') style.textCase = textCase
   return style
 }
 
