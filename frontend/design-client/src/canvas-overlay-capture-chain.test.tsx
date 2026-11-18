@@ -11,7 +11,7 @@ import {afterEach,beforeEach,expect,test,vi} from 'vitest'
 import {Canvas} from './Canvas'
 import {contentPlane} from './kernel/content-plane'
 import {Editor} from './engine'
-import {blank,node,effect,type DesignDocument} from './model'
+import {blank,node,effect,defaultLayout,type DesignDocument} from './model'
 import {InteractionRenderer} from './kernel/interaction-renderer'
 import {ResidentPresentation} from './kernel/resident-presentation'
 import type {PresentedFrame} from './kernel/Surface'
@@ -180,7 +180,10 @@ const lastAck=()=>transport.acks.at(-1)?.stats.presented
 const captureJobs=()=>transport.jobs.filter(job=>job.options.interactionOwner)
 async function fixture(options:{release?:boolean;authoredCapture?:boolean}={}){
  const doc=blank('Capture chain'),selected=node('frame',20,20,40,40),target=node('rectangle',100,20,20,40),other=node('rectangle',130,20,15,40)
- if(options.authoredCapture)selected.constraints={horizontal:'start',vertical:'start'}
+ if(options.authoredCapture){
+  selected.constraints={horizontal:'start',vertical:'start'}
+  selected.layout={...defaultLayout(),mode:'horizontal'}
+ }
  doc.schemaVersion=5;selected.blend='normal';selected.effects=[effect('glass')];doc.nodes=Object.fromEntries([selected,target,other].map(n=>[n.id,n]));doc.pages[0].children=[selected.id,target.id,other.id]
  doc.pages.push({...doc.pages[0],id:'ffffffff-ffff-4fff-8fff-ffffffffffff',name:'Other',children:[]})
  editor.load(doc);editor.set({view:{x:0,y:0,zoom:4},pixelGrid:false,grid:false,checkerboard:false,snap:false,snapPixels:false})
@@ -217,14 +220,14 @@ async function fixture(options:{release?:boolean;authoredCapture?:boolean}={}){
  expect(lastFrame().items.some((item:any)=>item.tile.gpuTile===slotS)).toBe(false)
  const frameC=lastFrame(),ackC=transport.acks.at(-1)!
  if(options.authoredCapture){
-  // Constraints decline the frontend affine shortcut, so the real pointer
+  // Derived layout work declines the native affine shortcut, so the real pointer
   // path calls Editor.preview(C) and Canvas actually produces C commands.
   expect(editor.state.doc).toBe(C.document)
   expect(frameC.overlay).toBeDefined();expect(lastAck().gpuOverlay).toBe(true)
   const own=overlayCalls.find(call=>call.document===C.document&&call.resolution?.commands)
   expect(own).toBeDefined();expect(frameC.overlay).toEqual(own!.commands)
   expect(frameC.overlay.selection.corners).not.toEqual(commandsS.selection.corners)
-  expect(own!.uiIdentity).toBe(overlayCalls.find(call=>call.document===S&&call.resolution?.commands)!.uiIdentity)
+  expect(own!.uiIdentity).not.toBe(overlayCalls.find(call=>call.document===S&&call.resolution?.commands)!.uiIdentity)
   expect(owner.overlayCaptureDiagnostics.snapshotCopies).toBeGreaterThan(beforeC.snapshotCopies)
  }else{
   expect(frameC.overlay).toBeUndefined();expect(lastAck().gpuOverlay).toBe(false)
@@ -240,8 +243,10 @@ async function fixture(options:{release?:boolean;authoredCapture?:boolean}={}){
  const B=editor.state.doc;expect(B).not.toBe(S);expect(B.nodes[selected.id].transform).toEqual(D.document.nodes[selected.id].transform)
  trace('released-B',{document:documentTag(B),pendingD:documentTag(D.document),dAborted:D.signal?.aborted})
  expect(lastFrame().items.some((item:any)=>item.tile.gpuTile===slotC)).toBe(true)
- if(options.authoredCapture){expect(lastFrame().overlay).toEqual(frameC.overlay);expect(lastAck().gpuOverlay).toBe(true)}
- else{expect(lastFrame().overlay).toBeUndefined();expect(lastAck().gpuOverlay).toBe(false)}
+ // On release the old C pixels can remain while B owns the selection angle.
+ // Retaining C's overlay would publish the previous angle on the exact B handoff.
+ expect(lastFrame().overlay).toBeUndefined()
+ expect(lastAck().gpuOverlay).toBe(false)
  return {S,B,C,D,selected,target,other,slotS,slotC,commandsS,owner,ackS,frameS,frameC,ackC}
 }
 
@@ -326,27 +331,27 @@ test.each(['cancel','page','client-destroyed'] as const)('completed C, pending D
 })
 
 
-test('actual constrained-frame C snapshot has a new cohort despite same frozen surface document and UI key',async()=>{
+test('actual layout-frame C snapshot advances the angle and cohort on the frozen surface document',async()=>{
  const h=await fixture({authoredCapture:true})
  const sourceS=resolutions.find(entry=>entry.actual===h.ackS.stats.presented)!.resolved!
  const sourceC=resolutions.find(entry=>entry.actual===h.ackC.stats.presented)!.resolved!
- // This is the reachable alias: both Surface contexts remain S and both
- // overlays are true with one UI key, but the pixel/geometry cohorts differ.
+ // Both Surface contexts retain S. The sampled angle and fresh capture
+ // each identify the C overlay that now owns publication.
  expect(sourceS.document).toBe(h.S);expect(sourceC.document).toBe(h.S)
  expect(sourceS.gpuOverlay).toBe(true);expect(sourceC.gpuOverlay).toBe(true)
- expect(sourceC.gpuOverlayIdentity).toBe(sourceS.gpuOverlayIdentity)
+ expect(sourceC.gpuOverlayIdentity).not.toBe(sourceS.gpuOverlayIdentity)
  expect.soft(h.frameC.presentationId).not.toBe(h.frameS.presentationId)
  expect.soft(sourceC.gpuOverlayCapture?.slots).toEqual([h.slotC])
  expect.soft(sourceS.gpuOverlayCapture?.slots).toEqual([h.slotS])
  expect.soft(sourceC.gpuOverlayCapture).not.toBe(sourceS.gpuOverlayCapture)
  expect(observedPresentations.some(frame=>frame?.gpuOverlayCapture===sourceC.gpuOverlayCapture)).toBe(true)
- const count=observedPresentations.length,document=editor.state.doc
+ const count=observedPresentations.length,document=editor.state.doc,overlay=lastFrame().overlay
  await act(async()=>h.ackS.callback?.(h.ackS.stats));await tick()
  expect(resolutions.at(-1)!.actual).toBe(h.ackS.stats.presented)
  expect.soft(resolutions.at(-1)!.resolved).toBeUndefined()
  expect.soft(observedPresentations).toHaveLength(count)
  expect(editor.state.doc).toBe(document)
- expect(lastFrame().overlay).toEqual(h.frameC.overlay)
+ expect(lastFrame().overlay).toEqual(overlay)
  // The existing pose-slot fence remains independent. This test establishes
  // rejected stale context publication, not a browser/GPU pixel rollback.
 })
