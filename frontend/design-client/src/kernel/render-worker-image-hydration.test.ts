@@ -462,11 +462,12 @@ test('display-import closes its bitmap if presenter preparation rejects before h
   expect(bitmap.close).toHaveBeenCalledTimes(1)
 })
 
-test('real render worker retires obsolete packet waits before their reply without flooding preparation or cancelling exact readback', async () => {
-  const f = fixture(4), w = await worker(), pair = new NativeMessageChannel()
+function holdFirstCompilation(w: Awaited<ReturnType<typeof worker>>) {
+  const pair = new NativeMessageChannel()
   channels.push(pair)
   const prepared = new VectorEngine(), methods: string[] = []
   let release!: () => void, held = false
+  let cancelFlag: Int32Array<SharedArrayBuffer> | undefined
   pair.port2.onmessage = event => {
     const { id, method, args } = event.data
     methods.push(method)
@@ -476,35 +477,101 @@ test('real render worker retires obsolete packet waits before their reply withou
       if (method !== 'initialize' && method !== 'warm_resources') value = (prepared as any)[method](...args)
       pair.port2.postMessage({ id, value, ...(method === 'load_document' || method === 'initialize' || method === 'apply_document_patch_with_damage' ? { settings: prepared.color_settings() } : {}) })
     }
-    if (method === 'compile_gpu_packet' && !held) { held = true; release = reply }
-    else reply()
+    if (method === 'compile_gpu_packet' && !held) {
+      held = true
+      release = reply
+      if (event.data.cancellation) cancelFlag = new Int32Array(event.data.cancellation as SharedArrayBuffer)
+    } else reply()
   }
   w.send({ command: 'prepare-port', port: pair.port1 })
-  const preview = { ...f.options, renderIntent: 'preview', livePreview: true }
+  return { methods, get release() { return release }, get cancelFlag() { return cancelFlag }, free: () => prepared.free() }
+}
+
+test.each(['preview', 'reverse zoom'] as const)('real render worker retires obsolete %s packets without flooding preparation or cancelling exact readback', async mode => {
+  const reverse = mode === 'reverse zoom'
+  const f = fixture(4), w = await worker(reverse, false, reverse)
+  const preparation = holdFirstCompilation(w)
+  const options = !reverse ? { ...f.options, renderIntent: 'preview', livePreview: true } :
+    { ...f.options, view: { ...f.options.view, zoom: 4 }, tileOwner: { documentId: f.doc.id, sessionEpoch: 1 },
+      tileViewport: [{ key: 'higher-density', x: 0, y: 0, width: 48, height: 16, zoom: 4 }] }
+  let cameraSequence = 0
+  const camera = (zoom: number, sequence = ++cameraSequence) => w.send({
+    command: 'display-frame', sequence,
+    frame: { ...f.options, view: { x: sequence, y: 0, zoom }, dpr: 1, items: [] },
+  })
+  const cancel = () => {
+    if (reverse) { camera(4); camera(1) }
+    else w.send({ command: 'cancel-preview' })
+  }
+  if (reverse) {
+    w.send({ command: 'display-attach', canvas: {} })
+    camera(4)
+  }
   try {
-    w.send({ id: 701, document: JSON.stringify(f.doc), documentRevision: 1, options: preview })
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
-    w.send({ command: 'cancel-preview' })
+    w.send({ id: 701, document: JSON.stringify(f.doc), documentRevision: 1, options })
+    await vi.waitFor(() => expect(preparation.release).toBeTypeOf('function'))
+    if (reverse) {
+      camera(4)                      // same-density pan
+      camera(1, cameraSequence - 1)  // stale frame
+      camera(3)                      // small reversal
+      expect(preparation.cancelFlag && Atomics.load(preparation.cancelFlag, 0)).toBe(0)
+    }
+    cancel()
     expect((await w.finish(701)).error).toContain('PREVIEW_CANCELLED')
     expect(state.renders).toHaveLength(0)
     // This compile must remain locally cancellable while the first physical
     // call is still executing. No transport-level native/WASM preemption.
-    w.send({ id: 702, documentRevision: 1, options: { ...preview, width: 49 } })
+    w.send({ id: 702, documentRevision: 1, options: { ...options, width: 49 } })
     await new Promise(resolve => setTimeout(resolve, 10))
-    w.send({ command: 'cancel-preview' })
+    cancel()
     expect((await w.finish(702)).error).toContain('PREVIEW_CANCELLED')
-    expect(methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(1)
+    expect(preparation.methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(1)
     // Settled exact/readback work is never registered with cancellation.
-    w.send({ id: 703, documentRevision: 1, options: { ...f.options, width: 50 }, readback: true })
+    w.send({ id: 703, documentRevision: 1, options: { ...(reverse ? options : f.options), width: 50 }, readback: true })
     await new Promise(resolve => setTimeout(resolve, 10))
-    w.send({ command: 'cancel-preview' })
-    release()
+    cancel()
+    preparation.release()
     expect((await w.finish(703)).backend).toBe('webgpu')
     w.send({ id: 704, documentRevision: 1, options: f.options, readback: true })
     expect((await w.finish(704)).backend).toBe('webgpu')
     expect(state.renders).toHaveLength(2)
-    expect(methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(3)
-  } finally { prepared.free() }
+    expect(preparation.methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(3)
+  } finally { preparation.free() }
+})
+
+test.each([
+  'same camera', 'fractional camera change', 'document edit', 'expired packet', 'memory limit',
+] as const)('return to low zoom only uses a matching unused packet (%s)', async condition => {
+  const f = fixture(4), w = await worker(true, false, true)
+  const preparation = holdFirstCompilation(w)
+  if (condition === 'memory limit') {
+    const capacity = await import('../document-capacity')
+    const policy = capacity.documentCapacity()
+    vi.spyOn(capacity, 'documentCapacity').mockReturnValue({ ...policy, documentBytes: 1 })
+  }
+  const options = { ...f.options, view: { ...f.options.view, zoom: .125 },
+    tileOwner: { documentId: f.doc.id, sessionEpoch: 1 },
+    tileViewport: [{ key: 'minified', x: 0, y: 0, width: 48, height: 16, zoom: .125 }] }
+  w.send({ command: 'display-attach', canvas: {} })
+  state.poseTiles = true
+  try {
+    w.send({ id: 711, document: JSON.stringify(f.doc), documentRevision: 1, options })
+    await vi.waitFor(() => expect(preparation.release).toBeTypeOf('function'))
+    w.send({ command: 'cancel-tile-fill' })
+    preparation.release()
+    expect((await w.finish(711)).error).toContain('PREVIEW_CANCELLED')
+    expect(state.renders).toHaveLength(0)
+    if (condition === 'expired packet') await new Promise(resolve => setTimeout(resolve, 1100))
+    const changed = structuredClone(f.doc)
+    changed.nodes['image-0'].transform[4] += 1
+    w.send({ id: 712, documentRevision: condition === 'document edit' ? 2 : 1,
+      ...(condition === 'document edit' ? { document: JSON.stringify(changed) } : {}),
+      options: condition === 'fractional camera change' ? { ...options, view: { ...options.view, x: .125 } } : options })
+    expect((await w.finish(712)).error).toBeUndefined()
+    expect(preparation.methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(condition === 'same camera' ? 1 : 2)
+    expect(state.renders).toHaveLength(1)
+    expect(w.messages.some(m => m.id === 712 && m.tile?.gpuTile === 77)).toBe(true)
+  } finally { preparation.free() }
 })
 
 test('request-scoped cancellation applies its ordered patch but leaves independent preview and exact work alive', async () => {
