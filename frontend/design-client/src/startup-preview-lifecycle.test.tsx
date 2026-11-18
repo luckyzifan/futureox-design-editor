@@ -18,6 +18,7 @@ function harness() {
     useMemo(fn: any) { cursor++; return fn() },
     useCallback(fn: any) { const i = cursor++; return slots[i] ??= fn },
     useSyncExternalStore(_: any, snapshot: () => any) { cursor++; return snapshot() },
+    useImperativeHandle(ref: unknown) { cursor++; expect(ref).toBeUndefined() },
     useLayoutEffect() { cursor++ },
     useEffect(fn: () => any, deps?: any[]) {
       const i = cursor++, old = slots[i]
