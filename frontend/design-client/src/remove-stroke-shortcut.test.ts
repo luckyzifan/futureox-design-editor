@@ -34,13 +34,13 @@ function editorFor(nodes: DesignNode[], children = nodes.map(node => node.id), s
   return editor
 }
 
-test('Figma layout binds Shift+/ on every platform and leaves Sketch, Control, and Option+/ unbound', () => {
+test('Figma layout binds Shift+/ and keeps the Control shortcut reference', () => {
   for (const platform of ['mac', 'windows', 'linux'] as const) {
     const context = figma(platform)
     expect(shortcutBindings(context).filter(binding => binding.command === 'remove-stroke').map(binding => binding.combo)).toEqual(['Shift+/'])
     expect(resolveShortcut(shiftSlash(), context)?.command).toBe('remove-stroke')
     expect(resolveShortcut(key('/', { code: 'Slash', shiftKey: true }), context)?.command).toBe('remove-stroke')
-    expect(resolveShortcut(shiftSlash({ ctrlKey: true }), context)).toBeNull()
+    expect(resolveShortcut(shiftSlash({ ctrlKey: true }), context)?.command).toBe('open-shortcut-reference')
     expect(resolveShortcut(shiftSlash({ metaKey: true }), context)).toBeNull()
     expect(resolveShortcut(shiftSlash({ altKey: true }), context)).toBeNull()
     expect(resolveShortcut(key('/', { code: 'Slash' }), context)).toBeNull()
