@@ -68,17 +68,60 @@ fn kernel_style_ids_roundtrip_through_uuid_wire_ids() {
     assert!(back.design_system.as_ref().unwrap().styles.contains_key("ops-accent")); assert_eq!(back.nodes["r"].style_refs["fills"], "ops-accent");
 }
 
-fn with_changed_document(change: impl FnOnce(&mut Value)) -> Vec<u8> {
+fn with_changed_part(part: &str, change: impl FnOnce(&mut Value)) -> Vec<u8> {
     let mut files = interop::read_zip_public(&archive()).unwrap();
-    let mut document: Value = serde_json::from_slice(&files["document.json"]).unwrap();
-    change(&mut document);
-    files.insert("document.json".into(), serde_json::to_vec(&document).unwrap());
+    let mut value: Value = serde_json::from_slice(&files[part]).unwrap();
+    change(&mut value);
+    files.insert(part.into(), serde_json::to_vec(&value).unwrap());
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (name, bytes) in files {
         zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
         zip.write_all(&bytes).unwrap();
     }
     zip.finish().unwrap().into_inner()
+}
+
+fn with_changed_document(change: impl FnOnce(&mut Value)) -> Vec<u8> {
+    with_changed_part("document.json", change)
+}
+
+#[test]
+fn native_local_fills_keep_their_shared_style_link() {
+    let bytes = with_changed_part("pages/p.json", |page| {
+        let mut local = page["layers"][0].clone();
+        local["do_objectID"] = json!("local");
+        local["frame"]["x"] = json!(110);
+        local["style"]["fills"][0]["color"] =
+            json!({"_class":"color","red":0,"green":0,"blue":1,"alpha":1});
+        let mut empty = local.clone();
+        empty["do_objectID"] = json!("empty");
+        empty["frame"]["x"] = json!(220);
+        empty["style"]["fills"] = json!([]);
+        page["layers"].as_array_mut().unwrap().extend([local, empty]);
+    });
+    let assert_override = |document: &futureox_design_kernel::scene::Document| {
+        assert!(document.schema_version >= 26);
+        assert!(!document.nodes["r"].sketch_layer_style_overridden);
+        for id in ["local", "empty"] {
+            let node = &document.nodes[id];
+            assert_eq!(node.style_refs["fills"], PAINT);
+            assert!(node.sketch_layer_style_overridden);
+        }
+        let mut resolved = document.clone();
+        resolved.design_system.as_mut().unwrap().styles.get_mut(PAINT).unwrap().value[0]["color"] =
+            json!("#00ff00");
+        design_system::resolve(&mut resolved).unwrap();
+        assert_eq!(resolved.nodes["r"].fills[0].color, "#00ff00");
+        assert_eq!(resolved.nodes["local"].fills[0].color, "#0000ff");
+        assert!(resolved.nodes["empty"].fills.is_empty());
+    };
+    let document = interop::import_sketch_report(&bytes).unwrap().document;
+    assert_override(&document);
+    let encoded = futureox_design_kernel::binfmt::encode_value(&serde_json::to_value(&document).unwrap()).unwrap();
+    let reopened = serde_json::from_value(futureox_design_kernel::binfmt::decode_value(&encoded).unwrap()).unwrap();
+    assert_override(&reopened);
+    let sketch = interop::export_sketch(&document).unwrap();
+    assert_override(&interop::import_sketch_report(&sketch).unwrap().document);
 }
 #[test]
 fn duplicate_shared_style_wire_and_resolved_ids_are_rejected_before_adoption() {

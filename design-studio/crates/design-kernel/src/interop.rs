@@ -1344,6 +1344,8 @@ struct Importer<'a> {
     available_fonts: std::collections::BTreeSet<String>,
     color_space: ColorSpace,
     files: &'a BTreeMap<String, Vec<u8>>,
+    shared_paint_sources: BTreeMap<&'a str, &'a Value>,
+    futureox_archive: bool,
     nodes: BTreeMap<String, Node>,
     /// do_objectID → kernel id (prototype flow destinations address the
     /// archived UUID, not our restored original id).
@@ -1934,6 +1936,17 @@ impl<'a> Importer<'a> {
             {
                 node.style_refs
                     .insert("sketchSharedStyleID".into(), shared.into());
+                node.sketch_layer_style_overridden = self.shared_paint_sources.get(shared).is_some_and(|definition| {
+                    if self.futureox_archive {
+                        // Older Futureox exports wrote authored fallback fills even for live links.
+                        return layer.pointer("/userInfo/com.futureox.design-kernel/sketchLayerStyleOverridden")
+                            .and_then(Value::as_bool) == Some(true);
+                    }
+                    style.get("fills").filter(|fills| fills.is_array()).is_some_and(|fills| {
+                        // Project both sides at this layer's dimensions, including radial fills.
+                        definition.get("fills") != Some(fills) && self.paints(definition, "fills", size) != node.fills
+                    })
+                });
             }
         }
         // P0-4: adaptable colors / swatch references on this layer's style
@@ -3336,6 +3349,45 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
 
     // Restore private text identities only when this archive still owns their resources.
     let font_aliases=crate::interop_resources::import_fonts(document, files, &mut doc)?;
+    // Foreign library styles carry an embedded localSharedStyle. Admit that
+    // definition so a layerStyle/textStyle override can resolve by either the
+    // local id or the remote id. The raw foreign container stays untouched.
+    let mut style_inputs: Vec<(&str, &Value, bool, Option<&str>)> = Vec::new();
+    for (container, kind) in [("layerStyles", "paint"), ("layerTextStyles", "text")] {
+        if let Some(objects) = document
+            .get(container)
+            .and_then(|c| c.get("objects"))
+            .and_then(Value::as_array)
+        {
+            for object in objects {
+                style_inputs.push((kind, object, false, None));
+            }
+        }
+    }
+    for (container, kind) in [("foreignLayerStyles", "paint"), ("foreignTextStyles", "text")] {
+        if let Some(entries) = document.get(container).and_then(Value::as_array) {
+            for entry in entries {
+                if let Some(object) = entry.get("localSharedStyle").filter(|value| value.is_object())
+                {
+                    style_inputs.push((
+                        kind,
+                        object,
+                        true,
+                        entry.get("remoteStyleID").and_then(Value::as_str),
+                    ));
+                }
+            }
+        }
+    }
+    let shared_paint_sources = style_inputs.iter().filter_map(|&(kind, object, _, _)| {
+        if kind != "paint" {
+            return None;
+        }
+        let id = object.get("do_objectID")?.as_str()?;
+        let style = object.get("value").or_else(|| object.get("style"))?;
+        style.get("fills")?.as_array()?;
+        Some((id, style))
+    }).collect();
     let mut importer = Importer {
         source_bitmaps,
         image_sources: Default::default(),
@@ -3346,6 +3398,8 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             ColorSpace::Srgb
         },
         files: &files,
+        shared_paint_sources,
+        futureox_archive: meta.get("app").and_then(Value::as_str) == Some("com.futureox.design-kernel"),
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
         flows: Vec::new(),
@@ -3492,36 +3546,6 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // P1-6: shared style containers → design system styles
     let mut styles = BTreeMap::new();
     let mut style_fidelity: BTreeMap<String, Value> = BTreeMap::new();
-    // Foreign library styles carry an embedded localSharedStyle. Admit that
-    // definition so a layerStyle/textStyle override can resolve by either the
-    // local id or the remote id. The raw foreign container stays untouched.
-    let mut style_inputs: Vec<(&str, &Value, bool, Option<&str>)> = Vec::new();
-    for (container, kind) in [("layerStyles", "paint"), ("layerTextStyles", "text")] {
-        if let Some(objects) = document
-            .get(container)
-            .and_then(|c| c.get("objects"))
-            .and_then(Value::as_array)
-        {
-            for object in objects {
-                style_inputs.push((kind, object, false, None));
-            }
-        }
-    }
-    for (container, kind) in [("foreignLayerStyles", "paint"), ("foreignTextStyles", "text")] {
-        if let Some(entries) = document.get(container).and_then(Value::as_array) {
-            for entry in entries {
-                if let Some(object) = entry.get("localSharedStyle").filter(|value| value.is_object())
-                {
-                    style_inputs.push((
-                        kind,
-                        object,
-                        true,
-                        entry.get("remoteStyleID").and_then(Value::as_str),
-                    ));
-                }
-            }
-        }
-    }
     let mut style_aliases: Map<String, Value> = Map::new();
     for (kind, object, foreign, remote_id) in style_inputs {
             let Some(style_id) = object.get("do_objectID").and_then(Value::as_str) else {
@@ -3962,6 +3986,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     if doc.requires_schema21() { version=version.max(21); }
     if doc.requires_schema22() { version=version.max(22); }
     if doc.nodes.values().any(|n| n.graphic) { version=version.max(23); }
+    if doc.nodes.values().any(|n| n.sketch_layer_style_overridden) { version=version.max(26); }
     if doc.nodes.values().any(|n| n.sizing.as_ref().is_some_and(crate::layout::Sizing::has_relative_sizing)) {
         version = version.max(29);
     }
@@ -4125,6 +4150,8 @@ fn layer_style_parts(document: &Document, style: &Value) -> Result<(Value, Value
         available_fonts: Default::default(),
         color_space,
         files: &files,
+        shared_paint_sources: BTreeMap::new(),
+        futureox_archive: false,
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
         flows: Vec::new(),
@@ -7868,6 +7895,9 @@ fn export_layer_impl(
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
+        if n.sketch_layer_style_overridden {
+            user_info.insert("sketchLayerStyleOverridden".into(), json!(true));
+        }
         // Admission scales shapePath points only when this marker is set.
         // Native Sketch ignores the namespace; the coordinates themselves are
         // already frame-normalized strings.
