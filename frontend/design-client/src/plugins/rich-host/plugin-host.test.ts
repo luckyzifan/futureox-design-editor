@@ -5,6 +5,7 @@ import { crc32, inflateSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../../engine'
 import { blank, node, paint } from '../../model'
+import { samplePlugin } from '../sample-plugin'
 import { samplePluginBundle, sampleUiPluginBundle } from './bundles'
 import { pluginApiCoverage } from './coverage'
 import { PluginApiError } from './errors'
@@ -77,13 +78,12 @@ describe('Figma plugin host', () => {
     // stay inside one async function, and the panel launches the first
     // declared menu command ("run") to create the promised three rectangles.
     const current = editor()
-    const root = new URL('../../../plugins/labeled-rectangles/', import.meta.url)
-    const manifest = parsePluginManifest(JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8')))
+    const manifest = parsePluginManifest(JSON.parse(samplePlugin.manifestText))
     expect(manifest.commands[0]?.command).toBe('run')
     const run = await openPlugin(current, {
       manifest,
-      main: readFileSync(new URL('code.js', root), 'utf8'),
-      ui: readFileSync(new URL('ui.html', root), 'utf8'),
+      main: samplePlugin.mainSource,
+      ui: samplePlugin.uiHtml,
     }, { command: manifest.commands[0]?.command })
     const rectangles = nodes(current).filter(node => node.kind === 'rectangle' && node.name === 'Label')
     const labels = nodes(current).filter(node => node.kind === 'text' && node.text === 'Label')
@@ -100,6 +100,15 @@ describe('Figma plugin host', () => {
     await run.deliver({ type: 'cancel' })
     expect(run.closeMessage).toBe('Closed')
     run.close()
+    current.undo()
+    expect(nodes(current)).toHaveLength(6)
+    expect(named(current, 'Note')).toBeUndefined()
+    current.undo()
+    expect(nodes(current)).toHaveLength(0)
+    current.redo()
+    expect(nodes(current)).toHaveLength(6)
+    current.redo()
+    expect(nodes(current)).toHaveLength(8)
   })
 
   it('runs the bundled sample against the live document and undo removes it', async () => {
