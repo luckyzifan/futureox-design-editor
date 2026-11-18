@@ -676,6 +676,34 @@ fn actual_compile_extent_adds_offscreen_records_before_wire_publication() {
 }
 
 #[test]
+fn analytic_overview_admits_the_small_effect_margin_on_its_first_projection() {
+    let mut doc = document();
+    doc.color_management = None;
+    doc.nodes.get_mut("a").unwrap().effects =
+        serde_json::from_value(json!([{"kind":"gaussian-blur","radius":7,"color":"#000000"}]))
+            .unwrap();
+    let offscreen = doc.nodes.get_mut("b").unwrap();
+    offscreen.width = 10.;
+    offscreen.height = 10.;
+    offscreen.transform = Transform([1., 0., 0., 1., 455., 500.]);
+    let desc = descriptor(&doc);
+    let mut expected = owner(doc.clone(), "oracle");
+    let mut actual = owner(doc, "live");
+    let mut runtime = Runtime::default();
+    let mut options = request(-480., -480., 1.);
+    options["rasterProfile"] = json!("analytic");
+    options["width"] = json!(514);
+    options["height"] = json!(514);
+    options["gpuViewport"] = json!({"x":0,"y":0,"w":514,"h":514});
+    options["prepareViewport"] = options["gpuViewport"].clone();
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &options);
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert_eq!(runtime.stats["residentAuthoredNodes"], 3);
+    assert_eq!(runtime.stats["projectionRebuilds"], 1);
+    assert_eq!(runtime.stats["scopeExpansions"], 0);
+}
+
+#[test]
 fn backdrop_capture_extent_acquires_offscreen_producers_before_publish() {
     let mut d = document();
     d.color_management = None;
