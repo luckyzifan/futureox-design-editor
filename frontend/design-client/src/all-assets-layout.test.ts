@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { chromium, type Page } from 'playwright'
+import type { Page } from 'playwright'
 import { expect, test } from 'vitest'
+import { launchLayoutTestBrowser } from './browser-test-launch'
 
 const css = ['styles.css', 'chrome-polish.css'].map(name => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')).join('\n')
 
@@ -68,11 +69,7 @@ async function boxes(page: Page) {
 }
 
 test('the all-assets dialog stays operable at the minimum desktop window', async () => {
-  const browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-    headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  })
+  const browser = await launchLayoutTestBrowser()
   try {
     const page = await browser.newPage({ viewport: { width: 1000, height: 640 }, deviceScaleFactor: 1 })
     await page.setContent(pageHtml(), { waitUntil: 'load' })

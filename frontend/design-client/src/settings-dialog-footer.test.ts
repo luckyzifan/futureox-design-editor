@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { chromium, type Page } from 'playwright'
+import type { Page } from 'playwright'
 import { expect, test } from 'vitest'
+import { launchLayoutTestBrowser } from './browser-test-launch'
 
 const css = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
 
@@ -78,11 +79,7 @@ async function measure(page: Page) {
 }
 
 test('settings footer is fully inside the rounded dialog and matches the export modal', async () => {
-  const browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
-    headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  })
+  const browser = await launchLayoutTestBrowser()
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 928 }, deviceScaleFactor: 1 })
     await page.setContent(pageHtml(), { waitUntil: 'load' })
