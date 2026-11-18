@@ -25,7 +25,8 @@ export class PassDrawWork {
   draw(mode,count=1,pixels){
     if(!this.enabled||!Number.isInteger(count)||count<0)return
     this.add('draw'+group(mode),count)
-    if((Number.isInteger(mode)&&mode>=0&&mode<66)||mode===76||mode===77)this.add('drawMode'+mode,count)
+    const modeKey = 'drawMode' + mode
+    if (Number.isInteger(mode) && Object.hasOwn(drawWorkLimits, modeKey)) this.add(modeKey, count)
     if(Number.isSafeInteger(pixels)&&pixels>=0){this.add('drawPixels'+group(mode),pixels);this.add('drawPixelsMeasuredDraws',count)}
     else this.add('drawPixelsUnmeasuredDraws',count)
   }

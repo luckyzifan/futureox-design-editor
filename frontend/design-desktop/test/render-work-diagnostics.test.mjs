@@ -26,6 +26,20 @@ test('motion/zoom shader draws never collide with the synthetic solid-batch coun
  const fields=work.snapshot();assert.equal(fields.drawEffect,2);assert.equal(fields.drawPaintMerge,1)
  assert.deepEqual(sanitizeFields(fields),fields)
 })
+
+test('analytic solid and gradient batches retain their mode at the diagnostic boundary', () => {
+ const work = new PassDrawWork()
+ work.reset(true)
+ work.draw(78, 2, 120)
+ work.draw(78, 1, 40)
+ work.draw(99)
+ const fields = sanitizeFields(work.snapshot())
+ assert.equal(fields.drawMode78, 3)
+ assert.equal(fields.drawPaintMerge, 3)
+ assert.equal(fields.drawPixelsPaintMerge, 160)
+ assert.equal(fields.drawOther, 1)
+ assert.equal(fields.drawMode99, undefined)
+})
 test('pixel work and rejection reasons survive the numeric privacy boundary without payloads',()=>{
  const draws=new PassDrawWork();draws.reset(true);draws.draw(65,1,4096);draws.draw(0,1,128)
  const fast=new FastPathWork();fast.reset(true);fast.add('fastRegionalUsed');fast.add('fastRegionalPixels',128);fast.add('secret-node-id',5)

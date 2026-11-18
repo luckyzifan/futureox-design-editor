@@ -38,8 +38,13 @@ try {
   const blue: CompositeTile = { ...red, key: 'blue', serial: 3, bytes: new Uint8Array([0, 0, 255, 128]) }
   compositor.upload(red); compositor.upload(blue)
   const place = { left: 0, top: 0, width: 64, height: 64 }
-  compositor.draw([{ tile: red, active: true, layer: 0, gutter: 0, blend: true, placement: place },
-    { tile: blue, active: true, layer: 1, gutter: 0, blend: true, placement: place }], { x: 0, y: 0, zoom: 1 }, 64, 64, 1)
+  const base = { tile: red, active: true, layer: 0, gutter: 0, placement: place }
+  const overlay = { tile: blue, active: true, layer: 1, gutter: 0, blend: true, placement: place }
+  const camera = { x: 0, y: 0, zoom: 1 }
+  const before = sample(20, 20)
+  assert(!compositor.draw([overlay], camera, 64, 64, 1), 'An overlay alone must not prove backing coverage')
+  assert(sample(20, 20).join() === before.join(), 'An incomplete layer stack replaced the accepted frame')
+  assert(compositor.draw([base, overlay], camera, 64, 64, 1), 'The covered layer stack was deferred')
   await nextFrame()
   const blended = sample(20, 20)
   assert(Math.abs(blended[0] - 127) <= 1 && blended[1] === 0 && Math.abs(blended[2] - 128) <= 1 && blended[3] === 255, 'Layer alpha/order: ' + blended)
@@ -94,17 +99,29 @@ try {
       renderIntent: 'preview' as const, rasterProfile: 'figmaSubpixel' as const }
     const warm = await cachedRoots.render(doc, options, false, 'webgpu', true); warm.bitmap?.close()
     let moved = { ...doc, nodes: { ...doc.nodes, [root.id]: { ...root, transform: [1, 0, 0, 1, 25, 24] as typeof root.transform } } }
+    let translatedPixels: Uint8Array | undefined
+    let translationHits = 0
     for (const edit of [false, true]) {
-      if (edit) moved = { ...moved, nodes: { ...moved.nodes, [root.id]: { ...moved.nodes[root.id], opacity: .3 } } }
+      // Change both retained subtrees. An opacity edit on the parent alone
+      // permits the renderer to reuse the child's unchanged paint.
+      if (edit) moved = { ...moved, nodes: { ...moved.nodes, [root.id]: { ...moved.nodes[root.id], opacity: .3 },
+        [child.id]: { ...child, fills: [paint('#22bb66')] } } }
       const reused = await cachedRoots.render(moved, options, false, 'webgpu', true)
       const fresh = await baselineRoots.render(moved, { ...options, retainInteractionGraph: false }, false, 'webgpu', true)
       let max = 0
       for (let i = 0; i < reused.bytes.length; i++) max = Math.max(max, Math.abs(reused.bytes[i] - fresh.bytes[i]))
-      assert(edit ? reused.retainedGroupHits === 0 : (reused.retainedGroupHits || 0) >= 2,
-        `Root paint cache invalidation/reuse: ${JSON.stringify({ edit, hits: reused.retainedGroupHits, bytes: reused.retainedGroupBytes, compileHit: reused.compileCacheHit, max })}`)
+      const hits = reused.retainedGroupHits ?? 0
+      // Stationary backdrop reuse also contributes to the aggregate counter.
+      assert(edit ? hits < translationHits : hits >= 2,
+        `Root paint cache invalidation/reuse: ${JSON.stringify({ edit, hits, translationHits, max })}`)
       assert(max <= 1, `Root paint cache differs from uncached GPU by ${max}`)
       assert((reused.retainedGroupBytes || 0) <= 32 * 1024 * 1024, 'Root cache exceeded its budget')
-      stages.push({ name: edit ? 'root content edit revokes retained paint' : 'translated root paint with nested backdrop, shadow, opacity and multiply',
+      if (translatedPixels) assert(reused.bytes.some((value, index) => value !== translatedPixels![index]), 'Edited layers kept the translated pixels')
+      else {
+        translatedPixels = reused.bytes.slice()
+        translationHits = hits
+      }
+      stages.push({ name: edit ? 'parent and child edits revoke retained paint' : 'translated root paint with nested backdrop, shadow, opacity and multiply',
         maxDifference: max, groupHits: reused.retainedGroupHits, groupBytes: reused.retainedGroupBytes })
       reused.bitmap?.close(); fresh.bitmap?.close()
     }
