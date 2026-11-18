@@ -11,6 +11,8 @@ import { blank,node } from './model'
 import { LocalHome,HomeCanvasGate } from './LocalHome'
 import { admitHomeDocumentCommand, type HomeSource } from './local-home-source'
 import { modalOwnsKeyboard } from './modal-keyboard'
+import { interfacePreference } from './interface-preference'
+import { shortcutPreference } from './shortcut-preference'
 let dom:any,root:Root,mount:HTMLElement,editor:Editor,source:HomeSource,onNew:()=>Promise<boolean>,onOpenFile:()=>Promise<boolean|'pending'>,settings:ReturnType<typeof vi.fn<()=>void>>
 let mounts=0
 const records=[{id:'a',name:'Alpha',revision:1,updatedAt:1000,deleted:false},{id:'b',name:'Beta',revision:3,updatedAt:2000,deleted:false},{id:'c',name:'Trashed',revision:2,updatedAt:3000,deleted:true}]
@@ -24,9 +26,9 @@ beforeEach(async()=>{
 })
 afterEach(async()=>{await act(async()=>root.unmount());editor.dispose();dom.window.close();vi.unstubAllGlobals()})
 function RetainedEditor(){useState(()=>{mounts++;return 0});return <div data-testid="editor-retained">Canvas retained</div>}
-function Harness({ready=true,startupError}:{ready?:boolean;startupError?:string}){
+function Harness({ready=true,startupError,chooseLayout=false}:{ready?:boolean;startupError?:string;chooseLayout?:boolean}){
  const [home,setHome]=useState(true),[showSettings,setShowSettings]=useState(false)
- return <div className={home?'home-route-active':''}><header><button type="button" onClick={()=>setHome(true)}>首页</button></header><main className="editor-workspace"><HomeCanvasGate home={home}><RetainedEditor/></HomeCanvasGate></main>{home&&<LocalHome source={source} ready={ready} startupError={startupError} currentName={editor.state.doc.name} onResume={()=>setHome(false)} onNew={onNew} onOpenFile={onOpenFile} onSettings={()=>{settings();setShowSettings(true)}}/>}{showSettings&&<SettingsDialog editor={editor} onClose={()=>setShowSettings(false)}/>}<footer>Footer</footer></div>
+ return <div className={home?'home-route-active':''}><header><button type="button" onClick={()=>setHome(true)}>首页</button></header><main className="editor-workspace"><HomeCanvasGate home={home}><RetainedEditor/></HomeCanvasGate></main>{home&&<LocalHome source={source} ready={ready} startupError={startupError} currentName={editor.state.doc.name} chooseLayout={chooseLayout} onResume={()=>setHome(false)} onNew={onNew} onOpenFile={onOpenFile} onSettings={()=>{settings();setShowSettings(true)}}/>}{showSettings&&<SettingsDialog editor={editor} onClose={()=>setShowSettings(false)}/>}<footer>Footer</footer></div>
 }
 async function render(ready=true){await act(async()=>{root.render(<Harness ready={ready}/>);await Promise.resolve()})}
 const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes(text))!
@@ -36,6 +38,26 @@ test('default local admin home reads metadata only, filters/searches, and toggle
  await render();expect(home()?.textContent).toContain('admin');expect(home()?.textContent).toContain('本机工作空间');expect(source.list).toHaveBeenCalledOnce();expect(source.open).not.toHaveBeenCalled()
  expect([...document.querySelectorAll('.local-home-file strong')].map(n=>n.textContent)).toEqual(['Beta','Alpha']);expect(document.querySelector('[aria-label="搜索最近设计"]')).toBe(document.activeElement)
  await fill('alpha');expect(document.querySelectorAll('.local-home-file')).toHaveLength(1);await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="列表显示"]')!.click());expect(document.querySelector('.local-home-files.list')).not.toBeNull()
+})
+test('the startup chooser can switch layouts without opening or creating a document', async () => {
+ const before = editor.state
+ const preferences = interfacePreference.getSnapshot()
+ const profile = shortcutPreference.getSnapshot()
+ try {
+  await act(async () => { interfacePreference.set({ uiMode: 'figma' }); root.render(<Harness chooseLayout />) })
+  expect(button('Figma').getAttribute('aria-pressed')).toBe('true')
+  await act(async () => button('Sketch').click())
+  expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
+  expect(button('Sketch').getAttribute('aria-pressed')).toBe('true')
+  await act(async () => button('Figma').click())
+  expect(interfacePreference.getSnapshot().uiMode).toBe('figma')
+  expect(editor.state).toBe(before)
+  expect(mounts).toBe(0)
+  expect(onNew).not.toHaveBeenCalled()
+  expect(source.open).not.toHaveBeenCalled()
+ } finally {
+  await act(async () => { interfacePreference.set(preferences); shortcutPreference.set(profile) })
+ }
 })
 test('Home to editor and back preserves real document/page/selection/view and does not remount editor',async()=>{
  const before=editor.state;await render();const shell=document.querySelector('.editor-workspace');expect(shell?.hasAttribute('inert')).toBe(true);expect(document.querySelector('[data-testid="editor-retained"]')).toBeNull();expect(mounts).toBe(0)

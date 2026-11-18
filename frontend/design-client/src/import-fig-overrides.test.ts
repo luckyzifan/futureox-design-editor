@@ -1,6 +1,71 @@
 import { expect, test } from 'vitest'
 import { importFigComponents } from './import-fig-components'
-import { blank, node, paint, stroke } from './model'
+import { blank, defaultSizing, defaultTextStyle, node, paint, stroke } from './model'
+import { emptySystem } from './design-system'
+import { matchBundledImportFonts } from './bundled-import-fonts'
+import { retainFigTextBoxes } from './import-fig'
+import { prepareDocumentForEditing } from './kernel/picking'
+
+test('a FIG instance keeps its measured face and box until its text inputs change', async () => {
+  const doc = blank('Measured FIG instance')
+  doc.schemaVersion = 12
+  const main = node('frame', 0, 0, 200, 60)
+  const label = node('text', 12, 0, 38, 21)
+  label.text = 'Name'
+  label.fontSize = 14
+  label.textStyle = { ...defaultTextStyle(), weight: 500, lineHeight: 1.5, lineBoxBaseline: 'figma-pixel-leading' }
+  label.sizing = { ...defaultSizing(), width: 'hug', height: 'hug' }
+  const instance = node('frame', 0, 80, 200, 60)
+  main.children = [label.id]
+  doc.nodes = { [main.id]: main, [label.id]: label, [instance.id]: instance }
+  doc.pages[0].children.push(main.id, instance.id)
+  doc.designSystem = emptySystem()
+  const modern = 'e837165aedb031ea74872c5983a3217d1c190a1a'
+  const legacy = '01be8feaed323d19eeccf16fd79ea3b74206cfdb'
+  doc.designSystem.fontSources = { [label.id]: { style: 'Poppins-Medium', digest: modern } }
+  const face = { family: 'Poppins', style: 'Medium', postscript: 'Poppins-Medium' }
+  const records = new Map<string, any>([
+    ['main', { type: 'SYMBOL' }],
+    ['label', { type: 'TEXT', fontName: face }],
+    ['instance', {
+      type: 'INSTANCE', symbolData: { symbolID: 'main' },
+      derivedSymbolData: [{
+        guidPath: { guids: ['label'] },
+        size: { x: 43, y: 21 },
+        transform: { m00: 1, m10: 0, m01: 0, m11: 1, m02: 9, m12: 0 },
+        derivedTextData: {
+          baselines: [{ firstCharacter: 0, endCharacter: 4 }],
+          fontMetaData: [{ key: face, fontDigest: Uint8Array.from(Buffer.from(legacy, 'hex')) }],
+        },
+      }],
+    }],
+  ])
+  const ids = new Map([['main', main.id], ['label', label.id], ['instance', instance.id]])
+  const layouts = importFigComponents(doc, records, ids, () => paint('#000'), () => [])
+  expect(layouts).toHaveLength(1)
+  await matchBundledImportFonts(doc, undefined, layouts)
+  retainFigTextBoxes(doc)
+  const resolve = (value: typeof doc) => {
+    const prepared = prepareDocumentForEditing(value)
+    return Object.values(prepared.nodes).find(n => n.instanceOrigin?.owner === instance.id && n.instanceOrigin.source === label.id)!
+  }
+  const resolved = resolve(structuredClone(doc))
+  expect(resolved.textStyle?.fontId).toMatch(/^2f0180fd/)
+  expect(resolved.width).toBe(43)
+  expect(resolved.transform[4]).toBe(9)
+  expect(label.textStyle.fontId).toMatch(/^90373e7d/)
+
+  const changed = structuredClone(doc)
+  changed.nodes[label.id].text = 'Modified'
+  const edited = resolve(changed)
+  expect(edited.text).toBe('Modified')
+  expect(edited.textStyle?.fontId).toBe(label.textStyle.fontId)
+  expect(edited.transform[4]).toBe(12)
+
+  const explicit = structuredClone(doc)
+  explicit.nodes[instance.id].instance!.overrides[label.id] = { textStyle: label.textStyle }
+  expect(resolve(explicit).textStyle?.fontId).toBe(label.textStyle.fontId)
+})
 
 test('component properties with several targets and stroke overrides are kept', () => {
   const doc = blank('组件')

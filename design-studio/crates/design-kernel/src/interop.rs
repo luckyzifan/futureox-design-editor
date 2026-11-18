@@ -6292,6 +6292,51 @@ pub(crate) fn text_layout_signature_matches(node: &Node, source: &Value) -> bool
     signature == current
 }
 
+pub(crate) fn fig_instance_text_layout<'a>(
+    layouts: &'a Value,
+    origin: &crate::components::Origin,
+) -> Option<&'a Value> {
+    let layout = layouts.get(&origin.owner)?.get("instances")?.get(&origin.key)?;
+    (layout.get("format").and_then(Value::as_str) == Some("fig")).then_some(layout)
+}
+
+/// Retain a measured FIG occurrence only while its inherited inputs match.
+pub(crate) fn restore_fig_instance_text_layout(doc: &Document, node: &mut Node, origin: &crate::components::Origin) {
+    let Some(layout) = doc.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get("textSourceLayouts"))
+        .and_then(|layouts| fig_instance_text_layout(layouts, origin))
+    else { return; };
+    let base = &layout["base"];
+    let pose = |entry: &Value| {
+        serde_json::from_value::<Transform>(entry["transform"].clone()).ok()
+    };
+    if base["width"].as_f64() != Some(node.width)
+        || base["height"].as_f64() != Some(node.height)
+        || pose(base) != Some(node.transform)
+        || !text_layout_signature_matches(node, base)
+    {
+        return;
+    }
+    let (Some(font), Some(width), Some(height), Some(transform)) =
+        (layout["fontId"].as_str(), layout["width"].as_f64(), layout["height"].as_f64(), pose(layout))
+    else { return; };
+    if !doc.fonts.contains_key(font) || !(0. < width && width <= 1e7 && 0. < height && height <= 1e7)
+        || transform.0.iter().any(|n| !n.is_finite() || n.abs() > 1e7)
+        || (transform.0[0] * transform.0[3] - transform.0[1] * transform.0[2]).abs() < 1e-9
+    {
+        return;
+    }
+    let mut measured = node.clone();
+    let Some(style) = measured.text_style.as_mut() else { return; };
+    style.font_id = font.into();
+    measured.width = width;
+    measured.height = height;
+    measured.transform = transform;
+    if text_layout_signature_matches(&measured, layout) {
+        *node = measured;
+    }
+}
+
 fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool {
     let Some(source) = source else { return false };
     if !text_layout_signature_matches(node, source) { return false; }

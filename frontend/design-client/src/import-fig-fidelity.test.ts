@@ -565,3 +565,31 @@ test('legacy FIG unions use stroke-only operands without filling their holes', (
     expect(after(20, 12)).toEqual(before(12, 12))
   } finally { engine.free() }
 })
+
+test('legacy FIG instances retain the outer ring of a union with a collapsed stroke interior', () => {
+  const strokePaints = [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 } }]
+  const { document } = importFig(encoded({
+    type: 'SYMBOL', fillPaints: [],
+  }, {}, [], [
+    { guid: guid(4), type: 'BOOLEAN_OPERATION', name: 'Ring', booleanOperation: 'UNION',
+      parentIndex: { guid: guid(3), position: 'a' }, size: { x: 13, y: 13 },
+      fillPaints: [], strokePaints, strokeWeight: 2, strokeAlign: 'CENTER' },
+    { guid: guid(5), type: 'ELLIPSE', name: 'Circle', parentIndex: { guid: guid(4), position: 'a' },
+      size: { x: 1.875, y: 1.875 }, transform: { m00: 1, m10: 0, m01: 0, m11: 1, m02: 9.5625, m12: 7.5625 },
+      fillPaints: [], strokePaints, strokeWeight: 2, strokeAlign: 'CENTER' },
+    { guid: guid(6), type: 'INSTANCE', name: 'Instance', parentIndex: { guid: guid(2), position: 'b' },
+      size: { x: 40, y: 24 }, transform: { m00: 1, m10: 0, m01: 0, m11: 1, m02: 20, m12: 0 },
+      symbolData: { symbolID: guid(3) } },
+  ]))
+  const engine = new VectorEngine()
+  try {
+    engine.load_document(JSON.stringify(document))
+    const pixels = engine.render_rgba(JSON.stringify({ pageId: document.pages[0].id, width: 64, height: 24,
+      view: { x: 0, y: 0, zoom: 1 }, transparent: true }))
+    const alpha = (x: number, y: number) => pixels[(y * 64 + x) * 4 + 3]
+    expect(alpha(8, 8)).toBe(255)
+    expect(alpha(10, 8)).toBe(0)
+    expect(alpha(28, 8)).toBe(255)
+    expect(alpha(30, 8)).toBe(0)
+  } finally { engine.free() }
+})

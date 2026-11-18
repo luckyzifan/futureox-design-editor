@@ -1163,6 +1163,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         e.preventDefault(); command('open')
       } else if (desktopSession && key === 'n' && !e.shiftKey) {
         e.preventDefault(); command('new')
+      } else if (uiMode === 'figma' && desktopSession?.supportsWorkspace && key === 't' && !e.shiftKey) {
+        e.preventDefault(); openFigmaNewTab()
       }
     }
     const allAssetsShortcut = (event: KeyboardEvent) => {
@@ -1215,6 +1217,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setMenu(false); setShowMove(false); setShowRegions(false); setShowShapes(false); setShowDrawing(false); setShowUtility(false)
     if(source){void source.leave();return}
     setHomeImportError(''); setShowHome(true)
+  }
+  function openFigmaNewTab() {
+    if (uiMode !== 'figma' || showHome || source || largeDocument || desktopStatus.transitioning ||
+        modalOwnsKeyboard(document.activeElement)) return
+    enterHome()
   }
   async function openLocalDesign(): Promise<boolean | 'pending'> {
     if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
@@ -1549,6 +1556,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       }} />}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
+        chooseLayout={!!desktop && uiMode === 'figma'}
         onServerWorkspace={workspaceAvailable ? () => setShowCloudWorkspace(true) : undefined}
         onOpenFile={openLocalDesign} onSettings={() => {
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -1581,7 +1589,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button>
 
         </div>
-        {inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
+        {inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} onOpenNewTab={openFigmaNewTab} />}
         {uiMode === 'sketch' && !sketchComponentsVisible && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
           onEditText={id => editText.current?.(id)}
           onSection={section => switchSketchWorkspace(section === 'assets')} onImages={files => void importImageFiles(files)}
@@ -1663,7 +1671,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <span className="avatar">{translateProfessional('我', locale)}</span>
         </div>
       </header>
-      {uiMode === 'figma' && desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} />}
+      {uiMode === 'figma' && desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id}
+        onOpenNewTab={source ? undefined : openFigmaNewTab} />}
       {menu && <WorkspaceFileMenu anchor={fileMenuTrigger.current} close={() => setMenu(false)}>
             <button type="button" onClick={enterHome}><FolderOpen size={15} />{menuText.localHome}</button>
             {uiMode === 'sketch' && <button type="button" className="compact-library-entry" onClick={() => { setMenu(false); openPersistentLibrary() }}>

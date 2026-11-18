@@ -842,7 +842,14 @@ impl Builder<'_> {
                 },
             );
         }
-        let modes = self.apply_overrides(&mut n, overrides.get(&path), inherited_modes)?;
+        let fields = overrides.get(&path);
+        let modes = self.apply_overrides(&mut n, fields, inherited_modes)?;
+        if n.kind == "text" && !fields.is_some_and(|fields|
+            ["textStyle", "textRuns", "fontSize", "width", "height", "transform", "sizing", "styleRefs"]
+                .iter().any(|field| fields.contains_key(*field)))
+        {
+            crate::interop::restore_fig_instance_text_layout(self.source, &mut n, &origin);
+        }
         n.id = new_id;
         n.component = None;
         n.component_set = false;

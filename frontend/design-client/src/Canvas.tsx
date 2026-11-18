@@ -1111,6 +1111,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   const frameHoverActive = () => uiMode === 'figma' && editor.state.tool === 'frame' && !space.current && !textEdit
   refreshHover.current = () => {
+    // Camera publications can refresh hover throughout wheel momentum.
+    // Skip the canvas layout read while Figma hover is suspended.
+    if (uiMode === 'figma' && (space.current || performance.now() < navigationUntil.current)) {
+      editor.hoverLayer(null, 'canvas')
+      return
+    }
     const client = hoverPoint.current, rect = host.current?.getBoundingClientRect()
     const point = client && rect ? { x: client.x - rect.left, y: client.y - rect.top } : null
     if (point && rect && point.x >= 0 && point.y >= 0 && point.x < rect.width && point.y < rect.height &&
@@ -1127,11 +1133,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // through wheel momentum, then pick once; do not churn between leaf/frame
   // targets or refresh the Layers panel on every presented camera sample.
   const hoverView = useRef(state.view)
+  const figmaHandHoverSuspended = uiMode === 'figma' && spaceHeld
   useLayoutEffect(() => {
     const previous = hoverView.current; hoverView.current = state.view
     if (previous.x !== state.view.x || previous.y !== state.view.y || previous.zoom !== state.view.zoom) suspendNavigationHover()
     else refreshHover.current()
-  }, [editor, state.view, presented, displayedIndex, textEdit, state.tool, measureKeys.deep])
+  }, [editor, state.view, presented, displayedIndex, textEdit, state.tool, measureKeys.deep, figmaHandHoverSuspended])
   const selection = useMemo(() => new Set(state.selection), [state.selection])
   const selectionFeedback = useMemo(() => canvasLayerFeedback(state.doc, state.page, state.selection, editor.parentMap(state.doc)),
     [editor, state.doc, state.version, state.page, state.selection])
@@ -1976,14 +1983,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const wheelSize = { width: el.clientWidth, height: el.clientHeight }
       const scope=`${editor.sessionGeneration}/${editor.state.page}`
       if(scope!==wheelScope){wheelGesture.reset();wheelScope=scope}
-      const next = wheelGesture.update(v, e, wheelSize, screenPoint(e), editor.state.scrollWheelZoom, pinch)
+      const anchor = screenPoint(e)
+      const next = wheelGesture.update(v, e, wheelSize, anchor, editor.state.scrollWheelZoom, pinch)
       if (drag.current?.kind === 'pan') {
         const d = drag.current
         // Retain the pointer displacement already consumed by this gesture.
         d.view = { ...next, x: d.view.x + (next.x - v.x), y: d.view.y + (next.y - v.y) }
       }
       if(next.zoom!==v.zoom){
-        const anchor=screenPoint(e)
         overviewAnchor.current={x:(anchor.x-v.x)/v.zoom,y:(anchor.y-v.y)/v.zoom}
       }
       if (nativeSource && next.zoom !== v.zoom) sourceWheel.current = {token:nativeSource.token, view:next}

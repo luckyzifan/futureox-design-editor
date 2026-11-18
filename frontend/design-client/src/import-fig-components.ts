@@ -1,8 +1,9 @@
 import type { ComponentProperty, DesignDocument, Effect, Paint, Stroke } from './model'
-import { defaultLayout, defaultSizing, defaultTextStyle } from './model'
+import { defaultLayout, defaultSizing, defaultTextStyle, validNodeTransform } from './model'
 import type { FigReceipts } from './import-fig-nodes'
 import { figExportSettings } from './import-fig-properties'
 import { figCollectionModes, figReferenceGuid } from './import-fig-document'
+import { figInstanceTextFace, type FigInstanceTextLayout } from './import-fig-text'
 const guid = (g: any): string => typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : ''
 function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,string>): string | boolean {
   if (kind === 'boolean' && typeof value?.boolValue === 'boolean') return value.boolValue
@@ -118,6 +119,7 @@ function resolveOverridePath(addressesByComponent: Map<string, Map<string, strin
 }
 
 export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, strokesOf: (record:any)=>Stroke[], warnings?: { add(message: string): unknown }, receipts?: FigReceipts, effectsOf?: (record: any, note?: (message: string) => void) => Effect[]) {
+  const instanceTextLayouts: FigInstanceTextLayout[] = []
   for (const [sourceId, r] of records) {
     const n=doc.nodes[ids.get(sourceId)!]
     if (!n || r.type!=='SYMBOL') continue
@@ -256,12 +258,45 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       }
       n.instance.overrides[path] = { ...(n.instance.overrides[path] || {}), ...fields }
     }
+    // A component master and its measured instance can use different file
+    // revisions of the same face. Keep the instance evidence separate from
+    // authored overrides until the exact resource has been verified.
+    if (Array.isArray(r.derivedSymbolData)) {
+      const layouts = new Map<string, FigInstanceTextLayout>()
+      const ambiguous = new Set<string>()
+      for (const saved of r.derivedSymbolData) {
+        if (!saved?.derivedTextData || !Array.isArray(saved.guidPath?.guids)) continue
+        const parts = saved.guidPath.guids.map(guid).filter(Boolean)
+        const resolved = resolveOverridePath(addressesByComponent, records, ids, reverse, componentId, parts)
+        if (resolved?.length !== 1 || resolved[0] === '$root') continue
+        const path = resolved[0]
+        if (layouts.has(path)) { ambiguous.add(path); continue }
+        const target = doc.nodes[path]
+        if (target?.kind !== 'text' || target.textRuns?.some(run => run.fontId !== undefined || run.weight !== undefined)) continue
+        const fields = n.instance.overrides[path]
+        if (fields && ['text', 'textStyle', 'textRuns', 'fontSize', 'width', 'height', 'transform', 'sizing', 'styleRefs']
+          .some(field => Object.hasOwn(fields, field))) continue
+        const source = records.get(reverse.get(path) || '')
+        const face = figInstanceTextFace(source, saved.derivedTextData, target.text)
+        const box = saved.size ?? saved.derivedTextData.layoutSize
+        const pose = saved.transform
+        const transform = pose ? [pose.m00, pose.m10, pose.m01, pose.m11, pose.m02, pose.m12] : target.transform
+        if (!face || !finite(box?.x, Number.MIN_VALUE, 1e7) || !finite(box?.y, Number.MIN_VALUE, 1e7) ||
+            !validNodeTransform(transform)) continue
+        const sameBox = box.x === target.width && box.y === target.height &&
+          transform.every((value, index) => value === target.transform[index])
+        if (sameBox && face.digest === doc.designSystem?.fontSources?.[path]?.digest) continue
+        layouts.set(path, { owner: n.id, path, template: path, ...face, width: box.x, height: box.y, transform })
+      }
+      for (const [path, layout] of layouts) if (!ambiguous.has(path)) instanceTextLayouts.push(layout)
+    }
     if(retained.length && receipts && ids.get(sourceId)) {
       const current = receipts.get(n.id) ?? {}
       current.figOverrideVariableConsumption = JSON.stringify(retained)
       receipts.set(n.id, current)
     }
   }
+  return instanceTextLayouts
 }
 
 function finite(value: unknown, lo: number, hi: number) {

@@ -374,7 +374,12 @@ fn stroke_paints_area(s: &Stroke) -> bool {
 }
 
 fn fig_stroke_operands(doc: &Document, node: &Node) -> bool {
-    match crate::interop::sketch_binding(doc, node, "figBooleanStrokeOperands") {
+    const KEY: &str = "figBooleanStrokeOperands";
+    let marker = crate::interop::sketch_binding(doc, node, KEY).or_else(|| {
+        let source = doc.nodes.get(&node.instance_origin.as_ref()?.source)?;
+        crate::interop::sketch_binding(doc, source, KEY).filter(|value| *value == "unbaked-union")
+    });
+    match marker {
         Some("true") => true,
         // Older FIG unions can store just their editable stroked shapes.
         // Their outlines have area even when the operands have no fill paint.
@@ -400,6 +405,27 @@ fn stroke_operand(node: &Node) -> Result<Option<Path>, String> {
     let strokes = node.strokes.iter().filter(|s| stroke_paints_area(s));
     let mut outline = Path::default();
     for stroke in strokes {
+        // The inner edge of a uniform centered stroke collapses when its
+        // width reaches the diameter. Send the resulting disk to the Boolean
+        // solver as one contour instead of intersecting overlapping strips.
+        if node.kind == "ellipse" && node.width > 0. && node.width == node.height
+            && node.arc.is_none() && node.path_offset == 0. && node.network.is_none() && node.vector_geometry.is_none()
+            && stroke.align == "center" && stroke.width >= node.width
+            && stroke.width_profile.is_empty() && stroke.dash.is_empty()
+            && stroke.start_marker.is_none() && stroke.end_marker.is_none()
+        {
+            if outline.commands.len().saturating_add(3) > crate::vector_geometry::MAX_COMMANDS {
+                return Err("Boolean stroke command budget exceeded".into());
+            }
+            let center = Point::new(node.width / 2., node.height / 2.);
+            let radius = (node.width + stroke.width) / 2.;
+            outline.commands.extend([
+                Command::Move(Point::new(center.x + radius, center.y)),
+                Command::Arc { center, radius: Point::new(radius, radius), start: 0., sweep: std::f64::consts::TAU },
+                Command::Close,
+            ]);
+            continue;
+        }
         let local = node.paths()?.1.flatten(Transform::default(), 0.005)?;
         for contour in crate::stroke::expand(&local, stroke, 0.005, 0.)? {
             if outline.commands.len().saturating_add(contour.points.len()).saturating_add(1) > crate::vector_geometry::MAX_COMMANDS {

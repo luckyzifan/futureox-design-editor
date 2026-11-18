@@ -110,8 +110,8 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
     } else if (event.data.format === 'fig') {
       await initializeKernelModule()
       importStage = 233 // decode
-      const result=importFig(bytes,event.data.name)
-      const fonts=await matchBundledImportFonts(result.document)
+      const { instanceTextLayouts, ...result } = importFig(bytes,event.data.name)
+      const fonts=await matchBundledImportFonts(result.document, undefined, instanceTextLayouts)
       if (fonts.changed) retainFigTextBoxes(result.document)
       const warnings=retainedFontWarnings(result.warnings, fonts)
       for(const item of fonts.digestMismatches){

@@ -4,7 +4,9 @@ import type { DesktopSession } from './desktop-session'
 import { useInterfacePreferences } from './interface-preference'
 import { blank } from './model'
 
-export function WorkspaceTabs({ session, activeId, sidebar = false }: { session: DesktopSession; activeId: string; sidebar?: boolean }) {
+export function WorkspaceTabs({ session, activeId, sidebar = false, onOpenNewTab }: {
+  session: DesktopSession; activeId: string; sidebar?: boolean; onOpenNewTab?: () => void
+}) {
   const tabs = useSyncExternalStore(session.subscribeTabs, session.tabsSnapshot)
   const { locale } = useInterfacePreferences()
   const en = locale === 'en'
@@ -14,6 +16,7 @@ export function WorkspaceTabs({ session, activeId, sidebar = false }: { session:
   async function open(work: () => Promise<boolean>) { if (busy) return; setBusy(true); try { await work() } finally { setBusy(false) } }
   const newDocument = () => void open(() => session.replace(blank()))
   const newLabel = en ? (sidebar ? 'New document' : 'New document tab') : (sidebar ? '新建文档' : '新建文档标签')
+  const tabLabel = onOpenNewTab ? (en ? 'Open new tab' : '打开新标签页') : newLabel
   const docsLabel = en ? 'Documents' : '文档'
   const disclosureLabel = en ? (expanded ? 'Hide Document List' : 'Show Document List') : (expanded ? '隐藏文档列表' : '显示文档列表')
   return <nav className={sidebar ? 'workspace-tabs sketch-document-list' : 'workspace-tabs'}
@@ -45,6 +48,7 @@ export function WorkspaceTabs({ session, activeId, sidebar = false }: { session:
       <button type="button" className="workspace-tab-close" aria-label={en ? `Close ${tab.name}` : `关闭文档 ${tab.name}`}
         disabled={busy} onClick={() => void open(() => session.closeWorkspaceTab(tab.id))}>{sidebar ? <X size={13} /> : '×'}</button>
     </div>)}</div>
-    {!sidebar && <button type="button" className="workspace-tab-new" aria-label={newLabel} disabled={busy} onClick={newDocument}>＋</button>}
+    {!sidebar && <button type="button" className="workspace-tab-new" aria-label={tabLabel} title={tabLabel}
+      disabled={busy} onClick={onOpenNewTab ?? newDocument}>＋</button>}
   </nav>
 }

@@ -4,6 +4,8 @@ import { abeezeeAbsentFaceDiagnosis } from './font-catalog'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
 import { readKernelAsset } from './kernel/initialization'
 import { initializeKernelModule } from './kernel/module'
+import { emptySystem } from './design-system'
+import type { FigInstanceTextLayout } from './import-fig-text'
 
 type ImportFace = {
   family: string
@@ -204,9 +206,40 @@ export function retainedFontWarnings(warnings: readonly string[], fonts: {
   })
 }
 
-export async function matchBundledImportFonts(document:DesignDocument,read=readBundledFont):Promise<{changed:number;missing:string[];families:string[];substitutions:{from:string;face:string}[];digestMismatches:{name:string;digest:string}[]}>{
+function installFigInstanceTextLayouts(
+  document: DesignDocument, layouts: readonly FigInstanceTextLayout[],
+  matches: ReadonlyMap<string, { id: string; resource: FontResource }>,
+) {
+  let installed = 0
+  for (const layout of layouts) {
+    const target = document.nodes[layout.template]
+    const owner = document.nodes[layout.owner]
+    const match = matches.get(fontMatchKey(layout.name, layout.digest))
+    if (target?.kind !== 'text' || !target.textStyle || !owner?.instance || !match) continue
+    document.fonts = { ...document.fonts, [match.id]: match.resource }
+    const signature = structuredClone({
+      text: target.text, textStyle: target.textStyle, fontSize: target.fontSize,
+      textRuns: target.textRuns ?? [], sizing: target.sizing,
+    })
+    const metadata = (document.designSystem ??= emptySystem()).sketchContainers ??= {}
+    const sources = (metadata.textSourceLayouts ??= {}) as Record<string, { instances?: Record<string, object> }>
+    const instances = (sources[layout.owner] ??= {}).instances ??= {}
+    instances[layout.path] = {
+      format: 'fig',
+      base: { signature, width: target.width, height: target.height, transform: [...target.transform] },
+      signature: { ...signature, textStyle: { ...signature.textStyle, fontId: match.id } },
+      width: layout.width, height: layout.height, transform: [...layout.transform],
+      fontId: match.id,
+    }
+    installed++
+  }
+  return installed
+}
+
+export async function matchBundledImportFonts(document:DesignDocument,read=readBundledFont,instanceLayouts:readonly FigInstanceTextLayout[]=[]):Promise<{changed:number;missing:string[];families:string[];substitutions:{from:string;face:string}[];digestMismatches:{name:string;digest:string}[]}>{
   const asks=new Map<string, SourceFontRequest>()
   for(const node of Object.values(document.nodes)) for(const ask of unmatchedSourceFontRequests(document,node)) asks.set(fontMatchKey(ask.name, ask.digest), ask)
+  for (const { name, digest } of instanceLayouts) asks.set(fontMatchKey(name, digest), { name, digest })
   const substitutions: {from:string; face:string}[] = []
   const requested=[...new Set([...asks.values()].map(ask=>selectBundledImportFace(ask.name, ask.digest)).filter((face):face is Face=>!!face))]
   const available=Math.max(0,32-Object.keys(document.fonts||{}).length)
@@ -230,13 +263,15 @@ export async function matchBundledImportFonts(document:DesignDocument,read=readB
     const named=matchFont(ask.name,[...bundledImportFonts])
     if(!ask.digest && !named) substitutions.push({ from: ask.name, face: `${face.family} ${face.style}` })
   }
-  const changed=applyMatchedFonts(document,matches)
+  const changed=applyMatchedFonts(document,matches)+installFigInstanceTextLayouts(document,instanceLayouts,matches)
   if(document.designSystem?.fontSources) for(const source of Object.values(document.designSystem.fontSources)){
     const namesOnNode=[source.style, ...Object.values(source.runs || {})].filter((item): item is string => !!item)
     const resolved=substitutions.filter(item=>namesOnNode.includes(item.from)).map(item=>item.from)
     if(resolved.length) source.resolved=[...new Set([...(source.resolved || []), ...resolved])]
   }
   const missing=new Set<string>();for(const node of Object.values(document.nodes))unmatchedSourceFonts(document,node).forEach(name=>missing.add(name))
-  const digestMismatches=[...asks.values()].flatMap(ask => ask.digest && missing.has(ask.name) ? [{ name: ask.name, digest: ask.digest }] : [])
+  for (const { name, digest } of instanceLayouts) if (!matches.has(fontMatchKey(name, digest))) missing.add(name)
+  const digestMismatches=[...asks.values()].flatMap(ask => ask.digest && missing.has(ask.name) &&
+    !matches.has(fontMatchKey(ask.name, ask.digest)) ? [{ name: ask.name, digest: ask.digest }] : [])
   return {changed,missing:[...missing],families:[...new Set([...loaded.keys()].map(face=>face.family))],substitutions,digestMismatches}
 }
