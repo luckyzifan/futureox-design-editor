@@ -45,6 +45,7 @@ beforeEach(async () => {
   vi.stubGlobal('CSS', { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, character => `\\${character}`) })
   dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
   dom.window.HTMLElement.prototype.scrollIntoView=()=>{}; // jsdom layout transport only; no scrolling/pixel assertion.
+  dom.window.HTMLElement.prototype.scrollTo = () => {}
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
   Object.defineProperties(dom.window.HTMLElement.prototype, { clientWidth: { configurable: true, get: () => 1000 }, clientHeight: { configurable: true, get: () => 800 } })
@@ -197,7 +198,16 @@ test('L09 visible invalid owner still blocks panel close sidebar navigation and 
 })
 
 function workspaceSummary(){const summary=document.querySelector<HTMLElement>('details.workspace-actions > summary')!;expect(summary).not.toBeNull();return summary}
-async function workspaceOpen(entry:'pointer'|'Enter'|'Space'='pointer'){const summary=workspaceSummary(),details=summary.parentElement as HTMLDetailsElement;if(!details.open){if(entry==='pointer')await pointerActivate(summary);else await keyboardActivate(summary,entry==='Space'?' ':'Enter')}expect(details.open,'Workspace summary must actually expose controls before activating a panel toggle').toBe(true);expect(summary.getAttribute('aria-label')).toBe('更多工作区操作')}
+async function workspaceOpen(entry:'pointer'|'Enter'|'Space'='pointer') {
+  const summary = workspaceSummary(), details = summary.parentElement as HTMLDetailsElement
+  if (!details.open) {
+    if (entry === 'pointer') await pointerActivate(summary)
+    else await keyboardActivate(summary, entry === 'Space' ? ' ' : 'Enter')
+  }
+  expect(details.open, 'Workspace summary must actually expose controls before activating a panel toggle').toBe(true)
+  const label = interfacePreference.getSnapshot().locale === 'en' ? 'More workspace actions' : '更多工作区操作'
+  expect(summary.getAttribute('aria-label')).toBe(label)
+}
 // DRAFT NOT RUN. Append to the mounted locale/viewport test module; reuses its
 // real App, Editor and activation helpers. No product file changes.
 import { cancelPendingOperations } from './pending-edits'

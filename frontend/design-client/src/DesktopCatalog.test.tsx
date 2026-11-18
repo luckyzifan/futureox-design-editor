@@ -10,6 +10,7 @@ function harness() {
   const hooks = {
     useState(init: any) { const i = cursor++; if (!(i in slots)) slots[i] = typeof init === 'function' ? init() : init; return [slots[i], (value: any) => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }] },
     useRef(init: any) { const i = cursor++; return slots[i] ??= { current: init } },
+    useSyncExternalStore(_: unknown, snapshot: () => unknown) { cursor++; return snapshot() },
     useEffect(fn: () => any, deps: any[]) {
       const i = cursor++, old = slots[i]
       if (!old || deps.some((value, index) => !Object.is(value, old.deps[index]))) {
