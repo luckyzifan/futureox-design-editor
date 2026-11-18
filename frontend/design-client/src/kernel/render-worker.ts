@@ -62,7 +62,7 @@ import { exactTilePayloadBytes, OwnerTileCache, ownsExactTileBytes } from './own
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
 import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
-import { PreviewAdmission, isAnalyticProgramBudget, isScenePathBudget, prepareWindowRetriable } from './preview-tiles'
+import { MAX_PREVIEW_TILE_SIDE, PreviewAdmission, isAnalyticProgramBudget, isScenePathBudget, prepareWindowRetriable } from './preview-tiles'
 import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
@@ -3128,9 +3128,9 @@ async function renderTiledPreview(
     }
   }
   const bitmapAssembly = presentOnly && backend === 'webgpu' && !managedOutput && !options.pixelPreview && !options.transparent
-  // A material band is admitted as a capture, but its recovery compiler
-  // takes ordinary GPU tile viewports. Bound both axes before subdivision.
-  const recoverySide = sourceImageDisplay ? Math.min(tileSide, TILE_SIDE + 2) : tileSide
+  // A whole capture can exceed the ordinary tile limit. Subdivide its
+  // recovery using admissible dimensions on the original screen lattice.
+  const recoverySide = Math.min(tileSide, sourceImageDisplay ? TILE_SIDE + 2 : MAX_PREVIEW_TILE_SIDE)
   const width = crop?.width ?? options.width, height = crop?.height ?? options.height
   let skipFailedRegion = (recoverySide === tileSide || width <= recoverySide && height <= recoverySide) &&
     /GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(presentationFailure)
