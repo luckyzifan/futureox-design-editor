@@ -4,7 +4,7 @@ import { blank, type DesignDocument } from './model'
 import { DesktopSession, type LeaveDecision } from './desktop-session'
 import { prepareDocument, forkPreparedDocument, takePreparedDocument } from './prepared-document'
 import * as picking from './kernel/picking'
-import type { DesktopBridge, WorkspaceOpened } from './desktop'
+import type { DesktopBridge, DesktopResult, WorkspaceOpened } from './desktop'
 const sessions: DesktopSession[] = []
 const ok = { status: 'ok' } as const
 const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve() }
@@ -14,7 +14,7 @@ function fixture() {
   const row = (d: DesignDocument) => ({ id: d.id, name: d.name, revision: 1, hash: 'unchanged-label', updatedAt: 1, deleted: false, documentJson: JSON.stringify(d) })
   const open = vi.fn(async ({ id }: { id: string }) => rows.has(id) ? { ...ok, ...rows.get(id)! } : { status: 'error' as const, code: 'WORKSPACE_NOT_FOUND', message: 'missing' })
   const decode = vi.fn(async (json: string) => JSON.parse(json))
-  const commit = vi.fn(async ({ documentJson }: { documentJson: string }) => { const d = JSON.parse(documentJson), next = { ...row(d), revision: (rows.get(d.id)?.revision || 0) + 1 }; rows.set(d.id, next); return { ...ok, ...next } })
+  const commit = vi.fn(async ({ documentJson }: { documentJson: string }): Promise<DesktopResult<WorkspaceOpened>> => { const d = JSON.parse(documentJson), next = { ...row(d), revision: (rows.get(d.id)?.revision || 0) + 1 }; rows.set(d.id, next); return { ...ok, ...next } })
   const bridge = { version: 1, documentCodec: { decode, encode: async (d: DesignDocument) => JSON.stringify(d) }, workspace: { open, commit, list: async () => ({ ...ok, documents: [] }) }, readRecovery: async () => ({ status: 'cancelled' }), clearRecovery: async () => ok, writeRecovery: async () => ok, setDirty: async () => {} } as unknown as DesktopBridge
   const confirm = vi.fn(async (): Promise<LeaveDecision> => 'discard'), session = new DesktopSession(bridge, editor, confirm)
   sessions.push(session); rows.set(document.id, row(document))
@@ -43,15 +43,26 @@ test.each(['missing', 'deleted', 'wrong-id'] as const)('fresh target %s cannot c
   f.open.mockImplementationOnce(async () => { const result = { ...ok, ...f.rows.get(f.document.id)! }; if (kind === 'missing') f.rows.delete(f.document.id); else if (kind === 'deleted') f.rows.get(f.document.id)!.deleted = true; else f.rows.get(f.document.id)!.id = 'wrong-id'; return result })
   expect(await f.session.openWorkspace(f.document.id)).toBe(false); expect(f.editor.state.doc).toBe(before)
 })
-test('cancel after validation retains dirty document and avoids the fresh-head read', async () => {
-  const f = fixture(); await f.session.start(); f.editor.change('Current edit', d => { d.name = 'Keep' }); const before = f.editor.state.doc
-  f.confirm.mockResolvedValueOnce('cancel')
-  expect(await f.session.openWorkspace(f.document.id)).toBe(false); expect(f.editor.state.doc).toBe(before); expect(f.open).toHaveBeenCalledTimes(1); expect(f.session.dirty).toBe(true)
+test('a failed automatic workspace save retains the dirty document and skips the fresh-head read', async () => {
+  const f = fixture()
+  await f.session.start()
+  f.editor.change('Current edit', d => { d.name = 'Keep' })
+  const before = f.editor.state.doc
+  f.commit.mockResolvedValueOnce({ status: 'error', code: 'WORKSPACE_STORAGE_FULL', message: 'No space left on device' })
+  expect(await f.session.openWorkspace(f.document.id)).toBe(false)
+  expect(f.commit).toHaveBeenCalledTimes(1)
+  expect(f.confirm).not.toHaveBeenCalled()
+  expect(f.open).toHaveBeenCalledTimes(1)
+  expect(f.editor.state.doc).toBe(before)
+  expect(f.editor.canUndo).toBe(true)
+  expect(f.session.dirty).toBe(true)
 })
-test('Save of the same target advances its bytes and cannot adopt the pre-save prepared snapshot', async () => {
+test('automatic Save of the same target advances its bytes and cannot adopt the pre-save prepared snapshot', async () => {
   const f = fixture(); await f.session.start(); expect(await f.session.openWorkspace(f.document.id)).toBe(true)
-  f.editor.change('Save newer edit', d => { d.name = 'Newest saved version' }); f.confirm.mockResolvedValueOnce('save'); f.decode.mockClear()
+  f.editor.change('Save newer edit', d => { d.name = 'Newest saved version' }); f.decode.mockClear()
   expect(await f.session.openWorkspace(f.document.id)).toBe(true); expect(f.editor.state.doc.name).toBe('Newest saved version'); expect(f.decode).toHaveBeenCalledTimes(2); expect(f.session.dirty).toBe(false)
+  expect(f.commit).toHaveBeenCalledTimes(1)
+  expect(f.confirm).not.toHaveBeenCalled()
 })
 test('edits during the fresh-head await keep the newer document and undo history', async () => {
   const f = fixture(), gate = deferred<any>(); f.open.mockResolvedValueOnce({ ...ok, ...f.rows.get(f.document.id)! }); f.open.mockReturnValueOnce(gate.promise)

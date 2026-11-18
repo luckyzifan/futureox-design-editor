@@ -20,5 +20,11 @@ test('worker cache commits require owned bytes, uncanceled request, and captured
   expect(source).toContain('ownsExactTileBytes(result) && cacheOwner.current(cacheTicket)')
   expect(source).toContain('cacheTicket = cacheOwner.capture()')
   expect(source).toContain('exactTilePayloadBytes(result), cacheTicket)')
-  expect(source).toMatch(/tileFence\(false\)\.action === 'cancel'\) throw new Error\('PREVIEW_CANCELLED'\)\s+\/\/ Only the exact scene/)
+  const commitStart = source.indexOf('undelivered = result', source.indexOf('cacheTicket = cacheOwner.capture()'))
+  const commitEnd = source.indexOf('exactTilePayloadBytes(result), cacheTicket)', commitStart)
+  expect(commitStart).toBeGreaterThanOrEqual(0)
+  expect(commitEnd).toBeGreaterThan(commitStart)
+  expect(source.slice(commitStart, commitEnd)).toMatch(
+    /tileFence\(false\) === 'cancel'\) throw new Error\('PREVIEW_CANCELLED'\)[\s\S]*ownsExactTileBytes\(result\) && cacheOwner\.current\(cacheTicket\)[\s\S]*cacheOwner\.set\(/,
+  )
 })
