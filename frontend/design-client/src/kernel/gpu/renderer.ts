@@ -7046,7 +7046,7 @@ export class GpuRenderer {
     // Match Effect::sketch_backdrop_sigma for the variable-radius operator.
     if (effect?.gradientBlur?.sketch) return this.sketchBlurRamp(input, node, effect, radius * Math.SQRT2 * 0.75, true)
     if (effect?.sketchBackdrop) {
-      return this.blur(input, radius * Math.SQRT2, true, false, false, true, false, true)
+      return this.blur(input, radius, true, false, false, true, false, true)
     }
     const backdrop = node.blend === 'normal' ? backdropEffect(node.effects || []) : undefined
     const displayEligible = backdrop?.kind === 'background-blur' && !backdrop.gradientBlur &&

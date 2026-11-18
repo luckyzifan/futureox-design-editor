@@ -482,7 +482,12 @@ pub struct Effect {
     )]
     pub shadow_knockout: bool,
     /// Sketch background blur uses a Gaussian over the captured backdrop.
-    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    #[serde(
+        default,
+        rename = "sketchBackdrop",
+        alias = "sketch_backdrop",
+        skip_serializing_if = "crate::components::is_false"
+    )]
     pub sketch_backdrop: bool,
     #[serde(default, rename="zoomBlur", skip_serializing_if="Option::is_none")]
     pub zoom_blur: Option<crate::zoom_blur::ZoomBlur>,
@@ -759,11 +764,10 @@ impl Effect {
         }
     }
     pub fn sketch_backdrop_sigma(&self, scale: f64) -> f64 {
-        let uniform = self.radius * scale * std::f64::consts::SQRT_2;
-        // With the fractional three-box ramp, Sketch's progressive control
-        // has less spread than its uniform background operator. Native step
-        // exports at radii 4.5, 12 and 22 (1×/2×) distinguish the two.
-        if self.sketch_ramp().is_some() { uniform * 0.75 } else { uniform }
+        let radius = self.radius * scale;
+        // Uniform Sketch blur uses the authored radius as the Gaussian sigma.
+        // The fractional three-box ramp keeps its own calibrated input scale.
+        if self.sketch_ramp().is_some() { radius * std::f64::consts::SQRT_2 * 0.75 } else { radius }
     }
 
     pub(crate) fn backdrop_outset(&self, scale: f64) -> f64 {

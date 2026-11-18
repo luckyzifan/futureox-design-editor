@@ -9188,6 +9188,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sketch_backdrop_flag_uses_the_gpu_wire_name_and_reads_older_documents() {
+        for field in ["sketchBackdrop", "sketch_backdrop"] {
+            let mut value = json!({"kind": "background-blur", "color": "#000000", "radius": 6.});
+            value[field] = json!(true);
+            let effect: Effect = serde_json::from_value(value).unwrap();
+            assert!(effect.sketch_backdrop);
+            assert_eq!(effect.sketch_backdrop_sigma(2.), 12.);
+            let wire = serde_json::to_value(effect).unwrap();
+            assert_eq!(wire["sketchBackdrop"], true);
+            assert!(wire.get("sketch_backdrop").is_none());
+        }
+    }
+
+    #[test]
     fn sketch_two_stop_background_blur_keeps_the_progressive_kernel() {
         for strengths in [[0., 1.], [0.5, 0.5]] {
             let blur = json!({
