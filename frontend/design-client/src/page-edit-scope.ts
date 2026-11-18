@@ -1,4 +1,6 @@
 import { documentTransition, peekChangedNodes } from './document-patch'
+import type { ParentMap } from './geometry'
+import type { PoseTopology } from './kernel/translation-preview'
 import type { DesignDocument, DesignNode } from './model'
 
 /** A committed edit whose node changes stay on one page and do not retarget
@@ -10,23 +12,25 @@ export type PageEditScope = {
   layout: boolean
 }
 
-type EditIndex = { parents: Map<string, string>; externalRefs: Set<string>; connectorTargets: Set<string>; pageChildren: readonly string[][] }
+type EditIndex = { parents: ParentMap; externalRefs: Set<string>; connectorTargets: Set<string>; pageChildren: readonly string[][] }
 const indexes = new WeakMap<DesignDocument, EditIndex>()
 
 function pageChildrenMatch(doc: DesignDocument, index: EditIndex) {
   return doc.pages.length === index.pageChildren.length && doc.pages.every((page, i) => page.children === index.pageChildren[i])
 }
 
-function buildIndex(doc: DesignDocument): EditIndex {
+function buildIndex(doc: DesignDocument, knownParents?: ParentMap): EditIndex {
   const parents = new Map<string, string>()
   const externalRefs = new Set<string>()
   const connectorTargets = new Set<string>()
-  for (const page of doc.pages) for (const id of page.children) parents.set(id, page.id)
+  if (!knownParents) for (const page of doc.pages) for (const id of page.children) parents.set(id, page.id)
   for (const n of Object.values(doc.nodes)) {
-    for (const child of n.children) parents.set(child, n.id)
-    for (const endpoint of [n.connector?.from.nodeId, n.connector?.to.nodeId]) if (endpoint) {
-      externalRefs.add(endpoint)
-      connectorTargets.add(endpoint)
+    if (!knownParents) for (const child of n.children) parents.set(child, n.id)
+    if (n.connector) {
+      for (const endpoint of [n.connector.from.nodeId, n.connector.to.nodeId]) if (endpoint) {
+        externalRefs.add(endpoint)
+        connectorTargets.add(endpoint)
+      }
     }
     if (n.instance) {
       externalRefs.add(n.instance.componentId)
@@ -34,11 +38,11 @@ function buildIndex(doc: DesignDocument): EditIndex {
     }
     if (n.instanceOrigin) externalRefs.add(n.instanceOrigin.owner)
   }
-  return { parents, externalRefs, connectorTargets, pageChildren: doc.pages.map(page => page.children) }
+  return { parents: knownParents ?? parents, externalRefs, connectorTargets, pageChildren: doc.pages.map(page => page.children) }
 }
 
 /** Immutable snapshots share one parent/reference index. Drafts are not cached. */
-function editIndex(doc: DesignDocument) {
+function editIndex(doc: DesignDocument, knownParents?: ParentMap) {
   const cached = indexes.get(doc)
   if (cached && pageChildrenMatch(doc, cached)) return cached
   let cursor = doc
@@ -49,7 +53,7 @@ function editIndex(doc: DesignDocument) {
     if (inherited && pageChildrenMatch(doc, inherited)) { indexes.set(doc, inherited); return inherited }
     cursor = link.before
   }
-  const built = buildIndex(doc)
+  const built = buildIndex(doc, knownParents)
   indexes.set(doc, built)
   return built
 }
@@ -63,8 +67,11 @@ export function snapshotParents(doc: DesignDocument): ReadonlyMap<string, string
   return editIndex(doc).parents
 }
 /** True when a connector, instance, or slot on any page names one of these nodes. */
-export function snapshotTargets(doc: DesignDocument, ids: readonly string[]): boolean {
-  const refs = editIndex(doc).externalRefs
+export function snapshotTargets(doc: DesignDocument, ids: readonly string[], topology?: PoseTopology): boolean {
+  // The pose plan already indexed this immutable document. Reuse its parent
+  // links while still scanning cross-page references independently.
+  const parents = topology?.matches(doc) && topology.permitsPose ? topology : undefined
+  const refs = editIndex(doc, parents).externalRefs
   return ids.some(id => refs.has(id))
 }
 /** True when a connector endpoint is one of `ids` or a descendant of one.
@@ -117,7 +124,7 @@ function subtree(doc: DesignDocument, id: string, visit: (n: DesignNode) => bool
   return walk(id)
 }
 
-function pageOf(doc: DesignDocument, id: string, parents: Map<string, string>, pages: Set<string>): string | undefined {
+function pageOf(doc: DesignDocument, id: string, parents: ParentMap, pages: Set<string>): string | undefined {
   let at: string | undefined = id
   const seen = new Set<string>()
   while (at && !seen.has(at)) {
