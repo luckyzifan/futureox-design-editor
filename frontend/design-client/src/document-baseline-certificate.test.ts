@@ -44,7 +44,7 @@ test('known native codec reuses exact derived-validation bytes for the loaded ba
   expect(f.encode).toHaveBeenCalledTimes(1); expect(f.submitted).toHaveLength(1); expect(f.submitted[0]).not.toBe(baseline)
   expect(JSON.parse(f.submitted[0]).name).toBe('Changed'); expect(f.session.dirty).toBe(false)
 })
-test('incremental codec seeds only the adopted bytes and invalidates versioned in-place roots', async () => {
+test('incremental codec seeds only the adopted bytes and serializes each published edit', async () => {
   const f = await fixture(), codec = new ResidentDocumentCodec(2 ** 20)
   const incremental = vi.fn(async request => codec.encode(request))
   ;(f.bridge as { documentCodec: DesktopBridge['documentCodec'] }).documentCodec = {
@@ -55,11 +55,13 @@ test('incremental codec seeds only the adopted bytes and invalidates versioned i
   f.editor.change('edit', d => { d.name = 'First edit' }); await f.recover()
   expect(incremental.mock.calls[0][0].installJson).toBe(original)
   expect(f.submitted.at(-1)).toBe(JSON.stringify(f.editor.state.doc))
-  f.editor.state.doc.name = 'Versioned same root'; f.editor.set({ version: f.editor.state.version + 1 })
+  const firstEdit = f.editor.state.doc
+  expect(f.editor.change('edit', d => { d.name = 'Second edit' }).status).toBe('committed')
+  expect(firstEdit.name).toBe('First edit')
   await f.recover()
   expect(incremental.mock.calls.at(-1)![0].installJson).toBeUndefined()
   expect(f.submitted.at(-1)).toBe(JSON.stringify(f.editor.state.doc))
-  expect(JSON.parse(f.submitted.at(-1)!).name).toBe('Versioned same root')
+  expect(JSON.parse(f.submitted.at(-1)!).name).toBe('Second edit')
 })
 test('unknown reordered custom codec must encode both its own baseline and current format', async () => {
   const custom = (input: unknown) => JSON.stringify(Object.fromEntries(Object.entries(input as Record<string, unknown>).reverse()))
@@ -96,11 +98,13 @@ test('font rebind failure cannot publish or consume a prepared baseline certific
   expect(state.load(token, true)).toBe(true)
   expect(state.baselineJson).toBe(JSON.stringify(f.editor.state.doc))
 })
-test('versioned mutation of the same document root cannot match the historical certified baseline', async () => {
+test('edits publish a new root and leave the certified baseline immutable', async () => {
   const f = await fixture(), original = f.editor.state.doc
-  original.name = 'Versioned same root'; f.editor.set({ version: f.editor.state.version + 1 })
+  expect(Object.isFrozen(original)).toBe(true)
+  expect(f.editor.change('rename', d => { d.name = 'Versioned edit' }).status).toBe('committed')
+  expect(f.editor.state.doc).not.toBe(original)
   await f.recover(); expect(f.encode).toHaveBeenCalledTimes(1); expect(f.submitted).toHaveLength(1)
-  expect(JSON.parse(f.submitted[0]).name).toBe('Versioned same root')
+  expect(JSON.parse(f.submitted[0]).name).toBe('Versioned edit')
 })
 test('revision change during current encoding requires a fresh encode and persists only the new snapshot', async () => {
   const f = await fixture(), pending = deferred<string>(); f.editor.change('first', d => { d.name = 'Revision three' })

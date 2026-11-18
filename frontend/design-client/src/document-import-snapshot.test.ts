@@ -57,7 +57,7 @@ test('an unknown custom codec still independently encodes the imported current s
   expect(f.session.dirty).toBe(false)
 })
 
-test.each(['versioned-same-root', 'replacement-owner'] as const)(
+test.each(['versioned-edit', 'replacement-owner'] as const)(
   'import adoption listener %s invalidates current encoded bytes before the first save',
   async mutation => {
     const f = fixture()
@@ -65,9 +65,8 @@ test.each(['versioned-same-root', 'replacement-owner'] as const)(
     const unsubscribe = f.editor.subscribe(() => {
       if (handled || f.editor.state.doc.id !== f.source.id) return
       handled = true
-      if (mutation === 'versioned-same-root') {
-        f.editor.state.doc.name = 'Edited during import'
-        f.editor.set({ version: f.editor.state.version + 1 })
+      if (mutation === 'versioned-edit') {
+        expect(f.editor.change('rename', d => { d.name = 'Edited during import' }).status).toBe('committed')
       } else f.editor.set({ doc: { ...f.editor.state.doc, name: 'Edited during import' } })
     })
     try {
@@ -80,12 +79,11 @@ test.each(['versioned-same-root', 'replacement-owner'] as const)(
   },
 )
 
-test('a later versioned mutation of the imported root cannot reuse the first-save bytes', async () => {
+test('a later authored edit cannot reuse the imported first-save bytes', async () => {
   const f = fixture()
   expect(await f.session.replace(f.source)).toBe(true)
   expect(f.encode).not.toHaveBeenCalled()
-  f.editor.state.doc.name = 'Later edit'
-  f.editor.set({ version: f.editor.state.version + 1 })
+  expect(f.editor.change('rename', d => { d.name = 'Later edit' }).status).toBe('committed')
   await f.recover()
   expect(f.encode).toHaveBeenCalledTimes(1)
   expect(f.commit).toHaveBeenCalledTimes(2)
