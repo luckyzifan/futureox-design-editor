@@ -209,8 +209,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
   const [showHome, setShowHome] = useState(!source)
+  const [newDocumentTab, setNewDocumentTab] = useState<'selected' | 'parked' | null>(null)
+  const documentChooserActive = uiMode === 'figma' && showHome && newDocumentTab === 'selected'
+  const documentChooser = useRef(documentChooserActive)
+  documentChooser.current = documentChooserActive
   const enteredCanvas = useRef(false)
-  useLayoutEffect(() => { if (!showHome) enteredCanvas.current = true }, [showHome])
+  useLayoutEffect(() => {
+    if (showHome) return
+    enteredCanvas.current = true
+    if (newDocumentTab === 'selected') setNewDocumentTab(null)
+  }, [showHome, newDocumentTab])
   const [homeImportError, setHomeImportError] = useState('')
   const [libraryGap, setLibraryGap] = useState<{ file: File; error: string } | null>(null)
   const [startupError, setStartupError] = useState('')
@@ -1187,8 +1195,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       setShowPlugins(true)
       setPluginLaunch({ grant, token: pluginLaunchToken.current })
     })
-    const offClose = desktop?.onCloseRequested(({ requestId }) => {
+    const offClose = desktop?.onCloseRequested(({ requestId, intent }) => {
       if (largeDocument || source) return
+      if (intent === 'tab' && documentChooser.current) {
+        const dismiss = ready && !switching && !desktopStatus.busy && !desktopStatus.transitioning &&
+          !modalOwnsKeyboard(document.activeElement)
+        void desktop.respondToClose({ allow: false, requestId }).then(result => {
+          if (result.accepted && dismiss && documentChooser.current) resumeEditor()
+        }).catch(error => editor.notify(String(error)))
+        return
+      }
       fileImports.invalidate()
       // Release the settings portal's focus/inert ownership before a dirty
       // document confirmation is rendered in the application root.
@@ -1213,15 +1229,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({preventScroll:true}))
   }
   function enterHome() {
-    if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return
+    if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
     setMenu(false); setShowMove(false); setShowRegions(false); setShowShapes(false); setShowDrawing(false); setShowUtility(false)
-    if(source){void source.leave();return}
+    if(source){void source.leave();return false}
     setHomeImportError(''); setShowHome(true)
+    return true
   }
   function openFigmaNewTab() {
     if (uiMode !== 'figma' || showHome || source || largeDocument || desktopStatus.transitioning ||
         modalOwnsKeyboard(document.activeElement)) return
-    enterHome()
+    if (enterHome()) setNewDocumentTab('selected')
   }
   async function openLocalDesign(): Promise<boolean | 'pending'> {
     if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
@@ -1321,6 +1338,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
   }
   const inlineFigmaTabs = uiMode === 'figma' && !source && !!desktopSession?.supportsWorkspace
+  const figmaTabs = inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id}
+    onOpenNewTab={openFigmaNewTab}
+    newDocumentTab={newDocumentTab ? { selected: documentChooserActive, select: openFigmaNewTab, close: () => {
+      if (documentChooserActive) resumeEditor()
+      setNewDocumentTab(null)
+    } } : undefined}
+    onActivateDocument={documentChooserActive ? () => {
+      setNewDocumentTab('parked')
+      resumeEditor()
+    } : undefined} />
   const sketchDocuments = uiMode === 'sketch' && desktopSession?.supportsWorkspace
     ? <WorkspaceTabs session={desktopSession} activeId={s.doc.id} sidebar /> : undefined
   const figmaNameInSidebar = inlineFigmaTabs && showLayers && !uiMinimized
@@ -1468,6 +1495,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       data-window-controls={desktop && /Mac OS X/.test(navigator.userAgent) ? 'inset' : undefined}
       data-density={adaptivePanels.density}
       data-ui-mode={uiMode}
+      data-document-chooser={documentChooserActive || undefined}
       className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) && !agentDockOpen ? '' : agentDockOpen ? '' : 'chrome-hide-inspector'} ${agentDockOpen ? 'design-agent-open' : ''} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktop ? String(ready) : undefined}
@@ -1589,7 +1617,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button>
 
         </div>
-        {inlineFigmaTabs && desktopSession && <WorkspaceTabs session={desktopSession} activeId={s.doc.id} onOpenNewTab={openFigmaNewTab} />}
+        {!documentChooserActive && figmaTabs}
         {uiMode === 'sketch' && !sketchComponentsVisible && <SketchWindowTools editor={editor} disabled={toolbarDisabled}
           onEditText={id => editText.current?.(id)}
           onSection={section => switchSketchWorkspace(section === 'assets')} onImages={files => void importImageFiles(files)}
@@ -1671,6 +1699,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <span className="avatar">{translateProfessional('我', locale)}</span>
         </div>
       </header>
+      {documentChooserActive && figmaTabs}
       {uiMode === 'figma' && desktopSession?.supportsWorkspace && !inlineFigmaTabs && <WorkspaceTabs session={desktopSession} activeId={s.doc.id}
         onOpenNewTab={source ? undefined : openFigmaNewTab} />}
       {menu && <WorkspaceFileMenu anchor={fileMenuTrigger.current} close={() => setMenu(false)}>

@@ -2,6 +2,7 @@
 const menuLabels = {
   'Edits are saved automatically': '编辑会自动保存', 'Export copy…': '导出副本…', 'Save': '保存', 'Duplicate document': '复制文档',
   'File': '文件', 'New': '新建', 'New Page': '新建页面', 'Open…': '打开…', 'Open Pending Finder File': '打开等待中的 Finder 文件',
+  'Close Window': '关闭窗口',
   'Clear Recent': '清除最近记录', 'Save': '保存', 'Save As…': '另存为…', 'Recover unsaved design…': '恢复未保存的设计…',
   'Edit': '编辑', 'Settings… / 设置': '设置…', 'Undo': '撤销', 'Redo': '重做', 'Cut': '剪切', 'Copy': '复制',
   'Copy as PNG': '复制为 PNG', 'Copy Properties': '复制属性', 'Paste Properties': '粘贴属性', 'Copy as SVG': '复制为 SVG',

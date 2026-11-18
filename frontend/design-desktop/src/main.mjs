@@ -1376,16 +1376,24 @@ async function buildWindow() {
     if (placement.fullscreen) ownedWindow.setFullScreen(true)
     ownedWindow.show()
   })
+  let tabCloseRequestId
+  function requestRendererClose(intent) {
+    // A real window close or quit supersedes a pending tab-only request.
+    if (closePending && (intent === 'tab' || closeRequestId !== tabCloseRequestId || closeFinalizing)) return
+    clearTimeout(closeTimer)
+    closePending = true
+    closeRequestId = randomUUID()
+    tabCloseRequestId = intent === 'tab' ? closeRequestId : undefined
+    ownedWindow.webContents.send('design-desktop:close-request',
+      intent === 'tab' ? { requestId: closeRequestId, intent } : { requestId: closeRequestId })
+    closeTimer = setTimeout(() => void closeFallback(), 20_000)
+  }
   window.on('close', (event) => {
     void saveWindowState(ownedWindow)
     if (permitClose) return
     // Always let the renderer drain recovery/save work, even if the last dirty flag was false.
     event.preventDefault()
-    if (closePending) return
-    closePending = true
-    closeRequestId = randomUUID()
-    window.webContents.send('design-desktop:close-request', { requestId: closeRequestId })
-    closeTimer = setTimeout(() => void closeFallback(), 20_000)
+    requestRendererClose()
   })
   window.on('closed', () => {
     designAi.dispose()
@@ -1435,7 +1443,10 @@ async function buildWindow() {
           },
           { label: 'Recover unsaved design…', click: () => sendCommand('recover') },
           { type: 'separator' },
-          { role: 'close' },
+          interfaceMode === 'figma' ? { label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: (_item, focusedWindow) => {
+            if (focusedWindow === ownedWindow && rendererReady && !permitClose) requestRendererClose('tab')
+            else focusedWindow?.close()
+          } } : { role: 'close' },
         ],
       },
       { label: 'Edit', submenu: [
