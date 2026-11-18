@@ -1092,17 +1092,31 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const displayedSnapshot = useMemo(() => presentationScopeMatches ? editPreviewVisible
     ? { ...presented!, document: state.doc, view: displayView, preview: true } : presented : null,
     [presentationScopeMatches, editPreviewVisible, presented, state.doc, displayView])
-  const displayedIndex = snapshots.displayedScene(displayedSnapshot?.document, displayedSnapshot?.pageId)?.index ?? null
+  // Exact displayed ownership changes as frames arrive. Figma can defer
+  // building the corresponding hit-test scene until an interaction needs it.
+  const displayedScene = snapshots.displayedScene(displayedSnapshot?.document, displayedSnapshot?.pageId, uiMode !== 'figma')
+  const eagerDisplayedIndex = uiMode !== 'figma' ? displayedScene?.index ?? null : null
+  const getDisplayedIndex = () => {
+    if (!displayedSnapshot) return null
+    return eagerDisplayedIndex ??
+      (displayedScene ?? snapshots.displayedScene(displayedSnapshot.document, displayedSnapshot.pageId))?.index ?? null
+  }
   const hitOutline = (point: Point, eligible?: (node: DesignNode) => boolean) =>
     outlineScene && outlineHits(outlineScene, point, displayViewRef.current.zoom)
       .find(entry => !entry.locked && (!eligible || eligible(outlineScene.document.nodes[entry.id])))?.id
-  const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) =>
-    hitOutline(point, eligible) || (displayedSnapshot && displayedIndex
-      ? editor.hit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot, eligible) : null)
+  const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) => {
+    const outlined = hitOutline(point, eligible)
+    if (outlined || !displayedSnapshot) return outlined || null
+    const index = getDisplayedIndex()
+    return index ? editor.hit(point, deep, index, displayViewRef.current.zoom, displayedSnapshot, eligible) : null
+  }
   // Same target as the click: group until entered, frame child, or empty frame.
-  const displayedHoverHit = (point: Point, deep = measureKeys.deep) =>
-    hitOutline(point) || (displayedSnapshot && displayedIndex
-      ? editor.selectionHit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
+  const displayedHoverHit = (point: Point, deep = measureKeys.deep) => {
+    const outlined = hitOutline(point)
+    if (outlined || !displayedSnapshot) return outlined || null
+    const index = getDisplayedIndex()
+    return index ? editor.selectionHit(point, deep, index, displayViewRef.current.zoom, displayedSnapshot) : null
+  }
   const adjacentEdges = (id: string) => {
     const frame = state.doc.nodes[id], parents = editor.parentMap(state.doc)
     const matrix = worldMatrix(state.doc, id, parents)
@@ -1147,7 +1161,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const previous = hoverView.current; hoverView.current = state.view
     if (previous.x !== state.view.x || previous.y !== state.view.y || previous.zoom !== state.view.zoom) suspendNavigationHover()
     else refreshHover.current()
-  }, [editor, state.view, presented, displayedIndex, textEdit, state.tool, measureKeys.deep, figmaHandHoverSuspended])
+  }, [editor, state.view, presented, eagerDisplayedIndex, displayedSnapshot?.document, textEdit, state.tool, measureKeys.deep, figmaHandHoverSuspended])
   const selection = useMemo(() => new Set(state.selection), [state.selection])
   const selectionFeedback = useMemo(() => canvasLayerFeedback(state.doc, state.page, state.selection, editor.parentMap(state.doc)),
     [editor, state.doc, state.version, state.page, state.selection])
@@ -1178,7 +1192,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     selection: state.selection, hover: measurementHover,
   })
   const measurementEntry = measurementTarget && displayedSnapshot
-    ? displayedIndex?.entries.find(e => e.id === measurementTarget) : undefined
+    ? getDisplayedIndex()?.entries.find(e => e.id === measurementTarget) : undefined
   const measurementDocument = displayedSnapshot?.document
   const measurementText = uiMode === 'sketch' && measureKeys.text && measurementEntry
     ? measurementDocument?.nodes[measurementEntry.id] : undefined
@@ -2417,7 +2431,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       ...(dragKind === 'move' && !moveFromAnywhere && ids.length === 1 && displayedSnapshot?.document.nodes[ids[0]] ? {
         layoutPointerOrigin: remapPointerAnchor(worldMatrix(displayedSnapshot.document, ids[0]), matrices[ids[0]], p),
       } : {}),
-      ...(dragKind === 'marquee' && displayedIndex ? { pickIndex: displayedIndex } : {}),
+      ...(dragKind === 'marquee' ? { pickIndex: getDisplayedIndex() ?? undefined } : {}),
       ...(dragKind === 'create' ? {
         creationSeed: createShapeSeed(s.tool === 'hotspot' ? 'rectangle' : s.tool as ShapeCreationKind | 'graphic'),
         creationTool:s.tool, pointer: p, hotspotBounds,
@@ -3579,7 +3593,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!host.current?.contains(e.target as Node)) return
         if (shortcutTargetOwnsKeyboard(e.target)) return
         e.preventDefault()
-        if (drag.current || pencil.current || !geometryReady || !displayedSnapshot || !displayedIndex) return
+        if (drag.current || pencil.current || !geometryReady || !displayedSnapshot) return
+        const displayedIndex = getDisplayedIndex()
+        if (!displayedIndex) return
         host.current?.focus({ preventScroll: true })
         const point = world(e)
         const shown = displayedSnapshot.document, parents = editor.parentMap(), shownParents = editor.parentMap(shown)
@@ -3613,8 +3629,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if(e.button===0)onOpenSourcePoint?.(screenToWorld(editor.flushPendingView(),{x:e.clientX-e.currentTarget.getBoundingClientRect().left,y:e.clientY-e.currentTarget.getBoundingClientRect().top}))
           return
         }
-        if (!displayedSnapshot || !displayedIndex) return
-        if (['pencil', 'brush', 'marker', 'washi-tape', 'hand'].includes(editor.state.tool) || space.current) return
+        if (!displayedSnapshot || ['pencil', 'brush', 'marker', 'washi-tape', 'hand'].includes(editor.state.tool) || space.current) return
+        const displayedIndex = getDisplayedIndex()
+        if (!displayedIndex) return
         if (penRef.current) {
           finishPen()
           return
