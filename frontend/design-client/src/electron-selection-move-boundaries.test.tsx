@@ -191,7 +191,14 @@ test('S04 actual menu and registered keyboard select-all/inverse have identical 
   l.locked = true; h.visible = false; await render([a, b, l, h]); const before = editor.state.doc
   await act(async () => { editor.select([a.id]); await dispatchEditorCommand(editor, 'select-inverse') }); const inverse = [...editor.state.selection]; expect(inverse).toEqual([b.id])
   await act(async () => { editor.select([a.id]); host().focus(); key('a', { metaKey: true, shiftKey: true }) }); expect(editor.state.selection).toEqual(inverse)
-  await act(async () => editor.select([])); await menuAction('全选'); const all = [...editor.state.selection]; expect(ordered(all)).toEqual(ordered([a.id, b.id]))
+  await act(async () => {
+    editor.select([])
+    interfacePreference.set({ uiMode: 'sketch' })
+  })
+  await menuAction('全选')
+  const all = [...editor.state.selection]
+  expect(ordered(all)).toEqual(ordered([a.id, b.id]))
+  await act(async () => interfacePreference.set({ uiMode: 'figma' }))
   await act(async () => { editor.select([a.id]); host().focus(); key('a', { metaKey: true }) }); expect(editor.state.selection).toEqual(all)
   const input = document.createElement('input'); host().append(input); await act(async () => input.focus())
   await act(async () => { editor.select([a.id]); key('a', { metaKey: true }, 'keydown', input); key('a', { metaKey: true, shiftKey: true }, 'keydown', input) })

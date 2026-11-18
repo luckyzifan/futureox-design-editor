@@ -68,6 +68,16 @@ async function at(type:string,p:{x:number;y:number},target?:Element,options:Mous
 async function hit(p:{x:number;y:number},options:MouseEventInit={}){await at('pointerdown',p,undefined,options);await at('pointerup',p,undefined,options)}
 function key(k:string,options:KeyboardEventInit={},target:EventTarget=host()){const e=new KeyboardEvent('keydown',{key:k,code:k.length===1?`Key${k.toUpperCase()}`:k,bubbles:true,cancelable:true,...options});target.dispatchEvent(e);return e}
 async function shortcut(command:ShortcutAction){host().focus();const context={profile:shortcutPreference.getSnapshot(),platform:'mac' as const,desktop:true};const binding=shortcutBindings(context).find(b=>b.command===command);expect(binding).toBeDefined();const parts=binding!.combo.split('+'),k=parts.pop()!;const e=new KeyboardEvent('keydown',{key:k.toLowerCase(),code:`Key${k.toUpperCase()}`,bubbles:true,cancelable:true,metaKey:parts.includes('Meta')||parts.includes('Mod'),ctrlKey:parts.includes('Ctrl'),shiftKey:parts.includes('Shift'),altKey:parts.includes('Alt')});expect(resolveShortcut(e,context)?.command).toBe(command);await act(async()=>{host().dispatchEvent(e);await microtasks()});expect(e.defaultPrevented).toBe(true)}
+async function expandLayer(id: string) {
+  const row = mount.querySelector<HTMLElement>(`[data-testid="layer-${id}"]`)
+  expect(row).not.toBeNull()
+  if (row!.getAttribute('aria-expanded') === 'false') {
+    const toggle = row!.querySelector<HTMLButtonElement>('button.disclosure')
+    expect(toggle).not.toBeNull()
+    await act(async () => toggle!.click())
+  }
+  expect(row!.getAttribute('aria-expanded')).toBe('true')
+}
 async function layer(id:string,toggle=false){const row=mount.querySelector<HTMLElement>(`[data-testid="layer-${id}"]`);expect(row).not.toBeNull();await act(async()=>{row!.dispatchEvent(new MouseEvent('click',{bubbles:true,metaKey:toggle}));await microtasks()});expect(document.activeElement).toBe(host())}
 async function menu(label:string){host().focus();await act(async()=>key('ContextMenu'));const b=document.querySelector<HTMLButtonElement>(`[role="menuitem"][aria-label="${label}"]`);expect(b).not.toBeNull();expect(b!.disabled).toBe(false);await act(async()=>{b!.click();await microtasks()});expect(document.querySelector('[role="menu"]')).toBeNull()}
 async function edit(label:string,value:string){const f=mount.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);expect(f).not.toBeNull();await act(async()=>{f!.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(f,value);f!.dispatchEvent(new Event('input',{bubbles:true}))});expect(document.activeElement).toBe(f);await act(async()=>{key('Enter',{},f!);await microtasks()});expect(document.activeElement).not.toBe(f)}
@@ -93,9 +103,9 @@ for(const zoom of[.5,2])test(`C01 chain select drag rotate width copy paste Undo
 
 test('C02 chain nested group child drag whole rotation ungroup and exact per-step history FD reopen',async()=>{
  const parent=node('frame',50,40,600,400),a=node('rectangle',100,100,80,60),middle=node('rectangle',250,100,30,30),b=node('rectangle',400,100,80,60);parent.children=[a.id,middle.id,b.id];const initial=await fixture([parent,a,middle,b],[parent.id])
- await layer(a.id);await layer(b.id,true);expect([...editor.state.selection].sort()).toEqual([a.id,b.id].sort());expect(editor.canUndo).toBe(false)
+ await expandLayer(parent.id);await layer(a.id);await layer(b.id,true);expect([...editor.state.selection].sort()).toEqual([a.id,b.id].sort());expect(editor.canUndo).toBe(false)
  await perform('group',async()=>menu('编组'));const group=editor.state.selection[0];expect(editor.state.doc.nodes[group].children).toEqual([a.id,b.id]);expect(editor.state.doc.nodes[parent.id].children).toEqual([group,middle.id]);for(const id of[a.id,b.id,middle.id])closeMatrix(worldMatrix(editor.state.doc,id),worldMatrix(initial,id))
- await layer(a.id);expect(editor.state.selection).toEqual([a.id]);await perform('child drag',async()=>drag({x:170,y:160},{x:190,y:170}));const am=worldMatrix(editor.state.doc,a.id);closeMatrix(am,[1,0,0,1,170,150]);closeMatrix(worldMatrix(editor.state.doc,b.id),[1,0,0,1,450,140]);expect(editor.state.doc.nodes[middle.id]).toEqual(initial.nodes[middle.id])
+ await expandLayer(group);await layer(a.id);expect(editor.state.selection).toEqual([a.id]);await perform('child drag',async()=>drag({x:170,y:160},{x:190,y:170}));const am=worldMatrix(editor.state.doc,a.id);closeMatrix(am,[1,0,0,1,170,150]);closeMatrix(worldMatrix(editor.state.doc,b.id),[1,0,0,1,450,140]);expect(editor.state.doc.nodes[middle.id]).toEqual(initial.nodes[middle.id])
  await layer(group);expect(editor.state.selection).toEqual([group]);const beforeRotation=editor.state.doc;const center={x:(170+530)/2,y:(140+210)/2};await perform('group rotate',async()=>rotate(center))
  for(const id of[a.id,b.id]){const previous=worldMatrix(beforeRotation,id),actual=worldMatrix(editor.state.doc,id);const origin=turn({x:previous[4],y:previous[5]},center,-30);closeMatrix(actual,[Math.cos(Math.PI/6),-.5,.5,Math.cos(Math.PI/6),origin.x,origin.y])}
  const rotated=editor.state.doc;await perform('ungroup',async()=>menu('解除编组'));expect(editor.state.doc.nodes[group]).toBeUndefined();expect(editor.state.doc.nodes[parent.id].children).toEqual([a.id,b.id,middle.id]);for(const id of[a.id,b.id,middle.id])closeMatrix(worldMatrix(editor.state.doc,id),worldMatrix(rotated,id));expect(editor.state.doc.nodes[middle.id]).toEqual(initial.nodes[middle.id]);await replayAll();await persist()
@@ -103,10 +113,10 @@ test('C02 chain nested group child drag whole rotation ungroup and exact per-ste
 
 test('C03 chain parent lock hide eligibility unlock show cancelled rotation then committed rotation Undo/Redo FD reopen',async()=>{
  const parent=node('group',100,100,100,80),child=node('rectangle',10,10,80,60),other=node('rectangle',500,300,60,40);parent.children=[child.id];const initial=await fixture([parent,child,other],[parent.id,other.id]);await layer(parent.id)
- await perform('lock parent',async()=>menu('锁定图层'));const locked=editor.state.doc;expect(locked.nodes[parent.id].locked).toBe(true);await hit({x:140,y:135},{metaKey:true});expect(editor.state.selection).toEqual([]);expect(editor.state.doc).toEqual(locked)
- await layer(child.id);await perform('unlock ancestry',async()=>menu('解锁图层及父级'));expect(editor.state.doc.nodes[parent.id].locked).toBe(false)
- await layer(parent.id);await perform('hide parent',async()=>menu('隐藏图层'));const hidden=editor.state.doc;await hit({x:140,y:135},{metaKey:true});expect(editor.state.selection).toEqual([]);expect(editor.state.doc).toEqual(hidden)
- await layer(parent.id);await perform('show parent',async()=>menu('显示图层'));await hit({x:140,y:135},{metaKey:true});expect(editor.state.selection).toEqual([child.id]);const ready=editor.state.doc,version=editor.state.version
+ await perform('lock parent',async()=>menu('锁定/解锁'));const locked=editor.state.doc;expect(locked.nodes[parent.id].locked).toBe(true);await hit({x:140,y:135},{metaKey:true});expect(editor.state.selection).toEqual([]);expect(editor.state.doc).toEqual(locked)
+ await expandLayer(parent.id);await layer(child.id);await perform('unlock ancestry',async()=>menu('锁定/解锁'));expect(editor.state.doc.nodes[parent.id].locked).toBe(false)
+ await layer(parent.id);await perform('hide parent',async()=>menu('显示/隐藏'));const hidden=editor.state.doc;await hit({x:140,y:135},{metaKey:true});expect(editor.state.selection).toEqual([]);expect(editor.state.doc).toEqual(hidden)
+ await layer(parent.id);await perform('show parent',async()=>menu('显示/隐藏'));await hit({x:140,y:135},{metaKey:true});expect(editor.state.selection).toEqual([child.id]);const ready=editor.state.doc,version=editor.state.version
  await rotate({x:150,y:140},'cancel');expect(editor.state.doc).toEqual(ready);expect(editor.state.version).toBe(version);expect(editor.interactionActive).toBe(false);expect(editor.state.selection).toEqual([child.id])
  await perform('child rotate',async()=>rotate({x:150,y:140}));const c=Math.cos(Math.PI/6);closeMatrix(worldMatrix(editor.state.doc,child.id),[c,-.5,.5,c,150-c*40-.5*30,140+.5*40-c*30]);expect(editor.state.doc.nodes[other.id]).toEqual(initial.nodes[other.id]);expect(editor.state.doc.nodes[parent.id].locked).toBe(false);expect(editor.state.doc.nodes[parent.id].visible).toBe(true)
  await replayAll();await persist()
