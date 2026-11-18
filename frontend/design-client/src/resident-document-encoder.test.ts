@@ -1,4 +1,5 @@
 import { expect,test } from 'vitest'
+import { deflateSync } from 'node:zlib'
 import { ResidentDocumentEncoder, type CodecDelta } from './resident-document-encoder'
 import { blank,node } from './model'
 import { applyDocumentPatch } from './document-patch'
@@ -42,4 +43,19 @@ test('certified import bytes seed the first changed save without cloning cold no
  codec=new ResidentDocumentCodec(2**20)
  expect(await encoder.encode(changed)).toBe(JSON.stringify(changed));expect(sent.at(-1)?.install).toBe(true)
  const other={...before,id:crypto.randomUUID()};expect(await encoder.encode(other)).toBe(JSON.stringify(other))
+})
+
+test('keeps a compressed receipt tied to the exact JSON used for persistence', async () => {
+  const codec = new ResidentDocumentCodec(2 ** 20)
+  const before = { ...blank(), name: '恢复 🧪', preserved: 'A\n"\ud800' }
+  const after = { ...before, name: '下一帧' }
+  const encoder = new ResidentDocumentEncoder(async request => {
+    const { owner, sequence, json } = codec.encode(request)
+    return { owner, sequence, documentDeflate: new Uint8Array(deflateSync(json)) }
+  })
+  expect(await encoder.encode(before)).toBe(JSON.stringify(before))
+  expect(encoder.deflateFor(JSON.stringify(before))).toBeInstanceOf(Uint8Array)
+  expect(await encoder.encode(after)).toBe(JSON.stringify(after))
+  expect(encoder.deflateFor(JSON.stringify(before))).toBeUndefined()
+  expect(await encoder.encode(before)).toBe(JSON.stringify(before))
 })

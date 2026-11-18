@@ -1139,11 +1139,17 @@ export class DesktopSession {
   private async persistWorkspace(snapshot: string, generation: number, id: string, mutationId = crypto.randomUUID()): Promise<boolean> {
     const store = this.bridge.workspace
     if (!store || this.disposed) return false
+    const commit = ({ documentJson, expectedRevision, mutationId }: NonNullable<DesktopSession['workspacePending']>) => {
+      const documentDeflate = this.residentEncoder?.deflateFor(documentJson)
+      return documentDeflate && store.commitDeflate
+        ? store.commitDeflate({ documentDeflate, expectedRevision, mutationId })
+        : store.commit({ documentJson, expectedRevision, mutationId })
+    }
     // Retain the same request identity until an uncertain write is acknowledged.
     // A newer edit first settles the older idempotent request, then submits its own revision.
     if (this.workspacePending) {
       const older = this.workspacePending
-      const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: older.documentJson, expectedRevision: older.expectedRevision, mutationId: older.mutationId }), older.documentJson.length)
+      const result = await documentStageAsync(DocumentStage.save, () => commit(older), older.documentJson.length)
       if (result.status !== 'ok') {
         if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
         this.retryWorkspaceBusy(result)
@@ -1174,7 +1180,7 @@ export class DesktopSession {
     }
     const submitted = { documentJson: snapshot, expectedRevision: this.workspaceHeads.get(id) ?? null, mutationId, generation, id }
     this.workspacePending = submitted
-    const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId }), submitted.documentJson.length)
+    const result = await documentStageAsync(DocumentStage.save, () => commit(submitted), submitted.documentJson.length)
     if (result.status !== 'ok') {
       if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
       this.retryWorkspaceBusy(result)
@@ -1329,11 +1335,11 @@ export class DesktopSession {
       if (this.dirty && discardSnapshot !== this.generation) {
         const snapshot=await this.captureSnapshot()
         if(this.disposed||this.recoveryPaused||this.generation!==snapshot.generation)return
-        result = await this.bridge.writeRecovery({
-          documentJson: snapshot.json,
-          displayName: this.displayName || this.currentDocument.name,
-          handle: this.handle,
-        })
+        const metadata = { displayName: this.displayName || this.currentDocument.name, handle: this.handle }
+        const documentDeflate = this.residentEncoder?.deflateFor(snapshot.json)
+        result = documentDeflate && this.bridge.writeRecoveryDeflate
+          ? await this.bridge.writeRecoveryDeflate({ ...metadata, documentDeflate })
+          : await this.bridge.writeRecovery({ ...metadata, documentJson: snapshot.json })
       } else {
         result = await this.bridge.clearRecovery()
         if (result.status === 'ok') {

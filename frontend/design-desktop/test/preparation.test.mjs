@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { inflateSync } from 'node:zlib'
 import { NativePreparation, PreparationAdmission, registerNativePreparation, bindPosePreparationPort } from '../src/preparation.mjs'
 import { DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 
@@ -87,6 +88,24 @@ test('local document codec roundtrips UTF-8 and rejects oversized/invalid input 
   assert.match((await call('serialize','x'.repeat(DOCUMENT_BYTE_LIMIT))).error,/working-memory/)
   assert.deepEqual((await call('parse','{"name":"still usable"}')).value,{name:'still usable'})
  }finally{await codec.close()}
+})
+
+test('large incremental codec receipts carry compact exact JSON', async () => {
+ const codec = new NativePreparation(undefined, undefined, true)
+ const document = { name: '画板😀', data: '带引号"\ud800'.repeat(160_000), nodes: {} }
+ const receipt = { owner: 'fixture', base: 0, sequence: 1, install: true,
+  fieldOrder: Object.keys(document), nodeOrder: [], fields: Object.entries(document).filter(([key]) => key !== 'nodes'), nodes: [] }
+ try {
+  const reply = await codec.request({ lane: 'canvas', method: 'serialize_delta', args: [receipt] })
+  assert.equal(reply.error, undefined)
+  assert.equal(reply.value.json, undefined)
+  assert.ok(reply.value.documentDeflate instanceof Uint8Array)
+  assert.equal(inflateSync(reply.value.documentDeflate).toString('utf8'), JSON.stringify(document))
+  assert.equal(reply.value.owner, 'fixture')
+  assert.equal(reply.value.sequence, 1)
+ } finally {
+  await codec.close()
+ }
 })
 
 test('native document IPC validates the sender and retires codec workers on navigation',async()=>{

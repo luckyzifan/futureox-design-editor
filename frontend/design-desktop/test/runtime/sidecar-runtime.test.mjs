@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, mkdir, rm, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { deflateSync } from 'node:zlib'
 import test from 'node:test'
 import os from 'node:os'
 const { Sidecar } = await import(new URL('sidecar.mjs', process.env.CORE_DESKTOP_TEST_SOURCE).href)
+const { createWorkspaceSqliteCodec } = await import(new URL('workspace-sqlite-worker-host.mjs', process.env.CORE_DESKTOP_TEST_SOURCE).href)
 
 const binary = process.env.CORE_DESKTOP_SIDECAR
 if (!binary || !path.isAbsolute(binary))
@@ -81,12 +83,24 @@ try {
 
   await test('recovery survives real backend process restart and preserves the authored JSON', async () => {
     const recoveryId = `runtime-${randomUUID()}`
-    const created = await sidecar.request('recovery.write', {
-      recoveryId,
-      document: fixture,
-      sourcePath: null,
-      sourceHash: null,
-    })
+    const document = {
+      ...fixture,
+      customMetadata: { ...fixture.customMetadata, label: '恢复日志 🧪'.repeat(5000) },
+    }
+    const codec = createWorkspaceSqliteCodec()
+    let created
+    try {
+      const id = randomUUID()
+      const encoded = await codec.encodeRequest(id, 'recovery.write', {
+        recoveryId,
+        documentDeflate: deflateSync(JSON.stringify(document)),
+        sourcePath: null,
+        sourceHash: null,
+      })
+      created = await sidecar.requestFrame('recovery.write', id, encoded.frame, encoded.wireBytes)
+    } finally {
+      await codec.close()
+    }
     assert.equal(created.recoveryId, recoveryId)
     const oldPid = sidecar.child.pid
     assert.equal(await sidecar.stop(), true, 'First backend must be reaped')
@@ -100,7 +114,7 @@ try {
     assert.equal(list.entries[0].recoveryId, recoveryId)
     assert.deepEqual(list.issues, [])
     const restored = await sidecar.request('recovery.read', { recoveryId })
-    assert.deepEqual(restored.document, fixture)
+    assert.deepEqual(restored.document, document)
     assert.equal(restored.hash, created.hash)
     assert.equal((await sidecar.request('recovery.remove', { recoveryId })).removed, true)
     assert.equal((await sidecar.request('recovery.list')).entries.length, 0)

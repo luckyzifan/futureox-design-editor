@@ -6,6 +6,7 @@ import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath, symlink } fr
 import { makeFd, productZip } from './product-export-fixtures.mjs'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
+import { deflateSync } from 'node:zlib'
 import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -191,6 +192,15 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     async stop() {
       state.stopCalls++
       return true
+    }
+    async requestFrame(method, id, frame, wireBytes) {
+      assert.equal(frame.length, wireBytes)
+      const wire = JSON.parse(frame.toString('utf8'))
+      assert.equal(wire.id, id)
+      assert.equal(wire.method, method)
+      assert.equal(wire.scheduling, true)
+      state.framedRequest = method
+      return this.request(method, wire.params)
     }
     async request(method, params = {}) {
       state.requests.push({ method, params })
@@ -532,6 +542,33 @@ test('accepted active capability survives many cancelled renderer-open replaceme
     await state.dispose()
   }
 })
+test('large recovery writes use the off-thread frame and preserve the last admitted snapshot on invalid input', async () => {
+  const state = await host()
+  try {
+    const document = { name: '恢复 🧪', values: [0.1, 1e-20], preserved: '画板'.repeat(12_000) }
+    const documentJson = JSON.stringify(document)
+    assert.equal((await state.invoke('recovery-write', { documentJson })).status, 'ok')
+    assert.equal(state.framedRequest, 'recovery.write')
+    const persisted = state.requests.findLast(request => request.method === 'recovery.write').params
+    assert.deepEqual(persisted.document, document)
+    assert.equal(persisted.sourcePath, null)
+    assert.equal(persisted.sourceHash, null)
+    assert.equal((await state.invoke('recovery-write', { documentJson: '[' + ' '.repeat(40_000) + ']' })).status, 'error')
+    assert.equal(state.requests.filter(request => request.method === 'recovery.write').length, 1)
+    assert.deepEqual(state.recoveries.get(persisted.recoveryId).document, document)
+    const nextDocument = { ...document, name: '后续恢复' }
+    const documentDeflate = deflateSync(JSON.stringify(nextDocument))
+    assert.equal((await state.invoke('recovery-write', { documentDeflate })).status, 'ok')
+    assert.deepEqual(state.recoveries.get(persisted.recoveryId).document, nextDocument)
+    assert.equal((await state.invoke('recovery-write', { documentDeflate, documentJson })).status, 'error')
+    assert.equal((await state.invoke('recovery-write', { documentDeflate: Uint8Array.of(0) })).status, 'error')
+    assert.equal(state.requests.filter(request => request.method === 'recovery.write').length, 2)
+    assert.deepEqual(state.recoveries.get(persisted.recoveryId).document, nextDocument)
+  } finally {
+    await state.dispose()
+  }
+})
+
 test('recovery adoption works at full quota and retains source unless cleanup names approved token', async () => {
   const state = await host()
   try {
