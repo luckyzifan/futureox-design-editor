@@ -3329,7 +3329,6 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     // the compositor's existing integer uniform box through the regional cap.
     if(u[16]===22&&u[39]===2&&u[36]>512&&!unmanagedByteGaussianBox(this.managed,this.hdr,this.displayMath,channels,u[36],(target.resource as GPUTexture|undefined)?.format,target.scalarCoverage,target.binaryCoverage))
       throw Error('GPU surface budget exceeded (regional Gaussian prefix unavailable)')
-    const bind = this.bind(u, inputs)
     // With integer origins/sizes bounded by 2^20, pixel centres and every
     // subtraction/addition forming q/base are exactly representable binary32
     // integers or half-integers (<2^23). Thus the original sampler has k=0.
@@ -3359,6 +3358,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       pass.setPipeline(this.pairedDisplay.pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
       this.noteDraw(u[16],1,target.width*target.height); this.pairedFilterPasses++; return
     }
+    const bind = this.bind(u, inputs)
     // Mode 6 composites a shadow from source + blurred alpha. The standalone
     // SDF/chrome shaders have different uniforms and cannot share this mode;
     // spare uniform lanes must never select them or require optional samplers.
