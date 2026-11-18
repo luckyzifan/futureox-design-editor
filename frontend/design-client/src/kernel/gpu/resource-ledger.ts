@@ -61,6 +61,33 @@ export class ResourceLedger<Texture extends object, Surface extends { texture: T
   completionSample: ResidencySample | null = null
   private readonly tracked = new WeakMap<Texture, Track>()
   private readonly pendingEpochs = new Map<number, number>()
+  private readonly uploadRetirements: Texture[] = []
+
+  get retiredUploads(): readonly Texture[] { return this.uploadRetirements }
+
+  /** A parameter texture's final read has been encoded. Keep its charge and
+   * resource alive until that read is covered by actual GPU completion. */
+  retireUpload(texture: Texture) {
+    this.uploadRetirements.push(texture)
+  }
+
+  /** Capture before submitting the fence. Later retirements need a new fence. */
+  captureRetiredUploads(): ReadonlySet<Texture> {
+    return new Set(this.uploadRetirements)
+  }
+
+  /** Claim a captured upload after the fence succeeds. Another completed
+   * checkpoint may have claimed it while this caller was waiting. */
+  takeRetiredUpload(texture: Texture) {
+    const index = this.uploadRetirements.indexOf(texture)
+    if (index < 0) return false
+    this.uploadRetirements.splice(index, 1)
+    return true
+  }
+
+  clearRetiredUploads() {
+    this.uploadRetirements.length = 0
+  }
 
   charge(bytes: number, klass: ResourceClass = 'unclassified') {
     this.applyDelta(bytes, klass)

@@ -1015,7 +1015,7 @@ test('real allocation pressure fences regardless of unknown, current or incomple
     if(change==='current')renderer.poolReleaseEpoch.set(texture,2)
     if(change==='incomplete')driver.completedResourceEpoch=0
     if(change==='coordinates')renderer.coordinateMaps.add({width:1,height:1,bytes:16,resource:{}})
-    if(change==='retired')renderer.retiredUploads.push({width:1,height:1,bytes:16,resource:{}})
+    if(change==='retired')renderer.retireUpload({width:1,height:1,bytes:16,resource:{}})
     if(change==='pressure')renderer.bytes=200*MiB
     await renderer.reclaimScratch(renderer.frameBudget-renderer.bytes+1)
     expect((driver.checkpoint as any).mock.calls[0]).toHaveLength(2)
@@ -1038,7 +1038,7 @@ test('real upload retirement respects the64-resource completed batch, preserving
   const current={width:1536,height:1536,bytes:36*MiB,resource:{}} as Texture
   renderer.busy.add(current);renderer.release({texture:current,rect:{x:0,y:0,w:1536,h:1536}})
   const upload={width:1,height:1,bytes:16,resource:{}} as Texture
-  renderer.retiredUploads.push(upload)
+  renderer.retireUpload(upload)
   await renderer.reclaimScratch()
   expect(driver.checkpoint).not.toHaveBeenCalled(); expect(driver.destroy).not.toHaveBeenCalled()
   expect(renderer.bytes).toBe(120*MiB); expect(renderer.retiredUploads).toContain(upload)
@@ -1069,7 +1069,7 @@ test('real upload retirement waits when a current-frame texture crosses the batc
     const texture={width:1,height:1,bytes,resource:{}} as Texture
     renderer.busy.add(texture);renderer.release({texture,rect:{x:0,y:0,w:1,h:1}})
   }
-  renderer.retiredUploads.push({width:1,height:1,bytes:16,resource:{}} as Texture)
+  renderer.retireUpload({width:1,height:1,bytes:16,resource:{}} as Texture)
   await renderer.reclaimScratch()
   expect(driver.checkpoint).not.toHaveBeenCalled(); expect(driver.destroy).not.toHaveBeenCalled()
   expect(renderer.bytes).toBe(120*MiB); expect(renderer.retiredUploads).toHaveLength(1)
