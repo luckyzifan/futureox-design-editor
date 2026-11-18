@@ -19,7 +19,7 @@ import { Editor } from './engine'
 import { DesktopSession } from './desktop-session'
 import type { DesktopBridge, DesktopClipboard, DesktopCommand } from './desktop'
 import { blank, node, paint, uid, type DesignDocument, type DesignNode } from './model'
-import { worldMatrix } from './geometry'
+import { multiply, translate, worldMatrix } from './geometry'
 import { shortcutPreference } from './shortcut-preference'
 import { interfacePreference } from './interface-preference'
 import { shortcutBindings, resolveShortcut, type ShortcutAction } from './shortcut-profiles'
@@ -68,6 +68,16 @@ async function at(type:string,p:{x:number;y:number},target?:Element,options:Mous
 async function hit(p:{x:number;y:number},options:MouseEventInit={}){await at('pointerdown',p,undefined,options);await at('pointerup',p,undefined,options)}
 function key(k:string,options:KeyboardEventInit={},target:EventTarget=host()){const e=new KeyboardEvent('keydown',{key:k,code:k.length===1?`Key${k.toUpperCase()}`:k,bubbles:true,cancelable:true,...options});target.dispatchEvent(e);return e}
 async function shortcut(command:ShortcutAction){host().focus();const context={profile:shortcutPreference.getSnapshot(),platform:'mac' as const,desktop:true};const binding=shortcutBindings(context).find(b=>b.command===command);expect(binding).toBeDefined();const parts=binding!.combo.split('+'),k=parts.pop()!;const e=new KeyboardEvent('keydown',{key:k.toLowerCase(),code:`Key${k.toUpperCase()}`,bubbles:true,cancelable:true,metaKey:parts.includes('Meta')||parts.includes('Mod'),ctrlKey:parts.includes('Ctrl'),shiftKey:parts.includes('Shift'),altKey:parts.includes('Alt')});expect(resolveShortcut(e,context)?.command).toBe(command);await act(async()=>{host().dispatchEvent(e);await microtasks()});expect(e.defaultPrevented).toBe(true)}
+async function expandLayer(id: string) {
+  const row = mount.querySelector<HTMLElement>(`[data-testid="layer-${id}"]`)
+  expect(row).not.toBeNull()
+  if (row!.getAttribute('aria-expanded') === 'false') {
+    const toggle = row!.querySelector<HTMLButtonElement>('button.disclosure')
+    expect(toggle).not.toBeNull()
+    await act(async () => toggle!.click())
+  }
+  expect(row!.getAttribute('aria-expanded')).toBe('true')
+}
 async function layer(id:string,toggle=false){const row=mount.querySelector<HTMLElement>(`[data-testid="layer-${id}"]`);expect(row).not.toBeNull();await act(async()=>{row!.dispatchEvent(new MouseEvent('click',{bubbles:true,metaKey:toggle}));await microtasks()});expect(document.activeElement).toBe(host())}
 async function menu(label:string){host().focus();await act(async()=>key('ContextMenu'));const b=document.querySelector<HTMLButtonElement>(`[role="menuitem"][aria-label="${label}"]`);expect(b).not.toBeNull();expect(b!.disabled).toBe(false);await act(async()=>{b!.click();await microtasks()});expect(document.querySelector('[role="menu"]')).toBeNull()}
 async function edit(label:string,value:string){const f=mount.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);expect(f).not.toBeNull();await act(async()=>{f!.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(f,value);f!.dispatchEvent(new Event('input',{bubbles:true}))});expect(document.activeElement).toBe(f);await act(async()=>{key('Enter',{},f!);await microtasks()});expect(document.activeElement).not.toBe(f)}
@@ -84,13 +94,13 @@ test('C04 cross-parent group refusal then actual move-page resource copy paste a
  const pa=node('frame',150,100,300,250),pb=node('frame',600,200,250,250),a=node('rectangle',20,30,80,60),b=node('rectangle',40,50,70,40),sentinel=node('rectangle',800,500,20,20)
  pa.transform=[0,1,-1,0,400,100];pb.transform=[Math.cos(Math.PI/6),-.5,.5,Math.cos(Math.PI/6),600,200];pa.children=[a.id];pb.children=[b.id];a.name='Image source';b.name='Solid source';a.fills=[{...paint('#112233','image'),image:CHAIN_PNG,fit:'contain'}];b.fills=[paint('#abcdef')]
  const initial=await fixture([pa,pb,a,b,sentinel],[pa.id,pb.id],1,[sentinel.id]);const sourcePage=editor.state.page,target=initial.pages[1]
- await layer(a.id);await layer(b.id,true);expect([...editor.state.selection].sort()).toEqual([a.id,b.id].sort())
+ await expandLayer(pa.id);await expandLayer(pb.id);await layer(a.id);await layer(b.id,true);expect([...editor.state.selection].sort()).toEqual([a.id,b.id].sort())
  host().focus();await act(async()=>key('ContextMenu'));const group=document.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="编组"]');expect(group).not.toBeNull();expect(group!.disabled).toBe(true);await act(async()=>key('Escape',{},document.querySelector('[role="menu"]')!))
  const version=editor.state.version,selection=[...editor.state.selection];await shortcut('group');expect(editor.state.doc).toEqual(initial);expect(editor.state.version).toBe(version);expect(editor.state.selection).toEqual(selection);expect(editor.canUndo).toBe(false)
  await perform('explicit move to other page',async()=>{host().focus();await act(async()=>key('ContextMenu'));const picker=document.querySelector<HTMLButtonElement>('[data-page-picker="true"]');expect(picker).not.toBeNull();await act(async()=>picker!.click());const destination=[...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(e=>e.textContent===target.name);expect(destination).toBeDefined();expect(destination!.disabled).toBe(false);await act(async()=>destination!.click())})
  const moved=editor.state.doc;expect(editor.state.page).toBe(sourcePage);expect(editor.state.selection).toEqual([]);expect(moved.nodes[pa.id].children).toEqual([]);expect(moved.nodes[pb.id].children).toEqual([]);expect(moved.pages[1].children).toEqual([sentinel.id,a.id,b.id]);for(const id of[a.id,b.id,sentinel.id])closeMatrix(worldMatrix(moved,id),worldMatrix(initial,id));expect(moved.nodes[a.id].fills[0].image).toBe(CHAIN_PNG)
  const pageButton=[...mount.querySelectorAll<HTMLButtonElement>('.pages button.page')].find(e=>e.querySelector('.page-name')?.textContent===target.name);expect(pageButton).toBeDefined();await act(async()=>pageButton!.click());expect(editor.state.page).toBe(target.id);expect(editor.state.doc).toBe(moved);await layer(a.id);await layer(b.id,true)
  await shortcut('copy');expect(writeClipboard).toHaveBeenCalledTimes(1);expect(editor.state.doc).toBe(moved);await perform('paste roots on destination page',async()=>shortcut('paste'));expect(readClipboard).toHaveBeenCalledTimes(1);expect(editor.state.selection).toHaveLength(2)
- const pasted=[...editor.state.selection];expect(pasted.map(id=>editor.state.doc.nodes[id].name).sort()).toEqual(['Image source','Solid source']);expect(pasted.every(id=>!initial.nodes[id])).toBe(true);expect(editor.state.doc.pages[1].children).toEqual([sentinel.id,a.id,b.id,...pasted]);for(const id of pasted){const clone=editor.state.doc.nodes[id],original=clone.name==='Image source'?a:b;expect(['Image source','Solid source']).toContain(clone.name);closeMatrix(worldMatrix(editor.state.doc,id),worldMatrix(moved,original.id));expect(clone.fills.map(p=>({kind:p.kind,color:p.color,image:p.image,fit:p.fit}))).toEqual(moved.nodes[original.id].fills.map(p=>({kind:p.kind,color:p.color,image:p.image,fit:p.fit})));expect(editor.parentMap(editor.state.doc).get(id)).toBe(target.id)}
+ const pasted=[...editor.state.selection];expect(pasted.map(id=>editor.state.doc.nodes[id].name).sort()).toEqual(['Image source','Solid source']);expect(pasted.every(id=>!initial.nodes[id])).toBe(true);expect(editor.state.doc.pages[1].children).toEqual([sentinel.id,a.id,b.id,...pasted]);for(const id of pasted){const clone=editor.state.doc.nodes[id],original=clone.name==='Image source'?a:b;expect(['Image source','Solid source']).toContain(clone.name);closeMatrix(worldMatrix(editor.state.doc,id),multiply(translate(10,10),worldMatrix(moved,original.id)));expect(clone.fills.map(p=>({kind:p.kind,color:p.color,image:p.image,fit:p.fit}))).toEqual(moved.nodes[original.id].fills.map(p=>({kind:p.kind,color:p.color,image:p.image,fit:p.fit})));expect(editor.parentMap(editor.state.doc).get(id)).toBe(target.id)}
  for(const id of[a.id,b.id,sentinel.id])expect(editor.state.doc.nodes[id]).toEqual(moved.nodes[id]);expect(editor.state.doc.pages[0]).toEqual(moved.pages[0]);await replayAll();await persist()
 })

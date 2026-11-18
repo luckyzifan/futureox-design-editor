@@ -185,7 +185,7 @@ test('actual Canvas menu group/ungroup preserve world geometry and restore each 
 test('actual Canvas menu lock/unlock/hide/show are authored, individually reversible, and retain selection', async () => {
   const a = node('rectangle', 100, 100, 40, 40)
   await render([a]); await act(async () => editor.select([a.id])); const before = editor.state.doc
-  for (const [label, field, value] of [['锁定图层', 'locked', true], ['解锁图层', 'locked', false], ['隐藏图层', 'visible', false], ['显示图层', 'visible', true]] as const) {
+  for (const [label, field, value] of [['锁定/解锁', 'locked', true], ['锁定/解锁', 'locked', false], ['显示/隐藏', 'visible', false], ['显示/隐藏', 'visible', true]] as const) {
     const previous = editor.state.doc
     await menuAction(label); expect(editor.state.doc.nodes[a.id][field]).toBe(value); expect(editor.state.selection).toEqual([a.id])
     const after = editor.state.doc; await act(async () => editor.undo()); expect(editor.state.doc).toEqual(previous)
