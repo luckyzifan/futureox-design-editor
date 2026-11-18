@@ -32,7 +32,7 @@ import {
 } from './model'
 import type { ImportedDesign } from './import-svg'
 import { emptySystem } from './design-system'
-import { hasFigAutomaticLineHeight, importFigTextExtras, importFigTextRuns, type FigInstanceTextLayout } from './import-fig-text'
+import { figTextCase, hasFigAutomaticLineHeight, importFigTextExtras, importFigTextRuns, type FigInstanceTextLayout } from './import-fig-text'
 import { applyFigFacet, assertFigStructure, figNodeKind, figNote, importFigPrototype, parkFigReceipts, type FigReceipts } from './import-fig-nodes'
 import { defaultColorSettings } from './color'
 import { figImageAdjust, figImageTile } from './import-fig-image'
@@ -888,8 +888,9 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
                 ? 'justify'
                 : 'start',
       }
-      if (r.textCase === 'UPPER' || r.textCase === 'LOWER') n.textStyle.textCase = r.textCase.toLowerCase()
-      else if (r.textCase && r.textCase !== 'ORIGINAL') warnings.add(`文字大小写 ${r.textCase} 尚需核对`)
+      const textCase = figTextCase(r.textCase)
+      if (textCase && textCase !== 'original') n.textStyle.textCase = textCase
+      else if (r.textCase && !textCase) warnings.add(`文字大小写 ${r.textCase} 尚需核对`)
       // Preserve authoring metrics instead of silently using 1.35em/zero.
       if (r.lineHeight?.units === 'PIXELS') {
         n.textStyle.lineHeight = r.lineHeight.value / n.fontSize

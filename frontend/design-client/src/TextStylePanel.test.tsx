@@ -185,6 +185,37 @@ test('writing mode toggles vertical and clearing returns to the unset default', 
   expect(JSON.stringify(f.editor.state.doc.nodes[f.text.id].textStyle)).not.toContain('writingMode')
 })
 
+test('text case shows imported range overrides and changes the whole layer in one edit', async () => {
+  await loadFontFixture()
+  const f = fixture(), h = harness()
+  const text = 'hELLO wORLD'
+  f.editor.change('Fixture with imported case', doc => {
+    doc.schemaVersion = 15
+    doc.nodes[f.text.id].text = text
+    doc.nodes[f.text.id].textRuns = [{ start: 0, end: 5, textCase: 'upper', weight: 700 }]
+  })
+  const control = () => find(panel(f, h), byLabel('文字大小写'))
+  const original = f.editor.state.doc
+  const node = () => f.editor.state.doc.nodes[f.text.id]
+  expect(control().props.value).toBe('mixed')
+  control().props.onChange({ target: { value: 'title' } })
+  expect(node().text).toBe(text)
+  expect(node().textStyle?.textCase).toBe('title')
+  expect(node().textRuns).toEqual([{ start: 0, end: 5, weight: 700 }])
+  expect(validateDocument(f.editor.state.doc).nodes[f.text.id].textStyle?.textCase).toBe('title')
+  expect(control().props.value).toBe('title')
+
+  control().props.onChange({ target: { value: 'original' } })
+  expect(node().textStyle?.textCase).toBe('original')
+  expect(node().text).toBe(text)
+  f.editor.undo()
+  expect(node().textStyle?.textCase).toBe('title')
+  f.editor.undo()
+  expect(f.editor.state.doc).toBe(original)
+  f.editor.redo()
+  expect(node().textStyle?.textCase).toBe('title')
+})
+
 test('fallbacks require known font resource ids before committing', async () => {
   await loadFontFixture()
   const f = fixture(), h = harness()

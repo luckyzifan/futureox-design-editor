@@ -436,9 +436,10 @@ export type DesignNode = {
   instance?: ComponentInstance
   instanceOrigin?: { owner: string; key: string; source: string }
 }
+export type TextCase = 'original' | 'upper' | 'lower' | 'title'
 export type TextStyle = {
   verticalAlign?: 'top' | 'center' | 'bottom'
-  textCase?: 'original' | 'upper' | 'lower'
+  textCase?: TextCase
   paragraphSpacing?: number
   paragraphIndent?: number
   fontId: string
@@ -469,7 +470,7 @@ export function validTextParagraph(p: TextParagraph): boolean {
 }
 export type TextRun = {
   paragraph?: TextParagraph
-  textCase?: 'original' | 'upper' | 'lower'
+  textCase?: TextCase
   color?: string
   underline?: boolean
   italic?: boolean
@@ -1018,7 +1019,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
   function validateText(n: DesignNode) {
     const style = n?.textStyle === undefined ? defaultStyle : { ...defaultStyle, ...n.textStyle }
     const cases = [style.textCase, ...(n.textRuns || []).map(r => r.textCase)]
-    if (cases.some(c => c !== undefined && !['original','upper','lower'].includes(c))) throw Error('文字大小写属性无效')
+    if (cases.some(c => c !== undefined && !['original','upper','lower','title'].includes(c))) throw Error('文字大小写属性无效')
     if (d.schemaVersion < 15 && (cases.some(c => c !== undefined && c !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) throw Error('文字显示大小写需要设计文件版本 15')
     if (
       n?.textStyle !== undefined &&

@@ -9,7 +9,7 @@ import { svgSource } from '../export'
 import { appendDocument } from '../append-document'
 import { validateDocument } from '../model'
 import { kernelLayout, kernelExportPlan, prepareDocumentForEditing } from '../kernel/picking'
-import type { DesignDocument, DesignNode, Paint, TextRun } from '../model'
+import type { DesignDocument, DesignNode, Paint, TextCase, TextRun } from '../model'
 import { AutomationError, type AutomationExtension, type AutomationContext } from './types'
 import {
   assetReference, boundedInteger, collectAssetReferences, contextEntries, contextOptions,
@@ -136,6 +136,11 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   const warnings: DesignAutomationWarning[] = []
   const warn = (code: string, message: string, nodeId?: string) => {
     if (!warnings.some(w => w.code === code && w.nodeId === nodeId)) warnings.push({ code, message, ...(nodeId ? { nodeId } : {}) })
+  }
+  const textTransform = (textCase: TextCase, nodeId: string) => {
+    if (textCase === 'title')
+      warn('TEXT_CASE_APPROXIMATION', 'Browser capitalization may preserve uppercase letters that the native title case lowers.', nodeId)
+    return `text-transform:${{ original: 'none', upper: 'uppercase', lower: 'lowercase', title: 'capitalize' }[textCase]}`
   }
   warn('APPROXIMATE_HTML', 'HTML/CSS is an editable approximation. Use preview.capture or native export for renderer-faithful pixels; no pixel-equivalence claim is made.')
   if (document.colorManagement) warn('COLOR_MANAGEMENT', 'Browser CSS does not reproduce native HDR, tone mapping or color-managed compositing.')
@@ -270,7 +275,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       declarations.push(`font-size:${px(n.fontSize)}`, `font-family:${font ? `${cssString(font.family)},sans-serif` : 'sans-serif'}`, `font-weight:${number(s?.weight ?? 400)}`, `line-height:${number(s?.lineHeight ?? 1.35)}`, `letter-spacing:${px(s?.letterSpacing ?? 0)}`, `text-align:${s?.align ?? 'start'}`, `white-space:${s?.wrap ? 'pre-wrap' : 'pre'}`)
       if (s?.direction && s.direction !== 'auto') declarations.push(`direction:${s.direction}`)
       if (s?.writingMode === 'vertical') declarations.push('writing-mode:vertical-rl')
-      if (s?.textCase && s.textCase !== 'original') declarations.push(`text-transform:${s.textCase === 'upper' ? 'uppercase' : 'lowercase'}`)
+      if (s?.textCase && s.textCase !== 'original') declarations.push(textTransform(s.textCase, n.id))
       warn('FONT_METRICS', 'HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.', n.id)
     }
     styles.push(`${selector}{${declarations.join(';')}}`)
@@ -289,7 +294,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
       if (run.weight !== undefined) declarations.push(`font-weight:${number(run.weight)}`)
       if (run.fontId && document.fonts?.[run.fontId]) declarations.push(`font-family:${cssString(document.fonts[run.fontId].family)},sans-serif`)
       if (run.underline || run.strikethrough) declarations.push(`text-decoration:${[run.underline && 'underline', run.strikethrough && 'line-through'].filter(Boolean).join(' ')}`)
-      if (run.textCase && run.textCase !== 'original') declarations.push(`text-transform:${run.textCase === 'upper' ? 'uppercase' : 'lowercase'}`)
+      if (run.textCase) declarations.push(textTransform(run.textCase, n.id))
       if (declarations.length) styles.push(`.${className}{${declarations.join(';')}}`)
       const text = htmlEscape(n.text.slice(start, end)), link = run.link && safeWebUrl(run.link)
       if (run.link && !link) warn('UNSAFE_LINK', 'A non-HTTP(S) or unsafe text link was omitted; its text remains.', n.id)

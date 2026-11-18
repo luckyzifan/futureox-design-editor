@@ -56,7 +56,14 @@ function letterSpacingPixels(value: any, size: number): number | undefined {
   if (value.units === 'PIXELS') return value.value
   if (value.units === 'PERCENT' && size >= 1) return size * value.value / 100
 }
-const casing = (value: unknown): TextRun['textCase'] => value === 'UPPER' ? 'upper' : value === 'LOWER' ? 'lower' : value === 'ORIGINAL' ? 'original' : undefined
+export function figTextCase(value: unknown): TextRun['textCase'] {
+  switch (value) {
+    case 'UPPER': return 'upper'
+    case 'LOWER': return 'lower'
+    case 'TITLE': return 'title'
+    case 'ORIGINAL': return 'original'
+  }
+}
 
 function digestHex(bytes: unknown): string | undefined {
   if (!(bytes instanceof Uint8Array) || bytes.length !== 20) return
@@ -103,7 +110,7 @@ export function importFigTextRuns(node: DesignNode, record: any, warnings: Impor
     const run: TextRun = {start,end}
     if (Number.isFinite(style.fontSize)) run.fontSize=style.fontSize
     if (style.fontName) run.weight=weight(style.fontName.style)
-    const caseValue=casing(style.textCase)
+    const caseValue=figTextCase(style.textCase)
     if (caseValue) run.textCase=caseValue
     else if (style.textCase) warnings.add(`文字片段大小写 ${style.textCase} 尚需核对`)
     const fill=style.fillPaints?.[0]
