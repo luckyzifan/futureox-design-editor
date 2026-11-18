@@ -6,6 +6,11 @@
 //! tests/figma_sampling.rs. The rendering pipeline must opt in explicitly;
 //! matching these primitives is not a full-image Figma fidelity pass.
 
+/// Snap an already-projected device coordinate to the Q8 coverage grid.
+pub(crate) fn snap_device_coordinate(value: f64) -> f64 {
+    (value * 256. + 0.5).floor() / 256.
+}
+
 /// Round a finite binary32 interpolation fraction in [0,1] to Q8, half upward.
 /// Scaling by a power of two is evaluated from the significand, avoiding a
 /// floating add of 0.5 that can move a nearby non-tie onto a tie.

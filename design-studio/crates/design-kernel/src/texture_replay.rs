@@ -659,7 +659,7 @@ impl FiniteQuad {
             // Vertex clip projection, viewport projection, then Q8 coverage.
             let clip = uv * 2. - 1.;
             let screen = (clip * 0.5 + 0.5) * n;
-            (f64::from(screen) * 256. + 0.5).floor() / 256.
+            crate::figma_sampling::snap_device_coordinate(f64::from(screen))
         });
         if pixels.iter().any(|v| !v.is_finite() || v.abs() > LIMIT) {
             return Err("Texture finite quad overflow".into());

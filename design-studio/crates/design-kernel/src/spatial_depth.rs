@@ -451,7 +451,9 @@ pub(crate) fn project_scene(
         patch.appearances =
             spatial_material::appearances(&planes, Transform::default(), &mut remaining)?;
         if let [face] = collector.faces.as_slice() {
-            patch.inset_colors = spatial_material::inset_colors(face.node, &patch.appearances);
+            patch.inset = spatial_material::inset_appearance(
+                face.node, &patch.appearances, &face.paints, Transform::default(),
+            )?;
         }
         collector.patches.insert(frame.id.clone(), patch);
     }

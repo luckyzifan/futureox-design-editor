@@ -23,13 +23,51 @@ pub(crate) struct Appearance {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct InsetStroke {
     pub interior: String,
+    pub appearance: InsetAppearance,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct InsetAppearance {
+    pub outline: VectorGeometry,
     pub fill: [u8; 3],
     pub stroke: [u8; 3],
 }
 
+pub(crate) fn inset_appearance(
+    node: &Node,
+    cells: &[Appearance],
+    paints: &[Material],
+    to_local: Transform,
+) -> Result<Option<InsetAppearance>, String> {
+    let Some((fill, stroke)) = inset_colors(node, cells) else {
+        return Ok(None);
+    };
+    let [body, _inside_stroke] = paints else {
+        return Ok(None);
+    };
+    // An inside stroke fits inside the original fill outline. Use that
+    // projected path directly so boolean partitions cannot introduce
+    // collinear points that round to different parts of the device grid.
+    Ok(Some(InsetAppearance {
+        outline: outline_geometry(&body.shape.contours, to_local, body.shape.even_odd)?,
+        fill,
+        stroke,
+    }))
+}
+
+/// Device quantization belongs to export coverage, after the full projection
+/// and viewport transform. Authored paths and their picking geometry stay f64.
+pub(crate) fn snap_inset_contours(contours: &mut [Contour]) {
+    use crate::figma_sampling::snap_device_coordinate;
+    for p in contours.iter_mut().flat_map(|c| &mut c.points) {
+        p.x = snap_device_coordinate(p.x);
+        p.y = snap_device_coordinate(p.y);
+    }
+}
+
 /// Only a single opaque fill and inside stroke can be refined without
 /// changing another projected face's coverage or assuming a paint order.
-pub(crate) fn inset_colors(node: &Node, cells: &[Appearance]) -> Option<([u8; 3], [u8; 3])> {
+fn inset_colors(node: &Node, cells: &[Appearance]) -> Option<([u8; 3], [u8; 3])> {
     if node.opacity != 1. || cells.len() != 2 || cells.iter().any(|cell| cell.alpha != 255) {
         return None;
     }
