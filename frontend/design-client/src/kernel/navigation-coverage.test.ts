@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { captureMostlyOffscreen, captureVisibleFraction, liveNavigationCapture, navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, viewportOverlapFraction } from './navigation-coverage'
 import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
@@ -152,6 +152,19 @@ test('one-pixel uncovered strip is not full coverage, including fractional camer
   const full = { ...tile, zoom: 2, x: -.25, y: .125 }
   expect(navigationHasCoverage([full], view, 1024, 512)).toBe(true)
   expect(navigationHasCoverage([{ ...full, width: 1023 }], view, 1024, 512)).toBe(false)
+})
+
+test('pointer release keeps a covering capture, different zoom, or delivered pixels', () => {
+  const base = { x: 0, y: 0, zoom: .25 }
+  const cancel = vi.fn()
+  const flight = navigationCoverageFlight<object>({}, 1, {
+    zoom: base.zoom, bounds: { x: 0, y: 0, width: 4096, height: 2048 }, cancel,
+  })
+  expect(flight.cancelShiftedPan(base, 1024, 512)).toBe(false)
+  expect(flight.cancelShiftedPan({ x: -220, y: 0, zoom: .5 }, 1024, 512)).toBe(false)
+  flight.tile = {}
+  expect(flight.cancelShiftedPan({ ...base, x: -220 }, 1024, 512)).toBe(false)
+  expect(cancel).not.toHaveBeenCalled()
 })
 
 test('low-density residents do not count as finished coverage for a zoomed-out viewport', () => {

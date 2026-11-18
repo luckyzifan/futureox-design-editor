@@ -410,7 +410,7 @@ export function ProgressiveSurfaceImpl(
   const rasterOwner = useRef<object | null>(null)
   const fillOwner = useRef<{ contract: object; key: string } | null>(null)
   const previousFillView = useRef<SurfaceProps['view'] | undefined>(undefined)
-  const coverageDirection = useRef<{ contract?: object; zoomOut: boolean }>({ zoomOut: false })
+  const coverageDirection = useRef<{ contract?: object; zoomOut: boolean; panActive?: boolean }>({ zoomOut: false })
   const coverageGeneration = useRef(0)
   const coverageFlight = useRef<NavigationCoverageFlight<PaintedTile> | null>(null)
   /** World rect of the one native tile the navigation turn is drawing. */
@@ -1019,6 +1019,8 @@ export function ProgressiveSurfaceImpl(
     if (coverageDirection.current.contract !== contract) coverageDirection.current = { contract, zoomOut: false }
     if (previousView && previousView.zoom !== view.zoom) coverageDirection.current.zoomOut = view.zoom < previousView.zoom
     const zoomOutCoverage = coverageDirection.current.zoomOut
+    const releasedPan = coverageDirection.current.panActive && !props.panGestureActive
+    coverageDirection.current.panActive = props.panGestureActive
     const generation = coverageGeneration.current
     let cancelOverview: (() => void) | undefined
     // Panning within a density does not invalidate world pixels. Finish the
@@ -1046,8 +1048,14 @@ export function ProgressiveSurfaceImpl(
       runningNavigation.identity.document === doc && runningNavigation.identity.revision === contract.revision
     if (previewAdmission.current.active && !navigationZoom.active) {
       const flight = coverageFlight.current
-      if (flight?.contract === contract && flight.generation === generation)
+      if (flight?.contract === contract && flight.generation === generation) {
         flight.cancelObsoleteZoomOut(requestedView, width, height)
+        // After an outward navigation and pointer release, the pending old
+        // crop would finish ahead of a second capture of the final camera.
+        // Keep displayed pixels and yield the old crop at its original fence.
+        if (releasedPan && zoomOutCoverage && requestedView.zoom < 1 && residentDisplay && !nativeNavigation)
+          flight.cancelShiftedPan(requestedView, width, height)
+      }
       if (retainNavigation || coverageFlight.current?.contract === contract) mailbox.discardSuperseded()
       else if (navigationZoom.suspended || props.visible===false || props.paused) c.cancelPreview()
       else navigationIntentOwner.reset(c)
@@ -2559,6 +2567,7 @@ export function ProgressiveSurfaceImpl(
     props.paused,
     props.visible,
     props.interaction?.active,
+    props.panGestureActive,
     retainedEditing,
     props.interaction?.selection.join(','),
     motionPreview,
