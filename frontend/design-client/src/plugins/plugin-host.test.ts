@@ -10,6 +10,9 @@ import { executePluginSource } from './run'
 import { samplePlugin } from './sample-plugin'
 import { createPluginSession, pluginMixed } from './session'
 
+// This worker executes an async function body, so await the classic script expression.
+const legacySampleSource = `await (${samplePlugin.mainSource.trim().replace(/^;/m, '')})`
+
 const editors: Editor[] = []
 afterEach(() => { while (editors.length) editors.pop()?.dispose() })
 
@@ -48,7 +51,7 @@ describe('figma plugin host', () => {
     expect(stickyEdit?.status).toBe('committed')
     editor.set({ tool: 'sticky' })
     const before = editor.state.version
-    const { result } = await run(editor, samplePlugin.mainSource, samplePlugin.uiHtml, { id: 'futureox.sample.labeled-rectangles', name: 'Labeled rectangles', command: 'run' })
+    const { result } = await run(editor, legacySampleSource, samplePlugin.uiHtml, { id: 'futureox.sample.labeled-rectangles', name: 'Labeled rectangles', command: 'run' })
     expect(result.status).toBe('committed')
     expect(editor.state.tool).toBe('sticky')
     expect(editor.state.version).toBe(before + 1)
@@ -73,7 +76,7 @@ describe('figma plugin host', () => {
     const editor = open()
     const snapshot = snapshotFromEditor(editor)
     const session = createPluginSession(snapshot, { id: 'futureox.sample.labeled-rectangles', name: 'Labeled rectangles', command: 'run' })
-    await executePluginSource(session, samplePlugin.mainSource, samplePlugin.uiHtml)
+    await executePluginSource(session, legacySampleSource, samplePlugin.uiHtml)
     const first = session.exportTurn()
     expect(commitPluginResult(editor, '插件 Labeled rectangles', { documentId: snapshot.documentId, revision: snapshot.revision }, first).status).toBe('committed')
     expect(first.ui?.title).toBe('Labeled rectangles')
@@ -162,7 +165,8 @@ describe('figma plugin host', () => {
     const parsed = parsePluginManifest(samplePlugin.manifestText)
     expect(parsed.manifest).toMatchObject({ id: 'futureox.sample.labeled-rectangles', main: 'code.js', ui: 'ui.html' })
     expect(parsed.warnings.join(' ')).toContain('networkAccess')
-    expect(samplePlugin.mainSource).toBe(readFileSync(new URL('../../plugins/labeled-rectangles/code.js', import.meta.url), 'utf8'))
+    const classicSource = readFileSync(new URL('../../plugins/labeled-rectangles/code.js', import.meta.url), 'utf8')
+    expect(samplePlugin.mainSource).toBe(classicSource)
     expect(() => parsePluginManifest('{"name":"A","id":"a","api":"1","main":"../code.js"}')).toThrow(PluginApiError)
     expect(() => parsePluginManifest('{"name":"A","id":"a","api":"1","main":"code.js","editorType":["figjam"]}')).toThrow(/editorType/)
   })
