@@ -2995,6 +2995,7 @@ export function ProgressiveSurfaceImpl(
           })}
           allowPanPreview={import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW!=='0'}
           preserveZoomBasis={props.interaction?.figmaBoardPreview}
+          zoomInputActive={navigationGesture.active}
           panBacking={reusableFrame&&displayed&&!displayed.preview?displayed:undefined}
           onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed)=>translationCoverage.current?.({source,offset,sequence,failed})===true : undefined}
           onComposited={residentDisplay ? undefined : frame => { observeBacking(frame); props.onPresentation?.(frame) }}

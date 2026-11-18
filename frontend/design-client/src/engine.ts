@@ -2702,13 +2702,13 @@ export class Editor {
     for(const [id,patch] of Object.entries(patches))Object.defineProperty(nodes,id,{value:{...base.nodes[id],...patch},enumerable:true})
     return {...base,nodes}
   }
-  private cachedMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean}){
+  private cachedMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean},pruneClippedRoots=false){
     const tx=this.transaction,cache=tx?.movePreview,source=tx?.previewBase||tx?.doc
     if(!tx||!cache||source!==cache.source||cache.published!==this.state.doc||tx.page!==this.state.page||
         cache.epoch!==pickingGeometryEpoch()||tx.copy||tx.flow||move.ids.length!==1||
         Object.keys(patches).length!==move.ids.length||move.ids.some(id=>!source.nodes[id]||!patches[id]?.transform||Object.keys(patches[id]).some(key=>key!=='transform')))return
     const index=tx.dropIndex??=createCanvasDropIndex(source,this.state.page),query=this.moveQuery(source,patches,move.ids)
-    const plan=this.movePlacement(query,move.ids,move.point,move.force,move.preserveParent,index)
+    const plan=this.movePlacement(query,move.ids,move.point,move.force,move.preserveParent,index,pruneClippedRoots)
     if(plan.key!==cache.key)return
     const poses:Record<string,Partial<DesignNode>>={}
     for(const id of move.ids){
@@ -2721,12 +2721,12 @@ export class Editor {
     if(!cache.translation.accepts(poses))return
     return {patches:poses}
   }
-  canvasMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean}){
-    const cached=this.cachedMovePreview(patches,move)
+  canvasMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean},pruneClippedRoots=false){
+    const cached=this.cachedMovePreview(patches,move,pruneClippedRoots)
     if(cached)return {patches:cached.patches,retainsParents:true}
     const tx=this.transaction;if(!tx)return {patches,retainsParents:true}
     const base=tx.previewBase||tx.doc,index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page)
-    const plan=this.movePlacement(this.moveQuery(base,patches,move.ids),move.ids,move.point,move.force,move.preserveParent,index)
+    const plan=this.movePlacement(this.moveQuery(base,patches,move.ids),move.ids,move.point,move.force,move.preserveParent,index,pruneClippedRoots)
     const current=this.parentMap()
     const retainsParents=plan.moving.length===0&&move.ids.every(id=>current.get(id)===index.parents.get(id))
     if(retainsParents&&base===this.state.doc&&!tx.copy&&!tx.flow&&move.ids.length===1){
@@ -2739,12 +2739,12 @@ export class Editor {
     }
     return {patches,retainsParents}
   }
-  private movePlacement(source:DesignDocument,ids:string[],point:Point,force:boolean,preserveParent:boolean,index?:CanvasDropIndex){
+  private movePlacement(source:DesignDocument,ids:string[],point:Point,force:boolean,preserveParent:boolean,index?:CanvasDropIndex,pruneClippedRoots=false){
     const tx=this.transaction
     index??=tx?(tx.dropIndex??=createCanvasDropIndex(tx.previewBase||tx.doc,this.state.page)):createCanvasDropIndex(source,this.state.page)
     const parents=index.parents
     const retained=tx&&!preserveParent?this.retainContainedMoveParents(source,ids,point,force):null
-    const frame=tx&&!preserveParent&&!retained?canvasDropFrame(source,this.state.page,ids,point,force,index):undefined,target=frame||this.state.page
+    const frame=tx&&!preserveParent&&!retained?canvasDropFrame(source,this.state.page,ids,point,force,index,pruneClippedRoots):undefined,target=frame||this.state.page
     let moving=tx&&!preserveParent&&!retained?ids.filter(id=>!canvasMoveKeepsContainer(source,id,force,parents)&&(frame?containingFrame(source,id,parents)!==frame:!!containingFrame(source,id,parents))&&parents.get(id)!==target):[]
     const animated=new Set(source.animations?.flatMap(c=>c.tracks.map(t=>t.nodeId))||[])
     if(moving.some(id=>{for(let at:string|undefined=id;at&&source.nodes[at];at=parents.get(at))if(animated.has(at)||source.nodes[at].instanceOrigin||(at!==id&&source.nodes[at].instance))return true;return false}))moving=[]

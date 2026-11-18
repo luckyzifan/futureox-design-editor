@@ -3005,7 +3005,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     const placement = d.kind==='move'&&!d.cropFrame?{ids:d.ids,point:d.movePlacementPoint ?? p,
       force:!d.moveFromAnywhere&&deepSelectChord(e,shortcutPlatform()),preserveParent:space.current}:undefined
-    const movePreview=placement?editor.canvasMovePreview(patches,placement):undefined
+    const movePreview=placement?editor.canvasMovePreview(patches,placement,uiMode==='figma'):undefined
     const retainsParents = !placement || movePreview!.retainsParents
     // Independent complete boards can follow the pointer on the compositor.
     // Keep one final authored mutation, using the same snapping/placement math.

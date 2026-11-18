@@ -55,6 +55,24 @@ test('gesture index uses current frame geometry and visibility rather than cache
  e.update([b.id],{visible:false});expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:730,y:40},false,index)).toBeUndefined()
 })
 
+test('Figma drop pruning respects live clips and keeps the painter order of reachable frames', () => {
+  const { e, a, b, n } = fixture()
+  const nested = node('frame', 230, 25, 95, 90)
+  e.change('Frame outside its parent', d => {
+    d.nodes[nested.id] = nested
+    d.nodes[a.id].children.push(nested.id)
+    d.nodes[a.id].clip = true
+  })
+  const page = e.state.page, index = createCanvasDropIndex(e.state.doc, page)
+  const drop = (x: number, y: number, prune: boolean) =>
+    canvasDropFrame(e.state.doc, page, [n.id], { x, y }, false, index, prune)
+  expect(drop(255, 45, true)).toBe(drop(255, 45, false))
+  expect(drop(255, 45, true)).toBeUndefined()
+  expect(drop(380, 45, true)).toBe(b.id)
+  e.update([a.id], { clip: false })
+  expect(drop(255, 45, true)).toBe(nested.id)
+})
+
 test.each(['group','vector'] as const)('ordinary drag preserves %s membership and sibling order outside the enclosing frame',kind=>{
  const {e,a,b,n}=fixture(),group=node(kind,0,0,100,100),sibling=node('rectangle',50,50,10,10)
  if(kind==='vector')group.booleanOperation='union'
