@@ -115,6 +115,49 @@ function treeSelected() {
   return [...mount.querySelectorAll<HTMLElement>('[role="treeitem"]')].filter(row => row.getAttribute('aria-selected') === 'true').map(row => row.dataset.layerId)
 }
 
+test.each(['figma', 'sketch'] as const)('selection color accepts hex typing in the %s inspector', async uiMode => {
+  const { solid } = fixture()
+  editor.select([solid.id])
+  interfacePreference.set({ uiMode })
+  const original = editor.state.doc
+  await render()
+  const field = () => mount.querySelector<HTMLInputElement>('input[type="text"][aria-label="选区颜色 1"]')!
+  const update = async (text: string) => {
+    const input = field()
+    await act(async () => {
+      input.focus()
+      Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, text)
+      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+    })
+  }
+  const key = async (value: string) => {
+    await act(async () => field().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true })))
+  }
+
+  expect(field()?.value).toBe(BLUE)
+  await update('incorrect')
+  await key('Enter')
+  expect(field().value).toBe('incorrect')
+  expect(field().validationMessage).not.toBe('')
+  expect(editor.state.doc).toBe(original)
+  await key('Escape')
+  expect(field().value).toBe(BLUE)
+
+  await update('#00ff88')
+  await key('Enter')
+  expect(editor.state.doc.nodes[solid.id].fills[0].color).toBe('#00ff88')
+  expect(field().value).toBe('#00FF88')
+  expect(mount.querySelector('input[type="color"][aria-label="选区颜色 1 色板"]')).not.toBeNull()
+  await update('112233')
+  await act(async () => field().blur())
+  expect(editor.state.doc.nodes[solid.id].fills[0].color).toBe('#112233')
+  await act(async () => editor.undo())
+  expect(editor.state.doc.nodes[solid.id].fills[0].color).toBe('#00ff88')
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toBe(original)
+  expect(editor.canUndo).toBe(false)
+})
+
 test('sketch color row selects referenced layers without rewriting color or history', async () => {
   expect(displayColorHex(importedBlue)).toBe(BLUE)
   const layers = fixture()

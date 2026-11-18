@@ -16,7 +16,7 @@ export function SelectionColorsPanel({ editor }: { editor: Editor }) {
       const linked = group.uses.some(use => use.linked)
       return <div className="selection-color-row" data-selection-color={group.color} key={`${group.color}/${index}`}>
         {linked ? <span className="linked-color" title={tr("此颜色引用变量或共享样式")}>{group.color}</span> :
-          <ColorInput label={`${tr("选区颜色")} ${index + 1}`} value={group.color} onChange={color => editor.updateProperties(
+          <ColorInput editableHex label={`${tr("选区颜色")} ${index + 1}`} value={group.color} onChange={color => editor.updateProperties(
             [...new Set(group.uses.map(use => use.id))], node => replaceSelectionColor(node, group.uses, color), '修改选区颜色')} />}
         <span title={tr("引用位置数量")}>{locale === 'en' ? `${group.uses.length} references` : `${group.uses.length} 处`}</span>
         <button type="button" className="selection-color-select" aria-label={tr("选择使用此颜色的图层")} title={tr("选择使用此颜色的图层")}
