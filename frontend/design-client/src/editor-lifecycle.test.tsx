@@ -30,6 +30,7 @@ function harness(context: unknown = null) {
     useRef(init: any) { const i = cursor++; return slots[i] ??= { current: init } },
     useMemo(fn: () => any) { cursor++; return fn() },
     useSyncExternalStore(_: any, snapshot: () => any) { cursor++; return snapshot() },
+    useImperativeHandle(ref: unknown) { cursor++; expect(ref).toBeUndefined() },
     useLayoutEffect(fn: () => any, deps?: any[]) {
       const i = cursor++, old = slots[i]
       if (!old || !deps || deps.some((v, j) => !Object.is(v, old.deps[j]))) {
@@ -224,7 +225,8 @@ describe('modal keyboard and asynchronous insertion ownership', () => {
     expect(preventDefault).not.toHaveBeenCalled(); expect(stopPropagation).toHaveBeenCalled()
     dialog.props.onKeyDown({ key: 'Escape', preventDefault, stopPropagation, nativeEvent: {} })
     expect(close).toHaveBeenCalledOnce()
-    const first = { hidden: false, getAttribute: () => null, focus: vi.fn() }, last = { hidden: false, getAttribute: () => null, focus: vi.fn() }
+    const modalButton = () => ({ tabIndex: 0, getAttribute: () => null, closest: () => null, focus: vi.fn() })
+    const first = modalButton(), last = modalButton()
     documentTarget.activeElement = last
     dialog.props.onKeyDown({ key: 'Tab', shiftKey: false, preventDefault, stopPropagation, nativeEvent: {}, currentTarget: { querySelectorAll: () => [first, last] } })
     expect(first.focus).toHaveBeenCalledOnce()
