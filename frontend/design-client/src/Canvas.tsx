@@ -3108,7 +3108,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const pending = pendingBoardMove.current
       if (pending) {
         pendingBoardMove.current = null; retainedMove.current?.restore()
-        editor.preview(...pending)
+        editor.preview(pending[0], pending[1], uiMode === 'figma' && d.kind === 'move')
       }
     })
     if (d.actionToken && d.actionBefore) d.actionResolved = actionGeometry(editor.state.doc, d.ids)

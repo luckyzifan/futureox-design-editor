@@ -11,7 +11,7 @@ import { download } from './persistence'
 import { usePropertyText } from './property-interface-messages'
 
 type Preview = { name: string; url: string; pdf: boolean; pdfVector: boolean; tiff: boolean; heic: boolean }
-export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
+export function NodeExportPanel({editor,node,scopePageRoots=false}:{editor:Editor;node:DesignNode;scopePageRoots?:boolean}) {
   const { locale, tr } = usePropertyText()
   const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[previews,setPreviews]=useState<Preview[]>([])
   const managed=!!editor.state.doc.colorManagement
@@ -27,8 +27,8 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
   // the true-vector writer's v1 scope; otherwise the bitmap PDF remains.
   const hasSettings = !!node.exportSettings?.length
   const vectorIssues=useMemo(
-    ()=>hasSettings ? pdfVectorIssues(editor.state.doc,editor.state.page,{kind:'selection',nodeIds:[node.id]}) : [],
-    [editor.state.doc,editor.state.page,node.id,hasSettings])
+    ()=>hasSettings ? pdfVectorIssues(editor.state.doc,editor.state.page,{kind:'selection',nodeIds:[node.id]},scopePageRoots) : [],
+    [editor.state.doc,editor.state.page,node.id,hasSettings,scopePageRoots])
   const release=()=>{for(const url of urls.current)URL.revokeObjectURL(url);urls.current=[]}
   useEffect(()=>{mounted.current=true;const manager=owner.current;manager.activate(editor);return()=>{mounted.current=false;manager.dispose();release()}},[editor,node.id])
   useEffect(()=>{setEncoding(explicit?'':'srgb')},[node.id,explicit])

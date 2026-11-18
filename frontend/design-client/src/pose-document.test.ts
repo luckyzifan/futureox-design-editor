@@ -49,23 +49,42 @@ import {validatedPreparedPublication} from './prepared-document'
 import {immutableDocument} from './immutable-document'
 import {poseDocumentSource,producePoseDocument as produceCertifiedPoseDocument} from './pose-document'
 import {booleanPoseUnchanged} from './kernel/picking'
-import {TranslationPreviewPlan} from './kernel/translation-preview'
+import {PoseTopology, TranslationPreviewPlan} from './kernel/translation-preview'
 
-test('validation is owned by an admitted immutable graph and a pose cannot keep caller-owned matrix values',()=>{
+test.each([false,true])('a pose owns its matrices and immutable branches with bounded copying %s',reuseOwnedPose=>{
   const original=blank('pose'),leaf=node('rectangle',10,10,15,20)
   original.nodes[leaf.id]=leaf;original.pages[0].children=[leaf.id]
   const owned=takePreparedDocument(prepareDocument(original))!
   expect(validatedPreparedPublication(owned)).toBe(true)
   expect(Object.isFrozen(original.nodes[leaf.id])).toBe(false)
   const m=[1,0,0,1,16,10] as typeof leaf.transform
-  const moved=produceCertifiedPoseDocument(owned,{[leaf.id]:{transform:m}})!
+  const moved=produceCertifiedPoseDocument(owned,{[leaf.id]:{transform:m}},reuseOwnedPose)!
   m[4]=130
   expect(moved.nodes[leaf.id].transform[4]).toBe(16)
   expect(immutableDocument(moved)).toBe(true)
   expect(poseDocumentSource(owned,moved)?.[leaf.id][4]).toBe(16)
+  expect(Object.isFrozen(moved.nodes)).toBe(true)
+  expect(Object.isFrozen(moved.nodes[leaf.id])).toBe(true)
+  expect(Object.isFrozen(moved.nodes[leaf.id].transform)).toBe(true)
+  expect(moved.pages).toBe(owned.pages)
+  expect(Object.keys(documentPatch(owned,moved).nodes)).toEqual([leaf.id])
   expect(poseDocumentSource(original,moved)).toBeUndefined()
   expect(validatedPreparedPublication(Object.freeze({...owned}))).toBe(false)
   expect(produceCertifiedPoseDocument(owned,{[leaf.id]:{transform:[0,0,0,0,20,10]}})).toBeUndefined()
+})
+
+test('a pose predecessor binds reusable parent links to the new immutable snapshot',()=>{
+  const original=blank('move'),frame=node('frame',0,0,100,100),leaf=node('rectangle',10,10,15,20)
+  frame.children=[leaf.id]; original.nodes={[frame.id]:frame,[leaf.id]:leaf}; original.pages[0].children=[frame.id]
+  const owned=takePreparedDocument(prepareDocument(original))!,topology=new PoseTopology(owned)
+  const moved=produceCertifiedPoseDocument(owned,{[frame.id]:{transform:[1,0,0,1,15,10]}},true)!
+  const reused=new PoseTopology(moved,{document:owned,topology})
+  expect(reused.matches(moved)).toBe(true)
+  expect(reused.get(leaf.id)).toBe(frame.id)
+  expect(topology.matches(moved)).toBe(false)
+  const reparented={...moved,nodes:{...moved.nodes,[frame.id]:{...moved.nodes[frame.id],children:[]}},
+    pages:moved.pages.map(p=>({...p,children:[...p.children,leaf.id]}))}
+  expect(new PoseTopology(reparented,{document:owned,topology}).get(leaf.id)).toBe(owned.pages[0].id)
 })
 
 test('a Boolean operand can reuse validation only after fresh local kernel resolution agrees',()=>{

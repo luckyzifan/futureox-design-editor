@@ -1,7 +1,7 @@
-import { immutableDocument } from './immutable-document'
+import { captureImmutableTransforms, immutableDocument } from './immutable-document'
 import { produceDraftWithPatches } from './draft'
 import { certifyLayerTransition } from './layer-row-transition'
-import { validNodeTransform, type DesignDocument, type DesignNode } from './model'
+import { validNodeTransform, type DesignDocument, type DesignNode, type Matrix } from './model'
 export type DocumentPatch = {
   nodes: Record<string, DesignNode | null>
   fields: Record<string, unknown>
@@ -170,11 +170,12 @@ export function produceDocumentDraft(before: DesignDocument, recipe: (draft: Des
 }
 /** Publish absolute poses with a complete changed-node witness. Copy the
  * node table once, and own the six numbers supplied by each gesture. */
-export function producePoseDocument(before: DesignDocument, patches: Readonly<Record<string, Partial<DesignNode>>>) {
+export function producePoseDocument(before: DesignDocument, patches: Readonly<Record<string, Partial<DesignNode>>>, owned = false) {
   const ids = Object.keys(patches)
   if (!ids.length || ids.length > 16) return
   let nodes = before.nodes
   const changed: string[] = []
+  const transforms: [string, Matrix][] | undefined = owned && immutableDocument(before) ? [] : undefined
   for (const id of ids) {
     const patch = patches[id], input = patch.transform
     if (!Object.hasOwn(before.nodes, id) || Object.keys(patch).length !== 1 ||
@@ -183,13 +184,16 @@ export function producePoseDocument(before: DesignDocument, patches: Readonly<Re
     if (!validNodeTransform(transform)) return
     const previous = before.nodes[id]
     if (previous.transform.every((value,i) => Object.is(value, transform[i]))) continue
-    if (nodes === before.nodes) nodes = { ...before.nodes }
-    nodes[id] = { ...previous, transform }
+    if (transforms) transforms.push([id, transform])
+    else {
+      if (nodes === before.nodes) nodes = { ...before.nodes }
+      nodes[id] = { ...previous, transform }
+    }
     changed.push(id)
   }
-  if (nodes === before.nodes) return before
-  const after = { ...before, nodes }
-  rememberTransition(before, after, changed)
+  if (!changed.length) return before
+  const after = transforms ? captureImmutableTransforms(before, transforms) : { ...before, nodes }
+  if (after) rememberTransition(before, after, changed)
   return after
 }
 

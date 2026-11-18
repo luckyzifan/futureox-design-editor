@@ -130,7 +130,7 @@ import { shareDocument, documentPatch, produceDocumentDraft, type EditResult } f
 import { createEditingHistory } from './kernel/graph-history'
 import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding, validatedPreparedPublication } from './prepared-document'
 import {captureImmutable,immutableDocument} from './immutable-document'
-import {producePoseDocument,retirePoseDocument} from './pose-document'
+import {poseDocumentSource,producePoseDocument,retirePoseDocument} from './pose-document'
 function applyInferredFrame(doc: DesignDocument, id: string, inferred: {direction:string;gap:number|null;padding:[number,number,number,number];bannerChildren:string[];flowOrder:string[]}) {
   if (inferred.direction !== 'horizontal' && inferred.direction !== 'vertical') return
   const n=doc.nodes[id]
@@ -236,13 +236,15 @@ export class Editor {
   }
   // Published documents are immutable snapshots. Keep topology and clip/mask
   // transforms with that snapshot, never with a mutable edit draft or a point.
-  private pickContexts = new WeakMap<DesignDocument, { nodes: DesignDocument['nodes']; pages: DesignDocument['pages']; version?: number; parents: PoseTopology; matrices: Map<string, Matrix>; maskScene?: DesignDocument }>()
+  private pickContexts = new WeakMap<DesignDocument, { nodes: DesignDocument['nodes']; pages: DesignDocument['pages']; version?: number; parents: PoseTopology; matrices: Map<string, Matrix>; maskScene?: DesignDocument; ownedPose?: boolean }>()
   private pickContext(document: DesignDocument) {
     const version = document === this.state.doc ? this.state.version : undefined
     let context = this.pickContexts.get(document)
     if (!context || context.nodes !== document.nodes || context.pages !== document.pages ||
       (version !== undefined && context.version !== version)) {
-      context = { nodes: document.nodes, pages: document.pages, version, parents: new PoseTopology(document), matrices: new Map() }
+      const ownedPose = context?.ownedPose && context.nodes === document.nodes && context.pages === document.pages && immutableDocument(document)
+      context = { nodes: document.nodes, pages: document.pages, version,
+        parents: ownedPose ? context!.parents : new PoseTopology(document), matrices: new Map(), ownedPose }
       this.pickContexts.set(document, context)
     }
     return context
@@ -288,13 +290,18 @@ export class Editor {
     validateDocument(document,scope)
     return document
   }
-  private posePublication(before:DesignDocument,patches:Record<string,Partial<DesignNode>>){
+  private posePublication(before:DesignDocument,patches:Record<string,Partial<DesignNode>>,reuseOwnedPose=false){
     // Shape masks keep the original live-document handoff; their coverage window
     // has a separate pixel receipt. A visible effect stays on the node, so a
     // transform-only pose is still that node's authored document.
     if (Object.keys(patches).some(id => !before.nodes[id] || before.nodes[id].mask)) return
-    const next=producePoseDocument(before,patches)
+    const next=producePoseDocument(before,patches,reuseOwnedPose)
     if(next&&this.publicationValid(before)&&immutableDocument(next))this.validatedPublications.add(next)
+    if (reuseOwnedPose && next && next !== before && poseDocumentSource(before, next)) {
+      this.pickContexts.set(next, { nodes: next.nodes, pages: next.pages, version: this.state.version,
+        parents: new PoseTopology(next, { document: before, topology: this.pickContext(before).parents }),
+        matrices: new Map(), ownedPose: true })
+    }
     return next
   }
   private transaction: (History & { placement?: { document:DesignDocument; ids:string[]; point:Point; force:boolean; preserveParent:boolean }; movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
@@ -1147,12 +1154,12 @@ export class Editor {
       this.transaction = history
     }
   }
-  preview(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
-    return canvasActions(this).cpu.run(CpuStage.preview, () => this.previewCore(patches, move))
+  preview(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }, reuseOwnedPose = false) {
+    return canvasActions(this).cpu.run(CpuStage.preview, () => this.previewCore(patches, move, reuseOwnedPose))
   }
   private previewLayout?: PreviewLayout
   private posePreview?:{base:DesignDocument;epoch:object;key:string;plan:TranslationPreviewPlan;allowed:boolean}
-  private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
+  private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }, reuseOwnedPose = false) {
     if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
     const previewOwner=this.transaction
@@ -1160,7 +1167,7 @@ export class Editor {
     if(move){
       const cached=this.cachedMovePreview(patches,move)
       if(cached){
-        const document=this.posePublication(this.state.doc,cached.patches)||produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
+        const document=this.posePublication(this.state.doc,cached.patches,reuseOwnedPose)||produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
         const published=performance.now();this.set({doc:document})
         if(this.transaction===previewOwner&&previewOwner?.movePreview&&this.state.doc===document){
           previewOwner.movePreview.published=document
