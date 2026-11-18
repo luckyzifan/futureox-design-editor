@@ -129,10 +129,11 @@ export class CanvasSceneSnapshots {
     } }
   }
 
-  displayedScene(document: DesignDocument | undefined, pageId: string | undefined) {
+  displayedScene(document: DesignDocument | undefined, pageId: string | undefined, build = true) {
     if (!document || pageId === undefined) { this.displayed = undefined; return null }
     const next = key(document, pageId)
-    return this.displayed = this.find(next) ?? new CanvasSceneSnapshot(next)
+    this.displayed = this.find(next) ?? (build ? new CanvasSceneSnapshot(next) : undefined)
+    return this.displayed ?? null
   }
 
   refineOverview(document: DesignDocument, pageId: string) {

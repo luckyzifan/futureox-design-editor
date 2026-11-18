@@ -81,6 +81,27 @@ test('same current/displayed/refine snapshot shares one scene and one lazy index
   expect(work.scenes).toBe(1)
 })
 
+test('deferring a displayed scene retires the previous owner before the first hit test', () => {
+  const { doc, a } = fixture(), e = makeEditor(doc), store = new CanvasSceneSnapshots()
+  const first = e.state.doc, page = e.state.page, epoch = e.sessionGeneration
+  store.begin(e, epoch, page, true)
+  const current = store.currentScene(first, page)
+  const borrow = store.borrowCurrentScene(first, page, epoch)!
+  expect(store.displayedScene(first, page, false)).toBe(current)
+
+  e.change('Move layer', draft => { draft.nodes[a.id].transform[4] += 1 })
+  const displayed = e.state.doc
+  e.change('Move layer again', draft => { draft.nodes[a.id].transform[4] += 1 })
+  store.currentScene(e.state.doc, page)
+  const builds = work.scenes
+  expect(store.displayedScene(displayed, page, false)).toBeNull()
+  expect(borrow.entriesFor(first, page, epoch)).toBeUndefined()
+  expect(work.scenes).toBe(builds)
+  expect(work.indexes).toBe(0)
+  exact(store.displayedScene(displayed, page)!.entries, actual.scene(displayed, page))
+  expect(work.scenes).toBe(builds + 1)
+})
+
 test('Editor commands borrow Canvas geometry without retaining a third slot or reading a stale edit', () => {
   const {doc,a}=fixture(), e=makeEditor(doc), store=new CanvasSceneSnapshots()
   store.begin(e,e.sessionGeneration,e.state.page,true)
