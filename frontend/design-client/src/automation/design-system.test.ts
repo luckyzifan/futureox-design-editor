@@ -491,7 +491,7 @@ describe('shared styles', () => {
     expect(() => apply(d, 'style.create', { name: 'Bad', kind: 'paint', value: [{ kind: 'solid', color: 'invalid' }] })).toThrow()
     expect(() => apply(d, 'style.create', { name: 'Bad', kind: 'effect', value: [{ ...effect('shadow'), radius: -1 }] })).toThrow()
     expect(() => apply(d, 'style.apply', { nodeId: shape.id, field: 'effects', styleId: 'fill' })).toThrow(/mismatch/)
-    expect(() => apply(d, 'style.apply', { nodeId: shape.id, field: 'strokes', styleId: 'fill' })).toThrow(/Unsupported/)
+    expect(() => apply(d, 'style.apply', { nodeId: shape.id, field: 'transform', styleId: 'fill' })).toThrow(/Unsupported/)
     const textStyle = apply(d, 'style.create', { id: 'text', name: 'Text', kind: 'text', value: defaultTextStyle() }).document
     expect(() => apply(textStyle, 'style.apply', { nodeId: shape.id, field: 'textStyle', styleId: 'text' })).toThrow(/mismatch/)
     expect(() => apply(d, 'style.create', { name: 'Bad', kind: 'text', value: defaultTextStyle(), strokes: [stroke()] })).toThrow(/Only paint/)
@@ -501,6 +501,32 @@ describe('shared styles', () => {
     const next = apply(d, 'style.create', { id: 'complete', name: 'Complete layer', kind: 'paint', value: [paint()], strokes: [stroke()], effects: [effect('shadow')] }).document
     expect(next.schemaVersion).toBeGreaterThanOrEqual(12)
     expect(next.designSystem!.styles.complete.strokes).toHaveLength(1)
+  })
+  it('applies and detaches a shared stroke style through the advertised automation operation', () => {
+    const { d, shape } = resources()
+    const border = { ...stroke(), width: 7, paint: paint('#245bd6') }
+    const document = apply(d, 'style.create', { id: 'border', name: 'Border', kind: 'paint', value: [], strokes: [border] }).document
+    const editor = new Editor(document)
+    try {
+      const api = createDesignAutomation(editor, designSystemExtensions, [validateDesignSystemDocument])
+      const call = (method: string, params: Record<string, unknown>) => api.execute({
+        method, params, documentId: document.id, session: editor.sessionGeneration, expectedRevision: editor.state.version,
+      })
+      const applied = call('style.apply', { nodeId: shape.id, field: 'strokes', styleId: 'border' })
+      expect(applied.ok, JSON.stringify(applied)).toBe(true)
+      const styled = editor.state.doc
+      expect(styled.nodes[shape.id].styleRefs?.strokes).toBe('border')
+      expect(styled.nodes[shape.id].strokes).toEqual([border])
+      const detached = call('style.unapply', { nodeId: shape.id, field: 'strokes' })
+      expect(detached.ok, JSON.stringify(detached)).toBe(true)
+      const local = editor.state.doc
+      expect(local.nodes[shape.id].styleRefs?.strokes).toBeUndefined()
+      expect(local.nodes[shape.id].strokes).toEqual([border])
+      editor.undo()
+      expect(editor.state.doc).toEqual(styled)
+      editor.redo()
+      expect(editor.state.doc).toEqual(local)
+    } finally { editor.dispose() }
   })
   it('rejects style deletion when only an instance override still references it', () => {
     const { d, frame, text } = resources()
