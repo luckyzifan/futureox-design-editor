@@ -76,7 +76,9 @@ const english: Readonly<Record<string, string>> = Object.freeze({
   "预设尺寸未能按原样应用到当前画板": "The preset size was not applied to the current frame as requested.",
   "画板尺寸未应用": "The frame size was not applied.",
   "移除全部横向参考线": "Remove all horizontal guides",
-  "移除全部纵向参考线": "Remove all vertical guides"
+  "移除全部纵向参考线": "Remove all vertical guides",
+  "横向标尺操作": "Horizontal ruler actions",
+  "纵向标尺操作": "Vertical ruler actions"
 })
 function catalogValue(source: string): string | undefined {
   if (Object.prototype.hasOwnProperty.call(english, source)) return english[source]
