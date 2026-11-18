@@ -84,6 +84,56 @@ async fn overlapping_glass_reads_the_unpainted_prefix_on_the_device() {
       }
     }
 }
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn consecutive_shadows_use_the_pre_shadow_shape() {
+    let mut gpu = NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    let first = json!({"kind":"shadow","color":"#ef2020","radius":0,"x":16,"y":0,"opacity":0.65});
+    let second = json!({"kind":"shadow","color":"#008a36","radius":0,"x":0,"y":16,"opacity":0.8});
+    let inner = json!({"kind":"inner-shadow","color":"#2244ff","radius":0,"x":0,"y":3,"opacity":0.8});
+    let blur = json!({"kind":"blur","color":"#000000","radius":0});
+    let mut knockout = [first.clone(), second.clone()];
+    for effect in &mut knockout {
+        effect["shadow_knockout"] = json!(true);
+    }
+    let cases = [
+        ("outer", json!([first, second]), 1., false),
+        ("inner", json!([first, inner]), 1., false),
+        ("new chain", json!([first, blur, second]), 1., true),
+        ("knockout", json!(knockout), 0.5, false),
+    ];
+    for (name, effects, opacity, new_chain) in cases {
+        let document = doc(json!({"r":{
+            "id":"r","kind":"rectangle","width":12,"height":12,
+            "transform":[1,0,0,1,20,12],
+            "fills":[{"kind":"solid","color":"#25334b","opacity":opacity}],
+            "effects":effects
+        }}), json!(["r"]));
+        let mut engine = Engine::new();
+        engine.load_document(&document).unwrap();
+        for profile in ["analytic", "figmaSubpixel", "figma", "figmaSoftware"] {
+            let options: RenderOptions = serde_json::from_value(json!({
+                "pageId":"p","width":64,"height":56,"transparent":true,"rasterProfile":profile,
+                "view":{"x":0,"y":0,"zoom":1}
+            })).unwrap();
+            let cpu = engine.render(&options).unwrap();
+            let scene = engine.compile_gpu(&options).unwrap();
+            if name == "knockout" {
+                let wire = serde_json::to_value(&scene.nodes["r"].effects).unwrap();
+                assert_eq!(wire[0]["shadowKnockout"], true);
+                assert_eq!(wire[1]["shadowKnockout"], true);
+            }
+            let native = gpu.render(&scene).unwrap();
+            assert!(native.draw_calls > 0);
+            assert!(native.rgba == cpu, "{name} shadows differ in {profile}");
+            let diagonal_alpha = cpu[(32 * 64 + 40) * 4 + 3];
+            assert_eq!(diagonal_alpha > 0, new_chain, "{name} diagonal in {profile}");
+            let first_shadow = (17 * 64 + 42) * 4;
+            assert!(cpu[first_shadow] > 200 && cpu[first_shadow + 2] < 40);
+        }
+    }
+}
+
 /// Parity with image mips enabled on BOTH sides: the CPU reference sampler and
 /// the compositor must derive the same level from the same pure geometry.
 fn assert_parity_at_mips(gpu: &mut NativeGpu, document: &str, options: &RenderOptions) {

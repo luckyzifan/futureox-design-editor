@@ -11,7 +11,11 @@ export function compositorModes(scene: GpuScene) {
     if (n.blend !== 'normal' || n.fills.some((p) => p.blend !== 'normal') || n.strokes.some((s) => s.paint.blend !== 'normal')) modes.add(3)
     for (const effect of n.effects) {
     if (!effect.visible) continue
-    if (effect.kind === 'shadow' || effect.kind === 'inner-shadow') { modes.add(6); if (effect.spread) modes.add(5) }
+    if (effect.kind === 'shadow' || effect.kind === 'inner-shadow') {
+      modes.add(6)
+      if (effect.spread) modes.add(5)
+      if (effect.shadowKnockout && n.shadowPaintAlpha !== undefined) modes.add(63)
+    }
     if (effect.kind === 'glass') {
     if (n.glassShape && effect.glass) modes.add(34)
     else { modes.add(9); modes.add(10); modes.add(11) }
