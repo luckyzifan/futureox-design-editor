@@ -27,9 +27,9 @@ test('a locked ancestor, an instance, a descendant and a clipped-out frame canno
  e.update([b.id],{locked:false});e.select([b.id]);e.createComponent();e.duplicate();const instance=e.state.selection[0]
  e.update([instance],{transform:[1,0,0,1,700,0]});expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:730,y:40})).toBeUndefined()
 })
-test('dragging out of auto layout restores authored sizing and keeps the final world point',()=>{
+test.each([false, true])('dragging out of auto layout restores sizing and world position with published parents %s', reusePublishedParents => {
  const {e,a,n}=fixture();e.update([a.id],{layout:{...defaultLayout(),mode:'horizontal'}});const before=e.state.doc
- e.begin('Drag out');e.previewFreeMove([n.id],true);expect(e.state.doc.nodes[n.id].sizing?.absolute).toBe(true)
+ e.begin('Drag out');e.previewFreeMove([n.id],true,reusePublishedParents);expect(e.state.doc.nodes[n.id].sizing?.absolute).toBe(true)
  e.preview({[n.id]:{transform:[1,0,0,1,240.125,280.375]}})
  const world=worldMatrix(e.state.doc,n.id);e.finishCanvasMove({x:250,y:290});e.commit()
  expect(allParents(e.state.doc).get(n.id)).toBe(e.state.page);expect(worldMatrix(e.state.doc,n.id)).toEqual(world)

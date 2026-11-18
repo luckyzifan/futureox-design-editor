@@ -2959,7 +2959,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         y: d.layoutPointerOrigin.y + p.y - d.start.y,
       } : placementPoint
       const free = d.ids.some(id => !insideParentFrame(d.sourceDocument || editor.state.doc, id, placementPoint, d.sourceParents))
-      if (!d.duplicating) editor.previewFreeMove(d.ids, free)
+      if (!d.duplicating) editor.previewFreeMove(d.ids, free, uiMode === 'figma')
       if (!free && !d.duplicating && d.ids.length === 1 && editor.previewLayoutOrder(d.ids[0], layoutPointer)) {
         dropGestureFollow()
         clearMoveGuides()
