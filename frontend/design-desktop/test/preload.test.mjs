@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import vm from 'node:vm'
+import { deflateSync } from 'node:zlib'
 
 const filename = process.env.CORE_DESKTOP_TEST_SOURCE
   ? new URL('preload.cjs', process.env.CORE_DESKTOP_TEST_SOURCE)
@@ -82,6 +83,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'readRecovery',
       'acceptRecovery',
       'writeRecovery',
+      'writeRecoveryDeflate',
       'clearRecovery',
       'setDirty',
       'respondToClose',
@@ -168,6 +170,7 @@ test('preload request methods map only to the fixed desktop IPC allowlist', asyn
       { recoveryHandle: '10000000-0000-0000-0000-000000000002' },
     ],
     ['writeRecovery', 'recovery-write', { documentJson: '{}' }],
+    ['writeRecoveryDeflate', 'recovery-write', { documentDeflate: new Uint8Array(deflateSync('{}')) }],
     ['clearRecovery', 'recovery-clear', { recoveryHandle: '10000000-0000-0000-0000-000000000002' }],
     ['setDirty', 'dirty', true],
     ['respondToClose', 'close-response', { requestId: 'fixture', allow: false }],
