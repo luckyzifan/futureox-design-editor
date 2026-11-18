@@ -43,9 +43,17 @@ try{
   const difference=compare(samples[0],samples[1]);report.cases.push({name:'chunk-vs-dense',...difference});await publish();if(difference.mismatches)throw Error('Chunked gradient changed float pixels')
   for(const chunked of [false,true]){
    const gpu=await createGpu('webgpu',true,false,color,undefined,false,true);gpu.driver.captureDisplay=true
-   const internal=gpu as any,original=internal.paintWithCooperativeGradient.bind(gpu),upload=gpu.driver.uploadLinear!.bind(gpu.driver)
-   let current=true,calls=0,fullUploads=0
-   gpu.driver.uploadLinear=(values,w,h)=>{if(w*h>262144)fullUploads++;return upload(values,w,h)}
+   const internal=gpu as any,original=internal.paintWithCooperativeGradient.bind(gpu)
+   const queue:GPUQueue=internal.driver.device.queue
+   const writeTexture=queue.writeTexture,denseTextures=new Set<GPUTexture>()
+   let current=true,calls=0
+   // Count real dense parameter writes, including the certified gradient
+   // uploader which writes to the queue without calling uploadLinear.
+   queue.writeTexture=(...args)=>{
+    Reflect.apply(writeTexture,queue,args)
+    const {texture}=args[0]
+    if(texture.format==='rgba32float'&&texture.width*texture.height>262144)denseTextures.add(texture)
+   }
    internal.paintWithCooperativeGradient=(n:unknown,p:unknown,m:unknown)=>{
     calls++
     // Inject the cancellation at the first actual task yield, with an expired
@@ -57,7 +65,8 @@ try{
    }
    let cancelled=false
    try{await gpu.render(scene,true,false,()=>current)}catch(error){if(!String(error).includes('PREVIEW_CANCELLED'))throw error;cancelled=true}
-   finally{gpu.dispose()}
+   finally{queue.writeTexture=writeTexture;gpu.dispose()}
+   const fullUploads=denseTextures.size
    report.cases.push({name:'cancel-at-first-yield',chunked,calls,fullUploads,cancelled});await publish()
    if(!calls||!cancelled||chunked&&fullUploads!==0||!chunked&&fullUploads===0)throw Error('Cancellation negative control did not distinguish chunked work')
   }
