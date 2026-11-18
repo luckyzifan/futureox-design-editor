@@ -35,6 +35,25 @@ struct DeriveRequest {
     operation_id: u64, base_receipt: StateReceipt, target: String,
     expected_target: Option<StateReceipt>, delta: Vec<Value>,
 }
+
+fn bitmap_rotation_patch(engine: &Engine, value: &str) -> Result<crate::editing::DocumentPatch, String> {
+    use std::collections::BTreeMap;
+    if value.len() > 65536 { return Err("Bitmap rotation patch exceeds budget".into()); }
+    let transforms: BTreeMap<String, crate::math::Transform> = serde_json::from_str(value)
+        .map_err(|error| format!("Invalid bitmap rotation patch: {error}"))?;
+    if transforms.len() != 1 { return Err("Bitmap rotation patch must affect one node".into()); }
+    let (id, transform) = transforms.into_iter().next().unwrap();
+    let mut node = engine.authored_document().and_then(|doc| doc.nodes.get(&id))
+        .ok_or("Missing bitmap rotation node")?.clone();
+    if !node.children.is_empty() || !node.fills.iter().any(|paint| paint.visible && paint.kind == "image")
+        || node.effects.iter().any(|effect| effect.visible && effect.kind != "color-controls")
+        || !transform.0.iter().all(|value| value.is_finite())
+        || node.transform.0[..4].iter().zip(&transform.0).all(|(a, b)| a.to_bits() == b.to_bits()) {
+        return Err("Invalid bitmap rotation patch".into());
+    }
+    node.transform = transform;
+    Ok(crate::editing::DocumentPatch { nodes: BTreeMap::from([(id, Some(node))]), fields: Default::default() })
+}
 fn session_owner() -> String {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     format!("{}-{}-{}", std::process::id(),
@@ -134,18 +153,24 @@ impl Preparation {
             return Err("Unsupported native preparation method".into());
         }
         if method == "preparation_capabilities_v1" {
-            return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true,"guardedPatchReceiptV1":true,"nativeSourceSnapshot":cfg!(not(target_arch="wasm32"))}}), bytes: Vec::new() });
+            return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true,"guardedPatchReceiptV1":true,
+                "bitmapRotationPatch":true,"nativeSourceSnapshot":cfg!(not(target_arch="wasm32"))}}), bytes: Vec::new() });
         }
         if method == "derive_document_v1" { return self.derive(index, args); }
+        let mut bitmap_rotation = false;
         if method == "apply_document_patch_with_damage" && args.len() > 1 {
-            if args.len() != 2 || !args[1].as_object().is_some_and(|o| o.len() == 1 && o.contains_key("expectedBaseReceipt")) {
+            let options = args[1].as_object().ok_or("PATCH_GUARD_SCHEMA")?;
+            bitmap_rotation = index == 0 && options.get("bitmapRotation").and_then(Value::as_bool) == Some(true);
+            let receipt = options.get("expectedBaseReceipt");
+            if args.len() != 2 || options.is_empty() || options.len() != usize::from(bitmap_rotation) + usize::from(receipt.is_some()) {
                 return Err("PATCH_GUARD_SCHEMA".into());
             }
-            let expected: StateReceipt = serde_json::from_value(args[1]["expectedBaseReceipt"].clone())
-                .map_err(|_| "PATCH_GUARD_SCHEMA")?;
-            if expected.protocol != 1 { return Err("PATCH_GUARD_SCHEMA".into()); }
-            if self.lanes[index].receipt.as_ref() != Some(&expected) { return Err("STALE_BASE".into()); }
-            if self.sequence == u64::MAX { return Err("PREPARATION_SESSION_EXHAUSTED".into()); }
+            if let Some(receipt) = receipt {
+                let expected: StateReceipt = serde_json::from_value(receipt.clone()).map_err(|_| "PATCH_GUARD_SCHEMA")?;
+                if expected.protocol != 1 { return Err("PATCH_GUARD_SCHEMA".into()); }
+                if self.lanes[index].receipt.as_ref() != Some(&expected) { return Err("STALE_BASE".into()); }
+                if self.sequence == u64::MAX { return Err("PREPARATION_SESSION_EXHAUSTED".into()); }
+            }
         }
         let source_load = method == "load_source_snapshot";
         let mutation = source_load || matches!(method, "initialize" | "load_document" | "apply_document_patch_with_damage" | "apply_interaction_transforms");
@@ -211,7 +236,8 @@ impl Preparation {
             }
             "apply_document_patch_with_damage" => {
                 lane.source = None; lane.reusable = false;
-                let patch = serde_json::from_str(string(0)?).map_err(|e|format!("Invalid patch: {e}"))?;
+                let patch = if bitmap_rotation { bitmap_rotation_patch(engine, string(0)?)? }
+                    else { serde_json::from_str(string(0)?).map_err(|e|format!("Invalid patch: {e}"))? };
                 value = json!(serde_json::to_string(&engine.apply_document_patch_with_damage(&patch)?).map_err(|e|e.to_string())?);
                 lane.reusable = true;
             }
@@ -598,6 +624,37 @@ mod tests {
         assert_eq!(session.lanes[0].receipt, reset);
         assert!(session.request("canvas", "apply_document_patch_with_damage", &[json!("invalid"), json!({"expectedBaseReceipt":reset})]).is_err());
         assert!(session.lanes[0].receipt.is_none());
+    }
+
+    #[test]
+    fn compact_bitmap_rotation_uses_the_same_damage_and_pixels_as_the_authored_patch() {
+        let mut pixels = Vec::new();
+        let image = image::RgbaImage::from_fn(8, 4, |x, y| image::Rgba([x as u8 * 20, y as u8 * 40, 45, 255]));
+        image.write_to(&mut std::io::Cursor::new(&mut pixels), image::ImageFormat::Png).unwrap();
+        let uri = format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pixels));
+        let mut base = document();
+        base["nodes"]["r"]["fills"] = json!([{"kind":"image","color":"#ffffff","image":uri}]);
+        let mut reference = session();
+        let mut compact = session();
+        for lane in [&mut reference, &mut compact] {
+            lane.request("canvas", "load_document", &[json!(base.to_string())]).unwrap();
+        }
+        let original_receipt = compact.lanes[0].receipt.clone().unwrap();
+        let transform = json!([0.8, 0.6, -0.6, 0.8, 9.5, 12.25]);
+        let mut changed = base["nodes"]["r"].clone();
+        changed["transform"] = transform.clone();
+        let ordinary = json!({"nodes":{"r":changed},"fields":{}}).to_string();
+        let bitmap = json!({"r":transform}).to_string();
+        let guard = json!({"bitmapRotation":true,"expectedBaseReceipt":original_receipt});
+        let expected = reference.request("canvas", "apply_document_patch_with_damage", &[json!(ordinary)]).unwrap();
+        let actual = compact.request("canvas", "apply_document_patch_with_damage", &[json!(bitmap), guard.clone()]).unwrap();
+        assert_eq!(actual.metadata["value"], expected.metadata["value"]);
+        assert_eq!(serde_json::to_value(compact.lanes[0].engine.authored_document()).unwrap(),
+            serde_json::to_value(reference.lanes[0].engine.authored_document()).unwrap());
+        let settings = json!({"pageId":"p","width":64,"height":64,"view":{"x":0,"y":0,"zoom":1}});
+        assert_eq!(compact.request("canvas", "render_png", &[json!(settings.to_string())]).unwrap().bytes,
+            reference.request("canvas", "render_png", &[json!(settings.to_string())]).unwrap().bytes);
+        assert_eq!(compact.request("canvas", "apply_document_patch_with_damage", &[json!(bitmap), guard]).err().unwrap(), "STALE_BASE");
     }
 
     #[test]

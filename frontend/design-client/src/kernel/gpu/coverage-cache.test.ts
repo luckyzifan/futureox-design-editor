@@ -92,3 +92,21 @@ test('a new alias pins an existing texture before cache admission', () => {
   expect(cache.put('b', bits, shared)).toBe(false)
   expect(cache.has(shared)).toBe(true); expect(destroyed).toEqual([])
 })
+
+test('a fenced abort retains earlier immutable coverage and drops this frame writes', () => {
+  const destroyed: Texture[] = []
+  const cache = new CoverageCache(1024, 10, value => destroyed.push(value))
+  const settled = texture(), abandoned = texture(), bits = new Uint32Array([1])
+  cache.begin()
+  cache.put('settled', bits, settled)
+  cache.begin()
+  expect(cache.get('settled', bits)).toBe(settled)
+  cache.put('settled alias', bits, settled)
+  cache.put('abandoned', bits, abandoned)
+  cache.discardFrame()
+  expect(cache.get('settled', bits)).toBe(settled)
+  expect(cache.get('settled alias', bits)).toBeUndefined()
+  expect(cache.get('abandoned', bits)).toBeUndefined()
+  expect(destroyed).toEqual([abandoned])
+  expect(cache.bytes).toBe(settled.bytes + bits.byteLength)
+})

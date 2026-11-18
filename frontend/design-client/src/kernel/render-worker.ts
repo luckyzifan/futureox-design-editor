@@ -68,7 +68,7 @@ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../docume
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
 import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
-import { interactionPatchTransforms, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
+import { expandBitmapRotationPatch, interactionPatchTransforms, isBitmapPoseLayer, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
@@ -216,8 +216,8 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   navigationJournal.record(4, { sequence })
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
-function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal) {
-  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal)).consume())
+function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal, curvePrograms=false) {
+  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal, curvePrograms)).consume())
 }
 let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
@@ -459,8 +459,8 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
     gpu!.driver.presentFrame?.(displayFrame)
   }
 }
-// Set only during the physical finish of the preceding native pose. The
-// actual terminal input can use the idle CPU lane; it owns one one-use packet.
+// The release input can prepare one native packet while a preceding pose
+// uses the GPU. The queue keeps ownership of any mutation until it drains.
 let beginTerminalPreparation: ((next:ResidentPose)=>void) | undefined
 function waitingForPoseSubmission(pose:ResidentPose) {
   return !pose.terminal && poseSession?.slot === pose.slot && poseSession.native === true &&
@@ -555,6 +555,8 @@ function schedulePose(){
           !session.scene.interactionLocalFootprint
         const viewportPatch=session.native===true&&!session.patch&&(coversDisplay||session.scene.interactionFixedMask===true)&&
           !session.scene.interactionLocalFootprint&&ownsSelection
+        const bitmapTerminal = (fullNativePose || viewportPatch && session.scene.interactionFixedMask) && session.affine && ids.length===1 &&
+          isBitmapPoseLayer(session.baseDocument.nodes[ids[0]])
         // A native absolute pose can replace queued work while the previous
         // accepted viewport remains visible. Submitted GPU work still fences.
         terminalMaySupersede||=fullNativePose||viewportPatch
@@ -571,8 +573,8 @@ function schedulePose(){
           // upload or raster is necessary. Resource completion fences remain.
           if(advance?.pose===pose){
             const prepared=await ahead.take(advance.sequence)
-            if(!prepared?.packet){rebasePose(pose);break}
-            prepared.packet.discard()
+            if(!prepared?.packet&&advance.mutated){rebasePose(pose);break}
+            prepared?.packet?.discard()
             if(!current())continue
             advance=undefined
           }
@@ -594,6 +596,7 @@ function schedulePose(){
         }
         const translationStarted=performance.now()
         let poseCompileMs=0, sceneUpdateBytes=0
+        let sceneMetadataBytes=0, sceneResourceBytes=0, preparedDuringRaster=false
         let patchedPose=false, clippedBitmapPose=false
         let compileStats:Record<string,unknown>|undefined
         let next: GpuScene | null, poseKernel: RenderKernel | undefined, bitmapRepairScene: GpuScene | undefined
@@ -605,15 +608,20 @@ function schedulePose(){
           // terminal pose preempts this sample. Reapply the absolute pose
           // before reusing displayed pixels from a different compiler state.
           session.nativePosePending = true
-          let packet:CompiledScenePacket
+          let packet:CompiledScenePacket | undefined
           if (advance?.pose===pose && advance.session===session) {
             const prepared=await ahead.take(advance.sequence)
-            if(!prepared?.packet){rebasePose(pose);break}
             if(!current())continue
-            packet=prepared.packet.consume()
-            poseCompileMs=prepared.compileMs
+            if(prepared?.packet){
+              packet=prepared.packet.consume()
+              poseCompileMs=prepared.compileMs
+              preparedDuringRaster=true
+            }else if(advance.mutated){
+              rebasePose(pose);break
+            }
             advance=undefined
-          } else {
+          }
+          if(!packet){
             // A real in-flight motion can become the terminal input before its native reply.
             const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))
             // Pointer motion uses the preparation port that goes straight
@@ -641,12 +649,14 @@ function schedulePose(){
             }
             if(!current())continue
             const compileStarted=performance.now()
-            const compile=()=>compilePacket(kernel,session.options,session.controller.signal)
+            const compile=()=>compilePacket(kernel,session.options,session.controller.signal,bitmapTerminal)
             packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
             if(!current())continue
             poseCompileMs=performance.now()-compileStarted
           }
           sceneUpdateBytes=packet.transport.scenePacketBytes
+          sceneMetadataBytes=packet.transport.scenePacketMetadataBytes
+          sceneResourceBytes=packet.transport.scenePacketResourceBytes
           const compiled=decodeScenePacket(packet)
           if(clippedBitmapPose||session.bitmapPreviewOnly)bitmapRepairScene=compiled
           compileStats=kernel.compileStats
@@ -697,8 +707,11 @@ function schedulePose(){
           prepareDisplay()
           const localTerminal = session.canvasOwner && next.interactionLocalFootprint && !next.gestureSoftEffects &&
             ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
-          const onFinishStarted = poseKernel && !pose.terminal &&
-            (session.affine && localTerminal || fullNativePose && session.patch)
+          // A private Sketch mask can decline the JS patch session. The full
+          // native bitmap capture still proves coverage and can overlap its
+          // next exact compile while the previous pose is on the GPU.
+          const openTerminalPreparation = poseKernel && !pose.terminal &&
+            (bitmapTerminal || session.affine && localTerminal || fullNativePose && session.patch)
             ? () => {
               const kernel=poseKernel!
               beginTerminalPreparation=terminal=>{
@@ -713,7 +726,7 @@ function schedulePose(){
                   work.mutated=true
                   if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
                   const at=performance.now()
-                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal))
+                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal,bitmapTerminal))
                   return {packet,compileMs:performance.now()-at}
                 }
                 ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
@@ -721,7 +734,9 @@ function schedulePose(){
               const last=latestPendingPose()
               if(last?.terminal)beginTerminalPreparation(last)
             } : undefined
-          const result=await failureAttempt(12, () => gpu!.render(next,false,true,current,undefined,false,onFinishStarted))
+          if(bitmapTerminal)openTerminalPreparation?.()
+          const result=await failureAttempt(12, () => gpu!.render(next,false,true,current,undefined,false,
+            bitmapTerminal ? undefined : openTerminalPreparation))
             .finally(()=>{beginTerminalPreparation=undefined})
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
           if(!current()){gpu.driver.releasePresented?.([result.gpuTile]);continue}
@@ -729,6 +744,14 @@ function schedulePose(){
           // This scene describes the actual texture which just replaced the
           // slot. Small/unsupported effects can be admitted as exact pixels.
           next.gestureSoftEffects = result.gestureBlurPixels > 0
+          const ending=latestPendingPose()
+          // If release repeated the pose while it was rasterizing, the first
+          // exact presentation can already carry the terminal input identity.
+          if(session.native && (!session.affine || terminalMaySupersede) && !pose.terminal &&
+              !next.gestureSoftEffects && !bitmapRepairScene && ending && terminalPoseDisposition(pose,ending)==='same'){
+            pose.input=ending.input;pose.terminal=true;pendingPose=undefined
+            if(!session.patch&&!document)document=authoredPose()
+          }
           session.scene=next
           session.bitmapPreviewOnly=!!bitmapRepairScene&&!pose.terminal
           if (session.native) session.nativePosePending = false
@@ -749,6 +772,8 @@ function schedulePose(){
             nativePose:session.native===true,compileMs:poseCompileMs,
             compileStats,fieldUploadBytes:result.materialFieldUploadBytes,gestureBlurPixels:result.gestureBlurPixels,
             sceneUpdateBytes:session.native?sceneUpdateBytes:undefined,
+            sceneMetadataBytes:session.native?sceneMetadataBytes:undefined,
+            sceneResourceBytes:session.native?sceneResourceBytes:undefined,preparedDuringRaster,
             geometryUploadBytes:poseStats?.geometryUploadBytes,
             residentProgramHits:poseStats?.residentProgramHits,residentProgramHitBytes:poseStats?.residentProgramHitBytes,
             graphMs:result.graphMs,finishMs:result.finishMs,groupHits:result.retainedGroupHits,
@@ -1331,7 +1356,11 @@ self.onmessage = (e) => {
         laneState.authoredSnapshot = undefined
         if (request.baseDocumentRevision !== laneState.loadedRevision)
           throw new Error('文档补丁版本未同步，请重试当前画布')
-        const patch = failureAttempt(4, () => JSON.parse(request.documentPatch)) as DocumentPatch
+        const bitmapRotation = channel==='canvas' && request.bitmapRotation === true
+        const patch = failureAttempt(4, () => {
+          const value = JSON.parse(request.documentPatch)
+          return bitmapRotation ? expandBitmapRotationPatch(laneState.interactionDocument, value) : value as DocumentPatch
+        })
         if (laneState.interactionDocument) {
           const next = failureAttempt(4, () => applyDocumentPatch(laneState.interactionDocument!, patch))
           if (retainInteraction && !interactionNative && laneState.compiledScene?.revision === laneState.loadedRevision) {
@@ -1375,7 +1404,8 @@ self.onmessage = (e) => {
         }
         const nativePose = !!transforms && await kernel.apply_interaction_transforms(JSON.stringify(transforms))
         const damage = nativePose ? settledPoseDamage(localPose) : defer ? { full: true, bounds: null, reason: 'transient-translation' } :
-          JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch, canGuard ? request.patchBaseReceipt : undefined).catch(error => {
+          JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch,
+            canGuard ? request.patchBaseReceipt : undefined, bitmapRotation ? patch : undefined).catch(error => {
             if (canGuard) laneState.interactionDocument = priorAuthoredDocument
             throw error
           })) as {full:boolean;translationOnly?:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}

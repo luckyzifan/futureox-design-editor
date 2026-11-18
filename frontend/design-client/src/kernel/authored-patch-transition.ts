@@ -24,7 +24,7 @@ function supportedValue(key: string, value: unknown) {
 }
 /** Receiver-side subset gate. Native validation remains authoritative. This
  * gate only authorizes publishing a postpatch proof, never normal editing. */
-export function supportsAcknowledgedPropertyPatch(before: DesignDocument, patch: DocumentPatch): boolean {
+export function supportsAcknowledgedPropertyPatch(before: DesignDocument, patch: DocumentPatch, allowed = supportedValue): boolean {
   if (!patch?.nodes || !patch.fields || Object.keys(patch.fields).length || (before.animations?.length ?? 0) !== 0) return false
   const ids = Object.keys(patch.nodes)
   if (ids.length > MAX_NODES) return false
@@ -35,10 +35,14 @@ export function supportsAcknowledgedPropertyPatch(before: DesignDocument, patch:
     const a = old as unknown as Record<string, unknown>, b = next as unknown as Record<string, unknown>
     for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
       if (Object.hasOwn(a, key) === Object.hasOwn(b, key) && sameValue(a[key], b[key], budget)) continue
-      if (!Object.hasOwn(a, key) || !Object.hasOwn(b, key) || !supportedValue(key, b[key])) return false
+      if (!Object.hasOwn(a, key) || !Object.hasOwn(b, key) || !allowed(key, b[key])) return false
     }
   }
   return budget.remaining >= 0
+}
+export function supportsExactTransformPatch(before: DesignDocument, patch: DocumentPatch) {
+  return supportsAcknowledgedPropertyPatch(before, patch,
+    (key, value) => key === 'transform' && supportedValue(key, value))
 }
 export function boundedPatchWire(json: string) {
   // At most three UTF-8 bytes per UTF-16 code unit (surrogate pairs use four

@@ -5,6 +5,7 @@ import { FrameMeasurements } from './frame-measurements'
 import { bindCanvasGrid, GridMeasurements } from './grid-measurements'
 import { documentPatch } from '../document-patch'
 import { boundedPatchWire, prepareAuthoredPatchTransition } from './authored-patch-transition'
+import { bitmapRotationPatch } from './interaction-patch-transforms'
 import { operationCorrelation } from '../canvas-operation-terminal'
 import { AuthoredPreparationBinding } from './authored-preparation-binding'
 import type { PreparationStateReceiptV1 } from './preparation-state'
@@ -898,6 +899,7 @@ export class KernelClient {
         const start = performance.now()
         let serialized: string | undefined
         let patch: string | undefined
+        let bitmapRotation = false
         let deriveFrom: PreparationStateReceiptV1 | undefined
         let derivedTransforms:Record<string,import('../model').Matrix>|undefined
         let patchBaseReceipt: PreparationStateReceiptV1 | undefined
@@ -929,7 +931,11 @@ export class KernelClient {
               Object.keys(document.nodes).every(id => !!transition.patch.nodes[id])
             if (completeNativeWorkset) serialized = currentPreparedDocumentJson(document) ?? await nativeSerializer!(document)
             else {
-              patch = nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
+              const bitmap = !interaction && options.renderIntent==='canvas' && options.tileViewport?.length===0 &&
+                !png && !readback && bitmapRotationPatch(snapshot, transition.patch)
+              bitmapRotation = !!bitmap
+              patch = bitmap ? JSON.stringify(bitmap) :
+                nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
               if (beforeReceipt && transition.canAcknowledge && boundedPatchWire(patch)) patchBaseReceipt = beforeReceipt
             }
           } else serialized = currentPreparedDocumentJson(document) ??
@@ -985,6 +991,7 @@ export class KernelClient {
             derivedTransforms,
             patchBaseReceipt,
             documentPatch: patch,
+            ...(bitmapRotation ? { bitmapRotation: true } : {}),
             baseDocumentRevision,
             documentRevision: revision,
             channel: interaction ? 'interaction' : 'canvas',

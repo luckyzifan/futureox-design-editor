@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, node, effect, paint, stroke, type DesignDocument } from '../model'
-import { scene, unionBounds } from '../geometry'
-import { buildInteractionDependencyScope, interactionRootBounds, type InteractionDependencyScope } from './interaction-scene-bounds'
+import { contoursToNetwork, scene, unionBounds } from '../geometry'
+import { buildInteractionDependencyScope, fixedSketchMaskWindow, interactionRootBounds, type InteractionDependencyScope } from './interaction-scene-bounds'
 import { pageBackdropPadding, planInteractionLayers } from './interaction-layers'
 import { allowsReducedSampling } from './render-quality'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
@@ -25,6 +25,40 @@ test('a stationary Sketch shape mask bounds the rotation of its bitmap sibling',
   image.maskChain = undefined
   group.effects = [effect('blur')]
   expect(bounds()).toBeUndefined()
+})
+
+test('a clipped board contains the masked rotation and every later backdrop inside it', () => {
+  const document = blank(), page = document.pages[0]
+  const board = node('frame', 20, 30, 180, 120), group = node('group', 12, 15, 80, 60)
+  board.clip = true
+  board.blend = group.blend = 'normal'
+  const mask = node('vector', 0, 0, 80, 60), image = node('rectangle', -10, -10, 120, 90)
+  mask.network = contoursToNetwork([[{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 80, y: 60 }, { x: 0, y: 60 }]])
+  mask.strokes = []
+  mask.visible = false
+  mask.mask = true
+  mask.maskType = 'shape'
+  image.fills = [paint('#ffffff', 'image')]
+  const reader = node('rectangle', 70, 15, 40, 50)
+  reader.effects = [effect('background-blur')]
+  group.children = [mask.id, image.id]
+  board.children = [group.id, reader.id]
+  page.children = [board.id]
+  for (const child of [board, group, mask, image, reader]) document.nodes[child.id] = child
+  const scope = () => buildInteractionDependencyScope(document, page.id, scene(document, page.id), [image.id],
+    { zoom: .25, dpr: 2, allowFixedBackdrop: false })
+  const window = { x: 20, y: 30, w: 180, h: 120 }
+  const camera = { x: 0, y: 0, zoom: 1 }
+  expect(scope().maskedRotationBounds).toEqual({ x: 20, y: 30, width: 180, height: 120 })
+  expect(fixedSketchMaskWindow(document, page.id, image.id, camera, window)).toBe(true)
+  expect(fixedSketchMaskWindow(document, page.id, image.id, camera, { ...window, w: 179 })).toBe(false)
+  board.clip = false
+  expect(scope().maskedRotationBounds).toBeUndefined()
+  board.clip = true
+  const other = node('rectangle', 180, 30, 40, 40)
+  document.nodes[other.id] = other
+  page.children.push(other.id)
+  expect(scope().maskedRotationBounds).toBeUndefined()
 })
 
 // Frozen inline localization logic from the tested pre-refactor renderer.

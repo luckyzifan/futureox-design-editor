@@ -1,6 +1,6 @@
 //! Frame-scoped immutable resources and exact binary scene transport.
 //! Old FGPK JSON/image-table variants are replaced by one FGSC protocol.
-use super::{frame_wire, GpuScene, Paint};
+use super::{frame_wire, GpuPath, GpuScene, Paint};
 use serde::Serialize;
 use std::{collections::{BTreeMap, HashMap, HashSet,hash_map::RandomState},hash::{BuildHasher,Hash,Hasher},sync::Arc};
 /// Hash once at the immutable producer boundary. Map growth, LRU removal and
@@ -53,6 +53,40 @@ fn append_geometry(bytes: &mut Vec<u8>, words: &[f32]) {
     bytes.extend_from_slice(bytemuck::cast_slice(words));
     #[cfg(target_endian = "big")]
     for word in words { bytes.extend_from_slice(&word.to_le_bytes()); }
+}
+
+fn curve_span(path: &GpuPath) -> Option<(usize, usize)> {
+    if let Some(area) = &path.area {
+        Some((area.first as usize * 4, area.count as usize * 4))
+    } else {
+        path.analytic.as_ref().map(|analytic| (analytic.first as usize * 4, analytic.count as usize * 16))
+    }
+}
+
+fn path_meshes(node: &super::GpuNode) -> impl Iterator<Item = &GpuPath> {
+    std::iter::once(&node.fill).chain(node.strokes.iter().map(|stroke| &stroke.path))
+        .chain(node.source_filter_field.iter().flat_map(|field| field.channels().map(|mesh| &mesh.path)))
+}
+
+/// Only a complete partition can replace the packed curve buffer. Program
+/// boundaries remain stable when a preceding rotated path changes length.
+fn curve_partition(scene: &GpuScene) -> Option<Vec<(usize, usize)>> {
+    if scene.curves.is_empty() { return None; }
+    let mut spans: Vec<_> = scene.nodes.values().flat_map(path_meshes)
+        .filter_map(curve_span).filter(|&(_, count)| count != 0).collect();
+    spans.sort_unstable();
+    spans.dedup();
+    let mut end = 0;
+    for &(first, count) in &spans {
+        if first != end { return None; }
+        end = first.checked_add(count)?;
+    }
+    (end == scene.curves.len()).then_some(spans)
+}
+
+fn curve_resources_requested(request: Option<&serde_json::Value>) -> bool {
+    request.and_then(|value| value.get("frameResources"))
+        .and_then(|value| value.get("curvePrograms")).and_then(serde_json::Value::as_bool) == Some(true)
 }
 
 fn append_resource(bytes: &mut Vec<u8>, id: u32, kind: u8, data: &[u8]) -> Result<(), String> {
@@ -109,6 +143,7 @@ pub(crate) struct FrameSceneContext {
     // Numeric addresses are private lookup hints backed by the strong Arc key
     // in image_semantics. They are never dereferenced or accepted from callers.
     image_allocations:HashMap<usize,u32>,image_transfer_keys:HashMap<u32,Key>,image_transfer_sources:HashMap<u32,u32>,
+    curve_transfer_keys: HashMap<u32, Key>,
     image_allocation_hits:u64,image_transfer_hits:u64,
     cached:Option<EncodedFrame>,pending_request:Option<StaticRequest>,compilations:u64,reuses:u64,
     retention_limit:Option<usize>,
@@ -215,6 +250,7 @@ impl FrameSceneContext {
         let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.semantic_bytes).saturating_sub(self.cached.as_ref().map_or(0,|frame|frame.charge));
         if !self.scope.is_empty()&&bytes<=limit{
             while self.bytes+bytes>limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
+            if kind == 4 { self.curve_transfer_keys.insert(id, key.clone()); }
             self.entries.insert(key.clone(),Entry{id,age:self.clock,bytes});self.ages.insert(self.clock,key);self.bytes+=bytes;
         }
         Ok((id,data))
@@ -222,6 +258,7 @@ impl FrameSceneContext {
     fn evict_transfer(&mut self,key:&Key){
         if let Some(entry)=self.entries.remove(key){
             self.bytes-=entry.bytes;
+            if key.kind == 4 { self.curve_transfer_keys.remove(&entry.id); }
             if let Some(source)=self.image_transfer_sources.remove(&entry.id){self.image_transfer_keys.remove(&source);}
         }
     }
@@ -312,8 +349,35 @@ impl FrameSceneContext {
             if scene.nodes.contains_key(name){true}else{self.semantic_bytes-=entry.charge;false}
         });
         let plan=scene.scene_plan();
+        let curve_spans = if !self.scope.is_empty() && curve_resources_requested(request) { curve_partition(&scene) } else { None };
         let vertices=std::mem::take(&mut scene.vertices);let curves=std::mem::take(&mut scene.curves);
         let mut nodes=std::mem::take(&mut scene.nodes);
+        #[derive(Serialize)]
+        #[serde(rename_all="camelCase")]
+        struct CurveResources { words: usize, ids: Vec<u32> }
+        let mut curve_ids = HashMap::new();
+        let curve_resources = if let Some(spans) = curve_spans {
+            let mut ids = Vec::with_capacity(spans.len());
+            for (first, count) in spans {
+                crate::render_cancellation::checkpoint()?;
+                let mut data = Vec::with_capacity(count * 4);
+                append_geometry(&mut data, &curves[first..first + count]);
+                let (id, data) = self.intern(4, data)?;
+                record(id, 4, &data)?;
+                ids.push(id);
+                curve_ids.insert((first, count), id);
+            }
+            Some(CurveResources { words: curves.len(), ids })
+        } else { None };
+        // Encoded replies own their bytes. The producer only needs to retain
+        // programs from the current pose for a later acknowledgement.
+        let active_curves: HashSet<_> = curve_ids.values().copied().collect();
+        let obsolete: Vec<_> = self.curve_transfer_keys.iter()
+            .filter(|(id, _)| !active_curves.contains(id)).map(|(_, key)| key.clone()).collect();
+        for key in obsolete {
+            if let Some(entry) = self.entries.get(&key) { self.ages.remove(&entry.age); }
+            self.evict_transfer(&key);
+        }
         // Admitted image identities already own and compare the complete URI.
         // Only an over-budget image needs a second, packet-local content table.
         let mut unretained_images=HashMap::<Arc<str>,(u32,u32)>::new();
@@ -365,13 +429,22 @@ impl FrameSceneContext {
             let mut source_key=Vec::with_capacity(canonical.len()+64);
             source_key.extend(u32::try_from(canonical.len()).map_err(|_|"Source identity too large")?.to_le_bytes());
             source_key.extend(canonical);
-            for path in std::iter::once(&node.fill).chain(node.strokes.iter().map(|s|&s.path)).chain(node.source_filter_field.iter().flat_map(|f|f.channels().map(|m|&m.path))) {
+            for path in path_meshes(node) {
                 let (data,first,count)=if let Some(area)=&path.area{(&curves,area.first as usize*4,area.count as usize*4)}
                     else if let Some(analytic)=&path.analytic{(&curves,analytic.first as usize*4,analytic.count as usize*16)}
                     else{(&vertices,path.first as usize*2,path.count as usize*2)};
                 let values=data.get(first..first.checked_add(count).ok_or("Invalid program span")?).ok_or("Invalid program span")?;
                 source_key.extend(u32::try_from(count).map_err(|_|"Invalid program span")?.to_le_bytes());
-                append_geometry(&mut source_key,values);
+                let retained_id = curve_span(path).and_then(|span| curve_ids.get(&span).copied());
+                if let Some(id) = retained_id {
+                    // IDs are scope-local and intern against every original
+                    // word. An eviction assigns a fresh ID, never a false hit.
+                    source_key.push(1);
+                    source_key.extend(id.to_le_bytes());
+                } else {
+                    source_key.push(0);
+                    append_geometry(&mut source_key,values);
+                }
             }
             let children=node.children.iter().map(|id|(id,source_ids.get(id).copied())).collect::<Vec<_>>();
             source_key.extend(frame_wire::encode(&children)?);
@@ -391,16 +464,18 @@ impl FrameSceneContext {
         let compiled_nodes=node_resources.len();
         let (plan_id,data)=self.intern(3,frame_wire::encode(&plan)?)?;record(plan_id,3,&data)?;
         #[derive(Serialize)]#[serde(rename_all="camelCase")]
-        struct Metadata<'a>{#[serde(flatten)]scene:&'a GpuScene,resource_scope:&'a str,frame_sequence:frame_wire::FrameSequence,node_resources:Vec<(String,u32)>,scene_plan:u32}
-        let (metadata,sequence_offset)=frame_wire::encode_frame(&Metadata{scene:&scene,resource_scope:&self.scope,frame_sequence:frame_wire::FrameSequence(self.frame),node_resources,scene_plan:plan_id})?;
+        struct Metadata<'a>{#[serde(flatten)]scene:&'a GpuScene,resource_scope:&'a str,frame_sequence:frame_wire::FrameSequence,node_resources:Vec<(String,u32)>,scene_plan:u32,
+            #[serde(skip_serializing_if="Option::is_none")] curve_resources:Option<&'a CurveResources>}
+        let (metadata,sequence_offset)=frame_wire::encode_frame(&Metadata{scene:&scene,resource_scope:&self.scope,frame_sequence:frame_wire::FrameSequence(self.frame),node_resources,scene_plan:plan_id,curve_resources:curve_resources.as_ref()})?;
         let start=24usize.checked_add(metadata.len()).and_then(|n|n.checked_add(3)).map(|n|n&!3).ok_or("GPU frame too large")?;
-        let total=vertices.len().checked_add(curves.len()).and_then(|n|n.checked_mul(4)).and_then(|n|n.checked_add(start))
+        let inline_curves = if curve_resources.is_some() { &[][..] } else { curves.as_slice() };
+        let total=vertices.len().checked_add(inline_curves.len()).and_then(|n|n.checked_mul(4)).and_then(|n|n.checked_add(start))
             .and_then(|n|n.checked_add(payload_len)).ok_or("GPU frame too large")?;
         let mut bytes=Vec::with_capacity(total);bytes.extend(b"FGSC");
-        for value in [1,metadata.len(),vertices.len(),curves.len(),payload_len]{bytes.extend(u32::try_from(value).map_err(|_|"GPU frame too large")?.to_le_bytes());}
+        for value in [1,metadata.len(),vertices.len(),inline_curves.len(),payload_len]{bytes.extend(u32::try_from(value).map_err(|_|"GPU frame too large")?.to_le_bytes());}
         bytes.extend(metadata);bytes.resize(start,0);
         append_geometry(&mut bytes,&vertices);
-        append_geometry(&mut bytes,&curves);
+        append_geometry(&mut bytes,inline_curves);
         let prefix_len = bytes.len();
         for (id, kind, data) in pending_resources {
             crate::render_cancellation::checkpoint()?;
@@ -448,7 +523,8 @@ impl crate::Engine {
         let object=fields.as_object().ok_or("Render options must be an object")?;
         let semantic=object.iter().filter(|(key,_)|key.as_str()!="frameResources").collect::<BTreeMap<_,_>>();
         let request_key=if !self.frame_scene.scope.is_empty()&&fields.get("animation").is_none_or(serde_json::Value::is_null){
-            let key=serde_json::to_string(&semantic).map_err(|e|e.to_string())?;
+            let mut key=serde_json::to_string(&semantic).map_err(|e|e.to_string())?;
+            if curve_resources_requested(Some(&fields)) { key.push('\0'); }
             (key.len()<=65536).then_some(key)
         }else{None};
         if let (Some(revision),Some(key))=(self.static_scene_revision(),request_key.as_ref()) {

@@ -17,6 +17,7 @@ const equal=(a:Uint8Array,b:Uint8Array)=>a.length===b.length&&a.every((v,i)=>v==
 export class FrameResources {
   private scope='';private generation=0;private entries=new Map<number,FrameResource>()
   private snapshot?:Snapshot
+  private curveEntries=new Set<number>()
   private charged=new WeakSet<FrameResource>()
   private leases=new WeakSet<ResourceLease>()
   bytes=0;hits=0
@@ -45,14 +46,17 @@ export class FrameResources {
   private uncharge(entry:FrameResource){if(this.charged.delete(entry))this.bytes-=entry.size}
   private releaseSnapshot(snapshot:Snapshot){for(const e of snapshot.entries.values())if(--e.pins===0&&!e.cached)this.uncharge(e)}
   private invalidateSnapshot(){const snapshot=this.snapshot;if(!snapshot)return;this.snapshot=undefined;snapshot.current=false;if(!snapshot.readers)this.releaseSnapshot(snapshot)}
-  private remove(id:number){const e=this.entries.get(id);if(!e)return;this.invalidateSnapshot();this.entries.delete(id);e.cached=false;if(!e.pins)this.uncharge(e)}
+  private remove(id:number){const e=this.entries.get(id);if(!e)return;this.invalidateSnapshot();this.entries.delete(id);this.curveEntries.delete(id);e.cached=false;if(!e.pins)this.uncharge(e)}
   clear(){this.invalidateSnapshot();for(const id of this.entries.keys())this.remove(id);this.scope='';this.generation++}
   /** Document revision fences revoke old publication, while immutable resource
    * identities remain valid until their producer scope changes. */
   invalidate(){this.generation++}
-  commit(scope:string,incoming:Map<number,FrameResource>,lease:ResourceLease){
+  commit(scope:string,incoming:Map<number,FrameResource>,lease:ResourceLease,curveIds?:ReadonlySet<number>){
     if(!scope||!this.leases.has(lease)||lease.generation!==this.generation)return
     if(this.scope!==scope){this.invalidateSnapshot();for(const id of this.entries.keys())this.remove(id);this.scope=scope}
+    // Earlier reply leases still pin their own programs. The active cache can
+    // forget a rotated program as soon as the next complete scene replaces it.
+    for(const id of this.curveEntries)if(!curveIds?.has(id))this.remove(id)
     for(const [id,entry] of incoming){
       const old=this.entries.get(id)
       if(old){if(old!==entry&&(old.kind!==entry.kind||!equal(old.data,entry.data)))throw Error('Frame resource identity changed');continue}
@@ -61,15 +65,18 @@ export class FrameResources {
       for(const key of this.entries.keys()){if(this.bytes+additional<=this.limit)break;this.remove(key)}
       if(this.bytes+additional>this.limit)continue
       this.invalidateSnapshot();entry.cached=true;this.entries.set(id,entry)
+      if(entry.kind===4)this.curveEntries.add(id)
       if(!this.charged.has(entry)){this.charged.add(entry);this.bytes+=entry.size}
     }
   }
   touch(id:number){const e=this.entries.get(id);if(e){this.entries.delete(id);this.entries.set(id,e);this.hits++}}
 }
 export function frameResource(id:number,kind:number,data:Uint8Array):FrameResource {
-  if(!Number.isSafeInteger(id)||id<=0||![1,2,3].includes(kind))throw Error('Invalid frame resource')
-  const owned=data.slice(),value=kind===1?new TextDecoder('utf-8',{fatal:true}).decode(owned):decodeFrameValue(owned)
-  const size=kind===1?owned.byteLength+value.length*2+256:owned.byteLength*4+256
+  if(!Number.isSafeInteger(id)||id<=0||![1,2,3,4].includes(kind))throw Error('Invalid frame resource')
+  if(kind===4&&(!data.length||data.length%4))throw Error('Invalid frame curve program')
+  const owned=data.slice(),value=kind===1?new TextDecoder('utf-8',{fatal:true}).decode(owned):
+    kind===4?undefined:decodeFrameValue(owned)
+  const size=kind===1?owned.byteLength+value.length*2+256:owned.byteLength*(kind===4?1:4)+256
   return {id,kind,data:owned,value,size,pins:0,cached:false}
 }
 export function identicalResource(a:FrameResource,b:FrameResource){return a.kind===b.kind&&equal(a.data,b.data)}

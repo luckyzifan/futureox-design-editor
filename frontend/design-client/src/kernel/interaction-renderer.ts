@@ -1522,7 +1522,8 @@ export class InteractionRenderer {
               finalForeground ? pad + Math.max(32 / this.viewport!.view.zoom, bounds.width * .05) :
               localizedDesktop ? pad + Math.max(48 / this.viewport!.view.zoom, bounds.width * .05, bounds.height * .05) :
               pad + Math.max(64, this.viewport ? 96 / this.viewport.view.zoom : 0, bounds.width * .05, bounds.height * .05)
-            if (!bitmapViewport && !finalForeground && !localizedDesktop && !shortTravel && this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
+            if (!maskedRotation && !bitmapViewport && !finalForeground && !localizedDesktop && !shortTravel &&
+                this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
               const travelGuard = Math.max(guard, pad + 256 / this.viewport.view.zoom)
               if ((bounds.width + 2 * travelGuard) * (bounds.height + 2 * travelGuard) * resident.scale ** 2 <= 4_194_304)
                 guard = travelGuard

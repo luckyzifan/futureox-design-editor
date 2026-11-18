@@ -103,6 +103,26 @@ test('exact RGBA axis keeps four bit-identical channel writes in one clear/store
   expect(reference.passes.every(p => p.descriptor.timestampWrites && p.ended)).toBe(true)
 })
 
+test('a proven small Gaussian box may write all four channels through the same scissor', async () => {
+  const f = await fixture()
+  f.driver.smallExactBoxRequested = true
+  await f.driver.prepareFilters()
+  const kernel = { ...f.source, resource: { createView: () => ({}) } }
+  for (const value of [f.source, f.target]) Object.assign(value.resource as object, { format: 'rgba32float' })
+  for (const value of [f.source, f.target, kernel]) f.driver.textures.add(value)
+  f.driver.boxKernels.set(kernel, { radius: 4, resource: kernel.resource, width: kernel.width, height: kernel.height })
+  const box = { x: -8, y: 9, w: 16, h: 12 }, u = parameters(box, box)
+  u[16] = 22
+  u.set([4, 0, 0, 1], 36)
+  const scissor = { x: 2, y: 3, w: 8, h: 7 }
+  f.driver.pass(f.target, u, [f.source, kernel], scissor)
+  expect(f.passes[0].channels).toEqual([undefined])
+  expect(f.pixels).toEqual(f.reducerBits)
+  f.driver.boxKernels.delete(kernel)
+  f.driver.pass(f.target, u, [f.source, kernel], scissor)
+  expect(f.passes.slice(1).flatMap(p => p.channels)).toEqual([0, 1, 2, 3])
+})
+
 test('successive axes end their passes before another texture is written', async () => {
   const f = await fixture()
   f.driver.pass(f.target, f.u, [f.source])

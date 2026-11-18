@@ -565,6 +565,9 @@ export class WebGpuDriver implements Driver {
   private requiresExactBoxFilters = false
   private modePipelines = new Map<number, GPURenderPipeline>()
   private filterPipelines: GPURenderPipeline[] = []
+  private smallExactBoxPipeline?: GPURenderPipeline
+  private smallExactBoxFailed = false
+  private smallExactBoxRequested = false
   private normalPipeline?: GPURenderPipeline
   private solidPaintOverPipeline?: GPURenderPipeline
   private resolveStepPipeline?: GPURenderPipeline
@@ -1346,6 +1349,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.interactionPresentation = scene.interactionRetained === true
     this.nativeInteractionPresentation = scene.nativeInteraction === true
     this.queuedNativeInteractionPresentation = this.interactionPresentation && this.nativeInteractionPresentation && !scene.softwareRaster
+    this.smallExactBoxRequested = displayOnly && scene.interactionFixedMask===true && this.queuedNativeInteractionPresentation &&
+      this.managed && !this.hdr && !this.displayMath && !scene.displayFilters
     this.pairDisplayTaps = scene.pairedDisplayFilters ?? (import.meta.env.VITE_DESIGN_PAIRED_DISPLAY === '1')
     const radiusLimit = scene.displayFilterRadiusLimit
     this.displayFilterRadiusLimit = radiusLimit
@@ -1636,6 +1641,33 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
           constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
         primitive: { topology: 'triangle-list' } })
     }
+    if (this.smallExactBoxRequested && !this.smallExactBoxPipeline && !this.smallExactBoxFailed) {
+      const device = this.device
+      device.pushErrorScope('validation')
+      let pending: Promise<GPURenderPipeline>
+      try {
+        const module = device.createShaderModule({
+          code: exactFilterWgsl(this.certifiedFilter, false, false, false, true),
+          label: 'Exact small clamped Gaussian box',
+        })
+        pending = device.createRenderPipelineAsync({
+          layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+          vertex: { module, entryPoint: 'quad' },
+          fragment: { module, entryPoint: 'fragmentSmallBox', targets: [{ format: 'rgba32float' }] },
+          primitive: { topology: 'triangle-list' },
+        })
+      } catch (error) { pending = Promise.reject(error) }
+      const validation = device.popErrorScope()
+      try {
+        const [pipeline, error] = await Promise.all([pending, validation])
+        if (error) throw error
+        this.assertPipelinePublicationOwner(device)
+        this.smallExactBoxPipeline = pipeline
+      } catch (error) {
+        this.smallExactBoxFailed = true
+        console.warn('Small exact box unavailable; using exact channel filters', error)
+      }
+    }
     if (this.canvasBlurRequested && !this.canvasBlurRgbaPipeline && !this.canvasBlurPipelines.length && !this.canvasBlurFailed) {
       try {
         const device = this.device
@@ -1863,10 +1895,12 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       source.width===u[6]&&source.height===u[7]&&target.width===u[2]&&target.height===u[3]&&
       source.width<=16384&&source.height<=16384&&target!==source)
   }
-  private canvasUniformBoxEligible(target: Texture, u: Float32Array, inputs: Texture[]) {
+  private canvasUniformBoxEligible(target: Texture, u: Float32Array, inputs: Texture[], smallExact = false) {
     const [source, kernel] = inputs
     const proof = kernel && this.boxKernels.get(kernel)
-    return u[39] === 2 && u[38] === 0 && (u[37] === 0 || u[37] === 1) &&
+    const coordinates = smallExact ? (u[39] === 1 || u[39] === 2) && (u[38] === 0 || u[38] === 1) :
+      u[39] === 2 && u[38] === 0
+    return coordinates && (u[37] === 0 || u[37] === 1) &&
       Number.isInteger(u[36]) && u[36] >= 1 && u[36] <= 24 &&
       !!proof && proof.radius === u[36] && proof.resource === kernel.resource &&
       proof.width === kernel.width && proof.height === kernel.height && this.textures.has(kernel) &&
@@ -3315,7 +3349,10 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     const rgbaBlur=canvasBlur&&!target.scalarCoverage&&channels===15&&!!this.canvasBlurRgbaPipeline
     const uniformBox = rgbaBlur && this.canvasUniformBoxPipeline && this.canvasUniformBoxEligible(target, u, inputs)
     const rgbaPipeline = uniformBox ? this.canvasUniformBoxPipeline : this.canvasBlurRgbaPipeline
-    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [rgbaPipeline!] : channels===8 ? [this.canvasBlurAlphaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
+    const exactSmallBox = this.smallExactBoxRequested && this.smallExactBoxPipeline && u[16]===22 && u[36]<=8 &&
+      channels===15 && !sourceWindow && !target.scalarCoverage && !target.binaryCoverage &&
+      this.canvasUniformBoxEligible(target,u,inputs,true)
+    const pipelines = exactSmallBox ? [this.smallExactBoxPipeline!] : canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [rgbaPipeline!] : channels===8 ? [this.canvasBlurAlphaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
       ? [u[16] === 31 ? (sampleOnly?this.sampleOnlyBytePipeline!:this.binaryAreaPipeline!) : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
       u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0
@@ -3351,6 +3388,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     const channelBit=canvasBlur&&channels===8&&!target.scalarCoverage?8:1<<channel
     if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage && !(channels & channelBit)) continue
     const timestampWrites = this.timingQueries ? this.timestampWrites({ mode: u[16], radius: u[36], width: region?.w || target.width, height: region?.h || target.height,
+      ...(exactSmallBox ? { stage: 'small-exact-box' } : {}),
       ...(u[16] === 3 ? { blend: u[17], integerCentres } : {}), ...(u[16] === 2 ? { paint: u[28] } : {}) }) : undefined
     const pass = this.encoder.beginRenderPass({
       ...(timestampWrites ? { timestampWrites } : {}),
