@@ -3119,7 +3119,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     recapture()
     canvasWindow.addEventListener('pointermove', event => {
       if (!current(event)) return
-      if (!(event.buttons & 1)) { cancelCapturedDrag(draft, ActionReason.lostCapture); return }
+      if (!(event.buttons & 1)) {
+        // Chromium can report zero buttons during capture loss before the
+        // real pointer-up. Hold the pose without treating hover as movement.
+        event.stopPropagation()
+        return
+      }
       if (event.target === canvas && canvas.hasPointerCapture(pointerId)) {
         clearMouseCaptureRecovery()
         return
