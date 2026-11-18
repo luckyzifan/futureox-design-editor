@@ -7235,7 +7235,12 @@ export class GpuRenderer {
       const kernel = this.filterKernel('display-tent', radius, () => {
         const weights = displayFilterWeights(radius), height = Math.ceil(weights.length / 256)
         const data = new Float32Array(256 * height * 4)
-        weights.forEach((weight, i) => { data[i * 4] = weight })
+        weights.forEach((weight, i) => {
+          const offset = i * 4
+          data[offset] = weight
+          data[offset + 1] = weights[i - 1] ?? 0
+          data[offset + 2] = weights[i + 1] ?? 0
+        })
         return data
       }, values => [256, values.length / (256 * 4)])
       if (admit) {

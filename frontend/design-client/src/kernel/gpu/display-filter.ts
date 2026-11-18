@@ -53,7 +53,6 @@ struct Params {values:array<vec4<f32>,64>}
 @group(0) @binding(2) var source:texture_2d<f32>;
 @group(0) @binding(3) var weights:texture_2d<f32>;
 fn u(i:u32)->vec4<f32>{return params.values[i];}
-fn weight(index:i32)->f32 {let k=abs(index);return textureLoad(weights,vec2<i32>(k%256,k/256),0).x;}
 @vertex fn quad(@builtin(vertex_index) i:u32)->@builtin(position) vec4<f32>{
  let x=f32((i<<1u)&2u);let y=f32(i&2u);return vec4<f32>(x*2.-1.,1.-y*2.,0.,1.);
 }
@@ -68,7 +67,10 @@ fn weight(index:i32)->f32 {let k=abs(index);return textureLoad(weights,vec2<i32>
  if(!edge && (perpendicular<0 || perpendicular>=crossLength)){return vec4<f32>(0);}
  var sum=vec4<f32>(0);var correction=vec4<f32>(0);
  for(var tap=lo;tap<=hi;tap=tap+2){
-  let a=weight(tap);var b=0.;if(tap+1<=hi){b=weight(tap+1);}
+  // The center coefficient and its two neighbors share one texel.
+  let k=abs(tap);let coefficients=textureLoad(weights,vec2<i32>(k%256,k/256),0);
+  let a=coefficients.x;
+  let b=select(0.,select(coefficients.z,coefficients.y,tap<0),tap+1<=hi);
   let total=a+b;if(total<=0.){continue;}
   let qa=clamp(point+axis*tap,vec2<i32>(0),size-1);
   let qb=clamp(point+axis*min(tap+1,hi),vec2<i32>(0),size-1);
