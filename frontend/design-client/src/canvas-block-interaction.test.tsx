@@ -99,6 +99,32 @@ test.each(['group','frame'] as const)('dragging whole selected %s moves descenda
  const childAfter=worldMatrix(editor.state.doc,child.id);expect(childAfter[4]-childBefore[4]).toBe(35);expect(childAfter[5]-childBefore[5]).toBe(45)
  const after=editor.state.doc;await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false);await act(async()=>editor.redo());expect(editor.state.doc).toEqual(after)
 })
+test.each(['pointerup', 'pointercancel'])('the original pointer can finish or cancel a drag outside the canvas after lost capture (%s)', async terminal => {
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  const shape = node('rectangle', 100, 100, 100, 90)
+  const before = await render([shape])
+  const outside = document.createElement('div')
+  document.body.append(outside)
+  await act(async () => editor.select([shape.id]))
+  await act(async () => pointer('pointerdown', 135, 135, { buttons: 1 }))
+  await act(async () => pointer('pointermove', 147, 153, { buttons: 1 }))
+  await act(async () => pointer('lostpointercapture', 147, 153))
+  await act(async () => pointer('pointerup', 162, 167, {}, outside, 8))
+  expect(editor.interactionActive).toBe(true)
+  await act(async () => pointer('pointermove', 167, 173, { buttons: 1 }, outside))
+  await act(async () => pointer(terminal, 185, 195, {}, outside))
+  expect(editor.interactionActive).toBe(false)
+  if (terminal === 'pointercancel') unchanged(before)
+  else {
+    expect(editor.state.doc.nodes[shape.id].transform.slice(4)).toEqual([150, 160])
+    const after = editor.state.doc
+    await act(async () => editor.undo())
+    expect(editor.state.doc).toEqual(before)
+    expect(editor.canUndo).toBe(false)
+    await act(async () => editor.redo())
+    expect(editor.state.doc).toEqual(after)
+  }
+})
 test('entered nested child drag edits only child; copied frame descendants get independent IDs and undo',async()=>{
  const frame=node('frame',100,100,400,300),group=node('group',20,20,180,100),child=node('rectangle',20,20,100,75);frame.children=[group.id];group.children=[child.id]
  const before=await render([frame,group,child],[frame.id]);await act(async()=>editor.select([child.id]))
