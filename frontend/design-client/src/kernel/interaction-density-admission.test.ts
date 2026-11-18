@@ -2,7 +2,7 @@
  * transport are explicit doubles; no pixels or GPU-quality results are asserted. */
 import { afterEach, expect, test, vi } from 'vitest'
 import { InteractionRenderer } from './interaction-renderer'
-import type { DesignDocument } from '../model'
+import { blank, node } from '../model'
 import type { InteractionProps } from './interaction-layers'
 
 const transport = vi.hoisted(() => ({ jobs: [] as any[] }))
@@ -40,13 +40,16 @@ vi.mock('./interaction-layers', async original => ({
 const owners: InteractionRenderer[] = []
 afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); transport.jobs.length = 0 })
 function fixture(zoom: number, dpr: number) {
-  const document = { id: 'synthetic-density-contract', nodes: {
-    selected: { transform: [1, 0, 0, 1, 0, 0] },
-  } } as unknown as DesignDocument
+  const document = blank('Density scheduling')
+  const selected = node('rectangle', 0, 0, 2, 2)
+  selected.id = 'selected'
+  document.nodes[selected.id] = selected
+  const [page] = document.pages
+  page.children = [selected.id]
   const props: InteractionProps = { document, selection: ['selected'], active: false,
     epoch: 1, control: { current: null }, onReady() {} }
   const owner = new InteractionRenderer(() => {}); owners.push(owner)
-  const prepare = (nextZoom = zoom, nextDpr = dpr) => owner.prepare(props, 'page',
+  const prepare = (nextZoom = zoom, nextDpr = dpr) => owner.prepare(props, page.id,
     { x: 0, y: 0, zoom: nextZoom }, nextDpr, 'analytic', 'webgpu')
   prepare()
   return { owner, prepare, document }
