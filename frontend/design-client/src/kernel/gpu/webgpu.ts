@@ -282,6 +282,9 @@ export class WebGpuDriver implements Driver {
   }
   acceptPresentation(token:number,accepted=true){this.presenter?.acceptPresentation(token,accepted)}
   hasDeferredPosePresentation(slot:number){return this.presenter?.hasDeferredPosePresentation(slot) ?? false}
+  cancelQueuedPoseRepaint(frame:ResidentFrame,slot:number,owner:string|undefined,sequence:number){
+    this.presenter?.cancelQueuedPoseRepaint(frame,slot,owner,sequence)
+  }
   waitForQueuedFrame(frame:ResidentFrame, signal?:AbortSignal) { return this.presenter?.waitForQueuedFrame(frame, signal) }
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
@@ -290,6 +293,7 @@ export class WebGpuDriver implements Driver {
   tagExactTile(...args: Parameters<ResidentPresenter['tagExactTile']>) { this.presenter?.tagExactTile(...args) }
   beginViewportRepair(...args: Parameters<ResidentPresenter['beginViewportRepair']>) { return this.presenter?.beginViewportRepair(...args) }
   snapshotPresented(){return this.presenter?.snapshot()}
+  captureInteractionViewport(frame:ResidentFrame){return this.presenter?.captureInteractionViewport(frame)}
   backgroundTile(owner:object,contract:string,view:{x:number;y:number;zoom:number},output:Rect){
     if(this.hdr||this.lost)return
     return this.presenter?.backgroundTile(owner,contract,view,output)
@@ -345,6 +349,23 @@ export class WebGpuDriver implements Driver {
   triangles = 0
   commandSubmissions = 0
   private presentationSubmissions = 0
+  private releasePose = false
+  private releaseFence?: { device: GPUDevice; epoch: number; completion: Promise<void> }
+  waitForRasterTurn() {
+    const fence = this.releaseFence
+    if (!fence) return
+    return fence.completion.then(() => {
+      if (this.releaseFence !== fence || this.device !== fence.device || this.lost || this.disposed)
+        throw Error('GPU pose completion owner changed')
+      this.releaseFence = undefined
+      this.completedResourceEpoch = Math.max(this.completedResourceEpoch, fence.epoch)
+      this.presentationSubmissions = 0
+      this.shrinkCapacities()
+    }, error => {
+      if (this.releaseFence === fence) this.releaseFence = undefined
+      throw error
+    })
+  }
   // Queue-ordered resident display can reuse its bounded exact-filter scratch.
   // Explicit readback, timing, nonresident output and the negative control
   // retain their original per-frame completion boundary.
@@ -566,7 +587,7 @@ export class WebGpuDriver implements Driver {
   private modePipelines = new Map<number, GPURenderPipeline>()
   private filterPipelines: GPURenderPipeline[] = []
   private smallExactBoxPipeline?: GPURenderPipeline
-  private smallExactBoxFailed = false
+  private smallExactBoxBuild?: Promise<void>
   private smallExactBoxRequested = false
   private normalPipeline?: GPURenderPipeline
   private solidPaintOverPipeline?: GPURenderPipeline
@@ -1349,6 +1370,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.interactionPresentation = scene.interactionRetained === true
     this.nativeInteractionPresentation = scene.nativeInteraction === true
     this.queuedNativeInteractionPresentation = this.interactionPresentation && this.nativeInteractionPresentation && !scene.softwareRaster
+    this.releasePose = displayOnly && scene.interactionRelease === true && scene.interactionFixedMask === true &&
+      this.queuedNativeInteractionPresentation
     this.smallExactBoxRequested = displayOnly && scene.interactionFixedMask===true && this.queuedNativeInteractionPresentation &&
       this.managed && !this.hdr && !this.displayMath && !scene.displayFilters
     this.pairDisplayTaps = scene.pairedDisplayFilters ?? (import.meta.env.VITE_DESIGN_PAIRED_DISPLAY === '1')
@@ -1362,8 +1385,14 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.gaussianPrefixRequested=false
     this.fullDensityRegionalGaussian=false
     this.requiresExactBoxFilters = false
+    const canWarmSmallBox = displayOnly && this.captureDisplay && this.managed && !this.hdr && !this.displayMath &&
+      !this.smallExactBoxBuild && !scene.interactionRetained && !scene.softwareRaster &&
+      !scene.resolve && !scene.presentation && !scene.displayFilters
+    let maskedBitmap = false
     let hasReducedGaussian = false, hasSoftEffects = false, hasSourceFilters = false
     const paths = Object.values(scene.nodes).flatMap(n => {
+      if (canWarmSmallBox && !maskedBitmap && n.maskId)
+        maskedBitmap = n.children.some(id => scene.nodes[id]?.fills.some(fill => fill.visible && fill.kind === 'image'))
       hasReducedGaussian ||= n.gaussianRegion?.factor !== undefined
       hasSoftEffects ||= n.effects.some(effect => effect.visible && effect.radius > 0)
       hasSourceFilters ||= !!n.sourceFilterField
@@ -1383,6 +1412,10 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       const filterMasks=field?[field,...(field.additional??[])].flatMap(f=>f.masks.map(m=>m.path)):[]
       return [n.fill,...n.strokes.map(s=>s.path),...filterMasks]
     })
+    // A masked bitmap can enter the exact small box pipeline on its first
+    // rotation. Compile it on this display device while the existing canvas
+    // pipelines prepare, without making the ordinary canvas frame await it.
+    if (maskedBitmap && this.requiresExactBoxFilters) void this.prepareSmallExactBox()
     this.scenePrograms = import.meta.env.VITE_DESIGN_PROGRAM_RESIDENCY !== '0' &&
       !paths.some(p=>p.analytic||p.area&&!p.area.fingerprint)
       ? paths.flatMap(p=>p.area?[p.area]:[]) : undefined
@@ -1563,6 +1596,37 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     })()
     return this.displayImagePreparing
   }
+  private prepareSmallExactBox() {
+    this.smallExactBoxBuild ??= this.buildSmallExactBox()
+    return this.smallExactBoxBuild
+  }
+  private async buildSmallExactBox() {
+    const device = this.device
+    let pending: Promise<GPURenderPipeline> | undefined
+    try {
+      device.pushErrorScope('validation')
+      try {
+        const module = device.createShaderModule({
+          code: exactFilterWgsl(this.certifiedFilter, false, false, false, true),
+          label: 'Exact small clamped Gaussian box',
+        })
+        pending = device.createRenderPipelineAsync({
+          layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+          vertex: { module, entryPoint: 'quad' },
+          fragment: { module, entryPoint: 'fragmentSmallBox', targets: [{ format: 'rgba32float' }] },
+          primitive: { topology: 'triangle-list' },
+        })
+      } catch (error) { pending = Promise.reject(error) }
+      const [pipeline, error] = await Promise.all([pending, device.popErrorScope()])
+      if (error) throw error
+      this.assertPipelinePublicationOwner(device)
+      this.smallExactBoxPipeline = pipeline
+    } catch (error) {
+      void pending?.catch(() => {})
+      if (!this.disposed && !this.lost && this.device === device)
+        console.warn('Small exact box unavailable; using exact channel filters', error)
+    }
+  }
   async prepareFilters(prefixUseful = false) {
     if((this.gaussianPrefixRequested||import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1')&&this.canvasBlurRequested&&!this.boxPrefix&&!this.boxPrefixFailed){
       const device=this.device
@@ -1641,33 +1705,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
           constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
         primitive: { topology: 'triangle-list' } })
     }
-    if (this.smallExactBoxRequested && !this.smallExactBoxPipeline && !this.smallExactBoxFailed) {
-      const device = this.device
-      device.pushErrorScope('validation')
-      let pending: Promise<GPURenderPipeline>
-      try {
-        const module = device.createShaderModule({
-          code: exactFilterWgsl(this.certifiedFilter, false, false, false, true),
-          label: 'Exact small clamped Gaussian box',
-        })
-        pending = device.createRenderPipelineAsync({
-          layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
-          vertex: { module, entryPoint: 'quad' },
-          fragment: { module, entryPoint: 'fragmentSmallBox', targets: [{ format: 'rgba32float' }] },
-          primitive: { topology: 'triangle-list' },
-        })
-      } catch (error) { pending = Promise.reject(error) }
-      const validation = device.popErrorScope()
-      try {
-        const [pipeline, error] = await Promise.all([pending, validation])
-        if (error) throw error
-        this.assertPipelinePublicationOwner(device)
-        this.smallExactBoxPipeline = pipeline
-      } catch (error) {
-        this.smallExactBoxFailed = true
-        console.warn('Small exact box unavailable; using exact channel filters', error)
-      }
-    }
+    if (this.smallExactBoxRequested) await this.prepareSmallExactBox()
     if (this.canvasBlurRequested && !this.canvasBlurRgbaPipeline && !this.canvasBlurPipelines.length && !this.canvasBlurFailed) {
       try {
         const device = this.device
@@ -2010,6 +2048,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.collectRetiredImageTables(tables)
   }
   begin(vertices: Float32Array, curves = new Float32Array(0)) {
+    if (this.releaseFence) throw Error('GPU pose completion is pending')
     this.drawWork?.reset(gpuDiagnosticsEnabled())
     const owner = this.preparedGeometryOwner
     this.preparedGeometryOwner = undefined
@@ -3607,7 +3646,19 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     // retain their resources; subsequent uploads are ordered by the queue.
     // Readbacks/probes still fence before reading or reusing mapped storage.
     let pendingValidation: Promise<PromiseSettledResult<GPUError | null>> | undefined
-    if (waitReason) {
+    // The released capture and the resident compositor use this same queue.
+    // Let the compositor enqueue its read while the periodically fenced work
+    // drains. The next raster still waits, and no scratch is retired early.
+    const deferRelease = queuedPose && this.releasePose && waitReason === 'periodic' &&
+      !readPrefixCounters && !this.boxPrefix?.scratchBytes && !this.imageTables.size &&
+      !byteTentSnapshot.length && !retiredTables.length
+    if (deferRelease) {
+      const completion = this.waitForQueue('periodic', undefined, true)
+      this.releaseFence = { device: this.device, epoch: this.resourceEpoch, completion }
+      // A rejected fence is consumed at the next raster boundary. The current
+      // compositor also observes queue failure through its own completion.
+      void completion.catch(() => {})
+    } else if (waitReason) {
       const epoch = this.resourceEpoch
       const coveredCompletion = this.waitForQueue(waitReason)
       if (waitReason === 'interaction' && !byteTentSnapshot.length && !retiredTables.length) {
@@ -3635,7 +3686,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
     // Keep the existing submitted-geometry shrink policy. Filter storage above
     // is reclaimed only by the actual completed snapshot, never by this ACK.
-    if (waitReason || this.completedResourceEpoch >= this.resourceEpoch) this.shrinkCapacities()
+    if (waitReason && !deferRelease || this.completedResourceEpoch >= this.resourceEpoch) this.shrinkCapacities()
     if (readPrefixCounters) {
       const counters=await this.prefix!.readCounters()
       this.prefixCounterSamples++
@@ -3645,7 +3696,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     } else if (this.prefix?.scratchBytes) {
       this.prefixCounterDeferredFrames++
     }
-    if(waitReason&&!retainFilterScratch)this.boxPrefix?.release()
+    if(waitReason&&!retainFilterScratch&&!deferRelease)this.boxPrefix?.release()
     if (timingRead) {
       await timingRead.mapAsync(GPUMapMode.READ)
       const values = new BigUint64Array(timingRead.getMappedRange())

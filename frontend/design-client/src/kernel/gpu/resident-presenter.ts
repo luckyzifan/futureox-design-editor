@@ -139,6 +139,7 @@ export class ResidentPresenter {
   private sampler: GPUSampler
   private uniforms: GPUBuffer
   private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof; content?:PixelContentProof; raster?:{view:CanvasCamera; rect:Rect; gutter:number}; constantBackground?:boolean;linear?:boolean;samples?:1|4 }>()
+  private readonly composedViewports = new WeakSet<GPUTexture>()
   private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
@@ -184,6 +185,17 @@ export class ResidentPresenter {
       pending.onReleased = finish
       signal?.addEventListener('abort', finish, { once: true })
     })
+  }
+  /** A confirmed release supersedes queued motion. Leave the submitted
+   * image on its existing completion path and keep the browser's backing. */
+  cancelQueuedPoseRepaint(frame: ResidentFrame, slot: number, owner: string | undefined, sequence: number) {
+    const pending = this.bitmapPending?.frame, latest = this.latest
+    const obsolete = (candidate: ResidentFrame | undefined) => candidate?.interaction &&
+      candidate.input?.owner === owner && (candidate.input?.sequence ?? Infinity) < sequence &&
+      candidate.width === frame.width && candidate.height === frame.height && candidate.dpr === frame.dpr &&
+      candidate.view.x === frame.view.x && candidate.view.y === frame.view.y && candidate.view.zoom === frame.view.zoom &&
+      candidate.items.some(item => item.active && item.tile.gpuTile === slot)
+    if (obsolete(pending) && obsolete(latest)) this.latest = pending
   }
   hasDeferredPosePresentation(slot:number) {
     const pending = this.bitmapPending, frame = this.latest
@@ -511,6 +523,12 @@ export class ResidentPresenter {
     }}
   }
 
+  /** The worker has verified the authored commit. Compose its complete
+   * viewport using the normal rows, without submitting a browser image. */
+  captureInteractionViewport(frame: ResidentFrame) {
+    if (this.disposed || !this.atomic || !frame.interaction || frame.linearBlend) return
+    return this.drawAvailable(frame, true)
+  }
   snapshot(background?:PageBackgroundProof) {
     if (!this.backbuffer || !this.drawn || this.disposed) return
     const { width, height, texture } = this.backbuffer
@@ -667,7 +685,7 @@ export class ResidentPresenter {
     try { this.drawAvailable(frame) }
     finally { if(this.bitmapReserved){this.payload.cancel(this.bitmapReserved);this.bitmapReserved=undefined} }
   }
-  private drawAvailable(frame:ResidentFrame) {
+  private drawAvailable(frame:ResidentFrame, captureOnly = false) {
     const { view, width, height, dpr } = frame,
       w = Math.max(1, Math.ceil(width * dpr)),
       h = Math.max(1, Math.ceil(height * dpr))
@@ -751,6 +769,18 @@ export class ResidentPresenter {
             raster:{x:0,y:0,width:w,height:h,box:[0,0,width,height],uv:[u,v,0,0]}})
           complete=true;backgroundAdded=true;backgroundDecline=0
         }
+      }
+    }
+    if (captureOnly) {
+      if (!complete || missing.length || rows.some(row => row.item.blend || row.entry.linear)) return
+      const captured = this.capture(w, h)
+      try {
+        this.submitRows(rows, frame, w, h, undefined, undefined, captured.texture)
+        this.composedViewports.add(captured.texture)
+        return { gpuTile: captured.id, frame }
+      } catch (error) {
+        this.release([captured.id])
+        throw error
       }
     }
     const witness = rows[0]?.entry.content
@@ -969,7 +999,7 @@ export class ResidentPresenter {
     if (this.latest) this.draw(this.latest)
   }
   private submitRows(rows: DisplayRow[], frame: ResidentFrame, w: number, h: number,
-    preview: ReturnType<typeof cameraPreviewCoverage>, freshZoomBasis: ZoomBasis | undefined) {
+    preview: ReturnType<typeof cameraPreviewCoverage>, freshZoomBasis: ZoomBasis | undefined, capture?: GPUTexture) {
     const { view, width, height, dpr } = frame
     const linear = frame.linearBlend === true && rows.some(row => row.item.blend)
     if (preview && !this.previewPipeline) {
@@ -981,21 +1011,31 @@ export class ResidentPresenter {
     }
     if(!linear&&rows.some(row=>row.entry.linear))throw Error('Linear retained layers require linear composition')
     const samples:1|4=linear&&rows.some(row=>row.entry.samples===4)?4:1
-    const drawCount=rows.length*samples
+    const row = rows.length === 1 ? rows[0] : undefined
+    const retainedViewport = !capture && !frame.interaction && !preview && !freshZoomBasis && !linear && row &&
+      !row.item.blend && !row.constant && row.item.tile.zoom === view.zoom * dpr &&
+      width * dpr === w && height * dpr === h &&
+      row.raster.x === 0 && row.raster.y === 0 && row.raster.width === w && row.raster.height === h &&
+      row.raster.box[0] === 0 && row.raster.box[1] === 0 && row.raster.box[2] === width && row.raster.box[3] === height &&
+      row.raster.uv[0] === 0 && row.raster.uv[1] === 0 && row.raster.uv[2] === 1 && row.raster.uv[3] === 1 &&
+      this.composedViewports.has(row.entry.texture) && row.entry.texture.width === w && row.entry.texture.height === h
+      ? row.entry.texture : undefined
+    const drawSamples = retainedViewport ? 0 : samples
+    const drawCount = rows.length * drawSamples
     if (drawCount + (linear ? 1 : 0) > 4096) throw Error('Too many visible display tiles')
     // Reserve the entire replacement peak before creating either target. Keep
     // the old targets and visible canvas unchanged if admission/setup fails.
-    const replaceBack = !this.backbuffer || this.backbuffer.width !== w || this.backbuffer.height !== h
+    const replaceBack = !capture && (!this.backbuffer || this.backbuffer.width !== w || this.backbuffer.height !== h)
     const replaceLinear = linear && (!this.linearTarget || this.linearTarget.width !== w || this.linearTarget.height !== h || this.linearTarget.samples!==samples)
     let backPayload: PayloadToken | undefined, linearPayload: PayloadToken | undefined, bitmapPayload: PayloadToken | undefined
     let nextBack: typeof this.backbuffer, nextLinear: typeof this.linearTarget
     try {
       if (replaceBack) backPayload = this.payload.reserve(w * h * 4)
       if (replaceLinear) linearPayload = this.payload.reserve(w * h * 8*samples)
-      if (this.atomic) bitmapPayload = this.bitmapReserved = this.payload.reserve(w * h * 4)
+      if (this.atomic && !capture) bitmapPayload = this.bitmapReserved = this.payload.reserve(w * h * 4)
       if (backPayload) {
         const texture = this.device.createTexture({ size: [w, h], format: this.format,
-          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | (this.traceAlpha ? GPUTextureUsage.TEXTURE_BINDING : 0) })
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | (this.traceAlpha ? GPUTextureUsage.TEXTURE_BINDING : 0) })
         nextBack = { texture, width: w, height: h, payload: backPayload }
       }
       if (linearPayload) {
@@ -1024,33 +1064,40 @@ export class ResidentPresenter {
     if (nextLinear) this.linearTarget = nextLinear
     if (nextBack && oldBack) { this.payload.retire(oldBack.payload); oldBack.texture.destroy() }
     if (nextLinear && oldLinear) { this.payload.retire(oldLinear.payload); oldLinear.texture.destroy() }
-    if (this.atomic && !this.navigationBacking && !linear && !frame.interaction && !frame.allowEmpty &&
+    if (this.atomic && !capture && !this.navigationBacking && !linear && !frame.interaction && !frame.allowEmpty &&
         w * h >= 65536 && import.meta.env.VITE_DESIGN_NAVIGATION_BACKING !== '0') {
       this.navigationBacking = this.payload.reserveNavigationBacking(NAVIGATION_BACKING_BYTES, w * h * 4)
       if (this.navigationBacking) this.payload.commit(this.navigationBacking)
     }
     this.payload.assertOpen()
-    if (this.canvas.width !== w) this.canvas.width = w
-    if (this.canvas.height !== h) this.canvas.height = h
-    this.transformData.begin()
-    for(let phase=0;phase<samples;phase++)rows.forEach((row,i)=>this.transformData.set(phase*rows.length+i,[...row.raster.box,...row.raster.uv,width,height,phase,0]))
-    if(linear)this.transformData.set(drawCount,[0,0,width,height,0,0,1,1,width,height,0,0])
-    const update=this.transformData.changed()
-    const upload=import.meta.env.VITE_DESIGN_RESIDENT_TRANSFORMS==='0'
-      ?{offset:0,data:this.transformData.data.subarray(0,(drawCount+(linear?1:0))*64)}:update
-    if(upload?.data.length)this.device.queue.writeBuffer(this.uniforms,upload.offset,upload.data)
+    if (!capture && this.canvas.width !== w) this.canvas.width = w
+    if (!capture && this.canvas.height !== h) this.canvas.height = h
+    let uploadBytes = 0
+    if (!retainedViewport) {
+      this.transformData.begin()
+      for(let phase=0;phase<samples;phase++)rows.forEach((row,i)=>this.transformData.set(phase*rows.length+i,[...row.raster.box,...row.raster.uv,width,height,phase,0]))
+      if(linear)this.transformData.set(drawCount,[0,0,width,height,0,0,1,1,width,height,0,0])
+      const update=this.transformData.changed()
+      const upload=import.meta.env.VITE_DESIGN_RESIDENT_TRANSFORMS==='0'
+        ?{offset:0,data:this.transformData.data.subarray(0,(drawCount+(linear?1:0))*64)}:update
+      if(upload?.data.length)this.device.queue.writeBuffer(this.uniforms,upload.offset,upload.data)
+      uploadBytes = upload?.data.byteLength || 0
+    }
     const background = frame.backgroundLinear || [1, 1, 1, 1]
     const encoder = this.device.createCommandEncoder()
     if (freshZoomBasis && this.backbuffer) {
       encoder.copyTextureToTexture({ texture: this.backbuffer.texture }, { texture: freshZoomBasis.texture }, [freshZoomBasis.width, freshZoomBasis.height])
     }
-    for(let phase=0;phase<samples;phase++){
+    if (retainedViewport) {
+      encoder.copyTextureToTexture({ texture: retainedViewport }, { texture: this.backbuffer!.texture }, [w, h])
+    }
+    for(let phase=0;phase<drawSamples;phase++){
     const pass = encoder.beginRenderPass({
         colorAttachments: [
           {
             view: (linear
               ? this.linearTarget!.texture
-              : this.backbuffer!.texture
+              : capture ?? this.backbuffer!.texture
             ).createView({dimension:'2d',baseArrayLayer:phase,arrayLayerCount:1}),
             loadOp: 'clear',
             storeOp: 'store',
@@ -1109,17 +1156,20 @@ export class ResidentPresenter {
       resolve.draw(6)
       resolve.end()
     }
-    const output = this.context.getCurrentTexture()
-    encoder.copyTextureToTexture({ texture: this.backbuffer!.texture }, { texture: output }, [w, h])
-    this.drawOverlay(encoder, output, frame)
-    if (this.traceAlpha) this.alphaTrace ??= new PresenterAlphaTrace(this.device, this.payload, fields => this.report(fields))
-    const alpha = this.alphaTrace?.encode(encoder, this.backbuffer!.texture, {
-      ...deviceDiagnosticFields(this), alphaFrame: this.frames + 1, alphaSequence: frame.diagnosticSequence, alphaWidth: w, alphaHeight: h,
-    })
+    let alpha: ReturnType<PresenterAlphaTrace['encode']> | undefined
+    if (!capture) {
+      const output = this.context.getCurrentTexture()
+      encoder.copyTextureToTexture({ texture: this.backbuffer!.texture }, { texture: output }, [w, h])
+      this.drawOverlay(encoder, output, frame)
+      if (this.traceAlpha) this.alphaTrace ??= new PresenterAlphaTrace(this.device, this.payload, fields => this.report(fields))
+      alpha = this.alphaTrace?.encode(encoder, this.backbuffer!.texture, {
+        ...deviceDiagnosticFields(this), alphaFrame: this.frames + 1, alphaSequence: frame.diagnosticSequence, alphaWidth: w, alphaHeight: h,
+      })
+    }
     try { this.device.queue.submit([encoder.finish()]) }
     catch (error) { alpha?.cancel(); throw error }
     alpha?.submitted()
-    return { drawCount, uploadBytes: upload?.data.byteLength || 0, linear, bitmapPayload }
+    return { drawCount, uploadBytes, linear, bitmapPayload }
   }
   private drawOverlay(encoder: GPUCommandEncoder, output: GPUTexture, frame: ResidentFrame) {
     const guides = frame.gestureGuides ? frame.input?.guides : undefined

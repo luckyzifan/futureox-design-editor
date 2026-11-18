@@ -2819,7 +2819,22 @@ export function ProgressiveSurfaceImpl(
   // camera are strictly closer to intent than a frozen viewport.
   const cameraPreview = props.visible !== false && !props.paused && !complete &&
     (reusableFrame || lodVisibleCount > 0 || fineVisibleCount > 0 || cachedPreviewCount > 0 || baseVisibleCount > 0)
-  const visual = (previewRole === 'exclusive' ? replacementFrame : undefined) ||
+  const commitTile = residentDisplay && fullPlanReady && plan.ids.size === 1
+    ? tileRef.current.get(plan.ids.values().next().value!) : undefined
+  // The worker can deliver a native viewport for the committed document in
+  // one tile. Stage that source as exact so the first compositor ACK can
+  // finish the plan. commitReady still requires the ACK and the tile handle.
+  const exactCommitPlan = plan && commitTile?.committedViewport && commitTile.gpuTile &&
+    commitTile.document === doc && commitTile.revision === contract.revision &&
+    commitTile.zoom === requestedView.zoom * dpr && commitTile.gutter === 0 &&
+    commitTile.x === -requestedView.x * dpr && commitTile.y === -requestedView.y * dpr &&
+    commitTile.width === Math.ceil(width * dpr) && commitTile.height === Math.ceil(height * dpr) &&
+    !navigationZoom.active && props.visible !== false && !props.paused && !props.interaction?.active &&
+    phaseExact && stableDensity === detailLevel && plan.width === width && plan.height === height && plan.dpr === dpr &&
+    plan.view.x === requestedView.x && plan.view.y === requestedView.y && plan.view.zoom === requestedView.zoom
+    ? plan : undefined
+  const previewPresentation = !!cameraPreview && !exactCommitPlan
+  const visual = exactCommitPlan || (previewRole === 'exclusive' ? replacementFrame : undefined) ||
     (cameraPreview && plan ? (reusableFrame ? displayed : plan) : displayed)
   // Keep child layout anchored to the completed camera. A gesture changes one
   // compositor transform, instead of every resident canvas's layout rectangle.
@@ -2827,11 +2842,11 @@ export function ProgressiveSurfaceImpl(
   const cameraTransform = frameTransform(requestedView, placementView)
   const previewCameraOk = previewCameraScaleWithinLimit(placementView.zoom, requestedView.zoom)
   const presentation = visual ? {
-    view: cameraPreview ? requestedView : visual.view,
+    view: previewPresentation ? requestedView : visual.view,
     document: visual.document, pageId: visual.pageId, epoch: visual.epoch,
     width: visual.width, height: visual.height, pixelRatio: visual.dpr, managed: visual.managed,
     grid: visual.grid, checkerboard: visual.checkerboard, pixelPreview: visual.pixelPreview, rasterProfile: visual.rasterProfile,
-    displayCapability: visual.displayCapability, computeBackend: visual.computeBackend, preview: !!cameraPreview,
+    displayCapability: visual.displayCapability, computeBackend: visual.computeBackend, preview: previewPresentation,
   } : null
   const observeBacking = (frame: PresentedFrame | null | undefined) => {
     if (!frame || frame.document.id !== doc.id || frame.computeBackend && frame.computeBackend !== backend ||
@@ -2847,7 +2862,7 @@ export function ProgressiveSurfaceImpl(
     // Offscreen GPU submission is asynchronous. Only its reply can publish
     // the camera; synchronous CSS/WebGL placement keeps this immediate path.
     if (!residentDisplay && !singleCanvas) props.onPresentation?.(presentation)
-  }, [visual, cameraPreview, requestedView, props.onPresentation, residentDisplay, singleCanvas])
+  }, [visual, previewPresentation, requestedView, props.onPresentation, residentDisplay, singleCanvas])
   return (
     <>
       <div

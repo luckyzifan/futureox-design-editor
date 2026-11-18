@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   renderGate: undefined as undefined | Promise<void>, renderBlocked: false, bitmaps: [] as any[],
   font: undefined as Uint8Array | undefined,
   disposed: [] as number[], createCount: 0, onPost: undefined as undefined | ((value: any) => void),
+  captureCommit: false, capturedViewports: [] as any[], presentedViewports: [] as any[],
 }))
 vi.mock('./image-mip-cache', () => ({
   imageCacheKey: async (uri: string, variant: string, settings: string) => {
@@ -36,7 +37,14 @@ vi.mock('./gpu/factory', async () => {
         bytes: data.byteLength, resource: { image: data.slice() } })
       const resources = new GpuRenderer({ scratchBytes: 0, uploadRgba8: upload, uploadLinear: upload,
         destroy() {}, dispose() {} } as any, true, true, loader) as any
-      return { driver: { name: backend, managed: floating, displayMath, lost: false, description: 'CPU test driver', replacePresented: (slot: number) => { state.replacements.push(slot); return true }, attachPresenter: vi.fn(() => { if (state.failAttach) throw Error('Presenter attachment failed') }), abortFrameAndReleaseFilterScratch: async () => {} },
+      return { driver: { name: backend, managed: floating, displayMath, lost: false, description: 'CPU test driver', ...(state.captureCommit ? {
+          presentFrame(frame: unknown) { state.presentedViewports.push(frame) },
+          snapshotPresented() { return undefined },
+          captureInteractionViewport(frame: unknown) {
+            state.capturedViewports.push(frame)
+            return { gpuTile: 93, frame }
+          },
+        } : {}), replacePresented: (slot: number) => { state.replacements.push(slot); return true }, attachPresenter: vi.fn(() => { if (state.failAttach) throw Error('Presenter attachment failed') }), abortFrameAndReleaseFilterScratch: async () => {} },
         dispose() { expect(state.disposed).not.toContain(identity); state.disposed.push(identity); resources.dispose() },
         abortFrameAndReleaseFilterScratch: async () => {},
         releaseFilterBatch() {},
@@ -89,7 +97,7 @@ function fixture(count = 1000) {
 }
 async function worker(desktopFullMath = false, withPreparation = false, desktopDisplay = false) {
   vi.resetModules()
-  Object.assign(state, { poseTiles: false, replacements: [], failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, renderGate: undefined, renderBlocked: false, bitmaps: [], disposed: [], createCount: 0, onPost: undefined })
+  Object.assign(state, { poseTiles: false, replacements: [], failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, renderGate: undefined, renderBlocked: false, bitmaps: [], disposed: [], createCount: 0, onPost: undefined, captureCommit: false, capturedViewports: [], presentedViewports: [] })
   state.font = withPreparation ? new Uint8Array(readFileSync(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url))) : undefined
   const kernel = await import('../generated/design-kernel/design_kernel')
   await (await import('./module')).initializeKernelModule(wasm)
@@ -592,8 +600,9 @@ test('request-scoped cancellation applies its ordered patch but leaves independe
 
 // Real worker/native scene path; GPU transport deliberately mocked. These
 // assertions certify queue/pose ownership, not physical display or GPU pixels.
-async function affineWorker(affine=true,masked=false,fixedMaskWidth?:number) {
-  const f = fixture(1), w = await worker(); state.poseTiles = true
+async function affineWorker(affine=true,masked=false,fixedMaskWidth?:number,canvasCommit=false) {
+  const f = fixture(1), w = canvasCommit ? await worker(true, true, true) : await worker(); state.poseTiles = true
+  state.captureCommit = canvasCommit
   if(masked){
     const group=node('group',0,0,48,16),mask=node('rectangle',0,0,48,16)
     f.doc.schemaVersion=20
@@ -604,6 +613,11 @@ async function affineWorker(affine=true,masked=false,fixedMaskWidth?:number) {
     } else mask.maskType = 'shape'
     group.children=[mask.id,'image-0']
     f.doc.nodes[group.id]=group;f.doc.nodes[mask.id]=mask;f.doc.pages[0].children=[group.id]
+  }
+  if (canvasCommit) {
+    w.send({ id: 979, document: JSON.stringify(f.doc), documentRevision: 1, options: f.options })
+    expect((await w.finish(979)).error).toBeUndefined()
+    w.send({ command: 'display-attach', canvas: {}, atomic: true })
   }
   const options = { ...f.options, renderIntent: 'preview', livePreview: true,
     retainInteractionGraph: true, interactionNative: true, interactionAffine: affine,
@@ -620,6 +634,42 @@ async function affineWorker(affine=true,masked=false,fixedMaskWidth?:number) {
       : [1, 0, 0, 1, sequence * 4, 2] } })
   return { ...w, f, options, pose }
 }
+test('the acknowledged bitmap edit composes the terminal viewport without publishing an intermediate image', async () => {
+  const w = await affineWorker(true, true, 48, true)
+  const source = w.messages.find(m => m.id === 979 && m.documentSynchronized)?.stateReceipt
+  expect(source).toBeDefined()
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: w.f.options.view, width: 48, height: 16, dpr: 1, interaction: true, items: [
+      { active: true, layer: 1, gutter: 0, tile: { key: 'pose', serial: 1, gpuTile: 77, x: 0, y: 0, width: 48, height: 16, zoom: 1 } },
+    ],
+  } })
+  const { RenderKernel } = await import('./render-kernel')
+  const apply = vi.spyOn(RenderKernel.prototype,'apply_document_patch_with_damage')
+  let release!: () => void
+  state.renderGate = new Promise<void>(resolve => { release = resolve })
+  const terminal = { ...w.pose(1), terminal: true }
+  try {
+    w.send(terminal)
+    await vi.waitFor(() => expect(state.renderBlocked).toBe(true))
+    w.send({ id: 982, bitmapRotation: true, documentPatch: JSON.stringify(terminal.transforms),
+      patchBaseReceipt: source, documentRevision: 2, baseDocumentRevision: 1, options: { ...w.f.options, tileViewport: [] } })
+    await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(JSON.stringify(terminal.transforms),source,expect.any(Object)))
+    expect(state.capturedViewports).toHaveLength(0)
+    state.renderGate = undefined
+    release()
+    expect(await w.finish(982)).toMatchObject({ retainedCommit: true })
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(state.capturedViewports).toHaveLength(1)
+    expect(state.capturedViewports[0].input).toEqual(terminal.input)
+    expect(state.presentedViewports.some(frame => frame.input?.sequence === terminal.input.sequence)).toBe(false)
+    expect(w.messages.some(m => m.presentation?.residentSample?.sequence === terminal.input.sequence)).toBe(false)
+    expect(w.messages.find(m => m.id === 982 && m.tile)?.tile.gpuTile).toBe(93)
+  } finally {
+    state.renderGate = undefined
+    release()
+  }
+})
+
 test('affine worker compiles the latest absolute pose and never acknowledges skipped queued inputs', async () => {
   const w = await affineWorker()
   w.send(w.pose(1)); w.send(w.pose(2)); w.send(w.pose(3))

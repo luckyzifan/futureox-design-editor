@@ -3,7 +3,7 @@ import { admitAction, admitPreparedTile } from './zoom-refine-schedule'
 import { equalValue } from '../document-patch'
 import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regional-gaussian-display'
 import {MATERIAL_BAND,sourceBandDefersWholePresent} from './source-display-band'
-import { ResidentPoseReuse, terminalPoseDisposition } from './resident-pose-reuse'
+import { ResidentPoseReuse, samePoseTransforms, terminalPoseDisposition } from './resident-pose-reuse'
 import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
 import { documentCapacity, pinDocumentCapacity } from '../document-capacity'
 import { initializeKernelModule } from './module'
@@ -157,7 +157,9 @@ displayTasks.port1.onmessage=()=>{
   displayFramePending=false
   const attachment = displayAttachment
   try {
-    if (displayFrame && attachment && attachment.canvas === displayCanvas) attachment.driver.presentFrame?.(displayFrame)
+    if (displayFrame && attachment && attachment.canvas === displayCanvas && !obsoleteBitmapFrame(displayFrame) &&
+        !(heldBitmapViewport?.frame === displayFrame && heldBitmapViewport.driver === attachment.driver))
+      attachment.driver.presentFrame?.(displayFrame)
   } catch (error) { reportDisplay({ error: String(error) }) }
 }
 const navigationJournal = new NavigationJournal()
@@ -394,6 +396,74 @@ type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
+type BitmapCommit = {
+  id: number; transforms: Record<string, Matrix>; view: KernelOptions['view']; width: number; height: number
+  source: SynchronizedAuthoredProof; baseRevision: number; wire: string; patch: DocumentPatch
+  prepared?: Promise<{ kernel: RenderKernel; priorPixelOwner: object; damage: PromiseSettledResult<string> } | undefined>
+}
+let pendingBitmapCommit: BitmapCommit | undefined
+let renderingBitmapRelease: ResidentPose | undefined
+
+function prepareBitmapCommit() {
+  const commit = pendingBitmapCommit, pose = renderingBitmapRelease, frame = displayFrame, canvas = lanes.get('canvas')
+  const engine = canvas.enginePromise
+  if (!commit || commit.prepared || !pose || !frame || !engine || !samePoseTransforms(commit.transforms,pose.transforms) ||
+      !frame.items.some(item => item.active && item.tile.gpuTile === pose.slot) ||
+      frame.view.x*frame.dpr !== commit.view.x || frame.view.y*frame.dpr !== commit.view.y ||
+      frame.view.zoom*frame.dpr !== commit.view.zoom || Math.ceil(frame.width*frame.dpr) !== commit.width ||
+      Math.ceil(frame.height*frame.dpr) !== commit.height) return
+  // The compact edit is already first in the canvas queue. Its receipt is
+  // independent of the interaction engine, so it can apply while that engine
+  // is encoding the released pose. The usual canvas task publishes the result.
+  commit.prepared = (async () => {
+    const kernel = await engine
+    if (!await kernel.supportsAcknowledgedPatches() || pendingBitmapCommit !== commit || synchronizedAuthored.get('canvas') !== commit.source ||
+        canvas.loadedRevision !== commit.baseRevision || canvas.synchronizedInteractionDocument !== commit.source.document ||
+        canvas.deferredInteractionDocument || !samePreparationReceipt(kernel.preparationStateReceipt,commit.source.receipt)) return
+    const priorPixelOwner = kernel.contentIdentity
+    try {
+      const value = await kernel.apply_document_patch_with_damage(commit.wire, commit.source.receipt, commit.patch)
+      return { kernel, priorPixelOwner, damage: { status: 'fulfilled' as const, value } }
+    } catch (reason) {
+      return { kernel, priorPixelOwner, damage: { status: 'rejected' as const, reason } }
+    }
+  })().catch(() => undefined)
+}
+let bitmapRelease: {
+  session: PoseSession; driver: Driver; input: ResidentPose['input']; viewport: NonNullable<typeof displayFrame>
+} | undefined
+
+function obsoleteBitmapFrame(frame: NonNullable<typeof displayFrame>) {
+  const release = bitmapRelease
+  return !!release && release.session === poseSession && release.driver === gpu?.driver && !release.session.stopped &&
+    frame.interaction && frame.input?.owner === release.input.owner &&
+    (frame.input?.sequence ?? Infinity) < release.input.sequence &&
+    sameDisplayViewport(frame,release.viewport) && frame.items.some(item => item.active && item.tile.gpuTile === release.session.slot)
+}
+
+let heldBitmapViewport: {
+  commit: BitmapCommit; session: PoseSession; frame: NonNullable<typeof displayFrame>; driver: Driver; published?: boolean
+  sample?: Record<string, unknown>
+} | undefined
+
+function sameDisplayViewport(a: NonNullable<typeof displayFrame>, b: NonNullable<typeof displayFrame>) {
+  return a.width === b.width && a.height === b.height && a.dpr === b.dpr &&
+    a.view.x === b.view.x && a.view.y === b.view.y && a.view.zoom === b.view.zoom
+}
+function resumeBitmapViewport() {
+  const previous = heldBitmapViewport
+  heldBitmapViewport = undefined
+  if (!previous || gpu?.driver !== previous.driver) return
+  if (!previous.published && previous.sample && poseSession === previous.session && !previous.session.stopped)
+    reportDisplay(previous.sample)
+  if (displayFrame === previous.frame) scheduleDisplayFrame()
+}
+function reportPoseSample(session: PoseSession, publication: Record<string, unknown>) {
+  const held = heldBitmapViewport
+  if (held?.session === session && held.frame === displayFrame) held.sample = publication
+  else reportDisplay(publication)
+}
+
 /** Message handlers can replace this queue while native preparation awaits. */
 function latestPendingPose():ResidentPose|undefined{return pendingPose}
 const frozenOverlayPoses=new FrozenResidentOverlayPoses()
@@ -442,6 +512,7 @@ function displayedOverlayAffines(frame:import('./gpu/resident-presenter').Reside
   return stickyPresentedAffines(affines,poseSession?.stopped===true)
 }
 function rebasePose(pose:ResidentPose,expandCapture=false){
+  if (bitmapRelease?.session.slot === pose.slot) bitmapRelease = undefined
   if(poseSession?.slot===pose.slot){
     poseSession.stopped=true;poseSession.controller.abort()
     if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)
@@ -450,13 +521,25 @@ function rebasePose(pose:ResidentPose,expandCapture=false){
   reportDisplay({residentSample:{slot:pose.slot,...pose.input,needsRebase:true,expandCapture}})
 }
 function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:number;y:number;width:number;height:number}) {
+  if (bitmapRelease?.session === session && pose.input.sequence >= bitmapRelease.input.sequence) bitmapRelease = undefined
   session.input=pose.input;session.bounds=bounds
   if(displayFrame&&displayFrame.items.some(item=>item.active&&item.tile.gpuTile===session.slot)){
     const view=displayFrame.view
     displayFrame={...displayFrame,interaction:true,input:pose.input,items:displayFrame.items.map(item=>item.tile.gpuTile===session.slot
       ?{...item,clip:{left:bounds.x*view.zoom+view.x,top:bounds.y*view.zoom+view.y,width:bounds.width*view.zoom,height:bounds.height*view.zoom}}:item)}
     displayCoverageVersion={};displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
-    gpu!.driver.presentFrame?.(displayFrame)
+    const commit = pendingBitmapCommit, driver = gpu?.driver
+    const { width, height, dpr } = displayFrame
+    if (commit && driver?.captureInteractionViewport && atomicDisplay && pose.terminal && session.native &&
+        session.affine && session.scene.interactionFixedMask && !session.scene.gestureSoftEffects && !session.bitmapPreviewOnly &&
+        samePoseTransforms(commit.transforms, pose.transforms) && Math.ceil(width * dpr) === commit.width &&
+        Math.ceil(height * dpr) === commit.height && view.x*dpr === commit.view.x && view.y*dpr === commit.view.y &&
+        view.zoom*dpr === commit.view.zoom) {
+      heldBitmapViewport = { commit, session, frame: displayFrame, driver }
+    } else {
+      heldBitmapViewport = undefined
+      if (!obsoleteBitmapFrame(displayFrame)) driver?.presentFrame?.(displayFrame)
+    }
   }
 }
 // While an old pose prepares or uses the GPU, the release input can revoke
@@ -588,7 +671,7 @@ function schedulePose(){
           }
           const bounds=session.bounds
           presentSampledPose(session,pose,bounds)
-          reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
+          reportPoseSample(session,{residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
             nativePose:true,samePoseReuse:true,compileMs:0,graphMs:0,finishMs:0,posePrepareMs:0,translationMs:0,
             sceneUpdateBytes:0,geometryUploadBytes:0,fieldUploadBytes:0,
             signature:displayFrame?residentFrameSignature(displayFrame):undefined}})
@@ -747,9 +830,14 @@ function schedulePose(){
               if(last?.terminal)beginTerminalPreparation(last)
             } : undefined
           if(bitmapTerminal)openTerminalPreparation?.()
+          if (bitmapTerminal && pose.terminal && next.interactionFixedMask) {
+            next.interactionRelease = true
+            renderingBitmapRelease = pose
+            prepareBitmapCommit()
+          }
           const result=await failureAttempt(12, () => gpu!.render(next,false,true,current,undefined,false,
             bitmapTerminal ? undefined : openTerminalPreparation))
-            .finally(()=>{beginTerminalPreparation=undefined})
+            .finally(()=>{beginTerminalPreparation=undefined;renderingBitmapRelease=undefined})
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
           if(!current()){gpu.driver.releasePresented?.([result.gpuTile]);continue}
           gpu.driver.replacePresented(session.slot,result.gpuTile)
@@ -780,7 +868,7 @@ function schedulePose(){
             texture:gpu.driver.presentedContentToken?.(session.slot),window,transforms:pose.transforms})}
           presentSampledPose(session,pose,bounds)
           const poseStats=gpu.driver.stats?.()
-          reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
+          reportPoseSample(session,{residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
             nativePose:session.native===true,compileMs:poseCompileMs,
             compileStats,fieldUploadBytes:result.materialFieldUploadBytes,gestureBlurPixels:result.gestureBlurPixels,
             sceneUpdateBytes:session.native?sceneUpdateBytes:undefined,
@@ -866,6 +954,10 @@ self.onmessage = (e) => {
   }
   if (request.command === 'display-attach') {
     try {
+      if (displayCanvas !== request.canvas) {
+        heldBitmapViewport = undefined
+        bitmapRelease = undefined
+      }
       executionPolicy=pinRenderPolicy(executionPolicy,request.executionPolicy)
       if(!allowsResidentSdr(executionPolicy))throw Error('Resident SDR display is not allowed by this host policy')
       displayCanvas=request.canvas;atomicDisplay=request.atomic===true;reportedResidentAttachment='';prepareDisplay()
@@ -903,6 +995,20 @@ self.onmessage = (e) => {
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
     if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
+    if (bitmapRelease && (!displayFrame || !sameDisplayViewport(displayFrame,bitmapRelease.viewport) || !displayFrame.interaction))
+      bitmapRelease = undefined
+    if (displayFrame && obsoleteBitmapFrame(displayFrame)) return
+    if (heldBitmapViewport) {
+      const held = heldBitmapViewport
+      if (displayFrame?.interaction && gpu?.driver === held.driver && sameDisplayViewport(held.frame,displayFrame) &&
+          displayFrame.input?.sequence === held.frame.input?.sequence && displayFrame.input?.owner === held.frame.input?.owner &&
+          (equalValue(displayFrame.items, held.frame.items) || held.published &&
+            displayFrame.items.some(item => item.active && item.tile.gpuTile === held.session.slot))) {
+        held.frame = displayFrame
+        return
+      }
+      resumeBitmapViewport()
+    }
     // The pose worker may already have submitted this immutable frame before
     // the main thread reflected its sample. Keep later poses from waiting
     // behind another transfer of the same texture, clip, and chrome.
@@ -947,6 +1053,17 @@ self.onmessage = (e) => {
     if(!request.input||!Number.isSafeInteger(request.input.sequence)||!Number.isFinite(request.input.at)||
         !request.transforms||typeof request.transforms!=='object')return
     if(poseSession&&poseSession.slot===request.slot&&!poseSession.stopped){
+      const driver = gpu?.driver
+      if (request.terminal && atomicDisplay && driver && poseSession.native && poseSession.affine &&
+          poseSession.scene.interactionFixedMask && displayFrame?.interaction &&
+          displayFrame.input?.owner === request.input.owner && displayFrame.items.some(item=>item.active && item.tile.gpuTile===request.slot)) {
+        bitmapRelease = { session: poseSession, driver, input: request.input, viewport: displayFrame }
+        driver.cancelQueuedPoseRepaint?.(displayFrame,request.slot,request.input.owner,request.input.sequence)
+      } else if (bitmapRelease && bitmapRelease.session === poseSession && request.input.sequence >= bitmapRelease.input.sequence) {
+        bitmapRelease = undefined
+      }
+      if (heldBitmapViewport?.session === poseSession &&
+          request.input.sequence > (heldBitmapViewport.frame.input?.sequence ?? 0)) resumeBitmapViewport()
       if(pendingPose?.terminal && terminalPoseDisposition(pendingPose,request)==='same') pendingPose.input=request.input
       else pendingPose=request
       if(pendingPose!.terminal)beginTerminalPreparation?.(pendingPose!)
@@ -956,6 +1073,8 @@ self.onmessage = (e) => {
     return
   }
   if(request.command==='interaction-pose-stop'){
+    if (bitmapRelease?.session.slot === request.slot) bitmapRelease = undefined
+    if (heldBitmapViewport?.session.slot === request.slot) resumeBitmapViewport()
     if(poseSession&&poseSession.slot===request.slot){
       poseSession.stopped=true;poseSession.controller.abort()
       if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)
@@ -964,6 +1083,8 @@ self.onmessage = (e) => {
     return
   }
   if (request.command === 'display-release') {
+    if (bitmapRelease && request.ids.includes(bitmapRelease.session.slot)) bitmapRelease = undefined
+    if (heldBitmapViewport && request.ids.includes(heldBitmapViewport.session.slot)) heldBitmapViewport = undefined
     frozenOverlayPoses.release(request.ids)
     if(poseSession&&request.ids.includes(poseSession.slot)){poseSession?.controller.abort();poseSession=undefined;pendingPose=undefined}
     displayAttachment?.driver.releasePresented?.(request.ids); return
@@ -1007,6 +1128,35 @@ self.onmessage = (e) => {
   const reportRasterProgress=()=>self.postMessage({id:request.id,rasterProgress:++completedRegions})
   let workProgress=0
   const reportWorkProgress=(stage:1|2,drawCalls=0)=>self.postMessage({id:request.id,workProgress:++workProgress,workStage:stage,drawCalls})
+  // Defer the intermediate gesture image only if the matching compact
+  // authored edit is first in line while this native pose owns the queue.
+  if (channel === 'canvas' && poseQueued && diagnosticQueueDepth === 0 && diagnosticRequestId === 0 &&
+      request.command === undefined && request.document === undefined && request.deriveFrom === undefined &&
+      request.sourceSnapshot === undefined && !request.png && !request.readback && !request.options?.captureViewport &&
+      !request.options?.sequentialViewport && !request.options?.pixelPreview && !request.options?.exportFormat &&
+      !request.options?.exportRegion && !request.options?.grid && !request.options?.checkerboard &&
+      request.bitmapRotation === true && request.options?.renderIntent === 'canvas' && request.options.tileViewport?.length === 0 &&
+      request.options.rasterProfile === 'analytic' && typeof request.documentPatch === 'string' &&
+      boundedPatchWire(request.documentPatch) && request.patchBaseReceipt) {
+    const state = lanes.get('canvas'), proof = synchronizedAuthored.get('canvas')
+    if (proof && proof.document === state.interactionDocument &&
+        proof.document === state.synchronizedInteractionDocument && !state.deferredInteractionDocument &&
+        request.baseDocumentRevision === state.loadedRevision && samePreparationReceipt(request.patchBaseReceipt, proof.receipt)) {
+      try {
+        const policy = pinRenderPolicy(executionPolicy, request.executionPolicy)
+        const transforms = JSON.parse(request.documentPatch)
+        const patch = expandBitmapRotationPatch(proof.document,transforms)
+        const { view, width, height } = request.options
+        if (allowsResidentSdr(policy) && view && [view.x,view.y,view.zoom,width,height].every(Number.isFinite)) {
+          pendingBitmapCommit = { id: request.id, transforms, view, width, height, patch, source: proof,
+            wire: request.documentPatch, baseRevision: request.baseDocumentRevision }
+          prepareBitmapCommit()
+        }
+      } catch { /* The ordinary worker queue still validates and handles the edit. */ }
+    }
+  }
+  const bitmapCommit = pendingBitmapCommit?.id === request.id ? pendingBitmapCommit : undefined
+  let bitmapCommitInstalled = false
   diagnosticQueueDepth++
   terminalDiagnostics.record('queue-enqueue',{requestId:request.id,queueDepth:diagnosticQueueDepth,activeRequestId:diagnosticRequestId,generation,fillGeneration})
   const diagnosticQueuedAt=terminalDiagnostics.enabled?performance.now():0
@@ -1369,7 +1519,10 @@ self.onmessage = (e) => {
         if (request.baseDocumentRevision !== laneState.loadedRevision)
           throw new Error('文档补丁版本未同步，请重试当前画布')
         const bitmapRotation = channel==='canvas' && request.bitmapRotation === true
-        const patch = failureAttempt(4, () => {
+        const prepared = bitmapRotation ? await bitmapCommit?.prepared : undefined
+        if (prepared && (prepared.kernel !== kernel || predecessor !== bitmapCommit?.source ||
+            actualBefore !== bitmapCommit?.source.document)) throw Error('STALE_AUTHORED_PATCH_BASE')
+        const patch = (bitmapRotation ? bitmapCommit?.patch : undefined) ?? failureAttempt(4, () => {
           const value = JSON.parse(request.documentPatch)
           return bitmapRotation ? expandBitmapRotationPatch(laneState.interactionDocument, value) : value as DocumentPatch
         })
@@ -1400,7 +1553,7 @@ self.onmessage = (e) => {
           !!predecessor && !!actualBefore && predecessor.document === actualBefore
         const canGuard = guardCandidate &&
           samePreparationReceipt(request.patchBaseReceipt, predecessor.receipt) &&
-          samePreparationReceipt(request.patchBaseReceipt, kernel.preparationStateReceipt)
+          (!!prepared || samePreparationReceipt(request.patchBaseReceipt, kernel.preparationStateReceipt))
         if (guardCandidate && !canGuard) { laneState.interactionDocument = priorAuthoredDocument; throw Error('STALE_AUTHORED_PATCH_BASE') }
         // The worker's rendering projection can omit authored optional nulls.
         // A conservative subset mismatch must not reject an otherwise valid
@@ -1408,16 +1561,20 @@ self.onmessage = (e) => {
         const canAcknowledge = canGuard && boundedPatchWire(request.documentPatch) && supportsAcknowledgedPropertyPatch(actualBefore!, patch)
         const transforms = channel === 'interaction' && retainInteraction && interactionNative &&
           laneState.synchronizedInteractionDocument && interactionPatchTransforms(laneState.synchronizedInteractionDocument, patch, interactionSelection || [])
-        const priorPixelOwner=kernel.contentIdentity
+        const priorPixelOwner=prepared?.priorPixelOwner??kernel.contentIdentity
         let localPose: Parameters<typeof settledPoseDamage>[0]
         if (transforms) {
           try { localPose = JSON.parse(await kernel.interaction_pose_damage(JSON.stringify(transforms))) }
           catch { localPose = undefined }
         }
         const nativePose = !!transforms && await kernel.apply_interaction_transforms(JSON.stringify(transforms))
+        const applyPatch = async () => {
+          if (prepared?.damage.status === 'rejected') throw prepared.damage.reason
+          return prepared?.damage.value ?? kernel.apply_document_patch_with_damage(request.documentPatch,
+            canGuard ? request.patchBaseReceipt : undefined, bitmapRotation ? patch : undefined)
+        }
         const damage = nativePose ? settledPoseDamage(localPose) : defer ? { full: true, bounds: null, reason: 'transient-translation' } :
-          JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch,
-            canGuard ? request.patchBaseReceipt : undefined, bitmapRotation ? patch : undefined).catch(error => {
+          JSON.parse(await applyPatch().catch(error => {
             if (canGuard) laneState.interactionDocument = priorAuthoredDocument
             throw error
           })) as {full:boolean;translationOnly?:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}
@@ -1475,6 +1632,7 @@ self.onmessage = (e) => {
         laneState.loadedDocument = ''
         laneState.loadedRevision = request.documentRevision
         laneState.compiledScene = undefined
+        bitmapCommitInstalled = !!prepared
         loadStage(4, patchAt)
       }
       if (request.documentRevision !== laneState.loadedRevision) throw new Error('渲染文档版本未同步')
@@ -1621,16 +1779,30 @@ self.onmessage = (e) => {
                   laneState.interactionDocument, displayFrame, settledPose.input)) {
               const driver = gpu.driver
               const frame = displayFrame, input = settledPose.input
-              const waiting = settledPose.native && settledPose.affine &&
-                driver.waitForQueuedFrame?.(frame, packetWait?.controller.signal)
-              if (waiting) {
-                await waiting
-                if (admitAction(liveChoice(false)) === 'cancel') throw Error('PREVIEW_CANCELLED')
-              }
               let snapshot: ReturnType<NonNullable<Driver['snapshotPresented']>>
-              if (gpu?.driver === driver && poseSession === settledPose && settledPose.input === input) {
-                try { snapshot = driver.snapshotPresented?.() }
+              const held = heldBitmapViewport
+              if (held && held.commit.id === request.id && held.session === settledPose &&
+                  held.frame === frame && held.driver === driver) {
+                try { snapshot = driver.captureInteractionViewport?.(frame) }
                 catch (error) { if (!isDisplayBudgetError(error)) throw error }
+                if (!snapshot) {
+                  heldBitmapViewport = undefined
+                  if (held.sample) reportDisplay(held.sample)
+                  driver.presentFrame?.(frame)
+                }
+              }
+              const composed = !!snapshot
+              if (!snapshot) {
+                const waiting = settledPose.native && settledPose.affine &&
+                  driver.waitForQueuedFrame?.(frame, packetWait?.controller.signal)
+                if (waiting) {
+                  await waiting
+                  if (admitAction(liveChoice(false)) === 'cancel') throw Error('PREVIEW_CANCELLED')
+                }
+                if (gpu?.driver === driver && poseSession === settledPose && settledPose.input === input) {
+                  try { snapshot = driver.snapshotPresented?.() }
+                  catch (error) { if (!isDisplayBudgetError(error)) throw error }
+                }
               }
               if (snapshot && equalValue(snapshot.frame.view, frame.view) && snapshot.frame.width === frame.width &&
                   snapshot.frame.height === frame.height && snapshot.frame.dpr === frame.dpr &&
@@ -1639,9 +1811,12 @@ self.onmessage = (e) => {
                 self.postMessage({ id: request.id, tile: { key: `commit:${laneState.loadedRevision}:${snapshot.gpuTile}`,
                   x: -view.x * dpr, y: -view.y * dpr, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
                   zoom: view.zoom * dpr, gutter: 0, committedViewport: true, viewportPreview: true,
-                  gpuTile: snapshot.gpuTile, backend, description: 'retained native viewport', cached: false } })
+                  gpuTile: snapshot.gpuTile, backend, description: composed ? 'retained native viewport composed at commit' : 'retained native viewport', cached: false } })
                 self.postMessage({ id: request.id, backend, milliseconds: performance.now() - start,
                   compileMs: 0, loadMs, retainedCommit: true })
+                // The window can reflect one more gesture submission as the
+                // tile arrives. Wait for its settled frame or a changed owner.
+                if (composed && held && heldBitmapViewport === held) held.published = true
                 return
               }
               if (snapshot) driver.releasePresented?.([snapshot.gpuTile])
@@ -2740,6 +2915,22 @@ self.onmessage = (e) => {
       terminalDiagnostics.flush()
       self.postMessage({id:request.id,...renderFailureEnvelope(error),...fields})
     } finally {
+      if (bitmapCommit?.prepared && !bitmapCommitInstalled) {
+        const prepared = await bitmapCommit.prepared
+        if (prepared?.damage.status === 'fulfilled') {
+          // A valid ordered mutation can finish before an unexpected render
+          // failure. Require a fresh snapshot before this lane accepts a delta.
+          const canvas = lanes.get('canvas')
+          canvas.loadedRevision = -1
+          canvas.loadedDocument = ''
+          canvas.authoredSnapshot = undefined
+          canvas.interactionDocument = canvas.synchronizedInteractionDocument = undefined
+          canvas.compiledScene = undefined
+          synchronizedAuthored.delete('canvas')
+        }
+      }
+      if (pendingBitmapCommit?.id === request.id) pendingBitmapCommit = undefined
+      if (heldBitmapViewport?.commit.id === request.id && !heldBitmapViewport?.published) resumeBitmapViewport()
       if (packetWait) packetWaits.delete(packetWait)
       terminalDiagnostics.record('queue-end',{requestId:request.id,durationMs:performance.now()-diagnosticStarted,resourceEpoch:gpu?.driver.resourceEpoch,completedResourceEpoch:gpu?.driver.completedResourceEpoch})
       if(terminalDiagnostics.enabled) for(const pass of gpu?.driver.stats?.().passTimings?.slice(0,16)||[]) terminalDiagnostics.record('filter',pass)
