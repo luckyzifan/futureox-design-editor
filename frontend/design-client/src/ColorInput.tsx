@@ -9,9 +9,15 @@ import { displayColorHex, validColor } from './color'
 import { PendingEditContext } from './pending-edit-context'
 import { commitPendingEdits } from './pending-edits'
 import { requestCanvasColor } from './canvas-color-picker'
-type ColorInputProps = { value: string; onChange: (value: string) => void; label: string; target?: SolidFillTarget }
+type ColorInputProps = { value: string; onChange: (value: string) => void; label: string; target?: SolidFillTarget; editableHex?: boolean }
 export function ColorInput(props: ColorInputProps) {
   return props.target ? <SolidFillColorInput target={props.target} value={props.value} label={props.label} /> : <LegacyColorInput {...props} />
+}
+const hexColor = /^#[0-9a-f]{6}$/i
+function normalizeHexEntry(input: string) {
+  const value = input.trim()
+  const hex = value.startsWith('#') ? value : `#${value}`
+  return hexColor.test(hex) ? hex.toUpperCase() : value
 }
 /** Legacy callback controls have no preview authority. Stroke/effect/mixed
  * adapters remain unchanged until their separately reviewed target slice. */
@@ -19,10 +25,12 @@ function LegacyColorInput({
   value,
   onChange,
   label,
+  editableHex,
 }: {
   value: string
   onChange: (value: string) => void
   label: string
+  editableHex?: boolean
 }) {
   const { locale, tr } = usePropertyText()
   const editor = useContext(PendingEditContext),
@@ -108,8 +116,12 @@ function LegacyColorInput({
     >
       {shown ? (
         <>
-          <input aria-label={label} type="color" value={shown.toLowerCase()} onFocus={() => diagnostic.event(InputPhase.focus)} onBlur={() => diagnostic.event(InputPhase.blur)} onChange={(e) => applyColor(e.target.value)} />
-          <span className="color-readout">{shown}</span>
+          <input aria-label={editableHex ? (locale === 'en' ? `${label} picker` : `${label} 色板`) : label} type="color" value={shown.toLowerCase()} onFocus={() => diagnostic.event(InputPhase.focus)} onBlur={() => diagnostic.event(InputPhase.blur)} onChange={(e) => applyColor(e.target.value)} />
+          {editableHex ? (
+            <DraftInput type="text" aria-label={label} className="color-readout" size={8} spellCheck={false}
+              value={shown} diagnosticFamily={InputFamily.color} normalize={normalizeHexEntry}
+              validate={next => hexColor.test(next)} onCommit={next => onChange(next.toLowerCase())} />
+          ) : <span className="color-readout">{shown}</span>}
         </>
       ) : (
         <DraftInput diagnosticFamily={InputFamily.color}
