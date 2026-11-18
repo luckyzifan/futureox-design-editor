@@ -23,11 +23,12 @@ const SHIPPED_CRATES = [
   'futureox-design-kernel',
   'futureox-design-agent',
 ]
+const WASM_TREE = { id: 'wasm32-unknown-unknown', target: 'wasm32-unknown-unknown', crates: ['futureox-design-kernel'] }
 const PLATFORM_TREES = [
   { id: 'x86_64-unknown-linux-gnu', target: 'x86_64-unknown-linux-gnu', crates: SHIPPED_CRATES },
   { id: 'aarch64-apple-darwin', target: 'aarch64-apple-darwin', crates: SHIPPED_CRATES },
   { id: 'x86_64-pc-windows-msvc', target: 'x86_64-pc-windows-msvc', crates: SHIPPED_CRATES },
-  { id: 'wasm32-unknown-unknown', target: 'wasm32-unknown-unknown', crates: ['futureox-design-kernel'] },
+  WASM_TREE,
 ]
 const NATIVE_BINARIES = [
   { path: 'sidecar/futureox-design-desktop-backend', crate: 'futureox-design-desktop-backend' },
@@ -141,17 +142,21 @@ function cargoTree(root, platform) {
 }
 
 let treeCache = null
-function loadCargoTrees(root) {
-  if (treeCache?.root === root) return treeCache.value
+function loadCargoTrees(root, nativeTargets) {
+  const trees = nativeTargets
+    ? [...nativeTargets.map(target => ({ id: target, target, crates: SHIPPED_CRATES })), WASM_TREE]
+    : PLATFORM_TREES
+  const key = JSON.stringify([root, trees.map(tree => tree.target)])
+  if (treeCache?.key === key) return treeCache.value
   const platforms = {}
   const errors = []
-  for (const platform of PLATFORM_TREES) {
+  for (const platform of trees) {
     const tree = cargoTree(root, platform)
     if (!tree.ok) errors.push({ platform: platform.id, error: tree.error })
     platforms[platform.id] = tree.ok ? [...tree.crates.values()] : []
   }
   const value = { platforms, errors }
-  treeCache = { root, value }
+  treeCache = { key, value }
   return value
 }
 
@@ -223,10 +228,10 @@ function crateNotices(root, crate) {
   return collectLicenseFiles(stored).map(file => noticeRecord(root, path.join(NOTICE_ROOT, crate.name, crate.version, file.relative).split(path.sep).join('/')))
 }
 
-function buildRust(root) {
+function buildRust(root, nativeTargets) {
   const lock = parseCargoLock(readFileSync(path.join(root, 'design-studio/Cargo.lock'), 'utf8'))
   const lockById = new Map(lock.map(item => [item.id, item]))
-  const { platforms, errors } = loadCargoTrees(root)
+  const { platforms, errors } = loadCargoTrees(root, nativeTargets)
   const merged = new Map()
   for (const [platform, crates] of Object.entries(platforms)) {
     for (const crate of crates) {
@@ -705,12 +710,81 @@ function classifyRelease(root, releaseDir, knownHashes) {
   }
 }
 
+function publishedNativeTargets(root, verification) {
+  const git = args => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+    if (result.status !== 0) throw new Error('Cannot read Git identity for the release source')
+    return result.stdout.trim()
+  }
+  const [commit, tree] = git(['rev-parse', 'HEAD', 'HEAD^{tree}']).split(/\r?\n/)
+  if (commit !== verification.sourceCommit || tree !== verification.sourceGitTree ||
+      git(['status', '--porcelain=v1', '--untracked-files=no'])) {
+    throw new Error('Release source must match the recorded Git commit and tree with clean tracked files')
+  }
+  const targets = verification.build?.nativeTargets
+  if (!Array.isArray(targets) || targets.length === 0 ||
+      targets.some(target => typeof target !== 'string' ||
+        !/^[a-z0-9_]+-[a-z0-9_-]+(?:\.\d+)*$/.test(target) || target.startsWith('wasm32-'))) {
+    throw new Error('Invalid native targets in the release verification record')
+  }
+  // cargo-zigbuild appends a glibc version to a Rust target triple.
+  return [...new Set(targets.map(target => target.replace(/(?:\.\d+)+$/, '')))]
+}
+
+export function verifyPublishedRuntime(packageReport, verification) {
+  const item = verification.packages?.[packageReport?.triple]
+  if (packageReport?.producedFrom !== 'release_package_bytes' || !item) {
+    throw new Error('No published runtime record matches the package')
+  }
+  const recordedHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+  if (typeof item.filename !== 'string' || !item.filename || !recordedHash(item.sha256)) {
+    throw new Error('Invalid installer identity in the release verification record')
+  }
+  const verify = (file, hash, name) => {
+    if (!recordedHash(hash) || !file || file.sha256 !== hash) {
+      throw new Error(`Published runtime hash mismatch for ${name}`)
+    }
+    return file.path
+  }
+  const files = packageReport.census.files
+  const archive = files.find(file => file.role === 'app-asar' && file.origin === 'file')
+  const matchedFiles = [verify(archive, item.appAsarSha256, 'app.asar')]
+  const kernels = files.filter(file => file.kind === 'wasm' && file.path.startsWith(`${archive.path}/renderer/`) &&
+    /^design_kernel_bg(?:-[a-zA-Z0-9_-]+)?\.wasm$/.test(path.posix.basename(file.path)))
+  if (!kernels.length) throw new Error('Published runtime is missing the design kernel WASM')
+  for (const kernel of kernels) matchedFiles.push(verify(kernel, item.kernelWasmSha256, kernel.path))
+
+  const resourcePrefix = path.posix.dirname(archive.path) + '/'
+  const expectedNative = Object.entries(item.nativeSha256 ?? {})
+  if (!expectedNative.length || expectedNative.some(([name]) => !/^(?:bin|sidecar)\/[a-zA-Z0-9._-]+$/.test(name))) {
+    throw new Error('Invalid native paths in the release verification record')
+  }
+  for (const [name, digest] of expectedNative) {
+    const packaged = files.find(file => file.path === resourcePrefix + name && file.role === 'binary')
+    matchedFiles.push(verify(packaged, digest, name))
+  }
+  for (const binary of packageReport.native) {
+    if (!matchedFiles.includes(binary.packagePath)) throw new Error(`Published runtime record omits ${binary.packagePath}`)
+  }
+  return {
+    version: verification.version,
+    sourceCommit: verification.sourceCommit,
+    sourceGitTree: verification.sourceGitTree,
+    platform: packageReport.triple,
+    rustTarget: packageReport.target,
+    recordedInstaller: { filename: item.filename, sha256: item.sha256 },
+    matchedFiles,
+  }
+}
+
 export function buildComponentInventory({
   root = repo,
   releaseDir = path.join(desktop, 'release'),
   electronDist = process.env.FUTUREOX_ELECTRON_DIST || null,
   skipCargo = false,
+  releaseVerification = null,
 } = {}) {
+  const nativeTargets = releaseVerification ? publishedNativeTargets(root, releaseVerification) : null
   const licenseInventory = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/licenses/inventory.json'), 'utf8'))
   const notices = licenseInventory.packages.map(item => {
     const file = path.join(root, 'frontend/design-client/public/licenses', item.file)
@@ -722,7 +796,7 @@ export function buildComponentInventory({
     .filter(file => file.endsWith('.mjs'))
     .map(file => ({ path: path.relative(root, file).split(path.sep).join('/'), sha256: sha256File(file) }))
   const javascript = buildJavaScript(root)
-  const rust = skipCargo ? { status: 'not_run', errors: [], crates: [], notDistributed: [], lockfilePackages: parseCargoLock(readFileSync(path.join(root, 'design-studio/Cargo.lock'), 'utf8')).length } : buildRust(root)
+  const rust = skipCargo ? { status: 'not_run', errors: [], crates: [], notDistributed: [], lockfilePackages: parseCargoLock(readFileSync(path.join(root, 'design-studio/Cargo.lock'), 'utf8')).length } : buildRust(root, nativeTargets)
   const assets = buildFontsAndPublic(root)
   const ffmpeg = buildFfmpeg(root)
   const electronVersion = JSON.parse(readFileSync(path.join(root, 'frontend/design-desktop/package.json'), 'utf8')).devDependencies.electron
@@ -771,6 +845,7 @@ export function buildComponentInventory({
       rust,
       javascript,
       declaredElectronVersion: electronVersion,
+      nativeTargets,
     })
     : located?.rejected
       ? {
@@ -806,6 +881,7 @@ export function buildComponentInventory({
       ? 'unsigned_release_package_bytes'
       : (release.present ? 'release_directory_hashed_not_a_signed_installer' : 'packaging_inputs_not_a_signed_release'),
     fromPackage,
+    ...(releaseVerification ? { publishedRuntime: verifyPublishedRuntime(fromPackage, releaseVerification) } : {}),
     releaseAcceptance: 'not_closed',
     formalSignedPackage: 'not_supplied',
     macElectronMetal: 'not_run',
@@ -914,18 +990,35 @@ export function supplementalNoticeProblems(packageReport) {
 
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (invoked) {
+  const option = name => {
+    const prefix = `${name}=`
+    const value = process.argv.find(arg => arg.startsWith(prefix))?.slice(prefix.length)
+    if (value === '') throw new Error(`Missing path for ${name}`)
+    return value
+  }
+  const root = path.resolve(option('--source-root') ?? repo)
+  const verificationPath = option('--release-verification')
+  const verificationBytes = verificationPath ? readFileSync(verificationPath) : null
+  const releaseVerification = verificationBytes ? JSON.parse(verificationBytes.toString('utf8')) : null
+  if (verificationPath && (!releaseVerification || typeof releaseVerification !== 'object' || Array.isArray(releaseVerification))) {
+    throw new Error('Expected a release verification record object')
+  }
   if (process.argv.includes('--write-notices')) {
-    const result = materializeCargoNotices(repo)
+    if (verificationPath) throw new Error('Cannot write notices during published release verification')
+    const result = materializeCargoNotices(root)
     console.log(JSON.stringify({ wrote: result.written.length, errors: result.errors }, null, 2))
     if (result.errors.length) process.exit(1)
   }
-  const releaseArg = process.argv.find(arg => arg.startsWith('--release-dir='))?.slice('--release-dir='.length)
-  const electronArg = process.argv.find(arg => arg.startsWith('--electron-dist='))?.slice('--electron-dist='.length)
   const report = buildComponentInventory({
-    releaseDir: releaseArg ?? path.join(desktop, 'release'),
-    electronDist: electronArg ?? process.env.FUTUREOX_ELECTRON_DIST ?? null,
+    root,
+    releaseDir: option('--release-dir') ?? path.join(root, 'frontend/design-desktop/release'),
+    electronDist: option('--electron-dist') ?? process.env.FUTUREOX_ELECTRON_DIST ?? null,
+    releaseVerification,
   })
-  const writeReport = process.argv.find(arg => arg.startsWith('--write-report='))?.slice('--write-report='.length)
+  if (report.publishedRuntime && verificationBytes) {
+    report.publishedRuntime.verificationRecordSha256 = sha256(verificationBytes)
+  }
+  const writeReport = option('--write-report')
   if (writeReport) writeFileSync(writeReport, `${JSON.stringify(report, null, 2)}\n`)
   const broken = report.notices.filter(item => !item.matchesInventory)
   const requirePackage = process.argv.includes('--require-package')
@@ -937,6 +1030,12 @@ if (invoked) {
       if (!verified.ok) packageProblems.push(`package byte verification failed (${verified.mismatches?.length ?? 0})`)
       const supplemental = supplementalNoticeProblems(report.fromPackage)
       if (supplemental.length) packageProblems.push(`supplemental license record mismatch: ${supplemental.slice(0, 8).join('; ')}`)
+      if (releaseVerification) {
+        const requiredCargo = new Set([report.fromPackage.target, WASM_TREE.target])
+        for (const error of report.rust.errors) {
+          if (requiredCargo.has(error.platform)) packageProblems.push(`could not resolve the recorded Cargo target ${error.platform}`)
+        }
+      }
       const blocking = (report.fromPackage.gaps ?? []).filter(gap => gap.kind !== 'signature' && gap.kind !== 'platform')
       if (blocking.length) {
         packageProblems.push(`license or classification gaps remain (${blocking.length}): ${blocking.slice(0, 12).map(item => `${item.kind}:${item.id}:${item.gap}`).join('; ')}`)
@@ -962,6 +1061,7 @@ if (invoked) {
     scope: report.scope,
     releaseAcceptance: report.releaseAcceptance,
     formalSignedPackage: report.formalSignedPackage,
+    publishedRuntime: report.publishedRuntime,
     macElectronMetal: report.macElectronMetal,
     signature: report.fromPackage?.signature ?? 'not_run',
     measurement: report.measurement,

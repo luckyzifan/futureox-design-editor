@@ -8,7 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ffmpegProvenance } from '../scripts/ffmpeg-provenance.mjs'
 import { DESKTOP_FLOW, buildDesktopFlowReport, inspectReleasePackage } from '../scripts/release-desktop-flow.mjs'
-import { asarFromFiles, buildComponentInventory, openAsar, readAsarEntries, supplementalNoticeProblems } from '../scripts/release-component-inventory.mjs'
+import { asarFromFiles, buildComponentInventory, openAsar, readAsarEntries, supplementalNoticeProblems, verifyPublishedRuntime } from '../scripts/release-component-inventory.mjs'
 import { assessColorFixtures, electronPackageLayout, inventoryFromPackageBytes, verifyPackageByteInventory } from '../scripts/release-package-bytes.mjs'
 import { hashPackageIdentity, stageMacElectronNotices, verifyDeclaredResourceList, writeAsarArchive, writeUnsignedResourceList } from '../scripts/release-package-resources.mjs'
 
@@ -147,13 +147,15 @@ test('renamed Windows and Linux packages identify their targets from the runtime
       await writeFile(path.join(bundle, 'resources/app.asar'), asarFromFiles([]))
       await writeFile(path.join(bundle, 'version'), '44.7.0\n')
       await writeFile(path.join(bundle, name), binary)
-      const report = location => inventoryFromPackageBytes({
+      const report = (location, nativeTargets) => inventoryFromPackageBytes({
         root, layout: electronPackageLayout(location), openAsar,
-        rust: { crates: [] }, javascript: { distributed: [], developmentOnly: [] },
+        rust: { crates: [] }, javascript: { distributed: [], developmentOnly: [] }, nativeTargets,
       })
       assert.equal(report(bundle).triple, expected)
       assert.equal(report(bundle).vendor.ffmpeg.gap, expected === 'linux-x64' ? 'ffmpeg_not_in_package' : null)
       if (name.endsWith('.exe')) {
+        assert.equal(report(bundle, ['x86_64-pc-windows-gnullvm']).target, 'x86_64-pc-windows-gnullvm')
+        assert.throws(() => report(bundle, ['x86_64-unknown-linux-gnu']), /one Rust target/)
         const mislabeled = path.join(directory, 'runtime-linux-arm64')
         await rename(bundle, mislabeled)
         assert.equal(report(mislabeled).triple, 'win32-x64')
@@ -166,6 +168,37 @@ test('renamed Windows and Linux packages identify their targets from the runtime
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
+})
+
+test('a published release record binds the packaged ASAR, WASM, and native files', () => {
+  const archive = 'resources/app.asar'
+  const wasm = archive + '/renderer/kernel/design_kernel_bg.wasm'
+  const binary = 'resources/bin/design-render.exe'
+  const [archiveHash, wasmHash, binaryHash, installerHash] = ['a', 'b', 'c', 'd'].map(digit => digit.repeat(64))
+  const report = {
+    producedFrom: 'release_package_bytes', triple: 'win32-x64', target: 'x86_64-pc-windows-gnullvm',
+    native: [{ packagePath: binary }],
+    census: { files: [
+      { path: archive, origin: 'file', role: 'app-asar', sha256: archiveHash },
+      { path: wasm, kind: 'wasm', origin: 'asar', sha256: wasmHash },
+      { path: binary, role: 'binary', origin: 'file', sha256: binaryHash },
+    ] },
+  }
+  const item = {
+    filename: 'futureox-design-windows-x64.zip', sha256: installerHash,
+    appAsarSha256: archiveHash, kernelWasmSha256: wasmHash,
+    nativeSha256: { 'bin/design-render.exe': binaryHash },
+  }
+  const record = { version: '0.0.0.1', packages: { 'win32-x64': item } }
+  const matched = verifyPublishedRuntime(report, record)
+  assert.equal(matched.rustTarget, 'x86_64-pc-windows-gnullvm')
+  assert.deepEqual(matched.matchedFiles, [archive, wasm, binary])
+  const altered = structuredClone(report)
+  altered.census.files[1].sha256 = archiveHash
+  assert.throws(() => verifyPublishedRuntime(altered, record), /hash mismatch.*design_kernel_bg\.wasm/)
+  altered.census.files[1].sha256 = wasmHash
+  altered.census.files[2].sha256 = wasmHash
+  assert.throws(() => verifyPublishedRuntime(altered, record), /hash mismatch.*design-render\.exe/)
 })
 
 test('vendored linux ffmpeg matches the rebuilt corresponding source', () => {
