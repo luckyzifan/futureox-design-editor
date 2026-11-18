@@ -1,20 +1,33 @@
 export type NumericUnit = 'number' | 'length' | 'angle' | 'percent' | 'time'
 
+function relativeOperation(text: string, shorthand: boolean) {
+  // Keep a bare negative number available for absolute coordinates. The
+  // other leading operators can use the current value without an equals sign.
+  return text.match(/^([+\-*/])=(.*)$/s) ?? (shorthand ? text.match(/^([+*/])(.*)$/s) : null)
+}
+
+export function isRelativeNumericExpression(source: string) {
+  return relativeOperation(source.trim(), true) !== null
+}
+
+export function propertyExpression(source: string, base: number, unit: NumericUnit = 'number') {
+  return numericExpression(source, base, unit, true)
+}
+
 /** Bounded arithmetic parser for property fields. Never executes JavaScript. */
-export function numericExpression(source: string, base: number, unit: NumericUnit = 'number'): number {
+export function numericExpression(source: string, base: number, unit: NumericUnit = 'number', relativeShorthand = false): number {
   if (!source.trim() || source.length > 256 || !Number.isFinite(base)) throw new Error('数值表达式无效')
-  const text = source.trim(), relative = text.match(/^([+\-*/])=(.*)$/s)
-  let input = relative ? relative[2] : text, at = 0, depth = 0, tokens = 0
+  const text = source.trim(), relative = relativeOperation(text, relativeShorthand)
+  const input = relative ? relative[2] : text
+  let at = 0, depth = 0, tokens = 0
   const factors: Record<string, number> = unit === 'length' ? { px: 1, pt: 96 / 72, pc: 16, in: 96, mm: 96 / 25.4, cm: 96 / 2.54 }
     : unit === 'angle' ? { deg: 1, '°': 1, rad: 180 / Math.PI, turn: 360 }
       : unit === 'time' ? { ms: 1, s: 1000 } : {}
   const skip = () => { while (/\s/.test(input[at] || '') && at < input.length) at++ }
   const finite = (value: number) => { if (!Number.isFinite(value)) throw new Error('数值不能为无限值'); return value }
   function primary(): number {
-    skip(); if (++tokens > 96 || ++depth > 16) throw new Error('数值表达式过长')
     let value: number
-    if (input[at] === '+' || input[at] === '-') { const sign = input[at++]; value = primary() * (sign === '-' ? -1 : 1) }
-    else if (input[at] === '(') { at++; value = sum(); skip(); if (input[at++] !== ')') throw new Error('括号不匹配') }
+    if (input[at] === '(') { at++; value = sum(); skip(); if (input[at++] !== ')') throw new Error('括号不匹配') }
     else {
       const match = input.slice(at).match(/^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+\-]?\d+)?/i)
       if (!match) throw new Error('需要数值')
@@ -30,11 +43,27 @@ export function numericExpression(source: string, base: number, unit: NumericUni
         at += suffix.length; value *= factor
       }
     }
-    depth--; return finite(value)
+    return finite(value)
+  }
+  function unary(): number {
+    skip()
+    if (++tokens > 96 || ++depth > 16) throw new Error('数值表达式过长')
+    try {
+      if (input[at] === '+' || input[at] === '-') return finite((input[at++] === '-' ? -1 : 1) * unary())
+      const value = primary()
+      skip()
+      if (input[at] !== '^') return value
+      at++
+      // A recursive exponent binds more tightly than multiplication and
+      // permits signed powers while keeping the same nesting bound.
+      return finite(value ** unary())
+    } finally {
+      depth--
+    }
   }
   function product(): number {
-    let value = primary(); skip()
-    while (input[at] === '*' || input[at] === '/') { const op = input[at++], right = primary(); value = finite(op === '*' ? value * right : value / right); skip() }
+    let value = unary(); skip()
+    while (input[at] === '*' || input[at] === '/') { const op = input[at++], right = unary(); value = finite(op === '*' ? value * right : value / right); skip() }
     return value
   }
   function sum(): number {

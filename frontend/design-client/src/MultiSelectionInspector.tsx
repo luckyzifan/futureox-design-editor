@@ -5,7 +5,7 @@ import {smartSelection,smartSpacing} from './smart-selection'
 import { AlignmentControls, FlipControls } from './AlignmentControls'
 import { CalculatedDimension, NumberField } from './fields'
 import { propertyUnitReader, styleUnitDescription, type PropertyUnitReader } from './property-units'
-import { numericExpression } from './numeric-expression'
+import { propertyExpression } from './numeric-expression'
 import { SelectionColorsPanel } from './SelectionColorsPanel'
 import type { Editor } from './engine'
 import { type DesignNode, type NodeBlend, type TextStyle, blendModes } from './model'
@@ -35,7 +35,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
   }
   const metric = (field: SelectionMetric, input: number | string) => update('修改所选图层属性', (node, units) => {
     const resolved = field === 'rotation' || field === 'opacity' ? undefined : units(node.id)
-    const value = typeof input === 'string' ? numericExpression(input, selectionMetric(node, field, editor.state.doc, resolved), field === 'opacity' ? 'percent' : field === 'rotation' ? 'angle' : 'length') : input
+    const value = typeof input === 'string' ? propertyExpression(input, selectionMetric(node, field, editor.state.doc, resolved), field === 'opacity' ? 'percent' : field === 'rotation' ? 'angle' : 'length') : input
     if (field === 'x' || field === 'y') setNodePosition(node, field, value, editor.state.doc, resolved)
     else if (field === 'rotation') rotateNode(node, nodeDegreesForFigmaAngle(value), selectionLocalBounds(editor.state.doc, node.id))
     else if (field === 'opacity') node.opacity = value / 100

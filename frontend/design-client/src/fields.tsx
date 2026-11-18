@@ -1,7 +1,7 @@
 import { formatAngleDegrees } from './selection-handles'
 import { usePropertyText } from './property-interface-messages'
 import { createInputDiagnostics, dimensionExpectation, numericInputFamily, InputPhase } from './input-diagnostics'
-import { numericExpression, propertyUnit, type NumericUnit } from './numeric-expression'
+import { propertyExpression, propertyUnit, type NumericUnit } from './numeric-expression'
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { PendingEditContext } from './pending-edit-context'
 import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
@@ -72,7 +72,7 @@ export function NumberField({ label, value, onChange, resolveInput, min = -1e6, 
     let resolved: ReturnType<NonNullable<typeof resolveInput>>, reason = ''
     try {
       resolved = resolveInput?.(draft.current, original.current)
-      v = resolved?.value ?? numericExpression(draft.current, original.current, unit)
+      v = resolved?.value ?? propertyExpression(draft.current, original.current, unit)
     } catch (error) {
       v = NaN
       if (resolveInput && error instanceof Error) reason = error.message
@@ -190,7 +190,7 @@ export function NumberField({ label, value, onChange, resolveInput, min = -1e6, 
           draftRevision.current++
           diagnostic.start()
           try {
-            const next = Math.min(max, Math.max(min, numericExpression(draft.current, original.current, unit) + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : e.altKey ? .1 : 1)))
+            const next = Math.min(max, Math.max(min, propertyExpression(draft.current, original.current, unit) + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : e.altKey ? .1 : 1)))
             draft.current = shown(next); dirty.current = true; e.currentTarget.value = draft.current; changed()
           } catch { setValidity('请先修正数值表达式') }
         }
