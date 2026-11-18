@@ -695,6 +695,43 @@ test.each([false, true])('a masked viewport prepares terminal rotation during th
   }
 })
 
+test('release can cancel a superseded bitmap packet without rebuilding its pose lease', async () => {
+  const w = await affineWorker(true, true, 48)
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: { x: 0, y: 0, zoom: 1 }, width: 48, height: 16, dpr: 1, items: [],
+  } })
+  const { RenderKernel } = await import('./render-kernel')
+  const original = RenderKernel.prototype.prepare_gpu_scene
+  const sample = (sequence: number) => w.messages.find(m =>
+    m.presentation?.residentSample?.sequence === sequence)?.presentation.residentSample
+  let unblock!: () => void
+  const gate = new Promise<void>(resolve => { unblock = resolve })
+  const preparation = vi.spyOn(RenderKernel.prototype, 'prepare_gpu_scene').mockImplementationOnce(async function (
+    this: InstanceType<typeof RenderKernel>, options, signal, curves,
+  ) {
+    signal?.addEventListener('abort',unblock,{once:true})
+    try {
+      await gate
+      if(signal?.aborted)throw Error('PREVIEW_CANCELLED')
+      return original.call(this,options,signal,curves)
+    } finally { signal?.removeEventListener('abort',unblock) }
+  })
+  try {
+    w.send(w.pose(1))
+    await vi.waitFor(() => expect(preparation).toHaveBeenCalledOnce())
+    const terminal = { ...w.pose(2), terminal: true }
+    w.send(terminal)
+    expect(preparation.mock.calls[0][1]?.aborted).toBe(true)
+    await vi.waitFor(() => expect(sample(2)?.nativePose).toBe(true))
+    expect(sample(1)).toBeUndefined()
+    expect(state.replacements).toEqual([77])
+    expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(terminal.transforms['image-0'])
+  } finally {
+    unblock()
+    await vi.waitFor(() => expect(sample(2)).toBeDefined())
+  }
+})
+
 test.each([[true, true], [true, false], [false, true], [false, false]])(
   'a declined native pose keeps its lease only when it covers the display (affine=%s, full=%s)', async (affine, coversDisplay) => {
   const w = await affineWorker(affine,true)

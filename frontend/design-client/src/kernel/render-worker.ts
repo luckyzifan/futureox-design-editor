@@ -459,8 +459,8 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
     gpu!.driver.presentFrame?.(displayFrame)
   }
 }
-// The release input can prepare one native packet while a preceding pose
-// uses the GPU. The queue keeps ownership of any mutation until it drains.
+// While an old pose prepares or uses the GPU, the release input can revoke
+// obsolete preparation or prepare one fresh packet behind the GPU fence.
 let beginTerminalPreparation: ((next:ResidentPose)=>void) | undefined
 function waitingForPoseSubmission(pose:ResidentPose) {
   return !pose.terminal && poseSession?.slot === pose.slot && poseSession.native === true &&
@@ -649,8 +649,20 @@ function schedulePose(){
             }
             if(!current())continue
             const compileStarted=performance.now()
-            const compile=()=>compilePacket(kernel,session.options,session.controller.signal,bitmapTerminal)
-            packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
+            const superseded = bitmapTerminal && !pose.terminal ? new AbortController() : undefined
+            const signal = superseded ? AbortSignal.any([session.controller.signal, superseded.signal]) : session.controller.signal
+            if (superseded) beginTerminalPreparation = terminal => {
+              if(terminalPoseDisposition(pose,terminal)==='changed')superseded.abort()
+            }
+            try {
+              const compile=()=>compilePacket(kernel,session.options,signal,bitmapTerminal)
+              packet=await (preparation ? preparation.withPoseTransport(compile) : compile())
+            } catch(error) {
+              // The next absolute pose still owns this lease and reapplies
+              // its transform after the cancelled native request drains.
+              if(superseded?.signal.aborted && String(error).includes('PREVIEW_CANCELLED'))continue
+              throw error
+            } finally { beginTerminalPreparation=undefined }
             if(!current())continue
             poseCompileMs=performance.now()-compileStarted
           }
