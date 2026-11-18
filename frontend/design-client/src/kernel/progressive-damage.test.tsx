@@ -2303,6 +2303,40 @@ test('a large pan during an active shrink sample draws the live camera, not the 
     .some((item: any) => item.tile.gpuTile === 61)).toBe(false)
 })
 
+test('releasing a pan after shrink yields the pre-pan capture that misses the final viewport', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '0')
+  worker.dynamicPlan = true
+  const start = { x: 0, y: 0, zoom: 32 }
+  const h = harness(planTiles({ x: 0, y: 0, width: 32, height: 16 }, 32))
+  h.render({ view: start })
+  await flushRasterWork()
+  const before = worker.calls.length
+  const shrunk = { x: 0, y: 0, zoom: .25 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: shrunk } }
+  h.render({ view: shrunk })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  const prepan = worker.calls[before]
+  expect(prepan.options.view).toEqual(shrunk)
+
+  const panned = { ...shrunk, x: -220 }
+  h.render({ view: panned, panGestureActive: true })
+  expect(prepan.signal.aborted).toBe(false)
+  worker.navigation = { active: false, suspended: false, sample: undefined }
+  h.render({ view: panned, panGestureActive: false })
+  expect(prepan.signal.aborted).toBe(true)
+  expect(worker.calls).toHaveLength(before + 1)
+
+  const close = vi.fn()
+  prepan.resolve({ bitmap: { close }, gpuTile: 160 })
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
+  expect(close).toHaveBeenCalledOnce()
+  expect(worker.calls[before + 1].options.view).toEqual(panned)
+})
+
 test('a long pan while the zoom sample still lags draws the live camera', async () => {
   vi.stubGlobal('WebGL2RenderingContext', class {})
   vi.stubGlobal('requestAnimationFrame', () => 1)

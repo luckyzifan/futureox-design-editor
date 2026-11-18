@@ -138,6 +138,9 @@ export type NavigationCoverageFlight<T> = {
    * ratio. Keeping it holds the only raster channel on a bitmap that can
    * only be stretched. A delivered tile and a still-usable capture stay. */
   cancelStaleZoomIn(view: CanvasCamera, maximumRatio?: number): boolean
+  /** At pointer release, keep only a same-scale capture that can serve the
+   * entire final viewport. The replacement still waits for the work fence. */
+  cancelShiftedPan(view: CanvasCamera, width: number, height: number): boolean
   /** Yield an undelivered capture once most of the newest viewport is outside
    * it. A delivered tile and a capture that still covers the view stay.
    * sameZoomOnly leaves a zoom sample running while its picture is still on
@@ -179,6 +182,12 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
       if (!Number.isFinite(view.zoom) || view.zoom <= 0 || !Number.isFinite(maximumRatio) || maximumRatio < 1) return false
       if (!(view.zoom > source.zoom * maximumRatio)) return false
       return cancelPending()
+    },
+    cancelShiftedPan: (view, width, height) => {
+      const source = pending
+      if (!source || source.zoom !== view.zoom || flight.tile !== undefined) return false
+      const overlap = viewportIntersection(source.bounds, view, width, height)
+      return !!overlap && overlap.area < overlap.targetArea * (1 - 1e-9) && cancelPending()
     },
     cancelObsoleteZoomOut: (view, width, height, minimumRatio = 1) => {
       const source = pending
