@@ -37,6 +37,7 @@ function harness() {
     useRef(init: any) { const i = cursor++; return slots[i] ??= { current: init } },
     useMemo(fn: () => any) { cursor++; return fn() },
     useSyncExternalStore(_: any, snapshot: () => any) { cursor++; return snapshot() },
+    useImperativeHandle(ref: unknown) { cursor++; expect(ref).toBeUndefined() },
     useLayoutEffect(fn: () => any, deps?: any[]) {
       const i = cursor++, old = slots[i]
       if (!old || !deps || deps.some((v, j) => !Object.is(v, old.deps[j]))) {
@@ -238,7 +239,7 @@ test('smart-snap candidates preserve scene order and exclude selected subtrees w
   c.tree.props.onPointerDown(c.event(start.x, start.y))
   expect(editor.interactionActive).toBe(true); expect(editor.state.selection).toEqual(moving)
   selectionProbes = 0
-  const snap = vi.spyOn(smartGuides, 'smartGuidesSnapWorld'), started = performance.now()
+  const snap = vi.spyOn(smartGuides, 'createSmartGuidesIndex'), started = performance.now()
   c.tree.props.onPointerMove(c.event(start.x + 20, start.y + 10)); c.flush()
   const durationMs = performance.now() - started, probes = selectionProbes
   report('smart-snap-sample', { selected: moving.length, nodes: Object.keys(before.nodes).length, durationMs, selectionProbes: probes })
@@ -247,9 +248,11 @@ test('smart-snap candidates preserve scene order and exclude selected subtrees w
   // ordering, which must not be changed when replacing membership with a Set.
   const expected = entries.filter(entry => !moving.includes(entry.id) && !entry.ancestors.some(id => moving.includes(id))).map(entry => entry.bounds)
   expected.push({ x: 120, y: 0, width: 0, height: 1 }, { x: 0, y: 250, width: 1, height: 0 })
-  expect(snap.mock.calls[0][2]).toEqual(expected)
+  expect(snap.mock.calls[0][1]).toEqual(expected)
   expect(editor.state.doc).not.toBe(before)
-  c.tree.props.onPointerCancel(c.event(start.x + 20, start.y + 10))
+  c.tree.props.onPointerMove(c.event(start.x + 30, start.y + 15)); c.flush()
+  expect(snap).toHaveBeenCalledOnce()
+  c.tree.props.onPointerCancel(c.event(start.x + 30, start.y + 15))
   expect(editor.state.doc).toBe(before)
   expect(probes).toBe(0)
 })
