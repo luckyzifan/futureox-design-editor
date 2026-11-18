@@ -32,7 +32,7 @@ import {
 } from './model'
 import type { ImportedDesign } from './import-svg'
 import { emptySystem } from './design-system'
-import { hasFigAutomaticLineHeight, importFigTextExtras, importFigTextRuns } from './import-fig-text'
+import { hasFigAutomaticLineHeight, importFigTextExtras, importFigTextRuns, type FigInstanceTextLayout } from './import-fig-text'
 import { applyFigFacet, assertFigStructure, figNodeKind, figNote, importFigPrototype, parkFigReceipts, type FigReceipts } from './import-fig-nodes'
 import { defaultColorSettings } from './color'
 import { figImageAdjust, figImageTile } from './import-fig-image'
@@ -507,7 +507,9 @@ export function mapFigBlurEffect(
   return decision
 }
 
-export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign & { backend: 'typescript-fig' } {
+export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign & {
+  backend: 'typescript-fig'; instanceTextLayouts: FigInstanceTextLayout[]
+} {
   const { data, files } = decodeFig(bytes),
     doc = blank(name),
     warnings = boundedImportWarnings(),
@@ -1044,7 +1046,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     warnings.add(`${label}已按原文件的轮廓导入，可编辑矢量外形`)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
-  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts, effectsOf)
+  const instanceTextLayouts = importFigComponents(doc, records, ids, toPaint, strokesOf, warnings, receipts, effectsOf)
   // The shared model's direct mask owns its whole container. Native FIG masks
   // only following siblings. Explicit identity groups keep all original node
   // IDs, local coordinates, order and component override keys intact.
@@ -1114,14 +1116,18 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   if (hasSchema20Features(doc)) doc.schemaVersion = Math.max(20, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasGradientBlur(doc)) doc.schemaVersion = Math.max(9, doc.schemaVersion) as typeof doc.schemaVersion
   retainFigTextBoxes(doc)
-  return { document: doc, backend: 'typescript-fig', ...warnings.result() }
+  return { document: doc, backend: 'typescript-fig', instanceTextLayouts, ...warnings.result() }
 }
 
 /** Font resolution may replace resource IDs before the imported document is
  * adopted. Capture the reference again after that import-only substitution. */
 export function retainFigTextBoxes(doc: DesignDocument) {
   const layouts: Record<string, object> = {}
+  const previous = doc.designSystem?.sketchContainers?.textSourceLayouts as
+    Record<string, { instances?: object }> | undefined
   for (const node of Object.values(doc.nodes)) {
+    const inherited = previous?.[node.id]
+    if (node.instance && inherited?.instances) layouts[node.id] = inherited
     if (node.kind !== 'text' || (node.sizing?.width !== 'hug' && node.sizing?.height !== 'hug')) continue
     const { text, fontSize, textStyle, textRuns = [], sizing, width, height, transform } = node
     layouts[node.id] = { format: 'fig', signature: { text, fontSize, textStyle, textRuns, sizing }, width, height, transform }

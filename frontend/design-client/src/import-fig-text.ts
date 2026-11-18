@@ -1,5 +1,16 @@
 import type { ImportWarningSink } from './import-warnings'
-import type { DesignNode, TextRun } from './model'
+import type { DesignNode, Matrix, TextRun } from './model'
+
+export type FigInstanceTextLayout = {
+  owner: string
+  path: string
+  template: string
+  name: string
+  digest: string
+  width: number
+  height: number
+  transform: Matrix
+}
 
 const weight = (style: string | undefined) => {
   const name = (style || '').toLowerCase().replace(/[\s_-]/g, '')
@@ -54,6 +65,16 @@ function digestHex(bytes: unknown): string | undefined {
 }
 function fontKey(font: any) {
   return [font?.family, font?.style].filter(Boolean).join('\0').toLowerCase()
+}
+/** Verify that an occurrence measured the same declared face and text range. */
+export function figInstanceTextFace(record: any, measured: any, text: string) {
+  if (!record?.fontName?.family || !Array.isArray(measured?.fontMetaData) ||
+      measured.fontMetaData.length !== 1 || !Array.isArray(measured.baselines) ||
+      measured.baselines[0]?.firstCharacter !== 0 || measured.baselines.at(-1)?.endCharacter !== text.length) return
+  const face = measured.fontMetaData[0]
+  const name = fontName(record.fontName)
+  const digest = digestHex(face?.fontDigest)
+  if (name && digest && fontKey(face?.key) === fontKey(record.fontName)) return { name, digest }
 }
 /** SHA-1 values FIG stored on the measured face. Empty when the file has none. */
 function figFontDigests(record: any) {

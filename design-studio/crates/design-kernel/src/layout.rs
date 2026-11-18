@@ -1072,7 +1072,9 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
         for id in &ordered {
             let n = &doc.nodes[id];
             if n.kind != "text" { continue; }
-            let Some(source) = layouts.get(id) else { continue; };
+            let Some(source) = layouts.get(id).or_else(|| n.instance_origin.as_deref()
+                .and_then(|origin| crate::interop::fig_instance_text_layout(layouts, origin)))
+            else { continue; };
             if source.get("format").and_then(serde_json::Value::as_str) != Some("fig") { continue; }
             let width = source.get("width").and_then(serde_json::Value::as_f64);
             let height = source.get("height").and_then(serde_json::Value::as_f64);
