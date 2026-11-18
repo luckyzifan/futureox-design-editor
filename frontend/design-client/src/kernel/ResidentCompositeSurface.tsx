@@ -22,6 +22,7 @@ import {allowIncompletePanPreview,type PanPreviewBacking} from './pan-preview'
 import {zoomOutBeyondPreview} from './tile-preview'
 import { allowsReducedSampling } from './render-quality'
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
+import { keepReversibleZoomBasis } from './navigation-backing'
 
 const activeAffineGesture = (interaction?: InteractionProps) =>
   !!interaction?.active && !!interaction.gestureKind && interaction.gestureKind !== 'move'
@@ -63,6 +64,7 @@ export function ResidentCompositeSurface(props: {
   presentation: PresentedFrame | null
   allowPanPreview?:boolean
   preserveZoomBasis?: boolean
+  zoomInputActive?: boolean
   overview?: import('../model').Bounds
   overviewTiles?: readonly (import('./tile-cache').RasterTile & {gpuTile?:number})[]
   overviewPresentation?: RefObject<ProjectedPageOverview | undefined>
@@ -93,6 +95,7 @@ export function ResidentCompositeSurface(props: {
   const inputTrace = useRef<{ sequence: number; latency: number }[]>([])
   const inputScope=useRef(crypto.randomUUID()),inputOwner=useRef('')
   const lastFrameSignature = useRef('')
+  const deferredZoomSubmission = useRef(false)
   const presentation = useRef(new ResidentPresentation())
   const actualPresentation=useRef<ResidentAcknowledgement|undefined>(undefined)
   const acceptedChrome=useRef<{source:PresentedFrame;actual:ResidentAcknowledgement;client:KernelClient}|undefined>(undefined)
@@ -199,7 +202,6 @@ export function ResidentCompositeSurface(props: {
     // subset would clear the previous page between arrivals. Keep its owners
     // until every active replacement source has reached the display device.
     if (moved && moving?.mode !== 'live-kernel' && items.some(item => item.active && !item.tile.gpuTile)) return
-    let presentationId: string | undefined
     const scopedOverlay = p.presentation && p.overlay &&
       p.overlay.pageId === p.presentation.pageId && p.overlay.epoch === p.presentation.epoch ? p.overlay : undefined
     // A retained capture can replay only the complete chrome snapshot that was
@@ -226,66 +228,81 @@ export function ResidentCompositeSurface(props: {
       // camera or owner ends the hold through the ordinary guarded submission.
       return
     }
-    try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay, gpuOverlayIdentity: overlay ? scopedOverlay?.uiIdentity : undefined,
-      gpuSelectionIdentity: overlay?.selection ? scopedOverlay?.selectionIdentity : undefined,
-      gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
-    catch (error) { p.onFailure(String(error)); return }
-    // The white camera-preview fill is a same-zoom pan strip. Using it while
-    // the live zoom is a 3200% return clears the only picture on screen.
-    const heldZoom=acceptedCamera.current?.actual.view.zoom??actualPresentation.current?.view.zoom??0
-    const panPreview=!zoomOutBeyondPreview(heldZoom,p.view.zoom)&&!moved&&allowIncompletePanPreview({allowed:p.allowPanPreview &&
-      (atomicCanvas.current || actualPresentation.current?.view.zoom===p.view.zoom),frame:p.presentation,
-      document:p.sourceDocument,revision:p.contentRevision,pageId:p.pageId,width:p.width,height:p.height,dpr:p.dpr,items:p.items,backing:p.panBacking})
-    const frame: ResidentFrame = {
-      presentationId,
-      overlayPoseSlot:overlay?capturedOverlay?.overlayPoseSlot:undefined,
-      terminalQuality: !moved && !panPreview && p.client.presentationDiagnosticsEnabled() ? p.terminalQuality : undefined,
-      overlay,
-      view: p.view,
-      width: p.width,
-      height: p.height,
-      dpr: p.dpr,
-      interaction: !!moved,
-      gestureGuides:!!p.interaction?.active && p.interaction.gestureKind === 'move',
-      allowEmpty: !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
-      cameraPreview: panPreview ? { anchor: p.items.find(item => item.tile.gpuTile)?.tile.gpuTile || 0 } : undefined,
-      allowBackground: !!moved && moving === pageTranslation.current || !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
-        (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
-        (i.tile as unknown as {revision?:number}).revision===p.contentRevision),
-      backgroundTranslation: moved && moving === pageTranslation.current ? pageTranslation.current?.backgroundTranslation : undefined,
-      backgroundBoard: moved && moving === pageTranslation.current ? pageTranslation.current?.backgroundBoard : undefined,
-      linearBlend:
-        !!moved && moving?.mode === 'retained-layers' && !!p.interaction?.document.colorManagement,
-      backgroundLinear: moving?.backgroundLinear,
-      input: moved&&moving ? {...moving.presentedInput,owner} : undefined,
-      items: items
-        .filter((item) => item.tile.gpuTile)
-        .map(({ tile, ...item }) => {
-          return {
-            ...item,
-            tile: {
-              key: tile.key,
-              serial: tile.serial,
-              gpuTile: tile.gpuTile!,
-              x: tile.x,
-              y: tile.y,
-              width: tile.width,
-              height: tile.height,
-              zoom: tile.zoom,
-              phaseX: tile.phaseX,
-              phaseY: tile.phaseY,
-            },
-          }
-        }),
-    }
-    // Pointer updates do not change a dependent snapshot until the next
-    // sample completes. Do not fill the GPU queue with identical old pixels.
-    const baseSignature = residentFrameSignature(frame)
-    const signature = p.reuseSequence ? `${baseSignature}/reuse:${p.reuseSequence}` : baseSignature
-    if (signature !== lastFrameSignature.current) {
-      lastFrameSignature.current = signature
-      p.client.present(frame)
-      p.onCompositeItems?.(items)
+    // The accepted bitmap already covers this camera. Skip a submission that
+    // would be discarded, keeping current selection ownership and measure UI.
+    const deferNarrowFrame = !moved && p.preserveZoomBasis && p.zoomInputActive && projected?.active && projected.allowed &&
+      !overlay?.measurements?.length &&
+      camera && camera.source.gpuSelectionIdentity === (overlay?.selection ? scopedOverlay?.selectionIdentity : undefined) &&
+      keepReversibleZoomBasis(camera.actual, { view: p.view, width: p.width, height: p.height,
+        dpr: p.dpr, interaction: false, ids: [] }, p, cameraProjection.current?.history.completeFrame)
+    if (deferNarrowFrame) deferredZoomSubmission.current = true
+    else {
+      if (deferredZoomSubmission.current) {
+        deferredZoomSubmission.current = false
+        lastFrameSignature.current = ''
+      }
+      let presentationId: string | undefined
+      try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay, gpuOverlayIdentity: overlay ? scopedOverlay?.uiIdentity : undefined,
+        gpuSelectionIdentity: overlay?.selection ? scopedOverlay?.selectionIdentity : undefined,
+        gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
+      catch (error) { p.onFailure(String(error)); return }
+      // The white camera-preview fill is a same-zoom pan strip. Using it while
+      // the live zoom is a 3200% return clears the only picture on screen.
+      const heldZoom=acceptedCamera.current?.actual.view.zoom??actualPresentation.current?.view.zoom??0
+      const panPreview=!zoomOutBeyondPreview(heldZoom,p.view.zoom)&&!moved&&allowIncompletePanPreview({allowed:p.allowPanPreview &&
+        (atomicCanvas.current || actualPresentation.current?.view.zoom===p.view.zoom),frame:p.presentation,
+        document:p.sourceDocument,revision:p.contentRevision,pageId:p.pageId,width:p.width,height:p.height,dpr:p.dpr,items:p.items,backing:p.panBacking})
+      const frame: ResidentFrame = {
+        presentationId,
+        overlayPoseSlot:overlay?capturedOverlay?.overlayPoseSlot:undefined,
+        terminalQuality: !moved && !panPreview && p.client.presentationDiagnosticsEnabled() ? p.terminalQuality : undefined,
+        overlay,
+        view: p.view,
+        width: p.width,
+        height: p.height,
+        dpr: p.dpr,
+        interaction: !!moved,
+        gestureGuides:!!p.interaction?.active && p.interaction.gestureKind === 'move',
+        allowEmpty: !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
+        cameraPreview: panPreview ? { anchor: p.items.find(item => item.tile.gpuTile)?.tile.gpuTile || 0 } : undefined,
+        allowBackground: !!moved && moving === pageTranslation.current || !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
+          (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
+          (i.tile as unknown as {revision?:number}).revision===p.contentRevision),
+        backgroundTranslation: moved && moving === pageTranslation.current ? pageTranslation.current?.backgroundTranslation : undefined,
+        backgroundBoard: moved && moving === pageTranslation.current ? pageTranslation.current?.backgroundBoard : undefined,
+        linearBlend:
+          !!moved && moving?.mode === 'retained-layers' && !!p.interaction?.document.colorManagement,
+        backgroundLinear: moving?.backgroundLinear,
+        input: moved&&moving ? {...moving.presentedInput,owner} : undefined,
+        items: items
+          .filter((item) => item.tile.gpuTile)
+          .map(({ tile, ...item }) => {
+            return {
+              ...item,
+              tile: {
+                key: tile.key,
+                serial: tile.serial,
+                gpuTile: tile.gpuTile!,
+                x: tile.x,
+                y: tile.y,
+                width: tile.width,
+                height: tile.height,
+                zoom: tile.zoom,
+                phaseX: tile.phaseX,
+                phaseY: tile.phaseY,
+              },
+            }
+          }),
+      }
+      // Pointer updates do not change a dependent snapshot until the next
+      // sample completes. Do not fill the GPU queue with identical old pixels.
+      const baseSignature = residentFrameSignature(frame)
+      const signature = p.reuseSequence ? `${baseSignature}/reuse:${p.reuseSequence}` : baseSignature
+      if (signature !== lastFrameSignature.current) {
+        lastFrameSignature.current = signature
+        p.client.present(frame)
+        p.onCompositeItems?.(items)
+      }
     }
     // Publish the requested camera before any optional GPU-to-browser copy.
     if (overviewHistory && p.overviewTiles)
@@ -414,7 +431,8 @@ export function ResidentCompositeSurface(props: {
           if (bitmap && canProject && nav && previous && actual.preview && target.overview &&
               target.view.zoom < previous.view.zoom && !nav.history.canAdvance(previous,actual,target,target.overview)) return
           if (bitmap && keepCompleteCameraBacking(previous,actual,canProject,
-              nav?.zooming,target,nav?.history.completeFrame,target.preserveZoomBasis)) return
+              nav?.zooming || target.preserveZoomBasis && target.zoomInputActive,
+              target,nav?.history.completeFrame,target.preserveZoomBasis)) return
           if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,el,bitmap);bitmapApplied=true}
           actualPresentation.current=actual
           acceptedChrome.current=source?.gpuOverlay&&actual.gpuOverlay?{source,actual,client:p.client}:undefined
@@ -562,6 +580,8 @@ export function ResidentCompositeSurface(props: {
     props.overlay,
     props.presentation,
     props.allowPanPreview,
+    props.preserveZoomBasis,
+    props.zoomInputActive,
     props.panBacking,
   ])
   return (

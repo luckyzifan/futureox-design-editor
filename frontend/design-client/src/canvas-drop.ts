@@ -18,10 +18,23 @@ export function createCanvasDropIndex(doc: DesignDocument, page: string): Canvas
 }
 /** Frame-local geometry handles rotation. The optional gesture index avoids a
  * full scene walk on every pointermove; it never caches camera-space pixels. */
-export function canvasDropFrame(doc: DesignDocument, page: string, roots: readonly string[], point: Point, force = false, index?: CanvasDropIndex): string | undefined {
+export function canvasDropFrame(doc: DesignDocument, page: string, roots: readonly string[], point: Point, force = false, index?: CanvasDropIndex,
+  pruneClippedRoots = false): string | undefined {
   const indexed=index?.document===doc.id&&index.page===page?index:createCanvasDropIndex(doc,page)
   const moving=new Set(roots),parents=indexed.parents
+  let lastRoot: string | undefined, outsideRoot = false
   for(const entry of indexed.frames) {
+    if (pruneClippedRoots) {
+      // The painter-ordered index keeps each page root's entries consecutive.
+      // Its own clip rejects every nested drop target outside it.
+      const rootId = entry.ancestors[0] ?? entry.id
+      if (rootId !== lastRoot) {
+        lastRoot = rootId
+        const root = doc.nodes[rootId]
+        outsideRoot = moving.has(rootId) || !!root?.clip && !kernelFillWorld(root, point, worldMatrix(doc, rootId, parents), 1)
+      }
+      if (outsideRoot) continue
+    }
     const n=doc.nodes[entry.id]
     if(!n || moving.has(n.id) || entry.ancestors.some(id=>moving.has(id)))continue
     const path=interactivePath(doc,page,n.id,false,parents)

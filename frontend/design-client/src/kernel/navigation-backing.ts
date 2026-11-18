@@ -76,6 +76,18 @@ function missingOnPage(frame: ResidentAcknowledgement, target: CameraWindow, bou
   return missing(frame,target)?.flatMap(hole => intersect(hole,page) ?? [])
 }
 
+/** A covering picture can follow the new camera in the browser. Keep it if
+ * a narrower result would discard pixels needed on wheel reversal. */
+export function keepReversibleZoomBasis(backing: ResidentAcknowledgement, next: ResidentAcknowledgement,
+  target: CameraWindow, history?: CameraWindow) {
+  if (backing.preview || backing.interaction || next.interaction || next.view.zoom <= backing.view.zoom ||
+      !previewCameraScaleWithinLimit(backing.view.zoom, target.view.zoom) ||
+      !contains(project(backing, target), screen(target))) return false
+  const lost = missing(next, backing)
+  const wider = history && project(history, backing)
+  return !lost || lost.some(hole => !wider || !contains(wider, hole))
+}
+
 export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | undefined, next: ResidentAcknowledgement,
   allowed: boolean, zooming = false, target?: CameraWindow, history?: CameraWindow, preserveZoomBasis = false) {
   if (!allowed || !backing || backing.preview || backing.interaction || next.interaction) return false
@@ -98,15 +110,7 @@ export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | und
   if (!target) return !!next.preview || zooming && next.view.zoom > backing.view.zoom
   const old = intersect(screen(target), project(backing, target))
   if (!old) return false
-  if (preserveZoomBasis && zooming && next.view.zoom > backing.view.zoom &&
-      previewCameraScaleWithinLimit(backing.view.zoom, target.view.zoom) && contains(old, screen(target))) {
-    // A sharper inward crop may cover the current pose while losing pixels
-    // needed on wheel reversal. Keep the covering image while the wheel is
-    // active unless a proved wider backing already covers those pixels.
-    const lost = missing(next, backing)
-    const wider = history && project(history, backing)
-    if (!lost || lost.some(hole => !wider || !contains(wider, hole))) return true
-  }
+  if (preserveZoomBasis && zooming && keepReversibleZoomBasis(backing, next, target, history)) return true
   const fallback = history && project(history, target)
   if (next.preview) {
     const holes = missing(next, target)
