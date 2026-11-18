@@ -131,6 +131,7 @@ function variableKindForPath(path: string): Variable['kind'] {
   throw new Error(`Unsupported variable binding path: ${path}`)
 }
 const styleFields = { fills: 'paint', strokes: 'paint', textStyle: 'text', effects: 'effect' } as const
+const styleFieldSchema = { enum: Object.keys(styleFields) }
 function styleField(value: unknown): keyof typeof styleFields {
   const field = key(value, 'field')
   if (!Object.hasOwn(styleFields, field)) throw new Error(`Unsupported style field: ${field}`)
@@ -776,14 +777,14 @@ export const designSystemExtensions: AutomationExtension[] = [
     if (Object.values(d.nodes).some(n => bindings(n).some(r => Object.values(r.styleRefs || {}).includes(id)))) throw new Error('Style is still referenced')
     delete d.designSystem!.styles[id]; return { id }
   }),
-  extension('style.apply', 'Apply a compatible shared style to a node.', { nodeId: str, field: { enum: ['fills', 'textStyle', 'effects'] }, styleId: str }, ['nodeId', 'field', 'styleId'], true, (d, p) => {
+  extension('style.apply', 'Apply a compatible shared style to a node.', { nodeId: str, field: styleFieldSchema, styleId: str }, ['nodeId', 'field', 'styleId'], true, (d, p) => {
     const n = requiredNode(d, p.nodeId), field = styleField(p.field), id = key(p.styleId), s = resource(d.designSystem?.styles, id, 'style')
     if (s.kind !== styleFields[field] || (field === 'textStyle' && n.kind !== 'text')) throw new Error('Style/property type mismatch')
     n.styleRefs = { ...n.styleRefs, [field]: id }
     if (field === 'fills') delete n.sketchLayerStyleOverridden
     return { id: n.id, field, styleId: id }
   }),
-  extension('style.unapply', 'Remove a shared style reference while retaining currently resolved node values.', { nodeId: str, field: { enum: ['fills', 'textStyle', 'effects'] } }, ['nodeId', 'field'], true, (d, p) => {
+  extension('style.unapply', 'Remove a shared style reference while retaining currently resolved node values.', { nodeId: str, field: styleFieldSchema }, ['nodeId', 'field'], true, (d, p) => {
     const n = requiredNode(d, p.nodeId), field = styleField(p.field)
     delete n.styleRefs?.[field]
     if (field === 'fills') delete n.sketchLayerStyleOverridden
