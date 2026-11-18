@@ -3702,11 +3702,12 @@ impl Painter<'_> {
             } else {
                 Point::new(f64::from(r.x), f64::from(r.y))
             };
+            let backdrop_inputs = clean_backdrop.unwrap_or(targets);
             let mut background = if replay.is_some() {
                 self.allocate(capture)?
             } else {
                 let rotated = crate::sketch_progressive_blur::RotatedBackdrop::for_node(self.doc, n, fx, m);
-                self.resolve_backdrop(capture, origin, clean_backdrop.unwrap_or(targets), rotated)?
+                self.resolve_backdrop(capture, origin, backdrop_inputs, rotated)?
             };
             // Most backdrop layers need coverage only at the final composite.
             // Keep their raster masks instead of making four RGBA copies.
@@ -3747,20 +3748,32 @@ impl Painter<'_> {
                     } else if cropped && !self.compatible {
                         effects::linear_tent_blur(&background, radius, true)?
                     } else if cropped {
-                        let guard = self.flush_backdrop_frame.filter(|frame| {
+                        let right = origin.x + f64::from(capture.w);
+                        let flush = self.flush_backdrop_frame.filter(|frame| {
                             n.kind == "vector" && n.transform == Transform::default()
                                 && n.width == frame.width && n.height == frame.height
                                 && frame.render_children().iter().any(|child| child == id)
                                 && self.prepared[&frame.id].fill_bounds.is_some_and(|b| {
-                                    let right = origin.x + f64::from(capture.w);
                                     (b.x + b.width - right).abs() <= 1e-8
                                         && (right.round() - right).abs() <= 1e-8
                                 })
-                        }).map(|_| {
+                        }).map(|_| right);
+                        // The trailing half of a fractional capture texel can
+                        // cross a device pixel edge. Retain that edge sample
+                        // for the first tap beyond the cropped Figma surface.
+                        let edge = right.floor();
+                        let input = backdrop_inputs[0].rect;
+                        let trailing = (self.profile == crate::fidelity::RasterProfile::Figma
+                            && radius > 0. && edge > right - 0.5 && edge < right
+                            && n.kind == "rectangle"
+                            && edge > f64::from(input.x) && edge < f64::from(input.right())
+                            && crate::coverage::rectangle(&prepared.fill).is_some_and(|b| b[2] == right))
+                            .then_some(edge);
+                        let guard = flush.or(trailing).map(|edge| {
                             self.resolve_backdrop(
                                 Rect::new(0, 0, 1, capture.h),
-                                Point::new(origin.x + f64::from(capture.w) - 0.5, origin.y),
-                                clean_backdrop.unwrap_or(targets), None,
+                                Point::new(edge - 0.5, origin.y),
+                                backdrop_inputs, None,
                             )
                         }).transpose()?;
                         effects::portable_tent_blur_with_right_sample(&background, radius, true,
