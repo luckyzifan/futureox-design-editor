@@ -217,7 +217,7 @@ test('Ctrl+F still filters related layers and text editing keeps Option+Command+
   expect(kept()).toEqual(before)
 })
 
-test('layout buttons, Mod+Alt+S, and a Figma-like profile still own layout switching', async () => {
+test('layout buttons and Mod+Alt+S switch layouts while Sketch owns layer find', async () => {
   const before = kept()
   const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('.ui-mode-switch button')]
   const figma = () => buttons().find(button => button.textContent === 'Figma')!
@@ -227,6 +227,10 @@ test('layout buttons, Mod+Alt+S, and a Figma-like profile still own layout switc
 
   shortcutPreference.set('figma-like')
   await act(async () => { press(canvas, macFind) })
+  expect(mode()).toBe('sketch')
+  expect(document.activeElement).toBe(search())
+  expect(kept()).toEqual(before)
+  await act(async () => figma().click())
   expect(mode()).toBe('figma')
   expect(shortcutPreference.getSnapshot()).toBe('figma-like')
   expect(search()).toBeNull()

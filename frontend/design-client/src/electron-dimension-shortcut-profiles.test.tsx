@@ -239,11 +239,8 @@ test('Mac Sketch quick crop handles held and single arrows while retaining the c
     delta(before, child.id, 0, 0)
   }
   const after = editor.state.doc
-  await act(async () => {
-    shortcutPreference.set('figma-like')
-    key('ArrowRight', chord)
-    key('ArrowRight', chord, 'keyup')
-  })
+  await act(async () => interfacePreference.set({ uiMode: 'figma' }))
+  await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
   expect(editor.state.doc).toBe(after)
 })
 
@@ -422,13 +419,13 @@ test('Mac Sketch Shift+Command+Option does not fall back to a content resize whe
   expect(worldMatrix(editor.state.doc, leaf.id)).toEqual(leafWorld)
   await act(async () => editor.undo())
 
-  await act(async () => { shortcutPreference.set('figma-like'); editor.select([frame.id]) })
+  await act(async () => { interfacePreference.set({ uiMode: 'figma' }); editor.select([frame.id]) })
   const figma = editor.state.doc
   await act(async () => { key('ArrowRight', chord); key('ArrowRight', chord, 'keyup') })
   expect(editor.state.doc).toBe(figma)
 
   Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' })
-  await act(async () => shortcutPreference.set('sketch-like'))
+  await act(async () => interfacePreference.set({ uiMode: 'sketch' }))
   const windows = editor.state.doc
   await act(async () => { key('ArrowRight', { ctrlKey: true, altKey: true, shiftKey: true }); key('ArrowRight', { ctrlKey: true, altKey: true, shiftKey: true }, 'keyup') })
   expect(editor.state.doc).toBe(windows)

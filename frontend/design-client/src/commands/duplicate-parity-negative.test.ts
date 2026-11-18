@@ -3,9 +3,10 @@ import { Editor } from '../engine'
 import { blank, node, type DesignDocument } from '../model'
 import { translate, worldMatrix } from '../geometry'
 import { createDesignAutomation } from '../automation/core'
+import { interfacePreference } from '../interface-preference'
 
 const editors: Editor[] = []
-afterEach(() => editors.splice(0).forEach(e => e.dispose()))
+afterEach(() => { editors.splice(0).forEach(e => e.dispose()); interfacePreference.reset() })
 function editor(doc: DesignDocument) { const e = new Editor(doc); editors.push(e); return e }
 function fixture(kind: 'rectangle' | 'frame' = 'rectangle') {
   const doc = blank(), n = node(kind, 10, 20, 100, 80)
@@ -19,13 +20,22 @@ function duplicate(e: Editor, ids: string[], params = {}) {
   if (!response.ok) throw Error(response.error.message)
   return (response.result as { operations: { result: { ids: string[] } }[] }).operations[0].result.ids
 }
-for (const kind of ['rectangle', 'frame'] as const) test(`UI/MCP default ${kind} placement, selection and one Undo/Redo are identical`, () => {
-  const { doc, n } = fixture(kind), ui = editor(doc), mcp = editor(doc)
-  const bases = new Map([[ui, ui.state.doc], [mcp, mcp.state.doc]])
-  ui.select([n.id]); ui.duplicate(); const [copy] = duplicate(mcp, [n.id])
-  expect(worldMatrix(mcp.state.doc, copy)).toEqual(worldMatrix(ui.state.doc, ui.state.selection[0]))
+for (const kind of ['rectangle', 'frame'] as const) test(`Figma ${kind} placement matches explicit MCP offsets and both retain one Undo/Redo`, () => {
+  interfacePreference.set({ uiMode: 'figma' })
+  const { doc, n } = fixture(kind), ui = editor(doc), mcp = editor(doc), explicit = editor(doc)
+  const bases = new Map([[ui, ui.state.doc], [mcp, mcp.state.doc], [explicit, explicit.state.doc]])
+  const offsetX = kind === 'frame' ? n.width + 40 : 10
+  const offsetY = kind === 'frame' ? 0 : 10
+  ui.select([n.id])
+  ui.duplicate()
+  const [copy] = duplicate(mcp, [n.id])
+  const [equivalent] = duplicate(explicit, [n.id], { offsetX, offsetY })
+  expect(worldMatrix(mcp.state.doc, copy)).toEqual([1, 0, 0, 1, 20, 30])
+  expect(worldMatrix(ui.state.doc, ui.state.selection[0])).toEqual([1, 0, 0, 1, 10 + offsetX, 20 + offsetY])
+  expect(worldMatrix(explicit.state.doc, equivalent)).toEqual(worldMatrix(ui.state.doc, ui.state.selection[0]))
   expect(mcp.state.selection).toEqual([copy])
-  for (const e of [ui, mcp]) {
+  expect(explicit.state.selection).toEqual([equivalent])
+  for (const e of [ui, mcp, explicit]) {
     const after = e.state.doc; e.undo(); expect(e.state.doc).toEqual(bases.get(e)); expect(e.canUndo).toBe(false)
     e.redo(); expect(e.state.doc).toEqual(after)
   }

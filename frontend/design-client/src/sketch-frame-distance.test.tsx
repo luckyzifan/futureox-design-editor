@@ -155,7 +155,7 @@ test('Figma keeps frame X/Y without Sketch edge fields, and a rotated group stay
       expect(Number(field('X').value)).toBe(5)
       expect(Number(field('Y').value)).toBe(6)
       expect(document.querySelector('input[aria-label="距画框右边"]')).toBeNull()
-      expect(document.querySelector('[aria-label="父画板尺寸约束"]')).toBeNull()
+      expect(document.querySelector('[role="group"][aria-label="父画板尺寸约束"]')).not.toBeNull()
       expect(sketchFrameDistance(localEditor.state.doc, child.id, localEditor.parentMap())).toBeUndefined()
       const distance = sketchFrameDistance(editor.state.doc, image.id, editor.parentMap())
       expect(distance).toBeTruthy()

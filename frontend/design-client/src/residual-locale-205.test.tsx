@@ -239,8 +239,10 @@ test('English home and rectangle sections follow the locale while Chinese and au
     inspectorSamples[`${mode}-zh`] = sampleInspector()
   }
   for (const mode of modes) {
-    for (const hit of diff(inspectorSamples[`${mode}-en`], englishInspector)) mismatches.push({ surface: `${mode}-inspector-en`, ...hit })
-    for (const hit of diff(inspectorSamples[`${mode}-zh`], chineseInspector)) mismatches.push({ surface: `${mode}-inspector-zh`, ...hit })
+    const english = { ...englishInspector, position: mode === 'figma' ? englishInspector.position : '' }
+    const chinese = { ...chineseInspector, position: mode === 'figma' ? chineseInspector.position : '' }
+    for (const hit of diff(inspectorSamples[`${mode}-en`], english)) mismatches.push({ surface: `${mode}-inspector-en`, ...hit })
+    for (const hit of diff(inspectorSamples[`${mode}-zh`], chinese)) mismatches.push({ surface: `${mode}-inspector-zh`, ...hit })
     expect(inspectorSamples[`${mode}-en`].nodeName).toBe('Frame A')
     expect(inspectorSamples[`${mode}-en`].ownerLabel).toBe('Properties for Frame A')
     expect(inspectorSamples[`${mode}-zh`].ownerLabel).toBe('Frame A 属性')
@@ -380,13 +382,24 @@ test('English fill, mask, blur, component assets and sketch library chrome follo
     })
     expect(search!.value).toBe('Frame')
     expect(document.querySelector('option[value="noise-image"]')?.textContent).toBe('Noise image preset')
-    expect(document.querySelector('option[value="gaussian-blur"]')?.textContent).toBe('Gaussian blur')
-    expect(document.querySelector('option[value="motion-blur"]')?.textContent).toBe('Motion blur')
-    expect(document.querySelector('option[value="zoom-blur"]')?.textContent).toBe('Zoom blur')
+    expect(document.querySelector('option[value="gaussian-blur"]')?.textContent).toBe(uiMode === 'sketch' ? 'Layer blur' : 'Gaussian blur')
+    expect(document.querySelector('option[value="motion-blur"]')?.textContent).toBe(uiMode === 'sketch' ? 'Motion & Zoom Blur' : 'Motion blur')
+    expect(document.querySelector('option[value="zoom-blur"]')?.textContent).toBe(uiMode === 'sketch' ? undefined : 'Zoom blur')
     expect(document.querySelector('option[value="color-controls"]')?.textContent).toBe('Color adjustments')
     expect(document.querySelector('option[value="outline"]')?.textContent).toBe('Outline')
-    expect(document.querySelector('input[aria-label="Zoom blur amount"]')).not.toBeNull()
-    expect(document.querySelector('input[aria-label="Direction °"]')).not.toBeNull()
+    if (uiMode === 'sketch') {
+      const triggers = [...document.querySelectorAll<HTMLButtonElement>('.blur-settings-trigger')]
+      expect(triggers).toHaveLength(2)
+      for (const [index, label] of ['Blur', 'Angle'].entries()) {
+        await act(async () => triggers[index].click())
+        const panel = document.querySelector<HTMLElement>('.blur-settings-popover:not([hidden])')
+        expect(panel?.querySelector(`input[aria-label="${label}"]`)).toBeTruthy()
+        await act(async () => triggers[index].click())
+      }
+    } else {
+      expect(document.querySelector('input[aria-label="Zoom blur amount"]')).not.toBeNull()
+      expect(document.querySelector('input[aria-label="Direction °"]')).not.toBeNull()
+    }
     expect(document.body.textContent).toContain('◇ Create component from selection')
     expect(document.body.textContent).toContain('Click to insert, or drag onto the canvas')
     expect(document.body.textContent).toContain('◇ Frame A')
@@ -398,8 +411,18 @@ test('English fill, mask, blur, component assets and sketch library chrome follo
     expect(search!.value).toBe('Frame')
     expect(document.querySelector('option[value="noise-image"]')?.textContent).toBe('噪声图片预设')
     expect(document.querySelector('option[value="outline"]')?.textContent).toBe('轮廓')
-    expect(document.querySelector('input[aria-label="缩放模糊强度"]')).not.toBeNull()
-    expect(document.querySelector('input[aria-label="方向 °"]')).not.toBeNull()
+    if (uiMode === 'sketch') {
+      const [zoom, motion] = document.querySelectorAll<HTMLButtonElement>('.blur-settings-trigger')
+      await act(async () => zoom.click())
+      expect(document.querySelector('.blur-settings-popover:not([hidden]) input[aria-label="模糊"]')).not.toBeNull()
+      await act(async () => zoom.click())
+      await act(async () => motion.click())
+      expect(document.querySelector('.blur-settings-popover:not([hidden]) input[aria-label="角度"]')).not.toBeNull()
+      await act(async () => motion.click())
+    } else {
+      expect(document.querySelector('input[aria-label="缩放模糊强度"]')).not.toBeNull()
+      expect(document.querySelector('input[aria-label="方向 °"]')).not.toBeNull()
+    }
     expect(document.querySelector('input[aria-label="搜索组件"]')).toBe(search)
     expect(document.body.textContent).toContain('◇ 从选择创建组件')
     expect(document.body.textContent).toContain('◇ Frame A')
