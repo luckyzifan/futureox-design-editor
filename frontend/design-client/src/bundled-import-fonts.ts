@@ -2,6 +2,8 @@ import type { DesignDocument } from './model'
 import { applyMatchedFonts, fontMatchKey, matchFont, unmatchedSourceFontRequests, unmatchedSourceFonts, type FontResource, type SourceFontRequest } from './font-matching'
 import { abeezeeAbsentFaceDiagnosis } from './font-catalog'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
+import { readKernelAsset } from './kernel/initialization'
+import { initializeKernelModule } from './kernel/module'
 
 type ImportFace = {
   family: string
@@ -34,7 +36,7 @@ export const bundledImportFonts: readonly ImportFace[] = [
   {family:'ABeeZee',style:'Italic',postscript:'ABeeZee-Italic',sha:'3892bb74578207ed6edae040a0869e54dcae13a466d005460570947062137dd8',sha1:'6c31f36044a58b0f2129c79ac74eafa5e7919888'},
   {family:'DejaVu Sans',style:'Regular',postscript:'DejaVuSans',sha:'ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280',sha1:'3061cf7af25793a655a1ff5a509385f3620f3eb3'},
 ]
-/** Older upstream versions selected only by the FIG source digest.
+/** Older upstream versions require a FIG source digest for automatic selection.
  * Name-only matches keep using the faces above. See sources.json. */
 export const digestSourceFonts: readonly ImportFace[] = [
   {family:'Poppins',style:'Regular',postscript:'Poppins-Regular',sha:'4554cfac77e8cefa48f89ffcd4f1705f7c02ee34bd9b25415d1208065e4edb52',sha1:'58ca484f2ec5b8817a63136af362e1db1d29d49e',file:'poppins/v2.000/Poppins-Regular.ttf'},
@@ -44,6 +46,15 @@ export const digestSourceFonts: readonly ImportFace[] = [
 ]
 type Face = ImportFace
 const digestFaces: readonly Face[] = [...digestSourceFonts, ...bundledImportFonts]
+const fontId = (face: Face) => face.sha + '-0'
+const selectableFaces = new Map(digestFaces.map(face => [fontId(face), face]))
+export function isBundledTypeface(id: string) { return selectableFaces.has(id) }
+export const bundledTypefaceOptions = [...bundledImportFonts, ...digestSourceFonts].map(face => {
+  const version = face.file?.match(/\/v([\d.]+)\//)?.[1] ??
+    (face.family === 'Poppins' ? '4' : face.family === 'Inter' ? '4.1' : undefined)
+  const style = face.file === 'inter/v3.19/Inter.ttf' ? 'Variable' : face.style
+  return { id: fontId(face), label: `${face.family} ${style}${version ? ` (v${version})` : ''}` }
+})
 const MAX_ASSET_BYTES=2*1024*1024
 export const fontDownloads = [
   { family: 'Noto Sans SC', url: 'https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf', license: 'OFL-1.1', note: '本仓库已带 public/fonts/NotoSansSC.ttf，供画布渲染；不把 17MB 写进每份文档。' },
@@ -130,6 +141,36 @@ async function readBundledFont(face:Face):Promise<Uint8Array>{
   return new Uint8Array(readFileSync(fileURLToPath(new URL(`../public/fonts/${fontRelative(face)}`, import.meta.url))))
 }
 
+async function verifyBundledFont(face: Face, bytes: Uint8Array): Promise<FontResource> {
+  if (bytes.byteLength > MAX_ASSET_BYTES) throw new Error('内置字体资源超过大小限制')
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>)),
+    byte => byte.toString(16).padStart(2, '0')).join('')
+  if (hash !== face.sha) throw new Error(`内置字体 ${face.family} ${face.style} 的文件校验不匹配`)
+  const faces = JSON.parse(font_faces_json(bytes)) as {
+    family: string; typographicFamily?: string; postscript: string; index: number
+  }[]
+  const [actual] = faces
+  const family = `${face.family} ${face.style}`
+  if (faces.length !== 1 || (![face.family, family].includes(actual.family) && actual.typographicFamily !== face.family) ||
+      actual.postscript !== face.postscript || actual.index !== 0)
+    throw new Error(`内置字体 ${family} 的字形标识不匹配`)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
+  return { family, postscript: face.postscript, index: 0, data: btoa(binary) }
+}
+
+/** UI selection and imported font digests use the same verified file bytes. */
+export async function loadBundledTypeface(id: string, signal: AbortSignal): Promise<FontResource> {
+  const face = selectableFaces.get(id)
+  if (!face) throw new Error('内置字体不存在，请重新选择')
+  await initializeKernelModule()
+  signal.throwIfAborted()
+  const bytes = typeof document === 'undefined'
+    ? await readBundledFont(face)
+    : await readKernelAsset(`/fonts/${fontRelative(face)}`, MAX_ASSET_BYTES, signal)
+  return verifyBundledFont(face, bytes)
+}
+
 /** Only a fresh imported document is mutated. The import worker owns this
  * bounded two-task preparation and termination revokes the whole operation. */
 function foldedFontName(value: string) {
@@ -169,18 +210,11 @@ export async function matchBundledImportFonts(document:DesignDocument,read=readB
   const substitutions: {from:string; face:string}[] = []
   const requested=[...new Set([...asks.values()].map(ask=>selectBundledImportFace(ask.name, ask.digest)).filter((face):face is Face=>!!face))]
   const available=Math.max(0,32-Object.keys(document.fonts||{}).length)
-  const candidates=requested.filter(face=>document.fonts?.[face.sha+'-0']).concat(requested.filter(face=>!document.fonts?.[face.sha+'-0']).slice(0,available))
+  const candidates=requested.filter(face=>document.fonts?.[fontId(face)]).concat(requested.filter(face=>!document.fonts?.[fontId(face)]).slice(0,available))
   const loaded=new Map<Face,{id:string;resource:FontResource}>();let next=0
   const prepare=async()=>{while(next<candidates.length){const face=candidates[next++]
     try{
-      const bytes=await read(face)
-      if(bytes.byteLength>MAX_ASSET_BYTES)continue
-      const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes as Uint8Array<ArrayBuffer>)),v=>v.toString(16).padStart(2,'0')).join('')
-      if(hash!==face.sha)continue
-      const faces=JSON.parse(font_faces_json(bytes)) as {family:string;postscript:string;index:number}[]
-      if(faces.length!==1||![face.family,`${face.family} ${face.style}`].includes(faces[0].family)||faces[0].postscript!==face.postscript||faces[0].index!==0)continue
-      let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768))
-      const id=face.sha+'-0',resource={family:`${face.family} ${face.style}`,postscript:face.postscript,index:0,data:btoa(binary)}
+      const id=fontId(face),resource=await verifyBundledFont(face,await read(face))
       const old=document.fonts?.[id]
       if(old&&(old.data!==resource.data||(old.index||0)!==0))continue
       loaded.set(face,{id,resource:old||resource})

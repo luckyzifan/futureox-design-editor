@@ -213,6 +213,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "组合为变体": "Combine as variants",
   "字体": "Font",
   "文字字体": "Text font",
+  "内置字体": "Built-in fonts",
+  "文档字体": "Document fonts",
   "Noto Sans SC（内置）": "Noto Sans SC (built-in)",
   "原字体匹配状态": "Source font matching status",
   "字体管理与批量替换": "Font management and batch replacement",

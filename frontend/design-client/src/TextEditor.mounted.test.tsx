@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { CanvasTextEditor } from './TextEditor'
 import { Editor } from './engine'
 import { blank, node, type Matrix } from './model'
+import { bundledTypefaceOptions } from './bundled-import-fonts'
 const bootstrapDom = await vi.hoisted(async () => {
   // @ts-expect-error jsdom is a test-only runtime dependency.
   const { JSDOM } = await import('jsdom')
@@ -36,6 +37,37 @@ async function render(matrix: Matrix, width = 1000, height = 700) {
 }
 const toolbar = () => mount.querySelector<HTMLDivElement>('[role="toolbar"]')!
 const input = () => mount.querySelector<HTMLTextAreaElement>('textarea')!
+
+test('a newly chosen bundled face is rendered in the text draft and committed with its resource', async () => {
+  const face = bundledTypefaceOptions.find(option => option.label === 'Poppins Medium (v2.000)')!
+  const bytes = new Uint8Array(readFileSync(new URL('../public/fonts/poppins/v2.000/Poppins-Medium.ttf', import.meta.url)))
+  const fetchFace = vi.fn(async () => new Response(bytes))
+  vi.stubGlobal('fetch', fetchFace)
+  await render([1, 0, 0, 1, 0, 0])
+  const glyphAdvances = () => Array.from(mount.querySelectorAll('svg rect'), rect => rect.getAttribute('width'))
+  const before = glyphAdvances()
+  expect(before.length).toBeGreaterThan(1)
+  const select = mount.querySelector<HTMLSelectElement>('select[aria-label="选中文字字体"]')!
+  expect(select.selectedOptions[0].value).toBe('')
+  await act(async () => {
+    select.focus()
+    select.value = face.id
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(() => expect(document.activeElement).toBe(input()))
+  })
+  expect(fetchFace.mock.calls).toHaveLength(1)
+  expect(glyphAdvances()).toHaveLength(before.length)
+  expect(glyphAdvances()).not.toEqual(before)
+  expect(preview.mock.calls.at(-1)![1][face.id].postscript).toBe('Poppins-Medium')
+  expect(editor.state.doc.fonts?.[face.id]).toBeUndefined()
+  const complete = Array.from(toolbar().querySelectorAll('button')).find(button => button.textContent === '完成')!
+  await act(async () => complete.click())
+  expect(editor.state.doc.nodes[text.id].textRuns?.[0].fontId).toBe(face.id)
+  expect(editor.state.doc.fonts?.[face.id].postscript).toBe('Poppins-Medium')
+  editor.undo()
+  expect(editor.state.doc.nodes[text.id].textRuns?.some(run => run.fontId === face.id)).toBeFalsy()
+  expect(editor.state.doc.fonts?.[face.id]).toBeUndefined()
+})
 test('screen-space toolbar has constant CSS width at 32x and 0.025x and clamps on pan/resize', async () => {
   for (const zoom of [32, 0.025]) {
     await render([zoom, 0, 0, zoom, 100, 200])

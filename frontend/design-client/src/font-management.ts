@@ -101,6 +101,15 @@ function assertFont(doc: DesignDocument, id: string) {
   if (id !== 'default' && !Object.hasOwn(doc.fonts || {}, id)) throw Error('字体资源不存在，请重新选择')
 }
 
+export function withFontResource(fonts: DesignDocument['fonts'], id: string, resource: FontResource) {
+  const existing = fonts && Object.hasOwn(fonts, id) ? fonts[id] : undefined
+  if (existing && (existing.data !== resource.data || (existing.index || 0) !== (resource.index || 0)))
+    throw Error('字体标识冲突，原字体已保留')
+  if (fonts && existing?.family === resource.family && existing.postscript === resource.postscript) return fonts
+  if (!existing && Object.keys(fonts ?? {}).length >= 32) throw Error('字体资源超过 32 项')
+  return { ...fonts, [id]: resource }
+}
+
 function resolveWholeLayerSourceFonts(doc: DesignDocument, node: DesignNode) {
   const source = sourceFonts(doc, node)
   const names = Object.values(source.runs ?? {})
@@ -119,11 +128,7 @@ export function applySelectionFont(editor: Editor, ids: readonly string[], fontI
   if (!targets.targets.length) return emptyResult('请选择文字图层')
   let changedNodes = 0, changedReferences = 0, visitedRuns = 0
   const change = editor.change('应用所选文字字体', doc => {
-    if (resource) {
-      const existing = doc.fonts?.[fontId]
-      if (existing && (existing.data !== resource.data || (existing.index || 0) !== (resource.index || 0))) throw Error('字体标识冲突，原字体已保留')
-      doc.fonts = { ...doc.fonts, [fontId]: resource }
-    }
+    if (resource) doc.fonts = withFontResource(doc.fonts, fontId, resource)
     assertFont(doc, fontId)
     if (options.matchSourceFonts && resource?.postscript) matchSourceFontsInDocument(doc, new Map([[resource.postscript, { id: fontId, resource }]]))
     for (const { id } of targets.targets) {
