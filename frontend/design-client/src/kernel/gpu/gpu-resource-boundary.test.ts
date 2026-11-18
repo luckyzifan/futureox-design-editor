@@ -594,6 +594,64 @@ test.each([true, false])('a same-device native pose keeps pending textures until
   } finally { await f.close() }
 })
 
+test('a masked bitmap canvas starts the exact rotation filter without waiting or compiling it twice', async () => {
+  const { boundary, driver } = await createDriver(false)
+  driver.captureDisplay = true
+  const create = boundary.device.createRenderPipelineAsync
+  let release!: () => void
+  const compile = new Promise<void>(resolve => { release = resolve })
+  const build = vi.spyOn(boundary.device, 'createRenderPipelineAsync').mockImplementation(async (description: any) => {
+    if (description.fragment?.entryPoint === 'fragmentSmallBox') await compile
+    return create(description)
+  })
+  const rect = empty.extent
+  const leaf = { rect, opacity: 1, blend: 'normal', fills: [], effects: [], strokes: [], children: [],
+    fill: { rect, first: 0, count: 0, rule: 'nonzero' }, matrix: [1, 0, 0, 1, 0, 0] }
+  const scene = { ...empty, roots: ['masked'],
+    nodes: {
+      masked: { ...leaf, id: 'masked', maskId: 'mask', children: ['mask', 'bitmap'] },
+      mask: { ...leaf, id: 'mask', mask: true },
+      bitmap: { ...leaf, id: 'bitmap', fills: [{ ...paint('#ffffff'), kind: 'image' }],
+        effects: [{ kind: 'gaussian-blur', visible: true, radius: 3 }] },
+    } } as unknown as GpuScene
+  try {
+    await driver.prepareScene(scene, true)
+    const calls = () => build.mock.calls.filter(([d]: any[]) => d.fragment?.entryPoint === 'fragmentSmallBox')
+    expect(calls()).toHaveLength(1)
+    expect((driver as any).smallExactBoxPipeline).toBeUndefined()
+    await driver.prepareScene({ ...scene, interactionRetained: true, nativeInteraction: true, interactionFixedMask: true }, true)
+    const prepared = driver.prepareFilters()
+    release()
+    await prepared
+    expect(calls()).toHaveLength(1)
+    expect((driver as any).smallExactBoxPipeline).toBeDefined()
+  } finally { release(); driver.dispose() }
+})
+
+test('a released bitmap can submit its display copy before the periodic fence while the next raster still waits', async () => {
+  const f = await residentPrefixBoundary(false)
+  f.prefix.scratchBytes = 0
+  try {
+    await f.driver.prepareScene({ ...empty, interactionRetained: true, nativeInteraction: true,
+      interactionFixedMask: true, interactionRelease: true }, true)
+    for (let index = 0; index < 3; index++) await f.finish()
+    f.boundary.holdWait()
+    const last = await f.finish()
+    expect(last.gpuTile).toBeDefined()
+    expect(f.driver.completedResourceEpoch).toBe(0)
+    expect(() => f.driver.begin(new Float32Array())).toThrow(/completion is pending/)
+    let rasterReady = false
+    const next = f.driver.waitForRasterTurn()?.then(() => { rasterReady = true })
+    expect(next).toBeDefined()
+    await Promise.resolve()
+    expect(rasterReady).toBe(false)
+    f.boundary.releaseWait()
+    await next
+    expect(f.driver.completedResourceEpoch).toBe(4)
+    expect(f.driver.waitForRasterTurn()).toBeUndefined()
+  } finally { f.boundary.releaseWait(); await f.close() }
+})
+
 test('resident prefix scratch stays owned across submitted frames and samples counters only at periodic completion', async () => {
   const f = await residentPrefixBoundary()
   try {

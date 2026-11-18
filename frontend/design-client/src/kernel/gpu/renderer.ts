@@ -8280,6 +8280,8 @@ export class GpuRenderer {
     finally { this.noteScratch(reserved) }
   }
   async render(scene: GpuScene, readback = false, present = true, isCurrent?: () => boolean, onEncodingProgress?: (drawCalls:number)=>void, displayBackpressure=false, onFinishStarted?:()=>void) {
+    const rasterTurn = this.driver.waitForRasterTurn?.()
+    if (rasterTurn) await rasterTurn
     // Cancellation requires an explicit encoder-abandon/completion boundary.
     // WebGL and older drivers retain their existing completed-frame checks.
     const denseFrame=hostedDenseByteFrame({present,readback,resolve:!!scene.resolve,presentation:!!scene.presentation,softwareRaster:scene.softwareRaster===true})

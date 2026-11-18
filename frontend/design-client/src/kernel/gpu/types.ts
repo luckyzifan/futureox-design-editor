@@ -176,6 +176,8 @@ export type GpuScene = {
   interactionLocalFootprint?: boolean
   /** Native worker verified the stationary mask and its output window. */
   interactionFixedMask?: boolean
+  /** Worker-owned release after the final gesture transform is known. */
+  interactionRelease?: boolean
   disableSparseGlass?: boolean
   /** Worker-local proof owner for transform-only recompiles; never a document field. */
   interactionLease?: object
@@ -332,6 +334,7 @@ export interface Driver {
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic?:boolean): void
   acceptPresentation?(token:number,accepted?:boolean):void
   hasDeferredPosePresentation?(slot:number):boolean
+  cancelQueuedPoseRepaint?(frame: import('./resident-presenter').ResidentFrame, slot:number, owner:string|undefined, sequence:number):void
   waitForQueuedFrame?(frame: import('./resident-presenter').ResidentFrame, signal?: AbortSignal): Promise<void> | undefined
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
@@ -342,6 +345,8 @@ export interface Driver {
   beginViewportRepair?(before:object, after:object, contract:string, view:{x:number;y:number;zoom:number}, width:number, height:number, damage:Rect):
     { finish(patch:number, pose?:{texture:object;rect:Rect}):number|undefined; cancel():void } | undefined
   snapshotPresented?(): { gpuTile: number; frame: import('./resident-presenter').ResidentFrame } | undefined
+  captureInteractionViewport?(frame: import('./resident-presenter').ResidentFrame):
+    { gpuTile: number; frame: import('./resident-presenter').ResidentFrame } | undefined
   backgroundTile?(owner:object,contract:string,view:{x:number;y:number;zoom:number},output:Rect):number|undefined
   snapshotPageTranslation?(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string):
     {gpuTile:number;frame:import('./resident-presenter').ResidentFrame}|undefined
@@ -452,6 +457,8 @@ export interface Driver {
   prepareFilters?(prefixUseful?: boolean): Promise<void>
   /** Before begin, retire pending prior-frame image leases if geometry may
    * replace an in-flight buffer. Caller accounts scratch deltas across await. */
+  /** Retain the periodic completion boundary before admitting another raster. */
+  waitForRasterTurn?(): Promise<void> | undefined
   prepareFrameResources?(vertices: Float32Array, curves?: Float32Array): Promise<void>
   begin(vertices: Float32Array, curves?: Float32Array): void
   /** Complete prior commands before reclaiming frame-local scratch textures. */

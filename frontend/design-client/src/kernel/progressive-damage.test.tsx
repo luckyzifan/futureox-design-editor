@@ -1638,6 +1638,35 @@ function sharpSurfaceHost() {
   worker.dpr = 2; worker.dynamicPlan = true; worker.zooming = true; worker.cameraMoving = true
 }
 
+test('the first compositor acknowledgement completes an exact native commit viewport', async () => {
+  sharpSurfaceHost()
+  worker.zooming = false
+  worker.cameraMoving = false
+  const h = harness(false)
+  const options = { view: { x: -15.25, y: 2.25, zoom: 1.25 }, width: 256, height: 128, rasterProfile: 'figmaSubpixel' }
+  h.render(options)
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+  const sync = worker.calls[0]
+  expect(sync.options.tileViewport).toEqual([])
+  sync.progress({ key: 'native-commit', x: 30.5, y: -4.5, width: 512, height: 256, zoom: 2.5, gutter: 0,
+    committedViewport: true, viewportPreview: true, gpuTile: 702, backend: 'webgpu', cached: false })
+  sync.resolve({ retainedCommit: true })
+  await settleRejected()
+
+  const delivered = surfaceParts(h.render(options)).compositor
+  const tile = delivered.props.items.find((item: any) => item.tile.gpuTile === 702).tile
+  delivered.props.onReady(tile.key, tile.serial, false)
+  const pending = surfaceParts(h.render(options))
+  expect(pending.compositor.props.presentation).toMatchObject({ document: h.doc, view: options.view, preview: false })
+  expect(pending.wrapper.props['data-frame-publication']).not.toBe('complete')
+  const ack = { view: options.view, width: options.width, height: options.height, dpr: worker.dpr,
+    interaction: false, ids: [702] }
+  pending.compositor.props.onPresented({ ...ack, interaction: true })
+  expect(surfaceParts(h.render(options)).wrapper.props['data-frame-publication']).not.toBe('complete')
+  pending.compositor.props.onPresented(ack)
+  expect(surfaceParts(h.render(options)).wrapper.props['data-frame-publication']).toBe('complete')
+})
+
 test('gesture headroom routes adjacent filtered zooms to the same canonical tile density and repairs exact phase at quiet', async () => {
   sharpSurfaceHost()
   vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '0')

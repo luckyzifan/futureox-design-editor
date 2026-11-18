@@ -145,3 +145,70 @@ test('a copied overview tile holds its capture reservation through the browser h
  result.bitmap.close();f.presenter.releaseNavigationTransfer(719);await flush()
  expect(f.presenter.payloadStats).toMatchObject({pendingCaptures:0,captureReservedBytes:0})
 })
+
+test('complete interaction viewport can become a tile without replacing the browser image', () => {
+  const f = fixture(), previous = f.frame(0)
+  f.presenter.draw(previous)
+  const before = f.queue.epoch
+  const exact = { ...previous, cameraPreview: undefined, interaction: true, input: { sequence: 9, at: 2 } }
+  const old = (f.presenter as any).bitmapPending
+  const snapshot = f.presenter.captureInteractionViewport(exact)
+  expect(snapshot?.frame).toBe(exact)
+  expect(f.queue.epoch).toBe(before + 1)
+  expect((f.presenter as any).bitmapPending).toBe(old)
+  expect(f.reports.some(row => row.bitmap)).toBe(false)
+  f.presenter.release([snapshot!.gpuTile])
+  const partial = { ...exact, items: [{ ...exact.items[0], clip: { left: 0, top: 0, width: 8, height: 16 } }] }
+  expect(f.presenter.captureInteractionViewport(partial)).toBeUndefined()
+  expect(f.presenter.captureInteractionViewport({ ...exact, interaction: false })).toBeUndefined()
+  expect(f.queue.epoch).toBe(before + 1)
+  f.presenter.dispose()
+})
+
+
+test('a released pose supersedes queued motion without discarding the submitted browser image', async () => {
+  const f = fixture()
+  const base = f.frame(0), slot = base.items[0].tile.gpuTile
+  const old = { ...base, interaction: true, input: { owner: 'gesture', sequence: 1, at: 1 } }
+  f.presenter.draw(old)
+  const before = f.queue.epoch
+  const later = { ...old, input: { ...old.input, sequence: 2 } }
+  f.presenter.draw(later)
+  f.presenter.cancelQueuedPoseRepaint(later, slot, 'gesture', 3)
+  f.queue.completeThrough(before)
+  await flush()
+  const image = f.reports.at(-1) as any
+  expect(image.input.sequence).toBe(1)
+  image.bitmap.close()
+  f.presenter.acceptPresentation(image.presented.presentationToken)
+  expect(f.queue.epoch).toBe(before)
+  f.presenter.draw({ ...later, input: { ...later.input, sequence: 3 } })
+  expect(f.queue.epoch).toBeGreaterThan(before)
+  f.presenter.dispose()
+})
+
+
+test('an exact composed viewport is copied on the same pixel lattice and resampled after zoom', async () => {
+  const f = fixture()
+  const original = { ...f.frame(0), cameraPreview: undefined }
+  const pose = { ...original, interaction: true, input: { sequence: 4, at: 2 } }
+  const capture = f.presenter.captureInteractionViewport(pose)!
+  const tile = { ...original.items[0].tile, gpuTile: capture.gpuTile }
+  const exact = { ...original, interaction: false, items: [{ ...original.items[0], tile }] }
+  f.presenter.draw(exact)
+  f.queue.completeThrough(f.queue.epoch)
+  await flush()
+  const first = f.reports.at(-1) as any
+  expect(first.compositorDraws).toBe(0)
+  first.bitmap.close()
+  f.presenter.acceptPresentation(first.presented.presentationToken)
+  f.presenter.draw({ ...exact, view: { ...exact.view, zoom: 1.25 } })
+  f.queue.completeThrough(f.queue.epoch)
+  await flush()
+  const zoomed = f.reports.at(-1) as any
+  expect(zoomed.presented.view.zoom).toBe(1.25)
+  expect(zoomed.compositorDraws).toBeGreaterThan(0)
+  zoomed.bitmap.close()
+  f.presenter.acceptPresentation(zoomed.presented.presentationToken)
+  f.presenter.dispose()
+})
