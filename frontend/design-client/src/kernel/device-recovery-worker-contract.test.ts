@@ -67,6 +67,11 @@ test('a parked raster driver still receives the displayed bitmap receipt and the
     const poseRequests: unknown[] = []
     const schedulePose = () => { poseRequests.push(null) }
     let poseSession
+    // A standalone camera update has neither a pending bitmap commit nor
+    // tile preparations to cancel. The display route still runs below.
+    let bitmapRelease, heldBitmapViewport
+    const obsoleteBitmapFrame = () => false
+    const canvasTilePreparations = new Set()
     ${displayState}
     ${attach}
     displayCanvas = {}
