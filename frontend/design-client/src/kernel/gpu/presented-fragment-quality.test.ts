@@ -44,6 +44,7 @@ function fixture() {
   const pass = { setScissorRect() {}, setPipeline() {}, setBindGroup() {}, draw, end() {} }
   const presenter = Object.assign(Object.create(ResidentPresenter.prototype), {
     terminalQualityGate: new TerminalQualityGate(), diagnosticCoverageAt: 100, diagnosticFields: () => ({}),
+    composedViewports: new WeakSet<GPUTexture>(),
     payload: { assertOpen() {} }, frames: 0, imports: 0, captures: 0, bytes: 0,
     device: { limits: { maxTextureDimension2D: 4096 }, queue: { submit, onSubmittedWorkDone: wait },
       createCommandEncoder: () => ({ beginRenderPass: () => pass, copyTextureToTexture() {}, finish() { return {} } }) },

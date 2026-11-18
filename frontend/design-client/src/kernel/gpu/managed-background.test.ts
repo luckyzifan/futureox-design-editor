@@ -29,7 +29,7 @@ function fn(source: string, name: string) {
 const shade = fn(vector, 'shade'), originalOver = fn(vector, 'over')
 const modeSelector = shade.slice(shade.indexOf('{') + 1, shade.indexOf(';') + 1)
 const sample = 'let a=smp(sourceA,p,u(1));'
-const normalEarlyOuts = originalOver.slice(originalOver.indexOf('{') + 1, originalOver.indexOf('if(mode==0){'))
+const normalEarlyOuts = originalOver.slice(originalOver.indexOf('if(s.a<=0.){'), originalOver.indexOf('if(mode==0){'))
 const normalArm = bodyAfter(originalOver, 'if(mode==0){')
 const originalBackground = bodyAfter(shade, 'if(mode==12){')
 const originalNormalCall = 'over(bg,vec4<f32>(vec3<f32>(0.65,0.67,0.73)*alpha,alpha),0)'
