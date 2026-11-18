@@ -3,11 +3,11 @@ import { kernelFillWorld } from './kernel/picking'
 import { interactivePath } from './selection-hierarchy'
 import type { DesignDocument, Point } from './model'
 
-export type CanvasDropIndex = { document: string; page: string; parents: Map<string,string>; frames: { id:string; ancestors:string[] }[] }
+export type CanvasDropIndex = { document: string; page: string; parents: ParentMap; frames: { id:string; ancestors:string[] }[] }
 /** A gesture fixes hierarchy eligibility. Geometry and visibility remain live:
  * moving layout children can resize their stationary parent frame. */
-export function createCanvasDropIndex(doc: DesignDocument, page: string): CanvasDropIndex {
-  const parents=allParents(doc),frames:CanvasDropIndex['frames']=[],seen=new Set<string>()
+export function createCanvasDropIndex(doc: DesignDocument, page: string, parents: ParentMap = allParents(doc)): CanvasDropIndex {
+  const frames:CanvasDropIndex['frames']=[],seen=new Set<string>()
   const visit=(id:string,ancestors:string[])=>{
     const n=doc.nodes[id];if(!n||seen.has(id))return;seen.add(id)
     if(['frame','section'].includes(n.kind))frames.push({id,ancestors})
