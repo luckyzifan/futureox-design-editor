@@ -84,7 +84,7 @@ test('P03 actual mixed fill slots change matching kind/index only; invalid Escap
 test('P04 actual SelectionColors deduplicates selected parent/child across five uses with exact history',async()=>{
   const frame=node('frame'),child=node('text');frame.fills=[];frame.children=[child.id];child.text='abc';child.fills=[paint('#ff0000'),{...paint(),kind:'linear',stops:[{offset:0,color:'#FF0000'},{offset:1,color:'#0000ff'}]}];child.strokes=[stroke()];child.strokes[0].paint.color='#ff0000';child.effects=[effect('shadow')];child.effects[0].color='#ff0000';child.textRuns=[{start:0,end:2,color:'#ff0000',weight:700}]
   start([frame,child],[frame.id,child.id],d=>{d.pages[0].children=[frame.id]});await render('colors');const before=editor.state.doc
-  expect(mount.textContent).toContain('5 处');await type(field('选区颜色 1'),'#112233');const after=editor.state.doc,n=after.nodes[child.id]
+  expect(mount.textContent).toContain('5 处');await enter(field('选区颜色 1'),'#112233');const after=editor.state.doc,n=after.nodes[child.id]
   expect(n.fills[0].color).toBe('#112233');expect(n.fills[1].stops[0].color).toBe('#112233');expect(n.fills[1].stops[1].color).toBe('#0000ff');expect(n.strokes[0].paint.color).toBe('#112233');expect(n.effects[0].color).toBe('#112233');expect(n.textRuns).toEqual([{start:0,end:2,color:'#112233',weight:700}]);expect(editor.state.version).toBe(1);await history(before,after)
 })
 test('P05 actual SelectionColors explicit local override preserves unrelated variable binding and history',async()=>{
@@ -92,7 +92,7 @@ test('P05 actual SelectionColors explicit local override preserves unrelated var
   start([n],[n.id],d=>{d.schemaVersion=6;const s=d.designSystem=emptySystem();s.collections.theme={name:'Theme',modes:['Default'],defaultMode:'Default'};s.activeModes.theme='Default';s.variables.brand={name:'Brand',kind:'color',collection:'theme',values:{Default:'#ff0000'}};s.variables.width={name:'Width',kind:'number',collection:'theme',values:{Default:n.width}}})
   await render('colors');const before=editor.state.doc;expect(mount.querySelector('input[aria-label="选区颜色 1"]')).toBeNull()
   await click(button('转为本地颜色'));const detached=editor.state.doc;expect(detached.nodes[n.id].bindings).toEqual({width:'width'});expect(detached.nodes[n.id].fills[0].color).toBe('#ff0000')
-  await type(field('选区颜色 1'),'#00ff00');const after=editor.state.doc;expect(after.nodes[n.id].fills[0].color).toBe('#00ff00');expect(after.nodes[n.id].bindings).toEqual({width:'width'});expect(after.designSystem).toEqual(before.designSystem)
+  await enter(field('选区颜色 1'),'#00ff00');const after=editor.state.doc;expect(after.nodes[n.id].fills[0].color).toBe('#00ff00');expect(after.nodes[n.id].bindings).toEqual({width:'width'});expect(after.designSystem).toEqual(before.designSystem)
   await act(async()=>editor.undo());expect(editor.state.doc).toEqual(detached);await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);await act(async()=>{editor.redo();editor.redo()});expect(editor.state.doc).toEqual(after)
 })
 test('P06 actual Inspector gradient kind/stops sort positions, enforce two-stop minimum and undo each edit',async()=>{

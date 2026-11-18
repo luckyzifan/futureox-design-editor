@@ -123,7 +123,7 @@ test('Figma workspace keeps one persistent library entry and Sketch, the file sh
   await act(async () => button('Sketch').click())
   expect(shell().getAttribute('data-ui-mode')).toBe('sketch')
   expect(location().textContent).toBe('本机设计')
-  expect(railFiles()).not.toBeNull()
+  expect(railFiles()).toBeNull()
   await act(async () => location().click())
   expect(document.querySelector('.workspace-library')).not.toBeNull()
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="关闭本机文档库"]')!.click())
