@@ -116,7 +116,13 @@ test('continuous DPR2 navigation gives one real native tile a bounded turn', asy
     expect(native.options.tileViewport[0].zoom).toBe(64)
     expect(native.options.renderIntent).toBe('canvas')
     expect(native.options.livePreview).toBeUndefined()
-    expect(native.options.tilePrepareViewport).toBeDefined()
+    const [tile] = native.options.tileViewport
+    expect(native.options.tilePrepareViewport).toEqual({
+      x: tile.x + Math.floor(native.options.view.x),
+      y: tile.y + Math.floor(native.options.view.y),
+      w: tile.width,
+      h: tile.height,
+    })
     expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
   } finally { await act(async () => f.root.unmount()) }
 })

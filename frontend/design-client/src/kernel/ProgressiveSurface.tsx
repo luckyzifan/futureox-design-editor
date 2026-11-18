@@ -1675,8 +1675,10 @@ export function ProgressiveSurfaceImpl(
             await c.render(doc, { pageId, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
               view: native.camera, transparent: false, grid: false, rasterProfile,
               tileViewport: [tile], tileFillPriorities: [priorities.get(tile)!],
+              // Each moving detail turn owns a single crop. Keep preparation
+              // local when the next input may already use a different camera.
               tilePrepareViewport: import.meta.env.VITE_DESIGN_PREPARE_CACHE === '0' ? undefined :
-                tileBatchPrepareViewport(fullTiles, [], [tile], native.camera),
+                tilePrepareViewport([tile], native.camera),
               renderIntent: 'canvas',
               ...(props.presentationEpoch === undefined ? {} : {
                 tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
