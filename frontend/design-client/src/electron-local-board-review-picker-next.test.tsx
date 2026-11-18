@@ -12,7 +12,8 @@ import { shortcutPreference } from './shortcut-preference'
 import { worldMatrix, apply } from './geometry'
 import { dispatchEditorCommand } from './editor-commands'
 import { ReviewsPanel } from './ReviewsPanel'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // React must detect DOM input event support before its module is evaluated.
 // Match the existing real-text integration harness without suppressing errors.
@@ -95,9 +96,22 @@ function key(value: string, options: KeyboardEventInit = {}, type = 'keydown', t
 function unchanged(doc: typeof editor.state.doc) {
   expect(editor.state.doc).toBe(doc); expect(editor.canUndo).toBe(false); expect(editor.canRedo).toBe(false)
 }
+const systemMonoFonts = [
+  { path: '/System/Library/Fonts/Menlo.ttc', family: 'Menlo' },
+  { path: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf', family: 'DejaVu Sans Mono' },
+]
+if (process.platform === 'win32' && process.env.WINDIR) {
+  systemMonoFonts.push({ path: join(process.env.WINDIR, 'Fonts', 'consola.ttf'), family: 'Consolas' })
+}
+const configuredMono = process.env.FUTUREOX_MONO_FONT_FILE
+const monoFont = configuredMono ? { path: configuredMono, family: 'Fixture Mono' } :
+  systemMonoFonts.find(font => existsSync(font.path))
+
 // Four local authored objects, not remote publishing or execution.
-for (const tool of ['sticky', 'table', 'code-block', 'sites-responsive-set'] as const) test(`set-tool-${tool}: dispatcher and Canvas author content/resources, cancel and one undo`, async () => {
-  const fonts = tool === 'code-block' ? { mono: { family: 'DejaVu Sans Mono', data: readFileSync(process.env.FUTUREOX_MONO_FONT_FILE || '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf').toString('base64') } } : undefined
+for (const tool of ['sticky', 'table', 'code-block', 'sites-responsive-set'] as const) test.skipIf(tool === 'code-block' && !monoFont)(`set-tool-${tool}: dispatcher and Canvas author content/resources, cancel and one undo`, async () => {
+  const fonts = tool === 'code-block' && monoFont ? { mono: {
+    family: monoFont.family, data: readFileSync(monoFont.path).toString('base64'),
+  } } : undefined
   await render([], [], [], fonts); const before = editor.state.doc
   await act(async () => { await dispatchEditorCommand(editor, `set-tool-${tool}`) })
   expect(editor.state.tool).toBe(tool); expect(editor.state.busy).toBe(false)
