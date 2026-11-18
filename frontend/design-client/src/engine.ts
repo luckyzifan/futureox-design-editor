@@ -2648,7 +2648,7 @@ export class Editor {
     this.set({ doc: transaction.previewBase || transaction.doc, selection: [...roots] })
     return roots
   }
-  previewFreeMove(ids: string[], free: boolean) {
+  previewFreeMove(ids: string[], free: boolean, reusePublishedParents = false) {
     const transaction = this.transaction
     if (!transaction) return
     if (!free && transaction.flow) {
@@ -2657,7 +2657,11 @@ export class Editor {
       this.set({ doc: transaction.previewBase }); return
     }
     if (!free || transaction.flow) return
-    const base = transaction.previewBase || transaction.doc, parents = (transaction.dropIndex ??= createCanvasDropIndex(base,this.state.page)).parents
+    const base = transaction.previewBase || transaction.doc
+    // Checking auto-layout eligibility only needs parent links. Keep the
+    // drop-frame walk off the first pointer sample until placement needs it.
+    const parents = transaction.dropIndex?.parents ?? (reusePublishedParents && base === this.state.doc
+      ? this.parentMap(base) : (transaction.dropIndex ??= createCanvasDropIndex(base,this.state.page)).parents)
     // Read-only eligibility must precede the Immer draft. Merely reading
     // draft.nodes prepares a shallow copy of the entire node dictionary,
     // even when a free-frame drag has no flow sizing to change.
@@ -2666,6 +2670,9 @@ export class Editor {
       return parent?.layout&&parent.layout.mode!=='none'&&!n.sizing?.absolute
     })
     if(!eligible.length)return
+    // Changing sizing can publish a new layout. Keep the gesture index bound
+    // to the original hierarchy before that transition.
+    transaction.dropIndex ??= createCanvasDropIndex(base, this.state.page, parents)
     const sizing = new Map<string, DesignNode['sizing']>()
     const document = produceDraft(base, draft => {
       for (const id of eligible) {
@@ -2707,7 +2714,8 @@ export class Editor {
     if(!tx||!cache||source!==cache.source||cache.published!==this.state.doc||tx.page!==this.state.page||
         cache.epoch!==pickingGeometryEpoch()||tx.copy||tx.flow||move.ids.length!==1||
         Object.keys(patches).length!==move.ids.length||move.ids.some(id=>!source.nodes[id]||!patches[id]?.transform||Object.keys(patches[id]).some(key=>key!=='transform')))return
-    const index=tx.dropIndex??=createCanvasDropIndex(source,this.state.page),query=this.moveQuery(source,patches,move.ids)
+    const index=tx.dropIndex??=createCanvasDropIndex(source,this.state.page,pruneClippedRoots?this.parentMap(source):undefined)
+    const query=this.moveQuery(source,patches,move.ids)
     const plan=this.movePlacement(query,move.ids,move.point,move.force,move.preserveParent,index,pruneClippedRoots)
     if(plan.key!==cache.key)return
     const poses:Record<string,Partial<DesignNode>>={}
@@ -2725,15 +2733,17 @@ export class Editor {
     const cached=this.cachedMovePreview(patches,move,pruneClippedRoots)
     if(cached)return {patches:cached.patches,retainsParents:true}
     const tx=this.transaction;if(!tx)return {patches,retainsParents:true}
-    const base=tx.previewBase||tx.doc,index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page)
+    const base=tx.previewBase||tx.doc
+    const topology=pruneClippedRoots&&base===this.state.doc?this.pickContext(base).parents:undefined
+    const index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page,topology)
     const plan=this.movePlacement(this.moveQuery(base,patches,move.ids),move.ids,move.point,move.force,move.preserveParent,index,pruneClippedRoots)
-    const current=this.parentMap()
+    const current=topology??this.parentMap()
     const retainsParents=plan.moving.length===0&&move.ids.every(id=>current.get(id)===index.parents.get(id))
     if(retainsParents&&base===this.state.doc&&!tx.copy&&!tx.flow&&move.ids.length===1){
       // GPU-only movement has not published a preview document yet. Seed the
       // same validated translation plan from the already resolved source so
       // pointer-up need not resolve every component/layout island again.
-      const translation=new TranslationPreviewPlan(base,move.ids)
+      const translation=new TranslationPreviewPlan(base,move.ids,topology)
       if(translation.accepts(patches))tx.movePreview={source:base,document:base,published:base,key:plan.key,
         parents:current,epoch:pickingGeometryEpoch(),translation}
     }
