@@ -36,8 +36,9 @@ test('native hotspots navigate, slide and return through the shared player',()=>
  const returned=prototypeEvent(d,result,back.id,'click');expect(returned.current).toBe(initial.current);expect(returned.transitionStyle).toBe('slide-right')
 })
 test('selected local Sketch library adopts embedded identity, preserves overrides, updates and undoes',async()=>{
- const consumer=imported('testing/verification-sketch-text-layout-flow-20261027/foreign-consumer.sketch')
- const v1=imported('testing/verification-sketch-text-layout-flow-20261027/library-v1.sketch'),v2=imported('testing/verification-sketch-text-layout-flow-20261027/library-v2.sketch')
+ const libraryFixtures='testing/fixtures/design/sketch-text-layout-flow'
+ const consumer=imported(`${libraryFixtures}/foreign-consumer.sketch`)
+ const v1=imported(`${libraryFixtures}/library-v1.sketch`),v2=imported(`${libraryFixtures}/library-v2.sketch`)
  expect(v1.id).toBe(v2.id);const e=new Editor(consumer)
  try {
   const instance=Object.values(e.state.doc.nodes).find(n=>n.instance&&!n.instanceOrigin)!,master=instance.instance!.componentId
