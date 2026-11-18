@@ -80,21 +80,22 @@ test('unadopted tokens, copies and caller-supplied encoded fields cannot populat
   await finish(request, message.id)
 })
 
-test('a later versioned mutation of the same root revokes the certificate before a new renderer serializes it', async () => {
+test('an authored edit retires the immutable root before a renderer serializes the new snapshot', async () => {
   const owner = editor()
   owner.load(blank('Imported'))
   const document = owner.state.doc
   expect(currentPreparedDocumentJson(document)).toBeDefined()
-  document.name = 'Versioned mutation'
-  owner.set({ version: owner.state.version + 1 })
+  expect(Object.isFrozen(document)).toBe(true)
+  expect(owner.change('rename', d => { d.name = 'Versioned edit' }).status).toBe('committed')
+  expect(document.name).toBe('Imported')
   expect(currentPreparedDocumentJson(document)).toBeUndefined()
-  const request = render(document), message = await dispatched(request)
+  const request = render(owner.state.doc), message = await dispatched(request)
   expect(native.request).toHaveBeenCalledTimes(1)
-  expect(JSON.parse(message.document).name).toBe('Versioned mutation')
+  expect(JSON.parse(message.document).name).toBe('Versioned edit')
   await finish(request, message.id)
 })
 
-test.each(['versioned-same-root', 'replacement-owner', 'nested-session'] as const)(
+test.each(['versioned-edit', 'replacement-owner', 'nested-session'] as const)(
   'reentrant adoption %s cannot certify stale render bytes',
   async mutation => {
     const owner = editor(), source = blank('Saved')
@@ -103,12 +104,10 @@ test.each(['versioned-same-root', 'replacement-owner', 'nested-session'] as cons
       if (handled || owner.state.doc.id !== source.id) return
       handled = true
       const document = owner.state.doc, version = owner.state.version
-      if (mutation === 'versioned-same-root') {
-        document.name = 'Changed'
-        owner.set({ version: version + 1 })
+      if (mutation === 'versioned-edit') {
+        expect(owner.change('rename', d => { d.name = 'Changed' }).status).toBe('committed')
       } else if (mutation === 'replacement-owner') owner.set({ doc: { ...document, name: 'Changed' } })
       else {
-        document.name = 'Changed'
         owner.load(blank('Nested'))
         owner.set({ doc: document, page: document.pages[0].id, version })
       }
@@ -118,7 +117,7 @@ test.each(['versioned-same-root', 'replacement-owner', 'nested-session'] as cons
     expect(currentPreparedDocumentJson(owner.state.doc)).toBeUndefined()
     const request = render(owner.state.doc), message = await dispatched(request)
     expect(native.request).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(message.document).name).toBe('Changed')
+    expect(JSON.parse(message.document).name).toBe(mutation === 'nested-session' ? source.name : 'Changed')
     await finish(request, message.id)
   },
 )
