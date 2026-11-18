@@ -170,6 +170,10 @@ test('allocation pressure retires optional cache through the existing pool witho
   f.renderer.used.clear()
   f.renderer.frameBudget=f.renderer.bytes
   const budget=f.renderer.frameBudget
+  // Retiring the cache entry does not retire the queue's texture use.
+  expect(f.renderer.overBudget(16)).toBe(true)
+  expect(f.driver.destroy).not.toHaveBeenCalledWith(f.candidate.texture)
+  Object.assign(f.driver, { completedResourceEpoch: f.driver.resourceEpoch })
   expect(f.renderer.overBudget(16)).toBe(false)
   expect(f.renderer.horizontalFilters.bytes).toBe(0)
   expect(f.renderer.frameBudget).toBe(budget)

@@ -8,7 +8,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Canvas } from './Canvas'
 import { Editor } from './engine'
 import { blank, node } from './model'
-import { screenToWorld } from './canvas-camera'
+import { screenToWorld, zoomStep } from './canvas-camera'
+import { interfacePreference } from './interface-preference'
 
 // Present the actual Canvas camera/document back through its production
 // presentation callback. No Canvas, control, geometry, or event handler is mocked.
@@ -61,7 +62,7 @@ beforeEach(() => {
 })
 afterEach(async () => {
   await act(async () => root.unmount())
-  editor.dispose(); dom.window.close(); vi.unstubAllGlobals(); vi.restoreAllMocks()
+  editor.dispose(); interfacePreference.reset(); dom.window.close(); vi.unstubAllGlobals(); vi.restoreAllMocks()
   expect(errors).toEqual([])
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
@@ -140,7 +141,7 @@ test('real Canvas pointer selection, hand pan, wheel zoom, controls, and scrollb
   await act(async () => controls.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 50 })))
   await frame(); expect(editor.state.view).toEqual(zoomed)
   await act(async () => mount.querySelector<HTMLButtonElement>('button[title="放大"]')!.click())
-  expect(editor.state.view.zoom).toBe(2)
+  expect(editor.state.view.zoom).toBe(zoomStep(zoomed.zoom, 1))
   const beforeScroll = editor.state.view.x
   const scrollbar = mount.querySelector<HTMLElement>('[role="scrollbar"][aria-orientation="horizontal"]')!
   await act(async () => scrollbar.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })))
@@ -153,6 +154,7 @@ test('real Canvas pointer selection, hand pan, wheel zoom, controls, and scrollb
 // Old in-memory state objects may contain removed keys. They must not restore
 // either a background overview worker/canvas or the obsolete setting.
 test('a legacy minimap=true state cannot resurrect overview work or the removed checkbox', async () => {
+  interfacePreference.set({ uiMode: 'sketch' })
   await render(); absent()
   await act(async () => editor.set({ minimap: true } as unknown as Partial<typeof editor.state>))
   expect((editor.state as unknown as { minimap: boolean }).minimap).toBe(true)
