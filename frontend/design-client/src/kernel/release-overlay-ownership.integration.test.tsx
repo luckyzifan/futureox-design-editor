@@ -31,7 +31,7 @@ function canvasContext(document:any,ids:string[],ui:Ui={}){
   measurementTarget:ui.target===undefined?{id:'target-one',bounds:{x:130,y:0,width:30,height:70}}:ui.target})
 }
 
-async function harness(kind:'rotate'|'scale'|'move'='rotate',workerPoses=false,options:{multiple?:boolean;selectedCount?:number;initialOverlay?:boolean}={}){
+async function harness(kind:'rotate'|'scale'|'move'='rotate',workerPoses=false,options:{multiple?:boolean;selectedCount?:number;initialOverlay?:boolean;changedReadout?:boolean}={}){
  const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://design.invalid/'})
  for(const k of ['window','document','navigator','HTMLElement','HTMLCanvasElement','Node','Event'])vi.stubGlobal(k,k==='window'?dom.window:(dom.window as any)[k])
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
@@ -74,7 +74,12 @@ async function harness(kind:'rotate'|'scale'|'move'='rotate',workerPoses=false,o
  await act(async()=>{jobs[0].resolve({bytes:new Uint8Array(),gpuTile:oldSlot,compileMs:1,residentInteraction:workerPoses});await Promise.resolve()})
  expect(frames.at(-1).items.some((item:any)=>item.tile.gpuTile===oldSlot)).toBe(true)
  expect(lastPresented()?.presented.gpuOverlay).toBe(options.initialOverlay!==false)
- const matrix=kind==='move'?[1,0,0,1,12.5,3.25]:kind==='scale'?[1.4,0,0,1.4,0,0]:[Math.cos(.4),Math.sin(.4),-Math.sin(.4),Math.cos(.4),0,0]
+ // The release certificate includes the displayed angle and W×H readout.
+ // Small transforms change captured corners while preserving both readouts.
+ const angle=options.changedReadout ? .4 : 1e-6
+ const scale=options.changedReadout ? 1.4 : 1.000001
+ const matrix=kind==='move' ? [1,0,0,1,12.5,3.25] : kind==='scale'
+  ? [scale,0,0,scale,0,0] : [Math.cos(angle),Math.sin(angle),-Math.sin(angle),Math.cos(angle),0,0]
  const patches=Object.fromEntries(ids.map(id=>[id,{transform:multiply(matrix as any,doc.nodes[id].transform)}]))
  await act(async()=>{expect(control.current.apply(doc,patches)).toBeTruthy()})
  expect(jobs).toHaveLength(workerPoses?1:2) // Deliberately leave the last capture/pose incomplete.
@@ -121,6 +126,7 @@ test.each([{kind:'rotate',multiple:false},{kind:'scale',multiple:false},{kind:'r
  // Production Canvas keeps the prior exact surfaceDocument for refinement,
  // while the committed overlay and interaction document advance immediately.
  const pendingOverlay=h.overlay(h.final),original=h.overlay(h.doc).commands,oldCorners=original.selection!.corners
+ expect(pendingOverlay.uiIdentity).toBe(h.overlay(h.doc).uiIdentity)
  expect(pendingOverlay.commands.selection!.corners).not.toEqual(oldCorners)
  await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:pendingOverlay})
  const frame=h.frames.at(-1),ack=h.lastPresented()?.presented
@@ -139,6 +145,17 @@ test.each([{kind:'rotate',multiple:false},{kind:'scale',multiple:false},{kind:'r
  expect(frame.overlay.labels).not.toEqual(pendingOverlay.commands.labels)
  expect(frame.overlay.measurements).not.toEqual(pendingOverlay.commands.measurements)
  expect(h.props.interaction.document).toBe(h.final)
+})
+
+test.each(['rotate','scale'] as const)('released %s with a changed readout keeps current DOM chrome available',async kind=>{
+ const h=await harness(kind,false,{changedReadout:true}),current=h.overlay(h.final)
+ const previous=h.onPresented.mock.calls.at(-1)![1]
+ expect(current.uiIdentity).not.toBe(h.overlay(h.doc).uiIdentity)
+ expect(canvasGpuOverlayOwnsUi(previous,current,true)).toBe(false)
+ await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:current})
+ expect(h.lastPresented()?.presented.ids).toContain(h.oldSlot)
+ expect(h.frames.at(-1).overlay).toBeUndefined()
+ expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
 })
 
 test.each(['overlay-geometry','selection','page','epoch','owner','next-resize','worker-pose'] as const)('%s cannot borrow a prior capture overlay',async boundary=>{
@@ -244,7 +261,8 @@ test('legacy commands without a UI certificate cannot borrow retained capture ge
  expect(h.lastPresented()?.presented.gpuOverlay).toBe(false)
 })
 
-test.each([1,16,64])('exact command snapshot reuse performs linear owner membership work for %i selections',async selectedCount=>{
+// Live affine capture admits at most 16 selected layers.
+test.each([1,8,16])('exact command snapshot reuse performs linear owner membership work for %i selections',async selectedCount=>{
  const calls:{owner:InteractionRenderer;args:Parameters<InteractionRenderer['capturedOverlay']>;result:ReturnType<InteractionRenderer['capturedOverlay']>}[]=[]
  const original=InteractionRenderer.prototype.capturedOverlay
  vi.spyOn(InteractionRenderer.prototype,'capturedOverlay').mockImplementation(function(this:InteractionRenderer,...args){
