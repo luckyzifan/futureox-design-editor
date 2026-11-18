@@ -3,6 +3,7 @@ import { Editor } from './engine'
 import { blank, node, type DesignDocument } from './model'
 import { ColorEditSession } from './color-edit-session'
 import { DesktopSession } from './desktop-session'
+import { AUTOSAVE_IDLE_MS } from './buffered-autosave'
 import type { DesktopBridge } from './desktop'
 import { dispatchEditorCommand } from './editor-commands'
 import { attachDesktopAutomation, type DesktopAutomationRequest, type DesktopAutomationTransport, type BridgeDependencies } from './automation/bridge'
@@ -27,19 +28,17 @@ function desktop() {
   const session = new DesktopSession(bridge, f.editor, async () => 'discard'); dispose.push(() => session.dispose())
   return { ...f, bridge, session }
 }
-test('desktop failed save/recovery never serializes preview; valid Save settles one property edit', async () => {
+test('invalid desktop preview blocks Save and background recovery until the draft settles', async () => {
   vi.useFakeTimers()
   const f = desktop(); await f.session.start(); await f.session.save()
   vi.mocked(f.bridge.writeRecovery).mockClear(); vi.mocked(f.bridge.saveDocument).mockClear()
   const base = f.editor.authoredDocument, s = f.open(); s.update({ color: '#abcdef' }); s.update({ opacity: 'invalid' })
-  expect(await f.session.save()).toBe(false); expect(f.bridge.saveDocument).not.toHaveBeenCalled()
-  await vi.advanceTimersByTimeAsync(700)
-  expect(f.bridge.writeRecovery).toHaveBeenCalled()
-  for (const [request] of vi.mocked(f.bridge.writeRecovery).mock.calls) {
-    const persisted = JSON.parse(request.documentJson)
-    expect(persisted.nodes[f.n.id].fills[0].color).toBe('#123456')
-    expect(persisted).toEqual(base)
-  }
+  expect(await f.session.save()).toBe(false)
+  await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
+  expect(f.bridge.saveDocument).not.toHaveBeenCalled()
+  expect(f.bridge.writeRecovery).not.toHaveBeenCalled()
+  expect(f.editor.authoredDocument).toBe(base)
+  expect(base.nodes[f.n.id].fills[0].color).toBe('#123456')
   s.update({ opacity: '20' }); expect(await f.session.save()).toBe(true)
   expect(f.editor.state.version).toBe(1); expect(s.active).toBe(false)
   const saved = JSON.parse(vi.mocked(f.bridge.saveDocument).mock.calls[0][0].documentJson)
@@ -105,19 +104,30 @@ test('desktop cancelling back to the saved base clears dirty/recovery state with
   vi.useFakeTimers()
   const f = desktop(); await f.session.start(); await f.session.save(); expect(f.session.dirty).toBe(false)
   const s = f.open(); s.update({ color: '#abcdef' }); expect(f.session.dirty).toBe(true)
-  s.cancel(); await vi.advanceTimersByTimeAsync(700)
+  s.cancel(); await vi.advanceTimersByTimeAsync(AUTOSAVE_IDLE_MS)
   expect(f.editor.state.version).toBe(0); expect(f.session.dirty).toBe(false)
   expect(vi.mocked(f.bridge.saveDocument).mock.calls).toHaveLength(1)
 })
 test('workspace tab switching vetoes invalid draft and adopts the new authored head without stale rollback', async () => {
   const f = desktop(); await f.session.start(); await f.session.save()
   const next = blank('Another tab'), target = node('rectangle'); next.nodes[target.id] = target; next.pages[0].children = [target.id]
-  Object.defineProperty(f.bridge, 'workspace', { value: { open: vi.fn().mockResolvedValue({ status: 'ok', id: next.id, name: next.name,
-    revision: 1, hash: 'fixture-hash', updatedAt: 1, documentJson: JSON.stringify(next) }) } })
+  const commit = vi.fn(async ({ documentJson }: { documentJson: string }) => {
+    const saved: DesignDocument = JSON.parse(documentJson)
+    return { status: 'ok', id: saved.id, name: saved.name, revision: 1, hash: 'save-hash', updatedAt: 1 } as const
+  })
+  Object.defineProperty(f.bridge, 'workspace', { value: {
+    commit,
+    open: vi.fn().mockResolvedValue({ status: 'ok', id: next.id, name: next.name,
+      revision: 1, hash: 'fixture-hash', updatedAt: 1, documentJson: JSON.stringify(next) }),
+  } })
   const s = f.open(); s.update({ color: '#invalid' }); const previous = f.editor.state.doc
   expect(await f.session.openWorkspace(next.id)).toBe(false)
   expect(f.editor.state.doc).toBe(previous); expect(s.active).toBe(true)
   s.update({ color: '#abcdef' }); expect(await f.session.openWorkspace(next.id)).toBe(true)
+  expect(commit).toHaveBeenCalledTimes(1)
+  const saved: DesignDocument = JSON.parse(commit.mock.calls[0][0].documentJson)
+  expect(saved.id).toBe(previous.id)
+  expect(saved.nodes[f.n.id].fills[0].color).toBe('#abcdef')
   const adopted = f.editor.state.doc; expect(adopted.id).toBe(next.id); expect(f.session.activeDocumentId).toBe(next.id)
   f.editor.select([target.id]); s.cancel()
   expect(f.editor.state.doc).toBe(adopted); expect(f.editor.state.selection).toEqual([target.id]); expect(s.active).toBe(false)
