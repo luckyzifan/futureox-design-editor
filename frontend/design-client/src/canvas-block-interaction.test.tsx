@@ -10,6 +10,8 @@ import { Editor } from './engine'
 import { blank, node, uid, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { scene, worldMatrix, inverse, multiply } from './geometry'
+import { armComponentPlacement } from './component-placement'
+import { interfacePreference } from './interface-preference'
 
 const recordedOverlay = vi.hoisted(() => ({ labels: [] as string[], control: undefined as import('./kernel/interaction-layers').GpuMoveControl | undefined }))
 vi.mock('./kernel/Surface', async () => {
@@ -53,7 +55,7 @@ beforeEach(() => {
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
 afterEach(async () => {
-  await act(async () => root.unmount()); editor.dispose(); dom.window.close()
+  await act(async () => root.unmount()); editor.dispose(); interfacePreference.reset(); dom.window.close()
   vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
@@ -128,6 +130,28 @@ test.each(['pointerup', 'pointercancel'])('the original pointer can finish or ca
     await act(async () => editor.redo())
     expect(editor.state.doc).toEqual(after)
   }
+})
+
+test('asset placement inserts at the next canvas point and Escape clears a pending placement', async () => {
+  interfacePreference.set({ uiMode: 'figma' })
+  const frame = node('frame', 90, 90, 120, 75)
+  await render([frame])
+  await act(async () => { editor.select([frame.id]); editor.createComponent() })
+  const source = editor.state.selection[0], before = editor.state.doc
+  expect(before.nodes[source].component).toBeDefined()
+  expect(armComponentPlacement(editor, source)).toBe(true)
+  await act(async () => pointer('pointerdown', 420, 210, { buttons: 1 }))
+  const instance = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(instance.instance?.componentId).toBe(source)
+  expect(instance.transform.slice(4)).toEqual([420, 210])
+  await act(async () => editor.undo())
+  expect(editor.state.doc).toBe(before)
+
+  expect(armComponentPlacement(editor, source)).toBe(true)
+  await act(async () => key('Escape'))
+  await act(async () => pointer('pointerdown', 460, 260, { buttons: 1 }))
+  await act(async () => pointer('pointerup', 460, 260))
+  expect(editor.state.doc).toBe(before)
 })
 test('entered nested child drag edits only child; copied frame descendants get independent IDs and undo',async()=>{
  const frame=node('frame',100,100,400,300),group=node('group',20,20,180,100),child=node('rectangle',20,20,100,75);frame.children=[group.id];group.children=[child.id]
