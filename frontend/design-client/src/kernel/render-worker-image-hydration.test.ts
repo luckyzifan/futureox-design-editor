@@ -659,6 +659,42 @@ test('a full native viewport prepares the released affine pose while the obsolet
     compile.mockRestore()
   }
 })
+
+test.each([false, true])('a masked viewport prepares terminal rotation during the prior GPU finish (declined=%s)', async declined => {
+  const w = await affineWorker(true, true, 48)
+  w.send({ command: 'display-frame', sequence: 1, frame: {
+    view: { x: 0, y: 0, zoom: 1 }, width: 48, height: 16, dpr: 1, items: [],
+  } })
+  const sample = (sequence: number) => w.messages.find(m =>
+    m.presentation?.residentSample?.sequence === sequence)?.presentation.residentSample
+  w.send(w.pose(1))
+  await vi.waitFor(() => expect(sample(1)?.patchSession).toBe(false))
+  const mutation = vi.spyOn(w.kernel.VectorEngine.prototype, 'apply_interaction_transforms')
+  const compile = vi.spyOn(w.kernel.VectorEngine.prototype, 'compile_gpu_packet')
+  let resume!: () => void
+  state.renderGate = new Promise<void>(resolve => { resume = resolve })
+  const terminal = { ...w.pose(3), terminal: true }
+  try {
+    w.send(w.pose(2))
+    await vi.waitFor(() => expect(state.renderBlocked).toBe(true))
+    if (declined) mutation.mockReturnValueOnce(false)
+    w.send(terminal)
+    await vi.waitFor(() => expect(mutation).toHaveBeenCalledTimes(2))
+    if (!declined) await vi.waitFor(() => expect(compile).toHaveBeenCalledTimes(2))
+    expect(sample(3)).toBeUndefined()
+    state.renderGate = undefined
+    resume()
+    await vi.waitFor(() => expect(sample(3)?.nativePose).toBe(true))
+    expect(sample(2)).toBeUndefined()
+    expect(compile).toHaveBeenCalledTimes(2)
+    expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(terminal.transforms['image-0'])
+  } finally {
+    state.renderGate = undefined
+    resume()
+    await vi.waitFor(() => expect(sample(3)).toBeDefined())
+  }
+})
+
 test.each([[true, true], [true, false], [false, true], [false, false]])(
   'a declined native pose keeps its lease only when it covers the display (affine=%s, full=%s)', async (affine, coversDisplay) => {
   const w = await affineWorker(affine,true)
