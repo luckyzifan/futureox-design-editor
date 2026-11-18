@@ -1,5 +1,6 @@
 import type { ConstraintAnchor, DesignDocument, DesignNode } from '../model'
 import { connectorIntoSubtree, snapshotParents, snapshotTargets } from '../page-edit-scope'
+import { poseDocumentSource } from '../pose-document'
 
 const hasReferences = (node: DesignNode, booleanGeometry = true) =>
   !!(node.component || node.componentSet || node.componentKey != null || node.instance ||
@@ -45,8 +46,18 @@ export class PoseTopology implements ReadonlyMap<string, string> {
   readonly hasSketchMasks: boolean
   readonly hasRepeats: boolean
   readonly permitsPose: boolean
-  constructor(document: DesignDocument) {
+  constructor(document: DesignDocument, predecessor?: { document: DesignDocument; topology: PoseTopology }) {
     this.#source = new WeakRef(document)
+    if (predecessor?.topology.matches(predecessor.document) && poseDocumentSource(predecessor.document, document)) {
+      const topology = predecessor.topology
+      this.#parents = topology.#parents
+      this.#pages = topology.#pages
+      this.hasSketchMasks = topology.hasSketchMasks
+      this.hasRepeats = topology.hasRepeats
+      this.permitsPose = topology.permitsPose
+      Object.freeze(this)
+      return
+    }
     let repeats = false, sketchMasks = false, valid = true
     for (const page of document.pages) {
       if (document.nodes[page.id] || this.#pages.has(page.id)) valid = false

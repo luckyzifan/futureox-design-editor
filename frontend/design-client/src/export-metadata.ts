@@ -39,10 +39,14 @@ export function sliceExportTarget(doc: DesignDocument, id: string): ExportTarget
 /** Content the true-vector PDF writer cannot preserve (its v1 scope ignores
  * effects and masks and approximates angular/diamond gradients as solid
  * fills). Targets with issues fall back to the bitmap PDF export. */
-export function pdfVectorIssues(doc: DesignDocument, pageId: string, target: ExportTarget = { kind: 'page' }) {
+export function pdfVectorIssues(doc: DesignDocument, pageId: string, target: ExportTarget = { kind: 'page' }, scopePageRoots = false) {
   const issues = new Set<string>()
   const selected = target.kind === 'selection' ? new Set(target.nodeIds) : undefined
-  for (const entry of scene(doc, pageId)) {
+  const page = scopePageRoots ? doc.pages.find(page => page.id === pageId) : undefined
+  // For a page-root selection, the inspector can build just the exact scene
+  // branches it will inspect. Nested targets still use their page ancestry.
+  const roots = page && selected && [...selected].every(id => page.children.includes(id)) ? selected : undefined
+  for (const entry of scene(doc, pageId, roots)) {
     if (selected && !selected.has(entry.id) && !entry.ancestors.some((id) => selected.has(id))) continue
     const n = doc.nodes[entry.id]
     if (!n.visible || n.opacity <= 0) continue

@@ -37,6 +37,7 @@ function compareMetadata(doc: DesignDocument, target: ExportTarget = { kind: 'pa
   const before = JSON.stringify(doc)
   const current = capture(() => pdfVectorIssues(doc, doc.pages[0].id, target))
   expect(current).toStrictEqual(capture(() => old.pdfVectorIssues(doc, doc.pages[0].id, target)))
+  expect(capture(() => pdfVectorIssues(doc, doc.pages[0].id, target, true))).toStrictEqual(current)
   expect(JSON.stringify(doc)).toBe(before)
   return current
 }

@@ -1,3 +1,5 @@
+import type { DesignDocument, Matrix } from './model'
+
 /** Only graphs traversed here can be shared as immutable. A shallow freeze
  * from a caller neither proves the children immutable nor validates a document. */
 const immutable = new WeakSet<object>()
@@ -40,6 +42,27 @@ export function captureImmutable<T>(value: T): T | undefined {
   }
   try { return copy(value,0) as T }
   catch (error) { if (error !== unsupported) throw error }
+}
+
+/** The base already owns every unchanged value. Build and freeze just the
+ * new node records, the copied node table and its document wrapper. */
+export function captureImmutableTransforms(before: DesignDocument,
+  transforms: readonly [string, Matrix][]): DesignDocument | undefined {
+  if (!immutableDocument(before)) return
+  const nodes = { ...before.nodes }
+  for (const [id, input] of transforms) {
+    if (!Object.hasOwn(before.nodes, id)) return
+    const transform = captureImmutable(input)
+    if (!transform) return
+    const node = Object.freeze({ ...before.nodes[id], transform })
+    immutable.add(node)
+    Object.defineProperty(nodes, id, { value: node, enumerable: true, writable: true, configurable: true })
+  }
+  Object.freeze(nodes)
+  immutable.add(nodes)
+  const after = Object.freeze({ ...before, nodes })
+  immutable.add(after)
+  return after
 }
 
 function prepareFreeze(value: object) {

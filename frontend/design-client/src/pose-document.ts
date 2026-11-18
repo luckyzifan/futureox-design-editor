@@ -1,5 +1,5 @@
 import type { DesignDocument, DesignNode, Matrix } from './model'
-import { produceDocumentDraft } from './document-patch'
+import { produceDocumentDraft, producePoseDocument as produceBoundedPose } from './document-patch'
 import { freezeOwnedDocument, immutableDocument } from './immutable-document'
 
 type PoseSource = { before:WeakRef<DesignDocument>; transforms:Readonly<Record<string,Matrix>> }
@@ -22,7 +22,7 @@ function copyTransform(patch: Partial<DesignNode>): Matrix | undefined {
 
 /** The producer makes the entire transition. A list of changed IDs from a
  * caller cannot certify an unchanged subtree or authorize graph operations. */
-export function producePoseDocument(before: DesignDocument, patches: Readonly<Record<string,Partial<DesignNode>>>): DesignDocument | undefined {
+export function producePoseDocument(before: DesignDocument, patches: Readonly<Record<string,Partial<DesignNode>>>, reuseOwnedPose = false): DesignDocument | undefined {
   const ids = Object.keys(patches)
   if (!ids.length || ids.length>4096) return
   const transforms: Record<string,Matrix> = {}
@@ -37,10 +37,13 @@ export function producePoseDocument(before: DesignDocument, patches: Readonly<Re
   const combined = root ? {...previous!.transforms,...transforms} : transforms
   if (Object.keys(combined).length>4096) return
   const base = root ?? before
-  const doc = produceDocumentDraft(base,draft=>{
+  const owned = reuseOwnedPose && immutableDocument(base) && Object.keys(combined).length <= 16
+    ? produceBoundedPose(base,Object.fromEntries(Object.entries(combined).map(([id,transform])=>[id,{transform}])),true)
+    : undefined
+  const doc = owned ?? produceDocumentDraft(base,draft=>{
     for (const [id,transform] of Object.entries(combined)) draft.nodes[id].transform=transform
   })
-  if (immutableDocument(base) && freezeOwnedDocument(doc))
+  if (doc !== base && immutableDocument(base) && (immutableDocument(doc) || freezeOwnedDocument(doc)))
     sources.set(doc,{before:new WeakRef(base),transforms:Object.freeze(combined)})
   return doc
 }
