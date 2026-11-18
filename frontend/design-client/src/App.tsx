@@ -1300,11 +1300,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         : '已保存到文件')
       : saved
   const saveStatusText = translateProfessional(saveStatusSource, locale)
-  const saveStatusHelp = source
-    ? translateProfessional('编辑自动保存到独立工作副本，原文件保持不变', locale)
-    : desktopSession
-      ? translateProfessional(desktopStatus.warning || desktopStatus.recoveryWarning || '编辑自动保存到独立工作副本，原文件保持不变', locale)
-      : ''
+  const saveStatusError = source ? source.error : desktopSession ? desktopStatus.error : saved.includes('失败') ? saved : ''
+  const saveStatusDetail = saveStatusError || (!source && desktopSession ? desktopStatus.warning || desktopStatus.recoveryWarning : '')
+  const saveStatusDirty = source ? source.dirty : !!desktopSession && desktopStatus.dirty
+  const saveStatusHelp = source || desktopSession
+    ? translateProfessional(saveStatusDetail || '编辑自动保存到独立工作副本，原文件保持不变', locale)
+    : ''
   const saveStatusTitle = saveStatusHelp && saveStatusHelp !== saveStatusText ? `${saveStatusText} — ${saveStatusHelp}` : saveStatusText
   const toolbarDisabled = !ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas ||
     !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)
@@ -1620,11 +1621,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </div>
           </details>
           <span
-            className={`save-status ${(desktopSession ? desktopStatus.error || desktopStatus.warning || desktopStatus.recoveryWarning : saved.includes('失败')) ? 'error' : ''}`}
+            className={`save-status ${saveStatusDetail ? 'error' : ''}`}
             title={saveStatusTitle}
             role="status"
           >
-            {desktopSession && desktopStatus.dirty ? <span aria-hidden="true">●</span> : <Check size={13} />}
+            {saveStatusDirty || saveStatusError ? <span aria-hidden="true">●</span> : <Check size={13} />}
             <span className="save-status-label" title={saveStatusTitle}>{saveStatusText}</span>
           </span>
           {desktopSession&&ready&&<LocalWindowControl editor={editor} session={desktopSession} live={localWindows}/>}
