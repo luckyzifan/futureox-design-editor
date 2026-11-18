@@ -54,7 +54,16 @@ test('desktop package staging includes the preparation worker and its frame deco
   assert.equal(worker.kind,'js')
   assert.equal(worker.sha256,createHash('sha256').update(await readFile(path.join(staged,'preparation-worker.mjs'))).digest('hex'))
   assert.equal(list.entries.filter(entry=>entry.kind==='native'&&entry.present).length,0)
-  assert.equal(list.entries.filter(entry=>entry.kind==='native'&&entry.present===false).length,5)
+  const suffix = process.platform === 'win32' ? '.exe' : ''
+  const absentNative = list.entries.filter(entry => entry.kind === 'native' && !entry.present)
+  assert.deepEqual(absentNative.map(entry => entry.installPath).sort(), [
+    `sidecar/futureox-design-desktop-backend${suffix}`,
+    `bin/design-render${suffix}`,
+    `bin/design-prepare${suffix}`,
+    ...(process.platform === 'darwin' ? ['bin/futureox-sketch-font-outlines'] : []),
+    `bin/futureox-design-agent${suffix}`,
+    `bin/ffmpeg${suffix}`,
+  ].sort())
   const mcp=list.entries.find(entry=>entry.installPath==='design-mcp/src/server.mjs')
   assert.equal(mcp.present,true)
   assert.equal(mcp.sha256,createHash('sha256').update(await readFile(path.join(root,'dist/design-mcp/src/server.mjs'))).digest('hex'))
