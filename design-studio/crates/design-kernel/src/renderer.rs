@@ -4488,7 +4488,7 @@ impl Painter<'_> {
             } else if fx.kind == "blur" {
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
                 let compatible = self.compatible;
-                let constant_half_up = fx.gradient_blur.is_none()
+                let correct_export_ties = fx.gradient_blur.is_none()
                     && self.compatible
                     && self.profile == crate::fidelity::RasterProfile::Figma
                     && fx.blur_radius() * scale == 1.;
@@ -4506,10 +4506,9 @@ impl Painter<'_> {
                             source.quantize_rgba8();
                         }
                         Ok(source)
-                    } else if constant_half_up {
-                        // Constant export pairs round half-up on the layer.
-                        // The backdrop is composited afterwards, so a later
-                        // sibling or clip does not paint onto a baked 2×2.
+                    } else if correct_export_ties {
+                        // Correct half-code ties on the layer before later
+                        // siblings and clips composite with the device samples.
                         effects::figma_portable_layer_blur(source)
                     } else {
                         blur_filter.apply(&source)
