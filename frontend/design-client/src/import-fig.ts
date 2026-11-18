@@ -889,7 +889,10 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if (r.textCase === 'UPPER' || r.textCase === 'LOWER') n.textStyle.textCase = r.textCase.toLowerCase()
       else if (r.textCase && r.textCase !== 'ORIGINAL') warnings.add(`文字大小写 ${r.textCase} 尚需核对`)
       // Preserve authoring metrics instead of silently using 1.35em/zero.
-      if (r.lineHeight?.units === 'PIXELS') n.textStyle.lineHeight = r.lineHeight.value / n.fontSize
+      if (r.lineHeight?.units === 'PIXELS') {
+        n.textStyle.lineHeight = r.lineHeight.value / n.fontSize
+        n.textStyle.lineBoxBaseline = 'figma-pixel-leading'
+      }
       if (r.lineHeight?.units === 'PERCENT') n.textStyle.lineHeight = r.lineHeight.value / 100
       if (r.letterSpacing?.units === 'PIXELS') n.textStyle.letterSpacing = r.letterSpacing.value
       if (r.letterSpacing?.units === 'PERCENT') n.textStyle.letterSpacing = r.letterSpacing.value * n.fontSize / 100

@@ -2212,7 +2212,12 @@ impl FigImporter {
         }
         if let Some(lh) = change.get("lineHeight") {
             match line_height_multiplier(lh, node.font_size) {
-                Some(m) => style.line_height = m,
+                Some(m) => {
+                    style.line_height = m;
+                    if str_of(lh, "units") == Some("PIXELS") {
+                        style.line_box_baseline = "figma-pixel-leading".into();
+                    }
+                }
                 None => untranslated.push(format!("lineHeight={lh}")),
             }
         }

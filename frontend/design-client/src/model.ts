@@ -446,7 +446,7 @@ export type TextStyle = {
   weight: number
   lineHeight: number
   /** Sketch fixed line boxes use `nearest-point`. Omitted keeps unrounded half-leading. */
-  lineBoxBaseline?: '' | 'nearest-point' | 'sketch-font-leading' | 'sketch-fixed-advance'
+  lineBoxBaseline?: '' | 'nearest-point' | 'sketch-font-leading' | 'sketch-fixed-advance' | 'figma-pixel-leading'
   /** Sketch text with no authored line box uses the font's own line metrics. */
   lineHeightAuto?: boolean
   letterSpacing: number

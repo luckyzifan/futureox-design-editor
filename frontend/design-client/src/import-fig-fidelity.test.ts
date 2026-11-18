@@ -195,7 +195,7 @@ test('native FIG text casing and styled ranges remain authored through WASM reop
   ]},textCase:'UPPER',fontSize:14,fontName:{family:'Poppins',style:'SemiBold',postscript:'Poppins-SemiBold'},lineHeight:{units:'PIXELS',value:21},letterSpacing:{units:'PERCENT',value:2}})
   expect(result.document.schemaVersion).toBe(15)
   expect(result.node.text).toBe('aßCD')
-  expect(result.node.textStyle).toMatchObject({textCase:'upper',weight:600,lineHeight:1.5,letterSpacing:.28})
+  expect(result.node.textStyle).toMatchObject({textCase:'upper',weight:600,lineHeight:1.5,lineBoxBaseline:'figma-pixel-leading',letterSpacing:.28})
   expect(result.node.textRuns?.[0]).toMatchObject({start:1,end:3,textCase:'original',fontSize:18})
 })
 

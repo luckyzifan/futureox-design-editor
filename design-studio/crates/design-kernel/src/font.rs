@@ -95,6 +95,8 @@ pub struct TextStyle {
     /// `sketch-font-leading` uses the font ascender and includes font leading
     /// in the advance for the original Sketch spacing modes 0 and 1.
     /// `sketch-fixed-advance` uses the ascender with an exact line advance.
+    /// `figma-pixel-leading` centers the font metrics in an explicit FIG
+    /// pixel line box, using the existing fractional baseline.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub line_box_baseline: String,
     /// Sketch text with no authored line box uses the font's ascender,
@@ -573,7 +575,7 @@ impl TextStyle {
             || !(1. ..=1000.).contains(&self.weight)
             || !self.line_height.is_finite()
             || !(0.1..=10.).contains(&self.line_height)
-            || !["", "nearest-point", "sketch-font-leading", "sketch-fixed-advance"]
+            || !["", "nearest-point", "sketch-font-leading", "sketch-fixed-advance", "figma-pixel-leading"]
                 .contains(&self.line_box_baseline.as_str())
             || !self.letter_spacing.is_finite()
             || self.letter_spacing.abs() > 1000.
@@ -2261,6 +2263,8 @@ impl Fonts {
                             ascent = ascent.round_ties_even();
                         }
                     }
+                } else if style.line_box_baseline == "figma-pixel-leading" && natural > 0. {
+                    ascent += (height - natural) / 2.;
                 }
                 if font_line_box && attributes.is_none() && !explicit_line_height {
                     if natural == 0. {
@@ -2693,6 +2697,26 @@ mod tests {
         assert!(measurement.cap_y.unwrap() > 0.);
         assert!(measurement.baseline_y < node.height);
     }
+    #[test]
+    fn figma_pixel_line_box_keeps_fractional_half_leading() {
+        let fonts = fonts();
+        let ordinary = node("H", serde_json::json!({ "lineHeight": 1.05 }), 200.);
+        let figma = node("H", serde_json::json!({
+            "lineHeight": 1.05,
+            "lineBoxBaseline": "figma-pixel-leading"
+        }), 200.);
+        let face = fonts.face("default", 400.).unwrap();
+        let face = face.borrow_face();
+        let units = f64::from(face.units_per_em());
+        let natural = f64::from(face.ascender() - face.descender() + face.line_gap()) * 20. / units;
+        let a = fonts.node_layout(&ordinary, Some(ordinary.width)).unwrap();
+        let b = fonts.node_layout(&figma, Some(figma.width)).unwrap();
+        assert_eq!(a.lines[0].height, 21.);
+        assert_eq!(b.lines[0].height, a.lines[0].height);
+        assert_eq!(b.glyphs[0].x, a.glyphs[0].x);
+        assert!((b.glyphs[0].y - a.glyphs[0].y - (21. - natural) / 2.).abs() < 1e-9);
+    }
+
     #[test]
     fn bundled_noto_sans_sc_reports_variable_weight_axis() {
         let faces: Vec<serde_json::Value> =
