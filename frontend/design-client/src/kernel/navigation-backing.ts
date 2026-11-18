@@ -77,7 +77,7 @@ function missingOnPage(frame: ResidentAcknowledgement, target: CameraWindow, bou
 }
 
 export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | undefined, next: ResidentAcknowledgement,
-  allowed: boolean, zooming = false, target?: CameraWindow, history?: CameraWindow) {
+  allowed: boolean, zooming = false, target?: CameraWindow, history?: CameraWindow, preserveZoomBasis = false) {
   if (!allowed || !backing || backing.preview || backing.interaction || next.interaction) return false
   // A fit or zoom-out past 2× still owns the last complete picture. A preview
   // or a frame with gaps is not the closer replacement, so it must not punch
@@ -98,6 +98,15 @@ export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | und
   if (!target) return !!next.preview || zooming && next.view.zoom > backing.view.zoom
   const old = intersect(screen(target), project(backing, target))
   if (!old) return false
+  if (preserveZoomBasis && zooming && next.view.zoom > backing.view.zoom &&
+      previewCameraScaleWithinLimit(backing.view.zoom, target.view.zoom) && contains(old, screen(target))) {
+    // A sharper inward crop may cover the current pose while losing pixels
+    // needed on wheel reversal. Keep the covering image while the wheel is
+    // active unless a proved wider backing already covers those pixels.
+    const lost = missing(next, backing)
+    const wider = history && project(history, backing)
+    if (!lost || lost.some(hole => !wider || !contains(wider, hole))) return true
+  }
   const fallback = history && project(history, target)
   if (next.preview) {
     const holes = missing(next, target)

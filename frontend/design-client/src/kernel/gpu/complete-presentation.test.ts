@@ -91,6 +91,34 @@ test('same-density integer pan fills only certified uniform page gaps without al
   expect(f.presenter.residentBytes).toBe(bytes)
 })
 
+test('a retained board may expose its own background but cannot waive coverage elsewhere', () => {
+  const f = descriptorPresenter(() => {})
+  const proof: PageBackgroundProof = { owner: {}, view: { x: 0, y: 0, zoom: 1 },
+    bounds: [[4, 4, 12, 12], [1, 1, 3, 3]], pixel: [.5/16, .5/16] }
+  const tile = f.presenter.capture(16, 16, proof)
+  const original = frame([item(tile.id, 16)])
+  f.presenter.draw(original)
+  const backdrop = [
+    { left: 0, top: 0, width: 16, height: 4 },
+    { left: 0, top: 12, width: 16, height: 4 },
+    { left: 0, top: 4, width: 4, height: 8 },
+    { left: 12, top: 4, width: 4, height: 8 },
+  ].map(clip => ({ ...original.items[0], clip }))
+  const moved = {
+    ...original, interaction: true, allowBackground: true,
+    backgroundBoard: { moving: { x: 6, y: 4, width: 8, height: 8 }, stationary: [{ x: 1, y: 1, width: 2, height: 2 }] },
+    items: [...backdrop, { ...original.items[0], layer: 4,
+      placement: { left: 2, top: 0, width: 16, height: 16 },
+      clip: { left: 6, top: 4, width: 8, height: 8 } }],
+  }
+  f.presenter.draw(moved)
+  expect(f.reports.at(-1)?.backgroundCoverage).toBe(1)
+  expect((f.presenter as any).drawn).toBe(moved)
+  f.presenter.draw({ ...moved, items: moved.items.slice(1) })
+  expect(f.reports.at(-1)?.interactionCoverageMissing).toBe(true)
+  expect((f.presenter as any).drawn).toBe(moved)
+})
+
 test('whole-page movement uses translated paint support and refuses unseen entering content',()=>{
   for(const bounds of [[[4,4,12,12]],[[-4,4,12,12]]]){
     const f=descriptorPresenter(()=>{}),proof:PageBackgroundProof={owner:{},view:{x:0,y:0,zoom:1},bounds,pixel:[.5/16,.5/16]}

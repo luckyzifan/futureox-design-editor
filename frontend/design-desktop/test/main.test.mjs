@@ -749,6 +749,28 @@ test('only own-window known Blob exports reach a native save dialog, with byte b
   }
 })
 
+test('the Figma close accelerator offers the tab before the window, and quit can supersede it', async () => {
+  const state = await host({ platform: 'darwin' })
+  try {
+    await state.invoke('renderer-ready')
+    const close = state.menu.find(item => item.label === '文件').submenu.find(item => item.accelerator === 'CmdOrCtrl+W')
+    close.click(close, state.window)
+    const [channel, tab] = state.sent.at(-1)
+    assert.equal(channel, 'design-desktop:close-request')
+    assert.equal(tab.intent, 'tab')
+    assert.equal(state.closeCalls, 0)
+    state.window.close()
+    const [, windowRequest] = state.sent.at(-1)
+    assert.notEqual(windowRequest.requestId, tab.requestId)
+    assert.equal(windowRequest.intent, undefined)
+    assert.deepEqual(await state.invoke('close-response', { requestId: tab.requestId, allow: false }), { accepted: false })
+    assert.deepEqual(await state.invoke('close-response', { requestId: windowRequest.requestId, allow: false }), { accepted: true })
+    assert.equal(state.closeCalls, 1)
+  } finally {
+    await state.dispose()
+  }
+})
+
 for (const response of [0, 1]) {
   test(`stale native fallback response ${response} cannot settle a newer close request`, async () => {
     const state = await host()
@@ -1484,13 +1506,14 @@ for (const platform of ['darwin', 'win32', 'linux']) {
         assert.equal(save.accelerator, 'CmdOrCtrl+Shift+S')
         assert.equal(paste.accelerator, 'CmdOrCtrl+Shift+V')
         assert.equal(settings.accelerator, 'CmdOrCtrl+,')
-        assert.equal(file.submenu.find(item => item.role === 'close').role, 'close')
+        assert.equal(file.submenu.find(item => item.accelerator === 'CmdOrCtrl+W').label, chinese ? '关闭窗口' : 'Close Window')
         state.sent = []; save.click(); paste.click(); settings.click()
         assert.deepEqual(state.sent, ['saveAs', 'paste-over-selection', 'settings'].map(command => ['design-desktop:command', command]))
         assert.equal(state.pageZoom, 1)
       }
       assert.deepEqual(await state.invoke('set-interface-mode', 'sketch'), { status: 'ok' })
       const sketchFile = state.menu.find(item => item.label === 'File').submenu
+      assert.equal(sketchFile.find(item => item.role === 'close').role, 'close')
       const manualSave = sketchFile.find(item => item.label === 'Save')
       assert.equal(manualSave.accelerator, 'CmdOrCtrl+S')
       const duplicateDocument = sketchFile.find(item => item.label === 'Duplicate document')

@@ -52,6 +52,9 @@ export type ResidentFrame = {
   /** Uniform translation of all authored page roots, in world units. Only
    * changes the compiler-owned paint support used for background gap proof. */
   backgroundTranslation?: { x: number; y: number }
+  /** World-space support of the moved board and stationary clipped frames.
+   * Computed only by the isolated-board preview after verifying the page. */
+  backgroundBoard?: { moving: import('../../model').Bounds; stationary: import('../../model').Bounds[] }
   linearBlend?: boolean
   backgroundLinear?: [number, number, number, number]
   input?: import('../interaction-layers').InteractionInput & { owner?:string }
@@ -727,7 +730,19 @@ export class ResidentPresenter {
       if(!source&&rows.some(row=>row.entry.background?.pixel))backgroundDecline=4
       if(source&&proof&&rows.every(row=>row.entry.content?.owner===proof.owner&&row.entry.content.contract===proof.contract)){
         backgroundDecline=4
-        const paint=backgroundPaintRects(proof,backgroundView,dpr,w,h)
+        const board=frame.interaction&&!frame.backgroundTranslation?frame.backgroundBoard:undefined
+        const density=view.zoom*dpr
+        let paint=backgroundPaintRects(proof,backgroundView,dpr,w,h)
+        if(board&&[board.moving,...board.stationary].every(b=>[b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>0&&b.height>0)){
+          paint=backgroundPaintRects({ ...proof, view: { x: 0, y: 0, zoom: density },
+            bounds: board.stationary.map(b=>[b.x*density,b.y*density,(b.x+b.width)*density,(b.y+b.height)*density]) },view,dpr,w,h)
+          const {x,y,width:boardWidth,height:boardHeight}=board.moving
+          const left=x*view.zoom+view.x,top=y*view.zoom+view.y,width=boardWidth*view.zoom,height=boardHeight*view.zoom
+          // The moving texture uses the compositor's pixel-centre scissor.
+          // Stationary native paint keeps its conservative outward bounds.
+          const moved=compositeRasterQuad({left,top,width,height},{left,top,right:left+width,bottom:top+height},frame.width,frame.height,dpr)
+          if(moved)paint?.push(moved)
+        }
         const gaps=paint&&physicalCoverageGaps(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h)
         if(paint)backgroundDecline=5
         if(paint&&gaps?.every(gap=>!paint.some(b=>gap.x<b.x+b.width&&gap.x+gap.width>b.x&&gap.y<b.y+b.height&&gap.y+gap.height>b.y))){

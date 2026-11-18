@@ -4,8 +4,10 @@ import type { DesktopSession } from './desktop-session'
 import { useInterfacePreferences } from './interface-preference'
 import { blank } from './model'
 
-export function WorkspaceTabs({ session, activeId, sidebar = false, onOpenNewTab }: {
+export function WorkspaceTabs({ session, activeId, sidebar = false, onOpenNewTab, newDocumentTab, onActivateDocument }: {
   session: DesktopSession; activeId: string; sidebar?: boolean; onOpenNewTab?: () => void
+  newDocumentTab?: { selected: boolean; select: () => void; close: () => void }
+  onActivateDocument?: () => void
 }) {
   const tabs = useSyncExternalStore(session.subscribeTabs, session.tabsSnapshot)
   const { locale } = useInterfacePreferences()
@@ -15,12 +17,23 @@ export function WorkspaceTabs({ session, activeId, sidebar = false, onOpenNewTab
   const listId = useId()
   async function open(work: () => Promise<boolean>) { if (busy) return; setBusy(true); try { await work() } finally { setBusy(false) } }
   const newDocument = () => void open(() => session.replace(blank()))
+  const activateDocument = (id: string) => {
+    if (id === activeId) { onActivateDocument?.(); return }
+    void open(async () => {
+      const switched = await session.requestWorkspaceTab(id)
+      if (switched) onActivateDocument?.()
+      return switched
+    })
+  }
   const newLabel = en ? (sidebar ? 'New document' : 'New document tab') : (sidebar ? '新建文档' : '新建文档标签')
   const tabLabel = onOpenNewTab ? (en ? 'Open new tab' : '打开新标签页') : newLabel
+  const chooserLabel = en ? 'New design' : '新建设计'
+  const closeChooserLabel = en ? 'Close new design tab' : '关闭新建设计标签'
   const docsLabel = en ? 'Documents' : '文档'
   const disclosureLabel = en ? (expanded ? 'Hide Document List' : 'Show Document List') : (expanded ? '隐藏文档列表' : '显示文档列表')
   return <nav className={sidebar ? 'workspace-tabs sketch-document-list' : 'workspace-tabs'}
-    data-workspace-tabs aria-label={sidebar ? docsLabel : en ? 'Design document tabs' : '设计文档标签'}>
+    data-workspace-tabs data-document-chooser-strip={newDocumentTab?.selected || undefined}
+    aria-label={sidebar ? docsLabel : en ? 'Design document tabs' : '设计文档标签'}>
     {sidebar && <div className="sketch-documents-header">
       <button type="button" aria-label={disclosureLabel} title={disclosureLabel} aria-expanded={expanded} aria-controls={listId}
         onClick={() => setExpanded(value => !value)}>{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}{docsLabel}</button>
@@ -39,15 +52,26 @@ export function WorkspaceTabs({ session, activeId, sidebar = false, onOpenNewTab
           (at + (event.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length
         enabled[next]?.focus()
       } : undefined}
-      hidden={sidebar && !expanded}>{tabs.map(tab => <div key={tab.id} className={tab.id === activeId ? 'workspace-tab active' : 'workspace-tab'}>
-      <button type="button" role="tab" aria-selected={tab.id === activeId} disabled={busy || (!tab.persisted && tab.id !== activeId)}
-        tabIndex={sidebar && tab.id !== activeId ? -1 : undefined}
-        title={sidebar ? tab.name : undefined} onClick={() => { if (tab.id !== activeId) void open(() => session.requestWorkspaceTab(tab.id)) }}>
-        {sidebar && <File size={13} aria-hidden="true" />}<span>{tab.name}</span>
-      </button>
-      <button type="button" className="workspace-tab-close" aria-label={en ? `Close ${tab.name}` : `关闭文档 ${tab.name}`}
-        disabled={busy} onClick={() => void open(() => session.closeWorkspaceTab(tab.id))}>{sidebar ? <X size={13} /> : '×'}</button>
-    </div>)}</div>
+      hidden={sidebar && !expanded}>
+      {tabs.map(tab => {
+        const selected = tab.id === activeId && !newDocumentTab?.selected
+        return <div key={tab.id} className={selected ? 'workspace-tab active' : 'workspace-tab'}>
+          <button type="button" role="tab" aria-selected={selected} disabled={busy || (!tab.persisted && tab.id !== activeId)}
+            tabIndex={sidebar && tab.id !== activeId ? -1 : undefined}
+            title={sidebar ? tab.name : undefined} onClick={() => activateDocument(tab.id)}>
+            {sidebar && <File size={13} aria-hidden="true" />}<span>{tab.name}</span>
+          </button>
+          <button type="button" className="workspace-tab-close" aria-label={en ? `Close ${tab.name}` : `关闭文档 ${tab.name}`}
+            disabled={busy} onClick={() => void open(() => session.closeWorkspaceTab(tab.id))}>{sidebar ? <X size={13} /> : '×'}</button>
+        </div>
+      })}
+      {newDocumentTab && <div className={newDocumentTab.selected ? 'workspace-tab active' : 'workspace-tab'}>
+        <button type="button" role="tab" aria-selected={newDocumentTab.selected} disabled={busy}
+          onClick={newDocumentTab.select}>{chooserLabel}</button>
+        <button type="button" className="workspace-tab-close" aria-label={closeChooserLabel}
+          disabled={busy} onClick={newDocumentTab.close}>×</button>
+      </div>}
+    </div>
     {!sidebar && <button type="button" className="workspace-tab-new" aria-label={tabLabel} title={tabLabel}
       disabled={busy} onClick={onOpenNewTab ?? newDocument}>＋</button>}
   </nav>

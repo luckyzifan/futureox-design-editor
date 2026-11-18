@@ -1,5 +1,6 @@
 import type { CanvasCamera } from '../canvas-camera'
 import type { Bounds, DesignDocument } from '../model'
+import { validColor } from '../color'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import { tilesCoverBounds } from './tile-cache'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
@@ -12,6 +13,10 @@ import {
   type InteractionProps,
   type InteractionInput,
 } from './interaction-layers'
+
+function viewportBounds({ view, width, height }: { view: CanvasCamera; width: number; height: number }): Bounds {
+  return { x: -view.x / view.zoom, y: -view.y / view.zoom, width: width / view.zoom, height: height / view.zoom }
+}
 
 /** Moving every visible page root by the same vector leaves all inter-root
  * backdrop/blend dependencies unchanged. Reuse the already displayed page
@@ -29,6 +34,7 @@ export class PageTranslation {
   private input: InteractionInput = { sequence: 0, at: 0 }
   private pendingPose?: { document: DesignDocument; patches: Parameters<GpuMoveControl['apply']>[1] }
   private board?: Bounds
+  private srgbBoard?: { others: Bounds[]; viewport: Bounds; shown: { x: number; y: number } }
   private checkedDocument?: DesignDocument
   private checkedOffset: { x: number; y: number } | null = null
   moves = 0
@@ -50,6 +56,13 @@ export class PageTranslation {
     private fillCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void)=>boolean) {}
   get handingOff() { return this.phaseRevoked }
   get backgroundTranslation() { return this.board ? undefined : { ...this.offset } }
+  get backgroundBoard() {
+    if (!this.srgbBoard || !this.board) return
+    const view = this.srgbBoard.viewport
+    const visible = this.srgbBoard.others.filter(b => b.x < view.x + view.width && b.x + b.width > view.x &&
+      b.y < view.y + view.height && b.y + b.height > view.y)
+    return { moving: { ...this.board, x: this.board.x + this.offset.x, y: this.board.y + this.offset.y }, stationary: visible }
+  }
   /** A viewport crop is not a complete page. If translating it exposes paint
    * absent from the retained textures, keep the accepted backing and ask the
    * existing native interaction lane for that pose. Late owner/pose replies
@@ -69,7 +82,7 @@ export class PageTranslation {
     return true
   }
   private reusableOffset(offset: { x: number; y: number }) {
-    return this.residents.length > 0 && (this.fractional || this.residents.every(tile =>
+    return this.residents.length > 0 && (this.fractional || !!this.srgbBoard || this.residents.every(tile =>
       [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
     )
   }
@@ -88,17 +101,28 @@ export class PageTranslation {
   }
   private displayedDocument() {
     const document = this.plan!.document
+    const offset = this.srgbBoard?.shown ?? this.offset
     // No pixels have moved yet. Preserve the authored snapshot's private
     // native receipt instead of cloning every node and forcing a full bridge
     // serialization merely to hand the first fractional pose to the kernel.
-    if (this.offset.x === 0 && this.offset.y === 0) return document
+    if (offset.x === 0 && offset.y === 0) return document
     return { ...document, nodes: { ...document.nodes,
       ...Object.fromEntries(this.plan!.ids.map(id => {
         const node = document.nodes[id], transform = [...node.transform] as typeof node.transform
-        transform[4] += this.offset.x; transform[5] += this.offset.y
+        transform[4] += offset.x; transform[5] += offset.y
         return [id, { ...node, transform }]
       })),
     } }
+  }
+  private overlapsStationary(offset: { x: number; y: number }) {
+    if (!this.board || !this.srgbBoard) return false
+    const { viewport, others } = this.srgbBoard
+    const x = this.board.x + offset.x, y = this.board.y + offset.y
+    const left = Math.max(x, viewport.x), top = Math.max(y, viewport.y)
+    const right = Math.min(x + this.board.width, viewport.x + viewport.width)
+    const bottom = Math.min(y + this.board.height, viewport.y + viewport.height)
+    return left < right && top < bottom && others.some(b =>
+      b.x < right && b.x + b.width > left && b.y < bottom && b.y + b.height > top)
   }
   private delta(document: DesignDocument) {
     if (!this.plan) return null
@@ -141,6 +165,9 @@ export class PageTranslation {
         offset = next
       }
       if (!offset || this.phaseRevoked) return null
+      // A visible overlap needs native painter order. Motion beyond the edge
+      // of the viewport does not invalidate this composition.
+      if (this.overlapsStationary(offset)) return this.rebase(document, patches, guides)
       // Fractional desktop motion is a transient, full-density reprojection.
       // Other policies still require the original integer-phase proof. Final
       // readiness always belongs to the committed native page, not this pose.
@@ -181,6 +208,7 @@ export class PageTranslation {
     settled: DesignDocument | undefined,
     allowed: boolean,
     fractional=false,
+    camera?: { view: CanvasCamera; width: number; height: number },
   ) {
     if(this.fractional!==fractional){this.clear();this.fractional=fractional}
     if (this.phaseRevoked) {
@@ -194,8 +222,10 @@ export class PageTranslation {
     const page = document?.pages.find((page) => page.id === pageId)
     const roots = page?.children.filter((id) => document?.nodes[id]?.visible) || []
     const all = roots.length === props?.selection.length && roots.every(id => props?.selection.includes(id))
-    const board = document && props?.selection.length === 1
-      ? isolatedOpaqueBoard(document, roots, props.selection[0]) : undefined
+    const allowSrgb = !!camera && props?.figmaBoardPreview === true && !document?.colorManagement
+    const proof = document && props?.selection.length === 1
+      ? opaqueBoardProof(document, roots, props.selection[0], allowSrgb) : undefined
+    const board = proof?.box
     const coveredBoard = !!board && (this.active && !!this.board || tilesCoverBounds(items.map(i => i.tile), board))
     const eligible =
       !!props &&
@@ -208,6 +238,14 @@ export class PageTranslation {
     }
     if (!eligible || !props) return false
     this.props = props
+    if (this.active && this.srgbBoard && camera) {
+      this.srgbBoard.viewport = viewportBounds(camera)
+      if (this.pendingPose && this.overlapsStationary(this.offset)) {
+        const { document, patches } = this.pendingPose
+        this.rebase(document, patches)
+        return false
+      }
+    }
     if (this.plan && this.active) {
       if (!this.delta(props.document)) {
         this.clear()
@@ -224,6 +262,8 @@ export class PageTranslation {
       this.plan = { document: source, pageId, ids: [...props.selection], layers: [] }
       this.checkedDocument = undefined
       this.board = all ? undefined : board
+      this.srgbBoard = this.board && proof?.srgb && camera
+        ? { others: proof.others, viewport: viewportBounds(camera), shown: { x: 0, y: 0 } } : undefined
       this.residents = items.map((item) => item.tile)
       const offset = this.delta(props.document) || { x: 0, y: 0 }
       this.offset = { x: 0, y: 0 }
@@ -241,6 +281,10 @@ export class PageTranslation {
     if(!this.active||this.phaseRevoked||!ownerMatches||!document||!this.props||
       this.residents.some(tile=>!tile.gpuTile||!slots.includes(tile.gpuTile)))return
     const offset=this.feedback.present(sequence,document)
+    if (offset && this.srgbBoard) {
+      const base = this.delta(document)
+      if (base) this.srgbBoard.shown = { x: base.x + offset.x, y: base.y + offset.y }
+    }
     if(offset)this.props.onPosePresented?.({sequence,offset,document,epoch:this.props.epoch,control:this.control,latencyMs:Math.max(0,performance.now()-at)})
   }
   items(view: CanvasCamera): CompositeItem[] | null {
@@ -309,6 +353,7 @@ export class PageTranslation {
     this.props = undefined
     this.residents = []
     this.board = undefined
+    this.srgbBoard = undefined
     this.active = false
     this.phaseRevoked = false
     this.pendingPose = undefined
@@ -320,19 +365,31 @@ export class PageTranslation {
  * opaque clipped rectangle and other roots cannot paint into its old bounds.
  * Transparent/overlapping/effect-dependent selections use the layer renderer. */
 export function isolatedOpaqueBoard(document: DesignDocument, roots: string[], id: string): Bounds | undefined {
+  return opaqueBoardProof(document, roots, id, false)?.box
+}
+
+function opaqueBoardProof(document: DesignDocument, roots: string[], id: string, allowSrgb: boolean) {
   if (!roots.includes(id)) return
   const boxes = roots.map(key => {
     const n = document.nodes[key], m = n.transform
-    if (n.kind !== 'frame' || !n.clip || n.blend !== 'normal' || n.mask ||
+    if (n.kind !== 'frame' || !n.clip || n.blend !== 'normal' || n.mask || (allowSrgb && n.spatial) ||
       m[0] !== 1 || m[1] !== 0 || m[2] !== 0 || m[3] !== 1 ||
       n.effects.some(e => e.visible) || n.strokes.some(s => s.visible && s.width > 0)) return undefined
     return { x: m[4], y: m[5], width: n.width, height: n.height }
   })
   if (boxes.some(box => !box)) return
   const n = document.nodes[id], box = boxes[roots.indexOf(id)]!
-  if (n.opacity !== 1 || n.radii.some(r => r !== 0) || !n.fills.some(p =>
-    p.visible && p.kind === 'solid' && p.opacity === 1 && p.blend === 'normal' && /^#[\da-f]{6}$/i.test(p.color))) return
-  if (boxes.some((other, i) => roots[i] !== id && other!.x < box.x + box.width &&
-    other!.x + other!.width > box.x && other!.y < box.y + box.height && other!.y + other!.height > box.y)) return
-  return box
+  if (n.opacity !== 1 || n.radii.some(r => r !== 0)) return
+  const solids = n.fills.filter(p => p.kind === 'solid').filter(p => p.visible && p.opacity === 1 && p.blend === 'normal')
+  const hex = solids.some(p => /^#[\da-f]{6}$/i.test(p.color))
+  const srgb = !hex && allowSrgb && solids.some(p => {
+    if (!p.color.startsWith('color(srgb ') || !validColor(p.color)) return false
+    const alpha = p.color.slice(6, -1).split('/')[1]
+    return alpha === undefined || Number(alpha) === 1
+  })
+  if (!hex && !srgb) return
+  const others = boxes.filter((other): other is Bounds => !!other && other !== box)
+  if (others.some(other => other.x < box.x + box.width &&
+    other.x + other.width > box.x && other.y < box.y + box.height && other.y + other.height > box.y)) return
+  return { box, srgb, others }
 }

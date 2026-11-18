@@ -32,6 +32,7 @@ export type GpuMoveControl = {
 }
 export type InteractionProps = {
   readinessRevision?:number
+  figmaBoardPreview?: boolean
   /** Optional selection warming yields to the current camera's visible work. */
   navigating?:boolean
   /** Canvas gesture semantics; affine edits must not be rebound to a translation-only owner. */

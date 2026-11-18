@@ -257,7 +257,7 @@ contextBridge.exposeInMainWorld(
       subscribe(
         'design-desktop:close-request',
         callback,
-        (value) => value && typeof value.requestId === 'string',
+        (value) => value && typeof value.requestId === 'string' && (value.intent === undefined || value.intent === 'tab'),
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>

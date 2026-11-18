@@ -1,10 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest'
-import { NavigationBacking, NAVIGATION_BACKING_BYTES } from './navigation-backing'
+import { keepCompleteCameraBacking, NavigationBacking, NAVIGATION_BACKING_BYTES } from './navigation-backing'
 import { navigationOverview, nearOverviewTiles, overviewWarmBatch } from './navigation-overview'
 import { tilePlacementAtView } from './tile-preview'
 
 afterEach(()=>vi.restoreAllMocks())
+
+test('active Figma zoom keeps a reversible basis until released or backed by a wider image', () => {
+  const wide = { view: { x: 0, y: 0, zoom: 1 }, width: 200, height: 200, dpr: 2, interaction: false, ids: [1] }
+  const narrow = { ...wide, view: { x: -20, y: -20, zoom: 1.2 }, ids: [2] }
+  expect(keepCompleteCameraBacking(wide, narrow, true, true, narrow)).toBe(false)
+  expect(keepCompleteCameraBacking(wide, narrow, true, true, narrow, undefined, true)).toBe(true)
+  expect(keepCompleteCameraBacking(wide, narrow, true, false, narrow, undefined, true)).toBe(false)
+  expect(keepCompleteCameraBacking(wide, narrow, true, true, narrow, wide, true)).toBe(false)
+})
 
 test('a single small page preview covers fractional and negative world coordinates including both gutters', () => {
   const bounds={x:-410.25,y:358.125,width:1922,height:1080}

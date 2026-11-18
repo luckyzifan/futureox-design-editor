@@ -241,7 +241,7 @@ export interface DesktopBridge {
   clearRecovery(request?: { recoveryHandle?: string }): Promise<DesktopResult>
   setDirty(dirty: boolean): Promise<void>
   onCommand(callback: (command: DesktopCommand) => void): () => void
-  onCloseRequested(callback: (request: { requestId: string }) => void): () => void
+  onCloseRequested(callback: (request: { requestId: string; intent?: 'tab' }) => void): () => void
   respondToClose(response: { allow: boolean; requestId: string }): Promise<{ accepted: boolean }>
 }
 declare global {
