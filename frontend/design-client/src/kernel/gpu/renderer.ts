@@ -999,10 +999,7 @@ export class GpuRenderer {
   // A pool entry has no future reader until acquire removes it. Stamp actual
   // pool return, not allocation: cached coverage may be read in a newer frame.
   private get poolReleaseEpoch() { return this.ledger.poolEpochs }
-  // Parameter uploads whose last read has been encoded. Destroying them early
-  // could race queued commands and pooling them would let a later writeTexture
-  // overtake pending reads, so only a completed checkpoint may destroy them.
-  private retiredUploads: Texture[] = []
+  private get retiredUploads() { return this.ledger.retiredUploads }
   private meshBits = new Uint32Array(0)
   private curveBits = new Uint32Array(0)
   private sharedMasks = new ReverseIndexMap<string, { bits: Uint32Array; texture: Texture }[], Texture>(entries => entries.map(entry => entry.texture))
@@ -3975,7 +3972,7 @@ export class GpuRenderer {
   private retireUpload(texture: Texture) {
     if (this.materialFields.has(texture)||this.gradientPhaseResources.has(texture)) return
     this.coordinateMaps.delete(texture)
-    this.retiredUploads.push(texture)
+    this.ledger.retireUpload(texture)
   }
   private forgetUpload(texture: Texture) {
     this.gradientPhaseResources.delete(texture)
@@ -4227,8 +4224,7 @@ export class GpuRenderer {
     // Submission is still mandatory. Only the completion wait may be omitted,
     // and the driver independently validates the already-completed epoch.
     const checkpointScratch = this.driver.scratchBytes || 0
-    // A late retirement has not been submitted to this fence.
-    const retiredUploadsAtFence = new Set(this.retiredUploads)
+    const retiredUploadsAtFence = this.ledger.captureRetiredUploads()
     const transientCohort = [...new Set([...retiredUploadsAtFence, ...coordinates])]
     const poolTouchesAtFence = new Map(pooled.map(texture => [texture, this.lastUsed.get(texture)]))
     const destroyCoveredFree = (texture: Texture) => {
@@ -4265,9 +4261,7 @@ export class GpuRenderer {
         if (count >= RECLAIM_BATCH_RESOURCES) break
         if (this.admissionPins.has(texture)) continue
         if (retiredUploadsAtFence.has(texture)) {
-          const index = this.retiredUploads.indexOf(texture)
-          if (index < 0) continue
-          this.retiredUploads.splice(index, 1)
+          if (!this.ledger.takeRetiredUpload(texture)) continue
           this.forgetUpload(texture)
         } else if (this.coordinateMaps.has(texture) && !this.filterImageFields?.pinned.has(texture)) {
           this.forgetCoordinateTexture(texture)
@@ -4290,9 +4284,7 @@ export class GpuRenderer {
     for (const texture of retiredUploadsAtFence) {
       if (destroyed >= resourceLimit || batchBytes >= batchLimit) break
       if (this.admissionPins.has(texture)) continue
-      const index = this.retiredUploads.indexOf(texture)
-      if (index < 0) continue
-      this.retiredUploads.splice(index, 1)
+      if (!this.ledger.takeRetiredUpload(texture)) continue
       this.forgetUpload(texture)
       destroyed++
       batchBytes += texture.bytes
@@ -8769,7 +8761,7 @@ export class GpuRenderer {
       // them after the same completion boundary, before the busy sweep below
       // could ever pool a parameter upload.
       for (const texture of this.retiredUploads) this.forgetUpload(texture)
-      this.retiredUploads.length = 0
+      this.ledger.clearRetiredUploads()
       this.imageGrids.clear()
       this.gradientLookups.clear()
       this.textureLookups.clear()
@@ -8811,7 +8803,7 @@ export class GpuRenderer {
     this.certifiedKernels.clear()
     this.free.clear()
     this.coordinateMaps.clear()
-    this.retiredUploads.length = 0
+    this.ledger.clearRetiredUploads()
     this.lastUsed.clear()
     this.imageGrids.clear()
     this.gradientLookups.clear()
