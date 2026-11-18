@@ -6,6 +6,7 @@ import { FrameResources, frameResource, type FrameResource, type ResourceLease }
 import {segmentedWitness,type CompilationWitness} from '../compilation-witness'
 const decoded=new WeakMap<Uint8Array,GpuScene>()
 const witnesses=new WeakMap<Uint8Array,CompilationWitness>()
+const byteEstimates = new WeakMap<Uint8Array, number>()
 type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVersion:number;
   scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number}>
 
@@ -14,7 +15,7 @@ type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVers
  * exact witness, without retaining/copying already-owned resource bodies. */
 export class CompiledScenePacket {
   private constructor(readonly scene: GpuScene, readonly witness: CompilationWitness,
-    readonly transport: PacketTransportStats) { Object.freeze(this) }
+    readonly transport: PacketTransportStats, readonly retainedBytes: number) { Object.freeze(this) }
   static from(bytes: Uint8Array, independent: boolean) {
     let scene=decodeScenePacket(bytes),witness=scenePacketWitness(bytes)
     const h=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
@@ -26,7 +27,8 @@ export class CompiledScenePacket {
       witness=witness instanceof Uint8Array?witness.slice():segmentedWitness([witness.parts[0],geometry])
     }
     return new CompiledScenePacket(scene,witness,Object.freeze({scenePacketProtocol:2,scenePacketVersion:h.getUint32(4,true),
-      scenePacketBytes:bytes.length,scenePacketMetadataBytes:h.getUint32(8,true),scenePacketResourceBytes:h.getUint32(20,true)}))
+      scenePacketBytes:bytes.length,scenePacketMetadataBytes:h.getUint32(8,true),scenePacketResourceBytes:h.getUint32(20,true)}),
+      byteEstimates.get(bytes) ?? Infinity)
   }
 }
 export type ScenePacket = Uint8Array | CompiledScenePacket
@@ -70,10 +72,15 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
     }else incoming.set(id,frameResource(id,kind,data))
   }
   const used=new Set<number>()
+  let resourceBytes = 0
   const resource=(id:number,kind:number)=>{
     const entry=incoming.get(id)||priorResources?.get(id)
     if(!Number.isSafeInteger(id)||!entry||entry.kind!==kind)throw Error('Missing frame resource')
-    used.add(id);return entry
+    if (!used.has(id)) {
+      used.add(id)
+      resourceBytes += entry.size
+    }
+    return entry
   }
   const imageValue=(id:string)=>{
     if(!/^[1-9][0-9]*$/.test(id))throw Error('Invalid frame image reference')
@@ -117,6 +124,8 @@ export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?
   let witness:CompilationWitness=bytes
   if(resourceScope){const prefix=bytes.slice(0,start);new DataView(prefix.buffer).setUint32(20,0,true);witness=segmentedWitness([prefix,geometry])}
   witnesses.set(input,witness)
+  // Include acknowledged dependencies as well as bytes sent with this packet.
+  byteEstimates.set(input, resourceBytes + geometry.byteLength + metadataLength * 4 + (resourceScope ? start : bytes.byteLength))
   return scene
 }
 export function scenePacketWitness(bytes:ScenePacket){return bytes instanceof CompiledScenePacket?bytes.witness:witnesses.get(bytes)||bytes}
@@ -132,6 +141,8 @@ export function copyScenePacket(input:Uint8Array):Uint8Array {
     const copied={...scene,vertices:new Float32Array(geometry.buffer,0,vertices),curves:new Float32Array(geometry.buffer,vertices*4,curves)}
     bindSourcePrograms(copied); decoded.set(copy,copied)
     const witness=witnesses.get(input);if(witness)witnesses.set(copy,witness instanceof Uint8Array?copy:segmentedWitness([witness.parts[0],geometry]))
+    const estimate = byteEstimates.get(input)
+    if (estimate !== undefined) byteEstimates.set(copy, estimate)
   }
   return copy
 }

@@ -5,7 +5,7 @@ import {regionalGaussianDisplay,regionalGaussianAllocationFailure} from './regio
 import {MATERIAL_BAND,sourceBandDefersWholePresent} from './source-display-band'
 import { ResidentPoseReuse, terminalPoseDisposition } from './resident-pose-reuse'
 import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
-import { pinDocumentCapacity } from '../document-capacity'
+import { documentCapacity, pinDocumentCapacity } from '../document-capacity'
 import { initializeKernelModule } from './module'
 import { createTileCostDiagnostics } from './tile-cost-diagnostics'
 import { setDeviceDiagnosticRequestContext, beginDeviceRecovery, deviceDiagnosticFields, deviceLifecyclePhase, type DeviceDiagnosticFields } from './gpu/device-lifecycle-diagnostics'
@@ -16,7 +16,7 @@ import type { PreparationStateReceiptV1 } from './preparation-state'
 import { displayRasterBackpressure } from './display-raster-scheduling'
 import { cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
 import { samePreparationReceipt } from './authored-preparation-binding'
-import { allowsReducedSampling, renderQualityContract } from './render-quality'
+import { allowsReducedSampling, LOW_ZOOM_SAMPLING_LIMIT, renderQualityContract } from './render-quality'
 import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
 import { stampDisplayTentRadius, usesDisplayTentRadiusIntent } from './display-tent-radius-intent'
 import { usesNativePreviewTiles } from './native-preview-tiles-policy'
@@ -258,6 +258,14 @@ let tileFillGeneration = 0
 // Cancellation is restricted to CPU-only packet waits before any encoder owns
 // resources. Ordered document synchronization and exact outputs always finish.
 const packetWaits = new Set<{ requestId: number; channel: string; tiled: boolean; controller: AbortController }>()
+const canvasTilePreparations = new Set<{ requestId: number; density: number; controller: AbortController }>()
+let unusedCanvasPacket: {
+  owner: object; namespace: string; options: string; packet: CompiledScenePacket; expiry: ReturnType<typeof setTimeout>
+} | undefined
+function discardUnusedCanvasPacket() {
+  clearTimeout(unusedCanvasPacket?.expiry)
+  unusedCanvasPacket = undefined
+}
 const regionAdmissions = new Map<string, PreviewAdmission>()
 let fullDensityGaussianWindow = ''
 type TileRender = Awaited<ReturnType<typeof renderTiledPreview>>
@@ -277,6 +285,7 @@ let cacheGeneration = 0
 function invalidateTileCache() {
   terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:0,tileCacheBytes:tileCaches.bytes})
   tileCaches.clear()
+  discardUnusedCanvasPacket()
   regionAdmissions.clear()
   fullDensityGaussianWindow = ''
   cacheGeneration++
@@ -285,6 +294,7 @@ function invalidateTileCache() {
 function invalidateOwnerTileCache() {
   terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:1,tileCacheBytes:tileCaches.bytes})
   tileCache.clear()
+  if (activeLane === 'canvas') discardUnusedCanvasPacket()
   fullDensityGaussianWindow = ''
   // Admission heuristics are bounded separately and carry explicit owner keys.
   for (const key of regionAdmissions.keys()) if (key.startsWith(JSON.stringify(activeLane) + '/')) regionAdmissions.delete(key)
@@ -840,6 +850,19 @@ self.onmessage = (e) => {
     displayOrderSequence=request.sequence
     const previous=displayFrame
     displayFrame=request.frame
+    // The live camera moves before the settled tile plan changes. Yield
+    // substantially over-dense CPU work at that earlier boundary.
+    if (previous && displayFrame && !displayFrame.interaction && displayFrame.view.zoom < previous.view.zoom) {
+      const density = displayFrame.view.zoom * displayFrame.dpr
+      if (Number.isFinite(density) && density > 0) {
+        for (const wait of canvasTilePreparations) {
+          if (wait.controller.signal.aborted || wait.density < density * 2) continue
+          terminalDiagnostics.record('cancel', { requestId: wait.requestId, reasonCode: 3, channel: 0,
+            generation: previewGenerations.canvas, fillGeneration: tileFillGeneration })
+          wait.controller.abort()
+        }
+      }
+    }
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
     if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
@@ -922,6 +945,7 @@ self.onmessage = (e) => {
     try {
       executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
       previewGenerations[channel]++
+      if (channel === 'canvas') discardUnusedCanvasPacket()
       for (const wait of packetWaits) if (wait.channel === channel) wait.controller.abort()
     } catch {
       /* malformed control envelope has no effect */
@@ -1788,8 +1812,10 @@ self.onmessage = (e) => {
               import.meta.env.VITE_DESIGN_HORIZONTAL_FILTER_REUSE !== '0' &&
               import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION !== '0'
             let filterColumnPlans = 0, filterColumnReorders = 0
-            const ahead = new PrepareAhead<{ bytes: ScenePacket; ms: number; tile: RasterTile }>()
+            const ahead = new PrepareAhead<{ bytes: CompiledScenePacket; ms: number; tile: RasterTile; packetOptions?: string }>()
             let preparationWaitMs = 0, overlappedPreparations = 0
+            const cancelOversampledTile = displayBackpressure && renderIntent === 'canvas' && !!tileOwner &&
+              !!displayCanvas && !request.referenceGpu && !cameraDependent && !renderOptions.animation && backend === 'webgpu'
             const tileFence = (enforceFill: boolean, allowGapFill = false, canFillGap = false) =>
               admitAction(liveChoice(enforceFill, allowGapFill, canFillGap))
             const current = () => tileFence(channel === 'canvas') !== 'cancel'
@@ -1798,18 +1824,39 @@ self.onmessage = (e) => {
               regional:renderOptions.gpuGaussianRegions,hdr:executionPolicy.hdrCompositing,pixelPreview:renderOptions.pixelPreview,
               animation:renderOptions.animation,exportRegion:renderOptions.exportRegion},
               {auto:import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO,prefix:import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX,regions:import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS})
+            const reuseUnusedPacket = cancelOversampledTile && !canStreamGaussian && !request.debug
             const slot = (tile: RasterTile) => namespace + '/' + coordinateSlot([
               tile.x, tile.y, tile.width, tile.height, tile.zoom, tile.phaseX ?? 0, tile.phaseY ?? 0,
               ...(cameraDependent ? [renderOptions.view.x, renderOptions.view.y, tile.zoom] : [])])
             const compileTile = async (tile: RasterTile) => {
               if (!current()) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
+              // Only the CPU packet preparation can be interrupted. The
+              // batch still owns synchronization and previously drawn tiles.
+              // Ordinary opening-zoom tiles keep their existing Fit handoff.
+              const tilePreparation = cancelOversampledTile && displayFrame &&
+                tile.zoom >= 2 * displayFrame.dpr && kernel.canPrepareConcurrently
+                ? { requestId: request.id, density: tile.zoom, controller: new AbortController() } : undefined
+              if (tilePreparation) canvasTilePreparations.add(tilePreparation)
+              let packetOptions: string | undefined
               const compile = async () => {
                 const options = {...renderOptions,view:{...renderOptions.view,zoom:tile.zoom},width:tile.width,height:tile.height,
                   [sourceBand&&Math.max(tile.width,tile.height)>TILE_SIDE+2?'captureViewport':'gpuViewport']:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
                   ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
-                const signal=packetWait?.controller.signal
-                const ordinary=()=>compilePacket(kernel,JSON.stringify(options),signal)
+                const signal = tilePreparation?.controller.signal ?? packetWait?.controller.signal
+                const ordinary = () => {
+                  const serialized = JSON.stringify(options)
+                  if (reuseUnusedPacket && !tile.prefetch && tile.zoom <= LOW_ZOOM_SAMPLING_LIMIT && serialized.length <= 65536) {
+                    packetOptions = serialized
+                    const unused = unusedCanvasPacket
+                    if (unused?.owner === kernel.contentIdentity && unused.namespace === namespace && unused.options === serialized) {
+                      discardUnusedCanvasPacket()
+                      terminalDiagnostics.record('cache', { requestId: request.id, channel: 0, reasonCode: 6, cached: true })
+                      return Promise.resolve(unused.packet)
+                    }
+                  }
+                  return compilePacket(kernel, serialized, signal)
+                }
                 const inBands=()=>compilePacket(kernel,JSON.stringify({...options,gpuGaussianRegions:true,gpuGaussianReduction:0}),signal)
                 // One admission hint for this owner, revision, scale and visible
                 // window. Every tile is still compiled and validated independently.
@@ -1831,7 +1878,7 @@ self.onmessage = (e) => {
                   return packet
                 }
               }
-              let bytes: ScenePacket
+              let bytes: CompiledScenePacket
               try { bytes = await compile() }
               catch (error) {
                 if (!prepareViewport || !prepareWindowRetriable(error)) throw error
@@ -1841,7 +1888,8 @@ self.onmessage = (e) => {
                 if (!current()) throw Error('PREVIEW_CANCELLED')
                 bytes = await compile()
               }
-              return { bytes, ms: performance.now() - at, tile }
+              finally { if (tilePreparation) canvasTilePreparations.delete(tilePreparation) }
+              return { bytes, ms: performance.now() - at, tile, packetOptions }
             }
             try { for (let tileOrderIndex = 0; tileOrderIndex < tileViewport.length; tileOrderIndex++) {
               const tileIndex = order.indexAt(tileOrderIndex)
@@ -1891,7 +1939,21 @@ self.onmessage = (e) => {
                 speculativeSavedMs = Math.max(0, prepared.ms - waited)
                 const rawScene = prepared.bytes
                 const preparedChoice = tileFence(true, !retainCoverage && !cameraDependent, preparedTileCanFill(tile, displayFrame))
-                if (preparedChoice === 'cancel') throw Error('PREVIEW_CANCELLED')
+                if (preparedChoice === 'cancel') {
+                  // Hold one unused scene for a short reversal, charged by
+                  // materialized bytes including acknowledged dependencies.
+                  // Its eventual consumer still renders and presents the tile.
+                  if (prepared.packetOptions && generation === previewGenerations.canvas && fillGeneration !== tileFillGeneration) {
+                    const { memoryBytes, documentBytes } = documentCapacity()
+                    const allowance = Math.min(64 * 1024 ** 2, documentBytes, memoryBytes - kernel.frameResourceBytes)
+                    if (rawScene.retainedBytes <= allowance) {
+                      discardUnusedCanvasPacket()
+                      unusedCanvasPacket = { owner: kernel.contentIdentity, namespace, options: prepared.packetOptions,
+                        packet: rawScene, expiry: setTimeout(() => { unusedCanvasPacket = undefined }, 1000) }
+                    }
+                  }
+                  throw Error('PREVIEW_CANCELLED')
+                }
                 // Optional page backing yields to a new viewport. Only an
                 // already prepared visible tile may supply useful pixels.
                 cameraFallback = preparedChoice === 'cover-gap'
