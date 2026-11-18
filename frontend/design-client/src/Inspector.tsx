@@ -36,7 +36,7 @@ import { ComponentPanel } from './ComponentPanel'
 import { CornerRadiusFields } from './corner-radius-fields'
 import { VectorCornerFields } from './VectorCornerFields'
 import { CalculatedDimension, NumberField } from './fields'
-import { formatPercent, numericExpression } from './numeric-expression'
+import { formatPercent, propertyExpression } from './numeric-expression'
 import { sketchNumericAnchor } from './sketch-numeric-anchor'
 import { LayoutPanel } from './LayoutPanel'
 import { LayoutGuidePanel } from './LayoutGuidePanel'
@@ -593,7 +593,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
     const units = propertyUnits(doc, n.id, parents), box = selectionParentBounds(doc, n.id)
     const scale = axis === 'x' ? units.parentX : units.parentY
     const shift = (axis === 'x' ? distance.offsetX : distance.offsetY) * scale
-    const amount = numericExpression(suffix.expression, original, 'length')
+    const amount = propertyExpression(suffix.expression, original, 'length')
     const edges = axis === 'x' ? ['left', 'right'] as const : ['top', 'bottom'] as const
     const local = suffix.anchor === 0.5
       ? ((axis === 'x' ? frame.width - box.width : frame.height - box.height) * scale) / 2 + amount - shift
@@ -640,7 +640,7 @@ export const Inspector = memo(function Inspector({ editor, blurEffectIndex, blur
         if (!suffix) return
         if (suffix.anchor && constraintFlow && !n.sizing?.absolute)
           throw new Error('层叠布局控制该图层的位置')
-        return { value: numericExpression(suffix.expression, original, 'length'),
+        return { value: propertyExpression(suffix.expression, original, 'length'),
           commit: v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc, undefined, suffix.anchor)) }
       } : undefined}
       onChange={v => updateBounds(node => resizeNodeDimension(node, field, v, editor.state.doc))} />

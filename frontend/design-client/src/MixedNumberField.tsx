@@ -1,6 +1,6 @@
 import { usePropertyText } from './property-interface-messages'
 import { InputFamily } from './input-diagnostics'
-import { numericExpression, propertyUnit, type NumericUnit } from './numeric-expression'
+import { isRelativeNumericExpression, propertyExpression, propertyUnit, type NumericUnit } from './numeric-expression'
 import { DraftInput } from './DraftInput'
 import { NumberField } from './fields'
 
@@ -22,9 +22,9 @@ export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6
 }) {
   const { tr } = usePropertyText()
   if (value !== undefined) return <NumberField unitDescription={unitDescription} historyLabel={historyLabel} unit={unit} diagnosticFamily={diagnosticFamily} label={label} caption={caption} formatValue={formatValue} value={value} min={min} max={max} onChange={onChange} />
-  const parsed = (text: string, base = 0) => { try { return numericExpression(text, base, unit) } catch { return NaN } }
+  const parsed = (text: string, base = 0) => { try { return propertyExpression(text, base, unit) } catch { return NaN } }
   const valid = (text: string) => {
-    if (!onExpression && (/^[+*/-]=/.test(text) || text.includes('%')) && unit !== 'percent') return false
+    if (!onExpression && (isRelativeNumericExpression(text) || unit !== 'percent' && text.includes('%'))) return false
     return (bases || [0]).every(base => { const value = parsed(text, base); return Number.isFinite(value) && value >= min && value <= max })
   }
   return <label className="number-field mixed-field"><span title={label}>{label}{unitDescription && <small title={unitDescription}>＊</small>}</span><DraftInput diagnosticFamily={InputFamily.mixed}
