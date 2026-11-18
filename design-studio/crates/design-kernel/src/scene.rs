@@ -474,7 +474,12 @@ pub struct Stroke {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Effect {
     /// Sketch outer shadows are knocked out by the shape before compositing.
-    #[serde(default, skip_serializing_if = "crate::components::is_false")]
+    #[serde(
+        default,
+        rename = "shadowKnockout",
+        alias = "shadow_knockout",
+        skip_serializing_if = "crate::components::is_false"
+    )]
     pub shadow_knockout: bool,
     /// Sketch background blur uses a Gaussian over the captured backdrop.
     #[serde(default, skip_serializing_if = "crate::components::is_false")]

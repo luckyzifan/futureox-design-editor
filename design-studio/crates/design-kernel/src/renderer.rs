@@ -4452,8 +4452,10 @@ impl Painter<'_> {
             .iter()
             .filter(|e| e.visible && !matches!(e.kind.as_str(), "background-blur" | "glass"))
         {
-            if crate::fidelity::sketch_gaussian_identity(self.doc, n, fx)
-                || (fx.kind == "blur"
+            if crate::fidelity::sketch_gaussian_identity(self.doc, n, fx) {
+                continue;
+            }
+            if (fx.kind == "blur"
                 && !crate::fidelity::layer_blur_active(
                     fx.blur_radius() * scale,
                     self.profile,
@@ -4462,11 +4464,15 @@ impl Painter<'_> {
                 ))
                 || (fx.kind == "texture" && fx.texture_amount() == 0.)
             {
+                shadow_basis = planes.clone();
                 continue;
             }
             if fx.kind == "color-controls" {
                 let controls = fx.color_controls.as_ref().ok_or("Missing color controls")?;
-                if controls.is_identity() { continue; }
+                if controls.is_identity() {
+                    shadow_basis = planes.clone();
+                    continue;
+                }
                 let mut outputs: Vec<Arc<Surface>> = Vec::new();
                 for (i, source) in planes.iter().enumerate() {
                     if let Some(previous) = planes[..i].iter().position(|p|Arc::ptr_eq(p,source)) {
@@ -4571,15 +4577,20 @@ impl Painter<'_> {
                 let (color, shadow_opacity) = (painted.rgb(), painted.0[3]);
                 let mut outputs: Vec<Arc<Surface>> = Vec::with_capacity(4);
                 for (i, source) in planes.iter().enumerate() {
-                    if let Some(previous) = planes[..i].iter().position(|p| Arc::ptr_eq(p, source))
+                    let silhouette = &shadow_basis[i];
+                    if let Some(previous) = planes[..i].iter().zip(&shadow_basis).position(|(p, basis)| {
+                        Arc::ptr_eq(p, source) && Arc::ptr_eq(basis, silhouette)
+                    })
                     {
                         outputs.push(outputs[previous].clone());
                         continue;
                     }
+                    let shape = if inner { silhouette } else { source };
+                    let sample = if pointwise { silhouette.as_ref() } else { &alpha };
                     let mut shadow = if !self.compatible {
                         effects::color_shadow_linear(
-                            source,
-                            if pointwise { source } else { &alpha },
+                            shape,
+                            sample,
                             painted,
                             offset.x,
                             offset.y,
@@ -4587,8 +4598,8 @@ impl Painter<'_> {
                         )?
                     } else {
                         effects::color_shadow_rgba8(
-                            source,
-                            if pointwise { source } else { &alpha },
+                            shape,
+                            sample,
                             color,
                             shadow_opacity,
                             offset.x,
@@ -4597,7 +4608,7 @@ impl Painter<'_> {
                         )?
                     };
                     if knock_out {
-                        effects::knock_out_shadow(&mut shadow, &shadow_basis[i], paint_alpha);
+                        effects::knock_out_shadow(&mut shadow, silhouette, paint_alpha);
                     }
                     if self.compatible {
                         shadow.quantize_rgba8();
