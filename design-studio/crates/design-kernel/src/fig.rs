@@ -1087,6 +1087,33 @@ fn line_height_multiplier(number: &Value, font_size: f64) -> Option<f64> {
     }
 }
 
+fn has_fig_automatic_line_height(change: &Value, size: f64) -> bool {
+    let height = &change["lineHeight"];
+    if str_of(height, "units") != Some("PERCENT") || height["value"].as_f64() != Some(100.)
+        || !matches!(str_of(change, "textAutoResize"), Some("WIDTH_AND_HEIGHT" | "HEIGHT"))
+        || change["textData"]["styleOverrideTable"].as_array().is_some_and(|runs| !runs.is_empty())
+    {
+        return false;
+    }
+    let derived = &change["derivedTextData"];
+    let Some(faces) = derived["fontMetaData"].as_array().filter(|faces| faces.len() == 1) else {
+        return false;
+    };
+    let Some(intrinsic) = faces[0]["fontLineHeight"].as_f64().map(|height| height * size) else {
+        return false;
+    };
+    let Some(lines) = derived["baselines"].as_array().filter(|lines| !lines.is_empty()) else {
+        return false;
+    };
+    let advance = intrinsic.round();
+    advance > 0. && (advance - size).abs() > 0.5
+        && derived["layoutSize"]["y"].as_f64().is_some_and(|height|
+            (height - lines.len() as f64 * advance).abs() < 1e-3)
+        && lines.iter().enumerate().all(|(index, line)|
+            line["lineHeight"].as_f64().is_some_and(|height| (height - intrinsic).abs() < 1e-3)
+                && line["lineY"].as_f64().is_some_and(|y| (y - index as f64 * advance).abs() < 1e-3))
+}
+
 /// `Number { value, units }` → letter spacing in px, per fig2sketch
 /// `kerning`: PIXELS passes through, PERCENT scales with the font size.
 fn letter_spacing_px(number: &Value, font_size: f64) -> Option<f64> {
@@ -2212,7 +2239,15 @@ impl FigImporter {
         }
         if let Some(lh) = change.get("lineHeight") {
             match line_height_multiplier(lh, node.font_size) {
-                Some(m) => style.line_height = m,
+                Some(m) => {
+                    style.line_height = m;
+                    if str_of(lh, "units") == Some("PIXELS") {
+                        style.line_box_baseline = "figma-pixel-leading".into();
+                    } else if has_fig_automatic_line_height(change, node.font_size) {
+                        style.line_height_auto = true;
+                        style.line_box_baseline = "figma-font-metrics".into();
+                    }
+                }
                 None => untranslated.push(format!("lineHeight={lh}")),
             }
         }
@@ -4972,6 +5007,30 @@ mod tests {
         }
 
         // ---------------- text ----------------
+
+        #[test]
+        fn figma_auto_line_height_uses_intrinsic_source_evidence() {
+            let mut changes = canvas_only();
+            let mut text = base_change("TEXT", 1, 2);
+            text["textData"] = json!({"characters": "hello"});
+            text["textAutoResize"] = json!("WIDTH_AND_HEIGHT");
+            text["fontSize"] = json!(30);
+            text["lineHeight"] = json!({"value": 100, "units": "PERCENT"});
+            text["derivedTextData"] = json!({
+                "layoutSize": {"y": 49},
+                "fontMetaData": [{"fontLineHeight": 1.64}],
+                "baselines": [{"lineY": 0, "lineHeight": 49.2}],
+            });
+            changes.push(text.clone());
+            // The small writer schema omits derived text metrics. Exercise the
+            // native converter with the measured fields present in a real FIG.
+            let doc = document_from_canvas(&json!({"nodeChanges": changes}), BTreeMap::new(), Vec::new()).unwrap();
+            let style = node_of(&doc, 1, 2).text_style.as_ref().unwrap();
+            assert!(style.line_height_auto);
+            assert_eq!(style.line_box_baseline, "figma-font-metrics");
+            text["derivedTextData"]["layoutSize"]["y"] = json!(30);
+            assert!(!has_fig_automatic_line_height(&text, 30.));
+        }
 
         #[test]
         fn text_node_level_style_maps() {

@@ -91,6 +91,7 @@ import {
   type Point,
   type Bounds,
   type Matrix,
+  type DesignDocument,
   type DesignNode,
   type Network,
   type CurveMode,
@@ -654,7 +655,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Reject a stale entry during render, before its textarea can mount/autofocus
   // in a replacement document. Passive cleanup alone is too late.
   const textEdit = ownsTextEntry(textEntry) ? textEntry!.id : null
-  const [textPreview,setTextPreview]=useState<DesignNode|null>(null)
+  const [textPreview, setTextPreview] = useState<{ node: DesignNode; fonts?: DesignDocument['fonts'] } | null>(null)
+  const previewText = useCallback((node: DesignNode | null, fonts?: DesignDocument['fonts']) =>
+    setTextPreview(node ? { node, fonts } : null), [])
   const textAction = useRef<{ token: number; revision: number } | null>(null)
   useEffect(() => {
     const entry = textEntryOwner.current
@@ -1277,13 +1280,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const utility=useUtilityTools(editor,state.tool,displayedHit,displayView.zoom)
   const previewFonts=useMemo(()=>utility.preview?.fonts?{...state.doc.fonts,...utility.preview.fonts}:state.doc.fonts,[state.doc.fonts,utility.preview?.fonts])
   const renderedDocument=useMemo(()=>{
-    if (textPreview && state.doc.nodes[textPreview.id]) {
-      return kernelLayout({ ...state.doc, schemaVersion: textPreview.textRuns?.some(run => run.italic) ? 27 : state.doc.schemaVersion,
-        nodes: { ...state.doc.nodes, [textPreview.id]: textPreview } })
+    if (textEdit && textPreview?.node.id === textEdit && state.doc.nodes[textEdit]) {
+      const { node, fonts } = textPreview
+      return kernelLayout({ ...state.doc, schemaVersion: node.textRuns?.some(run => run.italic) ? 27 : state.doc.schemaVersion,
+        fonts: fonts ?? state.doc.fonts, nodes: { ...state.doc.nodes, [node.id]: node } })
     }
     if(utility.preview){const preview=utility.preview;return kernelLayout({...state.doc,schemaVersion:Math.max(10,state.doc.schemaVersion) as typeof state.doc.schemaVersion,fonts:previewFonts,nodes:{...state.doc.nodes,...Object.fromEntries(preview.nodes.map(n=>[n.id,n]))},pages:state.doc.pages.map(p=>p.id===state.page?{...p,children:[...p.children,preview.root]}:p)})}
     return !drawingPreview?state.doc:{...state.doc,schemaVersion:drawingPreview.kind==='slice'?Math.max(10,state.doc.schemaVersion) as typeof state.doc.schemaVersion:state.doc.schemaVersion,nodes:{...state.doc.nodes,[drawingPreview.id]:drawingPreview},pages:state.doc.pages.map(p=>p.id===state.page?{...p,children:[...p.children,drawingPreview.id]}:p)}
-  },[state.doc,state.page,drawingPreview,utility.preview,textPreview,previewFonts])
+  },[state.doc,state.page,drawingPreview,utility.preview,textEdit,textPreview,previewFonts])
   const exactOverlayMatches = editPreviewVisible || (presentationScopeMatches && presented.document === renderedDocument)
   const [refineDocument, setRefineDocument] = useState(renderedDocument)
   // Without a retained edit preview there is no alternate current content.
@@ -3590,7 +3594,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       {textEdit && state.doc.nodes[textEdit] && (
         <CanvasTextEditor
           viewport={size}
-          onPreview={setTextPreview}
+          onPreview={previewText}
           key={`${textEntry!.session}:${textEntry!.token}:${textEdit}`}
           isCurrent={() => ownsTextEntry(textEntry)}
           document={state.doc}

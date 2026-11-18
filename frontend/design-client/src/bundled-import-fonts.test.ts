@@ -1,8 +1,17 @@
 import { expect, test } from 'vitest'
 import { blank, defaultTextStyle, node } from './model'
 import { emptySystem } from './design-system'
-import { abeezeeLineBreakDiagnostic, fontDigestDiagnostic, matchBundledImportFonts, retainedFontWarnings, selectBundledImportFace } from './bundled-import-fonts'
+import { abeezeeLineBreakDiagnostic, bundledTypefaceOptions, fontDigestDiagnostic, loadBundledTypeface, matchBundledImportFonts, retainedFontWarnings, selectBundledImportFace } from './bundled-import-fonts'
 import { applyMatchedFonts } from './font-matching'
+
+test('every selectable face validates its shipped bytes and typography names', async () => {
+  expect(new Set(bundledTypefaceOptions.map(face => face.label)).size).toBe(bundledTypefaceOptions.length)
+  for (const { id, label } of bundledTypefaceOptions) {
+    const font = await loadBundledTypeface(id, new AbortController().signal)
+    expect(font.postscript, label).toBeTruthy()
+    expect(font.index, label).toBe(0)
+  }
+})
 
 test('Inter, ABeeZee, and Poppins import names attach the bundled files', async () => {
   const doc = blank('字体')

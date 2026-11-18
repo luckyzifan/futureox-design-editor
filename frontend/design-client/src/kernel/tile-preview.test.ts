@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches, type TilePreviewContract } from './tile-preview'
+import { tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches, type TilePreviewContract } from './tile-preview'
 
 function contract(): TilePreviewContract {
   return {
@@ -45,6 +45,21 @@ test('a distant cached coarse tile is not a visible preview, including its gutte
   expect(tileIntersectsView(tile, view, { width: 100, height: 100 })).toBe(false)
   expect(tileIntersectsView(tile, { ...view, x: -512, y: -512 }, { width: 100, height: 100 })).toBe(true)
   expect(tileIntersectsView(tile, { ...view, x: -412, y: -412 }, { width: 100, height: 100 })).toBe(false)
+})
+
+test('Retina panning keeps the exact phase of distant integer-origin tiles', () => {
+  const view = { x: -1246.1000000000001, y: 284.29999999999995, zoom: .8 }
+  const dpr = 2
+  const phase = (coordinate: number) => coordinate * dpr - Math.floor(coordinate * dpr)
+  const tile = { key: 'retina-pan', x: 4607, y: -513, width: 514, height: 514, zoom: 1.6,
+    phaseX: phase(view.x), phaseY: phase(view.y) }
+  expect(tileHasNativePhase(tile, view, dpr)).toBe(true)
+  expect(tileHasNativePhase(tile, { ...view, x: view.x + 360, y: view.y + 72 }, dpr)).toBe(true)
+  expect(tileHasNativePhase(tile, { ...view, x: view.x + .25 }, dpr)).toBe(false)
+  expect(tileHasNativePhase(tile, { ...view, y: view.y + .25 }, dpr)).toBe(false)
+
+  const viewport = { ...tile, x: -view.x * dpr, y: -view.y * dpr, phaseX: 0, phaseY: 0 }
+  expect(tileHasNativePhase(viewport, view, dpr)).toBe(true)
 })
 test('settled fractional camera places native-density tiles on device pixel boundaries', () => {
   const dpr = 1.8, view = { x: 17.123, y: -11.987, zoom: 0.7639 }

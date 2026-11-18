@@ -65,7 +65,7 @@ export class InitializationGate {
 
 /** Fixed same-origin build assets only; check actual streamed bytes, not just headers. */
 export async function readKernelAsset(
-  path: '/kernel/design_kernel_bg.wasm' | '/fonts/NotoSansSC.ttf',
+  path: '/kernel/design_kernel_bg.wasm' | `/fonts/${string}`,
   limit: number,
   signal: AbortSignal,
 ): Promise<Uint8Array> {

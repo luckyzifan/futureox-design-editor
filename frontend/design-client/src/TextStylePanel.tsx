@@ -7,8 +7,10 @@ import { AlignLeft, AlignCenter, AlignRight, AlignJustify } from 'lucide-react'
 import { FontManagementPanel } from './FontManagementPanel'
 import { applySelectionFont } from './font-management'
 import { commitPendingEdits, pendingEditsChanged, registerPendingEdit } from './pending-edits'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImportOwner, importStep } from './import-ownership'
+import { isBundledTypeface, loadBundledTypeface } from './bundled-import-fonts'
+import { FontFaceOptions } from './FontFaceOptions'
 import { defaultTextStyle, defaultSizing, type DesignNode, type TextStyle, type TextParagraph } from './model'
 import type { Editor } from './engine'
 import { NumberField } from './fields'
@@ -87,7 +89,7 @@ export function TextStylePanel({
   useEffect(() => { imports.activate(); return () => imports.dispose() }, [imports])
   const [detachFontStyle, setDetachFontStyle] = useState(false)
   const fontTargetsKey = ids.join('\0')
-  useEffect(() => { imports.invalidate(); setDetachFontStyle(false) }, [imports, editor, fontTargetsKey])
+  useLayoutEffect(() => { imports.invalidate(); setDetachFontStyle(false) }, [imports, editor, fontTargetsKey])
   const file = useRef<HTMLInputElement>(null),
     style = { ...defaultTextStyle(), ...node.textStyle }
   // Drafts for the comma-list fields stay local until blur; the effect
@@ -151,6 +153,25 @@ export function TextStylePanel({
   } }
   useEffect(() => registerPendingEdit(editor, { dirty: () => pending.current.dirty(), commit: () => pending.current.commit() }), [editor])
   useEffect(() => { pendingEditsChanged(editor) }, [editor, featuresDraft, fallbacksDraft, draftRows])
+  const selectFont = async (id: string) => {
+    imports.invalidate()
+    const options = { detachSharedStyle: detachFontStyle }
+    if (!isBundledTypeface(id)) {
+      applySelectionFont(editor, ids, id, options)
+      return
+    }
+    if (!commitPendingEdits(editor)) return
+    const { page, selection } = editor.state
+    const request = imports.begin(editor)
+    try {
+      const resource = await importStep(request, () => loadBundledTypeface(id, request.signal))
+      if (editor.state.page !== page || editor.state.selection !== selection) return
+      const result = applySelectionFont(editor, ids, id, options, resource)
+      if (result.status === 'blocked' || result.status === 'rejected') editor.notify(result.message)
+    } catch (error) {
+      if (request.isCurrent()) editor.notify(String(error))
+    } finally { request.finish() }
+  }
   const hint = (text: string) =>
     text ? <p role="alert" style={{ color: '#bf3d34', margin: 0 }}>{text}</p> : null
   return (
@@ -159,7 +180,7 @@ export function TextStylePanel({
           aria-label={tr("文字字体")}
           data-layer-typeface
           value={style.fontId}
-          onChange={(e) => applySelectionFont(editor, ids, e.target.value, { detachSharedStyle: detachFontStyle })}
+          onChange={(e) => selectFont(e.target.value)}
           onKeyDown={event => {
             if (event.key !== 'Escape' || event.nativeEvent.isComposing || interfacePreference.getSnapshot().uiMode !== 'sketch') return
             event.preventDefault()
@@ -167,12 +188,7 @@ export function TextStylePanel({
             document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
           }}
         >
-          <option value="default">{tr("Noto Sans SC（内置）")}</option>
-          {Object.entries(doc.fonts || {}).map(([id, font]) => (
-            <option key={id} value={id}>
-              {font.family}
-            </option>
-          ))}
+          <FontFaceOptions fonts={doc.fonts} />
         </select>
       </label>
       {unmatchedFonts.length > 0 && <p role="status" aria-label={tr("原字体匹配状态")}>{tr("原字体未匹配：")}{unmatchedFonts.join('、')}{tr("。当前使用回退字体，可选择本机字体或导入字体替换。")}</p>}

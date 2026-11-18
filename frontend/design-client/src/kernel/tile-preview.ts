@@ -1,4 +1,5 @@
 import type { CanvasCamera, CanvasSize } from '../canvas-camera'
+import { canvasRasterPhaseMatches } from './canvas-raster-plan'
 import { presentationMatches, type ExactPresentation } from './presentation'
 import type { BackendPreference } from './gpu/types'
 import type { RasterTile } from './tile-cache'
@@ -92,6 +93,11 @@ export function tileHasNativePhase(tile:RasterTile,view:CanvasCamera,dpr:number)
   if(!Number.isFinite(dpr)||dpr<=0||!Number.isFinite(view.zoom)||view.zoom<=0||
       tile.zoom!==view.zoom*dpr||!Number.isSafeInteger(tile.width)||!Number.isSafeInteger(tile.height)||
       tile.width<1||tile.height<1)return false
+  // An integer tile origin contributes no fractional phase. Prove alignment
+  // before converting that origin to CSS pixels, which can introduce a tiny
+  // residual and send an otherwise exact pan through full viewport capture.
+  if (Number.isSafeInteger(tile.x) && Number.isSafeInteger(tile.y))
+    return canvasRasterPhaseMatches(view, dpr, tile.zoom, { x: tile.phaseX ?? 0, y: tile.phaseY ?? 0 })
   const placement=tilePlacementAtView(tile,view)
   return Number.isInteger(placement.left*dpr)&&Number.isInteger(placement.top*dpr)
 }

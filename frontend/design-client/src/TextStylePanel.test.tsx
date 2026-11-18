@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises'
 import { Editor } from './engine'
 import { blank, defaultTextStyle, node, validateDocument } from './model'
 import { emptySystem } from './design-system'
+import { bundledTypefaceOptions } from './bundled-import-fonts'
+import { kernelTextLayout } from './kernel/picking'
 import {
   TextStylePanel,
   parseCommaList,
@@ -236,4 +238,32 @@ test('imported source fonts remain visibly unmatched until a real font replaces 
   expect(find(tree, byLabel('原字体匹配状态'))).toBeUndefined()
   expect(f.editor.state.doc.nodes[f.text.id].textRuns?.[0]).toEqual({ start: 0, end: 8, fontSize: 20, color: '#ffffff' })
   expect(unmatchedSketchFonts(f.editor.state.doc, f.editor.state.doc.nodes[f.text.id])).toEqual([])
+})
+
+test('selecting an exact bundled version installs its glyphs in one undoable edit', async () => {
+  const doc = blank(), text = node('text', 20, 20, 200, 40)
+  text.text = 'Products AV'
+  doc.nodes[text.id] = text
+  doc.pages[0].children = [text.id]
+  const editor = new Editor(doc)
+  editors.push(editor)
+  const f = { editor, text }, h = harness()
+  const select = find(panel(f, h), byLabel('文字字体')).props.onChange
+  const v2 = bundledTypefaceOptions.find(face => face.label === 'Poppins Bold (v2.000)')!.id
+  const v4 = bundledTypefaceOptions.find(face => face.label === 'Poppins Bold (v4)')!.id
+  const older = select({ target: { value: v2 } })
+  const newer = select({ target: { value: v4 } })
+  await Promise.all([older, newer])
+  const selected = () => editor.state.doc.nodes[text.id]
+  expect(selected().textStyle?.fontId).toBe(v4)
+  expect(Object.keys(editor.state.doc.fonts!)).toEqual([v4])
+  const modernGlyphs = kernelTextLayout(selected()).spans
+  await select({ target: { value: v2 } })
+  expect(selected().textStyle?.fontId).toBe(v2)
+  expect(kernelTextLayout(selected()).spans).not.toEqual(modernGlyphs)
+  editor.undo()
+  expect(selected().textStyle?.fontId).toBe(v4)
+  expect(editor.state.doc.fonts?.[v2]).toBeUndefined()
+  expect(kernelTextLayout(selected()).spans).toEqual(modernGlyphs)
+  h.unmount()
 })

@@ -15,7 +15,25 @@ const weight = (style: string | undefined) => {
 }
 const fontName = (font: any): string | undefined => font?.postscript || [font?.family,font?.style].filter(Boolean).join(' ') || undefined
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
-/** Figma PIXELS / PERCENT / RAW. 100% and RAW 1 are one em, not font-metric auto. */
+
+/** Older FIG exports encode Auto as PERCENT 100. Require a measured
+ * auto-resizing box whose lines advance by the rounded intrinsic height. */
+export function hasFigAutomaticLineHeight(record: any, size: number): boolean {
+  if (record.lineHeight?.units !== 'PERCENT' || record.lineHeight.value !== 100 ||
+      !['WIDTH_AND_HEIGHT', 'HEIGHT'].includes(record.textAutoResize) ||
+      record.textData?.styleOverrideTable?.length) return false
+  const derived = record.derivedTextData
+  const lines = derived?.baselines
+  const intrinsic = derived?.fontMetaData?.[0]?.fontLineHeight * size
+  const advance = Math.round(intrinsic)
+  return derived?.fontMetaData?.length === 1 && Number.isFinite(intrinsic) && advance > 0 &&
+    Math.abs(advance - size) > 0.5 && Array.isArray(lines) && lines.length > 0 &&
+    Math.abs(derived.layoutSize?.y - lines.length * advance) < 1e-3 &&
+    lines.every((line, index) => Math.abs(line?.lineHeight - intrinsic) < 1e-3 &&
+      Math.abs(line?.lineY - index * advance) < 1e-3)
+}
+
+/** Literal run-level PIXELS / PERCENT / RAW values. */
 function lineHeightMultiplier(value: any, size: number): number | undefined {
   if (!value || typeof value !== 'object' || !finite(value.value) || !(size >= 1)) return
   if (value.units === 'PIXELS') return value.value / size

@@ -5,15 +5,25 @@ import { propertyUnits } from './property-units'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DesignDocument, DesignNode, Matrix, TextRun } from './model'
 import { replaceText, replaceTextRange, styleTextRange } from './text'
-import { kernelTextLayout } from './kernel/picking'
+import { activateDocumentFonts, kernelTextLayout } from './kernel/picking'
 import type { Editor } from './engine'
 import { registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { useProfessionalDialogText } from './professional-dialog-messages'
-import { sourceFonts, storeRemappedSourceFonts, type FontSourceRecord } from './font-matching'
+import { sourceFonts, storeRemappedSourceFonts, type FontResource, type FontSourceRecord } from './font-matching'
+import { isBundledTypeface, loadBundledTypeface } from './bundled-import-fonts'
+import { FontFaceOptions } from './FontFaceOptions'
+import { withFontResource } from './font-management'
+import { ImportOwner, importStep, type ImportRequest } from './import-ownership'
 import { equalValue } from './document-patch'
 import { interfacePreference } from './interface-preference'
 import { matchesTypefaceShortcut, openTypefaceSelect } from './typeface-shortcut'
 import { shortcutPlatform } from './shortcut-profiles'
+
+function comparableRuns(runs: DesignNode['textRuns']) {
+  // Native layout may reorder fields and omit defaults when it returns runs.
+  return (runs ?? []).map(run => Object.fromEntries(Object.entries(run).filter(([name, value]) =>
+    value !== undefined && !(value === false && ['underline', 'italic', 'strikethrough'].includes(name)))))
+}
 
 export function TextInput({
   node,
@@ -156,7 +166,7 @@ export function CanvasTextEditor({
   onClose,
   isCurrent,
 }: {
-  onPreview: (node:DesignNode|null)=>void
+  onPreview: (node: DesignNode | null, fonts?: DesignDocument['fonts']) => void
   document: DesignDocument
   node: DesignNode
   editor: Editor
@@ -187,6 +197,13 @@ export function CanvasTextEditor({
   const editedSource = useRef<FontSourceRecord | undefined>(undefined)
   const beforeInputRange = useRef<[number, number] | null>(null)
   const typingStyle = useRef<{ offset: number; patch: Partial<TextRun> } | null>(null)
+  const [fontRequests] = useState(() => new ImportOwner())
+  const pendingFont = useRef<ImportRequest | undefined>(undefined)
+  const finishAfterFont = useRef(false)
+  const draftFonts = useRef<DesignDocument['fonts']>(undefined)
+  const stagedFonts = draftFonts.current
+  const previewFonts = useMemo(() => stagedFonts && { ...document.fonts, ...stagedFonts }, [document.fonts, stagedFonts])
+  useEffect(() => { fontRequests.activate(); return () => fontRequests.dispose() }, [fontRequests])
   const draftChanged = () => latest.current.text !== original.current.text ||
     JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns) ||
     (editedSource.current !== undefined && !equalValue(editedSource.current, originalSource))
@@ -203,9 +220,14 @@ export function CanvasTextEditor({
     observer?.observe(element)
     return () => observer?.disconnect()
   }, [viewport.width, viewport.height])
-  useLayoutEffect(()=>{onPreview(draft);return()=>onPreview(null)},[draft,onPreview])
+  useLayoutEffect(() => { onPreview(draft, previewFonts) }, [draft, previewFonts, onPreview])
+  useLayoutEffect(() => () => {
+    if (draftFonts.current) activateDocumentFonts(editor.state.doc)
+    onPreview(null)
+  }, [editor, onPreview])
   let layout: ReturnType<typeof kernelTextLayout> | undefined
   try {
+    if (previewFonts) activateDocumentFonts({ ...document, fonts: previewFonts })
     layout = kernelTextLayout(draft)
   } catch (e) {
     if (!error) queueMicrotask(() => setError(String(e)))
@@ -243,6 +265,10 @@ export function CanvasTextEditor({
     if (isCurrent && !isCurrent()) return true
     if (done.current) return true
     if (composing.current) return false
+    if (!cancel && pendingFont.current) {
+      if (restoreCanvasFocus) finishAfterFont.current = true
+      return false
+    }
     const changed = draftChanged()
     if (!cancel && changed) {
       diagnostic.start()
@@ -255,6 +281,10 @@ export function CanvasTextEditor({
       editor.update(
         [node.id],
         (n, doc) => {
+          for (const id of new Set(latest.current.textRuns?.map(run => run.fontId))) {
+            const resource = id && draftFonts.current?.[id]
+            if (resource) doc.fonts = withFontResource(doc.fonts, id, resource)
+          }
           n.text = latest.current.text
           n.textRuns = latest.current.textRuns
           storeRemappedSourceFonts(doc, n.id, editedSource.current)
@@ -264,13 +294,16 @@ export function CanvasTextEditor({
       const committed = editor.state.doc.nodes[node.id]
       const versionUpdated = resultVersion !== editor.state.version
       if (committed?.text !== latest.current.text ||
-          JSON.stringify(committed.textRuns) !== JSON.stringify(latest.current.textRuns) ||
+          !equalValue(comparableRuns(committed.textRuns), comparableRuns(latest.current.textRuns)) ||
           (editedSource.current && !versionUpdated)) {
         diagnostic.finish(false, false)
         return false
       }
     }
     if (cancel) diagnostic.cancel(); else diagnostic.finish(changed, true)
+    fontRequests.invalidate()
+    pendingFont.current = undefined
+    finishAfterFont.current = false
     done.current = true
     pendingEditsChanged(editor)
     onClose(restoreCanvasFocus)
@@ -279,7 +312,7 @@ export function CanvasTextEditor({
   const commit = useRef(finish)
   commit.current = finish
   useEffect(() => registerPendingEdit(editor, {
-    dirty: () => !done.current && (composing.current || draftChanged()),
+    dirty: () => !done.current && (composing.current || !!pendingFont.current || draftChanged()),
     commit: () => commit.current(),
   }), [editor, node.id])
   const change = (text: string) => {
@@ -313,18 +346,62 @@ export function CanvasTextEditor({
     setError('')
     sync()
   }
-  const style = (patch: Partial<TextRun>, range = selection) => {
+  const style = (patch: Partial<TextRun>, range = selection, resource?: FontResource) => {
     diagnostic.start(); diagnostic.event(InputPhase.start, { fieldFamily: InputFamily.richStyle })
     try {
       const n = structuredClone(latest.current)
       const fonts = styleTextRange(n, ...range, patch, editedSource.current ?? originalSource)
+      if (patch.fontId && resource) {
+        const current = { ...editor.state.doc.fonts, ...draftFonts.current }
+        if (withFontResource(current, patch.fontId, resource) !== current)
+          draftFonts.current = { ...draftFonts.current, [patch.fontId]: resource }
+      }
       if (fonts) editedSource.current = fonts
       latest.current = n
       setDraft(n)
       pendingEditsChanged(editor)
-      select(...range)
+      setError('')
+      if (!blurred.current) select(...range)
     } catch (e) {
       setError(String(e))
+    }
+  }
+  const chooseFont = async (id: string) => {
+    fontRequests.invalidate()
+    pendingFont.current = undefined
+    finishAfterFont.current = false
+    const patch = { fontId: id || undefined }
+    if (!isBundledTypeface(id) || selection[0] === selection[1]) {
+      style(patch)
+      pendingEditsChanged(editor)
+      return
+    }
+    const request = fontRequests.begin(editor)
+    const before = latest.current
+    const range = selection
+    pendingFont.current = request
+    pendingEditsChanged(editor)
+    try {
+      const resource = await importStep(request, () => loadBundledTypeface(id, request.signal))
+      const field = input.current
+      if (done.current || composing.current || (isCurrent && !isCurrent()) || latest.current !== before ||
+          editor.state.doc.nodes[node.id] !== original.current ||
+          field?.selectionStart !== range[0] || field.selectionEnd !== range[1]) return
+      style(patch, range, resource)
+    } catch (error) {
+      if (request.isCurrent()) {
+        if (blurred.current) editor.notify(String(error))
+        else setError(String(error))
+      }
+    } finally {
+      request.finish()
+      if (pendingFont.current === request) {
+        pendingFont.current = undefined
+        const restoreCanvasFocus = finishAfterFont.current
+        finishAfterFont.current = false
+        pendingEditsChanged(editor)
+        if (blurred.current || restoreCanvasFocus) commit.current(false, restoreCanvasFocus)
+      }
     }
   }
   const formatShortcut = (letter: string, field: HTMLTextAreaElement) => {
@@ -518,7 +595,7 @@ export function CanvasTextEditor({
           ref={typeface}
           aria-label={tr('选中文字字体')}
           value={runFontId}
-          onChange={(e) => style({ fontId: e.target.value || undefined })}
+          onChange={(e) => void chooseFont(e.target.value)}
           onKeyDown={e => {
             if (e.key !== 'Escape' || e.nativeEvent.isComposing || interfacePreference.getSnapshot().uiMode !== 'sketch') return
             e.preventDefault()
@@ -527,12 +604,7 @@ export function CanvasTextEditor({
           }}
         >
           <option value="">{tr('跟随文本样式')}</option>
-          <option value="default">{tr('Noto Sans SC（内置）')}</option>
-          {Object.entries(editor.state.doc.fonts || {}).map(([id, font]) => (
-            <option key={id} value={id}>
-              {font.family}
-            </option>
-          ))}
+          <FontFaceOptions fonts={document.fonts} />
         </select>
         <input
           aria-label={tr('选中文字字重')}
