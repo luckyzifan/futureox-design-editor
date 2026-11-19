@@ -77,3 +77,34 @@ pub fn rectangle(cs: &[Contour]) -> Option<[f64; 4]> {
 pub fn rectangle_pixel([x0, y0, x1, y1]: [f64; 4], x: f64, y: f64) -> f64 {
     ((x + 1.).min(x1) - x.max(x0)).clamp(0., 1.) * ((y + 1.).min(y1) - y.max(y0)).clamp(0., 1.)
 }
+
+/// Reproduce the measured coverage transition of an opaque rectangle in a
+/// reduced Sketch PNG. Each axis attenuates a fractional edge over one
+/// authored pixel, then the two weights are resolved into byte coverage.
+pub(crate) fn sketch_reduced_rectangle_edges(
+    mask: &mut crate::raster::Mask, [x0, y0, x1, y1]: [f64; 4], scale: f64,
+) {
+    let weight = |lo: f64, hi: f64, coordinate: i32| {
+        let pixel = f64::from(coordinate);
+        let coverage = ((pixel + 1.).min(hi) - pixel.max(lo)).clamp(0., 1.);
+        coverage * (coverage + scale).min(1.)
+    };
+    let mut update = |x, y| {
+        if let Some(i) = mask.rect.index(x, y) {
+            if mask.data[i] > 0. && mask.data[i] < 1. {
+                let coverage = weight(x0, x1, x) * weight(y0, y1, y);
+                mask.data[i] = ((coverage * 255.).floor() / 255.) as f32;
+            }
+        }
+    };
+    for y in [y0.floor() as i32, (y1.ceil() - 1.) as i32] {
+        for x in mask.rect.x..mask.rect.right() {
+            update(x, y);
+        }
+    }
+    for x in [x0.floor() as i32, (x1.ceil() - 1.) as i32] {
+        for y in mask.rect.y..mask.rect.bottom() {
+            update(x, y);
+        }
+    }
+}

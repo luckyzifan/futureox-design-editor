@@ -2318,6 +2318,13 @@ impl Engine {
             compatible,
             profile: options.raster_profile,
         };
+        let sketch_reduced_group = match page.children.as_slice() {
+            [id] if self.images.sketch_png_footprint => doc.nodes.get(id).filter(|node| {
+                node.kind == "group" && node.blend == "normal" && node.opacity == 1.
+                    && crate::interop::sketch_binding(doc, node, "sketchSourceGroup") == Some("true")
+            }),
+            _ => None,
+        };
         let mut painter = Painter {
             concealed_glass: &halo.concealed,
             doc,
@@ -2332,6 +2339,7 @@ impl Engine {
             profile: options.raster_profile,
             interactive_effects: options.interactive_effects,
             display_degrade: self.display_degrade,
+            sketch_reduced_group,
             clipped_export_target: clipped_export_target.is_some(),
             flush_backdrop_frame: (self.rendering_png_region && options.raster_profile.is_export() && compatible)
                 .then(|| match page.children.as_slice() {
@@ -3261,6 +3269,7 @@ struct Painter<'a> {
     profile: crate::fidelity::RasterProfile,
     interactive_effects: bool,
     display_degrade: bool,
+    sketch_reduced_group: Option<&'a Node>,
     clipped_export_target: bool,
     flush_backdrop_frame: Option<&'a Node>,
     compact_export_groups: bool,
@@ -4214,6 +4223,27 @@ impl Painter<'_> {
     fn allocate(&mut self, rect: Rect) -> Result<Surface, String> {
         Surface::new_in(rect, &self.budget)
     }
+    fn sketch_reduced_rectangle(&self, node: &Node, prepared: &Prepared) -> Option<[f64; 4]> {
+        let group = self.sketch_reduced_group?;
+        let [sx, b, c, sy, _, _] = prepared.matrix.0;
+        if sx != sy || !(0.2..=0.5).contains(&sx) || b != 0. || c != 0.
+            || node.kind != "rectangle" || node.opacity != 1. || node.blend != "normal" || node.mask
+            || !node.render_children().is_empty() || !group.render_children().contains(&node.id)
+            || node.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0.)
+            || node.effects.iter().any(|effect| effect.visible)
+        {
+            return None;
+        }
+        let mut fills = node.fills.iter().filter(|paint| paint.visible);
+        let fill = fills.next()?;
+        if fills.next().is_some() || fill.kind != "solid" || fill.opacity != 1. || fill.blend != "normal"
+            || !crate::color::pixel(None, &fill.color, 1.).is_ok_and(|pixel| pixel.0[3] == 1.)
+        {
+            return None;
+        }
+        let edges = crate::coverage::rectangle(&prepared.fill)?;
+        (edges[2] - edges[0] >= 1. && edges[3] - edges[1] >= 1.).then_some(edges)
+    }
     fn paint(
         &mut self,
         n: &Node,
@@ -5157,11 +5187,14 @@ impl Painter<'_> {
                 }
             }
         }
-        let fill = self.rasterize(
+        let mut fill = self.rasterize(
             &prepared.fill,
             r,
             n.fill_even_odd() && n.kind != "text",
         )?;
+        if let Some(edges) = self.sketch_reduced_rectangle(n, prepared) {
+            crate::coverage::sketch_reduced_rectangle_edges(&mut fill.mask, edges, scale);
+        }
         let mut progressive_backdrop = false;
         if let Some(fx) = n.backdrop_effect().filter(|fx| {
             apply_effects && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))

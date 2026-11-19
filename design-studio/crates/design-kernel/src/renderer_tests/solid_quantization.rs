@@ -69,6 +69,7 @@ impl Fixture {
             profile,
             interactive_effects: false,
             display_degrade: false,
+            sketch_reduced_group: None,
             clipped_export_target: false,
             flush_backdrop_frame: None,
             compact_export_groups: false,
