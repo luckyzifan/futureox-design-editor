@@ -1079,11 +1079,29 @@ fn colorControlsPixel(p:vec4<f32>)->vec4<f32>{
  return vec4<f32>(mulRN(result.r,p.a),mulRN(result.g,p.a),mulRN(result.b,p.a),p.a);
 }
 fn motionKernelTap(i:u32)->vec4<f32>{return textureLoad(sourceB,vec2<i32>(i32(i%256u),i32(i/256u)),0);}
+fn motionSample(p:vec2<f32>,tap:vec4<f32>)->vec4<f32>{
+ let q=p+tap.xy;
+ return bsBilinear4(at(sourceA,q,u(1)),at(sourceA,q+vec2<f32>(1,0),u(1)),at(sourceA,q+vec2<f32>(0,1),u(1)),at(sourceA,q+vec2<f32>(1,1),u(1)),tap.zw,19u,9u);
+}
+fn motionHalfTowardZero(v:vec2<f32>)->vec2<f32>{
+ let bits=pack2x16float(v);let over=abs(unpack2x16float(bits))>abs(v);
+ return unpack2x16float(bits-select(0u,1u,over.x)-select(0u,65536u,over.y));
+}
+fn sketchMotionStage(p:vec2<f32>)->vec4<f32>{
+ let w=u(9);
+ let clip=u(14);
+ if(w.w==1.&&(any(p<clip.xy)||any(p>=clip.zw))){return vec4<f32>(0.);}
+ let near=addRN4(motionSample(p,u(10)),motionSample(p,u(11)));
+ let far=addRN4(motionSample(p,u(12)),motionSample(p,u(13)));
+ let result=addRN4(addRN4(mulRN4(at(sourceA,p,u(1)),vec4<f32>(w.x)),mulRN4(near,vec4<f32>(w.y))),mulRN4(far,vec4<f32>(w.z)));
+ if(w.w==2.){return vec4<f32>(motionHalfTowardZero(result.xy),motionHalfTowardZero(result.zw));}
+ return result;
+}
 fn motionBlurPixel(p:vec2<f32>)->vec4<f32>{
+ if(u(9).w>0.){return sketchMotionStage(p);}
  let header=motionKernelTap(0u);var sum=vec4<f32>(0);
- for(var i=0u;i<u32(header.x);i=i+1u){let tap=motionKernelTap(1u+2u*i);let weight=motionKernelTap(2u+2u*i).x;let q=p+tap.xy;
-  let value=bsBilinear4(at(sourceA,q,u(1)),at(sourceA,q+vec2<f32>(1,0),u(1)),at(sourceA,q+vec2<f32>(0,1),u(1)),at(sourceA,q+vec2<f32>(1,1),u(1)),tap.zw,19u,9u);
-  sum=addRN4(sum,mulRN4(value,vec4<f32>(weight)));
+ for(var i=0u;i<u32(header.x);i=i+1u){let tap=motionKernelTap(1u+2u*i);let weight=motionKernelTap(2u+2u*i).x;
+  sum=addRN4(sum,mulRN4(motionSample(p,tap),vec4<f32>(weight)));
  }
  return vec4<f32>(divideRN(sum.x,header.y),divideRN(sum.y,header.y),divideRN(sum.z,header.y),divideRN(sum.w,header.y));
 }

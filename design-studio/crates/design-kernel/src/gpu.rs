@@ -694,6 +694,8 @@ pub struct GpuNode {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub sketch_zoom_sampling: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub sketch_motion_output: Option<Rect>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sketch_motion_phase_axis: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub glass_shape: Option<crate::optics::GlassShape>,
@@ -1113,15 +1115,15 @@ fn foreground_region_supported(
             // Colour controls transform just this foreground texel. They do
             // not make a neighbouring layer's shadow a full-scene capture.
             soft_fields && (e.kind=="color-controls" ||
-                // The motion kernel reads only this foreground. effect_outset
-                // includes its entire three-sigma support and bilinear neighbours.
+                // The motion kernel reads only this foreground and needs its
+                // complete pass support before a regional paint is admissible.
                 e.kind=="motion-blur" && e.gradient_blur.is_none() && n.render_children().is_empty() &&
                 [region.x,region.y,region.right(),region.bottom()].iter().all(|v|
-                    i64::from(*v).abs()+i64::from(halo(n,p.matrix))+2 <= 1_048_576)) ||
+                    i64::from(*v).abs()+i64::from(crate::geometry_snapshot::effect_read_halo(doc,n,p.matrix))+2 <= 1_048_576)) ||
             e.kind=="gaussian-blur" && gaussian_supported) || n.passes_backdrop())) {
         return false;
     }
-    let source = region.expand(halo(n, p.matrix).saturating_add(2));
+    let source = region.expand(crate::geometry_snapshot::effect_read_halo(doc, n, p.matrix).saturating_add(2));
     n.render_children().iter().all(|child| foreground_region_supported(doc, child, source, prepared, coherent,gaussian_region,large_gaussian,soft_fields))
 }
 
@@ -1945,6 +1947,8 @@ impl Compiler<'_> {
             n.effects.iter().filter(|e| e.visible)
                 .map(|e| (e.blur_radius() * scale).ceil() as i32)
                 .fold(0_i32, i32::saturating_add)
+        } else if self.profile == crate::fidelity::RasterProfile::Analytic {
+            crate::geometry_snapshot::effect_read_halo(self.doc, n, matrix)
         } else { halo(n, matrix) };
         let source_region = requested.map(|r| r.expand(own_halo.saturating_add(2)));
         let wide_image_gaussian = self.wide_image_gaussians.get(id).copied()
@@ -2003,7 +2007,9 @@ impl Compiler<'_> {
             }
             rect = rect.union(b);
         }
-        let margin = halo(n, matrix)
+        let margin = (if self.profile == crate::fidelity::RasterProfile::Analytic {
+            crate::geometry_snapshot::effect_read_halo(self.doc, n, matrix)
+        } else { halo(n, matrix) })
             + (n.strokes
                 .iter()
                 .filter(|s| s.visible)
@@ -2120,6 +2126,8 @@ impl Compiler<'_> {
                 sharp_linear_layer: crate::sketch_progressive_blur::sharp_linear_layer(n),
                 sketch_zoom_sampling: n.effects.iter().any(|e| e.visible && e.zoom_blur.is_some())
                     && crate::zoom_blur::sketch_sampling(self.doc, n),
+                sketch_motion_output: (self.profile == crate::fidelity::RasterProfile::Analytic)
+                    .then(|| crate::spatial_blur::sketch_output(self.doc, n, matrix)).flatten(),
                 sketch_motion_phase_axis: sketch_bitmap_sampling.then(||
                     crate::paint::sketch_motion_phase_axis(self.doc, n)).flatten(),
                 glass_shape: n
@@ -2500,7 +2508,7 @@ impl Engine {
                 return 0;
             }
             let m = parent.concat(n.transform);
-            halo(n, m).saturating_add(
+            crate::geometry_snapshot::effect_read_halo(doc, n, m).saturating_add(
                 n.children
                     .iter()
                     .map(|id| margin(doc, id, m))
@@ -2765,7 +2773,7 @@ impl Engine {
                     } else {
                         None
                     }
-                    .unwrap_or_else(|| halo(n, p.matrix))
+                    .unwrap_or_else(|| crate::geometry_snapshot::effect_read_halo(doc, n, p.matrix))
                 };
                 own + n
                     .children

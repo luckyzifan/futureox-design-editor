@@ -119,6 +119,7 @@ import {
   gaussian_region_box_radii,
   rational_region_box_kernel_rgba,
   motion_blur_kernel,
+  sketch_motion_blur_passes,
   zoom_blur_coordinates,
   color_controls_uniforms,
   texture_sampling_grid,
@@ -6743,6 +6744,27 @@ export class GpuRenderer {
       return wide || await this.foregroundBlur(input, n, fx, sigma)
     }
     const direction = [n.matrix[0],n.matrix[1],n.matrix[2],n.matrix[3],0,0]
+    if (n.sketchMotionOutput) {
+      const stages = sketch_motion_blur_passes(fx.radius, fx.motionAngle ?? 0, new Float64Array(direction))
+      const { x, y, w, h } = n.sketchMotionOutput
+      let current = input
+      try {
+        for (let at = 0; at < stages.length; at += 20) {
+          const source = current
+          const uniforms = stages.subarray(at, at + 20)
+          const run = () => this.run(61, input.rect, [source], u => {
+            u.set(uniforms, 36)
+            u.set([x, y, x + w, y + h], 56)
+          }, 15, undefined, false, undefined, true)
+          current = await (this.admitSurface(input.rect, 1, false, false, [source], run) ?? run())
+          if (source !== input) this.release(source)
+        }
+        return current
+      } catch (error) {
+        if (current !== input) this.release(current)
+        throw error
+      }
+    }
     const kernel = this.filterKernel(`motion:${JSON.stringify([direction,fx.motionAngle??0])}`,fx.radius,
       () => motion_blur_kernel(fx.radius,fx.motionAngle??0,new Float64Array(direction)), values => [256,values.length/1024])
     const pending = this.admitSurface(input.rect,1,false,false,[input,kernel],()=>this.run(61,input.rect,[input,kernel]))

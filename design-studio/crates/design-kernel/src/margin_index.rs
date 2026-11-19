@@ -69,7 +69,7 @@ impl MarginIndex {
             crate::render_cancellation::checkpoint()?;
             let parent=if step.parent==ROOT{camera}else{matrices[step.parent as usize]};
             let matrix=parent.concat(step.transform);matrices.push(matrix);
-            own.push(step.effect_node.as_deref().map_or(0,|id|crate::geometry_snapshot::effect_halo(&doc.nodes[id],matrix)));
+            own.push(step.effect_node.as_deref().map_or(0,|id|crate::geometry_snapshot::effect_read_halo(doc,&doc.nodes[id],matrix)));
             children.push(step.zero_child.then_some(0));
         }
         let mut result=self.root_zero.then_some(0);

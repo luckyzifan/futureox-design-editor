@@ -821,6 +821,13 @@ mod wasm {
             .map(|k|k.encoded()).map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub fn sketch_motion_blur_passes(radius: f64, angle: f64, matrix: Vec<f64>) -> Result<Vec<f32>, JsValue> {
+        let matrix: [f64; 6] = matrix.try_into().map_err(|_| JsValue::from_str("Motion blur requires an affine transform"))?;
+        let plan = crate::spatial_blur::SketchMotion::new(radius, angle, crate::math::Transform(matrix))
+            .map_err(|error| JsValue::from_str(&error))?;
+        Ok(plan.uniforms().flatten().collect())
+    }
+    #[wasm_bindgen]
     pub fn noise_fill_preset_json()->Result<String,JsValue> {
         crate::noise_fill::preset().and_then(|p|serde_json::to_string(&p).map_err(|e|e.to_string())).map_err(|e|JsValue::from_str(&e))
     }

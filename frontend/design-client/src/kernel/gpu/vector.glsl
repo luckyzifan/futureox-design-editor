@@ -964,11 +964,29 @@ vec4 colorControlsPixel(vec4 p){
  return vec4(mulRN(result.r,p.a),mulRN(result.g,p.a),mulRN(result.b,p.a),p.a);
 }
 vec4 motionKernelTap(uint i){return texelFetch(sourceB,ivec2(int(i%256u),int(i/256u)),0);}
+vec4 motionSample(vec2 p,vec4 tap){
+ vec2 q=p+tap.xy;
+ return bsBilinear4(at(sourceA,q,u[1]),at(sourceA,q+vec2(1,0),u[1]),at(sourceA,q+vec2(0,1),u[1]),at(sourceA,q+vec2(1,1),u[1]),tap.zw,19u,9u);
+}
+vec2 motionHalfTowardZero(vec2 v){
+ uint bits=packHalf2x16(v);bvec2 over=greaterThan(abs(unpackHalf2x16(bits)),abs(v));
+ return unpackHalf2x16(bits-(over.x?1u:0u)-(over.y?65536u:0u));
+}
+vec4 sketchMotionStage(vec2 p){
+ vec4 w=u[9];
+ vec4 clip=u[14];
+ if(w.w==1.&&(any(lessThan(p,clip.xy))||any(greaterThanEqual(p,clip.zw))))return vec4(0.);
+ vec4 near=addRN4(motionSample(p,u[10]),motionSample(p,u[11]));
+ vec4 far=addRN4(motionSample(p,u[12]),motionSample(p,u[13]));
+ vec4 result=addRN4(addRN4(mulRN4(at(sourceA,p,u[1]),vec4(w.x)),mulRN4(near,vec4(w.y))),mulRN4(far,vec4(w.z)));
+ if(w.w==2.)return vec4(motionHalfTowardZero(result.xy),motionHalfTowardZero(result.zw));
+ return result;
+}
 vec4 motionBlurPixel(vec2 p){
+ if(u[9].w>0.)return sketchMotionStage(p);
  vec4 header=motionKernelTap(0u),sum=vec4(0);
- for(uint i=0u;i<uint(header.x);i++){vec4 tap=motionKernelTap(1u+2u*i);float weight=motionKernelTap(2u+2u*i).x;vec2 q=p+tap.xy;
-  vec4 value=bsBilinear4(at(sourceA,q,u[1]),at(sourceA,q+vec2(1,0),u[1]),at(sourceA,q+vec2(0,1),u[1]),at(sourceA,q+vec2(1,1),u[1]),tap.zw,19u,9u);
-  sum=addRN4(sum,mulRN4(value,vec4(weight)));
+ for(uint i=0u;i<uint(header.x);i++){vec4 tap=motionKernelTap(1u+2u*i);float weight=motionKernelTap(2u+2u*i).x;
+  sum=addRN4(sum,mulRN4(motionSample(p,tap),vec4(weight)));
  }
  return vec4(divideRN(sum.x,header.y),divideRN(sum.y,header.y),divideRN(sum.z,header.y),divideRN(sum.w,header.y));
 }
