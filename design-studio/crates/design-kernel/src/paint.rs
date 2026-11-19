@@ -1432,6 +1432,7 @@ impl SampleImage {
 pub struct Sampler {
     linear_sampling: bool,
     sketch_png_footprint: bool,
+    sketch_png_raster_size: Option<[f64; 2]>,
     /// Unmanaged images stay quantized encoded bytes. Analytic frames also set
     /// `linear_sampling` so the float bilinear expression is used; that flag
     /// does not decode those bytes.
@@ -1671,6 +1672,13 @@ impl Sampler {
             .transpose()?;
         let sketch_png_footprint = first_sketch_mip && images.sketch_png_footprint
             && image_coordinates.as_ref().is_some_and(ImageCoordinates::sketch_small_residual_shrink);
+        let [a, _, _, d, x, y] = m.0;
+        let integer = |v: f64| (v - v.round()).abs() <= 1e-9;
+        let raster_extent = |v: f64| if integer(v) { v.round() } else { v.ceil() };
+        let sketch_png_raster_size = (sketch_png_footprint && p.fit == "stretch"
+            && a > 0. && d > 0. && integer(x) && integer(y))
+            .then(|| [raster_extent(n.width * a), raster_extent(n.height * d)])
+            .filter(|size| size.iter().all(|&axis| axis.is_finite() && axis >= 2.));
         let gradient_coordinates =
             if matches!(p.kind.as_str(), "linear" | "radial" | "angular" | "diamond") {
                 Some(GradientCoordinates::new(
@@ -1689,6 +1697,7 @@ impl Sampler {
             gradient_coordinates,
             image_coordinates,
             sketch_png_footprint,
+            sketch_png_raster_size,
             linear_sampling: images.settings.is_some(),
             encoded_texels: images.settings.is_none(),
             kind: p.kind.clone(),
@@ -1910,9 +1919,9 @@ impl Sampler {
         let adjusted = self.adjusted(sampled);
         Pixel(adjusted.0.map(|v| ((v * 255.) * self.opacity).round_ties_even() / 255.))
     }
-    fn sample_sketch_png_mip(image: &SampleImage, point: Point) -> Option<Pixel> {
+    fn sample_sketch_png_mip(&self, image: &SampleImage, point: Point) -> Option<Pixel> {
         let [w, h] = image.size();
-        let weights = |position: f64, extent: u32| {
+        let footprint = |position: f64, extent: u32| {
             let center = (position - 0.5).round();
             // Preserve the established edge and partial-coverage sampling.
             if center < 2. || center + 2. >= f64::from(extent) { return None; }
@@ -1921,14 +1930,50 @@ impl Sampler {
             let right = 0.5 * (0.5 + delta).powi(2);
             Some((center as i32 - 1, [left, 1. - (left + right), right]))
         };
-        let (x, wx) = weights(point.x, w)?;
-        let (y, wy) = weights(point.y, h)?;
-        // Integrate bilinear reconstruction over one mip texel around the
-        // exact sample center. This reduces phase-dependent aliasing without
-        // shifting the export lattice or allocating another raster surface.
+        let (mut x, original_x) = footprint(point.x, w)?;
+        let (mut y, original_y) = footprint(point.y, h)?;
+        let mut wx = [original_x[0], original_x[1], original_x[2], 0., 0.];
+        let mut wy = [original_y[0], original_y[1], original_y[2], 0., 0.];
+        if let Some([width, height]) = self.sketch_png_raster_size {
+            let axis_weights = |coordinate: f64, texture: u32, raster: f64| {
+                // Sketch fits the mip's end centres to a rounded intermediate
+                // raster before resolving the fractional destination extent.
+                // The fractional phase is quantized to eighths, as measured
+                // by sweeping the same image across export widths.
+                const MIX: [f64; 9] = [0., 1./16., 2./16., 4./16., 0.5, 12./16., 14./16., 15./16., 1.];
+                let q = (coordinate * raster / f64::from(texture) - 0.5).clamp(0., raster - 1.);
+                let left = q.floor();
+                let fraction = MIX[((q-left)*8.).round() as usize];
+                let scale = f64::from(texture - 1)/(raster - 1.);
+                let (start, first) = footprint((left + fraction.floor()) * scale + 0.5, texture)?;
+                let mut result = [first[0], first[1], first[2], 0., 0.];
+                if fraction > 0. && fraction < 1. {
+                    let (next, second) = footprint((left + 1.) * scale + 0.5, texture)?;
+                    let offset = (next-start) as usize;
+                    if offset > 2 { return None; }
+                    for weight in &mut result {
+                        *weight *= 1. - fraction;
+                    }
+                    for (weight, next) in result[offset..].iter_mut().zip(second) {
+                        *weight += next * fraction;
+                    }
+                }
+                Some((start, result))
+            };
+            if let (Some(horizontal), Some(vertical)) =
+                (axis_weights(point.x, w, width), axis_weights(point.y, h, height))
+            {
+                (x,wx) = horizontal;
+                (y,wy) = vertical;
+            }
+        }
+        // Merge the separable weights before fetching texels so the
+        // intermediate raster never needs a surface.
         let mut sum = [0.; 4];
         for (j, wy) in wy.into_iter().enumerate() {
+            if wy == 0. { continue; }
             for (i, wx) in wx.into_iter().enumerate() {
+                if wx == 0. { continue; }
                 let weight = wx * wy;
                 let pixel = image.at(x + i as i32, y + j as i32);
                 for (out, value) in sum.iter_mut().zip(pixel.0) {
@@ -1949,7 +1994,7 @@ impl Sampler {
             match self.image_coordinates.as_ref().and_then(|c| c.at(device)) {
                 None => Pixel::default(),
                 Some(q) => {
-                    let filtered = self.sketch_png_footprint.then(|| Self::sample_sketch_png_mip(image, q)).flatten();
+                    let filtered = self.sketch_png_footprint.then(|| self.sample_sketch_png_mip(image, q)).flatten();
                     let sampled = if let Some(filtered) = filtered {
                         filtered
                     } else if self.linear_sampling {
