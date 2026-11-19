@@ -99,6 +99,8 @@ pub fn coordinates_sampled(
     result[..4].copy_from_slice(&[
         count as f32, rect.w as f32, rect.h as f32, (1 + rect.w as usize * count) as f32,
     ]);
+    // Device-aligned Sketch captures sample with eight fractional coordinate bits.
+    let sketch_sample_phase = sketch && matrix.0[1] == 0. && matrix.0[2] == 0.;
     for (axis, (origin, length, focal)) in [(rect.x, rect.w, center.x), (rect.y, rect.h, center.y)]
         .into_iter()
         .enumerate()
@@ -124,6 +126,7 @@ pub fn coordinates_sampled(
                 } else {
                     q
                 };
+                let q = if sketch_sample_phase { (q * 256.).round_ties_even() / 256. } else { q };
                 let mut integer = q.floor();
                 let mut fraction = (q - integer) as f32;
                 if fraction == 1. {
@@ -293,6 +296,8 @@ mod tests {
         let result = apply_sampled(&input, p, shape, [64., 64.], true).unwrap();
         let alpha = |x, y| (result.at(x, y).0[3] * 255.).round_ties_even() as u8;
         assert_eq!(alpha(93, 54), 188);
+        assert_eq!(alpha(80, 16), 21);
+        assert_eq!(alpha(206, 143), 21);
         assert_eq!(alpha(112, 112), 255);
         assert_eq!(alpha(0, 0), 0);
     }
