@@ -2046,6 +2046,21 @@ impl Compositor<'_, '_, '_> {
             }
             return self.blur_mode(input, 2. * fx.radius * scale, false, true);
         }
+        if let Some(clip) = n.sketch_motion_output {
+            let plan = futureox_design_kernel::spatial_blur::SketchMotion::new(fx.radius, fx.motion_angle, n.matrix)?;
+            let mut current = input;
+            for uniforms in plan.uniforms() {
+                let next = self.frame.run(61., input.rect, &[current], |u| {
+                    u[36..56].copy_from_slice(&uniforms);
+                    u[56..60].copy_from_slice(&[clip.x as f32, clip.y as f32, clip.right() as f32, clip.bottom() as f32]);
+                });
+                if current.id != input.id {
+                    self.frame.release(&[current]);
+                }
+                current = next?;
+            }
+            return Ok(current);
+        }
         let key=[fx.radius.to_bits(),fx.motion_angle.to_bits(),n.matrix.0[0].to_bits(),n.matrix.0[1].to_bits(),n.matrix.0[2].to_bits(),n.matrix.0[3].to_bits()];
         if !self.motion_kernels.contains_key(&key) {
             let data=futureox_design_kernel::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,n.matrix)?.encoded();

@@ -4532,7 +4532,9 @@ impl Painter<'_> {
             let shadow_effect = matches!(fx.kind.as_str(), "shadow" | "inner-shadow");
             let resolved = self.resolve_effect_planes(if shadow_effect { &shadow_basis } else { &planes })?;
             if matches!(fx.kind.as_str(), "gaussian-blur" | "motion-blur" | "zoom-blur") {
-                let kernel=if fx.kind=="motion-blur" {Some(crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?)} else {None};
+                let kernel = if fx.kind == "motion-blur" {
+                    Some(crate::spatial_blur::MotionFilter::for_effect(self.doc, n, fx, m, !self.compatible)?)
+                } else { None };
                 let compatible=self.compatible;
                 let filter=|source:&Surface| -> Result<Surface,String> {
                     let mut value=if let Some(z)=fx.zoom_blur {crate::zoom_blur::apply_sampled(source, z, m, [n.width, n.height],
@@ -5404,7 +5406,11 @@ impl Painter<'_> {
                         effects::gaussian_surface_owned(layer, fx.radius * scale, self.compatible)?
                     };
                 }
-                "motion-blur" => { shadow_basis=None; layer=crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?.apply(&layer)?; }
+                "motion-blur" => {
+                    shadow_basis = None;
+                    layer = crate::spatial_blur::MotionFilter::for_effect(self.doc, n, fx, m, !self.compatible)?
+                        .apply(&layer)?;
+                }
                 "color-controls" => {
                     shadow_basis = None;
                     fx.color_controls.as_ref().ok_or("Missing color controls")?.apply(&mut layer, self.doc.color_management.is_some());

@@ -9,7 +9,7 @@ use crate::{
 };
 use std::{collections::HashMap, sync::Arc};
 fn subtree_effect_halo(doc: &Document, node: &Node, matrix: Transform) -> i32 {
-    let mut halo = effect_halo(node, matrix);
+    let mut halo = effect_read_halo(doc, node, matrix);
     for child_id in node.render_children() {
         let Some(child) = doc.nodes.get(child_id) else { continue };
         if !child.visible { continue; }
@@ -24,6 +24,9 @@ fn account_segments(total:&mut usize,additional:usize)->Result<(),String>{
 }
 pub(crate) fn effect_halo(n: &Node, m: Transform) -> i32 {
     n.effect_outset(m.max_scale()).ceil() as i32
+}
+pub(crate) fn effect_read_halo(doc: &Document, n: &Node, m: Transform) -> i32 {
+    crate::spatial_blur::read_outset(doc, n, m, m.max_scale()).ceil() as i32
 }
 #[derive(Clone)]
 pub(crate) struct Prepared {
@@ -187,7 +190,8 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
         .control_bounds(matrix)
         .union(stroke_path.control_bounds(matrix));
     // Reject in floating point before conversion or padding arithmetic.
-    let halo_value = n.effect_outset(scale);
+    let halo_value = if compatible { n.effect_outset(scale) }
+        else { crate::spatial_blur::read_outset(doc, n, matrix, scale) };
     // Bounds/flattening guards allocate no pixels. Limit their coordinates,
     // and let the renderer admit the actual intersecting effect surfaces.
     if !halo_value.is_finite() || halo_value.ceil() > 16_000_000. {

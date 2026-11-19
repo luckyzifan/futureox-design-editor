@@ -46,7 +46,9 @@ impl PageHalo {
                 concealed.insert(id.to_owned());
             }
             let matrix = parent.concat(node.transform);
-            effect_halo(node, matrix).saturating_add(
+            let own = if coherent { effect_halo(node, matrix) }
+                else { crate::geometry_snapshot::effect_read_halo(doc, node, matrix) };
+            own.saturating_add(
                 node.children
                     .iter()
                     .enumerate()

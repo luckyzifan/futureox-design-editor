@@ -83,7 +83,7 @@ fn local_bounds(n:&Node,fonts:&Fonts,output_only:bool)->Bounds {
     if n.kind=="group"&&n.network.is_none()&&n.vector_geometry.is_none(){return Bounds::Empty}
     n.paths().map_or(Bounds::Unknown,|(a,b)|path_bounds(&a).union(path_bounds(&b)))
 }
-fn world_entry(n:&Node,m:Transform,absolute:Transform,depth:u32,fonts:&Fonts,output_only:bool)->Entry {
+fn world_entry(doc:&Document,n:&Node,m:Transform,absolute:Transform,depth:u32,fonts:&Fonts,output_only:bool)->Entry {
     let mut entry=Entry{bounds:Bounds::Unknown,magnitude:[0.;2],linear:absolute.0[..4].iter().copied().fold(0.,f64::max),
         translation:absolute.0[4].max(absolute.0[5]),depth,max_depth:depth,own_halo:0.,path_halo:0.,own_fixed:0,fixed_path:0};
     if depth>4096||m.0.iter().chain(absolute.0.iter()).any(|v|!v.is_finite()||v.abs()>1e12){return entry}
@@ -94,7 +94,7 @@ fn world_entry(n:&Node,m:Transform,absolute:Transform,depth:u32,fonts:&Fonts,out
     let scale=mul(frobenius,1.+gamma(depth)).max(0.001);
     // Same conservative stroke support as the existing leaf preparation guard.
     let stroke=n.strokes.iter().filter(|s|s.visible).map(crate::stroke::maximum_width).fold(0.,f64::max);
-    entry.own_halo=add(n.effect_outset(scale).next_up(),mul(mul(stroke,4.),scale));
+    entry.own_halo=add(crate::spatial_blur::world_read_outset(doc,n,m,scale).next_up(),mul(mul(stroke,4.),scale));
     // Gaussian/motion support has two device-pixel neighbours per active
     // operator. Keep them separately: multiplying a world bound by a small
     // camera scale must never shrink that fixed device support.
@@ -190,7 +190,7 @@ impl WorldSupport {
                 entries.insert(id.to_owned(),entry);continue;
             }
             let matrix=parent.concat(n.transform);let absolute=absolute_concat(absolute,n.transform);
-            let entry=if n.visible {world_entry(n,matrix,absolute,depth,fonts,output_only)}else{Entry{bounds:Bounds::Empty,magnitude:[0.;2],linear:0.,translation:0.,depth,max_depth:depth,own_halo:0.,path_halo:0.,own_fixed:0,fixed_path:0}};
+            let entry=if n.visible {world_entry(doc,n,matrix,absolute,depth,fonts,output_only)}else{Entry{bounds:Bounds::Empty,magnitude:[0.;2],linear:0.,translation:0.,depth,max_depth:depth,own_halo:0.,path_halo:0.,own_fixed:0,fixed_path:0}};
             let projected=(entries.len()+1).saturating_mul(2*(std::mem::size_of::<(String,Entry)>()+32))
                 .saturating_add(key_bytes).saturating_add(id.len()).saturating_add(stack.capacity()*frame_bytes);
             if projected>limit{return Ok(None)}

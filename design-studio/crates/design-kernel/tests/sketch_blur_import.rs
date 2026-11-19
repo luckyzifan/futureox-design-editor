@@ -28,12 +28,12 @@ fn sketch_motion_blur_keeps_a_one_texel_stripe_two_device_pixels_wide_at_2x() {
         color_output: None,
     }).unwrap();
     let image = image::load_from_memory(&png).unwrap().into_rgba8();
-    // Sketch's original 2× export has no spill on the axis normal to the
-    // effect. The Gaussian's along-axis quantization is a separate property.
+    // The native 2× PNG resolves the stripe to two pixels with alpha 253
+    // after the last motion stage.
     let alpha = (255..259).map(|x| image.get_pixel(x, 192).0[3]).collect::<Vec<_>>();
     assert_eq!(alpha[0], 0);
     assert_eq!(alpha[3], 0);
-    assert!(alpha[1] > 250 && alpha[2] > 250, "{alpha:?}");
+    assert_eq!(alpha[1..3], [253, 253]);
 }
 
 #[test]
