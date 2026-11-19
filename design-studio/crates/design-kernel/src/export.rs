@@ -1229,6 +1229,41 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn reduced_sketch_group_preserves_its_rectangle_edge_in_a_crop() {
+        let mut doc = json!({
+            "schemaVersion":19,"id":"d","name":"Reduced rectangle",
+            "pages":[{"id":"p","name":"Page","children":["group"],"background":"#ffffff"}],
+            "nodes":{
+                "group":{"id":"group","kind":"group","width":321,"height":60,"children":["rect"]},
+                "rect":{"id":"rect","kind":"rectangle","width":321,"height":60,
+                    "fills":[{"kind":"solid","color":"#d8d8d8"}]}
+            },
+            "designSystem":{"sketchContainers":{"nodeMetadata":{
+                "group":{"bindings":{"sketchSourceGroup":"true"},"styleRefs":{}}
+            }}}
+        });
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        let png = |engine: &mut Engine, x, width| {
+            let bytes = engine.render_region_png(&RegionRequest {
+                page_id: "p".into(), scale: 0.2, node_ids: Some(vec!["group".into()]),
+                bounds: ExportBounds { x, y: 0., width, height: 60. },
+                color_output: None, raster_profile: Some(RasterProfile::Analytic),
+            }).unwrap();
+            image::load_from_memory(&bytes).unwrap().into_rgba8()
+        };
+        let full = png(&mut engine, 0., 325.);
+        assert_eq!(full.get_pixel(63, 5)[3], 255);
+        // The last column covers one fifth of a destination pixel at 0.2×.
+        assert_eq!(full.get_pixel(64, 5)[3], 20);
+        assert_eq!(png(&mut engine, 320., 5.), image::imageops::crop_imm(&full, 64, 0, 1, 12).to_image());
+
+        doc["designSystem"]["sketchContainers"]["nodeMetadata"] = json!({});
+        engine.load_document(&doc.to_string()).unwrap();
+        assert_eq!(png(&mut engine, 0., 325.).get_pixel(64, 5)[3], 51);
+    }
+
+    #[test]
     fn native_sketch_gaussian_cutoff_is_in_authored_points() {
         let mut source = json!({
             "schemaVersion":19,"id":"d","name":"Native small Gaussian",
