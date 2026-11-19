@@ -264,6 +264,7 @@ export class ResidentPresenter {
     readonly format: GPUTextureFormat,
     private report: (stats: Record<string, unknown>) => void,
     private atomic = false,
+    private observeQueueCompletion?: (completion: Promise<void>) => void,
   ) {
     this.payload = new PresenterPayloadLedger(() => device.queue.onSubmittedWorkDone(), DISPLAY_TEXTURE_BUDGET, () => this.overlay?.residentBytes || 0)
     const diagnosticIdentity = registerDeviceDiagnosticOwner(this, device, 2)
@@ -980,6 +981,7 @@ export class ResidentPresenter {
     // canvas must never change beneath a previously applied CSS transform.
     let completion:Promise<void>
     try{completion=this.device.queue.onSubmittedWorkDone()}catch(error){completion=Promise.reject(error)}
+    this.observeQueueCompletion?.(completion)
     void completion.then(()=>{
       if(this.disposed||this.bitmapPending!==pending)return
       this.payload.assertOpen()

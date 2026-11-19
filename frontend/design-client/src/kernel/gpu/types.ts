@@ -191,6 +191,8 @@ export type GpuScene = {
   displayFilterRadiusLimit?: number
   /** Renderer-owned SDR blur arithmetic, cleared for every exact output. */
   canvasBlurApproximation?: boolean
+  /** Worker-owned native-density viewport capture for a zoom focus edit. */
+  zoomFocusNode?: string
   /** Worker-selected SDR display-only image sampler. Exact outputs overwrite it. */
   displayMaterialSource?: boolean
   /** Screen-only request for sequential sample accumulation, never exact output. */
@@ -436,6 +438,7 @@ export interface Driver {
   readonly certifiedFilter?: boolean
   readonly exactSolidPaintOver?: boolean
   readonly exactGradientPaintOver?: boolean
+  readonly zoomFocusMask?: boolean
   readonly windowedGradientFields?: boolean
   /** Prepared for this display call only, cleared before every exact request. */
   readonly gestureSoftEffects?: boolean

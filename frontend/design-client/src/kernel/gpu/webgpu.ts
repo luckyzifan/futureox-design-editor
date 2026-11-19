@@ -26,6 +26,7 @@ import { exactFilterWgsl, rationalStubWgsl } from './exact-filter'
 import { canvasBlurPassEligible, canvasBlurSceneEligible, canvasBlurGeometry } from './canvas-blur-filter'
 import { unmanagedByteGaussianBox } from './gaussian-region'
 import { canvasSpatialBlurWgsl } from './canvas-spatial-blur'
+import { ZOOM_MASK_SUMMARY_MODE, ZOOM_MASK_COMPOSITE_MODE, zoomFocusMaskWgsl } from './zoom-focus-mask'
 import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
 import { managedBackgroundEntryPoint, managedBackgroundWgsl } from './managed-background'
 import { baseCompositorModes, compositorModes } from './compositor-modes'
@@ -127,6 +128,15 @@ export class WebGpuDriver implements Driver {
   private canvasBlurAlphaPipeline?: GPURenderPipeline
   private canvasBlurRgbaPipeline?: GPURenderPipeline
   private canvasSpatialPipelines = new Map<number, GPURenderPipeline>()
+  private zoomFocusMaskModule?: GPUShaderModule
+  private zoomFocusMaskRequested = false
+  private focusCaptureRequested = false
+  private focusRasterSubmitted = 0
+  private focusRasterCompleted = 0
+  get zoomFocusMask() {
+    return this.zoomFocusMaskRequested && this.canvasSpatialPipelines.has(ZOOM_MASK_SUMMARY_MODE) &&
+      this.canvasSpatialPipelines.has(ZOOM_MASK_COMPOSITE_MODE)
+  }
   private canvasSpatialFailed = new Set<number>()
   private canvasSpatialModule?: GPUShaderModule
   private canvasBlurFailed = false
@@ -278,7 +288,18 @@ export class WebGpuDriver implements Driver {
   }
   attachPresenter(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic=false) {
     if(this.presenter)this.presenter.attachCanvas(canvas,atomic)
-    else this.presenter=new ResidentPresenter(this.presentationDevice||this.device, canvas, this.format, report,atomic)
+    else this.presenter=new ResidentPresenter(this.presentationDevice||this.device, canvas, this.format, report,atomic,
+      this.presentationDevice ? undefined : completion=>this.observeFocusRasterCompletion(completion))
+  }
+  private observeFocusRasterCompletion(completion: Promise<void>) {
+    // Snapshot the last fully validated raster before awaiting the compositor
+    // fence. A later encoder may still be open when this promise resolves.
+    const epoch = this.focusRasterSubmitted, device = this.device
+    if (!epoch || epoch <= this.focusRasterCompleted) return
+    void completion.then(() => {
+      if (this.device === device && !this.lost && !this.disposed)
+        this.focusRasterCompleted = Math.max(this.focusRasterCompleted, epoch)
+    }, () => {})
   }
   acceptPresentation(token:number,accepted=true){this.presenter?.acceptPresentation(token,accepted)}
   hasDeferredPosePresentation(slot:number){return this.presenter?.hasDeferredPosePresentation(slot) ?? false}
@@ -1454,8 +1475,16 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       if (Object.keys(scene.densePaint.sources ?? {}).length >= 8) await this.prepareDensePairs()
     }
     if(this.exactGradientPaintOver&&(gradientFusion??gradientFusionWorthwhile(scene)))modes.add(GRADIENT_PAINT_OVER_MODE)
+    this.zoomFocusMaskRequested = !!scene.zoomFocusNode && this.canvasBlurRequested && modes.has(62)
+    this.focusCaptureRequested = !!scene.zoomFocusNode && displayOnly && !this.presentationDevice
     await this.prepareModes(modes)
-    if (this.canvasBlurRequested) await this.prepareCanvasSpatialBlur(modes)
+    if (this.canvasBlurRequested) {
+      if (this.zoomFocusMaskRequested) {
+        modes.add(ZOOM_MASK_SUMMARY_MODE)
+        modes.add(ZOOM_MASK_COMPOSITE_MODE)
+      }
+      await this.prepareCanvasSpatialBlur(modes)
+    }
     if (displayImageRequested) await this.prepareDisplayImagePipeline()
   }
   async prepareSourceDisplay(){
@@ -1490,16 +1519,22 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   }
   private async prepareCanvasSpatialBlur(modes: Set<number>) {
     if (!this.displayImageBaseSource) return
-    for (const mode of [61, 62, 64]) {
+    for (const mode of [61, 62, 64, ZOOM_MASK_SUMMARY_MODE, ZOOM_MASK_COMPOSITE_MODE]) {
       if (!modes.has(mode) || this.canvasSpatialPipelines.has(mode) || this.canvasSpatialFailed.has(mode)) continue
+      const mask = mode === ZOOM_MASK_SUMMARY_MODE || mode === ZOOM_MASK_COMPOSITE_MODE
+      if (mask && !this.canvasSpatialPipelines.has(62)) continue
       try {
         const device = this.device
         device.pushErrorScope('validation')
         let pending: Promise<GPURenderPipeline>
         try {
-          const module = this.canvasSpatialModule ??= device.createShaderModule({ code: this.displayImageBaseSource + canvasSpatialBlurWgsl, label: 'Canvas spatial blur' })
+          const module = mask
+            ? (this.zoomFocusMaskModule ??= device.createShaderModule({code: this.displayImageBaseSource + zoomFocusMaskWgsl, label: 'Zoom focus coverage'}))
+            : (this.canvasSpatialModule ??= device.createShaderModule({code: this.displayImageBaseSource + canvasSpatialBlurWgsl, label: 'Canvas spatial blur'}))
+          const entryPoint = mode === ZOOM_MASK_SUMMARY_MODE ? 'summarizeZoomMask' : mode === ZOOM_MASK_COMPOSITE_MODE ? 'canvasZoomMaskComposite' :
+              mode === 61 ? 'canvasMotionBlur' : 'canvasZoomBlur'
           pending = device.createRenderPipelineAsync({ layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
-            vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: mode === 61 ? 'canvasMotionBlur' : 'canvasZoomBlur', targets: [{ format: this.layerFormat }] },
+            vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint, targets: [{ format: this.layerFormat }] },
             primitive: { topology: 'triangle-list' } })
         } catch (error) { await device.popErrorScope(); throw error }
         const validation = device.popErrorScope(), [pipeline, error] = await Promise.all([pending, validation])
@@ -3627,6 +3662,11 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       !samples && !this.linearCapture && !this.transientTargets.length && !this.transient.length && !this.transientBytes
     // Keep the existing interaction/periodic backpressure. Only per-tile waits
     // whose purpose was scratch destruction or diagnostic counters disappear.
+    if (this.focusCaptureRequested && this.focusRasterCompleted > 0 && this.focusRasterCompleted === this.resourceEpoch - 1) {
+      // The atomic compositor already waited on this same queue. Reuse that
+      // completion for cadence only; resource lifetimes keep their own fences.
+      this.presentationSubmissions = 0
+    }
     const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' : transfer ? 'presentation-transfer' :
       this.byteTentLeases?.size ? 'prefix-scratch' :
       !retainFilterScratch && (this.prefix?.scratchBytes||this.boxPrefix?.scratchBytes) ? 'prefix-scratch' :
@@ -3750,6 +3790,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       captured={id,texture:transfer.texture}
     }
     if (captured) this.residentCaptures++
+    this.focusRasterSubmitted = this.focusCaptureRequested && captured && !readback && !transfer ? this.resourceEpoch : 0
     this.submittedBoundaryReady = true
     return { gpuTile: captured?.id, bitmap, rgba, linear, straightRgba }
     } catch (error) {
