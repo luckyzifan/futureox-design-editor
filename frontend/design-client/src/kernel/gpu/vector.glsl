@@ -1007,7 +1007,10 @@ vec4 sketchBlurBox(vec2 p){
  float sharpWeight=0.;
  if(u[12].y>0.5){
   const float calibration=1.4142135623730951*0.75;
-  sharpWeight=1.-clamp((sigma-0.7*calibration)/(0.8*calibration),0.,1.);
+  bool backdrop=settings.z>0.5;
+  float sharpStart=backdrop?0.7*calibration:0.7;
+  float fade=backdrop?0.8*calibration:0.8;
+  sharpWeight=1.-clamp((sigma-sharpStart)/fade,0.,1.);
   if(sharpWeight==1.)return at(sourceB,p,u[2]);
  }
  float variance=sigma*sigma/3.;

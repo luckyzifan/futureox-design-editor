@@ -1520,7 +1520,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
   }
   private async prepareCanvasSpatialBlur(modes: Set<number>) {
     if (!this.displayImageBaseSource) return
-    for (const mode of [61, 62, 64, ZOOM_MASK_SUMMARY_MODE, ZOOM_MASK_COMPOSITE_MODE]) {
+    // Mode 64 uses its radius field in the ordinary Sketch box shader.
+    for (const mode of [61, 62, ZOOM_MASK_SUMMARY_MODE, ZOOM_MASK_COMPOSITE_MODE]) {
       if (!modes.has(mode) || this.canvasSpatialPipelines.has(mode) || this.canvasSpatialFailed.has(mode)) continue
       const mask = mode === ZOOM_MASK_SUMMARY_MODE || mode === ZOOM_MASK_COMPOSITE_MODE
       if (mask && !this.canvasSpatialPipelines.has(62)) continue

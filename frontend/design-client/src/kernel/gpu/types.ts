@@ -128,6 +128,7 @@ export type GpuNode = {
   matrix: Matrix
   inverse: Matrix
   size: [number, number]
+  sharpLinearLayer?: boolean
   sketchZoomSampling?: boolean
   sketchMotionPhaseAxis?: number
   glassShape?: { size: [number, number]; radius: number; radii?: [number, number, number, number] }

@@ -8,6 +8,27 @@ use crate::{
     scene::{BlurRampShape, GradientBlurParameters},
 };
 
+/// A hard rectangular source has no curved, textured, or stroked coverage
+/// to rephase when the very smallest foreground filters retain its edge.
+pub(crate) fn sharp_linear_layer(node: &crate::scene::Node) -> bool {
+    if node.kind != "rectangle" || node.mask || node.blend != "normal" || !node.children.is_empty() ||
+        node.radii.iter().any(|&radius| radius != 0.) || node.strokes.iter().any(|stroke| stroke.visible) ||
+        node.fills.iter().any(|fill| fill.visible && (fill.kind != "solid" || fill.blend != "normal"))
+    {
+        return false;
+    }
+    let mut effects = node.effects.iter().filter(|effect| effect.visible);
+    effects.next().is_some_and(|effect| effect.kind == "gaussian-blur" && effect.sketch_ramp()
+        .and_then(|ramp| ramp.sketch.as_ref()).is_some_and(|ramp| ramp.shape == BlurRampShape::Linear)) &&
+        effects.next().is_none()
+}
+
+pub fn layer_edges_on_pixels([width, height]: [f64; 2], matrix: Transform) -> bool {
+    let [a, b, c, d, x, y] = matrix.0;
+    b == 0. && c == 0. && a > 0. && d > 0. &&
+        [x, y, x + a * width, y + d * height].iter().all(|value| value.is_finite() && value.fract() == 0.)
+}
+
 /// A rotated rectangular lens samples the backdrop inside its own capture
 /// rectangle. Extend its edge texels into the screen-aligned allocation so
 /// separable screen-space filters do not see unrelated pixels in its corners.
@@ -167,6 +188,7 @@ pub(crate) fn apply(
     sigma: f64,
     clamp_edges: bool,
     byte: bool,
+    sharp_layer: bool,
 ) -> Result<Surface, String> {
     if !sigma.is_finite() || !(0. ..=512.).contains(&sigma) {
         return Err("Sketch progressive blur sigma must be in [0,512]".into());
@@ -182,8 +204,15 @@ pub(crate) fn apply(
     let sigma = sigma as f32;
     // Rotated and sheared captures require a separate sharp sampling phase.
     let axis_aligned_backdrop = clamp_edges && matrix.0[1] == 0. && matrix.0[2] == 0.;
-    let sharp = (axis_aligned_backdrop
-        && field.stops.iter().any(|stop| sigma * stop[1] < FULL_BACKDROP_SIGMA))
+    let (sharp_start, sharp_end) = if axis_aligned_backdrop {
+        (SHARP_BACKDROP_SIGMA, FULL_BACKDROP_SIGMA)
+    } else if sharp_layer && !clamp_edges && !field.radial {
+        // The layer blur sigma is already in authored device-pixel units.
+        (0.7, 1.5)
+    } else {
+        (0., 0.)
+    };
+    let sharp = field.stops.iter().any(|stop| sigma * stop[1] < sharp_end)
         .then(|| source.try_clone())
         .transpose()?;
     let [w, h] = [source.rect.w as usize, source.rect.h as usize];
@@ -234,9 +263,8 @@ pub(crate) fn apply(
                     ((b[c] - a[c] + (left_pad + f) * f64::from(l[c]) + (right_pad + f) * f64::from(h[c])) / divisor) as f32
                 });
                 let offset = index(i);
-                if let Some(sharp) = sharp.filter(|_| local_sigma < FULL_BACKDROP_SIGMA) {
-                    let weight = ((local_sigma - SHARP_BACKDROP_SIGMA)
-                        / (FULL_BACKDROP_SIGMA - SHARP_BACKDROP_SIGMA)).max(0.);
+                if let Some(sharp) = sharp.filter(|_| local_sigma < sharp_end) {
+                    let weight = ((local_sigma - sharp_start) / (sharp_end - sharp_start)).max(0.);
                     filtered = std::array::from_fn(|c| {
                         sharp.pixels[offset].0[c] * (1. - weight) + filtered[c] * weight
                     });

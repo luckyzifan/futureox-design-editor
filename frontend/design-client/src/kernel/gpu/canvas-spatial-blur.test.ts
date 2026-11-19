@@ -11,7 +11,7 @@ function fixture() {
       createRenderPipelineAsync: vi.fn(async (d: any) => { descriptors.push(d); return d }),
       pushErrorScope: vi.fn(), popErrorScope: vi.fn(async () => null) },
     layout: {}, pipelines: { prepare: async () => undefined, register() {} }, blank: { resource: {} },
-    modePipelines: new Map([[12, {}], [61, { exact: 61 }], [62, { exact: 62 }]]),
+    modePipelines: new Map([[12, {}], [61, { exact: 61 }], [62, { exact: 62 }], [64, { exact: 64 }]]),
     closeOver() {}, bind: () => ({ group: {}, offsets: [] }), bindingCache: { view: () => ({}) },
     encoder: { beginRenderPass: () => ({ setPipeline: (p: any) => chosen.push(p), setBindGroup() {}, draw() {}, end() {} }) },
   })
@@ -48,6 +48,14 @@ test('a rejected spatial pipeline keeps the original and does not retry each fra
   expect(f.raw.device.createRenderPipelineAsync).toHaveBeenCalledOnce()
   await f.driver.prepareScene(f.scene, true); f.draw(61)
   expect(f.chosen).toEqual([{ exact: 61 }])
+})
+
+test('the progressive radius field stays on its Sketch box shader', async () => {
+  const f = fixture()
+  await f.raw.prepareCanvasSpatialBlur(new Set([62, 64]))
+  await f.driver.prepareScene(f.scene, true); f.draw(64)
+  expect(f.descriptors.map(p => p.fragment.entryPoint)).toEqual(['canvasZoomBlur'])
+  expect(f.chosen).toEqual([{ exact: 64 }])
 })
 test('late spatial compilation cannot publish into a terminated device owner', async () => {
   const f = fixture(); vi.spyOn(console, 'warn').mockImplementation(() => {})

@@ -276,7 +276,10 @@ fn sketchBlurBox(p:vec2<f32>)->vec4<f32>{
  var sharp_weight=0.;
  if(u(12).y>0.5){
   let calibration=1.4142135623730951*0.75;
-  sharp_weight=1.-clamp((sigma-0.7*calibration)/(0.8*calibration),0.,1.);
+  let backdrop=settings.z>0.5;
+  let sharp_start=select(0.7,0.7*calibration,backdrop);
+  let fade=select(0.8,0.8*calibration,backdrop);
+  sharp_weight=1.-clamp((sigma-sharp_start)/fade,0.,1.);
   if(sharp_weight==1.){return at(sourceB,p,u(2));}
  }
  let variance=sigma*sigma/3.;
