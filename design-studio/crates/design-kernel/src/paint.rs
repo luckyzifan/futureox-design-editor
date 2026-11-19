@@ -313,24 +313,32 @@ fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resid
         return Ok((surface,size));
     }
     let mut image = decoded.into_rgba32f();
-    if let Some(settings) = settings {
+    let sdr_storage = if let Some(settings) = settings {
         crate::image_color::to_working(&mut image, settings, space, profile.as_deref())?;
+        None
     } else if space.is_some() || profile.is_some() {
-        crate::image_color::to_sdr(&mut image, space, profile.as_deref())?;
-    }
+        crate::image_color::to_sdr_working(&mut image, space, profile.as_deref())?;
+        Some(crate::image_color::SdrStorage::shared())
+    } else {
+        None
+    };
     let size = image.width() as usize * image.height() as usize;
     if resident + size > UNMANAGED_IMAGE_PIXEL_LIMIT as usize {
         return Err("Decoded image budget exceeded".into());
     }
     let mut surface = Surface::new(Rect::new(0, 0, image.width(), image.height()))?;
     for (out, p) in surface.pixels.iter_mut().zip(image.pixels()) {
-        let pixel = Pixel::rgba(p[0], p[1], p[2], p[3]);
         // SDR assets are premultiplied RGBA8 textures on both GPU APIs.
         // Keep the same decode boundary before filtering on the CPU.
-        *out = if settings.is_none() {
-            pixel.rgba8_quantized()
+        *out = if let Some(storage) = sdr_storage {
+            storage.pixel(p.0)
         } else {
-            pixel
+            let pixel = Pixel::rgba(p[0], p[1], p[2], p[3]);
+            if settings.is_none() {
+                pixel.rgba8_quantized()
+            } else {
+                pixel
+            }
         };
     }
     Ok((surface, size))

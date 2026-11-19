@@ -169,13 +169,11 @@ impl Decoder {
                     self.profile=None;
                 }
                 self.transform.as_mut().unwrap().apply(&mut image)?;
-                let settings = ColorSettings::default();
-                for pixel in image.pixels_mut() {
-                    let rgb = settings.from_working([f64::from(pixel[0]), f64::from(pixel[1]), f64::from(pixel[2])], ColorSpace::Srgb);
-                    for channel in 0..3 { pixel[channel] = rgb[channel].clamp(0., 1.) as f32; }
-                }
+                let storage = image_color::SdrStorage::shared();
+                for pixel in image.pixels_mut() { pixel.0 = storage.pixel(pixel.0).0; }
+            } else {
+                for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).rgba8_quantized().0; }
             }
-            for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).rgba8_quantized().0; }
         }
         Ok(image.into_raw())
     }
