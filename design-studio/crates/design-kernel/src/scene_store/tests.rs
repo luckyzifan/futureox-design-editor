@@ -366,6 +366,49 @@ fn dense_node_demand_streams_once_without_loading_metadata() {
 
 
 #[test]
+fn native_dense_load_keeps_cross_batch_references_order_and_authentication() {
+    let fixture = Fixture::new();
+    let cancel = AtomicBool::new(false);
+    let mut doc = document(4500);
+    let name = "scene-window".repeat(160);
+    for node in doc.nodes.values_mut() {
+        node.name = name.clone();
+    }
+    // Include one record beyond the parallel batch cap and shared geometry
+    // on opposite sides of it. The consumer must restore in source order.
+    doc.nodes.get_mut("node-02250").unwrap().name = "x".repeat(1_048_576);
+    let geometry: Arc<VectorGeometry> = Arc::new(serde_json::from_value(json!({
+        "fillRule": "nonzero",
+        "fill": [{"move": [-0., 0.]}, {"line": [10., 0.]}, {"line": [10., 10.]}, "close"]
+    })).unwrap());
+    doc.nodes.get_mut("node-00000").unwrap().vector_geometry = Some(geometry.clone());
+    doc.nodes.get_mut("node-04499").unwrap().vector_geometry = Some(geometry);
+    let receipt = fixture.write(&doc);
+    let reader = Reader::open(&fixture.path, &receipt, &cancel).unwrap();
+    assert!(reader.index_offset - reader.metadata_end >= 8 * 1024 * 1024);
+    let (restored, _) = reader.into_source_document(&cancel).unwrap();
+    assert_eq!(serde_json::to_vec(&restored).unwrap(), serde_json::to_vec(&doc).unwrap());
+    assert!(Arc::ptr_eq(
+        restored.nodes["node-00000"].vector_geometry.as_ref().unwrap(),
+        restored.nodes["node-04499"].vector_geometry.as_ref().unwrap(),
+    ));
+    drop(restored);
+
+    let reader = Reader::open(&fixture.path, &receipt, &cancel).unwrap();
+    let checks = std::cell::Cell::new(0);
+    let cancelled = crate::render_cancellation::with_probe(move || {
+        checks.set(checks.get() + 1);
+        checks.get() > 1500
+    }, || reader.into_source_document(&cancel));
+    assert!(cancelled.err().unwrap().to_string().contains("CANCELLED"));
+
+    let mut reader = Reader::open(&fixture.path, &receipt, &cancel).unwrap();
+    let row = reader.row(4499, &cancel).unwrap();
+    modify(&fixture.path, row.value_offset, b"x");
+    assert!(reader.into_source_document(&cancel).err().unwrap().to_string().contains("content changed"));
+}
+
+#[test]
 fn shared_images_are_authenticated_lazy_and_restore_original_arcs_and_bytes() {
     let fixture=Fixture::new();let mut doc=document(3);
     let image:Arc<str>=format!("data:image/png;base64,{}","a".repeat(1024*1024)).into();

@@ -17,6 +17,7 @@ use std::{
 };
 mod record_node;
 mod node_json;
+mod dense;
 mod archive_envelope;
 #[cfg(feature="mapped-source-snapshot")]
 pub(crate) mod archive;
@@ -228,21 +229,17 @@ fn write_json(
     value: &impl Serialize,
     cancel: &AtomicBool,
 ) -> io::Result<(u64, [u8; 32])> {
-    let mut writer = HashWriter {
+    let writer = HashWriter {
         inner: writer,
         bytes: 0,
         hash: Sha256::new(),
         cancel,
     };
-    // Serde emits punctuation and numbers in very small writes. Hashing every
-    // token separately made the authenticated store CPU bound even on an SSD.
-    // Buffer inside the hashing layer: bytes, digest and cancellation contract
-    // stay identical, with at most 64 KiB between cancellation checkpoints.
-    {
-        let mut buffered = BufWriter::with_capacity(64 * 1024, &mut writer);
-        serde_json::to_writer(&mut buffered, value).map_err(io::Error::other)?;
-        buffered.flush()?;
-    }
+    // Hash complete chunks without forcing the outer file buffer to flush
+    // at each record. Publication still flushes and checks the whole file.
+    let mut buffered = BufWriter::with_capacity(64 * 1024, writer);
+    serde_json::to_writer(&mut buffered, value).map_err(io::Error::other)?;
+    let writer = buffered.into_inner().map_err(|error| error.into_error())?;
     Ok((writer.bytes, writer.hash.finalize().into()))
 }
 struct HashReader<'a, R> {
@@ -280,14 +277,14 @@ fn read_json_from<T: serde::de::DeserializeOwned>(
         // DeserializeOwned ensures no returned node borrows this storage.
         let mut temporary = Vec::new();
         let bytes = if length <= RETAIN_LIMIT { scratch } else { &mut temporary };
-        bytes.clear();
-        bytes.try_reserve_exact(length as usize).map_err(io::Error::other)?;
-        bytes.resize(length as usize, 0);
+        let length = length as usize;
+        bytes.try_reserve_exact(length.saturating_sub(bytes.len())).map_err(io::Error::other)?;
+        bytes.resize(length, 0);
         for chunk in bytes.chunks_mut(64 * 1024) {
             check(cancel)?;
             source.read_exact(chunk)?;
         }
-        if sha(&bytes) != hash { return Err(invalid("Scene record content changed")); }
+        if sha(bytes) != hash { return Err(invalid("Scene record content changed")); }
         let value = decoder.parse(bytes)?;
         check(cancel)?;
         return Ok(value);
@@ -1101,82 +1098,27 @@ impl Reader {
     /// Dense demand fallback: sequential authenticated node records without
     /// decoding global metadata, building a JSON string or N binary searches.
     pub fn read_all_nodes(&mut self, cancel: &AtomicBool) -> io::Result<BTreeMap<String, Node>> {
-        let mut nodes = BTreeMap::new();
-        let mut index = BufReader::new(RangeReader {
-            file: &self.file,
-            position: self.index_offset,
-            end: self.tree_offset,
-        });
-        let mut data = BufReader::new(RangeReader {
-            file: &self.file,
-            position: self.metadata_end,
-            end: self.index_offset,
-        });
-        let mut previous = None;
-        let mut end = self.metadata_end;
-        let mut merkle = MerkleFold::new();
-        for _ in 0..self.nodes {
-            check(cancel)?;
-            let mut bytes = [0; 96];
-            index.read_exact(&mut bytes)?;
-            merkle.push(sha(&bytes));
-            let row = Row::decode(bytes);
-            if row.key_offset != end
-                || row.key_bytes == 0
-                || row.value_bytes == 0
-                || sum(row.key_offset, row.key_bytes)? != row.value_offset
-            {
-                return Err(invalid("Noncontiguous scene records"));
-            }
-            end = sum(row.value_offset, row.value_bytes)?;
-            if end > self.index_offset {
-                return Err(invalid("Scene node overlaps index"));
-            }
-            let size = usize::try_from(row.key_bytes)
-                .map_err(|_| invalid("Scene key cannot be addressed"))?;
-            let mut key = Vec::new();
-            key.try_reserve_exact(size).map_err(io::Error::other)?;
-            key.resize(size, 0);
-            data.read_exact(&mut key)?;
-            if sha(&key) != row.key_hash {
-                return Err(invalid("Scene node key changed"));
-            }
-            let key = String::from_utf8(key).map_err(io::Error::other)?;
-            if previous.as_ref().is_some_and(|old: &String| old >= &key) {
-                return Err(invalid("Scene index order changed"));
-            }
-            let record=read_node_record(&mut data,row.value_bytes,row.value_hash,self.shared,cancel,&mut self.record_scratch,self.node_decoder)?;
-            let node=restore_record(record,&mut self.images,&mut self.geometries)?;
-            if node.id != key {
-                return Err(invalid("Scene node identity changed"));
-            }
-            previous = Some(key.clone());
-            self.stats.key_reads += 1;
-            self.stats.node_reads += 1;
-            self.stats.node_bytes = sum(self.stats.node_bytes, row.value_bytes)?;
-            nodes.insert(key, node);
-        }
-        for _ in self.nodes..self.leaf_base {
-            check(cancel)?;
-            merkle.push([0; 32]);
-        }
-        if end != self.index_offset || merkle.root() != Some(self.index_root) {
-            return Err(invalid("Scene store index changed"));
-        }
-        check(cancel)?;
-        self.stats.index_bytes_verified =
-            sum(self.stats.index_bytes_verified, self.nodes * ROW_BYTES)?;
-        Ok(nodes)
+        dense::read(self, cancel, false)
     }
     /// Complete consumers explicitly acquire metadata and every node.
-    pub fn into_document(mut self, cancel: &AtomicBool) -> io::Result<(Document, Vec<String>)> {
+    pub fn into_document(self, cancel: &AtomicBool) -> io::Result<(Document, Vec<String>)> {
+        self.into_document_with_decode(cancel, false)
+    }
+
+    // The native preparation process owns this load. Other consumers, such as
+    // the snapshot builder's parallel material windows, keep a serial decode.
+    pub(crate) fn into_source_document(self, cancel: &AtomicBool) -> io::Result<(Document, Vec<String>)> {
+        self.into_document_with_decode(cancel, true)
+    }
+
+    fn into_document_with_decode(mut self, cancel: &AtomicBool, parallel: bool) -> io::Result<(Document, Vec<String>)> {
         self.ensure_metadata(cancel)?;
         let Metadata {
             mut document,
             warnings,
             ..
         } = self.metadata.take().unwrap();
-        document.nodes = self.read_all_nodes(cancel)?.into();
+        document.nodes = dense::read(&mut self, cancel, parallel)?.into();
         Ok((document, warnings))
     }
     /// Explicit complete fallback for a shared lazy reader. Metadata owns no
