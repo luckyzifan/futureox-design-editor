@@ -3741,7 +3741,7 @@ impl Painter<'_> {
             if replay.is_none() {
                 if let Some(gradient) = fx.sketch_ramp() {
                     background = crate::sketch_progressive_blur::apply(
-                        background, gradient, m, origin, fx.sketch_backdrop_sigma(scale), true, self.compatible,
+                        background, gradient, m, origin, fx.sketch_backdrop_sigma(scale), true, self.compatible, false,
                     )?;
                 } else if let Some(gradient) = fx.gradient_blur.clone() {
                     let radius = fx.radius;
@@ -4539,7 +4539,10 @@ impl Painter<'_> {
                         crate::zoom_blur::sketch_sampling(self.doc, n))?}
                         else if let Some(kernel)=&kernel {kernel.apply(source)?}
                         else if let Some(gradient) = fx.sketch_ramp() {
-                            crate::sketch_progressive_blur::apply(source.try_clone()?, gradient, m, Point::default(), fx.radius * scale, false, compatible)?
+                            let preserve_sharp = crate::sketch_progressive_blur::sharp_linear_layer(n) &&
+                                crate::sketch_progressive_blur::layer_edges_on_pixels([n.width, n.height], m);
+                            crate::sketch_progressive_blur::apply(source.try_clone()?, gradient, m, Point::default(),
+                                fx.radius * scale, false, compatible, preserve_sharp)?
                         } else {effects::gaussian_surface(source,fx.radius*scale,compatible)?};
                     if compatible {value.quantize_rgba8();} Ok(value)
                 };
@@ -5219,7 +5222,7 @@ impl Painter<'_> {
                 let mut filtered = if let Some(gradient) = fx.sketch_ramp() {
                     progressive_backdrop = rotated.is_some();
                     crate::sketch_progressive_blur::apply(surface, gradient, m, Point::new(x, y),
-                        fx.sketch_backdrop_sigma(scale), true, self.compatible)?
+                        fx.sketch_backdrop_sigma(scale), true, self.compatible, false)?
                 } else {
                     effects::gaussian_backdrop(surface, fx.sketch_backdrop_sigma(scale), self.compatible)?
                 };
@@ -5393,7 +5396,10 @@ impl Painter<'_> {
                 "gaussian-blur" => {
                     shadow_basis = None;
                     layer = if let Some(gradient) = fx.sketch_ramp() {
-                        crate::sketch_progressive_blur::apply(layer, gradient, m, Point::default(), fx.radius * scale, false, self.compatible)?
+                        let preserve_sharp = crate::sketch_progressive_blur::sharp_linear_layer(n) &&
+                            crate::sketch_progressive_blur::layer_edges_on_pixels([n.width, n.height], m);
+                        crate::sketch_progressive_blur::apply(layer, gradient, m, Point::default(),
+                            fx.radius * scale, false, self.compatible, preserve_sharp)?
                     } else {
                         effects::gaussian_surface_owned(layer, fx.radius * scale, self.compatible)?
                     };

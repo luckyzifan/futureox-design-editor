@@ -524,6 +524,7 @@ fn visit(
             matrix,
             inverse: matrix.inverse_composed(rect).map_err(Error::Invalid)?,
             size: [w, h],
+            sharp_linear_layer: false,
             sketch_zoom_sampling: false,
             sketch_motion_phase_axis: None,
             glass_shape: None,

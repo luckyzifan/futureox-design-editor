@@ -78,6 +78,37 @@ fn sketch_progressive_backdrop_preserves_small_edges_at_device_scale() {
     assert!(progressive_2x[edge + 4] < sharp_2x[edge + 4]);
 }
 
+#[test]
+fn sketch_linear_layer_ramp_preserves_very_small_effects_at_the_output_density() {
+    let mut document = json!({
+        "schemaVersion": 19, "id": "d", "name": "Small Sketch layer kernel",
+        "pages": [{"id":"p", "name":"Page", "children":["layer"], "background":"#ffffff"}],
+        "nodes": {"layer":{"id":"layer", "kind":"rectangle", "width":32, "height":32, "transform":[1,0,0,1,32,16],
+            "fills":[{"kind":"solid", "color":"#ffffff"}],
+            "effects":[{"kind":"gaussian-blur", "radius":1.2, "color":"#000000", "gradientBlur":{
+                "start":[0,16], "end":[32,16], "startCount":1, "endCount":1, "smooth":true,
+                "sketch":{"shape":"linear", "ellipse":0, "stops":[{"offset":0,"strength":0.5},{"offset":1,"strength":0.5}]}
+            }}]}}
+    });
+    let draw = |document: &Value, scale: u32| {
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        let options = engine.parse_options(json!({
+            "pageId":"p", "width":96*scale, "height":64*scale,
+            "view":{"x":0,"y":0,"zoom":scale}, "transparent":true, "rasterProfile":"analytic"
+        })).unwrap();
+        engine.render(&options).unwrap()
+    };
+    let small = draw(&document, 1);
+    let larger = draw(&document, 2);
+    document["nodes"]["layer"]["effects"][0]["visible"] = json!(false);
+    assert_eq!(small, draw(&document, 1));
+    let sharp = draw(&document, 2);
+    let left = (64 * 192 + 63) * 4 + 3;
+    assert!(larger[left] > sharp[left]);
+    assert!(larger[left+4] < sharp[left+4]);
+}
+
 /// Issue #320: the two authored radii are the uniform blurs at the segment ends.
 #[test]
 fn measure_two_end_radii_against_uniform_endpoint_blurs() {

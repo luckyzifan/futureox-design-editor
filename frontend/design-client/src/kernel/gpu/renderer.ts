@@ -7466,12 +7466,15 @@ export class GpuRenderer {
       JSON.stringify(guardedPixelWindow(input.rect)), new Float64Array(node.matrix), JSON.stringify(effect.gradientBlur),
     )
     const axisAlignedBackdrop = clampEdges && node.matrix[1] === 0 && node.matrix[2] === 0
+    const [a, b, c, d, x, y] = node.matrix
+    const preservesSharp = axisAlignedBackdrop || !clampEdges && node.sharpLinearLayer && b === 0 && c === 0 &&
+      a > 0 && d > 0 && [x, y, x + a * node.size[0], y + d * node.size[1]].every(Number.isInteger)
     let current = input
     try {
       for (let pass = 0; pass < 6; pass++) {
         if (this.surfaceNeedsAdmission(input.rect)) await this.reclaimForSurface(input.rect)
         this.checkFrameCurrent()
-        const blendSharp = axisAlignedBackdrop && pass === 5
+        const blendSharp = preservesSharp && pass === 5
         const next = this.run(64, input.rect, blendSharp ? [current, input] : [current], params => {
           params.set(field.subarray(0, 8), 36)
           params.set([sigma, pass % 2, Number(clampEdges), 0, 0, Number(blendSharp)], 44)
