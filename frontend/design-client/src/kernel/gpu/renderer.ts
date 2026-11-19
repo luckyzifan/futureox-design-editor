@@ -37,6 +37,8 @@ import type { ByteTentPlan } from './byte-tent-prefix-plan'
 import { IMAGE_RESOLVE_STEP_MODE } from './image-resolve-step'
 import { exactFilterKey, fullAnalyticCoverage, fullSampleCoverage, HorizontalFilterCache, HORIZONTAL_FILTER_CACHE_BYTES } from './horizontal-filter-cache'
 import { StaticImageBlurCache, largeStaticImageBlurWindow, type StaticImageBlurSource } from './static-image-blur-cache'
+import { ZOOM_MASK_SUMMARY_MODE, ZOOM_MASK_COMPOSITE_MODE, ZOOM_UNIFORM_BLOCK, ZOOM_UNIFORM_LEAF } from './zoom-focus-mask'
+import { focusClipCovers, focusPrefixWitness, sameFocusPrefix, snapshotFocusPrefix, type FocusPrefixWitness } from './zoom-focus-prefix'
 import { planNestedPrefix, type NestedPrefixPlan } from './nested-prefix-plan'
 import { planDisplayMaterialSource } from './display-material-source'
 import { planSequentialDisplay, type SequentialDisplayPlan } from './sequential-display-plan'
@@ -959,6 +961,14 @@ export class GpuRenderer {
   private blurKernels = new Map<string, Surface>()
   private certifiedKernels = new Map<string, Surface>()
   private kernelCache = new ImmutableKernelCache(4 * 1024 * 1024, 64, texture => this.forgetUpload(texture))
+  private focusPrefixRecords = new Map<Texture, { key: string; witness: FocusPrefixWitness; output: Rect }>()
+  private focusPrefixes = new ImmutableKernelCache(4_194_304 * 16, 2, texture => {
+    this.focusPrefixRecords.delete(texture)
+    this.forgetUpload(texture)
+  })
+  private pendingFocusPrefix?: { surface: Surface; witness: FocusPrefixWitness }
+  private focusCompositeOutput?: Surface
+  private nextFocusPrefix = 0
   // CPU-only retention for the pure certified-tent constructor. This does
   // not enable GPU kernel residency or alter any upload/fence lifetime.
   private coefficientBytes = new CoefficientByteCache(1024 * 1024, 64)
@@ -1318,6 +1328,8 @@ export class GpuRenderer {
     this.horizontalFilters.clear()
     this.reapRetiredKernels()
     this.kernelCache.evictCompleted(this.workingBytes + required - this.frameBudget, this.driver.completedResourceEpoch ?? -1)
+    if (this.workingBytes + required > this.frameBudget)
+      this.focusPrefixes.evictCompleted(this.workingBytes + required - this.frameBudget, this.driver.completedResourceEpoch ?? -1)
     this.materialFields.evictUnused(this.workingBytes + required - this.frameBudget)
     this.coverage.evictUnused(this.workingBytes + required - this.frameBudget)
     if (this.workingBytes + required <= this.frameBudget) return false
@@ -3765,7 +3777,75 @@ export class GpuRenderer {
     }
     return {target:surface,end}
   }
-  private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
+  private focusPrefixPlan(scope: GpuNode | undefined, children: string[], target: Surface) {
+    const { scene, driver } = this, output = scene.output, focus = scene.zoomFocusNode
+    if (!scope || !driver.zoomFocusMask || !focus || !output ||
+        !driver.captureDisplay || driver.name !== 'webgpu' || !driver.managed || driver.hdr || driver.displayMath || !driver.copyRegion ||
+        !this.outputFrame?.present || this.outputFrame.readback || this.sampleIndex !== undefined || scene.coherentSamples ||
+        scene.colorManagement || scene.softwareRaster || scene.resolve || scene.presentation || scene.interactionRetained ||
+        scene.displayFilters || scene.displayImageSource || scene.displayMaterialSource || scene.grid || scene.checkerboard ||
+        this.denseAtlas || this.painterStagesEnabled() || !target.texture.transparentZero || !containsRect(target.rect, output) ||
+        !exactBlendLattice([scope.rect, target.rect, output]) || scene.roots.length !== 1 || scene.roots[0] !== scope.id ||
+        scope.passthrough || scope.mask || scope.maskId || scope.strokes.length || scope.effects.some(effect=>effect.visible) ||
+        scope.blend !== 'normal' || !(scope.opacity >= 0 && scope.opacity <= 1) || scope.rotatedBackdropBounds ||
+        scope.clip && !focusClipCovers(scope.fill, scene.curves, output)) return
+    const index = children.indexOf(focus), node = scene.nodes[focus]
+    const effects = node?.effects.filter(effect=>effect.visible)
+    if (index < 2 || children.slice(index+1).some(id=>Object.hasOwn(scene.nodes,id)) || !node || node.blend !== 'normal' ||
+        node.passthrough || node.clip || node.mask || node.maskId || node.children.length || node.strokes.length ||
+        node.opacity !== 1 || node.rotatedBackdropBounds || effects?.length !== 1 || !effects[0].zoomBlur?.amount ||
+        node.fills.length !== 1 || node.fills[0].kind !== 'solid' || node.fills[0].blend !== 'normal' ||
+        !node.fills[0].visible || node.fills[0].opacity !== 1 || !node.fill.area || !containsRect(node.rect,node.fill.rect) ||
+        !exactBlendLattice([node.rect,node.fill.rect])) return
+    const unit = (color: string) => [this.alpha(color), ...this.color(color)].every(value=>Number.isFinite(value) && value>=0 && value<=1)
+    if (!unit(node.fills[0].color) || this.alpha(node.fills[0].color) !== 1) return
+    const witness = focusPrefixWitness(scene, scope, children.slice(0,index), output, unit)
+    if (witness) return {index, output, witness}
+  }
+  private findFocusPrefix(plan: NonNullable<ReturnType<GpuRenderer['focusPrefixPlan']>>): Surface | undefined {
+    const epoch = this.driver.resourceEpoch
+    if (!Number.isSafeInteger(epoch)) return
+    for (const [texture, record] of this.focusPrefixRecords) {
+      if (record.output.x !== plan.output.x || record.output.y !== plan.output.y ||
+          record.output.w !== plan.output.w || record.output.h !== plan.output.h) continue
+      if (!sameFocusPrefix(record.witness, plan.witness)) continue
+      if (this.focusPrefixes.get(record.key, epoch!) !== texture) continue
+      this.used.add(texture)
+      return {texture,rect:record.output}
+    }
+  }
+  private stageFocusPrefix(plan: NonNullable<ReturnType<GpuRenderer['focusPrefixPlan']>>, target: Surface) {
+    const output = plan.output, texture = target.texture
+    if (this.pendingFocusPrefix || !containsRect(target.rect, output) || target.logicalBounds || texture.uniformColor ||
+        texture.transparentZero || texture.scalarCoverage || texture.binaryCoverage || this.surfaceNeedsAdmission(output)) return
+    const saved = this.acquire(output)
+    try {
+      this.driver.copyRegion!(saved.texture, texture, rect(output.x-target.rect.x,output.y-target.rect.y,output.w,output.h), [0,0])
+      this.pendingFocusPrefix = {surface:saved, witness:plan.witness}
+    } catch (error) { this.release(saved); throw error }
+  }
+  private publishFocusPrefix() {
+    const pending = this.pendingFocusPrefix, epoch = this.driver.resourceEpoch, complete = this.driver.completedResourceEpoch
+    if (!pending || this.frameCurrent && !this.frameCurrent() || !Number.isSafeInteger(epoch) || !Number.isSafeInteger(complete)) return
+    const key = String(++this.nextFocusPrefix), texture = pending.surface.texture
+    if (this.focusPrefixes.put(key, texture, epoch!, complete!)) {
+      this.busy.delete(texture)
+      this.focusPrefixRecords.set(texture, {key,witness:snapshotFocusPrefix(pending.witness),output:pending.surface.rect})
+      this.pendingFocusPrefix = undefined
+    }
+  }
+  private async composeLastZoomFocus(id: string, target: Surface, output: Rect): Promise<Surface | undefined> {
+    if (target.logicalBounds || target.texture.uniformColor || target.texture.transparentZero ||
+        target.texture.binaryCoverage || target.texture.scalarCoverage ||
+        target.texture.width !== target.rect.w || target.texture.height !== target.rect.h) return
+    const n = this.scene.nodes[id], zoom = n.effects.find(effect => effect.visible)?.zoomBlur
+    if (!zoom) return
+    const surface = await this.composeZoomedMask(n, zoom, target, output)
+    if (!surface) return
+    this.focusCompositeOutput = surface
+    return surface
+  }
+  private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string, scope?: GpuNode): Promise<Surface> {
     if(import.meta.env.VITE_DESIGN_SOURCE_GROUPS!=='0'&&this.sourceTileOcclusion&&target.texture.transparentZero&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
       ids=sourcePainterOrder(this.scene,ids,target.rect)
     if(this.opaqueBatchEnabled()&&!clip&&!skip&&this.sampleIndex!==undefined){
@@ -3775,7 +3855,18 @@ export class GpuRenderer {
     let children = skip ? ids.filter((id) => id !== skip) : ids
     if(this.analyticSolidBatchEnabled()&&this.analyticSolidTarget(target)&&!skip&&!this.interactionCapturing&&!this.painterStagesEnabled())
       children=sourcePainterOrder(this.scene,children,target.rect,262144)
+    const focus = skip ? undefined : this.focusPrefixPlan(scope,children,target)
+    if (focus) {
+      const saved = this.findFocusPrefix(focus)
+      const composed = saved && await this.composeLastZoomFocus(children[focus.index], saved, focus.output)
+      if (composed) { this.release(target); return composed }
+    }
     for (let i = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0; i < children.length; ) {
+      if (focus && i === focus.index) {
+        this.stageFocusPrefix(focus,target)
+        const composed = await this.composeLastZoomFocus(children[i], target, focus.output)
+        if (composed) { this.release(target); return composed }
+      }
       if(this.analyticSolidBatchEnabled()){
         const batch=await this.drawAnalyticSolidRun(children,i,target,clip)
         if(batch){target=batch.target;i=batch.end;continue}
@@ -3898,7 +3989,8 @@ export class GpuRenderer {
       next = this.replaceBackdrop(source, target, n, clip, coverage)
       this.release(target)
     } else {
-      next = this.merge(source, target, n.blend, n.opacity, clip)
+      const crop = source === this.focusCompositeOutput && !clip && this.scene.roots[0] === id ? source.rect : undefined
+      next = this.merge(source, target, n.blend, n.opacity, clip, crop)
     }
     this.release(source)
     return next
@@ -6537,14 +6629,44 @@ export class GpuRenderer {
       this.interactionCapturing = previous
     }
   }
+  private zoomFilterKernel(bounds: Rect, n: GpuNode, zoom: NonNullable<Effect['zoomBlur']>) {
+    return this.filterKernel(`zoom:${JSON.stringify([bounds,n.matrix,n.size,zoom.center,!!n.sketchZoomSampling])}`,zoom.amount,
+      ()=>zoom_blur_coordinates(JSON.stringify(zoom),new Float64Array(n.matrix),new Float64Array(n.size),
+        JSON.stringify(bounds),n.sketchZoomSampling),values=>[256,values.length/1024])
+  }
+  private async composeZoomedMask(n: GpuNode, zoom: NonNullable<Effect['zoomBlur']>, backdrop: Surface, output: Rect) {
+    const bounds=n.rect
+    const leaf=rect(0,0,Math.ceil(bounds.w/ZOOM_UNIFORM_LEAF),Math.ceil(bounds.h/ZOOM_UNIFORM_LEAF))
+    const coarse=rect(0,0,Math.ceil(bounds.w/ZOOM_UNIFORM_BLOCK),Math.ceil(bounds.h/ZOOM_UNIFORM_BLOCK))
+    const bytes=16*(output.w*output.h+leaf.w*leaf.h+coarse.w*coarse.h)
+    if (bounds.w*bounds.h < 262144 || this.workingBytes+bytes > this.frameBudget) return
+    const mask=await this.fillMask(n)
+    this.checkFrameCurrent()
+    if (!mask.normalizedCoverage && !mask.texture.binaryCoverage) return
+    const kernel=this.zoomFilterKernel(bounds,n,zoom)
+    if (this.workingBytes+bytes > this.frameBudget) return
+    const configure=(u:Float32Array) => {
+      u.set([bounds.x,bounds.y,bounds.w,bounds.h],4)
+      u.set([mask.rect.x,mask.rect.y,mask.rect.w,mask.rect.h],52)
+    }
+    const leaves=this.run(ZOOM_MASK_SUMMARY_MODE,leaf,[mask],configure,15,undefined,false,undefined,true)
+    let blocks:Surface|undefined
+    try {
+      blocks=this.run(ZOOM_MASK_SUMMARY_MODE,coarse,[mask,leaves], u=>{configure(u);u[36]=1},15,undefined,false,undefined,true)
+      return this.run(ZOOM_MASK_COMPOSITE_MODE,output,[mask,kernel,blocks,backdrop],u=>{
+        configure(u)
+        const b=backdrop.rect
+        u.set([b.x,b.y,b.w,b.h],44)
+        u.set([...this.color(n.fills[0].color),1],48)
+      })
+    } finally {this.release(leaves,blocks)}
+  }
   private async spatialBlur(input: Surface, n: GpuNode, fx: Effect): Promise<Surface> {
     if(fx.zoomBlur){
       if(fx.zoomBlur.amount===0)return input
-      const kernel=this.filterKernel(`zoom:${JSON.stringify([input.rect,n.matrix,n.size,fx.zoomBlur.center,!!n.sketchZoomSampling])}`,fx.zoomBlur.amount,
-        ()=>zoom_blur_coordinates(JSON.stringify(fx.zoomBlur),new Float64Array(n.matrix),new Float64Array(n.size),
-          JSON.stringify(input.rect),n.sketchZoomSampling),values=>[256,values.length/1024])
-      const pending=this.admitSurface(input.rect,1,false,false,[input,kernel],()=>this.run(62,input.rect,[input,kernel]))
-      return pending?await pending:this.run(62,input.rect,[input,kernel])
+      const kernel=this.zoomFilterKernel(input.rect,n,fx.zoomBlur)
+      const render = () => this.run(62,input.rect,[input,kernel])
+      return this.admitSurface(input.rect, 1, false, false, [input, kernel], render) ?? render()
     }
     if (fx.radius === 0) return input
     if (fx.kind === 'gaussian-blur') {
@@ -8149,7 +8271,7 @@ export class GpuRenderer {
         : this.compose(content, layer, 'normal', 1, maskSurface)
       this.release(layer, content)
       layer = combined
-    } else layer = await this.drawList(n.children, layer, clip, maskId)
+    } else layer = await this.drawList(n.children, layer, clip, maskId, n)
     if (clip && clip !== fill && clip !== maskSurface) this.release(clip)
     this.release(maskSurface)
     for (const s of n.strokes) {
@@ -8644,6 +8766,7 @@ export class GpuRenderer {
         this.noteScratch(finishingScratch)
       }
       completed = true
+      this.publishFocusPrefix()
       if (scene.sequentialDisplay) this.sequentialDisplayFrames++
       if (this.displayMaterial) this.displayMaterial.published = true
       this.horizontalFilters.finish(!this.frameCurrent || this.frameCurrent())
@@ -8728,6 +8851,9 @@ export class GpuRenderer {
       throw error
     } finally {
       if(retainedSamples){this.release(...retainedSamples);retainedSamples=undefined}
+      this.release(this.pendingFocusPrefix?.surface)
+      this.pendingFocusPrefix = undefined
+      this.focusCompositeOutput = undefined
       for (const surface of this.constantTargets.values()) this.release(surface)
       this.constantTargets.clear()
       this.ledger.forgetOwners()
@@ -8805,6 +8931,8 @@ export class GpuRenderer {
     this.materialFields.clear()
     this.coverage.clear()
     this.kernelCache.abandon()
+    this.focusPrefixes.abandon()
+    this.focusPrefixRecords.clear()
     this.retiredKernels.length = 0
     this.driver.dispose()
     this.images.clear()

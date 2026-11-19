@@ -1931,8 +1931,10 @@ self.onmessage = (e) => {
                     if (!current()) throw Error('PREVIEW_CANCELLED')
                     const next = regions[index + 1]
                     if (next && kernel.canPrepareConcurrently) ahead.start(index + 1, () => prepare(next))
+                    const scene = decodeScenePacket(prepared.packet)
+                    if (focusCapture) scene.zoomFocusNode = zoomFocusCapture
                     const result = await renderTiledPreview(kernel, renderOptions, backend, color, settingsJson,
-                      Math.max(region.width, region.height), region, decodeScenePacket(prepared.packet), false, undefined, true, false, false,
+                      Math.max(region.width, region.height), region, scene, false, undefined, true, false, false,
                       reportRasterProgress, previewCurrent, hydrateImages, undefined, false, undefined, false, false, undefined, displayBackpressure)
                     rendered.push({ region, result, driver: gpu?.driver })
                     if (!current()) throw Error('PREVIEW_CANCELLED')
@@ -2997,7 +2999,8 @@ async function renderTiledPreview(
   let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
-    options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,boundedDisplayLimit,canvasMaterialSource,canvasMath,canvasTentRadius,referenceGpu])
+    options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,boundedDisplayLimit,canvasMaterialSource,canvasMath,canvasTentRadius,referenceGpu,
+    !!preparedScene?.zoomFocusNode])
   let admission=regionAdmissions.get(admissionKey)
   if(!admission){
     admission=new PreviewAdmission();regionAdmissions.set(admissionKey,admission)
