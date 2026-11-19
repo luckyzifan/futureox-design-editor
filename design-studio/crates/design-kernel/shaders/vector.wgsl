@@ -273,6 +273,12 @@ fn sketchBlurBox(p:vec2<f32>)->vec4<f32>{
   previous=stop;strength=stop.y;
  }
  let sigma=settings.x*strength;
+ var sharp_weight=0.;
+ if(u(12).y>0.5){
+  let calibration=1.4142135623730951*0.75;
+  sharp_weight=1.-clamp((sigma-0.7*calibration)/(0.8*calibration),0.,1.);
+  if(sharp_weight==1.){return at(sourceB,p,u(2));}
+ }
  let variance=sigma*sigma/3.;
  let r=floor((sqrt(4.*sigma*sigma+1.)-1.)*0.5);
  let edge=r+1.;
@@ -290,7 +296,9 @@ fn sketchBlurBox(p:vec2<f32>)->vec4<f32>{
   left=clamp(left,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
   right=clamp(right,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
  }
- return (sum+fraction*(at(sourceA,left,bounds)+at(sourceA,right,bounds)))/(2.*r+1.+2.*fraction);
+ let filtered=(sum+fraction*(at(sourceA,left,bounds)+at(sourceA,right,bounds)))/(2.*r+1.+2.*fraction);
+ if(sharp_weight>0.){return mix(filtered,at(sourceB,p,u(2)),sharp_weight);}
+ return filtered;
 }
 override COMPOSITOR_MODE:i32=-1;
 struct Params { values:array<vec4<f32>,64> }

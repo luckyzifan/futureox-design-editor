@@ -2157,13 +2157,16 @@ impl Compositor<'_, '_, '_> {
         }
         let ramp = effect.gradient_blur.as_ref().ok_or("Missing Sketch blur ramp")?;
         let field = futureox_design_kernel::sketch_progressive_blur::uniforms(ramp, node.matrix, input.rect.expand(1))?;
+        let axis_aligned_backdrop = clamp_edges && node.matrix.0[1] == 0. && node.matrix.0[2] == 0.;
         let mut current = input;
         for pass in 0..6 {
-            let next = self.frame.run(64., input.rect, &[current], |u| {
+            let blend_sharp = axis_aligned_backdrop && pass == 5;
+            let sources = [current, input];
+            let next = self.frame.run(64., input.rect, &sources[..1 + usize::from(blend_sharp)], |u| {
                 u[36..44].copy_from_slice(&field[..8]);
-                u[44..49].copy_from_slice(&[
+                u[44..50].copy_from_slice(&[
                     sigma as f32, (pass % 2) as f32, f32::from(clamp_edges),
-                    origin[0] as f32, origin[1] as f32,
+                    origin[0] as f32, origin[1] as f32, f32::from(blend_sharp),
                 ]);
                 u[64..64 + field.len() - 8].copy_from_slice(&field[8..]);
             });

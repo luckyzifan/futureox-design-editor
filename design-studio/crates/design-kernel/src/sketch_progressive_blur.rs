@@ -153,6 +153,12 @@ fn box_radius(sigma: f32) -> (usize, f32) {
     (radius as usize, fraction.clamp(0., 1.))
 }
 
+// Sketch keeps the sharp centre of a small progressive backdrop kernel. Its
+// weight fades over roughly 0.7–1.5 device pixels of local authored radius.
+// The backdrop sigma already includes the radius calibration in Effect.
+const SHARP_BACKDROP_SIGMA: f32 = 0.7 * std::f32::consts::SQRT_2 * 0.75;
+const FULL_BACKDROP_SIGMA: f32 = 1.5 * std::f32::consts::SQRT_2 * 0.75;
+
 pub(crate) fn apply(
     mut source: Surface,
     params: &GradientBlurParameters,
@@ -173,50 +179,72 @@ pub(crate) fn apply(
         source.rect.w + 1, source.rect.h + 1,
     );
     let field = Field::new(params, matrix, guard)?;
-    let mut dest = source.try_clone()?;
+    let sigma = sigma as f32;
+    // Rotated and sheared captures require a separate sharp sampling phase.
+    let axis_aligned_backdrop = clamp_edges && matrix.0[1] == 0. && matrix.0[2] == 0.;
+    let sharp = (axis_aligned_backdrop
+        && field.stops.iter().any(|stop| sigma * stop[1] < FULL_BACKDROP_SIGMA))
+        .then(|| source.try_clone())
+        .transpose()?;
     let [w, h] = [source.rect.w as usize, source.rect.h as usize];
-    let _scratch = source.reserve_scratch::<[f64; 4]>(w.max(h) + 1)?;
-    let mut prefix = vec![[0.; 4]; w.max(h) + 1];
-    for _ in 0..3 {
-        for horizontal in [true, false] {
-            let (lines, length) = if horizontal { (h, w) } else { (w, h) };
-            for line in 0..lines {
-                crate::render_cancellation::checkpoint()?;
-                let index = |i: usize| if horizontal { line * w + i } else { i * w + line };
-                for i in 0..length {
-                    let pixel = source.pixels[index(i)].0;
-                    prefix[i + 1] = std::array::from_fn(|c| prefix[i][c] + f64::from(pixel[c]));
-                }
-                let sample = |i: i64| -> [f32; 4] {
-                    if clamp_edges || (0..length as i64).contains(&i) {
-                        source.pixels[index(i.clamp(0, length as i64 - 1) as usize)].0
-                    } else {
-                        [0.; 4]
-                    }
-                };
-                for i in 0..length {
-                    let (x, y) = if horizontal { (i, line) } else { (line, i) };
-                    let x = (source.rect.x as f32 + x as f32 + 0.5) + origin.x as f32;
-                    let y = (source.rect.y as f32 + y as f32 + 0.5) + origin.y as f32;
-                    let (r, edge) = box_radius(sigma as f32 * field.strength(x, y));
-                    let left = i as i64 - r as i64;
-                    let right = (i + r) as i64;
-                    let a = prefix[left.max(0) as usize];
-                    let b = prefix[(right + 1).min(length as i64) as usize];
-                    let l = sample(left - 1);
-                    let h = sample(right + 1);
-                    let left_pad = if clamp_edges { (-left).max(0) as f64 } else { 0. };
-                    let right_pad = if clamp_edges { (right + 1 - length as i64).max(0) as f64 } else { 0. };
-                    let f = f64::from(edge);
-                    let divisor = (2 * r + 1) as f64 + 2. * f;
-                    dest.pixels[index(i)] = Pixel(std::array::from_fn(|c| {
-                        ((b[c] - a[c] + (left_pad + f) * f64::from(l[c]) + (right_pad + f) * f64::from(h[c])) / divisor) as f32
-                    }));
-                }
+    let max_line = w.max(h);
+    let _prefix = source.reserve_scratch::<[f64; 4]>(max_line + 1)?;
+    let _line = source.reserve_scratch::<[f32; 4]>(max_line)?;
+    let mut prefix = vec![[0.; 4]; max_line + 1];
+    let mut original = vec![[0.; 4]; max_line];
+    for pass in 0..6 {
+        let horizontal = pass % 2 == 0;
+        let sharp = if pass == 5 { sharp.as_ref() } else { None };
+        let (lines, length) = if horizontal { (h, w) } else { (w, h) };
+        for line in 0..lines {
+            crate::render_cancellation::checkpoint()?;
+            let index = |i: usize| if horizontal { line * w + i } else { i * w + line };
+            // An axis pass only reads this line. Keep its fractional taps
+            // before overwriting it so the sharp capture can occupy the
+            // second surface without adding a third full-size allocation.
+            for i in 0..length {
+                let pixel = source.pixels[index(i)].0;
+                original[i] = pixel;
+                prefix[i + 1] = std::array::from_fn(|c| prefix[i][c] + f64::from(pixel[c]));
             }
-            if byte { dest.quantize_rgba8(); }
-            std::mem::swap(&mut source, &mut dest);
+            let sample = |i: i64| -> [f32; 4] {
+                if clamp_edges || (0..length as i64).contains(&i) {
+                    original[i.clamp(0, length as i64 - 1) as usize]
+                } else {
+                    [0.; 4]
+                }
+            };
+            for i in 0..length {
+                let (x, y) = if horizontal { (i, line) } else { (line, i) };
+                let x = (source.rect.x as f32 + x as f32 + 0.5) + origin.x as f32;
+                let y = (source.rect.y as f32 + y as f32 + 0.5) + origin.y as f32;
+                let local_sigma = sigma * field.strength(x, y);
+                let (r, edge) = box_radius(local_sigma);
+                let left = i as i64 - r as i64;
+                let right = (i + r) as i64;
+                let a = prefix[left.max(0) as usize];
+                let b = prefix[(right + 1).min(length as i64) as usize];
+                let l = sample(left - 1);
+                let h = sample(right + 1);
+                let left_pad = if clamp_edges { (-left).max(0) as f64 } else { 0. };
+                let right_pad = if clamp_edges { (right + 1 - length as i64).max(0) as f64 } else { 0. };
+                let f = f64::from(edge);
+                let divisor = (2 * r + 1) as f64 + 2. * f;
+                let mut filtered = std::array::from_fn(|c| {
+                    ((b[c] - a[c] + (left_pad + f) * f64::from(l[c]) + (right_pad + f) * f64::from(h[c])) / divisor) as f32
+                });
+                let offset = index(i);
+                if let Some(sharp) = sharp.filter(|_| local_sigma < FULL_BACKDROP_SIGMA) {
+                    let weight = ((local_sigma - SHARP_BACKDROP_SIGMA)
+                        / (FULL_BACKDROP_SIGMA - SHARP_BACKDROP_SIGMA)).max(0.);
+                    filtered = std::array::from_fn(|c| {
+                        sharp.pixels[offset].0[c] * (1. - weight) + filtered[c] * weight
+                    });
+                }
+                source.pixels[offset] = Pixel(filtered);
+            }
         }
+        if byte { source.quantize_rgba8(); }
     }
     Ok(source)
 }

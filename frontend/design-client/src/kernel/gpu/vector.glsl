@@ -1003,7 +1003,14 @@ vec4 sketchBlurBox(vec2 p){
   }
   previous=stop;strength=stop.y;
  }
- float sigma=settings.x*strength,variance=sigma*sigma/3.;
+ float sigma=settings.x*strength;
+ float sharpWeight=0.;
+ if(u[12].y>0.5){
+  const float calibration=1.4142135623730951*0.75;
+  sharpWeight=1.-clamp((sigma-0.7*calibration)/(0.8*calibration),0.,1.);
+  if(sharpWeight==1.)return at(sourceB,p,u[2]);
+ }
+ float variance=sigma*sigma/3.;
  float r=floor((sqrt(4.*sigma*sigma+1.)-1.)*0.5),edge=r+1.;
  float fraction=clamp((2.*r+1.)*(variance-r*edge/3.)/(2.*(edge*edge-variance)),0.,1.);
  vec2 axis=settings.y>0.5?vec2(0.,1.):vec2(1.,0.);
@@ -1018,7 +1025,9 @@ vec4 sketchBlurBox(vec2 p){
   left=clamp(left,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
   right=clamp(right,bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
  }
- return (sum+fraction*(at(sourceA,left,bounds)+at(sourceA,right,bounds)))/(2.*r+1.+2.*fraction);
+ vec4 filtered=(sum+fraction*(at(sourceA,left,bounds)+at(sourceA,right,bounds)))/(2.*r+1.+2.*fraction);
+ if(sharpWeight>0.)return mix(filtered,at(sourceB,p,u[2]),sharpWeight);
+ return filtered;
 }
 // Mode 65 evaluates the same variable-radius tent as vector.wgsl.
 vec4 progressiveSample(vec2 p){

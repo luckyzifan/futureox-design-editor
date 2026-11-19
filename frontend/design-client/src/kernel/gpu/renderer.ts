@@ -7465,14 +7465,16 @@ export class GpuRenderer {
     const field = sketch_blur_ramp_uniforms(
       JSON.stringify(guardedPixelWindow(input.rect)), new Float64Array(node.matrix), JSON.stringify(effect.gradientBlur),
     )
+    const axisAlignedBackdrop = clampEdges && node.matrix[1] === 0 && node.matrix[2] === 0
     let current = input
     try {
       for (let pass = 0; pass < 6; pass++) {
         if (this.surfaceNeedsAdmission(input.rect)) await this.reclaimForSurface(input.rect)
         this.checkFrameCurrent()
-        const next = this.run(64, input.rect, [current], params => {
+        const blendSharp = axisAlignedBackdrop && pass === 5
+        const next = this.run(64, input.rect, blendSharp ? [current, input] : [current], params => {
           params.set(field.subarray(0, 8), 36)
-          params.set([sigma, pass % 2, Number(clampEdges), 0, 0], 44)
+          params.set([sigma, pass % 2, Number(clampEdges), 0, 0, Number(blendSharp)], 44)
           params.set(field.subarray(8), 64)
         })
         if (current !== input) this.release(current)
