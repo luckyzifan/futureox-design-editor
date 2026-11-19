@@ -42,6 +42,7 @@ import {certifyWidePrefix,certifyLargeWidePrefix,certifyShadowWidePrefix,widePre
 import { completeFilterAxisSupport } from './opaque-filter'
 import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
 import { displayFilterWgsl, pairedDisplayFilterWgsl, writeBoundedDisplayCoefficients } from './display-filter'
+import { VARIABLE_FILTER_LANES, VARIABLE_FILTER_REACH, variableFilterSource } from './variable-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { displayImageSource } from './display-image-source'
 import { hostedByteImageSource, imageCoordinateSource } from './image-coordinate-source'
@@ -120,6 +121,7 @@ export class WebGpuDriver implements Driver {
   private gaussianPrefixRequested=false
   private fullDensityRegionalGaussian=false
   canvasGaussianPrefixPasses=0
+  variableFilterPasses = 0
   private canvasBlurRequested = false
   private canvasUniformBoxPipeline?: GPURenderPipeline
   private canvasUniformBoxFailed = false
@@ -312,6 +314,7 @@ export class WebGpuDriver implements Driver {
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
   presentedContentToken(slot:number){return this.lost||this.disposed?undefined:this.presenter?.contentToken(slot)}
   tagExactTile(...args: Parameters<ResidentPresenter['tagExactTile']>) { this.presenter?.tagExactTile(...args) }
+  forwardPaintDamage(...args: Parameters<ResidentPresenter['forwardPaintDamage']>) { this.presenter?.forwardPaintDamage(...args) }
   beginViewportRepair(...args: Parameters<ResidentPresenter['beginViewportRepair']>) { return this.presenter?.beginViewportRepair(...args) }
   snapshotPresented(){return this.presenter?.snapshot()}
   captureInteractionViewport(frame:ResidentFrame){return this.presenter?.captureInteractionViewport(frame)}
@@ -352,6 +355,9 @@ export class WebGpuDriver implements Driver {
   boundedDisplayFilterPasses = 0
   private displayFilterPipeline?: GPURenderPipeline
   private pairedDisplay?: GPURenderPipeline
+  private variableFilterRequested = false
+  private variableFilter?: { layout: GPUBindGroupLayout; pipeline: GPUComputePipeline }
+  private variableFilterFailed = false
   private pairDisplayTaps = true
   pairedFilterPasses = 0
   private pairedDisplayFailed = false
@@ -364,7 +370,10 @@ export class WebGpuDriver implements Driver {
   lost = false
   drawCalls = 0
   private submittedDrawCalls = 0
-  get pendingDrawCalls() { return this.drawCalls - this.submittedDrawCalls }
+  private submittedVariableFilterPasses = 0
+  get pendingDrawCalls() {
+    return this.drawCalls - this.submittedDrawCalls + this.variableFilterPasses - this.submittedVariableFilterPasses
+  }
   opaqueTentPasses = 0
   private mergedExactFilterPasses = 0
   triangles = 0
@@ -1412,12 +1421,15 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       !scene.resolve && !scene.presentation && !scene.displayFilters
     let maskedBitmap = false
     let hasReducedGaussian = false, hasSoftEffects = false, hasSourceFilters = false
+    let hasVariableFilter = false
     const paths = Object.values(scene.nodes).flatMap(n => {
       if (canWarmSmallBox && !maskedBitmap && n.maskId)
         maskedBitmap = n.children.some(id => scene.nodes[id]?.fills.some(fill => fill.visible && fill.kind === 'image'))
       hasReducedGaussian ||= n.gaussianRegion?.factor !== undefined
       hasSoftEffects ||= n.effects.some(effect => effect.visible && effect.radius > 0)
       hasSourceFilters ||= !!n.sourceFilterField
+      hasVariableFilter ||= n.effects.some(effect => effect.visible && effect.gradientBlur &&
+        (effect.gradientBlur.sketch || !this.managed && effect.kind === 'background-blur'))
       // Analytic sketches have no color-management block, but their display
       // driver is still the float compositor. The regional prefix is the
       // existing >512 box; uniform_box stays capped at 512.
@@ -1434,6 +1446,8 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       const filterMasks=field?[field,...(field.additional??[])].flatMap(f=>f.masks.map(m=>m.path)):[]
       return [n.fill,...n.strokes.map(s=>s.path),...filterMasks]
     })
+    this.variableFilterRequested = displayOnly && hasVariableFilter && !this.hdr && !this.displayMath &&
+      !scene.softwareRaster && import.meta.env.VITE_DESIGN_VARIABLE_FILTER_CACHE !== '0'
     // A masked bitmap can enter the exact small box pipeline on its first
     // rotation. Compile it on this display device while the existing canvas
     // pipelines prepare, without making the ordinary canvas frame await it.
@@ -1477,7 +1491,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     }
     if(this.exactGradientPaintOver&&(gradientFusion??gradientFusionWorthwhile(scene)))modes.add(GRADIENT_PAINT_OVER_MODE)
     this.zoomFocusMaskRequested = !!scene.zoomFocusNode && this.canvasBlurRequested && modes.has(62)
-    this.focusCaptureRequested = !!scene.zoomFocusNode && displayOnly && !this.presentationDevice
+    this.focusCaptureRequested = !!(scene.zoomFocusNode || scene.progressiveBlurRepair) && displayOnly && !this.presentationDevice
     await this.prepareModes(modes)
     if (this.canvasBlurRequested) {
       if (this.zoomFocusMaskRequested) {
@@ -1665,6 +1679,45 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     }
   }
   async prepareFilters(prefixUseful = false) {
+    if (this.variableFilterRequested && !this.variableFilter && !this.variableFilterFailed) {
+      const device = this.device
+      try {
+        const source = `const BYTE_SURFACE:bool=${!this.managed};\n` + samplingShader + '\n' + rationalStubWgsl + '\n' +
+          variableFilterSource(vectorShader, this.managed ? 'rgba32float' : 'rgba8unorm')
+        device.pushErrorScope('validation')
+        let pending: Promise<GPUComputePipeline>, layout: GPUBindGroupLayout
+        try {
+          layout = device.createBindGroupLayout({ entries: [
+            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', minBindingSize: 1024 } },
+            { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'unfilterable-float' } },
+            { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'unfilterable-float' } },
+            { binding: 7, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: this.layerFormat } },
+          ] })
+          const module = device.createShaderModule({ code: source, label: 'Variable blur scanline' })
+          pending = device.createComputePipelineAsync({
+            layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+            compute: { module, entryPoint: 'variableFilter' },
+          }).catch(async error => {
+            const info = await module.getCompilationInfo()
+            const errors = info.messages.filter(message => message.type === 'error')
+            if (errors.length) throw Error(errors.map(message => `${message.lineNum}: ${message.message}`).join('\n'))
+            throw error
+          })
+        } catch (error) {
+          await device.popErrorScope()
+          throw error
+        }
+        const [pipeline, validation] = await Promise.all([pending, device.popErrorScope()])
+        if (validation) throw Error(validation.message)
+        this.assertPipelinePublicationOwner(device)
+        this.variableFilter = { layout, pipeline }
+      } catch (error) {
+        if (this.device === device && !this.lost && !this.disposed) {
+          this.variableFilterFailed = true
+          console.warn('Variable blur scanline unavailable; using the fragment filter', error)
+        }
+      }
+    }
     if((this.gaussianPrefixRequested||import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1')&&this.canvasBlurRequested&&!this.boxPrefix&&!this.boxPrefixFailed){
       const device=this.device
       device.pushErrorScope('validation')
@@ -2111,11 +2164,13 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.boundedDisplayFilterPasses = 0
     this.canvasBlurPasses = 0
     this.canvasGaussianPrefixPasses=0
+    this.variableFilterPasses = 0
     this.canvasMotionBlurPasses = this.canvasZoomBlurPasses = 0
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
     this.resourceEpoch++
     this.drawCalls = 0
     this.submittedDrawCalls = 0
+    this.submittedVariableFilterPasses = 0
     this.opaqueTentPasses = 0
     this.displayImageSourcePasses = 0
     this.byteTentAlphaPasses = 0
@@ -2246,8 +2301,12 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       this.curveShrink = { frames: 0, maxDemand: 0 }
     }
   }
-  create(width: number, height: number): Texture {
-    return this.createFormat(width, height, this.layerFormat)
+  variableFilterMode(mode: number) {
+    return !this.lost && !this.disposed && this.variableFilterRequested && !!this.variableFilter &&
+      (mode === 64 || mode === 65 && !this.managed)
+  }
+  create(width: number, height: number, variableFilterStorage = false): Texture {
+    return this.createFormat(width, height, this.layerFormat, variableFilterStorage)
   }
   createBinaryCoverage(width: number, height: number): Texture {
     const texture = this.createFormat(width, height, 'rgba8unorm')
@@ -2300,7 +2359,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     if (!this.managed || this.byteBlank) return
     this.byteBlank = this.createByteImage(1, 1)
   }
-  private createFormat(width: number, height: number, format: GPUTextureFormat): Texture {
+  private createFormat(width: number, height: number, format: GPUTextureFormat, variableFilterStorage = false): Texture {
     if (
       width < 1 ||
       height < 1 ||
@@ -2317,13 +2376,15 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
         GPUTextureUsage.TEXTURE_BINDING |
         GPUTextureUsage.RENDER_ATTACHMENT |
         GPUTextureUsage.COPY_SRC |
-        GPUTextureUsage.COPY_DST,
+        GPUTextureUsage.COPY_DST |
+        (variableFilterStorage ? GPUTextureUsage.STORAGE_BINDING : 0),
     })
     const t = {
       width,
       height,
       resource,
       bytes,
+      ...(variableFilterStorage ? { variableFilterStorage: true as const } : {}),
     }
     this.textures.add(t)
     this.byteTentTextures?.set(t, { resource, width, height, format })
@@ -2664,6 +2725,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.uploadUniforms()
     this.submitEncoder()
     this.submittedDrawCalls = this.drawCalls
+    this.submittedVariableFilterPasses = this.variableFilterPasses
     this.commandSubmissions++
     this.encoder = this.device.createCommandEncoder()
     // Queue writes and submissions execute in order. Reuse this bounded arena
@@ -3319,12 +3381,48 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.encodePass(target,captured,sources,undefined,channels,parameters,false,window)
     return true
   }
+  private encodeVariableFilter(target: Texture, u: Float32Array, inputs: Texture[]) {
+    const program = this.variableFilter, source = inputs[0], mode = u[16]
+    if (!program || !this.variableFilterMode(mode) || !target.variableFilterStorage || !source ||
+        !this.textures.has(target) || inputs.some(input =>
+          !this.textures.has(input) || input.resource === target.resource || input.uniformColor ||
+          input.transparentZero || input.binaryCoverage || input.scalarCoverage))
+      return false
+    // The workgroup contains one line of the same physical capture. The
+    // legacy filter still computes its original world pixel and clamps taps.
+    if (!u.subarray(0, 4).every((value, index) => value === u[4 + index]) ||
+        !u.subarray(0, 4).every(value => Number.isFinite(value) && Math.abs(value) <= 1048576) ||
+        source.width !== u[6] || source.height !== u[7] ||
+        target.width !== source.width || target.height !== source.height)
+      return false
+    const radius = mode === 64 ? u[44] : Math.max(u[40], u[41])
+    if (!(radius > 0 && radius <= VARIABLE_FILTER_REACH)) return false
+    const horizontal = (mode === 64 ? u[45] : u[44]) < .5
+    u[50] = Math.ceil(radius)
+    const group = this.device.createBindGroup({ layout: program.layout, entries: [
+      { binding: 0, resource: this.uniform(u) },
+      { binding: 1, resource: this.bindingCache.view(source.resource as GPUTexture) },
+      { binding: 2, resource: this.bindingCache.view((inputs[1] || this.blank).resource as GPUTexture) },
+      { binding: 7, resource: this.bindingCache.view(target.resource as GPUTexture) },
+    ] })
+    const pass = this.encoder.beginComputePass()
+    pass.setPipeline(program.pipeline)
+    pass.setBindGroup(0, group)
+    pass.dispatchWorkgroups(Math.ceil((horizontal ? target.width : target.height) / VARIABLE_FILTER_LANES),
+      horizontal ? target.height : target.width)
+    pass.end()
+    this.variableFilterPasses++
+    return true
+  }
   private encodePass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15,
     filter?: {kind: 'tent'; radius: number}, clearOutside = false, sourceWindow?: FilterSourceWindow) {
     if(u[16]===22)u=filterSourceWindowUniforms(u,sourceWindow)
     this.invalidateTextureCertificates(target)
     this.closeOver()
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
+    if (!region && !sourceWindow && channels === 15 && target.variableFilterStorage &&
+        this.encodeVariableFilter(target, u, inputs))
+      return
     const wideBound=filter?this.wideKernelBoundBits(inputs[1],filter.radius):0,wideRational=wideBound>0
     const certifiedTent=!wideRational&&!!filter&&this.certifiedTentPair(inputs[1],inputs[2],filter.radius)
     const rationalBoundBits=wideBound|| (certifiedTent?this.nativeTentKernels.get(inputs[2])!.boundBits:filter?this.rationalKernelBoundBits(inputs[1],filter.radius):0)

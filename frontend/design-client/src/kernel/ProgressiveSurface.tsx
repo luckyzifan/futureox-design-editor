@@ -457,6 +457,7 @@ export function ProgressiveSurfaceImpl(
    * a damage report or a clean render). Residents are trusted until then. */
   const syncedDoc = useRef<SurfaceProps['document'] | null>(null)
   const focusCaptureAttempt = useRef<string | undefined>(undefined)
+  const progressiveWarmAttempt = useRef<string | undefined>(undefined)
   // Immutable coarse canvases are borrowed by mounted Tiles. Cache eviction
   // never invalidates a render-selected source before its effect can draw it.
   const [lodSnapshots] = useState(() => new LodSnapshotCache())
@@ -1027,7 +1028,8 @@ export function ProgressiveSurfaceImpl(
     // running batch; discard queued old plans and admit the latest view.
     const stableWorldFill=import.meta.env.VITE_DESIGN_PAN_TILE_CONTINUATION==='1'&&!cameraDependent&&!nativeSampling
     const fillKey = navigationZoom.active ? `navigation-preview:${width}:${height}:${dpr}` :
-      JSON.stringify([renderScale,stableWorldFill?renderPhase.x:renderCamera.x,stableWorldFill?renderPhase.y:renderCamera.y,width,height,dpr,!!props.paused])
+      JSON.stringify([renderScale,stableWorldFill?renderPhase.x:renderCamera.x,stableWorldFill?renderPhase.y:renderCamera.y,
+        width,height,dpr,!!props.paused,!!props.progressiveBlurRepair])
     const repair = sequentialRepair.current
     const repairScope = repair?.contract === contract && repair.width === width && repair.height === height && repair.dpr === dpr &&
       !props.paused && props.visible !== false && !navigationZoom.suspended
@@ -2222,7 +2224,7 @@ export function ProgressiveSurfaceImpl(
           return rekey(cropped)
         })
         const rim = planned.rim.map(rekey)
-        const prefetch = props.interaction?.selection.length || zooming || nativeVisibleTiles && cameraMoving ? {rim:[],cacheLimitSkipped:0} :
+        const prefetch = props.progressiveBlurRepair || props.interaction?.selection.length || zooming || nativeVisibleTiles && cameraMoving ? {rim:[],cacheLimitSkipped:0} :
           cameraMoving ? { rim: cameraDependent ? [] : panPrefetch(rim, previousView, view, viewport), cacheLimitSkipped: 0, protect: true } :
           { rim, cacheLimitSkipped: planned.cacheLimitSkipped }
         desired.current = plan.map((t) => t.key)
@@ -2243,13 +2245,21 @@ export function ProgressiveSurfaceImpl(
         // stale resident keys captured before damage never skip real work.
         const focus = renderScale >= 32 ? props.zoomFocusCapture : undefined
         const captureFocus = focus && focusCaptureAttempt.current !== frameKey ? focus : undefined
-        if (syncedDoc.current !== doc || captureFocus) {
+        const warm = !props.progressiveBlurDragActive && !cameraMoving && !navigationZoom.active &&
+          displayed?.document === doc && displayed.rasterScale === renderScale && props.progressiveBlurWarm
+        const warmKey = warm ? JSON.stringify([pageId,props.presentationEpoch,renderCamera,width,height,warm]) : undefined
+        if (!props.progressiveBlurWarm) progressiveWarmAttempt.current = undefined
+        const warmCapture = warm && progressiveWarmAttempt.current !== warmKey ? warm : undefined
+        if (syncedDoc.current !== doc || captureFocus || warmCapture) {
           if (captureFocus) focusCaptureAttempt.current = frameKey
+          if (warmCapture) progressiveWarmAttempt.current = warmKey
           const committedKeys = new Set<string>()
           const synchronized = await render(doc, { pageId, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
             view: renderCamera, transparent: false, grid: props.grid, checkerboard: props.checkerboard,
             pixelPreview: props.pixelPreview || undefined, rasterProfile, tileViewport: [], renderIntent: 'canvas',
             ...(captureFocus && { zoomFocusCapture: captureFocus }),
+            ...(props.progressiveBlurRepair && { progressiveBlurRepair: true }),
+            ...(warmCapture && { progressiveBlurWarm: warmCapture }),
             ...(props.presentationEpoch === undefined ? {} : {
               tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
             }),
@@ -2462,7 +2472,8 @@ export function ProgressiveSurfaceImpl(
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
         // not put it behind selection warm-up and ahead of the first pose.
-        if (!primedFit && !sharpNavigation && !nativeVisibleTiles && !pageFitsView && !cameraMoving && !props.interaction?.selection.length && current()) warmOverview()
+        if (!primedFit && !sharpNavigation && !nativeVisibleTiles && !pageFitsView && !cameraMoving && !props.progressiveBlurRepair &&
+            !props.interaction?.selection.length && current()) warmOverview()
         if (current()) {
           setStats((s) => ({
             ...s,
@@ -2601,6 +2612,8 @@ export function ProgressiveSurfaceImpl(
     props.overview?.width,
     props.overview?.height,
     props.zoomFocusCapture,
+    props.progressiveBlurRepair,
+    props.progressiveBlurWarm,
   ])
   // Cached canvases stay mounted offscreen, so a revisit does not repaint pixels.
   const activeResidents = [...new Set([...tiles.values(), ...(displayed?.residents.values() || [])])]
@@ -2986,7 +2999,8 @@ export function ProgressiveSurfaceImpl(
         {singleCanvas ? (() => {
           const CompositeSurface = residentDisplay && rasterClient ? ResidentCompositeSurface : TileCompositeSurface
           return <CompositeSurface key={residentDisplay && rasterClient ? 'resident' : 'bitmap'} client={rasterClient!}
-          {...(residentDisplay ? { reuseSequence: previewReuseSequence.current, overviewPresentation } : {})}
+          {...(residentDisplay ? { reuseSequence: previewReuseSequence.current, overviewPresentation,
+            progressiveBlurDragActive: props.progressiveBlurDragActive } : {})}
           items={compositeItems}
           onCompositeItems={residentDisplay ? items => compositeCacheFrame.stage(compositeOwner, {
             ...compositeOwner,
@@ -3200,6 +3214,9 @@ export const ProgressiveSurface = memo(ProgressiveSurfaceImpl, (prev, next) =>
   prev.pixelPreview === next.pixelPreview &&
   prev.rasterProfile === next.rasterProfile &&
   prev.zoomFocusCapture === next.zoomFocusCapture &&
+  prev.progressiveBlurRepair === next.progressiveBlurRepair &&
+  prev.progressiveBlurWarm === next.progressiveBlurWarm &&
+  prev.progressiveBlurDragActive === next.progressiveBlurDragActive &&
   prev.animation === next.animation &&
   prev.interaction === next.interaction &&
   prev.overlay === next.overlay &&

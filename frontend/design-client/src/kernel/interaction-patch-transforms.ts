@@ -75,3 +75,23 @@ export function isInnerShadowPosePatch(before:DesignDocument, after:DesignDocume
   if (!patch.nodes[id] || !next || !isInnerShadowFill(before.nodes[id])) return false
   return !!interactionPatchTransforms(before,{nodes:{[id]:next},fields:{}},ids)
 }
+
+/** A radius-field edit can repair the last exact canvas using native paint
+ * damage. Compare authored projections so optional wire values cannot admit
+ * an unrelated property or effect change. */
+export function isProgressiveBlurEditPatch(before: DesignDocument, after: DesignDocument, patch: DocumentPatch) {
+  const ids = Object.keys(patch.nodes)
+  if (ids.length !== 1 || Object.keys(patch.fields).length) return false
+  const [id] = ids, old = before.nodes[id], next = after.nodes[id]
+  if (!patch.nodes[id] || !old || !next || old.effects.length !== next.effects.length ||
+      !equalValue(old, { ...next, effects: old.effects })) return false
+  let changed = false
+  for (const [index, effect] of old.effects.entries()) {
+    const current = next.effects[index]
+    if (equalValue(effect, current)) continue
+    if (changed || !effect.visible || !effect.gradientBlur || !current.gradientBlur ||
+        !equalValue(effect, { ...current, gradientBlur: effect.gradientBlur })) return false
+    changed = true
+  }
+  return changed
+}

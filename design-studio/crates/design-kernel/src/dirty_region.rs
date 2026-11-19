@@ -515,6 +515,21 @@ fn patch_damage_impl(
     }
     let before_map = before_context.including_pages();
     let after_map = after_context.as_ref().unwrap_or(&before_context).including_pages();
+    // This passive leaf writes only through its unchanged coverage mask.
+    // Its upstream sampling halo remains in compilation, and the ordinary
+    // dependency walk still expands damage for later consumers and ancestors.
+    let backdrop_write = if resolved_material && patch.nodes.len() == 1 {
+        patch.nodes.first_key_value().and_then(|(id, next)| {
+            let old = before.nodes.get(id)?;
+            if !old.children.is_empty() || old.mask || old.passes_backdrop() ||
+                !crate::derived_invalidation::sketch_backdrop_ramp_only(old, next.as_ref()?) { return None; }
+            let mut shape = old.clone();
+            shape.effects.clear();
+            let matrix = parent_transform(before, before_map, id)?;
+            subtree_bounds_node_observed(before, id, matrix, fonts, false, false, &mut |_, _| true, Some(&shape))
+                .map(|bounds| (id.as_str(), bounds))
+        })
+    } else { None };
     let region = dirty_region_prepared(
         before,
         after,
@@ -525,6 +540,7 @@ fn patch_damage_impl(
         &before_map,
         &after_map,
         scoped_pages.as_ref(),
+        backdrop_write,
     );
     if region.full {
         return full(region.reason.unwrap_or("dirty-region:unbounded"));
@@ -538,7 +554,7 @@ fn patch_damage_impl(
     PatchDamage {
         translation_only: None,
         full: false,
-        reason: None,
+        reason: backdrop_write.is_some().then_some("sketch-backdrop-ramp"),
         bounds,
         rects: Some(region.world_rects),
     }
@@ -819,6 +835,10 @@ fn subtree_bounds(
     id: &str,
     fonts: Option<&Fonts>,
 ) -> Option<[f64; 4]> {
+    subtree_bounds_from(doc, id, parent_transform(doc, parents, id)?, fonts, false)
+}
+
+fn parent_transform(doc: &Document, parents: &BTreeMap<&str, &str>, id: &str) -> Option<Transform> {
     let mut ancestors = Vec::new();
     let mut cursor = id;
     while let Some(parent) = parents.get(cursor) {
@@ -831,11 +851,10 @@ fn subtree_bounds(
         ancestors.push(node.transform);
         cursor = parent;
     }
-    let matrix = ancestors
+    Some(ancestors
         .into_iter()
         .rev()
-        .fold(Transform::default(), Transform::concat);
-    subtree_bounds_from(doc, id, matrix, fonts, false)
+        .fold(Transform::default(), Transform::concat))
 }
 
 /// An empty pass-through container contributes no pixels of its own. Its
@@ -1224,7 +1243,7 @@ fn dirty_region_with_fonts(
 ) -> DirtyRegion {
     let before_parents = parent_map(before);
     let after_parents = parent_map(after);
-    dirty_region_prepared(before, after, ops, grid, viewport_world, fonts, &before_parents, &after_parents, None)
+    dirty_region_prepared(before, after, ops, grid, viewport_world, fonts, &before_parents, &after_parents, None, None)
 }
 fn dirty_region_prepared<'a>(
     before: &'a Document,
@@ -1236,9 +1255,13 @@ fn dirty_region_prepared<'a>(
     before_parents: &BTreeMap<&'a str, &'a str>,
     after_parents: &BTreeMap<&'a str, &'a str>,
     pages: Option<&std::collections::BTreeSet<&'a str>>,
+    backdrop_write: Option<(&str, [f64; 4])>,
 ) -> DirtyRegion {
     let mut region = full();
     let mut caches = [BoundsCache::new(), BoundsCache::new()];
+    if let Some((id, bounds)) = backdrop_write {
+        for cache in &mut caches { cache.insert(id.into(), Some(bounds)); }
+    }
     let mut missing = false;
     for op in ops {
         for id in op_targets(op) {
@@ -1400,6 +1423,29 @@ mod tests {
 
     fn patch(before: &Document, after: &Document) -> crate::editing::DocumentPatch {
         crate::editing::DocumentPatch::between(before, after).unwrap()
+    }
+
+    #[test]
+    fn sketch_backdrop_endpoint_motion_dirties_output_but_keeps_downstream_reads() {
+        let mut before = document(json!(["a", "b"]));
+        before.nodes.get_mut("a").unwrap().effects = vec![serde_json::from_value(json!({
+            "kind": "background-blur", "radius": 14., "color": "#000000", "sketchBackdrop": true,
+            "gradientBlur": {"start": [0., 0.], "end": [60., 0.], "startCount": 1., "endCount": 1., "smooth": false,
+                "sketch": {"shape": "linear", "ellipse": 0., "stops": [{"offset": 0., "strength": 0.3}, {"offset": 1., "strength": 1.}]}}
+        })).unwrap()];
+        let move_endpoint = |document: &Document| {
+            let mut next = document.clone();
+            next.nodes.get_mut("a").unwrap().effects[0].gradient_blur.as_mut().unwrap().end = [55., 12.];
+            next
+        };
+        let fonts = Fonts::new();
+        let next = move_endpoint(&before);
+        let damage = resolved_material_damage(&before, &patch(&before, &next), &fonts);
+        assert_eq!(damage.bounds, Some([22., 22., 64., 44.]));
+        add_background_blur(&mut before, "reader", 88., 80.);
+        let next = move_endpoint(&before);
+        let expanded = resolved_material_damage(&before, &patch(&before, &next), &fonts);
+        assert!(expanded.bounds.is_some_and(|[x, _, w, _]| x + w > 150.));
     }
 
     #[test]

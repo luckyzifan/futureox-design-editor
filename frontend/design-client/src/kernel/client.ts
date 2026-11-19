@@ -186,6 +186,9 @@ export type KernelOptions = {
   gpuPageBackground?: boolean;
   gpuAnalyticRegions?: boolean;
   zoomFocusCapture?: string;
+  progressiveBlurRepair?: boolean;
+  /** Optional stationary capture to prepare when the blur controls open. */
+  progressiveBlurWarm?: { node: string; bounds: import('./paint-damage').PaintRect };
   /** Native render-only root visibility; authored document/receipts stay intact. */
   gpuRoots?: string[];
   gpuNeutralPageGroup?: boolean;
@@ -278,6 +281,7 @@ export type KernelResult = {
   imageFieldBytes?: number
   displayMath?: boolean
   pairedFilterPasses?: number
+  variableFilterPasses?: number
   bitmapExtended?: boolean
   linear?: Float32Array
   colorManagement?: import('../color').ColorSettings
@@ -331,6 +335,7 @@ export type KernelResult = {
   maskRasterizations?: number
 }
 export type TileResult = RasterTile & {
+  variableFilterPasses?: number
   cpuDivisor?: number
   cameraFallback?: boolean
   gpuTile?: number

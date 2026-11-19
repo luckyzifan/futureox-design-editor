@@ -5,6 +5,24 @@ use crate::scene::Node;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PaintChange { Material, ZoomFocus, Bounds }
 
+/// Moving a Sketch backdrop ramp's endpoints changes only its per-pixel
+/// radius lookup. The ramp strengths, filter support and mask stay fixed.
+pub(crate) fn sketch_backdrop_ramp_only(old: &Node, next: &Node) -> bool {
+    let ([before], [after]) = (old.effects.as_slice(), next.effects.as_slice()) else { return false; };
+    if before == after || !before.visible || before.kind != "background-blur" { return false; }
+    let (Some(previous), Some(current)) = (&before.gradient_blur, &after.gradient_blur) else { return false; };
+    if previous.sketch.is_none() { return false; }
+    let mut ramp = previous.clone();
+    ramp.start = current.start;
+    ramp.end = current.end;
+    let mut effect = before.clone();
+    effect.gradient_blur = Some(ramp);
+    if effect != *after { return false; }
+    let mut candidate = old.clone();
+    candidate.effects.clone_from(&next.effects);
+    candidate == *next
+}
+
 pub(crate) fn paint_change(old: &Node, next: &Node) -> Option<PaintChange> {
     // Rich text paint is expanded into generated children; keep its resolver
     // until those generated dependencies are tracked explicitly.
@@ -19,7 +37,7 @@ pub(crate) fn paint_change(old: &Node, next: &Node) -> Option<PaintChange> {
         stroke.paint = new.paint.clone();
     }
     if candidate != *next { return None; }
-    if old.effects == next.effects {
+    if old.effects == next.effects || sketch_backdrop_ramp_only(old, next) {
         return Some(PaintChange::Material);
     }
     // Moving only the center changes radial sample coordinates, not the

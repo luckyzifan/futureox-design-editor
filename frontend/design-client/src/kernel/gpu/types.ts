@@ -156,6 +156,8 @@ export type GpuPaint = Paint & {
 export type GpuScene = {
   /** Worker-owned exact regional display request. */
   repairOutput?: boolean
+  /** Worker-owned proof of a stationary backdrop prefix across ramp edits. */
+  progressiveBlurRepair?: { node: string; lease: object; prepared: boolean }
   /** Worker-only SDR layer capture; original linear premultiplication survives. */
   linearRetainedCapture?: boolean
   pagePaintRects?: number[][];
@@ -244,6 +246,8 @@ export type Texture = {
   /** Immutable transparent input. Its logical bounds live on Surface; drivers
    * advertising zeroTextureSampling return +0 before loading any texel. */
   transparentZero?: true
+  /** Ordinary colour texture allocated with usage for the variable filter. */
+  variableFilterStorage?: true
   /** A one-texel immutable color, sampled within Surface's original bounds. */
   uniformColor?: true
   width: number
@@ -345,7 +349,8 @@ export interface Driver {
   /** Private immutable captured-texture identity; absent after loss/release. */
   presentedContentToken?(slot:number):object|undefined
   tagExactTile?(id:number, owner:object, contract:string, gutter:number):void
-  beginViewportRepair?(before:object, after:object, contract:string, view:{x:number;y:number;zoom:number}, width:number, height:number, damage:Rect):
+  forwardPaintDamage?(before:object, after:object, damage:import('../paint-damage').PaintDamage):void
+  beginViewportRepair?(before:object, after:object, contract:string, view:{x:number;y:number;zoom:number}, width:number, height:number, damage:Rect, origin?:{x:number;y:number}):
     { finish(patch:number, pose?:{texture:object;rect:Rect}):number|undefined; cancel():void } | undefined
   snapshotPresented?(): { gpuTile: number; frame: import('./resident-presenter').ResidentFrame } | undefined
   captureInteractionViewport?(frame: import('./resident-presenter').ResidentFrame):
@@ -360,6 +365,8 @@ export interface Driver {
   importPresented?(bitmap: ImageBitmap): number
   readonly displayMath?: boolean
   readonly pairedFilterPasses?: number
+  readonly variableFilterPasses?: number
+  variableFilterMode?(mode: number): boolean
   readonly supportsDisplayFilters?: boolean
   readonly zeroTextureSampling?: boolean
   readonly constantTextureSampling?: boolean
@@ -481,7 +488,7 @@ export interface Driver {
   /** Bit-preserving owned RGBA8/RGBA32F color crop for a certified painter
    * stage. No sampler, arithmetic conversion or completion claim. */
   copyColorRegion?(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]): void
-  create(width: number, height: number): Texture
+  create(width: number, height: number, variableFilterStorage?: boolean): Texture
   createBinaryCoverage?(width: number, height: number): Texture
   createScalarCoverage?(width: number, height: number): Texture
   destroy(texture: Texture): void
