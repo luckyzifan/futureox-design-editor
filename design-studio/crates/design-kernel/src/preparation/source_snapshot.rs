@@ -369,7 +369,7 @@ pub(super) fn read(value: &serde_json::Value) -> Result<(Option<Document>, Acces
         reader.clear_payload_cache();
         (None, header, Some(Arc::new(Mutex::new(reader))))
     } else {
-        let (document, _) = reader.into_document(&cancel).map_err(|e| e.to_string())?;
+        let (document, _) = reader.into_source_document(&cancel).map_err(|e| e.to_string())?;
         validate_complete(&document, &descriptor)?;
         let header = small_header(&document);
         (Some(document), header, None)

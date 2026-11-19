@@ -610,7 +610,11 @@ impl Sessions {
                     for (p,hash) in staged {
                         self.progress.phase("index",p.bytes);
                         let reader=CheckedReader{inner:File::open(directory.join(&p.file)).map_err(issue)?,cancel,progress:Some(&self.progress)};
-                        let index=DiskIndex::build(reader,p.bytes,&directory)?;
+                        let index = if p.bytes >= 1024 * 1024 {
+                            DiskIndex::build_pipelined(reader, p.bytes, &directory)?
+                        } else {
+                            DiskIndex::build(reader, p.bytes, &directory)?
+                        };
                         if index.bytes!=p.bytes{return Err(issue("Sketch spool length changed"));}
                         parts.push(Part{name:p.name,file:p.file,hash,base_bytes:p.bytes,index,additions:Vec::new()});
                     }
