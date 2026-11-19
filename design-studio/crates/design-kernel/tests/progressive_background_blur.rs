@@ -41,6 +41,43 @@ fn channel_delta(a: [u8; 4], b: [u8; 4]) -> i16 {
     (0..4).map(|i| (a[i] as i16 - b[i] as i16).abs()).max().unwrap()
 }
 
+#[test]
+fn sketch_progressive_backdrop_preserves_small_edges_at_device_scale() {
+    let mut document = json!({
+        "schemaVersion": 19, "id": "d", "name": "Small Sketch backdrop kernel",
+        "pages": [{"id":"p", "name":"Page", "children":["black","white","lens"], "background":"#ffffff"}],
+        "nodes": {
+            "black": {"id":"black", "kind":"rectangle", "width":96, "height":64,
+                "fills":[{"kind":"solid", "color":"#000000"}]},
+            "white": {"id":"white", "kind":"rectangle", "width":48, "height":64, "transform":[1,0,0,1,48,0],
+                "fills":[{"kind":"solid", "color":"#ffffff"}]},
+            "lens": {"id":"lens", "kind":"rectangle", "width":64, "height":32, "transform":[1,0,0,1,16,16],
+                "fills":[{"kind":"solid", "color":"#ffffff", "opacity":0.1}],
+                "effects":[{"kind":"background-blur", "radius":1.2, "color":"#000000", "gradientBlur":{
+                    "start":[0,16], "end":[64,16], "startCount":1, "endCount":1, "smooth":true,
+                    "sketch":{"shape":"linear", "ellipse":0, "stops":[{"offset":0,"strength":0.5},{"offset":1,"strength":0.5}]}
+                }}]}
+        }
+    });
+    let draw = |document: &Value, scale: u32| {
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        let options = engine.parse_options(json!({
+            "pageId":"p", "width":96*scale, "height":64*scale,
+            "view":{"x":0,"y":0,"zoom":scale}, "transparent":true, "rasterProfile":"analytic"
+        })).unwrap();
+        engine.render(&options).unwrap()
+    };
+    let progressive = draw(&document, 1);
+    let progressive_2x = draw(&document, 2);
+    document["nodes"]["lens"]["effects"][0]["visible"] = json!(false);
+    assert_eq!(progressive, draw(&document, 1));
+    let sharp_2x = draw(&document, 2);
+    let edge = (64 * 192 + 95) * 4;
+    assert!(progressive_2x[edge] > sharp_2x[edge]);
+    assert!(progressive_2x[edge + 4] < sharp_2x[edge + 4]);
+}
+
 /// Issue #320: the two authored radii are the uniform blurs at the segment ends.
 #[test]
 fn measure_two_end_radii_against_uniform_endpoint_blurs() {
