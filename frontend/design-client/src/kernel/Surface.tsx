@@ -70,6 +70,9 @@ export type SurfaceProps = {
   interaction?: import('./interaction-layers').InteractionProps
   interactionPreview?: boolean
   zoomFocusCapture?: string
+  progressiveBlurRepair?: boolean
+  progressiveBlurWarm?: KernelOptions['progressiveBlurWarm']
+  progressiveBlurDragActive?: boolean
   onRenderFailure?: () => void
   /** Latest input camera; view may be the exact frame currently in flight. */
   requestedView?: KernelOptions['view']

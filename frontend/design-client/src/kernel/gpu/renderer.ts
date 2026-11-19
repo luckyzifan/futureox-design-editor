@@ -961,12 +961,12 @@ export class GpuRenderer {
   private blurKernels = new Map<string, Surface>()
   private certifiedKernels = new Map<string, Surface>()
   private kernelCache = new ImmutableKernelCache(4 * 1024 * 1024, 64, texture => this.forgetUpload(texture))
-  private focusPrefixRecords = new Map<Texture, { key: string; witness: FocusPrefixWitness; output: Rect }>()
+  private focusPrefixRecords = new Map<Texture, { key: string; witness?: FocusPrefixWitness; lease?: object; output: Rect }>()
   private focusPrefixes = new ImmutableKernelCache(4_194_304 * 16, 2, texture => {
     this.focusPrefixRecords.delete(texture)
     this.forgetUpload(texture)
   })
-  private pendingFocusPrefix?: { surface: Surface; witness: FocusPrefixWitness }
+  private pendingFocusPrefix?: { surface: Surface; witness?: FocusPrefixWitness; lease?: object }
   private focusCompositeOutput?: Surface
   private nextFocusPrefix = 0
   // CPU-only retention for the pure certified-tent constructor. This does
@@ -1145,7 +1145,12 @@ export class GpuRenderer {
       throw new Error('无效的 GPU 表面边界')
     const key = `${scalarCoverage ? 'scalar:' : binaryCoverage ? 'binary:' : ''}${r.w}:${r.h}`,
       list = this.free.get(key)
-    let texture = list?.pop()
+    const variable = !binaryCoverage && !scalarCoverage && this.driver.variableFilterMode?.(passMode)
+    const storage = variable ? list?.findIndex(texture => texture.variableFilterStorage) ?? -1 : -1
+    // Do not evict or wait merely to replace an available colour target
+    // with a storage target. The fragment fallback can reuse that surface.
+    const createStorage = variable && storage < 0 && this.workingBytes + required <= this.frameBudget
+    let texture = storage >= 0 ? list!.splice(storage, 1)[0] : createStorage ? undefined : list?.pop()
     if (texture) {
       this.ledger.unpark(texture, this.driver.completedResourceEpoch)
       ;(this.free as SurfacePool<Texture>).removed?.(texture)
@@ -1168,7 +1173,7 @@ export class GpuRenderer {
         }
         throw this.budgetError('GPU 表面内存预算超限', 1, 0, allocationSite, passMode)
       }
-      try { texture = scalarCoverage ? this.driver.createScalarCoverage!(r.w,r.h) : binaryCoverage ? this.driver.createBinaryCoverage!(r.w, r.h) : this.driver.create(r.w, r.h) }
+      try { texture = scalarCoverage ? this.driver.createScalarCoverage!(r.w,r.h) : binaryCoverage ? this.driver.createBinaryCoverage!(r.w, r.h) : this.driver.create(r.w, r.h, variable) }
       catch(error){throw annotateTextureFailure(error,{textureAllocationSite:allocationSite,texturePass:passMode+1})}
       this.chargeTexture(texture, binaryCoverage || scalarCoverage ? 'coverage' : 'surface')
     }
@@ -3802,26 +3807,27 @@ export class GpuRenderer {
     const witness = focusPrefixWitness(scene, scope, children.slice(0,index), output, unit)
     if (witness) return {index, output, witness}
   }
-  private findFocusPrefix(plan: NonNullable<ReturnType<GpuRenderer['focusPrefixPlan']>>): Surface | undefined {
+  private findFocusPrefix(plan: { output: Rect; witness?: FocusPrefixWitness; lease?: object }): Surface | undefined {
     const epoch = this.driver.resourceEpoch
     if (!Number.isSafeInteger(epoch)) return
     for (const [texture, record] of this.focusPrefixRecords) {
       if (record.output.x !== plan.output.x || record.output.y !== plan.output.y ||
           record.output.w !== plan.output.w || record.output.h !== plan.output.h) continue
-      if (!sameFocusPrefix(record.witness, plan.witness)) continue
+      if (plan.lease ? record.lease !== plan.lease :
+          !plan.witness || !record.witness || !sameFocusPrefix(record.witness, plan.witness)) continue
       if (this.focusPrefixes.get(record.key, epoch!) !== texture) continue
       this.used.add(texture)
       return {texture,rect:record.output}
     }
   }
-  private stageFocusPrefix(plan: NonNullable<ReturnType<GpuRenderer['focusPrefixPlan']>>, target: Surface) {
+  private stageFocusPrefix(plan: { output: Rect; witness?: FocusPrefixWitness; lease?: object }, target: Surface) {
     const output = plan.output, texture = target.texture
     if (this.pendingFocusPrefix || !containsRect(target.rect, output) || target.logicalBounds || texture.uniformColor ||
         texture.transparentZero || texture.scalarCoverage || texture.binaryCoverage || this.surfaceNeedsAdmission(output)) return
     const saved = this.acquire(output)
     try {
       this.driver.copyRegion!(saved.texture, texture, rect(output.x-target.rect.x,output.y-target.rect.y,output.w,output.h), [0,0])
-      this.pendingFocusPrefix = {surface:saved, witness:plan.witness}
+      this.pendingFocusPrefix = {surface:saved, witness:plan.witness, lease:plan.lease}
     } catch (error) { this.release(saved); throw error }
   }
   private publishFocusPrefix() {
@@ -3830,7 +3836,8 @@ export class GpuRenderer {
     const key = String(++this.nextFocusPrefix), texture = pending.surface.texture
     if (this.focusPrefixes.put(key, texture, epoch!, complete!)) {
       this.busy.delete(texture)
-      this.focusPrefixRecords.set(texture, {key,witness:snapshotFocusPrefix(pending.witness),output:pending.surface.rect})
+      this.focusPrefixRecords.set(texture, { key, lease:pending.lease, output:pending.surface.rect,
+        witness:pending.witness && snapshotFocusPrefix(pending.witness) })
       this.pendingFocusPrefix = undefined
     }
   }
@@ -3861,7 +3868,46 @@ export class GpuRenderer {
       const composed = saved && await this.composeLastZoomFocus(children[focus.index], saved, focus.output)
       if (composed) { this.release(target); return composed }
     }
-    for (let i = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0; i < children.length; ) {
+    const start = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0
+    const repair = this.scene.progressiveBlurRepair
+    const repairNode = repair && this.scene.nodes[repair.node], repairOutput = this.scene.output
+    const repairIndex = repair && !skip && scope && this.scene.roots.length === 1 && this.scene.roots[0] === scope.id &&
+      !scope.mask && !scope.maskId && !scope.passthrough && !scope.effects.length && !scope.fills.length && !scope.strokes.length &&
+      repairNode && !repairNode.passthrough && !repairNode.rotatedBackdropBounds && repairNode.blend === 'normal' && repairNode.opacity === 1 &&
+      repairOutput && containsRect(target.rect,repairOutput) &&
+      this.outputFrame?.present && !this.outputFrame.readback && this.driver.name === 'webgpu' && this.driver.managed &&
+      this.driver.captureDisplay && !this.driver.hdr && !this.driver.displayMath && this.driver.copyRegion &&
+      !this.scene.interactionRetained && !this.scene.coherentSamples && this.sampleIndex === undefined &&
+      !this.painterStagesEnabled() && exactBlendLattice([target.rect,repairOutput,repairNode.rect]) ? children.indexOf(repair.node) : -1
+    const repairPrefix = repair && repairIndex > 0 && !children.slice(repairIndex+1).some(id=>Object.hasOwn(this.scene.nodes,id))
+      ? {output:target.rect,lease:repair.lease} : undefined
+    if (repairPrefix && repairNode && repairOutput && !this.surfaceNeedsAdmission(repairOutput)) {
+      const saved = this.findFocusPrefix(repairPrefix)
+      if (saved) {
+        const previous = this.activeNode
+        this.activeNode = repairNode.id
+        try {
+          const source = await this.nodeSource(repairNode.id,saved)
+          if (source) {
+            // The terminal leaf samples the original capture and clip. Only
+            // the writes of the final composition are restricted to demand.
+            let composed: Surface
+            try { composed = this.compose(source,saved,'normal',1,clip,repairOutput) }
+            finally { this.release(source) }
+            this.release(target)
+            if (import.meta.env.VITE_DESIGN_RETIRE_NODE_MASKS !== '0') {
+              this.retireLeafMasks(repairNode,undefined,clip?[clip]:undefined,[composed],true)
+              await this.reclaimScratch()
+            }
+            this.focusCompositeOutput = composed
+            this.prefixHits++
+            return composed
+          }
+        } finally { this.activeNode = previous }
+      }
+    }
+    for (let i = start; i < children.length; ) {
+      if (repairPrefix && i === repairIndex) this.stageFocusPrefix(repairPrefix,target)
       if (focus && i === focus.index) {
         this.stageFocusPrefix(focus,target)
         const composed = await this.composeLastZoomFocus(children[i], target, focus.output)
@@ -8794,6 +8840,7 @@ export class GpuRenderer {
         retainedGroupHits: this.interactionHits,
         retainedPrefixHits: this.prefixHits,
         pairedFilterPasses: this.driver.pairedFilterPasses || 0,
+        variableFilterPasses: this.driver.variableFilterPasses || 0,
         imageAxisFields: this.imageAxisFields,
         imageFieldBytes: this.imageFieldBytes,
         retainedGroupBytes: this.interactionBytes,

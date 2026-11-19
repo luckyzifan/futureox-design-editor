@@ -266,3 +266,25 @@ test('regional repairs publish only complete old-owner coverage plus a verified 
   expect(f.presenter.contentToken(base.id)).toBe(base.texture)
   f.presenter.release([base.id,changed.id,foreign.id,completed]);f.presenter.dispose()
 })
+
+test('a native repair can span skipped revisions on the same lattice when it covers all prior damage', () => {
+  const f = fixture(), original = {}, previous = {}, current = {}, contract = 'page/SDR'
+  const view = { x: 0, y: 0, zoom: 2 }, origin = { x: 100, y: 200 }
+  const viewport = { ...origin, w: 16, h: 16 }
+  const base = f.presenter.capture(16, 16, undefined, { owner: original, contract, raster: { view, rect: viewport } })
+  f.presenter.tagExactTile(base.id, original, contract, 0)
+  f.presenter.forwardPaintDamage(original, previous, { full: false, bounds: [53, 103, 1, 1] })
+  f.presenter.forwardPaintDamage(previous, current, { full: false, bounds: [54, 104, 1, 1] })
+  const latestOnly = { x: 6, y: 6, w: 6, h: 6 }
+  expect(f.presenter.beginViewportRepair(previous, current, contract, view, 16, 16, latestOnly, origin)).toBeUndefined()
+  const damage = { x: 4, y: 4, w: 8, h: 8 }
+  expect(f.presenter.beginViewportRepair(previous, {}, contract, view, 16, 16, damage, origin)).toBeUndefined()
+  const repair = f.presenter.beginViewportRepair(previous, current, contract, view, 16, 16, damage, origin)!
+  const rect = { ...damage, x: origin.x + damage.x, y: origin.y + damage.y }
+  const updated = f.presenter.capture(8, 8, undefined, { owner: current, contract, raster: { view, rect } })
+  f.presenter.tagExactTile(updated.id, current, contract, 0)
+  const id = repair.finish(updated.id)
+  expect(id).toBeDefined()
+  expect(f.presenter.beginViewportRepair(current, {}, contract, view, 16, 16, damage, origin)).toBeDefined()
+  f.presenter.dispose()
+})

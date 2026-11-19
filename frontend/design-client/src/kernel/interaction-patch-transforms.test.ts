@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, effect, node, paint, stroke, type Matrix } from '../model'
 import { applyDocumentPatch, type DocumentPatch } from '../document-patch'
-import { bitmapRotationPatch, expandBitmapRotationPatch, interactionPatchTransforms, isBitmapTranslationPatch, isInnerShadowPosePatch } from './interaction-patch-transforms'
+import { bitmapRotationPatch, expandBitmapRotationPatch, interactionPatchTransforms, isBitmapTranslationPatch, isInnerShadowPosePatch, isProgressiveBlurEditPatch } from './interaction-patch-transforms'
 
 test('pose admission compares normalized authored paints and still rejects actual edits', () => {
   const before=blank(), path=node('vector',0,0,32,32), id=path.id
@@ -55,4 +55,22 @@ test('a compact bitmap rotation reconstructs the original patch only for a chang
   expect(bitmapRotationPatch(before, { nodes: { [image.id]: changed }, fields: { name: 'changed' } })).toBeUndefined()
   expect(() => expandBitmapRotationPatch(before, { [image.id]: [1, 0, 0, 1, 10, 14] })).toThrow('Invalid bitmap rotation')
   expect(() => expandBitmapRotationPatch(before, { unknown: transform })).toThrow('Invalid bitmap rotation')
+})
+
+test('progressive blur repair admits a single changed radius field and excludes unrelated edits', () => {
+  const before = blank(), layer = node('ellipse', 0, 0, 40, 25)
+  layer.effects = [{ ...effect('background-blur'), gradientBlur: {
+    start: [0, 0], end: [16, 8], startCount: 1, endCount: 2, smooth: false,
+  } }]
+  before.nodes[layer.id] = layer
+  const edited = structuredClone(layer)
+  edited.effects[0].gradientBlur!.end = [17, 9]
+  const qualifies = (next: typeof layer) => {
+    const patch = { nodes: { [layer.id]: next }, fields: {} }
+    return isProgressiveBlurEditPatch(before, applyDocumentPatch(before, patch), patch)
+  }
+  expect(qualifies(layer)).toBe(false)
+  expect(qualifies(edited)).toBe(true)
+  expect(qualifies({ ...edited, opacity: .5 })).toBe(false)
+  expect(qualifies({ ...edited, effects: [{ ...edited.effects[0], visible: false }] })).toBe(false)
 })

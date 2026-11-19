@@ -447,15 +447,18 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     : undefined
   const zoomFocusCanvas = state.view.zoom >= 32 && state.doc.rasterProfile === 'analytic' &&
     !state.doc.colorManagement && !!focusEffect?.visible && (focusEffect.zoomBlur?.amount || 0) > 0
-  // A zoom focus changes the filter's source footprint rather than the
-  // layer pose. At high density the analytic canvas planner supports that
-  // footprint. Do not also capture a legacy transform preview.
-  const gpuPreviewAvailable = !zoomFocusCanvas && !!gpuMove.current?.covers(state.doc, state.selection, state.view)
+  const progressiveBlurCanvas = renderExecutionPolicy.desktopDisplay && !renderExecutionPolicy.hdrCompositing &&
+    presentationScopeMatches && presented.computeBackend === 'webgpu' && state.doc.rasterProfile === 'analytic' &&
+    !state.doc.colorManagement && !!focusEffect?.visible && !!focusEffect.gradientBlur?.sketch && focusEffect.kind === 'background-blur'
+  const canvasFilterEdit = zoomFocusCanvas || progressiveBlurCanvas
+  // Filter parameters change paint. The canvas planner supplies their native
+  // footprint and avoids a concurrent transform capture of the same page.
+  const gpuPreviewAvailable = !canvasFilterEdit && !!gpuMove.current?.covers(state.doc, state.selection, state.view)
   const vectorPreviewSupport = useMemo(() => ({ document: state.doc, pageId: state.page,
-    supported: !zoomFocusCanvas && !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }),
-    [state.doc, state.page, gpuPreviewAvailable, zoomFocusCanvas])
+    supported: !canvasFilterEdit && !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }),
+    [state.doc, state.page, gpuPreviewAvailable, canvasFilterEdit])
   const vectorPreviewSupported = vectorPreviewSupport.supported
-  const editPreviewSupported = !zoomFocusCanvas &&
+  const editPreviewSupported = !canvasFilterEdit &&
     (gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view))
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
@@ -774,6 +777,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       active.kind === 'vertex' && !!active.node)
     if (!hover && !latestOnly) { moveCallback.current(event); return }
     if (active && event.pointerId !== active.pointerId) return
+    if (progressiveBlurCanvas && !active?.sampledMovement &&
+        (active?.parameter === 'blurEndpoint' || active?.parameter === 'blurStop')) {
+      cancelQueuedMove()
+      moveCallback.current(event)
+      return
+    }
     // Show the latest pointer on the pixels already on screen before the
     // frame callback does snapping, guides and the exact renderer. That work
     // can miss the paint; the snapshot has to move in this event.
@@ -1185,6 +1194,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Editing positions follow the oriented selection rectangle. The curve's
   // tighter world-space outline remains available to picking and culling.
   const selectionBox = useMemo(() => bounds(selectionCorners), [selectionCorners])
+  const blurWarmNode = progressiveBlurCanvas ? state.selection[0] : undefined
+  const progressiveBlurWarm = useMemo(() => blurWarmNode && selectionBox.width > 0 && selectionBox.height > 0 ? {
+    node: blurWarmNode, bounds: [selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height] as [number, number, number, number],
+  } : undefined, [blurWarmNode,selectionBox.x,selectionBox.y,selectionBox.width,selectionBox.height])
   const measurementHover = measureKeys.alt && !spaceHeld && !drag.current && cursor && selected.length && state.tool === 'select'
     ? displayedHoverHit(cursor, measureKeys.deep) : null
   const measurementTarget = altMeasurementTarget({
@@ -1320,15 +1333,23 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   },[state.doc,state.page,drawingPreview,utility.preview,textEdit,textPreview,previewFonts])
   const exactOverlayMatches = editPreviewVisible || (presentationScopeMatches && presented.document === renderedDocument)
   const [refineDocument, setRefineDocument] = useState(renderedDocument)
-  // Without a retained edit preview there is no alternate current content.
-  // Submit the current document immediately, not after an effect/timer turn.
-  const surfaceDocument = !editPreviewSupported ? renderedDocument :
-    refineDocument.id === renderedDocument.id && refineDocument.pages.some(page => page.id === state.page) ? refineDocument : renderedDocument
+  const filterGesture = progressiveBlurCanvas && editor.interactionActive &&
+    (ownedDrag?.parameter === 'blurEndpoint' || ownedDrag?.parameter === 'blurStop')
+  const refineScope = refineDocument.id === renderedDocument.id && refineDocument.pages.some(page => page.id === state.page)
+  const surfaceDocument = (editPreviewSupported || filterGesture) && refineScope ? refineDocument : renderedDocument
   const refineOverview = snapshots.refineOverview(surfaceDocument, state.page)
   const editBaseDocument = useRef(renderedDocument)
   if (ownedDrag?.sourceDocument) editBaseDocument.current = ownedDrag.sourceDocument
   else if (!editPreviewVisible) editBaseDocument.current = renderedDocument
+  useLayoutEffect(() => {
+    if (!filterGesture) return
+    // Let the submitted native repair paint once. The authored controls
+    // continue taking input and the next request uses their latest value.
+    if (!refineScope || presentationScopeMatches && !presented.preview && presented.document === refineDocument)
+      setRefineDocument(renderedDocument)
+  }, [filterGesture, refineScope, refineDocument, renderedDocument, presentationScopeMatches, presented])
   useEffect(() => {
+    if (filterGesture) return
     if (!editPreviewSupported) { setRefineDocument(renderedDocument); return }
     if (editor.interactionActive) return
     // A retained GPU surface already keeps the committed pose visible while
@@ -1338,7 +1359,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // exact worker request. Rapid edits coalesce to the newest document.
     const timer = setTimeout(() => setRefineDocument(renderedDocument), 80)
     return () => clearTimeout(timer)
-  }, [renderedDocument, editPreviewSupported, gpuPreviewAvailable, editor.interactionActive])
+  }, [renderedDocument, editPreviewSupported, gpuPreviewAvailable, editor.interactionActive, filterGesture])
   function zoomCanvas(command: 'zoomIn' | 'zoomOut' | 'zoom100') {
     if (drag.current || pencil.current || utility.active()) return
     flushView()
@@ -3790,13 +3811,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         panGestureActive={panning}
         overlay={overlay}
         // Nudges present the edited document through the canvas tile path.
-        interaction={zoomFocusCanvas || keyboardNudgeActive(editor) ? undefined : gpuInteraction}
+        interaction={canvasFilterEdit || keyboardNudgeActive(editor) ? undefined : gpuInteraction}
         onPresentation={recordPresentation}
         overview={refineOverview} overviewNodes={entries.length}
         presentationEpoch={editor.sessionGeneration}
         document={surfaceDocument}
         interactionPreview={editPreviewVisible}
         zoomFocusCapture={zoomFocusTarget}
+        progressiveBlurRepair={progressiveBlurCanvas}
+        progressiveBlurWarm={progressiveBlurWarm}
+        progressiveBlurDragActive={filterGesture}
         pageId={state.page}
         width={size.width}
         height={size.height}

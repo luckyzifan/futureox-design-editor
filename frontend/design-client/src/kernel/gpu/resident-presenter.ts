@@ -17,6 +17,7 @@ import { presentedFragmentQuality } from './presented-fragment-quality'
 import { PresenterAlphaTrace } from './presenter-alpha-trace'
 import { cameraPreviewCoverage, cameraPreviewShader, type CameraPreview } from './camera-preview'
 import { retainedPreviewUnderlay } from '../zoom-underlay'
+import { paintDamageIntersects, paintDamageRects, viewportDamage, type PaintDamage, type PaintRect } from '../paint-damage'
 
 const QUEUED_FRAME_WAIT_MS = 150
 
@@ -138,7 +139,7 @@ export class ResidentPresenter {
   private linearTarget?: { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; samples:1|4; payload: PayloadToken }
   private sampler: GPUSampler
   private uniforms: GPUBuffer
-  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof; content?:PixelContentProof; raster?:{view:CanvasCamera; rect:Rect; gutter:number}; constantBackground?:boolean;linear?:boolean;samples?:1|4 }>()
+  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof; content?:PixelContentProof; raster?:{view:CanvasCamera; rect:Rect; gutter:number}; repair?:{owner:object;bounds:PaintRect}; constantBackground?:boolean;linear?:boolean;samples?:1|4 }>()
   private readonly composedViewports = new WeakSet<GPUTexture>()
   private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
@@ -459,32 +460,70 @@ export class ResidentPresenter {
     entry.raster = {...raster, gutter}
   }
 
+  forwardPaintDamage(before: object, after: object, damage: PaintDamage) {
+    if (this.disposed || before === after || damage.full) return
+    const rectangles = paintDamageRects(damage)
+    if (rectangles.some(rect => rect.some(value => !Number.isFinite(value)) || rect[2] < 0 || rect[3] < 0)) return
+    let damageBounds: PaintRect | undefined
+    const union = (a: PaintRect | undefined, b: PaintRect): PaintRect => {
+      if (!a) return b
+      const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1])
+      return [x, y, Math.max(a[0] + a[2], b[0] + b[2]) - x, Math.max(a[1] + a[3], b[1] + b[3]) - y]
+    }
+    for (const rect of rectangles) damageBounds = union(damageBounds, rect)
+    for (const entry of this.textures.values()) {
+      const raster = entry.raster, content = entry.content
+      if (!raster || !content || entry.linear) continue
+      const earlier = entry.repair?.owner === before ? entry.repair.bounds : undefined
+      if (content.owner !== before && !earlier) continue
+      const { view, rect } = raster
+      if (!(view.zoom > 0) || ![view.x, view.y, view.zoom].every(Number.isFinite)) continue
+      const touched = paintDamageIntersects(damage, [(rect.x - view.x - 2) / view.zoom, (rect.y - view.y - 2) / view.zoom,
+        (rect.w + 4) / view.zoom, (rect.h + 4) / view.zoom])
+      const invalid = touched && damageBounds ? union(earlier, damageBounds) : earlier
+      if (invalid) entry.repair = { owner: after, bounds: invalid }
+      else {
+        entry.repair = undefined
+        entry.content = { ...content, owner: after }
+      }
+    }
+  }
+
   /** Copy only the unchanged core texels from already-owned native tiles.
    * The unpublished destination is charged to the existing display ledger.
    * Cancellation releases it; only an exact new-owner patch can publish it. */
-  beginViewportRepair(before:object, after:object, contract:string, view:CanvasCamera, width:number, height:number, damage:Rect) {
-    if (this.disposed || !contract || before === after || ![width,height,damage.x,damage.y,damage.w,damage.h].every(Number.isSafeInteger) ||
+  beginViewportRepair(before:object, after:object, contract:string, view:CanvasCamera, width:number, height:number, damage:Rect, origin={x:0,y:0}) {
+    if (this.disposed || !contract || before === after || ![width,height,damage.x,damage.y,damage.w,damage.h,origin.x,origin.y].every(Number.isSafeInteger) ||
         width<=0 || height<=0 || width*height>4_194_304 || damage.w<=0 || damage.h<=0 || damage.x<0 || damage.y<0 ||
         damage.x+damage.w>width || damage.y+damage.h>height) return
     const box = {left:damage.x, top:damage.y, right:damage.x+damage.w, bottom:damage.y+damage.h}
+    const windowCamera = { ...view, x: view.x - origin.x, y: view.y - origin.y }
     let holes = subtract([{left:0,top:0,right:width,bottom:height}], box)
     const copies: { texture:GPUTexture; x:number; y:number; dstX:number; dstY:number; w:number; h:number }[] = []
     for (const entry of this.textures.values()) {
       const r=entry.raster
-      if (!r || entry.linear || entry.content?.owner!==before || entry.content.contract!==contract ||
+      if (!r || entry.linear || entry.content?.contract!==contract ||
           r.view.zoom!==view.zoom || r.view.x!==view.x || r.view.y!==view.y) continue
-      const core={left:r.rect.x+r.gutter,top:r.rect.y+r.gutter,right:r.rect.x+r.rect.w-r.gutter,bottom:r.rect.y+r.rect.h-r.gutter}
+      if (entry.content.owner!==before && entry.content.owner!==after) {
+        // Canceled captures may have advanced several authored revisions.
+        // Reuse older texels only outside every skipped native damage bound.
+        const missing = entry.repair?.owner === after && viewportDamage({full:false,bounds:entry.repair.bounds},windowCamera,width,height)
+        if (!missing || missing.x < damage.x || missing.y < damage.y ||
+            missing.x + missing.w > damage.x + damage.w || missing.y + missing.h > damage.y + damage.h) continue
+      }
+      const left = r.rect.x - origin.x, top = r.rect.y - origin.y
+      const core={left:left+r.gutter,top:top+r.gutter,right:left+r.rect.w-r.gutter,bottom:top+r.rect.h-r.gutter}
       for(const hole of holes){
         const x=Math.max(core.left,hole.left),y=Math.max(core.top,hole.top)
         const w=Math.min(core.right,hole.right)-x,h=Math.min(core.bottom,hole.bottom)-y
-        if(w>0 && h>0) copies.push({texture:entry.texture,x:x-r.rect.x,y:y-r.rect.y,dstX:x,dstY:y,w,h})
+        if(w>0 && h>0) copies.push({texture:entry.texture,x:x-left,y:y-top,dstX:x,dstY:y,w,h})
       }
       holes=subtract(holes,core)
       if(copies.length>128||holes.length>128)return
       if(!holes.length)break
     }
     const background=holes.length ? [...this.textures.values()].find(e=>!e.linear && e.background?.pixel &&
-      holes.every(h=>emptyBackgroundTile(e.background!,before,contract,view,{x:h.left,y:h.top,w:h.right-h.left,h:h.bottom-h.top}))) : undefined
+      holes.every(h=>emptyBackgroundTile(e.background!,before,contract,view,{x:h.left+origin.x,y:h.top+origin.y,w:h.right-h.left,h:h.bottom-h.top}))) : undefined
     if (holes.length && !background) return
 
     const target=this.capture(width,height)
@@ -512,13 +551,13 @@ export class ResidentPresenter {
       if(!source||source.w!==patch.texture.width||source.h!==patch.texture.height)return
       if(pose ? patch.texture!==pose.texture : (!r||patch.content?.owner!==after||patch.content.contract!==contract||
           r.view.x!==view.x||r.view.y!==view.y||r.view.zoom!==view.zoom))return
-      const x=damage.x-source.x,y=damage.y-source.y
+      const x=damage.x+origin.x-source.x,y=damage.y+origin.y-source.y
       if(!Number.isSafeInteger(x)||!Number.isSafeInteger(y)||x<0||y<0||x+damage.w>source.w||y+damage.h>source.h)return
       const encoder=this.device.createCommandEncoder()
       encoder.copyTextureToTexture({texture:patch.texture,origin:[x,y]},{texture:target.texture,origin:[damage.x,damage.y]},[damage.w,damage.h])
       this.device.queue.submit([encoder.finish()])
       dst.content={owner:after,contract}
-      dst.raster={view:{...view},rect:{x:0,y:0,w:width,h:height},gutter:0}
+      dst.raster={view:{...view},rect:{...origin,w:width,h:height},gutter:0}
       live=false
       return target.id
     }}

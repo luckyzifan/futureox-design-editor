@@ -68,7 +68,7 @@ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../docume
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
 import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
-import { expandBitmapRotationPatch, interactionPatchTransforms, isBitmapPoseLayer, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
+import { expandBitmapRotationPatch, interactionPatchTransforms, isBitmapPoseLayer, isBitmapTranslationPatch, isInnerShadowFill, isInnerShadowPosePatch, isProgressiveBlurEditPatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
@@ -77,7 +77,7 @@ import { paintDamageIntersects, viewportDamage, type PaintDamage } from './paint
 import {residentFrameSignature} from './gpu/resident-frame'
 import { canCommitResidentFrame, matchesResidentFrame } from './gpu/retained-commit'
 import { pageTranslationCommit } from './gpu/page-translation-commit'
-import { pixelSourceContract } from './gpu/page-background'
+import { bindContentOwner, pixelSourceContract } from './gpu/page-background'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 import { sourceRenderSnapshot } from './source-render-snapshot'
@@ -264,9 +264,25 @@ const canvasTilePreparations = new Set<{ requestId: number; density: number; con
 let unusedCanvasPacket: {
   owner: object; namespace: string; options: string; packet: CompiledScenePacket; expiry: ReturnType<typeof setTimeout>
 } | undefined
+type ProgressiveRepairBasis = {
+  owner: object; options: string; contract: string; node: string; lease: object; driver: Driver; scene: GpuScene
+}
+let progressiveRepairBasis: ProgressiveRepairBasis | undefined
 function discardUnusedCanvasPacket() {
   clearTimeout(unusedCanvasPacket?.expiry)
   unusedCanvasPacket = undefined
+}
+function retainedPacketAllowance(kernel: RenderKernel) {
+  const { memoryBytes, documentBytes } = documentCapacity()
+  return Math.min(64 * 1024 ** 2, documentBytes, memoryBytes - kernel.frameResourceBytes)
+}
+function progressiveBasis(kernel: RenderKernel, packet: CompiledScenePacket, driver: Driver,
+  owner: object, options: string, contract: string, node: string): ProgressiveRepairBasis | undefined {
+  const scene = decodeScenePacket(packet), focus = scene.nodes[node]
+  if (!focus || packet.retainedBytes > retainedPacketAllowance(kernel) || scene.coherentSamples || scene.colorManagement ||
+      scene.softwareRaster || scene.resolve || scene.presentation || focus.effects.length !== 1 ||
+      focus.effects[0].kind !== 'background-blur' || !focus.effects[0].gradientBlur?.sketch) return
+  return {owner,options,contract,node,lease:{},driver,scene}
 }
 const regionAdmissions = new Map<string, PreviewAdmission>()
 let fullDensityGaussianWindow = ''
@@ -275,7 +291,7 @@ function backgroundTileResult(gpuTile:number,color:ColorSettings|undefined):Tile
   return {gpuTile,tileCost:undefined,bitmap:undefined,buffer:new ArrayBuffer(0),backend:'webgpu',description:'WebGPU',reason:'',colorManagement:color,
     intermediateFormat:'rgba8unorm',hybridEffects:0,materialFieldHits:0,materialFieldBuilds:0,materialFieldBuildMs:0,materialFieldUploadBytes:0,
     wholeFilterAxes:0,opaqueTentPasses:0,imageXTableBuilds:0,imageXTablePixels:0,imageXTableBytes:0,
-    displayTentRadiusPasses:0,displayTentRadiusPixels:0,staticImageBlurEligible:0,staticImageBlurHits:0,staticImageBlurPixels:0,staticImageBlurBytes:0,staticImageBlurEntries:0,
+    displayTentRadiusPasses:0,displayTentRadiusPixels:0,variableFilterPasses:0,retainedPrefixHits:0,staticImageBlurEligible:0,staticImageBlurHits:0,staticImageBlurPixels:0,staticImageBlurBytes:0,staticImageBlurEntries:0,
     horizontalFilterHits:0,horizontalFilterPixels:0,horizontalFilterRows:0,
     compileMs:0,renderMs:0,milliseconds:0,graphMs:0,finishMs:0,checkpointMs:0,previewTiles:0,bitmapLeaves:0,injectedBudgetFailures:0,
     workingTextureBytes:0,peakTextureBytes:0,finishTransientBytes:0,drawCalls:0,triangles:0,
@@ -288,6 +304,7 @@ function invalidateTileCache() {
   terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:0,tileCacheBytes:tileCaches.bytes})
   tileCaches.clear()
   discardUnusedCanvasPacket()
+  progressiveRepairBasis = undefined
   regionAdmissions.clear()
   fullDensityGaussianWindow = ''
   cacheGeneration++
@@ -296,7 +313,10 @@ function invalidateTileCache() {
 function invalidateOwnerTileCache() {
   terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:1,tileCacheBytes:tileCaches.bytes})
   tileCache.clear()
-  if (activeLane === 'canvas') discardUnusedCanvasPacket()
+  if (activeLane === 'canvas') {
+    discardUnusedCanvasPacket()
+    progressiveRepairBasis = undefined
+  }
   fullDensityGaussianWindow = ''
   // Admission heuristics are bounded separately and carry explicit owner keys.
   for (const key of regionAdmissions.keys()) if (key.startsWith(JSON.stringify(activeLane) + '/')) regionAdmissions.delete(key)
@@ -1118,7 +1138,7 @@ self.onmessage = (e) => {
   const generation = previewGenerations[channel]
   const fillGeneration = tileFillGeneration
   const focusCaptureRequest = request.options?.renderIntent === 'canvas' && request.options.tileViewport?.length === 0 &&
-    typeof request.options.zoomFocusCapture === 'string'
+    (typeof request.options.zoomFocusCapture === 'string' || request.options.progressiveBlurRepair === true || !!request.options.progressiveBlurWarm)
   const cancellablePacket = (focusCaptureRequest || request.options?.renderIntent === 'preview' &&
     (request.options.livePreview === true || !!request.options.tileViewport)) &&
     !request.png && !request.readback && !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
@@ -1271,7 +1291,8 @@ self.onmessage = (e) => {
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionFixedMask, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, zoomFocusCapture, ...renderOptions } = request.options
+        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, zoomFocusCapture,
+        progressiveBlurRepair: _progressiveBlurRepair, progressiveBlurWarm, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
@@ -1392,6 +1413,8 @@ self.onmessage = (e) => {
       let paintDamage: PaintDamage | undefined
       let priorRepairOwner: object | undefined
       let bitmapViewportCommit = false
+      let progressiveBlurCommit = false
+      let progressiveRepairNode: string | undefined
       let translatedPageCommit:{sourceOwner:object;targetOwner:object;offset:{x:number;y:number}}|undefined
       let derived = false
       let derivedSource: { document: DesignDocument; json?: string } | undefined
@@ -1600,6 +1623,38 @@ self.onmessage = (e) => {
             const session = poseSession
             if (session?.native && session.canvasOwner === priorPixelOwner && session.scene.interactionSelection?.length === 1 &&
                 Object.hasOwn(patch.nodes, session.scene.interactionSelection[0])) session.canvasOwner = kernel.contentIdentity
+          }
+          if (synchronizedPixels && !damage.full && laneState.interactionDocument &&
+              isProgressiveBlurEditPatch(actualBefore, laneState.interactionDocument, patch)) {
+            priorRepairOwner = priorPixelOwner
+            progressiveBlurCommit = true
+            if (damage.reason === 'sketch-backdrop-ramp' && import.meta.env.VITE_DESIGN_PROGRESSIVE_REPAIR_REUSE !== '0')
+              progressiveRepairNode = Object.keys(patch.nodes)[0]
+          }
+          const savedRepair = progressiveRepairBasis
+          // The native material admission has preserved layout, support and
+          // resource identity. Change the selected ramp's anchors in the
+          // prepared packet and bind it to the newly acknowledged pixel owner.
+          if (savedRepair && savedRepair.owner === priorPixelOwner && savedRepair.node === progressiveRepairNode &&
+              actualBefore && laneState.interactionDocument && savedRepair.driver === gpu?.driver) {
+            const id = savedRepair.node, compiled = savedRepair.scene.nodes[id]
+            const before = actualBefore.nodes[id]?.effects[0], after = laneState.interactionDocument.nodes[id]?.effects[0]
+            const effect = compiled?.effects[0]
+            if (before?.gradientBlur && after?.gradientBlur && effect?.gradientBlur && compiled.effects.length === 1 &&
+                before.id === effect.id && equalValue(before.gradientBlur, effect.gradientBlur)) {
+              const scene = {...savedRepair.scene, nodes: {...savedRepair.scene.nodes,
+                [id]: {...compiled, effects: [{...effect, gradientBlur: after.gradientBlur}]} }}
+              const owner = kernel.contentIdentity
+              bindContentOwner(scene, owner, savedRepair.contract)
+              progressiveRepairBasis = {...savedRepair, owner, scene}
+            } else progressiveRepairBasis = undefined
+          } else progressiveRepairBasis = undefined
+          const entries = Object.entries(patch.nodes)
+          if (synchronizedPixels && !damage.full && !Object.keys(patch.fields).length && entries.length === 1) {
+            const [[id, next]] = entries
+            if (next?.effects.some(effect => effect.visible && effect.gradientBlur) ||
+                actualBefore.nodes[id]?.effects.some(effect => effect.visible && effect.gradientBlur))
+              gpu?.driver.forwardPaintDamage?.(priorPixelOwner, kernel.contentIdentity, paintDamage)
           }
           if (synchronizedPixels && !damage.full && laneState.interactionDocument &&
               isInnerShadowPosePatch(actualBefore,laneState.interactionDocument,patch)) {
@@ -1821,8 +1876,54 @@ self.onmessage = (e) => {
               }
               if (snapshot) driver.releasePresented?.([snapshot.gpuTile])
             }
+            if (progressiveBlurWarm && channel === 'canvas' && !paintDamage && !tileViewport.length && displayFrame &&
+                renderIntent === 'canvas' && backend === 'webgpu' && gpu?.driver.beginViewportRepair && allowsResidentSdr(executionPolicy) &&
+                !request.readback && !request.png && !request.sourceSnapshot && !wantsReference && !exportFormat && !renderOptions.animation &&
+                !renderOptions.pixelPreview && !renderOptions.exportRegion && !renderOptions.grid && !renderOptions.checkerboard &&
+                !canvasDisplayFilters && !previewDisplayFilters && !canvasMath && !canvasTentRadius && !canvasImageSource &&
+                !canvasMaterialSource && import.meta.env.VITE_DESIGN_PROGRESSIVE_REPAIR_REUSE !== '0') {
+              const {node,bounds}=progressiveBlurWarm, frame=displayFrame, driver=gpu.driver, owner=kernel.contentIdentity
+              const {width,height,view}=renderOptions
+              const origin={x:view.x-frame.view.x*frame.dpr,y:view.y-frame.view.y*frame.dpr}
+              const windowCamera={...view,x:view.x-origin.x,y:view.y-origin.y}
+              if (typeof node === 'string' && Array.isArray(bounds) && bounds.length === 4 && bounds.every(Number.isFinite) &&
+                  bounds[2]>0 && bounds[3]>0 && [origin.x,origin.y].every(Number.isSafeInteger) &&
+                  view.zoom===frame.view.zoom*frame.dpr && width===frame.width*frame.dpr && height===frame.height*frame.dpr) {
+                const [x,y,w,h]=bounds
+                // This is an idle prediction from the selection's geometry.
+                // A real repair still has to match its native damage and crop.
+                const predicted=viewportDamage({full:false,bounds:[x-2,y-2,w+4,h+4]},windowCamera,width,height)
+                if (predicted && predicted.w*predicted.h<=262144) {
+                  const captureViewport={...predicted,x:predicted.x+origin.x,y:predicted.y+origin.y}
+                  const options=JSON.stringify({...renderOptions,captureViewport}),contract=pixelSourceContract(renderOptions)
+                  const currentWarm=()=>previewCurrent() && owner===kernel.contentIdentity && gpu?.driver===driver &&
+                    !!displayFrame && sameDisplayViewport(frame,displayFrame)
+                  let captured:TileRender|undefined
+                  try {
+                    const packet=await compilePacket(kernel,options,packetWait?.controller.signal)
+                    const basis=progressiveBasis(kernel,packet,driver,owner,options,contract,node)
+                    if (basis && currentWarm()) {
+                      captured=await renderTiledPreview(kernel,renderOptions,backend,color,settingsJson,Math.max(predicted.w,predicted.h),
+                        {x:captureViewport.x,y:captureViewport.y,width:predicted.w,height:predicted.h},
+                        {...basis.scene,repairOutput:true,progressiveBlurRepair:{node,lease:basis.lease,prepared:false}},false,undefined,true,
+                        false,false,undefined,currentWarm,hydrateImages,undefined,false,undefined,false,false,undefined,displayBackpressure)
+                      if (captured.gpuTile && currentWarm()) {
+                        discardUnusedCanvasPacket()
+                        progressiveRepairBasis=basis
+                      }
+                    }
+                  } catch(error) {
+                    if (!isDisplayBudgetError(error) && !isAnalyticProgramBudget(error) && !isScenePathBudget(error) &&
+                        !/GPU surface budget exceeded|GPU 表面内存预算超限/.test(String(error))) throw error
+                  } finally {
+                    if (captured?.gpuTile) driver.releasePresented?.([captured.gpuTile])
+                    captured?.bitmap?.close()
+                  }
+                }
+              }
+            }
             if (priorRepairOwner && paintDamage && !tileViewport.length && displayFrame && renderIntent==='canvas' &&
-                (renderOptions.rasterProfile==='figmaSubpixel' || overviewBitmapCommit) &&
+                (renderOptions.rasterProfile==='figmaSubpixel' || overviewBitmapCommit || progressiveBlurCommit) &&
                 backend==='webgpu' && allowsResidentSdr(executionPolicy) &&
                 !request.png && !request.readback && !exportFormat && !request.sourceSnapshot && !renderOptions.animation &&
                 !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.exportRegion && !renderOptions.pixelPreview &&
@@ -1833,23 +1934,44 @@ self.onmessage = (e) => {
               const sameView=()=>displayFrame?.view.x===frame.view.x && displayFrame?.view.y===frame.view.y &&
                 displayFrame?.view.zoom===frame.view.zoom && displayFrame?.width===frame.width &&
                 displayFrame?.height===frame.height && displayFrame?.dpr===frame.dpr
-              const region=viewportDamage(paintDamage,view,width,height)
-              if (region && view.zoom===frame.view.zoom*frame.dpr && view.x===frame.view.x*frame.dpr && view.y===frame.view.y*frame.dpr &&
+              const origin = { x: view.x - frame.view.x * frame.dpr, y: view.y - frame.view.y * frame.dpr }
+              const windowCamera = { ...view, x: view.x - origin.x, y: view.y - origin.y }
+              const region = viewportDamage(paintDamage, windowCamera, width, height)
+              const aligned = origin.x === 0 && origin.y === 0 || progressiveBlurCommit &&
+                Number.isSafeInteger(origin.x) && Number.isSafeInteger(origin.y)
+              if (region && view.zoom===frame.view.zoom*frame.dpr && aligned &&
                   width===frame.width*frame.dpr && height===frame.height*frame.dpr) {
                 let repair:ReturnType<NonNullable<Driver['beginViewportRepair']>>, captured:TileRender|undefined, output:number|undefined
                 let compileMs=0
                 try {
-                  repair=driver.beginViewportRepair!(priorRepairOwner,owner,contract,view,width,height,region)
+                  repair=driver.beginViewportRepair!(priorRepairOwner,owner,contract,view,width,height,region,origin)
                   if(repair){
                     const pose=localRepairSource(settledPose,laneState.interactionDocument,driver,view,contract,region,owner,overviewBitmapCommit)
                     if (pose) output=repair.finish(pose.id,pose)
                     if (!output) {
                       const at=performance.now()
-                      const packet=await compilePacket(kernel,JSON.stringify({...renderOptions,captureViewport:region}),packetWait?.controller.signal)
+                      const captureViewport = { ...region, x: region.x + origin.x, y: region.y + origin.y }
+                      const options = JSON.stringify({...renderOptions,captureViewport})
+                      let basis = progressiveRepairBasis
+                      if (!progressiveRepairNode || basis?.owner !== owner || basis.options !== options || basis.driver !== driver)
+                        basis = undefined
+                      const prepared = !!basis
+                      let scene: GpuScene
+                      if (basis) scene = basis.scene
+                      else {
+                        const packet = await compilePacket(kernel,options,packetWait?.controller.signal)
+                        scene = decodeScenePacket(packet)
+                        if (progressiveRepairNode) basis=progressiveBasis(kernel,packet,driver,owner,options,contract,progressiveRepairNode)
+                        if (basis) {
+                          discardUnusedCanvasPacket()
+                          progressiveRepairBasis = basis
+                        }
+                      }
                       compileMs=performance.now()-at
                       if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
                       captured=await renderTiledPreview(kernel,renderOptions,backend,color,settingsJson,Math.max(region.w,region.h),
-                        {x:region.x,y:region.y,width:region.w,height:region.h},{...decodeScenePacket(packet),repairOutput:true},false,undefined,true,
+                        {x:captureViewport.x,y:captureViewport.y,width:region.w,height:region.h},
+                        {...scene, repairOutput:true, ...(basis && {progressiveBlurRepair:{node:basis.node,lease:basis.lease,prepared}})},false,undefined,true,
                         false,false,reportRasterProgress,previewCurrent,hydrateImages,undefined,false,undefined,false,false,undefined,displayBackpressure)
                       if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
                       if(captured.gpuTile && gpu?.driver===driver && owner===kernel.contentIdentity && sameView()){
@@ -1858,11 +1980,13 @@ self.onmessage = (e) => {
                       }
                     }
                     if(output){
-                      self.postMessage({id:request.id,tile:{key:`repair:${laneState.loadedRevision}:${output}`,x:-view.x,y:-view.y,width,height,
-                        zoom:view.zoom,gutter:0,committedViewport:true,viewportPreview:true,gpuTile:output,backend,description:'exact local repair',cached:false}})
+                      self.postMessage({id:request.id,tile:{key:`repair:${laneState.loadedRevision}:${output}`,x:origin.x-view.x,y:origin.y-view.y,width,height,
+                        zoom:view.zoom,gutter:0,committedViewport:true,viewportPreview:true,gpuTile:output,backend,
+                        variableFilterPasses:captured?.variableFilterPasses,description:'exact local repair',cached:false}})
                       output=undefined // ownership transferred to the surface
                       self.postMessage({id:request.id,backend,milliseconds:performance.now()-start,compileMs:compileMs+(captured?.compileMs??0),
-                        graphMs:captured?.graphMs??0,finishMs:captured?.finishMs??0,drawCalls:captured?.drawCalls??0,retainedCommit:true})
+                        graphMs:captured?.graphMs??0,finishMs:captured?.finishMs??0,drawCalls:captured?.drawCalls??0,
+                        retainedPrefixHits:captured?.retainedPrefixHits??0,retainedCommit:true})
                       return
                     }
                   }
@@ -2163,10 +2287,9 @@ self.onmessage = (e) => {
                   // materialized bytes including acknowledged dependencies.
                   // Its eventual consumer still renders and presents the tile.
                   if (prepared.packetOptions && generation === previewGenerations.canvas && fillGeneration !== tileFillGeneration) {
-                    const { memoryBytes, documentBytes } = documentCapacity()
-                    const allowance = Math.min(64 * 1024 ** 2, documentBytes, memoryBytes - kernel.frameResourceBytes)
-                    if (rawScene.retainedBytes <= allowance) {
+                    if (rawScene.retainedBytes <= retainedPacketAllowance(kernel)) {
                       discardUnusedCanvasPacket()
+                      progressiveRepairBasis = undefined
                       unusedCanvasPacket = { owner: kernel.contentIdentity, namespace, options: prepared.packetOptions,
                         packet: rawScene, expiry: setTimeout(() => { unusedCanvasPacket = undefined }, 1000) }
                     }
@@ -2324,6 +2447,7 @@ self.onmessage = (e) => {
                     materialFieldBuilds: result.materialFieldBuilds,
                     materialFieldBuildMs: result.materialFieldBuildMs,
                     materialFieldUploadBytes: result.materialFieldUploadBytes,
+                    variableFilterPasses: cached ? 0 : result.variableFilterPasses,
                     displayTentRadiusPasses: 'displayTentRadiusPasses' in result ? result.displayTentRadiusPasses : 0,
                     displayTentRadiusPixels: 'displayTentRadiusPixels' in result ? result.displayTentRadiusPixels : 0,
                     ...('imageXTableBuilds' in result ? {wholeFilterAxes:result.wholeFilterAxes,opaqueTentPasses:result.opaqueTentPasses,imageXTableBuilds:result.imageXTableBuilds,imageXTablePixels:result.imageXTablePixels,imageXTableBytes:result.imageXTableBytes} : {}),
@@ -2639,6 +2763,7 @@ self.onmessage = (e) => {
               compileCacheHit,
               retainedGroupHits: result.retainedGroupHits,
               pairedFilterPasses: result.pairedFilterPasses,
+              variableFilterPasses: result.variableFilterPasses,
               displayTentRadiusPasses: result.displayTentRadiusPasses,
               displayTentRadiusPixels: result.displayTentRadiusPixels,
               displayMath: gpu.driver.displayMath === true,
@@ -2997,6 +3122,8 @@ async function renderTiledPreview(
   let wholeFilterAxes = 0, opaqueTentPasses = 0, imageXTableBuilds = 0, imageXTablePixels = 0, imageXTableBytes = 0
   let staticImageBlurEligible = 0, staticImageBlurHits = 0, staticImageBlurPixels = 0, staticImageBlurBytes = 0, staticImageBlurEntries = 0
   let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
+  let variableFilterPasses = 0
+  let retainedPrefixHits = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
     options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,boundedDisplayLimit,canvasMaterialSource,canvasMath,canvasTentRadius,referenceGpu,
@@ -3036,7 +3163,8 @@ async function renderTiledPreview(
     !(import.meta.env.DEV && forceFirstTileBudgetFailure) && !admission.shouldSplit(crop) &&
     !sourceBandDefersWholePresent(sourceImageDisplay, crop.width, crop.height)
   ) {
-    await checkpoint?.()
+    if (preparedScene.progressiveBlurRepair?.prepared) checkCurrent()
+    else await checkpoint?.()
     const scene = preparedScene
     preparedScene = undefined
     scene.filterBatchLease = filterBatchLease
@@ -3109,6 +3237,8 @@ async function renderTiledPreview(
         staticImageBlurBytes = Math.max(staticImageBlurBytes, result.staticImageBlurBytes)
         staticImageBlurEntries = Math.max(staticImageBlurEntries, result.staticImageBlurEntries)
         drawCalls += result.drawCalls
+        variableFilterPasses += result.variableFilterPasses
+        retainedPrefixHits += result.retainedPrefixHits
         triangles += result.triangles
         graphMs += result.graphMs
         finishMs += result.finishMs
@@ -3268,6 +3398,8 @@ async function renderTiledPreview(
         staticImageBlurBytes = Math.max(staticImageBlurBytes, result.staticImageBlurBytes)
         staticImageBlurEntries = Math.max(staticImageBlurEntries, result.staticImageBlurEntries)
         drawCalls += result.drawCalls
+        variableFilterPasses += result.variableFilterPasses
+        retainedPrefixHits += result.retainedPrefixHits
         triangles += result.triangles
         graphMs += result.graphMs
         finishMs += result.finishMs
@@ -3341,6 +3473,7 @@ async function renderTiledPreview(
       hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
       wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
       displayTentRadiusPasses, displayTentRadiusPixels,
+      variableFilterPasses, retainedPrefixHits,
       staticImageBlurEligible, staticImageBlurHits, staticImageBlurPixels, staticImageBlurBytes, staticImageBlurEntries,
       horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
       compileMs,
@@ -3385,6 +3518,7 @@ async function renderTiledPreview(
     hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
     wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
     displayTentRadiusPasses, displayTentRadiusPixels,
+    variableFilterPasses, retainedPrefixHits,
     staticImageBlurEligible, staticImageBlurHits, staticImageBlurPixels, staticImageBlurBytes, staticImageBlurEntries,
     horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
     compileMs,

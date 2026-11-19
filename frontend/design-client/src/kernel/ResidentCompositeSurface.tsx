@@ -47,6 +47,7 @@ export function ResidentCompositeSurface(props: {
   dpr: number
   /** Reusing pixels may still need a fresh submission/input acknowledgement. */
   reuseSequence?: number
+  progressiveBlurDragActive?: boolean
   interaction?: InteractionProps
   pageId: string
   rasterProfile: KernelOptions['rasterProfile']
@@ -235,8 +236,20 @@ export function ResidentCompositeSurface(props: {
       camera && camera.source.gpuSelectionIdentity === (overlay?.selection ? scopedOverlay?.selectionIdentity : undefined) &&
       keepReversibleZoomBasis(camera.actual, { view: p.view, width: p.width, height: p.height,
         dpr: p.dpr, interaction: false, ids: [] }, p, cameraProjection.current?.history.completeFrame)
+    const activeRepairItems = p.progressiveBlurDragActive && !moved ? items.filter(item=>item.active) : undefined
+    // The last complete bitmap can remain on screen while the next repair
+    // arrives. Repainting the same viewport would queue another full copy.
+    // Only a newly composed bitmap can acknowledge the new snapshot.
+    const holdRepairBacking = activeRepairItems?.length && camera?.client === p.client && !camera.actual.preview &&
+      camera.source.document.id === p.sourceDocument.id && p.presentation?.document.id === p.sourceDocument.id &&
+      camera.source.pageId === p.pageId && camera.source.epoch === p.presentation.epoch &&
+      camera.actual.width === p.width && camera.actual.height === p.height && camera.actual.dpr === p.dpr &&
+      camera.actual.view.x === p.view.x && camera.actual.view.y === p.view.y && camera.actual.view.zoom === p.view.zoom &&
+      camera.actual.ids.length === activeRepairItems.length && activeRepairItems.every((item,i)=>
+        camera.actual.ids[i] === item.tile.gpuTile && !item.placement && !item.clip && !item.blend) &&
+      (!camera.actual.gpuOverlay || camera.source.gpuOverlayIdentity === p.overlay?.uiIdentity)
     if (deferNarrowFrame) deferredZoomSubmission.current = true
-    else {
+    else if (!holdRepairBacking) {
       if (deferredZoomSubmission.current) {
         deferredZoomSubmission.current = false
         lastFrameSignature.current = ''
@@ -569,6 +582,7 @@ export function ResidentCompositeSurface(props: {
     props.height,
     props.dpr,
     props.reuseSequence,
+    props.progressiveBlurDragActive,
     props.interaction,
     props.settledDocument,
     props.pageId,
