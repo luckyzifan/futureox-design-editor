@@ -21,9 +21,11 @@ function fixture() {
     modePipelines: new Map([[12, {}]]), closeOver() {}, bind: () => ({ group: {}, offsets: [] }),
     bindingCache: { view: () => ({}) }, encoder: { beginRenderPass: () => ({ setPipeline: (p: any) => chosen.push(p), setBindGroup() {}, setScissorRect() {}, draw() {}, end() {} }) } })
   const texture = (): Texture => ({ width: 80, height: 7, bytes: 80 * 7 * 16, resource: {} as GPUTexture })
-  const scene = (limit: number | undefined = 32, enabled = true) => ({ nodes: {}, displayFilters: enabled, displayFilterRadiusLimit: limit }) as unknown as GpuScene
+  const scene = (limit: number | undefined = 32, enabled = true, paired = false) =>
+    ({ nodes: {}, displayFilters: enabled, displayFilterRadiusLimit: limit, pairedDisplayFilters: paired }) as unknown as GpuScene
   const pass = (radius: number, channels = 15, metadata = true, change?: (u: Float32Array, target: Texture, source: Texture) => void) => {
-    const u = parameters({ x: 0, y: 0, w: 80, h: 7 }); u[16] = 22; u.set([radius, 0, 0, 1], 36)
+    const r = { x: 0, y: 0, w: 80, h: 7 }
+    const u = parameters(r, r); u[16] = 22; u.set([radius, 0, 0, 1], 36)
     const target = texture(), source = texture(); change?.(u, target, source)
     driver.pass(target, u, [source, texture()], undefined, channels, metadata ? { kind: 'tent', radius } : undefined)
     return target
@@ -47,6 +49,22 @@ test('bounded preparation keeps display, exact RGBA/scalar and prefix ready on t
   }
   expect(f.driver.boundedDisplayFilterPasses).toBe(6); expect(f.prefix.encode).not.toHaveBeenCalled()
   expect(f.device.pushErrorScope).toHaveBeenCalledTimes(2); expect(f.device.popErrorScope).toHaveBeenCalledTimes(2)
+})
+
+test('bounded paired passes require a display presentation and the actual capture size', async () => {
+  const f = fixture()
+  await f.driver.prepareScene(f.scene(32, true, true), true); await f.driver.prepareFilters(true)
+  const paired = f.pass(15, 15, true, u => { u[38] = 1 })
+  expect(f.chosen.at(-1).fragment.module.label).toBe('Paired integrated display filter')
+  expect(f.driver.boundedDisplayFilterPasses).toBe(1)
+  expect(f.driver.pairedFilterPasses).toBe(1)
+  expect(paired.finitePixels).toBeUndefined()
+  f.pass(15, 15, true, u => { u[6]-- })
+  expect(f.chosen.at(-1).fragment.module.label).toBe('Canvas integrated tent')
+  await f.driver.prepareScene(f.scene(32, true, true), false)
+  f.pass(15)
+  expect(f.chosen.at(-1).fragment.module.label).toBe('Canvas integrated tent')
+  expect(f.driver.pairedFilterPasses).toBe(1)
 })
 
 test('large radii keep prefix and original opaque admission; unsupported prefix uses exact scalar channels', async () => {

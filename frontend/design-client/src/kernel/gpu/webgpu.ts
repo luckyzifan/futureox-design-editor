@@ -41,7 +41,7 @@ import { certifyPrefixRationalBound, prefixRationalBoundBits, type PrefixRationa
 import {certifyWidePrefix,certifyLargeWidePrefix,certifyShadowWidePrefix,widePrefixBoundBits,type WidePrefixCertificate} from './prefix-wide-bound'
 import { completeFilterAxisSupport } from './opaque-filter'
 import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
-import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
+import { displayFilterWgsl, pairedDisplayFilterWgsl, writeBoundedDisplayCoefficients } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { displayImageSource } from './display-image-source'
 import { hostedByteImageSource, imageCoordinateSource } from './image-coordinate-source'
@@ -351,7 +351,7 @@ export class WebGpuDriver implements Driver {
   private boundedDisplayFilterFailed = false
   boundedDisplayFilterPasses = 0
   private displayFilterPipeline?: GPURenderPipeline
-  private pairedDisplay?: { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler }
+  private pairedDisplay?: GPURenderPipeline
   private pairDisplayTaps = true
   pairedFilterPasses = 0
   private pairedDisplayFailed = false
@@ -1395,8 +1395,9 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       this.queuedNativeInteractionPresentation
     this.smallExactBoxRequested = displayOnly && scene.interactionFixedMask===true && this.queuedNativeInteractionPresentation &&
       this.managed && !this.hdr && !this.displayMath && !scene.displayFilters
-    this.pairDisplayTaps = scene.pairedDisplayFilters ?? (import.meta.env.VITE_DESIGN_PAIRED_DISPLAY === '1')
     const radiusLimit = scene.displayFilterRadiusLimit
+    this.pairDisplayTaps = (radiusLimit === undefined || displayOnly) &&
+      (scene.pairedDisplayFilters ?? (import.meta.env.VITE_DESIGN_PAIRED_DISPLAY === '1'))
     this.displayFilterRadiusLimit = radiusLimit
     this.displayFilters = scene.displayFilters === true && !this.hdr && (radiusLimit === undefined ||
       import.meta.env.VITE_DESIGN_BOUNDED_DISPLAY_FILTER === '1' && !this.displayMath &&
@@ -1674,20 +1675,28 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     }
     const bounded = this.displayFilterRadiusLimit !== undefined
     if (this.managed && this.displayFilters) {
-      if (!bounded && this.pairDisplayTaps && !this.pairedDisplay && !this.pairedDisplayFailed && this.device.features.has('float32-filterable')) {
+      const device = this.device
+      // Complete the validation scope before awaiting compilation. An
+      // optional filter may fail while the exact frame still needs the device.
+      const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
+        if (!bounded) return create()
+        device.pushErrorScope('validation')
+        let pending: T | Promise<T>
+        try { pending = create() } catch (error) { await device.popErrorScope(); throw error }
+        const validation = device.popErrorScope(), [value, error] = await Promise.all([pending, validation])
+        if (error) throw new Error(error.message)
+        return value
+      }
+      if (this.pairDisplayTaps && !this.pairedDisplay && !this.pairedDisplayFailed) {
         try {
-        const layout = this.device.createBindGroupLayout({ entries: [
-          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: 1024 } },
-          { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-          { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-          { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
-        ] })
-        const module = this.device.createShaderModule({ code: pairedDisplayFilterWgsl, label: 'Paired integrated display filter' })
-        const pipeline = await this.device.createRenderPipelineAsync({ layout: this.device.createPipelineLayout({ bindGroupLayouts: [layout] }),
-          vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
-          primitive: { topology: 'triangle-list' } })
-        const sampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' })
-        this.pairedDisplay = { layout, pipeline, sampler }
+          const module = await validated(() => device.createShaderModule({ code: pairedDisplayFilterWgsl, label: 'Paired integrated display filter' }))
+          const pipeline = await validated(() => device.createRenderPipelineAsync({
+            layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+            vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
+            primitive: { topology: 'triangle-list' },
+          }))
+          this.assertPipelinePublicationOwner(device)
+          this.pairedDisplay = pipeline
         } catch (error) {
           this.pairedDisplayFailed = true
           console.warn('Paired integrated display filter unavailable; using integrated tent filter', error)
@@ -1695,18 +1704,6 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       }
       if (!this.displayFilterPipeline) {
         try {
-          const device = this.device
-          // The candidate's validation scope never spans an await. A failed
-          // optional shader must not contaminate the exact frame's scope.
-          const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
-            if (!bounded) return create()
-            device.pushErrorScope('validation')
-            let pending: T | Promise<T>
-            try { pending = create() } catch (error) { await device.popErrorScope(); throw error }
-            const validation = device.popErrorScope(), [value, error] = await Promise.all([pending, validation])
-            if (error) throw new Error(error.message)
-            return value
-          }
           const module = await validated(() => device.createShaderModule({ code: displayFilterWgsl, label: 'Canvas integrated tent' }))
           if (bounded) {
             const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error')
@@ -3381,17 +3378,25 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     if (displayFilter && this.displayFilterRadiusLimit !== undefined &&
         (target.scalarCoverage || target.binaryCoverage || sourceWindow || inputs[0]?.scalarCoverage || inputs[0]?.binaryCoverage))
       throw new Error('Bounded display filter requires ordinary RGBA source and target')
-    if (displayFilter && this.displayFilterRadiusLimit === undefined && this.pairDisplayTaps && this.pairedDisplay && u[40] === 0 && channels === 15 && !region && inputs[0] && inputs[1]) {
-      const bind = this.device.createBindGroup({ layout: this.pairedDisplay.layout, entries: [
-        { binding: 0, resource: this.uniform(u) }, { binding: 1, resource: this.pairedDisplay.sampler },
-        { binding: 2, resource: this.bindingCache.view((inputs[0].resource as GPUTexture)) },
-        { binding: 3, resource: this.bindingCache.view((inputs[1].resource as GPUTexture)) },
-      ] })
+    const pairSource = inputs[0]
+    // The paired pass reuses a read only inside the logical clamp. It
+    // requires the full physical capture rather than a partial source window.
+    if (displayFilter && this.pairDisplayTaps && this.pairedDisplay && u[40] === 0 &&
+        channels === 15 && !region && !sourceWindow && pairSource && inputs[1] &&
+        pairSource.width === u[6] && pairSource.height === u[7] && !pairSource.scalarCoverage && !pairSource.binaryCoverage) {
+      const bounded = this.displayFilterRadiusLimit !== undefined && filter !== undefined
+      const uniforms = u.slice()
+      uniforms[45] = Number(bounded)
+      if (bounded) writeBoundedDisplayCoefficients(uniforms, filter.radius)
+      const bind = this.bind(uniforms, inputs)
       const pass = this.encoder.beginRenderPass({ colorAttachments: [{
         view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0],
       }] })
-      pass.setPipeline(this.pairedDisplay.pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
-      this.noteDraw(u[16],1,target.width*target.height); this.pairedFilterPasses++; return
+      pass.setPipeline(this.pairedDisplay); pass.setBindGroup(0, bind.group, bind.offsets); pass.draw(3); pass.end()
+      this.noteDraw(u[16],1,target.width*target.height)
+      this.pairedFilterPasses++
+      if (this.displayFilterRadiusLimit !== undefined) this.boundedDisplayFilterPasses++
+      return
     }
     const bind = this.bind(u, inputs)
     // Mode 6 composites a shadow from source + blurred alpha. The standalone

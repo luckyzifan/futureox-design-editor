@@ -64,18 +64,20 @@ test('ordinary canvas preparation compiles no experimental shadow or chrome prog
   expect(labels.sort()).toEqual(['Canvas integrated tent', 'Paired integrated display filter'].sort())
 })
 
-test('integrated paired display binds source and kernel views with its initialized sampler', async () => {
-  const { driver, device, passes, texture } = fixture(true)
+test.each([false, true])('paired display binds the standard source and kernel views (filterable=%s)', async filterable => {
+  const { driver, device, passes, texture } = fixture(filterable)
   Object.assign(driver, { pairDisplayTaps: true })
   await driver.prepareFilters()
-  const u = parameters({ x: 0, y: 0, w: 32, h: 32 })
+  const r = { x: 0, y: 0, w: 32, h: 32 }
+  const u = parameters(r,r)
   u[16] = 22; u[36] = 4
   expect(() => driver.pass(texture(), u, [texture(), texture()])).not.toThrow()
   expect(passes.at(-1)).toEqual({ label: 'Paired integrated display filter' })
   const descriptor = device.createBindGroup.mock.calls.at(-1)![0]
-  expect(Array.from(descriptor.entries).map(entry => entry.resource)).toEqual([
-    { buffer: {} }, { kind: 'sampler' }, { kind: 'view' }, { kind: 'view' },
+  expect(Array.from(descriptor.entries).filter(entry => entry.binding === 1 || entry.binding === 2)).toEqual([
+    { binding: 1, resource: { kind: 'view' } }, { binding: 2, resource: { kind: 'view' } },
   ])
+  expect(device.createSampler).not.toHaveBeenCalled()
 })
 
 test.each([false, true])('retired prototype flags cannot divert integrated filtering (filterable=%s)', async filterable => {
@@ -87,20 +89,20 @@ test.each([false, true])('retired prototype flags cannot divert integrated filte
   expect(() => driver.pass(texture(), u, [texture(), texture()])).not.toThrow()
   expect(passes.at(-1)).toEqual({ label: 'Canvas integrated tent' })
   const labels = device.createShaderModule.mock.calls.map(([descriptor]) => descriptor.label)
-  expect(labels.sort()).toEqual((filterable
-    ? ['Canvas integrated tent', 'Paired integrated display filter']
-    : ['Canvas integrated tent']).sort())
+  expect(labels.sort()).toEqual(['Canvas integrated tent', 'Paired integrated display filter'].sort())
 })
 
 test('paired display fallback remains complete and does not repeatedly rebuild a failed program', async () => {
   const { driver, device, passes, texture } = fixture(true)
   Object.assign(driver, { pairDisplayTaps: true })
   vi.spyOn(console, 'warn').mockImplementation(() => {})
-  device.createSampler.mockImplementationOnce(() => { throw Error('Unavailable sampler') })
+  device.createShaderModule.mockImplementationOnce(() => { throw Error('Unavailable paired program') })
   await driver.prepareFilters()
-  const u = parameters({ x: 0, y: 0, w: 32, h: 32 }); u[16] = 22; u[36] = 64
+  const r = { x: 0, y: 0, w: 32, h: 32 }
+  const u = parameters(r,r); u[16] = 22; u[36] = 64
   driver.pass(texture(), u, [texture(), texture()])
   expect(passes.at(-1)).toEqual({ label: 'Canvas integrated tent' })
   await driver.prepareFilters()
-  expect(device.createSampler).toHaveBeenCalledTimes(1)
+  expect(device.createShaderModule.mock.calls.filter(([descriptor]) =>
+    descriptor.label === 'Paired integrated display filter')).toHaveLength(1)
 })
