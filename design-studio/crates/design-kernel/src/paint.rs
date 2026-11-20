@@ -301,16 +301,26 @@ fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resid
     // mipmaps, when requested, remain separate derivatives of this base.
     // Preserve 16-bit/float input in managed documents. Untagged bitmap
     // samples are sRGB, independently of the document's vector palette.
-    if settings.is_some() && profile.is_none() && matches!(space,None|Some(crate::color::ColorSpace::Srgb)) &&
-        matches!(decoded.color(),image::ColorType::Rgb8|image::ColorType::Rgba8) {
-        let bytes=decoded.into_rgba8();
-        let size=bytes.width() as usize * bytes.height() as usize;
-        let mut surface=Surface::new(Rect::new(0,0,bytes.width(),bytes.height()))?;
-        let [rgb,alpha]=crate::image_rows::srgb8_channels();
-        for(out,p)in surface.pixels.iter_mut().zip(bytes.pixels()){
-            *out=Pixel::rgba(rgb[p[0] as usize],rgb[p[1] as usize],rgb[p[2] as usize],alpha[p[3] as usize]);
+    let byte_rgb = matches!(decoded.color(), image::ColorType::Rgb8 | image::ColorType::Rgba8);
+    let unmanaged_byte_gray = settings.is_none()
+        && matches!(decoded.color(), image::ColorType::L8 | image::ColorType::La8);
+    if profile.is_none() && matches!(space, None | Some(crate::color::ColorSpace::Srgb))
+        && (byte_rgb || unmanaged_byte_gray)
+    {
+        let bytes = decoded.into_rgba8();
+        let size = bytes.width() as usize * bytes.height() as usize;
+        let mut surface = Surface::new(Rect::new(0, 0, bytes.width(), bytes.height()))?;
+        if settings.is_some() {
+            let [rgb, alpha] = crate::image_rows::srgb8_channels();
+            for (out, p) in surface.pixels.iter_mut().zip(bytes.pixels()) {
+                *out = Pixel::rgba(rgb[p[0] as usize], rgb[p[1] as usize], rgb[p[2] as usize], alpha[p[3] as usize]);
+            }
+        } else {
+            for (out, p) in surface.pixels.iter_mut().zip(bytes.pixels()) {
+                *out = crate::image_color::premultiplied_srgb8(p.0);
+            }
         }
-        return Ok((surface,size));
+        return Ok((surface, size));
     }
     let mut image = decoded.into_rgba32f();
     let sdr_storage = if let Some(settings) = settings {

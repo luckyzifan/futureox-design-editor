@@ -150,6 +150,18 @@ impl Decoder {
             png::ColorType::Rgba => image::DynamicImage::ImageRgba8(image::ImageBuffer::from_raw(width, height, bytes).unwrap()),
             _ => return Err("Unsupported PNG row channels".into()),
         }};
+        if self.settings.is_none() && self.depth == png::BitDepth::Eight
+            && self.profile.is_none() && self.transform.is_none()
+            && matches!(self.space, None | Some(ColorSpace::Srgb))
+        {
+            let encoded = decoded.into_rgba8();
+            let mut pixels = Vec::new();
+            pixels.try_reserve_exact(encoded.as_raw().len()).map_err(|e| e.to_string())?;
+            for sample in encoded.pixels() {
+                pixels.extend_from_slice(&image_color::premultiplied_srgb8(sample.0).0);
+            }
+            return Ok(pixels);
+        }
         let mut image = decoded.into_rgba32f();
         if let Some(settings) = self.settings {
             if self.transform.is_none() {
@@ -163,7 +175,7 @@ impl Decoder {
         } else {
             // Same unmanaged boundary as paint::decode_bytes: tagged sources
             // encode back to sRGB, then every texel is quantized to RGBA8.
-            if self.space.is_some() || self.profile.is_some() {
+            if self.transform.is_some() || self.space.is_some() || self.profile.is_some() {
                 if self.transform.is_none() {
                     self.transform=Some(image_color::WorkingTransform::new(ColorSettings::default(),self.space,self.profile.as_deref())?);
                     self.profile=None;
@@ -348,16 +360,28 @@ mod tests {
         png::Encoder::with_info(&mut encoded,info).unwrap().write_header().unwrap()
             .write_image_data(&[127,63,31,191].repeat(1024*513)).unwrap();
         let uri=format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(encoded));
-        let settings=ColorSettings::default();let mut images=crate::paint::Images::default();images.set_color_settings(Some(settings));
-        let reference=images.image(&uri).unwrap();let before=image_color::icc_preparations();
-        let mut decoder=Decoder::new(&uri, Some(settings)).unwrap();let mut offset=0;let mut strips=0;
-        loop {let strip=decoder.next_rows().unwrap();if strip.is_empty(){break}strips+=1;
-            for (actual,expected) in strip.chunks_exact(4).zip(&reference.pixels[offset..]) {
-                assert_eq!(actual.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),expected.0.map(f32::to_bits));
+        for settings in [None, Some(ColorSettings::default())] {
+            let mut images = crate::paint::Images::default();
+            images.set_color_settings(settings);
+            let reference = images.image(&uri).unwrap();
+            let before = image_color::icc_preparations();
+            let mut decoder = Decoder::new(&uri, settings).unwrap();
+            let mut offset = 0;
+            let mut strips = 0;
+            loop {
+                let strip = decoder.next_rows().unwrap();
+                if strip.is_empty() { break; }
+                strips += 1;
+                for (actual, expected) in strip.chunks_exact(4).zip(&reference.pixels[offset..]) {
+                    let actual: [f32; 4] = actual.try_into().unwrap();
+                    assert_eq!(actual.map(f32::to_bits), expected.0.map(f32::to_bits));
+                }
+                offset += strip.len() / 4;
             }
-            offset+=strip.len()/4;
+            assert_eq!(offset, 1024 * 513);
+            assert!(strips > 1);
+            assert_eq!(image_color::icc_preparations() - before, 1);
         }
-        assert_eq!(offset,1024*513);assert!(strips>1);assert_eq!(image_color::icc_preparations()-before,1);
     }
     #[test]
     fn sixteen_bit_rows_keep_original_channel_and_alpha_precision() {

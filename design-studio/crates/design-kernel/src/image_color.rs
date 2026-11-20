@@ -266,6 +266,15 @@ pub fn to_sdr(
     Ok(())
 }
 
+/// Store encoded sRGB bytes in the renderer's premultiplied RGBA8 surface.
+/// The divisor 255 is odd, so an exact byte product cannot land on a half tie.
+#[inline]
+pub(crate) fn premultiplied_srgb8([r, g, b, alpha]: [u8; 4]) -> Pixel {
+    let alpha = u16::from(alpha);
+    let premultiply = |channel| f32::from((u16::from(channel) * alpha + 127) / 255) / 255.;
+    Pixel([premultiply(r), premultiply(g), premultiply(b), f32::from(alpha) / 255.])
+}
+
 fn encode_sdr_channel(linear: f32) -> f32 {
     srgb_encode(f64::from(linear)).clamp(0., 1.) as f32
 }
@@ -339,7 +348,7 @@ impl SdrStorage {
 
 #[cfg(test)]
 mod sdr_storage_tests {
-    use super::{encode_sdr_channel, Pixel, SdrStorage};
+    use super::{encode_sdr_channel, premultiplied_srgb8, to_sdr_working, ColorSpace, Pixel, SdrStorage};
 
     fn verify_pixel(samples: [f32; 4]) {
         let [r, g, b, a] = samples;
@@ -351,6 +360,23 @@ mod sdr_storage_tests {
             reference.0.map(f32::to_bits),
             "{samples:?}"
         );
+    }
+
+    #[test]
+    fn byte_storage_matches_both_legacy_srgb_paths_for_every_alpha() {
+        let bytes = image::RgbaImage::from_fn(256, 256, |channel, alpha| {
+            let channel = channel as u8;
+            image::Rgba([channel, 255 - channel, channel.rotate_left(3), alpha as u8])
+        });
+        let encoded = image::DynamicImage::ImageRgba8(bytes.clone()).into_rgba32f();
+        let mut linear = encoded.clone();
+        to_sdr_working(&mut linear, Some(ColorSpace::Srgb), None).unwrap();
+        for ((bytes, encoded), linear) in bytes.pixels().zip(encoded.pixels()).zip(linear.pixels()) {
+            let [r, g, b, a] = encoded.0;
+            let actual = premultiplied_srgb8(bytes.0).0.map(f32::to_bits);
+            assert_eq!(actual, Pixel::rgba(r, g, b, a).rgba8_quantized().0.map(f32::to_bits));
+            assert_eq!(actual, SdrStorage::shared().pixel(linear.0).0.map(f32::to_bits));
+        }
     }
 
     #[test]
