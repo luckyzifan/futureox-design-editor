@@ -84,6 +84,7 @@ pub mod glass_capture;
 pub mod gpu;
 pub mod gradient_blur;
 pub mod sketch_progressive_blur;
+pub mod sketch_layer_gaussian;
 pub mod graph_api;
 pub mod handles;
 mod image_color;
@@ -826,6 +827,36 @@ mod wasm {
         let plan = crate::spatial_blur::SketchMotion::new(radius, angle, crate::math::Transform(matrix))
             .map_err(|error| JsValue::from_str(&error))?;
         Ok(plan.uniforms().flatten().collect())
+    }
+
+    fn sketch_gaussian_plan(plan: &str) -> Result<crate::sketch_layer_gaussian::SketchLayerGaussian, JsValue> {
+        serde_json::from_str::<crate::sketch_layer_gaussian::SketchLayerGaussian>(plan)
+            .ok().and_then(|plan| plan.validated())
+            .ok_or_else(|| JsValue::from_str("Invalid Sketch Gaussian plan"))
+    }
+
+    #[wasm_bindgen]
+    pub fn sketch_gaussian_parameters(plan: &str, width: u32, height: u32) -> Result<Vec<f32>, JsValue> {
+        let size = ((width, height) != (0, 0)).then_some([width, height]);
+        sketch_gaussian_plan(plan)?.parameters(size).map_err(|e| JsValue::from_str(&e))
+    }
+
+    #[wasm_bindgen]
+    pub fn sketch_gaussian_regions(plan: &str, rect: &str) -> Result<Vec<i32>, JsValue> {
+        let plan = sketch_gaussian_plan(plan)?;
+        let target = serde_json::from_str::<crate::math::Rect>(rect)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        if target.checked_right().is_none() || target.checked_bottom().is_none() {
+            return Err(JsValue::from_str("Invalid Sketch Gaussian target"));
+        }
+        let projection = plan.projection_bounds();
+        Ok(plan.capture_origin().into_iter().chain(plan.capture_step())
+            .chain(plan.translation_taps().into_iter().flatten())
+            .chain([projection.x, projection.bottom(), projection.w as i32, projection.h as i32])
+            .chain(plan.rotation_source_size().map(|v| v as i32))
+            .chain(plan.gpu_bands(target).into_iter().flatten()
+                .flat_map(|r| [r.x, r.y, r.w as i32, r.h as i32]))
+            .collect())
     }
     #[wasm_bindgen]
     pub fn noise_fill_preset_json()->Result<String,JsValue> {

@@ -527,6 +527,7 @@ fn visit(
             sharp_linear_layer: false,
             sketch_zoom_sampling: false,
             sketch_motion_output: None,
+            sketch_layer_gaussian: None,
             sketch_motion_phase_axis: None,
             glass_shape: None,
             capture_replay: None,

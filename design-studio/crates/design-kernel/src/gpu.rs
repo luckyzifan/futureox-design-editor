@@ -696,6 +696,8 @@ pub struct GpuNode {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sketch_motion_output: Option<Rect>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub sketch_layer_gaussian: Option<crate::sketch_layer_gaussian::SketchLayerGaussian>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sketch_motion_phase_axis: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub glass_shape: Option<crate::optics::GlassShape>,
@@ -2128,6 +2130,9 @@ impl Compiler<'_> {
                     && crate::zoom_blur::sketch_sampling(self.doc, n),
                 sketch_motion_output: (self.profile == crate::fidelity::RasterProfile::Analytic)
                     .then(|| crate::spatial_blur::sketch_output(self.doc, n, matrix)).flatten(),
+                sketch_layer_gaussian: (!rgba8).then(|| n.effects.iter().find(|effect| effect.visible)
+                    .and_then(|effect| crate::sketch_layer_gaussian::SketchLayerGaussian::for_effect(self.doc, n, effect, matrix)))
+                    .flatten(),
                 sketch_motion_phase_axis: sketch_bitmap_sampling.then(||
                     crate::paint::sketch_motion_phase_axis(self.doc, n)).flatten(),
                 glass_shape: n

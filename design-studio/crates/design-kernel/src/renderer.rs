@@ -4535,11 +4535,19 @@ impl Painter<'_> {
                 let kernel = if fx.kind == "motion-blur" {
                     Some(crate::spatial_blur::MotionFilter::for_effect(self.doc, n, fx, m, !self.compatible)?)
                 } else { None };
+                let sketch_gaussian = (!self.compatible).then(|| {
+                    crate::sketch_layer_gaussian::SketchLayerGaussian::for_effect(self.doc, n, fx, m)
+                }).flatten();
+                let bitmap = sketch_gaussian.as_ref().map(|plan| plan.source_bitmap(n, self.images))
+                    .transpose()?.flatten();
                 let compatible=self.compatible;
-                let filter=|source:&Surface| -> Result<Surface,String> {
+                let filter=|source:&Surface, is_mask:bool| -> Result<Surface,String> {
                     let mut value=if let Some(z)=fx.zoom_blur {crate::zoom_blur::apply_sampled(source, z, m, [n.width, n.height],
                         crate::zoom_blur::sketch_sampling(self.doc, n))?}
                         else if let Some(kernel)=&kernel {kernel.apply(source)?}
+                        else if let Some(sketch_gaussian)=sketch_gaussian.as_ref().filter(|plan| !is_mask || !plan.reads_bitmap()) {
+                            sketch_gaussian.apply(source,bitmap.as_deref())?
+                        }
                         else if let Some(gradient) = fx.sketch_ramp() {
                             let preserve_sharp = crate::sketch_progressive_blur::sharp_linear_layer(n) &&
                                 crate::sketch_progressive_blur::layer_edges_on_pixels([n.width, n.height], m);
@@ -4548,9 +4556,9 @@ impl Painter<'_> {
                         } else {effects::gaussian_surface(source,fx.radius*scale,compatible)?};
                     if compatible {value.quantize_rgba8();} Ok(value)
                 };
-                let out=Arc::new(filter(&resolved)?);planes=std::array::from_fn(|_|out.clone());
+                let out=Arc::new(filter(&resolved,false)?);planes=std::array::from_fn(|_|out.clone());
                 shadow_basis = planes.clone();
-                if let Some(mask)=coverage {let value=Arc::new(filter(&self.resolve_effect_planes(mask)?)?);*mask=std::array::from_fn(|_|value.clone());}
+                if let Some(mask)=coverage {let value=Arc::new(filter(&self.resolve_effect_planes(mask)?,true)?);*mask=std::array::from_fn(|_|value.clone());}
             } else if fx.kind == "blur" {
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
                 let compatible = self.compatible;
@@ -5397,7 +5405,13 @@ impl Painter<'_> {
                     [n.width, n.height], crate::zoom_blur::sketch_sampling(self.doc, n))?; }
                 "gaussian-blur" => {
                     shadow_basis = None;
-                    layer = if let Some(gradient) = fx.sketch_ramp() {
+                    let sketch_gaussian = (!self.compatible).then(|| {
+                        crate::sketch_layer_gaussian::SketchLayerGaussian::for_effect(self.doc, n, fx, m)
+                    }).flatten();
+                    layer = if let Some(sketch_gaussian) = sketch_gaussian {
+                        let bitmap = sketch_gaussian.source_bitmap(n, self.images)?;
+                        sketch_gaussian.apply(&layer, bitmap.as_deref())?
+                    } else if let Some(gradient) = fx.sketch_ramp() {
                         let preserve_sharp = crate::sketch_progressive_blur::sharp_linear_layer(n) &&
                             crate::sketch_progressive_blur::layer_edges_on_pixels([n.width, n.height], m);
                         crate::sketch_progressive_blur::apply(layer, gradient, m, Point::default(),
