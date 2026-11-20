@@ -109,7 +109,7 @@ export class TranslationPreviewPlan {
   constructor(readonly base:DesignDocument,ids:readonly string[],topology=new PoseTopology(base),
     purpose:'pixels'|'document-pose'='pixels'){
     this.topology=topology;this.ids=[...ids]
-    if(!topology.matches(base)||!topology.permitsPose||base.animations?.length||!ids.length||new Set(ids).size!==ids.length||snapshotTargets(base,ids)||connectorIntoSubtree(base,ids))this.valid=false
+    if(!topology.matches(base)||!topology.permitsPose||base.animations?.length||!ids.length||new Set(ids).size!==ids.length||snapshotTargets(base,ids,topology)||connectorIntoSubtree(base,ids))this.valid=false
     for(const id of ids){const seen=new Set<string>();let at:string|undefined=id
       let booleanRoot:string|undefined
       const documentLeaf=purpose==='document-pose'&&base.nodes[id]?.children.length===0

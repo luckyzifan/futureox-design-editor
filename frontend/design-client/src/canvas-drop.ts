@@ -7,13 +7,21 @@ export type CanvasDropIndex = { document: string; page: string; parents: ParentM
 /** A gesture fixes hierarchy eligibility. Geometry and visibility remain live:
  * moving layout children can resize their stationary parent frame. */
 export function createCanvasDropIndex(doc: DesignDocument, page: string, parents: ParentMap = allParents(doc)): CanvasDropIndex {
-  const frames:CanvasDropIndex['frames']=[],seen=new Set<string>()
-  const visit=(id:string,ancestors:string[])=>{
-    const n=doc.nodes[id];if(!n||seen.has(id))return;seen.add(id)
-    if(['frame','section'].includes(n.kind))frames.push({id,ancestors})
-    n.children.forEach(child=>visit(child,[...ancestors,id]))
+  const frames: CanvasDropIndex['frames'] = []
+  const seen = new Set<string>(), ancestors: string[] = []
+  const visit = (id: string) => {
+    const node = doc.nodes[id]
+    if (!node || seen.has(id)) return
+    seen.add(id)
+    // Store paths for drop targets. Ordinary descendants can use the same
+    // traversal stack, even in documents with many nested instance layers.
+    if (node.kind === 'frame' || node.kind === 'section') frames.push({ id, ancestors: [...ancestors] })
+    if (!node.children.length) return
+    ancestors.push(id)
+    for (const child of node.children) visit(child)
+    ancestors.pop()
   }
-  doc.pages.find(p=>p.id===page)?.children.forEach(id=>visit(id,[]))
+  for (const id of doc.pages.find(p => p.id === page)?.children ?? []) visit(id)
   return {document:doc.id,page,parents,frames:frames.reverse()}
 }
 /** Frame-local geometry handles rotation. The optional gesture index avoids a
