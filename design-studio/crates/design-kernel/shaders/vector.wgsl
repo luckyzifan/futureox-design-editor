@@ -1191,7 +1191,99 @@ fn rotatedBackdropPoint(p:vec2<f32>)->vec2<f32>{
  let delta=clamp(local,u(9).xy,u(9).zw)-local;
  return p+u(12).xy*delta.x+u(12).zw*delta.y;
 }
-fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==65){return progressiveTent(p);}if(mode==64){return sketchBlurBox(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
+fn sketchGaussianByte(p:vec2<f32>)->vec4<i32>{
+ return vec4<i32>(round(clamp(at(sourceA,p,u(1)),vec4<f32>(0),vec4<f32>(1))*255.));
+}
+fn sketchGaussianTap(p:vec2<f32>,axis:i32,index:f32)->vec4<i32>{
+ let q=select(vec2<f32>(index+0.5,p.y),vec2<f32>(p.x,index+0.5),axis==1);
+ return sketchGaussianByte(q);
+}
+fn sketchGaussianBlend(a:vec4<i32>,b:vec4<i32>,w:i32)->vec4<i32>{
+ return a+b*w/16-a*w/16;
+}
+fn sketchGaussianInterpolate(origin:vec2<f32>,x:vec3<f32>,y:vec3<f32>)->vec4<i32>{
+ let a=sketchGaussianBlend(sketchGaussianByte(origin+vec2<f32>(x.x,y.x)),sketchGaussianByte(origin+vec2<f32>(x.x,y.y)),i32(y.z));
+ let b=sketchGaussianBlend(sketchGaussianByte(origin+vec2<f32>(x.y,y.x)),sketchGaussianByte(origin+vec2<f32>(x.y,y.y)),i32(y.z));
+ return sketchGaussianBlend(a,b,i32(x.z));
+}
+fn sketchGaussianAxis(parts:vec2<i32>,extent:i32,invert:bool)->vec3<f32>{
+ let unit=16777216;
+ let left=parts.x+parts.y/unit;
+ let phase=parts.y%unit;
+ let lower=phase<unit/2;
+ let a=clamp(select(left+1,left,lower),0,extent-1);
+ let b=clamp(select(left,left+1,lower),0,extent-1);
+ let bin=(8*min(phase,unit-phase)+unit/2)/unit;
+ let weight=array<i32,5>(0,1,2,4,8);
+ return vec3<f32>(f32(select(a,extent-1-a,invert)),f32(select(b,extent-1-b,invert)),f32(weight[bin]));
+}
+fn sketchLayerGaussian(p:vec2<f32>)->vec4<f32>{
+ let stage=i32(u(9).x);
+ let geometry=u(11);
+ if(stage==4){
+  return vec4<f32>(sketchGaussianInterpolate(p,u(10).xyz,u(11).xyz))/255.;
+ }
+ if(stage==5){
+  let bounds=u(10);
+  let index=vec2<i32>(floor(p-bounds.xy));
+  if(any(index<vec2<i32>(0))||any(index>=vec2<i32>(bounds.zw))){return vec4<f32>(0.);}
+  let x=vec4<i32>(textureLoad(sourceB,vec2<i32>(index.x,8),0));
+  let y=vec4<i32>(textureLoad(sourceB,vec2<i32>(index.y,9),0));
+  let parts=x+y;
+  let xt=sketchGaussianAxis(parts.xy,i32(geometry.x),false);
+  let yt=sketchGaussianAxis(parts.zw,i32(geometry.y),geometry.z>0.5);
+  return vec4<f32>(sketchGaussianInterpolate(vec2<f32>(0.5),xt,yt))/255.;
+ }
+ if(stage==0||stage==6){
+  let x=textureLoad(sourceB,vec2<i32>(i32(floor(p.x)),0),0);
+  let y=textureLoad(sourceB,vec2<i32>(i32(floor(p.y)),1),0);
+  if(stage==6){
+   let coverage=select((i32(x.w)%256)*(i32(y.w)%256)/255,64,x.w>=256.&&y.w>=256.);
+   let value=sketchGaussianInterpolate(geometry.xy+0.5,x.xyz,y.xyz);
+   return vec4<f32>((value*coverage+vec4<i32>(127))/255)/255.;
+  }
+  let coverage=select(i32(x.y)*i32(y.y)/255,64,x.z*y.z==1.);
+  let sample=sketchGaussianByte(geometry.xy+vec2<f32>(x.x,y.x)*geometry.zw+0.5);
+  return vec4<f32>((sample*coverage+vec4<i32>(127))/255)/255.;
+ }
+ if(stage==1||stage==2){
+  let taps=i32(u(9).y);
+  let reach=taps/2;
+  let axis=select(vec2<f32>(1.,0.),vec2<f32>(0.,1.),stage==2);
+  let bounds=u(1);
+  var sum=vec4<i32>(0);
+  for(var i=-reach;i<=reach;i+=1){
+   let q=clamp(p+axis*f32(i),bounds.xy+0.5,bounds.xy+bounds.zw-0.5);
+   if(stage==1){sum+=sketchGaussianByte(q);}
+   else{sum+=vec4<i32>(at(sourceA,q,bounds));}
+  }
+  if(stage==1){return vec4<f32>(sum);}
+  let area=taps*taps;
+  return vec4<f32>((sum+vec4<i32>(area/2))/area)/255.;
+ }
+ let axis=i32(u(9).y);
+ let position=select(i32(floor(p.x)-geometry.x),i32(geometry.y-1.-floor(p.y)),axis==1);
+ let length=i32(geometry[2+axis]);
+ let index=select(position,length-1-position,u(10)[axis]>0.5);
+ if(index<0||index>=length){return vec4<f32>(0.);}
+ let row=2+axis*3;
+ let first=textureLoad(sourceB,vec2<i32>(index,row),0);
+ if(u(9).z<0.5){
+  let a=sketchGaussianTap(p,axis,first.x);
+  let b=sketchGaussianTap(p,axis,first.y);
+  let w=i32(first.z);
+  return vec4<f32>(sketchGaussianBlend(a,b,w))/255.;
+ }
+ var sum=vec4<i32>(0);
+ for(var pair=0;pair<3;pair+=1){
+  let weights=textureLoad(sourceB,vec2<i32>(index,row+pair),0);
+  sum+=sketchGaussianTap(p,axis,weights.x)*i32(weights.y)+sketchGaussianTap(p,axis,weights.z)*i32(weights.w);
+ }
+ var value=clamp((sum+vec4<i32>(8192))/16384,vec4<i32>(0),vec4<i32>(255));
+ if(axis==1){value.a=max(value.a,max(value.r,max(value.g,value.b)));}
+ return vec4<f32>(value)/255.;
+}
+fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(mode==98){return sketchLayerGaussian(p);}if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==65){return progressiveTent(p);}if(mode==64){return sketchBlurBox(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==63){return vec4<f32>(min(1.,smp(sourceA,p,u(1)).a*u(10).y));}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
  // Managed surfaces preserve extended-range linear light in RGBA32F.
  if(u(60).x>0.5){
   if(mode==3||mode==15){var opacity=u(4).z;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceC,p,u(3)).a);}let src=mulRN4(a,vec4<f32>(opacity));if(mode==15){return src;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}

@@ -25,6 +25,7 @@ import { CoordinateRetirementSet } from './coordinate-retirement-set'
 import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
 import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { BOX_PREFIX_BYTES } from './box-prefix'
+import { SKETCH_LAYER_GAUSSIAN_MODE } from './compositor-modes'
 import { backdropFilterRegion } from './backdrop-filter-region'
 import { painterStageBox } from './painter-stage'
 import { identicalSampleCoverage } from './sample-equivalent-coverage'
@@ -120,6 +121,8 @@ import {
   rational_region_box_kernel_rgba,
   motion_blur_kernel,
   sketch_motion_blur_passes,
+  sketch_gaussian_parameters,
+  sketch_gaussian_regions,
   zoom_blur_coordinates,
   color_controls_uniforms,
   texture_sampling_grid,
@@ -6708,7 +6711,99 @@ export class GpuRenderer {
       })
     } finally {this.release(leaves,blocks)}
   }
-  private async spatialBlur(input: Surface, n: GpuNode, fx: Effect): Promise<Surface> {
+  private async sketchLayerGaussian(input: Surface, n: GpuNode, plan: NonNullable<GpuNode['sketchLayerGaussian']>): Promise<Surface> {
+    const rotates = !!plan.rotation
+    const readsBitmap = rotates || plan.phase.some(Boolean)
+    if (input.texture.transparentZero && !readsBitmap) return input
+    const encoded = JSON.stringify(plan)
+    const layout = sketch_gaussian_regions(encoded, JSON.stringify(input.rect))
+    const header = 16, bandLength = 16
+    const draw = async (r: Rect, inputs: Surface[], configure: (u: Float32Array) => void) => {
+      await this.reclaimForSurface(r)
+      this.checkFrameCurrent()
+      return this.run(SKETCH_LAYER_GAUSSIAN_MODE, r, inputs, configure, 15, undefined, false, undefined, true)
+    }
+    if (layout.length === header) {
+      await this.reclaimForSurface(input.rect)
+      this.checkFrameCurrent()
+      return this.empty(input.rect)
+    }
+    const bitmap = readsBitmap ? this.imageFor(n.fills[0].image!) : undefined
+    const dims = bitmap ? [bitmap.rect.w, bitmap.rect.h] : [0, 0]
+    const key = JSON.stringify([plan.logicalSize, plan.scale, plan.margin, plan.phase, plan.rotation, dims])
+    const rows = rotates ? 10 : 8
+    const kernel = this.filterKernel(`sketch-layer-gaussian:${key}`, plan.tapCount,
+      () => sketch_gaussian_parameters(encoded, dims[0], dims[1]), values => [values.length / (4 * rows), rows])
+    const downsample = plan.work[0] > layout[12]
+    const shifted = downsample && !rotates && readsBitmap
+    const expanded = !readsBitmap && (input.texture.uniformColor || input.texture.scalarCoverage) ? this.copy(input) : undefined
+    const configureProjection = (u: Float32Array, axis: number) => {
+      u.set([3, axis, Number(downsample)], 36)
+      u.set(plan.mirrored.map(Number), 40)
+      u.set(layout.subarray(10, 14), 44)
+    }
+    const finalPass = (u: Float32Array) => {
+      if (rotates) {
+        const { x, y, w, h } = plan.output
+        u[36] = 5
+        u.set([x, y, w, h], 40)
+        u.set(layout.subarray(14, 16), 44)
+        u[46] = Number(!downsample)
+      } else if (shifted) {
+        u[36] = 4
+        u.set(layout.subarray(4, 7), 40)
+        u.set(layout.subarray(7, 10), 44)
+      } else configureProjection(u, Number(downsample))
+    }
+    let current: Surface | undefined
+    let result: Surface | undefined
+    try {
+      if (layout.length > header + bandLength) {
+        await this.reclaimForSurface(input.rect)
+        this.checkFrameCurrent()
+        result = this.run(12, input.rect, [], undefined, 15, undefined, false, undefined, true)
+      }
+      const region = (at: number) => ({x: layout[at], y: layout[at + 1], w: layout[at + 2], h: layout[at + 3]})
+      for (let at = header; at < layout.length; at += bandLength) {
+        const band = region(at), work = region(at + 4), projection = region(at + 8)
+        current = await draw(work, [bitmap || expanded || input, kernel], u => {
+          u[36] = rotates ? 6 : 0
+          u.set(bitmap ? [bitmap.rect.x, bitmap.rect.y, 1, 1] : layout.subarray(0, 4), 44)
+        })
+        for (const stage of [1, 2, 1, 2, 1, 2]) {
+          const next = await draw(work, [current], u => u.set([stage, plan.tapCount], 36))
+          this.release(current)
+          current = next
+        }
+        if (!rotates || downsample) {
+          const projected = await draw(projection, [current, kernel], u => configureProjection(u, Number(!downsample)))
+          this.release(current)
+          current = projected
+        }
+        if (shifted || rotates && downsample) {
+          const next = await draw(region(at + 12), [current, kernel], u => configureProjection(u, 1))
+          this.release(current)
+          current = next
+        }
+        if (result) {
+          const u = parameters(result.rect, current.rect, kernel.rect)
+          u[16] = SKETCH_LAYER_GAUSSIAN_MODE
+          finalPass(u)
+          const clip = {...band, x: band.x - result.rect.x, y: band.y - result.rect.y}
+          this.driver.pass(result.texture, u, [current.texture, kernel.texture], clip)
+          this.passPixels += band.w * band.h
+        } else {
+          result = await draw(input.rect, [current, kernel], finalPass)
+        }
+        this.release(current)
+        current = undefined
+      }
+      const value = result!
+      result = undefined
+      return value
+    } finally { this.release(current, expanded, result) }
+  }
+  private async spatialBlur(input: Surface, n: GpuNode, fx: Effect, isMask = false): Promise<Surface> {
     if(fx.zoomBlur){
       if(fx.zoomBlur.amount===0)return input
       const kernel=this.zoomFilterKernel(input.rect,n,fx.zoomBlur)
@@ -6717,6 +6812,10 @@ export class GpuRenderer {
     }
     if (fx.radius === 0) return input
     if (fx.kind === 'gaussian-blur') {
+      const plan = n.sketchLayerGaussian
+      if (this.driver.managed && plan && (!isMask || !plan.rotation && !plan.phase.some(Boolean))) {
+        return this.sketchLayerGaussian(input, n, plan)
+      }
       const sigma = fx.radius * scale(n.matrix)
       if (fx.gradientBlur?.sketch) return this.sketchBlurRamp(input, n, fx, sigma, false)
       if (sigma >= 0.1 && sigma <= 2) {
@@ -6911,7 +7010,7 @@ export class GpuRenderer {
         if (coverage.value) {
           const mask=this.run(23,n.rect,coverage.value)
           if(coverage.owned)this.release(...coverage.value)
-          const value=await this.spatialBlur(mask,n,fx)
+          const value=await this.spatialBlur(mask,n,fx,true)
           if(value!==mask)this.release(mask)
           coverage.value=[value,this.retain(value),this.retain(value),this.retain(value)];coverage.owned=true
         }

@@ -1081,8 +1081,93 @@ vec4 progressiveTent(vec2 p){
  for(int i=-reach;i<=reach;i++)sum+=progressiveSample(p+axis*float(i))*tentWeight(radius,float(abs(i)))*255.;
  return roundEven(clamp(sum,0.,255.))/255.;
 }
+ivec4 sketchGaussianByte(vec2 p){
+ return ivec4(roundEven(clamp(at(sourceA,p,u[1]),0.,1.)*255.));
+}
+ivec4 sketchGaussianTap(vec2 p,int axis,float index){
+ vec2 q=axis==0?vec2(index+.5,p.y):vec2(p.x,index+.5);
+ return sketchGaussianByte(q);
+}
+ivec4 sketchGaussianBlend(ivec4 a,ivec4 b,int w){
+ return a+b*w/16-a*w/16;
+}
+ivec4 sketchGaussianInterpolate(vec2 origin,vec3 x,vec3 y){
+ ivec4 a=sketchGaussianBlend(sketchGaussianByte(origin+vec2(x.x,y.x)),sketchGaussianByte(origin+vec2(x.x,y.y)),int(y.z));
+ ivec4 b=sketchGaussianBlend(sketchGaussianByte(origin+vec2(x.y,y.x)),sketchGaussianByte(origin+vec2(x.y,y.y)),int(y.z));
+ return sketchGaussianBlend(a,b,int(x.z));
+}
+vec3 sketchGaussianAxis(ivec2 parts,int extent,bool invert){
+ int unit=16777216;
+ int left=parts.x+parts.y/unit,phase=parts.y%unit;
+ bool lower=phase<unit/2;
+ int a=clamp(lower?left:left+1,0,extent-1),b=clamp(lower?left+1:left,0,extent-1);
+ int bin=(8*min(phase,unit-phase)+unit/2)/unit;
+ int weights[5]=int[5](0,1,2,4,8);
+ return vec3(invert?extent-1-a:a,invert?extent-1-b:b,weights[bin]);
+}
+vec4 sketchLayerGaussian(vec2 p){
+ int stage=int(u[9].x);
+ vec4 geometry=u[11];
+ if(stage==4){
+  return vec4(sketchGaussianInterpolate(p,u[10].xyz,u[11].xyz))/255.;
+ }
+ if(stage==5){
+  vec4 bounds=u[10];
+  ivec2 index=ivec2(floor(p-bounds.xy));
+  if(any(lessThan(index,ivec2(0)))||any(greaterThanEqual(index,ivec2(bounds.zw))))return vec4(0.);
+  ivec4 parts=ivec4(texelFetch(sourceB,ivec2(index.x,8),0))+ivec4(texelFetch(sourceB,ivec2(index.y,9),0));
+  vec3 xt=sketchGaussianAxis(parts.xy,int(geometry.x),false);
+  vec3 yt=sketchGaussianAxis(parts.zw,int(geometry.y),geometry.z>.5);
+  return vec4(sketchGaussianInterpolate(vec2(.5),xt,yt))/255.;
+ }
+ if(stage==0||stage==6){
+  vec4 x=texelFetch(sourceB,ivec2(int(floor(p.x)),0),0);
+  vec4 y=texelFetch(sourceB,ivec2(int(floor(p.y)),1),0);
+  if(stage==6){
+   int coverage=x.w>=256.&&y.w>=256.?64:(int(x.w)%256)*(int(y.w)%256)/255;
+   ivec4 pixel=sketchGaussianInterpolate(geometry.xy+.5,x.xyz,y.xyz);
+   return vec4((pixel*coverage+ivec4(127))/255)/255.;
+  }
+  int coverage=x.z*y.z==1.?64:int(x.y)*int(y.y)/255;
+  ivec4 pixel=sketchGaussianByte(geometry.xy+vec2(x.x,y.x)*geometry.zw+.5);
+  return vec4((pixel*coverage+ivec4(127))/255)/255.;
+ }
+ if(stage==1||stage==2){
+  int taps=int(u[9].y),reach=taps/2;
+  vec2 axis=stage==1?vec2(1.,0.):vec2(0.,1.);
+  vec4 bounds=u[1];
+  ivec4 sum=ivec4(0);
+  for(int i=-reach;i<=reach;i++){
+   vec2 q=clamp(p+axis*float(i),bounds.xy+.5,bounds.xy+bounds.zw-.5);
+   sum+=stage==1?sketchGaussianByte(q):ivec4(at(sourceA,q,bounds));
+  }
+  if(stage==1)return vec4(sum);
+  int area=taps*taps;
+  return vec4((sum+ivec4(area/2))/area)/255.;
+ }
+ int axis=int(u[9].y);
+ int position=axis==0?int(floor(p.x)-geometry.x):int(geometry.y-1.-floor(p.y));
+ int length=int(geometry[2+axis]);
+ int index=u[10][axis]>.5?length-1-position:position;
+ if(index<0||index>=length)return vec4(0.);
+ int row=2+axis*3;
+ vec4 first=texelFetch(sourceB,ivec2(index,row),0);
+ if(u[9].z<.5){
+  ivec4 a=sketchGaussianTap(p,axis,first.x),b=sketchGaussianTap(p,axis,first.y);
+  int w=int(first.z);
+  return vec4(sketchGaussianBlend(a,b,w))/255.;
+ }
+ ivec4 sum=ivec4(0);
+ for(int pair=0;pair<3;pair++){
+  vec4 weights=texelFetch(sourceB,ivec2(index,row+pair),0);
+  sum+=sketchGaussianTap(p,axis,weights.x)*int(weights.y)+sketchGaussianTap(p,axis,weights.z)*int(weights.w);
+ }
+ ivec4 value=clamp((sum+ivec4(8192))/16384,ivec4(0),ivec4(255));
+ if(axis==1)value.a=max(value.a,max(value.r,max(value.g,value.b)));
+ return vec4(value)/255.;
+}
 vec4 shade(vec2 p){
- int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==65)return progressiveTent(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
+ int mode=COMPOSITOR_MODE;if(mode==98)return sketchLayerGaussian(p);if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==63)return vec4(min(1.,smp(sourceA,p,u[1]).a*u[10].y));if(mode==46)return gradientBlurComposite(p);if(mode==65)return progressiveTent(p);if(mode==64)return sketchBlurBox(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
  if(u[60].x>.5){
   if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
   if(mode==8){return legacyTexture(p,true);}

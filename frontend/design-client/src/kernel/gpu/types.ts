@@ -131,6 +131,17 @@ export type GpuNode = {
   sharpLinearLayer?: boolean
   sketchZoomSampling?: boolean
   sketchMotionOutput?: Rect
+  sketchLayerGaussian?: {
+    output: Rect
+    work: [number, number]
+    logicalSize: [number, number]
+    scale: number
+    margin: number
+    phase: [number, number]
+    rotation?: { axes: [number, number, number, number]; center: [number, number] } | null
+    mirrored: [boolean, boolean]
+    tapCount: number
+  }
   sketchMotionPhaseAxis?: number
   glassShape?: { size: [number, number]; radius: number; radii?: [number, number, number, number] }
   captureReplay?: GlassCaptureReplay

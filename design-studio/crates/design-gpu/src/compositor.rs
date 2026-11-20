@@ -8,6 +8,7 @@ use futureox_design_kernel::{
     math::Rect,
     paint::Images,
     scene::Effect,
+    sketch_layer_gaussian::SketchLayerGaussian,
     texture_replay::{SourcePlan, TileOutcome, TilePlan as TextureTilePlan},
 };
 use std::collections::HashMap;
@@ -33,6 +34,7 @@ const BLENDS: [&str; 19] = [
     "linear-dodge",
     "plus-lighter",
 ];
+const SKETCH_LAYER_GAUSSIAN_MODE: f32 = 98.;
 fn blend(mode: &str) -> Result<f32, String> {
     BLENDS
         .iter()
@@ -300,6 +302,7 @@ enum BlurKernelKey {
     Box(u32),
     Tent(u64),
     SmallGaussian(u64),
+    SketchGaussian(u32, u32, i32, usize, [u64; 2], Option<[u64; 6]>, Option<[u32; 2]>),
 }
 struct Compositor<'a, 'b, 'c> {
     frame: &'a mut Frame<'b>,
@@ -415,6 +418,9 @@ fn image_key(uri: &str, level: u32) -> String {
 }
 impl Compositor<'_, '_, '_> {
     fn paint_level(&self, n: &GpuNode, p: &GpuPaint, dims: [u32; 2]) -> u32 {
+        if n.sketch_layer_gaussian.as_ref().is_some_and(SketchLayerGaussian::reads_bitmap) {
+            return 0;
+        }
         if !self.mips {
             return if p.sketch_bitmap_sampling {
                 futureox_design_kernel::paint::sketch_bitmap_mip_level(n.rect, n.matrix, n.size, dims, &p.paint)
@@ -657,7 +663,7 @@ impl Compositor<'_, '_, '_> {
                 if next.id != layer.id { self.frame.release(&[layer]); }
                 layer = next;
             } else if matches!(fx.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur") {
-                let next=self.spatial_blur(layer,n,fx)?;
+                let next=self.spatial_blur(layer,n,fx,false)?;
                 if next.id!=layer.id {self.frame.release(&[layer]);} layer=next;
             } else if fx.kind == "blur" {
                 let full = self.blur(layer, fx.blur_radius() * sc, false)?;
@@ -2007,7 +2013,7 @@ impl Compositor<'_, '_, '_> {
         if let Some((_,planes))=optical_prefix { self.frame.release(&planes); }
         Ok(targets)
     }
-    fn spatial_blur(&mut self,input:Surface,n:&GpuNode,fx:&Effect)->Result<Surface,String>{
+    fn spatial_blur(&mut self,input:Surface,n:&GpuNode,fx:&Effect,is_mask:bool)->Result<Surface,String>{
         if let Some(z)=fx.zoom_blur {
             if z.is_identity() {return Ok(input)}
             let r=input.rect;
@@ -2021,6 +2027,9 @@ impl Compositor<'_, '_, '_> {
         }
         if fx.radius==0. {return Ok(input)}
         if fx.kind == "gaussian-blur" {
+            if let Some(plan) = n.sketch_layer_gaussian.as_ref().filter(|plan| !is_mask || !plan.reads_bitmap()) {
+                return self.sketch_layer_gaussian(input, n, plan);
+            }
             let scale = n.matrix.max_scale();
             let sigma = fx.radius * scale;
             if fx.gradient_blur.as_ref().is_some_and(|g| g.sketch.is_some()) {
@@ -2068,6 +2077,102 @@ impl Compositor<'_, '_, '_> {
             self.motion_kernels.insert(key,surface);
         }
         self.frame.run(61.,input.rect,&[input,self.motion_kernels[&key]], |_|{})
+    }
+
+    fn sketch_layer_gaussian(
+        &mut self,
+        input: Surface,
+        n: &GpuNode,
+        plan: &SketchLayerGaussian,
+    ) -> Result<Surface, String> {
+        let bands = plan.gpu_bands(input.rect);
+        if bands.is_empty() {
+            return self.frame.run(12., input.rect, &[], |_| {});
+        }
+        let (capture, bitmap_size, origin, step) = if plan.reads_bitmap() {
+            let uri = n.fills.iter().find_map(|paint| paint.image.as_deref()).ok_or("Missing Gaussian source bitmap")?;
+            let asset = *self.images.get(uri).ok_or("Missing Gaussian source texture")?;
+            let size = self.image_dims.get(uri).copied().ok_or("Missing Gaussian source dimensions")?;
+            (asset, Some(size), self.image_slots.get(uri).copied().unwrap_or([0; 2]), [1; 2])
+        } else {
+            (input, None, plan.capture_origin(), plan.capture_step())
+        };
+        let key = BlurKernelKey::SketchGaussian(
+            plan.output.w, plan.output.h, plan.sampling_scale(), plan.tap_count, plan.phase_bits(), plan.rotation_bits(), bitmap_size,
+        );
+        if !self.blur_kernels.contains_key(&key) {
+            let rect = Rect::new(0, 0, plan.parameter_width() as u32, plan.parameter_rows() as u32);
+            let coefficients = self.frame.upload_parameters(rect, &plan.parameters(bitmap_size)?)?;
+            self.blur_kernels.insert(key, coefficients);
+        }
+        let coefficients = self.blur_kernels[&key];
+        let [x, y] = origin;
+        let [step_x, step_y] = step;
+        let horizontal_first = plan.downsample();
+        let configure_projection = |u: &mut [f32; 256], axis: bool| {
+            let output = plan.projection_bounds();
+            u[36..39].copy_from_slice(&[3., f32::from(axis), f32::from(horizontal_first)]);
+            u[40..42].copy_from_slice(&plan.mirrored.map(f32::from));
+            u[44..48].copy_from_slice(&[output.x as f32, output.bottom() as f32, output.w as f32, output.h as f32]);
+        };
+        let shifted = plan.shift_after_shrink();
+        let rotates = plan.rotates();
+        let [rotation_width, rotation_height] = plan.rotation_source_size();
+        let [x_taps, y_taps] = plan.translation_taps();
+        let final_pass = |u: &mut [f32; 256]| {
+            if rotates {
+                let rect = plan.output;
+                u[36] = 5.;
+                u[40..44].copy_from_slice(&[rect.x as f32, rect.y as f32, rect.w as f32, rect.h as f32]);
+                u[44..47].copy_from_slice(&[rotation_width as f32, rotation_height as f32, f32::from(!horizontal_first)]);
+            } else if shifted {
+                u[36] = 4.;
+                u[40..43].copy_from_slice(&x_taps.map(|v| v as f32));
+                u[44..47].copy_from_slice(&y_taps.map(|v| v as f32));
+            } else {
+                configure_projection(u, horizontal_first);
+            }
+        };
+        let mut target = if bands.len() > 1 { Some(self.frame.run(12., input.rect, &[], |_| {})?) } else { None };
+        for [band, work, projection, unshifted] in bands {
+            let mut current = self.frame.run(SKETCH_LAYER_GAUSSIAN_MODE, work, &[capture, coefficients], |u| {
+                u[36] = if rotates { 6. } else { 0. };
+                u[44..48].copy_from_slice(&[x as f32, y as f32, step_x as f32, step_y as f32]);
+            })?;
+            for stage in [1., 2., 1., 2., 1., 2.] {
+                let next = self.frame.run(SKETCH_LAYER_GAUSSIAN_MODE, work, &[current], |u| {
+                    u[36..38].copy_from_slice(&[stage, plan.tap_count as f32]);
+                });
+                self.frame.release(&[current]);
+                current = next?;
+            }
+            if !rotates || horizontal_first {
+                let projected = self.frame.run(SKETCH_LAYER_GAUSSIAN_MODE, projection, &[current, coefficients], |u| {
+                    configure_projection(u, !horizontal_first);
+                });
+                self.frame.release(&[current]);
+                current = projected?;
+            }
+            if shifted || rotates && horizontal_first {
+                let next = self.frame.run(SKETCH_LAYER_GAUSSIAN_MODE, unshifted, &[current, coefficients], |u| {
+                    configure_projection(u, true);
+                });
+                self.frame.release(&[current]);
+                current = next?;
+            }
+            let inputs = [current, coefficients];
+            let result = if let Some(target) = target {
+                let mut u = parameters(target.rect, &inputs);
+                u[16] = SKETCH_LAYER_GAUSSIAN_MODE;
+                final_pass(&mut u);
+                self.frame.draw_region(target, u, &inputs, false, None, Some(band)).map(|()| target)
+            } else {
+                self.frame.run(SKETCH_LAYER_GAUSSIAN_MODE, input.rect, &inputs, final_pass)
+            };
+            self.frame.release(&[current]);
+            target = Some(result?);
+        }
+        target.ok_or_else(|| "Missing Sketch Gaussian output".to_owned())
     }
     fn blur(&mut self, input: Surface, radius: f64, clamp_edges: bool) -> Result<Surface, String> {
         self.blur_mode(input,radius,clamp_edges,false)
@@ -2439,12 +2544,12 @@ impl Compositor<'_, '_, '_> {
             let basis = shadow_basis.as_deref().unwrap_or(&planes);
             let resolved = self.frame.run(23., n.rect, basis, |_| {})?;
             if matches!(fx.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur") {
-                let filtered=self.spatial_blur(resolved,n,fx)?;
+                let filtered=self.spatial_blur(resolved,n,fx,false)?;
                 self.frame.release(&planes);if filtered.id!=resolved.id {self.frame.release(&[resolved]);}
                 planes=vec![filtered;4];
                 if let Some(old)=coverage {
                     let mask=self.frame.run(23.,n.rect,old, |_|{})?;
-                    let filtered=self.spatial_blur(mask,n,fx)?;
+                    let filtered=self.spatial_blur(mask,n,fx,true)?;
                     self.frame.release(old);if filtered.id!=mask.id {self.frame.release(&[mask]);}*old=vec![filtered;4];
                 }
             } else if fx.kind == "blur" {
