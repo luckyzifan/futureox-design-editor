@@ -1,5 +1,6 @@
 //! Explicit color management. Working pixels are premultiplied, extended-range
-//! linear sRGB (D65), where 1.0 is reference white, never an implicit clamp.
+//! linear sRGB (D65) by default. Native Sketch P3 documents can opt into
+//! encoded Display P3 compositing. In either space 1.0 is reference white.
 //! Matrices/transfers: W3C CSS Color 4 and CSS Color HDR, BT.2100 PQ/HLG.
 //! https://www.w3.org/TR/css-color-4/#color-conversion-code
 //! https://www.w3.org/TR/css-color-hdr/
@@ -42,6 +43,8 @@ pub struct ColorSettings {
     pub document_space: ColorSpace,
     pub reference_white_nits: f64,
     pub peak_luminance_nits: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compositing_space: Option<ColorSpace>,
 }
 fn reference_white() -> f64 {
     203.
@@ -55,6 +58,7 @@ impl Default for ColorSettings {
             document_space: ColorSpace::Srgb,
             reference_white_nits: reference_white(),
             peak_luminance_nits: peak_white(),
+            compositing_space: None,
         }
     }
 }
@@ -240,6 +244,11 @@ fn encode(v: f64, space: ColorSpace) -> f64 {
 }
 impl ColorSettings {
     pub fn validate(&self) -> Result<(), String> {
+        if self.compositing_space.is_some_and(|space| {
+            space != ColorSpace::DisplayP3 || self.document_space != ColorSpace::DisplayP3
+        }) {
+            return Err("Unsupported color compositing space".into());
+        }
         if !self.reference_white_nits.is_finite()
             || !(1. ..=1000.).contains(&self.reference_white_nits)
             || !self.peak_luminance_nits.is_finite()
@@ -250,8 +259,27 @@ impl ColorSettings {
         }
         Ok(())
     }
-    /// Straight source components -> straight extended linear sRGB.
+    pub fn uses_encoded_p3(&self) -> bool {
+        self.compositing_space == Some(ColorSpace::DisplayP3)
+    }
+
+    /// Straight source components in the document's working representation.
     pub fn to_working(&self, rgb: [f64; 3], space: ColorSpace) -> [f64; 3] {
+        if self.uses_encoded_p3() && space == ColorSpace::DisplayP3 {
+            return rgb;
+        }
+        self.linear_srgb_to_working(self.to_linear_srgb(rgb, space))
+    }
+
+    pub(crate) fn linear_srgb_to_working(&self, rgb: [f64; 3]) -> [f64; 3] {
+        if self.uses_encoded_p3() {
+            mul(inverse(P3), mul(SRGB, rgb)).map(srgb_encode)
+        } else {
+            rgb
+        }
+    }
+
+    fn to_linear_srgb(&self, rgb: [f64; 3], space: ColorSpace) -> [f64; 3] {
         if space == ColorSpace::LinearSrgb {
             return rgb;
         }
@@ -281,6 +309,7 @@ impl ColorSettings {
     pub fn prepare_from_working(&self, space: ColorSpace) -> FromWorkingTransform {
         FromWorkingTransform {
             settings: *self, space,
+            from_encoded_p3: self.uses_encoded_p3().then(|| inverse(SRGB)),
             destination: if matches!(space, ColorSpace::Srgb | ColorSpace::LinearSrgb) { IDENTITY } else { inverse(matrix(space)) },
             adaptation: if d50(space) { inverse(D50_TO_D65) } else { IDENTITY },
         }
@@ -316,11 +345,23 @@ impl ColorSettings {
 pub struct FromWorkingTransform {
     settings: ColorSettings,
     space: ColorSpace,
+    from_encoded_p3: Option<Matrix>,
     destination: Matrix,
     adaptation: Matrix,
 }
 impl FromWorkingTransform {
     pub fn apply(&self, rgb: [f64; 3]) -> [f64; 3] {
+        if self.from_encoded_p3.is_some() && self.space == ColorSpace::DisplayP3 {
+            return rgb;
+        }
+        self.encode_linear(self.linear_srgb(rgb))
+    }
+
+    fn linear_srgb(&self, rgb: [f64; 3]) -> [f64; 3] {
+        self.from_encoded_p3.map_or(rgb, |matrix| mul(matrix, mul(P3, rgb.map(srgb_decode))))
+    }
+
+    fn encode_linear(&self, rgb: [f64; 3]) -> [f64; 3] {
         let space = self.space;
         if space == ColorSpace::LinearSrgb {
             return rgb;
@@ -351,17 +392,19 @@ pub struct OutputTransform { transform: FromWorkingTransform, output: ColorOutpu
 impl OutputTransform {
     pub fn apply(&self, p: Pixel) -> [f32; 4] {
         let out = self.output;
-        let mut rgb = p.rgb().map(f64::from);
+        let rgb = p.rgb().map(f64::from);
         // Reinhard et al. (2002), equation 4, global white-point operator.
         // https://www-old.cs.utah.edu/docs/techreports/2002/pdf/UUCS-02-001.pdf
         // No automatic exposure or local dodging/burning is implied here.
-        if out.tone_map == ToneMap::Reinhard {
-            let y = mul(SRGB, rgb)[1].max(0.);
+        let mut v = if out.tone_map == ToneMap::Reinhard {
+            let linear = self.transform.linear_srgb(rgb);
+            let y = mul(SRGB, linear)[1].max(0.);
             let white = self.transform.settings.peak_luminance_nits / self.transform.settings.reference_white_nits;
             let gain = (1. + y / (white * white)) / (1. + y);
-            rgb = rgb.map(|c| c * gain);
-        }
-        let mut v = self.transform.apply(rgb);
+            self.transform.encode_linear(linear.map(|c| c * gain))
+        } else {
+            self.transform.apply(rgb)
+        };
         if out.tone_map != ToneMap::None {
             v = v.map(|c| c.clamp(0., 1.));
         }

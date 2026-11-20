@@ -2491,7 +2491,8 @@ impl Compositor<'_, '_, '_> {
     }
     fn color_controls(&mut self, input: Surface, controls: Option<&futureox_design_kernel::color_controls::ColorControls>) -> Result<Surface, String> {
         let Some(controls) = controls.filter(|c| !c.is_identity()) else { return Ok(input); };
-        let matrix = controls.uniforms(self.scene.color_management.is_some());
+        let settings = self.scene.color_management;
+        let matrix = controls.uniforms(settings.is_some(), settings.is_some_and(|color| color.uses_encoded_p3()));
         self.frame.run(60., input.rect, &[input], |u| u[36..76].copy_from_slice(&matrix))
     }
     fn effects(

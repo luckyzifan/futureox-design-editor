@@ -188,6 +188,7 @@ export class ColorPresenter {
   async present(linear: Float32Array, width: number, height: number, settings: ColorSettings) {
     if (linear.length !== width * height * 4) throw new Error('浮点显示尺寸不匹配')
     this.prepare(width, height)
+    this.canvas.dataset.workingSpace = settings.compositingSpace ?? 'srgb-linear'
     const encoded = color_encode_display(linear, JSON.stringify(settings), this.space),
       half = float16_encode(encoded)
     this.device.pushErrorScope('validation')

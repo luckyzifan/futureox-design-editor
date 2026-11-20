@@ -191,7 +191,7 @@ impl Asset {
         let rows = Rows {
             width: self.width,
             height: self.height,
-            managed: settings.is_some(),
+            settings,
             failed: self.failed.clone(),
             totals: self.totals.clone(),
             local_resident: Cell::new(0),
@@ -223,7 +223,7 @@ struct Cache {
 pub(crate) struct Rows {
     pub width: u32,
     pub height: u32,
-    managed: bool,
+    settings: Option<ColorSettings>,
     failed: Arc<AtomicBool>,
     totals: Arc<SampleTotals>,
     local_resident: Cell<usize>,
@@ -241,15 +241,16 @@ fn charge(live: &AtomicUsize, peak: &AtomicUsize, local: &Cell<usize>, bytes: us
     };
     peak.fetch_max(held, Ordering::Relaxed);
 }
-fn pixel_from(managed: bool, p: &[u8]) -> Pixel {
-    if managed {
+fn pixel_from(settings: Option<ColorSettings>, p: &[u8]) -> Pixel {
+    if let Some(settings) = settings {
         let [rgb, alpha] = crate::image_rows::srgb8_channels();
-        Pixel::rgba(
-            rgb[p[0] as usize],
-            rgb[p[1] as usize],
-            rgb[p[2] as usize],
-            alpha[p[3] as usize],
-        )
+        let linear = [p[0], p[1], p[2]].map(|c| rgb[c as usize]);
+        let [r, g, b] = if settings.uses_encoded_p3() {
+            settings.linear_srgb_to_working(linear.map(f64::from)).map(|v| v as f32)
+        } else {
+            linear
+        };
+        Pixel::rgba(r, g, b, alpha[p[3] as usize])
     } else {
         Pixel::rgba(
             p[0] as f32 / 255.,
@@ -377,7 +378,7 @@ impl Rows {
                     span.bytes[index + 2],
                     span.bytes[index + 3],
                 ];
-                return pixel_from(self.managed, &p);
+                return pixel_from(self.settings, &p);
             }
         }
         let Cache {
@@ -414,7 +415,7 @@ impl Rows {
                 .fetch_add(line_bytes as u64, Ordering::Relaxed);
         }
         let p = &line[x as usize * 4..][..4];
-        pixel_from(self.managed, p)
+        pixel_from(self.settings, p)
     }
 }
 impl Drop for Rows {

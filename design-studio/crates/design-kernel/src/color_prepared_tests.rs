@@ -46,7 +46,7 @@ fn prepared_output_matches_original_word_for_word() {
     let spaces=[ColorSpace::Srgb,ColorSpace::LinearSrgb,ColorSpace::DisplayP3,ColorSpace::LinearP3,
         ColorSpace::Rec2020,ColorSpace::LinearRec2020,ColorSpace::A98,ColorSpace::ProPhoto,ColorSpace::XyzD50,ColorSpace::XyzD65];
     let values=[-2.,-0.25,-0.0,0.,0.0031308,0.04045,0.125,0.5,1.,2.];
-    for settings in [ColorSettings::default(),ColorSettings{document_space:ColorSpace::DisplayP3,reference_white_nits:100.,peak_luminance_nits:400.}] {
+    for settings in [ColorSettings::default(),ColorSettings{document_space:ColorSpace::DisplayP3,reference_white_nits:100.,peak_luminance_nits:400.,..Default::default()}] {
         for space in spaces {
             let transform=settings.prepare_from_working(space);
             for &r in &values {for &g in &values {for &b in &values {
@@ -61,4 +61,23 @@ fn prepared_output_matches_original_word_for_word() {
             }}}
         }
     }
+}
+
+#[test]
+fn encoded_p3_composites_before_converting_to_the_output_space() {
+    let settings = ColorSettings {
+        document_space: ColorSpace::DisplayP3,
+        compositing_space: Some(ColorSpace::DisplayP3),
+        ..Default::default()
+    };
+    let white = settings.parse("color(display-p3 1 1 1)", 1.).unwrap();
+    let shadow = settings.parse("color(display-p3 0 0 0 / .35)", 1.).unwrap();
+    let shaded = Pixel(std::array::from_fn(|i| shadow.0[i] + white.0[i] * (1. - shadow.0[3])));
+    let srgb = settings.output(shaded, ColorOutput { space: ColorSpace::Srgb, tone_map: ToneMap::Clip });
+    assert_eq!(srgb.map(|v| (v * 255.).round() as u8), [166, 166, 166, 255]);
+
+    let p3 = [1.5, -0.25, 0.25];
+    let linear = ColorSettings::default().to_working(p3, ColorSpace::DisplayP3);
+    assert_eq!(settings.from_working(p3, ColorSpace::DisplayP3), p3);
+    assert_eq!(settings.from_working(p3, ColorSpace::LinearSrgb), linear);
 }

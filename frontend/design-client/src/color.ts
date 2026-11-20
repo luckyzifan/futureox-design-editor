@@ -17,6 +17,7 @@ export type ColorSettings = {
   documentSpace: ColorSpace
   referenceWhiteNits: number
   peakLuminanceNits: number
+  compositingSpace?: 'display-p3' | null
 }
 export type ColorOutput = { space: ColorSpace; toneMap: 'clip' | 'reinhard' | 'none' }
 export const defaultColorSettings = (): ColorSettings => ({
@@ -28,6 +29,8 @@ export function validColorSettings(v: ColorSettings) {
   return (
     !!v &&
     colorSpaces.includes(v.documentSpace) &&
+    (v.compositingSpace == null ||
+      (v.compositingSpace === 'display-p3' && v.documentSpace === 'display-p3')) &&
     Number.isFinite(v.referenceWhiteNits) &&
     v.referenceWhiteNits >= 1 &&
     v.referenceWhiteNits <= 1000 &&
@@ -36,7 +39,7 @@ export function validColorSettings(v: ColorSettings) {
     v.peakLuminanceNits <= 10000 &&
     1.2 + 0.42 * Math.log10(v.peakLuminanceNits / 1000) > 0 &&
     Object.keys(v).every((k) =>
-      ['documentSpace', 'referenceWhiteNits', 'peakLuminanceNits'].includes(k),
+      ['documentSpace', 'referenceWhiteNits', 'peakLuminanceNits', 'compositingSpace'].includes(k),
     )
   )
 }

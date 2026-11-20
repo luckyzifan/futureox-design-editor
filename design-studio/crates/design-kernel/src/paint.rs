@@ -305,6 +305,7 @@ fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resid
     let unmanaged_byte_gray = settings.is_none()
         && matches!(decoded.color(), image::ColorType::L8 | image::ColorType::La8);
     if profile.is_none() && matches!(space, None | Some(crate::color::ColorSpace::Srgb))
+        && !settings.is_some_and(|settings| settings.uses_encoded_p3())
         && (byte_rgb || unmanaged_byte_gray)
     {
         let bytes = decoded.into_rgba8();

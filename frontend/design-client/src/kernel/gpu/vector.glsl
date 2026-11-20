@@ -956,11 +956,14 @@ vec3 ccRows(vec4 p,int base){vec3 result=vec3(0);for(int i=0;i<3;i++){vec4 row=u
 vec4 colorControlsPixel(vec4 p){
  if(p.a==0.)return p;if(u[12].x<.5)return vec4(ccRows(p,9),p.a);
  vec3 straight=vec3(divideRN(p.r,p.a),divideRN(p.g,p.a),divideRN(p.b,p.a));
+ bool encodedWorking=u[12].y>.5;
+ if(encodedWorking)straight=vec3(ccDecode(straight.r),ccDecode(straight.g),ccDecode(straight.b));
  vec3 local=ccRows(vec4(straight,0),13);
  vec3 encoded=vec3(ccEncode(local.r),ccEncode(local.g),ccEncode(local.b));
  vec3 adjusted=ccRows(vec4(encoded,1),9);
  vec3 decoded=vec3(ccDecode(adjusted.r),ccDecode(adjusted.g),ccDecode(adjusted.b));
  vec3 result=ccRows(vec4(decoded,0),16);
+ if(encodedWorking)result=vec3(ccEncode(result.r),ccEncode(result.g),ccEncode(result.b));
  return vec4(mulRN(result.r,p.a),mulRN(result.g,p.a),mulRN(result.b,p.a),p.a);
 }
 vec4 motionKernelTap(uint i){return texelFetch(sourceB,ivec2(int(i%256u),int(i/256u)),0);}
@@ -1239,7 +1242,20 @@ vec4 analyticDisplayColor(vec4 value){
  vec4 base=floor(scaled);vec4 bytes=base+vec4(greaterThanEqual(scaled-base,vec4(.5)));
  vec4 encoded=bytes/255.;return vec4(encoded.rgb*encoded.a,encoded.a);
 }
-vec4 displayColor(vec4 value){if(value.a<=0.)return vec4(0);vec3 c=value.rgb/value.a;if(u[60].w<.5)c=clamp(c,vec3(0),vec3(1));vec3 x=abs(c),encoded=mix(1.055*pow(x,vec3(1./2.4))-.055,12.92*x,lessThanEqual(x,vec3(.0031308)));return vec4(sign(c)*encoded*value.a,value.a);}
+vec4 displayColor(vec4 value){
+ if(value.a<=0.)return vec4(0);
+ vec3 c=value.rgb/value.a;
+ if(u[61].y>.5){
+  vec3 x=abs(c);
+  vec3 p3=sign(c)*mix(pow((x+.055)/1.055,vec3(2.4)),x/12.92,lessThanEqual(x,vec3(.04045)));
+  c=vec3(dot(vec3(1.22494018,-.22494018,0.),p3),
+         dot(vec3(-.04205695,1.04205695,0.),p3),
+         dot(vec3(-.01963755,-.07863605,1.09827360),p3));
+ }
+ if(u[60].w<.5)c=clamp(c,vec3(0),vec3(1));
+ vec3 x=abs(c),encoded=mix(1.055*pow(x,vec3(1./2.4))-.055,12.92*x,lessThanEqual(x,vec3(.0031308)));
+ return vec4(sign(c)*encoded*value.a,value.a);
+}
 #ifndef SOLID_BATCH
 void main(){vec2 p=gl_FragCoord.xy;if((int(u[4].x)==14||((int(u[4].x)==18||int(u[4].x)==33)&&u[4].y>.5)))p.y=u[0].w-p.y;color=shade(p+u[0].xy);if(u[60].z>.5)color=displayColor(color);else if(int(u[4].x)==14&&u[61].x>.5)color=analyticDisplayColor(color);else if(u[60].x<.5&&int(u[4].x)!=15&&int(u[4].x)!=16&&int(u[4].x)!=44)color=roundEven(clamp(color,vec4(0),vec4(1))*255.)/255.;}
 

@@ -3,6 +3,7 @@
 //! The Core Image basis/ordering is recorded by coreimage-color-probe.swift.
 //! RGB may remain negative or above reference white; alpha is never adjusted.
 use crate::blend::{Pixel, Surface};
+use crate::color::{ColorSettings, ColorSpace};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
@@ -56,26 +57,37 @@ impl ColorControls {
             (hue[row][0]*controls[0][col] + hue[row][1]*controls[1][col]) + hue[row][2]*controls[2][col]
         })
     }
-    pub fn uniforms(&self, managed: bool) -> [f32; 40] {
-        let mut result=[0_f32;40]; result[..12].copy_from_slice(&self.matrix());
-        if !managed || self.space.is_none() { return result; }
-        result[12]=1.;
-        let settings=crate::color::ColorSettings::default();
-        let linear=if self.space==Some(crate::color::ColorSpace::DisplayP3) {crate::color::ColorSpace::LinearP3} else {crate::color::ColorSpace::LinearSrgb};
+    pub fn uniforms(&self, managed: bool, encoded_p3: bool) -> [f32; 40] {
+        let mut result = [0_f32; 40];
+        result[..12].copy_from_slice(&self.matrix());
+        let Some(space) = self.space.filter(|_| managed) else { return result; };
+        if encoded_p3 && space == ColorSpace::DisplayP3 {
+            return result;
+        }
+        result[12] = 1.;
+        result[13] = f32::from(encoded_p3);
+        let settings = ColorSettings::default();
+        let working = if encoded_p3 { ColorSpace::LinearP3 } else { ColorSpace::LinearSrgb };
+        let control = if space == ColorSpace::DisplayP3 { ColorSpace::LinearP3 } else { ColorSpace::LinearSrgb };
         for col in 0..3 {
-            let basis=std::array::from_fn(|i|f64::from(i==col));
-            let pre=settings.from_working(basis,linear); let post=settings.to_working(basis,linear);
-            for row in 0..3 {result[16+row*4+col]=pre[row] as f32;result[28+row*4+col]=post[row] as f32;}
+            let basis = std::array::from_fn(|i| f64::from(i == col));
+            let pre = settings.from_working(settings.to_working(basis, working), control);
+            let post = settings.from_working(settings.to_working(basis, control), working);
+            for row in 0..3 {
+                result[16 + row * 4 + col] = pre[row] as f32;
+                result[28 + row * 4 + col] = post[row] as f32;
+            }
         }
         result
     }
-    pub fn apply(&self, surface: &mut Surface, managed: bool) {
+    pub fn apply(&self, surface: &mut Surface, settings: Option<ColorSettings>) {
         if self.is_identity() { return; }
         let matrix = self.matrix();
-        let settings=crate::color::ColorSettings::default();
-        let conversion=self.space.filter(|_|managed).map(|space|(space,settings.prepare_from_working(space)));
+        let conversion = settings.zip(self.space)
+            .filter(|(settings, space)| settings.compositing_space != Some(*space))
+            .map(|(settings, space)| (settings, space, settings.prepare_from_working(space)));
         for pixel in &mut surface.pixels {
-            if let Some((space, transform))=&conversion {
+            if let Some((settings, space, transform)) = &conversion {
                 let alpha=pixel.0[3];if alpha==0. {continue}
                 let input=transform.apply([0,1,2].map(|i|f64::from(pixel.0[i])/f64::from(alpha)));
                 let encoded=apply_matrix(Pixel([input[0] as f32,input[1] as f32,input[2] as f32,1.]),&matrix);

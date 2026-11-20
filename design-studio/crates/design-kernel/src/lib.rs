@@ -804,10 +804,10 @@ mod wasm {
             .map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
-    pub fn color_controls_uniforms(value: &str, managed: bool) -> Result<Vec<f32>, JsValue> {
+    pub fn color_controls_uniforms(value: &str, managed: bool, encoded_p3: Option<bool>) -> Result<Vec<f32>, JsValue> {
         let controls: crate::color_controls::ColorControls = serde_json::from_str(value).map_err(|e| JsValue::from_str(&e.to_string()))?;
         if !controls.validate() { return Err(JsValue::from_str("Invalid color controls")); }
-        Ok(controls.uniforms(managed).to_vec())
+        Ok(controls.uniforms(managed, encoded_p3.unwrap_or(false)).to_vec())
     }
     #[wasm_bindgen]
     pub fn color_controls_matrix(value: &str) -> Result<Vec<f32>, JsValue> {
