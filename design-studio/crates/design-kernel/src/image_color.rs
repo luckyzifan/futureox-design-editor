@@ -1,7 +1,8 @@
 //! Bitmap profiles are decoded once in Rust for every rendering backend.
 //! PNG cICP takes precedence over ICC per PNG 3. ICC transforms use moxcms;
 //! unsupported source models fail rather than being mislabeled as sRGB.
-use crate::color::{ColorSettings, ColorSpace};
+use crate::blend::Pixel;
+use crate::color::{srgb_encode, ColorSettings, ColorSpace};
 use image::{ImageDecoder, Rgba32FImage};
 
 pub fn png_space(bytes: &[u8]) -> Result<Option<ColorSpace>, String> {
@@ -228,6 +229,17 @@ pub fn to_working(image: &mut Rgba32FImage, settings: ColorSettings, space: Opti
 #[path="image_color_prepared_tests.rs"]
 mod prepared_tests;
 
+pub(crate) fn to_sdr_working(
+    image: &mut Rgba32FImage,
+    space: Option<ColorSpace>,
+    icc: Option<&[u8]>,
+) -> Result<(), String> {
+    if matches!(space, Some(ColorSpace::Pq | ColorSpace::Hlg)) {
+        return Err("HDR bitmap requires a color-managed document; source bytes retained".into());
+    }
+    to_working(image, ColorSettings::default(), space, icc)
+}
+
 /// Tagged bitmaps in an SDR document still require a source-profile transform.
 /// Reuse the managed decoder, then encode the sRGB destination before the
 /// existing RGBA8 storage boundary. Source asset bytes remain untouched.
@@ -236,11 +248,8 @@ pub fn to_sdr(
     space: Option<ColorSpace>,
     icc: Option<&[u8]>,
 ) -> Result<(), String> {
-    if matches!(space, Some(ColorSpace::Pq | ColorSpace::Hlg)) {
-        return Err("HDR bitmap requires a color-managed document; source bytes retained".into());
-    }
+    to_sdr_working(image, space, icc)?;
     let settings = ColorSettings::default();
-    to_working(image, settings, space, icc)?;
     for pixel in image.pixels_mut() {
         let rgb = settings.from_working(
             [
@@ -255,6 +264,116 @@ pub fn to_sdr(
         }
     }
     Ok(())
+}
+
+fn encode_sdr_channel(linear: f32) -> f32 {
+    srgb_encode(f64::from(linear)).clamp(0., 1.) as f32
+}
+
+/// Exact legacy SDR storage quantization for opaque source pixels. Each
+/// threshold is the first representable f32 whose encoded, cast, scaled and
+/// ties-to-even rounded value enters the next byte. The coarse table only
+/// bounds the lookup; it never approximates the transfer or the rounding.
+pub(crate) struct SdrStorage {
+    thresholds: [f32; 255],
+    coarse: [u8; 4096],
+}
+
+impl SdrStorage {
+    pub(crate) fn shared() -> &'static Self {
+        static LOOKUP: std::sync::OnceLock<SdrStorage> = std::sync::OnceLock::new();
+        LOOKUP.get_or_init(|| {
+            let thresholds = std::array::from_fn(|i| {
+                let code = (i + 1) as f32;
+                let mut low = 0u32;
+                let mut high = 1f32.to_bits();
+                while low < high {
+                    let middle = low + (high - low) / 2;
+                    let quantized =
+                        (encode_sdr_channel(f32::from_bits(middle)) * 255.).round_ties_even();
+                    if quantized < code {
+                        low = middle + 1;
+                    } else {
+                        high = middle;
+                    }
+                }
+                f32::from_bits(low)
+            });
+            let coarse = std::array::from_fn(|i| {
+                thresholds.partition_point(|&threshold| threshold <= i as f32 / 4096.) as u8
+            });
+            Self { thresholds, coarse }
+        })
+    }
+
+    fn channel(&self, linear: f32) -> f32 {
+        if linear == 0. {
+            return linear; // Retain the existing signed-zero storage boundary.
+        }
+        if linear < 0. {
+            return 0.;
+        }
+        if linear >= 1. {
+            return 1.;
+        }
+        if linear.is_nan() {
+            return (encode_sdr_channel(linear) * 255.).round_ties_even() / 255.;
+        }
+        // Scaling a finite f32 by a power of two gives its exact coarse cell.
+        let mut code = self.coarse[(linear * 4096.) as usize] as usize;
+        while code < self.thresholds.len() && self.thresholds[code] <= linear {
+            code += 1;
+        }
+        code as f32 / 255.
+    }
+
+    pub(crate) fn pixel(&self, [r, g, b, a]: [f32; 4]) -> Pixel {
+        if a == 1. {
+            Pixel([self.channel(r), self.channel(g), self.channel(b), a])
+        } else {
+            Pixel::rgba(encode_sdr_channel(r), encode_sdr_channel(g), encode_sdr_channel(b), a)
+                .rgba8_quantized()
+        }
+    }
+}
+
+#[cfg(test)]
+mod sdr_storage_tests {
+    use super::{encode_sdr_channel, Pixel, SdrStorage};
+
+    fn verify_pixel(samples: [f32; 4]) {
+        let [r, g, b, a] = samples;
+        let reference =
+            Pixel::rgba(encode_sdr_channel(r), encode_sdr_channel(g), encode_sdr_channel(b), a)
+                .rgba8_quantized();
+        assert_eq!(
+            SdrStorage::shared().pixel(samples).0.map(f32::to_bits),
+            reference.0.map(f32::to_bits),
+            "{samples:?}"
+        );
+    }
+
+    #[test]
+    fn opaque_sdr_lookup_preserves_thresholds_cells_and_alpha_boundaries() {
+        for &threshold in &SdrStorage::shared().thresholds {
+            let bits = threshold.to_bits();
+            verify_pixel([f32::from_bits(bits - 1), threshold, f32::from_bits(bits + 1), 1.]);
+        }
+        for i in 0..=4096 {
+            let value = i as f32 / 4096.;
+            let bits = value.to_bits();
+            verify_pixel([f32::from_bits(bits.saturating_sub(1)), value, f32::from_bits(bits + 1), 1.]);
+        }
+        let mut bits = 1u32;
+        for _ in 0..65_536 {
+            bits = bits.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let linear = f32::from_bits(bits % 1f32.to_bits());
+            verify_pixel([linear, -linear, 1. - linear, 1.]);
+        }
+        for a in [0., 0.1, 0.5, 0.999, 1.] {
+            verify_pixel([-0., 0.003_130_8, 1.25, a]);
+        }
+    }
 }
 
 #[cfg(test)]
