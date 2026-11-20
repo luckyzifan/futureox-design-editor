@@ -3758,15 +3758,15 @@ impl Painter<'_> {
                         effects::linear_tent_blur(&background, radius, true)?
                     } else if cropped {
                         let right = origin.x + f64::from(capture.w);
-                        let flush = self.flush_backdrop_frame.filter(|frame| {
+                        let covering_frame = self.flush_backdrop_frame.filter(|frame| {
                             n.kind == "vector" && n.transform == Transform::default()
                                 && n.width == frame.width && n.height == frame.height
                                 && frame.render_children().iter().any(|child| child == id)
-                                && self.prepared[&frame.id].fill_bounds.is_some_and(|b| {
-                                    (b.x + b.width - right).abs() <= 1e-8
-                                        && (right.round() - right).abs() <= 1e-8
-                                })
-                        }).map(|_| right);
+                        }).and_then(|frame| self.prepared[&frame.id].fill_bounds);
+                        let flush = covering_frame.filter(|bounds| {
+                            (bounds.x + bounds.width - right).abs() <= 1e-8
+                                && (right.round() - right).abs() <= 1e-8
+                        });
                         // The trailing half of a fractional capture texel can
                         // cross a device pixel edge. Retain that edge sample
                         // for the first tap beyond the cropped Figma surface.
@@ -3778,15 +3778,54 @@ impl Painter<'_> {
                             && edge > f64::from(input.x) && edge < f64::from(input.right())
                             && crate::coverage::rectangle(&prepared.fill).is_some_and(|b| b[2] == right))
                             .then_some(edge);
-                        let guard = flush.or(trailing).map(|edge| {
+                        let guard = flush.map(|_| right).or(trailing).map(|edge| {
                             self.resolve_backdrop(
                                 Rect::new(0, 0, 1, capture.h),
                                 Point::new(edge - 0.5, origin.y),
                                 backdrop_inputs, None,
                             )
                         }).transpose()?;
-                        effects::portable_tent_blur_with_right_sample(&background, radius, true,
-                            guard.as_ref().map(|g| g.pixels.as_slice()))?
+                        let mut filtered = effects::portable_tent_blur_with_right_sample(&background, radius, true,
+                            guard.as_ref().map(|g| g.pixels.as_slice()))?;
+                        let dither_frame = covering_frame.filter(|frame| {
+                            self.profile == crate::fidelity::RasterProfile::Figma
+                                && (frame.x - frame.x.round()).abs() <= 1e-8
+                                && (frame.y - frame.y.round()).abs() <= 1e-8
+                                && prepared.fill_bounds.is_some_and(|bounds| {
+                                    (bounds.x - frame.x).abs() <= 1e-8
+                                        && (bounds.y - frame.y).abs() <= 1e-8
+                                        && (bounds.width - frame.width).abs() <= 1e-8
+                                        && (bounds.height - frame.height).abs() <= 1e-8
+                                })
+                        });
+                        if let Some(frame) = dither_frame {
+                            // The complete frame and its crops share one 2x
+                            // dither lattice, including internal export tile edges.
+                            let x0 = (origin.x - frame.x).round() as i32;
+                            let y0 = (origin.y - frame.y).round() as i32;
+                            let width = filtered.rect.w as usize;
+                            for (y, row) in filtered.pixels.chunks_exact_mut(width).enumerate() {
+                                crate::render_cancellation::checkpoint()?;
+                                for (x, pixel) in row.iter_mut().enumerate() {
+                                    let alpha = pixel.0[3];
+                                    if alpha == 0. {
+                                        continue;
+                                    }
+                                    let phase = [
+                                        (x0 + x as i32).rem_euclid(512) as u32,
+                                        (y0 + y as i32).rem_euclid(512) as u32,
+                                    ];
+                                    let noise = crate::figma_gradient::dither_offset(phase)
+                                        .map_err(|error| error.to_string())?;
+                                    let mut rgba = pixel.0.map(|value| (value + noise).abs().min(1.));
+                                    if alpha == 1. {
+                                        rgba[3] = 1.;
+                                    }
+                                    *pixel = Pixel(rgba).rgba8_quantized();
+                                }
+                            }
+                        }
+                        filtered
                     } else {
                         self.blur_filter(radius).apply(&background)?
                     };
