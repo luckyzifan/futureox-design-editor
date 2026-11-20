@@ -10,7 +10,7 @@ import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Sidecar } from '../src/sidecar.mjs'
-import { describePackage, hashPackageIdentity, hashReadonlyFile } from './release-package-resources.mjs'
+import { describePackage, hashPackageIdentity, hashReadonlyFile, verifyPublishedInstallerFile } from './release-package-resources.mjs'
 import { assertProductName, bundleLaunchContract, readAsarFile, readAsarJson, resolveInstalledBundle, workspaceSelectionSeed } from './release-deb-install.mjs'
 import { assessObservedDesktopSession, bindInstalledDeb, bindInstalledDmg, desktopFlowBaseline, inspectHostSignature, officialPackageBlockers, planReleaseLaunch } from './release-session-report.mjs'
 
@@ -273,12 +273,7 @@ async function restoreSaveDialog(app) {
 
 async function verifyPublishedInstaller(verificationPath, installerPath) {
   const verification = JSON.parse(await readFile(verificationPath, 'utf8'))
-  const release = verification.packages?.[`${process.platform}-${process.arch}`]
-  const sha = hashReadonlyFile(installerPath).sha256
-  if (verification.build?.profile !== 'release' || release?.sha256 !== sha) {
-    throw new Error('Installer hash or platform does not match the release verification')
-  }
-  return sha
+  return verifyPublishedInstallerFile(installerPath, verification, `${process.platform}-${process.arch}`).sha256
 }
 
 async function readVerification(verificationPath, resourcesRoot, installerPath = null) {
@@ -288,10 +283,11 @@ async function readVerification(verificationPath, resourcesRoot, installerPath =
   const sidecarName = `sidecar/futureox-design-desktop-backend${process.platform === 'win32' ? '.exe' : ''}`
   const sidecar = path.join(resourcesRoot, sidecarName)
   const sidecarHash = hashReadonlyFile(sidecar).sha256
-  const release = verification.packages?.[`${process.platform}-${process.arch}`]
+  const triple = `${process.platform}-${process.arch}`
+  const release = verification.packages?.[triple]
   if (release && verification.build) {
     if (verification.build.profile !== 'release') throw new Error(`release verification profile is ${verification.build.profile}, not release`)
-    if (installerPath && hashReadonlyFile(installerPath).sha256 !== release.sha256) throw new Error('Installer hash does not match the release verification')
+    if (installerPath) verifyPublishedInstallerFile(installerPath, verification, triple)
     if (release.appAsarSha256 !== actual) throw new Error('release verification app.asar hash does not match this bundle')
     if (release.nativeSha256?.[sidecarName] !== sidecarHash) throw new Error('release verification sidecar hash does not match this bundle')
     const publishedNativePaths = Object.keys(release.nativeSha256)

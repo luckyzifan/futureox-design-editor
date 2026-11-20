@@ -170,11 +170,17 @@ test('renamed Windows and Linux packages identify their targets from the runtime
   }
 })
 
-test('a published release record binds the packaged ASAR, WASM, and native files', () => {
+test('a published release record binds the installer bytes and packaged ASAR, WASM, and native files', async t => {
   const archive = 'resources/app.asar'
   const wasm = archive + '/renderer/kernel/design_kernel_bg.wasm'
   const binary = 'resources/bin/design-render.exe'
-  const [archiveHash, wasmHash, binaryHash, installerHash] = ['a', 'b', 'c', 'd'].map(digit => digit.repeat(64))
+  const [archiveHash, wasmHash, binaryHash] = ['a', 'b', 'c'].map(digit => digit.repeat(64))
+  const directory = await mkdtemp(path.join(tmpdir(), 'fx-published-installer-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const installerBytes = Buffer.from('frozen Windows release archive bytes')
+  const installerPath = path.join(directory, 'release-copy.zip')
+  const installerHash = createHash('sha256').update(installerBytes).digest('hex')
+  await writeFile(installerPath, installerBytes)
   const report = {
     producedFrom: 'release_package_bytes', triple: 'win32-x64', target: 'x86_64-pc-windows-gnullvm',
     native: [{ packagePath: binary }],
@@ -189,10 +195,18 @@ test('a published release record binds the packaged ASAR, WASM, and native files
     appAsarSha256: archiveHash, kernelWasmSha256: wasmHash,
     nativeSha256: { 'bin/design-render.exe': binaryHash },
   }
-  const record = { version: '0.0.0.1', packages: { 'win32-x64': item } }
+  const record = { version: '0.0.0.1', build: { profile: 'release' }, packages: { 'win32-x64': item } }
   const matched = verifyPublishedRuntime(report, record)
   assert.equal(matched.rustTarget, 'x86_64-pc-windows-gnullvm')
   assert.deepEqual(matched.matchedFiles, [archive, wasm, binary])
+  assert.equal(Object.hasOwn(matched, 'verifiedInstaller'), false)
+  assert.deepEqual(verifyPublishedRuntime(report, record, installerPath).verifiedInstaller, {
+    sha256: installerHash, size: installerBytes.length,
+  })
+  const differentSameSize = Buffer.from(installerBytes)
+  differentSameSize[0] ^= 1
+  await writeFile(installerPath, differentSameSize)
+  assert.throws(() => verifyPublishedRuntime(report, record, installerPath), /Installer hash does not match/)
   const altered = structuredClone(report)
   altered.census.files[1].sha256 = archiveHash
   assert.throws(() => verifyPublishedRuntime(altered, record), /hash mismatch.*design_kernel_bg\.wasm/)
