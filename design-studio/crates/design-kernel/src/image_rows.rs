@@ -66,7 +66,7 @@ impl Decoder {
     pub fn straight_srgb8(&mut self)->Result<Vec<u8>,String>{
         if self.failed||self.row!=0{return Err("PNG row decoder already consumed".into())}
         if self.depth!=png::BitDepth::Eight||self.profile.is_some()||self.space.is_some_and(|v|v!=ColorSpace::Srgb)||
-            self.settings.is_some_and(|s| s.document_space!=ColorSpace::Srgb)||u64::from(self.width)*u64::from(self.height)>16_777_216{return Ok(Vec::new())}
+            self.settings.is_some_and(|s| s.document_space!=ColorSpace::Srgb || s.uses_encoded_p3())||u64::from(self.width)*u64::from(self.height)>16_777_216{return Ok(Vec::new())}
         self.failed=true;
         let mut pixels=Vec::new();pixels.try_reserve_exact(self.width as usize*self.height as usize*4).map_err(|e|e.to_string())?;
         while self.row<self.height{
@@ -292,7 +292,7 @@ mod tests {
         for color in [png::ColorType::Grayscale, png::ColorType::GrayscaleAlpha, png::ColorType::Rgb, png::ColorType::Rgba] {
             let data = uri(1025, 513, color);
             for space in [ColorSpace::Srgb, ColorSpace::DisplayP3] {
-                let settings = ColorSettings { document_space: space, reference_white_nits: 203., peak_luminance_nits: 1000. };
+                let settings = ColorSettings { document_space: space, ..Default::default() };
                 let mut images = crate::paint::Images::default(); images.set_color_settings(Some(settings));
                 let expected = images.image(&data).unwrap();
                 let mut rows = Decoder::new(&data, Some(settings)).unwrap(); let mut actual = Vec::new();
@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn large_image_stream_keeps_full_dimensions_without_lifting_full_decode_guard() {
         let data = uri(4096, 2304, png::ColorType::Rgba);
-        let settings = ColorSettings { document_space: ColorSpace::Srgb, reference_white_nits: 203., peak_luminance_nits: 1000. };
+        let settings = ColorSettings { document_space: ColorSpace::Srgb, ..Default::default() };
         let mut images = crate::paint::Images::default(); images.set_color_settings(Some(settings));
         assert!(images.image(&data).err().unwrap().contains("Decoded image budget exceeded"));
         let mut decoder = Decoder::new(&data, Some(settings)).unwrap(); let mut pixels = 0;
@@ -341,7 +341,7 @@ mod tests {
         }
         let data = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(encoded));
         assert!(data.len() > 12 * 1024 * 1024);
-        let settings = ColorSettings { document_space: ColorSpace::Srgb, reference_white_nits: 203., peak_luminance_nits: 1000. };
+        let settings = ColorSettings { document_space: ColorSpace::Srgb, ..Default::default() };
         let mut decoder = Decoder::new(&data, Some(settings)).unwrap(); let mut count = 0;
         loop {
             let strip = decoder.next_rows().unwrap(); if strip.is_empty() { break; }
@@ -394,7 +394,7 @@ mod tests {
                 encoder.write_header().unwrap().write_image_data(&data).unwrap();
             }
             let data = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(encoded));
-            let settings = ColorSettings { document_space: ColorSpace::DisplayP3, reference_white_nits: 203., peak_luminance_nits: 1000. };
+            let settings = ColorSettings { document_space: ColorSpace::DisplayP3, ..Default::default() };
             let mut images = crate::paint::Images::default(); images.set_color_settings(Some(settings));
             let reference = images.image(&data).unwrap();
             let mut decoder = Decoder::new(&data, Some(settings)).unwrap(); let mut offset = 0;
@@ -410,7 +410,7 @@ mod tests {
     }
     #[test]
     fn row_stream_has_no_whole_image_pixel_or_8192_dimension_quota() {
-        let settings = ColorSettings { document_space: ColorSpace::Srgb, reference_white_nits: 203., peak_luminance_nits: 1000. };
+        let settings = ColorSettings { document_space: ColorSpace::Srgb, ..Default::default() };
         let mut images = crate::paint::Images::default(); images.set_color_settings(Some(settings));
         let reference = images.image(&uri(256, 1, png::ColorType::Grayscale)).unwrap();
         for (width, height) in [(17, 8193), (4097, 4096)] {
@@ -440,7 +440,7 @@ mod tests {
         let mut bytes = base64::engine::general_purpose::STANDARD.decode(original.split_once(',').unwrap().1).unwrap();
         bytes.truncate(bytes.len() - 9);
         let data = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
-        let settings = ColorSettings { document_space: ColorSpace::Srgb, reference_white_nits: 203., peak_luminance_nits: 1000. };
+        let settings = ColorSettings { document_space: ColorSpace::Srgb, ..Default::default() };
         let mut decoder = Decoder::new(&data, Some(settings)).unwrap();
         assert!(decoder.next_rows().is_err());
         assert!(decoder.next_rows().is_err());

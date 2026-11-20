@@ -33,6 +33,7 @@ export class WebGlDriver implements Driver {
   private gl: WebGL2RenderingContext
   private program: WebGLProgram
   private presentProgram: WebGLProgram
+  private encodedP3 = false
   private compileMode?: (mode: number) => WebGLProgram
   private modePrograms = new Map<number, WebGLProgram>()
   private allowedModes = new Set<number>()
@@ -167,6 +168,7 @@ export class WebGlDriver implements Driver {
     gl.disable(gl.DITHER)
   }
   async prepareScene(scene: GpuScene) {
+    this.encodedP3 = scene.colorManagement?.compositingSpace === 'display-p3'
     this.softwareRaster = !!scene.softwareRaster && !this.managed
     const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62 || mode === 65))
     if (Object.keys(scene.nodes).length) modes.add(3)
@@ -749,8 +751,9 @@ export class WebGlDriver implements Driver {
     gl.bindVertexArray(this.quadVao)
     const u = parameters(outputRect || { x: 0, y: 0, w: width, h: height }, r)
     u[16] = 14
-    u[242] = this.linearLight ? 1 : 0
-    u[244] = this.managed && !this.linearLight ? 1 : 0
+    u[242] = this.linearLight || this.encodedP3 ? 1 : 0
+    u[244] = this.managed && !this.linearLight && !this.encodedP3 ? 1 : 0
+    u[245] = this.encodedP3 ? 1 : 0
     previewUniforms(u, preview, true)
     if (bytePreview) u[16] = 33
     const presentProgram = this.managed && preview ? this.compositorProgram(u[16]) : this.presentProgram

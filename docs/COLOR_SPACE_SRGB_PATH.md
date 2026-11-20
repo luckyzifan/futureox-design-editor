@@ -1,8 +1,10 @@
 # sRGB path for canvas, fills, strokes, and export
 
-Unmanaged documents store fill, stroke, and stop colors as encoded sRGB. `#RRGGBB` and `color(srgb r g b / a)` share `color::pixel`. The Figma raster profile composites those bytes in place. It does not decode them to linear light and encode them again on the way out. A managed document decodes every authored color into extended-range linear sRGB, then encodes on output. Alpha is coverage and is not run through a transfer curve.
+Unmanaged documents store fill, stroke, and stop colors as encoded sRGB. `#RRGGBB` and `color(srgb r g b / a)` share `color::pixel`. The Figma raster profile composites those bytes in place. It does not decode them to linear light and encode them again on the way out. Managed documents normally composite in extended-range linear sRGB and encode on output. Alpha is coverage and is not run through a transfer curve.
 
-Sketch `colorSpace` 1 is an sRGB tag, not linear management. Native Sketch composites in that encoded space, so those archives stay unmanaged and re-export as `colorSpace` 1. A document that already has sRGB color management exports `userInfo.com.futureox.design-kernel.linearSrgbComposite` and imports back onto the linear path. Native Sketch preview exports keep that linear management when the flag is present; other `colorSpace` 1 previews stay encoded. An unmanaged source reports color settings as JSON `null`, and PNG row decoding accepts that token instead of requiring `ColorSettings`. Display P3 (`colorSpace` 2) stays managed.
+Sketch `colorSpace` 1 is an sRGB tag, not linear management. Native Sketch composites in that encoded space, so those archives stay unmanaged and re-export as `colorSpace` 1. A document that already has sRGB color management exports `userInfo.com.futureox.design-kernel.linearSrgbComposite` and imports back onto the linear path. Native Sketch preview exports keep that linear management when the flag is present; other `colorSpace` 1 previews stay encoded. An unmanaged source reports color settings as JSON `null`, and PNG row decoding accepts that token instead of requiring `ColorSettings`.
+
+Native Sketch Display P3 (`colorSpace` 2) uses encoded Display P3 for blending and filtering. The importer retains this in `colorManagement.compositingSpace` and keeps the managed floating-point surfaces. Input and output still convert between tagged color spaces. FD stores the setting, and Sketch archives with authored linear Display P3 carry `userInfo.com.futureox.design-kernel.linearDisplayP3Composite` so they reopen in linear sRGB. The display transform uses the document's working color space.
 
 ## Canvas
 
@@ -10,6 +12,7 @@ Sketch `colorSpace` 1 is an sRGB tag, not linear management. Native Sketch compo
 
 - Unmanaged tiles are sRGB bytes. The presenter copies them (`COLOR_MODE` 0).
 - Managed linear tiles are decoded or copied into an `rgba16float` target, then encoded with the IEC 61966-2-1 transfer (`COLOR_MODE` 2) before the 8-bit canvas.
+- Managed Sketch P3 tiles convert from encoded P3 to the sRGB canvas gamut at presentation.
 - The separate float presenter can target `display-p3` when the display gamut matches. That path is not the default 8-bit canvas.
 
 SVG export sets `color-interpolation="sRGB"` on the root and on gradients. Filter effects set `color-interpolation-filters="sRGB"`. An omitted color-control `space` means the unmanaged encoded-sRGB working values, so the SVG matrix stays in sRGB. `linearRGB` would decode before the matrix and disagree with the CPU path. Display P3 color controls are rejected for SVG instead of being relabeled as sRGB.

@@ -6192,7 +6192,8 @@ export class GpuRenderer {
   }
   private colorControls(input: Surface, controls: Effect['colorControls']): Surface {
     if (!controls || (controls.brightness === 0 && controls.contrast === 1 && controls.saturation === 1 && controls.hue === 0)) return input
-    const matrix = color_controls_uniforms(JSON.stringify(controls), !!this.scene.colorManagement)
+    const settings = this.scene.colorManagement
+    const matrix = color_controls_uniforms(JSON.stringify(controls), !!settings, settings?.compositingSpace === 'display-p3')
     return this.run(60, input.rect, [input], u => u.set(matrix, 36))
   }
   private gaussianHorizontalSource(n:GpuNode,input:Rect,output:Rect,radius:number){

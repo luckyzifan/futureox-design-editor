@@ -209,6 +209,12 @@ impl WorkingTransform {
                 transform.transform(pixels, &mut self.row).map_err(|e|e.to_string())?;
                 pixels.copy_from_slice(&self.row);
             }
+            if self.settings.uses_encoded_p3() {
+                for p in image.pixels_mut() {
+                    let rgb = self.settings.linear_srgb_to_working([f64::from(p[0]), f64::from(p[1]), f64::from(p[2])]);
+                    p.0[..3].copy_from_slice(&rgb.map(|c| c as f32));
+                }
+            }
         } else {
             for p in image.pixels_mut() {
                 let rgb = self.settings.to_working([f64::from(p[0]), f64::from(p[1]), f64::from(p[2])], self.space);

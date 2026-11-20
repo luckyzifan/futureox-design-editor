@@ -3514,8 +3514,13 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             }
         }
         Some(2) => {
+            let linear = document
+                .pointer("/userInfo/com.futureox.design-kernel/linearDisplayP3Composite")
+                .and_then(Value::as_bool)
+                == Some(true);
             doc.color_management = Some(crate::color::ColorSettings {
                 document_space: crate::color::ColorSpace::DisplayP3,
+                compositing_space: (!linear).then_some(crate::color::ColorSpace::DisplayP3),
                 ..Default::default()
             });
         }
@@ -8984,7 +8989,14 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             .collect();
         document["userInfo"] = json!({"com.futureox.design-kernel":{"sharedStyleIds":ids}});
     }
-    if doc.color_management.as_ref().is_some_and(|c| c.document_space == crate::color::ColorSpace::Srgb) {
+    let linear_composite_marker = doc.color_management.and_then(|settings| {
+        match settings.document_space {
+            crate::color::ColorSpace::Srgb => Some("linearSrgbComposite"),
+            crate::color::ColorSpace::DisplayP3 if !settings.uses_encoded_p3() => Some("linearDisplayP3Composite"),
+            _ => None,
+        }
+    });
+    if let Some(marker) = linear_composite_marker {
         let user = document
             .as_object_mut()
             .expect("document object")
@@ -9003,7 +9015,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         }
         ns.as_object_mut()
             .expect("kernel userInfo object")
-            .insert("linearSrgbComposite".into(), json!(true));
+            .insert(marker.into(), json!(true));
     }
     // P1-13: document-level containers return as imported. An edited foreign
     // layer style is written back below; an unchanged one stays byte-identical.
@@ -11194,21 +11206,25 @@ mod tests {
 
     #[test]
     fn document_color_space_round_trips() {
-        // 21 号 P0-4: P3 documents map onto colorSpace 2.
-        let mut doc = sample_document();
-        doc.color_management = Some(crate::color::ColorSettings {
-            document_space: crate::color::ColorSpace::DisplayP3,
-            ..Default::default()
-        });
-        let bytes = export_sketch(&doc).unwrap();
-        let files = read_zip(&bytes).unwrap();
-        let document: Value = serde_json::from_slice(&files["document.json"]).unwrap();
-        assert_eq!(document["colorSpace"], 2);
-        let back = import_sketch(&bytes).unwrap();
-        assert_eq!(
-            back.color_management.as_ref().map(|c| c.document_space),
-            Some(crate::color::ColorSpace::DisplayP3)
-        );
+        use crate::color::{ColorSettings, ColorSpace};
+        for compositing_space in [None, Some(ColorSpace::DisplayP3)] {
+            let mut doc = sample_document();
+            doc.color_management = Some(ColorSettings {
+                document_space: ColorSpace::DisplayP3,
+                compositing_space,
+                ..Default::default()
+            });
+            let bytes = export_sketch(&doc).unwrap();
+            let files = read_zip(&bytes).unwrap();
+            let document: Value = serde_json::from_slice(&files["document.json"]).unwrap();
+            assert_eq!(document["colorSpace"], 2);
+            let marker = document.pointer("/userInfo/com.futureox.design-kernel/linearDisplayP3Composite");
+            assert_eq!(marker.and_then(Value::as_bool), compositing_space.is_none().then_some(true));
+            let back = import_sketch(&bytes).unwrap();
+            assert_eq!(back.color_management, doc.color_management);
+            let reopened = crate::binfmt::decode(&crate::binfmt::encode(&back)).unwrap();
+            assert_eq!(reopened.color_management, doc.color_management);
+        }
 
         // and the default document stays unmanaged
         let back = import_sketch(&export_sketch(&sample_document()).unwrap()).unwrap();

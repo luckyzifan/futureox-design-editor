@@ -651,6 +651,7 @@ export class WebGpuDriver implements Driver {
   private solidUploaded = 0
   private solidRanges = new Map<Float32Array, number>()
   private presentPipeline!: GPURenderPipeline
+  private encodedP3 = false
   private linearCapture=false
   private linearCapturePipeline?: GPURenderPipeline
   retainedSampleCapture(){return this.linearCapture&&this.captureDisplay&&!this.presentationDevice}
@@ -855,9 +856,22 @@ export class WebGpuDriver implements Driver {
             '\nfn rationalBlur(point:vec2<f32>,axis:vec2<f32>)->vec4<f32>{return vec4<f32>(0);}' + '\nfn bsCorner4(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>)->vec4<f32>{return a;}') +
         '\n' +
         vectorShader + (paintEntryPoint === 'managedBackgroundFragment' ? managedBackgroundWgsl : '') + `
+fn p3WorkingToLinearSrgb(value:vec4<f32>)->vec4<f32>{
+ if(value.a<=0.){return vec4<f32>(0);}
+ let c=value.rgb/value.a;
+ let x=abs(c);
+ let p3=sign(c)*select(pow((x+0.055)/1.055,vec3<f32>(2.4)),x/12.92,x<=vec3<f32>(0.04045));
+ let linear=vec3<f32>(dot(vec3<f32>(1.22494018,-0.22494018,0.),p3),
+  dot(vec3<f32>(-0.04205695,1.04205695,0.),p3),
+  dot(vec3<f32>(-0.01963755,-0.07863605,1.09827360),p3));
+ return vec4<f32>(linear*value.a,value.a);
+}
 @fragment fn exactPresent(@builtin(position) p:vec4<f32>)->@location(0) vec4<f32>{
  let value=smp(sourceA,p.xy+u(0).xy,u(1));
- if(u(60).z>0.5){return displayColor(value);}
+ if(u(60).z>0.5){
+  if(u(61).y>0.5){return displayColor(p3WorkingToLinearSrgb(value));}
+  return displayColor(value);
+ }
  if(u(61).x>0.5){return analyticDisplayColor(value);}
  if(u(60).x<0.5){return round(clamp(value,vec4<f32>(0),vec4<f32>(1))*255.)/255.;}
  return value;
@@ -1364,8 +1378,9 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     })
   }
   async prepareScene(scene: GpuScene, displayOnly = false, gradientFusion?: boolean) {
+    this.encodedP3 = scene.colorManagement?.compositingSpace === 'display-p3'
     this.linearCapture=import.meta.env.VITE_DESIGN_LINEAR_RETAINED_CAPTURE==='1'&&scene.linearRetainedCapture===true&&displayOnly&&
-      this.captureDisplay&&this.managed&&this.linearLight&&!this.hdr&&!this.displayMath&&!scene.presentation&&!scene.resolve
+      this.captureDisplay&&this.managed&&this.linearLight&&!this.encodedP3&&!this.hdr&&!this.displayMath&&!scene.presentation&&!scene.resolve
     if(this.linearCapture){
       if(this.presentationDevice)throw Error('Linear retained capture requires the display device')
       if(!this.linearCapturePipeline){
@@ -3680,9 +3695,10 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     if (this.canvas.height !== height) this.canvas.height = height
     const u = parameters(outputRect || { x: 0, y: 0, w: width, h: height }, r)
     u[16] = 14
-    u[242] = this.linearLight ? 1 : 0
+    u[242] = this.linearLight || this.encodedP3 ? 1 : 0
     u[243] = this.hdr ? 1 : 0
-    u[244] = this.managed && !this.linearLight && !this.hdr ? 1 : 0
+    u[244] = this.managed && !this.linearLight && !this.encodedP3 && !this.hdr ? 1 : 0
+    u[245] = this.encodedP3 ? 1 : 0
     previewUniforms(u, preview, true)
     if (bytePreview) u[16] = 33
     let shown = source

@@ -46,6 +46,7 @@ export function ColorPanel({
     try {
       editor.change('修改色彩管理', (d) => {
         d.colorManagement = { ...(d.colorManagement || defaultColorSettings()), [key]: value }
+        if (key === 'documentSpace' && value !== 'display-p3') delete d.colorManagement.compositingSpace
         d.schemaVersion = Math.max(d.schemaVersion, 3) as 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
       })
       setError('')

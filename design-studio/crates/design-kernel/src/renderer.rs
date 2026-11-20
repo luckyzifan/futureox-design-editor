@@ -3791,7 +3791,7 @@ impl Painter<'_> {
                         self.blur_filter(radius).apply(&background)?
                     };
                 }
-                if let Some(controls) = &fx.color_controls { controls.apply(&mut background, self.doc.color_management.is_some()); }
+                if let Some(controls) = &fx.color_controls { controls.apply(&mut background, self.doc.color_management); }
                 if legacy_glass {
                     let geometry = self.resolve_effect_planes(masks.as_ref().expect("legacy glass coverage"))?;
                     background = effects::glass_unmasked(
@@ -4521,7 +4521,7 @@ impl Painter<'_> {
                         outputs.push(outputs[previous].clone()); continue;
                     }
                     let mut output = source.try_clone()?;
-                    controls.apply(&mut output, self.doc.color_management.is_some());
+                    controls.apply(&mut output, self.doc.color_management);
                     if self.compatible { output.quantize_rgba8(); }
                     outputs.push(Arc::new(output));
                 }
@@ -5237,7 +5237,7 @@ impl Painter<'_> {
                     effects::gaussian_backdrop(surface, fx.sketch_backdrop_sigma(scale), self.compatible)?
                 };
                 if let Some(controls) = &fx.color_controls {
-                    controls.apply(&mut filtered, self.doc.color_management.is_some());
+                    controls.apply(&mut filtered, self.doc.color_management);
                 }
                 for py in r.y..r.bottom() {
                     for px in r.x..r.right() {
@@ -5264,7 +5264,7 @@ impl Painter<'_> {
                 let copy = effects::copy_region(target, r)?;
                 self.blur_filter(fx.backdrop_radius() * scale).apply_owned(copy)?
             };
-            if let Some(controls) = &fx.color_controls { controls.apply(&mut blurred, self.doc.color_management.is_some()); }
+            if let Some(controls) = &fx.color_controls { controls.apply(&mut blurred, self.doc.color_management); }
             let background = if let Some((shape, glass)) =
                 crate::optics::GlassShape::from_node(n).zip(resolved_glass.as_ref())
             {
@@ -5427,7 +5427,7 @@ impl Painter<'_> {
                 }
                 "color-controls" => {
                     shadow_basis = None;
-                    fx.color_controls.as_ref().ok_or("Missing color controls")?.apply(&mut layer, self.doc.color_management.is_some());
+                    fx.color_controls.as_ref().ok_or("Missing color controls")?.apply(&mut layer, self.doc.color_management);
                 }
                 "shadow" | "inner-shadow" => {
                     let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());

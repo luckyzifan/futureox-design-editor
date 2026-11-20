@@ -1070,12 +1070,15 @@ fn ccDecode(v:f32)->f32 {let x=abs(v);if(x<=0.04045){return v/12.92;}return sign
 fn ccRows(p:vec4<f32>,base:u32)->vec3<f32>{var result=vec3<f32>(0);for(var i=0u;i<3u;i=i+1u){let row=u(base+i);result[i]=addRN(addRN(addRN(mulRN(p.r,row.x),mulRN(p.g,row.y)),mulRN(p.b,row.z)),mulRN(p.a,row.w));}return result;}
 fn colorControlsPixel(p:vec4<f32>)->vec4<f32>{
  if(p.a==0.){return p;}if(u(12).x<0.5){return vec4<f32>(ccRows(p,9u),p.a);}
- let straight=vec3<f32>(divideRN(p.r,p.a),divideRN(p.g,p.a),divideRN(p.b,p.a));
+ var straight=vec3<f32>(divideRN(p.r,p.a),divideRN(p.g,p.a),divideRN(p.b,p.a));
+ let encodedWorking=u(12).y>0.5;
+ if(encodedWorking){straight=vec3<f32>(ccDecode(straight.r),ccDecode(straight.g),ccDecode(straight.b));}
  let local=ccRows(vec4<f32>(straight,0),13u);
  let encoded=vec3<f32>(ccEncode(local.r),ccEncode(local.g),ccEncode(local.b));
  let adjusted=ccRows(vec4<f32>(encoded,1),9u);
  let decoded=vec3<f32>(ccDecode(adjusted.r),ccDecode(adjusted.g),ccDecode(adjusted.b));
- let result=ccRows(vec4<f32>(decoded,0),16u);
+ var result=ccRows(vec4<f32>(decoded,0),16u);
+ if(encodedWorking){result=vec3<f32>(ccEncode(result.r),ccEncode(result.g),ccEncode(result.b));}
  return vec4<f32>(mulRN(result.r,p.a),mulRN(result.g,p.a),mulRN(result.b,p.a),p.a);
 }
 fn motionKernelTap(i:u32)->vec4<f32>{return textureLoad(sourceB,vec2<i32>(i32(i%256u),i32(i/256u)),0);}
