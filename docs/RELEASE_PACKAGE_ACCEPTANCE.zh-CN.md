@@ -83,11 +83,12 @@ node frontend/design-desktop/scripts/release-component-inventory.mjs \
   --source-root=/path/to/release-source \
   --release-dir=/path/to/unpacked-package \
   --release-verification=/path/to/release-verification.json \
+  --installer=/path/to/release-installer \
   --require-package \
   --write-report=/tmp/futureox-published-components.json
 ```
 
-这组参数会对照源码提交与 Git 树，并校验包内 ASAR、内核 WASM 和记录列出的原生文件。清单使用发布记录的 Rust 目标归因依赖，包括 Windows gnullvm。安装包哈希、签名和启动验收仍由对应的安装包流程记录。
+这组参数会对照源码提交与 Git 树，并校验包内 ASAR、内核 WASM 和记录列出的原生文件。清单使用发布记录的 Rust 目标归因依赖，包括 Windows gnullvm。提供可选的 `--installer` 后，脚本也会按解包目录所属平台校验原安装包的 SHA-256，在 `publishedRuntime.verifiedInstaller` 中记录测得的哈希和字节数。签名和启动验收仍由对应的安装包流程记录。
 
 清单区分这些东西：
 

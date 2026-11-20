@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, copyFileSyn
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describePackage } from './release-package-resources.mjs'
+import { describePackage, verifyPublishedInstallerFile } from './release-package-resources.mjs'
 import { packageSourceFilter } from './package-source.mjs'
 import { assessColorFixtures, inventoryFromPackageBytes, locateElectronPackage, verifyPackageByteInventory } from './release-package-bytes.mjs'
 
@@ -731,7 +731,7 @@ function publishedNativeTargets(root, verification) {
   return [...new Set(targets.map(target => target.replace(/(?:\.\d+)+$/, '')))]
 }
 
-export function verifyPublishedRuntime(packageReport, verification) {
+export function verifyPublishedRuntime(packageReport, verification, installerPath = null) {
   const item = verification.packages?.[packageReport?.triple]
   if (packageReport?.producedFrom !== 'release_package_bytes' || !item) {
     throw new Error('No published runtime record matches the package')
@@ -773,6 +773,7 @@ export function verifyPublishedRuntime(packageReport, verification) {
     platform: packageReport.triple,
     rustTarget: packageReport.target,
     recordedInstaller: { filename: item.filename, sha256: item.sha256 },
+    ...(installerPath ? { verifiedInstaller: verifyPublishedInstallerFile(installerPath, verification, packageReport.triple) } : {}),
     matchedFiles,
   }
 }
@@ -783,7 +784,9 @@ export function buildComponentInventory({
   electronDist = process.env.FUTUREOX_ELECTRON_DIST || null,
   skipCargo = false,
   releaseVerification = null,
+  installerPath = null,
 } = {}) {
+  if (installerPath && !releaseVerification) throw new Error('--installer requires --release-verification')
   const nativeTargets = releaseVerification ? publishedNativeTargets(root, releaseVerification) : null
   const licenseInventory = JSON.parse(readFileSync(path.join(root, 'frontend/design-client/public/licenses/inventory.json'), 'utf8'))
   const notices = licenseInventory.packages.map(item => {
@@ -881,7 +884,7 @@ export function buildComponentInventory({
       ? 'unsigned_release_package_bytes'
       : (release.present ? 'release_directory_hashed_not_a_signed_installer' : 'packaging_inputs_not_a_signed_release'),
     fromPackage,
-    ...(releaseVerification ? { publishedRuntime: verifyPublishedRuntime(fromPackage, releaseVerification) } : {}),
+    ...(releaseVerification ? { publishedRuntime: verifyPublishedRuntime(fromPackage, releaseVerification, installerPath) } : {}),
     releaseAcceptance: 'not_closed',
     formalSignedPackage: 'not_supplied',
     macElectronMetal: 'not_run',
@@ -998,13 +1001,14 @@ if (invoked) {
   }
   const root = path.resolve(option('--source-root') ?? repo)
   const verificationPath = option('--release-verification')
+  const installerPath = option('--installer')
   const verificationBytes = verificationPath ? readFileSync(verificationPath) : null
   const releaseVerification = verificationBytes ? JSON.parse(verificationBytes.toString('utf8')) : null
   if (verificationPath && (!releaseVerification || typeof releaseVerification !== 'object' || Array.isArray(releaseVerification))) {
     throw new Error('Expected a release verification record object')
   }
   if (process.argv.includes('--write-notices')) {
-    if (verificationPath) throw new Error('Cannot write notices during published release verification')
+    if (verificationPath || installerPath) throw new Error('Cannot write notices during published release verification')
     const result = materializeCargoNotices(root)
     console.log(JSON.stringify({ wrote: result.written.length, errors: result.errors }, null, 2))
     if (result.errors.length) process.exit(1)
@@ -1014,6 +1018,7 @@ if (invoked) {
     releaseDir: option('--release-dir') ?? path.join(root, 'frontend/design-desktop/release'),
     electronDist: option('--electron-dist') ?? process.env.FUTUREOX_ELECTRON_DIST ?? null,
     releaseVerification,
+    installerPath,
   })
   if (report.publishedRuntime && verificationBytes) {
     report.publishedRuntime.verificationRecordSha256 = sha256(verificationBytes)

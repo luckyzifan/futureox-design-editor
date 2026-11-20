@@ -61,6 +61,18 @@ export function hashReadonlyFile(file) {
   }
 }
 
+export function verifyPublishedInstallerFile(file, verification, triple) {
+  const expected = verification.packages?.[triple]?.sha256
+  if (verification.build?.profile !== 'release' || typeof expected !== 'string' || !/^[a-f0-9]{64}$/.test(expected)) {
+    throw new Error('Installer hash or platform does not match the release verification')
+  }
+  const actual = hashReadonlyFile(file)
+  if (actual.sha256 !== expected) {
+    throw new Error('Installer hash does not match the release verification')
+  }
+  return actual
+}
+
 function hashRange(file, start, size) {
   const fd = openSync(file, openFlags())
   try {
