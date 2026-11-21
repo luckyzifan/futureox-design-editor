@@ -1295,8 +1295,12 @@ self.onmessage = (e) => {
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionFixedMask, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, zoomFocusCapture,
+tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, zoomFocusCapture, clippedCommitTiles,
         progressiveBlurRepair: _progressiveBlurRepair, progressiveBlurWarm, ...renderOptions } = request.options
+      const clippedCommitDisplay = clippedCommitTiles === true && channel === 'canvas' && renderIntent === 'canvas' &&
+        renderOptions.rasterProfile === 'analytic' && !request.sourceSnapshot && !request.referenceGpu &&
+        !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.animation &&
+        usesDesktopDisplay(executionPolicy, { ...renderOptions, renderIntent, png: request.png, readback: request.readback, exportFormat })
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
@@ -1762,7 +1766,8 @@ self.onmessage = (e) => {
         try {
           if (tileViewport) {
             const sourceBand=channel==='canvas'&&!!request.sourceSnapshot&&!!tileOwner&&renderOptions.view.zoom>=8&&renderIntent==='preview'&&renderOptions.rasterProfile==='figmaSubpixel'&&backend==='webgpu'&&!executionPolicy.hdrCompositing&&!request.referenceGpu&&!renderOptions.exportRegion&&!renderOptions.pixelPreview&&!renderOptions.animation&&!request.png&&!request.readback&&!exportFormat
-            const tileSide=(sourceBand?MATERIAL_BAND:TILE_SIDE)+2
+            const commitBand = clippedCommitDisplay && backend === 'webgpu'
+            const tileSide = (sourceBand || commitBand ? MATERIAL_BAND : TILE_SIDE) + 2
             if (
               !Array.isArray(tileViewport) ||
               tileViewport.length > 256 ||
@@ -1773,6 +1778,7 @@ self.onmessage = (e) => {
                   t.height < 1 ||
                   t.width > tileSide ||
                   t.height > tileSide ||
+                  (commitBand && t.gutter !== 1) ||
                   !Number.isFinite(t.zoom) ||
                   t.zoom < 0.001 ||
                   t.zoom > MAX_CANVAS_RASTER_SCALE ||
@@ -2201,7 +2207,7 @@ self.onmessage = (e) => {
               let packetOptions: string | undefined
               const compile = async () => {
                 const options = {...renderOptions,view:{...renderOptions.view,zoom:tile.zoom},width:tile.width,height:tile.height,
-                  [sourceBand&&Math.max(tile.width,tile.height)>TILE_SIDE+2?'captureViewport':'gpuViewport']:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
+                  [(sourceBand || commitBand) && Math.max(tile.width,tile.height) > TILE_SIDE+2 ? 'captureViewport' : 'gpuViewport']:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
                   ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
                 const signal = tilePreparation?.controller.signal ?? packetWait?.controller.signal
                 const ordinary = () => {
@@ -2837,6 +2843,8 @@ self.onmessage = (e) => {
           return
         } catch (error) {
           if (String(error).includes('PREVIEW_CANCELLED')) throw error
+          if (clippedCommitDisplay && backend === 'webgpu' && tileViewport?.length &&
+              await recoverPreviewBudget(error, gpu, invalidateTileCache)) throw error
           if (canvasSequentialDisplay) {
             if (error instanceof Error && error.message === 'SEQUENTIAL_DISPLAY_UNSUPPORTED') throw error
             if (isRecoverablePreviewBudget(error, gpu?.driver.lost)) {

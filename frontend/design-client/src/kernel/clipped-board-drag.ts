@@ -3,6 +3,7 @@ import type { Bounds } from '../model'
 import type { Rect } from './gpu/types'
 import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { clipAlignedTile } from './tile-plan-aligned'
+import { MATERIAL_BAND } from './source-display-band'
 
 export type BoardViewport = { view: CanvasCamera; width: number; height: number; dpr?: number }
 
@@ -47,6 +48,26 @@ export function tileOnBoardLattice(tile: RasterTile, view: CanvasCamera, dpr: nu
   const x = view.x * dpr - (tile.phaseX ?? 0)
   const y = view.y * dpr - (tile.phaseY ?? 0)
   return [x, y, tile.x, tile.y, tile.width, tile.height, x + tile.x, y + tile.y].every(Number.isSafeInteger)
+}
+
+/** Bounded native display bands cover only the pixels needed at release.
+ * Keep the ordinary one-pixel gutters and the exact raster camera phase. */
+export function clippedCommitTiles(viewport: Rect, zoom: number, phase: { x: number; y: number }): RasterTile[] | undefined {
+  const { x, y, w, h } = viewport
+  if (![x, y, w, h, x + w, y + h].every(Number.isSafeInteger) ||
+      w <= 0 || h <= 0 || w > 8192 || h > 8192 || w * h > 8_388_608) return
+  const tiles: RasterTile[] = []
+  for (let top = y; top < y + h; top += MATERIAL_BAND) {
+    for (let left = x; left < x + w; left += MATERIAL_BAND) {
+      const width = Math.min(MATERIAL_BAND, x + w - left) + 2
+      const height = Math.min(MATERIAL_BAND, y + h - top) + 2
+      tiles.push({
+        key: [zoom, phase.x, phase.y, 'clipped-commit', left, top, width, height].join(':'),
+        x: left - 1, y: top - 1, width, height, gutter: 1, zoom, phaseX: phase.x, phaseY: phase.y,
+      })
+    }
+  }
+  return tiles
 }
 
 function exteriorStrips(source: Rect, viewport: Rect): Rect[] {

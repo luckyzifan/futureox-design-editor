@@ -60,6 +60,7 @@ export class PageTranslation {
   private active = false
   private phaseRevoked = false
   private clippedInputClosed = false
+  private clippedCommit?: DesignDocument
   private fractional = false
   private feedback = new PoseFeedback()
   private offset = { x: 0, y: 0 }
@@ -219,6 +220,11 @@ if (this.clippedInputClosed) return null
       if (this.srgbBoard?.clipped) this.clippedInputClosed = true
     },
     isActive: () => this.active,
+    clippedCommit: (doc, pageId, camera) => {
+      const source = this.srgbBoard?.clipped
+      return !!source && this.clippedCommit === doc && this.plan?.pageId === pageId &&
+        sameBoardViewport(source.camera, camera)
+    },
     guidesInSurface:()=>true,
     feedbackPending:()=>true,
     inputSequence:()=>this.input.sequence,
@@ -285,6 +291,7 @@ if (this.clippedInputClosed) return null
       }
       this.active = !!offset && (offset.x !== 0 || offset.y !== 0)
       if (offset) this.offset = offset
+      if (this.active && this.clippedInputClosed) this.clippedCommit = document
       this.lastEnd = offset ? `${offset.x},${offset.y}` : 'content-changed'
       this.changed()
     },
@@ -375,6 +382,7 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
     if (settled === source && items.length) {
       if (this.clippedInputClosed) {
         this.clippedInputClosed = false
+        this.clippedCommit = undefined
         this.pendingPose = undefined
       }
       this.plan = { document: source, pageId, ids: [...props.selection], layers: [] }
@@ -478,6 +486,7 @@ const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(
     this.active = false
     this.phaseRevoked = false
     this.clippedInputClosed = false
+    this.clippedCommit = undefined
     this.pendingPose = undefined
     this.offset = { x: 0, y: 0 }
   }

@@ -17,6 +17,8 @@ export type GpuMoveControl = {
   /** Release coordinates are flushed; this is only a preview priority hint. */
   releaseInput?(gesture?:'move'|'rotate'):void
   isActive(): boolean
+  /** The exact committed document of a retained clipped move at this camera. */
+  clippedCommit?(document: DesignDocument, pageId: string, camera: import('./clipped-board-drag').BoardViewport): boolean
   /** Private complete-layer authority; structural eligibility alone is not
    * enough to suspend an ordinary viewport repair. */
   blocksCanvasRefinement?(document:DesignDocument,ids:string[],view:CanvasCamera):boolean

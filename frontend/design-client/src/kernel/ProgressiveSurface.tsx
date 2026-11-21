@@ -43,7 +43,7 @@ import { tilePrepareViewport, tileBatchPrepareViewport } from './tile-prepare-vi
 import { TileCompositeSurface } from './TileCompositeSurface'
 import { ResidentCompositeSurface, type ProjectedPageOverview } from './ResidentCompositeSurface'
 import { isolatedSrgbBoard } from './page-translation'
-import { clippedBoardPrefetch, clippedBoardSource, tileOnBoardLattice } from './clipped-board-drag'
+import { clippedBoardPrefetch, clippedBoardSource, clippedCommitTiles, tileOnBoardLattice } from './clipped-board-drag'
 import { PresentationOwnership } from './presentation-ownership'
 import { PageResidencyCache, pageResidencyScope } from './page-residency-cache'
 import { BitmapRetirement } from './bitmap-retirement'
@@ -1349,7 +1349,8 @@ export function ProgressiveSurfaceImpl(
     }
     const request = async (plan: RasterTile[], preparePlan: RasterTile[],
       prefetch: { rim: RasterTile[]; cacheLimitSkipped: number; protect?: boolean }, bootstrapCoverage?: () => Promise<void>,
-      focus?: SurfaceProps['overview']) => {
+focus?: SurfaceProps['overview'],
+      clippedCommit = false) => {
       const orderVisibleWork = (tiles: RasterTile[], priorities?: Map<RasterTile, import('./tile-cache').TileFillPriority>) => {
         const residents = [...tileRef.current.values()].filter(tile => tile.document === doc &&
           tile.revision === contract.revision && ready.current.has(tile.key))
@@ -1433,6 +1434,7 @@ export function ProgressiveSurfaceImpl(
               pixelPreview: props.pixelPreview || undefined,
               rasterProfile,
               tileViewport: ordered,
+              ...(clippedCommit && !prefetchOnly ? { clippedCommitTiles: true } : {}),
               ...(prefetchOnly ? {} : { tileFillPriorities: ordered.map(tile => priorities.get(tile)!) }),
               tilePrepareViewport: import.meta.env.VITE_DESIGN_PREPARE_CACHE === '0' ? undefined :
                 nativeVisibleTiles ? tilePrepareViewport(ordered, renderCamera) :
@@ -2276,8 +2278,20 @@ export function ProgressiveSurfaceImpl(
           !retainedEditViewport && syncedDoc.current === doc && hasContinuityBacking()
           ? { x: -Math.floor(view.x * dpr), y: -Math.floor(view.y * dpr), w: Math.ceil(width * dpr), h: Math.ceil(height * dpr) }
           : undefined
-        const fullPlan = planned.viewport.map(rekey)
-        const plan = fullPlan.map((full, index) => {
+        const clippedCamera = { view, width, height, dpr }
+        const bands = clippedBoard && backend === 'webgpu' && rasterProfile === 'analytic' &&
+          usesDesktopDisplay(renderExecutionPolicy, { renderIntent: 'canvas', rasterProfile }) &&
+          !cameraMoving && !navigationZoom.active && !zooming && !props.interaction?.active &&
+          renderScale === detailLevel && phaseExact &&
+          rejectedEdgeCrop.current !== frameKey &&
+          props.interaction?.control.current?.clippedCommit?.(doc, pageId, clippedCamera)
+          ? clippedCommitTiles({
+            x: -Math.floor(renderCamera.x), y: -Math.floor(renderCamera.y),
+            w: Math.ceil(width * dpr), h: Math.ceil(height * dpr),
+          }, renderScale, renderPhase)
+          : undefined
+        const fullPlan = (bands ?? planned.viewport).map(rekey)
+        const plan = bands ? fullPlan : fullPlan.map((full, index) => {
           if (!edgeViewport) return full
           const existing = tileRef.current.get(full.key)
           if (existing?.document === doc && existing.revision === contract.revision) return full
@@ -2287,8 +2301,8 @@ export function ProgressiveSurfaceImpl(
           croppedVisibleTiles = true
           return rekey(cropped)
         })
+        if (bands) croppedVisibleTiles = true
         const rim = planned.rim.map(rekey)
-const clippedCamera = { view, width, height, dpr }
         const clippedSource = clippedBoard && !cameraMoving && !navigationZoom.active && !zooming &&
           !props.interaction?.active && renderScale === detailLevel && phaseExact
           ? clippedBoardSource(clippedBoard, clippedCamera) : undefined
@@ -2537,9 +2551,10 @@ const clippedCamera = { view, width, height, dpr }
               console.debug('[coverage] startup overview unavailable', String(error))
             }
           } : undefined
-        // With page continuity already displayed, refine the content before
+// With page continuity already displayed, refine the content before
         // the empty pasteboard. This changes order only; every tile remains.
-        await request(plan, fullPlan, prefetch, bootstrap, reusePageOverview && pageFitsView ? extent : undefined)
+        await request(plan, fullPlan, prefetch, bootstrap,
+          reusePageOverview && pageFitsView ? extent : undefined, !!bands)
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
         // not put it behind selection warm-up and ahead of the first pose.

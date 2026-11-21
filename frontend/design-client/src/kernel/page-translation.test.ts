@@ -3,7 +3,7 @@ import { blank, node, effect } from '../model'
 import { PageTranslation, isolatedOpaqueBoard } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import { compositeDrawPlan } from './gpu/composite-draw-plan'
-import { clippedBoardPrefetch, clippedBoardSource, tileOnBoardLattice } from './clipped-board-drag'
+import { clippedBoardPrefetch, clippedBoardSource, clippedCommitTiles, tileOnBoardLattice } from './clipped-board-drag'
 
 test('desktop page textures follow fractional input immediately and chrome waits for the owned frame',()=>{
  const doc=blank(),a=node('frame',0,0,100,80);doc.nodes[a.id]=a;doc.pages[0].children=[a.id]
@@ -505,6 +505,20 @@ test('clipped-board prefetch keeps exact native strips outside the viewport', ()
   expect(strips[1].x + 1).toBe(right)
 })
 
+test('clipped release bands cover the visible viewport on the ordinary tile lattice', () => {
+  const view = { x: -1298.1000000000001, y: 271.29999999999995, zoom: .8 }
+  const phase = { x: view.x * 2 - Math.floor(view.x * 2), y: view.y * 2 - Math.floor(view.y * 2) }
+  const viewport = { x: -Math.floor(view.x * 2), y: -Math.floor(view.y * 2), w: 2286, h: 1866 }
+  const bands = clippedCommitTiles(viewport, view.zoom * 2, phase)!
+  expect(bands).toHaveLength(6)
+  expect(bands.every(tile => tile.gutter === 1 && tileOnBoardLattice(tile, view, 2))).toBe(true)
+  expect(bands.map(tile => [tile.x - viewport.x + 1, tile.y - viewport.y + 1, tile.width - 2, tile.height - 2]))
+    .toEqual([[0, 0, 960, 960], [960, 0, 960, 960], [1920, 0, 366, 960],
+      [0, 960, 960, 906], [960, 960, 960, 906], [1920, 960, 366, 906]])
+  expect(clippedCommitTiles({ ...viewport, x: viewport.x + .1 }, view.zoom * 2, phase)).toBeUndefined()
+  expect(clippedCommitTiles({ ...viewport, w: 8193 }, view.zoom * 2, phase)).toBeUndefined()
+})
+
 test('a released clipped board never starts native drag repair from a late coverage miss', () => {
   const doc = blank()
   const board = node('frame', -400, 0, 800, 90)
@@ -531,14 +545,20 @@ test('a released clipped board never starts native drag repair from a late cover
   const transform: typeof board.transform = [1, 0, 0, 1, -360, 0]
   expect(movement.control.apply(doc, { [board.id]: { transform } })).toEqual({ x: 40, y: 0 })
   const sequence = movement.control.inputSequence!()
+  expect(movement.control.clippedCommit?.(doc, page.id, camera)).toBe(false)
   movement.control.releaseInput?.('move')
   const committed = { ...doc, nodes: { ...doc.nodes, [board.id]: { ...board, transform } } }
   movement.control.end(committed)
+  expect(movement.control.clippedCommit?.(committed, page.id, camera)).toBe(true)
+  expect(movement.control.clippedCommit?.({ ...committed }, page.id, camera)).toBe(false)
+  expect(movement.control.clippedCommit?.(committed, 'another-page', camera)).toBe(false)
+  expect(movement.control.clippedCommit?.(committed, page.id, { ...camera, dpr: 2 })).toBe(false)
   expect(movement.repairMissingCoverage(sequence)).toBe(false)
   expect(movement.control.apply(doc, { [board.id]: { transform } })).toBeNull()
   expect(movement.items(camera.view)).not.toBeNull()
   // A resize can invalidate the retained crop while exact tiles are pending.
   expect(movement.prepare({ ...props, active: false, document: committed }, page.id,
     committed, [], undefined, true, false, { ...camera, width: 120 })).toBe(false)
+  expect(movement.control.clippedCommit?.(committed, page.id, camera)).toBe(false)
   expect(rebase).not.toHaveBeenCalled()
 })

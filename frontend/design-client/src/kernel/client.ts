@@ -235,6 +235,8 @@ export type KernelOptions = {
   interactionWindow?: import('./gpu/types').Rect
   previewTileFallback?: boolean
   tileViewport?: RasterTile[]
+  /** Optional bounded native display bands for one committed clipped drag. */
+  clippedCommitTiles?: boolean
   /** Parallel original-index hints: holes, coarse coverage, sharp coverage. */
   tileFillPriorities?: import('./tile-cache').TileFillPriority[]
   /** Bounded native viewport capture on the same world sample lattice as tiles. */
