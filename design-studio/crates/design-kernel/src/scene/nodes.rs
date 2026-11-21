@@ -44,6 +44,37 @@ impl DocumentNodes {
         };
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn is_shared(&self) -> bool {
+        matches!(self.0, Storage::Shared { .. })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn shared_node(&self, id: &str) -> Option<&Arc<Node>> {
+        let Storage::Shared { index, slots } = &self.0 else {
+            return None;
+        };
+        Some(&slots[*index.get(id)?])
+    }
+
+    /// Build a sparse, ordered view of the resolved source's immutable payloads.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn from_shared_subset(nodes: BTreeMap<&str, Arc<Node>>) -> Self {
+        let mut slots = Vector::new();
+        let index = nodes
+            .into_iter()
+            .map(|(id, node)| {
+                let slot = slots.len();
+                slots.push_back(node);
+                (id.to_owned(), slot)
+            })
+            .collect();
+        Self(Storage::Shared {
+            index: Arc::new(index),
+            slots,
+        })
+    }
+
     pub fn into_map(self) -> BTreeMap<String, Node> {
         match self.0 {
             Storage::Owned(nodes) => nodes,

@@ -1,10 +1,15 @@
 /** Scheduling observations only. Completion here cannot free textures,
- * scratch, image tables, or advance a resource epoch. Those owners retain
- * their existing explicit lifetime fences. */
+ * scratch, image tables, or advance a resource epoch. A resource owner
+ * can join an observation only after proving its own covered submission. */
 export class RasterQueuePacer {
   private observations: { sequence: number; done: Promise<void> }[] = []
   private failure?: { error: unknown }
   private check() { if (this.failure) throw this.failure.error }
+
+  coveringCompletion(sequence: number): Promise<void> | undefined {
+    this.check()
+    return this.observations.find(item => item.sequence >= sequence)?.done.then(() => this.check())
+  }
 
   async yield(sequence: number, completed: number, observe: () => Promise<void>,
     measureBlock?: (wait: () => Promise<void>) => Promise<void>) {

@@ -531,10 +531,13 @@ impl Demand {
     pub(crate) fn unit_key(&self) -> Vec<usize> {
         self.units.iter().copied().collect()
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn resolved_nodes(
         &self,
         source: &Document,
-    ) -> Result<BTreeMap<String, Node>, String> {
+    ) -> Result<crate::scene::DocumentNodes, String> {
+        use std::collections::btree_map::Entry;
+
         let mut nodes = BTreeMap::new();
         for unit in &self.units {
             let root = &self.catalog.units[*unit].nodes[0];
@@ -544,23 +547,23 @@ impl Demand {
             let mut stack = vec![root.as_str()];
             while let Some(id) = stack.pop() {
                 crate::render_cancellation::checkpoint()?;
-                if nodes.contains_key(id) {
+                let Entry::Vacant(entry) = nodes.entry(id) else {
                     continue;
-                }
+                };
                 let n = source
                     .nodes
-                    .get(id)
+                    .shared_node(id)
                     .ok_or("Missing resolved demand record")?;
                 stack.extend(n.children.iter().map(String::as_str));
-                nodes.insert(id.to_owned(), n.clone());
+                entry.insert(Arc::clone(n));
             }
         }
         let mut stage = source.nodes[&self.catalog.stage].clone();
         stage
             .children
             .retain(|id| self.units.contains(&self.catalog.owners[id]));
-        nodes.insert(stage.id.clone(), stage);
-        Ok(nodes)
+        nodes.insert(&self.catalog.stage, Arc::new(stage));
+        Ok(crate::scene::DocumentNodes::from_shared_subset(nodes))
     }
     pub fn stats(&self) -> DemandStats {
         DemandStats {

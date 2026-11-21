@@ -156,6 +156,12 @@ export class WebGpuDriver implements Driver {
   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
   private submissionSequence = 0
   private completedSubmissionSequence = 0
+  private admissionCompletion?: {
+    device: GPUDevice
+    epoch: number
+    encoder: GPUCommandEncoder
+    sequence?: number
+  }
   rasterPacing = false
   private rasterPacer?: { device: GPUDevice; pacer: RasterQueuePacer }
   private fenceSequence = 0
@@ -2011,7 +2017,12 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
       if (ownsByteScratch) { this.byteTentRecordingFailed = true; this.abandonByteTentEncoder() }
       throw error
     }
-    try { this.submitQueue(command) }
+    try {
+      this.submitQueue(command)
+      const admission = this.admissionCompletion
+      if (admission?.encoder === encoder && admission.device === this.device && admission.epoch === this.resourceEpoch)
+        admission.sequence = this.submissionSequence
+    }
     catch (error) { if (ownsByteScratch) this.byteTentRecordingFailed = true; throw error }
     finally {
       for (const [lease, entry] of this.byteTentLeases || []) if (entry.encoder === encoder && !entry.submitted) {
@@ -2128,6 +2139,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     const coveredCompletion = this.waitForQueue(reason)
     await coveredCompletion
     if (this.lost) throw new Error('GPU 设备已丢失')
+    this.admissionCompletion = undefined
     await this.retireByteTentSnapshot(byteTentSnapshot, coveredCompletion)
     if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
     if (this.frameScopeOpen) {
@@ -2182,6 +2194,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.collectRetiredImageTables(tables)
   }
   begin(vertices: Float32Array, curves = new Float32Array(0)) {
+    this.admissionCompletion = undefined
     if (this.releaseFence) throw Error('GPU pose completion is pending')
     this.drawWork?.reset(gpuDiagnosticsEnabled())
     const owner = this.preparedGeometryOwner
@@ -2841,6 +2854,32 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     delete target.uniformColor;delete target.transparentZero
     this.encoder.copyTextureToTexture({texture:from,origin:[sourceRegion.x,sourceRegion.y]},
       {texture:to,origin:targetOrigin},[sourceRegion.w,sourceRegion.h])
+  }
+  captureAdmissionCompletion() {
+    if (!this.rasterPacing || !this.frameScopeOpen || this.lost || this.disposed) return
+    if (this.admissionCompletion && !this.admissionPrefixComplete(this.admissionCompletion)) return
+    const prefix = this.admissionCompletion = {
+      device: this.device, epoch: this.resourceEpoch, encoder: this.encoder,
+    }
+    // Do not issue a submission or fence. Only the captured encoder can
+    // assign the sequence; an unrelated submit cannot cover unsubmitted reads.
+    return () => this.admissionPrefixComplete(prefix)
+  }
+  private admissionPrefixComplete(prefix: NonNullable<WebGpuDriver['admissionCompletion']>) {
+    return !this.lost && !this.disposed && prefix.device === this.device &&
+      prefix.epoch === this.resourceEpoch && prefix.sequence !== undefined &&
+      prefix.sequence <= this.completedSubmissionSequence
+  }
+  private async finishAdmissionCompletion(prefix: NonNullable<WebGpuDriver['admissionCompletion']>) {
+    if (!this.admissionPrefixComplete(prefix)) {
+      if (prefix.sequence === undefined || prefix.device !== this.device || prefix.epoch !== this.resourceEpoch)
+        throw Error('GPU admission prefix was not submitted by the frame')
+      const pacing = this.rasterPacer
+      const covering = pacing?.device === prefix.device ? pacing.pacer.coveringCompletion(prefix.sequence) : undefined
+      await (covering ?? this.waitForQueue('admission'))
+      if (!this.admissionPrefixComplete(prefix)) throw Error('GPU admission prefix did not complete')
+    }
+    this.admissionCompletion = undefined
   }
   async checkpoint(reason: QueueWaitReason = 'checkpoint', admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number) {
     const retiredTables = this.retiredImageTableSnapshot()
@@ -3917,6 +3956,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
     this.frameScopeOpen = false
     if (error || this.errors.length)
       throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
+    if (this.admissionCompletion) await this.finishAdmissionCompletion(this.admissionCompletion)
     // Keep the existing submitted-geometry shrink policy. Filter storage above
     // is reclaimed only by the actual completed snapshot, never by this ACK.
     if (waitReason && !deferRelease || this.completedResourceEpoch >= this.resourceEpoch) this.shrinkCapacities()
@@ -4162,6 +4202,7 @@ fn analyticGradientBatch(p:vec2<f32>,base:u32,count:u32)->vec4<f32>{
    * commands completed (park path) or after device loss (every destroy is then
    * a safe no-op). */
   private releaseFrameResources(recreateEncoder = true) {
+    this.admissionCompletion = undefined
     this.preparedGeometryOwner = undefined
     this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
     this.sampleOnlyPrograms.reset(); this.sampleOnlyDispatch = undefined; this.sampleOnlyRequested = false

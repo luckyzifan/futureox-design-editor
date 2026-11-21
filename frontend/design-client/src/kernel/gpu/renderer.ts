@@ -987,6 +987,7 @@ export class GpuRenderer {
       this.driver.resourceEpoch !== undefined && this.driver.completedResourceEpoch !== undefined
   }
   private coordinateMaps = new CoordinateRetirementSet<Texture>()
+  private deferredCoordinates?: { textures: readonly Texture[]; complete: () => boolean }
   // Row strips share one immutable, certified support field per sample.
   // Samples that cannot separate keep their original dense strip fallback.
   private filterImageFields?: { rect: Rect; fields: Map<string, Surface | null>; pinned: Set<Texture> }
@@ -4147,10 +4148,8 @@ export class GpuRenderer {
     this.driver.destroy(texture)
     this.dischargeTexture(texture)
   }
-  /** Destroy one still-cached coordinate upload and detach every alias, so a
-   * later cache miss re-uploads identical bytes instead of binding a
-   * destroyed texture. Only call after a completed checkpoint. */
-  private forgetCoordinateTexture(texture: Texture) {
+  /** Remove all lookup ownership before a parameter texture is retired. */
+  private detachCoordinateTexture(texture: Texture) {
     this.coordinateMaps.delete(texture)
     for (const paint of [...this.imageGrids.keysFor(texture)]) {
       const grids = this.imageGrids.get(paint)!
@@ -4162,7 +4161,66 @@ export class GpuRenderer {
     for (const key of this.textureLookups.keysFor(texture)) this.textureLookups.delete(key)
     if (this.textureMath?.texture === texture) this.textureMath = undefined
     if (this.replayParameters === texture) this.replayParameters = undefined
+  }
+  private forgetCoordinateTexture(texture: Texture) {
+    this.detachCoordinateTexture(texture)
     this.forgetUpload(texture)
+  }
+  private deferCoordinateMaintenance(coordinates: readonly Texture[]) {
+    if (this.deferredCoordinates) return true
+    if (!coordinates.length || this.retiredUploads.length) return false
+    const textures = coordinates.slice(0, RECLAIM_BATCH_RESOURCES)
+    if (textures.some(texture => this.materialFields.has(texture) || this.gradientPhaseResources.has(texture) ||
+        this.replayParameters === texture || this.pendingImageTableSources.has(texture) ||
+        this.sequentialImagePins.has(texture) || this.driver.hasActiveImageTableSource?.(texture))) return false
+    const complete = this.driver.captureAdmissionCompletion?.()
+    if (!complete) return false
+    // Use the original retirement order. Future lookups must upload afresh.
+    // The same ledger still owns these bytes while queue reads are pending.
+    for (const texture of textures) {
+      this.detachCoordinateTexture(texture)
+      this.ledger.retireUpload(texture)
+    }
+    this.deferredCoordinates = { textures, complete }
+    return true
+  }
+  private collectDeferredCoordinates() {
+    const pending = this.deferredCoordinates
+    if (!pending?.complete()) return
+    this.deferredCoordinates = undefined
+    for (const texture of pending.textures)
+      if (this.ledger.takeRetiredUpload(texture)) this.forgetUpload(texture)
+    this.maintenanceResidency.completed()
+  }
+  private onlyDeferredCoordinateRetirements() {
+    const deferred = this.deferredCoordinates
+    if (!this.retiredUploads.length) return true
+    return !!deferred && this.retiredUploads.length === deferred.textures.length &&
+      this.retiredUploads.every((texture, index) => texture === deferred.textures[index])
+  }
+  private reclaimCompletedSoftPool(pool: readonly Texture[], watermark: number) {
+    const current = this.driver.resourceEpoch, completed = this.driver.completedResourceEpoch
+    if (this.driver.lost || !Number.isSafeInteger(current) || !Number.isSafeInteger(completed) ||
+        completed! < 0 || completed! >= current!)
+      return false
+    const target = Math.min(RECLAIM_BATCH_BYTES, this.workingBytes - Math.floor(this.frameBudget * watermark))
+    if (target <= 0) return false
+    const ready: Texture[] = []
+    let bytes = 0
+    for (const texture of pool) {
+      if (ready.length >= RECLAIM_BATCH_RESOURCES || bytes >= target) break
+      const epoch = this.poolReleaseEpoch.get(texture)
+      if (!Number.isSafeInteger(epoch) || epoch! <= 0 || epoch! > completed! ||
+          this.used.has(texture) || this.admissionPins.has(texture)) continue
+      ready.push(texture)
+      bytes += texture.bytes
+    }
+    // The ordinary cleanup also stops at a full resource batch, even
+    // when those smaller textures do not reach the byte target.
+    if (bytes < target && ready.length < RECLAIM_BATCH_RESOURCES) return false
+    for (const texture of ready) this.destroyFree(texture)
+    if (!this.deferredCoordinates) this.maintenanceResidency.completed()
+    return true
   }
   private admitSurface<T>(r: Rect, copies: number, binary: boolean, scalar: boolean,
     inputs: Surface[], operation: () => T): Promise<T> | undefined {
@@ -4228,6 +4286,7 @@ export class GpuRenderer {
   }
   private async reclaimScratch(required = 0) {
     this.checkFrameCurrent()
+    this.collectDeferredCoordinates()
     // Background GPU completion only certifies storage. Reclaim under one
     // synchronous scratch delta before pressure tests or warm-path early exits.
     const completedScratch = this.driver.scratchBytes || 0
@@ -4316,6 +4375,8 @@ export class GpuRenderer {
     // Pool surfaces are already reusable in queue order and stay fully charged.
     // Do not confuse their residency with dead upload/coordinate retirement.
     // No resource is released, destroyed, or marked complete by this decision.
+    let maintenanceReason: number | undefined
+    const reuseAdmission = this.driver.rasterPacing === true && this.driver.captureDisplay === true
     if (coordinates.length || this.retiredUploads.length) {
       const poolSet = indexedPool || new Set(pooled)
       const transientSet = new Set([...coordinates, ...this.retiredUploads])
@@ -4335,7 +4396,7 @@ export class GpuRenderer {
       const mandatoryReasonBits = Number(required !== 0) | Number(pressure) << 1 |
         Number(imagesUnderPressure) << 2 | Number(!!retiredImageTableBytes) << 3 |
         Number(!!retiredImageAssetBytes) << 4 | Number(!epochKnown) << 5
-      const reason = this.maintenanceResidency.decide(required,
+      const reason = maintenanceReason = this.maintenanceResidency.decide(required,
         pressure || imagesUnderPressure ||
           !!retiredImageTableBytes || !!retiredImageAssetBytes,
         this.workingBytes, this.frameBudget, poolBytes, transientBytes,
@@ -4349,6 +4410,7 @@ export class GpuRenderer {
           completedResourceEpoch: this.driver.completedResourceEpoch }) } catch { /* diagnostics only */ }
       }
       if (reason === 0) return
+      if (reuseAdmission && reason === 5 && this.deferCoordinateMaintenance(coordinates)) return
     }
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
@@ -4379,6 +4441,12 @@ export class GpuRenderer {
         if (retiredBytes >= completedPoolTarget && this.workingBytes + required <= this.frameBudget) return
       }
     }
+    // Keep pool-only retirement first. The bounded soft batch can also
+    // proceed while an independent coordinate retirement remains charged.
+    if (reuseAdmission && !required && !pressure && !imagesUnderPressure &&
+        this.onlyDeferredCoordinateRetirements() && !retiredImageTableBytes && !retiredImageAssetBytes &&
+        (poolTrim || maintenanceReason === 3) &&
+        this.reclaimCompletedSoftPool(pooled, maintenanceReason === 3 ? .75 : .875)) return
     let completedPoolEpoch: number | undefined
     if (required === 0 && !retiredImageAssetBytes && !this.retiredUploads.length && !coordinates.length &&
         this.workingBytes <= this.frameBudget * .75) {
@@ -8984,6 +9052,7 @@ export class GpuRenderer {
         // Driver finish may retire scratch before a later readback fails.
         this.noteScratch(finishingScratch)
       }
+      this.collectDeferredCoordinates()
       completed = true
       this.publishFocusPrefix()
       if (scene.sequentialDisplay) this.sequentialDisplayFrames++
@@ -9119,6 +9188,7 @@ export class GpuRenderer {
       // could ever pool a parameter upload.
       for (const texture of this.retiredUploads) this.forgetUpload(texture)
       this.ledger.clearRetiredUploads()
+      this.deferredCoordinates = undefined
       this.imageGrids.clear()
       this.gradientLookups.clear()
       this.textureLookups.clear()

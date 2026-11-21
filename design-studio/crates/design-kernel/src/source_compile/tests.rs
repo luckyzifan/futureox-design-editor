@@ -87,6 +87,11 @@ fn default_source_compiler_uses_subset_and_reuses_it_across_cameras() {
     assert_eq!(runtime.stats["resolvedCompileNodes"], 2);
     assert_eq!(runtime.stats["projectionRebuilds"], 1);
     assert_eq!(runtime.stats["projectionDecision"], "rebuild");
+    let source = actual.doc.as_ref().unwrap();
+    let projected = runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap();
+    assert!(std::ptr::eq(&source.nodes["a"], &projected.nodes["a"]));
+    assert!(!std::ptr::eq(&source.nodes["stage"], &projected.nodes["stage"]));
+    assert_eq!(projected.nodes["stage"].children, ["a"]);
     let repeat = compare(
         &mut runtime,
         &mut actual,
@@ -114,8 +119,45 @@ fn default_source_compiler_uses_subset_and_reuses_it_across_cameras() {
         &request(-1480.25, -480.375, 1.),
     );
     assert_eq!(runtime.stats["projectionRebuilds"], 2);
+    let source = actual.doc.as_ref().unwrap();
+    let projected = runtime.compiler.as_ref().unwrap().doc.as_ref().unwrap();
+    assert!(std::ptr::eq(&source.nodes["b"], &projected.nodes["b"]));
+    assert!(!projected.nodes.contains_key("a"));
+    assert_eq!(projected.nodes["stage"].children, ["b"]);
     assert_eq!(actual.authored_document().unwrap(), &d);
     assert_eq!(actual.doc.as_ref().unwrap().nodes.len(), 4);
+}
+
+#[test]
+fn neighboring_source_demands_reuse_local_paths_for_shared_nodes() {
+    let mut source = document();
+    source.nodes.get_mut("b").unwrap().transform.0[4] = 630.;
+    let desc = descriptor(&source);
+    let mut actual = owner(source.clone(), "neighbor-source");
+    let mut expected = owner(source, "neighbor-reference");
+    let mut runtime = Runtime::default();
+
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-480.25, -480.375, 1.),
+    );
+    let first_path = Arc::clone(&runtime.compiler.as_ref().unwrap().paths["a"]);
+    assert_eq!(runtime.stats["resolvedCompileNodes"], 2);
+
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-580.25, -480.375, 1.),
+    );
+    let compiler = runtime.compiler.as_ref().unwrap();
+    assert_eq!(runtime.stats["projectionRebuilds"], 2);
+    assert_eq!(runtime.stats["resolvedCompileNodes"], 3);
+    assert!(Arc::ptr_eq(&first_path, &compiler.paths["a"]));
 }
 #[test]
 fn analytic_overview_tiles_match_complete_packets_at_adjacent_crops() {
