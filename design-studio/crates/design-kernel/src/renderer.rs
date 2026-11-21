@@ -789,8 +789,30 @@ impl Engine {
         self.fonts=compiler.fonts.clone();self.images=compiler.images.clone();Ok(compiler)
     }
 
+    /// Freeze node payloads only when this source first needs a private
+    /// projection. A source with no derived changes can share this allocation
+    /// with the authored owner as well.
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn resolved_source_compiler(&self, nodes:std::collections::BTreeMap<String,crate::scene::Node>, page_id:&str, revision:u64)->Result<Engine,String>{
+    pub(crate) fn share_resolved_source_nodes(&mut self) {
+        let resolved = self.doc.as_mut().expect("resolved source document");
+        if resolved.nodes.is_shared() {
+            return;
+        }
+        let same_snapshot = self
+            .source_doc
+            .as_ref()
+            .is_some_and(|authored| Arc::ptr_eq(&authored.0, &resolved.0));
+        if same_snapshot {
+            self.source_doc = None;
+        }
+        resolved.nodes.share();
+        if same_snapshot {
+            self.source_doc = Some(resolved.clone());
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn resolved_source_compiler(&self, nodes:crate::scene::DocumentNodes, page_id:&str, revision:u64)->Result<Engine,String>{
         let source=self.doc.as_ref().ok_or("Missing resolved source")?;
         let page=source.pages.iter().find(|p|p.id==page_id).ok_or("Missing source page")?.clone();
         // Keep render-relevant Sketch provenance for the demanded nodes.
@@ -818,7 +840,7 @@ impl Engine {
         // This already-resolved projection can compile but cannot edit/export.
         let document=Document{fd_compatibility:None,reviews:vec![],design_system,prototype:None,
             schema_version:source.schema_version,color_management:source.color_management,raster_profile:source.raster_profile,
-            id:source.id.clone(),name:source.name.clone(),pages:vec![page],nodes:nodes.into(),fonts:Default::default(),animations:vec![]};
+            id:source.id.clone(),name:source.name.clone(),pages:vec![page],nodes,fonts:Default::default(),animations:vec![]};
         let mut compiler=Engine::new();compiler.fonts=self.fonts.clone();compiler.images=self.images.clone();
         let document=SharedDocument::from(document);compiler.source_doc=Some(document.clone());compiler.doc=Some(document);
         compiler.layout_dirty=false;compiler.geo_revision=revision;Ok(compiler)

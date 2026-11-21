@@ -491,13 +491,25 @@ impl Runtime {
                 && self.base_units == base_units
                 && units.iter().all(|u| self.units.binary_search(u).is_ok());
             if self.compiler.is_none() || !reuse {
+                owner.share_resolved_source_nodes();
                 let nodes = demand.resolved_nodes(owner.doc.as_ref().unwrap())?;
                 self.epoch = self
                     .epoch
                     .checked_add(1)
                     .ok_or("Source projection epoch exhausted")?;
-                let compiler = owner.resolved_source_compiler(nodes, page, self.epoch)?;
+                let mut compiler = owner.resolved_source_compiler(nodes, page, self.epoch)?;
                 crate::render_cancellation::checkpoint()?;
+                if let Some(previous) = self.compiler.as_mut() {
+                    // The revision fence above keeps these local paths tied
+                    // to the same resolved payloads and font policy. The
+                    // synthetic stage and all camera-specific caches rebuild.
+                    let nodes = &compiler.doc.as_ref().unwrap().nodes;
+                    compiler.paths.extend(
+                        std::mem::take(&mut previous.paths)
+                            .into_iter()
+                            .filter(|(id, _)| id != &stage_id && nodes.contains_key(id)),
+                    );
+                }
                 self.compiler = Some(compiler);
                 self.authored_nodes = demand_stats.required_nodes;
                 self.units = units;
