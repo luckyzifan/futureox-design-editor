@@ -57,6 +57,7 @@ export function ResidentCompositeSurface(props: {
   sourceDocument: DesignDocument
   contentRevision: number
   translationItems: CompositeItem[]
+  clippedTranslationItems?: CompositeItem[]
   allowPageTranslation: boolean
   onGone: (key: string, serial: number) => void
   onError?: (key: string, serial: number, message: string) => void
@@ -590,7 +591,8 @@ export function ResidentCompositeSurface(props: {
         p.allowPageTranslation,
         renderExecutionPolicy.desktopDisplay&&p.rasterProfile==='figmaSubpixel'&&import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION!=='0',
         renderExecutionPolicy.desktopDisplay && import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION!=='0'
-          ? { view: p.view, width: p.width, height: p.height } : undefined,
+          ? { view: p.view, width: p.width, height: p.height, dpr: p.dpr } : undefined,
+        p.clippedTranslationItems,
       ) === true
     if (usePageTranslation.current) {
       interaction.current?.prepare(undefined, p.pageId, p.view, p.dpr, p.rasterProfile, p.backend)
@@ -625,6 +627,7 @@ export function ResidentCompositeSurface(props: {
     props.rasterProfile,
     props.sourceDocument,
     props.translationItems,
+    props.clippedTranslationItems,
     props.allowPageTranslation,
     props.overlay,
     props.presentation,

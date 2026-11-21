@@ -3,6 +3,7 @@ import { blank, node, effect } from '../model'
 import { PageTranslation, isolatedOpaqueBoard } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import { compositeDrawPlan } from './gpu/composite-draw-plan'
+import { clippedBoardPrefetch, clippedBoardSource, tileOnBoardLattice } from './clipped-board-drag'
 
 test('desktop page textures follow fractional input immediately and chrome waits for the owned frame',()=>{
  const doc=blank(),a=node('frame',0,0,100,80);doc.nodes[a.id]=a;doc.pages[0].children=[a.id]
@@ -443,4 +444,62 @@ test('a clipped board returns to the live scene when the existing tile budget re
   expect(movement.handingOff).toBe(true)
   movement.clear()
   expect(movement.repairMissingCoverage(1)).toBe(false)
+})
+
+test('a clipped board reuses a finite pixel window and rebases when a move exposes a missing source', () => {
+  const doc = blank()
+  const board = node('frame', -400, 0, 800, 90)
+  const neighbor = node('frame', 900, 0, 100, 90)
+  for (const root of [board, neighbor]) {
+    root.blend = 'normal'
+    root.clip = true
+    doc.nodes[root.id] = root
+  }
+  const paint = board.fills[0]
+  if (paint.kind !== 'solid') throw Error('Missing opaque paint')
+  paint.color = 'color(srgb 0.8 0.9 1 / 1)'
+  const page = doc.pages[0]
+  page.children = [board.id, neighbor.id]
+  const props: InteractionProps = { document: doc, selection: [board.id], active: false, epoch: 1,
+    figmaBoardPreview: true, control: { current: null }, onReady() {} }
+  const camera = { view: { x: 0, y: 0, zoom: 1 }, width: 100, height: 90, dpr: 1 }
+  // Deliberately smaller than the visible board so the viewport-coverage
+  // fallback cannot satisfy the first prepare and the finite clipped window
+  // is the only admitted source.
+  const original = { key: 'viewport', serial: 1, gpuTile: 7, bytes: new Uint8Array(),
+    x: 0, y: 0, width: 20, height: 20, zoom: 1 }
+  const expanded = { ...original, key: 'expanded', serial: 2, gpuTile: 8, x: -257, y: -1, width: 614, height: 92 }
+  const visible = [{ tile: original, active: true, layer: 0 }]
+  const available = [{ tile: expanded, active: true, layer: 0 }]
+  const rebase = vi.fn(() => null)
+  const movement = new PageTranslation(vi.fn(), rebase)
+  expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera)).toBe(false)
+  expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera, available)).toBe(true)
+  expect(movement.mode).toBe('retained-clipped-board')
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, -360, 0] } })).toEqual({ x: 40, y: 0 })
+  expect(rebase).not.toHaveBeenCalled()
+  expect(movement.prepare({ ...props, active: true }, page.id, doc, visible, doc, true, false, camera)).toBe(true)
+  expect(movement.tiles).toEqual([expanded])
+  expect(movement.control.apply(doc, { [board.id]: { transform: [1, 0, 0, 1, -75, 0] } })).toBeNull()
+  expect(rebase).toHaveBeenCalledOnce()
+  movement.clear()
+  expect(movement.prepare(props, page.id, doc, visible, doc, true, false, camera, visible)).toBe(false)
+})
+
+test('clipped-board prefetch keeps exact native strips outside the viewport', () => {
+  const camera = { view: { x: -1298.1000000000001, y: 271.29999999999995, zoom: .8 },
+    width: 1143, height: 933, dpr: 2 }
+  const source = clippedBoardSource({x:1617,y:-271,width:1440,height:1030},camera)!
+  const phaseX = .7999999999997272, phaseY = .599999999999909
+  const cell=(x:number)=>({key:String(x),x,y:-513,width:514,height:514,
+    zoom:1.6,phaseX,phaseY,gutter:1})
+  expect(tileOnBoardLattice(cell(4607), camera.view, camera.dpr)).toBe(true)
+  expect(tileOnBoardLattice({ ...cell(4607), phaseX: phaseX + .125 }, camera.view, camera.dpr)).toBe(false)
+  const strips = clippedBoardPrefetch(source, camera, [cell(2559),cell(4607)], 4)
+  expect(strips).toHaveLength(2)
+  expect(strips.every(tile=>tile.prefetch && tileOnBoardLattice(tile,camera.view,camera.dpr))).toBe(true)
+  const left = phaseX - camera.view.x * camera.dpr
+  const right = left + camera.width * camera.dpr
+  expect(strips[0].x + strips[0].width - 1).toBe(left)
+  expect(strips[1].x + 1).toBe(right)
 })

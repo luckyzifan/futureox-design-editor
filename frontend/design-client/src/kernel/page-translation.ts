@@ -1,6 +1,7 @@
 import type { CanvasCamera } from '../canvas-camera'
 import type { Bounds, DesignDocument } from '../model'
 import { validColor } from '../color'
+import { boardViewportBounds, clippedBoardSource, containsBoardSource, visibleBoardSource, type BoardViewport } from './clipped-board-drag'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import { tilesCoverBounds } from './tile-cache'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
@@ -65,11 +66,11 @@ export class PageTranslation {
   private input: InteractionInput = { sequence: 0, at: 0 }
   private pendingPose?: { document: DesignDocument; patches: Parameters<GpuMoveControl['apply']>[1] }
   private board?: Bounds
-  private tracking = false
+private tracking = false
   private readonly fillToken = ++boardFillTokens
   private boardFillSequence = 0
   private coveredMisses = 0
-  private srgbBoard?: { others: Bounds[]; viewport: Bounds; shown: { x: number; y: number } }
+  private srgbBoard?: { others: Bounds[]; viewport: Bounds; shown: { x: number; y: number }; clipped?: { source: Bounds; camera: BoardViewport } }
   private checkedDocument?: DesignDocument
   private checkedOffset: { x: number; y: number } | null = null
   moves = 0
@@ -77,7 +78,7 @@ export class PageTranslation {
   readonly warming = false
   readonly error = ''
   lastEnd = ''
-  get mode() { return this.board ? 'retained-board' : 'retained-page' }
+  get mode() { return this.srgbBoard?.clipped ? 'retained-clipped-board' : this.board ? 'retained-board' : 'retained-page' }
   readonly lastSampleMs = 0
   readonly lastSampleCompileMs = 0
   readonly lastSampleGraphMs = 0
@@ -181,6 +182,12 @@ export class PageTranslation {
       })),
     } }
   }
+  private clippedPoseCovered(offset: { x: number; y: number }) {
+    const clip = this.srgbBoard?.clipped
+    if (!clip || !this.board || !this.srgbBoard) return true
+    const source = visibleBoardSource(this.board, this.srgbBoard.viewport, offset)
+    return !source || containsBoardSource(clip.source, source)
+  }
   private overlapsStationary(offset: { x: number; y: number }) {
     if (!this.board || !this.srgbBoard) return false
     const { viewport, others } = this.srgbBoard
@@ -235,10 +242,10 @@ export class PageTranslation {
       // A visible overlap needs native painter order. Motion beyond the edge
       // of the viewport does not invalidate this composition.
       if (this.overlapsStationary(offset)) return this.rebase(document, patches, guides)
-      // Whole-page desktop motion may reproject full-density texels. Clipped
-      // boards require an integer physical phase on both axes. Final readiness
-      // always belongs to the committed native page, not this pose.
-      if (!this.reusableOffset(offset)) return this.rebase(document, patches, guides)
+// Whole-page desktop motion may reproject full-density texels. A clipped
+      // board additionally needs a proved source on the board lattice. Final
+      // readiness always belongs to the committed native page, not this pose.
+      if (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset)) return this.rebase(document, patches, guides)
       const id = this.plan.ids[0],
         before = document.nodes[id].transform,
         after = patches[id]?.transform || before
@@ -263,7 +270,7 @@ export class PageTranslation {
       this.feedback.clear()
       if (!this.active || this.phaseRevoked) return
       const offset = this.delta(document)
-      if (offset && !this.reusableOffset(offset)) { this.rebase(document, {}); return }
+      if (offset && (!this.clippedPoseCovered(offset) || !this.reusableOffset(offset))) { this.rebase(document, {}); return }
       this.active = !!offset && (offset.x !== 0 || offset.y !== 0)
       if (offset) this.offset = offset
       this.lastEnd = offset ? `${offset.x},${offset.y}` : 'content-changed'
@@ -278,7 +285,8 @@ export class PageTranslation {
     settled: DesignDocument | undefined,
     allowed: boolean,
     fractional=false,
-    camera?: { view: CanvasCamera; width: number; height: number },
+    camera?: BoardViewport,
+    clippedItems?: CompositeItem[],
   ) {
     if(this.fractional!==fractional){this.clear();this.fractional=fractional}
     if (this.phaseRevoked) {
@@ -296,12 +304,19 @@ export class PageTranslation {
     const proof = document && props?.selection.length === 1
       ? opaqueBoardProof(document, roots, props.selection[0], allowSrgb) : undefined
     const board = proof?.box
-    const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(items.map(i => i.tile), board, camera))
+const coveredBoard = !!board && (this.active && !!this.board || boardTilesCover(items.map(i => i.tile), board, camera))
+    // A proved finite window is smaller than the full board fill and keeps the
+    // exact native lattice, so prefer it whenever the caller supplies one.
+    const clippedSource = board && proof?.srgb && camera && clippedItems?.length
+      ? clippedBoardSource(board, camera) : undefined
+    const clipped = clippedSource && tilesCoverBounds(clippedItems!.map(item => item.tile), clippedSource)
+      ? { source: clippedSource, camera: camera! } : undefined
+    if (clipped) items = clippedItems!
     const eligible =
       !!props &&
       allowed &&
       roots.length > 0 &&
-      (all || coveredBoard)
+      (all || coveredBoard || !!clipped)
     if (!eligible || this.epoch !== props?.epoch || this.plan?.pageId !== pageId) {
       this.clear()
       this.epoch = props?.epoch ?? -1
@@ -309,8 +324,12 @@ export class PageTranslation {
     if (!eligible || !props) return false
     this.props = props
     if (this.active && this.srgbBoard && camera) {
-      this.srgbBoard.viewport = viewportBounds(camera)
-      if (this.pendingPose && this.overlapsStationary(this.offset)) {
+      const supplied = this.srgbBoard.clipped?.camera
+      this.srgbBoard.viewport = boardViewportBounds(camera)
+      if (this.pendingPose && (this.overlapsStationary(this.offset) || !this.clippedPoseCovered(this.offset) ||
+        supplied && (supplied.dpr !== camera.dpr || supplied.view.x !== camera.view.x ||
+          supplied.view.y !== camera.view.y || supplied.view.zoom !== camera.view.zoom ||
+          supplied.width !== camera.width || supplied.height !== camera.height))) {
         const { document, patches } = this.pendingPose
         this.rebase(document, patches)
         return false
@@ -322,7 +341,7 @@ export class PageTranslation {
         return false
       }
       if (props.active || props.document === this.plan.document) {
-        if (source === this.plan.document && items.length)
+        if (!this.srgbBoard?.clipped && source === this.plan.document && items.length)
           this.residents = items.map((item) => item.tile)
         return true
       }
@@ -333,7 +352,7 @@ export class PageTranslation {
       this.checkedDocument = undefined
       this.board = all ? undefined : board
       this.srgbBoard = this.board && proof?.srgb && camera
-        ? { others: proof.others, viewport: viewportBounds(camera), shown: { x: 0, y: 0 } } : undefined
+        ? { others: proof.others, viewport: boardViewportBounds(camera), shown: { x: 0, y: 0 }, clipped } : undefined
       this.residents = items.map((item) => item.tile)
       const offset = this.delta(props.document) || { x: 0, y: 0 }
       this.offset = { x: 0, y: 0 }
@@ -439,6 +458,14 @@ export class PageTranslation {
  * Transparent/overlapping/effect-dependent selections use the layer renderer. */
 export function isolatedOpaqueBoard(document: DesignDocument, roots: string[], id: string): Bounds | undefined {
   return opaqueBoardProof(document, roots, id, false)?.box
+}
+
+export function isolatedSrgbBoard(document: DesignDocument, pageId: string, id: string) {
+  if (document.colorManagement) return
+  const roots = document.pages.find(page => page.id === pageId)?.children.filter(key => document.nodes[key]?.visible)
+  if (!roots) return
+  const proof = opaqueBoardProof(document, roots, id, true)
+  return proof?.srgb ? proof.box : undefined
 }
 
 function opaqueBoardProof(document: DesignDocument, roots: string[], id: string, allowSrgb: boolean) {
