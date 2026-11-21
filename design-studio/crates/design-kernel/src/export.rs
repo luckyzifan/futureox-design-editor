@@ -538,10 +538,12 @@ pub(crate) fn visit_backdrops(
     doc: &crate::scene::Document,
     roots: &[String],
     camera: crate::math::Transform,
+    projected_color_capture: bool,
     mut emit: impl FnMut(crate::math::Rect, f64),
 ) -> Result<(), String> {
     fn visit(
         doc: &crate::scene::Document, id: &str, parent: crate::math::Transform,
+        projected_color_capture: bool,
         emit: &mut impl FnMut(crate::math::Rect, f64),
     ) -> Result<(), String> {
         let n = &doc.nodes[id];
@@ -549,14 +551,22 @@ pub(crate) fn visit_backdrops(
         let matrix = parent.concat(n.transform);
         if let Some(fx) = n.backdrop_effect() {
             let (path, _) = n.paths()?;
-            emit(path.control_bounds(matrix), fx.backdrop_outset(matrix.max_scale()));
+            let mut support = fx.backdrop_outset(matrix.max_scale());
+            if projected_color_capture
+                && crate::sketch_progressive_blur::RotatedBackdrop::for_color_only(doc, n, fx, matrix).is_some()
+            {
+                // Bound the capture and output bilinear samples in device pixels,
+                // including rotation and raster coverage across the lens edge.
+                support = support.max(5.);
+            }
+            emit(path.control_bounds(matrix), support);
         }
-        for child in &n.children { visit(doc, child, matrix, emit)?; }
+        for child in &n.children { visit(doc, child, matrix, projected_color_capture, emit)?; }
         Ok(())
     }
     for (i,id) in roots.iter().enumerate() {
         if i % 64 == 0 { crate::render_cancellation::checkpoint()?; }
-        visit(doc, id, camera, &mut emit)?;
+        visit(doc, id, camera, projected_color_capture, &mut emit)?;
     }
     Ok(())
 }
@@ -591,7 +601,9 @@ pub(crate) fn backdrop_padding(
         // accounting keeps that window so a page of separated readers is still
         // rejected instead of being cropped.
         let region = tile.expand((2048. / density) as i32);
-        visit_backdrops(doc, &page.children, camera, |bounds, support| {
+        let projected_color_capture = options.raster_profile == RasterProfile::Analytic
+            && doc.color_management.is_none();
+        visit_backdrops(doc, &page.children, camera, projected_color_capture, |bounds, support| {
             if !bounds.intersect(region).empty() { total += support; }
         })?;
     }
@@ -620,7 +632,7 @@ pub(crate) fn tile_backdrop_padding(
     let mut backdrops = Vec::new();
     let mut original_total = 0.;
     let mut unknown_bounds = false;
-    visit_backdrops(doc, &page.children, camera, |bounds, support| {
+    visit_backdrops(doc, &page.children, camera, false, |bounds, support| {
         unknown_bounds |= bounds.empty();
         if !bounds.intersect(search).empty() {
             original_total += support;
@@ -1402,6 +1414,30 @@ mod tests {
             assert_eq!(full.get_pixel(170 * scale, 0).0, [41, 133, 219, 255], "untouched backdrop outside the lens");
             let crop = render(144., 48., 32.);
             assert_eq!(crop, image::imageops::crop_imm(&full, 144 * scale, 0, 48 * scale, 32 * scale).to_image());
+        }
+
+        let mut doc = doc;
+        let effect = &mut doc["nodes"]["lens"]["effects"][0];
+        effect["radius"] = json!(0);
+        effect["colorControls"] = json!({
+            "space":"srgb","brightness":0,"contrast":1,"saturation":0.4,"hue":0
+        });
+        engine.load_document(&doc.to_string()).unwrap();
+        for scale in [1, 2] {
+            let mut render = |x, y, width, height| {
+                let png = engine.render_region_png(&RegionRequest {
+                    page_id: "p".into(), bounds: ExportBounds { x, y, width, height },
+                    scale: f64::from(scale), node_ids: None, raster_profile: Some(RasterProfile::Analytic),
+                    color_output: None,
+                }).unwrap();
+                image::load_from_memory(&png).unwrap().into_rgba8()
+            };
+            let full = render(0., 0., 192., 144.);
+            assert!(full.get_pixel(32 * scale, 144 * scale - 1)[3] < 255);
+            let crop = render(17., 120., 150., 24.);
+            // At 2x the crop crosses the full export's 256-row tile boundary.
+            assert_eq!(crop, image::imageops::crop_imm(&full, 17 * scale, 120 * scale,
+                150 * scale, 24 * scale).to_image());
         }
     }
 
