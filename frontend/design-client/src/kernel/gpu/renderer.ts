@@ -25,7 +25,7 @@ import { CoordinateRetirementSet } from './coordinate-retirement-set'
 import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
 import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { BOX_PREFIX_BYTES } from './box-prefix'
-import { SKETCH_LAYER_GAUSSIAN_MODE } from './compositor-modes'
+import { SKETCH_LAYER_GAUSSIAN_MODE, SOLID_BIN_DRAW_MODE } from './compositor-modes'
 import { backdropFilterRegion } from './backdrop-filter-region'
 import { painterStageBox } from './painter-stage'
 import { identicalSampleCoverage } from './sample-equivalent-coverage'
@@ -3872,7 +3872,7 @@ export class GpuRenderer {
       const composed = saved && await this.composeLastZoomFocus(children[focus.index], saved, focus.output)
       if (composed) { this.release(target); return composed }
     }
-    const start = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0
+    let start = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0
     const repair = this.scene.progressiveBlurRepair
     const repairNode = repair && this.scene.nodes[repair.node], repairOutput = this.scene.output
     const repairIndex = repair && !skip && scope && this.scene.roots.length === 1 && this.scene.roots[0] === scope.id &&
@@ -3908,6 +3908,29 @@ export class GpuRenderer {
             return composed
           }
         } finally { this.activeNode = previous }
+      }
+    }
+    if (this.optimized && !start && !clip && !skip && !focus && !repair && !target.logicalBounds &&
+        this.analyticPaintFusionEnabled() && this.driver.drawSolidBins && exactBlendLattice([target.rect]) &&
+        !(this.analyticSolidBatchEnabled() && this.analyticSolidTarget(target))) {
+      const prefix = this.driver.solidBinPrefix?.(children, target.texture)
+      if (prefix && !this.surfaceNeedsAdmission(target.rect)) {
+        this.checkFrameCurrent()
+        const out = this.acquire(target.rect, false, false, SurfaceAllocationSite.passOutput, SOLID_BIN_DRAW_MODE)
+        const scratch = this.driver.scratchBytes || 0
+        let drawn = false
+        try {
+          drawn = this.driver.drawSolidBins(children, out.texture, target.texture, target.rect, this.frameBudget - this.workingBytes)
+          if (drawn) {
+            this.release(target)
+            target = out
+            start = prefix
+            this.passPixels += out.rect.w * out.rect.h
+          }
+        } finally {
+          this.noteScratch(scratch)
+          if (!drawn) this.release(out)
+        }
       }
     }
     for (let i = start; i < children.length; ) {
@@ -8947,6 +8970,8 @@ export class GpuRenderer {
       this.collectRetiredImageAssets()
       return {
         ...result,
+        solidBinDispatches: this.driver.solidBinDispatches || 0,
+        solidBinNodes: this.driver.solidBinNodes || 0,
         staticImageBlurEligible: this.staticImageBlurEligible, staticImageBlurHits: this.staticImageBlurHits,
         staticImageBlurPixels: this.staticImageBlurPixels, staticImageBlurBytes: this.staticImageBlurs.bytes,
         staticImageBlurEntries: this.staticImageBlurs.count,
