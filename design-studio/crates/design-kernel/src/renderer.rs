@@ -2341,6 +2341,7 @@ impl Engine {
             display_degrade: self.display_degrade,
             sketch_reduced_group,
             clipped_export_target: clipped_export_target.is_some(),
+            png_region: self.rendering_png_region,
             flush_backdrop_frame: (self.rendering_png_region && options.raster_profile.is_export() && compatible)
                 .then(|| match page.children.as_slice() {
                     [id] => doc.nodes.get(id).filter(|n| n.kind == "frame" && !n.clip && !n.mask
@@ -3271,6 +3272,7 @@ struct Painter<'a> {
     display_degrade: bool,
     sketch_reduced_group: Option<&'a Node>,
     clipped_export_target: bool,
+    png_region: bool,
     flush_backdrop_frame: Option<&'a Node>,
     compact_export_groups: bool,
     sample: Option<usize>,
@@ -5291,17 +5293,26 @@ impl Painter<'_> {
                 let capture = Rect::new(0, 0, w as u32, h as u32);
                 let mut surface = self.allocate(capture)?;
                 let rotated = crate::sketch_progressive_blur::RotatedBackdrop::for_node(self.doc, n, fx, m);
+                let color_capture = (self.png_region
+                    && self.profile == crate::fidelity::RasterProfile::Analytic
+                    && self.doc.color_management.is_none())
+                    .then(|| crate::sketch_progressive_blur::RotatedBackdrop::for_color_only(self.doc, n, fx, m))
+                    .flatten();
                 for row in 0..capture.h {
                     crate::render_cancellation::checkpoint()?;
                     for column in 0..capture.w {
                         let p = Point::new(x + f64::from(column) + 0.5, y + f64::from(row) + 0.5);
-                        let at = rotated.map_or(p, |capture| capture.sample(p));
                         surface.pixels[row as usize * capture.w as usize + column as usize] =
-                            target.sample_linear(at.x, at.y);
+                            if let Some(capture) = color_capture {
+                                capture.sample_color_only(p, target)
+                            } else {
+                                let at = rotated.map_or(p, |capture| capture.sample(p));
+                                target.sample_linear(at.x, at.y)
+                            };
                     }
                 }
                 let mut filtered = if let Some(gradient) = fx.sketch_ramp() {
-                    progressive_backdrop = rotated.is_some();
+                    progressive_backdrop = rotated.is_some() || color_capture.is_some();
                     crate::sketch_progressive_blur::apply(surface, gradient, m, Point::new(x, y),
                         fx.sketch_backdrop_sigma(scale), true, self.compatible, false)?
                 } else {

@@ -38,14 +38,28 @@ pub(crate) struct RotatedBackdrop {
     world: Transform,
     inset: [f64; 2],
     size: [f64; 2],
+    density: [f64; 2],
 }
 
 impl RotatedBackdrop {
     pub(crate) fn for_node(doc: &crate::scene::Document, node: &crate::scene::Node,
         effect: &crate::scene::Effect, world: Transform) -> Option<Self>
     {
+        (effect.radius > 0.).then(|| Self::for_capture(doc, node, effect, world)).flatten()
+    }
+
+    pub(crate) fn for_color_only(doc: &crate::scene::Document, node: &crate::scene::Node,
+        effect: &crate::scene::Effect, world: Transform) -> Option<Self>
+    {
+        (effect.radius == 0. && effect.color_controls.as_ref().is_some_and(|controls| !controls.is_identity()))
+            .then(|| Self::for_capture(doc, node, effect, world)).flatten()
+    }
+
+    fn for_capture(doc: &crate::scene::Document, node: &crate::scene::Node,
+        effect: &crate::scene::Effect, world: Transform) -> Option<Self>
+    {
         if node.kind != "rectangle" || node.mask || node.passes_backdrop()
-            || effect.kind != "background-blur" || effect.radius <= 0. || effect.sketch_ramp().is_none()
+            || effect.kind != "background-blur" || effect.sketch_ramp().is_none()
             || node.effects.iter().any(|e| e.visible
                 && matches!(e.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur"))
         {
@@ -73,8 +87,29 @@ impl RotatedBackdrop {
         let inverse = world.inverse().ok()?;
         Some(Self {
             inverse, world, size,
+            density: [sx, sy],
             inset: [(0.5 / sx).min(size[0] / 2.), (0.5 / sy).min(size[1] / 2.)],
         })
+    }
+
+    // The color-only effect reads the rotated capture at its own texel phase.
+    // Reconstruct that sample directly to avoid a second full-sized surface.
+    pub(crate) fn sample_color_only(self, point: Point, backdrop: &Surface) -> Pixel {
+        let local = self.inverse.point(point);
+        let grid = [local.x * self.density[0] - 0.5, local.y * self.density[1] - 0.5];
+        let cell = grid.map(f64::floor);
+        let phase = [grid[0] - cell[0], grid[1] - cell[1]];
+        let sample = |x: f64, y: f64| {
+            let local_x = ((cell[0] + x + 0.5) / self.density[0])
+                .clamp(self.inset[0], self.size[0] - self.inset[0]);
+            let local_y = ((cell[1] + y + 0.5) / self.density[1])
+                .clamp(self.inset[1], self.size[1] - self.inset[1]);
+            let world = self.world.point(Point::new(local_x, local_y));
+            backdrop.sample_linear(world.x, world.y)
+        };
+        let top = sample(0., 0.).interpolate(sample(1., 0.), phase[0] as f32, false);
+        let bottom = sample(0., 1.).interpolate(sample(1., 1.), phase[0] as f32, false);
+        top.interpolate(bottom, phase[1] as f32, false)
     }
 
     pub(crate) fn limits(self) -> [f64; 4] {

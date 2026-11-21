@@ -162,7 +162,7 @@ impl CpuFramePlan {
             let mut entries = Vec::new();
             let mut overflow = false;
             let mut first_tile_support = 0.;
-            crate::export::visit_backdrops(doc, &page.children, camera, |bounds, support| {
+            crate::export::visit_backdrops(doc, &page.children, camera, false, |bounds, support| {
                 if !bounds.intersect(region).empty() {
                     first_tile_support += support;
                 }

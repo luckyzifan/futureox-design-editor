@@ -31,7 +31,7 @@ impl BackdropDemand {
         let view = options.view;
         let camera = Transform([view.zoom, 0., 0., view.zoom, view.x, view.y]);
         let mut entries = Vec::new();
-        visit_backdrops(doc, &page.children, camera, |rect, support| entries.push((rect, support)))?;
+        visit_backdrops(doc, &page.children, camera, true, |rect, support| entries.push((rect, support)))?;
         Ok((entries.len() > 1).then_some(Self { entries, camera, prepared: None }))
     }
 
