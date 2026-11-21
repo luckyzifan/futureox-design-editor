@@ -256,7 +256,7 @@ pub fn tent_blur_edge(
     radius: f64,
     clamp_edges: bool,
 ) -> Result<Surface, String> {
-    tent_blur_impl(surface.try_clone()?, radius, clamp_edges, false, false, None)
+    tent_blur_impl(surface.try_clone()?, radius, clamp_edges, false, false, [None; 2])
 }
 pub const TENT_WEIGHT_SCALE: u32 = 1 << 24;
 /// Symmetric Q24 coefficients with exact unit mass. The same bytes are uploaded
@@ -279,25 +279,25 @@ pub fn portable_tent_blur_edge(
     radius: f64,
     clamp_edges: bool,
 ) -> Result<Surface, String> {
-    portable_tent_blur_with_right_sample(surface, radius, clamp_edges, None)
+    portable_tent_blur_with_trailing_samples(surface.try_clone()?, radius, clamp_edges, [None; 2])
 }
 
 /// The first tap across a flush frame edge may sample backing coverage.
 /// Taps farther away retain the usual cropped-capture extension.
-pub(crate) fn portable_tent_blur_with_right_sample(
-    surface: &Surface,
+pub(crate) fn portable_tent_blur_with_trailing_samples(
+    surface: Surface,
     radius: f64,
     clamp_edges: bool,
-    right_sample: Option<&[Pixel]>,
+    trailing_samples: [Option<&[Pixel]>; 2],
 ) -> Result<Surface, String> {
     let radius = f64::from(radius as f32);
     tent_blur_impl(
-        surface.try_clone()?,
+        surface,
         radius,
         clamp_edges,
         radius > 0. && radius <= 512. && radius.fract() != 0.,
         false,
-        right_sample,
+        trailing_samples,
     )
 }
 pub fn linear_tent_blur(
@@ -320,7 +320,7 @@ fn tent_blur_impl(
     clamp_edges: bool,
     portable: bool,
     linear: bool,
-    right_sample: Option<&[Pixel]>,
+    trailing_samples: [Option<&[Pixel]>; 2],
 ) -> Result<Surface, String> {
     if radius <= 0. {
         return Ok(current);
@@ -420,7 +420,8 @@ fn tent_blur_impl(
                 };
                 byte(p)
             };
-            let guard = if horizontal { right_sample.and_then(|row| row.get(line as usize)).copied().map(byte) } else { None };
+            let guard = trailing_samples[usize::from(!horizontal)]
+                .and_then(|edge| edge.get(line as usize)).copied().map(byte);
             for at in 0..len {
                 let value = sample(at);
                 let i = at as usize;
@@ -1494,10 +1495,10 @@ fn blur_shadow_alpha(alpha: Surface, filter: BlurFilter) -> Result<Surface, Stri
                 false,
                 radius > 0. && radius <= 512. && radius.fract() != 0.,
                 false,
-                None,
+                [None; 2],
             )
         }
-        BlurFilter::IntegratedTent(radius) => tent_blur_impl(alpha, radius, false, false, false, None),
+        BlurFilter::IntegratedTent(radius) => tent_blur_impl(alpha, radius, false, false, false, [None; 2]),
         BlurFilter::LinearTent(radius) => linear_tent_blur_owned(alpha, radius, false),
     }
 }

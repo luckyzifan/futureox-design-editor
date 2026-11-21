@@ -45,6 +45,32 @@ pub(crate) fn coherent_samples(doc: &crate::scene::Document, options: &RenderOpt
         && !(doc.color_management.is_some() && options.interactive_effects)
 }
 
+pub(crate) fn full_frame_vector(frame: &crate::scene::Node, node: &crate::scene::Node) -> bool {
+    node.kind == "vector"
+        && node.transform == crate::math::Transform::default()
+        && node.width == frame.width
+        && node.height == frame.height
+}
+
+pub(crate) fn has_full_frame_vector_backdrop(
+    doc: &crate::scene::Document,
+    options: &RenderOptions,
+) -> bool {
+    use crate::scene::Node;
+    let frame = doc.pages.iter().find(|page| page.id == options.page_id)
+        .and_then(|page| match page.children.as_slice() {
+            [id] => doc.nodes.get(id),
+            _ => None,
+        })
+        .filter(|node| node.kind == "frame" && node.visible && !node.clip && !node.mask
+            && node.opacity == 1. && node.blend == "normal");
+    frame.is_some_and(|frame| frame.render_children().iter().filter_map(|id| doc.nodes.get(id))
+        .any(|node: &Node| node.visible && full_frame_vector(frame, node)
+            && node.backdrop_effect().is_some_and(|effect| {
+                effect.kind == "background-blur" && !effect.sketch_backdrop && effect.gradient_blur.is_none()
+            })))
+}
+
 pub(crate) fn has_backdrop(doc: &crate::scene::Document, options: &RenderOptions) -> bool {
     fn visit(doc: &crate::scene::Document, id: &str) -> bool {
         let n = &doc.nodes[id];

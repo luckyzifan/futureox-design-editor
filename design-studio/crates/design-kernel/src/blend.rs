@@ -445,6 +445,9 @@ impl Surface {
         let (x, y) = (x - 0.5, y - 0.5);
         let (ix, iy) = (x.floor() as i32, y.floor() as i32);
         let (u, v) = (x - x.floor(), y - y.floor());
+        if u == 0. && v == 0. {
+            return Pixel(self.at(ix, iy).0.map(|channel| (channel * 255.).round_ties_even() / 255.));
+        }
         let byte = |x, y| {
             self.at(x, y)
                 .0

@@ -862,6 +862,7 @@ fn begin_tagged_png<'a>(
     width: u32,
     height: u32,
     space: crate::color::ColorSpace,
+    compact_backdrop: bool,
 ) -> Result<png::Writer<&'a mut Vec<u8>>, String> {
     use crate::color::ColorSpace;
     let mut info = png::Info::with_size(width, height);
@@ -882,7 +883,14 @@ fn begin_tagged_png<'a>(
         _ => return Err("8-bit export tags sRGB or Display P3".into()),
     };
     let mut encoder = png::Encoder::with_info(output, info).map_err(|e| e.to_string())?;
-    encoder.set_compression(png::Compression::Fast);
+    if compact_backdrop {
+        // Repeated straight RGBA codes in a dithered backdrop compress well
+        // with LZ matches. Row differencing makes those codes less regular.
+        encoder.set_deflate_compression(png::DeflateCompression::Level(3));
+        encoder.set_filter(png::Filter::NoFilter);
+    } else {
+        encoder.set_compression(png::Compression::Fast);
+    }
     let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
     if srgb_chunk {
         writer
@@ -915,7 +923,7 @@ pub fn encode_tagged_rgba(
         convert_srgb_straight_to_display_p3(&mut samples);
     }
     let mut output = Vec::new();
-    let mut writer = begin_tagged_png(&mut output, width, height, space)?;
+    let mut writer = begin_tagged_png(&mut output, width, height, space, false)?;
     writer
         .write_image_data(&samples)
         .map_err(|e| e.to_string())?;
@@ -1155,7 +1163,10 @@ fn render_tiles(
     // strip avoids re-rasterizing the same layer halos at each horizontal edge.
     let tile_width = if padding.is_some() && options.width > 4096 { 2048 } else { tile_width };
     let mut output = Vec::new();
-    let mut writer = begin_tagged_png(&mut output, options.width, options.height, space)?;
+    let compact_backdrop = options.raster_profile == RasterProfile::Figma
+        && space == crate::color::ColorSpace::Srgb
+        && engine.doc.as_ref().is_some_and(|doc| crate::fidelity::has_full_frame_vector_backdrop(doc, options));
+    let mut writer = begin_tagged_png(&mut output, options.width, options.height, space, compact_backdrop)?;
     let mut stats = Stats::default();
     {
         let mut stream = writer
@@ -1323,23 +1334,34 @@ mod tests {
             doc["nodes"]["lens"]["effects"][0]["radius"] = json!(radius);
             let mut engine = Engine::new();
             engine.load_document(&doc.to_string()).unwrap();
-            let export = |engine: &mut Engine, x, width| {
+            let export = |engine: &mut Engine, x, y, width, height, scale| {
                 let data = engine.render_region_png(&RegionRequest {
-                    page_id: "p".into(), scale: 1., node_ids: None, color_output: None,
-                    bounds: ExportBounds { x, y: 0., width, height: 48. },
+                    page_id: "p".into(), scale, node_ids: None, color_output: None,
+                    bounds: ExportBounds { x, y, width, height },
                     raster_profile: Some(RasterProfile::Figma),
                 }).unwrap();
                 image::load_from_memory(&data).unwrap().into_rgba8()
             };
-            let frame = export(&mut engine, 0., 64.);
-            assert_eq!(frame.get_pixel(32, 24)[3], 255);
-            assert!(frame.get_pixel(63, 24)[3] < 253);
-            let crop = export(&mut engine, 48., 16.);
-            assert_eq!(crop, image::imageops::crop_imm(&frame, 48, 0, 16, 48).to_image());
-            // A wider frame supplies opaque backing past the vector's capture edge.
+            for scale in [1, 2] {
+                let frame = export(&mut engine, 0., 0., 64., 48., f64::from(scale));
+                assert_eq!(frame.get_pixel(32 * scale, 24 * scale)[3], 255);
+                let right_alpha = frame.get_pixel(64 * scale - 1, 24 * scale)[3];
+                assert!(right_alpha < if scale == 1 { 253 } else { 255 });
+                assert!(frame.get_pixel(32 * scale, 48 * scale - 1)[3] < 255);
+                for (x, y, w, h) in [(48, 0, 16, 48), (25, 28, 39, 20)] {
+                    let crop = export(&mut engine, f64::from(x), f64::from(y), f64::from(w),
+                        f64::from(h), f64::from(scale));
+                    assert_eq!(crop, image::imageops::crop_imm(&frame,
+                        x * scale, y * scale, w * scale, h * scale).to_image());
+                }
+            }
+            // An extended frame provides opaque backing beyond both lens edges.
             doc["nodes"]["frame"]["width"] = json!(72);
+            doc["nodes"]["frame"]["height"] = json!(56);
             engine.load_document(&doc.to_string()).unwrap();
-            assert_eq!(export(&mut engine, 0., 64.).get_pixel(63, 24)[3], 255);
+            let inset = export(&mut engine, 0., 0., 64., 48., 1.);
+            assert_eq!(inset.get_pixel(63, 24)[3], 255);
+            assert_eq!(inset.get_pixel(32, 47)[3], 255);
         }
     }
 
