@@ -3515,12 +3515,22 @@ impl Painter<'_> {
             self.stats.backdrop_reads += 1;
             return Ok(out);
         }
+        let rounded_origin = Point::new(origin.x.round(), origin.y.round());
+        // For byte surfaces, the total off-center tap mass bounds the
+        // pre-rounding change by 255 * (|dx| + |dy|) codes. This threshold
+        // keeps that change below half a code even across a transparent edge.
+        let centered = rotated.is_none()
+            && (origin.x - rounded_origin.x).abs() + (origin.y - rounded_origin.y).abs() <= 1. / 1024.;
         for y in r.y..r.bottom() {
             for x in r.x..r.right() {
                 let mut sum = [0_u32; 4];
-                let at = location(x, y);
+                let at = if centered {
+                    Point::new(rounded_origin.x + f64::from(x - r.x), rounded_origin.y + f64::from(y - r.y))
+                } else {
+                    location(x, y)
+                };
                 for t in targets {
-                    let p = t.sample_rgba8(at.x, at.y);
+                    let p = if centered { t.at(at.x as i32, at.y as i32) } else { t.sample_rgba8(at.x, at.y) };
                     for (c, value) in sum.iter_mut().enumerate() {
                         *value += (p.0[c].clamp(0., 1.) * 255.).round_ties_even() as u32;
                     }
@@ -3759,8 +3769,7 @@ impl Painter<'_> {
                     } else if cropped {
                         let right = origin.x + f64::from(capture.w);
                         let covering_frame = self.flush_backdrop_frame.filter(|frame| {
-                            n.kind == "vector" && n.transform == Transform::default()
-                                && n.width == frame.width && n.height == frame.height
+                            crate::fidelity::full_frame_vector(frame, n)
                                 && frame.render_children().iter().any(|child| child == id)
                         }).and_then(|frame| self.prepared[&frame.id].fill_bounds);
                         let flush = covering_frame.filter(|bounds| {
@@ -3778,15 +3787,6 @@ impl Painter<'_> {
                             && edge > f64::from(input.x) && edge < f64::from(input.right())
                             && crate::coverage::rectangle(&prepared.fill).is_some_and(|b| b[2] == right))
                             .then_some(edge);
-                        let guard = flush.map(|_| right).or(trailing).map(|edge| {
-                            self.resolve_backdrop(
-                                Rect::new(0, 0, 1, capture.h),
-                                Point::new(edge - 0.5, origin.y),
-                                backdrop_inputs, None,
-                            )
-                        }).transpose()?;
-                        let mut filtered = effects::portable_tent_blur_with_right_sample(&background, radius, true,
-                            guard.as_ref().map(|g| g.pixels.as_slice()))?;
                         let dither_frame = covering_frame.filter(|frame| {
                             self.profile == crate::fidelity::RasterProfile::Figma
                                 && (frame.x - frame.x.round()).abs() <= 1e-8
@@ -3798,12 +3798,58 @@ impl Painter<'_> {
                                         && (bounds.height - frame.height).abs() <= 1e-8
                                 })
                         });
+                        // Native exports show a blurred edge tail and a separate
+                        // contribution at the last capture texel. The insets and
+                        // interpolation weights were fitted on the 2x lattice
+                        // against both Figma blur radii.
+                        let bottom = origin.y + f64::from(capture.h);
+                        let right_edge = dither_frame.and(flush).map(|_| right);
+                        let bottom_edge = dither_frame
+                            .filter(|frame| (frame.y + frame.height - bottom).abs() <= 1e-8)
+                            .map(|_| bottom);
+                        let right_inset = if right_edge.is_some() { 9. / 16. } else { 0.5 };
+                        let right_guard = flush.map(|_| right).or(trailing).map(|edge| {
+                            self.resolve_backdrop(
+                                Rect::new(0, 0, 1, capture.h), Point::new(edge - right_inset, origin.y),
+                                backdrop_inputs, None,
+                            )
+                        }).transpose()?;
+                        let bottom_guard = bottom_edge.map(|edge| {
+                            let y = edge - 13. / 16.;
+                            let row = self.resolve_backdrop(Rect::new(0, 0, capture.w, 1),
+                                Point::new(origin.x, y), backdrop_inputs, None)?;
+                            let corner = right_edge.map(|x| self.resolve_backdrop(Rect::new(0, 0, 1, 1),
+                                Point::new(x - right_inset, y), backdrop_inputs, None)).transpose()?;
+                            effects::portable_tent_blur_with_trailing_samples(row, radius, true, [
+                                corner.as_ref().map(|sample| sample.pixels.as_slice()), None,
+                            ])
+                        }).transpose()?;
+                        let mut filtered = effects::portable_tent_blur_with_trailing_samples(background, radius, true, [
+                            right_guard.as_ref().map(|column| column.pixels.as_slice()),
+                            bottom_guard.as_ref().map(|row| row.pixels.as_slice()),
+                        ])?;
                         if let Some(frame) = dither_frame {
+                            let width = capture.w as usize;
+                            if let Some(edge) = right_edge {
+                                let outside = self.resolve_backdrop(Rect::new(0, 0, 1, capture.h),
+                                    Point::new(edge, origin.y), backdrop_inputs, None)?;
+                                for (row, sample) in filtered.pixels.chunks_exact_mut(width).zip(outside.pixels.iter()) {
+                                    row[width - 1] = row[width - 1].interpolate(*sample, 1. / 64., true);
+                                }
+                            }
+                            if let Some(edge) = bottom_edge {
+                                let outside = self.resolve_backdrop(Rect::new(0, 0, capture.w, 1),
+                                    Point::new(origin.x, edge), backdrop_inputs, None)?;
+                                for (pixel, sample) in filtered.pixels.rchunks_exact_mut(width).next()
+                                    .expect("backdrop bottom row").iter_mut().zip(outside.pixels.iter())
+                                {
+                                    *pixel = pixel.interpolate(*sample, 7. / 256., true);
+                                }
+                            }
                             // The complete frame and its crops share one 2x
                             // dither lattice, including internal export tile edges.
                             let x0 = (origin.x - frame.x).round() as i32;
                             let y0 = (origin.y - frame.y).round() as i32;
-                            let width = filtered.rect.w as usize;
                             for (y, row) in filtered.pixels.chunks_exact_mut(width).enumerate() {
                                 crate::render_cancellation::checkpoint()?;
                                 for (x, pixel) in row.iter_mut().enumerate() {
@@ -3841,65 +3887,51 @@ impl Painter<'_> {
                     )?;
                 }
             }
-            for sample in 0..4 {
-                let optical_surface = optical
-                    .map(|(shape, glass)| {
-                        if let Some(replay) = &replay {
-                            self.stats.backdrop_reads +=
-                                replay.tiles(r.intersect(self.viewport)).len();
-                            return crate::optics::render_captured_with_raster(
-                                &background,
-                                replay,
-                                shape,
-                                m,
-                                glass,
-                                sample,
-                                self.viewport,
-                                self.profile.is_software(),
-                            );
-                        }
-                        crate::optics::render_with_raster(
-                            &background,
-                            shape,
-                            m,
-                            glass,
-                            Some(sample),
-                            !self.compatible,
-                            self.profile.is_software(),
-                        )
-                    })
-                    .transpose()?;
-                let background = optical_surface.as_ref().unwrap_or(&background);
+            let sample_x = |x: i32| (f64::from(x) + 0.5 - origin.x + f64::from(capture.x)).clamp(
+                f64::from(capture.x) + 0.5, f64::from(capture.right()) - 0.5);
+            let sample_y = |y: i32| (f64::from(y) + 0.5 - origin.y + f64::from(capture.y)).clamp(
+                f64::from(capture.y) + 0.5, f64::from(capture.bottom()) - 0.5);
+            if self.compatible && optical.is_none() {
+                // The filtered backdrop is shared. Each coverage plane still
+                // masks and quantizes its own result.
                 for y in r.y..r.bottom() {
+                    crate::render_cancellation::checkpoint()?;
+                    let sy = sample_y(y);
                     for x in r.x..r.right() {
-                        if !self.compatible {
-                            layers[sample].pixels[r.index(x, y).expect("background")] = background
-                                .sample_linear(
-                                    (f64::from(x) + 0.5 - origin.x + f64::from(capture.x)).clamp(
-                                        f64::from(capture.x) + 0.5,
-                                        f64::from(capture.right()) - 0.5,
-                                    ),
-                                    (f64::from(y) + 0.5 - origin.y + f64::from(capture.y)).clamp(
-                                        f64::from(capture.y) + 0.5,
-                                        f64::from(capture.bottom()) - 0.5,
-                                    ),
-                                )
-                                .opacity(fill.at(sample, x, y));
-                            continue;
+                        let pixel = background.sample_rgba8(sample_x(x), sy);
+                        let index = r.index(x, y).expect("background");
+                        for (sample, layer) in layers.iter_mut().enumerate() {
+                            layer.pixels[index] = pixel.opacity(fill.at(sample, x, y)).rgba8_quantized();
                         }
-                        layers[sample].pixels[r.index(x, y).expect("background")] = background
-                            .sample_rgba8(
-                                (f64::from(x) + 0.5 - origin.x + f64::from(capture.x)).clamp(
-                                    f64::from(capture.x) + 0.5,
-                                    f64::from(capture.right()) - 0.5,
-                                ),
-                                (f64::from(y) + 0.5 - origin.y + f64::from(capture.y)).clamp(
-                                    f64::from(capture.y) + 0.5,
-                                    f64::from(capture.bottom()) - 0.5,
-                                ),
+                    }
+                }
+            } else {
+                for sample in 0..4 {
+                    let optical_surface = optical
+                        .map(|(shape, glass)| {
+                            if let Some(replay) = &replay {
+                                self.stats.backdrop_reads += replay.tiles(r.intersect(self.viewport)).len();
+                                return crate::optics::render_captured_with_raster(
+                                    &background, replay, shape, m, glass, sample, self.viewport, self.profile.is_software(),
+                                );
+                            }
+                            crate::optics::render_with_raster(
+                                &background, shape, m, glass, Some(sample), !self.compatible, self.profile.is_software(),
                             )
-                            .opacity(fill.at(sample, x, y))
-                            .rgba8_quantized();
+                        })
+                        .transpose()?;
+                    let background = optical_surface.as_ref().unwrap_or(&background);
+                    for y in r.y..r.bottom() {
+                        let sy = sample_y(y);
+                        for x in r.x..r.right() {
+                            let sx = sample_x(x);
+                            let coverage = fill.at(sample, x, y);
+                            layers[sample].pixels[r.index(x, y).expect("background")] = if self.compatible {
+                                background.sample_rgba8(sx, sy).opacity(coverage).rgba8_quantized()
+                            } else {
+                                background.sample_linear(sx, sy).opacity(coverage)
+                            };
+                        }
                     }
                 }
             }
